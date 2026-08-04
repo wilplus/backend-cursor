@@ -65,6 +65,23 @@ if [ "$MIGRATE_ON_BOOT" = "1" ]; then
   fi
 fi
 
+# ── RLS guard ──────────────────────────────────────────────────────────
+# Reports public tables without RLS and public functions anon can EXECUTE.
+# See scripts/rls_guard.py for why this is a deploy-time assertion and not a
+# cron, and docs/RLS-AUDIT.md for what it is guarding against.
+#
+# DEFAULT ON, unlike MIGRATE_ON_BOOT above, and the difference is deliberate:
+# that hook WRITES (a bad migration is a real risk, so it is opt-in), this one
+# only READS two catalog queries in ~10ms. An opt-in security check that nobody
+# opts into is precisely the "specified and never wired" failure this repo
+# keeps writing about — so the default has to be on.
+#
+# Set RLS_GUARD=0 to skip. It cannot fail the boot: --strict is never passed,
+# the script swallows its own exceptions, and `|| true` covers the rest.
+if [ "$RLS_GUARD" != "0" ]; then
+  python3 scripts/rls_guard.py || true
+fi
+
 # ── Boot gunicorn ──────────────────────────────────────────────────────
 # Large multipart uploads (reference videos up to MAX_REFERENCE_VIDEO_SIZE_MB)
 # need a long worker timeout. Override with GUNICORN_TIMEOUT (seconds),

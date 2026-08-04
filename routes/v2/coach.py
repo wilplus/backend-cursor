@@ -839,6 +839,12 @@ def v2_coach_get_session(session_id):
             "pseudonym": _coach_pseudonym(session.get("user_id")),
             "domain": (ctx or {}).get("domain") or "",
             "topic": (ctx or {}).get("topic") or "",
+            # The user's pre-recording named emotion (F2 handoff §2) —
+            # their own self-report, founder-decided coach-visible (not a
+            # machine guess; blind-coach untouched). The KEY only: its
+            # threat/challenge bucket is internal and never serialized
+            # (CONSTRUCT fence).
+            "named_emotion": (ctx or {}).get("named_emotion"),
             "sent_at": session.get("guest_claimed_at") or session.get("created_at") or "",
             "state": _coach_session_state(session, cstate),
             "review_state": _review_state,

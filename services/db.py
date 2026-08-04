@@ -15739,6 +15739,209 @@ class DatabaseService:
             )
             return None
 
+    # ── Read alignment (F1 handoff §3, 2026-08-03) ────────────────────
+    def upsert_read_alignment(self, session_id: str, fields: dict) -> bool:
+        """Persist one read's force-alignment result (aligned transcript,
+        per-word timings, script deviations). One row per read session."""
+        if not session_id or not isinstance(fields, dict):
+            return False
+        try:
+            self.client.table("read_alignments").upsert({
+                "session_id": str(session_id),
+                **fields,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="session_id").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "read_alignments" in _e and ("does not exist" in _e
+                                            or "pgrst" in _e):
+                logger.warning(
+                    "upsert_read_alignment: table missing (run "
+                    "migrations/add_read_alignments.sql)")
+                return False
+            logger.warning("upsert_read_alignment failed sid=%s: %s",
+                           session_id, e)
+            return False
+
+    def get_read_alignment(self, session_id: Optional[str]) -> Optional[dict]:
+        if not session_id:
+            return None
+        try:
+            res = (self.client.table("read_alignments").select("*")
+                   .eq("session_id", str(session_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception:
+            return None
+
+    # ── Reflection Game (F2 handoff §1, 2026-08-03) ───────────────────
+    def get_shadow_challenge_snippet_ids(self, snippet_ids) -> set:
+        """Snippet ids the SHADOW model flagged 'challenge' — the game's
+        clip source. Internal only: never serialize this membership."""
+        ids = [str(x) for x in (snippet_ids or []) if x]
+        if not ids:
+            return set()
+        try:
+            res = (self.client.table("shadow_predictions")
+                   .select("snippet_id")
+                   .in_("snippet_id", ids)
+                   .eq("predicted_label", "challenge").execute())
+            return {str(r.get("snippet_id")) for r in (res.data or [])
+                    if r.get("snippet_id")}
+        except Exception as e:
+            logger.warning("get_shadow_challenge_snippet_ids failed: %s", e)
+            return set()
+
+    def list_reflection_clips(self, user_id: Optional[str]) -> list:
+        """Every clip of one user, oldest first — the stable all-time
+        order the 1-in-4 decoy cadence is positioned against."""
+        if not user_id:
+            return []
+        try:
+            res = (self.client.table("reflection_clips").select("*")
+                   .eq("user_id", str(user_id))
+                   .order("created_at", desc=False).execute())
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if "reflection_clips" in _e and ("does not exist" in _e
+                                             or "pgrst" in _e):
+                logger.warning(
+                    "list_reflection_clips: table missing (run "
+                    "migrations/add_reflection_clips.sql)")
+                return []
+            logger.warning("list_reflection_clips failed user=%s: %s",
+                           user_id, e)
+            return []
+
+    def insert_reflection_clip(self, user_id: str, fields: dict) -> bool:
+        if not user_id or not isinstance(fields, dict) \
+                or not fields.get("snippet_id"):
+            return False
+        try:
+            self.client.table("reflection_clips").insert({
+                "user_id": str(user_id), **fields,
+            }).execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "duplicate" in _e or "unique" in _e:
+                return False    # snippet already clipped — idempotent
+            if "reflection_clips" in _e and ("does not exist" in _e
+                                             or "pgrst" in _e):
+                logger.warning(
+                    "insert_reflection_clip: table missing (run "
+                    "migrations/add_reflection_clips.sql)")
+                return False
+            logger.warning("insert_reflection_clip failed user=%s: %s",
+                           user_id, e)
+            return False
+
+    def mark_reflection_clips_served(self, clip_ids) -> bool:
+        ids = [str(x) for x in (clip_ids or []) if x]
+        if not ids:
+            return True
+        try:
+            (self.client.table("reflection_clips")
+             .update({"served_at": datetime.now(timezone.utc).isoformat()})
+             .in_("id", ids).is_("served_at", "null").execute())
+            return True
+        except Exception as e:
+            logger.warning("mark_reflection_clips_served failed: %s", e)
+            return False
+
+    def count_reflection_clips_served_today(
+            self, user_id: Optional[str]) -> int:
+        """Clips FIRST served since UTC midnight — the cadence counter."""
+        if not user_id:
+            return 0
+        try:
+            day_start = datetime.now(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0).isoformat()
+            res = (self.client.table("reflection_clips").select("id")
+                   .eq("user_id", str(user_id))
+                   .gte("served_at", day_start).execute())
+            return len(res.data or [])
+        except Exception:
+            return 0
+
+    def get_reflection_clip(self, clip_id: Optional[str]) -> Optional[dict]:
+        if not clip_id:
+            return None
+        try:
+            res = (self.client.table("reflection_clips").select("*")
+                   .eq("id", str(clip_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception:
+            return None
+
+    def set_reflection_vote(self, clip_id: str, user_id: str,
+                            vote: str) -> Optional[dict]:
+        """Store the user's vote (owner-scoped; a re-vote overwrites).
+        Returns the updated row, or None when the clip isn't theirs."""
+        if not clip_id or not user_id or vote not in ("best", "not_this"):
+            return None
+        try:
+            res = (self.client.table("reflection_clips")
+                   .update({"user_vote": vote,
+                            "voted_at": datetime.now(
+                                timezone.utc).isoformat()})
+                   .eq("id", str(clip_id)).eq("user_id", str(user_id))
+                   .execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("set_reflection_vote failed clip=%s: %s",
+                           clip_id, e)
+            return None
+
+    def list_reflection_clips_for_coach(self, limit: int = 20) -> list:
+        """Voted, verdict-pending clips, oldest vote first. The caller
+        (route) shapes the BLIND payload — audio + transcript only."""
+        try:
+            res = (self.client.table("reflection_clips").select("*")
+                   .not_.is_("user_vote", "null")
+                   .is_("coach_verdict", "null")
+                   .order("voted_at", desc=False)
+                   .limit(max(1, int(limit))).execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_reflection_clips_for_coach failed: %s", e)
+            return []
+
+    def set_reflection_verdict(self, clip_id: str,
+                               verdict: str) -> Optional[dict]:
+        if not clip_id or verdict not in ("confident", "not_confident"):
+            return None
+        try:
+            res = (self.client.table("reflection_clips")
+                   .update({"coach_verdict": verdict,
+                            "verified_at": datetime.now(
+                                timezone.utc).isoformat()})
+                   .eq("id", str(clip_id)).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("set_reflection_verdict failed clip=%s: %s",
+                           clip_id, e)
+            return None
+
+    def list_confident_voices(self, user_id: Optional[str]) -> list:
+        """The user's cross-project Confident Voices library: coach-
+        verified moments only (decoys eligible — a coach-verified decoy
+        is a confident moment), newest verdict first. A list is a list:
+        no aggregates ride anywhere near this (AC-9)."""
+        if not user_id:
+            return []
+        try:
+            res = (self.client.table("reflection_clips").select("*")
+                   .eq("user_id", str(user_id))
+                   .eq("coach_verdict", "confident")
+                   .order("verified_at", desc=True).execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_confident_voices failed user=%s: %s",
+                           user_id, e)
+            return []
+
 
 # Singleton instance
 db = DatabaseService()
