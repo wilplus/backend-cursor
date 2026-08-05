@@ -66,7 +66,7 @@ def _normalise(counts: Mapping[Any, Any]) -> tuple[dict[int, float], int]:
     error.
     """
     clean: dict[int, float] = {}
-    total = 0
+    total = 0.0
     for k, v in (counts or {}).items():
         try:
             decile = int(k)
