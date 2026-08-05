@@ -39,6 +39,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from services import dimension_registry as _registry
 from services.db import db
 
 
@@ -204,18 +205,38 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
     # copy as "used N filler words".
     global_fillers = sum(fillers_list) if fillers_list else None
 
-    # The REGISTRY dimension is a different quantity that happens to share the
-    # name: Appendix F.4 (E6) defines filler density PER MINUTE, and a sum
-    # scales with how long the session ran, so it is partly a length measure.
-    # Computed alongside rather than instead — see the note above.
+    # ── the registry-governed roll-up ───────────────────────────────────────
+    #
+    # `global_*` above are the LEGACY product metrics: fixed aggregations with
+    # live consumers, kept exactly as they are. `registry_globals` below is the
+    # same six measures rolled up the way Appendix F.4 says, read from
+    # services/dimension_registry rather than restated here.
+    #
+    # WHY BOTH RATHER THAN ONE. They disagree, and the disagreement is real
+    # rather than a bug to reconcile away: F.4 (E6) defines filler density PER
+    # MINUTE while `global_fillers` is a sum, because normalize_fillers
+    # thresholds on absolute counts. Two quantities, one name. Collapsing them
+    # would silently max out every user's KPI filler component.
+    #
+    # Nothing consumes registry_globals yet. It exists so the next consumer
+    # reads the spec instead of copying the legacy shape — which is how the
+    # two drifted apart in the first place.
     _total_ms = sum(
         s["duration_ms"] for s in active_snippets
         if isinstance(s.get("duration_ms"), (int, float))
     )
-    global_fillers_per_min = (
-        round(global_fillers / (_total_ms / 60000.0), 2)
-        if global_fillers is not None and _total_ms > 0 else None
+    _minutes = (_total_ms / 60000.0) if _total_ms > 0 else None
+    _words = sum(
+        len((s.get("transcript") or "").split()) for s in active_snippets
     )
+
+    registry_globals = _registry.rollup(
+        {"wpm": wpms, "fillers": fillers_list, "pause_ms": pauses,
+         "dynamic_db": dynamics, "pitch_center": pitches, "energy": energies},
+        minutes=_minutes, words=_words,
+    )
+    # Kept as a named field for readability; it is registry_globals["fillers"].
+    global_fillers_per_min = registry_globals.get("fillers")
 
     global_pause_ms = round(sum(pauses) / len(pauses), 1) if pauses else None
     global_dynamic_db = round(sum(dynamics) / len(dynamics), 1) if dynamics else None

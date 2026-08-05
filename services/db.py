@@ -13005,6 +13005,67 @@ class DatabaseService:
             logger.warning("record_dimension_evaluations failed: %s", e)
             return 0
 
+    def get_dimension_evaluations_since(self, *, weeks: int = 4,
+                                        limit: int = 50000) -> list:
+        """Evaluation rows for the drift job. [] on anything missing.
+
+        Returns raw rows; SESSION-GRAIN AGGREGATION IS THE CALLER'S JOB and is
+        not optional — snippets inside a session are not independent, and
+        counting thirty of them as thirty observations narrows the p-chart's
+        control limits by ~sqrt(30) and makes the monitor fire on its own
+        sampling. services.drift_job does it.
+        """
+        try:
+            from datetime import timedelta
+            since = (datetime.now(timezone.utc)
+                     - timedelta(weeks=int(weeks))).isoformat()
+            res = (self.client.table("dimension_evaluations")
+                   .select("session_id, dimension_id, raw_value, fired, "
+                           "benchmark_tier, benchmark_version, "
+                           "insufficient_data, evaluated_at")
+                   .gte("evaluated_at", since)
+                   .limit(int(limit)).execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("get_dimension_evaluations_since failed: %s", e)
+            return []
+
+    def get_reference_distribution(self, version: str = "frozen_v1") -> list:
+        """The frozen PSI baseline. [] when it has not been minted yet, which
+        is a normal early state, not an error."""
+        try:
+            res = (self.client.table("reference_distribution")
+                   .select("dimension_id, decile, pct, upper_bound, n_at_freeze")
+                   .eq("version", str(version)).execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("get_reference_distribution failed: %s", e)
+            return []
+
+    def insert_reference_distribution(self, rows: list) -> int:
+        """Mint a frozen reference. Returns rows written; 0 on failure.
+
+        NEVER UPDATES. reference_distribution blocks UPDATE by trigger — a
+        reference recomputed on a rolling window tracks the drift it exists to
+        detect, PSI reads ~0 forever, and the monitor becomes decorative WHILE
+        APPEARING TO WORK. A refit inserts a new `version`.
+        """
+        if not rows:
+            return 0
+        try:
+            (self.client.table("reference_distribution")
+                 .insert(rows).execute())
+            return len(rows)
+        except Exception as e:
+            err = str(e).lower()
+            if "duplicate" in err or "unique" in err or "23505" in err:
+                logger.info("insert_reference_distribution: version already "
+                            "minted — refusing to overwrite a frozen "
+                            "reference (this is the trigger doing its job)")
+                return 0
+            logger.warning("insert_reference_distribution failed: %s", e)
+            return 0
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything
         missing — the queue then renders every piece as unlabelled."""

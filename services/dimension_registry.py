@@ -58,7 +58,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +285,51 @@ def adapts(dimension_id: str) -> bool:
     """
     d = get(dimension_id)
     return bool(d and d.tier in ("T3", "CORPUS_REL"))
+
+
+def rollup(values_by_dimension: Any, *, minutes: Optional[float] = None,
+           words: int = 0) -> dict:
+    """Roll per-snippet values up to a session scalar THE WAY THE SPEC SAYS.
+
+    ``{dimension_id: [values]}`` -> ``{dimension_id: value|None}``, with the
+    aggregation read from this registry (Appendix F.4) rather than restated by
+    the caller. Change a denominator here and every consumer follows; that is
+    the entire point of the file.
+
+    Lives in the registry, not in session_metrics, for two reasons: it is a
+    registry operation, and session_metrics imports the DB client, so putting
+    it there would make a pure aggregation untestable without a database.
+
+    An UNKNOWN dimension returns None rather than a guessed mean. Refusing to
+    aggregate something the spec has not defined is the safe direction — a
+    plausible wrong number is worse than an absent one.
+    """
+    out: dict[str, Optional[float]] = {}
+    for dimension_id, values in (values_by_dimension or {}).items():
+        clean = [float(v) for v in (values or [])
+                 if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        how = aggregation_of(dimension_id)
+        if not clean or how is None:
+            out[dimension_id] = None
+            continue
+        if how == "mean":
+            out[dimension_id] = round(sum(clean) / len(clean), 3)
+        elif how == "sum":
+            out[dimension_id] = round(sum(clean), 3)
+        elif how == "max":
+            out[dimension_id] = round(max(clean), 3)
+        elif how == "per_minute":
+            out[dimension_id] = (round(sum(clean) / minutes, 3)
+                                 if minutes else None)
+        elif how == "per_1000_words":
+            out[dimension_id] = (round(sum(clean) / words * 1000.0, 3)
+                                 if words else None)
+        else:
+            # `none`: the registry is saying this dimension does not roll up
+            # to a session scalar at all. PROPORTIONAL dimensions are deciles,
+            # not a number, and forcing one would be a fabricated reading.
+            out[dimension_id] = None
+    return out
 
 
 def validate() -> list[str]:
