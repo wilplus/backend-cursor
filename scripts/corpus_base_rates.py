@@ -199,10 +199,20 @@ def main() -> int:
                          "'like', 'so', 'right' and the modals cannot be "
                          "disambiguated without POS tagging. Run BOTH and "
                          "compare -- the gap is how much the ambiguity costs.")
+    ap.add_argument("--source", choices=("recordings", "snippets"),
+                    help="fit on ONE source only. charisma_snippets are "
+                         "SELECTED moments, so their rates are not "
+                         "representative of general speech; `--source "
+                         "recordings` gives the unselected sample and is the "
+                         "better basis for a D20 prior.")
     ap.add_argument("--json", action="store_true", help="machine-readable")
     args = ap.parse_args()
 
     rows = _fetch(args.limit)
+    if args.source:
+        rows = [r for r in rows if r.get("source") == args.source]
+        print(f"\n  [--source {args.source}] — pooled numbers below are that "
+              f"source only.")
     if not rows:
         print("No transcripts found. Nothing to measure.", file=sys.stderr)
         return 1
