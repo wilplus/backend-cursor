@@ -205,9 +205,10 @@ def fit_prior(counts: Iterable[tuple[int, int]], *,
     This is the whole reason the signature takes pairs rather than rates. An
     unweighted mean over per-document rates counts a 40-word snippet with two
     tics the same as a 2,000-word talk with two, so short and noisy documents
-    drag it upward. Measured on real transcripts that bias ran 3.6x for TIC —
-    a pooled rate of 2.31 per 1,000 words against a prior mean of 8.40 — which
-    would have pulled every posterior toward a rate the corpus does not show.
+    drag it upward. Observed on a SINGLE-SPEAKER test corpus (the founder's own
+    recordings, ~41k words) that bias ran 3.6x for TIC. The MAGNITUDE is not
+    general — one speaker is not a population — but the DEFECT is: it is
+    arithmetic, and it holds for any corpus with varying document lengths.
 
     Only the STRENGTH comes from the spread. ``alpha + beta`` encodes
     overdispersion: bursty markers (a nervous speaker clusters them) give a
@@ -340,10 +341,10 @@ def expected_marks_per_doc(counts: Iterable[tuple[int, int]]) -> Optional[float]
     The chi-square dispersion estimator wants expected counts of roughly 5 or
     more per document. Below about 1 it is dominated by whether a document
     happened to contain a marker at all, and phi becomes noise with a heavy
-    right tail. Measured on real transcripts this sat at 0.06-0.57, so the
-    number must be reported ALONGSIDE phi rather than left for someone to
-    work out. A phi quoted without it invites a window estimate nobody should
-    act on.
+    right tail. On the single-speaker test corpus this sat at 0.06-0.57 against
+    documents averaging ~100 words, so the number must be reported ALONGSIDE
+    phi rather than left for someone to work out. A phi quoted without it
+    invites a window estimate nobody should act on.
     """
     pairs = [(int(m), int(w)) for m, w in counts
              if isinstance(m, int) and isinstance(w, int) and w > 0 and 0 <= m <= w]

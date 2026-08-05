@@ -97,11 +97,16 @@ class TestPrior(unittest.TestCase):
     def test_short_noisy_documents_do_not_drag_the_mean_up(self):
         """THE defect this signature exists to prevent.
 
-        Measured on real transcripts, the unweighted mean of per-document
-        rates ran 3.6x the pooled rate for TIC (8.40 vs 2.31 per 1,000 words),
-        because a 40-word snippet with two marks counted the same as a
-        2,000-word talk with two. Plugging that in would pull every posterior
-        toward a rate the corpus does not show.
+        An unweighted mean over per-document rates counts a 40-word snippet
+        with two marks the same as a 2,000-word talk with two, so short noisy
+        documents drag it upward and every posterior gets pulled toward a rate
+        the corpus does not show.
+
+        Observed on a single-speaker test corpus at 3.6x for TIC (8.40 vs 2.31
+        per 1,000 words). The MAGNITUDE is not general — one speaker is not a
+        population — but the DEFECT is: it is arithmetic, and it holds for any
+        corpus with varying document lengths, which is why this test uses
+        synthetic pairs rather than the observed numbers.
         """
         pairs = [(2, 20)] * 5 + [(10, 2000)]      # 5 tiny hot docs, 1 big cool
         unweighted = sum(m / w for m, w in pairs) / len(pairs)   # ~0.084

@@ -175,7 +175,7 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
         exp_per_doc = vm.expected_marks_per_doc(pairs)
         # Pairs, not rates — the prior's mean must be the POOLED rate. See
         # verbal_markers.fit_prior; the unweighted version ran 3.6x high on
-        # TIC against real transcripts.
+        # TIC against the single-speaker test corpus.
         prior = vm.fit_prior(pairs)
         out["classes"][cls] = {
             "marks": marks,
