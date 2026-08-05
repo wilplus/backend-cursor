@@ -77,13 +77,19 @@ def _fetch(limit: int) -> list[dict]:
     if len(rows) < limit:
         try:
             res = (db.client.table("recordings")
-                   .select("id, transcription_text")
+                   .select("id, user_id, transcription_text")
                    .not_.is_("transcription_text", "null")
                    .limit(limit - len(rows)).execute())
             for r in (res.data or []):
                 text = (r.get("transcription_text") or "").strip()
                 if text:
-                    rows.append({"unit_id": r["id"], "group_id": r["id"],
+                    # group_id is the SPEAKER. Dispersion must be measured
+                    # WITHIN speaker: pooling across speakers folds "some
+                    # people hedge more" into a number meant to answer "how
+                    # much text do I need from THIS person", and inflates it
+                    # by however much speakers differ.
+                    rows.append({"unit_id": r["id"],
+                                 "group_id": r.get("user_id") or r["id"],
                                  "text": text})
         except Exception as e:
             print(f"  ! recordings read failed: {e}", file=sys.stderr)
@@ -94,6 +100,7 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
     """Per-class r-hat, phi-hat, prior and the implied window."""
     key = "strict" if strict_only else "total"
     per_class_pairs: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    per_class_groups: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     term_totals: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     total_words = 0
 
@@ -105,7 +112,17 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
         total_words += n_words
         for cls in vm.CLASSES:
             per_class_pairs[cls].append((c[cls][key], n_words))
+            per_class_groups[cls][str(row.get("group_id") or "?")].append(
+                (c[cls][key], n_words))
+            lex = vm.lexicon(cls)
             for term, n in c[cls]["terms"].items():
+                # Only terms that were actually COUNTED in this mode. Showing
+                # ambiguous terms under `counting = strict` made the top list
+                # advertise words the totals excluded -- HEDGE led with
+                # "about", "pretty", "sometimes", none of which were in the
+                # strict 124.
+                if strict_only and lex.get(term, False):
+                    continue
                 term_totals[cls][term] += n
 
     out: dict[str, Any] = {
@@ -124,6 +141,8 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
             continue
         rate = marks / words
         phi = vm.dispersion(pairs)
+        phi_within = vm.dispersion_within(per_class_groups[cls])
+        exp_per_doc = vm.expected_marks_per_doc(pairs)
         # Pairs, not rates — the prior's mean must be the POOLED rate. See
         # verbal_markers.fit_prior; the unweighted version ran 3.6x high on
         # TIC against real transcripts.
@@ -132,12 +151,20 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
             "marks": marks,
             "rate_per_word": round(rate, 6),
             "rate_per_1000_words": round(rate * 1000.0, 3),
-            "phi": round(phi, 3) if phi is not None else None,
+            "phi_pooled": round(phi, 3) if phi is not None else None,
+            "phi_within_speaker": (round(phi_within, 3)
+                                   if phi_within is not None else None),
+            "expected_marks_per_doc": (round(exp_per_doc, 3)
+                                       if exp_per_doc is not None else None),
+            "phi_trustworthy": bool(exp_per_doc and exp_per_doc >= 5.0),
             "prior_alpha_beta": ([round(prior[0], 4), round(prior[1], 4)]
                                  if prior else None),
             "window_words_phi1": vm.window_for_precision(rate),
-            "window_words_phi_observed": (
+            "window_words_phi_pooled": (
                 vm.window_for_precision(rate, phi=phi) if phi else None),
+            "window_words_phi_within": (
+                vm.window_for_precision(rate, phi=phi_within)
+                if phi_within else None),
             "top_terms": sorted(term_totals[cls].items(),
                                 key=lambda kv: -kv[1])[:10],
         }
@@ -173,21 +200,36 @@ def main() -> int:
         if "error" in d:
             print(f"  {cls:8s}  {d['error']}")
             continue
-        print(f"  {cls.upper()}")
+        marks = d["marks"]
+        print(f"  {cls.upper()}"
+              + ("   *** TOO FEW MARKS TO ESTIMATE ANYTHING ***"
+                 if marks < 30 else ""))
         print(f"    rate        {d['rate_per_1000_words']:.2f} per 1,000 words "
-              f"({d['marks']:,} marks)")
-        print(f"    phi         {d['phi']}   "
-              f"(1.0 = independent; >1 = bursty, and it inflates the SE)")
-        w1, wp = d["window_words_phi1"], d["window_words_phi_observed"]
-        print(f"    window      {w1} words at phi=1 -> {wp} words at observed phi")
-        print(f"    prior       {d['prior_alpha_beta']}  (alpha, beta for D20)")
+              f"({marks:,} marks)")
+        print(f"    phi         pooled {d['phi_pooled']}  |  "
+              f"WITHIN-SPEAKER {d['phi_within_speaker']}")
+        print("                pooled phi mixes 'some people hedge more' into "
+              "a number meant to\n"
+              "                answer 'how much text from THIS person'. Size "
+              "windows on the\n"
+              "                within-speaker figure.")
+        exp = d["expected_marks_per_doc"]
+        flag = "OK" if d["phi_trustworthy"] else "UNRELIABLE — chi-square wants >= 5"
+        print(f"    exp/doc     {exp}   [{flag}]")
+        print(f"    window      {d['window_words_phi1']} at phi=1  |  "
+              f"{d['window_words_phi_within']} at within-speaker phi  |  "
+              f"{d['window_words_phi_pooled']} at pooled phi")
+        print(f"    prior       {d['prior_alpha_beta']}  (alpha, beta for D20; "
+              f"mean is the POOLED rate)")
         print(f"    top         {', '.join(f'{t}({n})' for t, n in d['top_terms'][:6])}")
         print()
 
-    print("  Next: paste the (alpha, beta) into the D20 prior, and check the "
-          "window against\n  the span you want to intervene on. A window wider "
-          "than a piece means that\n  class can only ever be a session-level "
-          "read.\n")
+    print("  READ THE exp/doc LINE FIRST. Below ~1 expected mark per document "
+          "the chi-square\n  dispersion estimator is dominated by whether a "
+          "document happened to contain a\n  marker at all, and every window "
+          "derived from it is guesswork.\n\n"
+          "  Then size on WITHIN-SPEAKER phi, not pooled. And treat any class "
+          "under ~30 marks\n  as unmeasured rather than measured-as-small.\n")
     return 0
 
 

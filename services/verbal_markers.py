@@ -261,6 +261,51 @@ def posterior(count_marks: int, n_words: int,
     return {"mean": mean, "alpha": a, "beta": b, "sd": var ** 0.5}
 
 
+def dispersion_within(groups: Any) -> Optional[float]:
+    """WITHIN-GROUP overdispersion — the phi that belongs in the window formula.
+
+    ``groups`` maps a grouping key (speaker, ideally) to its ``(marks, words)``
+    pairs.
+
+    WHY THIS EXISTS, AND WHY THE POOLED VERSION IS THE WRONG NUMBER FOR SIZING
+    A WINDOW. `dispersion()` above pools every document against ONE corpus-wide
+    rate, so its phi absorbs two different things:
+
+        between-speaker variation   some people simply hedge more than others
+        within-speaker burstiness   one person clusters markers when nervous
+
+    The window question is "how many words of THIS speaker do I need to
+    estimate THIS speaker's rate?" Between-speaker variation is irrelevant to
+    that — it is a fact about the population, not about the precision of one
+    person's estimate. Feeding pooled phi into window_for_precision therefore
+    inflates the answer, and it inflates it by exactly the amount speakers
+    differ from one another, which for a speech corpus is a lot.
+
+    Each group is scored against ITS OWN rate, which removes the between-group
+    term. Groups with fewer than two documents contribute nothing (there is no
+    within-group spread to measure).
+    """
+    total_chi2 = 0.0
+    total_dof = 0
+    for _key, pairs in (groups or {}).items():
+        clean = [(int(m), int(w)) for m, w in pairs
+                 if isinstance(m, int) and isinstance(w, int)
+                 and w > 0 and 0 <= m <= w]
+        if len(clean) < 2:
+            continue
+        marks = sum(m for m, _ in clean)
+        words = sum(w for _, w in clean)
+        p = marks / words if words else 0.0
+        if p <= 0.0 or p >= 1.0:
+            continue
+        total_chi2 += sum(((m - w * p) ** 2) / (w * p * (1.0 - p))
+                          for m, w in clean)
+        total_dof += len(clean) - 1
+    if total_dof <= 0:
+        return None
+    return total_chi2 / total_dof
+
+
 def dispersion(counts: Iterable[tuple[int, int]]) -> Optional[float]:
     """Overdispersion factor phi from (marks, words) pairs.
 
@@ -287,6 +332,28 @@ def dispersion(counts: Iterable[tuple[int, int]]) -> Optional[float]:
     chi2 = sum(((m - w * p) ** 2) / (w * p * (1.0 - p)) for m, w in pairs)
     dof = len(pairs) - 1
     return chi2 / dof if dof > 0 else None
+
+
+def expected_marks_per_doc(counts: Iterable[tuple[int, int]]) -> Optional[float]:
+    """Mean expected marks per document — the sanity check on `dispersion`.
+
+    The chi-square dispersion estimator wants expected counts of roughly 5 or
+    more per document. Below about 1 it is dominated by whether a document
+    happened to contain a marker at all, and phi becomes noise with a heavy
+    right tail. Measured on real transcripts this sat at 0.06-0.57, so the
+    number must be reported ALONGSIDE phi rather than left for someone to
+    work out. A phi quoted without it invites a window estimate nobody should
+    act on.
+    """
+    pairs = [(int(m), int(w)) for m, w in counts
+             if isinstance(m, int) and isinstance(w, int) and w > 0 and 0 <= m <= w]
+    if not pairs:
+        return None
+    total_words = sum(w for _, w in pairs)
+    total_marks = sum(m for m, _ in pairs)
+    if total_words <= 0:
+        return None
+    return (total_marks / total_words) * (total_words / len(pairs))
 
 
 def window_for_precision(rate: float, *, relative_precision: float = 0.30,

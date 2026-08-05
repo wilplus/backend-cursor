@@ -191,3 +191,44 @@ class TestWindow(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWithinSpeakerDispersion(unittest.TestCase):
+    def test_pooled_sees_between_speaker_spread_and_within_does_not(self):
+        """THE correction. Two speakers with different base rates, each
+        perfectly steady. Pooled phi reads that as overdispersion; it is not —
+        it is a fact about the population, and it has no bearing on how much
+        text you need from ONE person."""
+        groups = {"A": [(6, 100)] * 20, "B": [(1, 100)] * 20}
+        pooled = vm.dispersion(groups["A"] + groups["B"])
+        within = vm.dispersion_within(groups)
+        self.assertGreater(pooled, 1.5)
+        self.assertLess(within, 0.5)
+
+    def test_genuine_within_speaker_burstiness_is_caught(self):
+        groups = {"A": [(0, 100), (0, 100), (12, 100), (0, 100), (12, 100)] * 3}
+        self.assertGreater(vm.dispersion_within(groups), 2.0)
+
+    def test_singleton_groups_contribute_nothing(self):
+        """One document per speaker carries no within-speaker spread."""
+        self.assertIsNone(vm.dispersion_within({"A": [(1, 100)],
+                                                "B": [(2, 100)]}))
+
+    def test_empty(self):
+        self.assertIsNone(vm.dispersion_within({}))
+
+
+class TestSparsityGuard(unittest.TestCase):
+    def test_expected_marks_reports_the_regime(self):
+        """Measured corpus: 75-word documents at 7.5 marks/1,000 give 0.57
+        expected per document, far below the ~5 chi-square wants. The number
+        has to travel WITH phi or someone acts on a window built from noise."""
+        pairs = [(1, 75)] * 100 + [(0, 75)] * 119
+        exp = vm.expected_marks_per_doc(pairs)
+        self.assertLess(exp, 1.0)
+
+    def test_dense_documents_clear_the_bar(self):
+        self.assertGreater(vm.expected_marks_per_doc([(10, 1000)] * 20), 5.0)
+
+    def test_empty(self):
+        self.assertIsNone(vm.expected_marks_per_doc([]))
