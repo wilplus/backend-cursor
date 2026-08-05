@@ -58,11 +58,32 @@ validity.** Nothing in this file tells you a dimension measures something real.
 > Add discrimination `a` (2PL), then run the fairness audit.
 >
 > **Subgroup availability — check before starting:**
-> - **speaker sex: already collected.** `user_settings.profile_sex` (migration `0223`), values
->   `female | male | prefer_not_to_say | NULL`. `prefer_not_to_say` is a hard opt-out and must be
->   **excluded from DIF strata**, never folded into either group.
-> - **native/non-native: NOT collected.** `recordings.language` is the *transcription* language — a
->   native Polish speaker presenting in English is `language=en`. PM-4 must ship first.
+>
+> | Subgroup | Column | Status |
+> |---|---|---|
+> | speaker sex | `user_settings.profile_sex` (migration `0223`) | collected |
+> | native language (L1) | `user_settings.profile_native_language` (migration `0248`) | **column exists; no UI captures it yet — PM-4** |
+>
+> **Nativeness is DERIVED, not stored (D29).** There is no `is_native` boolean and there must not be
+> one: a native Polish speaker is native presenting in Polish and non-native presenting in English, so a
+> user-level flag is wrong for one of those recordings with no way to tell which. Compute it per
+> recording:
+>
+> ```sql
+> (us.profile_native_language = r.transcription_language) AS is_native
+> ```
+>
+> Two exclusions, and they are **not** interchangeable — keep them separable in any report:
+> - `prefer_not_to_say` — the user was asked and **refused**. Excluded from strata. Folding a refusing
+>   user into either group invents a membership they declined to give.
+> - `NULL` — **never asked**. Also excluded, but absence of an answer is not refusal of one, and the two
+>   have different remedies (ship the UI vs respect the opt-out).
+>
+> Same rule for `profile_sex`, whose `prefer_not_to_say` is likewise a hard opt-out.
+>
+> **Stratify by language family where n permits.** L1 is stored rather than a boolean precisely so this
+> is possible — transfer effects operate at the family level, not per language, and a per-language
+> stratum will starve long before a per-family one does.
 >
 > **Method:** Mantel-Haenszel with θ deciles as the matching strata. Logistic regression
 > (Swaminathan & Rogers) additionally where non-uniform DIF is suspected — MH only detects uniform DIF,

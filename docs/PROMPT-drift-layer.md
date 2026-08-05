@@ -6,6 +6,24 @@
 **Spec:** `SPEC-APPENDIX-G-telemetry.md` §G.5, §G.7, §G.9. Backlog process: PM-3.
 **Cost:** zero human labels. Works at any n.
 
+## How to run this — model and effort
+
+**Opus 5 at high effort, single agent. Do NOT reach for ultracode.**
+
+The design work is already done: the schema is written (`0247`), the constraints are enforced in the
+database, the maths is four short functions, and every decision is locked in SPEC §0.1. What remains is
+one careful pass in one context — and ultracode's fan-out would spend most of its budget re-deriving
+decisions that are already settled, with a real risk of an agent "improving" a locked invariant.
+
+| Sub-task | How |
+|---|---|
+| find where each dimension is scored today | **one `Explore` agent** — the measures are genuinely scattered (`wpm`, `pause_ms`, `energy_ratio`, `confidence_score`, …) and this is a search, not a design question |
+| write `drift_monitor.py` + tests | main agent, inline |
+| wire the write path | main agent, inline |
+
+**Where ultracode *is* worth it on this codebase:** the cut (D22) — ~59 test repairs across many files,
+genuinely parallel and mechanical — and stage 4/5 of G.10 when they unlock. Not this.
+
 ---
 
 ## Paste-ready prompt
