@@ -134,8 +134,19 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
                     continue
                 term_totals[cls][term] += n
 
+    # HOW MANY DISTINCT SPEAKERS. The single most important number here and
+    # the easiest to never ask. If this is 1 -- a founder recording tests --
+    # then nothing below is a POPULATION rate; it is one person's rate, and
+    # using it as a D20 prior would shrink every other user's posterior toward
+    # the founder's speech. A corroborating signal: with many speakers at
+    # different rates, pooled phi sits FAR above within-speaker phi. When the
+    # two are close, the corpus has few speakers.
+    speakers = {str(r.get("group_id")) for r in rows
+                if str(r.get("source")) == "recordings"}
+
     out: dict[str, Any] = {
         "documents": len(rows),
+        "distinct_speakers": len(speakers),
         "total_words": total_words,
         "counting": key,
         "sources": {
@@ -224,7 +235,17 @@ def main() -> int:
         return 0
 
     print(f"\n  {result['documents']} transcripts, "
-          f"{result['total_words']:,} words, counting = {result['counting']}\n")
+          f"{result['total_words']:,} words, counting = {result['counting']}")
+    n_sp = result.get("distinct_speakers", 0)
+    print(f"  {n_sp} distinct speaker(s) in the recordings source.")
+    if n_sp <= 2:
+        print("\n  *** NOT A POPULATION RATE ***")
+        print("  With this few speakers these are ONE PERSON's rates. Using them")
+        print("  as a D20 prior would shrink every other user's posterior toward")
+        print("  this speaker. Corpus-relative thresholds built here are")
+        print("  self-referential. The lexicons and the machinery are still")
+        print("  validated; the NUMBERS are not a population.")
+    print()
 
     srcs = result.get("sources") or {}
     if len(srcs) > 1:
