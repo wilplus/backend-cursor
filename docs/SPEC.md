@@ -11,6 +11,7 @@
 - [Appendix C — Intervention Contract](SPEC-APPENDIX-C-intervention-contract.md)
 - [Appendix D — Fire-Up Benchmarks and Trigger Functions](SPEC-APPENDIX-D-benchmarks.md)
 - [Appendix E — Research Findings and Required Amendments](SPEC-APPENDIX-E-research.md)
+- [Appendix F — Measurement Windows](SPEC-APPENDIX-F-windows.md)
 - [Decisions log — settled after v3](SPEC-DECISIONS-LOG.md)
 
 ---
