@@ -1004,7 +1004,7 @@ class PolishRecurrenceProtectionTests(unittest.TestCase):
         def get_moment_suggestions_by_arc(self, arc_id):
             return {}
 
-        def persist_auto_ideal_text(self, arc_id, text):
+        def persist_auto_ideal_text(self, arc_id, text, *, take_count=None):
             return True
 
         def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
@@ -1062,7 +1062,7 @@ class VersionSnapshotWriteTests(unittest.TestCase):
                            "replacement_text": "calmer", "why": "why",
                            "trigger": "threat"}}
 
-        def persist_auto_ideal_text(self, arc_id, text):
+        def persist_auto_ideal_text(self, arc_id, text, *, take_count=None):
             return True
 
         def get_coach_arc_ideal_text(self, arc_id):

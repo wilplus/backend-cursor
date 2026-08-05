@@ -168,21 +168,12 @@ def run_full_analysis(
     # or anything" fixed at the source). Idempotent; never clobbers a
     # coach edit. Best-effort.
     #
-    # FORCE-ALIGNMENT ON READS (F1-CORE handoff §3, 2026-08-03): a read
-    # has ground truth — the exact ideal-text version it was a read OF.
-    # Align the read's transcribed words (Whisper word timings already
-    # persisted per snippet) against that script and store the aligned
-    # transcript + structured deviations. READ lane only; best-effort —
-    # a failure warns and the pipeline continues untouched (LIVE LOOP).
-    if recording_kind == "read":
-        try:
-            from services.read_alignment import process_read_alignment
-            process_read_alignment(session_id, db)
-        except Exception as _ra_err:
-            logger.warning(
-                "lab: read alignment failed sid=%s: %s (non-fatal)",
-                session_id, _ra_err)
-
+    # Force-alignment on reads is RETIRED with the read-out-loud lane
+    # (founder 2026-08-05). It had ground truth to align against — the
+    # ideal-text version the user read — but that ground truth only ever
+    # existed because a read existed. The ingest route now rejects
+    # recording_kind='read', so the lane is unreachable by construction.
+    #
     # SPOKEN ONLY (founder bug 2026-07-20). An older condition let a
     # RE-READ run the whole assembly (regenerate suggestions, reassemble
     # the text, bump the version, fire a ready bubble), so a re-read read

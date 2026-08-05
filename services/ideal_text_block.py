@@ -401,10 +401,16 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         text = (auto.get("text") or "").strip()
         if not text:
             return False
-        ok = database.persist_auto_ideal_text(arc_id, text)
+        # THE VERSION IS THE TAKE COUNT (founder 2026-08-05): take 1 → 1.0,
+        # take 2 → 2.0. `spoken` is the same list the trigger above counted,
+        # so the number the badge shows and the number that gated assembly
+        # can never disagree.
+        ok = database.persist_auto_ideal_text(
+            arc_id, text, take_count=len(spoken))
         if ok:
-            logger.info("ideal_text: eager draft persisted arc=%s chars=%d",
-                        arc_id, len(text))
+            logger.info(
+                "ideal_text: eager draft persisted arc=%s chars=%d v=%d",
+                arc_id, len(text), len(spoken))
         # Persist the polish diffs as approvable suggestions (founder
         # 2026-07-18) — kind='replace' + trigger='polish', replacement =
         # the light-edited version, so Approve folds verbatim→edited via the

@@ -10642,7 +10642,8 @@ class DatabaseService:
                            arc_id, e)
             return False
 
-    def persist_auto_ideal_text(self, arc_id: str, text: str) -> bool:
+    def persist_auto_ideal_text(self, arc_id: str, text: str,
+                                *, take_count: Optional[int] = None) -> bool:
         """Persist the MACHINE-assembled ideal-text draft (eager assembly at
         take 3, founder 2026-07-15; instant lane 2026-07-17).
 
@@ -10656,7 +10657,10 @@ class DatabaseService:
         updated_by stays NULL on machine writes (the machine's signature).
         Migration-pending fallback (auto_text column missing): the legacy
         single-column write with the legacy guard. Best-effort; False on
-        guard-refuse / missing table / error."""
+        guard-refuse / missing table / error.
+
+        ``take_count`` — the arc's SPOKEN take count, which since founder
+        2026-08-05 IS the version. See the versioning note below."""
         if not arc_id or not isinstance(text, str) or not text.strip():
             return False
         try:
@@ -10669,15 +10673,33 @@ class DatabaseService:
                 "auto_text": text,
                 "auto_updated_at": _now,
             }
-            # Versioning (single deliverable, 2026-07-17): a CHANGED machine
-            # copy bumps the version — which implicitly resets verification
-            # (verified_version < version reads as unverified). An unchanged
-            # reassembly is a no-op on the version, so verify stays stable
-            # across idle re-opens. Pre-migration rows: version key rides the
+            # ── Versioning: THE VERSION IS THE TAKE COUNT (founder
+            # 2026-08-05, "each take is different and each should be
+            # verified"). Take 1 → 1.0, take 2 → 2.0, always. A bump
+            # implicitly resets verification (verified_version < version
+            # reads as unverified), which is the point: each take earns
+            # its own coach pass.
+            #
+            # Pinning to the count rather than incrementing is what makes
+            # this SAFE to call repeatedly. The old rule bumped whenever
+            # the assembled text differed, so it had two failure modes at
+            # once: a take that barely moved the text left the badge
+            # frozen (the founder's "take 2 still says 1.0"), while an
+            # idle re-open that did shift a character bumped the version
+            # and silently un-verified a text nobody re-recorded. An
+            # absolute count has neither — recompute it as often as you
+            # like and it lands on the same number.
+            #
+            # take_count=None → the caller could not count (a failed read).
+            # Fail CLOSED to the OLD change-detect rule rather than write a
+            # wrong absolute: a stale number here would un-verify real
+            # coach work. Pre-migration rows: the version key rides the
             # same upsert and the missing-column fallback below drops it.
             _old_auto = (row or {}).get("auto_text") or (
                 (row or {}).get("text") if row and not coach_owned else None)
-            if row is None:
+            if isinstance(take_count, int) and take_count >= 1:
+                payload["version"] = take_count
+            elif row is None:
                 payload["version"] = 1
             elif (_old_auto or "").strip() != text.strip():
                 _v = row.get("version")

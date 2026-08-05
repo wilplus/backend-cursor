@@ -63,7 +63,8 @@ class SpokenFilterTests(unittest.TestCase):
 class EagerAssemblyTests(unittest.TestCase):
     """maybe_assemble_ideal_text — the take-3 trigger."""
 
-    def _run(self, sessions, existing_row=None, auto=None):
+    def _run(self, sessions, existing_row=None, auto=None,
+             require_target=True):
         import services.ideal_text_block as mod
         calls = {}
 
@@ -74,19 +75,35 @@ class EagerAssemblyTests(unittest.TestCase):
             def get_coach_arc_ideal_text(self, a):
                 return existing_row
 
-            def persist_auto_ideal_text(self, a, text):
+            def persist_auto_ideal_text(self, a, text, *, take_count=None):
                 calls["persisted"] = text
+                # The version is the SPOKEN take count (founder 2026-08-05).
+                calls["take_count"] = take_count
                 return True
 
         with patch.object(mod, "assemble_ideal_text_block",
                           return_value=(auto or {
                               "text": "assembled block",
                               "key_moments": [], "ready": True})):
-            ok = mod.maybe_assemble_ideal_text(ARC, database=_Db())
+            ok = mod.maybe_assemble_ideal_text(
+                ARC, database=_Db(), require_target=require_target)
         return ok, calls
+
+    def test_version_is_the_spoken_take_count(self):
+        # Take 1 → 1.0, take 2 → 2.0 (founder 2026-08-05). require_target
+        # =False is the LIVE single-deliverable lane (analysis_worker), which
+        # assembles after every take — the legacy 3-take trigger never sees
+        # takes 1 and 2 at all. A read row is not a take and must not lift
+        # the number.
+        _, calls = self._run([_spoken(1), _read()], require_target=False)
+        self.assertEqual(calls["take_count"], 1)
+        _, calls = self._run([_spoken(1), _spoken(2), _read()],
+                             require_target=False)
+        self.assertEqual(calls["take_count"], 2)
 
     def test_three_spoken_takes_assembles_and_persists(self):
         ok, calls = self._run([_spoken(1), _spoken(2), _spoken(3), _read()])
+        self.assertEqual(calls["take_count"], 3)
         self.assertTrue(ok)
         self.assertEqual(calls["persisted"], "assembled block")
 

@@ -281,3 +281,4 @@
 0243	add_rls_processing_jobs.sql
 0244	add_read_alignments.sql
 0245	add_reflection_clips.sql
+0246	drop_reread_lane.sql
