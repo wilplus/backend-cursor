@@ -9,6 +9,9 @@
 - [Appendix A — Verbal Computations](SPEC-APPENDIX-A-verbal-computations.md)
 - [Appendix B — Feedback Progression](SPEC-APPENDIX-B-progression.md)
 - [Appendix C — Intervention Contract](SPEC-APPENDIX-C-intervention-contract.md)
+- [Appendix D — Fire-Up Benchmarks and Trigger Functions](SPEC-APPENDIX-D-benchmarks.md)
+- [Appendix E — Research Findings and Required Amendments](SPEC-APPENDIX-E-research.md)
+- [Decisions log — settled after v3](SPEC-DECISIONS-LOG.md)
 
 ---
 
