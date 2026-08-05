@@ -85,21 +85,51 @@ class TestCount(unittest.TestCase):
 
 class TestPrior(unittest.TestCase):
     def test_fit_returns_none_on_too_little(self):
-        self.assertIsNone(vm.fit_prior([0.01, 0.02]))
+        self.assertIsNone(vm.fit_prior([(1, 100), (2, 100)]))
 
-    def test_mean_is_recovered(self):
-        rates = [0.02, 0.03, 0.04, 0.02, 0.03, 0.05, 0.01]
-        a, b = vm.fit_prior(rates)
-        self.assertAlmostEqual(a / (a + b), sum(rates) / len(rates), places=2)
+    def test_pooled_rate_is_recovered(self):
+        pairs = [(2, 100), (3, 100), (4, 100), (2, 100), (3, 100),
+                 (5, 100), (1, 100)]
+        a, b = vm.fit_prior(pairs)
+        pooled = sum(m for m, _ in pairs) / sum(w for _, w in pairs)
+        self.assertAlmostEqual(a / (a + b), pooled, places=3)
+
+    def test_short_noisy_documents_do_not_drag_the_mean_up(self):
+        """THE defect this signature exists to prevent.
+
+        An unweighted mean over per-document rates counts a 40-word snippet
+        with two marks the same as a 2,000-word talk with two, so short noisy
+        documents drag it upward and every posterior gets pulled toward a rate
+        the corpus does not show.
+
+        Observed on a single-speaker test corpus at 3.6x for TIC (8.40 vs 2.31
+        per 1,000 words). The MAGNITUDE is not general — one speaker is not a
+        population — but the DEFECT is: it is arithmetic, and it holds for any
+        corpus with varying document lengths, which is why this test uses
+        synthetic pairs rather than the observed numbers.
+        """
+        pairs = [(2, 20)] * 5 + [(10, 2000)]      # 5 tiny hot docs, 1 big cool
+        unweighted = sum(m / w for m, w in pairs) / len(pairs)   # ~0.084
+        pooled = sum(m for m, _ in pairs) / sum(w for _, w in pairs)  # ~0.0095
+        self.assertGreater(unweighted, 5 * pooled)   # the bias is real
+
+        a, b = vm.fit_prior(pairs)
+        self.assertAlmostEqual(a / (a + b), pooled, places=3)
+        self.assertLess(a / (a + b), unweighted / 2)
 
     def test_degenerate_spread_falls_back_weak(self):
         """No spread must not become infinite precision."""
-        a, b = vm.fit_prior([0.03] * 8)
+        a, b = vm.fit_prior([(3, 100)] * 8)
         self.assertLess(a + b, 10.0)
 
     def test_impossible_rates_rejected(self):
-        self.assertIsNone(vm.fit_prior([0.0] * 8))
-        self.assertIsNone(vm.fit_prior([1.0] * 8))
+        self.assertIsNone(vm.fit_prior([(0, 100)] * 8))
+        self.assertIsNone(vm.fit_prior([(100, 100)] * 8))
+
+    def test_malformed_pairs_dropped(self):
+        pairs = [(2, 100), (5, 0), (200, 100), (3, 100), (2, 100),
+                 (4, 100), (3, 100)]
+        self.assertIsNotNone(vm.fit_prior(pairs))
 
 
 class TestPosterior(unittest.TestCase):
@@ -166,3 +196,44 @@ class TestWindow(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWithinSpeakerDispersion(unittest.TestCase):
+    def test_pooled_sees_between_speaker_spread_and_within_does_not(self):
+        """THE correction. Two speakers with different base rates, each
+        perfectly steady. Pooled phi reads that as overdispersion; it is not —
+        it is a fact about the population, and it has no bearing on how much
+        text you need from ONE person."""
+        groups = {"A": [(6, 100)] * 20, "B": [(1, 100)] * 20}
+        pooled = vm.dispersion(groups["A"] + groups["B"])
+        within = vm.dispersion_within(groups)
+        self.assertGreater(pooled, 1.5)
+        self.assertLess(within, 0.5)
+
+    def test_genuine_within_speaker_burstiness_is_caught(self):
+        groups = {"A": [(0, 100), (0, 100), (12, 100), (0, 100), (12, 100)] * 3}
+        self.assertGreater(vm.dispersion_within(groups), 2.0)
+
+    def test_singleton_groups_contribute_nothing(self):
+        """One document per speaker carries no within-speaker spread."""
+        self.assertIsNone(vm.dispersion_within({"A": [(1, 100)],
+                                                "B": [(2, 100)]}))
+
+    def test_empty(self):
+        self.assertIsNone(vm.dispersion_within({}))
+
+
+class TestSparsityGuard(unittest.TestCase):
+    def test_expected_marks_reports_the_regime(self):
+        """Measured corpus: 75-word documents at 7.5 marks/1,000 give 0.57
+        expected per document, far below the ~5 chi-square wants. The number
+        has to travel WITH phi or someone acts on a window built from noise."""
+        pairs = [(1, 75)] * 100 + [(0, 75)] * 119
+        exp = vm.expected_marks_per_doc(pairs)
+        self.assertLess(exp, 1.0)
+
+    def test_dense_documents_clear_the_bar(self):
+        self.assertGreater(vm.expected_marks_per_doc([(10, 1000)] * 20), 5.0)
+
+    def test_empty(self):
+        self.assertIsNone(vm.expected_marks_per_doc([]))

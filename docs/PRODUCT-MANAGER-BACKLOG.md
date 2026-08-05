@@ -133,6 +133,44 @@ Every template in both bands needs founder review against three tests:
 
 ---
 
+### PM-6 · The verbal corpus — parked on speaker diversity, not on analysis
+**Cadence:** check the trigger when new speakers arrive. **No further analysis until then.**
+**Source:** SPEC D20/D21; `scripts/corpus_base_rates.py`.
+
+**Trigger to resume:** **≥ 10 distinct speakers AND ≥ 50,000 words** from the `recordings`
+source. The script prints the speaker count and refuses to call the numbers a population below 3.
+
+**What happened.** The corpus pull ran and worked. It read 412 transcripts / 41,551 words — and
+they are essentially **one speaker** (the founder, recording tests). So:
+
+- the rates are **one person's rates**, not a population;
+- a D20 prior fitted here would shrink every other user's posterior toward the founder's speech;
+- `CORPUS_REL` thresholds built on it would be self-referential.
+
+The tell was already in the output and was missed for a round: with many speakers at different
+rates, **pooled φ sits far above within-speaker φ** — that gap *is* the between-speaker term.
+Measured 5.61 pooled against 6.12 within, a 10% gap in the wrong direction, which is what a
+single-speaker corpus looks like.
+
+**Do not keep re-running it.** More iterations on the same data reproduce one person's speech with
+better arithmetic, and each round invites locking a number that cannot be right.
+
+**What is NOT blocked by this** — worth stating, because it is most of the value:
+
+| | |
+|---|---|
+| the **drift layer** | **unaffected.** PSI and the p-chart watch for the *pipeline* changing — an ASR upgrade, a VAD change shifting word bucketing. One speaker's distribution moving still detects that, arguably more cleanly. This is the piece guarding F1 |
+| the three lexicons | **validated.** The strict top-terms read as coherent linguistics — `i think / maybe / a little bit / i suppose` for HEDGE, `uh / um / mmm / basically` for TIC |
+| the D20 machinery | correct and tested; only its *prior* is unfitted |
+| the ~2,400-word window floor | holds as a **lower bound** at φ=1, which is 68× a snippet — so "never a per-snippet intervention" is safe regardless of what the real numbers turn out to be |
+
+**The better unblock than waiting: the cold-start / bootstrap lane.** `training_import` is the coach
+labelling external audio — other people's speech. That is speaker diversity for the acoustic side
+**and**, if those imports are transcribed, corpus diversity for the text side. Two blockers, one
+lane.
+
+---
+
 ## Part 2 — Deferred unlocks
 
 Each stage has a **numeric trigger**. When it fires, the build specification already exists at
@@ -178,5 +216,5 @@ a different and much more favourable constraint. Do not conflate the two when pl
 | **Migration `0247`** `add_dimension_evaluations.sql` | **must run before the drift layer ships.** Creates `dimension_evaluations` + `reference_distribution`. Safe to run early — nothing writes them until the drift build lands |
 | **Migration `0248`** `add_profile_native_language.sql` | run any time; not urgent. The column is inert until a UI asks for L1 (PM-4) |
 | **The cut** — retire the legacy binary instrument | approved (D22); queued as **four additive commits**, not one pass: add alongside → update test doubles → swap readers → rewrite behaviour tests |
-| **Corpus pull** for `r̂` and `φ̂` (hedge/booster/tic base rates) | founder-owned; unblocks the verbal-CONF extractor (D20/D21) |
+| **Corpus pull** for `r̂` and `φ̂` (hedge/booster/tic base rates) | **PARKED — see PM-6.** The measurement ran; the corpus turned out to be one speaker |
 | **§13 deployment channel** — B2C vs B2B | **open.** Two legal constraints now attach to B2B: EU AI Act Art. 5(1)(f) and CRA 1991 §106 |

@@ -195,29 +195,48 @@ def count(text: Any, *, language: Optional[str] = None) -> dict:
 # intervention.
 
 
-def fit_prior(rates: Iterable[float], *,
+def fit_prior(counts: Iterable[tuple[int, int]], *,
               min_n: int = 5) -> Optional[tuple[float, float]]:
-    """Method-of-moments Beta prior from per-document rates.
+    """Method-of-moments Beta prior from ``(marks, words)`` pairs.
 
-    Returns ``(alpha, beta)`` or None when there is too little to fit. The
-    prior strength ``alpha + beta`` encodes overdispersion: bursty markers
-    (a nervous speaker clusters them) give a WEAKER prior, so a single passage
-    moves the posterior less.
+    Returns ``(alpha, beta)`` or None when there is too little to fit.
+
+    THE MEAN IS PINNED TO THE POOLED RATE, NOT THE MEAN OF PER-DOCUMENT RATES.
+    This is the whole reason the signature takes pairs rather than rates. An
+    unweighted mean over per-document rates counts a 40-word snippet with two
+    tics the same as a 2,000-word talk with two, so short and noisy documents
+    drag it upward. Observed on a SINGLE-SPEAKER test corpus (the founder's own
+    recordings, ~41k words) that bias ran 3.6x for TIC. The MAGNITUDE is not
+    general — one speaker is not a population — but the DEFECT is: it is
+    arithmetic, and it holds for any corpus with varying document lengths.
+
+    Only the STRENGTH comes from the spread. ``alpha + beta`` encodes
+    overdispersion: bursty markers (a nervous speaker clusters them) give a
+    WEAKER prior, so one passage moves the posterior less.
     """
-    values = [float(r) for r in rates
-              if isinstance(r, (int, float)) and 0.0 <= float(r) <= 1.0]
-    n = len(values)
-    if n < min_n:
+    pairs = [(int(m), int(w)) for m, w in counts
+             if isinstance(m, int) and isinstance(w, int)
+             and w > 0 and 0 <= m <= w]
+    if len(pairs) < min_n:
         return None
-    mean = sum(values) / n
+
+    total_marks = sum(m for m, _ in pairs)
+    total_words = sum(w for _, w in pairs)
+    if total_words <= 0:
+        return None
+    mean = total_marks / total_words          # <- pooled, the corpus rate
     if mean <= 0.0 or mean >= 1.0:
         return None
-    var = sum((v - mean) ** 2 for v in values) / (n - 1) if n > 1 else 0.0
+
+    # Spread of the per-document rates around the pooled mean, weighted by
+    # document length so a 40-word document does not shout as loudly as a
+    # 2,000-word one.
+    var = sum(w * ((m / w) - mean) ** 2 for m, w in pairs) / total_words
     max_var = mean * (1.0 - mean)
     if var <= 0.0 or var >= max_var:
-        # Degenerate: no spread, or spread at/above the binomial maximum.
-        # Fall back to a weak prior centred on the mean rather than inventing
-        # a precision the data does not support.
+        # No spread, or spread at/above the binomial maximum. A weak prior
+        # centred on the pooled mean beats inventing a precision the data
+        # does not support.
         strength = 2.0
         return mean * strength, (1.0 - mean) * strength
     strength = max_var / var - 1.0
@@ -241,6 +260,51 @@ def posterior(count_marks: int, n_words: int,
     mean = a / total
     var = (a * b) / (total * total * (total + 1.0))
     return {"mean": mean, "alpha": a, "beta": b, "sd": var ** 0.5}
+
+
+def dispersion_within(groups: Any) -> Optional[float]:
+    """WITHIN-GROUP overdispersion — the phi that belongs in the window formula.
+
+    ``groups`` maps a grouping key (speaker, ideally) to its ``(marks, words)``
+    pairs.
+
+    WHY THIS EXISTS, AND WHY THE POOLED VERSION IS THE WRONG NUMBER FOR SIZING
+    A WINDOW. `dispersion()` above pools every document against ONE corpus-wide
+    rate, so its phi absorbs two different things:
+
+        between-speaker variation   some people simply hedge more than others
+        within-speaker burstiness   one person clusters markers when nervous
+
+    The window question is "how many words of THIS speaker do I need to
+    estimate THIS speaker's rate?" Between-speaker variation is irrelevant to
+    that — it is a fact about the population, not about the precision of one
+    person's estimate. Feeding pooled phi into window_for_precision therefore
+    inflates the answer, and it inflates it by exactly the amount speakers
+    differ from one another, which for a speech corpus is a lot.
+
+    Each group is scored against ITS OWN rate, which removes the between-group
+    term. Groups with fewer than two documents contribute nothing (there is no
+    within-group spread to measure).
+    """
+    total_chi2 = 0.0
+    total_dof = 0
+    for _key, pairs in (groups or {}).items():
+        clean = [(int(m), int(w)) for m, w in pairs
+                 if isinstance(m, int) and isinstance(w, int)
+                 and w > 0 and 0 <= m <= w]
+        if len(clean) < 2:
+            continue
+        marks = sum(m for m, _ in clean)
+        words = sum(w for _, w in clean)
+        p = marks / words if words else 0.0
+        if p <= 0.0 or p >= 1.0:
+            continue
+        total_chi2 += sum(((m - w * p) ** 2) / (w * p * (1.0 - p))
+                          for m, w in clean)
+        total_dof += len(clean) - 1
+    if total_dof <= 0:
+        return None
+    return total_chi2 / total_dof
 
 
 def dispersion(counts: Iterable[tuple[int, int]]) -> Optional[float]:
@@ -269,6 +333,28 @@ def dispersion(counts: Iterable[tuple[int, int]]) -> Optional[float]:
     chi2 = sum(((m - w * p) ** 2) / (w * p * (1.0 - p)) for m, w in pairs)
     dof = len(pairs) - 1
     return chi2 / dof if dof > 0 else None
+
+
+def expected_marks_per_doc(counts: Iterable[tuple[int, int]]) -> Optional[float]:
+    """Mean expected marks per document — the sanity check on `dispersion`.
+
+    The chi-square dispersion estimator wants expected counts of roughly 5 or
+    more per document. Below about 1 it is dominated by whether a document
+    happened to contain a marker at all, and phi becomes noise with a heavy
+    right tail. On the single-speaker test corpus this sat at 0.06-0.57 against
+    documents averaging ~100 words, so the number must be reported ALONGSIDE
+    phi rather than left for someone to work out. A phi quoted without it
+    invites a window estimate nobody should act on.
+    """
+    pairs = [(int(m), int(w)) for m, w in counts
+             if isinstance(m, int) and isinstance(w, int) and w > 0 and 0 <= m <= w]
+    if not pairs:
+        return None
+    total_words = sum(w for _, w in pairs)
+    total_marks = sum(m for m, _ in pairs)
+    if total_words <= 0:
+        return None
+    return (total_marks / total_words) * (total_words / len(pairs))
 
 
 def window_for_precision(rate: float, *, relative_precision: float = 0.30,
