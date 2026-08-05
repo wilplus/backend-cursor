@@ -45,6 +45,88 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 
+# Where each registry dimension's value is read from on a snippet row:
+#   dimension_id -> (column, JSONB `metrics` fallback key)
+# ONLY the plumbing lives here. Window class, tier, minimum length, denominator
+# and aggregation all come from services/dimension_registry — Appendix F.4 is
+# the source, and retyping any of it into this file is how two consumers start
+# disagreeing about the same dimension.
+_SNIPPET_FIELDS = {
+    "wpm":          ("wpm",          None),
+    "fillers":      ("fillers",      None),
+    "pause_ms":     ("pause_ms",     "pause_ms"),
+    "dynamic_db":   ("dynamic_db",   "dynamic_db"),
+    "pitch_center": ("pitch_center", "pitch_center_st"),
+    "energy":       ("energy",       "energy_ratio"),
+}
+
+
+def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
+    """Write one dimension_evaluations row per (snippet, live dimension).
+
+    Every spec fact is READ FROM THE REGISTRY, never restated here.
+
+    MEASUREMENTS, not decisions: none of the live dimensions has a `fire_at`
+    in code yet, so `fired` stays None. That is a real third state, distinct
+    from a negative decision and from missing data (SPEC D30).
+
+    APPENDIX F.2's MINIMUM-LENGTH GATE IS ENFORCED HERE, and it bites: every
+    live dimension carries a 30 s minimum in F.4, while a snippet is roughly
+    one planning cycle (~18 s). Rows below the gate are written as
+    `insufficient_data` rather than dropped — F.5 makes "could not compute
+    this" first-class, and a value under the gate is noise wearing a number's
+    clothes. Dropping them instead would make the gap invisible to PSI, which
+    is the failure mode the column exists to prevent.
+    """
+    from services import dimension_registry as registry
+
+    rows = []
+    for s in active_snippets or ():
+        snippet_id = s.get("id")
+        if not snippet_id:
+            continue
+        metrics = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+        transcript = (s.get("transcript") or "").strip()
+        word_count = len(transcript.split()) if transcript else None
+        duration_ms = s.get("duration_ms")
+        seconds = (float(duration_ms) / 1000.0
+                   if isinstance(duration_ms, (int, float)) else None)
+
+        for dim in registry.live_dimensions():
+            plumbing = _SNIPPET_FIELDS.get(dim.dimension_id)
+            if not plumbing:
+                continue                      # in the registry, not wired here
+            column, fallback_key = plumbing
+            value = s.get(column)
+            if value is None and fallback_key:
+                value = metrics.get(fallback_key)
+
+            has_value = isinstance(value, (int, float))
+            long_enough = registry.meets_minimum(
+                dim.dimension_id, seconds=seconds, tokens=word_count)
+            usable = has_value and long_enough
+
+            rows.append({
+                "snippet_id": snippet_id,
+                "session_id": session_id,
+                "user_id": s.get("user_id"),
+                "dimension_id": dim.dimension_id,
+                "raw_value": float(value) if usable else None,
+                "fired": None,                       # no fire_at in code yet
+                "insufficient_data": not usable,
+                "benchmark_tier": dim.tier,
+                "benchmark_version": dim.benchmark_version,
+                "window_class": dim.window_class,
+                # The denominator ACTUALLY used (F.3). NULL where unknowable —
+                # a wrong denominator is worse than an absent one, because it
+                # is silently wrong rather than visibly missing.
+                "n_units": word_count if dim.denominator == "wpm" else None,
+            })
+    if not rows:
+        return 0
+    return db.record_dimension_evaluations(rows)
+
+
 def compute_session_global_metrics(session_id: str) -> dict | None:
     """Aggregate snippet-level metrics into session-level averages and
     persist. Returns the computed dict on success, or ``None`` when
@@ -205,6 +287,22 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
         logger.warning(
             "session metrics: drift check failed session=%s err=%s",
             session_id, drift_err,
+        )
+
+    # Appendix G / SPEC D26 — drift telemetry. One row per (snippet,
+    # dimension) for every measure that actually runs today. These are
+    # MEASUREMENTS, not decisions: none of the six has a fire threshold in
+    # code yet, so `fired` stays None and only `raw_value` is recorded. PSI
+    # reads the value; the p-chart will read `fired` once benchmarks land.
+    #
+    # Deliberately last and fully non-blocking: telemetry that observes the
+    # scoring path must never be able to break it.
+    try:
+        _emit_drift_telemetry(session_id, active_snippets)
+    except Exception as telemetry_err:
+        logger.warning(
+            "session metrics: drift telemetry failed session=%s err=%s",
+            session_id, telemetry_err,
         )
 
     return {

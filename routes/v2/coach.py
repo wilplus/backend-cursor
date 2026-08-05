@@ -3015,7 +3015,15 @@ def v2_coach_confidence_queue(session_id):
                 # `note` rides the label (FE §5): without it, a saved note
                 # vanishes the moment the coach steps back to the piece,
                 # which reads as data loss rather than as a display gap.
-                r["label"] = {"confident": mine[0].get("confident"),
+                #
+                # `value`/`unrateable` are the ternary instrument (SPEC §3.2);
+                # `confident`/`intensity` are kept so the current FE renders
+                # unchanged through the cutover. A row written before the
+                # migration has value=None, which the FE reads as "not yet
+                # re-rated on the new instrument" rather than as unlabelled.
+                r["label"] = {"value": mine[0].get("value"),
+                              "unrateable": bool(mine[0].get("unrateable")),
+                              "confident": mine[0].get("confident"),
                               "intensity": mine[0].get("intensity"),
                               "note": mine[0].get("note")}
             else:
@@ -3033,31 +3041,69 @@ def v2_coach_confidence_queue(session_id):
 def v2_coach_put_confidence_label(snippet_id):
     """The coach's confidence call on ONE snippet — THE core training signal.
 
-    Body { confident: true|false, intensity?: 1..5, note?: str }
+    TERNARY body (SPEC.md v3 §3.2, current):
 
-      confident  the call. Binary, because the model's job is a binary
-                 recognition and a rater who must commit gives a cleaner
-                 boundary than one who can hedge.
-      intensity  how strongly, on the same 1-5 scale Jiang & Pell's listeners
-                 used — which makes these directly comparable to the
-                 published anchor AND the human side of the voice-confidence
-                 validation gate.
+        { state_id: "confidence",
+          value: "yes" | "no" | "neutral",   # XOR unrateable
+          unrateable?: bool,
+          note?: str, latency_ms?: int }
 
-    Re-labelling REPLACES this rater's call (the corpus wants their current
+      value       yes / no / NEUTRAL. The middle is not a hedge — a recogniser
+                  that has never seen the middle has never seen the boundary
+                  it exists to find, and every agreement number computed
+                  without it is measured on the easy cases only.
+      unrateable  a SEPARATE control, not a fourth value. `neutral` judges the
+                  MOMENT; `unrateable` judges the rater's ability to judge it,
+                  usually because of the audio. Folding them books unclear
+                  audio as a real middling rating.
+
+    LEGACY body { confident: bool, intensity?: 1..5, note?: str } is still
+    accepted and translated (true->yes, false->no), so the current FE keeps
+    working through the cutover rather than the instrument change breaking a
+    live surface. `intensity` rides along when the same request carried it —
+    it is the 1-5 scale Jiang & Pell's listeners used and remains the human
+    side of the validation gate. A legacy body cannot express `neutral`; that
+    is the whole reason the instrument changed.
+
+    Re-labelling REPLACES this rater's row (the corpus wants their current
     view); other raters' rows are untouched, so multi-rater agreement stays
-    possible. Separate from the challenge/threat lane by construct and by
-    table. AC-9: intensity is coach->machine only and never reaches a student.
+    possible.
 
-    200 { saved, snippet_id, confident, intensity } · 400 · 404 · 500
+    LANE is derived, never sent by the client (SPEC §6.2). A coach rating an
+    import is BOOTSTRAP, not coach — one rater on a model-proposed candidate
+    from a corpus the founder assembled is not panel-grade however expert the
+    rater, and that distinction is impossible to reconstruct afterwards.
+
+    AC-9: nothing here is ever serialized toward a student.
+
+    200 { saved, snippet_id, state_id, value, unrateable, lane,
+          confident, intensity } · 400 · 404 · 500
     """
     if not _is_valid_uuid(snippet_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
 
-    from services.confidence_labels import validate_confidence_label
+    from services.state_ratings import resolve_lane, validate_rating
 
-    row, err = validate_confidence_label(body)
+    legacy_intensity = None
+    if "confident" in body:
+        # Legacy shape. Validate it on the OLD validator so its strictness is
+        # unchanged, then translate — the translation stays visible here in
+        # one place rather than buried in a validator that would then appear
+        # to accept two instruments.
+        from services.confidence_labels import validate_confidence_label
+        legacy, err = validate_confidence_label(body)
+        if err:
+            return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+        legacy_intensity = legacy.get("intensity")
+        body = {
+            "state_id": "confidence",
+            "value": "yes" if legacy["confident"] else "no",
+            "note": legacy.get("note"),
+        }
+
+    row, err = validate_rating(body)
     if err:
         return jsonify({"code": "INVALID_INPUT", "error": err}), 400
     try:
@@ -3065,24 +3111,36 @@ def v2_coach_put_confidence_label(snippet_id):
         if not snip:
             return jsonify({"code": "NOT_FOUND",
                             "error": "snippet not found"}), 404
-        saved = db.upsert_confidence_label(
+        session_id = snip.get("session_id")
+        sess = db.v2_get_session_by_id(str(session_id)) if session_id else None
+        lane = resolve_lane((sess or {}).get("source"), is_coach=True)
+
+        saved = db.upsert_state_rating(
             snippet_id=snippet_id, row=row,
             rater_id=getattr(request, "user_id", None),
-            session_id=snip.get("session_id"),
+            session_id=session_id, lane=lane,
+            intensity=legacy_intensity,
         )
         if not saved:
             return jsonify({
                 "code": "SERVER_ERROR",
-                "error": "could not save the label (run "
-                         "migrations/add_confidence_labels.sql)",
+                "error": "could not save the rating (run "
+                         "migrations/add_state_generic_ratings.sql)",
             }), 500
-        return jsonify({"saved": True, "snippet_id": snippet_id,
-                        "confident": row["confident"],
-                        "intensity": row["intensity"]}), 200
+        value = row["value"]
+        return jsonify({
+            "saved": True, "snippet_id": snippet_id,
+            "state_id": row["state_id"], "value": value,
+            "unrateable": row["unrateable"], "lane": lane,
+            # Legacy fields, derived — the current FE reads these.
+            "confident": (True if value == "yes"
+                          else False if value == "no" else None),
+            "intensity": legacy_intensity,
+        }), 200
     except Exception as e:
-        logger.warning("confidence label failed snip=%s: %s", snippet_id, e)
+        logger.warning("confidence rating failed snip=%s: %s", snippet_id, e)
         return jsonify({"code": "SERVER_ERROR",
-                        "error": "could not save the label"}), 500
+                        "error": "could not save the rating"}), 500
 
 
 @v2_bp.route("/coach/snippets/<snippet_id>/star-text", methods=["PUT"])

@@ -281,4 +281,8 @@
 0243	add_rls_processing_jobs.sql
 0244	add_read_alignments.sql
 0245	add_reflection_clips.sql
-0246	drop_reread_lane.sql
+0246	add_state_generic_ratings.sql
+0247	add_dimension_evaluations.sql
+0248	add_profile_native_language.sql
+0249	add_dimension_evaluations_snippet_grain.sql
+0250	drop_reread_lane.sql
