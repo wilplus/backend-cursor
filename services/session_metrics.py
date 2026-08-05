@@ -195,7 +195,28 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
         ]
 
     global_wpm = round(sum(wpms) / len(wpms), 1) if wpms else None
+
+    # global_fillers stays a COUNT. Three consumers require that and would
+    # break silently otherwise: metrics_v2.normalize_fillers thresholds on
+    # absolute counts (<=3 -> 1.0, so any rate reads as perfect and the KPI
+    # filler component maxes out for everyone); coaching_state_machine passes
+    # it as `current_fillers`; and openai_service renders it into user-facing
+    # copy as "used N filler words".
     global_fillers = sum(fillers_list) if fillers_list else None
+
+    # The REGISTRY dimension is a different quantity that happens to share the
+    # name: Appendix F.4 (E6) defines filler density PER MINUTE, and a sum
+    # scales with how long the session ran, so it is partly a length measure.
+    # Computed alongside rather than instead — see the note above.
+    _total_ms = sum(
+        s["duration_ms"] for s in active_snippets
+        if isinstance(s.get("duration_ms"), (int, float))
+    )
+    global_fillers_per_min = (
+        round(global_fillers / (_total_ms / 60000.0), 2)
+        if global_fillers is not None and _total_ms > 0 else None
+    )
+
     global_pause_ms = round(sum(pauses) / len(pauses), 1) if pauses else None
     global_dynamic_db = round(sum(dynamics) / len(dynamics), 1) if dynamics else None
     global_pitch_center = round(sum(pitches) / len(pitches), 1) if pitches else None
@@ -308,6 +329,9 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
     return {
         "wpm": global_wpm,
         "fillers": global_fillers,
+        # Appendix F.4 (E6) — the registry-declared aggregation, alongside the
+        # count rather than replacing it. Not persisted yet; no consumer.
+        "fillers_per_min": global_fillers_per_min,
         "pause_ms": global_pause_ms,
         "dynamic_db": global_dynamic_db,
         "pitch_center": global_pitch_center,

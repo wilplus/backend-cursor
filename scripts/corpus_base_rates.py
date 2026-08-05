@@ -48,19 +48,31 @@ def _fetch(limit: int) -> list[dict]:
     from services.db import db
 
     rows: list[dict] = []
+    # The physical table is `charisma_snippets`, NOT `snippets` — see
+    # db.get_snippets_by_session. Getting this wrong returns PGRST205, which
+    # reads like a stale schema cache and is not one.
+    #
+    # Snippets are grouped to SESSION grain below before any dispersion is
+    # computed. Same rule as the drift layer: snippets inside a session are
+    # not independent, and at snippet length the expected marker count per
+    # document is well under 1, where the chi-square dispersion estimator
+    # stops being trustworthy.
+    by_session: dict[str, list[str]] = defaultdict(list)
     try:
-        res = (db.client.table("snippets")
+        res = (db.client.table("charisma_snippets")
                .select("id, session_id, transcript")
                .not_.is_("transcript", "null")
                .limit(limit).execute())
         for r in (res.data or []):
             text = (r.get("transcript") or "").strip()
             if text:
-                rows.append({"unit_id": r["id"],
-                             "group_id": r.get("session_id"),
-                             "text": text})
+                by_session[str(r.get("session_id") or r["id"])].append(text)
     except Exception as e:
-        print(f"  ! snippets read failed: {e}", file=sys.stderr)
+        print(f"  ! charisma_snippets read failed: {e}", file=sys.stderr)
+
+    for session_id, texts in by_session.items():
+        rows.append({"unit_id": session_id, "group_id": session_id,
+                     "text": " ".join(texts)})
 
     if len(rows) < limit:
         try:
@@ -112,7 +124,10 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
             continue
         rate = marks / words
         phi = vm.dispersion(pairs)
-        prior = vm.fit_prior([m / w for m, w in pairs if w > 0])
+        # Pairs, not rates — the prior's mean must be the POOLED rate. See
+        # verbal_markers.fit_prior; the unweighted version ran 3.6x high on
+        # TIC against real transcripts.
+        prior = vm.fit_prior(pairs)
         out["classes"][cls] = {
             "marks": marks,
             "rate_per_word": round(rate, 6),

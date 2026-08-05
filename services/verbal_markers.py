@@ -195,29 +195,47 @@ def count(text: Any, *, language: Optional[str] = None) -> dict:
 # intervention.
 
 
-def fit_prior(rates: Iterable[float], *,
+def fit_prior(counts: Iterable[tuple[int, int]], *,
               min_n: int = 5) -> Optional[tuple[float, float]]:
-    """Method-of-moments Beta prior from per-document rates.
+    """Method-of-moments Beta prior from ``(marks, words)`` pairs.
 
-    Returns ``(alpha, beta)`` or None when there is too little to fit. The
-    prior strength ``alpha + beta`` encodes overdispersion: bursty markers
-    (a nervous speaker clusters them) give a WEAKER prior, so a single passage
-    moves the posterior less.
+    Returns ``(alpha, beta)`` or None when there is too little to fit.
+
+    THE MEAN IS PINNED TO THE POOLED RATE, NOT THE MEAN OF PER-DOCUMENT RATES.
+    This is the whole reason the signature takes pairs rather than rates. An
+    unweighted mean over per-document rates counts a 40-word snippet with two
+    tics the same as a 2,000-word talk with two, so short and noisy documents
+    drag it upward. Measured on real transcripts that bias ran 3.6x for TIC —
+    a pooled rate of 2.31 per 1,000 words against a prior mean of 8.40 — which
+    would have pulled every posterior toward a rate the corpus does not show.
+
+    Only the STRENGTH comes from the spread. ``alpha + beta`` encodes
+    overdispersion: bursty markers (a nervous speaker clusters them) give a
+    WEAKER prior, so one passage moves the posterior less.
     """
-    values = [float(r) for r in rates
-              if isinstance(r, (int, float)) and 0.0 <= float(r) <= 1.0]
-    n = len(values)
-    if n < min_n:
+    pairs = [(int(m), int(w)) for m, w in counts
+             if isinstance(m, int) and isinstance(w, int)
+             and w > 0 and 0 <= m <= w]
+    if len(pairs) < min_n:
         return None
-    mean = sum(values) / n
+
+    total_marks = sum(m for m, _ in pairs)
+    total_words = sum(w for _, w in pairs)
+    if total_words <= 0:
+        return None
+    mean = total_marks / total_words          # <- pooled, the corpus rate
     if mean <= 0.0 or mean >= 1.0:
         return None
-    var = sum((v - mean) ** 2 for v in values) / (n - 1) if n > 1 else 0.0
+
+    # Spread of the per-document rates around the pooled mean, weighted by
+    # document length so a 40-word document does not shout as loudly as a
+    # 2,000-word one.
+    var = sum(w * ((m / w) - mean) ** 2 for m, w in pairs) / total_words
     max_var = mean * (1.0 - mean)
     if var <= 0.0 or var >= max_var:
-        # Degenerate: no spread, or spread at/above the binomial maximum.
-        # Fall back to a weak prior centred on the mean rather than inventing
-        # a precision the data does not support.
+        # No spread, or spread at/above the binomial maximum. A weak prior
+        # centred on the pooled mean beats inventing a precision the data
+        # does not support.
         strength = 2.0
         return mean * strength, (1.0 - mean) * strength
     strength = max_var / var - 1.0
