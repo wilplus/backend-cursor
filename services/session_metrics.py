@@ -45,39 +45,41 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 
-# Appendix G drift telemetry — the six measures that actually run today.
-#   (dimension_id, snippet column, JSONB `metrics` fallback key)
-# Everything else in Appendix D is specified but not computed, so it cannot
-# be watched: a monitor over a measure nobody produces reports STABLE forever.
-_DRIFT_DIMENSIONS = (
-    ("wpm",          "wpm",          None),
-    ("fillers",      "fillers",      None),
-    ("pause_ms",     "pause_ms",     "pause_ms"),
-    ("dynamic_db",   "dynamic_db",   "dynamic_db"),
-    ("pitch_center", "pitch_center", "pitch_center_st"),
-    ("energy",       "energy",       "energy_ratio"),
-)
-
-# Bumped whenever the DEFINITION of one of these measures changes — not when
-# its value drifts. That separation is the whole point: without it a redefined
-# metric and a shifted population are the same step in the same chart.
-_DRIFT_BENCHMARK_VERSION = "measure-v1"
+# Where each registry dimension's value is read from on a snippet row:
+#   dimension_id -> (column, JSONB `metrics` fallback key)
+# ONLY the plumbing lives here. Window class, tier, minimum length, denominator
+# and aggregation all come from services/dimension_registry — Appendix F.4 is
+# the source, and retyping any of it into this file is how two consumers start
+# disagreeing about the same dimension.
+_SNIPPET_FIELDS = {
+    "wpm":          ("wpm",          None),
+    "fillers":      ("fillers",      None),
+    "pause_ms":     ("pause_ms",     "pause_ms"),
+    "dynamic_db":   ("dynamic_db",   "dynamic_db"),
+    "pitch_center": ("pitch_center", "pitch_center_st"),
+    "energy":       ("energy",       "energy_ratio"),
+}
 
 
 def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
-    """Write one dimension_evaluations row per (snippet, measure).
+    """Write one dimension_evaluations row per (snippet, live dimension).
 
-    MEASUREMENTS, not decisions. None of the six has a fire threshold in code
-    yet, so `fired` is None on every row and `insufficient_data` stays False —
-    the measure computed fine, there is simply nothing to decide. PSI reads
-    `raw_value`/`decile` and does not care; the p-chart filters these out
-    until real benchmarks land.
+    Every spec fact is READ FROM THE REGISTRY, never restated here.
 
-    `n_units` carries the denominator ACTUALLY used where it is knowable
-    (Appendix F.3). Where it is not, it stays NULL — a wrong denominator is
-    worse than an absent one, because a rate computed over the wrong unit
-    count is silently wrong rather than visibly missing.
+    MEASUREMENTS, not decisions: none of the live dimensions has a `fire_at`
+    in code yet, so `fired` stays None. That is a real third state, distinct
+    from a negative decision and from missing data (SPEC D30).
+
+    APPENDIX F.2's MINIMUM-LENGTH GATE IS ENFORCED HERE, and it bites: every
+    live dimension carries a 30 s minimum in F.4, while a snippet is roughly
+    one planning cycle (~18 s). Rows below the gate are written as
+    `insufficient_data` rather than dropped — F.5 makes "could not compute
+    this" first-class, and a value under the gate is noise wearing a number's
+    clothes. Dropping them instead would make the gap invisible to PSI, which
+    is the failure mode the column exists to prevent.
     """
+    from services import dimension_registry as registry
+
     rows = []
     for s in active_snippets or ():
         snippet_id = s.get("id")
@@ -86,28 +88,39 @@ def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
         metrics = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
         transcript = (s.get("transcript") or "").strip()
         word_count = len(transcript.split()) if transcript else None
+        duration_ms = s.get("duration_ms")
+        seconds = (float(duration_ms) / 1000.0
+                   if isinstance(duration_ms, (int, float)) else None)
 
-        for dimension_id, column, fallback_key in _DRIFT_DIMENSIONS:
+        for dim in registry.live_dimensions():
+            plumbing = _SNIPPET_FIELDS.get(dim.dimension_id)
+            if not plumbing:
+                continue                      # in the registry, not wired here
+            column, fallback_key = plumbing
             value = s.get(column)
             if value is None and fallback_key:
                 value = metrics.get(fallback_key)
-            computable = isinstance(value, (int, float))
+
+            has_value = isinstance(value, (int, float))
+            long_enough = registry.meets_minimum(
+                dim.dimension_id, seconds=seconds, tokens=word_count)
+            usable = has_value and long_enough
+
             rows.append({
                 "snippet_id": snippet_id,
                 "session_id": session_id,
                 "user_id": s.get("user_id"),
-                "dimension_id": dimension_id,
-                "raw_value": float(value) if computable else None,
-                "fired": None,                       # no benchmark yet
-                "insufficient_data": not computable,
-                "benchmark_tier": "CORPUS_REL",
-                "benchmark_version": _DRIFT_BENCHMARK_VERSION,
-                # The snippet is the piece (~18 s), so a snippet-wide mean is
-                # a CYCLE-scoped read under Appendix F.1.
-                "window_class": "CYCLE",
-                # Only the lexical measures have a knowable denominator here.
-                "n_units": word_count if dimension_id in ("wpm", "fillers")
-                           else None,
+                "dimension_id": dim.dimension_id,
+                "raw_value": float(value) if usable else None,
+                "fired": None,                       # no fire_at in code yet
+                "insufficient_data": not usable,
+                "benchmark_tier": dim.tier,
+                "benchmark_version": dim.benchmark_version,
+                "window_class": dim.window_class,
+                # The denominator ACTUALLY used (F.3). NULL where unknowable —
+                # a wrong denominator is worse than an absent one, because it
+                # is silently wrong rather than visibly missing.
+                "n_units": word_count if dim.denominator == "wpm" else None,
             })
     if not rows:
         return 0
