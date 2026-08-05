@@ -155,11 +155,6 @@ def _recording_flow_tags(form) -> dict:
     session_context AFTER validation (the validator strips unknown keys —
     nothing rides through on its own). All optional, all bounded:
 
-      read_target        'ideal_text' — this read is a re-read of the ideal
-                         text (labels it on the coach packet; anything else
-                         is dropped)
-      ideal_version      the ideal-text version that was read (int; drives
-                         the student GET's reread_done; non-int dropped)
       paired_snippet_id  a delivery-star snippet re-record's target snippet
                          (UUID; invalid dropped)
       named_emotion      the pre-recording emotion-naming answer (F2
@@ -171,12 +166,10 @@ def _recording_flow_tags(form) -> dict:
                          internal-only (CONSTRUCT — log line, never wire).
     """
     tags: dict = {}
-    if (form.get("read_target") or "").strip().lower() == "ideal_text":
-        tags["read_target"] = "ideal_text"
-        try:
-            tags["ideal_version"] = int(form.get("ideal_version"))
-        except (TypeError, ValueError):
-            pass
+    # read_target / ideal_version RETIRED (founder 2026-08-05): they only
+    # ever tagged an ideal-text re-read, and that lane is gone. The guard in
+    # the handler refuses such an upload outright, so nothing can arrive
+    # here wanting them.
     _psnip = (form.get("paired_snippet_id") or "").strip()
     if _psnip and _is_valid_uuid(_psnip):
         tags["paired_snippet_id"] = _psnip
@@ -239,11 +232,11 @@ def v2_lab_create_recording():
                             paired variant, never a take of its own
       paired_session_id     (required for read) the spoken take this read
                             folds under; an unpaired read is invisible
-      read_target           (optional) 'ideal_text' — this read is a re-read
-                            of the ideal text (coach label + reread_done)
-      ideal_version         (optional, int) the ideal-text version read
-      paired_snippet_id     (optional, UUID) a delivery-star snippet
-                            re-record's target snippet
+      paired_snippet_id     (REQUIRED for read since 2026-08-05, UUID) the
+                            delivery-star snippet this re-record targets.
+                            The only surviving reason to post a read: the
+                            ideal-text re-read is retired and a read
+                            without this is refused 422.
       continue_arc_id       (optional, UUID) the project the user PICKED —
                             the take appends strictly to it, the
                             continue-arc heuristics are skipped, and the
@@ -326,6 +319,31 @@ def v2_lab_create_recording():
                     "code": "INVALID_INPUT",
                     "error": ("A re-read needs the spoken take it belongs "
                               "to (paired_session_id)."),
+                }), 422
+            # ── IDEAL-TEXT RE-READ IS RETIRED (founder 2026-08-05).
+            # "Read out loud" — reading the settled ideal text back into
+            # the mic — brought no value to the coach or the user, so it
+            # is gone: one lane now, take after take.
+            #
+            # The read lane ITSELF survives, because it carries a second,
+            # unrelated feature: the DELIVERY-STAR snippet re-record
+            # (services/reRecordSnippet on the FE), which re-records one
+            # snippet with a star's feedback applied and rides the same
+            # recording_kind='read' wire. That feature was never in scope
+            # here, so the guard is narrow: a read WITHOUT a target
+            # snippet is the retired ideal-text re-read and is refused; a
+            # read WITH one is a star re-record and passes.
+            #
+            # Refusing rather than silently downgrading to spoken matters:
+            # the ideal-text version is now the SPOKEN TAKE COUNT, so a
+            # stale client's re-read landing as a take would bump the
+            # version and un-verify a text nobody re-recorded.
+            _psnip_raw = (form.get("paired_snippet_id") or "").strip()
+            if not _psnip_raw or not _is_valid_uuid(_psnip_raw):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": ("Reading your ideal text out loud has been "
+                              "retired. Record the next take instead."),
                 }), 422
 
         # ── EXPLICIT PROJECT SELECTION (founder 2026-07-22): the user

@@ -216,15 +216,19 @@ class NudgeCopyTests(unittest.TestCase):
                                  spoken_take_count=count)
         return captured["body"]
 
-    def test_takes_one_and_two_carry_the_nudge(self):
-        for n in (1, 2):
+    def test_no_take_carries_the_nudge_any_more(self):
+        # Founder 2026-08-05: "not text that it really lands on the 3rd
+        # time; on the bubble never; just the title, date and the CTA."
+        # The bubble is read once on arrival and a hundred times on
+        # scroll-back — a nudge stamped into it is noise by the third read.
+        for n in (1, 2, 3, 7, None):
             body = self._fire(n)
-            self.assertIn("three is where it really lands", body)
-            self.assertNotIn("of 3", body)       # a nudge, never a counter
+            self.assertNotIn("three is where it really lands", body)
+            self.assertNotIn("of 3", body)       # never a counter (AC-9)
 
-    def test_take_three_plus_and_unknown_do_not(self):
-        for n in (3, 7, None):
-            self.assertNotIn("three is where it really lands", self._fire(n))
+    def test_the_body_is_one_short_line_whatever_the_take(self):
+        for n in (1, 2, 3, 7, None):
+            self.assertEqual(self._fire(n), "Your ideal text is ready.")
 
 
 class ArousalZTests(unittest.TestCase):

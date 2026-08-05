@@ -79,26 +79,63 @@ class _Client:
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class VersionBumpTests(unittest.TestCase):
-    """BE-1 — version increments only when the machine copy CHANGES."""
+    """The version IS the spoken take count (founder 2026-08-05): take 1 →
+    1.0, take 2 → 2.0, each one verified on its own.
 
-    def _persist(self, row, text, missing=()):
+    The change-detect rule below is the FALLBACK, kept for the case where
+    the caller could not count the takes (a failed read). Writing a wrong
+    absolute there would un-verify real coach work, so it fails closed to
+    the old behaviour instead."""
+
+    def _persist(self, row, text, missing=(), take_count=None):
         client = _Client(missing=missing)
         fake = SimpleNamespace(client=client,
                                get_coach_arc_ideal_text=lambda a: row)
-        ok = DatabaseService.persist_auto_ideal_text(fake, ARC, text)
+        ok = DatabaseService.persist_auto_ideal_text(
+            fake, ARC, text, take_count=take_count)
         return ok, client.upserts
+
+    def test_take_count_is_the_version(self):
+        ok, ups = self._persist(_row(version=1), "take two text",
+                                take_count=2)
+        self.assertTrue(ok)
+        self.assertEqual(ups[0]["version"], 2)
+
+    def test_take_count_pins_rather_than_increments(self):
+        # Idempotence is the whole point: reassembling the SAME take count
+        # lands on the same number instead of climbing. An idle re-open
+        # can no longer bump the version and silently un-verify a text
+        # nobody re-recorded.
+        _, ups = self._persist(_row(version=2), "text a", take_count=2)
+        self.assertEqual(ups[0]["version"], 2)
+        _, ups2 = self._persist(_row(version=2), "text b changed",
+                                take_count=2)
+        self.assertEqual(ups2[0]["version"], 2)
+
+    def test_take_count_bumps_even_when_the_text_is_identical(self):
+        # The founder's bug: take 2 that barely moved the text used to
+        # leave the badge frozen at 1.0. Each take is its own version now.
+        _, ups = self._persist(_row(version=1), "machine text", take_count=2)
+        self.assertEqual(ups[0]["version"], 2)
+
+    def test_zero_or_bad_take_count_falls_back_to_change_detect(self):
+        for bad in (0, -1, "2", None):
+            _, ups = self._persist(_row(version=3), "a different text",
+                                   take_count=bad)
+            self.assertEqual(ups[0]["version"], 4, f"take_count={bad!r}")
 
     def test_new_row_starts_at_version_1(self):
         ok, ups = self._persist(None, "first text")
         self.assertTrue(ok)
         self.assertEqual(ups[0]["version"], 1)
 
-    def test_changed_text_bumps_version(self):
+    def test_changed_text_bumps_version_without_a_count(self):
+        # Fallback lane only (take_count=None).
         ok, ups = self._persist(_row(version=3), "a different text")
         self.assertTrue(ok)
         self.assertEqual(ups[0]["version"], 4)
 
-    def test_unchanged_text_keeps_version(self):
+    def test_unchanged_text_keeps_version_without_a_count(self):
         ok, ups = self._persist(_row(version=3), "machine text")
         self.assertTrue(ok)
         self.assertNotIn("version", ups[0])   # no bump, verify stays stable
@@ -277,9 +314,12 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class CrucialBubbleFieldTests(unittest.TestCase):
     """Founder 2026-07-20 — the crucial-bubble fields on the student GET:
-    title (latest take's topic), updated_at, latest_take_session_id (the
-    re-read pairing target; reads never qualify) and reread_done (a re-read
-    of the CURRENT version exists → the FE's two-state mic)."""
+    title (latest take's topic), updated_at, latest_take_session_id.
+
+    reread_done / reread_processing are RETIRED (founder 2026-08-05) with
+    the read-out-loud lane. What stays pinned here is that HISTORICAL read
+    rows are still never counted as takes — the teardown migration is run
+    by hand, so those rows outlive this deploy."""
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -322,111 +362,6 @@ class CrucialBubbleFieldTests(unittest.TestCase):
         self.assertEqual(body["updated_at"], "2026-07-20T10:00:00Z")
         self.assertEqual(body["latest_take_session_id"], "t2")
 
-    def test_reread_done_current_version_only(self):
-        row = _row(version=3)
-        sess = [self._spoken("t1", 1),
-                self._read("r1", "t1", {"read_target": "ideal_text",
-                                        "ideal_version": 2})]
-        body, _ = self._get(row, sess)
-        self.assertFalse(body["reread_done"])   # stale-version re-read
-        sess.append(self._read("r2", "t1", {"read_target": "ideal_text",
-                                            "ideal_version": 3}))
-        body, _ = self._get(row, sess)
-        self.assertTrue(body["reread_done"])
-
-    def test_reread_version_match_is_type_tolerant(self):
-        # Form-encoded contexts may carry the version as a string.
-        body, _ = self._get(_row(version=3), [
-            self._spoken("t1", 1),
-            self._read("r1", "t1", {"read_target": "ideal_text",
-                                    "ideal_version": "3"})])
-        self.assertTrue(body["reread_done"])
-
-    def test_reread_done_gates_on_completion_not_existence(self):
-        # Founder bug 2026-07-22 "the orphaned recording": in async mode
-        # the re-read row exists before its transcription finishes. The
-        # two-state mic must NOT un-gate the "record another take" button
-        # until the re-read is actually done — so reread_done requires
-        # analysis_state ready (or absent/null = sync/legacy = done).
-        _ctx = {"read_target": "ideal_text", "ideal_version": 3}
-        # still transcribing → NOT done, button stays on re-read
-        body, _ = self._get(_row(version=3), [
-            self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state="processing")])
-        self.assertFalse(body["reread_done"])
-        # finished → done
-        body, _ = self._get(_row(version=3), [
-            self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state="ready")])
-        self.assertTrue(body["reread_done"])
-        # null (sync mode / legacy row) → treated as done
-        body, _ = self._get(_row(version=3), [
-            self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state=None)])
-        self.assertTrue(body["reread_done"])
-        # a failed re-read is also not a completed one → button waits
-        body, _ = self._get(_row(version=3), [
-            self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state="failed")])
-        self.assertFalse(body["reread_done"])
-
-    def test_reread_processing_distinguishes_loading_from_not_started(self):
-        # Founder 2026-07-22: `reread_done: false` alone can't tell "no
-        # re-read yet" (show the mic) from "re-read still transcribing"
-        # (hold a loading state in the button's place). reread_processing
-        # closes that gap — the three mic states.
-        _ctx = {"read_target": "ideal_text", "ideal_version": 3}
-
-        def _states(sessions):
-            b, _ = self._get(_row(version=3), sessions)
-            return b["reread_done"], b["reread_processing"]
-
-        # no re-read → the MIC (neither)
-        self.assertEqual(_states([self._spoken("t1", 1)]), (False, False))
-        # transcribing → LOADING (processing, not done)
-        self.assertEqual(_states([
-            self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state="processing")]),
-            (False, True))
-        # finished → NEXT-TAKE (done, not processing)
-        self.assertEqual(_states([
-            self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state="ready")]),
-            (True, False))
-        # a completed re-read WINS over a second one still in flight
-        self.assertEqual(_states([
-            self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state="ready"),
-            self._read("r2", "t1", _ctx, analysis_state="processing")]),
-            (True, False))
-        # a failed re-read is neither → the FE falls back to the mic
-        self.assertEqual(_states([
-            self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state="failed")]),
-            (False, False))
-        # a PROCESSING re-read of a STALE version doesn't hold loading
-        self.assertEqual(_states([
-            self._spoken("t1", 1),
-            self._read("r1", "t1", {"read_target": "ideal_text",
-                                    "ideal_version": 2},
-                       analysis_state="processing")]),
-            (False, False))
-
-    def test_untagged_read_never_flips_reread_done(self):
-        # A per-take re-read (no read_target) is not an ideal-text re-read.
-        body, _ = self._get(_row(version=3), [
-            self._spoken("t1", 1),
-            self._read("r1", "t1", {"ideal_version": 3})])
-        self.assertFalse(body["reread_done"])
-
-    def test_null_safe_on_empty_sessions(self):
-        body, status = self._get(_row(updated_at=None), [])
-        self.assertEqual(status, 200)
-        self.assertIsNone(body["title"])
-        self.assertIsNone(body["latest_take_session_id"])
-        self.assertFalse(body["reread_done"])
-        self.assertEqual(body["take_count"], 0)
-
     def test_take_count_is_per_project_official_takes_only(self):
         # Founder 2026-07-23: the badge is "<take_count>.0" — the count
         # of OFFICIAL (spoken) takes of THIS arc; reads never count, and
@@ -435,51 +370,34 @@ class CrucialBubbleFieldTests(unittest.TestCase):
             self._spoken("t1", 1),
             self._spoken("t2", 2),
             self._spoken("t3", 3),
-            self._read("r1", "t3", {"read_target": "ideal_text",
-                                    "ideal_version": 1}),
+            self._read("r1", "t3", {}),
         ])
         self.assertEqual(body["take_count"], 3)   # the 3 spoken, not the read
 
-    def test_can_record_take_decoupled_from_reread(self):
-        # Founder 2026-07-24 (T1 · 1.2): "record another take" must be
-        # available the instant a recording completes — NOT gated on the
-        # re-read practice loop. can_record_take is true whenever the
-        # project has a spoken take, INDEPENDENT of reread_done /
-        # reread_processing (the 2026-07-22 loading gate is kept, but only
-        # for the re-read affordance).
-        _ctx = {"read_target": "ideal_text", "ideal_version": 3}
-
-        # a project with a spoken take but no re-read yet (the re-read-mic
-        # state) → the next take is still offered immediately.
+    def test_can_record_take_is_true_once_a_take_exists(self):
+        # Founder 2026-07-24 (T1 · 1.2): "record another take" is available
+        # the instant a recording completes. It used to also have to dodge
+        # the re-read loading gate; that gate is gone with the lane, so the
+        # rule is now simply "the project has a spoken take".
         body, _ = self._get(_row(version=3), [self._spoken("t1", 1)])
         self.assertTrue(body["can_record_take"])
-        self.assertFalse(body["reread_done"])
-        self.assertFalse(body["reread_processing"])
+        # The retired fields are gone from the payload entirely.
+        self.assertNotIn("reread_done", body)
+        self.assertNotIn("reread_processing", body)
 
-        # the re-read is STILL transcribing (the loading state) — the next
-        # take is offered anyway, i.e. it never waits on the loading gate,
-        # and the gate itself is unchanged.
+        # A leftover historical read row changes nothing.
         body, _ = self._get(_row(version=3), [
             self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state="processing")])
+            self._read("r1", "t1", {}, analysis_state="ready")])
         self.assertTrue(body["can_record_take"])
-        self.assertTrue(body["reread_processing"])   # gate untouched
-
-        # a finished re-read (the next-take-btn state) → still true.
-        body, _ = self._get(_row(version=3), [
-            self._spoken("t1", 1),
-            self._read("r1", "t1", _ctx, analysis_state="ready")])
-        self.assertTrue(body["can_record_take"])
-        self.assertTrue(body["reread_done"])
+        self.assertEqual(body["take_count"], 1)   # the read is not a take
 
     def test_can_record_take_needs_a_spoken_take(self):
         # No spoken take yet → nothing to continue (mirrors /setup's rule).
         # A read never flips it — the guard is spoken-only.
         body, _ = self._get(_row(), [])
         self.assertFalse(body["can_record_take"])
-        body, _ = self._get(_row(version=3), [
-            self._read("r1", "t1", {"read_target": "ideal_text",
-                                    "ideal_version": 3})])
+        body, _ = self._get(_row(version=3), [self._read("r1", "t1", {})])
         self.assertFalse(body["can_record_take"])
 
 
@@ -488,20 +406,20 @@ class RecordingFlowTagTests(unittest.TestCase):
     """The flat-field → session_context fold (founder 2026-07-20). The
     intake validator strips unknown keys, so these tags ONLY exist because
     _recording_flow_tags folds them — pinned so a validator refactor can't
-    silently drop the re-read/star-re-record contracts."""
+    silently drop the star-re-record contract.
+
+    read_target / ideal_version are RETIRED (founder 2026-08-05): they only
+    ever existed to pair a re-read to the version it read."""
 
     SNIP = "aaaa1111-aaaa-1111-aaaa-111111111111"
 
-    def test_ideal_read_tags_fold(self):
-        tags = v2._recording_flow_tags({"read_target": "ideal_text",
-                                        "ideal_version": "4"})
-        self.assertEqual(tags, {"read_target": "ideal_text",
-                                "ideal_version": 4})
-
-    def test_bad_version_drops_but_target_stays(self):
-        tags = v2._recording_flow_tags({"read_target": "IDEAL_TEXT",
-                                        "ideal_version": "soon"})
-        self.assertEqual(tags, {"read_target": "ideal_text"})
+    def test_read_tags_never_fold_again(self):
+        # The retired lane must not be reachable by posting its old
+        # fields: nothing about a read may ride into session_context.
+        self.assertEqual(v2._recording_flow_tags({
+            "read_target": "ideal_text", "ideal_version": "4"}), {})
+        self.assertEqual(v2._recording_flow_tags({
+            "read_target": "IDEAL_TEXT", "ideal_version": "soon"}), {})
 
     def test_unknown_target_and_no_fields_fold_nothing(self):
         self.assertEqual(v2._recording_flow_tags(

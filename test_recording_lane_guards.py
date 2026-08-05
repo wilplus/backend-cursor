@@ -65,6 +65,9 @@ class UnpairedReadTests(unittest.TestCase):
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_sess, m_put
 
+    PAIR = "3f7c1b6e-6f5a-4a7e-9f2b-8c1d0e5a4b39"
+    SNIP = "aaaa1111-aaaa-1111-aaaa-111111111111"
+
     def test_read_without_pair_422_before_any_storage(self):
         body, status, m_sess, m_put = self._post(
             {"topic": "my talk", "recording_kind": "read"})
@@ -79,10 +82,32 @@ class UnpairedReadTests(unittest.TestCase):
                                       "paired_session_id": "not-a-uuid"})
         self.assertEqual(status, 422)
 
+    def test_ideal_text_reread_is_retired_422(self):
+        # Founder 2026-08-05: "read out loud" is gone. A WELL-FORMED read
+        # with no target snippet is that retired lane — refused, so a stale
+        # client cannot mint a phantom take (the ideal-text version is now
+        # the spoken take count, so one would un-verify a real text).
+        body, status, _, m_put = self._post(
+            {"topic": "t", "recording_kind": "read",
+             "paired_session_id": self.PAIR})
+        self.assertEqual(status, 422)
+        self.assertIn("retired", body["error"].lower())
+        m_put.assert_not_called()
+
+    def test_delivery_star_snippet_rerecord_still_passes(self):
+        # The read lane SURVIVES for the delivery-star snippet re-record —
+        # a separate live feature that shares the wire and was never in
+        # scope for the retirement. It must not hit the retirement guard.
+        body, status, _, _ = self._post(
+            {"topic": "t", "recording_kind": "read",
+             "paired_session_id": self.PAIR,
+             "paired_snippet_id": self.SNIP})
+        self.assertNotIn(
+            "retired", ((body or {}).get("error", "") or "").lower())
+
     def test_spoken_without_pair_is_fine_past_the_guard(self):
         # A spoken take needs no pair — it must not hit the read guard
-        # (it proceeds and fails later on its own merits, never 422 with
-        # the paired_session_id message).
+        # (it proceeds and fails later on its own merits).
         body, status, _, _ = self._post({"topic": "t"})
         self.assertNotEqual(
             (body or {}).get("error", ""),
@@ -147,11 +172,20 @@ class ReadNeverAssemblesTests(unittest.TestCase):
         self.assertIn("recording_kind=_rec_kind", src)
 
     def test_read_still_links_and_tags_without_counting(self):
-        # The read lane itself is untouched: it inherits the parent's arc
-        # + take number and is tagged — it just never assembles.
+        # The read lane survives for the DELIVERY-STAR snippet re-record:
+        # it inherits the parent's arc + take number and is tagged — it
+        # just never assembles. (The ideal-text re-read that used to share
+        # this lane is refused at the guard; see UnpairedReadTests.)
         src = inspect.getsource(v2.v2_lab_create_recording)
         self.assertIn('db.set_session_recording_kind(', src)
         self.assertIn('arc_take_count = take_index', src)
+
+    def test_the_ideal_text_reread_is_pinned_out_at_the_guard(self):
+        # The retirement pinned at the source: a read with no target
+        # snippet is refused before any storage.
+        src = inspect.getsource(v2.v2_lab_create_recording)
+        self.assertIn('paired_snippet_id', src)
+        self.assertIn('retired', src)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

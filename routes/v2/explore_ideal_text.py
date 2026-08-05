@@ -250,28 +250,26 @@ def v2_explore_get_ideal_text(arc_id):
     Single-deliverable (founder 2026-07-17): the ideal text is FREE in both
     states — never a 402. Returns
     200 { arc_id, version, status:"verified"|"unverified", title,
-          updated_at, latest_take_session_id, take_count, reread_done,
-          reread_processing, can_record_take, text, user_edited,
+          updated_at, latest_take_session_id, take_count,
+          can_record_take, text, user_edited,
           prior_edit?, key_moments, moments_unlocked,
           explanations_available, price_credits,
           notes_text } — free in both states, never 402s. The
     crucial-bubble fields (founder 2026-07-20): `title` = latest take's
-    topic, `latest_take_session_id` = the re-read pairing target.
+    topic.
+
     `take_count` (founder 2026-07-23) = the project's official-take count
-    (per-arc, reads excluded); the FE renders the document badge as
-    "<take_count>.0" — it climbs on every recorded take, distinct from
-    `version` (which bumps only on a text change). The
-    two-state mic reads THREE states: `reread_done` (a FINISHED re-read
-    of the current version exists → next-take button), `reread_processing`
-    (a re-read exists but is still transcribing → the FE holds a loading
-    state in the button's place), else neither (→ the re-read mic).
-    `can_record_take` (founder 2026-07-24, T1 · 1.2) is the SEPARATE,
-    re-read-independent signal for the "record another take" button: true
+    (per-arc). Since 2026-08-05 `version` IS this count — every take is
+    its own version, and each one needs its own verification (founder:
+    "each take is different and each should be verified"). The two used
+    to differ, because `version` bumped only when the assembled text
+    changed; a take that barely moved the text left the badge frozen.
+
+    RETIRED 2026-08-05 — `reread_done` / `reread_processing` are gone
+    with the read-out-loud lane. `can_record_take` (founder 2026-07-24,
+    T1 · 1.2) is the signal for the "record another take" button: true
     the moment the project has a spoken take, so a finished recording
-    returns the student straight to this screen ready to record again —
-    no loading gate, no forced re-read first. The re-read three-state mic
-    above is unchanged (its 2026-07-22 loading gate stays intact);
-    `can_record_take` only stops the NEXT take from waiting on it.
+    returns the student straight to this screen ready to record again.
     `explanations_available`
     gates the unlock CTA (true only when a coach explanation exists);
     text-suggestion stars carry `quote` (the narrow underline span, or
@@ -630,19 +628,21 @@ def v2_explore_get_ideal_text(arc_id):
 
         _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
 
-        # ── Crucial-bubble fields (founder 2026-07-20): title, last
-        # update, the re-read pairing target and the two-state mic's
-        # `reread_done` — all derived from the ownership read
-        # (_sessions), zero extra queries. Reads are paired variants,
-        # never takes: they're excluded from title/latest-take and are
-        # exactly what reread_done counts. ──
-        _spoken_rows, _read_rows = [], []
-        for _s in (_sessions or []):
-            if (_s.get("recording_kind") == "read") \
-                    or _s.get("paired_session_id"):
-                _read_rows.append(_s)
-            else:
-                _spoken_rows.append(_s)
+        # ── Crucial-bubble fields (founder 2026-07-20): title + latest
+        # take, derived from the ownership read (_sessions), zero extra
+        # queries.
+        #
+        # The re-read lane is RETIRED (founder 2026-08-05) — reread_done
+        # and reread_processing are gone from this payload with it. The
+        # read/spoken SPLIT stays: historical read rows still sit in the
+        # table until the teardown migration runs, and they must never
+        # be counted as takes. Once the columns are dropped this reads
+        # every row as spoken, which is then the truth. ──
+        _spoken_rows = [
+            _s for _s in (_sessions or [])
+            if _s.get("recording_kind") != "read"
+            and not _s.get("paired_session_id")
+        ]
         _spoken_rows.sort(key=lambda s: (s.get("take_index") or 0))
         _title = None
         for _s in _spoken_rows:   # latest take wins (trainings parity)
@@ -653,62 +653,11 @@ def v2_explore_get_ideal_text(arc_id):
                 _title = _t.strip()
         _latest_take_sid = (str(_spoken_rows[-1].get("id"))
                             if _spoken_rows else None)
-        # `reread_done` = a FINISHED re-read of the current version
-        # exists — NOT merely a row (founder bug 2026-07-22: "the
-        # orphaned recording"). In async mode the re-read POST
-        # returns before transcription completes, so keying the
-        # two-state mic on row-existence un-gated the "record another
-        # take" button while the re-read was still processing — the
-        # user started a take, then the re-read's late completion
-        # tore them back to the ideal text with the mic still live.
-        # A re-read counts only when its analysis_state is 'ready'
-        # (or absent/null — sync mode + legacy rows are already done
-        # by the time the POST returns).
-        # THREE states the FE's mic renders (founder 2026-07-22):
-        #   * no re-read of this version           → the re-read MIC
-        #   * a re-read exists but is transcribing → LOADING, held in
-        #     the button's place ("Finishing up your recording…")
-        #   * a re-read has finished               → the NEXT-TAKE btn
-        # `reread_done: false` alone can't distinguish the first two,
-        # so the FE could not hold the loading state — that gap is why
-        # the premature button appeared. `reread_processing` closes it:
-        # a matching re-read whose analysis_state is 'processing'. A
-        # FINISHED re-read wins (done → processing false); a failed one
-        # is neither (the FE falls back to the mic so they can retry).
-        _reread_done = False
-        _reread_processing = False
-        if _version is not None:
-            for _s in _read_rows:
-                _ctx = _s.get("intake_context") if isinstance(
-                    _s.get("intake_context"), dict) else {}
-                _iv = _ctx.get("ideal_version")
-                # Tolerant match: the FE's form-encoded session_context
-                # may carry the version as int or string.
-                if _ctx.get("read_target") != "ideal_text" \
-                        or _iv is None or str(_iv) != str(_version):
-                    continue
-                _astate = _s.get("analysis_state")
-                if _astate in (None, "ready"):
-                    _reread_done = True
-                elif _astate == "processing":
-                    _reread_processing = True
-            # A completed re-read is definitive — the loading state
-            # only shows when NO re-read of this version is done yet.
-            if _reread_done:
-                _reread_processing = False
-
-        # ── IMMEDIATE NEXT-TAKE (founder 2026-07-24, T1 · 1.2): recording
-        # another take must NOT wait on the re-read practice loop. The
-        # re-read three-state mic above (reread_done/reread_processing)
-        # is UNTOUCHED — its 2026-07-22 "orphaned recording" loading gate
-        # still guards the re-read affordance. But the "record another
-        # take" button is DECOUPLED from it: it is available the moment
-        # this project has a spoken take, so a finished recording drops
-        # the student straight back here ready to record again — no
-        # loading state, no forced re-read first. Same continuable-project
-        # rule as GET /explore/arc/<id>/setup (≥1 spoken take, reads
-        # excluded), so the two can never disagree about whether a take
-        # can be started.
+        # ── NEXT TAKE (founder 2026-07-24, T1 · 1.2): available the
+        # moment this project has a spoken take, so a finished recording
+        # drops the student straight back here ready to record again.
+        # Same continuable-project rule as GET /explore/arc/<id>/setup,
+        # so the two can never disagree about whether a take can start.
         _can_record_take = bool(_spoken_rows)
 
         # ── SLIDE LINKAGE (FE handoff 2026-08-03, FE PR #222): the deck
@@ -742,18 +691,10 @@ def v2_explore_get_ideal_text(arc_id):
             # when the text actually changes). continue_arc_id is what
             # keeps a new take appending here so this count climbs.
             "take_count": len(_spoken_rows),
-            "reread_done": _reread_done,
-            # True while a re-read of THIS version is still
-            # transcribing — the FE holds a loading state in the
-            # button's place until it clears (founder 2026-07-22).
-            "reread_processing": _reread_processing,
             # IMMEDIATE next-take affordance (founder 2026-07-24, T1 ·
             # 1.2): the FE can offer "record another take" as soon as
-            # this is true — DECOUPLED from reread_done/reread_processing
-            # so a completed recording returns here ready to record again
-            # with no loading gate and no forced re-read. True once the
-            # project has a spoken take (same continuable-project rule as
-            # /setup); reads never flip it.
+            # this is true. True once the project has a spoken take
+            # (same continuable-project rule as /setup).
             "can_record_take": _can_record_take,
             "text": _text,
             # The arc's served deck PDF (FE handoff 2026-08-03) — null on

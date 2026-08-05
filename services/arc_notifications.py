@@ -219,16 +219,22 @@ def fire_ideal_version_ready(db, user_id: Any, arc_id: Any,
     unchanged reassembly (same version) dedupes and every real new version
     announces once.
 
-    Founder 2026-07-18 (bug token 3c): on takes ONE and TWO the body gains
-    the three-takes encouragement line — a SOFT NUDGE only, never a gate or
-    counter (the SD re-shape removed completion semantics on purpose; no
-    "N of 3" anywhere). Copy = founder-approved verbatim."""
-    body = ("Your ideal text is ready. You can keep refining it by "
-            "recording another take.")
-    if isinstance(spoken_take_count, int) and 1 <= spoken_take_count <= 2:
-        body = ("Your ideal text is ready. Your ideal text gets sharper "
-                "with more takes — three is where it really lands. Record "
-                "another when you're ready.")
+    Founder 2026-08-05 — ONE LINE, always. The bubble body is the only
+    text on the card besides its title, date and CTA, and a bubble is read
+    once when it arrives and a hundred times on scroll-back. Anything
+    motivational in it is noise by the third read.
+
+    So the takes-1-and-2 encouragement line ("Your ideal text gets sharper
+    with more takes — three is where it really lands") is REMOVED, verbatim
+    founder instruction: "not text that it really lands on the 3rd time; on
+    the bubble never; just the title, date and the CTA." The invitation to
+    record again belongs in the live flow, not stamped into history.
+
+    `spoken_take_count` is kept in the signature: callers still pass it and
+    dropping the parameter would break them for no gain. It no longer
+    changes the copy."""
+    del spoken_take_count   # no longer shapes the copy (see above)
+    body = "Your ideal text is ready."
     return _fire_ideal_bubble(
         db, user_id, arc_id,
         client_key=f"willab-ideal-ready:{arc_id}:{version}",

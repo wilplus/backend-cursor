@@ -382,7 +382,7 @@ class AssemblyFlagTests(unittest.TestCase):
         def get_moment_suggestions_by_arc(self, arc_id):
             return {}
 
-        def persist_auto_ideal_text(self, arc_id, text):
+        def persist_auto_ideal_text(self, arc_id, text, *, take_count=None):
             self.persisted.append(text)
             return True
 

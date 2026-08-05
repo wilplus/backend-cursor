@@ -242,6 +242,11 @@ class DestructiveDetectionTests(unittest.TestCase):
             "drop_v2_sessions_legacy_performance_scores.sql",
             "v2_metric_questions_table_only.sql",
             "rename_warmup_to_tasks_and_drop_focus.sql",
+            # Deliberate (founder 2026-08-05): tears down the retired
+            # read-out-loud lane — deletes the historical read sessions,
+            # then drops v2_sessions.recording_kind / paired_session_id.
+            # Destructive on purpose and run by hand, never automatically.
+            "drop_reread_lane.sql",
         }, "The destructive set changed. If you added a migration that drops "
            "something, add it here deliberately — don't just update the literal.")
 
