@@ -72,7 +72,7 @@ def _fetch(limit: int) -> list[dict]:
 
     for session_id, texts in by_session.items():
         rows.append({"unit_id": session_id, "group_id": session_id,
-                     "text": " ".join(texts)})
+                     "source": "snippets", "text": " ".join(texts)})
 
     if len(rows) < limit:
         try:
@@ -90,7 +90,7 @@ def _fetch(limit: int) -> list[dict]:
                     # by however much speakers differ.
                     rows.append({"unit_id": r["id"],
                                  "group_id": r.get("user_id") or r["id"],
-                                 "text": text})
+                                 "source": "recordings", "text": text})
         except Exception as e:
             print(f"  ! recordings read failed: {e}", file=sys.stderr)
     return rows
@@ -102,6 +102,12 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
     per_class_pairs: dict[str, list[tuple[int, int]]] = defaultdict(list)
     per_class_groups: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     term_totals: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    # Per-SOURCE marks and words. charisma_snippets are SELECTED moments, not
+    # a random sample of speech, so their marker rates can differ from
+    # whole-recording transcripts by a lot. Pooling two populations with
+    # different rates manufactures overdispersion by construction -- phi then
+    # reports "these are two registers", not "this speaker is bursty".
+    by_source: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     total_words = 0
 
     for row in rows:
@@ -110,7 +116,10 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
         if n_words <= 0:
             continue
         total_words += n_words
+        src = str(row.get("source") or "?")
+        by_source[src]["words"] += n_words
         for cls in vm.CLASSES:
+            by_source[src][cls] += c[cls][key]
             per_class_pairs[cls].append((c[cls][key], n_words))
             per_class_groups[cls][str(row.get("group_id") or "?")].append(
                 (c[cls][key], n_words))
@@ -129,6 +138,16 @@ def analyse(rows: list[dict], *, strict_only: bool = True) -> dict:
         "documents": len(rows),
         "total_words": total_words,
         "counting": key,
+        "sources": {
+            src: {
+                "words": d["words"],
+                **{cls: {"marks": d[cls],
+                         "rate_per_1000_words": (round(d[cls] / d["words"] * 1000, 3)
+                                                 if d["words"] else None)}
+                   for cls in vm.CLASSES},
+            }
+            for src, d in by_source.items()
+        },
         "classes": {},
     }
 
@@ -196,6 +215,19 @@ def main() -> int:
 
     print(f"\n  {result['documents']} transcripts, "
           f"{result['total_words']:,} words, counting = {result['counting']}\n")
+
+    srcs = result.get("sources") or {}
+    if len(srcs) > 1:
+        print("  BY SOURCE — check these agree before trusting any pooled number.")
+        print(f"    {'source':12s} {'words':>9s}  "
+              + "  ".join(f"{c:>9s}" for c in vm.CLASSES))
+        for src, d in srcs.items():
+            print(f"    {src:12s} {d['words']:9,}  "
+                  + "  ".join(f"{d[c]['rate_per_1000_words'] or 0:8.2f}/k"
+                              for c in vm.CLASSES))
+        print("    charisma_snippets are SELECTED moments, not a random sample.")
+        print("    Two sources at different rates make phi report 'two registers',")
+        print("    not 'this speaker is bursty'.\n")
     for cls, d in result["classes"].items():
         if "error" in d:
             print(f"  {cls:8s}  {d['error']}")
