@@ -221,6 +221,14 @@ BEGIN
         OLD.version;
 END$$;
 
+-- Postgres grants EXECUTE on a new function to PUBLIC by default, and
+-- PostgREST publishes it at /rest/v1/rpc/<name> — so without these REVOKEs
+-- anyone holding the anon key out of the browser bundle could call it. RLS
+-- does not cover this; RLS is table-level.
+REVOKE ALL ON FUNCTION public.reference_distribution_is_frozen() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.reference_distribution_is_frozen() FROM anon;
+REVOKE ALL ON FUNCTION public.reference_distribution_is_frozen() FROM authenticated;
+
 DROP TRIGGER IF EXISTS trg_reference_distribution_frozen
     ON public.reference_distribution;
 CREATE TRIGGER trg_reference_distribution_frozen

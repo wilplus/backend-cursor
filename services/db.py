@@ -12903,6 +12903,86 @@ class DatabaseService:
                            snippet_id, e)
             return False
 
+    def record_dimension_evaluations(self, rows: list) -> int:
+        """Store drift-monitoring evaluations (SPEC D26/D30, Appendix G).
+
+        One row per (snippet, dimension, benchmark_version). Returns the
+        number written; 0 on any failure.
+
+        AC-9: nothing written here is user-facing. It feeds PSI and the
+        p-chart, which are an INTERNAL audit surface.
+
+        THREE STATES, and conflating any two of them corrupts the monitor:
+
+            computed AND benchmarked   fired=True/False  insufficient=False
+            computed, NO benchmark     fired=None        insufficient=False
+            not computable             fired=None        insufficient=True
+
+        The middle state is most of what exists today — wpm, pause_ms,
+        dynamic_db, pitch_center and energy are measured on every snippet and
+        none has a fire threshold in code yet. Those rows are still worth
+        storing: PSI reads `decile`, not `fired`.
+
+        So `fired` is passed through as None unless a real decision was made,
+        and is forced to None whenever `insufficient_data` is set. Writing
+        False for either of the other two states would book a decision nobody
+        made, deflating every fire rate and leaving the monitor calm exactly
+        when data goes missing.
+
+        Best-effort, missing-column-safe; NEVER raises. Drift telemetry must
+        never be able to break the scoring path it observes.
+        """
+        if not rows:
+            return 0
+        payload = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if not row.get("dimension_id"):
+                continue
+            if not (row.get("snippet_id") or row.get("recording_id")
+                    or row.get("session_id")):
+                continue          # ck_dimension_evaluations_has_anchor
+            insufficient = bool(row.get("insufficient_data"))
+            fired = row.get("fired")
+            # None stays None: "no benchmark defined" is a real state, not a
+            # negative decision. Only an explicit bool becomes a decision.
+            decision = None if (insufficient or fired is None) else bool(fired)
+            payload.append({
+                "snippet_id": row.get("snippet_id"),
+                "recording_id": row.get("recording_id"),
+                "session_id": row.get("session_id"),
+                "user_id": row.get("user_id"),
+                "dimension_id": str(row["dimension_id"]),
+                "raw_value": row.get("raw_value"),
+                "decile": row.get("decile"),
+                "fired": decision,
+                "insufficient_data": insufficient,
+                "benchmark_tier": row.get("benchmark_tier") or "CORPUS_REL",
+                "benchmark_version": str(row.get("benchmark_version") or "v0"),
+                "window_class": row.get("window_class"),
+                "n_units": row.get("n_units"),
+            })
+        if not payload:
+            return 0
+        try:
+            (self.client.table("dimension_evaluations")
+                 .upsert(payload,
+                         on_conflict="snippet_id,dimension_id,benchmark_version")
+                 .execute())
+            return len(payload)
+        except Exception as e:
+            err_low = str(e).lower()
+            if "does not exist" in err_low or "dimension_evaluations" in err_low:
+                logger.warning(
+                    "record_dimension_evaluations: table/columns missing (run "
+                    "migrations/add_dimension_evaluations.sql then "
+                    "add_dimension_evaluations_snippet_grain.sql)",
+                )
+                return 0
+            logger.warning("record_dimension_evaluations failed: %s", e)
+            return 0
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything
         missing — the queue then renders every piece as unlabelled."""

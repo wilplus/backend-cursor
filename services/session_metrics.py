@@ -45,6 +45,75 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 
+# Appendix G drift telemetry — the six measures that actually run today.
+#   (dimension_id, snippet column, JSONB `metrics` fallback key)
+# Everything else in Appendix D is specified but not computed, so it cannot
+# be watched: a monitor over a measure nobody produces reports STABLE forever.
+_DRIFT_DIMENSIONS = (
+    ("wpm",          "wpm",          None),
+    ("fillers",      "fillers",      None),
+    ("pause_ms",     "pause_ms",     "pause_ms"),
+    ("dynamic_db",   "dynamic_db",   "dynamic_db"),
+    ("pitch_center", "pitch_center", "pitch_center_st"),
+    ("energy",       "energy",       "energy_ratio"),
+)
+
+# Bumped whenever the DEFINITION of one of these measures changes — not when
+# its value drifts. That separation is the whole point: without it a redefined
+# metric and a shifted population are the same step in the same chart.
+_DRIFT_BENCHMARK_VERSION = "measure-v1"
+
+
+def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
+    """Write one dimension_evaluations row per (snippet, measure).
+
+    MEASUREMENTS, not decisions. None of the six has a fire threshold in code
+    yet, so `fired` is None on every row and `insufficient_data` stays False —
+    the measure computed fine, there is simply nothing to decide. PSI reads
+    `raw_value`/`decile` and does not care; the p-chart filters these out
+    until real benchmarks land.
+
+    `n_units` carries the denominator ACTUALLY used where it is knowable
+    (Appendix F.3). Where it is not, it stays NULL — a wrong denominator is
+    worse than an absent one, because a rate computed over the wrong unit
+    count is silently wrong rather than visibly missing.
+    """
+    rows = []
+    for s in active_snippets or ():
+        snippet_id = s.get("id")
+        if not snippet_id:
+            continue
+        metrics = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+        transcript = (s.get("transcript") or "").strip()
+        word_count = len(transcript.split()) if transcript else None
+
+        for dimension_id, column, fallback_key in _DRIFT_DIMENSIONS:
+            value = s.get(column)
+            if value is None and fallback_key:
+                value = metrics.get(fallback_key)
+            computable = isinstance(value, (int, float))
+            rows.append({
+                "snippet_id": snippet_id,
+                "session_id": session_id,
+                "user_id": s.get("user_id"),
+                "dimension_id": dimension_id,
+                "raw_value": float(value) if computable else None,
+                "fired": None,                       # no benchmark yet
+                "insufficient_data": not computable,
+                "benchmark_tier": "CORPUS_REL",
+                "benchmark_version": _DRIFT_BENCHMARK_VERSION,
+                # The snippet is the piece (~18 s), so a snippet-wide mean is
+                # a CYCLE-scoped read under Appendix F.1.
+                "window_class": "CYCLE",
+                # Only the lexical measures have a knowable denominator here.
+                "n_units": word_count if dimension_id in ("wpm", "fillers")
+                           else None,
+            })
+    if not rows:
+        return 0
+    return db.record_dimension_evaluations(rows)
+
+
 def compute_session_global_metrics(session_id: str) -> dict | None:
     """Aggregate snippet-level metrics into session-level averages and
     persist. Returns the computed dict on success, or ``None`` when
@@ -205,6 +274,22 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
         logger.warning(
             "session metrics: drift check failed session=%s err=%s",
             session_id, drift_err,
+        )
+
+    # Appendix G / SPEC D26 — drift telemetry. One row per (snippet,
+    # dimension) for every measure that actually runs today. These are
+    # MEASUREMENTS, not decisions: none of the six has a fire threshold in
+    # code yet, so `fired` stays None and only `raw_value` is recorded. PSI
+    # reads the value; the p-chart will read `fired` once benchmarks land.
+    #
+    # Deliberately last and fully non-blocking: telemetry that observes the
+    # scoring path must never be able to break it.
+    try:
+        _emit_drift_telemetry(session_id, active_snippets)
+    except Exception as telemetry_err:
+        logger.warning(
+            "session metrics: drift telemetry failed session=%s err=%s",
+            session_id, telemetry_err,
         )
 
     return {
