@@ -1,5 +1,7 @@
 # Appendix C — Intervention Contract: Finding → Intervention → Presentation
 
+**Last updated:** 2026-08-05.
+
 **Companion to SPEC.md v3.** Defines the rigid layer between detection (Appendix A) and what the user sees. Inherits §8 (triage), §11 (delivery constraints), Appendix B (state modulation).
 
 > **Amended by SPEC.md §0 decisions D9–D12.** Severity is dropped from the presentation signature; lexical overlap routes to `CUT` only; four template bands not three; unadjudicated comments are withheld rather than flagged `pending`; an `ALBUM` surface joins the registry; C.8's one-file test carries a `NOTICE` carve-out. All amendments are applied inline below. Where this document and SPEC.md conflict, **SPEC.md wins.**

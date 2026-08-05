@@ -1,5 +1,7 @@
 # Appendix D — Fire-Up Benchmarks and Trigger Functions
 
+**Last updated:** 2026-08-05.
+
 **Companion to SPEC.md v3.** Defines when a detector fires. Inherits §4 (scope), §5.1 (speaker-relative normalisation), §8.2 (triage), Appendix A (the computations), Appendix C (routing to intervention types).
 
 > **Amended by Appendix E.** E-6 adds a perceptual floor to every SPEAKER_REL detector; E-7 adds the amplitude-masking guard; E-8 separates the 250 ms segmentation convention from the 600 ms firing threshold; E-12 marks the D.4 baseline minimum as unsourced. See E.7 for the consolidated list.

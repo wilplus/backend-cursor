@@ -1,5 +1,7 @@
 # Appendix F — Measurement Windows
 
+**Last updated:** 2026-08-05.
+
 **Answers the "4 filler words in *what*?" problem.** Companion to SPEC.md v3 and Appendix D.
 
 ---

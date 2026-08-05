@@ -1,5 +1,7 @@
 # PROMPT — build the drift layer (execute now)
 
+**Last updated:** 2026-08-05.
+
 **Status:** ready to execute. No trigger; this is stage 2 of Appendix G.10 and it is unblocked.
 **Spec:** `SPEC-APPENDIX-G-telemetry.md` §G.5, §G.7, §G.9. Backlog process: PM-3.
 **Cost:** zero human labels. Works at any n.
@@ -12,51 +14,45 @@
 > Read that appendix and `docs/SPEC.md` §0 first. Run the WILLAB DECISION FILTER before starting and
 > emit the verdict block.
 >
-> **Context you must verify before writing code — the spec's SQL is written against a table that does
-> not exist.** `dimension_evaluations` is referenced throughout Appendix G but there is no such table in
-> `migrations/`. Per-dimension numeric measures are currently scattered as individual columns
-> (`wpm`, `pause_ms`, `energy_ratio`, `confidence_score`, `pitch_variance_ideal`, …) across several
-> tables. **Task 1 is therefore to create the normalised evaluations table**, not to query one.
+> **The schema already exists — do not design it.** Appendix G's audit queries were written against a
+> `dimension_evaluations` table that did not exist; per-dimension measures were scattered as individual
+> columns (`wpm`, `pause_ms`, `energy_ratio`, `confidence_score`, `pitch_variance_ideal`, …) across
+> several tables. Both tables are now written:
 >
-> ### Task 1 — `dimension_evaluations`
+> | Migration | Creates | Status |
+> |---|---|---|
+> | `0247 add_dimension_evaluations.sql` | `dimension_evaluations` + `reference_distribution` | **on the branch; must be run in prod** |
+> | `0248 add_profile_native_language.sql` | `user_settings.profile_native_language` (DIF stratum, deferred use) | on the branch; not needed for this build |
 >
-> New migration, idempotent, appended to `migrations/manifest.txt` (a migration not listed there never
-> runs — `test_migrations` enforces this).
+> **Read `migrations/add_dimension_evaluations.sql` before writing any query.** Four properties of that
+> schema constrain the code and are not negotiable:
 >
-> One row per `(recording_id, dimension_id)`:
+> 1. **`fired` is NULLABLE, and NULL iff `insufficient_data`** — enforced by
+>    `ck_dimension_evaluations_fired_exclusive`. Writing `false` for a non-computation would book it as a
+>    real negative, inflating the p-chart denominator and deflating every fire rate. Any INSERT must set
+>    exactly one of the two states; any aggregate must decide explicitly how it treats the NULL rather
+>    than letting SQL's default swallow it.
+> 2. **Uniqueness is `(recording_id, dimension_id, benchmark_version)`.** Re-evaluating under the same
+>    version replaces; a new version adds a row. This is what lets the p-chart group by
+>    `benchmark_version` and see a threshold change as a discontinuity rather than as drift.
+> 3. **`reference_distribution` blocks `UPDATE` by trigger.** A refit inserts `frozen_v2`; it never edits
+>    `frozen_v1`. Do not write code that tries to update it — it will raise, and that is the point.
+> 4. **RLS is ON with no policies** on both tables: service-role only. Nothing here is user-readable.
 >
-> ```sql
-> CREATE TABLE IF NOT EXISTS public.dimension_evaluations (
->     id              BIGSERIAL PRIMARY KEY,
->     recording_id    TEXT NOT NULL,
->     session_id      TEXT NULL,
->     user_id         TEXT NOT NULL,
->     dimension_id    TEXT NOT NULL,
->     raw_value       DOUBLE PRECISION NULL,   -- the measure in its own units
->     decile          SMALLINT NULL,           -- 1..10 vs the frozen reference; PSI reads this
->     fired           BOOLEAN NOT NULL,        -- did the benchmark trigger
->     benchmark_tier  TEXT NOT NULL,           -- 'T1'|'T2'|'T3'|'CORPUS_REL' — the p-chart filters on this
->     benchmark_version TEXT NOT NULL,         -- so a threshold change is separable from a drift
->     window_class    TEXT NULL,               -- Appendix F: FRAME|UNIT|CYCLE|PROPORTIONAL|SESSION
->     n_units         INTEGER NULL,            -- denominator actually used (Appendix F.3)
->     insufficient_data BOOLEAN NOT NULL DEFAULT false,   -- F.5 is first-class, not a null
->     evaluated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-> );
-> ```
+> ### Task 1 — populate `dimension_evaluations`
 >
-> **`benchmark_version` and `insufficient_data` are load-bearing.** Without the first, changing a
-> threshold looks identical to the population drifting. Without the second, "we could not compute this"
-> is indistinguishable from "it did not fire," and PSI silently reads the gap as a distribution shift.
+> Write the evaluation rows at the point where each dimension is scored. No backfill: start collecting
+> forward. Every row needs its `benchmark_tier`, `benchmark_version`, `window_class` and the `n_units`
+> actually used as the denominator (Appendix F.3) — a rate computed over a different unit count than the
+> benchmark assumes is the exact error F.3 exists to catch, and it is only auditable if `n_units` is
+> stored at write time.
 >
-> Backfill is **not** required. Start collecting forward; the frozen reference (Task 2) is built from
-> whatever accumulates.
+> ### Task 2 — freeze the reference
 >
-> ### Task 2 — frozen reference distribution
->
-> `reference_distribution (dimension_id, decile, pct, version, frozen_at)`. Populate `version='frozen_v1'`
-> from the first 4 complete weeks of `dimension_evaluations`. **Freeze it and never recompute in place** —
-> PSI against a moving reference always reads ~0 and the monitor becomes decorative. A new reference is a
-> new `version` row, and `PROMPT`-driven refits (PSI ≥ 0.20) mint `frozen_v2`, keeping v1 readable.
+> Populate `reference_distribution` at `version='frozen_v1'` from the first 4 complete weeks of
+> `dimension_evaluations`, setting `n_at_freeze` so a later reader knows how much data the baseline rests
+> on. PSI against a moving reference always reads ~0 and the monitor becomes decorative *while appearing
+> to work* — the UPDATE trigger makes that failure loud rather than silent.
 >
 > ### Task 3 — `services/drift_monitor.py` (pure, no I/O, unit-tested)
 >
@@ -114,8 +110,8 @@
 >
 > ### Definition of done
 >
-> 1. Migration written, idempotent, in `manifest.txt`, and **called out for the founder to run** —
->    "on main" ≠ "run in prod".
+> 1. `dimension_evaluations` populated at scoring time, with `n_units` and `benchmark_version` set on
+>    every row, and `fired`/`insufficient_data` respecting the XOR constraint.
 > 2. `services/drift_monitor.py` pure and unit-tested, including the zero-decile and small-n cases.
 > 3. The three queries from §G.9 working against the real table, with `CORPUS_REL`/`T3` excluded from
 >    the p-chart.

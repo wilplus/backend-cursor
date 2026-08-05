@@ -1,5 +1,7 @@
 # Appendix G — Silent Population Telemetry
 
+**Last updated:** 2026-08-05.
+
 **Status:** locked 2026-08-05. Normative.
 **Companion to:** SPEC.md v3, Appendix B (progression), Appendix D (benchmarks), Appendix F (windows).
 **Source:** founder-supplied research brief, amended by six conflict resolutions found in review (G.11).

@@ -1,5 +1,7 @@
 # Appendix A — Verbal Computations for Misalignment and Mis-Emphasis
 
+**Last updated:** 2026-08-05.
+
 **Companion to SPEC.md v3.** Everything here inherits §3.1 (detectors are candidate generators, not claims), §4 (scope tiers enforced), §10 (invariants), and §11 (delivery constraints).
 
 > **This appendix is a catalogue, not a v1.0 build list.** SPEC.md §1.2 ships **five** Feedback findings and one Album state. Everything else here is deferred and sequenced by §15. Two amendments apply, marked inline: the ALBUM-routed cross-modal items in A.9 are all deferred (v1.0's Album is confidence-only), and A.10's Tier 1 has a dependency defect. Where this document and SPEC.md conflict, **SPEC.md wins.**

@@ -1,5 +1,7 @@
 # Appendix E — Research Findings and Required Amendments
 
+**Last updated:** 2026-08-05.
+
 **Companion to SPEC.md v3.** Six targeted searches, run against the confidence/prosody literature. **Four of the six change the spec.** Amendments are listed per finding and consolidated in E.7.
 
 ---

@@ -1,5 +1,7 @@
 # Appendix B — Feedback Progression: Novice to Expert
 
+**Last updated:** 2026-08-05.
+
 **Companion to SPEC.md v3.** Governs every parameter of the Feedback Engine over a user's lifetime. Inherits §8 (triage), §10 (invariants), §11 (delivery constraints).
 
 > **Amended by SPEC.md §0 decisions D11, D15, D16, D17.** `FRAGILE` gains its own parameter set (B.2.1) — it is a band, not a point on the fading arc. The GRADUATE cohesion fade becomes a tunable defaulting to no fade. Graduation anchors externally, never on the state machine's own counter. Applied inline below. Where this document and SPEC.md conflict, **SPEC.md wins.**

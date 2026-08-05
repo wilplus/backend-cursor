@@ -1,5 +1,7 @@
 # Product-manager backlog — recurring processes and deferred unlocks
 
+**Last updated:** 2026-08-05.
+
 **Status:** live. Created 2026-08-05 alongside Appendix G.
 **Owner:** founder (currently also the coach and the product manager).
 **Why this file exists:** several decisions in Appendix G deliberately keep a **human in the loop**
@@ -88,19 +90,30 @@ DIF cannot run without a stored subgroup flag. Status of the two we need:
 
 | Subgroup | Status | Detail |
 |---|---|---|
-| **speaker sex** | ✅ **already collected** | `user_settings.speaker_sex`, migration `0223`. Values `female \| male \| prefer_not_to_say \| NULL`, where `prefer_not_to_say` is a hard opt-out distinct from NULL |
-| **native / non-native** | ❌ **missing** | no field exists |
+| **speaker sex** | ✅ **collected** | `user_settings.profile_sex`, migration `0223`. Values `female \| male \| prefer_not_to_say \| NULL`, where `prefer_not_to_say` is a hard opt-out distinct from NULL |
+| **native language (L1)** | ⚠️ **column written, not yet captured** | `user_settings.profile_native_language`, migration `0248` (2026-08-05). Column exists once the migration runs; **no UI asks for it yet** — that is the remaining work |
+
+**Nativeness is derived, never stored as a boolean.** *"Is this speaker native?"* has no user-level
+answer — a native Polish speaker is native presenting in Polish and non-native presenting in English.
+So the column holds the speaker's **L1**, and nativeness for a recording is:
+
+```
+native  <=>  user_settings.profile_native_language = recordings.transcription_language
+```
+
+This is also strictly more informative than a boolean: it permits stratifying by language family later,
+which is the level at which transfer effects actually operate.
 
 **`recordings.language` is not a substitute.** It is the *transcription* language — a native Polish
 speaker presenting in English is `language=en`. Using it as a nativeness proxy would put fluent
 non-natives and natives in the same stratum and hide exactly the DIF we are looking for.
 
 Needed before stage 5 unlocks: a self-declared, optional L1 / native-speaker attribute, following the
-same design as `speaker_sex` — an explicit "prefer not to say" that is distinct from never-asked, and
+same design as `profile_sex` — an explicit "prefer not to say" that is distinct from never-asked, and
 excluded from strata rather than folded into a group.
 
 Both are protected-adjacent attributes. Collect only with clear consent, store separately from the
-labels themselves, and never surface either in a payload. Note that `speaker_sex` already carries the
+labels themselves, and never surface either in a payload. Note that `profile_sex` already carries the
 right precedent in its own migration header: *"NOT SURFACED. It selects a weight vector, full stop."*
 
 ---
@@ -162,6 +175,8 @@ a different and much more favourable constraint. Do not conflate the two when pl
 | Item | Status |
 |---|---|
 | **Migration `0246`** `add_state_generic_ratings.sql` | **must run before PR #346 merges.** Idempotent, no drops. Late = coach labels silently fail to save |
+| **Migration `0247`** `add_dimension_evaluations.sql` | **must run before the drift layer ships.** Creates `dimension_evaluations` + `reference_distribution`. Safe to run early — nothing writes them until the drift build lands |
+| **Migration `0248`** `add_profile_native_language.sql` | run any time; not urgent. The column is inert until a UI asks for L1 (PM-4) |
 | **The cut** — retire the legacy binary instrument | approved (D22); queued as **four additive commits**, not one pass: add alongside → update test doubles → swap readers → rewrite behaviour tests |
 | **Corpus pull** for `r̂` and `φ̂` (hedge/booster/tic base rates) | founder-owned; unblocks the verbal-CONF extractor (D20/D21) |
 | **§13 deployment channel** — B2C vs B2B | **open.** Two legal constraints now attach to B2B: EU AI Act Art. 5(1)(f) and CRA 1991 §106 |

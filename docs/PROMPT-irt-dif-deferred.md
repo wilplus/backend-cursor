@@ -1,5 +1,7 @@
 # PROMPT — IRT, CAT and DIF (deferred; do not execute until a trigger fires)
 
+**Last updated:** 2026-08-05.
+
 **Status:** written in advance, deliberately not scheduled.
 **Spec:** `SPEC-APPENDIX-G-telemetry.md` §G.1, §G.4, §G.6, §G.10. Triggers: `PRODUCT-MANAGER-BACKLOG.md`
 Part 2.
@@ -56,7 +58,7 @@ validity.** Nothing in this file tells you a dimension measures something real.
 > Add discrimination `a` (2PL), then run the fairness audit.
 >
 > **Subgroup availability — check before starting:**
-> - **speaker sex: already collected.** `user_settings.speaker_sex` (migration `0223`), values
+> - **speaker sex: already collected.** `user_settings.profile_sex` (migration `0223`), values
 >   `female | male | prefer_not_to_say | NULL`. `prefer_not_to_say` is a hard opt-out and must be
 >   **excluded from DIF strata**, never folded into either group.
 > - **native/non-native: NOT collected.** `recordings.language` is the *transcription* language — a
