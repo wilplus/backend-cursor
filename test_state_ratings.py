@@ -160,6 +160,16 @@ class TestLaneDerivation(unittest.TestCase):
     def test_bootstrap_is_not_a_panel_lane(self):
         self.assertNotIn("bootstrap", PANEL_LANES)
 
+    def test_owner_is_not_a_panel_lane(self):
+        """SPEC 9.1 — the quorum is model + coach + PEER. The owner is not one
+        of the three, and rates their own recording, so admitting the lane
+        would count self-assessment as inter-rater agreement."""
+        self.assertNotIn("game_owner", PANEL_LANES)
+
+    def test_panel_is_exactly_coach_and_peer(self):
+        """Pinned as a set so the constant cannot quietly regrow a lane."""
+        self.assertEqual(set(PANEL_LANES), {"coach", "game_peer"})
+
 
 class TestQuality(unittest.TestCase):
     def test_sample_size_dominates_agreement(self):

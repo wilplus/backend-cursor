@@ -57,9 +57,18 @@ _VALUE_TERM = {"yes": 1.0, "neutral": 0.0, "no": -1.0}
 # QUERY, which is only possible because the lane is stamped on the row.
 LANES = ("bootstrap", "coach", "game_peer", "game_owner")
 
-# The lanes whose rows may be aggregated into a panel label. bootstrap is
-# absent on purpose and its absence is the whole point of the constant.
-PANEL_LANES = ("coach", "game_peer", "game_owner")
+# The lanes whose rows may be aggregated into a panel label. TWO absences are
+# deliberate, and each is the whole point of the constant:
+#
+#   bootstrap  — one rater on a MODEL-PROPOSED candidate (§6.2). Counting it
+#                would make a single expert opinion look like consensus.
+#   game_owner — §9.1's quorum is model + coach + PEER. The owner is not one of
+#                the three, and they are rating their OWN recording: they know
+#                what they intended, so their answer is self-assessment, not an
+#                independent judgment. In v1.0 the lane carries no question at
+#                all (§6.2, "plumbing only"), which makes this exclusion moot
+#                today and load-bearing the day it stops being moot.
+PANEL_LANES = ("coach", "game_peer")
 
 
 # ── operational definitions (SPEC §17) ──────────────────────────────────────
@@ -236,11 +245,12 @@ def aggregate(rows: Any, *, lanes: tuple = PANEL_LANES) -> Optional[dict]:
     Returns ``{value, agreement, n_raters, quality, by_value, unrateable_n}``
     or None when no row in an eligible lane carries an answer.
 
-    ``lanes`` defaults to PANEL_LANES — **bootstrap is excluded**. It is one
-    rater on a model-proposed candidate, so counting it as a panel member
-    would make a single expert opinion look like consensus. Pass
-    ``lanes=LANES`` deliberately, and only for a corpus pull that wants
-    everything.
+    ``lanes`` defaults to PANEL_LANES — **bootstrap and game_owner are both
+    excluded**. bootstrap is one rater on a model-proposed candidate, so
+    counting it as a panel member would make a single expert opinion look like
+    consensus; game_owner is outside §9.1's model+coach+peer quorum and is the
+    speaker judging their own recording. Pass ``lanes=LANES`` deliberately, and
+    only for a corpus pull that wants everything.
 
     ``unrateable`` rows are counted but never aggregated: they carry no answer,
     so including them in ``n_raters`` would inflate quality on the strength of
