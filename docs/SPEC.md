@@ -12,7 +12,13 @@
 - [Appendix D — Fire-Up Benchmarks and Trigger Functions](SPEC-APPENDIX-D-benchmarks.md)
 - [Appendix E — Research Findings and Required Amendments](SPEC-APPENDIX-E-research.md)
 - [Appendix F — Measurement Windows](SPEC-APPENDIX-F-windows.md)
+- [Appendix G — Silent Population Telemetry](SPEC-APPENDIX-G-telemetry.md)
 - [Decisions log — settled after v3](SPEC-DECISIONS-LOG.md)
+
+**Operational documents (non-normative, but load-bearing):**
+- [Product-manager backlog — recurring processes and deferred unlocks](PRODUCT-MANAGER-BACKLOG.md)
+- [Prompt — build the drift layer (execute now)](PROMPT-drift-layer.md)
+- [Prompt — IRT / CAT / DIF (deferred, trigger-gated)](PROMPT-irt-dif-deferred.md)
 
 ---
 
@@ -39,7 +45,22 @@
 | D17 | **The GRADUATE cohesion fade is a tunable defaulting to no fade.** | The evidence has a knowledge × skill interaction (O'Reilly & McNamara, N=143): high-knowledge *skilled* readers do better with *high* cohesion. Amends Appendix B.2. |
 | D18 | **Policy parameters fixed:** "as you go" = **takes recorded, banded** · "max 50%" = **per feedback-eligible slide-moment** · `effect_size` = **A 1.0 / B 0.6 / C 0.0**. | `C = 0.0` makes the §11.1 routing gate arithmetic, so the gate and the formula cannot drift apart. |
 
-**Still open — do not assume:** deployment channel, B2C vs B2B (§13). Cross-user peer consent is **resolved** — the privacy policy and the pre-game agreement cover data use for this purpose.
+### §0.1 · Settled 2026-08-05 — verbal measurement, and Appendix G
+
+| # | Decision | Consequence |
+|---|---|---|
+| D19 | **The ternary instrument is CONF-only. There is no lexical yes/no indicator.** `sum_of_decisions` (Quatieri, AUC 0.61 → 0.83) is a variance-reduction trick for a **noisy classifier**; a lexicon regex has no measurement error, so there is nothing to average away. | Do not build a per-piece "contains a hedge?" flag. `conf-q-v1`'s own construct already fences this: *"a property of the voice, not of the content."* |
+| D20 | **Lexical rates are estimated by a Beta-Binomial posterior with a corpus prior, evaluated as a within-speaker contrast** — not by a fixed-window ratio behind an `N_min` gate. `φ̂` (overdispersion; markers are bursty) becomes the prior strength. Fire when `P(r_passage > r_baseline) > τ`. | Kills the `INSUFFICIENT_DATA` cliff — a short window yields a wide posterior that simply never crosses τ. Same shrinkage family as `quality()`'s `n/(n+2)`. Bias is toward the corpus mean, i.e. **under-firing**, which is the correct error direction when the span *is* the intervention. |
+| D21 | **Three lexicons split by EPISTEMIC DIRECTION:** `HEDGE` (lowers certainty) · `BOOSTER` (raises it) · `TIC` (bleached — `basically`, `literally`, `actually`). | `utils/filler_words.py` currently mixes all three, so hedges and boosters cancel. **`basically`/`literally`/`actually` are TIC, not BOOSTER** — counting a nervous speaker's tics as raised certainty is backwards. Mapping: **3 measures → 2 interventions → 1 mechanism.** BOOSTER is measured and never triggers a mutation. |
+| D22 | **The cut is approved** — retire the legacy binary instrument. Overrides the earlier DEFER on founder decision. | Ship as **four additive commits**, never one pass: add alongside → update test doubles → swap readers → rewrite behaviour tests. The one-pass attempt took the suite from 5 failures/20 errors to 17/67. |
+| D23 | **`self_relative_delta` is carved out for MEASUREMENT, never for display.** Comment bands: **80% absolute** (task-focused, mastery-oriented) / **20% comparative-qualitative** / **0% digits**. | The 20% band may **normalize the difficulty**, never **rank the user**. ✅ "Most speakers take a while to steady their pacing — yours is steadier than it was." ❌ "Your pacing is steadier than most speakers'." Seeded on `(user, dimension, session)`; suppressed until a self-baseline exists (B.3 `M ≥ 5`). Appendix G.3.1. |
+| D24 | **T1/T2 thresholds NEVER adapt. T3 and CORPUS_REL may.** | An ability-shifted T1 is no longer the literature-measured value while still being labelled T1 — that silently voids the whole tier system. *If a scientific benchmark is failing our users, a human decides, not a script.* Quarterly review = PM-1. Perceptual-floor clamp (E-6) is non-negotiable on anything that does adapt. |
+| D25 | **DIF reports; it never acts. The one-way valve is released by founder decision only.** | Category C = blocking defect on that dimension, flagged and held. Sustained category A is *evidence* the §5.2 sex calibration may be unnecessary (per E-3) but does **not** release the valve. **No automated weight change on a protected attribute, in either direction.** PM-2. |
+| D26 | **Build the drift layer now (PSI + p-chart + DDSketch). IRT / CAT / DIF are deferred behind named volume triggers.** | Drift costs **zero human labels** and guards the measurement pipeline F1 piece (a) depends on. IRT stages gate on **user volume**, not the ~15 labels/week — a different constraint. Triggers in `PRODUCT-MANAGER-BACKLOG.md`; build specs pre-written in the two `PROMPT-*.md` files. |
+| D27 | **AC-9 gains a companion rule: mastery framing.** AC-9 bans the number; it does **not** ban *"your pacing was weak this time"*, which is self-referenced, number-free and still harmful. | FIT's mechanism is **attention-based** — a 2021 goal-framing meta-analysis found self-referencing alone did not reliably beat performance framing; task-focused mastery content carried the effect. Copy review must test for evaluative framing, not just for digits. PM-5. |
+| D28 | **Stratify internally, surface nothing comparative.** | The brief's "silent renorm vs stratify-and-disclose" dilemma does not apply to us: naming a reference group *surfaces a normative comparison*. Stratification is required (Simpson's paradox is the most likely real harm) but never appears in a payload or in copy. Appendix G.8. |
+
+**Still open — do not assume:** deployment channel, B2C vs B2B (§13); two legal constraints now attach to any B2B hiring/performance channel — EU AI Act Art. 5(1)(f) and CRA 1991 §106. Cross-user peer consent is **resolved** — the privacy policy and the pre-game agreement cover data use for this purpose.
 
 ---
 
