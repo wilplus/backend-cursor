@@ -60,6 +60,27 @@ class DatabaseService:
         self._student_profile_table = "student_profile"
         self._legacy_student_profile_table = "user_sniper_profile"
 
+    def reset_connections(self) -> None:
+        """Rebuild the client. MUST be called in a freshly forked child.
+
+        `db = DatabaseService()` runs at IMPORT, so the TLS connection to
+        Supabase is established in the parent — worker.py's `_warm_analysis_
+        stack()` and its boot sweep both touch the DB before forking. A
+        `fork` context then hands that one live socket to every slot, and two
+        processes writing into a single TLS session produce exactly what the
+        worker logs showed:
+
+            [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac
+            EOF occurred in violation of protocol
+            Server disconnected
+
+        Those are caught and logged as warnings, so the reads simply return
+        nothing and the sweep quietly does no work — the same silent-failure
+        shape as the telemetry writes. `job_queue.reset_connections()` already
+        handles this for Redis and says why; the httpx/TLS half was missed.
+        """
+        self.client = self._build_supabase_client()
+
     def _build_supabase_client(self) -> Client:
         """Create the Supabase client.
 

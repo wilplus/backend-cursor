@@ -181,11 +181,23 @@ def main() -> int:
         logger.info("boot sweep: %s", counts)
     except Exception as e:
         logger.warning("boot sweep failed: %s", e)
+    # ONE CHAIN, NOT ONE PER BOOT. run_sweep_loop re-enqueues itself in a
+    # `finally`, so a chain never ends — and this used to start a fresh one
+    # every boot. Ten restarts left ten immortal chains sweeping in parallel,
+    # which is what "eleven sweeps in four seconds" was: not a hot loop,
+    # eleven accumulated chains coming due together. The lease makes it a
+    # singleton and self-healing — a dead chain's key expires and the next
+    # boot takes over.
     try:
-        job_queue.enqueue(
-            pipeline_jobs.SWEEP_LOOP_PATH,
-            delay_seconds=pipeline_jobs.sweep_interval_seconds(),
-        )
+        interval = pipeline_jobs.sweep_interval_seconds()
+        if job_queue.acquire_sweep_lease(
+                ttl_seconds=interval * pipeline_jobs.SWEEP_LEASE_INTERVALS):
+            job_queue.enqueue(pipeline_jobs.SWEEP_LOOP_PATH,
+                              delay_seconds=interval)
+            logger.info("sweep chain started (every %ss)", interval)
+        else:
+            logger.info("sweep chain already running elsewhere — not starting "
+                        "a second")
     except Exception as e:
         logger.warning("sweep chain start failed: %s", e)
 
@@ -233,6 +245,20 @@ def _worker_child(slot: int) -> None:
 
     from services import job_queue as jq
     jq.reset_connections()
+    # The DB client is fork-inherited too, and for the same reason: `db =
+    # DatabaseService()` runs at import, and the parent touches Supabase
+    # (warm-up, boot sweep) BEFORE forking. Two slots sharing one TLS session
+    # corrupt each other — SSLV3_ALERT_BAD_RECORD_MAC / "EOF occurred in
+    # violation of protocol" — and every DB call in this slot swallows the
+    # error and returns nothing, so the slot looks alive and does no work.
+    try:
+        from services.db import db as _db
+        _db.reset_connections()
+    except Exception as e:
+        logger.error("slot %d: db connection reset failed (%s) — this slot "
+                     "shares the parent's TLS socket and its reads will "
+                     "corrupt", slot, e)
+
     conn = jq.get_redis(for_worker=True)
     if conn is None:
         logger.error("slot %d: no broker connection", slot)
