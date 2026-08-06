@@ -135,7 +135,8 @@ def _frame_rms_db(sig: np.ndarray) -> np.ndarray:
     return np.array(dbs, dtype=np.float32)
 
 
-def _compute_pause_ms(dbs: np.ndarray) -> Optional[float]:
+def _pause_runs(dbs: np.ndarray) -> list:
+    """Every silent run at or over MIN_PAUSE_SEC, in milliseconds."""
     is_silent = dbs < SILENCE_DB_THRESHOLD
     min_frames = int(MIN_PAUSE_SEC * 1000 / FRAME_MS)
     pause_durations = []
@@ -149,9 +150,31 @@ def _compute_pause_ms(dbs: np.ndarray) -> Optional[float]:
             run_len = 0
     if run_len >= min_frames:
         pause_durations.append(run_len * FRAME_MS)
+    return pause_durations
+
+
+def _compute_pause_ms(dbs: np.ndarray) -> Optional[float]:
+    pause_durations = _pause_runs(dbs)
     if not pause_durations:
         return None
     return round(float(np.mean(pause_durations)), 1)
+
+
+def _compute_pause_count(dbs: np.ndarray) -> Optional[int]:
+    """HOW MANY pauses `pause_ms` is the mean of.
+
+    Stored so the window roll-up can be EXACT. `pause_ms` is a mean, and the
+    mean of means is only correct when weighted by the count each mean was
+    taken over. Without this, rate_windows duration-weights instead, which
+    assumes pause count scales with snippet length — roughly Henderson, but an
+    assumption where an exact figure was available for one extra integer.
+
+    None (not 0) when the snippet has no qualifying pause, matching pause_ms:
+    a snippet that contributes no pauses must contribute no weight, and a 0
+    weight and an unknown weight have to stay distinguishable.
+    """
+    count = len(_pause_runs(dbs))
+    return count or None
 
 
 def _compute_dynamic_db(dbs: np.ndarray) -> Optional[float]:
@@ -579,6 +602,9 @@ def _analyze_pcm(
     result = {
         "wpm": wpm,
         "pause_ms": _compute_pause_ms(dbs),
+        # The count pause_ms is the mean OF — makes the window roll-up exact
+        # rather than duration-weighted. See _compute_pause_count.
+        "pause_count": _compute_pause_count(dbs),
         "dynamic_db": _compute_dynamic_db(dbs),
         "emphasis_per_min": _compute_emphasis_per_min(dbs, duration_sec),
         "energy_ratio": _compute_energy_ratio(sig, dbs),

@@ -74,6 +74,11 @@ class Piece:
     # dimension_id -> the snippet's raw value. A COUNT for a per-minute rate
     # (fillers), a LEVEL or an already-per-minute rate for the rest.
     values: dict = field(default_factory=dict)
+    # dimension_id -> how many observations that value is the mean OF.
+    # Only meaningful for a `mean` dimension; absent means "not recorded",
+    # and the roll-up falls back to duration-weighting. Populated for
+    # `pause_ms` from the pipeline's pause_count.
+    weights: dict = field(default_factory=dict)
 
     @property
     def end_ms(self) -> float:
@@ -112,19 +117,28 @@ def _aggregate(pieces: Sequence[Piece], dimension: str, seconds: float,
 
       per_minute      sum of counts / speech minutes        exact
       per_1000_words  sum of counts / (words / 1000)        exact
-      mean            DURATION-WEIGHTED mean                 see below
+      mean            COUNT-weighted if counts are known,   see below
+                      else DURATION-weighted
 
-    Duration-weighting is not a refinement, it is the correct roll-up for a
-    value that is already a rate: the duration-weighted mean of per-snippet
+    TWO CORRECT WEIGHTINGS, and which one is right depends on what the value
+    is a mean OF.
+
+    For a value that is already a RATE (`wpm`), DURATION-weighting is exact,
+    not an approximation: the duration-weighted mean of per-snippet
     words-per-minute IS total words over total minutes. An unweighted mean
-    would over-weight short snippets, which is the caveat the registry records
-    against `wpm` today.
+    would over-weight short snippets.
 
-    For `pause_ms` — a MEAN pause length, not a rate — duration-weighting is
-    an approximation, because the exact figure needs the pause COUNT per
-    snippet and the pipeline does not store one. It assumes pause count scales
-    with duration, which is roughly Henderson's finding. Recorded here rather
-    than hidden: capturing a per-snippet pause count would make it exact.
+    For a value that is the mean of a COUNTABLE set (`pause_ms` — the mean
+    length of the pauses in a snippet), the exact roll-up weights by how many
+    pauses each snippet contributed. Duration-weighting assumes pause count
+    scales with snippet length, which is roughly Henderson's finding but still
+    an assumption. `pause_count` now ships in the metrics blob, so a window
+    whose pieces all carry one is EXACT; older snippets predate the field and
+    fall back to duration-weighting rather than being dropped.
+
+    The weight is required from EVERY contributing piece before it is used.
+    Mixing count-weighted and duration-weighted terms in one mean would be
+    neither quantity, and would shift silently as old rows aged out.
     """
     from services import dimension_registry as registry
 
@@ -150,6 +164,23 @@ def _aggregate(pieces: Sequence[Piece], dimension: str, seconds: float,
         return (total / (words / 1000.0)) if words > 0 else None
     if how == "sum":
         return total
+
+    # EXACT path: every contributing piece knows how many observations its
+    # mean was taken over, so the mean of means is a true pooled mean. One
+    # piece without a usable count sends the whole window to the fallback —
+    # a mean mixing the two weightings is neither quantity.
+    counts: list[float] = []
+    for piece, _value in have:
+        count = piece.weights.get(dimension)
+        if (isinstance(count, (int, float)) and not isinstance(count, bool)
+                and count > 0):
+            counts.append(float(count))
+        else:
+            counts = []
+            break
+    if counts:
+        return (sum(v * c for (_, v), c in zip(have, counts))
+                / sum(counts))
 
     weight = sum(p.duration_ms for p, _ in have)
     if weight <= 0:

@@ -6584,10 +6584,12 @@ class DatabaseService:
             from services.snippet_values import resolve_all
             result = (
                 self.client.table("charisma_snippets")
-                .select(
-                    "wpm, fillers, pause_ms, dynamic_db, pitch_center, "
-                    "energy, metrics, transcript, duration_ms, created_at"
-                )
+                # The six denormalized metric columns are NOT selected: they
+                # are always NULL (nothing writes them) and migration 0254
+                # drops them, at which point naming one here would make this
+                # query error. resolve_all reads the blob; its column lookups
+                # simply miss, before and after the drop.
+                .select("metrics, transcript, duration_ms, created_at")
                 .eq("user_id", user_id)
                 .not_.is_("coach_label", "null")
                 .order("created_at", desc=True)
@@ -9005,58 +9007,6 @@ class DatabaseService:
             return None
         except Exception as e:
             logger.error(f"update_snippet_boundaries failed: {e}")
-            return None
-
-    def update_snippet_metrics(
-        self,
-        snippet_id: str,
-        wpm: float | None,
-        fillers: int | None,
-        pause_ms: float | None,
-        dynamic_db: float | None,
-        pitch_center: float | None,
-        energy: float | None,
-        metrics_json: dict | None = None,
-        transcript: str | None = None,
-    ) -> Optional[dict]:
-        """Update a snippet's per-window acoustic metric columns.
-
-        Persists the individual columns the admin UI / KPI compute
-        read from (wpm, fillers, pause_ms, dynamic_db, pitch_center,
-        energy) AND the canonical ``metrics`` JSONB blob, so the two
-        representations stay in lockstep.
-
-        When ``transcript`` is provided we also overwrite the
-        ``transcript`` column — boundary-adjust paths re-Whisper the
-        sliced window and call this with the new transcript so WPM
-        and fillers are computed against the correct text. Passing
-        ``transcript=None`` (default) leaves the column untouched
-        (e.g. for paths that only refresh acoustic numbers).
-        """
-        try:
-            payload: dict = {
-                "wpm": wpm,
-                "fillers": fillers,
-                "pause_ms": pause_ms,
-                "dynamic_db": dynamic_db,
-                "pitch_center": pitch_center,
-                "energy": energy,
-            }
-            if metrics_json is not None:
-                payload["metrics"] = metrics_json
-            if transcript is not None:
-                payload["transcript"] = transcript
-            result = (
-                self.client.table("charisma_snippets")
-                .update(payload)
-                .eq("id", snippet_id)
-                .execute()
-            )
-            if result.data and len(result.data) > 0:
-                return result.data[0]
-            return None
-        except Exception as e:
-            logger.error(f"update_snippet_metrics failed: {e}")
             return None
 
     def update_snippet_metrics_blob(

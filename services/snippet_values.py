@@ -8,10 +8,12 @@ WHY THIS MODULE EXISTS AT ALL — measured 2026-08-06, not assumed.
 
 `charisma_snippets` has six denormalized metric columns (wpm, fillers,
 pause_ms, dynamic_db, pitch_center, energy) and a `metrics` JSONB blob. The
-columns look canonical and are in fact DEAD: the only writer,
-`db.update_snippet_metrics`, is reached solely from
-`snippet_extraction.recompute_snippet_metrics_for_window`, which has no callers
-repo-wide. `process_lab_recording` inserts the blob and nothing else.
+columns look canonical and are in fact DEAD: their only writer,
+`db.update_snippet_metrics`, was reached solely from
+`snippet_extraction.recompute_snippet_metrics_for_window`, which had no callers
+repo-wide. Both were DELETED 2026-08-06 and migration 0254 drops the columns;
+the column slot below stays so this resolves correctly both before and after
+that migration runs. `process_lab_recording` inserts the blob and nothing else.
 
 So every caller reading `snippet["wpm"]` has been reading NULL — the admin
 snippet lists, the coach acoustic disclosure, the labelled-metric baselines,
@@ -133,6 +135,31 @@ def resolve(snippet: dict, dimension_id: str) -> Optional[float]:
 def resolve_all(snippet: dict) -> dict[str, Optional[float]]:
     """All six, keyed by dimension_id. Values may be None."""
     return {d: resolve(snippet, d) for d in SNIPPET_FIELDS}
+
+
+# dimension_id -> the blob key holding HOW MANY observations that dimension's
+# value is the mean of. Only `pause_ms` has one: it is the mean length of a
+# countable set, so the exact roll-up weights by count, not by duration.
+# `wpm` deliberately has none — it is already a rate, and duration-weighting it
+# is exact rather than approximate.
+_WEIGHT_KEYS = {"pause_ms": "pause_count"}
+
+
+def weights_of(snippet: dict) -> dict[str, float]:
+    """{dimension_id: observation count} for whatever the row records.
+
+    Absent for snippets written before `pause_count` shipped; rate_windows
+    falls back to duration-weighting when any contributing piece is missing
+    one, so an old row degrades the window rather than corrupting it.
+    """
+    metrics, _, _ = _context(snippet)
+    out: dict[str, float] = {}
+    for dimension, key in _WEIGHT_KEYS.items():
+        value = metrics.get(key)
+        if (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and value > 0):
+            out[dimension] = float(value)
+    return out
 
 
 def display_hz(snippet: dict) -> Optional[float]:
