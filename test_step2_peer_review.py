@@ -63,7 +63,6 @@ def _prompt(**over) -> str:
             "admin_comment": "Good lift on 'shipped'.",
             "coach_label": "charisma",
         },
-        "acoustic_targets": {},
         "director_script_questions": ["What were you feeling there?"],
         "user_first_name": "Sam",
         "user_org_context": None,
@@ -199,9 +198,12 @@ class Step2LabelPinningTests(unittest.TestCase):
             self.assertEqual(out["label_buttons"]["no_label"], STEP2_NO_LABEL)
 
     def test_other_steps_are_untouched(self):
-        """STEP 8's acoustic-targets turn has no buttons; the pin must not
-        invent them."""
-        out = self._pin({"triggers": ["show_acoustic_targets_card"]})
+        """A non-STEP-2 turn has no buttons; the pin must not invent them.
+
+        Used to sample show_acoustic_targets_card here — deleted 2026-08-06
+        with the numeric targets, so this samples STEP 9's trigger instead.
+        """
+        out = self._pin({"triggers": ["show_trial_recording_mic"]})
         self.assertNotIn("label_buttons", out)
 
 

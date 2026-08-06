@@ -3,11 +3,11 @@
 Two surfaces ship the "record here" gesture and both used to break:
 
   1. The coaching state-machine chat. After the user walked through
-     the Director's Script + acoustic targets, the chat ended without
+     the Director's Script, the chat ended without
      ever inviting them to record a fresh take — even though the
      POST /v2/coaching/trial-recording endpoint was wired and ready to
-     accept that take. STEP 8 has been split into a BRIDGE (acoustic
-     targets card, end=false) and a new STEP 9 (the re-record ask,
+     accept that take. STEP 8 has been split into a BRIDGE (the
+     next-take framing, end=false) and a new STEP 9 (the re-record ask,
      trigger=show_trial_recording_mic). This file's first test class
      locks the prompt + schema in.
 
@@ -65,17 +65,6 @@ _FAKE_SNIPPET = {
     "admin_comment": "You sounded grounded right here.",
     "coach_label": "charisma",
 }
-_FAKE_TARGETS = {
-    "target_wpm": 135,
-    "ideal_wpm_min": 125,
-    "ideal_wpm_max": 140,
-    "target_dynamic_db": 9.5,
-    "target_fillers_per_min": 1.0,
-    "target_fillers_total": 3,
-    "current_wpm": 168,
-    "current_fillers": 7,
-    "current_dynamic_db": 7.5,
-}
 _FAKE_SCRIPT = [
     {"position": 1, "text": "What were you trying to convey there?"},
     {"position": 2, "text": "What did the audience need from you?"},
@@ -131,7 +120,6 @@ class TestStateMachineStep9(unittest.TestCase):
         tell it to set show_trial_recording_mic in triggers there."""
         prompt = build_state_machine_system_prompt(
             snippet=_FAKE_SNIPPET,
-            acoustic_targets=_FAKE_TARGETS,
             director_script_questions=_FAKE_SCRIPT,
             user_first_name="Artur",
             coaching_id=_FAKE_COACHING_ID,
@@ -146,18 +134,17 @@ class TestStateMachineStep9(unittest.TestCase):
         self.assertIn("trial_recording", step_9_block)
 
     def test_prompt_makes_step_8_a_bridge_not_a_close(self):
-        """STEP 8 (acoustic targets) must hand off to STEP 9 — it is
+        """STEP 8 (the next-take bridge) must hand off to STEP 9 — it is
         no longer the terminal step."""
         prompt = build_state_machine_system_prompt(
             snippet=_FAKE_SNIPPET,
-            acoustic_targets=_FAKE_TARGETS,
             director_script_questions=_FAKE_SCRIPT,
             coaching_id=_FAKE_COACHING_ID,
         )
         # Split on the section header literal so we don't pick up an
         # incidental "STEP 8" reference inside an earlier step's
         # fallback instructions.
-        step_8_marker = "STEP 8 — THE ACOUSTIC BRIDGE"
+        step_8_marker = "STEP 8 — THE NEXT-TAKE BRIDGE"
         step_9_marker = "STEP 9 — THE RE-RECORD ASK"
         self.assertIn(step_8_marker, prompt)
         self.assertIn(step_9_marker, prompt)
@@ -166,14 +153,13 @@ class TestStateMachineStep9(unittest.TestCase):
         )
         # end=false on the bridge.
         self.assertIn("end=false", step_8_block)
-        # STEP 8's emitted triggers must be exactly the targets card
-        # (the mic-unlock trigger fires on STEP 9). The block also
-        # contains an explicit "Do NOT emit show_trial_recording_mic
-        # here" prohibition for the LLM, so we can't just substring-
-        # match the trigger string — we look at the triggers= line.
-        self.assertIn(
-            "triggers=['show_acoustic_targets_card']", step_8_block
-        )
+        # STEP 8 emits no affordance. It used to emit
+        # show_acoustic_targets_card; the numeric targets were deleted
+        # 2026-08-06 (founder) and the card went with them. The block
+        # still carries an explicit "Do NOT emit show_trial_recording_mic
+        # here" prohibition for the LLM, so we can't just substring-match
+        # the trigger string — we look at the triggers= line.
+        self.assertIn("triggers=['none']", step_8_block)
         self.assertNotIn(
             "triggers=['show_trial_recording_mic']", step_8_block
         )
@@ -183,7 +169,6 @@ class TestStateMachineStep9(unittest.TestCase):
         LLM can pass it through on trial_recording.coaching_id."""
         prompt = build_state_machine_system_prompt(
             snippet=_FAKE_SNIPPET,
-            acoustic_targets=_FAKE_TARGETS,
             director_script_questions=_FAKE_SCRIPT,
             coaching_id=_FAKE_COACHING_ID,
         )
@@ -196,7 +181,7 @@ class TestStateMachineStep9(unittest.TestCase):
         raw = json.dumps({
             "narration": (
                 "Beautiful — now let's hear it again. Tap the mic "
-                "and re-do that moment at around 135 WPM."
+                "and re-do that moment with a steadier tempo."
             ),
             "step": 9,
             "current_question_position": None,

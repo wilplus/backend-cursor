@@ -3,23 +3,20 @@
 The user clicks a published snippet on /results, opens a chat, and
 the AI runs a strict 5-step protocol that takes them from "here's
 what your coach said" to "negotiate this $150 SaaS subscription"
-to "here are the acoustic targets to hit next time".
+to a qualitative framing for the next take.
 
 Why a state machine instead of free-form chat
 ---------------------------------------------
 The pedagogical sequence is deliberate: reveal → reflect → label
 → pivot → simulate → conclude. Free-form chat would let the LLM
 drift (skip the RLHF label, never reach the negotiation, never
-surface acoustic targets). We pin the sequence into the system
+reach the re-record ask). We pin the sequence into the system
 prompt verbatim and pair it with a structured-output schema that
 tells the frontend which UI bubbles to render and which RLHF
 hooks to wire up.
 
 What this module owns
 ---------------------
-- ``compute_acoustic_targets(...)`` — derives per-user target WPM /
-  pitch variation / filler ceiling from session global metrics.
-  Pure math; no LLM call.
 - ``build_state_machine_system_prompt(...)`` — assembles the system
   prompt for ONE coaching session's chat thread. Injects the
   snippet's admin_comment as the "Director's Notes" the AI must
@@ -53,8 +50,10 @@ The frontend reads the structured output and:
     show_charisma_label_buttons pointed at a deleted route.
   - On step==3..7: renders standard chat bubbles for each
     Director's Script question; input box stays open.
-  - On step==8: shows the acoustic-targets card (the bridge —
-    end=false, input stays open for the user's reaction).
+  - On step==8: renders the qualitative next-take framing (the
+    bridge — end=false, input stays open for the reaction).
+    The numeric acoustic-targets card was DELETED 2026-08-06 by
+    founder decision; see _NEXT_TAKE_SEED.
   - On step==9 with show_trial_recording_mic in triggers:
     swaps the text input for the mic affordance and POSTs the
     recording to /v2/coaching/trial-recording. The session is
@@ -78,21 +77,11 @@ logger = logging.getLogger(__name__)
 NEGOTIATION_ANCHOR_PRICE = 150
 NEGOTIATION_FLOOR_PRICE = 90
 
-# Pace band the dashboard surfaces — same numbers the charisma
-# dashboard's "ideal" range uses, so the user gets a consistent
-# read across the chat and the radar.
-_IDEAL_WPM_MIN = 125
-_IDEAL_WPM_MAX = 140
-
 # Cap on how many script questions the prompt will walk through.
 # Schema-side cap is also 5 (see migration). If more get passed,
 # we truncate; if fewer, we walk through what we have and skip
 # the missing positions.
 _MAX_SCRIPT_QUESTIONS = 5
-
-# Target filler density — chat goal frames it as "fewer fillers
-# next time". 1/min reads as fluent on conversational delivery.
-_TARGET_FILLERS_PER_MIN = 1.0
 
 # ── STEP 2: the peer-review beat (founder-signed copy, 2026-08-04) ────────
 #
@@ -119,84 +108,9 @@ STEP2_NO_LABEL = "Not quite"
 CONFIDENCE_REVIEW_TRIGGER = "show_confidence_review_buttons"
 
 
-def compute_acoustic_targets(
-    *,
-    global_wpm: Optional[float],
-    global_fillers: Optional[int],
-    global_dynamic_db: Optional[float],
-    session_duration_ms: Optional[int] = None,
-) -> dict[str, Any]:
-    """Derive per-user acoustic targets from the session's averages.
-
-    The targets are the carrots the state machine's STEP 5 dangles
-    in front of the user — "if you keep tempo at X and pitch
-    variation at Y with fewer filler words next time, we'll see".
-    They're computed per session (not per user globally) so the
-    bar adapts to where the user actually is right now.
-
-    Rules:
-      target_wpm
-        - If current_wpm is comfortably inside the ideal band
-          (125-140), the target is "hold this pace".
-        - If too slow (<125), target the ideal-band midpoint.
-        - If too fast (>140), target the upper edge of the band
-          (140) — closing the gap by ~half.
-      target_dynamic_db
-        - +2 dB on the user's current dynamic range, ceiling 30 dB.
-          "Slightly more vocal variation than today" is achievable
-          on the next session.
-      target_fillers_per_min
-        - Fixed at _TARGET_FILLERS_PER_MIN; phrased as "under 1
-          filler per minute".
-      target_fillers_total
-        - When session duration is known, the per-minute target is
-          rendered as an absolute count so STEP 5 can say "keep
-          fillers under 3" instead of "under 1/min".
-
-    Every output field is optional — missing inputs produce
-    ``None`` in the corresponding slot, and the prompt builder
-    drops the line rather than rendering "Target WPM: None".
-    """
-    target_wpm: Optional[int] = None
-    if isinstance(global_wpm, (int, float)) and global_wpm > 0:
-        wpm = float(global_wpm)
-        if _IDEAL_WPM_MIN <= wpm <= _IDEAL_WPM_MAX:
-            target_wpm = int(round(wpm))
-        elif wpm < _IDEAL_WPM_MIN:
-            target_wpm = int(round((_IDEAL_WPM_MIN + _IDEAL_WPM_MAX) / 2))
-        else:
-            target_wpm = _IDEAL_WPM_MAX
-
-    target_dynamic_db: Optional[float] = None
-    if isinstance(global_dynamic_db, (int, float)) and global_dynamic_db > 0:
-        target_dynamic_db = round(min(30.0, float(global_dynamic_db) + 2.0), 1)
-
-    target_fillers_total: Optional[int] = None
-    if (
-        isinstance(session_duration_ms, (int, float))
-        and session_duration_ms
-        and session_duration_ms > 0
-    ):
-        minutes = max(0.5, float(session_duration_ms) / 60000.0)
-        target_fillers_total = max(0, int(round(_TARGET_FILLERS_PER_MIN * minutes)))
-
-    return {
-        "target_wpm": target_wpm,
-        "ideal_wpm_min": _IDEAL_WPM_MIN,
-        "ideal_wpm_max": _IDEAL_WPM_MAX,
-        "target_dynamic_db": target_dynamic_db,
-        "target_fillers_per_min": _TARGET_FILLERS_PER_MIN,
-        "target_fillers_total": target_fillers_total,
-        "current_wpm": global_wpm,
-        "current_fillers": global_fillers,
-        "current_dynamic_db": global_dynamic_db,
-    }
-
-
 def build_state_machine_system_prompt(
     *,
     snippet: dict,
-    acoustic_targets: dict,
     director_script_questions: Optional[list[dict]] = None,
     user_first_name: Optional[str] = None,
     user_org_context: Optional[str] = None,
@@ -220,7 +134,7 @@ def build_state_machine_system_prompt(
     handler resolves which to pass in.
     When the script is empty / missing, the prompt falls through
     to a single open question and proceeds straight to the
-    acoustic bridge + re-record ask.
+    next-take bridge + re-record ask.
 
     ``coaching_id`` is echoed back to the frontend on STEP 9 via
     ``trial_recording.coaching_id`` so the recording POST knows
@@ -271,22 +185,6 @@ def build_state_machine_system_prompt(
 
     script_block, script_length = _format_director_script(
         director_script_questions or []
-    )
-
-    target_wpm = acoustic_targets.get("target_wpm")
-    target_db = acoustic_targets.get("target_dynamic_db")
-    target_fillers_total = acoustic_targets.get("target_fillers_total")
-    target_fillers_per_min = acoustic_targets.get("target_fillers_per_min")
-    current_wpm = acoustic_targets.get("current_wpm")
-    current_fillers = acoustic_targets.get("current_fillers")
-
-    acoustic_targets_line = _format_acoustic_targets_for_prompt(
-        target_wpm=target_wpm,
-        target_db=target_db,
-        target_fillers_total=target_fillers_total,
-        target_fillers_per_min=target_fillers_per_min,
-        current_wpm=current_wpm,
-        current_fillers=current_fillers,
     )
 
     first_name_line = (
@@ -470,40 +368,35 @@ def build_state_machine_system_prompt(
         "  bridge acknowledging the user's reflection and proceed "
         "  to the bridge.\n"
         "\n"
-        "STEP 8 — THE ACOUSTIC BRIDGE (one turn — this is a "
+        "STEP 8 — THE NEXT-TAKE BRIDGE (one turn — this is a "
         "BRIDGE, not the close; STEP 9 comes next):\n"
         "  Per RULE 2, open with (in English per RULE 1): \"Ok, "
         "noted. Good work across those reflections.\" — adapted "
         "to acknowledge what the user said in the final script "
         "answer.\n"
-        "  Then surface the acoustic goals — render the targets "
-        "below in English and keep the NUMBERS verbatim (WPM, "
-        "dB, filler counts come from this user's actual baseline; "
-        "don't invent your own). Frame them as the bar for the "
-        "next take. Phrasing seed:\n"
-        f"    {acoustic_targets_line}\n"
+        "  Then frame the next take QUALITATIVELY, in English. "
+        "State NO figure of any kind — no WPM, no dB, no filler "
+        "count — and make no comparison to what the user did this "
+        "time. Phrasing seed:\n"
+        f"    {_NEXT_TAKE_SEED}\n"
         "  Close with a one-line preview that a fresh recording "
         "is coming up next (e.g. \"Now let's hear you try it — "
         "you'll record a short take in a moment.\"). Do NOT ask "
         "for the recording on this step — STEP 9 owns that.\n"
         "  Set step=8, end=false, current_question_position=null, "
-        "  and triggers=['show_acoustic_targets_card']. Pass the "
-        "  targets in acoustic_targets so the frontend can render "
-        "  the targets card. Do NOT emit show_trial_recording_mic "
-        "  here — that fires on STEP 9.\n"
+        "  and triggers=['none']. Do NOT emit "
+        "  show_trial_recording_mic here — that fires on STEP 9.\n"
         "\n"
         "STEP 9 — THE RE-RECORD ASK (one turn — closes the chat "
         "input and hands off to the mic):\n"
         "  Per RULE 2, open with ONE sentence reflecting the "
-        "user's reaction to the targets you just surfaced in "
-        "STEP 8.\n"
+        "user's reaction to the framing you gave in STEP 8.\n"
         "  Then ask them to record a fresh take here in the chat. "
         "Describe the practice prompt briefly — refer back to the "
-        "acoustic targets from STEP 8 (the WPM band, the dB lift, "
-        "the filler ceiling) as the bar to aim for. Keep the ask "
-        "concrete and 1-2 sentences: \"Tap the mic and re-do that "
-        "moment — aim for X WPM, with a touch more vocal range, "
-        "and under N fillers.\"\n"
+        "QUALITATIVE framing from STEP 8. State NO figure of any "
+        "kind. Keep the ask to 1-2 sentences: \"Tap the mic and "
+        "re-do that moment — steady tempo, a touch more range, "
+        "fewer fillers.\"\n"
         "  Do NOT end with the literal word END. The session "
         "closes out-of-band when the trial recording POSTs to "
         "/v2/coaching/trial-recording.\n"
@@ -521,7 +414,7 @@ def build_state_machine_system_prompt(
         "bubble (in English per RULE 1). The 'step' (1..9), "
         "'current_question_position' (1..5 during script steps, "
         "null otherwise), 'triggers', 'end', 'snippet_player', "
-        "'label_buttons', 'acoustic_targets', and "
+        "'label_buttons', and "
         "'trial_recording' fields drive the frontend's UI "
         "affordances and are language-neutral keys / enum values "
         "— NEVER translate the schema keys, only the narration "
@@ -592,66 +485,24 @@ def _format_director_script(
     return ("\n".join(lines) + "\n", len(cleaned))
 
 
-def _format_acoustic_targets_for_prompt(
-    *,
-    target_wpm: Optional[int],
-    target_db: Optional[float],
-    target_fillers_total: Optional[int],
-    target_fillers_per_min: Optional[float],
-    current_wpm: Optional[float],
-    current_fillers: Optional[int],
-) -> str:
-    """Render the targets line(s) that STEP 5 uses verbatim.
-
-    Each piece drops out cleanly if its underlying number is
-    missing — we'd rather omit a target than show "Keep tempo at
-    None WPM".
-    """
-    parts: list[str] = []
-    if target_wpm is not None:
-        if isinstance(current_wpm, (int, float)) and current_wpm > 0:
-            parts.append(
-                f"keep your tempo at around {target_wpm} WPM (you "
-                f"were at {int(round(current_wpm))} this time)"
-            )
-        else:
-            parts.append(f"keep your tempo at around {target_wpm} WPM")
-    if target_db is not None:
-        parts.append(
-            f"push your vocal dynamic range to about {target_db} dB "
-            "(slightly more variation than today)"
-        )
-    if target_fillers_total is not None:
-        if isinstance(current_fillers, int) and current_fillers > 0:
-            parts.append(
-                f"keep your filler words under {target_fillers_total} "
-                f"across the session (you used {current_fillers} this "
-                "time)"
-            )
-        else:
-            parts.append(
-                f"keep your filler words under {target_fillers_total} "
-                "across the session"
-            )
-    elif target_fillers_per_min is not None:
-        parts.append(
-            f"keep your filler words under {target_fillers_per_min:g} "
-            "per minute"
-        )
-
-    if not parts:
-        return (
-            "next time, keep your tempo steady, your vocal range a "
-            "touch wider, and your filler words sparse"
-        )
-    if len(parts) == 1:
-        return f"If next time you {parts[0]}, we will see"
-    if len(parts) == 2:
-        return f"If next time you {parts[0]} and {parts[1]}, we will see"
-    return (
-        f"If next time you {', '.join(parts[:-1])}, and {parts[-1]}, "
-        "we will see"
-    )
+# The STEP 8 phrasing seed.
+#
+# THIS EXACT SENTENCE IS WHAT STEP 8 HAS EMITTED SINCE 2026-06-01. The old
+# formatter built prescriptive numeric targets ("keep your tempo at around 145
+# WPM (you were at 132 this time)") but its inputs have been NULL that whole
+# time, so every turn fell through to this branch. Founder REJECTED the numeric
+# version on 2026-08-06 -- "we don't want that, it is a wrong call" -- so the
+# fall-through became the only behaviour and the arithmetic was DELETED rather
+# than left gated behind a flag somebody could flip back.
+#
+# Qualitative direction, no figure and no shortfall comparison. Deleting the
+# numbers is what keeps STEP 8 on the right side of the split-sink rule: raw
+# figures are reference data, but a target is a DIRECTION, and pairing "you
+# were at 132" with a goal of 145 is a verdict wearing a suggestion's clothes.
+_NEXT_TAKE_SEED = (
+    "next time, keep your tempo steady, your vocal range a "
+    "touch wider, and your filler words sparse"
+)
 
 
 # ── Structured-output schema ────────────────────────────────────────
@@ -679,7 +530,7 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
                 "description": (
                     "Which protocol step this turn is in: "
                     "1=reveal, 2=rlhf_label, 3..7=script_q1..q5, "
-                    "8=acoustic_bridge, 9=re_record_ask."
+                    "8=next_take_bridge, 9=re_record_ask."
                 ),
             },
             "current_question_position": {
@@ -699,7 +550,6 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
                     "enum": [
                         "render_snippet_player",
                         CONFIDENCE_REVIEW_TRIGGER,
-                        "show_acoustic_targets_card",
                         "show_trial_recording_mic",
                         "none",
                     ],
@@ -742,19 +592,6 @@ STATE_MACHINE_RESPONSE_SCHEMA: dict[str, Any] = {
                     "snippet_id": {"type": "string"},
                     "yes_label": {"type": "string"},
                     "no_label": {"type": "string"},
-                },
-            },
-            "acoustic_targets": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "target_wpm": {"type": ["integer", "null"]},
-                    "target_dynamic_db": {"type": ["number", "null"]},
-                    "target_fillers_total": {"type": ["integer", "null"]},
-                    "target_fillers_per_min": {"type": ["number", "null"]},
-                    "current_wpm": {"type": ["number", "null"]},
-                    "current_fillers": {"type": ["integer", "null"]},
-                    "current_dynamic_db": {"type": ["number", "null"]},
                 },
             },
             "trial_recording": {
