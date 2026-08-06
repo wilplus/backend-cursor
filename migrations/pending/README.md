@@ -37,36 +37,12 @@ applied. Only an un-applied one stops the line.
 
 ## What is parked here now
 
-**`drop_dead_snippet_metric_columns.sql`** — drops the six dead metric columns
-on `charisma_snippets` (PM-9, #358).
+Nothing. `drop_dead_snippet_metric_columns.sql` was applied by hand on
+2026-08-06, recorded as `0254`, and only then moved up into `migrations/`.
 
-BLOCKED ON A DATA QUESTION, not on review. The pre-flight count came back:
+That order is the point. It sat here because the pre-flight count showed four
+of the six columns held rows; once the follow-up query proved **zero** rows held
+a value only in a column (every figure was also in the `metrics` blob) and the
+writing path was shown to have stopped on 2026-06-01, it was safe to drop.
 
-| column | rows with data |
-|---|---|
-| `wpm` | 0 |
-| `fillers` | 0 |
-| `pause_ms` | 97 |
-| `dynamic_db` | 93 |
-| `pitch_center` | 94 |
-| `energy` | 94 |
-
-`wpm` and `fillers` being 0 confirms the PM-9 diagnosis — they were never
-written, which is exactly why they were the two coming back NULL everywhere.
-
-But four columns DO hold data, and `db.update_snippet_metrics` (the writer
-named in the diagnosis) wrote all six in one payload — so it cannot be the
-source of a four-out-of-six pattern. Some other, older path wrote them and has
-not been identified.
-
-Before this can move up:
-
-1. Confirm the same figures are present in each row's `metrics` blob — the
-   query is at the bottom of the `.sql`. If a row holds a value only in the
-   column, dropping destroys it and this needs a copy-into-blob step first.
-2. Identify what wrote them, or at least establish from `created_at` that the
-   path is retired and nothing writes them today.
-
-Nothing is broken while this waits. `services/snippet_values` resolves
-column → blob → derivation, so those 97 rows read correctly with the columns
-present, and would read correctly from the blob without them.
+Keep this directory. The next destructive migration belongs here first.

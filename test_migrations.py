@@ -247,6 +247,14 @@ class DestructiveDetectionTests(unittest.TestCase):
             # then drops v2_sessions.recording_kind / paired_session_id.
             # Destructive on purpose and run by hand, never automatically.
             "drop_reread_lane.sql",
+            # Deliberate (founder 2026-08-06, PM-9): drops the six dead metric
+            # columns on charisma_snippets. APPLIED BY HAND 2026-08-06 and
+            # recorded as 0254, which is why the file is allowed into the
+            # manifest at all — an UN-applied destructive migration here aborts
+            # the Railway migrate step and blocks every deploy (see #359).
+            # Pre-flight confirmed zero rows held a value only in a column;
+            # every figure is also in the `metrics` blob.
+            "drop_dead_snippet_metric_columns.sql",
         }, "The destructive set changed. If you added a migration that drops "
            "something, add it here deliberately — don't just update the literal.")
 
