@@ -247,13 +247,6 @@ class DestructiveDetectionTests(unittest.TestCase):
             # then drops v2_sessions.recording_kind / paired_session_id.
             # Destructive on purpose and run by hand, never automatically.
             "drop_reread_lane.sql",
-            # Deliberate (founder 2026-08-06, PM-9): drops the six dead
-            # metric columns on charisma_snippets — wpm, fillers, pause_ms,
-            # dynamic_db, pitch_center, energy. Nothing has written them
-            # since their only writer was orphaned; every figure also lives
-            # in the `metrics` blob, which is what the code reads. Run by
-            # hand AFTER the deploy that stops naming them in a SELECT.
-            "drop_dead_snippet_metric_columns.sql",
         }, "The destructive set changed. If you added a migration that drops "
            "something, add it here deliberately — don't just update the literal.")
 
