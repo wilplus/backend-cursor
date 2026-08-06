@@ -103,6 +103,17 @@ def get_redis(*, for_worker: bool = False):
         return None
 
 
+def reset_connections() -> None:
+    """Drop cached connections so the next get_redis() builds fresh ones.
+
+    MUST be called in a freshly forked child: redis-py connection pools are
+    NOT fork-safe, and two processes sharing one socket interleave their
+    replies. The multi-slot worker (worker.py) forks, so each child resets
+    and dials its own.
+    """
+    _redis_conns.clear()
+
+
 def get_queue():
     """RQ Queue on the shared connection, or None."""
     conn = get_redis()
