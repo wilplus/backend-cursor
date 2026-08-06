@@ -51,9 +51,10 @@ The untested counter-argument: a 40-minute lecture surfaces more genuinely *inde
 ```python
 BUDGET_BASE = 1
 def budget(user, findings) -> int:
-    if user.state == NOVICE:
+    independent = max_independent_subset(findings)          # priority-sorted
+    leading = independent[0].dimension if independent else None
+    if user.state(leading) == NOVICE:                       # H.9.2
         return 1                    # never more, at any recording length
-    independent = max_independent_subset(findings)
     return min(3, max(1, len(independent)))
 ```
 
@@ -231,39 +232,60 @@ Each is a place where the outcome anchor (§12.2) can produce **a first rather t
 
 ---
 
-## H.9 · Conflicts this appendix creates *(added by implementation, 2026-08-06)*
+## H.9 · Conflicts this appendix created — all three settled *(founder, 2026-08-06)*
 
-Three, raised rather than resolved. Two need a founder decision before H.1 does anything.
+### H.9.1 · The budget conflict with §11 — **RESOLVED: §11 amended**
 
-### H.9.1 · H.1's budget contradicts §11 — and the router wins today
+SPEC.md §11 said `per session: surface exactly ONE finding`, §11.1's router enforced it with `if session.already_surfaced: return None`, and Appendix B.2 restated it as *"never how many."* H.1 permits three, which made the ceiling a silent no-op.
 
-SPEC.md **§11** states `per session: surface exactly ONE finding`, and **§11.1**'s routing gate enforces it: `if session.already_surfaced: return None`. Appendix **B.2** restates it — *"Still exactly one note per session at every level. Progression changes which note and how it's phrased — never how many."*
+**Decision: amend §11.** The one-per-session cap is removed. §11 now reads `surface UP TO THREE findings`; §11.1's gate becomes `if session.surfaced >= manager.budget: return None`. B.2's line is struck and replaced.
 
-H.1 permits up to 3. That is an **amendment to §11**, not a clarification of it. As things stand, `budget()` computes 2 or 3 and the router discards everything after the first, so **the ceiling is silently a no-op.**
+**Budget enforcement now lives in exactly one place** — `manager_engine.budget()`. That is the point of the amendment: a cap in the router *and* a cap in the manager is how the two silently disagree.
 
-**Required:** amend §11 and §11.1 explicitly, or set `BUDGET_CEILING = 1` and drop the independence machinery. Implemented as H specifies, with the conflict recorded here — the code comment on `budget()` points at this section.
+### H.9.2 · GRADUATE and FRAGILE — **RESOLVED: both may see three**
 
-### H.9.2 · H.1 does not cover GRADUATE or FRAGILE
+**Decision: only NOVICE is capped at one.** APPRENTICE, FRAGILE and GRADUATE may each see up to three.
 
-`budget()` branches on NOVICE only; every other state gets up to 3. But B.2 fades GRADUATE to *"~50% or bandwidth-only"*, so a GRADUATE receiving three notes contradicts the fading arc. And **FRAGILE is not on that arc at all** (B.3 gives it no promotion path) — B.2.1 says *do not fade it*, which argues for treating it like NOVICE for budget purposes, not like APPRENTICE.
+The reasoning that makes this consistent with the fading arc: **the arc governs frequency and phrasing, not the per-session ceiling.** `G(state)` already suppresses a GRADUATE's candidates on *priority*, so fewer of them clear the bar in the first place. Two separate mechanisms, both applying — a per-session cap on top would be double-suppression, which is exactly the B.4 defect at a different level.
 
-**Implemented as specified** (NOVICE → 1, all others → up to 3), with two mitigations: `G(GRADUATE) = 0.5` suppresses a graduate's candidates on *priority* so fewer clear the bar anyway, and `overall_state()` takes the **least advanced** dimension, so a user who is NOVICE anywhere gets a budget of 1 everywhere. Cowan's ceiling is a property of the listener, not of whichever dimension won.
+**Which state governs, given that B makes state per-dimension.** There is no single "user state" to branch on, so one has to be picked. `budget()` reads **the leading candidate's dimension** — the note that will certainly surface, so the user's competence *at that thing* is the load signal that matters.
 
-### H.9.3 · `G(state)` has no published values
+The rejected alternative was the least-advanced dimension anywhere, which was in the first implementation. It fails the founder decision directly: one NOVICE dimension the user never sees would cap a GRADUATE at a single note forever. A dimension with **no recorded state** defaults to NOVICE and therefore to one — the safe direction under H.0.
 
-Appendix B.4 names `G(state)` and never gives numbers. The only numeric anchor in B is the **Frequency** row of B.2 — *every attempt / ~75% / ~50% or bandwidth-only* — read here as the suppressor:
+### H.9.3 · `G(state)` values — **RESOLVED: approved as baseline**
 
 ```python
 G_BY_STATE = {NOVICE: 1.0, APPRENTICE: 0.75, FRAGILE: 1.0, GRADUATE: 0.5}
 ```
 
-FRAGILE is 1.0 because B.2.1 says do not fade it. **Treat as `T3-invented`** — derived from an adjacent row, not stated. Moves on the outcome anchor, not on preference.
+Derived from the **Frequency** row of B.2 (*every attempt / ~75% / ~50% or bandwidth-only*), the only numeric anchor B gives; B.4 names `G(state)` without values. FRAGILE is 1.0 because B.2.1 says do not fade it.
+
+**Founder-approved as the official baseline**, `T3-invented` tag removed. They still move on the outcome anchor rather than on preference — D24's rule that a measured threshold never adapts does **not** apply, because these are policy dials, not literature-measured values.
+
+---
+
+## H.11 · Manager behaviour specified elsewhere and NOT yet built
+
+The decisions log §B sets four more manager dials. Two are implemented, two are not, and the gap is recorded here so it is not mistaken for completeness.
+
+| Dial | Value | Status |
+|---|---|---|
+| **ε_explore** | ~10–20%, surface rank 2–3, log the counterfactual | **Built.** `EXPLORATION_RATE = 0.10`, bottom of the band per H.0 |
+| **Objective** | maximise measured change take N → N+1; acceptance is a **constraint**, never the objective | **Built** by omission — nothing here optimises on acceptance |
+| **γ_control** | ~10–15%, **per-dimension** — a share of (user, dimension) pairs get **nothing** | **NOT BUILT.** Without it you credit yourself with the practice effect: users improve by recording more, feedback or not |
+| **Intervention randomisation** | 20% | **NOT BUILT.** The only route to causal attribution — confounded data cannot be un-confounded |
+| **Dismissal ceiling** | TBD | Unset |
+| **Lag weighting** | TBD | Unset. Acceptance arrives in seconds, change a take later; at equal weight the fast signal dominates by volume |
+
+**γ_control and intervention randomisation are the two that cannot be retrofitted.** Both have to be running *while* the data accumulates or the accumulated data cannot answer the question — which is the same argument as the frozen drift reference (Appendix G.7).
 
 ---
 
 ## H.10 · What is built, and what it does not do
 
 `services/manager_engine.py` is **pure** — no DB, no clock, no randomness of its own. The exploration roll is injected so the policy stays deterministic under test. 38 unit tests pin the derived constants and the invariants that fail silently.
+
+**§11 is amended, so the ceiling is real** — the router no longer discards everything after the first finding, and budget enforcement lives only in `manager_engine.budget()`.
 
 **It is not wired to anything.** No engine currently submits a candidate: no live dimension has a `fire_at`, so `registry.can_fire()` returns False across the board (Appendix F, F-10). The manager is complete and idle by construction — which is the correct order, since a manager built after the thresholds would be built to fit whatever they happened to produce.
 

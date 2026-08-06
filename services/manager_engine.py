@@ -93,14 +93,17 @@ SPIKE_MULTIPLE = 2.0              # a deviation spike this size overcomes
 # the gate and the priority formula cannot drift apart.
 EFFECT_SIZE = {"A": 1.0, "B": 0.6, "C": 0.0}
 
-# G(state) — LONG-TERM per-dimension suppressor.
-# NOT NUMERICALLY SPECIFIED ANYWHERE. Appendix B.4 names G(state) and gives no
-# values; the only numbers in B are the FREQUENCY row of B.2 (every attempt /
-# ~75% / ~50% or bandwidth-only), read as the suppressor here. FRAGILE is 1.0
-# because B.2.1 says do not fade it — it performs well and cannot tell why, so
-# fading produces regression the user will not detect.
-# TREAT AS T3-INVENTED: derived from an adjacent row, not stated. Moves on the
-# outcome anchor, not on preference.
+# G(state) — LONG-TERM per-dimension suppressor. BASELINE VALUES, founder-
+# approved 2026-08-06. Derived from the FREQUENCY row of Appendix B.2 (every
+# attempt / ~75% / ~50% or bandwidth-only), which is the only numeric anchor
+# B gives; B.4 names G(state) without values. FRAGILE is 1.0 because B.2.1
+# says do not fade it — it performs well and cannot tell why, so fading
+# produces regression the user will not detect.
+#
+# These are the official baseline, not a placeholder. They still move on the
+# outcome anchor rather than on preference — D24's rule that a measured
+# threshold never adapts does NOT apply, because these are policy dials, not
+# literature-measured values.
 G_BY_STATE = {NOVICE: 1.0, APPRENTICE: 0.75, FRAGILE: 1.0, GRADUATE: 0.5}
 
 # ── H.5 · Trading dimensions ────────────────────────────────────────────────
@@ -119,7 +122,9 @@ REPEAT_AS_IS = "REPEAT_AS_IS"
 REFRAME = "REFRAME"
 CHANGE_INTERVENTION_TYPE = "CHANGE_INTERVENTION_TYPE"
 
-# §8.3 roadmap names "a fixed %" and never fixes it. INVENTED at 10%.
+# SPECIFIED, not invented: the decisions log sets ε_explore at ~10-20%.
+# Bottom of the band, per H.0 — an exploration swap surfaces a rank-2 finding
+# instead of rank 1, so the quota trades a known-better note for information.
 EXPLORATION_RATE = 0.10
 
 
@@ -152,18 +157,21 @@ class UserState:
     def state(self, dimension: str) -> str:
         return self.state_by_dimension.get(dimension, NOVICE)
 
-    def overall_state(self) -> str:
-        """The user's least-advanced dimension governs the budget.
+    def budget_state(self, leading: Optional[str]) -> str:
+        """Which state governs the budget — THE LEADING CANDIDATE'S dimension.
 
-        A user who is GRADUATE on one dimension and NOVICE on another still
-        has a NOVICE's uptake capacity in the session where the novice
-        dimension surfaces. Cowan's ceiling is a property of the listener,
-        not of the dimension that happened to win.
+        Founder decision 2026-08-06: only NOVICE is capped at one; APPRENTICE,
+        FRAGILE and GRADUATE may each see up to three. Appendix B makes state
+        PER-DIMENSION, so there is no single "user state" to branch on and one
+        has to be picked.
+
+        The leading candidate's dimension is the right one: it is the note
+        that will certainly surface, so the user's competence AT THAT THING is
+        the load signal that matters. Reading the least-advanced dimension
+        anywhere would let one untouched NOVICE dimension cap a GRADUATE at
+        one note forever, which is what the founder decision rules out.
         """
-        for s in (NOVICE, FRAGILE, APPRENTICE, GRADUATE):
-            if s in self.state_by_dimension.values():
-                return s
-        return NOVICE
+        return self.state(leading) if leading else NOVICE
 
 
 def r_decay(k: int, delta_t: float = 0.0, *, tau: Optional[float] = None) -> float:
@@ -274,10 +282,16 @@ def independent_subset(candidates: Sequence[Candidate]) -> list[Candidate]:
 def budget(user: UserState, independent: Sequence[Candidate]) -> int:
     """H.1 — flat cap, never scaled to recording length.
 
-    A NOVICE gets exactly one at any length. Above that the cap is the number
-    of GENUINELY INDEPENDENT findings, capped at 3 — budgeting on element
-    interactivity rather than on a raw count, because two findings the user
-    must hold simultaneously cost far more than two unrelated ones.
+    A NOVICE gets exactly one at any length. APPRENTICE, FRAGILE and GRADUATE
+    may each see up to three — the fading arc governs frequency and phrasing,
+    not the per-session ceiling, and `G(state)` already suppresses a
+    GRADUATE's candidates on priority so fewer clear the bar anyway. Two
+    separate mechanisms, both applying (founder decision 2026-08-06).
+
+    Above NOVICE the cap is the number of GENUINELY INDEPENDENT findings,
+    capped at 3 — budgeting on element interactivity rather than on a raw
+    count, because two findings the user must hold simultaneously to act on
+    either cost far more than two unrelated ones.
 
     NOT SCALED TO LENGTH ON PURPOSE. No study in any domain — writing, music
     masterclass, surgical debrief, sports video review — varies performance
@@ -285,11 +299,11 @@ def budget(user: UserState, independent: Sequence[Candidate]) -> int:
     three" is practitioner folklore. The argument against scaling is
     structural: the bottleneck is the listener, not the material.
 
-    THIS AMENDS SPEC §11's "surface exactly ONE finding" (see H.9). The
-    router's `session.already_surfaced` gate still enforces 1 and will make
-    anything above it a no-op until §11.1 is amended too.
+    `independent` MUST be priority-sorted; independent_subset() returns it
+    that way. The leading candidate decides which state governs.
     """
-    if user.overall_state() == NOVICE:
+    leading = independent[0].dimension if independent else None
+    if user.budget_state(leading) == NOVICE:
         return BUDGET_BASE
     return min(BUDGET_CEILING, max(BUDGET_BASE, len(independent)))
 

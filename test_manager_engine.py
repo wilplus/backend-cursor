@@ -55,20 +55,47 @@ class TestBudget(unittest.TestCase):
         self.assertEqual(me.budget(user, cands), 1)
 
     def test_above_novice_caps_at_three_independent(self):
-        user = _user(me.APPRENTICE, dims=("a",))
+        user = _user(me.APPRENTICE, dims=[f"d{i}" for i in range(6)])
         cands = [_c(f"d{i}", anchor=(i * 10.0, i * 10.0 + 1)) for i in range(6)]
         self.assertEqual(me.budget(user, cands), 3)
 
     def test_budget_never_drops_below_one(self):
         self.assertEqual(me.budget(_user(me.GRADUATE, dims=("a",)), []), 1)
 
-    def test_the_least_advanced_dimension_governs(self):
-        """Cowan's ceiling is a property of the listener, not of whichever
-        dimension happened to win."""
-        user = me.UserState(state_by_dimension={"a": me.GRADUATE,
-                                                "b": me.NOVICE})
-        self.assertEqual(user.overall_state(), me.NOVICE)
-        self.assertEqual(me.budget(user, [_c(), _c(), _c()]), 1)
+    def test_an_unknown_dimension_is_treated_as_novice(self):
+        """Fail-safe direction under H.0: a dimension with no recorded state
+        caps the session at one rather than opening it to three."""
+        user = me.UserState()
+        self.assertEqual(me.budget(user, [_c("never_seen"), _c("also_new")]), 1)
+
+    def test_fragile_and_graduate_are_not_capped_at_one(self):
+        """Founder decision 2026-08-06. The fading arc governs frequency and
+        phrasing, not the per-session ceiling — G(state) does the suppressing,
+        on priority, and the two mechanisms are separate."""
+        for state in (me.APPRENTICE, me.FRAGILE, me.GRADUATE):
+            user = _user(state, dims=("d0", "d1", "d2"))
+            cands = [_c(f"d{i}", anchor=(i * 10.0, i * 10.0 + 1))
+                     for i in range(3)]
+            self.assertEqual(me.budget(user, cands), 3, f"{state} was capped")
+
+    def test_the_leading_candidates_state_governs(self):
+        """Appendix B makes state PER-DIMENSION, so one has to be picked. The
+        leading candidate is the note that will certainly surface, so the
+        user's competence at THAT thing is the load signal that matters."""
+        user = me.UserState(state_by_dimension={"lead": me.NOVICE,
+                                                "other": me.GRADUATE})
+        cands = [_c("lead", anchor=(0.0, 1.0)), _c("other", anchor=(9.0, 10.0))]
+        self.assertEqual(me.budget(user, cands), 1)
+
+    def test_an_untouched_novice_dimension_does_not_cap_a_graduate(self):
+        """The failure mode the founder decision rules out: reading the
+        least-advanced dimension anywhere would let one dimension the user
+        never sees cap them at a single note forever."""
+        user = me.UserState(state_by_dimension={"never_shown": me.NOVICE,
+                                                "lead": me.GRADUATE,
+                                                "second": me.GRADUATE})
+        cands = [_c("lead", anchor=(0.0, 1.0)), _c("second", anchor=(9.0, 10.0))]
+        self.assertEqual(me.budget(user, cands), 2)
 
 
 class TestSuppressionFloor(unittest.TestCase):
