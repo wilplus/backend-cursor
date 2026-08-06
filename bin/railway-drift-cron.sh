@@ -15,9 +15,38 @@
 # A drift cron that silently depends on a life-panel variable breaks the day
 # someone retires that feature, and nothing would explain why.
 #
-# Railway: one cron service, same repo.
+# Railway: one cron service, same repo. THIS SCRIPT HAS NO DOCKERFILE, unlike
+# the other cron scripts here — it runs on the standard build:
+#   Settings → Builder:        Railpack  (the default; NOT Dockerfile)
 #   Settings → Start Command:  sh bin/railway-drift-cron.sh
-#   Cron Schedule (UTC):       0 6 * * 1     (06:00 UTC Mondays)
+#   Settings → Cron Schedule:  0 6 * * 1     (06:00 UTC Mondays)
+#   Variables:                 DRIFT_BACKEND_URL, DRIFT_MONITOR_SECRET
+#
+# ⚠️ DO NOT SET A DOCKERFILE PATH. Both ways of trying cost a debug cycle on
+# 2026-08-06, and neither failure names its real cause:
+#
+#   path = Dockerfile.life-reminders-cron (+ this start command)
+#       -> sh: can't open 'bin/railway-drift-cron.sh': No such file or directory
+#          Those per-cron images copy ONE script to /app/run.sh; there is no
+#          bin/ inside them. Worse, with the start command CLEARED that image's
+#          ENTRYPOINT would have sent LIFE REMINDERS to real users on the drift
+#          schedule — a silent wrong-payload failure instead of a loud one.
+#
+#   path = <empty> (+ this start command)
+#       -> couldn't locate a dockerfile at path Dockerfile in code archive
+#          Empty means ./Dockerfile, and this repo has no bare Dockerfile —
+#          only the suffixed per-cron ones. Railway auto-detects the Dockerfile
+#          builder FROM those siblings and then renders Builder as a read-only
+#          card, so there is no Railpack option to pick on an existing service.
+#          Creating a NEW service is what gets you Railpack (Default) back.
+#
+# ⚠️ AND THIS SCRIPT NEEDS curl, WHICH THE RAILPACK IMAGE DOES NOT SHIP.
+#       -> bin/railway-drift-cron.sh: 45: curl: not found
+# Every OTHER curl cron here (devbugs, annotation-export, life-reminders) runs
+# from a curlimages/curl Dockerfile, so none of them ever needed curl in the
+# app image and nobody noticed it was missing. This one runs on the standard
+# build, so `curl` is listed in railpack.json's deploy.aptPackages. Keep it
+# there: dropping it breaks this cron ONLY, and only at 06:00 on a Monday.
 #
 # Required variables:
 #   DRIFT_BACKEND_URL     public URL of the Flask app, e.g. https://dev.willpowerlab.com
