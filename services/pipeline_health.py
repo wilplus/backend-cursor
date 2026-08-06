@@ -19,6 +19,7 @@ product copy that needs founder sign-off (CLAUDE.md).
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -30,6 +31,19 @@ logger = logging.getLogger(__name__)
 # an ops poke and inside the worker's 5-minute sweep, and neither should
 # ever pull an unbounded table scan.
 _SAMPLE_ROWS = 200
+
+# Failures are counted over a TIME window, not the row sample: "4 failures"
+# should mean "4 in the last day", not "4 somewhere in the last 200 jobs",
+# which at low volume keeps a long-fixed outage in the number for months.
+_DEFAULT_FAILURE_WINDOW_HOURS = 24
+
+
+def failure_window_hours() -> int:
+    raw = (os.getenv("PIPELINE_FAILURE_WINDOW_HOURS") or "").strip()
+    try:
+        return max(1, int(raw)) if raw else _DEFAULT_FAILURE_WINDOW_HOURS
+    except ValueError:
+        return _DEFAULT_FAILURE_WINDOW_HOURS
 
 
 def _age_seconds(raw: Optional[str]) -> Optional[float]:
@@ -104,11 +118,24 @@ def queue_health(sample_rows: int = _SAMPLE_ROWS) -> Dict[str, Any]:
     except Exception as e:
         logger.warning("queue_health: history query failed: %s", e)
 
+    # Failures are TIME-windowed; latency is SAMPLE-windowed. They answer
+    # different questions and want different windows:
+    #
+    #   "is it failing NOW?"        → last N hours. A count over the last
+    #     200 rows means a bad afternoon stays in the number for months at
+    #     low volume, long after it stopped being true.
+    #   "how long does a take take?" → last N rows. Percentiles need a
+    #     sample, and a time window returns nothing on a quiet day.
+    cutoff = failure_window_hours() * 3600.0
     waits, runs, failures, last_error = [], [], 0, None
     for j in recent:
         if str(j.get("status")) == "failed":
-            failures += 1
-            last_error = last_error or j.get("error")
+            age = _age_seconds(j.get("finished_at"))
+            # Unparseable timestamp: count it. Better a stale number than a
+            # silently dropped failure.
+            if age is None or age <= cutoff:
+                failures += 1
+                last_error = last_error or j.get("error")
             continue
         w = _elapsed(j.get("enqueued_at"), j.get("started_at"))
         r = _elapsed(j.get("started_at"), j.get("finished_at"))
@@ -124,7 +151,10 @@ def queue_health(sample_rows: int = _SAMPLE_ROWS) -> Dict[str, Any]:
         "run_p50_s": _percentile(runs, 0.50),
         "run_p95_s": _percentile(runs, 0.95),
     }
+    # window_hours is reported so the number is self-describing — "4" means
+    # nothing without knowing "4 in what span".
     out["failures"] = {"recent": failures,
+                       "window_hours": failure_window_hours(),
                        "last_error": (str(last_error)[:300]
                                       if last_error else None)}
 
