@@ -118,6 +118,8 @@ def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
             plumbing = _SNIPPET_FIELDS.get(dim.dimension_id)
             if not plumbing:
                 continue                      # in the registry, not wired here
+            if not registry.measurable_in_a_snippet(dim.dimension_id):
+                continue         # windowed below — a snippet cannot hold it
             column, fallback_key = plumbing
             value = s.get(column)
             if value is None and fallback_key:
@@ -147,9 +149,95 @@ def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
                 "n_units": _denominator_count(dim.denominator, seconds,
                                               word_count),
             })
+
+    rows.extend(_windowed_rate_rows(session_id, active_snippets))
     if not rows:
         return 0
     return db.record_dimension_evaluations(rows)
+
+
+def _windowed_rate_rows(session_id: str, active_snippets: list) -> list:
+    """The three RATE dimensions, measured over ~40 s of stitched speech.
+
+    D33. `wpm`, `fillers` and `pause_ms` gate at 30 s and a snippet is 6.55 s
+    at the median — so at snippet grain they are `insufficient_data` on every
+    row, forever, and PSI would report nothing for half the live set while
+    looking perfectly healthy. A 60-second test recording produced four
+    ~15 s snippets: four refusals, zero measurements, and more than three
+    planning cycles of measurable speech thrown away for being asked about at
+    the wrong zoom.
+
+    The snippet is the F1 SEGMENTATION unit — slide-aligned, load-bearing for
+    transcription and ranking. It is not a measurement window, and Appendix
+    F-2's claim that it approximated one was retracted when its duration was
+    measured.
+
+    Anchored on the first snippet of each window (see rate_windows). The
+    trailing remainder of a recording is emitted flagged `insufficient_data`
+    rather than dropped — F.5 makes that state first-class, and silently
+    discarding short windows would hide how much speech still falls through.
+    """
+    from services import dimension_registry as registry
+    from services.rate_windows import Piece, build_windows
+
+    windowed = [d for d in registry.live_dimensions()
+                if _SNIPPET_FIELDS.get(d.dimension_id)
+                and not registry.measurable_in_a_snippet(d.dimension_id)]
+    if not windowed:
+        return []
+
+    pieces, owner = [], None
+    for s in active_snippets or ():
+        snippet_id, duration_ms = s.get("id"), s.get("duration_ms")
+        if not snippet_id or not isinstance(duration_ms, (int, float)):
+            continue
+        owner = owner or s.get("user_id")
+        metrics = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+        transcript = (s.get("transcript") or "").strip()
+        values = {}
+        for dim in windowed:
+            column, fallback_key = _SNIPPET_FIELDS[dim.dimension_id]
+            value = s.get(column)
+            if value is None and fallback_key:
+                value = metrics.get(fallback_key)
+            if isinstance(value, (int, float)):
+                values[dim.dimension_id] = float(value)
+        pieces.append(Piece(
+            snippet_id=str(snippet_id),
+            recording_id=s.get("recording_id"),
+            start_ms=float(s.get("start_offset_ms") or 0),
+            duration_ms=float(duration_ms),
+            words=len(transcript.split()) if transcript else 0,
+            values=values,
+        ))
+
+    ids = [d.dimension_id for d in windowed]
+    rows = []
+    for window in build_windows(pieces, dimensions=ids):
+        for dim in windowed:
+            value = window.values.get(dim.dimension_id)
+            usable = isinstance(value, (int, float)) and window.meets
+            rows.append({
+                "snippet_id": window.anchor_snippet_id,
+                "recording_id": window.recording_id,
+                "session_id": session_id,
+                "user_id": owner,
+                "dimension_id": dim.dimension_id,
+                "raw_value": float(value) if usable else None,
+                "fired": None,                   # no fire_at in code yet
+                "insufficient_data": not usable,
+                "benchmark_tier": dim.tier,
+                "benchmark_version": dim.benchmark_version,
+                "window_class": dim.window_class,
+                # For a WINDOW row this is the window's own speech coverage in
+                # minutes, whatever the dimension's denominator — the window
+                # length is otherwise unrecoverable from the row, and the
+                # drift analysis needs to know how much speech each value
+                # rests on. Summed speech, so a gap between takes can never
+                # enter it.
+                "n_units": round(window.minutes, 4),
+            })
+    return rows
 
 
 def compute_session_global_metrics(session_id: str) -> dict | None:

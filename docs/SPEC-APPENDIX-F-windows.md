@@ -190,6 +190,43 @@ Same defect, one layer down. `denominator` was carrying two different things: th
 
 ---
 
+## F.4.2 · Rolling windows for the rate dimensions *(built 2026-08-06)*
+
+`services/rate_windows.py`. The registry decides which grain a dimension gets — `measurable_in_a_snippet()` compares its minimum against the **measured p90 snippet** (17.4 s), and the two grains partition the live set with no overlap and no gap:
+
+| Grain | Dimensions | Why |
+|---|---|---|
+| **~40 s rolling window** | `wpm` · `fillers` · `pause_ms` | Rates. F.2's cycle argument applies, and no snippet is long enough |
+| **snippet** | `dynamic_db` · `pitch_center` · `energy` | Levels. Stable well inside one cycle; already flowing |
+
+**40 s, not 30.** F.2 gives 30 s as the minimum and 40 s as preferred. The extra 10 s is nearly free once a window spans snippets at all, and 30 s is where a rate *stops being noise*, not where it becomes good. `Window.meets` still gates on the 30 s **minimum**, so a trailing remainder between 30 and 40 s is kept.
+
+### Gap handling — two independent guards
+
+An inflated denominator is *silently* wrong rather than visibly missing, so neither guard is trusted alone.
+
+**1 · The denominator is summed speech, never wall-clock.** A window's seconds are the sum of its snippets' durations. A five-minute pause between takes cannot enter the denominator even if a window somehow spanned it. Two 20 s snippets five minutes apart give **40 s**, not 340 — wall-clock would put the filler rate off by a factor of eight and it would still look like a number.
+
+**2 · Windows never cross a recording.** A take boundary is a hard break, not a threshold. `_emit_drift_telemetry` receives every snippet in the **session**, which spans takes, and a rate averaged across two takes measures neither. Within a recording, a silence over 10 s also breaks the window — that figure is invented, and is the *lesser* guard; the recording boundary carries the argument.
+
+Sorting is by `(recording_id, start_offset_ms)`, not offset alone: offsets restart near zero in each take, so sorting by offset would **interleave two takes**, which is precisely how a cross-take average gets built by accident.
+
+### Aggregation, and why duration-weighting is exact rather than a refinement
+
+The registry's declared aggregation decides (D31): `per_minute` sums counts over speech minutes; `mean` is **duration-weighted**.
+
+Duration-weighting a value that is already a rate is not an approximation — **the duration-weighted mean of per-snippet words-per-minute IS total words over total minutes.** It removes the caveat the registry records against `wpm`, that an unweighted mean over-weights short snippets.
+
+**`pause_ms` is the exception and it is approximate.** It is a mean pause *length*, so the exact roll-up needs a pause **count** per snippet, which the pipeline does not store. Duration-weighting assumes pause count scales with duration — roughly Henderson's finding. Recorded rather than hidden: **capturing a per-snippet pause count would make it exact.**
+
+### Row shape
+
+Anchored on the **first snippet** of each window. A window has no id of its own, and writing `snippet_id` NULL would break idempotency — NULLs are DISTINCT in the unique index, so every pipeline retry would insert duplicates instead of replacing them. A window's rate rows and a snippet's level rows never collide on a shared anchor because they carry different `dimension_id`s.
+
+`n_units` on a window row is the window's own **speech coverage in minutes**, whatever the dimension's denominator — the window length is otherwise unrecoverable from the row, and the drift analysis needs to know how much speech each value rests on.
+
+---
+
 ## F.5 · What the science does *not* settle
 
 State these plainly rather than papering over them:
@@ -259,9 +296,11 @@ class WindowSpec:
 
 1. **F-2's conclusion is retracted** (above). A snippet is 0.36 of a planning cycle, not one.
 2. **Half the live set can never produce a value at snippet grain.** `wpm`, `fillers` and `pause_ms` gate at 30 s; the *90th percentile* snippet is 17.4 s. Every per-snippet row they write is `insufficient_data` — not occasionally, essentially always. `dimension_evaluations` therefore holds **no usable value for three of six live dimensions**, and PSI and the p-chart will report nothing for them forever *while looking perfectly healthy* — the exact failure G.1.1 warns about. `registry.measurable_in_a_snippet()` and a test now state this rather than letting it stay silent.
-3. **The fix is a coarser emission grain, not a smaller gate.** The 30 s minimum is right; the grain we ask it at is wrong. Rate measures should be emitted at session (or rolling ~40 s) grain, levels at snippet grain. **Founder decision pending.**
+3. **The fix is a coarser emission grain, not a smaller gate.** The 30 s minimum is right; the grain we ask it at is wrong. **BUILT 2026-08-06** — `services/rate_windows.py` stitches snippets into ~40 s windows for the three rate dimensions; levels stay at snippet grain. See F.4.2.
 
 The three *levels* are unaffected: `dynamic_db` is a percentile spread (`p95 − p05` of voiced frame dB), which converges with more samples rather than growing the way an extremum would, so 6.55 s is ample. That objection was checked, not waved away — had it been a true min/max range the no-gate call would have been wrong.
+
+**F-12 · A 60-second recording produced zero rate measurements** *(2026-08-06)*. The concrete form of F-9's second consequence, from a real take: 60 s of speech, four ~15 s snippets, four `insufficient_data` rows, nothing usable — while containing more than three planning cycles of perfectly measurable speech. Every ingredient was captured and discarded for being asked about at the wrong zoom. **The segmentation unit is not the measurement window**, and treating it as one costs a valid measurement on every recording. Fixed by F.4.2.
 
 **F-11 · A wrong citation is the one error no test catches** *(2026-08-06)*. The fix above shipped with `energy`'s mismatch claiming *"A6 is energy front-load"*. **A6 is topic discipline** (Appendix D, Mayer coherence d=0.86) and no energy front-load row exists anywhere; the claim was inherited from a "NOT A6" disambiguation that was itself miscited, and it reached this appendix before it was caught. A citation is prose — `validate()` cannot check it against a document. What it *can* check is the structural shadow: **two dimensions claiming the same appendix row**, which is exactly the shape this took (`energy` and `dynamic_db` both on E2). That rule is now in `validate()`. Everything else in a citation is read by a human or not at all.
 
