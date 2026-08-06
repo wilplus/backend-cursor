@@ -37,7 +37,7 @@ Header: X-Internal-Secret: $PIPELINE_JOBS_SWEEP_SECRET
   "queue":   {"pending": 0, "processing": 1, "oldest_pending_seconds": null},
   "latency": {"sample": 12, "wait_p50_s": 1, "wait_p95_s": 3,
               "run_p50_s": 31, "run_p95_s": 74},
-  "failures":{"recent": 0, "last_error": null},
+  "failures":{"recent": 0, "window_hours": 24, "last_error": null},
   "saturation": "healthy",
   "recommendation": "nothing queued — every take starts immediately..."
 }
@@ -150,7 +150,11 @@ Two more, both Railway-specific:
 3. **Escalate on the log line**, not on anecdote: `pipeline queue
    SATURATED` in the worker logs is the trigger.
 4. **Failures ≠ saturation.** A rising `failures.recent` is a bug or a
-   config drift. Adding workers multiplies the failures.
+   config drift. Adding workers multiplies the failures. The count is over
+   the last `window_hours` (default 24, `PIPELINE_FAILURE_WINDOW_HOURS`),
+   so it means "failing NOW" — a non-zero value is live, not history.
+   Latency is deliberately NOT time-windowed: percentiles need a sample,
+   and a time window returns nothing on a quiet day.
 5. **A user-facing "high traffic" message is product copy** and needs
    founder sign-off (CLAUDE.md). The ops signal here is internal and
    carries no such constraint — do not surface it to users on your own
