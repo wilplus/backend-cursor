@@ -1,6 +1,6 @@
 # Decisions log — settled in review, not yet folded into SPEC.md
 
-**Last updated:** 2026-08-05.
+**Last updated:** 2026-08-06.
 
 **Purpose:** everything agreed after SPEC.md v3 was committed. This file exists so a long
 review session survives itself. Entries here are **binding** and get folded into the numbered

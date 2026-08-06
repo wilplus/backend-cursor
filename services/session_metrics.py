@@ -62,6 +62,20 @@ _SNIPPET_FIELDS = {
 }
 
 
+def _denominator_count(denominator, seconds, words):
+    """How many units the registry's declared denominator counts, or None.
+
+    An UNRECOGNISED denominator returns None rather than a guess: writing the
+    word count under a denominator that means minutes is the exact F.3 error
+    — off by whatever the speech rate happens to be, and still plausible.
+    """
+    if denominator == "minutes":
+        return round(seconds / 60.0, 3) if seconds else None
+    if denominator == "words":
+        return words or None
+    return None
+
+
 def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
     """Write one dimension_evaluations row per (snippet, live dimension).
 
@@ -71,13 +85,20 @@ def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
     in code yet, so `fired` stays None. That is a real third state, distinct
     from a negative decision and from missing data (SPEC D30).
 
-    APPENDIX F.2's MINIMUM-LENGTH GATE IS ENFORCED HERE, and it bites: every
-    live dimension carries a 30 s minimum in F.4, while a snippet is roughly
-    one planning cycle (~18 s). Rows below the gate are written as
-    `insufficient_data` rather than dropped — F.5 makes "could not compute
-    this" first-class, and a value under the gate is noise wearing a number's
-    clothes. Dropping them instead would make the gap invisible to PSI, which
-    is the failure mode the column exists to prevent.
+    APPENDIX F.2's MINIMUM-LENGTH GATE IS ENFORCED HERE, PER DIMENSION. The
+    gate is NOT uniform and must not be applied as if it were: F.1 scopes the
+    30 s minimum to pause/disfluency RATES, where Henderson's planning cycle
+    makes a sub-cycle rate swing with where the window happens to land. Three
+    of the six live measures are LEVELS (loudness dynamics, pitch centre,
+    energy) and carry no seconds gate at all — a mean is stable well inside
+    one cycle. Applying the rate gate to them marked good data insufficient.
+    The registry holds which is which; this loop only asks.
+
+    Rows below their own gate are written as `insufficient_data` rather than
+    dropped — F.5 makes "could not compute this" first-class, and a value
+    under the gate is noise wearing a number's clothes. Dropping them instead
+    would make the gap invisible to PSI, which is the failure mode the column
+    exists to prevent.
     """
     from services import dimension_registry as registry
 
@@ -118,10 +139,13 @@ def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
                 "benchmark_tier": dim.tier,
                 "benchmark_version": dim.benchmark_version,
                 "window_class": dim.window_class,
-                # The denominator ACTUALLY used (F.3). NULL where unknowable —
+                # HOW MANY UNITS THE RATE WAS COMPUTED OVER (F.3), read from
+                # the registry's declared denominator. NULL for a LEVEL, which
+                # divides by nothing, and NULL where the count is unknowable —
                 # a wrong denominator is worse than an absent one, because it
                 # is silently wrong rather than visibly missing.
-                "n_units": word_count if dim.denominator == "wpm" else None,
+                "n_units": _denominator_count(dim.denominator, seconds,
+                                              word_count),
             })
     if not rows:
         return 0

@@ -1,6 +1,6 @@
 # Appendix B — Feedback Progression: Novice to Expert
 
-**Last updated:** 2026-08-05.
+**Last updated:** 2026-08-06.
 
 **Companion to SPEC.md v3.** Governs every parameter of the Feedback Engine over a user's lifetime. Inherits §8 (triage), §10 (invariants), §11 (delivery constraints).
 
@@ -58,7 +58,9 @@ Every parameter below is per-dimension and driven by the state.
 | **Explanation cohesion** | **high** — every link spelled out | moderate | **tunable, default = no fade** (D17) | The reverse cohesion effect is *conditional*, not monotone. High-knowledge **low-skill** readers learn more from low-cohesion text; O'Reilly & McNamara (N=143) found high-knowledge **skilled** readers do better with *high* cohesion after all. GRADUATE is high-performance and high-calibration — which reads as high-skill — so the fade may point the wrong way for exactly the users it targets. Keep the dial, don't hard-code the direction; flip it only if graduation rates say otherwise. Grade **B**, with a known interaction |
 | **Dimensions eligible** | 3–5 highest-effect only | ~10 | all | Feedback complexity has negative returns past a point (Shute). A novice shown forty dimensions learns none. Grade **B** |
 
-**Still exactly one note per session at every level** (§11). Progression changes *which* note and *how it's phrased* — never *how many*.
+~~**Still exactly one note per session at every level** (§11). Progression changes *which* note and *how it's phrased* — never *how many*.~~
+
+**AMENDED 2026-08-06 (founder, Appendix H.1).** Progression now changes *how many* as well. **NOVICE is capped at one** at any recording length; **APPRENTICE, FRAGILE and GRADUATE may each see up to three**, and the real cap is the number of **genuinely independent** findings — non-overlapping spans, non-trading dimensions. FRAGILE and GRADUATE are explicitly *not* capped at one: the fading arc governs *frequency and phrasing*, not the per-session ceiling. `G(state)` still suppresses a GRADUATE's candidates on priority, so fewer clear the bar anyway — the two mechanisms are separate and both apply.
 
 ### B.2.1 · FRAGILE — a band, not a point on the arc (D11, D15)
 

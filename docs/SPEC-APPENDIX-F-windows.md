@@ -1,6 +1,6 @@
 # Appendix F — Measurement Windows
 
-**Last updated:** 2026-08-05.
+**Last updated:** 2026-08-06.
 
 **Answers the "4 filler words in *what*?" problem.** Companion to SPEC.md v3 and Appendix D.
 
@@ -130,8 +130,8 @@ Note this puts filler rate on a per-minute basis, which matters: Clark & Fox Tre
 | Dimension | Window | Denominator | Minimum | Notes |
 |---|---|---|---|---|
 | Vocal confidence (CONF) | **UNIT**, aggregated | — | 10+ units before a talk-level verdict | Quatieri: sum per-unit decisions |
-| Pitch variability (E1) | CYCLE | — | 30 s | Needs multiple IPs to estimate range |
-| Loudness dynamics (E2) | CYCLE | — | 30 s | — |
+| Pitch variability (E1) | CYCLE | — | ~~30 s~~ → see F.4.1 | Needs multiple IPs to estimate **range** |
+| Loudness dynamics (E2) | CYCLE | — | ~~30 s~~ → see F.4.1 | — |
 | Vocal effort / spectral (E3) | SESSION | — | **30–60 s** | LTAS needs a minimum sample |
 | Pause architecture (E4) | **CYCLE** | per minute | **30 s, prefer 40 s** | Below one planning cycle this is noise |
 | Speech rate (E5) | CYCLE, and PROPORTIONAL for variation | wpm | 30 s | — |
@@ -152,6 +152,41 @@ Note this puts filler rate on a per-minute basis, which matters: Clark & Fox Tre
 | Metaphor density (D9) | SESSION | per 1,000 words | **1,000 words** | Low base rate; the Mio benchmark is per-word |
 | Conversational style (D10) | SESSION | per 1,000 words | 500 words | — |
 | Affective density (C1) | PROPORTIONAL for the curve; SESSION for the mean | per 1,000 words | 500 words | — |
+
+---
+
+## F.4.1 · The minimum belongs to a QUANTITY, not to a row's name *(added 2026-08-06)*
+
+**The table above contradicted F.2, and the code inherited the contradiction.** F.2 states the minimum as *"minimum window for any pause/disfluency **rate**: 30 s"* — the justification is Henderson's planning cycle, and it is an argument about **rates**: a window shorter than one cycle catches either a planning phase or an execution phase, so the rate oscillates with window placement instead of with the speaker. The F.4 table then printed "30 s" against **E1 and E2**, which are not rates. F.5 already conceded the weakness of that row — *"the CYCLE assignment for E1/E2 is inference from the planning-cycle result, not a direct finding"* — but the 30 s figure was copied across anyway.
+
+`services/dimension_registry.py` reproduced it faithfully, which is how all six live dimensions came to carry a 30 s gate. A snippet is **6.55 s** (median, measured — see F-9). Every level measure was therefore written `insufficient_data` on every snippet, for an argument about a different quantity.
+
+**The gate now follows the quantity:**
+
+| Live dimension | Gate | Because |
+|---|---|---|
+| `wpm` (E5) · `fillers` (E6) · `pause_ms` (E4) | **30 s** | Rate or pause behaviour — the cycle argument applies |
+| `dynamic_db` (E2) · `pitch_center` (E1) · `energy` (unfiled) | **none** | A **level**. A mean is stable well inside one cycle; the cycle argument does not reach it |
+
+### The reason the wrong gate looked right
+
+Three live measures **are not the quantity their cited row specifies.** A name match was passing as a spec match:
+
+| We compute | The row says | Consequence |
+|---|---|---|
+| `pitch_center` — mean f0, a **level** | E1 is pitch **variability** (range/SD) | "Needs multiple IPs to estimate a range" is an argument about estimating a *range*. It does not transfer to a mean. |
+| `energy` — snippet-mean **level** at CYCLE | **No row at all.** It was filed under E2, which `dynamic_db` already holds | Two dimensions cannot be one row. Appendix D has no E2 benchmark either — E2 exists only in F.4's window table. It is Jiang & Pell's energy-contour *cue* reduced to a mean, with nothing to inherit from anywhere. |
+| `pause_ms` — mean pause **length** (ms) | E4 is pause **rate** (per minute) | Different quantity. The 30 s gate is kept anyway — the cycle argument covers pause behaviour either way. |
+
+The registry now carries a `spec_mismatch` field for exactly this, and `validate()` refuses a starred appendix id with an empty mismatch, or an inherited minimum with nothing justifying the transfer. **A row's minimum may not be inherited by a measure that is not that row's measure.**
+
+### Denominator vs unit
+
+Same defect, one layer down. `denominator` was carrying two different things: the unit a number is *expressed in*, and the divisor the roll-up *applies*. `wpm` declared `denominator="wpm"` and aggregated as a mean — the field said "this is a rate, divide by something" and the code divided by nothing. Split: **`unit`** is descriptive; **`denominator`** is what `rollup()` actually applies, and is non-null **iff** the aggregation is a rate form. Only `fillers` (÷ minutes) and the lexical dimensions (÷ words) have one.
+
+### What is still not settled
+
+`terminal_contour` (E7) gates on **10 assertions** — a count the registry can express in neither seconds nor tokens, so `meets_minimum()` cannot gate it and the extractor must. Flagged in the registry note rather than converted, because converting assertions to seconds assumes a speech rate, which is F.3's error.
 
 ---
 
@@ -195,7 +230,7 @@ class WindowSpec:
 | | |
 |---|---|
 | **1.6 s** | The intonation unit. 48 languages, 27 families. The atomic unit of both production and perception. Point events live here. |
-| **~18 s** | The planning cycle (11–39 s). **No pause or disfluency rate is meaningful below ~30 s** of window. |
+| **~18 s** | The planning cycle (11–39 s) — NOT the snippet, which is 6.55 s (F-9). **No pause or disfluency rate is meaningful below ~30 s** of window. |
 | **~1,000 words** | ≈ 7.7 min of speech. What a 1%-base-rate lexical category needs before its estimate stops being noise. |
 | **10 → 20** | Quatieri's aggregation curve: AUC 0.61 → 0.83 → 0.91. **Aggregate short decisions; do not lengthen the window.** |
 
@@ -203,7 +238,10 @@ class WindowSpec:
 
 ## F.8 · Consequences for this codebase (added on review)
 
-**F-2 · The piece and the window are orthogonal — do not unify them.** The ≤200-char piece is the **F1 segmentation unit**: slide-aligned, load-bearing for per-slide transcription and ranking. At ~40 words / ~18 s it happens to sit almost exactly at one planning CYCLE. That makes it well-sized for CYCLE-scoped measures and roughly 10× too long for UNIT-scoped ones. Measurement windows are a separate axis from segmentation; both are needed and neither replaces the other.
+**F-2 · The piece and the window are orthogonal — do not unify them.** The ≤200-char piece is the **F1 segmentation unit**: slide-aligned, load-bearing for per-slide transcription and ranking. Measurement windows are a separate axis from segmentation; both are needed and neither replaces the other.
+
+> ~~At ~40 words / ~18 s it happens to sit almost exactly at one planning CYCLE. That makes it well-sized for CYCLE-scoped measures and roughly 10× too long for UNIT-scoped ones.~~
+> **RETRACTED 2026-08-06 — measured, and false.** The median snippet is **6.55 s** (p10 3.52, p90 17.42; `duration_ms` over `charisma_snippets`). That is **0.36 of a planning cycle**, and even the 90th percentile is still under one. The piece is **not** well-sized for CYCLE-scoped measures — it is roughly a third of one, which is precisely the regime F.2 says a rate must not be computed in. It remains ~4× too long for UNIT-scoped ones, not 10×.
 
 **F-3 · CONF changes implementation.** Currently the composite is computed once per piece. Under F.4 it decides **per intonation unit and aggregates ~10 decisions** (`sum_of_decisions`). Quatieri's curve says that is worth AUC 0.61 → 0.83 — the single largest reliability gain available anywhere in this design, and it costs no new data.
 
@@ -214,3 +252,17 @@ class WindowSpec:
 **F-6 · D7 cannot fire on a practice take.** At 1,000 words / ~7.7 min, the pronoun profile — including D7a, the one T2 absolute with a real published threshold — is `INSUFFICIENT_DATA` on any normal-length take. Of the four day-one absolutes, **B6, E5a and E5b survive; D7a does not.**
 
 **F-7 · Appendix D's E6a threshold needs converting and stamping.** D quotes Conrad per-100-words and Clark & Fox Tree per-minute. Under F.3, filler is a temporal dimension → per minute. Convert Conrad's 1.28/100w at the corpus median speech rate and stamp the conversion factor, or the two numbers will be silently compared.
+
+**F-8 · A minimum belongs to a quantity, not to a row's name** *(2026-08-06)*. The F.4 table printed 30 s against E1/E2, which are not rates, while F.2 scoped that minimum to *rates* and F.5 already conceded the E1/E2 assignment was inference. The registry inherited it and marked every level `INSUFFICIENT_DATA` on every ~18 s snippet. Corrected in F.4.1. **The general rule: before inheriting a row's window or minimum, check that you are computing that row's quantity.** Three live measures were not — see the F.4.1 table.
+
+**F-9 · MEASURED. The snippet is 6.55 s, not ~18 s** *(2026-08-06, same day)*. The 18 s was 200 chars ÷ an assumed speech rate and had never been checked against `duration_ms`, which was on every snippet the whole time. Real distribution: **p10 3.52 s · median 6.55 s · p90 17.42 s.** Three consequences, in order of severity:
+
+1. **F-2's conclusion is retracted** (above). A snippet is 0.36 of a planning cycle, not one.
+2. **Half the live set can never produce a value at snippet grain.** `wpm`, `fillers` and `pause_ms` gate at 30 s; the *90th percentile* snippet is 17.4 s. Every per-snippet row they write is `insufficient_data` — not occasionally, essentially always. `dimension_evaluations` therefore holds **no usable value for three of six live dimensions**, and PSI and the p-chart will report nothing for them forever *while looking perfectly healthy* — the exact failure G.1.1 warns about. `registry.measurable_in_a_snippet()` and a test now state this rather than letting it stay silent.
+3. **The fix is a coarser emission grain, not a smaller gate.** The 30 s minimum is right; the grain we ask it at is wrong. Rate measures should be emitted at session (or rolling ~40 s) grain, levels at snippet grain. **Founder decision pending.**
+
+The three *levels* are unaffected: `dynamic_db` is a percentile spread (`p95 − p05` of voiced frame dB), which converges with more samples rather than growing the way an extremum would, so 6.55 s is ample. That objection was checked, not waved away — had it been a true min/max range the no-gate call would have been wrong.
+
+**F-11 · A wrong citation is the one error no test catches** *(2026-08-06)*. The fix above shipped with `energy`'s mismatch claiming *"A6 is energy front-load"*. **A6 is topic discipline** (Appendix D, Mayer coherence d=0.86) and no energy front-load row exists anywhere; the claim was inherited from a "NOT A6" disambiguation that was itself miscited, and it reached this appendix before it was caught. A citation is prose — `validate()` cannot check it against a document. What it *can* check is the structural shadow: **two dimensions claiming the same appendix row**, which is exactly the shape this took (`energy` and `dynamic_db` both on E2). That rule is now in `validate()`. Everything else in a citation is read by a human or not at all.
+
+**F-10 · The chain is cut at the far end** *(2026-08-06)*. The registry answers *window → enough data?* for all six live dimensions and *threshold → intervention* for none: no live dimension has a `fire_at`, so `dimension_evaluations.fired` is NULL on every row and nothing is chartable. That is the outstanding half of D31, not a wiring defect. `validate()` now rejects a threshold that fires into nothing and an intervention nothing can trigger, so the two must land together.
