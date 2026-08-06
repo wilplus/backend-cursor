@@ -151,6 +151,25 @@ class TestMinimumGate(unittest.TestCase):
                    if not registry.measurable_in_a_snippet(d.dimension_id)}
         self.assertEqual(blocked, {"wpm", "fillers", "pause_ms"})
 
+    def test_the_two_grains_partition_the_live_set(self):
+        """D33 — every live dimension is emitted at EXACTLY ONE grain.
+
+        `_emit_drift_telemetry` skips a dimension at snippet grain when
+        `measurable_in_a_snippet` is False and picks it up in the window pass
+        on the same predicate. Both readings must come from this one function
+        or a dimension gets written twice (colliding on the anchor snippet) or
+        not at all (a silent hole that reports STABLE forever).
+        """
+        live = {d.dimension_id for d in registry.live_dimensions()}
+        snippet_grain = {d for d in live if registry.measurable_in_a_snippet(d)}
+        window_grain = {d for d in live
+                        if not registry.measurable_in_a_snippet(d)}
+        self.assertEqual(snippet_grain | window_grain, live)
+        self.assertEqual(snippet_grain & window_grain, set())
+        self.assertEqual(window_grain, {"wpm", "fillers", "pause_ms"})
+        self.assertEqual(snippet_grain,
+                         {"dynamic_db", "pitch_center", "energy"})
+
     def test_the_snippet_length_is_measured_not_assumed(self):
         """The spec said ~18 s for months; duration_ms said 6.55 the whole
         time. Pinned so a future edit that 'restores' the assumption fails."""
