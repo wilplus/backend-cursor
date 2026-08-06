@@ -131,6 +131,40 @@ Every template in both bands needs founder review against three tests:
 3. **Not evaluative** (G.0). "Your pacing was weak this time" is self-referenced, number-free, and still
    harmful. Mastery framing is the active ingredient, not the absence of a number.
 
+#### PM-5.1 · The acoustic-targets line — **HELD DARK, awaiting sign-off** *(added 2026-08-06)*
+
+**Where:** `coaching_state_machine._format_acoustic_targets_for_prompt`, rendered by STEP 8, gated at
+`routes/v2/coaching.py` behind `_ACOUSTIC_TARGETS_SIGNED_OFF = False`.
+
+This surface has been dark since **2026-06-01** — not by decision, but because its inputs
+(`global_wpm`, `global_fillers`, `global_dynamic_db`) stopped being written when the session-globals
+caller was excised. Restoring those globals (2026-08-06) would have turned it back on silently, with
+copy nobody has reviewed. Held explicitly instead.
+
+**What it would say.** STEP 8 instructs the model to *"keep the NUMBERS verbatim (WPM, dB, filler
+counts)"* and to emit `triggers=['show_acoustic_targets_card']`:
+
+> *"keep your tempo at around 145 WPM (you were at 132 this time)"*
+> *"push your vocal dynamic range to about 18.5 dB (slightly more variation than today)"*
+> *"keep your filler words under 12 across the session (you used 19 this time)"*
+
+**Why it fails the test, and the test is not "no digits."** `SpeechDataPanel` shows users wpm, Hz and
+dB deliberately. Its header states the operative rule: those are *"reference DATA, never a verdict. No
+best/worst flag, **no direction guess**, no characterization ... characterizing them would be the
+system judging the voice."* A **prescriptive numeric target is a direction**, and pairing *"you were at
+132"* with a goal of 145 is a shortfall verdict wearing a suggestion's clothes.
+
+**The decision needed:** either (a) sign off a **qualitative** rewrite — *"a touch quicker, a little
+more range"* — and flip the flag, or (b) leave it dark permanently and delete the machinery. What is
+NOT available is turning it on unreviewed, which is what would have happened by accident.
+
+**Also blocking on the same review — a D31 violation.** `_IDEAL_WPM_MIN = 125`, `_IDEAL_WPM_MAX = 140`
+and `_TARGET_FILLERS_PER_MIN = 1.0` are hardcoded in `coaching_state_machine.py`, outside the dimension
+registry. D31 says *"hardcoding any of these values elsewhere is a bug, whatever it looks like."* They
+predate the registry. Moving them is a behaviour change on a live surface, so it belongs with this
+sign-off rather than smuggled in beside a telemetry fix. `test_acoustic_targets_held.py` pins the set
+so a fourth cannot appear unnoticed.
+
 ---
 
 ### PM-6 · The verbal corpus — parked on speaker diversity, not on analysis
