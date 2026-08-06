@@ -205,6 +205,8 @@ def main() -> int:
 def _run_worker_loop(conn, *, with_scheduler: bool) -> None:
     """Block in one rq worker. Never returns until the worker stops."""
     from rq import Queue, Worker
+
+    from services import job_queue
     q = Queue(job_queue.queue_name(), connection=conn)
     # with_scheduler: serves enqueue_in (delayed retries + the sweep chain).
     # rq guards it with a lock, so it is safe on every slot — but only slot 0
