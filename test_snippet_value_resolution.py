@@ -297,16 +297,16 @@ class TestTheOrphanIsGone(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"these break once 0254 runs: {offenders}")
 
-    def test_the_column_drop_is_parked_not_manifested(self):
-        """A destructive migration in manifest.txt that has NOT been applied
-        blocks EVERY deploy: the Railway migrate step hits the DROP COLUMN
-        guard and aborts. This one is blocked on a data question (four of the
-        six columns hold rows), so it lives in migrations/pending/, which
-        migrate.py does not glob. It moves up in the same commit that applies
-        it."""
+    def test_the_column_drop_is_manifested_because_it_was_applied(self):
+        """APPLIED BY HAND 2026-08-06, recorded as 0254, THEN moved up.
+
+        That order is the whole lesson of #359: an un-applied destructive
+        migration in manifest.txt aborts the Railway migrate step and blocks
+        every deploy. It sat in migrations/pending/ until the ledger row
+        existed."""
         manifest = (ROOT / "migrations" / "manifest.txt").read_text()
-        self.assertNotIn("drop_dead_snippet_metric_columns.sql", manifest)
-        self.assertTrue((ROOT / "migrations" / "pending"
+        self.assertIn("0254\tdrop_dead_snippet_metric_columns.sql", manifest)
+        self.assertTrue((ROOT / "migrations"
                          / "drop_dead_snippet_metric_columns.sql").exists())
 
     def test_pending_migrations_are_invisible_to_the_runner(self):
