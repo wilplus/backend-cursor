@@ -60,6 +60,27 @@ class DatabaseService:
         self._student_profile_table = "student_profile"
         self._legacy_student_profile_table = "user_sniper_profile"
 
+    def reset_connections(self) -> None:
+        """Rebuild the client. MUST be called in a freshly forked child.
+
+        `db = DatabaseService()` runs at IMPORT, so the TLS connection to
+        Supabase is established in the parent — worker.py's `_warm_analysis_
+        stack()` and its boot sweep both touch the DB before forking. A
+        `fork` context then hands that one live socket to every slot, and two
+        processes writing into a single TLS session produce exactly what the
+        worker logs showed:
+
+            [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac
+            EOF occurred in violation of protocol
+            Server disconnected
+
+        Those are caught and logged as warnings, so the reads simply return
+        nothing and the sweep quietly does no work — the same silent-failure
+        shape as the telemetry writes. `job_queue.reset_connections()` already
+        handles this for Redis and says why; the httpx/TLS half was missed.
+        """
+        self.client = self._build_supabase_client()
+
     def _build_supabase_client(self) -> Client:
         """Create the Supabase client.
 
@@ -13105,6 +13126,75 @@ class DatabaseService:
                 )
                 return 0
             logger.warning("record_dimension_evaluations failed: %s", e)
+            return 0
+
+    def record_intervention_arms(self, rows: list) -> int:
+        """Store the manager engine's experiment arms (PM-8, Appendix H.12).
+
+        One row per (session, dimension) CONSIDERED. Returns the number
+        written; 0 on any failure. Best-effort and NEVER raises — the same
+        rule as the drift telemetry: a recorder must not break the thing it
+        records.
+
+        THAT SWALLOW IS WHY THE CONTRACT IS TESTED STATICALLY. Twice on
+        2026-08-06 a schema/code mismatch made every write fail silently and
+        the table simply stayed empty — a partial index used as an ON CONFLICT
+        arbiter (42P10), then an INTEGER column handed a fraction (22P02).
+        `test_upsert_arbiters` and `test_schema_column_types` cover both
+        shapes for this table too; nothing at runtime will ever complain.
+
+        AC-9: internal only. Arm assignments and priority values are
+        arbitration inputs and must never reach a client-facing schema.
+        """
+        if not rows:
+            return 0
+        payload = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if not row.get("session_id") or not row.get("dimension_id"):
+                continue
+            arm = str(row.get("arm") or "")
+            if arm not in ("CONTROL", "WITHHELD", "EXPLORE",
+                           "TREATED", "NOT_SELECTED"):
+                continue          # ck_intervention_arms_arm
+            surfaced = bool(row.get("surfaced"))
+            # Keep the CHECK satisfied here rather than letting Postgres
+            # reject the whole batch: a caller bug must cost one row, not the
+            # entire session's record.
+            if surfaced != (arm in ("TREATED", "EXPLORE")):
+                continue          # ck_intervention_arms_surfaced_agrees
+            payload.append({
+                "session_id": str(row["session_id"]),
+                "user_id": row.get("user_id"),
+                "dimension_id": str(row["dimension_id"]),
+                "arm": arm,
+                "priority": row.get("priority"),
+                "would_have_surfaced": row.get("would_have_surfaced"),
+                "surfaced": surfaced,
+                "form": row.get("form"),
+                "control_salt": row.get("control_salt"),
+                "withhold_salt": row.get("withhold_salt"),
+                "gamma": row.get("gamma"),
+                "withhold_rate": row.get("withhold_rate"),
+                "exploration_rate": row.get("exploration_rate"),
+            })
+        if not payload:
+            return 0
+        try:
+            (self.client.table("intervention_arms")
+                 .upsert(payload, on_conflict="session_id,dimension_id")
+                 .execute())
+            return len(payload)
+        except Exception as e:
+            err_low = str(e).lower()
+            if "does not exist" in err_low or "intervention_arms" in err_low:
+                logger.warning(
+                    "record_intervention_arms: table/columns missing (run "
+                    "migrations/add_intervention_arms.sql)",
+                )
+                return 0
+            logger.warning("record_intervention_arms failed: %s", e)
             return 0
 
     def get_dimension_evaluations_since(self, *, weeks: int = 4,

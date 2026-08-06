@@ -103,6 +103,51 @@ def get_redis(*, for_worker: bool = False):
         return None
 
 
+SWEEP_LEASE_KEY = "willab:pipeline:sweep-chain"
+
+
+def acquire_sweep_lease(*, ttl_seconds: int) -> bool:
+    """True if THIS process may start a sweep chain.
+
+    WHY A LEASE. `run_sweep_loop` re-enqueues itself in a `finally`, so a
+    chain never ends; and worker.py started a NEW one on every boot. A worker
+    that restarts ten times therefore leaves ten immortal chains sweeping in
+    parallel — which is what "eleven sweeps in four seconds" was. Not a hot
+    loop: eleven accumulated chains all coming due at once. It gets
+    monotonically worse with every redeploy and never recovers on its own.
+
+    A lease makes the chain SINGLETON and self-healing: exactly one owner at a
+    time, and if that chain dies (Redis wipe, killed work horse) the key
+    expires and the next boot takes over. TTL is a multiple of the interval so
+    one slow or failed sweep does not hand the chain to a second starter.
+
+    Fails CLOSED — no broker means no lease means no chain, and the web-boot
+    sweep plus POST /v2/internal/jobs/sweep remain the backstops.
+    """
+    conn = get_redis()
+    if conn is None:
+        return False
+    try:
+        return bool(conn.set(SWEEP_LEASE_KEY, "1", nx=True, ex=ttl_seconds))
+    except Exception as e:
+        logger.warning("job_queue: sweep lease acquire failed: %s", e)
+        return False
+
+
+def renew_sweep_lease(*, ttl_seconds: int) -> None:
+    """Hold the chain open for another interval. Best-effort: a missed renewal
+    only means a second chain may start after the TTL, which the sweeps
+    themselves tolerate (they are CAS-guarded and cheap when nothing is
+    stale)."""
+    conn = get_redis()
+    if conn is None:
+        return
+    try:
+        conn.set(SWEEP_LEASE_KEY, "1", ex=ttl_seconds)
+    except Exception as e:
+        logger.warning("job_queue: sweep lease renew failed: %s", e)
+
+
 def reset_connections() -> None:
     """Drop cached connections so the next get_redis() builds fresh ones.
 

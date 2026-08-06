@@ -426,6 +426,87 @@ def on_unacted(k: int) -> str:
     return CHANGE_INTERVENTION_TYPE       # never louder, longer or more insistent
 
 
+# ── PM-8 · the experiment's record ──────────────────────────────────────────
+ARM_CONTROL = "CONTROL"
+ARM_WITHHELD = "WITHHELD"
+ARM_EXPLORE = "EXPLORE"
+ARM_TREATED = "TREATED"
+ARM_NOT_SELECTED = "NOT_SELECTED"
+
+
+def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
+    """Turn one arbitration into rows for `intervention_arms`.
+
+    ONE ROW PER (session, dimension) CONSIDERED — not per surfaced note. A
+    per-note table would give the untreated arms no rows at all and record
+    only the treatment group, which is the same defect as measuring only the
+    people who answered.
+
+    Running the controls without persisting this is strictly WORSE than not
+    running them: 12% of pairs receive nothing and 20% of winning notes are
+    withheld, users pay that cost in feedback, and without the arm stored next
+    to the outcome no causal claim is recoverable — while it looks from the
+    outside exactly like a working experiment.
+
+    THE POLICY IS STAMPED PER ROW, salts included. Assignment is a pure
+    function of (salt, user_id, dimension), so rows written either side of a
+    salt change belong to two different experiments with no way to tell them
+    apart afterwards. Reading the constants at analysis time instead would
+    silently re-interpret old rows under a new policy.
+    """
+    arms = result.get("arms") or {}
+    policy = {
+        "control_salt": arms.get("control_salt"),
+        "withhold_salt": arms.get("withhold_salt"),
+        "gamma": arms.get("gamma_control"),
+        "withhold_rate": arms.get("intervention_randomisation"),
+        "exploration_rate": arms.get("epsilon_explore"),
+    }
+
+    def row(dimension, arm, *, priority=None, would=None, surfaced=False,
+            form=None):
+        return {"session_id": session_id, "user_id": user_id or None,
+                "dimension_id": dimension, "arm": arm, "priority": priority,
+                "would_have_surfaced": would, "surfaced": surfaced,
+                "form": form, **policy}
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+
+    for c in result.get("selected") or ():
+        seen.add(c.dimension)
+        rows.append(row(c.dimension,
+                        ARM_EXPLORE if c.exploration else ARM_TREATED,
+                        priority=c.priority, would=True, surfaced=True,
+                        form=c.form))
+
+    # WITHHELD is the within-subject untreated condition and the single most
+    # important arm to record: it is the only evidence the condition occurred
+    # at all. `would_have_surfaced` is True by construction — it won.
+    for dimension in result.get("withheld") or ():
+        if dimension in seen:
+            continue
+        seen.add(dimension)
+        rows.append(row(dimension, ARM_WITHHELD, would=True))
+
+    # CONTROL carries would_have_surfaced=None, not False. The holdout is
+    # removed from the pool BEFORE ranking, so whether it would have won is
+    # genuinely unknown; writing False would assert something never tested.
+    for dimension in result.get("control_held") or ():
+        if dimension in seen:
+            continue
+        seen.add(dimension)
+        rows.append(row(dimension, ARM_CONTROL))
+
+    for dimension, _why in result.get("rejected") or ():
+        if dimension in seen:
+            continue
+        seen.add(dimension)
+        rows.append(row(dimension, ARM_NOT_SELECTED, would=False))
+
+    return rows
+
+
 def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
               session_id: str = "",
               importance: Optional[Callable[[str], float]] = None,

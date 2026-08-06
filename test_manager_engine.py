@@ -427,6 +427,100 @@ class TestScienceControls(unittest.TestCase):
         self.assertFalse(me.is_withheld("u1", "wpm", ""))
 
 
+class TestArmRows(unittest.TestCase):
+    """PM-8 — the experiment's record. Running the controls without this is
+    strictly WORSE than not running them: users pay the cost in withheld
+    feedback and no causal claim is recoverable."""
+
+    def _rows(self, dims=("d0", "d1", "d2", "d3"), user="u0", session="s1",
+              **kw):
+        state = {d: me.APPRENTICE for d in dims}
+        user_state = me.UserState(user_id=user, state_by_dimension=state)
+        cands = [_c(d, anchor=(i * 10.0, i * 10.0 + 1), deviation=4.0 - i)
+                 for i, d in enumerate(dims)]
+        out = me.arbitrate(cands, user_state, session_id=session, **kw)
+        return out, me.arm_rows(out, session_id=session, user_id=user)
+
+    def test_every_considered_dimension_gets_exactly_one_row(self):
+        """Per-note would give the untreated arms no rows at all and record
+        only the treatment group."""
+        dims = ("d0", "d1", "d2", "d3")
+        _, rows = self._rows(dims)
+        self.assertEqual(sorted(r["dimension_id"] for r in rows), sorted(dims))
+
+    def test_surfaced_agrees_with_the_arm(self):
+        """Mirrors ck_intervention_arms_surfaced_agrees. Without it the
+        withheld arm can be corrupted into the treated one by a caller bug
+        and the comparison still looks populated."""
+        _, rows = self._rows()
+        for r in rows:
+            self.assertEqual(r["surfaced"],
+                             r["arm"] in (me.ARM_TREATED, me.ARM_EXPLORE))
+
+    def test_control_records_unknown_not_false(self):
+        """The holdout is removed BEFORE ranking, so whether it would have
+        won is genuinely unknown. Writing False would assert something never
+        tested."""
+        _, rows = self._rows(dims=("d0", "d1", "d2", "d3", "d4", "d5"))
+        control = [r for r in rows if r["arm"] == me.ARM_CONTROL]
+        self.assertTrue(control, "fixture produced no control row")
+        for r in control:
+            self.assertIsNone(r["would_have_surfaced"])
+            self.assertFalse(r["surfaced"])
+
+    def test_a_withheld_note_is_recorded_as_having_won(self):
+        """The within-subject untreated condition, and the only evidence it
+        occurred at all."""
+        for i in range(200):
+            out, rows = self._rows(session=f"s{i}")
+            withheld = [r for r in rows if r["arm"] == me.ARM_WITHHELD]
+            if withheld:
+                for r in withheld:
+                    self.assertTrue(r["would_have_surfaced"])
+                    self.assertFalse(r["surfaced"])
+                return
+        self.fail("no session withheld in 200 tries")
+
+    def test_the_policy_is_stamped_on_every_row(self):
+        """Assignment is a pure function of (salt, user_id, dimension), so
+        rows either side of a salt change belong to two different
+        experiments. Reading the constants at analysis time would silently
+        re-interpret old rows under a new policy."""
+        _, rows = self._rows()
+        for r in rows:
+            self.assertEqual(r["control_salt"], me.CONTROL_SALT)
+            self.assertEqual(r["withhold_salt"], me.WITHHOLD_SALT)
+            self.assertEqual(r["gamma"], me.GAMMA_CONTROL)
+            self.assertEqual(r["withhold_rate"], me.INTERVENTION_RANDOMISATION)
+
+    def test_the_arm_shares_come_out_near_the_configured_rates(self):
+        """The health check the table exists for: an EMPTY CONTROL ARM means
+        the controls are running and the record is not."""
+        seen = {}
+        for i in range(400):
+            _, rows = self._rows(user=f"u{i}", session=f"s{i}")
+            for r in rows:
+                seen[r["arm"]] = seen.get(r["arm"], 0) + 1
+        total = sum(seen.values())
+        self.assertGreater(seen.get(me.ARM_CONTROL, 0) / total, 0.05)
+        self.assertIn(me.ARM_WITHHELD, seen)
+        self.assertIn(me.ARM_TREATED, seen)
+
+    def test_an_empty_arbitration_writes_nothing(self):
+        out = me.arbitrate([], _user(), session_id="s1")
+        self.assertEqual(me.arm_rows(out, session_id="s1", user_id="u1"), [])
+
+    def test_no_user_id_still_records_the_row(self):
+        """Fails open on the ARM, not on the record: an unattributed
+        candidate gets no arm assignment, but its consideration is still
+        evidence and must not vanish."""
+        out = me.arbitrate([_c()], me.UserState(state_by_dimension={}),
+                           session_id="s1")
+        rows = me.arm_rows(out, session_id="s1", user_id="")
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0]["user_id"])
+
+
 class TestStatesAndConstants(unittest.TestCase):
     def test_fragile_is_a_real_state_and_does_not_fade(self):
         """B.2.1 — FRAGILE performs well and cannot tell why, so fading

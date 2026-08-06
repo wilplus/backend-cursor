@@ -236,7 +236,7 @@ returns False across the board. The off-list is what stays off *after* threshold
 
 **Cadence:** one-time, before the manager is wired to the scoring path. Then reviewed at PM-1.
 **Source:** Appendix H.12; decisions log §B (`γ_control`, intervention randomisation).
-**Status:** **LOCKED.** Not a nice-to-have and not deferrable past the manager going live.
+**Status:** **BUILT 2026-08-06** — `migrations/add_intervention_arms.sql` (0253), `manager_engine.arm_rows()`, `db.record_intervention_arms()`. Remains LOCKED as a gate: the table exists, and the manager must not go live until something calls the writer.
 
 **Running the controls without persisting the arms is strictly WORSE than not running them at all.**
 
@@ -265,7 +265,21 @@ evaluated_at
 
 **Do not reuse `dimension_evaluations`.** That table is *measurements* (Appendix G); this is *decisions and arms*. Joining them is right; merging them puts two different grains and two different retention arguments in one place.
 
-**The check that this is working:** `SELECT arm, COUNT(*) ... GROUP BY arm` should show roughly 12% CONTROL and 20% WITHHELD among what would have surfaced. **An empty CONTROL arm means the controls are running and the record is not** — the exact silent failure this item exists to prevent.
+**The check that this is working:**
+
+```sql
+SELECT arm, COUNT(*) FROM intervention_arms GROUP BY arm ORDER BY 2 DESC;
+```
+
+Roughly 12% CONTROL and 20% WITHHELD among what would have surfaced. **An empty CONTROL arm means the controls are running and the record is not** — the exact silent failure this item exists to prevent.
+
+**What was built, and the two 2026-08-06 lessons applied deliberately.** The unique index is **non-partial** (a partial one cannot be an `ON CONFLICT` arbiter — 0251), and every numeric column is **DOUBLE PRECISION**, never INTEGER (`priority` is a product of floats, the rates are fractions — 0252). Both defects made every write fail *silently* on the telemetry table the same day; `test_upsert_arbiters` and `test_schema_column_types` now cover this table too.
+
+Two CHECK constraints carry the invariants the analysis depends on: `arm` is one of the five, and `surfaced` agrees with it — without the second, a caller bug can quietly corrupt the withheld arm into the treated one and the comparison still looks populated.
+
+`would_have_surfaced` is **NULL for CONTROL**, not false. The holdout is removed from the pool *before* ranking, so whether it would have won is genuinely unknown; writing false would assert something never tested. Ranking before the holdout would make it knowable if the per-session counterfactual is ever needed — the aggregate between-pair comparison does not require it.
+
+**Still outstanding:** nothing calls `record_intervention_arms()` yet, because nothing calls the manager. That wiring is the actual gate.
 
 ---
 

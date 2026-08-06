@@ -494,6 +494,12 @@ def sweep_interval_seconds() -> int:
     return max(60, _int_env("PIPELINE_SWEEP_INTERVAL_SECONDS", 300))
 
 
+# The chain's lease runs for this many intervals. >1 so a single slow or
+# failed sweep cannot drop the lease and let a second chain start; small
+# enough that a genuinely dead chain is taken over within ~15 minutes.
+SWEEP_LEASE_INTERVALS = 3
+
+
 def run_sweep_loop() -> None:
     """Self-rescheduling sweep, run THROUGH the queue (RQ entrypoint).
 
@@ -517,6 +523,12 @@ def run_sweep_loop() -> None:
         except Exception as he:
             logger.warning("pipeline_jobs: health probe failed: %s", he)
     finally:
+        # Hold the singleton lease open before re-arming. worker.py only
+        # starts a chain when it can ACQUIRE this, so without the renewal the
+        # lease expires and the next boot starts a second chain alongside
+        # this one — which is how eleven of them ended up running at once.
+        job_queue.renew_sweep_lease(
+            ttl_seconds=sweep_interval_seconds() * SWEEP_LEASE_INTERVALS)
         job_queue.enqueue(
             SWEEP_LOOP_PATH, delay_seconds=sweep_interval_seconds(),
         )
