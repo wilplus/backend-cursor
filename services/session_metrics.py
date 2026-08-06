@@ -26,10 +26,11 @@ Aggregation rules
 - JSONB ``metrics`` fallback. This was documented as a legacy path
   "for rows written before the dedicated columns existed"; that is
   wrong and was corrected 2026-08-06. It is the ONLY path. Nothing
-  on the live loop writes the six columns —
-  ``db.update_snippet_metrics`` is reached only from the orphaned
-  ``recompute_snippet_metrics_for_window`` — so the blob is the
-  current representation and the columns are the vestigial one.
+  on the live loop ever wrote the six columns — their only writer,
+  ``db.update_snippet_metrics``, was reached solely from the orphaned
+  ``recompute_snippet_metrics_for_window``. Both were deleted
+  2026-08-06 and migration 0254 drops the columns. The blob is the
+  representation.
 
 KPI policy
 ----------
@@ -58,6 +59,7 @@ logger = logging.getLogger(__name__)
 from services.snippet_values import SNIPPET_FIELDS as _SNIPPET_FIELDS  # noqa: E402
 from services.snippet_values import resolve as _resolve_dimension  # noqa: E402
 from services.snippet_values import resolve_all as _resolve_all  # noqa: E402
+from services.snippet_values import weights_of as _weights_of  # noqa: E402
 
 
 def _resolve_snippet_value(snippet, dimension_id, metrics=None,
@@ -214,6 +216,10 @@ def _windowed_rate_rows(session_id: str, active_snippets: list) -> list:
             duration_ms=float(duration_ms),
             words=len(transcript.split()) if transcript else 0,
             values=values,
+            # How many observations each mean was taken over, where the row
+            # records it. Makes the pause_ms roll-up exact instead of
+            # duration-weighted; absent on pre-2026-08-06 snippets.
+            weights=_weights_of(s),
         ))
 
     ids = [d.dimension_id for d in windowed]

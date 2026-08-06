@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import re
 import unittest
 
 ROOT = pathlib.Path(__file__).parent
@@ -27,7 +28,7 @@ ROOT = pathlib.Path(__file__).parent
 # services.snippet_values is PURE — no db, no supabase — so this suite imports
 # it directly. It lives apart from session_metrics for exactly that reason.
 from services.snippet_values import SNIPPET_FIELDS as _FIELDS  # noqa: E402
-from services.snippet_values import display_hz, resolve  # noqa: E402
+from services.snippet_values import display_hz, resolve, weights_of  # noqa: E402
 
 _SESSION_METRICS_SRC = (ROOT / "services" / "session_metrics.py").read_text()
 
@@ -248,6 +249,81 @@ class TestNothingReadsTheDeadColumns(unittest.TestCase):
         self.assertEqual(offenders, [],
                          "these read the dead columns instead of "
                          f"snippet_values.resolve_all: {offenders}")
+
+
+class TestTheOrphanIsGone(unittest.TestCase):
+    """PM-9 follow-up: the dead writer is DELETED, not merely uncalled.
+
+    The earlier version of this suite asserted only that
+    recompute_snippet_metrics_for_window had no callers. An uncalled function
+    that looks like the source of truth is what hid the bug; these assert the
+    whole cluster is gone."""
+
+    def test_the_orphaned_writer_and_its_helpers_are_deleted(self):
+        source = (ROOT / "services" / "snippet_extraction.py").read_text()
+        for symbol in ("def recompute_snippet_metrics_for_window(",
+                       "def _load_parent_audio(",
+                       "def _retranscribe_window("):
+            self.assertNotIn(symbol, source, f"{symbol} is back")
+
+    def test_the_db_writer_is_deleted(self):
+        source = (ROOT / "services" / "db.py").read_text()
+        self.assertNotIn("def update_snippet_metrics(", source)
+        # The narrow blob-only writer SURVIVES — different function, live use.
+        self.assertIn("def update_snippet_metrics_blob(", source)
+
+    def test_no_charisma_snippets_query_names_a_dropped_column(self):
+        """Migration 0254 drops them; a SELECT naming one would then error.
+
+        SCOPED TO charisma_snippets, and matched as whole tokens. Other tables
+        have their OWN wpm/pause_ms columns that this migration does not touch
+        — session_sniper_metrics is one — and a substring check flags those
+        plus `pitch_center_st`, which is a different column again.
+        """
+        source = (ROOT / "services" / "db.py").read_text()
+        dropped = set(_FIELDS)
+        offenders = []
+        for match in re.finditer(r'table\("charisma_snippets"\)', source):
+            window = source[match.end():match.end() + 600]
+            select = re.search(r"\.select\(\s*((?:[^()]|\([^()]*\))*?)\)",
+                               window, re.DOTALL)
+            if not select:
+                continue
+            named = set(re.findall(r"[A-Za-z_][A-Za-z_0-9]*", select.group(1)))
+            hit = named & dropped
+            if hit:
+                line = source[:match.start()].count("\n") + 1
+                offenders.append(f"db.py:{line} selects {sorted(hit)}")
+        self.assertEqual(offenders, [],
+                         f"these break once 0254 runs: {offenders}")
+
+    def test_the_migration_is_registered(self):
+        manifest = (ROOT / "migrations" / "manifest.txt").read_text()
+        self.assertIn("drop_dead_snippet_metric_columns.sql", manifest)
+
+
+class TestPauseCountWeights(unittest.TestCase):
+
+    def test_the_pause_count_becomes_a_weight(self):
+        row = dict(LAB_SNIPPET)
+        row["metrics"] = dict(row["metrics"], pause_count=3)
+        self.assertEqual(weights_of(row), {"pause_ms": 3.0})
+
+    def test_wpm_never_gets_a_weight(self):
+        """wpm is already a rate — duration-weighting it is exact, and a count
+        weight would corrupt it."""
+        row = dict(LAB_SNIPPET)
+        row["metrics"] = dict(row["metrics"], pause_count=3, wpm=120.0)
+        self.assertNotIn("wpm", weights_of(row))
+
+    def test_an_old_snippet_has_no_weights(self):
+        self.assertEqual(weights_of(LAB_SNIPPET), {})
+
+    def test_zero_and_bool_are_not_weights(self):
+        for bogus in (0, False, True):
+            row = dict(LAB_SNIPPET)
+            row["metrics"] = dict(row["metrics"], pause_count=bogus)
+            self.assertNotIn("pause_ms", weights_of(row), f"count={bogus!r}")
 
 
 class TestPlumbingCoversTheRegistry(unittest.TestCase):

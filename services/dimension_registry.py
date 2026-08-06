@@ -180,7 +180,15 @@ _REGISTRY: dict[str, Dimension] = {
                       "kept anyway because Henderson's planning-cycle argument "
                       "covers pause behaviour either way — a sub-cycle window "
                       "catches one phase and mean pause length swings with it.",
-        note="F.4: 30 s minimum, PREFER 40 s.",
+        note="F.4: 30 s minimum, PREFER 40 s. "
+             "ROLL-UP IS NOW EXACT (2026-08-06). This is the mean length of a "
+             "COUNTABLE set, so the correct pooled mean weights by how many "
+             "pauses each snippet contributed. audio_metrics ships "
+             "`pause_count` alongside `pause_ms`, and rate_windows uses it "
+             "whenever EVERY contributing piece has one. Snippets predating "
+             "the field fall back to duration-weighting — the old "
+             "approximation, which assumed pause count scales with snippet "
+             "length.",
     ),
     "dynamic_db": Dimension(
         dimension_id="dynamic_db", appendix_id="E2", label="Loudness dynamics",
@@ -200,14 +208,22 @@ _REGISTRY: dict[str, Dimension] = {
     ),
     "pitch_center": Dimension(
         dimension_id="pitch_center", appendix_id="E1*", label="Pitch centre",
-        window_class="CYCLE", aggregation="mean", unit="Hz",
+        window_class="CYCLE", aggregation="mean", unit="semitones",
         min_seconds=None, tier="CORPUS_REL", computed=True,
         spec_mismatch="E1 is pitch VARIABILITY (range/SD); this is the CENTRE, "
                       "a level. E1's 'needs multiple IPs to estimate range' "
                       "minimum is an argument about estimating a RANGE and does "
                       "not transfer to a mean.",
         note="NO 30 s gate — a mean f0 is stable well below one planning "
-             "cycle.",
+             "cycle. "
+             "UNIT CORRECTED 2026-08-06: this said 'Hz' and the value has "
+             "always been SEMITONES — audio_metrics writes "
+             "_pitch_center_st_from_series into pitch_center_st, which is what "
+             "the plumbing reads. Nothing computed on it was wrong (every "
+             "consumer saw semitones, so comparisons were like-for-like); the "
+             "LABEL was, and a wrong label is what makes someone render "
+             "'-2 Hz'. True Hz is f0_mean — snippet_values.display_hz serves "
+             "surfaces that print an Hz suffix.",
     ),
     "energy": Dimension(
         dimension_id="energy", appendix_id="UNFILED*", label="Energy ratio",

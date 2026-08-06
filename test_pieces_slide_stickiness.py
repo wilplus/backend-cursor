@@ -26,6 +26,23 @@ from unittest.mock import MagicMock, patch
 # tearDownModule RESTORES the saved original.
 _ORIG_SERVICES_DB = None
 
+# services.audio_metrics needs numpy. PipelineWiringTests patches attributes ON
+# that module, and mock.patch resolves "services.audio_metrics.X" by importing
+# `services` and then getattr'ing `audio_metrics` — which only exists as an
+# attribute once the submodule has been imported. Without numpy the import
+# fails and the patch dies with
+#
+#     AttributeError: module 'services' has no attribute 'audio_metrics'
+#
+# which reads exactly like a broken test and is really a missing dependency.
+# CI installs numpy (requirements.txt) so this suite runs there; a lean local
+# env now SKIPS with the reason instead of reporting five phantom errors.
+try:
+    import services.audio_metrics  # noqa: F401 — import-only probe
+    _AUDIO_METRICS_IMPORT_ERROR = None
+except Exception as import_err:  # pragma: no cover - env/bootstrap guard
+    _AUDIO_METRICS_IMPORT_ERROR = import_err
+
 
 def setUpModule():
     global _ORIG_SERVICES_DB
@@ -289,6 +306,11 @@ def _words_and_advances(text_per_slide, word_dur=0.4, tap_gap_s=1.0):
     return words, advances
 
 
+@unittest.skipIf(
+    _AUDIO_METRICS_IMPORT_ERROR is not None,
+    "these tests patch services.audio_metrics, which needs numpy: "
+    f"{_AUDIO_METRICS_IMPORT_ERROR}",
+)
 class PipelineWiringTests(unittest.TestCase):
     """process_lab_recording in pieces mode (audio/Whisper/LLM/db mocked):
     every piece gets slide_stickiness stamped (lexical, degraded), the budget
