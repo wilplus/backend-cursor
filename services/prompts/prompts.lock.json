@@ -66,15 +66,10 @@
       "module": "pending",
       "sha256": "704eac40802656d0236289287cff497cee3f62f574afb5f5697c892bc20d634f"
     },
-    "coaching_state_machine.acoustic_targets": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "8e44a06237122bf31694263fedee32707fa4797fa968c09f0584b232d0785dc6"
-    },
     "coaching_state_machine.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "1bc5efd8817016c558c96318a534efca5eb487c9ea19de40e9a8c98c4e880d32"
+      "sha256": "144ba1bdd4a589f3bc6cbefc5f3f6d2771fb663bd1766607d2b19499ba6a1336"
     },
     "community_content.preamble": {
       "kind": "source_ref",

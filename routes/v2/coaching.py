@@ -31,6 +31,7 @@ from services.skills import get_skill as _get_skill, resolve_for_snippet as _ski
 from config import Config
 from routes.v2.blueprint import v2_bp
 from services.db import db
+from services.snippet_values import display_hz, resolve_all
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -198,15 +199,21 @@ def _build_user_raw_snippet_list(
                 or ""
             ),
             "question_tone": (s.get("question_tone") or "").lower() or None,
+            # PM-9. Two defects here, not one. (a) `or` is wrong for a
+            # numeric: a genuine 0 -- zero fillers, a silent stretch -- is
+            # falsy and fell through to the dead column, reading as absent.
+            # (b) the blob's keys are pitch_center_st / energy_ratio, and
+            # `fillers` is in neither the blob nor a live column, so it was
+            # always None. resolve_all knows all three facts.
+            #
+            # pitch_center_hz keeps its Hz contract by reading f0_mean. The
+            # `pitch_center` dimension is SEMITONES despite the registry
+            # labelling it Hz; wiring that here would have put semitones
+            # under an Hz key.
             "acoustic": {
-                "wpm":             metrics.get("wpm") or s.get("wpm"),
-                "fillers":         metrics.get("fillers") or s.get("fillers"),
-                "pause_ms":        metrics.get("pause_ms") or s.get("pause_ms"),
-                "pitch_center_hz": metrics.get("pitch_center_hz")
-                                  or metrics.get("pitch_center")
-                                  or s.get("pitch_center_hz"),
-                "dynamic_db":      metrics.get("dynamic_db") or s.get("dynamic_db"),
-                "energy":          metrics.get("energy") or s.get("energy"),
+                **{k: v for k, v in resolve_all(s).items()
+                   if k != "pitch_center"},
+                "pitch_center_hz": display_hz(s),
             },
             "classifier_stress_probability": (
                 s.get("classifier_stress_probability")
@@ -312,14 +319,19 @@ def _snippet_to_journey_card(snippet: dict) -> dict:
 
     # Build the metrics list — we omit any metric whose value is null so
     # the UI accordion doesn't render empty rows.
-    metrics_src = snippet.get("metrics") or {}
+    # PM-9: this read the blob with the COLUMN names, so "pitch_center",
+    # "energy" and "fillers" were never in it and those three rows never
+    # rendered. Pitch reads f0_mean because this formatter says "Hz" and the
+    # pitch_center dimension is semitones -- rendering one as the other is the
+    # exact mistake display_hz exists to prevent.
+    resolved = resolve_all(snippet)
     raw_metrics = [
-        ("WPM", metrics_src.get("wpm"), lambda v: f"{int(v)}"),
-        ("Pitch", metrics_src.get("pitch_center"), lambda v: f"{int(v)} Hz"),
-        ("Pause", metrics_src.get("pause_ms"), lambda v: f"{(v / 1000):.1f}s"),
-        ("Energy", metrics_src.get("energy"), lambda v: f"{int(v * 100)}%"),
-        ("Fillers", metrics_src.get("fillers"), lambda v: f"{int(v)}"),
-        ("Dynamic dB", metrics_src.get("dynamic_db"), lambda v: f"{int(v)}"),
+        ("WPM", resolved.get("wpm"), lambda v: f"{int(v)}"),
+        ("Pitch", display_hz(snippet), lambda v: f"{int(v)} Hz"),
+        ("Pause", resolved.get("pause_ms"), lambda v: f"{(v / 1000):.1f}s"),
+        ("Energy", resolved.get("energy"), lambda v: f"{int(v * 100)}%"),
+        ("Fillers", resolved.get("fillers"), lambda v: f"{int(v)}"),
+        ("Dynamic dB", resolved.get("dynamic_db"), lambda v: f"{int(v)}"),
     ]
     metrics: list[dict] = []
     for label, value, fmt in raw_metrics:
@@ -750,8 +762,7 @@ def v2_coaching_state_machine_turn():
           "current_question_position": 1..5 | null,  // Director's
                                                       // Script position
           "snippet_player":   { snippet_id } | omitted,
-          "label_buttons":    { snippet_id, yes_label, no_label } | omitted,
-          "acoustic_targets": { target_wpm, ... } | omitted
+          "label_buttons":    { snippet_id, yes_label, no_label } | omitted
         }
 
     Persists each turn to ``coaching_sessions.messages`` so the
@@ -822,7 +833,6 @@ def v2_coaching_state_machine_turn():
                 )
 
         from services.coaching_state_machine import (
-            compute_acoustic_targets,
             build_state_machine_system_prompt,
             STATE_MACHINE_RESPONSE_SCHEMA,
             parse_state_machine_response,
@@ -830,47 +840,14 @@ def v2_coaching_state_machine_turn():
             STEP2_YES_LABEL as _STEP2_YES_LABEL,
             STEP2_NO_LABEL as _STEP2_NO_LABEL,
         )
-        # ACOUSTIC TARGETS ARE HELD DARK PENDING FOUNDER SIGN-OFF (2026-08-06).
-        #
-        # These inputs have been NULL on every session since 2026-06-01, so
-        # `compute_acoustic_targets` has returned all-None and STEP 8 has been
-        # falling through to its qualitative seed ("keep your tempo steady,
-        # your vocal range a touch wider, your filler words sparse"). Wiring
-        # the session globals back onto the recording pipeline populates them
-        # again — and that would silently turn this surface ON for the first
-        # time since June, with copy nobody has reviewed.
-        #
-        # WHAT IT WOULD SAY. STEP 8 instructs the model to "keep the NUMBERS
-        # verbatim (WPM, dB, filler counts)" and to emit
-        # triggers=['show_acoustic_targets_card']:
-        #     "keep your tempo at around 145 WPM (you were at 132 this time)"
-        #     "push your vocal dynamic range to about 18.5 dB"
-        #     "keep your filler words under 12 (you used 19 this time)"
-        #
-        # WHY THAT IS THE WRONG SIDE OF THE LINE. The split-sink rule is not
-        # "no digits" — SpeechDataPanel shows wpm/Hz/dB to users deliberately.
-        # Its own header states the actual test: those are "reference DATA,
-        # never a verdict. No best/worst flag, NO DIRECTION GUESS, no
-        # characterization ... characterizing them would be the system judging
-        # the voice." A prescriptive numeric target IS a direction, and
-        # pairing "you were at 132" with a goal of 145 is a shortfall verdict
-        # wearing a suggestion's clothes.
-        #
-        # Held rather than rewritten: the compliant version is a copy change,
-        # and user-facing copy needs founder sign-off (LIVE LOOP). PM-5.
-        # Flipping this True is the whole of the change once signed off.
-        _ACOUSTIC_TARGETS_SIGNED_OFF = False
-        targets = compute_acoustic_targets(
-            global_wpm=(parent_session.get("global_wpm")
-                        if _ACOUSTIC_TARGETS_SIGNED_OFF else None),
-            global_fillers=(parent_session.get("global_fillers")
-                            if _ACOUSTIC_TARGETS_SIGNED_OFF else None),
-            global_dynamic_db=(parent_session.get("global_dynamic_db")
-                               if _ACOUSTIC_TARGETS_SIGNED_OFF else None),
-            session_duration_ms=(parent_session.get("duration_ms")
-                                 if _ACOUSTIC_TARGETS_SIGNED_OFF else None),
-        )
-
+        # ACOUSTIC TARGETS DELETED 2026-08-06 (founder: "we don't want that,
+        # it is a wrong call"). This block used to compute prescriptive numeric
+        # goals -- "keep your tempo at around 145 WPM (you were at 132 this
+        # time)" -- behind a sign-off flag. The flag is gone with the feature:
+        # a prescriptive number IS a direction, and pairing a shortfall with a
+        # goal is a verdict wearing a suggestion's clothes (AC-9 split-sink).
+        # STEP 8 now frames the next take qualitatively, which is what it has
+        # actually emitted since 2026-06-01 anyway.
         # Director's Script — admin-edited array wins; fall through
         # to AI-pre-generated draft; empty list if neither exists
         # (the prompt handles the empty case by skipping straight
@@ -911,7 +888,6 @@ def v2_coaching_state_machine_turn():
 
         system_prompt = build_state_machine_system_prompt(
             snippet=snippet,
-            acoustic_targets=targets,
             director_script_questions=director_script_questions,
             user_first_name=first_name,
             user_org_context=None,
@@ -1026,7 +1002,6 @@ def v2_coaching_state_machine_turn():
                     "end": bool(parsed.get("end")),
                     "snippet_player": parsed.get("snippet_player"),
                     "label_buttons": parsed.get("label_buttons"),
-                    "acoustic_targets": parsed.get("acoustic_targets"),
                     "raw_llm_output": raw,
                 },
             )
@@ -1174,14 +1149,11 @@ def v2_chat_session_state():
                 "question_tone": s.get("question_tone"),
                 "start_offset_ms": s.get("start_offset_ms") or 0,
                 "duration_ms": s.get("duration_ms"),
-                "metrics": {
-                    "wpm": s.get("wpm"),
-                    "fillers": s.get("fillers"),
-                    "pause_ms": s.get("pause_ms"),
-                    "dynamic_db": s.get("dynamic_db"),
-                    "pitch_center": s.get("pitch_center"),
-                    "energy": s.get("energy"),
-                },
+                # PM-9: the six denormalized columns are dead on the live
+                # path (services/snippet_values) — this block returned six
+                # NULLs for every auto-extracted snippet, which is every
+                # snippet the lab pipeline makes. Resolve against the blob.
+                "metrics": resolve_all(s),
             }
             for s in raw_snippets
         ]

@@ -25,6 +25,7 @@ from routes.v2.arcs import (
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
 from services.db import db
+from services.snippet_values import resolve_all
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -118,14 +119,12 @@ def v2_user_get_results(session_id):
                     "question_tone": s.get("question_tone"),
                     "start_offset_ms": s.get("start_offset_ms") or 0,
                     "duration_ms": s.get("duration_ms"),
-                    "metrics": {
-                        "wpm": s.get("wpm"),
-                        "fillers": s.get("fillers"),
-                        "pause_ms": s.get("pause_ms"),
-                        "dynamic_db": s.get("dynamic_db"),
-                        "pitch_center": s.get("pitch_center"),
-                        "energy": s.get("energy"),
-                    },
+                    # PM-9: the denormalized columns are dead on the live
+                    # path (services/snippet_values), so this returned six
+                    # NULLs. Split-sink unchanged — these are the same raw
+                    # reference figures the user-lane panel already shows,
+                    # with no verdict, flag or characterization attached.
+                    "metrics": resolve_all(s),
                 }
                 for s in snippets
             ]

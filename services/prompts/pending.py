@@ -89,8 +89,6 @@ REGISTER = {
     # ── 9-step structured coaching chat ──
     "coaching_state_machine.system": SourceRef(
         "services/coaching_state_machine.py", "build_state_machine_system_prompt"),
-    "coaching_state_machine.acoustic_targets": SourceRef(
-        "services/coaching_state_machine.py", "_format_acoustic_targets_for_prompt"),
 
     # ── skills (F2 awareness turns) ──
     "skill_charisma.awareness": SourceRef("services/skills/charisma.py", "_AWARENESS_PROMPT"),

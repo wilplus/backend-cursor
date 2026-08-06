@@ -320,25 +320,29 @@ class TestLiveSet(unittest.TestCase):
         self.assertLess(len(registry.live_dimensions()),
                         len(registry.all_dimensions()))
 
-    def test_every_live_dimension_is_wired_in_session_metrics(self):
+    def test_every_live_dimension_is_wired(self):
         """The registry and the plumbing must not drift apart: a dimension
         marked live with nowhere to read it from is a silent no-op.
 
-        Reads the SOURCE rather than importing it — services.session_metrics
-        pulls in services.db and therefore the supabase client, which this
-        pure-unit suite must not require.
+        The table used to live in services.session_metrics and this test had to
+        REGEX ITS SOURCE, because that module pulls in services.db and the
+        supabase client. It now lives in services.snippet_values, which is pure
+        — so this imports the real object instead of pattern-matching text that
+        happens to look like one.
         """
-        import pathlib
-        import re
-        source = (pathlib.Path(__file__).parent
-                  / "services" / "session_metrics.py").read_text()
-        block = re.search(r"_SNIPPET_FIELDS\s*=\s*\{(.*?)\n\}", source,
-                          re.DOTALL)
-        self.assertIsNotNone(block, "_SNIPPET_FIELDS not found")
-        wired = set(re.findall(r'"([a-z_]+)":\s*\(', block.group(1)))
+        from services.snippet_values import SNIPPET_FIELDS
         for d in registry.live_dimensions():
-            self.assertIn(d.dimension_id, wired,
+            self.assertIn(d.dimension_id, SNIPPET_FIELDS,
                           f"{d.dimension_id} is live but has no snippet field")
+
+    def test_every_wired_dimension_has_a_live_source(self):
+        """Wired is not the same as readable. PM-9: `wpm` and `fillers` were in
+        this table for months with a column that is never written and no blob
+        key — present, and unreadable in production."""
+        from services.snippet_values import SNIPPET_FIELDS
+        for dim, (_column, blob_key, derive) in SNIPPET_FIELDS.items():
+            self.assertTrue(blob_key or derive,
+                            f"{dim} is readable only from a dead column")
 
 
 class TestImmutability(unittest.TestCase):

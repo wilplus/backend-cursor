@@ -23,8 +23,13 @@ Aggregation rules
 - Transcript-derived fallback (utils.metrics.compute_wpm +
   count_fillers) for snippets whose pipeline never filled the
   per-row columns
-- JSONB ``metrics`` fallback for legacy rows that wrote metrics
-  into the blob before the dedicated columns existed
+- JSONB ``metrics`` fallback. This was documented as a legacy path
+  "for rows written before the dedicated columns existed"; that is
+  wrong and was corrected 2026-08-06. It is the ONLY path. Nothing
+  on the live loop writes the six columns —
+  ``db.update_snippet_metrics`` is reached only from the orphaned
+  ``recompute_snippet_metrics_for_window`` — so the blob is the
+  current representation and the columns are the vestigial one.
 
 KPI policy
 ----------
@@ -46,20 +51,24 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 
-# Where each registry dimension's value is read from on a snippet row:
-#   dimension_id -> (column, JSONB `metrics` fallback key)
-# ONLY the plumbing lives here. Window class, tier, minimum length, denominator
-# and aggregation all come from services/dimension_registry — Appendix F.4 is
-# the source, and retyping any of it into this file is how two consumers start
-# disagreeing about the same dimension.
-_SNIPPET_FIELDS = {
-    "wpm":          ("wpm",          None),
-    "fillers":      ("fillers",      None),
-    "pause_ms":     ("pause_ms",     "pause_ms"),
-    "dynamic_db":   ("dynamic_db",   "dynamic_db"),
-    "pitch_center": ("pitch_center", "pitch_center_st"),
-    "energy":       ("energy",       "energy_ratio"),
-}
+# The plumbing moved to services/snippet_values (PM-9): `services.db` needs
+# the same resolver and this module imports db, so it cannot live here without
+# a cycle. Re-exported under the old private names so the two grains below read
+# unchanged.
+from services.snippet_values import SNIPPET_FIELDS as _SNIPPET_FIELDS  # noqa: E402
+from services.snippet_values import resolve as _resolve_dimension  # noqa: E402
+from services.snippet_values import resolve_all as _resolve_all  # noqa: E402
+
+
+def _resolve_snippet_value(snippet, dimension_id, metrics=None,
+                           transcript=None, seconds=None):
+    """Column -> JSONB blob -> transcript derivation. None if all miss.
+
+    The trailing arguments are accepted and ignored: snippet_values derives
+    them from the row itself, which is what stops the two grains disagreeing
+    about which duration or transcript a value was measured against.
+    """
+    return _resolve_dimension(snippet, dimension_id)
 
 
 def _denominator_count(denominator, seconds, words):
@@ -115,15 +124,12 @@ def _emit_drift_telemetry(session_id: str, active_snippets: list) -> int:
                    if isinstance(duration_ms, (int, float)) else None)
 
         for dim in registry.live_dimensions():
-            plumbing = _SNIPPET_FIELDS.get(dim.dimension_id)
-            if not plumbing:
+            if dim.dimension_id not in _SNIPPET_FIELDS:
                 continue                      # in the registry, not wired here
             if not registry.measurable_in_a_snippet(dim.dimension_id):
                 continue         # windowed below — a snippet cannot hold it
-            column, fallback_key = plumbing
-            value = s.get(column)
-            if value is None and fallback_key:
-                value = metrics.get(fallback_key)
+            value = _resolve_snippet_value(
+                s, dim.dimension_id, metrics, transcript, seconds)
 
             has_value = isinstance(value, (int, float))
             long_enough = registry.meets_minimum(
@@ -194,12 +200,11 @@ def _windowed_rate_rows(session_id: str, active_snippets: list) -> list:
         owner = owner or s.get("user_id")
         metrics = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
         transcript = (s.get("transcript") or "").strip()
+        seconds = float(duration_ms) / 1000.0
         values = {}
         for dim in windowed:
-            column, fallback_key = _SNIPPET_FIELDS[dim.dimension_id]
-            value = s.get(column)
-            if value is None and fallback_key:
-                value = metrics.get(fallback_key)
+            value = _resolve_snippet_value(
+                s, dim.dimension_id, metrics, transcript, seconds)
             if isinstance(value, (int, float)):
                 values[dim.dimension_id] = float(value)
         pieces.append(Piece(
@@ -251,61 +256,29 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
     if not active_snippets:
         return None
 
-    wpms = [s.get("wpm") for s in active_snippets if s.get("wpm") is not None]
-    fillers_list = [s.get("fillers") for s in active_snippets if s.get("fillers") is not None]
-    pauses = [s.get("pause_ms") for s in active_snippets if s.get("pause_ms") is not None]
-    dynamics = [s.get("dynamic_db") for s in active_snippets if s.get("dynamic_db") is not None]
-    pitches = [s.get("pitch_center") for s in active_snippets if s.get("pitch_center") is not None]
-    energies = [s.get("energy") for s in active_snippets if s.get("energy") is not None]
+    # PM-9: ONE resolver, not six ad-hoc lookups with three different fallback
+    # policies. The old code read the six denormalized columns first, then
+    # patched wpm/fillers from the transcript, then patched the other four from
+    # the blob — three precedence chains that disagreed with each other and
+    # with the drift layer's. Every column is dead on the live path (see
+    # services/snippet_values), so in practice the first chain always missed
+    # and the KPI scored on whatever the second and third happened to recover.
+    #
+    # The fallbacks are no longer conditional on the list being EMPTY. That
+    # test — `if not wpms` — meant one snippet with a value suppressed
+    # recovery for every other snippet in the session, so a session roll-up
+    # could rest on a single measured snippet out of twenty and look complete.
+    _values = [_resolve_all(s) for s in active_snippets]
 
-    # Transcript-derived fallback for snippets whose per-row wpm /
-    # fillers columns were never populated (typical: snippets created
-    # via paths that skipped the metrics pipeline). count_fillers +
-    # compute_wpm are deterministic and cheap.
-    if not wpms or not fillers_list:
-        try:
-            from utils.metrics import compute_wpm as _compute_wpm
-            from utils.metrics import count_fillers as _count_fillers
-            for s in active_snippets:
-                transcript = (s.get("transcript") or "").strip()
-                duration_ms = s.get("duration_ms")
-                if not transcript or not duration_ms:
-                    continue
-                if s.get("wpm") is None:
-                    wpms.append(
-                        _compute_wpm(transcript, float(duration_ms) / 1000.0)
-                    )
-                if s.get("fillers") is None:
-                    fc = _count_fillers(transcript)
-                    fillers_list.append(int(fc.get("total") or 0))
-        except Exception as fb_err:
-            logger.warning(
-                "session metrics: transcript-fallback failed session=%s: %s",
-                session_id, fb_err,
-            )
+    def _column(dimension: str) -> list:
+        return [v[dimension] for v in _values if v[dimension] is not None]
 
-    # JSONB ``metrics`` fallback for any field whose dedicated column
-    # is empty (legacy rows).
-    if not pauses:
-        pauses = [
-            s["metrics"]["pause_ms"] for s in active_snippets
-            if s.get("metrics") and s["metrics"].get("pause_ms") is not None
-        ]
-    if not dynamics:
-        dynamics = [
-            s["metrics"]["dynamic_db"] for s in active_snippets
-            if s.get("metrics") and s["metrics"].get("dynamic_db") is not None
-        ]
-    if not pitches:
-        pitches = [
-            s["metrics"]["pitch_center_st"] for s in active_snippets
-            if s.get("metrics") and s["metrics"].get("pitch_center_st") is not None
-        ]
-    if not energies:
-        energies = [
-            s["metrics"]["energy_ratio"] for s in active_snippets
-            if s.get("metrics") and s["metrics"].get("energy_ratio") is not None
-        ]
+    wpms = _column("wpm")
+    fillers_list = [int(v) for v in _column("fillers")]
+    pauses = _column("pause_ms")
+    dynamics = _column("dynamic_db")
+    pitches = _column("pitch_center")
+    energies = _column("energy")
 
     global_wpm = round(sum(wpms) / len(wpms), 1) if wpms else None
 
