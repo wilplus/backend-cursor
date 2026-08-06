@@ -288,3 +288,4 @@
 0250	drop_reread_lane.sql
 0251	fix_dimension_evaluations_upsert_arbiter.sql
 0252	widen_dimension_evaluations_n_units.sql
+0253	add_intervention_arms.sql
