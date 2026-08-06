@@ -235,6 +235,23 @@ evaluated_at
 
 ---
 
+### PM-9 · Reachability is not correctness — audit for orphaned services *(added 2026-08-06)*
+
+**Cadence:** once now, then whenever a route or subsystem is excised.
+**Source:** the 2026-06-06 → 2026-08-06 session-globals outage.
+
+**What happened.** `compute_session_global_metrics` had zero callers for two months. Commit `0d74f12` removed the old-admin `POST /admin/sessions/<id>/compute-metrics` route as "FE-orphaned" — that route was its only caller. The route went, the service stayed, nothing replaced it. `global_wpm` and every sibling global stopped being written, and four live readers went on reading NULL: the FE's processing-phase gate, the coaching state machine's acoustic targets, the chat surface, and the admin view.
+
+**Nothing failed.** No test went red, no error was logged, no alert fired. The functions were correct, tested and unreachable. **Unit tests prove a function works; they never prove anything calls it.** The drift telemetry added in #346 then inherited the outage — correctly wired into a function that had not run since June, which is why `dimension_evaluations` was empty.
+
+**The check that would have caught it, and the one that would not.** "Does it have a caller?" was **TRUE** right until the excision — the caller was an admin route that was itself orphaned. Reachability has to name the **live path**. `test_session_globals_wiring.py` asserts the caller is `services/analysis_worker.py` specifically, and is verified to fail without it.
+
+**The rule for every future excision:** when removing a route or subsystem, list what it *delegated to*, and for each, check whether anything else reaches it. A service whose last caller you just deleted is now dead code that still looks alive — and it will keep passing its own tests forever.
+
+**Worth a sweep:** other services excised alongside `0d74f12` and its siblings (`#10`, `#17`, `#24`, `#27`) may be in the same state. `services.session_kpi_narrative` was explicitly noted in `0d74f12` as reaching **"0 route-layer callers"** and left in place.
+
+---
+
 ## Part 2 — Deferred unlocks
 
 Each stage has a **numeric trigger**. When it fires, the build specification already exists at
