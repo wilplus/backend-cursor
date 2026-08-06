@@ -311,6 +311,122 @@ class TestArbitrateEndToEnd(unittest.TestCase):
             self.assertTrue(why)
 
 
+class TestScienceControls(unittest.TestCase):
+    """The two arms that CANNOT be retrofitted. Both must run while the data
+    accumulates or the accumulated data cannot answer the question."""
+
+    def test_the_rates_are_the_decisions_log_values(self):
+        self.assertTrue(0.10 <= me.GAMMA_CONTROL <= 0.15)
+        self.assertEqual(me.INTERVENTION_RANDOMISATION, 0.20)
+
+    def test_assignment_is_stable_across_processes(self):
+        """THE defect that would silently void the experiment. Python's
+        hash() on a str is salted per process, so an assignment built on it
+        reshuffles every deploy — a control group that reshuffles is noise
+        wearing the shape of a control group, and nothing would report it."""
+        a = me._stable_fraction("u1", "wpm", salt="s")
+        b = me._stable_fraction("u1", "wpm", salt="s")
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, me._stable_fraction("u1", "wpm", salt="other"))
+        self.assertEqual(a, 0.8404391496629088)    # pinned: a change reshuffles
+
+    def test_control_is_per_pair_not_per_user(self):
+        """A control user still gets normal feedback on every OTHER
+        dimension — their experience is intact and the comparison is within
+        person as well as between people."""
+        dims = [f"d{i}" for i in range(6)]
+        held = [d for d in dims if me.in_control("u0", d)]
+        self.assertEqual(held, ["d0"])          # exactly one of six, not all
+        self.assertLess(len(held), len(dims), "a whole user was held out")
+
+    def test_control_is_permanent_not_per_session(self):
+        """A per-session flip would put the same pair in and out of control
+        and measure a user who sometimes got feedback — neither arm."""
+        first = me.in_control("u1", "wpm")
+        for _ in range(50):
+            self.assertEqual(me.in_control("u1", "wpm"), first)
+
+    def test_roughly_the_right_share_is_held(self):
+        n = 20_000
+        held = sum(me.in_control(f"u{i}", "wpm") for i in range(n))
+        self.assertAlmostEqual(held / n, me.GAMMA_CONTROL, delta=0.015)
+
+    def test_withhold_is_roughly_the_right_share(self):
+        n = 20_000
+        w = sum(me.is_withheld("u1", "wpm", f"s{i}") for i in range(n))
+        self.assertAlmostEqual(w / n, me.INTERVENTION_RANDOMISATION,
+                               delta=0.015)
+
+    def test_withhold_varies_across_sessions_for_one_pair(self):
+        """The within-subject arm: the SAME pair must produce both treated
+        and untreated transitions, or there is nothing to compare."""
+        seen = {me.is_withheld("u1", "wpm", f"s{i}") for i in range(200)}
+        self.assertEqual(seen, {True, False})
+
+    def test_withhold_is_deterministic_for_one_session(self):
+        """A retried scoring pass must reach the same decision, or the arm
+        depends on how many times the pipeline happened to run."""
+        first = me.is_withheld("u1", "wpm", "s1")
+        for _ in range(50):
+            self.assertEqual(me.is_withheld("u1", "wpm", "s1"), first)
+
+    def test_a_control_dimension_does_not_consume_a_budget_slot(self):
+        """Removed from the POOL, not suppressed at the end. Suppressing
+        late would quietly give control users less feedback overall, which
+        confounds the comparison the arm exists to make."""
+        dims = [f"d{i}" for i in range(6)]
+        user = me.UserState(user_id="u0",      # u0 holds d0, per the test above
+                            state_by_dimension={d: me.APPRENTICE for d in dims})
+        cands = [_c(d, anchor=(i * 10.0, i * 10.0 + 1), deviation=6.0 - i)
+                 for i, d in enumerate(dims)]
+        out = me.arbitrate(cands, user)
+        held = set(out["control_held"])
+        self.assertTrue(held, "fixture picked no control dimension")
+        self.assertEqual(len(out["selected"]), out["budget"])
+        for d in held:
+            self.assertNotIn(d, [c.dimension for c in out["selected"]])
+
+    def test_a_withheld_note_consumes_its_slot(self):
+        """UNLIKE control. Backfilling with rank 2 would mean the untreated
+        condition never occurs and the arm would measure rank 1 vs rank 2 —
+        which is what epsilon_explore already measures."""
+        dims = [f"x{i}" for i in range(6)]
+        user = me.UserState(user_id="u9",
+                            state_by_dimension={d: me.APPRENTICE for d in dims})
+        cands = [_c(d, anchor=(i * 10.0, i * 10.0 + 1), deviation=6.0 - i)
+                 for i, d in enumerate(dims)]
+        for i in range(200):
+            out = me.arbitrate(cands, user, session_id=f"s{i}")
+            if out["withheld"]:
+                self.assertLess(len(out["selected"]), out["budget"])
+                return
+        self.fail("no session withheld in 200 tries")
+
+    def test_the_arms_are_recorded_for_the_analysis(self):
+        """An outcome with no arm attached is an observation, and the whole
+        point of the controls is that these are not observations."""
+        out = me.arbitrate([_c()], _user(), session_id="s1")
+        self.assertIn("control_held", out)
+        self.assertIn("withheld", out)
+        self.assertEqual(out["arms"]["gamma_control"], me.GAMMA_CONTROL)
+        self.assertEqual(out["arms"]["control_salt"], me.CONTROL_SALT)
+
+    def test_controls_can_be_disabled_for_a_deterministic_caller(self):
+        user = me.UserState(user_id="u1",
+                            state_by_dimension={"wpm": me.APPRENTICE})
+        out = me.arbitrate([_c()], user, session_id="s1", controls=False)
+        self.assertEqual(out["control_held"], [])
+        self.assertEqual(out["withheld"], [])
+
+    def test_no_user_id_means_no_arm(self):
+        """Fail OPEN on the controls: an anonymous or unattributed candidate
+        must not be silently assigned to a control group whose membership
+        can never be recovered."""
+        self.assertFalse(me.in_control("", "wpm"))
+        self.assertFalse(me.is_withheld("", "wpm", "s1"))
+        self.assertFalse(me.is_withheld("u1", "wpm", ""))
+
+
 class TestStatesAndConstants(unittest.TestCase):
     def test_fragile_is_a_real_state_and_does_not_fade(self):
         """B.2.1 — FRAGILE performs well and cannot tell why, so fading

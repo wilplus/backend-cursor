@@ -31,6 +31,7 @@ annoyed by it first.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 from dataclasses import dataclass, field, replace
 from typing import Callable, Iterable, Optional, Sequence
@@ -127,6 +128,90 @@ CHANGE_INTERVENTION_TYPE = "CHANGE_INTERVENTION_TYPE"
 # instead of rank 1, so the quota trades a known-better note for information.
 EXPLORATION_RATE = 0.10
 
+# ── THE SCIENCE CONTROLS (decisions log §B) ─────────────────────────────────
+# THESE CANNOT BE RETROFITTED. Both must be running WHILE the data
+# accumulates, or the accumulated data cannot answer the question they exist
+# to answer — the same argument as the frozen drift reference (Appendix G.7).
+# Every recording taken without them is a recording that can never contribute
+# to a causal claim.
+#
+# THREE ORTHOGONAL RANDOMISATIONS, each answering a different question. They
+# are easy to confuse and confusing them silently ruins the experiment:
+#
+#   gamma_control   PERMANENT, per (user, dimension).   BETWEEN-subject.
+#                   "Does feedback on this dimension do anything at all, or
+#                    do people improve just by recording more?"
+#   withhold (20%)  PER SURFACING, per (user, dim, session).  WITHIN-subject.
+#                   "Did THIS note change take N -> N+1?"
+#   epsilon_explore PER SESSION, which RANK surfaces.
+#                   "Is rank 1 actually the best thing to have said?"
+GAMMA_CONTROL = 0.12              # decisions log: ~10-15%, midpoint
+INTERVENTION_RANDOMISATION = 0.20  # decisions log: 20%
+
+# Changing either salt RESHUFFLES EVERY ASSIGNMENT and silently splices two
+# incompatible experiments together. Versioned so that is a deliberate act
+# with a name, not an edit.
+CONTROL_SALT = "willab-gamma-v1"
+WITHHOLD_SALT = "willab-withhold-v1"
+
+
+def _stable_fraction(*parts: str, salt: str) -> float:
+    """A stable [0,1) from the parts — SHA-based, NOT Python's hash().
+
+    `hash()` on a str is salted per process (PYTHONHASHSEED), so using it
+    would REASSIGN EVERY USER ON EVERY DEPLOY. A control group that
+    reshuffles is not a control group; it is noise that looks like one, and
+    nothing downstream would ever report the problem.
+    """
+    digest = hashlib.blake2b("\x1f".join((salt,) + parts).encode("utf-8"),
+                             digest_size=8).digest()
+    return int.from_bytes(digest, "big") / float(1 << 64)
+
+
+def in_control(user_id: str, dimension: str, *,
+               gamma: float = GAMMA_CONTROL) -> bool:
+    """gamma_control — this (user, dimension) pair receives NOTHING, ever.
+
+    PER PAIR, NOT PER USER. A control user still gets normal feedback on
+    every other dimension, so their experience is intact and the comparison
+    is within-person across dimensions as well as between people.
+
+    PERMANENT AND DETERMINISTIC. A per-session coin flip would put the same
+    pair in and out of control and make the comparison meaningless — you
+    would be measuring a user who sometimes got feedback, which is neither
+    arm of the experiment.
+
+    Without this you credit yourself with the practice effect: users improve
+    by recording more, feedback or not, and nothing in the data separates the
+    two.
+    """
+    if not user_id or gamma <= 0:
+        return False
+    return _stable_fraction(user_id, dimension, salt=CONTROL_SALT) < gamma
+
+
+def is_withheld(user_id: str, dimension: str, session_id: str, *,
+                rate: float = INTERVENTION_RANDOMISATION) -> bool:
+    """Intervention randomisation — a note that WON is deliberately not shown.
+
+    The within-subject arm. The same (user, dimension) pair produces both
+    treated and untreated take-transitions, so take N -> N+1 change can be
+    attributed to the note rather than to the take.
+
+    UNLIKE gamma_control, THE SLOT IS CONSUMED. Backfilling with rank 2 would
+    mean the user always receives something, and the untreated condition
+    would never exist — the withhold would measure "rank 1 vs rank 2" instead
+    of "note vs no note", which is what epsilon_explore already measures.
+
+    Deterministic on the triple so a retried scoring pass reaches the same
+    decision; an RNG here would make the arm depend on how many times the
+    pipeline happened to run.
+    """
+    if not user_id or not session_id or rate <= 0:
+        return False
+    return _stable_fraction(user_id, dimension, session_id,
+                            salt=WITHHOLD_SALT) < rate
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -150,6 +235,7 @@ class Candidate:
 @dataclass
 class UserState:
     """Everything about the user the manager reads. No DB handle."""
+    user_id: str = ""                   # control-arm assignment key
     state_by_dimension: dict = field(default_factory=dict)
     p_mastery: dict = field(default_factory=dict)
     sessions_since_fired: dict = field(default_factory=dict)
@@ -333,9 +419,11 @@ def on_unacted(k: int) -> str:
 
 
 def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
+              session_id: str = "",
               importance: Optional[Callable[[str], float]] = None,
               roll: Optional[Callable[[], float]] = None,
-              exploration_rate: float = EXPLORATION_RATE) -> dict:
+              exploration_rate: float = EXPLORATION_RATE,
+              controls: bool = True) -> dict:
     """H.7 — the whole policy, in the order the appendix specifies.
 
     Returns the selected findings AND the counterfactual: what would have
@@ -350,9 +438,28 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     everything = list(candidates)
     rejected: list[tuple[Candidate, str]] = []
 
+    # 0 · gamma_control — the PERMANENT holdout, removed from the POOL.
+    #     Removed rather than suppressed at the end on purpose: a control
+    #     dimension must not consume a budget slot, because the pair is meant
+    #     to receive nothing on THIS dimension while the user's experience on
+    #     every other dimension stays intact. Suppressing at the end would
+    #     quietly reduce how much feedback control users get overall, which
+    #     confounds the very comparison the arm exists to make.
+    control_held: list[Candidate] = []
+    if controls:
+        pool = []
+        for c in everything:
+            if in_control(user.user_id, c.dimension):
+                control_held.append(c)
+                rejected.append((c, "gamma_control"))
+            else:
+                pool.append(c)
+    else:
+        pool = list(everything)
+
     # 1 · certainty floor — per-detector PPV, never global accuracy      (H.2)
     live = []
-    for c in everything:
+    for c in pool:
         if may_submit(c):
             live.append(c)
         else:
@@ -401,6 +508,22 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
                                             exploration=True)]
         explored = True
 
+    # 8 · intervention randomisation — a note that WON is not shown.
+    #     Applied LAST, and the slot is CONSUMED rather than backfilled: the
+    #     untreated condition has to actually occur, or there is nothing to
+    #     compare the treated one against. `withheld` is the counterfactual
+    #     and must be persisted alongside the outcome, or the arm produces
+    #     suppression with no experiment attached to it.
+    withheld: list[Candidate] = []
+    if controls and session_id:
+        shown = []
+        for c in selected:
+            if is_withheld(user.user_id, c.dimension, session_id):
+                withheld.append(c)
+            else:
+                shown.append(c)
+        selected = shown
+
     return {
         "selected": selected,
         "counterfactual": counterfactual,
@@ -408,4 +531,17 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
         "budget": n,
         "considered": len(everything),
         "rejected": [(c.dimension, why) for c, why in rejected],
+        # THE EXPERIMENT'S RECORD. Whoever persists this must store all three
+        # arms, not just what surfaced — an outcome with no arm attached is
+        # an observation, and the whole point of the controls is that these
+        # are not observations.
+        "control_held": [c.dimension for c in control_held],
+        "withheld": [c.dimension for c in withheld],
+        "arms": {
+            "gamma_control": GAMMA_CONTROL,
+            "intervention_randomisation": INTERVENTION_RANDOMISATION,
+            "epsilon_explore": exploration_rate,
+            "control_salt": CONTROL_SALT,
+            "withhold_salt": WITHHOLD_SALT,
+        },
     }

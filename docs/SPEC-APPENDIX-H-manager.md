@@ -272,12 +272,44 @@ The decisions log §B sets four more manager dials. Two are implemented, two are
 |---|---|---|
 | **ε_explore** | ~10–20%, surface rank 2–3, log the counterfactual | **Built.** `EXPLORATION_RATE = 0.10`, bottom of the band per H.0 |
 | **Objective** | maximise measured change take N → N+1; acceptance is a **constraint**, never the objective | **Built** by omission — nothing here optimises on acceptance |
-| **γ_control** | ~10–15%, **per-dimension** — a share of (user, dimension) pairs get **nothing** | **NOT BUILT.** Without it you credit yourself with the practice effect: users improve by recording more, feedback or not |
-| **Intervention randomisation** | 20% | **NOT BUILT.** The only route to causal attribution — confounded data cannot be un-confounded |
+| **γ_control** | ~10–15%, **per-dimension** — a share of (user, dimension) pairs get **nothing** | **BUILT** 2026-08-06. `GAMMA_CONTROL = 0.12` |
+| **Intervention randomisation** | 20% | **BUILT** 2026-08-06. `INTERVENTION_RANDOMISATION = 0.20` |
 | **Dismissal ceiling** | TBD | Unset |
 | **Lag weighting** | TBD | Unset. Acceptance arrives in seconds, change a take later; at equal weight the fast signal dominates by volume |
 
-**γ_control and intervention randomisation are the two that cannot be retrofitted.** Both have to be running *while* the data accumulates or the accumulated data cannot answer the question — which is the same argument as the frozen drift reference (Appendix G.7).
+**γ_control and intervention randomisation are the two that cannot be retrofitted.** Both have to be running *while* the data accumulates or the accumulated data cannot answer the question — the same argument as the frozen drift reference (Appendix G.7). Built first for that reason.
+
+---
+
+## H.12 · The science controls — three orthogonal randomisations *(built 2026-08-06)*
+
+They are easy to confuse, and confusing them silently ruins the experiment. Each answers a different question, at a different grain, with different backfill behaviour.
+
+| Arm | Rate | Grain | Question it answers | Slot |
+|---|---|---|---|---|
+| **γ_control** | 12% | **permanent**, per (user, dimension) | *Does feedback on this dimension do anything at all, or do people improve just by recording more?* | **Freed.** Removed from the pool |
+| **Intervention randomisation** | 20% | per (user, dimension, **session**) | *Did **this note** change take N → N+1?* | **Consumed.** Nothing surfaces in it |
+| **ε_explore** | 10% | per session | *Is rank 1 actually the best thing to have said?* | Swapped for rank 2 |
+
+### Why the slot behaviour differs, which is the part that matters
+
+**γ_control frees its slot.** A control dimension must not consume a budget slot, because the pair is meant to receive nothing on *that dimension* while the user's experience on every other dimension stays intact. Suppressing at the end instead would quietly give control users **less feedback overall** — confounding the very comparison the arm exists to make, and doing it invisibly.
+
+**The withhold consumes its slot.** Backfilling with rank 2 would mean the user always receives *something*, so the untreated condition would never actually occur. The arm would then be measuring "rank 1 vs rank 2", which is what ε_explore already measures. **The untreated condition has to happen for there to be anything to compare against.**
+
+### Assignment is hashed, not drawn
+
+Both use `blake2b` over salted parts, **never Python's `hash()`**. `hash()` on a `str` is salted per process (`PYTHONHASHSEED`), so an assignment built on it would **reassign every user on every deploy**. A control group that reshuffles is not a control group; it is noise wearing the shape of one, and nothing downstream would ever report the problem.
+
+Consequences of hashing rather than storing: assignment needs no table, survives a database restore, and is reproducible from the user id alone. **Changing a salt reshuffles everything and splices two incompatible experiments together**, so the salts are versioned — `willab-gamma-v1`, `willab-withhold-v1` — making that a deliberate act with a name.
+
+γ_control is deliberately **permanent**: a per-session flip would put the same pair in and out of control and measure a user who *sometimes* got feedback, which is neither arm. The withhold is deliberately **per-session**: the same pair must produce both treated and untreated transitions, or there is nothing to compare within a person. It is deterministic on the triple so a retried scoring pass reaches the same decision — an RNG there would make the arm depend on how many times the pipeline happened to run.
+
+### What the caller must persist
+
+`arbitrate()` returns `control_held`, `withheld` and an `arms` block carrying the rates and both salts. **All three arms must be stored alongside the outcome, not just what surfaced.** An outcome with no arm attached is an observation, and the entire point of these controls is that these are not observations.
+
+**Fails open.** No `user_id` → no arm. An unattributed candidate must never be silently assigned to a control group whose membership can never be recovered.
 
 ---
 
