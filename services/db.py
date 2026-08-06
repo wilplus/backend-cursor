@@ -5035,6 +5035,42 @@ class DatabaseService:
             logger.warning("list_stale_processing_jobs (pending): %s", e)
         return out
 
+    def list_active_processing_jobs(
+        self, max_rows: int = 500,
+    ) -> List[Dict[str, Any]]:
+        """Everything in flight — the queue-depth half of the ops signal."""
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .select("id, status, enqueued_at, started_at")
+                .in_("status", ["pending", "processing"])
+                .limit(max_rows)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_active_processing_jobs: %s", e)
+            return []
+
+    def list_recent_finished_processing_jobs(
+        self, max_rows: int = 200,
+    ) -> List[Dict[str, Any]]:
+        """Recent terminal jobs — the latency half of the ops signal."""
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .select("id, status, enqueued_at, started_at, finished_at, "
+                        "error")
+                .in_("status", ["completed", "failed"])
+                .order("finished_at", desc=True)
+                .limit(max_rows)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_recent_finished_processing_jobs: %s", e)
+            return []
+
     def list_orphaned_processing_sessions(
         self, stale_minutes: int = 30, max_rows: int = 100,
     ) -> List[Dict[str, Any]]:

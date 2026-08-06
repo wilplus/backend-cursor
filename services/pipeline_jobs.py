@@ -508,6 +508,14 @@ def run_sweep_loop() -> None:
         counts = sweep_stale_jobs()
         if counts.get("requeued") or counts.get("failed"):
             logger.info("pipeline_jobs: sweep loop %s", counts)
+        # Saturation shows up in the worker's own logs, so "should I add
+        # slots?" is answerable without opening SQL. Best-effort — an ops
+        # signal must never break recovery.
+        try:
+            from services.pipeline_health import log_saturation
+            log_saturation()
+        except Exception as he:
+            logger.warning("pipeline_jobs: health probe failed: %s", he)
     finally:
         job_queue.enqueue(
             SWEEP_LOOP_PATH, delay_seconds=sweep_interval_seconds(),

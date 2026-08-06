@@ -88,6 +88,29 @@ def v2_job_status(job_id: str):
     return resp, 200
 
 
+@jobs_bp.route("/v2/internal/jobs/health", methods=["GET"])
+def v2_internal_jobs_health():
+    """Queue saturation signal — is anyone WAITING for a worker?
+
+    OPS ONLY (same X-Internal-Secret as the sweep poke). Read-only, two
+    bounded queries. Answers the one question that decides worker sizing:
+    more slots shrink the wait, never the run.
+    """
+    secret = (os.getenv("PIPELINE_JOBS_SWEEP_SECRET") or "").strip()
+    if not secret:
+        return jsonify({
+            "code": "DISABLED",
+            "error": "PIPELINE_JOBS_SWEEP_SECRET is not configured",
+        }), 503
+    sent = (request.headers.get("X-Internal-Secret") or "").strip()
+    if not hmac.compare_digest(sent, secret):
+        return jsonify({"code": "FORBIDDEN", "error": "bad secret"}), 403
+    from services.pipeline_health import queue_health
+    resp = jsonify({"ok": True, **queue_health()})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp, 200
+
+
 @jobs_bp.route("/v2/internal/jobs/sweep", methods=["POST"])
 def v2_internal_jobs_sweep():
     """Recover lost jobs on demand (cron / manual poke). Safe to call any
