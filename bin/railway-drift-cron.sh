@@ -15,9 +15,26 @@
 # A drift cron that silently depends on a life-panel variable breaks the day
 # someone retires that feature, and nothing would explain why.
 #
-# Railway: one cron service, same repo.
-#   Settings → Start Command:  sh bin/railway-drift-cron.sh
-#   Cron Schedule (UTC):       0 6 * * 1     (06:00 UTC Mondays)
+# Railway: one cron service, same repo. Cron Schedule 0 6 * * 1 (Mondays
+# 06:00 UTC). Two ways to run it, and you must pick EXACTLY ONE:
+#   A) Builder Railpack (no Dockerfile path) + Start Command:
+#          sh bin/railway-drift-cron.sh
+#   B) Builder Dockerfile, path Dockerfile.drift-cron, NO start command
+#      (that image's ENTRYPOINT already runs this script).
+#
+# ⚠️ SETTING BOTH IS THE FAILURE THAT ACTUALLY HAPPENED. Dockerfile.drift-cron
+# contains exactly one file, /app/run.sh, and no bin/ directory — so a start
+# command of `sh bin/railway-drift-cron.sh` on top of it dies with
+#     sh: can't open 'bin/railway-drift-cron.sh': No such file or directory
+# Clearing the Dockerfile path does NOT rescue option A on its own, either:
+# Railway auto-detects the Dockerfile builder from this repo's Dockerfile.*
+# siblings, an empty path resolves to ./Dockerfile, which does not exist, and
+# the BUILD fails with "couldn't locate a dockerfile at path Dockerfile".
+# For option A the Builder dropdown itself has to say Railpack.
+#
+# And never point this service at Dockerfile.life-reminders-cron: with the
+# start command cleared, its ENTRYPOINT would send LIFE REMINDERS to real
+# users on the drift schedule.
 #
 # Required variables:
 #   DRIFT_BACKEND_URL     public URL of the Flask app, e.g. https://dev.willpowerlab.com
