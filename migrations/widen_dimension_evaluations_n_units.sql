@@ -28,9 +28,16 @@
 -- zero, which is worse than a wrong one because it reads as a division error
 -- rather than as a short window.
 --
--- Widening is safe and non-rewriting for existing rows: every INTEGER value
--- is representable, and PostgreSQL does not need a table rewrite for
--- integer -> double precision.
+-- COST. integer -> double precision is NOT binary-coercible, so PostgreSQL
+-- DOES rewrite the table and holds ACCESS EXCLUSIVE while it does. That is
+-- irrelevant here — the table is empty, which is the whole reason we are
+-- reading this comment — but it is not a free ALTER on a populated table, and
+-- a later re-run against real telemetry volume should expect a lock.
+-- (An earlier draft of this comment claimed no rewrite was needed. Wrong:
+-- the no-rewrite cases are binary-coercible pairs like varchar(n)->varchar(m),
+-- not int4->float8.)
+--
+-- Every existing INTEGER value is exactly representable, so nothing is lost.
 --
 -- Idempotent. Safe to re-run.
 
