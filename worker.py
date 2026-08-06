@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from typing import Any, Dict
 
 try:
     from dotenv import load_dotenv
@@ -52,6 +53,26 @@ def _enforce_secrets() -> None:
     from services.secrets import enforce_at_boot
 
     enforce_at_boot()
+
+
+def worker_count() -> int:
+    """How many jobs this container processes at once (WORKER_COUNT).
+
+    Default 2: enough that recording while another take is mid-flight does
+    not queue, which is the realistic near-term case. Each slot is a separate
+    process holding its own copy of the analysis stack (~0.5-1 GB resident,
+    plus the decoded PCM of whatever take it is on — a 60-minute take is
+    ~230 MB), so RAM scales roughly linearly. Past ~4 slots, add REPLICAS
+    instead: the claim CAS and the dedup index make replicas safe, and they
+    fail independently.
+
+    Set WORKER_COUNT=1 on a memory-tight container.
+    """
+    raw = (os.getenv("WORKER_COUNT") or "").strip()
+    try:
+        return max(1, int(raw)) if raw else 2
+    except ValueError:
+        return 2
 
 
 def _init_sentry() -> None:
@@ -168,12 +189,102 @@ def main() -> int:
     except Exception as e:
         logger.warning("sweep chain start failed: %s", e)
 
+    slots = worker_count()
+    if slots == 1:
+        logger.info("worker starting on queue '%s' (1 slot, job timeout %ss)",
+                    job_queue.queue_name(), job_queue.job_timeout_seconds())
+        _run_worker_loop(conn, with_scheduler=True)
+        return 0
+
+    logger.info("worker starting on queue '%s' (%d slots, job timeout %ss)",
+                job_queue.queue_name(), slots,
+                job_queue.job_timeout_seconds())
+    return _run_worker_pool(slots)
+
+
+def _run_worker_loop(conn, *, with_scheduler: bool) -> None:
+    """Block in one rq worker. Never returns until the worker stops."""
     from rq import Queue, Worker
     q = Queue(job_queue.queue_name(), connection=conn)
-    logger.info("worker starting on queue '%s' (job timeout %ss)",
-                q.name, job_queue.job_timeout_seconds())
     # with_scheduler: serves enqueue_in (delayed retries + the sweep chain).
-    Worker([q], connection=conn).work(with_scheduler=True)
+    # rq guards it with a lock, so it is safe on every slot — but only slot 0
+    # asks for it, since one scheduler is all the queue needs.
+    Worker([q], connection=conn).work(with_scheduler=with_scheduler)
+
+
+def _worker_child(slot: int) -> None:
+    """Entrypoint for one forked slot.
+
+    The FIRST thing it does is drop the inherited Redis connection: pools are
+    not fork-safe, and siblings sharing the parent's socket would interleave
+    their replies. Everything expensive (imports, the numba JIT) is inherited
+    warm from the parent — that is the whole reason to fork rather than spawn.
+    """
+    import signal
+
+    # Drop the POOL's signal handlers, which fork handed us. They close over
+    # the parent's process table, so running one here raises "can only test a
+    # child process" and takes the slot down on every shutdown. Back to
+    # default until rq installs its own graceful handlers in work().
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    from services import job_queue as jq
+    jq.reset_connections()
+    conn = jq.get_redis(for_worker=True)
+    if conn is None:
+        logger.error("slot %d: no broker connection", slot)
+        return
+    logger.info("slot %d listening (pid=%s)", slot, os.getpid())
+    _run_worker_loop(conn, with_scheduler=(slot == 0))
+
+
+def _run_worker_pool(slots: int) -> int:
+    """Fork N worker slots and keep them alive.
+
+    A slot that dies (OOM, a killed work horse taking its parent down, an rq
+    shutdown) is restarted, so losing one slot degrades throughput instead of
+    silently halving it forever. SIGTERM — how Railway ends a deploy — stops
+    the pool cleanly rather than orphaning children.
+    """
+    import multiprocessing
+    import signal
+
+    ctx = multiprocessing.get_context("fork")  # inherit the warmed stack
+    procs: Dict[int, Any] = {}
+    stopping = {"flag": False}
+
+    def _stop(signum, _frame):
+        stopping["flag"] = True
+        logger.info("received signal %s — stopping %d slot(s)",
+                    signum, len(procs))
+        for p in procs.values():
+            if p.is_alive():
+                p.terminate()
+
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+
+    for slot in range(slots):
+        p = ctx.Process(target=_worker_child, args=(slot,),
+                        name=f"pipeline-slot-{slot}", daemon=False)
+        p.start()
+        procs[slot] = p
+
+    while not stopping["flag"]:
+        for slot, p in list(procs.items()):
+            p.join(timeout=1)
+            if stopping["flag"]:
+                break
+            if not p.is_alive():
+                logger.warning("slot %d died (exit %s) — restarting",
+                               slot, p.exitcode)
+                fresh = ctx.Process(target=_worker_child, args=(slot,),
+                                    name=f"pipeline-slot-{slot}", daemon=False)
+                fresh.start()
+                procs[slot] = fresh
+    for p in procs.values():
+        p.join(timeout=30)
     return 0
 
 

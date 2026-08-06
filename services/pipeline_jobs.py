@@ -384,7 +384,57 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
         else:
             logger.warning("pipeline_jobs: sweeper enqueue failed job=%s "
                            "(broker down?)", jid)
+    # Additive and strictly best-effort: the orphan pass is a newer, softer
+    # concern than job recovery, and must never be able to break it.
+    try:
+        counts["orphans_failed"] = sweep_orphaned_sessions(max_rows=max_rows)
+    except Exception as e:
+        logger.warning("pipeline_jobs: orphan sweep failed: %s", e)
+        counts["orphans_failed"] = 0
     return counts
+
+
+def orphan_stale_minutes() -> int:
+    """How long a 'processing' session with no job may sit before it is
+    presumed stranded. Deliberately longer than the JOB staleness window —
+    a job row is protection, and a session without one gets more rope."""
+    return max(5, _int_env("PIPELINE_ORPHAN_STALE_MINUTES", 30))
+
+
+def sweep_orphaned_sessions(max_rows: int = 100) -> int:
+    """Fail sessions stuck on analysis_state='processing' with NO active job.
+
+    Without this the queue sweeper's promise ("a session NEVER strands in
+    processing") had a hole: it only recovered rows in processing_jobs, so a
+    session flipped to 'processing' whose job was never created — the
+    pre-queue daemon path, or a crash-looping worker window — showed
+    "Working on your take" forever, with nothing alive to finish it.
+
+    Terminal 'failed' is the right landing: there is no audio job to resume
+    (a real one would have a job row protecting it), and 'failed' is what
+    makes the FE stop polling and offer a re-record. Returns the count.
+    """
+    n = 0
+    for row in db.list_orphaned_processing_sessions(
+        stale_minutes=orphan_stale_minutes(), max_rows=max_rows,
+    ):
+        sid = str(row.get("id") or "")
+        if not sid:
+            continue
+        try:
+            db.set_session_analysis_state(
+                sid, "failed",
+                "analysis was interrupted and could not be resumed — "
+                "please record again",
+            )
+            n += 1
+            logger.info("pipeline_jobs: orphaned session %s failed "
+                        "(created %s, no active job)", sid,
+                        row.get("created_at"))
+        except Exception as e:
+            logger.warning("pipeline_jobs: orphan reap failed sid=%s: %s",
+                           sid, e)
+    return n
 
 
 SWEEP_LOOP_PATH = "services.pipeline_jobs.run_sweep_loop"

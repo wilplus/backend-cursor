@@ -212,6 +212,12 @@ class _FakeDb:
     def list_stale_processing_jobs(self, stale_minutes=15, max_rows=100):
         return self.stale_rows
 
+    def list_orphaned_processing_sessions(self, stale_minutes=30,
+                                          max_rows=100):
+        # Orphan reaping has its own suite
+        # (test_orphan_sweep_and_concurrency); nothing here exercises it.
+        return []
+
 
 class _FakeQueue:
     def __init__(self, ok=True):

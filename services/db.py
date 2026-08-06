@@ -5035,6 +5035,72 @@ class DatabaseService:
             logger.warning("list_stale_processing_jobs (pending): %s", e)
         return out
 
+    def list_orphaned_processing_sessions(
+        self, stale_minutes: int = 30, max_rows: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Sessions stuck on analysis_state='processing' with NO active job.
+
+        The gap this closes: the job sweeper only walks processing_jobs, so a
+        session flipped to 'processing' that never got a job row is invisible
+        to it and shows "Working on your take" forever. Two ways to get one:
+        the pre-queue daemon path (ASYNC_ANALYSIS_ENABLED) whose thread died
+        with a redeploy, and a crash-looping worker window where the enqueue
+        never landed.
+
+        Deliberately generous default cutoff (30 min > the job sweeper's 15):
+        a session is only a candidate once it is far past any plausible live
+        run, AND has no active job protecting it. Reaping one that IS somehow
+        still being worked is self-healing anyway — whoever finishes writes
+        'ready' over the 'failed'.
+
+        v2_sessions has no updated_at column (PGRST204 lesson), so created_at
+        is the clock. In this flow analysis starts moments after the row is
+        created, which makes it a fair proxy.
+        """
+        from datetime import timedelta
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(minutes=max(5, stale_minutes))
+        ).isoformat()
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("id, analysis_state, created_at")
+                .eq("analysis_state", "processing")
+                .lt("created_at", cutoff)
+                .limit(max_rows)
+                .execute()
+            )
+            candidates = res.data or []
+        except Exception as e:
+            logger.warning("list_orphaned_processing_sessions: %s", e)
+            return []
+        if not candidates:
+            return []
+        # Subtract anything a live job still owns — that one is not orphaned.
+        protected: set = set()
+        try:
+            ids = [str(r.get("id")) for r in candidates if r.get("id")]
+            res = (
+                self.client.table("processing_jobs")
+                .select("session_id, status")
+                .in_("session_id", ids)
+                .in_("status", ["pending", "processing"])
+                .execute()
+            )
+            protected = {
+                str(r.get("session_id")) for r in (res.data or [])
+                if r.get("session_id")
+            }
+        except Exception as e:
+            # Fail CLOSED: if the guard query fails we cannot tell orphaned
+            # from live, and failing a running take is worse than a banner
+            # that clears one sweep later.
+            logger.warning(
+                "list_orphaned_processing_sessions: active-job guard failed "
+                "(%s) — skipping this pass", e)
+            return []
+        return [r for r in candidates if str(r.get("id")) not in protected]
+
     def create_model_training_run(
         self,
         *,
