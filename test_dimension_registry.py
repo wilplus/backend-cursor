@@ -66,12 +66,72 @@ class TestAppendixFAgreement(unittest.TestCase):
         self.assertNotEqual(registry.aggregation_of("fillers"), "sum")
 
 
+class TestUnitVersusDenominator(unittest.TestCase):
+    """`unit` says what the number IS; `denominator` is what rollup() DIVIDES
+    BY. Conflating them is how `wpm` came to declare a denominator it never
+    applied — the registry answered 'rate' and the code returned a level."""
+
+    RATE_FORMS = ("per_minute", "per_1000_words")
+
+    def test_denominator_appears_only_where_rollup_applies_one(self):
+        for d in registry.all_dimensions():
+            if d.denominator:
+                self.assertIn(d.aggregation, self.RATE_FORMS,
+                              f"{d.dimension_id} declares a denominator that "
+                              f"rollup() never divides by")
+
+    def test_every_rate_names_what_it_is_per(self):
+        for d in registry.all_dimensions():
+            if d.aggregation in self.RATE_FORMS:
+                self.assertTrue(d.denominator,
+                                f"{d.dimension_id} is a rate with no denominator")
+
+    def test_denominators_are_counts_the_pipeline_can_actually_produce(self):
+        """A denominator naming a unit nothing counts writes NULL n_units
+        forever, which is a silent hole rather than a visible gap."""
+        for d in registry.all_dimensions():
+            if d.denominator:
+                self.assertIn(d.denominator, ("minutes", "words"),
+                              f"{d.dimension_id}: nothing counts "
+                              f"{d.denominator!r}")
+
+
 class TestMinimumGate(unittest.TestCase):
+    def test_the_cycle_gate_applies_to_rates_not_to_levels(self):
+        """F.1 scopes the 30 s minimum to pause/disfluency RATES: Henderson's
+        planning cycle makes a sub-cycle RATE swing with where the window
+        lands. A LEVEL is stable well inside one cycle. Applying the rate gate
+        to all six marked good data insufficient — a name match passing as a
+        spec match, which is what `spec_mismatch` now stops."""
+        gated = {d.dimension_id for d in registry.live_dimensions()
+                 if d.min_seconds is not None}
+        self.assertEqual(gated, {"wpm", "fillers", "pause_ms"})
+
+    def test_levels_measure_at_snippet_length(self):
+        """The whole point of the per-measure fix: an 18 s snippet is enough
+        for a mean, so these three now produce a value instead of a hole."""
+        for dim_id in ("dynamic_db", "pitch_center", "energy"):
+            self.assertTrue(registry.meets_minimum(dim_id, seconds=18.0),
+                            f"{dim_id} is a level and must not inherit a rate's gate")
+
     def test_snippet_length_fails_the_cycle_minimum(self):
-        """The finding this registry surfaces on day one: F.4 puts a 30 s
-        minimum on every live dimension, and a snippet is ~18 s."""
+        """The finding this registry surfaced on day one, now correctly
+        narrowed: a snippet is ~18 s and the RATE measures need 30 s."""
         self.assertFalse(registry.meets_minimum("wpm", seconds=18.0))
         self.assertTrue(registry.meets_minimum("wpm", seconds=45.0))
+
+    def test_a_starred_row_says_what_differs(self):
+        """A starred appendix_id means 'our measure is not this row's
+        measure', so the row's minimum is an argument about a different
+        quantity and must never be inherited in silence."""
+        for d in registry.all_dimensions():
+            if d.appendix_id.endswith("*"):
+                self.assertTrue(d.spec_mismatch,
+                                f"{d.dimension_id} is starred with no mismatch")
+            if d.spec_mismatch and d.min_seconds is not None:
+                self.assertTrue(d.note,
+                                f"{d.dimension_id} inherits a gate from a row "
+                                f"it does not match, unjustified")
 
     def test_missing_duration_fails_closed(self):
         self.assertFalse(registry.meets_minimum("wpm", seconds=None))
@@ -89,6 +149,44 @@ class TestMinimumGate(unittest.TestCase):
 
     def test_a_dimension_with_no_gate_passes(self):
         self.assertTrue(registry.meets_minimum("arc_peak_ending"))
+
+
+class TestTheChain(unittest.TestCase):
+    """window -> enough data -> threshold -> intervention. The registry exists
+    so a feedback engine can walk that chain for any dimension and get a real
+    answer at every link. These tests pin where the chain is currently CUT, so
+    the gap is a stated fact rather than something a caller discovers by
+    getting None back."""
+
+    def test_every_live_dimension_answers_the_data_question(self):
+        """Link 1-2. Whatever else is missing, 'do I have enough to measure?'
+        must be answerable for everything the pipeline produces."""
+        for d in registry.live_dimensions():
+            self.assertIn(d.window_class, registry.WINDOW_CLASSES)
+            self.assertIsInstance(
+                registry.meets_minimum(d.dimension_id, seconds=45.0,
+                                       tokens=1500), bool)
+
+    def test_no_live_dimension_can_intervene_yet(self):
+        """Link 3-4, AND THE HONEST STATE OF THE WORLD. Not one live
+        dimension has a fire_at or an intervention: the registry can say
+        'you have enough data', and then nothing downstream can act on it.
+        `fired` is None on every telemetry row for exactly this reason.
+
+        This is the outstanding half of D31, not a defect in the wiring. The
+        test flips the day a benchmark lands — which is the prompt to give it
+        BOTH ends of the chain rather than a bare number."""
+        wired = [d.dimension_id for d in registry.live_dimensions()
+                 if d.fire_at is not None]
+        self.assertEqual(wired, [], "a threshold landed — route its "
+                                    "intervention and re-read Appendix G.5")
+
+    def test_a_threshold_and_its_intervention_arrive_together(self):
+        """Enforced by validate() in both directions; asserted here so the
+        rule is visible in the suite rather than buried in a helper."""
+        for d in registry.all_dimensions():
+            self.assertEqual(d.fire_at is None, not d.intervention,
+                             f"{d.dimension_id}: half a chain")
 
 
 class TestChartability(unittest.TestCase):
