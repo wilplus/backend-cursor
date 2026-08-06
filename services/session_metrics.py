@@ -51,89 +51,24 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 
-def _derive_wpm(transcript: str, seconds: float | None) -> float | None:
-    """Words per minute from the transcript. NOT an approximation of what the
-    pipeline would have stored — `audio_metrics._analyze_pcm` computes wpm as
-    `len(transcript.split()) / (duration_sec / 60)` from the same transcript,
-    so this reproduces that number exactly."""
-    if not transcript or not seconds or seconds <= 0:
-        return None
-    from utils.metrics import compute_wpm
-    return float(compute_wpm(transcript, float(seconds)))
+# The plumbing moved to services/snippet_values (PM-9): `services.db` needs
+# the same resolver and this module imports db, so it cannot live here without
+# a cycle. Re-exported under the old private names so the two grains below read
+# unchanged.
+from services.snippet_values import SNIPPET_FIELDS as _SNIPPET_FIELDS  # noqa: E402
+from services.snippet_values import resolve as _resolve_dimension  # noqa: E402
+from services.snippet_values import resolve_all as _resolve_all  # noqa: E402
 
 
-def _derive_fillers(transcript: str, seconds: float | None) -> float | None:
-    """Filler COUNT (not a rate — the registry aggregates fillers per_minute
-    and rate_windows expects a count). The ONLY source: nothing in the acoustic
-    pipeline computes fillers at all."""
-    if not transcript:
-        return None
-    from utils.metrics import count_fillers
-    return float(int(count_fillers(transcript).get("total") or 0))
+def _resolve_snippet_value(snippet, dimension_id, metrics=None,
+                           transcript=None, seconds=None):
+    """Column -> JSONB blob -> transcript derivation. None if all miss.
 
-
-# Where each registry dimension's value is read from on a snippet row:
-#   dimension_id -> (column, JSONB `metrics` key, transcript derivation)
-# ONLY the plumbing lives here. Window class, tier, minimum length, denominator
-# and aggregation all come from services/dimension_registry — Appendix F.4 is
-# the source, and retyping any of it into this file is how two consumers start
-# disagreeing about the same dimension.
-#
-# WHY THE SECOND AND THIRD SLOTS BOTH EXIST, measured 2026-08-06 rather than
-# assumed. Nothing writes the six denormalized columns on the live path:
-# `db.update_snippet_metrics` is reached only from
-# `snippet_extraction.recompute_snippet_metrics_for_window`, which has ZERO
-# callers repo-wide (orphaned, the same way compute_session_global_metrics was
-# — see PM-9). `process_lab_recording` inserts snippets carrying the `metrics`
-# JSONB and nothing else. So in production EVERY value arrives via slot 2, and
-# a dimension whose slot 2 was None returned nothing — which is precisely why
-# wpm and fillers were the only two dimensions NULL on every drift row while
-# the four with a blob key flowed normally.
-#
-# The two are NOT the same bug. `wpm` was a plain omission: the blob key is
-# literally "wpm" and always has been. `fillers` has no blob key to write —
-# audio_metrics computes no filler field, and `count_fillers` ran only in the
-# orphaned boundary-adjust path. For fillers the transcript IS the measurement,
-# not a fallback for one.
-#
-# Derivation is LAST, after both stored forms, so a real stored measurement
-# always wins over a recomputation.
-_SNIPPET_FIELDS = {
-    "wpm":          ("wpm",          "wpm",             _derive_wpm),
-    "fillers":      ("fillers",      None,              _derive_fillers),
-    "pause_ms":     ("pause_ms",     "pause_ms",        None),
-    "dynamic_db":   ("dynamic_db",   "dynamic_db",      None),
-    "pitch_center": ("pitch_center", "pitch_center_st", None),
-    "energy":       ("energy",       "energy_ratio",    None),
-}
-
-
-def _resolve_snippet_value(snippet: dict, dimension_id: str, metrics: dict,
-                           transcript: str, seconds: float | None):
-    """Column → JSONB blob → transcript derivation. Returns None if all miss.
-
-    ONE resolver for both grains. The snippet loop and the window loop read the
-    same six dimensions off the same rows, and two copies of this precedence
-    would eventually disagree about which source wins.
+    The trailing arguments are accepted and ignored: snippet_values derives
+    them from the row itself, which is what stops the two grains disagreeing
+    about which duration or transcript a value was measured against.
     """
-    plumbing = _SNIPPET_FIELDS.get(dimension_id)
-    if not plumbing:
-        return None
-    column, blob_key, derive = plumbing
-    value = snippet.get(column)
-    if value is None and blob_key:
-        value = metrics.get(blob_key)
-    # `bool` is a subclass of `int`; a stray True must not become 1.0.
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    if derive is None:
-        return None
-    try:
-        return derive(transcript, seconds)
-    except Exception as e:
-        logger.warning("session metrics: %s derivation failed sid=%s: %s",
-                       dimension_id, snippet.get("id"), e)
-        return None
+    return _resolve_dimension(snippet, dimension_id)
 
 
 def _denominator_count(denominator, seconds, words):
@@ -321,61 +256,29 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
     if not active_snippets:
         return None
 
-    wpms = [s.get("wpm") for s in active_snippets if s.get("wpm") is not None]
-    fillers_list = [s.get("fillers") for s in active_snippets if s.get("fillers") is not None]
-    pauses = [s.get("pause_ms") for s in active_snippets if s.get("pause_ms") is not None]
-    dynamics = [s.get("dynamic_db") for s in active_snippets if s.get("dynamic_db") is not None]
-    pitches = [s.get("pitch_center") for s in active_snippets if s.get("pitch_center") is not None]
-    energies = [s.get("energy") for s in active_snippets if s.get("energy") is not None]
+    # PM-9: ONE resolver, not six ad-hoc lookups with three different fallback
+    # policies. The old code read the six denormalized columns first, then
+    # patched wpm/fillers from the transcript, then patched the other four from
+    # the blob — three precedence chains that disagreed with each other and
+    # with the drift layer's. Every column is dead on the live path (see
+    # services/snippet_values), so in practice the first chain always missed
+    # and the KPI scored on whatever the second and third happened to recover.
+    #
+    # The fallbacks are no longer conditional on the list being EMPTY. That
+    # test — `if not wpms` — meant one snippet with a value suppressed
+    # recovery for every other snippet in the session, so a session roll-up
+    # could rest on a single measured snippet out of twenty and look complete.
+    _values = [_resolve_all(s) for s in active_snippets]
 
-    # Transcript-derived fallback for snippets whose per-row wpm /
-    # fillers columns were never populated (typical: snippets created
-    # via paths that skipped the metrics pipeline). count_fillers +
-    # compute_wpm are deterministic and cheap.
-    if not wpms or not fillers_list:
-        try:
-            from utils.metrics import compute_wpm as _compute_wpm
-            from utils.metrics import count_fillers as _count_fillers
-            for s in active_snippets:
-                transcript = (s.get("transcript") or "").strip()
-                duration_ms = s.get("duration_ms")
-                if not transcript or not duration_ms:
-                    continue
-                if s.get("wpm") is None:
-                    wpms.append(
-                        _compute_wpm(transcript, float(duration_ms) / 1000.0)
-                    )
-                if s.get("fillers") is None:
-                    fc = _count_fillers(transcript)
-                    fillers_list.append(int(fc.get("total") or 0))
-        except Exception as fb_err:
-            logger.warning(
-                "session metrics: transcript-fallback failed session=%s: %s",
-                session_id, fb_err,
-            )
+    def _column(dimension: str) -> list:
+        return [v[dimension] for v in _values if v[dimension] is not None]
 
-    # JSONB ``metrics`` fallback for any field whose dedicated column
-    # is empty (legacy rows).
-    if not pauses:
-        pauses = [
-            s["metrics"]["pause_ms"] for s in active_snippets
-            if s.get("metrics") and s["metrics"].get("pause_ms") is not None
-        ]
-    if not dynamics:
-        dynamics = [
-            s["metrics"]["dynamic_db"] for s in active_snippets
-            if s.get("metrics") and s["metrics"].get("dynamic_db") is not None
-        ]
-    if not pitches:
-        pitches = [
-            s["metrics"]["pitch_center_st"] for s in active_snippets
-            if s.get("metrics") and s["metrics"].get("pitch_center_st") is not None
-        ]
-    if not energies:
-        energies = [
-            s["metrics"]["energy_ratio"] for s in active_snippets
-            if s.get("metrics") and s["metrics"].get("energy_ratio") is not None
-        ]
+    wpms = _column("wpm")
+    fillers_list = [int(v) for v in _column("fillers")]
+    pauses = _column("pause_ms")
+    dynamics = _column("dynamic_db")
+    pitches = _column("pitch_center")
+    energies = _column("energy")
 
     global_wpm = round(sum(wpms) / len(wpms), 1) if wpms else None
 

@@ -24,34 +24,13 @@ import unittest
 
 ROOT = pathlib.Path(__file__).parent
 
-# services.session_metrics imports services.db → supabase, which this pure-unit
-# suite must not require. Lift the resolver and its table by AST instead.
-_SRC = (ROOT / "services" / "session_metrics.py").read_text()
+# services.snippet_values is PURE — no db, no supabase — so this suite imports
+# it directly. It lives apart from session_metrics for exactly that reason.
+from services.snippet_values import SNIPPET_FIELDS as _FIELDS  # noqa: E402
+from services.snippet_values import display_hz, resolve  # noqa: E402
 
+_SESSION_METRICS_SRC = (ROOT / "services" / "session_metrics.py").read_text()
 
-def _load_resolver():
-    """Execute only the pieces this test needs, with a stub logger."""
-    tree = ast.parse(_SRC)
-    wanted = {"_derive_wpm", "_derive_fillers", "_SNIPPET_FIELDS",
-              "_resolve_snippet_value"}
-    keep = [n for n in tree.body
-            if (isinstance(n, ast.FunctionDef) and n.name in wanted)
-            or (isinstance(n, ast.Assign)
-                and getattr(n.targets[0], "id", "") in wanted)]
-    module = ast.Module(body=keep, type_ignores=[])
-    ns: dict = {"logger": _SilentLogger()}
-    exec(compile(module, "<session_metrics-subset>", "exec"), ns)
-    return ns
-
-
-class _SilentLogger:
-    def warning(self, *a, **k):
-        pass
-
-
-_NS = _load_resolver()
-_resolve = _NS["_resolve_snippet_value"]
-_FIELDS = _NS["_SNIPPET_FIELDS"]
 
 # A lab-recording snippet as process_lab_recording actually writes it: the
 # `metrics` blob from audio_metrics._analyze_pcm, no metric columns. Note there
@@ -71,12 +50,7 @@ LAB_SNIPPET = {
 
 
 def _resolve_all(snippet):
-    seconds = float(snippet["duration_ms"]) / 1000.0
-    return {
-        d: _resolve(snippet, d, snippet.get("metrics") or {},
-                    (snippet.get("transcript") or "").strip(), seconds)
-        for d in _FIELDS
-    }
+    return {d: resolve(snippet, d) for d in _FIELDS}
 
 
 class TestTheFixtureIsFaithful(unittest.TestCase):
@@ -193,6 +167,89 @@ class TestAbsenceIsNotZero(unittest.TestCase):
         self.assertNotEqual(_resolve_all(row)["energy"], 1.0)
 
 
+class TestTheHzTrap(unittest.TestCase):
+    """`pitch_center` is SEMITONES (audio_metrics._pitch_center_st_from_series)
+    while the registry declares the dimension's unit as "Hz". Consistent
+    everywhere, so comparisons are valid — but any surface rendering a "Hz"
+    label must read f0_mean instead, and two of them format exactly that way.
+    """
+
+    def test_display_hz_is_not_the_pitch_center_dimension(self):
+        row = dict(LAB_SNIPPET)
+        row["metrics"] = dict(row["metrics"], f0_mean=138.0)
+        self.assertEqual(display_hz(row), 138.0)
+        self.assertEqual(resolve(row, "pitch_center"), -2.5)
+
+    def test_display_hz_is_none_rather_than_semitones(self):
+        """The failure that matters: no f0_mean must yield nothing, NOT a
+        silent fall back to the semitone figure under an Hz label."""
+        self.assertIsNone(display_hz(LAB_SNIPPET))
+
+    def test_no_hz_labelled_surface_reads_pitch_center(self):
+        """Guards the two formatters that print "Hz"."""
+        for name in ("routes/v2/coaching.py", "routes/v2/user_sessions.py"):
+            source = (ROOT / name).read_text()
+            for raw in source.splitlines():
+                # Comments explaining the trap are not the trap. (This test's
+                # first draft failed on the comment warning about it.)
+                line = raw.split("#", 1)[0]
+                if "Hz" in line and "pitch_center" in line:
+                    self.assertIn(
+                        "display_hz", line,
+                        f"{name}: Hz label reading the semitone dimension: "
+                        f"{line.strip()}")
+
+
+class TestNothingReadsTheDeadColumns(unittest.TestCase):
+    """PM-9. The columns exist, look canonical, and are never written. Reading
+    one off a snippet row yields None in production 100% of the time, and every
+    such site was silently blank rather than broken — which is why four of them
+    survived for months.
+
+    Anything that needs these values goes through snippet_values.
+    """
+
+    # Where a snippet's values legitimately come from: the freshly computed
+    # audio_metrics dict (not a DB row) and the resolver itself.
+    ALLOWED = {
+        "services/snippet_values.py",       # defines the precedence
+        "services/snippet_extraction.py",   # writes them from a live analysis
+        "services/audio_metrics.py",        # produces the blob
+        "services/session_metrics.py",      # delegates to the resolver
+    }
+
+    def test_no_row_read_of_a_dead_column(self):
+        dead = set(_FIELDS)
+        offenders = []
+        for path in (ROOT / "routes").rglob("*.py"):
+            rel = str(path.relative_to(ROOT))
+            if rel in self.ALLOWED:
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                # s.get("wpm") / row.get("fillers") — a dict read of a column
+                # name off something that is not the metrics blob.
+                if not (isinstance(node, ast.Call)
+                        and getattr(node.func, "attr", None) == "get"
+                        and len(node.args) == 1
+                        and isinstance(node.args[0], ast.Constant)
+                        and node.args[0].value in dead):
+                    continue
+                receiver = getattr(node.func.value, "id", "")
+                # `metrics.get("wpm")` reads the BLOB and `resolved.get("wpm")`
+                # reads resolve_all's OUTPUT — both correct. The defect is
+                # reading the name off a raw DB ROW.
+                if receiver in ("metrics", "metrics_src", "m", "blob",
+                                "resolved"):
+                    continue
+                offenders.append(
+                    f"{rel}:{node.lineno} {receiver}.get"
+                    f"({node.args[0].value!r})")
+        self.assertEqual(offenders, [],
+                         "these read the dead columns instead of "
+                         f"snippet_values.resolve_all: {offenders}")
+
+
 class TestPlumbingCoversTheRegistry(unittest.TestCase):
 
     def test_every_wired_dimension_has_a_reachable_source(self):
@@ -209,7 +266,7 @@ class TestPlumbingCoversTheRegistry(unittest.TestCase):
     def test_the_resolver_is_the_only_reader(self):
         """Two copies of the precedence chain is how the snippet grain and the
         window grain start disagreeing about the same row."""
-        self.assertNotIn("_SNIPPET_FIELDS[", _SRC,
+        self.assertNotIn("_SNIPPET_FIELDS[", _SESSION_METRICS_SRC,
                          "a call site is indexing the table directly instead "
                          "of going through _resolve_snippet_value")
 

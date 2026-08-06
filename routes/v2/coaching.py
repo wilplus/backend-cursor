@@ -31,6 +31,7 @@ from services.skills import get_skill as _get_skill, resolve_for_snippet as _ski
 from config import Config
 from routes.v2.blueprint import v2_bp
 from services.db import db
+from services.snippet_values import display_hz, resolve_all
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -198,15 +199,21 @@ def _build_user_raw_snippet_list(
                 or ""
             ),
             "question_tone": (s.get("question_tone") or "").lower() or None,
+            # PM-9. Two defects here, not one. (a) `or` is wrong for a
+            # numeric: a genuine 0 -- zero fillers, a silent stretch -- is
+            # falsy and fell through to the dead column, reading as absent.
+            # (b) the blob's keys are pitch_center_st / energy_ratio, and
+            # `fillers` is in neither the blob nor a live column, so it was
+            # always None. resolve_all knows all three facts.
+            #
+            # pitch_center_hz keeps its Hz contract by reading f0_mean. The
+            # `pitch_center` dimension is SEMITONES despite the registry
+            # labelling it Hz; wiring that here would have put semitones
+            # under an Hz key.
             "acoustic": {
-                "wpm":             metrics.get("wpm") or s.get("wpm"),
-                "fillers":         metrics.get("fillers") or s.get("fillers"),
-                "pause_ms":        metrics.get("pause_ms") or s.get("pause_ms"),
-                "pitch_center_hz": metrics.get("pitch_center_hz")
-                                  or metrics.get("pitch_center")
-                                  or s.get("pitch_center_hz"),
-                "dynamic_db":      metrics.get("dynamic_db") or s.get("dynamic_db"),
-                "energy":          metrics.get("energy") or s.get("energy"),
+                **{k: v for k, v in resolve_all(s).items()
+                   if k != "pitch_center"},
+                "pitch_center_hz": display_hz(s),
             },
             "classifier_stress_probability": (
                 s.get("classifier_stress_probability")
@@ -312,14 +319,19 @@ def _snippet_to_journey_card(snippet: dict) -> dict:
 
     # Build the metrics list — we omit any metric whose value is null so
     # the UI accordion doesn't render empty rows.
-    metrics_src = snippet.get("metrics") or {}
+    # PM-9: this read the blob with the COLUMN names, so "pitch_center",
+    # "energy" and "fillers" were never in it and those three rows never
+    # rendered. Pitch reads f0_mean because this formatter says "Hz" and the
+    # pitch_center dimension is semitones -- rendering one as the other is the
+    # exact mistake display_hz exists to prevent.
+    resolved = resolve_all(snippet)
     raw_metrics = [
-        ("WPM", metrics_src.get("wpm"), lambda v: f"{int(v)}"),
-        ("Pitch", metrics_src.get("pitch_center"), lambda v: f"{int(v)} Hz"),
-        ("Pause", metrics_src.get("pause_ms"), lambda v: f"{(v / 1000):.1f}s"),
-        ("Energy", metrics_src.get("energy"), lambda v: f"{int(v * 100)}%"),
-        ("Fillers", metrics_src.get("fillers"), lambda v: f"{int(v)}"),
-        ("Dynamic dB", metrics_src.get("dynamic_db"), lambda v: f"{int(v)}"),
+        ("WPM", resolved.get("wpm"), lambda v: f"{int(v)}"),
+        ("Pitch", display_hz(snippet), lambda v: f"{int(v)} Hz"),
+        ("Pause", resolved.get("pause_ms"), lambda v: f"{(v / 1000):.1f}s"),
+        ("Energy", resolved.get("energy"), lambda v: f"{int(v * 100)}%"),
+        ("Fillers", resolved.get("fillers"), lambda v: f"{int(v)}"),
+        ("Dynamic dB", resolved.get("dynamic_db"), lambda v: f"{int(v)}"),
     ]
     metrics: list[dict] = []
     for label, value, fmt in raw_metrics:
@@ -1174,14 +1186,11 @@ def v2_chat_session_state():
                 "question_tone": s.get("question_tone"),
                 "start_offset_ms": s.get("start_offset_ms") or 0,
                 "duration_ms": s.get("duration_ms"),
-                "metrics": {
-                    "wpm": s.get("wpm"),
-                    "fillers": s.get("fillers"),
-                    "pause_ms": s.get("pause_ms"),
-                    "dynamic_db": s.get("dynamic_db"),
-                    "pitch_center": s.get("pitch_center"),
-                    "energy": s.get("energy"),
-                },
+                # PM-9: the six denormalized columns are dead on the live
+                # path (services/snippet_values) — this block returned six
+                # NULLs for every auto-extracted snippet, which is every
+                # snippet the lab pipeline makes. Resolve against the blob.
+                "metrics": resolve_all(s),
             }
             for s in raw_snippets
         ]

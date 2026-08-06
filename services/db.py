@@ -6575,11 +6575,18 @@ class DatabaseService:
         Empty list on failure or no rows.
         """
         try:
+            # PM-9: this selected ONLY the six denormalized columns, which are
+            # dead on the live path (services/snippet_values) — so every row
+            # came back all-NULL and the caller's shared-key check below found
+            # nothing, quietly reporting the contrast as underpowered forever.
+            # `metrics`, `transcript` and `duration_ms` are what actually hold
+            # the values, so they have to be selected for the resolver to work.
+            from services.snippet_values import resolve_all
             result = (
                 self.client.table("charisma_snippets")
                 .select(
-                    "wpm, fillers, pause_ms, dynamic_db, "
-                    "pitch_center, energy, created_at"
+                    "wpm, fillers, pause_ms, dynamic_db, pitch_center, "
+                    "energy, metrics, transcript, duration_ms, created_at"
                 )
                 .eq("user_id", user_id)
                 .not_.is_("coach_label", "null")
@@ -6587,17 +6594,7 @@ class DatabaseService:
                 .limit(int(limit))
                 .execute()
             )
-            out: List[dict] = []
-            for r in result.data or []:
-                out.append({
-                    "wpm": r.get("wpm"),
-                    "fillers": r.get("fillers"),
-                    "pause_ms": r.get("pause_ms"),
-                    "dynamic_db": r.get("dynamic_db"),
-                    "pitch_center": r.get("pitch_center"),
-                    "energy": r.get("energy"),
-                })
-            return out
+            return [resolve_all(r) for r in result.data or []]
         except Exception as e:
             logger.warning(
                 "get_recent_published_snippet_metrics failed "
