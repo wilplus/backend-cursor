@@ -305,6 +305,15 @@ Consequences of hashing rather than storing: assignment needs no table, survives
 
 γ_control is deliberately **permanent**: a per-session flip would put the same pair in and out of control and measure a user who *sometimes* got feedback, which is neither arm. The withhold is deliberately **per-session**: the same pair must produce both treated and untreated transitions, or there is nothing to compare within a person. It is deterministic on the triple so a retried scoring pass reaches the same decision — an RNG there would make the arm depend on how many times the pipeline happened to run.
 
+### Which reading of "intervention randomisation, 20%" — **LOCKED 2026-08-06**
+
+The decisions log gives it as one table row, and it had two plausible readings:
+
+1. Randomise **which intervention type** is applied (BOLD vs REPLACE vs HIGHLIGHT…).
+2. Randomise **whether an eligible note surfaces at all**.
+
+**Founder locked reading 2.** It complements γ_control — between-subject and within-subject — where reading 1 would leave "note vs no note" untested entirely. Reading 1 also risks incoherent advice: applying UNDERLINE to A2's overlap run when the contract's remedy is CUT produces a mark that points at the right words and asks for the wrong thing.
+
 ### What the caller must persist
 
 `arbitrate()` returns `control_held`, `withheld` and an `arms` block carrying the rates and both salts. **All three arms must be stored alongside the outcome, not just what surfaced.** An outcome with no arm attached is an observation, and the entire point of these controls is that these are not observations.

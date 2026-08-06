@@ -198,6 +198,43 @@ returns False across the board. The off-list is what stays off *after* threshold
 
 ---
 
+### PM-8 · Persist the experiment arms — **BLOCKING on the manager going live** *(locked 2026-08-06)*
+
+**Cadence:** one-time, before the manager is wired to the scoring path. Then reviewed at PM-1.
+**Source:** Appendix H.12; decisions log §B (`γ_control`, intervention randomisation).
+**Status:** **LOCKED.** Not a nice-to-have and not deferrable past the manager going live.
+
+**Running the controls without persisting the arms is strictly WORSE than not running them at all.**
+
+That is the whole reason this is locked rather than filed. Once the manager is live, 12% of (user, dimension) pairs receive nothing and 20% of notes that won triage are deliberately withheld. Those users are paying a real cost — less feedback — and the only thing that buys is the ability to make a causal claim later. **If the arm assignment is not stored next to the outcome, they pay the cost and we get nothing back**, and it looks from the outside exactly like a working experiment. That is the most expensive failure mode available here: invisible, ongoing, and unrecoverable after the fact.
+
+**What `arbitrate()` already returns and something must store:**
+
+| Field | Why it cannot be reconstructed later |
+|---|---|
+| `control_held` | Which dimensions were held out this session |
+| `withheld` | Which notes won and were deliberately not shown — **the untreated condition**, and the only record that it occurred |
+| `counterfactual` | What would have surfaced without the ε_explore swap |
+| `exploration` | Whether this session's note was a rank-2 probe |
+| `arms.*` | The rates **and both salts** in force at the time |
+
+**The salts are the part most likely to be dropped, and the one that makes the data un-analysable without it.** Assignment is a pure function of `(salt, user_id, dimension)`, so a row written under `willab-gamma-v1` and a row written after a salt change belong to **two different experiments**. Without the salt stamped per row there is no way to tell them apart afterwards — the same defect as `benchmark_version` in the evaluation key (D30b): without it, a threshold change and population drift are indistinguishable.
+
+**Minimum shape.** One row per (session, dimension) considered — not per surfaced note, or the untreated arm has no rows at all and the table records only the treatment group:
+
+```
+session_id · user_id · dimension_id · arm (TREATED | CONTROL | WITHHELD | EXPLORE)
+priority · would_have_surfaced (bool) · surfaced (bool)
+control_salt · withhold_salt · gamma · withhold_rate
+evaluated_at
+```
+
+**Do not reuse `dimension_evaluations`.** That table is *measurements* (Appendix G); this is *decisions and arms*. Joining them is right; merging them puts two different grains and two different retention arguments in one place.
+
+**The check that this is working:** `SELECT arm, COUNT(*) ... GROUP BY arm` should show roughly 12% CONTROL and 20% WITHHELD among what would have surfaced. **An empty CONTROL arm means the controls are running and the record is not** — the exact silent failure this item exists to prevent.
+
+---
+
 ## Part 2 — Deferred unlocks
 
 Each stage has a **numeric trigger**. When it fires, the build specification already exists at

@@ -194,6 +194,14 @@ def is_withheld(user_id: str, dimension: str, session_id: str, *,
                 rate: float = INTERVENTION_RANDOMISATION) -> bool:
     """Intervention randomisation — a note that WON is deliberately not shown.
 
+    WHICH READING, locked by the founder 2026-08-06. The decisions log's
+    "intervention randomisation, 20%" could have meant randomising the
+    intervention TYPE instead. It does not: it randomises WHETHER an eligible
+    note surfaces. Type-randomisation would leave "note vs no note" untested
+    and risks incoherent advice — UNDERLINE on A2's overlap run when the
+    contract's remedy is CUT points at the right words and asks the wrong
+    thing.
+
     The within-subject arm. The same (user, dimension) pair produces both
     treated and untreated take-transitions, so take N -> N+1 change can be
     attributed to the note rather than to the take.
