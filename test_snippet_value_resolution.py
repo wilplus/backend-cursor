@@ -297,9 +297,25 @@ class TestTheOrphanIsGone(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"these break once 0254 runs: {offenders}")
 
-    def test_the_migration_is_registered(self):
+    def test_the_column_drop_is_parked_not_manifested(self):
+        """A destructive migration in manifest.txt that has NOT been applied
+        blocks EVERY deploy: the Railway migrate step hits the DROP COLUMN
+        guard and aborts. This one is blocked on a data question (four of the
+        six columns hold rows), so it lives in migrations/pending/, which
+        migrate.py does not glob. It moves up in the same commit that applies
+        it."""
         manifest = (ROOT / "migrations" / "manifest.txt").read_text()
-        self.assertIn("drop_dead_snippet_metric_columns.sql", manifest)
+        self.assertNotIn("drop_dead_snippet_metric_columns.sql", manifest)
+        self.assertTrue((ROOT / "migrations" / "pending"
+                         / "drop_dead_snippet_metric_columns.sql").exists())
+
+    def test_pending_migrations_are_invisible_to_the_runner(self):
+        """The parking only works because the glob is non-recursive. If that
+        ever changes, every parked file silently re-enters the manifest check
+        and deploys break again."""
+        source = (ROOT / "scripts" / "migrate.py").read_text()
+        self.assertIn('MIGRATIONS_DIR.glob("*.sql")', source)
+        self.assertNotIn('MIGRATIONS_DIR.rglob("*.sql")', source)
 
 
 class TestPauseCountWeights(unittest.TestCase):
