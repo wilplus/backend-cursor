@@ -103,7 +103,15 @@ class Dimension:
     clear_at: Optional[float] = None
     benchmark_version: str = "measure-v1"
     intervention: Optional[str] = None  # Appendix C routing; None = no fire
-    computed: bool = False              # produced by the pipeline TODAY?
+    computed: bool = False
+
+    # OFF BY DECISION, which is NOT the same as not-built. `computed=False`
+    # means the pipeline produces nothing yet; `enabled=False` means it may
+    # produce a value, may write telemetry, and MUST NOT be allowed to fire.
+    # Kept separate so "we turned this off because the threshold was wrong"
+    # never gets read later as "we hadn't got round to it".
+    enabled: bool = True
+    disabled_reason: str = ""              # produced by the pipeline TODAY?
     # NON-EMPTY = what we COMPUTE is not what the cited appendix row SPECIFIES.
     # The row's window and minimum therefore DO NOT TRANSFER, and inheriting
     # them would gate a measure on an argument about a different quantity.
@@ -178,14 +186,22 @@ _REGISTRY: dict[str, Dimension] = {
              "cycle.",
     ),
     "energy": Dimension(
-        dimension_id="energy", appendix_id="E2*", label="Energy ratio",
+        dimension_id="energy", appendix_id="UNFILED*", label="Energy ratio",
         window_class="CYCLE", aggregation="mean", unit="normalised ratio",
         min_seconds=None, tier="CORPUS_REL", computed=True,
-        spec_mismatch="A6 is energy FRONT-LOAD, which F.4 puts at PROPORTIONAL "
-                      "(deciles); Schuller shows relative thirds beat fixed "
-                      "windows 96.5% vs 67.2%. This is a snippet-mean LEVEL — "
-                      "a different quantity at a different window class.",
-        note="NO 30 s gate — a mean level is stable below one planning cycle.",
+        spec_mismatch="NO APPENDIX ROW AT ALL. It was filed under E2, which "
+                      "dynamic_db already holds — two dimensions cannot be one "
+                      "row. Appendix D has no E2 benchmark either; E2 exists "
+                      "only in F.4's window table. This is Jiang & Pell's "
+                      "energy-contour CUE reduced to a snippet mean, so it has "
+                      "no window, no minimum and no threshold to inherit from "
+                      "anywhere, and must not borrow E2's.",
+        note="NO 30 s gate — a mean level is stable below one planning cycle. "
+             "An earlier note here read 'NOT A6. A6 is energy FRONT-LOAD'; "
+             "A6 is TOPIC DISCIPLINE (Appendix D, Mayer coherence d=0.86) and "
+             "no energy front-load row exists anywhere. Removed rather than "
+             "kept as a disambiguation, because the disambiguation was itself "
+             "the wrong citation.",
     ),
 
     # ── specified in Appendix F.4, NOT built ────────────────────────────────
@@ -193,6 +209,12 @@ _REGISTRY: dict[str, Dimension] = {
         dimension_id="conf", appendix_id="CONF", label="Vocal confidence",
         window_class="UNIT", aggregation="mean", min_seconds=1.6,
         tier="T2", computed=False,
+        enabled=False,
+        disabled_reason=(
+            "OFF, pre-existing — `voice_confidence` is ranking-inert until "
+            "validated (ENGINE-MAP E10, flag off). Recorded here so the "
+            "registry carries the off-list rather than the reader having to "
+            "cross-reference a second document."),
         note="The only dimension with a scientifically defined window in "
              "seconds: 1.6 s per decision (Inbar 2025), >=10 units before a "
              "talk-level verdict (Quatieri, AUC 0.61 -> 0.83).",
@@ -227,6 +249,21 @@ _REGISTRY: dict[str, Dimension] = {
         label="Pronoun profile", window_class="SESSION",
         aggregation="per_1000_words", unit="marks per 1,000 words",
         denominator="words", min_tokens=1000, computed=False,
+        enabled=False,
+        disabled_reason=(
+            "OFF by founder decision 2026-08-06. D7a carried the only "
+            "ABSOLUTE T2 threshold with published population values, and the "
+            "numbers cannot do the job they were given. Steffens & Haslam "
+            "separate winners (12.7/1,000w) from losers (7.4) — a gap of 5.3. "
+            "The contract fires below 8.0 and clears above 10.0: a band of "
+            "2.0. A count at rate r over n words has SD ~ r/sqrt(k). At the "
+            "200-word precondition SD ~ 7.1/1,000w, so the decision is "
+            "whether the speaker said 'we' once or twice. At 1,000 words it "
+            "is ~3.2, still wider than the band; the band first resolves near "
+            "10,000 words (~77 min). That is the POISSON FLOOR — real speech "
+            "clusters and any overdispersion raises it further. Re-enable via "
+            "D20's Beta-Binomial posterior against the corpus prior, firing "
+            "on posterior mass, NOT by raising n."),
         note="Low base rate. D20's Beta-Binomial posterior replaces the flat "
              "1,000-word gate.",
     ),
@@ -323,6 +360,30 @@ def is_chartable(dimension_id: str) -> bool:
     return bool(d and d.tier in ("T1", "T2") and d.fire_at is not None)
 
 
+def can_fire(dimension_id: str) -> bool:
+    """May this dimension put a candidate in front of the manager engine?
+
+    THE SINGLE GATE, and it fails closed on an unknown id. Requires a real
+    threshold AND that nobody has switched the dimension off. Measurement is
+    deliberately NOT gated by this: a disabled dimension keeps writing
+    telemetry, because the telemetry is what will eventually justify a
+    threshold worth re-enabling it for. Switching off the measurement too
+    would guarantee it stays off.
+    """
+    d = get(dimension_id)
+    return bool(d and d.enabled and d.fire_at is not None)
+
+
+def disabled() -> tuple[Dimension, ...]:
+    """Everything switched OFF by decision, for the off-list.
+
+    Distinct from `not computed`. A reader who cannot tell "we turned this
+    off because the numbers were wrong" from "we haven't built it yet" will
+    eventually build the thing that was deliberately switched off.
+    """
+    return tuple(d for d in _REGISTRY.values() if not d.enabled)
+
+
 def adapts(dimension_id: str) -> bool:
     """D24 — T1/T2 thresholds NEVER adapt to ability; T3 and CORPUS_REL may.
 
@@ -376,6 +437,23 @@ def rollup(values_by_dimension: Any, *, minutes: Optional[float] = None,
             # not a number, and forcing one would be a fabricated reading.
             out[dimension_id] = None
     return out
+
+
+def _appendix_collisions() -> list[str]:
+    """Two dimensions claiming the SAME appendix row.
+
+    A citation is prose, so no test can check it against the document — but
+    this much IS mechanical, and it is the shape the error actually took:
+    `energy` and `dynamic_db` both sat on E2, so at most one of them was
+    that row and the other was inheriting a window it had no claim to.
+    Whichever is wrong, the collision itself is the tell.
+    """
+    seen: dict[str, list[str]] = {}
+    for key, d in _REGISTRY.items():
+        seen.setdefault(d.appendix_id.rstrip("*"), []).append(key)
+    return [f"appendix row {row!r} is claimed by {', '.join(sorted(keys))} — "
+            f"at most one of them is that row"
+            for row, keys in seen.items() if len(keys) > 1]
 
 
 def validate() -> list[str]:
@@ -448,4 +526,15 @@ def validate() -> list[str]:
             problems.append(
                 f"{key}: inherits a {d.min_seconds}s gate from a row it does "
                 f"NOT match, with no note justifying the transfer")
-    return problems
+
+        # An OFF with no reason decays into an OFF nobody dares reverse,
+        # because nobody can reconstruct what it was protecting against.
+        if not d.enabled and not d.disabled_reason:
+            problems.append(
+                f"{key}: is switched OFF with no reason — say what was wrong "
+                f"and what would make it right, or leave it enabled")
+        if d.disabled_reason and d.enabled:
+            problems.append(
+                f"{key}: carries a disabled_reason but is still ENABLED — "
+                f"one of the two is stale")
+    return problems + _appendix_collisions()

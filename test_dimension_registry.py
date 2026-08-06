@@ -86,6 +86,18 @@ class TestUnitVersusDenominator(unittest.TestCase):
                 self.assertTrue(d.denominator,
                                 f"{d.dimension_id} is a rate with no denominator")
 
+    def test_no_two_dimensions_claim_the_same_appendix_row(self):
+        """A citation is prose and no test can check it against the document
+        — but THIS much is mechanical, and it is the shape the error took:
+        `energy` and `dynamic_db` both sat on E2, so one of them was
+        inheriting a window it had no claim to."""
+        seen = {}
+        for d in registry.all_dimensions():
+            row = d.appendix_id.rstrip("*")
+            self.assertNotIn(row, seen,
+                             f"{d.dimension_id} and {seen.get(row)} both claim {row}")
+            seen[row] = d.dimension_id
+
     def test_denominators_are_counts_the_pipeline_can_actually_produce(self):
         """A denominator naming a unit nothing counts writes NULL n_units
         forever, which is a silent hole rather than a visible gap."""
@@ -180,6 +192,31 @@ class TestTheChain(unittest.TestCase):
                  if d.fire_at is not None]
         self.assertEqual(wired, [], "a threshold landed — route its "
                                     "intervention and re-read Appendix G.5")
+
+    def test_nothing_fires_while_switched_off(self):
+        """`can_fire` is the single gate the manager engine asks. An OFF
+        dimension must not become fireable just because a threshold lands."""
+        for d in registry.disabled():
+            self.assertFalse(registry.can_fire(d.dimension_id),
+                             f"{d.dimension_id} is OFF but can_fire() says yes")
+
+    def test_can_fire_fails_closed_on_an_unknown_id(self):
+        self.assertFalse(registry.can_fire("invented"))
+
+    def test_the_off_list_says_why(self):
+        """An OFF with no reason decays into one nobody dares reverse."""
+        self.assertTrue(registry.disabled(), "the off-list emptied — "
+                                             "did a re-enable lose its reason?")
+        for d in registry.disabled():
+            self.assertTrue(d.disabled_reason,
+                            f"{d.dimension_id} is OFF with no reason")
+
+    def test_off_is_not_the_same_state_as_not_built(self):
+        """`computed=False` is 'not written yet'; `enabled=False` is 'written
+        or writable, and must not fire'. Collapsing them loses the reason."""
+        d = registry.get("pronoun_profile")
+        self.assertFalse(d.enabled)
+        self.assertIn("8.0", d.disabled_reason)   # the band it could not resolve
 
     def test_a_threshold_and_its_intervention_arrive_together(self):
         """Enforced by validate() in both directions; asserted here so the

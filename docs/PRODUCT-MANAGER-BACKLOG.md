@@ -1,6 +1,6 @@
 # Product-manager backlog — recurring processes and deferred unlocks
 
-**Last updated:** 2026-08-05.
+**Last updated:** 2026-08-06.
 
 **Status:** live. Created 2026-08-05 alongside Appendix G.
 **Owner:** founder (currently also the coach and the product manager).
@@ -168,6 +168,33 @@ better arithmetic, and each round invites locking a number that cannot be right.
 labelling external audio — other people's speech. That is speaker diversity for the acoustic side
 **and**, if those imports are transcribed, corpus diversity for the text side. Two blockers, one
 lane.
+
+---
+
+### PM-7 · The OFF list — dimensions switched off by decision *(added 2026-08-06)*
+
+**Cadence:** reviewed at PM-1 (quarterly), and whenever a re-enable condition is claimed to be met.
+**Source:** `services/dimension_registry.py` — `enabled` / `disabled_reason`, surfaced by `registry.disabled()`.
+
+**Why this exists.** "Off because the numbers were wrong" and "off because we haven't built it" are
+different states, and a reader who cannot tell them apart will eventually build the thing that was
+deliberately switched off. The registry now separates them: `computed=False` is not-built,
+`enabled=False` is off-by-decision, and `validate()` rejects an off with no reason. `can_fire()` is
+the single gate — it requires a threshold **and** that nobody switched the dimension off. Measurement
+is deliberately *not* gated: a disabled dimension keeps writing telemetry, because that telemetry is
+what would justify a threshold worth re-enabling it for.
+
+| Dimension | Off since | Why | Re-enable condition |
+|---|---|---|---|
+| `pronoun_profile` (D7a / D7b) | 2026-08-06, founder | **The threshold cannot resolve its own band.** Steffens & Haslam separate winners (12.7/1,000w) from losers (7.4) — a gap of 5.3. The contract fires below 8.0 and clears above 10.0: a band of **2.0**. SD of a rate ≈ r/√k, so at the row's own 200-word precondition SD ≈ **7.1**/1,000w and the decision is whether the speaker said *we* once or twice. At 1,000 words ≈ 3.2, still wider than the band. First resolves near **10,000 words (~77 min)** — and that is the Poisson floor, before any clustering | **D20's Beta-Binomial posterior** against the corpus prior, firing on posterior mass. **Not** a larger *n* — raising the word gate does not fix a band narrower than the sampling error, it just moves the cliff |
+| `conf` (E10 / CONF) | pre-existing | `voice_confidence` is ranking-inert until validated (ENGINE-MAP E10, flag off) | Validation against the coach panel — see PM-1 |
+
+**The re-enable rule:** a dimension comes back on the way it went off — by a founder decision naming
+the condition that changed, recorded in `disabled_reason` being *removed* rather than edited around.
+`validate()` fails a `disabled_reason` left behind on an enabled dimension, so the two cannot drift.
+
+**Nothing can fire today regardless** — no live dimension has a `fire_at` at all, so `can_fire()`
+returns False across the board. The off-list is what stays off *after* thresholds land.
 
 ---
 

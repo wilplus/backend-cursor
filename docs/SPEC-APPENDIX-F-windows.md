@@ -166,7 +166,7 @@ Note this puts filler rate on a per-minute basis, which matters: Clark & Fox Tre
 | Live dimension | Gate | Because |
 |---|---|---|
 | `wpm` (E5) · `fillers` (E6) · `pause_ms` (E4) | **30 s** | Rate or pause behaviour — the cycle argument applies |
-| `dynamic_db` (E2) · `pitch_center` (E1) · `energy` (A6) | **none** | A **level**. A mean is stable well inside one cycle; the cycle argument does not reach it |
+| `dynamic_db` (E2) · `pitch_center` (E1) · `energy` (unfiled) | **none** | A **level**. A mean is stable well inside one cycle; the cycle argument does not reach it |
 
 ### The reason the wrong gate looked right
 
@@ -175,7 +175,7 @@ Three live measures **are not the quantity their cited row specifies.** A name m
 | We compute | The row says | Consequence |
 |---|---|---|
 | `pitch_center` — mean f0, a **level** | E1 is pitch **variability** (range/SD) | "Needs multiple IPs to estimate a range" is an argument about estimating a *range*. It does not transfer to a mean. |
-| `energy` — snippet-mean **level** at CYCLE | A6 is energy **front-load** at **PROPORTIONAL** (deciles) | Different quantity *and* different window class. Schuller: relative thirds beat fixed windows, 96.5% vs 67.2%. |
+| `energy` — snippet-mean **level** at CYCLE | **No row at all.** It was filed under E2, which `dynamic_db` already holds | Two dimensions cannot be one row. Appendix D has no E2 benchmark either — E2 exists only in F.4's window table. It is Jiang & Pell's energy-contour *cue* reduced to a mean, with nothing to inherit from anywhere. |
 | `pause_ms` — mean pause **length** (ms) | E4 is pause **rate** (per minute) | Different quantity. The 30 s gate is kept anyway — the cycle argument covers pause behaviour either way. |
 
 The registry now carries a `spec_mismatch` field for exactly this, and `validate()` refuses a starred appendix id with an empty mismatch, or an inherited minimum with nothing justifying the transfer. **A row's minimum may not be inherited by a measure that is not that row's measure.**
@@ -253,5 +253,7 @@ class WindowSpec:
 **F-8 · A minimum belongs to a quantity, not to a row's name** *(2026-08-06)*. The F.4 table printed 30 s against E1/E2, which are not rates, while F.2 scoped that minimum to *rates* and F.5 already conceded the E1/E2 assignment was inference. The registry inherited it and marked every level `INSUFFICIENT_DATA` on every ~18 s snippet. Corrected in F.4.1. **The general rule: before inheriting a row's window or minimum, check that you are computing that row's quantity.** Three live measures were not — see the F.4.1 table.
 
 **F-9 · The ~18 s snippet figure has never been measured** *(2026-08-06)*. It is 200 chars ÷ an assumed speech rate. `duration_ms` is on every snippet; the distribution should be read off the real data before any further gate is set against it, because every "does a snippet clear this gate" argument in this appendix rests on it.
+
+**F-11 · A wrong citation is the one error no test catches** *(2026-08-06)*. The fix above shipped with `energy`'s mismatch claiming *"A6 is energy front-load"*. **A6 is topic discipline** (Appendix D, Mayer coherence d=0.86) and no energy front-load row exists anywhere; the claim was inherited from a "NOT A6" disambiguation that was itself miscited, and it reached this appendix before it was caught. A citation is prose — `validate()` cannot check it against a document. What it *can* check is the structural shadow: **two dimensions claiming the same appendix row**, which is exactly the shape this took (`energy` and `dynamic_db` both on E2). That rule is now in `validate()`. Everything else in a citation is read by a human or not at all.
 
 **F-10 · The chain is cut at the far end** *(2026-08-06)*. The registry answers *window → enough data?* for all six live dimensions and *threshold → intervention* for none: no live dimension has a `fire_at`, so `dimension_evaluations.fired` is NULL on every row and nothing is chartable. That is the outstanding half of D31, not a wiring defect. `validate()` now rejects a threshold that fires into nothing and an intervention nothing can trigger, so the two must land together.
