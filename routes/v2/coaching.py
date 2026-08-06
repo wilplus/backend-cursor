@@ -830,11 +830,45 @@ def v2_coaching_state_machine_turn():
             STEP2_YES_LABEL as _STEP2_YES_LABEL,
             STEP2_NO_LABEL as _STEP2_NO_LABEL,
         )
+        # ACOUSTIC TARGETS ARE HELD DARK PENDING FOUNDER SIGN-OFF (2026-08-06).
+        #
+        # These inputs have been NULL on every session since 2026-06-01, so
+        # `compute_acoustic_targets` has returned all-None and STEP 8 has been
+        # falling through to its qualitative seed ("keep your tempo steady,
+        # your vocal range a touch wider, your filler words sparse"). Wiring
+        # the session globals back onto the recording pipeline populates them
+        # again — and that would silently turn this surface ON for the first
+        # time since June, with copy nobody has reviewed.
+        #
+        # WHAT IT WOULD SAY. STEP 8 instructs the model to "keep the NUMBERS
+        # verbatim (WPM, dB, filler counts)" and to emit
+        # triggers=['show_acoustic_targets_card']:
+        #     "keep your tempo at around 145 WPM (you were at 132 this time)"
+        #     "push your vocal dynamic range to about 18.5 dB"
+        #     "keep your filler words under 12 (you used 19 this time)"
+        #
+        # WHY THAT IS THE WRONG SIDE OF THE LINE. The split-sink rule is not
+        # "no digits" — SpeechDataPanel shows wpm/Hz/dB to users deliberately.
+        # Its own header states the actual test: those are "reference DATA,
+        # never a verdict. No best/worst flag, NO DIRECTION GUESS, no
+        # characterization ... characterizing them would be the system judging
+        # the voice." A prescriptive numeric target IS a direction, and
+        # pairing "you were at 132" with a goal of 145 is a shortfall verdict
+        # wearing a suggestion's clothes.
+        #
+        # Held rather than rewritten: the compliant version is a copy change,
+        # and user-facing copy needs founder sign-off (LIVE LOOP). PM-5.
+        # Flipping this True is the whole of the change once signed off.
+        _ACOUSTIC_TARGETS_SIGNED_OFF = False
         targets = compute_acoustic_targets(
-            global_wpm=parent_session.get("global_wpm"),
-            global_fillers=parent_session.get("global_fillers"),
-            global_dynamic_db=parent_session.get("global_dynamic_db"),
-            session_duration_ms=parent_session.get("duration_ms"),
+            global_wpm=(parent_session.get("global_wpm")
+                        if _ACOUSTIC_TARGETS_SIGNED_OFF else None),
+            global_fillers=(parent_session.get("global_fillers")
+                            if _ACOUSTIC_TARGETS_SIGNED_OFF else None),
+            global_dynamic_db=(parent_session.get("global_dynamic_db")
+                               if _ACOUSTIC_TARGETS_SIGNED_OFF else None),
+            session_duration_ms=(parent_session.get("duration_ms")
+                                 if _ACOUSTIC_TARGETS_SIGNED_OFF else None),
         )
 
         # Director's Script — admin-edited array wins; fall through

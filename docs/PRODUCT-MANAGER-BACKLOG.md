@@ -1,6 +1,6 @@
 # Product-manager backlog — recurring processes and deferred unlocks
 
-**Last updated:** 2026-08-05.
+**Last updated:** 2026-08-06.
 
 **Status:** live. Created 2026-08-05 alongside Appendix G.
 **Owner:** founder (currently also the coach and the product manager).
@@ -131,6 +131,40 @@ Every template in both bands needs founder review against three tests:
 3. **Not evaluative** (G.0). "Your pacing was weak this time" is self-referenced, number-free, and still
    harmful. Mastery framing is the active ingredient, not the absence of a number.
 
+#### PM-5.1 · The acoustic-targets line — **HELD DARK, awaiting sign-off** *(added 2026-08-06)*
+
+**Where:** `coaching_state_machine._format_acoustic_targets_for_prompt`, rendered by STEP 8, gated at
+`routes/v2/coaching.py` behind `_ACOUSTIC_TARGETS_SIGNED_OFF = False`.
+
+This surface has been dark since **2026-06-01** — not by decision, but because its inputs
+(`global_wpm`, `global_fillers`, `global_dynamic_db`) stopped being written when the session-globals
+caller was excised. Restoring those globals (2026-08-06) would have turned it back on silently, with
+copy nobody has reviewed. Held explicitly instead.
+
+**What it would say.** STEP 8 instructs the model to *"keep the NUMBERS verbatim (WPM, dB, filler
+counts)"* and to emit `triggers=['show_acoustic_targets_card']`:
+
+> *"keep your tempo at around 145 WPM (you were at 132 this time)"*
+> *"push your vocal dynamic range to about 18.5 dB (slightly more variation than today)"*
+> *"keep your filler words under 12 across the session (you used 19 this time)"*
+
+**Why it fails the test, and the test is not "no digits."** `SpeechDataPanel` shows users wpm, Hz and
+dB deliberately. Its header states the operative rule: those are *"reference DATA, never a verdict. No
+best/worst flag, **no direction guess**, no characterization ... characterizing them would be the
+system judging the voice."* A **prescriptive numeric target is a direction**, and pairing *"you were at
+132"* with a goal of 145 is a shortfall verdict wearing a suggestion's clothes.
+
+**The decision needed:** either (a) sign off a **qualitative** rewrite — *"a touch quicker, a little
+more range"* — and flip the flag, or (b) leave it dark permanently and delete the machinery. What is
+NOT available is turning it on unreviewed, which is what would have happened by accident.
+
+**Also blocking on the same review — a D31 violation.** `_IDEAL_WPM_MIN = 125`, `_IDEAL_WPM_MAX = 140`
+and `_TARGET_FILLERS_PER_MIN = 1.0` are hardcoded in `coaching_state_machine.py`, outside the dimension
+registry. D31 says *"hardcoding any of these values elsewhere is a bug, whatever it looks like."* They
+predate the registry. Moving them is a behaviour change on a live surface, so it belongs with this
+sign-off rather than smuggled in beside a telemetry fix. `test_acoustic_targets_held.py` pins the set
+so a fourth cannot appear unnoticed.
+
 ---
 
 ### PM-6 · The verbal corpus — parked on speaker diversity, not on analysis
@@ -168,6 +202,87 @@ better arithmetic, and each round invites locking a number that cannot be right.
 labelling external audio — other people's speech. That is speaker diversity for the acoustic side
 **and**, if those imports are transcribed, corpus diversity for the text side. Two blockers, one
 lane.
+
+---
+
+### PM-7 · The OFF list — dimensions switched off by decision *(added 2026-08-06)*
+
+**Cadence:** reviewed at PM-1 (quarterly), and whenever a re-enable condition is claimed to be met.
+**Source:** `services/dimension_registry.py` — `enabled` / `disabled_reason`, surfaced by `registry.disabled()`.
+
+**Why this exists.** "Off because the numbers were wrong" and "off because we haven't built it" are
+different states, and a reader who cannot tell them apart will eventually build the thing that was
+deliberately switched off. The registry now separates them: `computed=False` is not-built,
+`enabled=False` is off-by-decision, and `validate()` rejects an off with no reason. `can_fire()` is
+the single gate — it requires a threshold **and** that nobody switched the dimension off. Measurement
+is deliberately *not* gated: a disabled dimension keeps writing telemetry, because that telemetry is
+what would justify a threshold worth re-enabling it for.
+
+| Dimension | Off since | Why | Re-enable condition |
+|---|---|---|---|
+| `pronoun_profile` (D7a / D7b) | 2026-08-06, founder | **The threshold cannot resolve its own band.** Steffens & Haslam separate winners (12.7/1,000w) from losers (7.4) — a gap of 5.3. The contract fires below 8.0 and clears above 10.0: a band of **2.0**. SD of a rate ≈ r/√k, so at the row's own 200-word precondition SD ≈ **7.1**/1,000w and the decision is whether the speaker said *we* once or twice. At 1,000 words ≈ 3.2, still wider than the band. First resolves near **10,000 words (~77 min)** — and that is the Poisson floor, before any clustering | **D20's Beta-Binomial posterior** against the corpus prior, firing on posterior mass. **Not** a larger *n* — raising the word gate does not fix a band narrower than the sampling error, it just moves the cliff |
+| `conf` (E10 / CONF) | pre-existing | `voice_confidence` is ranking-inert until validated (ENGINE-MAP E10, flag off) | Validation against the coach panel — see PM-1 |
+
+**The re-enable rule:** a dimension comes back on the way it went off — by a founder decision naming
+the condition that changed, recorded in `disabled_reason` being *removed* rather than edited around.
+`validate()` fails a `disabled_reason` left behind on an enabled dimension, so the two cannot drift.
+
+**Nothing can fire today regardless** — no live dimension has a `fire_at` at all, so `can_fire()`
+returns False across the board. The off-list is what stays off *after* thresholds land.
+
+---
+
+### PM-8 · Persist the experiment arms — **BLOCKING on the manager going live** *(locked 2026-08-06)*
+
+**Cadence:** one-time, before the manager is wired to the scoring path. Then reviewed at PM-1.
+**Source:** Appendix H.12; decisions log §B (`γ_control`, intervention randomisation).
+**Status:** **LOCKED.** Not a nice-to-have and not deferrable past the manager going live.
+
+**Running the controls without persisting the arms is strictly WORSE than not running them at all.**
+
+That is the whole reason this is locked rather than filed. Once the manager is live, 12% of (user, dimension) pairs receive nothing and 20% of notes that won triage are deliberately withheld. Those users are paying a real cost — less feedback — and the only thing that buys is the ability to make a causal claim later. **If the arm assignment is not stored next to the outcome, they pay the cost and we get nothing back**, and it looks from the outside exactly like a working experiment. That is the most expensive failure mode available here: invisible, ongoing, and unrecoverable after the fact.
+
+**What `arbitrate()` already returns and something must store:**
+
+| Field | Why it cannot be reconstructed later |
+|---|---|
+| `control_held` | Which dimensions were held out this session |
+| `withheld` | Which notes won and were deliberately not shown — **the untreated condition**, and the only record that it occurred |
+| `counterfactual` | What would have surfaced without the ε_explore swap |
+| `exploration` | Whether this session's note was a rank-2 probe |
+| `arms.*` | The rates **and both salts** in force at the time |
+
+**The salts are the part most likely to be dropped, and the one that makes the data un-analysable without it.** Assignment is a pure function of `(salt, user_id, dimension)`, so a row written under `willab-gamma-v1` and a row written after a salt change belong to **two different experiments**. Without the salt stamped per row there is no way to tell them apart afterwards — the same defect as `benchmark_version` in the evaluation key (D30b): without it, a threshold change and population drift are indistinguishable.
+
+**Minimum shape.** One row per (session, dimension) considered — not per surfaced note, or the untreated arm has no rows at all and the table records only the treatment group:
+
+```
+session_id · user_id · dimension_id · arm (TREATED | CONTROL | WITHHELD | EXPLORE)
+priority · would_have_surfaced (bool) · surfaced (bool)
+control_salt · withhold_salt · gamma · withhold_rate
+evaluated_at
+```
+
+**Do not reuse `dimension_evaluations`.** That table is *measurements* (Appendix G); this is *decisions and arms*. Joining them is right; merging them puts two different grains and two different retention arguments in one place.
+
+**The check that this is working:** `SELECT arm, COUNT(*) ... GROUP BY arm` should show roughly 12% CONTROL and 20% WITHHELD among what would have surfaced. **An empty CONTROL arm means the controls are running and the record is not** — the exact silent failure this item exists to prevent.
+
+---
+
+### PM-9 · Reachability is not correctness — audit for orphaned services *(added 2026-08-06)*
+
+**Cadence:** once now, then whenever a route or subsystem is excised.
+**Source:** the 2026-06-06 → 2026-08-06 session-globals outage.
+
+**What happened.** `compute_session_global_metrics` had zero callers for two months. Commit `0d74f12` removed the old-admin `POST /admin/sessions/<id>/compute-metrics` route as "FE-orphaned" — that route was its only caller. The route went, the service stayed, nothing replaced it. `global_wpm` and every sibling global stopped being written, and four live readers went on reading NULL: the FE's processing-phase gate, the coaching state machine's acoustic targets, the chat surface, and the admin view.
+
+**Nothing failed.** No test went red, no error was logged, no alert fired. The functions were correct, tested and unreachable. **Unit tests prove a function works; they never prove anything calls it.** The drift telemetry added in #346 then inherited the outage — correctly wired into a function that had not run since June, which is why `dimension_evaluations` was empty.
+
+**The check that would have caught it, and the one that would not.** "Does it have a caller?" was **TRUE** right until the excision — the caller was an admin route that was itself orphaned. Reachability has to name the **live path**. `test_session_globals_wiring.py` asserts the caller is `services/analysis_worker.py` specifically, and is verified to fail without it.
+
+**The rule for every future excision:** when removing a route or subsystem, list what it *delegated to*, and for each, check whether anything else reaches it. A service whose last caller you just deleted is now dead code that still looks alive — and it will keep passing its own tests forever.
+
+**Worth a sweep:** other services excised alongside `0d74f12` and its siblings (`#10`, `#17`, `#24`, `#27`) may be in the same state. `services.session_kpi_narrative` was explicitly noted in `0d74f12` as reaching **"0 route-layer callers"** and left in place.
 
 ---
 

@@ -1,6 +1,6 @@
 # Speech Coaching System — Canonical Specification
 
-**Last updated:** 2026-08-05.
+**Last updated:** 2026-08-06.
 
 **Version:** v3. Supersedes v1 and v2 entirely.
 **Status:** v1.0 scope locked. Build to this document.
@@ -15,6 +15,7 @@
 - [Appendix E — Research Findings and Required Amendments](SPEC-APPENDIX-E-research.md)
 - [Appendix F — Measurement Windows](SPEC-APPENDIX-F-windows.md)
 - [Appendix G — Silent Population Telemetry](SPEC-APPENDIX-G-telemetry.md)
+- [Appendix H — Manager Engine Parameters](SPEC-APPENDIX-H-manager.md)
 - [Decisions log — settled after v3](SPEC-DECISIONS-LOG.md)
 
 **Operational documents (non-normative, but load-bearing):**
@@ -65,7 +66,21 @@
 | D30 | **Evaluation-row invariants are structural, not conventional.** (a) `fired` is NULL **iff** `insufficient_data`; (b) uniqueness is `(recording_id, dimension_id, benchmark_version)`; (c) `reference_distribution` blocks `UPDATE`. | (a) writing `false` for a non-computation books it as a real negative, inflating the p-chart denominator and deflating every fire rate — enforced by CHECK, same shape as `ck_confidence_labels_unrateable_exclusive`. (b) without the version in the key, **a threshold change and population drift are indistinguishable** — both are a step in the fire rate. (c) a reference recomputed on a rolling window tracks the drift it should detect, PSI reads ~0 forever, and the monitor is decorative *while appearing to work*; the trigger makes that failure loud. Migration `0247`. |
 | D31 | **The dimension registry is the brain.** `services/dimension_registry.py` is the single source for window class · denominator · minimum-length gate · benchmark tier/version · `fire_at`/`clear_at` · aggregation · intervention routing. Every consumer reads it; **hardcoding any of these values elsewhere is a bug**, whatever it looks like. | Appendices C/D/F specified window ↔ benchmark ↔ intervention completely and **nothing in the codebase read any of it** — no `fire_at`, no window-class table, no tier lookup anywhere. Each consumer retyped the document by hand and was free to disagree with every other consumer, silently and permanently. The drift layer did exactly that (a six-row tuple with a guessed `window_class` inside a metrics service); that tuple is deleted. `validate()` self-checks the registry against Appendix F.1's five window classes, Appendix D's tiers, and the Schmitt-trigger rule that hysteresis is all-or-nothing — so a bad edit fails CI instead of reaching a consumer. |
 
-**Still open — do not assume:** deployment channel, B2C vs B2B (§13); two legal constraints now attach to any B2B hiring/performance channel — EU AI Act Art. 5(1)(f) and CRA 1991 §106. Cross-user peer consent is **resolved** — the privacy policy and the pre-game agreement cover data use for this purpose.
+### §0.2 · Settled 2026-08-06 — measurement grain, and the manager engine
+
+| # | Decision | Consequence |
+|---|---|---|
+| D32 | **A minimum-length gate belongs to a QUANTITY, not to a row's name.** Before inheriting a window or minimum from an appendix row, check you are computing *that row's* quantity. | F.2 scopes the 30 s minimum to pause/disfluency **rates** (Henderson's planning cycle makes a sub-cycle *rate* swing with window placement); F.4's table printed it against E1/E2, which are **levels**. The registry inherited the table and marked every level `insufficient_data` on every snippet. Three live measures are not their cited row's quantity — `spec_mismatch` records what differs, and `validate()` refuses a starred citation with no mismatch, an inherited gate with no justification, or **two dimensions claiming one appendix row**. Appendix F.4.1, findings F-8/F-11. |
+| D33 | **MEASURED: the snippet is 6.55 s** (p10 3.52 / p90 17.42), not the assumed ~18 s. | The ~18 s was 200 chars ÷ an assumed speech rate, never checked against `duration_ms`. **Retracts F-2** — a snippet is 0.36 of a planning cycle and even p90 is under one, so it is *not* well-sized for CYCLE-scoped measures. **Half the live set can never produce a value at snippet grain**: `wpm`/`fillers`/`pause_ms` gate at 30 s, so every per-snippet row is `insufficient_data` essentially always, and PSI would report nothing for them forever while looking healthy (G.1.1). The fix is a **coarser analysis grain for rates**, not a smaller gate. Finding F-9. |
+| D34 | **The analysis span and the intervention span are independent axes.** The gate governs whether a *number* is trustworthy; it says nothing about where the resulting intervention lands. | The bad argument it kills: *"this measure needs 30 s of speech, therefore it can only point at 30 s of text."* A rate measured across a whole session can still drive an intervention on one clause — the manager picks the span holistically over the text. Analysis grain is therefore decided on **statistics alone**. Appendix C. |
+| D35 | **`fire_at` is a SUBMISSION gate, not a surfacing decision.** `registry.can_fire()` means *I have a candidate*; the **manager engine** arbitrates what reaches the user. | Appendix H, `services/manager_engine.py`. Six slots, each grounded, all inheriting **H.0's asymmetry**: a miss costs one opportunity, a false positive costs trust in *every* detector behind the manager (Dixon, Wickens & McCarley 2007 — false alarms degrade compliance **and** reliance; misses degrade only reliance). Certainty therefore gates **before** priority: a loud, uncertain candidate must not survive on loudness. |
+| D36 | **§11's one-note-per-session cap is REMOVED. Up to three, NOVICE still capped at one.** | H.1. The cap was in the router (`already_surfaced`) *and* implied by the manager, which is how two caps silently disagree — **budget enforcement now lives only in `manager_engine.budget()`**. APPRENTICE, FRAGILE and GRADUATE may each see three: the fading arc governs *frequency and phrasing*, not the ceiling, and `G(state)` already suppresses on priority. Since B makes state per-dimension, **the leading candidate's dimension decides** — reading the least-advanced dimension anywhere would let one never-shown NOVICE dimension cap a GRADUATE at one note forever. Unknown dimension → NOVICE → one (the safe direction). Amends §11, §11.1 and Appendix B.2. |
+| D37 | **`G(state)` baseline values approved:** NOVICE 1.0 · APPRENTICE 0.75 · FRAGILE 1.0 · GRADUATE 0.5. | B.4 named `G(state)` and never gave numbers. Derived from B.2's **Frequency** row (every attempt / ~75% / ~50%); FRAGILE is 1.0 because B.2.1 says do not fade it. These are **policy dials, not literature-measured values**, so D24's never-adapt rule does not apply — they move on the outcome anchor. |
+| D38 | **Dimensions can be switched OFF by decision, which is not the same state as not-built.** `enabled=False` + a mandatory `disabled_reason`; `computed=False` stays "not written yet". | A reader who cannot tell them apart rebuilds the thing that was deliberately switched off. **D7a is OFF** — its 8.0→10.0 band is narrower than the sampling error at any realistic window (SD ≈ 7.1/1,000w at its own 200-word precondition; the band first resolves near 10,000 words). Re-enable via **D20's posterior**, never by raising *n*. `validate()` rejects an OFF with no reason. PM-7. |
+
+| D39 | **The science controls run from day one: `γ_control` 12% per (user, dimension), intervention randomisation 20% per surfacing.** Assignment is a **salted blake2b hash**, never Python's `hash()`. | Neither can be retrofitted — both must run *while* the data accumulates or the accumulated data cannot answer the question (same argument as the frozen drift reference, G.7). **γ_control frees its budget slot** (a control dimension must not reduce how much feedback the user gets overall, or the arm confounds itself); **the withhold consumes its slot** (backfilling with rank 2 means the untreated condition never occurs, and the arm degenerates into what ε_explore already measures). `hash()` on a str is salted per process, so an assignment built on it reassigns every user on every deploy — a control group that reshuffles is noise wearing the shape of one. Salts are versioned. **Persisting all three arms next to the outcome is BLOCKING on the manager going live (PM-8)** — running the controls without recording them is strictly worse than not running them: users pay the cost in withheld feedback and no causal claim is recoverable, and it looks from outside like a working experiment. Appendix H.12. |
+
+**Still open — do not assume:** deployment channel, B2C vs B2B (§13); two legal constraints now attach to any B2B hiring/performance channel — EU AI Act Art. 5(1)(f) and CRA 1991 §106. Cross-user peer consent is **resolved** — the privacy policy and the pre-game agreement cover data use for this purpose. **The analysis-grain change for the three rate dimensions (D33) is specified but not built.**
 
 ---
 
@@ -592,7 +607,14 @@ if mode == LIVE:
     suppress all mechanical delivery cues        # choking, r = .59–.64
     permit only sparse external-focus cues, ≥20s apart
 per session:
-    surface exactly ONE finding
+    surface UP TO THREE findings          # amended 2026-08-06, Appendix H.1
+    # NOVICE is still capped at ONE at any recording length. Above NOVICE the
+    # cap is the number of GENUINELY INDEPENDENT findings — non-overlapping
+    # spans, non-trading dimensions — up to 3. Budgeting on Sweller's element
+    # interactivity, not on a raw count: two findings the user must hold
+    # simultaneously to act on either cost far more than two unrelated ones.
+    # Never scaled to recording length; the bottleneck is the listener's
+    # uptake capacity (Cowan ~4), which does not grow with the material.
 playback:
     predict-then-reveal gate MANDATORY before any footage
     good takes first, before anything negative
@@ -620,8 +642,12 @@ def route(snippet, finding, mode, session) -> Engine | None:
         if detector.certainty < THRESHOLD: return None
         return Engine.ALBUM
     if finding.dimension.grade in {"A", "B"}:            # C = effect_size 0.0 (D18)
-        if session.already_surfaced:       return None
-        if not wins_triage(finding):       return None
+        # AMENDED 2026-08-06 (Appendix H.1). The one-per-session cap is gone:
+        # the MANAGER owns the budget, and the router must accept whatever it
+        # allocates or the ceiling is a silent no-op. Budget enforcement lives
+        # in exactly one place now — manager_engine.budget().
+        if session.surfaced >= manager.budget:  return None
+        if not wins_triage(finding):            return None
         return Engine.FEEDBACK
     return None   # ← the overwhelming default. Not a failure state.
 ```

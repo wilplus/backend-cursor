@@ -98,6 +98,40 @@ def run_full_analysis(
         session_id, recording_id,
         len(readout_local.get("snippets") or []),
     )
+
+    # SESSION-LEVEL GLOBALS — restored 2026-08-06, dead since 2026-06-06.
+    #
+    # `compute_session_global_metrics` is the ONLY writer of global_wpm /
+    # global_fillers / global_pause_ms / global_dynamic_db /
+    # global_pitch_center / global_energy. Its only caller was the old-admin
+    # POST /admin/sessions/<id>/compute-metrics route, removed in 0d74f12 as
+    # "FE-orphaned". The route went, the service stayed, nothing replaced it —
+    # so for two months four live readers have been getting NULL:
+    #
+    #   user_sessions._metrics_ready()  the FE's processing-phase gate, whose
+    #                                   own docstring calls global_wpm "the
+    #                                   canonical metrics-computed signal"
+    #   routes/v2/coaching.py           feeds the coaching state machine, so
+    #                                   target_dynamic_db was never derived
+    #   routes/v2/user_chat.py          reads the latest session's globals
+    #   routes/v2/admin.py              admin session view
+    #
+    # HERE is the right call site: process_lab_recording has just persisted
+    # the charisma_snippets rows (lab_recording.create_charisma_snippets_bulk),
+    # which is exactly what compute_session_global_metrics reads back.
+    #
+    # Best-effort by construction. Aggregation that observes the scoring path
+    # must never be able to break it — the same rule the drift telemetry
+    # inside it already follows.
+    try:
+        from services.session_metrics import compute_session_global_metrics
+        _globals = compute_session_global_metrics(session_id)
+        logger.info("lab: session globals sid=%s computed=%s",
+                    session_id, _globals is not None)
+    except Exception as _gm_err:
+        logger.warning("lab: session globals failed sid=%s err=%s",
+                       session_id, _gm_err)
+
     _emit(progress, "post_processing", 70, "Wrapping up…")
 
     # Explore-session cadence (Prompt A §6 C3) — after a take in an
