@@ -61,6 +61,24 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+class ConfigMismatchError(RuntimeError):
+    """A misconfiguration no retry can fix — fail the job immediately.
+
+    Distinct from a transient error on purpose: burning three attempts and
+    two backoff waits on a missing env var wastes minutes and buries the
+    real cause under a generic message.
+    """
+
+
+def _storage_provider() -> str:
+    """'r2' or 'supabase' — whichever THIS process's env resolves to."""
+    try:
+        from services.coach_video_storage import coach_videos_use_r2
+        return "r2" if coach_videos_use_r2() else "supabase"
+    except Exception:
+        return "unknown"
+
+
 def stale_minutes() -> int:
     """How long a silent heartbeat means 'the worker is dead'."""
     return max(2, _int_env("PIPELINE_JOB_STALE_MINUTES", 15))
@@ -103,6 +121,13 @@ def enqueue_session_recording_job(
         "user_id": user_id,
         "recording_id": recording_id,
         "bucket": bucket,
+        # Which storage the WEB side actually wrote these bytes to. The
+        # worker resolves its own provider from ITS env, and the two can
+        # silently disagree: R2 needs three secrets, and a worker missing
+        # them falls back to Supabase Storage and looks for an object that
+        # was never put there. Recording the writer's answer turns that
+        # into a named config error instead of "missing in storage".
+        "storage_provider": _storage_provider(),
         "storage_key": storage_key,
         "filename": filename,
         "session_context": session_context,
@@ -246,6 +271,22 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
         "stage": "fetch_audio", "percent": 5,
         "message": "Loading your recording…",
     })
+    # Provider agreement, checked BEFORE the download so the failure names
+    # its cause. R2 is gated on THREE secrets (R2_ACCOUNT_ID / ACCESS_KEY_ID
+    # / SECRET_ACCESS_KEY); a worker missing them silently resolves to
+    # Supabase and hunts every bucket for an object the web service put in
+    # R2. Without this the symptom is "not found — tried: a, b, c", which
+    # reads like a missing file rather than a missing credential.
+    wrote = str(payload.get("storage_provider") or "").strip()
+    reads = _storage_provider()
+    if wrote and wrote != "unknown" and reads != wrote:
+        raise ConfigMismatchError(
+            f"storage mismatch: the upload wrote to {wrote!r} but this "
+            f"worker resolves storage to {reads!r}. Set the R2 credentials "
+            f"(R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) on "
+            f"the worker service so it reads where the web service writes."
+        )
+
     # The payload records the bucket the upload actually landed in; the
     # helper tries that first and falls back across the others, so a job
     # enqueued either side of the lab-bucket split still finds its audio
@@ -338,6 +379,15 @@ def run_processing_job(job_id: str) -> None:
             db.set_session_analysis_state(str(sid), "ready")
         logger.info("pipeline_jobs: job %s completed (attempt %d)",
                     jid, claimed.get("attempts"))
+    except ConfigMismatchError as cfg_err:
+        # No retry can fix an env var. Burning three attempts plus two
+        # backoff waits (3+ minutes) on it only buries the cause under a
+        # generic "attempt cap reached". Fail once, loudly, with the fix.
+        sentry_sdk.capture_exception(cfg_err)
+        logger.error("pipeline_jobs: job %s misconfigured, not retrying: %s",
+                     jid, cfg_err)
+        _fail_terminal(claimed, str(cfg_err)[:500])
+        return
     except Exception as err:
         sentry_sdk.capture_exception(err)
         used = int(claimed.get("attempts") or 1)

@@ -201,6 +201,125 @@ class OrphanSweepTests(unittest.TestCase):
         self.assertEqual(calls["n"], 2)
 
 
+@unittest.skipIf(pj is None, f"import failed: {_IMPORT_ERR}")
+class StorageProviderMismatchTests(unittest.TestCase):
+    """The live failure of 2026-08-06: three jobs dead at stage=fetch_audio,
+    attempts=3. Web had the R2 credentials and wrote there; the worker did
+    not, silently resolved to Supabase, and hunted every bucket for an
+    object that was never put in one."""
+
+    def test_payload_records_the_writers_provider(self):
+        fake_db = types.SimpleNamespace(
+            create_processing_job=lambda **kw: kw,
+            get_active_processing_job_by_dedup=lambda k: None,
+            finish_processing_job=lambda *a, **k: True,
+        )
+        fake_q = types.SimpleNamespace(
+            queue_configured=lambda: True,
+            enqueue=lambda *a, **k: True,
+        )
+        captured = {}
+
+        def _create(**kw):
+            captured.update(kw)
+            return {"id": "job-1"}
+
+        fake_db.create_processing_job = _create
+        with patch.object(pj, "db", fake_db), \
+                patch.object(pj, "job_queue", fake_q), \
+                patch.object(pj, "_storage_provider", lambda: "r2"):
+            pj.enqueue_session_recording_job(
+                session_id=_SID, user_id="u1", recording_id="rec-1",
+                bucket="b", storage_key="k", filename="lab.webm",
+                session_context=None, parent_audio_url="https://a",
+                recording_kind="spoken", paired_session_id=None,
+                arc_id=None, take_index=1, arc_take_count=1,
+                spark_enabled=False,
+            )
+        self.assertEqual(captured["payload"]["storage_provider"], "r2")
+
+    def test_mismatch_raises_a_named_config_error(self):
+        job = {"id": "job-1", "attempts": 1,
+               "payload": {"storage_provider": "r2", "recording_id": "r",
+                           "session_id": _SID, "bucket": "b",
+                           "storage_key": "k"}}
+        fake_db = types.SimpleNamespace(update_processing_job=lambda *a, **k: True)
+        with patch.object(pj, "db", fake_db), \
+                patch.object(pj, "_storage_provider", lambda: "supabase"):
+            with self.assertRaises(pj.ConfigMismatchError) as ctx:
+                pj._run_session_recording(job)
+        msg = str(ctx.exception)
+        self.assertIn("R2_ACCESS_KEY_ID", msg)   # names the actual fix
+        self.assertIn("worker service", msg)
+
+    def test_matching_provider_does_not_raise(self):
+        job = {"id": "job-1", "attempts": 1,
+               "payload": {"storage_provider": "r2", "storage_key": "k",
+                           "bucket": "b"}}
+        fake_db = types.SimpleNamespace(update_processing_job=lambda *a, **k: True)
+        with patch.object(pj, "db", fake_db), \
+                patch.object(pj, "_storage_provider", lambda: "r2"), \
+                patch.object(pj, "get_lab_audio_bytes",
+                             lambda *a, **k: b"", create=True):
+            # Gets PAST the provider gate and fails on the empty object.
+            with self.assertRaises(Exception) as ctx:
+                pj._run_session_recording(job)
+        self.assertNotIsInstance(ctx.exception, pj.ConfigMismatchError)
+
+    def test_legacy_payload_without_provider_is_not_blocked(self):
+        """Jobs enqueued before this field existed must still run."""
+        job = {"id": "job-1", "attempts": 1,
+               "payload": {"storage_key": "k", "bucket": "b"}}
+        fake_db = types.SimpleNamespace(update_processing_job=lambda *a, **k: True)
+        with patch.object(pj, "db", fake_db), \
+                patch.object(pj, "_storage_provider", lambda: "supabase"), \
+                patch.object(pj, "get_lab_audio_bytes",
+                             lambda *a, **k: b"", create=True):
+            with self.assertRaises(Exception) as ctx:
+                pj._run_session_recording(job)
+        self.assertNotIsInstance(ctx.exception, pj.ConfigMismatchError)
+
+    def test_config_error_is_terminal_not_retried(self):
+        """An env var cannot be fixed by waiting — don't burn 3 attempts."""
+        fake = _FakeDb()
+        fake.get_processing_job = lambda jid: {
+            "id": "job-1", "kind": "session_recording", "status": "pending",
+            "attempts": 0, "max_attempts": 3, "session_id": _SID,
+            "payload": {},
+        }
+        fake.claim_processing_job = lambda jid, att: {
+            "id": "job-1", "kind": "session_recording", "status": "processing",
+            "attempts": att + 1, "max_attempts": 3, "session_id": _SID,
+            "payload": {},
+        }
+        fake.finishes = []
+        fake.releases = []
+
+        def _finish(job_id, status, error=None, result=None):
+            fake.finishes.append((job_id, status, error))
+            return True
+
+        def _release(job_id, error=None):
+            fake.releases.append(job_id)
+            return True
+
+        fake.finish_processing_job = _finish
+        fake.release_processing_job_for_retry = _release
+        fake.update_processing_job = lambda *a, **k: True
+        fake_q = types.SimpleNamespace(enqueue=lambda *a, **k: True,
+                                       queue_configured=lambda: True)
+
+        def _boom(job):
+            raise pj.ConfigMismatchError("missing R2 creds")
+
+        with patch.object(pj, "db", fake), patch.object(pj, "job_queue", fake_q), \
+                patch.dict(pj._KIND_RUNNERS, {"session_recording": _boom}):
+            pj.run_processing_job("job-1")
+        self.assertEqual(fake.finishes[-1][1], "failed")
+        self.assertEqual(fake.releases, [], "must NOT be requeued")
+        self.assertEqual(fake.states[-1][1], "failed")
+
+
 @unittest.skipIf(jq is None, f"import failed: {_IMPORT_ERR}")
 class WorkerCountTests(unittest.TestCase):
 
