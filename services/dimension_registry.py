@@ -128,6 +128,24 @@ class Dimension:
 # rather than forgotten, and so a consumer asking for it gets a real answer
 # instead of a KeyError.
 
+# ── MEASURED, not assumed (prod, 2026-08-06) ────────────────────────────────
+# SELECT percentile_cont(ARRAY[0.1,0.5,0.9]) WITHIN GROUP (ORDER BY
+#        duration_ms/1000.0) FROM charisma_snippets WHERE duration_ms IS NOT NULL
+#
+# THE SPEC ASSUMED ~18 s AND IT IS 6.55. The 18 s came from 200 chars divided
+# by an assumed speech rate and was never checked against duration_ms, which
+# has been on every snippet the whole time. Appendix F-2 built on it — "at
+# ~40 words / ~18 s the piece sits almost exactly at one planning CYCLE, which
+# makes it well-sized for CYCLE-scoped measures". That conclusion is FALSE: a
+# median snippet is 0.36 of a cycle, and even the 90th percentile (17.4 s) is
+# still under one. No snippet-grain measure is cycle-scoped in practice.
+#
+# Kept here as constants so the next piece of reasoning about snippet length
+# reads the measurement instead of re-deriving the guess.
+SNIPPET_SECONDS_P10 = 3.52
+SNIPPET_SECONDS_MEDIAN = 6.55
+SNIPPET_SECONDS_P90 = 17.42
+
 _REGISTRY: dict[str, Dimension] = {
 
     # ── live: produced per snippet today ────────────────────────────────────
@@ -170,9 +188,15 @@ _REGISTRY: dict[str, Dimension] = {
         min_seconds=None, tier="CORPUS_REL", computed=True,
         note="NO 30 s gate. F.1 scopes that minimum to 'any pause/disfluency "
              "RATE' — Henderson's planning cycle makes a sub-cycle RATE swing "
-             "with window placement. This is a LEVEL. A loudness range over "
-             "18 s is stable; the cycle argument simply does not apply, and "
-             "applying it anyway marked good data insufficient.",
+             "with window placement. This is a LEVEL; the cycle argument does "
+             "not apply, and applying it anyway marked good data insufficient. "
+             "CHECKED, because 'it is a range, and a range grows with the "
+             "observation length' is the obvious objection: audio_metrics "
+             "computes it as np.percentile(95) - np.percentile(5) of voiced "
+             "frame dB. A PERCENTILE SPREAD CONVERGES with more samples; only "
+             "an extremum (min/max) grows without bound. Had it been a true "
+             "min-max range, this dimension WOULD need a length gate or "
+             "normalisation and the no-gate call here would be wrong.",
     ),
     "pitch_center": Dimension(
         dimension_id="pitch_center", appendix_id="E1*", label="Pitch centre",
@@ -372,6 +396,24 @@ def can_fire(dimension_id: str) -> bool:
     """
     d = get(dimension_id)
     return bool(d and d.enabled and d.fire_at is not None)
+
+
+def measurable_in_a_snippet(dimension_id: str) -> bool:
+    """Can this dimension EVER produce a value at snippet grain?
+
+    Answered against the MEASURED p90 (17.4 s), not the assumed 18 s — a
+    dimension whose gate exceeds the 90th percentile of snippet length is not
+    "sometimes insufficient", it is insufficient essentially always, and every
+    row it writes is a hole wearing a schema.
+
+    This is the check that turns a silent failure into a stated one. A monitor
+    over a measure nobody can produce reports STABLE forever, which is
+    indistinguishable from working (Appendix G.1.1).
+    """
+    d = get(dimension_id)
+    if d is None:
+        return False
+    return d.min_seconds is None or d.min_seconds <= SNIPPET_SECONDS_P90
 
 
 def disabled() -> tuple[Dimension, ...]:

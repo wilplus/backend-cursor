@@ -128,9 +128,34 @@ class TestMinimumGate(unittest.TestCase):
 
     def test_snippet_length_fails_the_cycle_minimum(self):
         """The finding this registry surfaced on day one, now correctly
-        narrowed: a snippet is ~18 s and the RATE measures need 30 s."""
-        self.assertFalse(registry.meets_minimum("wpm", seconds=18.0))
+        narrowed AND measured: the RATE measures need 30 s and a snippet is
+        6.55 s at the median, 17.4 s at p90."""
+        self.assertFalse(registry.meets_minimum(
+            "wpm", seconds=registry.SNIPPET_SECONDS_MEDIAN))
+        self.assertFalse(registry.meets_minimum(
+            "wpm", seconds=registry.SNIPPET_SECONDS_P90))
         self.assertTrue(registry.meets_minimum("wpm", seconds=45.0))
+
+    def test_half_the_live_set_can_never_be_measured_in_a_snippet(self):
+        """THE CONSEQUENCE OF THE MEASUREMENT, stated so it cannot stay
+        silent. wpm/fillers/pause_ms gate at 30 s and the 90th percentile
+        snippet is 17.4 s, so every per-snippet row they write is
+        `insufficient_data` — not occasionally, essentially always.
+
+        `dimension_evaluations` therefore holds NO usable value for half the
+        live set, and PSI and the p-chart will report nothing for them
+        forever while looking perfectly healthy (Appendix G.1.1). The fix is
+        a coarser emission grain for the rate measures, not a smaller gate.
+        """
+        blocked = {d.dimension_id for d in registry.live_dimensions()
+                   if not registry.measurable_in_a_snippet(d.dimension_id)}
+        self.assertEqual(blocked, {"wpm", "fillers", "pause_ms"})
+
+    def test_the_snippet_length_is_measured_not_assumed(self):
+        """The spec said ~18 s for months; duration_ms said 6.55 the whole
+        time. Pinned so a future edit that 'restores' the assumption fails."""
+        self.assertLess(registry.SNIPPET_SECONDS_MEDIAN, 10.0)
+        self.assertLess(registry.SNIPPET_SECONDS_P90, 18.0)
 
     def test_a_starred_row_says_what_differs(self):
         """A starred appendix_id means 'our measure is not this row's
