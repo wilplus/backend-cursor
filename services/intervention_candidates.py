@@ -169,6 +169,8 @@ def _controls_enabled() -> bool:
     the experiment on in exactly one place — AND obliges the caller to persist
     `arm_rows()`, because the module is explicit that running the arms without
     storing them is strictly worse than not running them at all.
+
+    Tracked with its exit conditions in docs/OPS-FLAGS-AND-RELEASES.md.
     """
     return (os.getenv("MANAGER_CONTROLS_ENABLED") or "0").strip().lower() \
         in ("1", "true", "yes")
