@@ -631,9 +631,14 @@ def process_new_take(arc_id: Any, session_id: Any, database) -> int:
 def upgrade_changes(arc_id: Any, served_text: str, database) -> list:
     """The `source: "new_take"` entries for the serve layer — one per
     pending upgrade, span-anchored on the incumbent block's words in the
-    served text (monotonic scan); one `insert` entry per candidate block
-    (zero-width span at the document end). Same renderer shape as
-    tracked_changes. Pure given db rows."""
+    served text (monotonic scan). Same renderer shape as tracked_changes.
+    Pure given db rows.
+
+    CANDIDATE BLOCKS LEFT THIS FUNCTION (2026-08-07). They used to ride here as
+    `kind: "insert"` with a zero-width span, and reached nobody — an addition
+    is not a span-anchored edit, and forcing it into that shape produced an
+    anchor pointing at no text. They are their own lane now: `block_additions`.
+    """
     rows = database.list_ideal_text_blocks(str(arc_id))
     if not rows:
         return []
@@ -684,28 +689,72 @@ def upgrade_changes(arc_id: Any, served_text: str, database) -> list:
                                            "coverage", "overall")
                             else "overall"),
             })
-        elif row.get("status") == "candidate":
-            add_text = " ".join(
-                (p.get("text") or "").strip()
-                for p in (row.get("incumbent_pieces") or [])).strip()
-            if not add_text:
-                continue
-            if add_text.lower() in doc.lower():
-                continue    # already verbatim in the master — no offer
-            out.append({
-                "id": f"block:{row.get('block_key')}",
-                "block_key": row.get("block_key"),
-                "snippet_id": None,
-                "take_session_id": row.get("incumbent_take_session_id"),
-                "kind": "insert",
-                "source": "new_take",
-                "span": {"start": len(doc), "end": len(doc)},
-                "quote": "",
-                "proposed_text": add_text,
-                "take_index": row.get("incumbent_take_index"),
-                "why": None,
-                "why_key": "overall",
-            })
+    return out
+
+
+def block_additions(arc_id: Any, served_text: str, database) -> list:
+    """Material the speaker SAID that is not in the master document at all.
+
+    One entry per candidate block: a decked slide the skeleton has never seen,
+    carrying the words spoken over it. Accept promotes the block into the
+    master (`decide_block`); keep deletes the row, and the same material may
+    honestly be offered again if said again.
+
+    ── WHY THIS IS NOT A TRACKED CHANGE, which is the bug it fixes ────────────
+
+    It used to ride in `upgrade_changes` as `kind: "insert"` with a ZERO-WIDTH
+    span at the document end, and it reached nobody. It was dropped three
+    separate times: the FE's `kind` vocabulary is replace/bold/advice, its span
+    check requires `end > start`, and the manager gate refuses zero-width spans
+    because an invisible candidate would win a budget slot and render nothing.
+
+    Every one of those rejections is CORRECT. The mistake was upstream: an
+    addition is not a span-anchored edit to existing words, and forcing it into
+    a shape that is one produced an anchor pointing at no text. So it gets its
+    own lane, with no span at all.
+
+    ── AND IT IS NOT BUDGETED ─────────────────────────────────────────────────
+
+    Appendix H's ≤3 is a cognitive-load limit on FEEDBACK — notes about how you
+    spoke, which the manager engine arbitrates. This is not feedback. It is
+    material recovery: words the speaker actually said, on a slide in their own
+    deck, currently missing from their script. Putting it through the budget
+    would mean three polish notes could silently swallow it, which is the same
+    disappearance in a new costume.
+
+    Founder call if that is wrong — it is stated here rather than buried
+    because it is exactly the kind of quiet scope decision the filter exists to
+    catch.
+
+    Pure given db rows; [] on anything missing.
+    """
+    rows = database.list_ideal_text_blocks(str(arc_id))
+    if not rows:
+        return []
+    doc = served_text if isinstance(served_text, str) else ""
+    out: list = []
+    for row in sorted(rows, key=lambda r: r.get("block_key") or 0):
+        if row.get("status") != "candidate":
+            continue
+        add_text = " ".join(
+            (p.get("text") or "").strip()
+            for p in (row.get("incumbent_pieces") or [])).strip()
+        if not add_text:
+            continue
+        if add_text.lower() in doc.lower():
+            continue    # already verbatim in the master — no offer
+        out.append({
+            "id": f"block:{row.get('block_key')}",
+            "block_key": row.get("block_key"),
+            # The decision echoes this back (STALE_OFFER otherwise), so an
+            # offer decided against a take that has since been superseded
+            # cannot be applied to a different one.
+            "take_session_id": row.get("incumbent_take_session_id"),
+            "take_index": row.get("incumbent_take_index"),
+            "slide_index": row.get("slide_index"),
+            "label": row.get("label"),
+            "text": add_text,
+        })
     return out
 
 

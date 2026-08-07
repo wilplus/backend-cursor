@@ -19,6 +19,7 @@ from unittest.mock import patch
 from services.master_document import (
     _quarter_split,
     assemble_master_document,
+    block_additions,
     build_skeleton,
     decide_block,
     process_new_take,
@@ -470,16 +471,66 @@ class UpgradeChangesTests(unittest.TestCase):
         self.assertEqual(c["why_key"], "energy")
         self.assertEqual(c["take_session_id"], T2)
 
-    def test_candidate_serves_zero_width_insert(self):
+    def test_a_candidate_is_NOT_a_tracked_change(self):
+        """It used to ride here as a zero-width `insert` and reached NOBODY —
+        dropped by the FE's kind vocabulary, by its `end > start` span check,
+        and by the manager gate's zero-width guard. All three were right; the
+        mistake was upstream. Additions are their own lane now."""
         row = _block(10, text="brand new closing", status="candidate",
                      active=False, sess=T2, take=2)
         db = _Db(blocks=[_block(0), row])
-        doc = "The master words."
-        out = upgrade_changes(ARC, doc, db)
-        ins = [c for c in out if c["kind"] == "insert"][0]
-        self.assertEqual(ins["span"], {"start": len(doc), "end": len(doc)})
-        self.assertEqual(ins["proposed_text"], "brand new closing")
-        self.assertEqual(ins["source"], "new_take")
+        out = upgrade_changes(ARC, "The master words.", db)
+        self.assertEqual([c for c in out if c.get("kind") == "insert"], [])
+
+
+class BlockAdditionsTests(unittest.TestCase):
+    """Material the speaker SAID that is not in the master document at all — a
+    decked slide the skeleton never saw. Words on a slide of the student's own
+    deck, currently missing from their script: F1 piece (b), not scaffolding."""
+
+    def test_a_candidate_is_offered_with_no_span_at_all(self):
+        row = _block(10, text="brand new closing", status="candidate",
+                     active=False, sess=T2, take=2)
+        db = _Db(blocks=[_block(0), row])
+        out = block_additions(ARC, "The master words.", db)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["text"], "brand new closing")
+        self.assertEqual(out[0]["take_index"], 2)
+        self.assertEqual(out[0]["take_session_id"], T2)
+        self.assertEqual(out[0]["block_key"], 10)
+        # No span, no quote, no kind: there is nothing in the document to
+        # anchor to, and inventing an anchor is what broke this before.
+        for absent in ("span", "quote", "kind", "proposed_text"):
+            self.assertNotIn(absent, out[0])
+
+    def test_material_already_in_the_master_is_not_re_offered(self):
+        row = _block(10, text="brand new closing", status="candidate",
+                     active=False, sess=T2, take=2)
+        db = _Db(blocks=[_block(0), row])
+        self.assertEqual(
+            block_additions(ARC, "Before. BRAND NEW CLOSING. After.", db), [])
+
+    def test_only_candidates_are_additions(self):
+        db = _Db(blocks=[_block(0), _block(10, status="settled")])
+        self.assertEqual(block_additions(ARC, "The master words.", db), [])
+
+    def test_an_empty_candidate_is_dropped(self):
+        row = _block(10, text="", status="candidate", active=False,
+                     sess=T2, take=2)
+        row["incumbent_pieces"] = []
+        db = _Db(blocks=[row])
+        self.assertEqual(block_additions(ARC, "The master words.", db), [])
+
+    def test_additions_come_back_in_block_order(self):
+        rows = [_block(30, text="third bit", status="candidate",
+                       active=False, sess=T2, take=2),
+                _block(20, text="second bit", status="candidate",
+                       active=False, sess=T2, take=2)]
+        out = block_additions(ARC, "The master words.", _Db(blocks=rows))
+        self.assertEqual([a["text"] for a in out], ["second bit", "third bit"])
+
+    def test_no_blocks_is_empty(self):
+        self.assertEqual(block_additions(ARC, "doc", _Db(blocks=[])), [])
 
     def test_missing_incumbent_text_drops_the_offer(self):
         row = _block(0, text="words no longer in the doc")

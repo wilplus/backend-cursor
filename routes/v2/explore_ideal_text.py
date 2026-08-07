@@ -1415,14 +1415,26 @@ def _tracked_changes_block(arc_id, served_text, user_id="") -> dict:
         # comes back as an approvable change on this document. The
         # ranking blend does the judging (L2 untouched); a fragment the
         # student already decided on is never re-offered. Best-effort. ──
+        _additions: list = []
         if _master_on:
-            # Block-level upgrade offers + candidate additions — the
-            # master model's cross-take lane.
+            # Block-level upgrade offers — the master model's cross-take lane.
             try:
                 changes.extend(upgrade_changes(arc_id, served_text, db))
             except Exception as _up_err:
                 logger.warning("upgrade changes failed arc=%s: %s",
                                arc_id, _up_err)
+            # MATERIAL RECOVERY, a separate lane on purpose. A candidate block
+            # is a decked slide the master has never seen, carrying the words
+            # the speaker actually said over it. It is NOT a span-anchored
+            # edit — there is nothing in the document to anchor to — and while
+            # it was forced into the `changes` shape as a zero-width `insert`
+            # it reached nobody at all.
+            try:
+                from services.master_document import block_additions
+                _additions = block_additions(arc_id, served_text, db)
+            except Exception as _add_err:
+                logger.warning("block additions failed arc=%s: %s",
+                               arc_id, _add_err)
         try:
             _prev = None if _master_on else _previous_spoken_session(
                 arc_id, doc.get("take_session_id"))
@@ -1463,11 +1475,18 @@ def _tracked_changes_block(arc_id, served_text, user_id="") -> dict:
                           # an open one takes composition only.
                           parts=_locked_parts(arc_id, user_id, served_text),
                           )["changes"]
+        # Additions ride OUTSIDE the budget and outside the span check — they
+        # have no span. Absent when there are none, so the FE draws nothing
+        # rather than an empty section. See master_document.block_additions for
+        # why they are not arbitrated: the ≤3 is a load limit on FEEDBACK, and
+        # this is material the speaker already said going missing from their
+        # own script.
+        _add = {"additions": _additions} if _additions else {}
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
-            return {"changes": []}
-        return {"changes": changes}
+            return {"changes": [], **_add}
+        return {"changes": changes, **_add}
     except Exception as e:
         logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
         return {}
