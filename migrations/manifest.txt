@@ -290,3 +290,4 @@
 0252	widen_dimension_evaluations_n_units.sql
 0253	add_intervention_arms.sql
 0254	drop_dead_snippet_metric_columns.sql
+0255	add_ideal_text_parts.sql

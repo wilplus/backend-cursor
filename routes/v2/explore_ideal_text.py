@@ -706,6 +706,22 @@ def v2_explore_get_ideal_text(arc_id):
             # mapping is provable — null degrades the FE to its
             # exact-count zip, never a guessed attachment.
             "pieces": _ideal_text_pieces(arc_id, _text, _pres_ref),
+            # ── PARTS (SPEC-parts-locking-and-layers §3.1, Step 0): the
+            # document as an ordered list with STABLE ids, so PR 3 has
+            # something a lock can survive a reorder or a reword on.
+            #
+            # ABSENT, not [], when this document has no parts yet — the
+            # two mean different things and the FE branches on exactly
+            # that difference. Absent = "no identity stored, derive as
+            # you always did"; [] = "this document is empty". `text` is
+            # unchanged either way, so every read-only consumer is
+            # untouched. Only served when the parts still JOIN BACK to
+            # the served text: a new take or a coach verify can rewrite
+            # the document underneath stored parts, and stale identity
+            # pointing at words that are no longer there is worse than
+            # none (#219's rule, applied to parts). ──
+            **_ideal_parts_block(arc_id, getattr(request, "user_id", ""),
+                                 _text),
             # True when the served text is the student's own edit of the
             # current version (the FE labels it).
             "user_edited": _user_edited,
@@ -1206,6 +1222,37 @@ def _ideal_save_state(arc_id, current_version) -> dict:
         return {}
 
 
+def _ideal_parts_block(arc_id, user_id, served_text) -> dict:
+    """`{"parts": [...]}` for the student GET, or `{}` (the key ABSENT).
+
+    STALE PARTS ARE NOT SERVED. Parts are written by the client against the
+    document it was looking at; the document can then be rewritten underneath
+    them by a new take assembling or a coach verifying, and neither of those
+    goes through the arranger. Identity pointing at words that are no longer on
+    screen is worse than no identity — it is the same failure as a tracked
+    change anchored to a fragment that moved (#219), except a lock hung on it
+    in PR 3 would silently guard the wrong paragraph.
+
+    So the join has to match. When it does not, the key is simply absent and
+    the FE derives parts the way it does today; the next save re-mints them
+    against the text actually on screen.
+
+    Best-effort by construction: any failure yields {}, which is the
+    pre-migration payload exactly.
+    """
+    try:
+        from services.ideal_text_parts import agrees_with_text, serve
+        parts = serve(db.get_ideal_text_parts(arc_id, user_id))
+        if parts is None:
+            return {}
+        if not agrees_with_text(parts, served_text):
+            return {}
+        return {"parts": parts}
+    except Exception as e:
+        logger.warning("ideal parts failed arc=%s: %s", arc_id, e)
+        return {}
+
+
 def _previous_spoken_session(arc_id, current_session_id):
     """The spoken take immediately BEFORE the document's take — the
     comparison base for cross-take discernment. None when this is the
@@ -1428,6 +1475,46 @@ def v2_explore_put_ideal_user_edit(arc_id):
             return jsonify({"code": "INVALID_INPUT",
                             "error": "text too long"}), 400
 
+        # ── PARTS (SPEC-parts-locking-and-layers §3.1, Step 0). OPTIONAL: an
+        # absent key is today's behaviour byte for byte. Present, it carries
+        # the document's IDENTITY — the stable ids a lock will hang on in
+        # PR 3 — and `text` must be its join.
+        #
+        # REFUSED, NEVER REPAIRED, and never accepted in part. Storing parts
+        # that disagree with the stored text would leave an identity map
+        # pointing at words the student is not looking at, and a lock set
+        # against it would guard the wrong paragraph. That is unrecoverable
+        # once written, because a wrong anchor is indistinguishable from a
+        # right one afterwards — the same argument that refuses a mis-pointed
+        # tracked change (#219) rather than nudging it into place.
+        #
+        # Each part is stripped with the SAME expression as `text`, on the
+        # adjacent line, because the two must survive identically or the join
+        # check fails on a document that is actually fine. ──
+        _parts = None
+        if "parts" in body:
+            from services.ideal_text_parts import (
+                InvalidParts, agrees_with_text, validate,
+            )
+            _raw = body.get("parts")
+            if isinstance(_raw, list):
+                _raw = [
+                    {**p, "text": re.sub(r"<[^>]*>", "", p.get("text"))}
+                    if isinstance(p, dict) and isinstance(p.get("text"), str)
+                    else p
+                    for p in _raw
+                ]
+            try:
+                _parts = validate(_raw)
+            except InvalidParts as e:
+                return jsonify({"code": "INVALID_INPUT",
+                                "error": str(e)}), 400
+            if not agrees_with_text(_parts, text):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "parts do not join to text",
+                }), 400
+
         # The current version — the edit only sticks against it. A newer
         # version having assembled since → 409 so the FE refetches + re-offers.
         _row = db.get_coach_arc_ideal_text(arc_id) or {}
@@ -1450,6 +1537,15 @@ def v2_explore_put_ideal_user_edit(arc_id):
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
+        # Identity follows the words, and only AFTER they landed. Writing
+        # parts first would leave ids for a document that failed to save.
+        # Best-effort in the other direction: the words are what matter, so a
+        # parts write that fails does not fail the edit — the GET then omits
+        # the key, the FE re-mints, and the next save stores them.
+        if _parts is not None:
+            if not db.replace_ideal_text_parts(
+                    arc_id, str(request.user_id), _parts):
+                logger.warning("ideal parts not stored arc=%s", arc_id)
         # RE-APPLY TELEMETRY (founder 2026-07-28): one log line per
         # successful one-click re-apply of a superseded edit — the
         # decision metric for the PARKED versioning change (how often do

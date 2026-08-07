@@ -11047,6 +11047,95 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    # ── ideal_text_part — the document as an ordered list with stable ids ──
+    # SPEC-parts-locking-and-layers §3.1, Step 0. Identity only; PR 3 adds the
+    # lock. Both of these are best-effort in the same sense as the edit lane
+    # above: a missing table (migration 0255 not applied) degrades to "this
+    # document has no parts", which is exactly the pre-migration behaviour.
+
+    def get_ideal_text_parts(
+        self, arc_id: Optional[str], user_id: Optional[str],
+    ) -> list:
+        """One document's parts, in `ord` order. [] on anything missing.
+
+        Keyed (arc_id, user_id) to match `user_arc_ideal_notes` — the served
+        document is derived per request, so arc_id alone does not name one.
+        """
+        if not arc_id or not user_id:
+            return []
+        try:
+            res = (
+                self.client.table("ideal_text_part")
+                .select("id, ord, text")
+                .eq("arc_id", str(arc_id))
+                .eq("user_id", str(user_id))
+                .order("ord")
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_text_part" in _e and (
+                    "does not exist" in _e or "pgrst" in _e):
+                logger.warning(
+                    "get_ideal_text_parts: table missing (run "
+                    "migrations/add_ideal_text_parts.sql) arc=%s", arc_id)
+                return []
+            logger.warning("get_ideal_text_parts failed arc=%s: %s", arc_id, e)
+            return []
+
+    def replace_ideal_text_parts(
+        self, arc_id: str, user_id: str, parts: list,
+    ) -> bool:
+        """Replace a document's parts wholesale. True on success.
+
+        WHOLESALE, NOT PER-ROW UPSERT, and the unique index is why. A reorder
+        changes many rows' `ord` at once; upserting them one at a time walks
+        through states where two rows claim one slot, and
+        `uq_ideal_text_part_slot` would reject whichever came second — leaving
+        the document half-reordered. Delete-then-insert has no intermediate
+        state to violate.
+
+        The delete is the RISK in that trade: if the insert fails, the parts
+        are gone. That is survivable and deliberately so — parts are pure
+        identity, the canonical `text` is written separately and is untouched,
+        and a document with no parts is a valid state the client re-mints from.
+        Losing identity costs the ids; losing the words would cost the words.
+        """
+        if not arc_id or not user_id or not isinstance(parts, list):
+            return False
+        try:
+            (self.client.table("ideal_text_part")
+                .delete()
+                .eq("arc_id", str(arc_id))
+                .eq("user_id", str(user_id))
+                .execute())
+            if not parts:
+                return True     # the student cleared the document
+            self.client.table("ideal_text_part").insert([
+                {
+                    "id": str(p["id"]),
+                    "arc_id": str(arc_id),
+                    "user_id": str(user_id),
+                    "ord": int(p["ord"]),
+                    "text": str(p["text"]),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+                for p in parts
+            ]).execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_text_part" in _e and (
+                    "does not exist" in _e or "pgrst" in _e):
+                logger.warning(
+                    "replace_ideal_text_parts: table missing (run "
+                    "migrations/add_ideal_text_parts.sql) arc=%s", arc_id)
+                return False
+            logger.warning("replace_ideal_text_parts failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
     # The star-suggestion kinds. MUST mirror the moment_suggestions kind
     # CHECK (alter_moment_suggestions_kind_delivery.sql) — the 2026-07-20
     # lesson: #221 widened the DB CHECK but not this guard, so 'delivery'

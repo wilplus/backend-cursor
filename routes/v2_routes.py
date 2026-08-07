@@ -97,6 +97,7 @@ from routes.v2.arcs import (  # noqa: F401 — re-exported for import compat
 )
 from routes.v2.explore_ideal_text import (  # noqa: F401 — re-exported for import compat
     _block_variants_gate,
+    _ideal_parts_block,
     _ideal_piece_provenance,
     _ideal_save_state,
     _ideal_text_pieces,

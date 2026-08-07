@@ -1,6 +1,8 @@
 # SPEC — Parts, Locking, and the Two Intervention Layers
 
-**Status:** design agreed (founder, 2026-08-07). Nothing here is built yet.
+**Status:** design agreed (founder, 2026-08-07). **Step 0 built 2026-08-07**
+— see §10 for the two places the build had to diverge from this document and
+why. Locking (PR 3) is not built.
 **Ships in three PRs:** this spec · stable parts (Step 0) · locking.
 
 ---
@@ -241,3 +243,93 @@ the FE controls.
 Step 0 ships alone because it touches the F1 read path. Reviewing a structural
 change to the deliverable *alongside* the interesting new logic is where
 mistakes hide.
+
+---
+
+## 10 · What Step 0 actually shipped (2026-08-07)
+
+Two divergences from §3.1 / §9, both forced by reading the serve path. Neither
+changes the design; both change where a fact lives.
+
+### 10.1 · The key is `(arc_id, user_id)`, not `arc_id`
+
+§3.1 keys parts on `arc_id`. That is not enough to name a document.
+
+**The served text is DERIVED per request, not stored.** It resolves from up to
+four sources — the machine `auto_text`, the coach's `verified_text`, the
+student's version-stamped edit in `user_arc_ideal_notes`, plus the fold /
+sanitize / strip-moment transforms — so `arc_id` alone identifies an arc, not
+the words on screen. `user_arc_ideal_notes` is keyed `(arc_id, user_id)` and is
+the row the arranger already writes through, so parts key the same way. With
+one owner per arc this is exactly §3.1's semantics; if an arc ever carries two,
+parts cannot bleed between them.
+
+**Deliberately NOT version-scoped.** The obvious third key column is the
+ideal-text version, and it is wrong: a new take bumps the version, so
+version-scoped parts would mint fresh ids on every take and discard every lock
+the student had set. §8 says the opposite — when a later take beats a locked
+part, the LOCK WINS. Parts outlive versions by construction.
+
+### 10.2 · The backend never splits text; the client mints ids
+
+§9 called for "a one-time backfill [that] runs the existing
+`splitBadgeParagraphSpans` over stored texts to mint ids once". Building that
+would have contradicted §2's own argument.
+
+`splitBadgeParagraphSpans` is **marker-aware**: it refuses a split point inside
+a rich-marker token, because a fold marker may legally contain a blank line and
+slicing it leaks raw syntax. It is a stateful scanner, not a regex. A Python
+mirror would be a SECOND definition of "paragraph" — a real distinction with no
+single home, re-derived slightly differently by each consumer until they
+disagree, which is the exact failure §2 names — and the two would drift on
+precisely the documents where the split is hard.
+
+So: **the client mints ids and sends them; the backend validates and stores.**
+The split stays in one place, where the founder confirmed it lives.
+
+Consequences, all of them acceptable:
+
+* **No backfill.** A document nobody has opened has no parts — fine, because
+  nothing can be locked on a document nobody has opened. Identity appears on
+  first save, and the FE mints locally from first render either way, so the
+  React key fix in §9 lands immediately and does not wait on a save.
+* **Ids are validated as real UUIDs**, not accepted as strings. An unvalidated
+  id would let a caller mint colliding ids across arcs, surfacing as one
+  document's lock on another's paragraph.
+* **`text` and `parts` are written together or not at all.** The write path
+  refuses a payload whose parts do not join back to its text
+  (`agrees_with_text`), and the read path refuses to SERVE parts that no longer
+  join to the served text. Stale identity pointing at words that moved is the
+  same failure as a mis-anchored tracked change (#219) — except a lock hung on
+  it would silently guard the wrong paragraph.
+* **`joined()` mirrors `joinSegments`.** That mapping IS mirrored, because it
+  is a two-line rule (trim, drop blanks, join on a blank line) rather than a
+  scanner. Both sides' tests pin it against the other's, so a drift fails CI
+  instead of 400-ing every save in production.
+
+### 10.3 · Reconciliation, which §3.1 did not specify
+
+An id has to survive a rewrite that did NOT come through the arranger — a new
+take assembling, a coach verifying. `reconcileParts` matches new paragraphs
+against the previous list in **two passes**, and the order is the design:
+
+1. **unique text on both sides → match wherever it moved to.** A paragraph
+   appearing exactly once on each side can only be the same part, so this
+   survives an arbitrary reorder.
+2. **the repeats → first unused with equal text, in reading order.** Two
+   identical paragraphs are textually indistinguishable; reading order is the
+   only rule that is not a guess, and because the words are identical, which
+   copy keeps which id is unobservable.
+
+A single monotonic pass survives rewording but not reordering; a single free
+pass survives reordering but lets a repeated paragraph steal an earlier one's
+id. §3.1 requires both, so it needs both passes. Anything matching nothing is
+genuinely new words and gets a new id — a paragraph the machine rewrote is not
+the part the student locked.
+
+### 10.4 · Deferred to PR 3, on purpose
+
+`locked_at` is **not** in the 0255 migration. It lands with the code that reads
+it, so the schema never claims a capability the system does not have — the same
+distinction `dimension_registry` draws between "switched off by decision" and
+"not built yet".
