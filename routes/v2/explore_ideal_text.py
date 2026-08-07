@@ -730,7 +730,13 @@ def v2_explore_get_ideal_text(arc_id):
             # document — strike/propose/bold/advice, each pointing at
             # exactly the words it is about. Absent when the flag is
             # off (the FE keeps rendering today's star layer). ──
-            **_tracked_changes_block(arc_id, _text),
+            # The user id is the CONTROL-ARM KEY, and passing it is the only
+            # thing that arms the manager's three randomisations — they are
+            # inert on an empty id by construction. Sending it here keeps the
+            # decision in one place (MANAGER_CONTROLS_ENABLED, default off)
+            # rather than in whether a call site remembered to.
+            **_tracked_changes_block(arc_id, _text,
+                                     getattr(request, "user_id", "") or ""),
             # The moments-unlock price, top level (the FE reads it here
             # for the locked-moment prompt — the only paid item).
             "price_credits": int(getattr(
@@ -1218,15 +1224,7 @@ def _previous_spoken_session(arc_id, current_session_id):
         return None
 
 
-def _key_points_enabled() -> bool:
-    """E-1 presentation-mode cue sheet (founder 2026-07-24). DEFAULT OFF until
-    the FE ships the full↔key-words toggle (E-2); flip KEY_POINTS_ENABLED=1 in
-    Railway after. Absent key ⇒ the FE is unaffected."""
-    return (os.getenv("KEY_POINTS_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
-
-
-def _tracked_changes_block(arc_id, served_text) -> dict:
+def _tracked_changes_block(arc_id, served_text, user_id="") -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
     ABSENT and the FE keeps rendering today's star layer.
@@ -1235,13 +1233,31 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
     the document came from is located as an exact substring, then the
     change is narrowed inside that window. A piece whose words are no
     longer there (baked, coach-corrected, student-edited) yields NO
-    change rather than a mis-pointed one (#219). Best-effort."""
+    change rather than a mis-pointed one (#219). Best-effort.
+
+    THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder 2026-08-07). The
+    three lanes below still PRODUCE candidates exactly as they did; none
+    of them SERVES one. Everything they assemble goes through
+    `intervention_candidates.select`, which applies Appendix H's budget
+    (≤3 per take, across every lane together) and collision resolution.
+    Concatenating the lanes and serving the result — which is what this
+    did — meant the budget the whole of Appendix H exists to enforce was
+    not enforced anywhere, because `manager_engine` had no caller.
+
+    THE CUE SHEET IS DEFERRED (founder 2026-08-07). E-1's `key_points`
+    was a starting-point milestone per block — a verbatim opening phrase,
+    working as designed — and it read on screen as an intervention that
+    explained nothing. Real interventions replace it. `services/
+    key_points.py` and its tests are kept; only the wiring is gone, so
+    `KEY_POINTS_ENABLED` no longer does anything and should be deleted
+    from Railway."""
     try:
         from services.ideal_text_block import _living_transcript_enabled
         if not _living_transcript_enabled():
             return {}
+        from services.intervention_candidates import select as _select
         from services.tracked_changes import (
-            build_tracked_changes, drop_overlaps, verify_changes,
+            build_tracked_changes, verify_changes,
         )
         from services.transcript_document import (
             build_transcript_document, relocate_pieces,
@@ -1274,18 +1290,6 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         # re-anchor the pieces onto it MONOTONICALLY (never a bare
         # first-occurrence search, the review's mis-anchor defect).
         _pieces = relocate_pieces(served_text, doc.get("pieces") or [])
-        # E-1 presentation-mode cue sheet (founder 2026-07-24): one verbatim
-        # starting-point milestone per block, for the FE's full↔key-words
-        # toggle. Flag-gated (default OFF) so the key is simply ABSENT until
-        # the FE ships it. L1-safe (a verbatim prefix of the served text).
-        _key_points = None
-        try:
-            if _key_points_enabled():
-                from services.key_points import build_key_points
-                _key_points = build_key_points(_pieces, served_text)
-        except Exception as _kpe:
-            logger.warning("key_points failed arc=%s: %s", arc_id, _kpe)
-            _key_points = None
         _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
         _applied = []
         try:
@@ -1369,16 +1373,20 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
             logger.warning("prior-take changes failed arc=%s: %s",
                            arc_id, _pt_err)
 
-        # One span may carry only ONE change — a polish star and a
-        # cross-take offer on the same words would render as overlapping
-        # strikes (review finding). Earliest-then-narrowest wins.
-        changes = drop_overlaps(changes)
-        _kp = {"key_points": _key_points} if _key_points is not None else {}
+        # ── THE GATE. Every lane above has now PROPOSED; nothing has been
+        # served. The manager applies the flat ≤3 budget across all of them
+        # together, resolves collisions (which subsumes the old
+        # `drop_overlaps` sweep — see intervention_candidates.select) and
+        # returns the survivors in document order. A lane that is not
+        # declared there does not reach the user. ──
+        changes = _select(changes, user_id=user_id,
+                          session_id=str(doc.get("take_session_id") or ""),
+                          )["changes"]
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
-            return {"changes": [], **_kp}
-        return {"changes": changes, **_kp}
+            return {"changes": []}
+        return {"changes": changes}
     except Exception as e:
         logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
         return {}

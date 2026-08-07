@@ -196,6 +196,27 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
             "span": {"start": start, "end": end},
             "quote": quote,
         }
+        # THE REASON LINE NEVER RENDERS FROM THIS LANE, and that is a copy
+        # decision, not a bug to patch here.
+        #
+        # `why` is the model's free text. The FE reads `why_key ?? why` and
+        # validates against a CLOSED four-key set (energy / steadiness /
+        # coverage / overall), so free text always resolves to null and the
+        # reason line is dropped. That gate is correct — un-signed-off LLM
+        # prose must not reach the student (LIVE LOOP) — and the field is
+        # kept because a row that ever carries one of the four keys would
+        # work unchanged.
+        #
+        # WHY THE OBVIOUS FIX IS WRONG. Stamping why_key="overall" here would
+        # render "This take simply landed better overall." next to a polish
+        # star — the four strings are all CROSS-TAKE COMPARISON copy, and
+        # there is no other take in this lane. It would be a sentence about
+        # something that did not happen.
+        #
+        # The compliant fix is founder-approved copy for the non-comparison
+        # lanes, then a key per lane. Until then the FE's `leadLine()` is the
+        # whole message, which is honest: it says what the change is and
+        # claims no measurement behind it.
         if kind == "replace":
             _repl = (sug.get("replacement_text") or "").strip()
             if not _repl:

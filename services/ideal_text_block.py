@@ -166,7 +166,25 @@ def _living_transcript_enabled() -> bool:
     of best-ranked moments ("it is very much shorter than what I really
     said"). DEFAULT OFF — flag ON swaps the document source; every other
     lane (ledger bake, protected phrases, versions, snapshots, coach
-    verify) is untouched and keeps working on the new base."""
+    verify) is untouched and keeps working on the new base.
+
+    THE DEFAULT STAYS OFF (re-examined 2026-08-07, when the brief was "flip
+    the necessary flags to turn the manager-engine pipeline ON"). It was not
+    the right flag to flip in code, for two reasons:
+
+      * It is NOT only the interventions gate. Turning it on also swaps the
+        document SOURCE — `assemble_transcript_document` instead of
+        `assemble_ideal_text_block` — which is the whole living-transcript
+        model, far more than the tracked-changes block the brief was about.
+        Flipping the code default would ship that to every environment at
+        once, including any that never opted in.
+      * Prod already has it. The cue sheet the founder was looking at is
+        produced INSIDE `_tracked_changes_block`, which returns {} unless
+        this is truthy — so the Railway variable is already 1 and a default
+        change buys nothing while risking everything.
+
+    An env flip stays the right lever here: reversible in seconds, no deploy,
+    and scoped to one environment."""
     return (os.getenv("LIVING_TRANSCRIPT_ENABLED") or "0").strip().lower() \
         in ("1", "true", "yes")
 

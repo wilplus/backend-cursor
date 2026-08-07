@@ -9,6 +9,8 @@ Run: python3 -m unittest test_key_points
 """
 from __future__ import annotations
 
+import ast
+import pathlib
 import unittest
 from unittest.mock import patch
 
@@ -208,16 +210,21 @@ class ParagraphFallbackTests(unittest.TestCase):
 
 
 @unittest.skipIf(_V2_ERR is not None, f"needs app deps: {_V2_ERR}")
-class KeyPointsServeWiringTests(unittest.TestCase):
-    """The SD `_tracked_changes_block` surfaces `key_points` when the flag is
-    on, and omits the key entirely when off (the FE is unaffected)."""
+class KeyPointsAreDeferredTests(unittest.TestCase):
+    """The cue sheet is DEFERRED (founder 2026-08-07) — the student GET must
+    not carry `key_points` under any flag.
 
-    def _run(self, *, flag):
+    A highlighted verbatim opening phrase is indistinguishable on screen from
+    an intervention that explains nothing, which is how it was read. The
+    derivation stays (every test above still runs); only the surface is gone.
+    Pinned as a test because "we removed the call site" is exactly the kind of
+    deferral that gets undone by a merge nobody noticed."""
+
+    def _run(self):
         served = "Grab attention here. Then the ask lands."
         pieces = [{"block_key": 0, "block_label": "Hook",
                    "start": 0, "end": 20, "text": "Grab attention here."}]
-        with patch("routes.v2.explore_ideal_text._key_points_enabled", return_value=flag), \
-             patch("services.ideal_text_block._living_transcript_enabled",
+        with patch("services.ideal_text_block._living_transcript_enabled",
                    return_value=True), \
              patch("services.master_document.master_document_enabled",
                    return_value=False), \
@@ -227,8 +234,6 @@ class KeyPointsServeWiringTests(unittest.TestCase):
                    side_effect=lambda t, p: p), \
              patch("services.tracked_changes.build_tracked_changes",
                    return_value=[]), \
-             patch("services.tracked_changes.drop_overlaps",
-                   side_effect=lambda c: c), \
              patch("services.tracked_changes.verify_changes",
                    return_value=True), \
              patch("routes.v2.explore_ideal_text._moment_applied_map", return_value={}), \
@@ -237,14 +242,28 @@ class KeyPointsServeWiringTests(unittest.TestCase):
                           return_value={}):
             return v2._tracked_changes_block("a1", served)
 
-    def test_flag_on_serves_the_cue_sheet(self):
-        out = self._run(flag=True)
-        self.assertIn("key_points", out)
-        self.assertEqual(out["key_points"][0]["text"], "Grab attention here")
-        self.assertEqual(out["key_points"][0]["block_label"], "Hook")
+    def test_the_cue_sheet_never_reaches_the_student(self):
+        self.assertNotIn("key_points", self._run())
 
-    def test_flag_off_omits_the_key(self):
-        self.assertNotIn("key_points", self._run(flag=False))
+    def test_the_flag_is_gone_rather_than_defaulted_off(self):
+        """A flag left in place reads as "off for now" and invites a flip.
+        The env var no longer does anything, and that has to be visible.
+
+        Checked through the AST: a comment SAYING the flag is retired must not
+        register as the flag still being read."""
+        self.assertFalse(hasattr(v2, "_key_points_enabled"))
+        tree = ast.parse((pathlib.Path(__file__).parent / "routes" / "v2"
+                          / "explore_ideal_text.py").read_text())
+        read_env = {a.value for n in ast.walk(tree)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "getenv"
+                    for a in n.args if isinstance(a, ast.Constant)}
+        self.assertNotIn("KEY_POINTS_ENABLED", read_env)
+        called = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+        imported = {a.name for n in ast.walk(tree)
+                    if isinstance(n, ast.ImportFrom) for a in n.names}
+        self.assertNotIn("build_key_points", called | imported)
 
 
 if __name__ == "__main__":
