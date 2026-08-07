@@ -1242,7 +1242,8 @@ def _ideal_parts_block(arc_id, user_id, served_text) -> dict:
     """
     try:
         from services.ideal_text_parts import agrees_with_text, serve
-        parts = serve(db.get_ideal_text_parts(arc_id, user_id))
+        parts = serve(db.get_ideal_text_parts(arc_id, user_id,
+                                              with_lock=True))
         if parts is None:
             return {}
         if not agrees_with_text(parts, served_text):
@@ -1287,6 +1288,9 @@ def _locked_parts(arc_id, user_id, served_text) -> list:
         parts = serve(rows)
         if not parts or not agrees_with_text(parts, served_text):
             return []
+        # `serve` carries the boolean for the wire; the layer filter reads
+        # `locked_at`, so hand it the raw column rather than a second name for
+        # the same fact.
         by_id = {str(r.get("id")): r.get("locked_at")
                  for r in rows if isinstance(r, dict)}
         for p in parts:

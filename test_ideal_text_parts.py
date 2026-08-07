@@ -241,8 +241,22 @@ class TestTheRoundTrip(unittest.TestCase):
                {"id": _id(), "text": "Close."}]
         stored = validate(raw)
         served = serve([dict(p) for p in stored])
-        self.assertEqual(served, stored)
+        self.assertEqual([{k: v for k, v in p.items() if k != "locked"}
+                          for p in served], stored)
         self.assertTrue(agrees_with_text(served, joined(stored)))
+
+    def test_serve_carries_the_lock_as_a_BOOLEAN(self):
+        """The client needs to know which control to draw and nothing more. A
+        timestamp on the wire invites a surface rendering "locked at 10:04",
+        which is noise nobody asked for — and the timestamp itself stays
+        server-side, where §6 needs it to tell a decision made before a lock
+        from one made after."""
+        out = serve([{"id": _id(), "ord": 0, "text": "open"},
+                     {"id": _id(), "ord": 1, "text": "shut",
+                      "locked_at": "2026-08-07T10:00:00Z"}])
+        self.assertEqual([p["locked"] for p in out], [False, True])
+        for p in out:
+            self.assertNotIn("locked_at", p)
 
     def test_a_reorder_keeps_every_id_and_changes_only_ord(self):
         raw = [{"id": _id(), "text": "A"}, {"id": _id(), "text": "B"}]

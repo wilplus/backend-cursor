@@ -241,10 +241,16 @@ def serve(rows: Any) -> Optional[list]:
     has no identity yet, derive as you always did", while [] means "this
     document is empty". The FE branches on exactly that difference, and
     collapsing the two would make a fresh document look like a cleared one.
+
+    `locked` rides as a BOOLEAN, never the timestamp. The client needs to know
+    which control to draw and nothing more; a timestamp on the wire invites a
+    surface that renders "locked at 10:04", which is noise the student did not
+    ask for. The timestamp stays server-side, where §6 needs it to tell a
+    decision made before a lock from one made after.
     """
     if not rows:
         return None
-    ordered: list[tuple[int, str, str]] = []
+    ordered: list[tuple[int, str, str, bool]] = []
     for r in rows:
         if not isinstance(r, dict):
             continue
@@ -256,12 +262,12 @@ def serve(rows: Any) -> Optional[list]:
         # sort as 0/1 and silently reorder the document.
         if not isinstance(ordv, int) or isinstance(ordv, bool):
             continue
-        ordered.append((ordv, pid, text))
+        ordered.append((ordv, pid, text, bool(r.get("locked_at"))))
     if not ordered:
         return None
     ordered.sort(key=lambda t: t[0])
-    out = [{"id": pid, "ord": ordv, "text": text}
-           for ordv, pid, text in ordered]
+    out = [{"id": pid, "ord": ordv, "text": text, "locked": locked}
+           for ordv, pid, text, locked in ordered]
     # Re-index on the way out. A gap in `ord` (a partial write, a row deleted
     # by hand) would otherwise reach the client as a position it cannot use,
     # and the client's own list index is what it renders from.
