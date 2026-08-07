@@ -578,19 +578,45 @@ def process_new_take(arc_id: Any, session_id: Any, database) -> int:
                                                 fields):
                 offers += 1
 
-        # Decked slides the skeleton has never seen → candidate blocks
-        # (one per new slide, idempotent per take: an existing candidate
-        # for the same slide+take is refreshed, never duplicated).
+        # Decked slides the skeleton has never seen → candidate blocks.
+        #
+        # ONE OFFER PER SLIDE, NEWEST TAKE WINS (founder 2026-08-07). The
+        # dedupe used to key on (slide, TAKE), so speaking on a new slide in
+        # take 2 and again in take 3 produced two live offers for one slide —
+        # and accepting both put that slide into the script twice. Per slide,
+        # a later take REPLACES the standing offer in place: same block_key,
+        # so the position holds and the FE's "block:<key>" id stays valid.
+        #
+        # PLACED BY SLIDE, not appended — see candidate_block_key.
         if extras:
-            existing_cands = {
-                (r.get("slide_index"),
-                 str(r.get("incumbent_take_session_id")))
-                for r in rows if r.get("status") == "candidate"}
-            next_key = max((r.get("block_key") or 0)
-                           for r in rows) + _KEY_STEP
+            _rows = [r for r in rows if isinstance(r, dict)]
+            cand_by_slide = {
+                r.get("slide_index"): r for r in _rows
+                if r.get("status") == "candidate"
+                and isinstance(r.get("slide_index"), int)
+                and not isinstance(r.get("slide_index"), bool)}
             for si, grp in sorted(extras, key=lambda t: t[0]):
-                if (si, sid) in existing_cands:
-                    continue
+                prior = cand_by_slide.get(si)
+                next_key = None
+                if prior is not None:
+                    if str(prior.get("incumbent_take_session_id")) == str(sid):
+                        continue      # same take — idempotent, nothing new
+                    if not _newer_take(take_index,
+                                       prior.get("incumbent_take_index")):
+                        continue      # an older take never displaces a newer
+                    next_key = prior.get("block_key")
+                if next_key is None:
+                    next_key = candidate_block_key(_rows, si)
+                if next_key is None:
+                    # The gap between this slide's neighbours is exhausted.
+                    # Append rather than collide — and SAY SO, because the
+                    # words then sit out of order and that is exactly the
+                    # failure this function exists to have stopped.
+                    next_key = max((r.get("block_key") or 0)
+                                   for r in _rows) + _KEY_STEP
+                    logger.warning(
+                        "master_document: no room to place slide %s in order "
+                        "arc=%s — appended at %s", si, arc_id, next_key)
                 fields = {
                     "label": f"Slide {si + 1}",
                     "slide_index": si,
@@ -606,8 +632,8 @@ def process_new_take(arc_id: Any, session_id: Any, database) -> int:
                     "challenger_pieces": None,
                     "challenger_why": None,
                 }
-                if database.upsert_ideal_text_block(str(arc_id), next_key,
-                                                    fields):
+                if database.upsert_ideal_text_block(str(arc_id),
+                                                    int(next_key), fields):
                     # The candidate's material pools too — if it is
                     # kept-mine (row deleted) and said again later, the
                     # words survive either way. Best-effort.
@@ -620,12 +646,112 @@ def process_new_take(arc_id: Any, session_id: Any, database) -> int:
                     except Exception:
                         pass
                     offers += 1
-                    next_key += _KEY_STEP
+                    # Keep the local view current so a SECOND new slide in
+                    # this same take places against the one just written
+                    # rather than colliding with it.
+                    if prior is not None:
+                        prior["incumbent_take_session_id"] = sid
+                        prior["incumbent_take_index"] = take_index
+                    else:
+                        _rows.append({"block_key": int(next_key),
+                                      "slide_index": si,
+                                      "status": "candidate",
+                                      "incumbent_take_session_id": sid,
+                                      "incumbent_take_index": take_index})
+                        cand_by_slide[si] = _rows[-1]
         return offers
     except Exception as e:
         logger.warning("master_document: take processing failed arc=%s: %s",
                        arc_id, e)
         return 0
+
+
+def _newer_take(new_index: Any, old_index: Any) -> bool:
+    """Is `new_index` a LATER take than `old_index`?
+
+    Unknown → False. An offer that cannot PROVE it is newer never overwrites
+    one that is already standing: the failure modes are not symmetric, since
+    replacing a good offer with an older one loses material the speaker said,
+    while declining to replace merely leaves the existing offer up.
+    """
+    if not isinstance(new_index, int) or isinstance(new_index, bool):
+        return False
+    if not isinstance(old_index, int) or isinstance(old_index, bool):
+        return True          # nothing to compare against — the new one stands
+    return new_index > old_index
+
+
+def candidate_block_key(rows: Any, slide_index: Any) -> Optional[int]:
+    """The block key a candidate for `slide_index` belongs at, or None when it
+    cannot be placed in order.
+
+    THE APPEND BUG THIS REPLACES (founder 2026-08-07). This used to be
+    `max(block_key) + _KEY_STEP`, i.e. always the end of the document — so
+    accepting the recovered words for slide 2 put them AFTER the closer. The
+    `_KEY_STEP` gap exists precisely so this cannot happen: its own comment
+    says candidates sit "between two existing blocks at its mapped position".
+    The intent was right and the arithmetic was not, and nobody could see it
+    while the offer never rendered.
+
+    Placed by SLIDE, not by key order: the neighbours are the blocks whose
+    slide index is nearest below and above, and the new key is the free
+    integer between theirs. Slide order is the document's real order — key
+    order only follows it because the skeleton was built that way, and legacy
+    rows appended by the old code break that correspondence.
+
+    None means the gap between the two neighbours is exhausted (nine
+    insertions between one pair of skeleton blocks). The caller appends and
+    says so out loud rather than colliding with an existing key or silently
+    renumbering — block keys are public identity, carried in the FE's
+    "block:<key>" id and in the decide route.
+    """
+    if not isinstance(slide_index, int) or isinstance(slide_index, bool):
+        return None
+    known: list = []
+    used: set = set()
+    for r in (rows or []):
+        if not isinstance(r, dict):
+            continue
+        key = r.get("block_key")
+        if not isinstance(key, int) or isinstance(key, bool):
+            continue
+        used.add(key)
+        si = r.get("slide_index")
+        if isinstance(si, int) and not isinstance(si, bool):
+            known.append((si, key))
+
+    lower = [t for t in known if t[0] < slide_index]
+    upper = [t for t in known if t[0] > slide_index]
+    before = max(lower, key=lambda t: t[0])[1] if lower else None
+    after = min(upper, key=lambda t: t[0])[1] if upper else None
+
+    if before is None and after is None:
+        # No slide information to place against (a deckless skeleton, or an
+        # empty document). Appending is then the honest answer rather than a
+        # guess, because there is no order to respect.
+        return (max(used) + _KEY_STEP) if used else 0
+    if after is None:
+        k = before + _KEY_STEP                     # genuinely the last slide
+        while k in used:
+            k += 1
+        return k
+    if before is None:
+        # A slide added BEFORE the first one the speaker ever spoke on. The
+        # column is INTEGER and negative keys sort correctly, so this is a
+        # real position rather than an edge case to refuse.
+        k = after - _KEY_STEP
+        while k in used:
+            k -= 1
+        return k
+    if after <= before:
+        return None            # legacy rows out of slide order — cannot place
+    mid = (before + after) // 2
+    if before < mid < after and mid not in used:
+        return mid
+    for k in range(before + 1, after):
+        if k not in used:
+            return k
+    return None
 
 
 def upgrade_changes(arc_id: Any, served_text: str, database) -> list:
