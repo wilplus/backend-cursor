@@ -11055,18 +11055,26 @@ class DatabaseService:
 
     def get_ideal_text_parts(
         self, arc_id: Optional[str], user_id: Optional[str],
+        *, with_lock: bool = False,
     ) -> list:
         """One document's parts, in `ord` order. [] on anything missing.
 
         Keyed (arc_id, user_id) to match `user_arc_ideal_notes` — the served
         document is derived per request, so arc_id alone does not name one.
+
+        `with_lock` adds `locked_at` (migration 0256). OPT-IN rather than
+        always selected: the student payload must never carry it (AC-9 is not
+        the issue — a lock is not a score — but the parts block is a wire
+        contract, and a field nobody asked for is a field someone renders).
+        The layer filter asks for it; the serve path does not.
         """
         if not arc_id or not user_id:
             return []
         try:
             res = (
                 self.client.table("ideal_text_part")
-                .select("id, ord, text")
+                .select("id, ord, text, locked_at" if with_lock
+                        else "id, ord, text")
                 .eq("arc_id", str(arc_id))
                 .eq("user_id", str(user_id))
                 .order("ord")
@@ -11075,14 +11083,67 @@ class DatabaseService:
             return res.data or []
         except Exception as e:
             _e = str(e).lower()
-            if "ideal_text_part" in _e and (
+            if ("ideal_text_part" in _e or "locked_at" in _e) and (
                     "does not exist" in _e or "pgrst" in _e):
+                # Two different pre-migration states, one degrade. Missing
+                # TABLE (0255) → no identity; missing COLUMN (0256) → identity
+                # without locks. Both mean "no locks to enforce", and the layer
+                # filter treats an empty list as "everything is allowed" —
+                # which is the safe direction, because R1 SUPPRESSES
+                # interventions and a bad read must never silence the surface.
                 logger.warning(
-                    "get_ideal_text_parts: table missing (run "
-                    "migrations/add_ideal_text_parts.sql) arc=%s", arc_id)
+                    "get_ideal_text_parts: table/column missing (run "
+                    "migrations/add_ideal_text_parts.sql, "
+                    "add_ideal_text_part_lock.sql) arc=%s", arc_id)
                 return []
             logger.warning("get_ideal_text_parts failed arc=%s: %s", arc_id, e)
             return []
+
+    def set_ideal_text_part_lock(
+        self, arc_id: str, user_id: str, part_id: str, locked: bool,
+    ) -> bool:
+        """Lock or unlock ONE part (SPEC §4, R5). True on success.
+
+        Scoped to (arc_id, user_id) as well as the part id, so a caller cannot
+        reach another document's part by guessing an id — the id alone is the
+        primary key, and a route that trusted it would be an IDOR.
+
+        UNLOCK CLEARS THE COLUMN rather than writing a history row (R5). The
+        lock is live UI state, not an audit trail; what §6 needs recorded is
+        the DECISION on each intervention, which lives on its own row and is
+        never rewritten by a lock or an unlock.
+        """
+        if not arc_id or not user_id or not part_id:
+            return False
+        try:
+            res = (
+                self.client.table("ideal_text_part")
+                .update({
+                    "locked_at": (datetime.now(timezone.utc).isoformat()
+                                  if locked else None),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+                .eq("id", str(part_id))
+                .eq("arc_id", str(arc_id))
+                .eq("user_id", str(user_id))
+                .execute()
+            )
+            # An update that matched NOTHING is not a success. Postgres has no
+            # complaint to make about it, so without this a lock on a part that
+            # does not belong to this document returns 200 and does nothing —
+            # and the FE would draw a locked paragraph that is not locked.
+            return bool(res.data)
+        except Exception as e:
+            _e = str(e).lower()
+            if ("ideal_text_part" in _e or "locked_at" in _e) and (
+                    "does not exist" in _e or "pgrst" in _e):
+                logger.warning(
+                    "set_ideal_text_part_lock: table/column missing (run "
+                    "migrations/add_ideal_text_part_lock.sql) arc=%s", arc_id)
+                return False
+            logger.warning("set_ideal_text_part_lock failed arc=%s: %s",
+                           arc_id, e)
+            return False
 
     def replace_ideal_text_parts(
         self, arc_id: str, user_id: str, parts: list,

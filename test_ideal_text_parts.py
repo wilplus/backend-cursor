@@ -23,12 +23,19 @@ import unittest
 import uuid
 from unittest.mock import patch
 
+from services import intervention_candidates as ic
 from services.ideal_text_parts import (
+    ACCENTUATION,
+    COMPOSITION,
     MAX_DOCUMENT_CHARS,
     MAX_PARTS,
     InvalidParts,
     agrees_with_text,
+    allowed_layer,
     joined,
+    layer_of_kind,
+    part_at,
+    part_spans,
     serve,
     validate,
 )
@@ -253,6 +260,175 @@ class TestTheRoundTrip(unittest.TestCase):
         self.assertNotEqual(before[0]["text"], after[0]["text"])
 
 
+class TestTheDerivedLayer(unittest.TestCase):
+    """§4 — the phase is derived from the lock and NEVER stored. A stored phase
+    can desync from the lock that implies it, and then two places disagree
+    about whether a rewrite is legal on this paragraph."""
+
+    def test_an_open_part_is_composition(self):
+        self.assertEqual(allowed_layer({"locked_at": None}), COMPOSITION)
+        self.assertEqual(allowed_layer({}), COMPOSITION)
+
+    def test_a_locked_part_is_accentuation(self):
+        self.assertEqual(allowed_layer({"locked_at": "2026-08-07T10:00:00Z"}),
+                         ACCENTUATION)
+
+    def test_progressive_locking_needs_no_special_case(self):
+        """Part 1 locked while part 2 is open is simply what per-part state
+        means — the behaviour §4 says deriving buys for free."""
+        parts = [{"locked_at": "2026-08-07T10:00:00Z"}, {"locked_at": None}]
+        self.assertEqual([allowed_layer(p) for p in parts],
+                         [ACCENTUATION, COMPOSITION])
+
+    def test_the_kind_split_is_what_the_change_does_to_the_text(self):
+        # §2: sort the four `kind` enums and they fall cleanly in two.
+        self.assertEqual(layer_of_kind("replace"), COMPOSITION)
+        self.assertEqual(layer_of_kind("insert"), COMPOSITION)
+        self.assertEqual(layer_of_kind("bold"), ACCENTUATION)
+        self.assertEqual(layer_of_kind("advice"), ACCENTUATION)
+
+    def test_an_unknown_kind_is_refused_not_defaulted(self):
+        """A kind nobody classified is one nobody decided the phase rules for.
+        Defaulting it into composition would let an unnamed lane rewrite
+        locked text."""
+        for bad in ("mystery", "", None, 7):
+            self.assertIsNone(layer_of_kind(bad))
+
+
+class TestPartSpans(unittest.TestCase):
+    """Offsets over the joined document. Exact, because `joined()` is the only
+    mapping from parts to text and it is deterministic."""
+
+    PARTS = [{"id": "a", "text": "One."}, {"id": "b", "text": "Two."},
+             {"id": "c", "text": "Three."}]
+
+    def test_spans_account_for_the_separator(self):
+        doc = joined(self.PARTS)
+        for start, end, part in part_spans(self.PARTS):
+            self.assertEqual(doc[start:end], part["text"])
+
+    def test_a_span_inside_a_part_finds_it(self):
+        spans = part_spans(self.PARTS)
+        self.assertEqual(part_at(spans, 6, 10)["id"], "b")
+
+    def test_a_span_covering_a_whole_part_finds_it(self):
+        spans = part_spans(self.PARTS)
+        self.assertEqual(part_at(spans, 0, 4)["id"], "a")
+
+    def test_a_STRADDLING_span_belongs_to_no_part(self):
+        """Half in a locked paragraph and half in an open one. There is no
+        honest layer for that, and picking either would let a rewrite touch
+        locked words or suppress a legal one."""
+        spans = part_spans(self.PARTS)
+        self.assertIsNone(part_at(spans, 2, 8))
+
+    def test_a_span_in_the_separator_belongs_to_no_part(self):
+        spans = part_spans(self.PARTS)
+        self.assertIsNone(part_at(spans, 4, 6))
+
+    def test_junk(self):
+        self.assertEqual(part_spans(None), [])
+        self.assertEqual(part_spans([None, "x", {}]), [])
+        self.assertIsNone(part_at([], 0, 1))
+        self.assertIsNone(part_at(part_spans(self.PARTS), None, "x"))
+
+
+class TestR1TheLayerFilter(unittest.TestCase):
+    """R1 — the filter runs BEFORE budget selection, and the ORDER is the rule.
+
+    Filtering afterwards would spend budget slots proposing rewrites on text
+    the speaker has committed to memory: the slots get consumed, the notes get
+    dropped at render, and the student sees one intervention where the engine
+    believes it served three.
+
+    This is also what enforces L1 mechanically rather than by convention —
+    accentuation must never rewrite, and this is where "must never" stops
+    being a comment."""
+
+    def _parts(self, *locked):
+        return [{"id": f"p{i}", "text": f"Part {i} words.",
+                 "locked_at": "2026-08-07T10:00:00Z" if lk else None}
+                for i, lk in enumerate(locked)]
+
+    def _change(self, parts, i, kind):
+        start, end, _p = part_spans(parts)[i]
+        return {"id": f"c{i}-{kind}", "kind": kind, "source": "polish",
+                "span": {"start": start, "end": end}}
+
+    def test_a_locked_part_refuses_a_rewrite(self):
+        parts = self._parts(True)
+        self.assertEqual(
+            ic.filter_by_layer([self._change(parts, 0, "replace")], parts), [])
+
+    def test_a_locked_part_accepts_an_emphasis(self):
+        parts = self._parts(True)
+        c = self._change(parts, 0, "bold")
+        self.assertEqual(ic.filter_by_layer([c], parts), [c])
+
+    def test_an_open_part_accepts_a_rewrite(self):
+        parts = self._parts(False)
+        c = self._change(parts, 0, "replace")
+        self.assertEqual(ic.filter_by_layer([c], parts), [c])
+
+    def test_an_open_part_refuses_an_emphasis(self):
+        """Styling a sentence that is about to be replaced is worse than
+        offering nothing — §1's other half."""
+        parts = self._parts(False)
+        self.assertEqual(
+            ic.filter_by_layer([self._change(parts, 0, "bold")], parts), [])
+
+    def test_both_layers_live_at_once_on_one_document(self):
+        parts = self._parts(True, False)
+        keep_bold = self._change(parts, 0, "bold")
+        keep_repl = self._change(parts, 1, "replace")
+        drop_repl = self._change(parts, 0, "replace")
+        drop_bold = self._change(parts, 1, "bold")
+        out = ic.filter_by_layer(
+            [keep_bold, drop_repl, keep_repl, drop_bold], parts)
+        self.assertEqual([c["id"] for c in out],
+                         [keep_bold["id"], keep_repl["id"]])
+
+    def test_NO_PARTS_means_everything_passes(self):
+        """A document with no stored identity has no locks either. Gating on
+        absent parts would silence the whole surface the moment a document had
+        not been saved yet."""
+        parts = self._parts(False)
+        changes = [self._change(parts, 0, "replace"),
+                   self._change(parts, 0, "bold")]
+        self.assertEqual(ic.filter_by_layer(changes, []), changes)
+        self.assertEqual(ic.filter_by_layer(changes, None), changes)
+
+    def test_a_straddling_change_is_dropped(self):
+        parts = self._parts(True, False)
+        spans = part_spans(parts)
+        straddle = {"id": "x", "kind": "replace", "source": "polish",
+                    "span": {"start": spans[0][1] - 2, "end": spans[1][0] + 2}}
+        self.assertEqual(ic.filter_by_layer([straddle], parts), [])
+
+    def test_an_unknown_kind_is_dropped(self):
+        parts = self._parts(False)
+        self.assertEqual(
+            ic.filter_by_layer([self._change(parts, 0, "mystery")], parts), [])
+
+    def test_THE_FILTER_RUNS_BEFORE_THE_BUDGET(self):
+        """The whole point of R1. Four rewrites where the first part is locked:
+        if the filter ran AFTER selection, the locked part's rewrite would take
+        a budget slot and then be dropped, leaving two notes. Before, it never
+        competes and all three surviving slots carry real notes."""
+        parts = self._parts(True, False, False, False)
+        changes = [self._change(parts, i, "replace") for i in range(4)]
+        out = ic.select(changes, parts=parts)["changes"]
+        self.assertEqual(len(out), 3)
+        self.assertNotIn("c0-replace", [c["id"] for c in out])
+
+    def test_select_without_parts_is_unchanged(self):
+        # Safe-ahead: every existing caller keeps working.
+        parts = self._parts(False, False)
+        changes = [self._change(parts, 0, "replace"),
+                   self._change(parts, 1, "replace")]
+        self.assertEqual(len(ic.select(changes)["changes"]), 2)
+
+
 try:
     from flask import Flask, request
     from routes import v2_routes as v2
@@ -411,6 +587,174 @@ class TheGetServesIdentityOnlyWhenItStillFits(unittest.TestCase):
             with patch.object(v2.db, "get_ideal_text_parts",
                               side_effect=RuntimeError("boom"), create=True):
                 self.assertEqual(v2._ideal_parts_block(ARC, "u1", "x"), {})
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class TheLockEndpoint(unittest.TestCase):
+    """PUT …/parts/<id>/lock — R2, R3, R5.
+
+    The lock is not a setting: it changes which intervention LAYER may fire on
+    this paragraph. So the gates matter more than the write."""
+
+    PA, PB = "11111111-1111-4111-8111-111111111111", \
+             "22222222-2222-4222-8222-222222222222"
+    DOC = "First part words.\n\nSecond part words."
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def _rows(self, locked_a=None):
+        return [{"id": self.PA, "ord": 0, "text": "First part words.",
+                 "locked_at": locked_a},
+                {"id": self.PB, "ord": 1, "text": "Second part words.",
+                 "locked_at": None}]
+
+    def _put(self, body, *, rows=None, changes=None, write_ok=True,
+             part_id=None):
+        rows = self._rows() if rows is None else rows
+        with self.app.test_request_context(json=body):
+            request.user_id = "u1"
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
+                       return_value=(True, [])), \
+                 patch.object(v2.db, "get_ideal_text_parts",
+                              return_value=rows, create=True), \
+                 patch("routes.v2.explore_ideal_text._tracked_changes_block",
+                       return_value={"changes": changes or []}), \
+                 patch.object(v2.db, "set_ideal_text_part_lock",
+                              return_value=write_ok,
+                              create=True) as m_write:
+                out = v2.v2_explore_set_part_lock.__wrapped__(
+                    "a1", part_id or self.PA)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status, m_write
+
+    def test_locking_a_clean_part_works(self):
+        body, status, m = self._put({"locked": True, "text_echo": self.DOC})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["locked"])
+        self.assertEqual(m.call_args[0][3], True)
+
+    def test_unlocking_is_allowed(self):
+        """R5 — the cognitive cost of a permanent mistake during practice is
+        too high."""
+        _b, status, m = self._put({"locked": False, "text_echo": self.DOC},
+                                  rows=self._rows(locked_a="2026-08-07T10:00Z"))
+        self.assertEqual(status, 200)
+        self.assertEqual(m.call_args[0][3], False)
+
+    def test_R3_an_undecided_intervention_BLOCKS_the_lock(self):
+        """Locking makes composition illegal on this part, so a pending
+        rewrite there becomes unreachable. Auto-disregarding it would write a
+        decision the student never made into the one signal §6 depends on."""
+        pending = [{"id": "c1", "kind": "replace",
+                    "span": {"start": 0, "end": 17}}]
+        body, status, m = self._put(
+            {"locked": True, "text_echo": self.DOC}, changes=pending)
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "UNDECIDED")
+        self.assertEqual(body["pending"], 1)
+        m.assert_not_called()
+
+    def test_R3_applies_in_reverse_to_UNLOCK(self):
+        pending = [{"id": "c1", "kind": "bold",
+                    "span": {"start": 0, "end": 17}}]
+        _b, status, m = self._put(
+            {"locked": False, "text_echo": self.DOC},
+            rows=self._rows(locked_a="2026-08-07T10:00Z"), changes=pending)
+        self.assertEqual(status, 409)
+        m.assert_not_called()
+
+    def test_an_intervention_on_ANOTHER_part_does_not_block(self):
+        # The gate is per part, not per document — that is what makes
+        # progressive locking usable at all.
+        other = [{"id": "c2", "kind": "replace",
+                  "span": {"start": 19, "end": 37}}]
+        _b, status, m = self._put({"locked": True, "text_echo": self.DOC},
+                                  changes=other)
+        self.assertEqual(status, 200)
+        m.assert_called_once()
+
+    def test_a_MOVED_document_is_refused(self):
+        """Between the GET and this PUT a take can assemble or the coach can
+        verify. Locking a part id against a document that moved settles a
+        paragraph the student never read."""
+        body, status, m = self._put(
+            {"locked": True, "text_echo": "completely different words"})
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "STALE_DOCUMENT")
+        m.assert_not_called()
+
+    def test_no_stored_parts_is_stale_not_a_crash(self):
+        body, status, _m = self._put({"locked": True, "text_echo": self.DOC},
+                                     rows=[])
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "STALE_DOCUMENT")
+
+    def test_a_part_from_another_document_is_404(self):
+        _b, status, m = self._put(
+            {"locked": True, "text_echo": self.DOC},
+            part_id="99999999-9999-4999-8999-999999999999")
+        self.assertEqual(status, 404)
+        m.assert_not_called()
+
+    def test_the_echo_is_REQUIRED(self):
+        """A lock is a claim about specific words, so it has to name them."""
+        for body in ({"locked": True},
+                     {"locked": True, "text_echo": ""},
+                     {"locked": True, "text_echo": "   "},
+                     {"locked": True, "text_echo": 7}):
+            _b, status, m = self._put(body)
+            self.assertEqual(status, 400, body)
+            m.assert_not_called()
+
+    def test_locked_must_be_a_boolean(self):
+        for bad in ("true", 1, None, {}):
+            _b, status, _m = self._put({"locked": bad, "text_echo": self.DOC})
+            self.assertEqual(status, 400, bad)
+
+    def test_a_gate_that_cannot_read_the_interventions_REFUSES(self):
+        """Locking over an unknown pending set is exactly the corruption R3
+        exists to prevent, so the gate fails closed."""
+        with self.app.test_request_context(
+                json={"locked": True, "text_echo": self.DOC}):
+            request.user_id = "u1"
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
+                       return_value=(True, [])), \
+                 patch.object(v2.db, "get_ideal_text_parts",
+                              return_value=self._rows(), create=True), \
+                 patch("routes.v2.explore_ideal_text._tracked_changes_block",
+                       side_effect=RuntimeError("boom")), \
+                 patch.object(v2.db, "set_ideal_text_part_lock",
+                              return_value=True, create=True) as m_write:
+                out = v2.v2_explore_set_part_lock.__wrapped__("a1", self.PA)
+                _resp, status = out if isinstance(out, tuple) else (out, 200)
+        self.assertEqual(status, 500)
+        m_write.assert_not_called()
+
+    def test_a_failed_write_is_a_500_not_a_silent_200(self):
+        body, status, _m = self._put({"locked": True, "text_echo": self.DOC},
+                                     write_ok=False)
+        self.assertEqual(status, 500)
+        self.assertEqual(body["code"], "V2_ERROR")
+
+    def test_R2_the_lock_decides_NO_intervention(self):
+        """Approve and Lock are different verbs on different objects. Lock is
+        not bulk-approve — nothing here writes a decision."""
+        with self.app.test_request_context(
+                json={"locked": True, "text_echo": self.DOC}):
+            request.user_id = "u1"
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
+                       return_value=(True, [])), \
+                 patch.object(v2.db, "get_ideal_text_parts",
+                              return_value=self._rows(), create=True), \
+                 patch("routes.v2.explore_ideal_text._tracked_changes_block",
+                       return_value={"changes": []}), \
+                 patch.object(v2.db, "set_ideal_text_part_lock",
+                              return_value=True, create=True), \
+                 patch.object(v2.db, "record_ideal_decision",
+                              create=True) as m_dec:
+                v2.v2_explore_set_part_lock.__wrapped__("a1", self.PA)
+        m_dec.assert_not_called()
 
 
 if __name__ == "__main__":

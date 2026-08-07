@@ -291,3 +291,4 @@
 0253	add_intervention_arms.sql
 0254	drop_dead_snippet_metric_columns.sql
 0255	add_ideal_text_parts.sql
+0256	add_ideal_text_part_lock.sql

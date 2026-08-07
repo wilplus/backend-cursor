@@ -265,7 +265,58 @@ def user_state(candidates: Any) -> me.UserState:
     )
 
 
-def select(changes: Any, *, user_id: str = "", session_id: str = "") -> dict:
+def filter_by_layer(changes: Any, parts: Any) -> list:
+    """R1 — drop every change the part it sits in does not currently allow.
+
+    RUNS BEFORE BUDGET SELECTION, and the order is the rule rather than an
+    implementation detail. Filtering afterwards would spend budget slots
+    proposing rewrites on text the speaker has already committed to memory:
+    the slots would be consumed, the notes would be dropped at render time, and
+    the student would see one intervention where the engine believes it served
+    three.
+
+    `parts` empty or absent → EVERY change passes. A document with no stored
+    identity has no locks either, so there is nothing to enforce; gating on
+    absent parts would silence the whole surface the moment a document had not
+    been saved yet.
+
+    Two things are dropped rather than resolved:
+
+      * a change whose `kind` no layer classifies. An unnamed lane is one
+        nobody decided the phase rules for, and defaulting it into composition
+        would let it rewrite locked text.
+      * a change whose span STRADDLES two parts. Half of it is in a locked
+        paragraph and half is not, and there is no honest layer for that.
+
+    This is what enforces L1 mechanically rather than by convention:
+    accentuation must never rewrite, and the filter is where "must never"
+    stops being a comment.
+    """
+    from services.ideal_text_parts import (
+        allowed_layer, layer_of_kind, part_at, part_spans,
+    )
+    rows = [c for c in (changes or []) if isinstance(c, dict)]
+    spans = part_spans(parts)
+    if not spans:
+        return rows
+    kept: list = []
+    for c in rows:
+        layer = layer_of_kind(c.get("kind"))
+        if layer is None:
+            continue
+        span = _span(c)
+        if span is None:
+            continue
+        part = part_at(spans, span[0], span[1])
+        if part is None:
+            continue
+        if allowed_layer(part) == layer:
+            kept.append(c)
+    return kept
+
+
+def select(changes: Any, *, user_id: str = "", session_id: str = "",
+           parts: Any = None) -> dict:
     """Run every change through the manager and return the survivors.
 
     Returns ``{"changes": [...], "result": <arbitrate() dict>|None}``. The
@@ -287,6 +338,11 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "") -> dict:
     """
     try:
         rows = [c for c in (changes or []) if isinstance(c, dict)]
+        if not rows:
+            return {"changes": [], "result": None}
+        # R1 — the layer filter runs HERE, before anything is scored or
+        # budgeted. See filter_by_layer for why the order is the rule.
+        rows = filter_by_layer(rows, parts)
         if not rows:
             return {"changes": [], "result": None}
         rows.sort(key=lambda c: (

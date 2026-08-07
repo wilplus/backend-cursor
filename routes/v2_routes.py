@@ -102,6 +102,7 @@ from routes.v2.explore_ideal_text import (  # noqa: F401 — re-exported for imp
     _ideal_save_state,
     _ideal_text_pieces,
     _instant_ideal_enabled,
+    _locked_parts,
     _previous_spoken_session,
     _tracked_changes_block,
     v2_explore_block_variants,
@@ -114,6 +115,7 @@ from routes.v2.explore_ideal_text import (  # noqa: F401 — re-exported for imp
     v2_explore_restore_ideal_revision,
     v2_explore_save_ideal_text,
     v2_explore_select_block_variant,
+    v2_explore_set_part_lock,
     v2_talk_ideal_text,
 )
 from routes.v2.user_chat import (  # noqa: F401 — re-exported for import compat

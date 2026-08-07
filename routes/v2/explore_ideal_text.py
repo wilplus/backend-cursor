@@ -1271,6 +1271,32 @@ def _previous_spoken_session(arc_id, current_session_id):
         return None
 
 
+def _locked_parts(arc_id, user_id, served_text) -> list:
+    """The document's parts WITH their lock state, or [] when there are none.
+
+    Same staleness rule as `_ideal_parts_block`: parts that no longer join to
+    the served text describe a document the student is not looking at, and
+    their offsets would point the layer filter at the wrong paragraph. [] then
+    means "no locks to enforce", which is the safe direction — R1 suppresses
+    interventions, so a bad parts read must never silently suppress the whole
+    surface.
+    """
+    try:
+        from services.ideal_text_parts import agrees_with_text, serve
+        rows = db.get_ideal_text_parts(arc_id, user_id, with_lock=True)
+        parts = serve(rows)
+        if not parts or not agrees_with_text(parts, served_text):
+            return []
+        by_id = {str(r.get("id")): r.get("locked_at")
+                 for r in rows if isinstance(r, dict)}
+        for p in parts:
+            p["locked_at"] = by_id.get(p["id"])
+        return parts
+    except Exception as e:
+        logger.warning("locked parts failed arc=%s: %s", arc_id, e)
+        return []
+
+
 def _tracked_changes_block(arc_id, served_text, user_id="") -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
@@ -1428,6 +1454,10 @@ def _tracked_changes_block(arc_id, served_text, user_id="") -> dict:
         # declared there does not reach the user. ──
         changes = _select(changes, user_id=user_id,
                           session_id=str(doc.get("take_session_id") or ""),
+                          # R1 — the layer filter runs inside the gate, BEFORE
+                          # the budget. A locked part takes accentuation only;
+                          # an open one takes composition only.
+                          parts=_locked_parts(arc_id, user_id, served_text),
                           )["changes"]
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
@@ -1437,6 +1467,118 @@ def _tracked_changes_block(arc_id, served_text, user_id="") -> dict:
     except Exception as e:
         logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
         return {}
+
+
+@v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/lock", methods=["PUT"])
+@require_auth
+def v2_explore_set_part_lock(arc_id, part_id):
+    """Lock or unlock ONE part (SPEC-parts-locking-and-layers §4, R3, R5).
+
+    THE LOCK IS NOT A SETTING — it changes which INTERVENTION LAYER may fire on
+    this paragraph. Open (`locked_at IS NULL`) takes composition: the machine
+    may propose changing the words. Locked takes accentuation: it may only
+    propose styling words already there. Offering the wrong one is worse than
+    offering nothing — a rewrite destroys memorisation the speaker has already
+    paid for, and an emphasis styles a sentence about to be replaced.
+
+    Body: {locked: bool, text_echo: str}.
+
+    `text_echo` IS THE DOCUMENT THE STUDENT WAS LOOKING AT, and it is required
+    rather than nice-to-have. A lock means "these words are settled", so it has
+    to be a claim about specific words. Between the GET and this PUT a new take
+    can assemble or the coach can verify, replacing the text underneath — and
+    locking a part id against a document that has moved settles a paragraph the
+    student never read. Same idiom as the block decide endpoint's
+    `challenger_session_echo`, and the same 409.
+
+    R2 — APPROVE IS NOT LOCK. This decides no intervention. It promotes one
+    part over a series of already-decided changes; the decisions themselves ride
+    their own endpoints and are untouched here.
+
+    R3 — a part with UNDECIDED interventions cannot be locked, and R5 applies it
+    in reverse for unlock. Locking makes composition illegal on this part, so a
+    pending rewrite there becomes unreachable — the alternative, auto-
+    disregarding it, would write a decision the student never made into the one
+    signal §6 depends on. Undecided is a real third state (R4), not a refusal.
+
+    200 {locked, part_id} · 400 · 404 · 409 STALE_DOCUMENT / UNDECIDED · 500
+    """
+    try:
+        from services.ideal_text_parts import agrees_with_text, part_spans
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        locked = body.get("locked")
+        if not isinstance(locked, bool):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "locked must be a boolean"}), 400
+        echo = body.get("text_echo")
+        if not isinstance(echo, str) or not echo.strip():
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "text_echo is required"}), 400
+        echo = echo.strip()
+
+        user_id = str(getattr(request, "user_id", "") or "")
+        parts = _locked_parts(arc_id, user_id, echo)
+        if not parts:
+            # Either no identity is stored, or it no longer describes this
+            # document. Both mean the same thing to the caller: refetch.
+            return jsonify({"code": "STALE_DOCUMENT",
+                            "error": "document moved"}), 409
+        if not agrees_with_text(parts, echo):
+            return jsonify({"code": "STALE_DOCUMENT",
+                            "error": "document moved"}), 409
+        target = next((p for p in parts if p["id"] == str(part_id).lower()),
+                      None)
+        if target is None:
+            return jsonify({"code": "NOT_FOUND", "error": "part not found"}), 404
+
+        # R3 / R5 — is anything on this part still undecided?
+        #
+        # DERIVED FROM THE SERVED INTERVENTIONS, not from a second count.
+        # Every lane already drops what the student decided (`applied` ids, the
+        # cross-take ledger, settled blocks), so a change still on screen IS an
+        # undecided one. Reading the same pipeline the student is looking at is
+        # what stops the gate and the button disagreeing.
+        try:
+            _served = (_tracked_changes_block(arc_id, echo, user_id)
+                       .get("changes") or [])
+            _lo, _hi, _ = next(
+                (s for s in part_spans(parts) if s[2]["id"] == target["id"]),
+                (None, None, None))
+            _pending = [
+                c for c in _served
+                if _lo is not None
+                and c.get("span", {}).get("start", -1) >= _lo
+                and c.get("span", {}).get("end", -1) <= _hi
+            ]
+        except Exception as _pe:
+            # A gate that cannot read the interventions must not pass. Locking
+            # over an unknown pending set is precisely the corruption R3 exists
+            # to prevent.
+            logger.warning("part lock gate failed arc=%s: %s", arc_id, _pe)
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not check this part — "
+                                     "try again."}), 500
+        if _pending:
+            return jsonify({
+                "code": "UNDECIDED",
+                "error": "decide every suggestion on this part first",
+                "pending": len(_pending),
+            }), 409
+
+        if not db.set_ideal_text_part_lock(arc_id, user_id, str(part_id),
+                                           locked):
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+        return jsonify({"locked": locked, "part_id": str(part_id)}), 200
+    except Exception as e:
+        logger.error("part lock failed arc=%s part=%s: %s", arc_id, part_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to set the lock"}), 500
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/user-edit", methods=["PUT"])

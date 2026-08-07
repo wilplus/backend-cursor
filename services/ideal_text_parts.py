@@ -58,6 +58,95 @@ _UUID_RE = re.compile(
     re.IGNORECASE)
 
 
+# ── the two layers (§3.2 / §4) ──────────────────────────────────────────────
+#
+# WHEN an intervention may fire, which is a different question from HOW it
+# renders. `kind` (replace / bold / advice) is the render instruction and
+# already exists; `layer` is the phase gate. They correlate today and will stop
+# correlating the day a second accentuation kind ships (colour alongside bold),
+# at which point one overloaded column would silently change the meaning of the
+# phase logic — the `unit`/`denominator` bug in dimension_registry, again.
+COMPOSITION = "composition"      # change the words
+ACCENTUATION = "accentuation"    # style words already there
+
+# The split is on WHAT THE CHANGE DOES TO THE TEXT, not on which lane emitted
+# it. Sort the four `kind` enums in idealText.ts and they fall cleanly in two
+# (§2) — this is that distinction, finally named. `advice` is accentuation: a
+# delivery or structural prompt ("pause here", "make the second half land") is
+# about how the words are said, and changes none of them.
+_LAYER_BY_KIND = {
+    "replace": COMPOSITION,
+    "insert": COMPOSITION,
+    "bold": ACCENTUATION,
+    "advice": ACCENTUATION,
+}
+
+
+def layer_of_kind(kind: Any) -> Optional[str]:
+    """Which layer a change belongs to, or None for an unknown kind.
+
+    None means REFUSED downstream, never "allow it anyway". A kind nobody has
+    classified is a kind nobody decided the phase rules for, and defaulting it
+    into composition would let an unnamed lane rewrite locked text."""
+    return _LAYER_BY_KIND.get(kind if isinstance(kind, str) else "")
+
+
+def allowed_layer(part: Any) -> str:
+    """§4 — the phase, DERIVED from the lock and never stored.
+
+    A stored phase can desync from the lock that is supposed to imply it, and
+    then two places disagree about whether a rewrite is legal on this
+    paragraph. Deriving also gives progressive locking for free: part 1 locked
+    while part 2 is open is simply what per-part state means, not a case
+    anybody had to write.
+    """
+    locked = (part or {}).get("locked_at") if isinstance(part, dict) else None
+    return ACCENTUATION if locked else COMPOSITION
+
+
+def part_spans(parts: Any) -> list:
+    """[(start, end, part)] over the JOINED document.
+
+    Exact, not approximate, because `joined()` is the only mapping from parts
+    to text and it is deterministic: part i begins where every earlier part
+    plus its separator ended. The caller may only trust these offsets against a
+    document the parts actually join to — which is why both the read and the
+    write path check `agrees_with_text` first.
+    """
+    out: list = []
+    cursor = 0
+    for p in (parts or []):
+        if not isinstance(p, dict):
+            continue
+        text = (p.get("text") or "").strip()
+        if not text:
+            continue
+        if out:
+            cursor += 2          # the "\n\n" separator
+        out.append((cursor, cursor + len(text), p))
+        cursor += len(text)
+    return out
+
+
+def part_at(spans: Any, start: Any, end: Any) -> Optional[dict]:
+    """The part a span sits in, or None when it sits in no single part.
+
+    None for a span that STRADDLES two parts, deliberately. Such a change is
+    half in a locked paragraph and half in an open one, and there is no honest
+    layer for it — picking either would let a rewrite touch locked words, or
+    suppress a legal one. The caller drops it, which is the same "never guess
+    an anchor" rule the tracked-change lane already follows (#219).
+    """
+    try:
+        s, e = float(start), float(end)
+    except (TypeError, ValueError):
+        return None
+    for p_start, p_end, part in (spans or []):
+        if s >= p_start and e <= p_end:
+            return part
+    return None
+
+
 class InvalidParts(ValueError):
     """The parts list cannot be trusted. Carries the reason for the 400."""
 
