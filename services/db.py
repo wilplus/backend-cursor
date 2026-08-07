@@ -13222,6 +13222,45 @@ class DatabaseService:
             logger.warning("get_confidence_labels_by_snippet_ids failed: %s", e)
             return {}
 
+    def get_own_state_ratings_for_session(self, session_id: str,
+                                          rater_id: str) -> dict:
+        """{snippet_id: {value, unrateable}} — THIS rater's own ratings only.
+
+        SCOPED TO ONE RATER ON PURPOSE, and that scope is the whole safety
+        argument. Showing a coach their OWN prior answer is just resuming
+        their work. Showing them ANOTHER rater's would anchor the next label
+        and quietly destroy the independence that makes multi-rater agreement
+        mean anything — the same reason the labeler card shows no machine
+        read. A future "what did the panel say" surface is a different
+        endpoint with a different audience, never this one.
+
+        {} on anything missing, so the card renders every snippet as
+        unanswered rather than failing the whole review read.
+        """
+        if not session_id or not rater_id:
+            return {}
+        try:
+            rows = (self.client.table("confidence_labels")
+                    .select("snippet_id, value, unrateable")
+                    .eq("session_id", str(session_id))
+                    .eq("rater_id", str(rater_id))
+                    .execute().data) or []
+            out: dict = {}
+            for r in rows:
+                snippet_id = r.get("snippet_id")
+                if not snippet_id:
+                    continue
+                out[str(snippet_id)] = {
+                    "value": r.get("value"),
+                    "unrateable": bool(r.get("unrateable")),
+                }
+            return out
+        except Exception as e:
+            logger.warning(
+                "get_own_state_ratings_for_session failed session=%s: %s",
+                session_id, e)
+            return {}
+
     def count_labelled_snippets_by_session_ids(self, session_ids: list) -> dict:
         """{session_id: how many DISTINCT snippets carry a confidence label}.
 

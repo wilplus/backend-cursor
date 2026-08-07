@@ -91,11 +91,24 @@ def _coach_pseudonym(user_id):
     return f"{adj} {animal}"
 
 
-def _coach_state_map(session_id):
-    """Per-snippet coach_state, folding BOTH lanes → the resume read.
-    direction_label ← training_labels (PRIVATE); note/tag/surfaced ←
-    coach_snippet_drafts (USER). THIS is what makes note/tag/surfaced
-    round-trip on reopen (not just the label — the bug this layer fixes)."""
+def _coach_state_map(session_id, rater_id=None):
+    """Per-snippet coach_state, folding the lanes → the resume read.
+    direction_label <- training_labels (PRIVATE, retired); note/tag/surfaced
+    <- coach_snippet_drafts (USER). THIS is what makes note/tag/surfaced
+    round-trip on reopen (not just the label — the bug this layer fixes).
+
+    RATING RESUME (2026-08-07). `rater_id` folds in THIS coach's own ternary
+    rating so a rated snippet does not read as unanswered after a reload —
+    the card had no way to know it had already been answered, and a coach
+    re-rating from scratch is both wasted work and a second, non-independent
+    look at the same clip.
+
+    OWN ratings only, never the panel's. Another rater's answer on screen
+    would anchor the next one and destroy the independence that makes
+    multi-rater agreement mean anything. Omitting `rater_id` yields no
+    ratings at all, which is the safe default for any caller that has not
+    thought about whose answer it is showing.
+    """
     labels = {}
     for lab in (db.get_training_labels(session_id) or []):
         sid = lab.get("snippet_id")
@@ -106,9 +119,12 @@ def _coach_state_map(session_id):
         sid = d.get("snippet_id")
         if sid is not None:
             drafts[str(sid)] = d
+    ratings = (db.get_own_state_ratings_for_session(session_id, rater_id)
+               if rater_id else {})
     out = {}
-    for sid in set(labels) | set(drafts):
+    for sid in set(labels) | set(drafts) | set(ratings):
         d = drafts.get(sid) or {}
+        r = ratings.get(sid) or {}
         out[sid] = {
             "direction_label": labels.get(sid),
             "note": (d.get("note") or ""),
@@ -116,6 +132,12 @@ def _coach_state_map(session_id):
             "surfaced": bool(d.get("surfaced")),
             "breakthrough_video_ref": d.get("breakthrough_video_ref"),
             "transcript_corrected": d.get("transcript_corrected"),
+            # This coach's own ternary answer, or None/False when they have
+            # not answered yet. `unrateable` is separate from `value` here for
+            # the same reason it is separate everywhere else: an abstention is
+            # not a third answer.
+            "rating_value": r.get("value"),
+            "rating_unrateable": bool(r.get("unrateable")),
         }
     return out
 
@@ -125,6 +147,7 @@ def _coach_state_for(session_id, snippet_id):
     return _coach_state_map(session_id).get(str(snippet_id), {
         "direction_label": None, "note": "", "tag": None, "surfaced": False,
         "breakthrough_video_ref": None, "transcript_corrected": None,
+        "rating_value": None, "rating_unrateable": False,
     })
 
 
@@ -684,7 +707,8 @@ def v2_coach_get_session(session_id):
         # include_slide_scores=True → coach gets Stickiness #2 (per-snippet
         # on-slide-ness + the per-slide coverage ledger). Coach-only (AC-9).
         readout = build_readout_from_session(session_id, include_slide_scores=True)
-        cstate = _coach_state_map(session_id)
+        cstate = _coach_state_map(
+            session_id, rater_id=getattr(request, "user_id", None))
         # Phase 4 / Prompt 2 — the AI-Commentator draft the coach's comment
         # field opens PRE-FILLED with (frozen; the coach types over it). {} when
         # the migration hasn't run → blank field, same as before.
