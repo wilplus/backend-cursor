@@ -93,7 +93,26 @@ queries a table that no longer exists; PostgREST returns 404 and this codebase
 swallows those exceptions by design, so snippet writes would stop **silently**
 — no error page, no alert. Keep that window to seconds.
 
-**Verify after step 3** (should return rows, and match the count from before):
+**Verify step 3 took effect BEFORE testing anything.** On restart the process
+logs which table it resolved:
+
+```
+snippets: table resolved to 'snippets' (SNIPPETS_TABLE env)
+snippets: 'snippets' is readable
+```
+
+`(default)` instead of `(SNIPPETS_TABLE env)` means the variable did not
+reach the process — the restart did not complete, or the running commit
+predates the code that reads it. A `SNIPPET TABLE UNREACHABLE` line at
+CRITICAL means the name resolved but the table cannot be read; snippet
+writes are failing silently right now, so roll back.
+
+This log is the whole lesson of the 2026-08-10 attempt: every possible cause
+looked identical from outside the process, and twenty minutes went into
+distinguishing causes that this one line separates instantly. **Read it
+before running any other check.**
+
+**Then verify the data** (should return rows, and match the count from before):
 
 ```sql
 SELECT COUNT(*) FROM public.snippets;

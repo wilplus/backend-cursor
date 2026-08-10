@@ -103,6 +103,84 @@ class TestTableNameIsCentralised(unittest.TestCase):
             "in the bucket is now unreachable and this must be reverted")
 
 
+class TestTheCutoverIsObservable(unittest.TestCase):
+    """The boot probe must say what it resolved and shout when it cannot read.
+
+    THE LESSON OF 2026-08-10. The rename failed silently and every candidate
+    cause — variable not applied, restart incomplete, stale PostgREST cache,
+    running commit too old — looked IDENTICAL from outside the process. What
+    was missing was not a safeguard; it was a sentence in the log naming the
+    table this process resolved. These tests pin that sentence, because a
+    diagnostic that silently regresses is worse than none: you would trust
+    its absence as evidence.
+    """
+
+    def _probe(self, table_name, query_obj):
+        """Run check_at_boot against a stubbed db client, capturing logs.
+
+        A FAKE `services.db` MODULE is injected rather than the real one
+        patched, so this test needs no Supabase credentials — importing the
+        real module builds a live client at import time and would make these
+        assertions depend on the environment, which is precisely the kind of
+        hidden coupling that made the incident hard to read.
+        """
+        import importlib
+        import os as _os
+        import sys
+        import types
+        from unittest import mock
+
+        fake_client = type("FakeClient", (), {
+            "table": lambda _self, _name: query_obj})()
+        fake_module = types.ModuleType("services.db")
+        fake_module.db = type("FakeDb", (), {"client": fake_client})()
+
+        with mock.patch.dict(_os.environ, {"SNIPPETS_TABLE": table_name}), \
+                mock.patch.dict(sys.modules, {"services.db": fake_module}):
+            mod = importlib.reload(sys.modules["services.snippet_tables"])
+            with self.assertLogs("services.snippet_tables",
+                                 level="INFO") as caught:
+                mod.check_at_boot()
+        # Restore the module to its unpatched state for every other test.
+        importlib.reload(sys.modules["services.snippet_tables"])
+        return caught.output
+
+    def test_it_logs_the_resolved_table_name_and_where_it_came_from(self):
+        ok = type("Q", (), {
+            "select": lambda self, *a: self,
+            "limit": lambda self, *a: self,
+            "execute": lambda self: None})()
+        out = "\n".join(self._probe("snippets", ok))
+        self.assertIn("snippets", out)
+        self.assertIn("SNIPPETS_TABLE env", out,
+                      "the log must say the name came from the environment — "
+                      "that is what settles 'did the variable take effect?'")
+
+    def test_an_unreachable_table_is_critical_not_a_warning(self):
+        class Boom:
+            def select(self, *a):
+                return self
+
+            def limit(self, *a):
+                return self
+
+            def execute(self):
+                raise Exception("Could not find the table in the schema cache")
+
+        out = self._probe("snippets", Boom())
+        self.assertTrue(
+            any(line.startswith("CRITICAL") for line in out),
+            "an unreachable snippet table must log CRITICAL — every write in "
+            f"this process fails silently. Got: {out}")
+
+    def test_the_probe_never_raises(self):
+        class Boom:
+            def select(self, *a):
+                raise RuntimeError("db down")
+
+        self._probe("snippets", Boom())   # must not propagate
+
+
 class TestRenameMigrationsReloadTheSchemaCache(unittest.TestCase):
     """Any migration that RENAMEs a table must also reload PostgREST.
 
