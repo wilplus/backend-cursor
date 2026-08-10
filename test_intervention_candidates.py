@@ -184,16 +184,19 @@ class TestWhatIsRefused(unittest.TestCase):
 
 
 class TestTheControlsAreOff(unittest.TestCase):
-    """The three randomisations are a real experiment, not a safety dial.
-    Switching them on means 12% of (user, lane) pairs permanently receive
-    nothing from that lane and 20% of winning notes are suppressed — a founder
-    call about running an RCT on the LLM lanes, which wiring a budget must not
-    make on its own."""
+    """The three randomisations are a real experiment. Live since 2026-08-10
+    (founder, Task II) — 12% of (user, lane) pairs permanently receive nothing
+    from that lane and 20% of winning notes are suppressed. One env var still
+    switches the whole thing off in one place."""
 
-    def test_default_off(self):
+    def test_default_on_since_task_II(self):
         with patch.dict("os.environ", {}, clear=False):
             import os
             os.environ.pop("MANAGER_CONTROLS_ENABLED", None)
+            self.assertTrue(ic._controls_enabled())
+
+    def test_one_env_var_switches_the_experiment_off(self):
+        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "0"}):
             self.assertFalse(ic._controls_enabled())
 
     def test_the_user_id_is_withheld_while_they_are_off(self):
@@ -227,6 +230,94 @@ class TestTheControlsAreOff(unittest.TestCase):
             ic.select([_change(0)], user_id="u1", session_id="sess1")
         self.assertEqual(seen["user_id"], "u1")
         self.assertTrue(seen["controls"])
+
+
+class TestTheExplorationQuota(unittest.TestCase):
+    """The roll must be STABLE, not random — this surface is polled."""
+
+    def test_the_same_user_and_session_always_roll_the_same(self):
+        # A fresh random draw per request would re-decide the exploration
+        # branch every few seconds, swapping the notes on screen while the
+        # student watched, and the experiment would measure how many times the
+        # pipeline ran rather than whether rank 1 is the best thing to say.
+        r1 = me.exploration_roll("u1", "sess-1")
+        r2 = me.exploration_roll("u1", "sess-1")
+        self.assertEqual(r1(), r2())
+        self.assertEqual(r1(), r1())
+
+    def test_different_sessions_roll_differently(self):
+        seen = {me.exploration_roll("u1", f"sess-{i}")()
+                for i in range(50)}
+        self.assertGreater(len(seen), 1)
+
+    def test_no_stable_key_means_no_exploration(self):
+        # arbitrate skips the branch entirely on None: silence over a
+        # coin-flip nobody could reproduce (H.0).
+        self.assertIsNone(me.exploration_roll("", "sess-1"))
+        self.assertIsNone(me.exploration_roll("u1", ""))
+
+    def test_the_roll_is_in_range(self):
+        for i in range(200):
+            self.assertTrue(0.0 <= me.exploration_roll("u", f"s{i}")() < 1.0)
+
+    def test_select_arms_the_quota_when_controls_are_on(self):
+        seen = {}
+
+        def _spy(cands, user, **kw):
+            seen["roll"] = kw.get("roll")
+            return {"selected": []}
+
+        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "1"}), \
+                patch.object(me, "arbitrate", side_effect=_spy):
+            ic.select([_change(0)], user_id="u1", session_id="sess-1")
+        self.assertIsNotNone(seen["roll"])
+        self.assertEqual(seen["roll"](), seen["roll"]())
+
+    def test_controls_off_disarms_the_quota_too(self):
+        seen = {}
+
+        def _spy(cands, user, **kw):
+            seen["roll"] = kw.get("roll")
+            return {"selected": []}
+
+        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "0"}), \
+                patch.object(me, "arbitrate", side_effect=_spy):
+            ic.select([_change(0)], user_id="u1", session_id="sess-1")
+        self.assertIsNone(seen["roll"])
+
+
+class TestTheArmsAreKeyedOnLanes(unittest.TestCase):
+    """Founder decision (Task II): the experiment's unit is the LANE, not a
+    registry dimension — deliberately, since no registry dimension can fire
+    (every row still has fire_at = None)."""
+
+    def test_every_arm_row_carries_a_lane_key(self):
+        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "1"}):
+            out = ic.select([_change(0, source="polish"),
+                             _change(1, source="prior_take")],
+                            user_id="u1", session_id="sess-1")
+        rows = me.arm_rows(out["result"], session_id="sess-1", user_id="u1")
+        self.assertTrue(rows)
+        for r in rows:
+            self.assertTrue(r["dimension_id"].startswith(ic.LANE_PREFIX),
+                            f"{r['dimension_id']} is not a lane key")
+
+    def test_a_lane_key_can_never_collide_with_a_registry_dimension(self):
+        # The prefix is what stops an analyst averaging `polish` next to a
+        # real `wpm` in the same column.
+        from services import dimension_registry as dr
+        for d in dr.all_dimensions():
+            self.assertFalse(d.dimension_id.startswith(ic.LANE_PREFIX))
+
+    def test_select_reports_whether_an_experiment_ran(self):
+        # The caller gates arm PERSISTENCE on this: rows written with the arms
+        # inert would stamp the policy as if an assignment had happened.
+        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "1"}):
+            self.assertTrue(ic.select([_change(0)], user_id="u1",
+                                      session_id="s1")["controls"])
+        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "0"}):
+            self.assertFalse(ic.select([_change(0)], user_id="u1",
+                                       session_id="s1")["controls"])
 
 
 class TestAC9(unittest.TestCase):

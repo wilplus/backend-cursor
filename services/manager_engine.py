@@ -153,6 +153,7 @@ INTERVENTION_RANDOMISATION = 0.20  # decisions log: 20%
 # with a name, not an edit.
 CONTROL_SALT = "willab-gamma-v1"
 WITHHOLD_SALT = "willab-withhold-v1"
+EXPLORE_SALT = "willab-explore-v1"
 
 
 def _stable_fraction(*parts: str, salt: str) -> float:
@@ -219,6 +220,35 @@ def is_withheld(user_id: str, dimension: str, session_id: str, *,
         return False
     return _stable_fraction(user_id, dimension, session_id,
                             salt=WITHHOLD_SALT) < rate
+
+
+def exploration_roll(user_id: str, session_id: str
+                     ) -> Optional[Callable[[], float]]:
+    """The roll `arbitrate` uses for the exploration quota — DETERMINISTIC.
+
+    NOT `random.random`, and this is the whole point of the function existing.
+    The surface that consumes this arbitration is POLLED: the ideal-text GET
+    re-runs every few seconds while a take is analysing. A fresh random draw
+    per request would re-decide the exploration branch on every poll, so the
+    notes on screen would swap between rank 1 and rank 2 while the student
+    watched — and the experiment would be measuring how many times the
+    pipeline happened to run, not whether rank 1 is the best thing to say.
+
+    Same reasoning `is_withheld` already states for its own arm, and the same
+    SHA-based construction: `hash()` is salted per process, so it would
+    reassign on every deploy.
+
+    ONE DRAW PER (user, session). The quota is "which RANK surfaces this
+    session" (§ THE SCIENCE CONTROLS), so the session is the unit and the
+    draw must be stable across every read of it.
+
+    None when there is no stable key — arbitrate then skips the branch
+    entirely. Silence over a coin-flip that cannot be reproduced (H.0).
+    """
+    if not user_id or not session_id:
+        return None
+    value = _stable_fraction(user_id, session_id, salt=EXPLORE_SALT)
+    return lambda: value
 
 
 @dataclass(frozen=True)

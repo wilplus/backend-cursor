@@ -14,43 +14,52 @@ code defaults are conservative and mostly left alone.
 
 ---
 
-## ⚠ Waiting on a decision
+## Live experiments
 
-### `MANAGER_CONTROLS_ENABLED` — default OFF
+### `MANAGER_CONTROLS_ENABLED` — default **ON** (2026-08-10)
 
-**Founder 2026-08-07: stays off until the locking/rehearsal loop is built.**
-
-Arms the manager engine's three randomisations (`services/manager_engine.py`,
-Appendix H). This is **not a safety dial — it starts a live experiment**, and
-the unit is the *lane*:
+The manager engine's three randomisations are **running and being recorded.**
+The unit is the **lane** (`lane:polish`, `lane:wording`, …), not a registry
+dimension — deliberately, since no registry dimension can fire (every row still
+has `fire_at = None`).
 
 | arm | rate | effect on a real user |
 |---|---|---|
 | `gamma_control` | 12% | that (user, lane) pair receives **nothing from that lane, permanently** |
-| `intervention_randomisation` | 20% | a note that WON the budget is deliberately **not shown** |
+| `intervention_randomisation` | 20% | a note that WON the budget is **not shown** |
 | `epsilon_explore` | 10% | rank 2 surfaces instead of rank 1 |
 
-**Two things must ship in the same change as the flip, not after it:**
+**Health check** — the query that tells you it is really running:
 
-1. **Persist `arm_rows()`.** `manager_engine.arm_rows()` and
-   `db.record_intervention_arms()` both exist and nothing calls them. The
-   module is explicit that running the arms without storing them is *strictly
-   worse than not running them*: users pay the cost in withheld feedback, and
-   with no arm stored next to the outcome no causal claim is recoverable —
-   while it looks from the outside exactly like a working experiment.
-2. **Pass a `roll`.** `intervention_candidates.select()` passes `roll=None`,
-   so `arbitrate()` skips the exploration branch entirely. The quota is not
-   running today. That is deliberate (the adapter is pure), but it means
-   "10% exploration" is currently 0% and the flag alone does not change it.
+```sql
+SELECT arm, COUNT(*) FROM intervention_arms GROUP BY arm;
+```
 
-**Before flipping, also settle:** the arms would be keyed on `lane:polish`,
-`lane:wording` etc., **not** on registry dimensions. That is an RCT on LLM
-lanes, which is a different question from "does feedback on `wpm` work". If
-the intent is the latter, wait for a dimension that `can_fire()`.
+Roughly 12% `CONTROL` and 20% `WITHHELD` among what would have surfaced. **An
+empty CONTROL arm means the controls are running and the record is not** — the
+exact silent failure the table exists to prevent.
 
-**Salts are versioned** (`CONTROL_SALT`, `WITHHOLD_SALT`). Changing one
-reshuffles every assignment and splices two incompatible experiments together,
-so a salt change is a new experiment with a new name, never an edit.
+**Three things had to land in the same change as the flip, and did:**
+
+1. **`arm_rows()` is persisted** (`_record_arms`), gated on the controls
+   actually having run — rows written with the arms inert would stamp the
+   policy as if an assignment had happened when none did.
+2. **The exploration roll is deterministic**, per (user, session).
+   `random.random` would have been wrong: this surface is polled, so a fresh
+   draw per request would re-decide the branch every few seconds and swap the
+   notes on screen while the student watched.
+3. **The session key is the arc's latest spoken take.** The doc-level
+   `take_session_id` is `None` under the master flag, which would have
+   short-circuited `is_withheld` to False (withhold arm never firing) *and*
+   made the writer drop every row for an empty session id.
+
+**To switch it off:** set `MANAGER_CONTROLS_ENABLED=0` in Railway. No deploy,
+no code change; the arms go inert in one place.
+
+**Salts are versioned** (`CONTROL_SALT`, `WITHHOLD_SALT`, `EXPLORE_SALT`).
+Changing one reshuffles every assignment and splices two incompatible
+experiments together, so a salt change is a new experiment with a new name,
+never an edit.
 
 ---
 
