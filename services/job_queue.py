@@ -104,22 +104,46 @@ def get_redis(*, for_worker: bool = False):
 
 
 SWEEP_LEASE_KEY = "willab:pipeline:sweep-chain"
+# The pre-ownership lease wrote this constant. It carried no identity, which
+# is precisely why nine chains renewing one key were indistinguishable from
+# one healthy chain (handoff 2026-08-10 §6.5) — the lease answered "does SOME
+# chain exist?", never "am I the chain?".
+_LEGACY_LEASE_VALUE = "1"
 
 
-def acquire_sweep_lease(*, ttl_seconds: int) -> bool:
-    """True if THIS process may start a sweep chain.
+def _lease_value(conn) -> str:
+    """The current lease holder's chain id, or "" when the key is absent."""
+    raw = conn.get(SWEEP_LEASE_KEY)
+    if raw is None:
+        return ""
+    return raw.decode() if isinstance(raw, bytes) else str(raw)
+
+
+def acquire_sweep_lease(chain_id: str, *, ttl_seconds: int) -> bool:
+    """True if THIS boot may start a sweep chain, as owner `chain_id`.
 
     WHY A LEASE. `run_sweep_loop` re-enqueues itself in a `finally`, so a
     chain never ends; and worker.py started a NEW one on every boot. A worker
     that restarts ten times therefore leaves ten immortal chains sweeping in
     parallel — which is what "eleven sweeps in four seconds" was. Not a hot
-    loop: eleven accumulated chains all coming due at once. It gets
-    monotonically worse with every redeploy and never recovers on its own.
+    loop: eleven accumulated chains all coming due at once.
 
-    A lease makes the chain SINGLETON and self-healing: exactly one owner at a
-    time, and if that chain dies (Redis wipe, killed work horse) the key
-    expires and the next boot takes over. TTL is a multiple of the interval so
-    one slow or failed sweep does not hand the chain to a second starter.
+    WHY THE VALUE IS AN IDENTITY (2026-08-10, §6.5). The first lease stored a
+    constant, so it could only gate STARTING chains — the accumulated ones all
+    renewed the shared key and were immortal by construction. The value is now
+    the owning chain's id, and every iteration re-checks ownership before
+    re-enqueueing (renew_sweep_lease below): a chain that is not the owner
+    simply does not re-arm, so duplicates drain themselves within one
+    interval instead of accumulating forever.
+
+    A LEGACY-FORMAT KEY IS CLAIMED, NOT RESPECTED. If this boot finds the old
+    constant in the key, honoring it would recreate the exact gap it was
+    written to prevent: the legacy chains die on their next firing (no id →
+    no re-enqueue), the key would sit unowned until it expired, and no boot
+    happens between deploys to re-acquire — zero sweepers until someone
+    ships. So the boot overwrites the legacy value with its own id and takes
+    the chain over. Two replicas racing this both "win" for one interval;
+    the per-iteration ownership check converges them to one.
 
     Fails CLOSED — no broker means no lease means no chain, and the web-boot
     sweep plus POST /v2/internal/jobs/sweep remain the backstops.
@@ -128,24 +152,56 @@ def acquire_sweep_lease(*, ttl_seconds: int) -> bool:
     if conn is None:
         return False
     try:
-        return bool(conn.set(SWEEP_LEASE_KEY, "1", nx=True, ex=ttl_seconds))
+        if bool(conn.set(SWEEP_LEASE_KEY, chain_id, nx=True,
+                         ex=ttl_seconds)):
+            return True
+        if _lease_value(conn) == _LEGACY_LEASE_VALUE:
+            return bool(conn.set(SWEEP_LEASE_KEY, chain_id, xx=True,
+                                 ex=ttl_seconds))
+        return False
     except Exception as e:
         logger.warning("job_queue: sweep lease acquire failed: %s", e)
         return False
 
 
-def renew_sweep_lease(*, ttl_seconds: int) -> None:
-    """Hold the chain open for another interval. Best-effort: a missed renewal
-    only means a second chain may start after the TTL, which the sweeps
-    themselves tolerate (they are CAS-guarded and cheap when nothing is
-    stale)."""
+def renew_sweep_lease(chain_id: str, *, ttl_seconds: int) -> bool:
+    """Hold the chain open for another interval — IF this chain still owns it.
+
+    Returns ownership, and the caller re-enqueues ONLY on True: this is the
+    per-iteration check that makes duplicate chains mortal. Three answers:
+
+      * key absent → take over (SET NX). The previous owner died mid-interval;
+        the first chain to fire afterwards adopts the lease rather than dying
+        with it, so the queue can never end up with zero sweepers.
+      * key holds OUR id → refresh the TTL, keep going.
+      * key holds ANOTHER id → False. This iteration was the chain's last.
+
+    The GET-then-SET pair is not atomic and deliberately so: the race's worst
+    case is two chains each believing ownership for ONE interval, after which
+    exactly one id matches and the other exits. Sweeps are CAS-guarded and
+    cheap, so a transient duplicate costs a few reads — a Lua script would
+    buy nothing worth its opacity here.
+
+    On a broker ERROR (not absence): True — fail OPEN. A transiently
+    duplicated sweep is CAS-safe; a stopped chain is not, and the boot-time
+    acquire only runs at deploys.
+    """
     conn = get_redis()
     if conn is None:
-        return
+        # No broker → the re-enqueue below it would fail anyway; report
+        # ownership so the caller's enqueue attempt is what decides.
+        return True
     try:
-        conn.set(SWEEP_LEASE_KEY, "1", ex=ttl_seconds)
+        if bool(conn.set(SWEEP_LEASE_KEY, chain_id, nx=True,
+                         ex=ttl_seconds)):
+            return True
+        if _lease_value(conn) == chain_id:
+            conn.set(SWEEP_LEASE_KEY, chain_id, ex=ttl_seconds)
+            return True
+        return False
     except Exception as e:
         logger.warning("job_queue: sweep lease renew failed: %s", e)
+        return True
 
 
 def reset_connections() -> None:

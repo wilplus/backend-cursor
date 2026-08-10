@@ -500,16 +500,32 @@ def sweep_interval_seconds() -> int:
 SWEEP_LEASE_INTERVALS = 3
 
 
-def run_sweep_loop() -> None:
+def run_sweep_loop(chain_id: Optional[str] = None) -> None:
     """Self-rescheduling sweep, run THROUGH the queue (RQ entrypoint).
 
     Runs in a forked work horse — deliberately NOT a thread inside the RQ
     worker parent, because a db-touching thread there would share inherited
-    httpx sockets with forked job children. Each worker boot (worker.py)
-    starts a chain; multiple replicas → multiple chains, which is harmless
-    (sweeps are CAS-guarded and cheap when nothing is stale). A Redis wipe
-    kills the chain; the next worker boot recreates it, and the web-boot
-    sweep + POST /v2/internal/jobs/sweep remain as backstops."""
+    httpx sockets with forked job children.
+
+    OWNERSHIP, CHECKED EVERY ITERATION (2026-08-10, handoff §6.5). The first
+    lease only gated STARTING chains, and its `finally` renewed a shared
+    presence flag and re-enqueued unconditionally — so the chains that had
+    already accumulated (one per pre-lease boot, plus one per >TTL deploy
+    gap) were immortal: nine of them, phase-locked, sweeping every five
+    minutes. The chain now carries its identity, and re-arming is CONDITIONAL
+    on still owning the lease:
+
+      * owner → renew + re-enqueue (the singleton stays immortal, including
+        through a sweep body that raised — that is what the `finally` is for);
+      * not the owner → this iteration is the chain's last. No re-enqueue,
+        no cleanup needed; the duplicate drains itself.
+      * chain_id None → a LEGACY payload enqueued before ownership existed
+        (they call this with no args). Same answer: die here. The boot-time
+        acquire claims the legacy key, so a new-style owner exists the moment
+        this code ships.
+
+    A Redis wipe kills the chain; the next worker boot recreates it, and the
+    web-boot sweep + POST /v2/internal/jobs/sweep remain as backstops."""
     try:
         counts = sweep_stale_jobs()
         if counts.get("requeued") or counts.get("failed"):
@@ -523,12 +539,17 @@ def run_sweep_loop() -> None:
         except Exception as he:
             logger.warning("pipeline_jobs: health probe failed: %s", he)
     finally:
-        # Hold the singleton lease open before re-arming. worker.py only
-        # starts a chain when it can ACQUIRE this, so without the renewal the
-        # lease expires and the next boot starts a second chain alongside
-        # this one — which is how eleven of them ended up running at once.
-        job_queue.renew_sweep_lease(
-            ttl_seconds=sweep_interval_seconds() * SWEEP_LEASE_INTERVALS)
-        job_queue.enqueue(
-            SWEEP_LOOP_PATH, delay_seconds=sweep_interval_seconds(),
-        )
+        if chain_id and job_queue.renew_sweep_lease(
+                chain_id,
+                ttl_seconds=sweep_interval_seconds() * SWEEP_LEASE_INTERVALS):
+            job_queue.enqueue(
+                SWEEP_LOOP_PATH, chain_id,
+                delay_seconds=sweep_interval_seconds(),
+            )
+        else:
+            # Loud on purpose: each accumulated chain logs exactly one of
+            # these and is gone. Nine of them after the deploy IS the fix
+            # working, not a new incident.
+            logger.info(
+                "pipeline_jobs: sweep chain %s drained (not the lease owner)",
+                chain_id or "<legacy>")

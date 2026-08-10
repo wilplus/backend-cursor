@@ -23,6 +23,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).parent
 
@@ -116,6 +117,103 @@ class TestSweepChainIsSingleton(unittest.TestCase):
                     source.index("def renew_sweep_lease")]
         self.assertIn("return False", fn)
         self.assertIn("SWEEP_LEASE_KEY", source)
+
+    def test_rearming_is_CONDITIONAL_on_ownership(self):
+        """The 2026-08-10 incident (handoff §6.5): the old `finally` renewed a
+        shared presence flag and re-enqueued unconditionally, so the nine
+        accumulated chains were immortal by construction. Re-enqueue must sit
+        BEHIND the ownership check, and a legacy no-id payload must never
+        re-arm."""
+        source = (ROOT / "services" / "pipeline_jobs.py").read_text()
+        body = source[source.index("def run_sweep_loop"):]
+        self.assertIn("if chain_id and job_queue.renew_sweep_lease", body)
+        self.assertIn("drained", body,
+                      "a dying duplicate should say so once — nine drain "
+                      "lines after the deploy IS the fix working")
+
+    def test_the_chain_carries_its_identity_through_the_requeue(self):
+        """The id must ride the enqueue or the next iteration arrives as a
+        legacy no-id payload and the singleton kills itself."""
+        source = (ROOT / "services" / "pipeline_jobs.py").read_text()
+        body = source[source.index("def run_sweep_loop"):]
+        self.assertIn("SWEEP_LOOP_PATH, chain_id", body)
+        worker = (ROOT / "worker.py").read_text()
+        self.assertIn("SWEEP_LOOP_PATH, chain_id", worker)
+
+
+class _FakeRedis:
+    """The four Redis behaviors the lease uses: SET NX / SET XX / plain SET
+    with an expiry, and GET returning bytes (as redis-py does)."""
+
+    def __init__(self):
+        self.store = {}
+
+    def set(self, key, value, nx=False, xx=False, ex=None):
+        if nx and key in self.store:
+            return None
+        if xx and key not in self.store:
+            return None
+        self.store[key] = value
+        return True
+
+    def get(self, key):
+        v = self.store.get(key)
+        return v.encode() if isinstance(v, str) else v
+
+
+class TestSweepLeaseOwnership(unittest.TestCase):
+    """The lease VALUE is the chain's identity (handoff §6.5). These pin the
+    three-way renew answer and the legacy-key takeover that keeps the queue
+    from ending up with zero sweepers after this ships."""
+
+    def setUp(self):
+        try:
+            from services import job_queue
+        except Exception as e:  # pragma: no cover — env without redis/rq
+            self.skipTest(f"needs app deps: {e}")
+        self.jq = job_queue
+        self.fake = _FakeRedis()
+        patcher = mock.patch.object(job_queue, "get_redis",
+                                    return_value=self.fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_acquire_claims_an_empty_key(self):
+        self.assertTrue(self.jq.acquire_sweep_lease("abc", ttl_seconds=60))
+        self.assertEqual(self.fake.store[self.jq.SWEEP_LEASE_KEY], "abc")
+
+    def test_acquire_respects_a_living_owner(self):
+        self.fake.store[self.jq.SWEEP_LEASE_KEY] = "other"
+        self.assertFalse(self.jq.acquire_sweep_lease("abc", ttl_seconds=60))
+        self.assertEqual(self.fake.store[self.jq.SWEEP_LEASE_KEY], "other")
+
+    def test_acquire_TAKES_OVER_a_legacy_key(self):
+        """Honoring the old constant would strand the queue: the legacy
+        chains die on their next firing (no id → no re-arm), and no boot
+        happens between deploys to re-acquire the expired key."""
+        self.fake.store[self.jq.SWEEP_LEASE_KEY] = "1"
+        self.assertTrue(self.jq.acquire_sweep_lease("abc", ttl_seconds=60))
+        self.assertEqual(self.fake.store[self.jq.SWEEP_LEASE_KEY], "abc")
+
+    def test_renew_as_owner_keeps_the_chain(self):
+        self.fake.store[self.jq.SWEEP_LEASE_KEY] = "abc"
+        self.assertTrue(self.jq.renew_sweep_lease("abc", ttl_seconds=60))
+        self.assertEqual(self.fake.store[self.jq.SWEEP_LEASE_KEY], "abc")
+
+    def test_renew_as_a_DUPLICATE_ends_the_chain(self):
+        """The self-culling move: exactly one id matches the key; every other
+        chain gets False here and does not re-enqueue."""
+        self.fake.store[self.jq.SWEEP_LEASE_KEY] = "the-owner"
+        self.assertFalse(self.jq.renew_sweep_lease("abc", ttl_seconds=60))
+        self.assertEqual(self.fake.store[self.jq.SWEEP_LEASE_KEY],
+                         "the-owner")
+
+    def test_renew_adopts_an_expired_lease(self):
+        """The owner died mid-interval → the first chain to fire afterwards
+        takes the lease over rather than dying with it. Never zero
+        sweepers."""
+        self.assertTrue(self.jq.renew_sweep_lease("abc", ttl_seconds=60))
+        self.assertEqual(self.fake.store[self.jq.SWEEP_LEASE_KEY], "abc")
 
 
 if __name__ == "__main__":
