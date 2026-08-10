@@ -297,3 +297,5 @@
 0259	add_threshold_version.sql
 0260	rename_charisma_snippets_to_snippets.sql
 0261	retire_stress_snippets.sql
+0262	add_intervention_decisions.sql
+0263	add_upload_idempotency_key.sql

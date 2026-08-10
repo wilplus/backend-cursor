@@ -507,13 +507,21 @@ def filter_by_window(changes: Any) -> list:
 
 
 def select(changes: Any, *, user_id: str = "", session_id: str = "",
-           parts: Any = None) -> dict:
+           parts: Any = None, decided_count: int = 0) -> dict:
     """Run every change through the manager and return the survivors.
 
     Returns ``{"changes": [...], "result": <arbitrate() dict>|None}``. The
     changes come back in DOCUMENT ORDER — arbitrate() returns them ranked, and
     the FE renders the document top to bottom, so serving the engine's order
     would scatter the marks.
+
+    `decided_count` is the take's SPENT budget (founder 2026-08-10): the
+    number of served interventions the student has already decided on this
+    take. It rides into arbitrate() as `budget_spent`, so the ≤3 is
+    cumulative per take — the set on screen is chosen once, waits whole, and
+    only shrinks as decisions land. Selection is deterministic (document
+    order, uniform priorities, a per-(user, session) stable roll), so the
+    undecided members persist across refetches rather than being redrawn.
 
     The input is sorted by (start, end) BEFORE arbitration on purpose.
     `independent_subset` is a stable greedy sort by priority, and with today's
@@ -581,7 +589,8 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
             session_id=_sid if controls else "",
             roll=(me.exploration_roll(str(user_id or ""), _sid)
                   if controls else None),
-            controls=controls)
+            controls=controls,
+            budget_spent=max(0, int(decided_count or 0)))
 
         by_ref = {str(i): row for i, row in enumerate(rows)}
         kept: list = []

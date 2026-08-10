@@ -31,14 +31,59 @@ def _order_key(arc_id: Any, snippet_id: Any) -> str:
     return hashlib.sha1(f"{arc_id}:{snippet_id}".encode("utf-8")).hexdigest()
 
 
+def _playable_ref(ref):
+    """services/audio_ref_resolver — the one bucket-authoritative copy."""
+    from services.audio_ref_resolver import resolve_playable_ref
+    return resolve_playable_ref(ref)
+
+
+def _twice_labelled(db, snippet_ids: Any) -> set:
+    """Founder 2026-08-10: "min twice labelled voice snippet goes to the
+    game." A snippet qualifies once at least TWO DISTINCT raters have
+    committed an ANSWER on it — yes/no/neutral (or a legacy boolean).
+    Never an abstention (unrateable carries no answer; two abstentions
+    are not two labels) and never a bootstrap row (one expert rating
+    model-proposed imports is not panel evidence — the written rationale
+    PANEL_LANES already carries). Best-effort: a read miss admits
+    NOTHING rather than everything."""
+    try:
+        by_snip = db.get_confidence_labels_by_snippet_ids(
+            [str(s) for s in (snippet_ids or [])]) or {}
+    except Exception as e:
+        logger.warning("game gate: label read failed: %s", e)
+        return set()
+    out: set = set()
+    for snip_id, rows in by_snip.items():
+        raters = set()
+        for r in (rows or []):
+            if not isinstance(r, dict) or r.get("unrateable") is True:
+                continue
+            if (r.get("lane") or "") == "bootstrap":
+                continue
+            answered = r.get("value") in ("yes", "no", "neutral") \
+                or isinstance(r.get("confident"), bool)
+            if answered and r.get("rater_id"):
+                raters.add(str(r.get("rater_id")))
+        if len(raters) >= 2:
+            out.add(str(snip_id))
+    return out
+
+
 def _arc_moments(db, arc_id: Any) -> tuple:
-    """(keys, decoys, snippets_by_id) for the arc — coach truth only.
-    keys = challenge-labeled; decoys = everything else (unlabeled + threat:
-    both are honestly 'not a key moment')."""
+    """(keys, decoys, snippets_by_id, session_by_snippet) for the arc —
+    coach truth only. keys = challenge-labeled; decoys = everything else
+    (unlabeled + threat: both are honestly 'not a key moment').
+
+    GATED (founder 2026-08-10): only snippets already labelled by ≥2
+    distinct raters reach the game — serving AND answer-validation both,
+    from this one place, so a snippet that stops being eligible also
+    stops being answerable (a stale open tab must not post a junk
+    label)."""
     from services.challenge_threat import resolve_direction
     keys: list = []
     decoys: list = []
     by_id: dict = {}
+    sess_by_id: dict = {}
     for sess in (db.get_arc_sessions(arc_id) or []):
         sid = sess.get("id")
         if not sid:
@@ -52,9 +97,15 @@ def _arc_moments(db, arc_id: Any) -> tuple:
             if not (s.get("transcript") or "").strip():
                 continue
             by_id[snip_id] = s
+            sess_by_id[snip_id] = sess
             coach_dir = resolve_direction(labels.get(snip_id), None)
             (keys if coach_dir == "challenge" else decoys).append(snip_id)
-    return keys, decoys, by_id
+    eligible = _twice_labelled(db, list(by_id.keys()))
+    keys = [s for s in keys if s in eligible]
+    decoys = [d for d in decoys if d in eligible]
+    by_id = {k: v for k, v in by_id.items() if k in eligible}
+    sess_by_id = {k: v for k, v in sess_by_id.items() if k in eligible}
+    return keys, decoys, by_id, sess_by_id
 
 
 def build_game_rounds(db, arc_id: Any, user_id: Any,
@@ -62,7 +113,7 @@ def build_game_rounds(db, arc_id: Any, user_id: Any,
     """The rounds payload — NO truth included. Keys + an equal number of
     decoys (as available), deterministic order, ≤ _MAX_ROUNDS, the deep-linked
     snippet pinned first when it belongs to the arc."""
-    keys, decoys, by_id = _arc_moments(db, arc_id)
+    keys, decoys, by_id, _sess_by_id = _arc_moments(db, arc_id)
     if not keys:
         return []  # nothing coach-confirmed yet → no game
     keys = sorted(keys, key=lambda s: _order_key(arc_id, s))
@@ -89,8 +140,12 @@ def build_game_rounds(db, arc_id: Any, user_id: Any,
             # because pieces-canonical rows carry the parent take there (the
             # same fallback the breakthroughs list and cross-take moments
             # already use); start/duration clamp the slice.
-            "audio_ref": (s.get("audio_segment_path") or s.get("audio_ref")
-                          or s.get("storage_path")),
+            # Resolved (founder 2026-08-10): ear-first rounds make this
+            # LOAD-BEARING, and an s3:// fallback ref is an unplayable
+            # round. Healthy public URLs pass through untouched.
+            "audio_ref": _playable_ref(
+                s.get("audio_segment_path") or s.get("audio_ref")
+                or s.get("storage_path")),
             "start_offset_ms": s.get("start_offset_ms"),
             "duration_ms": s.get("duration_ms"),
         })
@@ -152,29 +207,78 @@ def build_why(snippet: Any, patterns: list, truth_is_key: bool) -> dict:
     }
 
 
+def _normalise_answer(answer_is_key: Any) -> Optional[str]:
+    """bool (legacy wire) or 'yes'/'no'/'neutral' → the ternary value.
+    'neutral' is the founder's missing third answer (2026-08-10:
+    "yes / no / idk — idk is missing")."""
+    if isinstance(answer_is_key, bool):
+        return "yes" if answer_is_key else "no"
+    if answer_is_key in ("yes", "no", "neutral"):
+        return str(answer_is_key)
+    return None
+
+
 def answer_round(db, arc_id: Any, user_id: Any, snippet_id: Any,
                  answer_is_key: Any) -> Optional[dict]:
     """Verify the snippet belongs to this arc, resolve the coach truth,
-    persist the answer as a second-order peer label, and build the verdict +
-    why. None when the snippet isn't part of the arc (caller 404s)."""
-    keys, decoys, by_id = _arc_moments(db, arc_id)
+    persist the answer, and build the verdict + why. None when the snippet
+    isn't part of the arc (caller 404s) or the answer is malformed.
+
+    THE GAME IS A LABELLING LANE (founder 2026-08-10: same instrument as
+    the coach lanes). Every answer writes the ternary confidence corpus in
+    its own lane — game_owner / game_peer, declared in SPEC §6.2 and
+    unwritten until now — blind by construction: truth is never in the
+    rounds payload. The key-moment peer guess stays a SEPARATE second-order
+    signal, and an "I don't know" writes no guess at all: a fabricated
+    neutral would be indistinguishable from a real one afterwards."""
+    keys, decoys, by_id, sess_by_id = _arc_moments(db, arc_id)
     snip_id = str(snippet_id)
     if snip_id not in by_id:
         return None
     truth_is_key = snip_id in keys
-    answer = bool(answer_is_key)
+    value = _normalise_answer(answer_is_key)
+    if value is None:
+        return None
+
+    # THE LABEL — the same ternary instrument as every other lane.
+    try:
+        from services.state_ratings import resolve_lane, validate_rating
+        # state_id names the CONSTRUCT (the question registry's key),
+        # never the snippet — the snippet rides upsert_state_rating's own
+        # parameter.
+        row, _err = validate_rating({"state_id": "confidence",
+                                     "value": value})
+        if row:
+            sess = sess_by_id.get(snip_id) or {}
+            lane = resolve_lane(
+                sess.get("source"), is_coach=False,
+                is_owner=bool(user_id)
+                and str(sess.get("user_id")) == str(user_id))
+            db.upsert_state_rating(
+                snippet_id=snip_id, row=row,
+                rater_id=str(user_id) if user_id else None,
+                session_id=(str(sess.get("id"))
+                            if sess.get("id") else None),
+                lane=lane)
+    except Exception as e:
+        logger.warning("game: confidence write failed snip=%s: %s",
+                       snip_id, e)
 
     # Second-order signal (L2/L3): the game answer, below coach truth.
-    try:
-        db.insert_snippet_peer_label(
-            snippet_id=snip_id,
-            rater_id=str(user_id) if user_id else None,
-            label="key_moment" if answer else "neutral",
-            source="game",
-            shown_origin="real",
-        )
-    except Exception as e:
-        logger.warning("game: peer-label write failed snip=%s: %s", snip_id, e)
+    # Only a real guess writes — neutral is not a guess.
+    if value != "neutral":
+        answer = value == "yes"
+        try:
+            db.insert_snippet_peer_label(
+                snippet_id=snip_id,
+                rater_id=str(user_id) if user_id else None,
+                label="key_moment" if answer else "neutral",
+                source="game",
+                shown_origin="real",
+            )
+        except Exception as e:
+            logger.warning("game: peer-label write failed snip=%s: %s",
+                           snip_id, e)
 
     # Coach video: attached per snippet on the drafts lane.
     snippet = dict(by_id[snip_id])
@@ -195,9 +299,12 @@ def answer_round(db, arc_id: Any, user_id: Any, snippet_id: Any,
     why_obj = build_why(snippet, patterns, truth_is_key)
     # FE-aligned verdict shape (services/api/arcGame.ts submitGameAnswer):
     # `why` is a FLAT string array (keywords already **-wrapped inline) and
-    # `video_ref` is TOP-LEVEL, not nested under `why`.
+    # `video_ref` is TOP-LEVEL, not nested under `why`. `correct` is None
+    # on an "I don't know" — there is no verdict on an abstained guess,
+    # and the FE shows the reveal without a win/lose frame.
     return {
-        "correct": answer == truth_is_key,
+        "correct": (None if value == "neutral"
+                    else (value == "yes") == truth_is_key),
         "truth_is_key": truth_is_key,
         "why": why_obj.get("paragraphs") or [],
         "keywords": why_obj.get("keywords") or [],

@@ -233,6 +233,63 @@ def _peer_review_corpus() -> dict:
     return summary
 
 
+def _confidence_corpus() -> dict:
+    """THE core Confident-Voice training corpus (confidence_labels /
+    state_ratings) — surfaced here so "stored but never read" cannot
+    happen silently (founder 2026-08-10: the system learns ACTIVELY).
+    Nothing trains on it yet; this section is the dial that shows it
+    filling and the class balance a future fit would inherit."""
+    from services.db import db
+    from services.confidence_labels import corpus_summary
+    rows = db.get_confidence_label_corpus(limit=_LABEL_SCAN_LIMIT)
+    summary = corpus_summary(rows)
+    summary["scan_capped_at"] = _LABEL_SCAN_LIMIT
+    summary["trains_today"] = False
+    summary["note"] = (
+        "Ternary (yes/no/neutral) + unrateable, blind lanes only at the "
+        "write (saw_model_output recorded per row). The direction lane "
+        "(training_labels) is what the shadow classifier fits on; THIS "
+        "corpus awaits its own fit — visibility first, so the day it "
+        "trains the balance was watched, not discovered."
+    )
+    return summary
+
+
+def _intervention_decision_corpus() -> dict:
+    """SPEC §3.3/§6 ground truth — we proposed this, and the person it
+    was for said no — doubling as the per-take budget spend (founder
+    2026-08-10). PPV_FLOOR stays an assumption until this joins
+    intervention_arms on (take_session_id=session_id, lane=dimension_id);
+    the join keys ship on every row so that query is now writable."""
+    from services.db import db
+    res = (
+        db.client.table("intervention_decisions")
+        .select("decision, lane, intervention_type")
+        .order("created_at", desc=True)
+        .limit(_LABEL_SCAN_LIMIT)
+        .execute()
+    )
+    rows = res.data or []
+    by_decision: dict = {}
+    by_lane: dict = {}
+    by_type: dict = {}
+    for r in rows:
+        for key, bucket in (("decision", by_decision), ("lane", by_lane),
+                            ("intervention_type", by_type)):
+            v = r.get(key) or "(none)"
+            bucket[v] = bucket.get(v, 0) + 1
+    return {
+        "total": len(rows),
+        "by_decision": by_decision,
+        "by_lane": by_lane,
+        "by_intervention_type": by_type,
+        "scan_capped_at": _LABEL_SCAN_LIMIT,
+        "note": "Absence of a row is UNDECIDED (SPEC R4) — only explicit "
+                "taps write here; bulk/implicit paths are barred, so the "
+                "refusal counts are real refusals.",
+    }
+
+
 def _build_lane_shadow(errors: list) -> dict:
     from services.db import db
     from services import confidence_reviews, learning_serve
@@ -256,6 +313,13 @@ def _build_lane_shadow(errors: list) -> dict:
         ),
         "peer_review": _section(
             errors, "lane_shadow.peer_review", _peer_review_corpus,
+        ),
+        "confidence_corpus": _section(
+            errors, "lane_shadow.confidence_corpus", _confidence_corpus,
+        ),
+        "intervention_decisions": _section(
+            errors, "lane_shadow.intervention_decisions",
+            _intervention_decision_corpus,
         ),
         "auto_retrain": {
             "min_total": learning_serve._RETRAIN_MIN_TOTAL,

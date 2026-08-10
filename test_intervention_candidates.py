@@ -44,6 +44,33 @@ def _change(i, *, source="polish", kind="replace", start=None, end=None):
             "proposed_text": "y"}
 
 
+class TestTheTakeBudget(unittest.TestCase):
+    """Founder 2026-08-10: "each feedback needs to be there; full and end
+    to end and waiting; not that it appears once the other is accepted."
+    `decided_count` is the take's spent budget — the serve only shrinks."""
+
+    def test_decided_count_shrinks_the_serve(self):
+        pool = [_change(i) for i in range(10)]
+        self.assertEqual(len(ic.select(pool)["changes"]), 3)
+        self.assertEqual(len(ic.select(pool, decided_count=1)["changes"]), 2)
+        self.assertEqual(len(ic.select(pool, decided_count=2)["changes"]), 1)
+
+    def test_a_spent_take_serves_nothing(self):
+        pool = [_change(i) for i in range(10)]
+        self.assertEqual(ic.select(pool, decided_count=3)["changes"], [])
+
+    def test_no_new_candidate_appears_behind_an_accept(self):
+        """The founder's exact complaint, pinned: decide the first served
+        change (it leaves the pool AND spends a slot) — the next serve is
+        the ORIGINAL set minus the decided one, never a fresh face."""
+        pool = [_change(i) for i in range(10)]
+        first = [c["id"] for c in ic.select(pool)["changes"]]
+        remaining = [c for c in pool if c["id"] != first[0]]
+        second = [c["id"]
+                  for c in ic.select(remaining, decided_count=1)["changes"]]
+        self.assertEqual(second, first[1:])
+
+
 class TestTheBudgetHolds(unittest.TestCase):
 
     def test_ten_non_overlapping_changes_become_three(self):

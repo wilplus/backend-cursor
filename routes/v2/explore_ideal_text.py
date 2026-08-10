@@ -45,43 +45,11 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
-@v2_bp.route("/talks/<talk_id>/ideal-text", methods=["GET"])
-@require_auth
-def v2_talk_ideal_text(talk_id):
-    """The Ideal-Text report for a talk (Paid Audits A7). A talk IS an arc, so
-    talk_id == arc_id.
-
-    Ownership-gated + paywall (the report is the paid deliverable). L1: the
-    idealText is the verbatim-selected best take of each slide, never re-
-    summarised — but it is a COACH correction now (founder 2026-07-06): the
-    raw auto-assembled draft is NEVER served here. ``coachFinalized`` is a
-    SEPARATE, harder gate on content past the 402 — every slide's idealText is
-    "" until the coach has corrected EVERY slide, regardless of payment. The
-    FE shows "still being prepared by your coach" when paid but not finalized.
-    AC-9: no score/verdict.
-
-    Response 200 { talkId, talkTitle, ready, coachReviewed, coachFinalized,
-                   presentationRef,
-                   slides:[ {index, label, title, body, thumbnailUrl,
-                             idealText, takeRoute, breakthrough} ] }
-             402 PAYMENT_REQUIRED · 404 NOT_FOUND · 500 V2_ERROR
-    """
-    try:
-        from services.ideal_text_report import build_ideal_text_report
-        owned, _ = _arc_owned_by_caller(talk_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "talk not found"}), 404
-        # Past the gate → entitled (or admin/coach); echo audit_paid (Phase-1).
-        return jsonify({
-            "audit_paid": True, **build_ideal_text_report(talk_id),
-        }), 200
-    except Exception as e:
-        logger.error("talk ideal-text failed talk=%s: %s", talk_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to build ideal text",
-        }), 500
+# The /talks/<talk_id>/ideal-text route (Paid Audits A7) was DELETED here
+# (founder 2026-08-10: "older feedback system should be ripped off"). It had
+# no FE caller and no BFF proxy — the audits product it served is retired,
+# and the explore GET below is the one ideal-text read. Its builder
+# (services/ideal_text_report.py) stays for its own callers/tests.
 
 
 def _instant_ideal_enabled() -> bool:
@@ -331,52 +299,18 @@ def v2_explore_get_ideal_text(arc_id):
                 )
                 _s_text = _snap["text"]
                 _s_moments = extract_key_moments(_s_text)
-                _s_sugs = {
-                    str(m.get("snippet_id")): m
-                    for m in (_snap.get("moments") or [])
-                    if isinstance(m, dict) and m.get("snippet_id")
-                }
-                # The star is EXPLICIT on historical payloads too (FE
-                # relay 2026-07-20): the device guard is BE-owned
-                # contract logic (#218/#219 pin — the FE renders copy
-                # purely from device and must never infer star
-                # semantics). Same rule as live: an unknown kind or
-                # device yields NO star and NO suggestion.
-                from services.delivery_stars import (
-                    DELIVERY_DEVICES as _H_DELIVERY,
-                )
-                from services.moment_suggestions import (
-                    _STRUCT_DEVICES as _H_STRUCT,
-                )
-                _s_out = []
-                for m in _s_moments:
-                    _e = {
-                        "id": m.get("snippet_id"),
-                        "snippet_id": m.get("snippet_id"),
-                        "anchor": m.get("anchor") or "",
-                        "take_session_id": m.get("take_session_id"),
-                    }
-                    _sm = _s_sugs.get(str(m.get("snippet_id")))
-                    if _sm:
-                        _kind = _sm.get("kind")
-                        _dev = _sm.get("device")
-                        _star_ok = (
-                            _kind in ("emphasize", "replace")
-                            or (_kind == "structure"
-                                and _dev in _H_STRUCT)
-                            or (_kind == "delivery"
-                                and _dev in _H_DELIVERY)
-                        )
-                        if _star_ok:
-                            _e["star"] = "suggestion"
-                            _e["suggestion"] = {
-                                k: _sm.get(k)
-                                for k in ("kind", "device", "quote",
-                                          "replacement", "why",
-                                          "trigger")
-                                if k in _sm
-                            }
-                    _s_out.append(_e)
+                # THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder
+                # 2026-08-10: "no other exist, older feedback system
+                # should be ripped off"). The historical view is a frozen
+                # read-only step; it no longer hand-assembles
+                # star/suggestion payloads outside the gate. Anchors stay
+                # — they mark where the moments were — suggestions do not.
+                _s_out = [{
+                    "id": m.get("snippet_id"),
+                    "snippet_id": m.get("snippet_id"),
+                    "anchor": m.get("anchor") or "",
+                    "take_session_id": m.get("take_session_id"),
+                } for m in _s_moments]
                 return jsonify({
                     "arc_id": arc_id,
                     "version": _hv,
@@ -435,12 +369,6 @@ def v2_explore_get_ideal_text(arc_id):
         _stars_on = _moment_suggestions_enabled()
         _sugs = db.get_moment_suggestions_by_arc(arc_id) \
             if _stars_on else {}
-        # The ONLY two structural devices the FE has copy for — an
-        # unknown spelling must yield no star (FE contract pin).
-        from services.moment_suggestions import _STRUCT_DEVICES
-        from services.delivery_stars import (
-            DELIVERY_DEVICES as _DELIVERY_DEVICES,
-        )
         _applied = {}
         if _stars_on and _sugs:
             _pre = extract_key_moments(_text)
@@ -579,95 +507,17 @@ def v2_explore_get_ideal_text(arc_id):
                 _ref = _refs.get(_slug.strip()) if isinstance(_slug, str) else None
                 if _ref:
                     entry["coach"]["reference"] = _ref
-            elif _mid in _sugs and _sugs[_mid].get("kind") == "delivery" \
-                    and _sugs[_mid].get("trigger") in _DELIVERY_DEVICES:
-                # MEASURED delivery star (founder decisions 2026-07-18):
-                # a behavioural prompt, not an edit — no approve/fold;
-                # the modal's action is the FE's snippet re-record mic.
-                # The FE renders the approved copy PURELY from `device`
-                # (same pinned dependency as structural: unknown device
-                # → no star), and nothing numeric rides this payload
-                # (AC-9: the z-scores stay server-side).
-                entry["star"] = "suggestion"
-                entry["suggestion"] = {
-                    "kind": "delivery",
-                    "device": _sugs[_mid].get("trigger"),
-                    "quote": None,
-                    "why": None,
-                }
-            elif _mid in _sugs and _sugs[_mid].get("kind") == "structure" \
-                    and _sugs[_mid].get("trigger") in _STRUCT_DEVICES:
-                # STRUCTURAL star (founder 2026-07-18): a delivery
-                # prompt, not an edit — never applied, never folded,
-                # always shown. The FE renders fixed signed-off copy
-                # from `device`; NO generated prose is served. `quote`
-                # is the user's own verbatim words.
-                # The device guard is the FE's pinned dependency: it
-                # renders the sheet copy PURELY from `device`, so an
-                # unknown spelling must yield NO star rather than a
-                # star with no copy behind it.
-                _s = _sugs[_mid]
-                entry["star"] = "suggestion"
-                entry["suggestion"] = {
-                    "kind": "structure",
-                    "device": _s.get("trigger"),
-                    "quote": _s.get("why"),
-                    "why": None,
-                }
-            elif _mid in _sugs \
-                    and _sugs[_mid].get("kind") not in (
-                        "structure", "delivery") \
-                    and not _applied.get(_mid):
-                # TEXT suggestions only — a structure/delivery row with
-                # an unknown device must yield NO star (the FE renders
-                # copy purely from device), never fall through here.
-                # An APPLIED suggestion is CONSUMED: its result is
-                # already folded into the served text, so no star is
-                # emitted (audit 2026-07-18 — the FE documents exactly
-                # this expectation; keeping the star re-offered work
-                # the student had already accepted).
-                _s = _sugs[_mid]
-                # Quote narrowing (founder 2026-07-20): underline the
-                # PHRASE, not the piece. Deterministic per trigger —
-                # polish → the trimmed verbatim-vs-polished diff span;
-                # a profanity replace → the carrying sentence; anything
-                # else → None = star icon only, NO underline (the FE
-                # contract). Guarded: a quote must be an exact
-                # substring of the anchor (and so of the served text)
-                # or it is dropped (the #219 lesson).
-                _anchor_txt = m.get("anchor") or ""
-                _quote = None
-                try:
-                    from services.suggestion_quotes import (
-                        diff_quote, profanity_sentence,
-                    )
-                    from services.text_flags import has_profanity
-                    if _s.get("trigger") == "polish":
-                        _quote = diff_quote(
-                            _anchor_txt, _s.get("replacement_text"))
-                    elif _s.get("kind") == "replace" \
-                            and has_profanity(_anchor_txt):
-                        _quote = profanity_sentence(_anchor_txt)
-                except Exception:
-                    _quote = None
-                if _quote and _quote not in _anchor_txt:
-                    _quote = None
-                entry["star"] = "suggestion"
-                entry["suggestion"] = {
-                    "kind": _s.get("kind"),
-                    "quote": _quote,
-                    "replacement": _s.get("replacement_text"),
-                    "why": _s.get("why"),
-                    # CLAMPED to 'polish'|None (adversarial review
-                    # 2026-07-18): the FE only needs to distinguish a
-                    # flow-polish replace from the rest; the raw trigger
-                    # vocabulary (threat/charisma/…) is INTERNAL —
-                    # surfacing it would breach the CONSTRUCT/AC-9
-                    # fences (a classifier verdict on a user payload).
-                    "trigger": ("polish" if _s.get("trigger") == "polish"
-                                else None),
-                }
-                entry["applied"] = False
+            # THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder
+            # 2026-08-10: "no other exist, older feedback system should
+            # be ripped off"). The machine star/suggestion branches that
+            # lived here — delivery, structural, text — served the SAME
+            # `moment_suggestions` rows the gate arbitrates, unbudgeted:
+            # one row could render twice, once as a budgeted change and
+            # once as a free star. The lanes still PRODUCE from those
+            # rows inside `_tracked_changes_block`; nothing SERVES them
+            # here. What key_moments keeps: the anchor (playback +
+            # album identity) and the coach's verified star (the ALBUM
+            # surface — a coach judgement, not machine feedback).
             return entry
 
         _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
@@ -880,7 +730,7 @@ def v2_explore_decide_prior_take(arc_id):
         from services.ideal_text_block import _living_transcript_enabled
         if not _living_transcript_enabled():
             return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
-        owned, _ = _arc_owned_by_caller(arc_id)
+        owned, _pt_sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         body = request.get_json(silent=True) or {}
@@ -914,6 +764,16 @@ def v2_explore_decide_prior_take(arc_id):
             decision=("approved" if action == "accept" else "dismissed"),
             source="prior_take", snippet_id=snippet_id,
             version=(_v if isinstance(_v, int) else None))
+        if ok:
+            # THE TAKE'S BUDGET (founder 2026-08-10): a decided offer keeps
+            # its slot — approved and kept alike; deciding is what spends.
+            # Also SPEC §6's ground-truth row. Best-effort.
+            from services.intervention_spend import spend
+            spend(db, arc_id, _pt_sessions,
+                  change_key="prior_take:" + normalize_phrase(quote),
+                  decision=("approved" if action == "accept"
+                            else "disregarded"),
+                  lane="lane:prior_take", intervention_type="REWRITE")
         if ok and action == "accept":
             _reassemble_after_decision(arc_id)
         return jsonify({"saved": bool(ok)}), 200
@@ -950,7 +810,7 @@ def v2_explore_decide_block(arc_id, block_key):
         )
         if not (master_document_enabled() and _living_transcript_enabled()):
             return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
-        owned, _ = _arc_owned_by_caller(arc_id)
+        owned, _blk_sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         body = request.get_json(silent=True) or {}
@@ -976,6 +836,16 @@ def v2_explore_decide_block(arc_id, block_key):
                 }), 409
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
+        # THE TAKE'S BUDGET (founder 2026-08-10): a decided offer keeps its
+        # slot — accepted and kept alike. Also SPEC §6's ground-truth row.
+        # ONLY this explicit tap spends: the save-time bulk auto-keeps must
+        # never write here (SPEC R4 — fabricated refusals). Best-effort.
+        from services.intervention_spend import spend
+        spend(db, arc_id, _blk_sessions,
+              change_key=f"block:{int(block_key)}:{echo}",
+              decision=("approved" if action == "accept"
+                        else "disregarded"),
+              lane="lane:new_take", intervention_type="REWRITE")
         if action == "accept":
             _reassemble_after_decision(arc_id)
             try:
@@ -1648,18 +1518,22 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # experiment while recording nothing. The caller passes the arc's
         # latest spoken take instead: the take this arbitration is about.
         _arm_sid = str(take_session_id or doc.get("take_session_id") or "")
+        # THE TAKE'S SPENT BUDGET (founder 2026-08-10: "each feedback needs
+        # to be there; full and end to end and waiting; not that it appears
+        # once the other is accepted"). Decided interventions keep their
+        # slots: the count rides into the gate, which subtracts it from
+        # H.1's ≤3, so the set on screen is chosen once and only shrinks.
+        # A count miss reads 0 and degrades to the per-arbitration budget.
+        from services.intervention_spend import spent_count
         _sel = _select(changes, user_id=user_id,
                        session_id=_arm_sid,
-                       # R1 — the layer filter runs inside the gate, BEFORE
-                       # the budget. A locked part takes accentuation only;
-                       # an open one takes composition only.
+                       decided_count=spent_count(db, arc_id, _arm_sid),
+                       # R1 gen-2 — the layer filter runs inside the gate,
+                       # BEFORE the budget: an open part takes everything;
+                       # a locked part takes nothing but a pending
+                       # Confident Voice.
                        parts=_locked_parts(arc_id, user_id, served_text))
         changes = _sel["changes"]
-        # THE EXPERIMENT'S RECORD. Only when the arms actually ran: rows
-        # written with the controls inert would stamp the policy (gamma,
-        # withhold_rate) as if an assignment had happened when none did.
-        if _sel.get("controls") and _sel.get("result") is not None:
-            _record_arms(_sel["result"], _arm_sid, user_id)
         # Additions ride OUTSIDE the budget and outside the span check — they
         # have no span. Absent when there are none, so the FE draws nothing
         # rather than an empty section. See master_document.block_additions for
@@ -1671,6 +1545,13 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
             return {"changes": [], **_add}
+        # THE EXPERIMENT'S RECORD — after the span check on purpose: a row
+        # stamped surfaced=True for a serve the guard then zeroed would claim
+        # notes the student never saw. Only when the arms actually ran: rows
+        # written with the controls inert would stamp the policy (gamma,
+        # withhold_rate) as if an assignment had happened when none did.
+        if _sel.get("controls") and _sel.get("result") is not None:
+            _record_arms(_sel["result"], _arm_sid, user_id)
         return {"changes": changes, **_add}
     except Exception as e:
         logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
@@ -1713,7 +1594,7 @@ def v2_explore_set_part_lock(arc_id, part_id):
     """
     try:
         from services.ideal_text_parts import agrees_with_text, part_spans
-        owned, _ = _arc_owned_by_caller(arc_id)
+        owned, _lock_sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         body = request.get_json(silent=True) or {}
@@ -1759,8 +1640,17 @@ def v2_explore_set_part_lock(arc_id, part_id):
         # undecided one. Reading the same pipeline the student is looking at is
         # what stops the gate and the button disagreeing.
         try:
-            _served = (_tracked_changes_block(arc_id, echo, user_id)
-                       .get("changes") or [])
+            # THE SAME ARBITRATION KEY AS THE SERVE — without it this gate
+            # runs a different policy than the screen: the withhold arm
+            # never fires on an empty session key, and the take's spent
+            # budget counts a different epoch, so the gate could see three
+            # changes where the student sees two and 409 a lock the screen
+            # says is ready.
+            from services.intervention_spend import latest_spoken_take_sid
+            _served = (_tracked_changes_block(
+                arc_id, echo, user_id,
+                latest_spoken_take_sid(_lock_sessions))
+                .get("changes") or [])
             _lo, _hi, _ = next(
                 (s for s in part_spans(parts) if s[2]["id"] == target["id"]),
                 (None, None, None))
