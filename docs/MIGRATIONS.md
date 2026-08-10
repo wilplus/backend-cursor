@@ -163,6 +163,60 @@ means a bad migration must never crash-loop the app. `bin/railway-web.sh` has
 an opt-in `MIGRATE_ON_BOOT=1` hook for environments without a pre-deploy
 command; it logs failures and boots anyway. Prefer the pre-deploy command.
 
+> ⚠️ **`MIGRATE_ON_BOOT=1` IS SET IN PRODUCTION** (confirmed 2026-08-10 from
+> the deploy logs: `[migrate] starting … nothing pending. [migrate] done.`).
+> So in prod, **merging a migration IS running it.** There is no separate
+> human step, no window between "the code shipped" and "the schema changed",
+> and no opportunity to sequence them by hand. See the rule below.
+
+---
+
+## ⛔ THE CONFIG-FIRST RULE (2026-08-10, learned the expensive way)
+
+**Whenever a migration's correctness depends on an environment variable, set
+that variable on EVERY service BEFORE merging the PR. The config waits for
+the code, never the other way around.**
+
+Because `MIGRATE_ON_BOOT` runs the SQL during container start — *before* the
+application process is serving — a deploy changes the schema and the running
+code in the same instant. Anything the new schema needs in order to be
+addressed correctly must already be in place, or there is a window where the
+app is pointed at something that no longer exists.
+
+**How this bit us.** The `charisma_snippets` → `snippets` rename (0260) was
+designed as a three-step cutover: deploy the code (a no-op), then run the
+migration, then set `SNIPPETS_TABLE`. That plan assumed a human controlled
+step 2. In production, steps 1 and 2 were the *same event* — the table
+renamed itself the moment the PR deployed, while `SNIPPETS_TABLE` was still
+unset, so every snippet read and write resolved a name that no longer
+existed. PostgREST answered `PGRST205`; the writers swallow their exceptions
+by design; nothing went red. The correct order was the exact reverse of what
+the runbook said.
+
+**The correct order:**
+
+1. set the variable on **every** service — web, worker, cron, anything that
+   reads or writes the affected table (Railway variables are PER-SERVICE, and
+   a writer service missing the variable is the worst case: the web app looks
+   healthy while background jobs silently drop their writes);
+2. confirm each service picked it up — a boot probe that logs the resolved
+   value is worth far more than checking the Railway UI, because the UI shows
+   what you *set*, not what the process *read*
+   (`services/snippet_tables.check_at_boot` is the pattern);
+3. **then** merge the PR. The deploy applies the migration into a config that
+   is already correct.
+
+**The general shape:** a rename, a column swap, a table split — any migration
+where the code must be told where to look — is a config-first migration. Only
+purely additive migrations (a new nullable column, a new table nothing reads
+yet) are safe to merge before their config, because nothing is addressing the
+new thing yet.
+
+**If a migration cannot be made config-first**, keep it out of
+`migrations/manifest.txt` until the config lands. An unlisted file is not
+applied, which turns "I must remember the order" into a property of the
+repository rather than a property of whoever is deploying.
+
 ---
 
 ## The safety rails

@@ -65,13 +65,47 @@ producers that no longer exists (deleted 2026-08-10, PR #368). The three live
 ones are interview turns, funnel cold-start rows and willab Lab auto-cuts.
 `services/snippet_tables.py` has the full note.
 
-**The cutover, in order:**
+**The cutover, in order — CORRECTED 2026-08-10.**
+
+> The original three-step order published here was **wrong for this
+> deployment, and it caused a live incident.** It read: deploy the code (a
+> no-op) → run the migration → set the variable. That assumed a human
+> controlled when the migration ran. **`MIGRATE_ON_BOOT=1` is set in
+> production**, so `bin/railway-web.sh` applies pending migrations during
+> container start: merging the PR *was* running the migration. Steps 1 and 2
+> were the same event, the table renamed while `SNIPPETS_TABLE` was still
+> unset, and every read and write resolved a name that no longer existed —
+> silently, because PostgREST's `PGRST205` is swallowed by the writers.
+>
+> **The config must be waiting for the code, never the other way around.**
+> See the config-first rule in `docs/MIGRATIONS.md`.
 
 | # | step | how long | reversible by |
 |---|---|---|---|
-| 1 | deploy the code reading `SNIPPETS_TABLE` | a deploy | it is a no-op; nothing to revert |
-| 2 | run `migrations/rename_charisma_snippets_to_snippets.sql` — renames **and** reloads the PostgREST schema cache | seconds | the reverse `ALTER` **plus `NOTIFY`** at the bottom of that file |
-| 3 | set `SNIPPETS_TABLE=snippets` in Railway | seconds | unset it |
+| 1 | set `SNIPPETS_TABLE=snippets` on **every** service — web **and** worker (Railway variables are per-service) | seconds | unset it |
+| 2 | confirm **each** service logged `resolved to 'snippets' (SNIPPETS_TABLE env)` — the Railway UI shows what you set, the log shows what the process read | seconds | — |
+| 3 | merge/deploy the PR — the boot hook applies the rename **and** reloads the PostgREST schema cache into a config that is already correct | one deploy | the reverse `ALTER` **plus `NOTIFY`** at the bottom of that migration |
+
+**Why setting the variable first is safe, and the condition that makes it so.**
+The variable is a no-op until code that *reads* it is running. So this order
+works only when the reader and the migration ship in the **same PR** — which
+they did (#369 carried both `services/snippet_tables.py` and `0260`). Before
+that merge, nothing consults `SNIPPETS_TABLE`, so setting it changes nothing;
+after it, one container start does the whole cutover in the right order,
+because `MIGRATE_ON_BOOT` renames the table *before* gunicorn boots the app
+that reads the name. Same restart, consistent throughout.
+
+**If the reader is already deployed** — as it is now — setting the variable
+ahead of the rename points a live app at a table that does not exist yet.
+Then the two changes must happen in one restart instead: with the migration
+already merged and pending, setting the variable *is* the trigger, and the
+boot hook applies the rename before the app comes up. Either way the rule is
+the same: **never let a deploy change the schema into a config that is not
+already correct.**
+
+**If neither is possible**, hold the migration out of `manifest.txt` until the
+config lands. An unlisted file is not applied, which makes the ordering a
+property of the repository rather than of whoever is deploying.
 
 > **The PostgREST schema cache bit this cutover on 2026-08-10.** PostgREST
 > answers from a cached schema, a `RENAME` does not reliably invalidate it,
