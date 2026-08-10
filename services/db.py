@@ -13129,6 +13129,11 @@ class DatabaseService:
             (self.client.table("confidence_labels")
                  .upsert(payload,
                          on_conflict="snippet_id,rater_id").execute())
+            # The append-only shadow (SPEC-immutable-provenance §3.2). AFTER
+            # the upsert succeeds, never instead of it and never gating it:
+            # confidence_labels remains the current-answer read, this is the
+            # history the upsert destroys.
+            self._append_label_revision(payload)
             return True
         except Exception as e:
             err_low = str(e).lower()
@@ -13150,6 +13155,73 @@ class DatabaseService:
             logger.warning("upsert_state_rating failed snip=%s: %s",
                            snippet_id, e)
             return False
+
+    def _append_label_revision(self, payload: dict) -> None:
+        """Append ONE revision row shadowing a rating write (§3.2).
+
+        Coach labels are overwritten in place by design (the corpus wants the
+        rater's CURRENT answer); this is the only record of what the upsert
+        replaced. Nothing here is ever updated or deleted.
+
+        `supersedes_id` is best-effort: the newest prior revision for the
+        same (snippet, rater, state), NULL when the lookup fails or nothing
+        precedes it. A missing pointer degrades to "order by id" — the chain
+        is a convenience, the append is the guarantee.
+
+        NEVER raises, and a failure never un-succeeds the rating write it
+        shadows — the table may simply not be migrated yet (0258).
+        """
+        try:
+            state_id = payload.get("state_id") or "confidence"
+            rater_id = payload.get("rater_id")
+            prev_id = None
+            try:
+                q = (self.client.table("label_revision").select("id")
+                     .eq("snippet_id", payload["snippet_id"])
+                     .eq("state_id", state_id))
+                q = (q.eq("rater_id", rater_id) if rater_id
+                     else q.is_("rater_id", "null"))
+                res = q.order("id", desc=True).limit(1).execute()
+                if res.data:
+                    prev_id = res.data[0].get("id")
+            except Exception:
+                pass
+            row = {
+                "snippet_id": payload["snippet_id"],
+                "rater_id": rater_id,
+                "state_id": state_id,
+                "value": payload.get("value"),
+                "unrateable": bool(payload.get("unrateable")),
+                "confident": payload.get("confident"),
+                "intensity": payload.get("intensity"),
+                "note": payload.get("note"),
+                "lane": payload.get("lane"),
+                "source": payload.get("source"),
+                "question_id": payload.get("question_id"),
+                "question_version": payload.get("question_version"),
+                "saw_model_output": bool(payload.get("saw_model_output")),
+                "latency_ms": payload.get("latency_ms"),
+                "session_id": payload.get("session_id"),
+                "model_version_at_time": payload.get("model_version_at_time"),
+                "probe_score_at_time": payload.get("probe_score_at_time"),
+                "origin": "live",
+                "supersedes_id": prev_id,
+                # The judgment's own timestamp — created_at is the INSERT's.
+                "rated_at": payload.get("updated_at"),
+            }
+            self.client.table("label_revision").insert(row).execute()
+        except Exception as e:
+            err_low = str(e).lower()
+            if "label_revision" in err_low and (
+                    "does not exist" in err_low or "42p01" in err_low
+                    or "pgrst" in err_low):
+                logger.warning(
+                    "label_revision: table missing (run "
+                    "migrations/add_label_revision.sql) — rating saved, "
+                    "revision NOT recorded")
+                return
+            logger.warning("_append_label_revision failed snip=%s: %s",
+                           payload.get("snippet_id"), e)
 
     def record_dimension_evaluations(self, rows: list) -> int:
         """Store drift-monitoring evaluations (SPEC D26/D30, Appendix G).
@@ -13196,7 +13268,7 @@ class DatabaseService:
             # None stays None: "no benchmark defined" is a real state, not a
             # negative decision. Only an explicit bool becomes a decision.
             decision = None if (insufficient or fired is None) else bool(fired)
-            payload.append({
+            entry = {
                 "snippet_id": row.get("snippet_id"),
                 "recording_id": row.get("recording_id"),
                 "session_id": row.get("session_id"),
@@ -13210,9 +13282,24 @@ class DatabaseService:
                 "benchmark_version": str(row.get("benchmark_version") or "v0"),
                 "window_class": row.get("window_class"),
                 "n_units": row.get("n_units"),
-            })
+            }
+            # The provenance stamp (SPEC-immutable-provenance §3.1): which
+            # detector definition produced this number, and whether the live
+            # code still hashed to it at write time. {} for dimensions with
+            # no registered detector, or while detector_version is absent —
+            # an unstamped row is the honest pre-provenance NULL.
+            try:
+                from services.provenance_check import stamp
+                entry.update(stamp(entry["dimension_id"]))
+            except Exception:
+                pass          # the stamp must never break the write it rides
+            payload.append(entry)
         if not payload:
             return 0
+        # PostgREST upserts are all-or-nothing per batch: since every row in
+        # a batch is built the same way, a payload either uniformly carries
+        # the stamp keys or uniformly does not.
+        stamped = any("provenance" in p for p in payload)
         try:
             (self.client.table("dimension_evaluations")
                  .upsert(payload,
@@ -13221,6 +13308,31 @@ class DatabaseService:
             return len(payload)
         except Exception as e:
             err_low = str(e).lower()
+            # 0257 not applied yet but detector_version somehow readable (or
+            # a schema cache lag): retry WITHOUT the stamp rather than losing
+            # the measurements. Losing telemetry to the stamp would invert
+            # the priority — provenance exists to protect the data, not to
+            # gate it.
+            if stamped and "column" in err_low and (
+                    "provenance" in err_low or "detector_version" in err_low):
+                logger.warning(
+                    "record_dimension_evaluations: provenance columns missing "
+                    "(run migrations/add_detector_version.sql) — writing "
+                    "unstamped")
+                for p in payload:
+                    p.pop("provenance", None)
+                    p.pop("detector_version", None)
+                try:
+                    (self.client.table("dimension_evaluations")
+                         .upsert(payload,
+                                 on_conflict=("snippet_id,dimension_id,"
+                                              "benchmark_version"))
+                         .execute())
+                    return len(payload)
+                except Exception as e2:
+                    logger.warning(
+                        "record_dimension_evaluations failed: %s", e2)
+                    return 0
             if "does not exist" in err_low or "dimension_evaluations" in err_low:
                 logger.warning(
                     "record_dimension_evaluations: table/columns missing (run "

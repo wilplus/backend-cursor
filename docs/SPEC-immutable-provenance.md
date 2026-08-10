@@ -1,9 +1,12 @@
 # SPEC — Immutable source data and provenance
 
-**Status:** DESIGN, awaiting founder review. Nothing here is built.
-**Phase A of Task III.** Phase B (quorum + cross-user consent) is ON HOLD
-pending the privacy/TOS review — nothing in this document reads another
-user's data.
+**Status:** Phase A BUILT (2026-08-10) — migrations 0257–0259,
+`services/provenance.py` + `services/provenance_check.py`, the boot check,
+the `label_revision` shadow write and the `dimension_evaluations` stamp.
+§5 was decided by the founder the same day: **Option B** — log CRITICAL and
+mark rows `provenance: suspect`, never refuse to boot (LIVE LOOP).
+**Phase B** (quorum + cross-user consent) is ON HOLD pending the privacy/TOS
+review — nothing built here reads another user's data.
 
 ---
 
@@ -174,6 +177,12 @@ being a comment and becomes a row.
 ---
 
 ## 5 · The one decision I need from you
+
+> **DECIDED 2026-08-10, founder verdict: (b).** "Log it as a critical error
+> and tag the resulting rows as `provenance: suspect`. We can isolate and
+> clean up suspect rows later." Implemented in
+> `services/provenance_check.py`; the CI half of the same check lives in
+> `test_provenance.py` (the live lexicon must hash to a seeded version row).
 
 **What should a definition-hash mismatch do on boot?**
 
