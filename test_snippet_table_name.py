@@ -181,6 +181,37 @@ class TestTheCutoverIsObservable(unittest.TestCase):
         self._probe("snippets", Boom())   # must not propagate
 
 
+class TestEveryWriterProcessProbes(unittest.TestCase):
+    """Both processes that write snippets must run the boot probe.
+
+    THE GAP THIS CLOSES (2026-08-10). The web service and the worker are
+    SEPARATE RAILWAY SERVICES, and Railway variables are per-service. During
+    the rename cutover only the web service got SNIPPETS_TABLE, so the worker
+    kept resolving the old name — and the worker is a writer
+    (analysis_worker -> process_lab_recording -> create_charisma_snippets_
+    bulk) whose failures are swallowed by design.
+
+    The split is invisible from outside: the web app reports healthy while
+    every job the worker touches silently drops its snippets. Only a probe
+    running in EACH process can distinguish them, because the whole point is
+    that they have different environments.
+    """
+
+    def test_app_and_worker_both_call_the_probe(self):
+        for entry in ("app.py", "worker.py"):
+            tree = ast.parse((ROOT / entry).read_text(encoding="utf-8"))
+            imports_probe = any(
+                isinstance(n, ast.ImportFrom)
+                and (n.module or "").endswith("snippet_tables")
+                and any(a.name == "check_at_boot" for a in n.names)
+                for n in ast.walk(tree))
+            self.assertTrue(
+                imports_probe,
+                f"{entry} must run services.snippet_tables.check_at_boot — it "
+                f"is a separate process with its own environment, and it "
+                f"writes snippets")
+
+
 class TestRenameMigrationsReloadTheSchemaCache(unittest.TestCase):
     """Any migration that RENAMEs a table must also reload PostgREST.
 

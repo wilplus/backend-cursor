@@ -54,6 +54,29 @@ def _enforce_secrets() -> None:
 
     enforce_at_boot()
 
+    # WHICH SNIPPET TABLE DOES *THIS* PROCESS SEE?
+    #
+    # The worker is a SEPARATE RAILWAY SERVICE (see the Procfile), and Railway
+    # variables are PER-SERVICE. So SNIPPETS_TABLE can be set on the web
+    # service and absent here — and this process is a snippet WRITER
+    # (analysis_worker -> process_lab_recording -> create_charisma_snippets_
+    # bulk), whose failures are swallowed by design. Mid-rename, that split is
+    # invisible: the web app looks healthy while every job the worker
+    # processes drops its snippets.
+    #
+    # app.py runs this same probe for the web service. The worker needs its
+    # own copy precisely BECAUSE its environment is a different environment —
+    # discovered 2026-08-10, when only the web service had been updated.
+    #
+    # Never fatal, unlike enforce_at_boot above: a wrong table name is
+    # recoverable by setting a variable, and refusing to start would turn a
+    # config fix into an outage. It is loud instead.
+    try:
+        from services.snippet_tables import check_at_boot as snippets_check
+        snippets_check()
+    except Exception as e:  # pragma: no cover — belt
+        logger.warning("snippet table probe failed: %s", e)
+
 
 def worker_count() -> int:
     """How many jobs this container processes at once (WORKER_COUNT).
