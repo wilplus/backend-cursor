@@ -55,6 +55,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.db import db  # noqa: E402
+from services.snippet_tables import SNIPPETS_TABLE
 
 
 logger = logging.getLogger("backfill_few_shot_annotations")
@@ -123,7 +124,7 @@ def _select_candidate_sessions(
         chunk = session_ids[i : i + chunk_size]
         try:
             snip_rows = (
-                db.client.table("charisma_snippets")
+                db.client.table(SNIPPETS_TABLE)
                 .select("session_id, admin_comment")
                 .in_("session_id", chunk)
                 .not_.is_("admin_comment", "null")

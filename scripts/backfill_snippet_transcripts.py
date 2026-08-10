@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config  # noqa: E402
 from services.db import db  # noqa: E402
 from services.snippet_transcription import transcribe_snippet_bytes  # noqa: E402
+from services.snippet_tables import SNIPPETS_TABLE
 
 logger = logging.getLogger("backfill_snippet_transcripts")
 config = Config()
@@ -157,9 +158,9 @@ def main() -> int:
     if args.table == "stress":
         tables = ("stress_snippets",)
     elif args.table == "charisma":
-        tables = ("charisma_snippets",)
+        tables = (SNIPPETS_TABLE,)
     else:
-        tables = ("stress_snippets", "charisma_snippets")
+        tables = ("stress_snippets", SNIPPETS_TABLE)
 
     run_backfill(
         tables=tables,

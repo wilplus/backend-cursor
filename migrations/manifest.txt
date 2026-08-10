@@ -295,3 +295,4 @@
 0257	add_detector_version.sql
 0258	add_label_revision.sql
 0259	add_threshold_version.sql
+0260	rename_charisma_snippets_to_snippets.sql

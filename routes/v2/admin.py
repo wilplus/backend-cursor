@@ -31,6 +31,7 @@ from config import Config
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.snippet_values import resolve_all
+from services.snippet_tables import SNIPPETS_TABLE
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -502,7 +503,7 @@ def v2_admin_update_snippet_coaching_rationale(snippet_id):
             )
             try:
                 _existing = (
-                    db.client.table("charisma_snippets")
+                    db.client.table(SNIPPETS_TABLE)
                     .select("follow_up_outcome")
                     .eq("id", snippet_id)
                     .limit(1)
@@ -565,7 +566,7 @@ def v2_admin_update_snippet_coaching_rationale(snippet_id):
             # the frontend can show the right toast.
             try:
                 exists_probe = (
-                    db.client.table("charisma_snippets")
+                    db.client.table(SNIPPETS_TABLE)
                     .select("id")
                     .eq("id", snippet_id)
                     .limit(1)

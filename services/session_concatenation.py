@@ -58,6 +58,7 @@ import httpx
 
 from services.db import db
 from services.ffmpeg_audio_extract import resolve_ffmpeg_executable
+from services.snippet_tables import SNIPPETS_TABLE
 
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ def concatenate_session_audio(
     #    created_at so the concat'd timeline matches turn chronology.
     try:
         result = (
-            db.client.table("charisma_snippets")
+            db.client.table(SNIPPETS_TABLE)
             .select(
                 "id, turn_number, source_type, audio_segment_path, "
                 "duration_ms, start_offset_ms, created_at"
@@ -404,7 +405,7 @@ def finalize_session_recording(session_id: str) -> dict[str, Any]:
         }
         try:
             result = (
-                db.client.table("charisma_snippets")
+                db.client.table(SNIPPETS_TABLE)
                 .update(patch)
                 .eq("id", sid)
                 .execute()
@@ -442,7 +443,7 @@ def finalize_session_recording(session_id: str) -> dict[str, Any]:
         # first turn row.
         try:
             anchor = (
-                db.client.table("charisma_snippets")
+                db.client.table(SNIPPETS_TABLE)
                 .select("recording_id")
                 .eq("id", turn_ids[0])
                 .limit(1)

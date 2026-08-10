@@ -36,6 +36,7 @@ import os
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from services.snippet_tables import SNIPPETS_TABLE
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -226,7 +227,7 @@ def _section_a02(db) -> dict:
     # A0.2.1 — legacy + canonical totals
     try:
         legacy = (
-            db.client.table("charisma_snippets")
+            db.client.table(SNIPPETS_TABLE)
             .select("id", count="exact")
             .not_.is_("follow_up_outcome", "null")
             .limit(1)
@@ -325,7 +326,7 @@ def _section_a02(db) -> dict:
             for i in range(0, len(unpublished_ids), chunk_size):
                 chunk = unpublished_ids[i : i + chunk_size]
                 snip_rows = (
-                    db.client.table("charisma_snippets")
+                    db.client.table(SNIPPETS_TABLE)
                     .select("session_id, admin_comment")
                     .in_("session_id", chunk)
                     .not_.is_("admin_comment", "null")
