@@ -32,6 +32,7 @@ from services.ideal_text_parts import (
     InvalidParts,
     agrees_with_text,
     allowed_layer,
+    compose_locked,
     covered_by_locked_part,
     joined,
     layer_of_kind,
@@ -493,6 +494,104 @@ class TestCoveredByLockedPart(unittest.TestCase):
         self.assertFalse(covered_by_locked_part("x", [None, "nope", {}]))
 
 
+class TestComposeLocked(unittest.TestCase):
+    """THE UN-PARKED VERSIONING CHANGE (founder 2026-08-10). The document
+    composes per part: a locked paragraph keeps the student's typed words
+    verbatim, an unlocked one refreshes to the machine's current text. The
+    whole-document version swap — and the card that apologised for it — stop
+    happening on this lane."""
+
+    def _rows(self, *specs):
+        return [{"id": _id(), "ord": i, "text": t,
+                 "locked_at": "2026-08-10T00:00:00Z" if lk else None}
+                for i, (t, lk) in enumerate(specs)]
+
+    def test_refresh_the_open_pin_the_locked(self):
+        # The founder's own paraphrase: "the AI will refresh Paragraphs 1 and
+        # 3, but it will physically skip Paragraph 2 because it is locked."
+        rows = self._rows(("One old.", False), ("MY TYPED WORDS.", True),
+                          ("Three old.", False))
+        out = compose_locked("One NEW.\n\nMachine rework.\n\nThree NEW.",
+                             rows)
+        self.assertEqual(out["text"],
+                         "One NEW.\n\nMY TYPED WORDS.\n\nThree NEW.")
+        self.assertEqual([p["locked"] for p in out["parts"]],
+                         [False, True, False])
+
+    def test_no_locked_parts_is_none_and_today_applies(self):
+        self.assertIsNone(compose_locked("x", self._rows(("a", False))))
+        self.assertIsNone(compose_locked("x", []))
+        self.assertIsNone(compose_locked("x", None))
+
+    def test_typed_words_survive_the_machine_dropping_them(self):
+        rows = self._rows(("One.", False), ("MY TYPED WORDS.", True))
+        out = compose_locked("One.", rows)
+        self.assertIn("MY TYPED WORDS.", out["text"])
+
+    def test_an_unlocked_part_the_machine_dropped_goes(self):
+        # Unlocked = the student never committed it; the machine's document
+        # wins there. Under auto-lock, typed implies locked, so an unlocked
+        # stored part is machine text from a previous serve.
+        rows = self._rows(("Stale machine para.", False), ("KEPT.", True))
+        out = compose_locked("KEPT.", rows)
+        self.assertNotIn("Stale machine para.", out["text"])
+
+    def test_a_locked_paragraph_keeps_its_id_and_lock(self):
+        rows = self._rows(("PINNED.", True))
+        out = compose_locked("Machine rework of it.", rows)
+        self.assertEqual(out["parts"][0]["id"], rows[0]["id"])
+        self.assertTrue(out["parts"][0]["locked"])
+
+    def test_a_machine_reworded_paragraph_gets_a_FRESH_id(self):
+        # "A paragraph the machine rewrote is not the part the student
+        # locked" — the same identity rule the FE applies.
+        rows = self._rows(("old words here.", False), ("PIN.", True))
+        out = compose_locked("brand new words.\n\nPIN.", rows)
+        self.assertNotEqual(out["parts"][0]["id"], rows[0]["id"])
+        self.assertFalse(out["parts"][0]["locked"])
+
+    def test_a_mixed_reworked_region_pins_whole(self):
+        # Conservative v1: the machine reworked a region containing BOTH a
+        # locked and an unlocked part — the stored region serves. Splitting
+        # the region would need an alignment inside it that text equality
+        # cannot provide, and a wrong guess rewrites pinned words.
+        rows = self._rows(("A old.", False), ("PIN.", True))
+        out = compose_locked("Completely different single para.", rows)
+        self.assertEqual(out["text"], "A old.\n\nPIN.")
+
+    def test_new_machine_material_arrives_with_fresh_ids(self):
+        rows = self._rows(("One.", False), ("PIN.", True))
+        out = compose_locked("One.\n\nPIN.\n\nBrand new closer.", rows)
+        self.assertEqual(len(out["parts"]), 3)
+        self.assertEqual(out["parts"][2]["text"], "Brand new closer.")
+        self.assertFalse(out["parts"][2]["locked"])
+
+    def test_identity_case_is_unchanged(self):
+        rows = self._rows(("One.", False), ("PIN.", True))
+        out = compose_locked("One.\n\nPIN.", rows)
+        self.assertFalse(out["changed"])
+        self.assertEqual(out["text"], "One.\n\nPIN.")
+
+    def test_a_sliced_marker_token_refuses_and_pins(self):
+        # The FE splitter refuses splits inside a marker token; the server
+        # split inherits the guard. Refusal costs one round of machine
+        # refresh; a false pass ships half a token as text.
+        rows = self._rows(("PIN.", True))
+        out = compose_locked("One **broken\n\nhalf** token.", rows)
+        self.assertEqual(out["text"], "PIN.")
+
+    def test_empty_base_pins(self):
+        rows = self._rows(("PIN.", True))
+        self.assertEqual(compose_locked("", rows)["text"], "PIN.")
+        self.assertEqual(compose_locked(None, rows)["text"], "PIN.")
+
+    def test_ords_are_contiguous_and_join_agrees(self):
+        rows = self._rows(("One.", False), ("PIN.", True), ("Three.", False))
+        out = compose_locked("One NEW.\n\nPIN.\n\nThree NEW.", rows)
+        self.assertEqual([p["ord"] for p in out["parts"]], [0, 1, 2])
+        self.assertTrue(agrees_with_text(out["parts"], out["text"]))
+
+
 try:
     from flask import Flask, request
     from routes import v2_routes as v2
@@ -523,13 +622,15 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
 
-    def _put(self, body, *, edit_ok=True, parts_ok=True):
+    def _put(self, body, *, edit_ok=True, parts_ok=True, existing=None):
         with self.app.test_request_context(json=body):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                        return_value=(True, [])), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=_row()), \
+                 patch.object(v2.db, "get_ideal_text_parts",
+                              return_value=existing or [], create=True), \
                  patch.object(v2.db, "upsert_user_ideal_edit",
                               return_value=edit_ok), \
                  patch.object(v2.db, "replace_ideal_text_parts",
@@ -553,8 +654,55 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
         self.assertEqual(status, 200)
         m.assert_called_once()
         self.assertEqual(m.call_args[0][2],
-                         [{"id": a, "ord": 0, "text": "one"},
-                          {"id": b, "ord": 1, "text": "two"}])
+                         [{"id": a, "ord": 0, "text": "one",
+                           "locked_at": None},
+                          {"id": b, "ord": 1, "text": "two",
+                           "locked_at": None}])
+
+    def test_a_locked_flag_stamps_the_part(self):
+        # AUTO-LOCK ("typed = committed"): the client marks the parts the
+        # edit touched; the PUT stamps locked_at directly — no R3 409, so
+        # pending offers are HELD rather than blocking the student's typing.
+        a, b = _id(), _id()
+        _b, status, m = self._put({
+            "text": "one\n\ntwo", "version": 3,
+            "parts": [{"id": a, "text": "one", "locked": True},
+                      {"id": b, "text": "two", "locked": False}]})
+        self.assertEqual(status, 200)
+        rows = m.call_args[0][2]
+        self.assertIsNotNone(rows[0]["locked_at"])
+        self.assertIsNone(rows[1]["locked_at"])
+
+    def test_an_existing_lock_keeps_its_ORIGINAL_timestamp(self):
+        # §6 — a decision made before a lock and one made after mean
+        # different things; re-stamping on every save would erase that.
+        a = _id()
+        _b, _s, m = self._put(
+            {"text": "one", "version": 3,
+             "parts": [{"id": a, "text": "one", "locked": True}]},
+            existing=[{"id": a, "ord": 0, "text": "old words",
+                       "locked_at": "2026-08-01T00:00:00Z"}])
+        self.assertEqual(m.call_args[0][2][0]["locked_at"],
+                         "2026-08-01T00:00:00Z")
+
+    def test_the_PUT_never_unlocks(self):
+        # Removing a lock is the R5-gated endpoint's job alone. A stale
+        # client sending locked:false must not silently unlock a paragraph.
+        a = _id()
+        _b, _s, m = self._put(
+            {"text": "one", "version": 3,
+             "parts": [{"id": a, "text": "one", "locked": False}]},
+            existing=[{"id": a, "ord": 0, "text": "one",
+                       "locked_at": "2026-08-01T00:00:00Z"}])
+        self.assertEqual(m.call_args[0][2][0]["locked_at"],
+                         "2026-08-01T00:00:00Z")
+
+    def test_a_non_boolean_lock_is_refused(self):
+        _b, status, m = self._put({
+            "text": "one", "version": 3,
+            "parts": [{"id": _id(), "text": "one", "locked": "yes"}]})
+        self.assertEqual(status, 400)
+        m.assert_not_called()
 
     def test_parts_that_do_not_join_to_the_text_are_REFUSED(self):
         """Never repaired. Storing a disagreement leaves identity pointing at
@@ -586,8 +734,9 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
             "parts": [{"id": a, "text": "<b>one</b>"},
                       {"id": _id(), "text": "two"}]})
         self.assertEqual(status, 200)
-        self.assertEqual(m.call_args[0][2][0], {"id": a, "ord": 0,
-                                                "text": "one"})
+        self.assertEqual(m.call_args[0][2][0],
+                         {"id": a, "ord": 0, "text": "one",
+                          "locked_at": None})
 
     def test_a_failed_parts_write_does_not_fail_the_EDIT(self):
         """The words are what matter. A parts write that fails leaves the GET

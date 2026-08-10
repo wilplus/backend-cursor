@@ -35,7 +35,9 @@ indistinguishable from a right one once written.
 """
 from __future__ import annotations
 
+import difflib
 import re
+import uuid
 from typing import Any, Optional
 
 # The BE's own ceiling on the stored document (20000 chars, enforced on the
@@ -247,6 +249,12 @@ def validate(raw: Any) -> list:
         text = item.get("text")
         if not isinstance(text, str):
             raise InvalidParts(f"part {i} has no text")
+        locked = item.get("locked")
+        if locked is not None and not isinstance(locked, bool):
+            # A truthy-ish lock is not a lock. The flag decides whether the
+            # machine may rewrite these words; coercion here would let a
+            # malformed client pin or unpin paragraphs by accident.
+            raise InvalidParts(f"part {i} has a non-boolean lock")
         text = text.strip()
         if not text:
             # A blank part has no words to move, no words to lock, and would
@@ -254,7 +262,10 @@ def validate(raw: Any) -> list:
             # refusing rather than silently skipping keeps the id list the
             # client believes it sent identical to the one stored.
             raise InvalidParts(f"part {i} is empty")
-        out.append({"id": pid, "ord": i, "text": text})
+        entry = {"id": pid, "ord": i, "text": text}
+        if locked is not None:
+            entry["locked"] = locked
+        out.append(entry)
 
     if len(joined(out)) > MAX_DOCUMENT_CHARS:
         raise InvalidParts("text too long")
@@ -275,6 +286,144 @@ def agrees_with_text(parts: Any, text: Any) -> bool:
     has to hold.
     """
     return joined(parts) == ((text if isinstance(text, str) else "") or "").strip()
+
+
+def _balanced(paragraph: str) -> bool:
+    """Could this paragraph have been sliced out of a marker token?
+
+    The FE's splitter refuses a split point inside a rich-marker token because
+    a token may legally contain a blank line, and slicing it leaks raw syntax.
+    The server-side split below inherits the same risk, so it inherits a guard:
+    a paragraph with an ODD count of style tokens or unpaired moment brackets
+    is evidence the split landed inside one, and compose refuses rather than
+    serving half a token as text. Conservative on purpose — a false refusal
+    costs one round of machine refresh; a false pass ships broken syntax."""
+    if paragraph.count("**") % 2 != 0:
+        return False
+    return paragraph.count("[[") == paragraph.count("]]")
+
+
+def compose_locked(base_text: Any, rows: Any) -> Optional[dict]:
+    """Overlay the user's LOCKED parts onto the current machine document.
+
+    THE UN-PARKED VERSIONING CHANGE (founder 2026-08-10). Until now the user's
+    typed edit was one whole-document string stamped with a version, winning
+    display only while that version was current — so ANY version bump swapped
+    their words out from under them, and a card offered them back. This is the
+    replacement: the document composes per part, a locked part keeps the
+    user's words verbatim, an unlocked part refreshes to the machine's current
+    text, and the swap that needed a card simply stops happening.
+
+    Returns None when there is nothing to do (no parts stored, none locked) —
+    the caller keeps today's behaviour exactly. Otherwise:
+
+        {"text": str, "parts": [{id, ord, text, locked}], "changed": bool}
+
+    ── WHY THE SERVER MAY SPLIT *THIS* TEXT (vs the §10.2 rule) ───────────────
+
+    §10.2 forbids a server-side paragraph splitter because the FE's is
+    marker-aware and a rival implementation would drift. That rule protects
+    USER text. The base document here is the machine's own assembly, JOINED BY
+    THIS CODEBASE with "\\n\\n" — splitting it is the inverse of our own join,
+    the same standing `joined()` already has, not a second definition of
+    "paragraph". User text is still never split server-side: stored parts
+    arrive pre-split from the client. `_balanced` guards the residual marker
+    risk, and refusal degrades to serving the stored parts wholesale — typed
+    words protected, machine refresh deferred, never the other way round.
+
+    ── ALIGNMENT ──────────────────────────────────────────────────────────────
+
+    difflib.SequenceMatcher over the two PARAGRAPH LISTS (monotonic by
+    construction — no crossing matches). Per opcode:
+
+      equal    the paragraph did not change → the stored part serves, id and
+               lock intact.
+      replace  the machine reworded this region. ANY locked part in it → the
+               STORED parts serve (the user's words pin the region; the
+               machine's rework stays held as offers behind the lock).
+               None locked → the machine's paragraphs serve, with FRESH ids:
+               "a paragraph the machine rewrote is not the part the student
+               locked" — same identity rule the FE applies.
+      delete   the machine dropped the region. Locked parts SURVIVE (typed
+               words are invincible); unlocked ones go with the machine.
+      insert   new machine material → serves with fresh ids.
+
+    Server-minted ids for machine paragraphs do not breach the client-mints
+    rule either: that rule exists so no rival SPLIT decides where a paragraph
+    begins. Identity for machine-authored paragraphs has no client claim at
+    all — the client has never seen them.
+    """
+    parts = serve(rows)
+    if not parts or not any(p.get("locked") for p in parts):
+        return None
+    base = (base_text if isinstance(base_text, str) else "").strip()
+
+    def _pinned(changed: bool = False) -> dict:
+        # The fallback: the user's stored document, exactly as saved.
+        out = [dict(p, ord=i) for i, p in enumerate(parts)]
+        return {"text": joined(out), "parts": out, "changed": changed}
+
+    if not base:
+        return _pinned()
+    paras = [p.strip() for p in re.split(r"\n{2,}", base) if p.strip()]
+    if not paras or not all(_balanced(p) for p in paras):
+        return _pinned()
+
+    stored_texts = [p["text"] for p in parts]
+    out: list = []
+
+    # ── SAME PARAGRAPH COUNT → ALIGN BY POSITION. Text matching alone cannot
+    # refresh a document where EVERY unlocked paragraph changed: with no
+    # equal anchors the whole thing is one `replace` region containing a
+    # locked part, and the conservative rule below pins everything — the
+    # flagship case ("refresh 1 and 3, skip 2") would never fire. Under the
+    # master model the machine's paragraph STRUCTURE is block-stable, so an
+    # equal count is strong evidence of same-slot correspondence; position is
+    # then the honest alignment, not a guess. Counts diverging is exactly
+    # when position stops meaning anything, and the diff path below takes
+    # over with its pin-when-unsure rule. ──
+    if len(paras) == len(stored_texts):
+        for k, part in enumerate(parts):
+            if part.get("locked"):
+                out.append(dict(part))
+            elif paras[k] == part["text"]:
+                out.append(dict(part))
+            else:
+                # Machine rework of an open paragraph: fresh words, fresh
+                # identity — "a paragraph the machine rewrote is not the part
+                # the student locked", the FE's own rule.
+                out.append({"id": str(uuid.uuid4()), "text": paras[k],
+                            "locked": False})
+        for i, p in enumerate(out):
+            p["ord"] = i
+        changed = [(p["id"], p["text"], p.get("locked", False)) for p in out] \
+            != [(p["id"], p["text"], p.get("locked", False)) for p in parts]
+        return {"text": joined(out), "parts": out, "changed": changed}
+
+    sm = difflib.SequenceMatcher(None, stored_texts, paras, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            out.extend(dict(parts[k]) for k in range(i1, i2))
+        elif tag == "replace":
+            if any(parts[k].get("locked") for k in range(i1, i2)):
+                out.extend(dict(parts[k]) for k in range(i1, i2))
+            else:
+                out.extend({"id": str(uuid.uuid4()), "text": paras[j],
+                            "locked": False} for j in range(j1, j2))
+        elif tag == "delete":
+            out.extend(dict(parts[k]) for k in range(i1, i2)
+                       if parts[k].get("locked"))
+        else:  # insert
+            out.extend({"id": str(uuid.uuid4()), "text": paras[j],
+                        "locked": False} for j in range(j1, j2))
+
+    if not out:
+        return _pinned()
+    for i, p in enumerate(out):
+        p["ord"] = i
+    changed = [(p["id"], p["text"], p.get("locked", False)) for p in out] != \
+              [(p["id"], p["text"], p.get("locked", False)) for p in parts]
+    return {"text": joined(out), "parts": out, "changed": changed}
 
 
 def serve(rows: Any) -> Optional[list]:

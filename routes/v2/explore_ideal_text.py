@@ -19,6 +19,7 @@ Re-exported from ``routes.v2_routes`` for import compatibility.
 import logging
 import os
 import re
+from datetime import datetime, timezone
 
 import sentry_sdk
 from flask import jsonify, request
@@ -480,6 +481,49 @@ def v2_explore_get_ideal_text(arc_id):
         # strip, so each anchor is plain text in the served string.
         from services.ideal_text_block import strip_moment_markers
         _text = strip_moment_markers(_text)
+
+        # ── PER-PART PERSISTENCE (founder 2026-08-10, the un-parked
+        # versioning change). When the student has LOCKED parts, the served
+        # document COMPOSES: locked paragraphs keep their typed words
+        # verbatim, unlocked ones refresh to the machine's current text. The
+        # version-gated whole-document edit swap — and the card that
+        # apologised for it — stop applying on this lane.
+        #
+        # Placed HERE, after fold/sanitize/strip, because the stored parts
+        # were split by the client from exactly this final form of the text;
+        # composing against a pre-transform string could never match.
+        # Everything downstream (key-moment anchors, pieces, the tracked-
+        # changes gate) measures against the composed string, so anchors
+        # into a locked paragraph's machine words simply fail to match and
+        # drop — which IS the per-paragraph star fence, mechanically. ──
+        _composed = None
+        try:
+            from services.ideal_text_parts import compose_locked
+            _p_rows = db.get_ideal_text_parts(
+                arc_id, str(request.user_id), with_lock=True)
+            _composed = compose_locked(_text, _p_rows)
+            if _composed is not None:
+                _text = _composed["text"]
+                # The refreshed paragraphs carry SERVER-minted ids; they must
+                # be stable across GETs, so a changed composition persists.
+                # Kept locks carry their ORIGINAL timestamps (a decision made
+                # before a lock and one after mean different things, §6).
+                if _composed.get("changed"):
+                    _lk_by_id = {str(r.get("id")): r.get("locked_at")
+                                 for r in (_p_rows or [])
+                                 if isinstance(r, dict)}
+                    if not db.replace_ideal_text_parts(
+                            arc_id, str(request.user_id),
+                            [{**p, "locked_at": _lk_by_id.get(p["id"])
+                              if not p.get("locked") else
+                              (_lk_by_id.get(p["id"])
+                               or datetime.now(timezone.utc).isoformat())}
+                             for p in _composed["parts"]]):
+                        logger.warning(
+                            "compose: parts not persisted arc=%s", arc_id)
+        except Exception as _cmp_err:
+            logger.warning("compose failed arc=%s: %s", arc_id, _cmp_err)
+            _composed = None
         _has_expl = _moment_explanations_map(
             [m.get("take_session_id") for m in _moments])
         _playback = _moment_playback_map(
@@ -720,15 +764,23 @@ def v2_explore_get_ideal_text(arc_id):
             # the document underneath stored parts, and stale identity
             # pointing at words that are no longer there is worse than
             # none (#219's rule, applied to parts). ──
-            **_ideal_parts_block(arc_id, getattr(request, "user_id", ""),
-                                 _text),
+            **({"parts": _composed["parts"]} if _composed is not None
+               else _ideal_parts_block(
+                   arc_id, getattr(request, "user_id", ""), _text)),
             # True when the served text is the student's own edit of the
-            # current version (the FE labels it).
-            "user_edited": _user_edited,
+            # current version (the FE labels it). Under COMPOSE the document
+            # is canonical — locked paragraphs carry the student's words by
+            # construction — so the whole-document edit label (and the star
+            # fence keyed on it) stops applying; the per-paragraph fence
+            # happens mechanically, anchors into typed paragraphs just drop.
+            "user_edited": False if _composed is not None else _user_edited,
             # The retained edit a NEWER version superseded (founder
-            # 2026-07-28) — the FE's one-click "re-apply your additions".
-            # Absent when there is nothing to re-offer.
-            **({"prior_edit": _prior_edit} if _prior_edit else {}),
+            # 2026-07-28) — retired by per-part persistence (2026-08-10):
+            # under compose the typed words never leave the document, so
+            # there is nothing to offer back. Still served on the legacy
+            # lane (no locked parts) for older clients.
+            **({"prior_edit": _prior_edit}
+               if _prior_edit and _composed is None else {}),
             "key_moments": [_decorate(m) for m in _moments],
             "moments_unlocked": _moments_entitled(arc_id),
             # Founder 2026-07-20: the 5-credit unlock buys COACH
@@ -1742,9 +1794,34 @@ def v2_explore_put_ideal_user_edit(arc_id):
         # Best-effort in the other direction: the words are what matter, so a
         # parts write that fails does not fail the edit — the GET then omits
         # the key, the FE re-mints, and the next save stores them.
+        #
+        # AUTO-LOCK (founder 2026-08-10, "typed = committed"): a part the
+        # client marked `locked` gets locked_at stamped. THE PUT ONLY ADDS
+        # LOCKS — an existing lock survives regardless of the client's flag,
+        # and existing timestamps are preserved (§6: a decision made before a
+        # lock and one after mean different things). Removing a lock is the
+        # R5-gated endpoint's job alone; a stale client save must never
+        # silently unlock a paragraph. This is also the R3 wrinkle resolved:
+        # auto-lock writes the column directly, so pending offers are HELD
+        # (R1 filters them, Save keeps them pending) rather than 409-ing the
+        # student's own typing.
         if _parts is not None:
+            try:
+                _prev_lk = {
+                    str(r.get("id")): r.get("locked_at")
+                    for r in (db.get_ideal_text_parts(
+                        arc_id, str(request.user_id), with_lock=True) or [])
+                    if isinstance(r, dict) and r.get("locked_at")}
+            except Exception:
+                _prev_lk = {}
+            _rows = [
+                {**p, "locked_at": _prev_lk.get(p["id"]) or (
+                    datetime.now(timezone.utc).isoformat()
+                    if p.get("locked") else None)}
+                for p in _parts
+            ]
             if not db.replace_ideal_text_parts(
-                    arc_id, str(request.user_id), _parts):
+                    arc_id, str(request.user_id), _rows):
                 logger.warning("ideal parts not stored arc=%s", arc_id)
         # RE-APPLY TELEMETRY (founder 2026-07-28): one log line per
         # successful one-click re-apply of a superseded edit — the
