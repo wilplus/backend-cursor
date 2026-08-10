@@ -69,6 +69,27 @@ class BakePieceTests(unittest.TestCase):
             kind="emphasize", phrase="this line", repl=None)])
         self.assertEqual(out2, out)
 
+    def test_an_oversize_emphasize_keeps_its_words_and_loses_its_paint(self):
+        """§F.4 (founder 2026-08-10) — emphasis is a UNIT-window
+        intervention. A moment accept's target is the WHOLE snippet
+        transcript, and painting it wrapped sentences in orange. The row
+        stays approved; only the paint is refused."""
+        phrase = " ".join(["spoken"] * 30)
+        text = f"Start. {phrase} End."
+        out = bake_piece(text, [_row(kind="emphasize", phrase=phrase,
+                                     repl=None)])
+        self.assertEqual(out, text)
+        self.assertNotIn("{{orange:", out)
+
+    def test_the_bake_ceiling_is_the_shared_constant(self):
+        from services.ideal_text_block import ACCENT_WINDOW_MAX_WORDS
+        at = " ".join(["w"] * ACCENT_WINDOW_MAX_WORDS)
+        over = " ".join(["w"] * (ACCENT_WINDOW_MAX_WORDS + 1))
+        self.assertIn("{{orange:", bake_piece(
+            f"a {at} b", [_row(kind="emphasize", phrase=at, repl=None)]))
+        self.assertNotIn("{{orange:", bake_piece(
+            f"a {over} b", [_row(kind="emphasize", phrase=over, repl=None)]))
+
     def test_absent_phrase_is_never_grafted(self):
         # Founder: changes apply "if they apply" — a different take's
         # phrasing won → the old decision silently doesn't match.

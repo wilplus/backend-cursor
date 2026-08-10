@@ -378,6 +378,42 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
     return kept
 
 
+def filter_by_window(changes: Any) -> list:
+    """§F.4 (founder 2026-08-10) — the precision gate on ACCENT-class offers.
+
+    The windows table assigns emphasis and rhetorical devices the intonation
+    UNIT (~1.6 s, Chafe ~4.84 words); `ACCENT_WINDOW_MAX_WORDS` in
+    ideal_text_block is that ceiling, shared with the ledger bake so the
+    offer gate and the paint gate can never disagree. Rules:
+
+      * bold / advice (the ACCENTUATION layer) with a quote beyond the
+        window → dropped. Accepting one would paint sentences orange — the
+        founder's exact complaint — and the bake would refuse it anyway.
+      * a Confident Voice change passes REGARDLESS of size: it renders as a
+        star badge at the span's end, never as a painted wash, so the window
+        rule does not bind it (CONSTRUCT: the badge is the surface).
+      * composition (replace / insert) passes untouched — block upgrades are
+        legitimately block-sized, with their own UI.
+      * a change with no quote cannot be measured → dropped, same
+        never-guess rule as an unclassified kind.
+    """
+    from services.ideal_text_block import within_accent_window
+    from services.ideal_text_parts import ACCENTUATION, layer_of_kind
+    kept: list = []
+    for c in (changes or []):
+        if not isinstance(c, dict):
+            continue
+        if layer_of_kind(c.get("kind")) != ACCENTUATION:
+            kept.append(c)
+            continue
+        if c.get("trigger") == CONFIDENT_VOICE_TRIGGER:
+            kept.append(c)
+            continue
+        if within_accent_window(c.get("quote")):
+            kept.append(c)
+    return kept
+
+
 def select(changes: Any, *, user_id: str = "", session_id: str = "",
            parts: Any = None) -> dict:
     """Run every change through the manager and return the survivors.
@@ -406,6 +442,16 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # R1 — the layer filter runs HERE, before anything is scored or
         # budgeted. See filter_by_layer for why the order is the rule.
         rows = filter_by_layer(rows, parts)
+        if not rows:
+            return {"changes": [], "result": None, "controls": False}
+        # §F.4 — the emphasis WINDOW gate, same before-budget reasoning: an
+        # accent-class offer whose quote exceeds the intonation-unit ceiling
+        # would paint sentences on accept (the bake now refuses it), so a
+        # budget slot spent on it is a slot spent on nothing. Composition
+        # offers (replace/insert) pass untouched — a block upgrade is
+        # legitimately block-sized and has its own UI; the window rule is
+        # about PAINT, and composition paints a diff, not a wash.
+        rows = filter_by_window(rows)
         if not rows:
             return {"changes": [], "result": None, "controls": False}
         rows.sort(key=lambda c: (

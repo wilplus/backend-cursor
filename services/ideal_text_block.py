@@ -67,6 +67,38 @@ _MAX_BLOCK_CHARS = 20000
 _ACCENT_OPEN = "{{orange:"
 _ACCENT_CLOSE = "}}"
 
+# ── THE EMPHASIS WINDOW (SPEC-APPENDIX-F §F.4; founder 2026-08-10: "the
+# interventions need to be precise … use the table to connect it as per
+# spec"). ──
+#
+# The table assigns emphasis (V1–V5) and rhetorical devices (V11–V13) the
+# UNIT window — the intonation unit, ~1.6 s of speech, Chafe mean ~4.84
+# words realised over 1–2 s (§F.1). An accent is a pointer at a spoken
+# moment; a pointer the size of a paragraph points at nothing. The ceiling
+# is TWO realised units: room for a natural spoken phrase, never a sentence
+# run — the founder's screenshot showed whole-snippet transcripts (a moment
+# accept's target is the full snippet) painted orange across ten sentences.
+#
+# Enforced at BOTH ends: candidates beyond the window never become offers
+# (intervention_candidates — a budget slot must not be spent on paint the
+# bake will refuse), and the ledger bake refuses to paint an oversize
+# emphasize row (legacy rows already approved). The WORDS are never touched
+# — only the paint is withheld.
+ACCENT_WINDOW_MAX_WORDS = 12
+
+
+def within_accent_window(phrase: Any) -> bool:
+    """May this phrase be PAINTED as an emphasis accent? (§F.4 UNIT rule.)
+
+    Words are counted on the marker-free text — a phrase carrying baked
+    ``**``/``{{orange:…}}`` tokens must measure its words, not its syntax.
+    Empty or non-string phrases refuse (nothing to point at). Pure."""
+    if not isinstance(phrase, str):
+        return False
+    words = phrase.replace(_ACCENT_OPEN, " ").replace(_ACCENT_CLOSE, " ") \
+        .replace("**", " ").split()
+    return 0 < len(words) <= ACCENT_WINDOW_MAX_WORDS
+
 
 def accent_span(inner: Any) -> str:
     """``inner`` wrapped in ``{{orange:…}}`` ONE LINE AT A TIME.
