@@ -66,6 +66,7 @@ from services.audio_metrics import (
     _compute_pitch_center_st,
     decode_audio_to_pcm,
 )
+from services.snippet_tables import SNIPPETS_TABLE
 
 
 logger = logging.getLogger(__name__)
@@ -294,7 +295,7 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
     #    turn row. After finalize_session_recording, every turn row's
     #    storage_path points at session_recordings/<sid>/full.webm.
     turn_anchor = (
-        db.client.table("charisma_snippets")
+        db.client.table(SNIPPETS_TABLE)
         .select("storage_path, recording_id")
         .eq("session_id", session_id)
         .not_.is_("turn_number", "null")
@@ -334,7 +335,7 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
     #    Rows with non-"auto_extracted" source_type (and unlabeled) are
     #    left alone; we don't own those.
     existing = (
-        db.client.table("charisma_snippets")
+        db.client.table(SNIPPETS_TABLE)
         .select("id, start_offset_ms, duration_ms, source_type, "
                 "coach_label, admin_comment, snippet_type")
         .eq("session_id", session_id)
@@ -366,7 +367,7 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
     #    proportional time-slicing inside extract_snippets_from_pcm
     #    roughly aligns with the recording's timeline.
     turn_rows = (
-        db.client.table("charisma_snippets")
+        db.client.table(SNIPPETS_TABLE)
         .select("transcript, turn_number")
         .eq("session_id", session_id)
         .not_.is_("turn_number", "null")
@@ -442,7 +443,7 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
     if to_delete_ids:
         try:
             del_res = (
-                db.client.table("charisma_snippets")
+                db.client.table(SNIPPETS_TABLE)
                 .delete()
                 .in_("id", to_delete_ids)
                 .execute()

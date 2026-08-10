@@ -149,7 +149,7 @@
     "directive_suggestions.recent_snippets": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "26d44e6accbd941ca15694bd5466782fcdaa224095176cecd072a70c90614130"
+      "sha256": "2c709e071146b4c3c9104b4f5b507f90fb5af76755668e0380c447b4f92a49c8"
     },
     "goal_update.builder": {
       "kind": "source_ref",
@@ -169,7 +169,7 @@
     "interview.longitudinal_block": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "713399746ec2557586c8099c704cf4867b9d97674741eb49dcb08c651468c233"
+      "sha256": "84dcfff805da56163f73f33a230e28da4a2b43d65d3d1a6030effb7d0793935b"
     },
     "interview.master_score_block": {
       "kind": "source_ref",

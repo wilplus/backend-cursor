@@ -39,6 +39,7 @@ from typing import Any
 sys.path.insert(0, ".")
 
 from services import verbal_markers as vm  # noqa: E402
+from services.snippet_tables import SNIPPETS_TABLE
 
 
 def _fetch(limit: int) -> list[dict]:
@@ -59,7 +60,7 @@ def _fetch(limit: int) -> list[dict]:
     # stops being trustworthy.
     by_session: dict[str, list[str]] = defaultdict(list)
     try:
-        res = (db.client.table("charisma_snippets")
+        res = (db.client.table(SNIPPETS_TABLE)
                .select("id, session_id, transcript")
                .not_.is_("transcript", "null")
                .limit(limit).execute())

@@ -48,6 +48,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
+from services.snippet_tables import SNIPPETS_TABLE
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -178,7 +179,7 @@ def _pick_test_snippet(db, user_id: str, prefer_unpublished: bool) -> Optional[d
         sid = s["id"]
         try:
             snippets = (
-                db.client.table("charisma_snippets")
+                db.client.table(SNIPPETS_TABLE)
                 .select("id, session_id, admin_comment, ai_draft_admin_comment, snippet_type")
                 .eq("session_id", sid)
                 .limit(1)
@@ -354,7 +355,7 @@ def run_smoke_test(
     if snippet_id_override:
         try:
             row = (
-                db.client.table("charisma_snippets")
+                db.client.table(SNIPPETS_TABLE)
                 .select(
                     "id, session_id, admin_comment, ai_draft_admin_comment, "
                     "snippet_type"
@@ -510,7 +511,7 @@ def run_smoke_test(
         return 1
     try:
         row = (
-            db.client.table("charisma_snippets")
+            db.client.table(SNIPPETS_TABLE)
             .select(
                 "admin_comment, admin_comment_acceptance_mode, "
                 "admin_comment_acceptance_set_at"

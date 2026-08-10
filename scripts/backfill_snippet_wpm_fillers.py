@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.db import db  # noqa: E402
 from utils.metrics import compute_wpm, count_fillers  # noqa: E402
+from services.snippet_tables import SNIPPETS_TABLE
 
 
 def _now_iso() -> str:
@@ -44,7 +45,7 @@ def _select_candidates(*, user_id: str | None, session_id: str | None, limit: in
     decide per-row which column it actually writes.
     """
     q = (
-        db.client.table("charisma_snippets")
+        db.client.table(SNIPPETS_TABLE)
         .select("id, user_id, session_id, transcript, duration_ms, wpm, fillers")
         .not_.is_("transcript", "null")
         .not_.is_("duration_ms", "null")
@@ -133,7 +134,7 @@ def main() -> int:
             )
         else:
             try:
-                db.client.table("charisma_snippets").update(patch).eq(
+                db.client.table(SNIPPETS_TABLE).update(patch).eq(
                     "id", row.get("id")
                 ).execute()
             except Exception as e:

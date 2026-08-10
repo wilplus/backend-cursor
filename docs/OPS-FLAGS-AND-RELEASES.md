@@ -14,6 +14,59 @@ code defaults are conservative and mostly left alone.
 
 ---
 
+## Cutovers in flight
+
+### `SNIPPETS_TABLE` — unset (= `charisma_snippets`)
+
+**Not a feature flag. A migration affordance with an expiry date.** It exists
+so renaming the snippet table is a config change instead of a deploy, and it
+should be deleted once the rename has settled.
+
+`charisma_snippets` was named after the ML generator — the one of its four
+producers that no longer exists (deleted 2026-08-10, PR #368). The three live
+ones are interview turns, funnel cold-start rows and willab Lab auto-cuts.
+`services/snippet_tables.py` has the full note.
+
+**The cutover, in order:**
+
+| # | step | how long | reversible by |
+|---|---|---|---|
+| 1 | deploy the code reading `SNIPPETS_TABLE` | a deploy | it is a no-op; nothing to revert |
+| 2 | run `migrations/rename_charisma_snippets_to_snippets.sql` | seconds | the reverse `ALTER` at the bottom of that file |
+| 3 | set `SNIPPETS_TABLE=snippets` in Railway | seconds | unset it |
+
+**Have the Railway tab open before step 2.** Between 2 and 3 the running code
+queries a table that no longer exists; PostgREST returns 404 and this codebase
+swallows those exceptions by design, so snippet writes would stop **silently**
+— no error page, no alert. Keep that window to seconds.
+
+**Verify after step 3** (should return rows, and match the count from before):
+
+```sql
+SELECT COUNT(*) FROM public.snippets;
+SELECT source_type, COUNT(*) FROM public.snippets GROUP BY source_type;
+```
+
+Then exercise one real write — record a Lab take, or submit an interview
+answer — and confirm the row lands. A clean `SELECT` only proves the rename;
+it does not prove the app is pointed at it.
+
+**No compatibility view is created, deliberately.** `add_rls_all_public_tables.sql`
+records that `anon` can reach this table directly through PostgREST and "RLS
+is the only control on it". A view runs with its owner's rights unless it is
+declared `security_invoker = true`, so a compat view would silently reopen
+that hole while the service-role backend showed no symptom at all.
+
+**Not renamed:** the storage prefix `charisma_snippets/<session>/…` and the
+existing column names. Object keys are immutable history — every clip already
+uploaded lives under that prefix, and rewriting it would point at nothing.
+
+**When it is done:** collapse `services/snippet_tables.py` to a plain constant
+and delete the Railway variable. A table name that stays configurable forever
+is a table name nobody can grep for.
+
+---
+
 ## Live experiments
 
 ### `MANAGER_CONTROLS_ENABLED` — default **ON** (2026-08-10)

@@ -30,6 +30,7 @@ from services.skills import (
     get_skill as _get_skill,
     list_skill_ids as _list_skill_ids,
 )
+from services.snippet_tables import SNIPPETS_TABLE
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -267,7 +268,7 @@ def _build_longitudinal_context_block(
         recent_notes: list[str] = []
         try:
             note_rows = (
-                db.client.table("charisma_snippets")
+                db.client.table(SNIPPETS_TABLE)
                 .select("admin_comment, created_at, session_id")
                 .eq("user_id", user_id)
                 .not_.is_("admin_comment", "null")

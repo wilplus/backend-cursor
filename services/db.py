@@ -9,6 +9,7 @@ import re
 import time
 
 import sentry_sdk
+from services.snippet_tables import SNIPPETS_TABLE
 
 config = Config()
 logger = logging.getLogger(__name__)
@@ -1348,7 +1349,7 @@ class DatabaseService:
     def v2_get_charisma_snippet_for_user(self, snippet_id: str, user_id: str) -> Optional[dict]:
         """Fetch a charisma_snippets row, scoped to the authenticated owner."""
         result = (
-            self.client.table("charisma_snippets")
+            self.client.table(SNIPPETS_TABLE)
             .select("*")
             .eq("id", snippet_id)
             .eq("user_id", user_id)
@@ -1369,7 +1370,7 @@ class DatabaseService:
         with_admin_comment counter that powers session-state.
         """
         result = (
-            self.client.table("charisma_snippets")
+            self.client.table(SNIPPETS_TABLE)
             .select("*")
             .eq("session_id", session_id)
             .eq("user_id", user_id)
@@ -1458,7 +1459,7 @@ class DatabaseService:
         """
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("id, admin_comment, is_skipped")
                 .eq("session_id", session_id)
                 .execute()
@@ -1718,7 +1719,7 @@ class DatabaseService:
             return 0
         try:
             res = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .delete()
                 .eq("recording_id", recording_id)
                 .is_("source_type", "null")
@@ -1737,7 +1738,7 @@ class DatabaseService:
         if not snippets:
             return []
         result = (
-            self.client.table("charisma_snippets")
+            self.client.table(SNIPPETS_TABLE)
             .insert(snippets)
             .execute()
         )
@@ -1746,7 +1747,7 @@ class DatabaseService:
     def v2_get_charisma_snippet(self, snippet_id: str) -> Optional[dict]:
         """Return one charisma snippet row by id."""
         result = (
-            self.client.table("charisma_snippets")
+            self.client.table(SNIPPETS_TABLE)
             .select("*")
             .eq("id", snippet_id)
             .limit(1)
@@ -1773,7 +1774,7 @@ class DatabaseService:
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         result = (
-            self.client.table("charisma_snippets")
+            self.client.table(SNIPPETS_TABLE)
             .update(payload)
             .eq("id", snippet_id)
             .execute()
@@ -1792,7 +1793,7 @@ class DatabaseService:
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         result = (
-            self.client.table("charisma_snippets")
+            self.client.table(SNIPPETS_TABLE)
             .update(payload)
             .eq("id", snippet_id)
             .execute()
@@ -1811,7 +1812,7 @@ class DatabaseService:
             else:
                 features[k] = v
         result = (
-            self.client.table("charisma_snippets")
+            self.client.table(SNIPPETS_TABLE)
             .update({
                 "features": features,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -1833,7 +1834,7 @@ class DatabaseService:
         exclude_queue_skipped: bool = False,
     ) -> list[dict]:
         """List charisma snippets with optional filtering and recording metadata."""
-        query = self.client.table("charisma_snippets").select("*")
+        query = self.client.table(SNIPPETS_TABLE).select("*")
         query = query.order("created_at", desc=sort_created_desc)
         query = query.range(offset, max(offset + limit - 1, offset))
         if source_type:
@@ -5277,7 +5278,7 @@ class DatabaseService:
         """
         def _insert(payload):
             res = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .insert(payload)
                 .execute()
             )
@@ -5356,7 +5357,7 @@ class DatabaseService:
 
         def _bulk(with_words):
             res = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .insert([_payload(r, with_words) for r in rows])
                 .execute()
             )
@@ -5688,7 +5689,7 @@ class DatabaseService:
         """Get all snippets for a session, ordered by start time."""
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("*")
                 .eq("session_id", session_id)
                 .order("start_offset_ms", desc=False)
@@ -5732,7 +5733,7 @@ class DatabaseService:
                 while True:
                     try:
                         res = (
-                            self.client.table("charisma_snippets")
+                            self.client.table(SNIPPETS_TABLE)
                             .select(cols)
                             .in_("session_id", chunk)
                             .order("start_offset_ms", desc=False)
@@ -5745,7 +5746,7 @@ class DatabaseService:
                         # for the rest of the batch (still paged).
                         cols = "*"
                         res = (
-                            self.client.table("charisma_snippets")
+                            self.client.table(SNIPPETS_TABLE)
                             .select("*")
                             .in_("session_id", chunk)
                             .order("start_offset_ms", desc=False)
@@ -5770,7 +5771,7 @@ class DatabaseService:
         """Get all snippets for a user, paginated, ordered by creation date (newest first)."""
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("*")
                 .eq("user_id", user_id)
                 .order("created_at", desc=True)
@@ -5793,7 +5794,7 @@ class DatabaseService:
         """
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("*")
                 .eq("session_id", session_id)
                 .not_.is_("admin_comment", "null")
@@ -5817,7 +5818,7 @@ class DatabaseService:
         from admin contexts that need to read any snippet.
         """
         try:
-            q = self.client.table("charisma_snippets").select("*").eq("id", snippet_id)
+            q = self.client.table(SNIPPETS_TABLE).select("*").eq("id", snippet_id)
             if user_id:
                 q = q.eq("user_id", user_id)
             result = q.limit(1).execute()
@@ -5866,7 +5867,7 @@ class DatabaseService:
                     datetime.now(timezone.utc).isoformat()
                 )
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update(patch)
                 .eq("id", snippet_id)
                 .execute()
@@ -5899,7 +5900,7 @@ class DatabaseService:
                         "admin_user_id": admin_user_id,
                     }
                     result = (
-                        self.client.table("charisma_snippets")
+                        self.client.table(SNIPPETS_TABLE)
                         .update(fallback)
                         .eq("id", snippet_id)
                         .execute()
@@ -5927,7 +5928,7 @@ class DatabaseService:
         """
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({
                     "follow_up_question": follow_up_question,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -6186,7 +6187,7 @@ class DatabaseService:
         session_ids = [s["id"] for s in sessions]
         try:
             snip_rows = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("session_id")
                 .in_("session_id", session_ids)
                 .eq("is_skipped", False)
@@ -6408,7 +6409,7 @@ class DatabaseService:
             # the values, so they have to be selected for the resolver to work.
             from services.snippet_values import resolve_all
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 # The six denormalized metric columns are NOT selected: they
                 # are always NULL (nothing writes them) and migration 0254
                 # drops them, at which point naming one here would make this
@@ -7053,7 +7054,7 @@ class DatabaseService:
             # session (typically 1-5 for a trial recording) so the
             # extra round-trip cost is fine.
             sel = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("id, ai_draft_admin_comment, admin_comment")
                 .eq("session_id", session_id)
                 .execute()
@@ -7070,7 +7071,7 @@ class DatabaseService:
                     continue
                 try:
                     (
-                        self.client.table("charisma_snippets")
+                        self.client.table(SNIPPETS_TABLE)
                         .update({
                             "admin_comment": draft,
                             "updated_at": now,
@@ -7111,7 +7112,7 @@ class DatabaseService:
         try:
             now = datetime.now(timezone.utc).isoformat()
             (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({
                     "ai_draft_admin_comment": draft,
                     "ai_draft_admin_comment_generated_at": now,
@@ -7141,7 +7142,7 @@ class DatabaseService:
         the drafting pipeline keeps running)."""
         try:
             existing = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("ai_draft_coach_note")
                 .eq("id", snippet_id)
                 .limit(1)
@@ -7152,7 +7153,7 @@ class DatabaseService:
                 return False  # frozen — already has a draft
             now = datetime.now(timezone.utc).isoformat()
             (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({
                     "ai_draft_coach_note": draft,
                     "ai_draft_coach_note_generated_at": now,
@@ -7192,7 +7193,7 @@ class DatabaseService:
             return False
         try:
             existing = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("say_it_stronger")
                 .eq("id", snippet_id)
                 .limit(1)
@@ -7202,7 +7203,7 @@ class DatabaseService:
             if rows and rows[0].get("say_it_stronger"):
                 return False  # write-once — already generated
             (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({"say_it_stronger": payload})
                 .eq("id", snippet_id)
                 .execute()
@@ -7237,7 +7238,7 @@ class DatabaseService:
             return False
         try:
             (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({"say_it_stronger_final": payload})
                 .eq("id", snippet_id)
                 .execute()
@@ -7267,7 +7268,7 @@ class DatabaseService:
             return {}
         try:
             res = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("id, ai_draft_coach_note")
                 .eq("session_id", session_id)
                 .execute()
@@ -7300,7 +7301,7 @@ class DatabaseService:
         try:
             now = datetime.now(timezone.utc).isoformat()
             (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({
                     "ai_draft_follow_up_question": draft,
                     "ai_draft_follow_up_question_generated_at": now,
@@ -7439,7 +7440,7 @@ class DatabaseService:
         for _tier, _cols in enumerate(_CHARISMA_TIERS):
             try:
                 charisma_rows = (
-                    self.client.table("charisma_snippets")
+                    self.client.table(SNIPPETS_TABLE)
                     .select(_cols)
                     .eq("session_id", session_id)
                     .execute()
@@ -8387,7 +8388,7 @@ class DatabaseService:
             snippet_ids = list(best_by_snippet.keys())
             try:
                 snippet_rows = (
-                    self.client.table("charisma_snippets")
+                    self.client.table(SNIPPETS_TABLE)
                     .select(
                         "id, snippet_type, transcript, admin_comment, "
                         "follow_up_question, sharing_scope, user_id, "
@@ -8607,7 +8608,7 @@ class DatabaseService:
             return None
         try:
             existing = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("follow_up_outcome")
                 .eq("id", snippet_id)
                 .limit(1)
@@ -8651,7 +8652,7 @@ class DatabaseService:
 
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({
                     "follow_up_outcome": outcome,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -8689,7 +8690,7 @@ class DatabaseService:
         """
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({
                     "follow_up_outcome": outcome,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -8749,7 +8750,7 @@ class DatabaseService:
         try:
             # Match placeholder user_id (from interview flow)
             r1 = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({"user_id": user_id})
                 .eq("session_id", session_id)
                 .eq("user_id", PLACEHOLDER_UID)
@@ -8761,7 +8762,7 @@ class DatabaseService:
         try:
             # Match NULL user_id (from legacy single-upload flow)
             r2 = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({"user_id": user_id})
                 .eq("session_id", session_id)
                 .is_("user_id", None)
@@ -8819,7 +8820,7 @@ class DatabaseService:
             start_offset_ms = max(0, int(round(start_time * 1000)))
             duration_ms = max(0, int(round((end_time - start_time) * 1000)))
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({
                     "start_offset_ms": start_offset_ms,
                     "duration_ms": duration_ms,
@@ -8852,7 +8853,7 @@ class DatabaseService:
             return False
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({"metrics": metrics_json})
                 .eq("id", snippet_id)
                 .execute()
@@ -8871,7 +8872,7 @@ class DatabaseService:
         returns False and never raises into the analysis path."""
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({"arousal_z": arousal_z})
                 .eq("id", snippet_id)
                 .execute()
@@ -9441,7 +9442,7 @@ class DatabaseService:
         """Mark a snippet as skipped (hidden from user results)."""
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({"is_skipped": is_skipped})
                 .eq("id", snippet_id)
                 .execute()
@@ -9480,7 +9481,7 @@ class DatabaseService:
             # response AND tell "already gone" (None data) from
             # "Supabase rejected the delete" (exception).
             existing = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("*")
                 .eq("id", snippet_id)
                 .limit(1)
@@ -9488,7 +9489,7 @@ class DatabaseService:
             )
             if not (existing.data or []):
                 return None
-            self.client.table("charisma_snippets").delete().eq(
+            self.client.table(SNIPPETS_TABLE).delete().eq(
                 "id", snippet_id
             ).execute()
             return existing.data[0]
@@ -11431,7 +11432,7 @@ class DatabaseService:
         try:
             try:
                 res = (
-                    self.client.table("charisma_snippets")
+                    self.client.table(SNIPPETS_TABLE)
                     .select("id, metrics, say_it_stronger")
                     .in_("id", ids)
                     .execute()
@@ -11441,7 +11442,7 @@ class DatabaseService:
                 if "say_it_stronger" not in str(_e_full).lower():
                     raise
             res = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("id, metrics")
                 .in_("id", ids)
                 .execute()
@@ -13816,7 +13817,7 @@ class DatabaseService:
             for i in range(0, len(ids), 200):
                 chunk = ids[i:i + 200]
                 res = (
-                    self.client.table("charisma_snippets")
+                    self.client.table(SNIPPETS_TABLE)
                     .select("id, metrics")
                     .in_("id", chunk)
                     .execute()
@@ -13840,7 +13841,7 @@ class DatabaseService:
             for i in range(0, len(ids), 200):
                 chunk = ids[i:i + 200]
                 res = (
-                    self.client.table("charisma_snippets")
+                    self.client.table(SNIPPETS_TABLE)
                     .select("id, data_origin")
                     .in_("id", chunk)
                     .execute()
@@ -15910,7 +15911,7 @@ class DatabaseService:
             return {}
         try:
             rows = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("*")
                 .in_("session_id", session_ids)
                 .order("turn_number", desc=False)
@@ -15951,7 +15952,7 @@ class DatabaseService:
         """
         try:
             query = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .select("*")
                 .eq("user_id", user_id)
             )
@@ -15973,7 +15974,7 @@ class DatabaseService:
         """
         try:
             result = (
-                self.client.table("charisma_snippets")
+                self.client.table(SNIPPETS_TABLE)
                 .update({
                     "question_text": text,
                     "updated_at": datetime.now(timezone.utc).isoformat(),

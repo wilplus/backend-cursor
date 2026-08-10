@@ -35,6 +35,7 @@ import logging
 from typing import List, Optional
 
 from services.db import db
+from services.snippet_tables import SNIPPETS_TABLE
 
 
 logger = logging.getLogger(__name__)
@@ -202,7 +203,7 @@ def _recent_snippets_section(user_id: str) -> str:
     section."""
     try:
         result = (
-            db.client.table("charisma_snippets")
+            db.client.table(SNIPPETS_TABLE)
             .select(
                 "transcript, admin_comment, snippet_type, "
                 "coach_label, created_at"
