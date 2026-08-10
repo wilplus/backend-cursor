@@ -313,16 +313,35 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         _take_texts = collect_take_texts(database, arc_id)
 
         stored = 0
+        # ── FUNNEL COUNTERS (2026-08-10) ──────────────────────────────
+        # WHY. This generator went silent on 2026-08-03 and nobody could
+        # tell WHY for a week: every way it declines to star a snippet is a
+        # bare `continue`, and the only signal it emits is "stored N" — which
+        # it does not emit at all when N is 0. Zero stars and zero snippets
+        # looked identical from outside, as did "the LLM returned nothing"
+        # and "the ledger already decided this phrase".
+        #
+        # Counting the drops costs nothing and turns the silence into a
+        # sentence. Named for the reason, not the line number, so the log
+        # says which stage ate the candidates.
+        _seen = 0            # snippets the readout handed us
+        _no_text = 0         # no id or empty transcript
+        _capped = 0          # over MOMENT_SUGGESTIONS_MAX_PER_TAKE
+        _decided = 0         # decision ledger: already approved/dismissed
+        _no_gen = 0          # generation returned nothing (LLM or guard)
+        _errored = 0         # per-snippet exception, swallowed below
         # Snippets with NO acoustic star → candidates for a DELIVERY star
         # (measured, deterministic), then a STRUCTURAL star. Priority per
         # founder 2026-07-18: acoustic > delivery > structural; a snippet
         # only ever carries ONE star.
         _unstarred = []   # (snip_id, transcript, features_dict)
         for snip in (readout.get("snippets") or []):
+            _seen += 1
             try:
                 snip_id = snip.get("id")
                 transcript = (snip.get("transcript") or "").strip()
                 if not snip_id or not transcript:
+                    _no_text += 1
                     continue
                 direction = resolve_moment_direction(
                     None, snip.get("acoustic_read"))
@@ -337,6 +356,7 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                                        snip.get("features") or {}))
                     continue
                 if stored >= _cap:
+                    _capped += 1
                     logger.info(
                         "moment_suggestion: acoustic cap %d hit sid=%s",
                         _cap, session_id)
@@ -349,6 +369,7 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                 # counts as unstarred for the delivery/structural lanes
                 # (those are behavioural prompts, not text edits).
                 if (kind, _norm_phrase(transcript)) in _decided_keys:
+                    _decided += 1
                     _unstarred.append((str(snip_id), transcript,
                                        snip.get("features") or {}))
                     continue
@@ -374,12 +395,14 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                     context_document=context_document, trigger=trigger,
                     user_id=session.get("user_id"))
                 if not gen:
+                    _no_gen += 1
                     continue
                 if database.upsert_moment_suggestion(
                         str(snip_id), str(arc_id), kind,
                         gen.get("replacement"), gen.get("why"), trigger):
                     stored += 1
             except Exception as _snip_err:
+                _errored += 1
                 logger.warning(
                     "moment_suggestion: snippet failed sid=%s snip=%s: %s",
                     session_id, snip.get("id"), _snip_err)
@@ -462,9 +485,26 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
              _structural_candidates],
             user_id=session.get("user_id"))
 
-        if stored:
-            logger.info("moment_suggestion: stored %d sid=%s arc=%s",
-                        stored, session_id, arc_id)
+        # ── THE FUNNEL LINE. Logged ALWAYS, especially at zero. ────────
+        #
+        # The `if stored:` guard this replaces is the exact reason a week of
+        # silence was unreadable: the one moment worth a log line is the one
+        # where nothing was produced, and that was the only case it stayed
+        # quiet for. A diagnostic that speaks only on success reports that
+        # the system is fine right up until you need it.
+        #
+        # Read it as a funnel, left to right: how many snippets arrived, how
+        # many each stage dropped, how many stars came out. `seen=0` is a
+        # transcription/snippet problem, not a star problem. `seen>0 stored=0`
+        # with everything else zero means every candidate fell through the
+        # acoustic/delivery/structural lanes on their own thresholds, which
+        # is a legitimate outcome and now a visible one.
+        logger.info(
+            "moment_suggestion: sid=%s arc=%s seen=%d stored=%d "
+            "(no_text=%d capped=%d decided=%d no_gen=%d errored=%d) "
+            "unstarred=%d",
+            session_id, arc_id, _seen, stored,
+            _no_text, _capped, _decided, _no_gen, _errored, len(_unstarred))
         return stored
     except Exception as e:
         logger.warning("moment_suggestion: session pass failed sid=%s: %s",
