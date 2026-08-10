@@ -30,7 +30,21 @@ Merged today: #363–#374 (backend), #252–#254 (frontend). All squash-merges.
 
 ## 2 · OPEN BUGS (numbered; work top-down)
 
-### B1 — Star drought: `moment_suggestions` frozen since 2026-08-03 10:20
+### B1 — Star drought — ✅ CLOSED, VERIFIED 2026-08-10 ~18:05 UTC
+
+**Root cause:** star-lane flags absent on the WORKER service (reader moved
+processes in #322 on 2026-08-03; flags stayed web-only). Founder set them on
+the worker (plus MASTER_DOCUMENT / LIVING_TRANSCRIPT / POLISH_AS_SUGGESTIONS).
+**Verification:** 12 `moment_suggestions` rows written at 18:03 UTC inside a
+completed worker job's window; offers + a delivery star ("Emphasis… Lift it")
+rendering in the student text. DB-verified; Railway's log *search* repeatedly
+showed nothing while the DB moved — treat the DB as the instrument of record.
+**Still open from this thread:** confirm on the next takes that the
+master-document skeleton persists (text stops wholesale swapping, offers cap
+at 3) — first take after the flip builds the skeleton, stability shows from
+the take after. Original record of the bug below, kept for the trail.
+
+### B1 (original record) — `moment_suggestions` frozen since 2026-08-03 10:20
 
 - 152 rows total, 0 since 2026-08-03 — the exact day #322 moved star
   generation from the web process into the worker (`services/analysis_worker.py`).
