@@ -11180,6 +11180,12 @@ class DatabaseService:
                     "user_id": str(user_id),
                     "ord": int(p["ord"]),
                     "text": str(p["text"]),
+                    # The lock rides the replace so auto-lock and compose can
+                    # persist in ONE write. Absent/None = open; a caller that
+                    # wants to preserve an existing lock passes the original
+                    # timestamp through (never re-stamped — a decision made
+                    # before a lock and one after mean different things, §6).
+                    "locked_at": p.get("locked_at"),
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 for p in parts
