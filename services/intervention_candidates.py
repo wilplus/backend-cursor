@@ -288,24 +288,116 @@ CONFIDENT_VOICE_TRIGGER = "charisma"
 # changing this string needs founder sign-off.
 PENDING_BETTER_VERSION_COPY = "better version pending..."
 
-# SPEC §3 — visual styling is driven by THIS table, not hardcoded per surface:
-# Confident Voice renders as a star; every other feedback is underline (text
-# rewrites) or bold (behavioural accents). Today a module table; the ops-table
-# storage can replace the lookup without touching any caller.
-_VISUAL_COMPOSITION = "underline"     # replace / insert — text edits
-_VISUAL_ACCENT = "bold"               # bold / advice — behavioural accents
-_VISUAL_STAR = "star"                 # Confident Voice only
+# ── THE OPS TABLE (Appendix C, wired live — founder GO 2026-08-10) ──────────
+#
+# C.2's closed set of intervention TYPES is the layer that never grows even
+# though findings do, and C.4's rule is that presentation derives from the
+# TYPE alone — never from which lane or finding produced the change. The live
+# lanes ship a 4-kind wire shape (replace/insert/bold/advice) that predates
+# the contract; `intervention_type_of` is the C.2 mapping that closes the
+# gap, and everything downstream (the visual, the serve mix caps) reads the
+# TYPE ROW, not the lane:
+#
+#   replace / new_take / prior_take → REWRITE      ("change these words" —
+#                                                   the block-upgrade lane
+#                                                   offers the NEWER TAKE's
+#                                                   words, L1's select)
+#   insert                          → ADD
+#   bold                            → EMPHASISE    (V5/V11/V12 family)
+#   advice                          → EMPHASISE    (delivery/structural
+#                                                   prompts — V11–V13)
+#   trigger == charisma             → NOTICE       (C.2 lists "confidence
+#                                                   moments" here: awareness
+#                                                   only, no action verb —
+#                                                   the star badge, CONSTRUCT)
+#
+# Presentation per type (C.4, this surface's three affordances):
+#   REWRITE / ADD / CUT → underline (inline diff) · EMPHASISE / DE_EMPHASISE
+#   → bold · NOTICE → star.
+#
+# `serve_cap` is the PER-ARBITRATION mix cap (founder 2026-08-10: block
+# rewrites were winning every budget slot — "the interventions are only the
+# text rewrites"). Priorities are uniform and ties break by document order,
+# so an uncapped REWRITE lane anchored early eats all three slots; capping
+# the POOL fed to the engine at 2 REWRITEs guarantees a metric-driven
+# EMPHASISE / NOTICE slot survives whenever one proposed. None = uncapped
+# (the flat ≤3 budget still binds).
+_VISUAL_COMPOSITION = "underline"     # inline diff — text edits
+_VISUAL_ACCENT = "bold"               # behavioural accents
+_VISUAL_STAR = "star"                 # NOTICE — Confident Voice only
+
+TYPE_ROWS: dict = {
+    "REWRITE":      {"visual": _VISUAL_COMPOSITION, "serve_cap": 2},
+    "RESTRUCTURE":  {"visual": _VISUAL_COMPOSITION, "serve_cap": None},
+    "ADD":          {"visual": _VISUAL_COMPOSITION, "serve_cap": None},
+    "CUT":          {"visual": _VISUAL_COMPOSITION, "serve_cap": None},
+    "EMPHASISE":    {"visual": _VISUAL_ACCENT,      "serve_cap": None},
+    "DE_EMPHASISE": {"visual": _VISUAL_ACCENT,      "serve_cap": None},
+    "NOTICE":       {"visual": _VISUAL_STAR,        "serve_cap": None},
+    "REHEARSE":     {"visual": _VISUAL_ACCENT,      "serve_cap": None},
+}
+
+
+def intervention_type_of(change: Any) -> str:
+    """The C.2 closed-set type of one live change. The ONE mapping."""
+    c = change if isinstance(change, dict) else {}
+    if c.get("trigger") == CONFIDENT_VOICE_TRIGGER:
+        return "NOTICE"
+    kind = c.get("kind")
+    if kind == "insert":
+        return "ADD"
+    if kind in ("bold", "advice"):
+        return "EMPHASISE"
+    return "REWRITE"
 
 
 def visual_of(change: Any) -> str:
-    """Which visual a change renders as. The registry, in one place."""
-    c = change if isinstance(change, dict) else {}
-    if c.get("trigger") == CONFIDENT_VOICE_TRIGGER:
-        return _VISUAL_STAR
-    from services.ideal_text_parts import COMPOSITION, layer_of_kind
-    return (_VISUAL_COMPOSITION
-            if layer_of_kind(c.get("kind")) == COMPOSITION
-            else _VISUAL_ACCENT)
+    """Which visual a change renders as — derived from its C.2 TYPE and
+    nothing else (C.4's one rule: presentation never keys on the lane)."""
+    return TYPE_ROWS[intervention_type_of(change)]["visual"]
+
+
+def filter_by_type_caps(changes: Any) -> list:
+    """The mix caps, applied to the POOL the engine arbitrates over.
+
+    A cap RESERVES space, it does not ration: it binds ONLY while another
+    type is actually proposing. An all-rewrite pool passes untouched — with
+    nothing to mix, serving two of an available three would starve the
+    student for no benefit — but the moment a metric-driven EMPHASISE or a
+    NOTICE proposes alongside, the capped type stops being able to fill
+    every slot ahead of it.
+
+    BEFORE arbitration on purpose: the engine's budget is flat and its
+    tie-break is document order, so capping afterwards would return fewer
+    than three when three were available. Within a capped type the kept
+    entries are the FIRST in the incoming list — document order, the same
+    tie-break the engine itself uses, so which rewrites survive is the same
+    answer the uncapped system gave. Pure."""
+    rows = [c for c in (changes or []) if isinstance(c, dict)]
+
+    def _servable(c: dict) -> bool:
+        # A zero-width span is refused at to_candidates and can never win a
+        # slot — it must neither count as "another type proposing" (which
+        # would arm the cap over a phantom mix) nor spend a capped type's
+        # allowance.
+        span = _span(c)
+        return span is not None and span[1] > span[0]
+
+    types = {intervention_type_of(c) for c in rows if _servable(c)}
+    counts: dict = {}
+    kept: list = []
+    for c in rows:
+        if not _servable(c):
+            kept.append(c)   # passes through; to_candidates refuses it
+            continue
+        t = intervention_type_of(c)
+        cap = (TYPE_ROWS.get(t) or {}).get("serve_cap")
+        others_propose = any(x != t for x in types)
+        if cap is not None and others_propose and counts.get(t, 0) >= cap:
+            continue
+        counts[t] = counts.get(t, 0) + 1
+        kept.append(c)
+    return kept
 
 
 def filter_by_layer(changes: Any, parts: Any) -> list:
@@ -452,6 +544,12 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # legitimately block-sized and has its own UI; the window rule is
         # about PAINT, and composition paints a diff, not a wash.
         rows = filter_by_window(rows)
+        if not rows:
+            return {"changes": [], "result": None, "controls": False}
+        # Appendix C mix caps (founder GO 2026-08-10): cap the POOL per
+        # C.2 type so one lane cannot monopolise the flat budget — see
+        # filter_by_type_caps for why this runs before arbitration.
+        rows = filter_by_type_caps(rows)
         if not rows:
             return {"changes": [], "result": None, "controls": False}
         rows.sort(key=lambda c: (

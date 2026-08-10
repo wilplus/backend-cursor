@@ -466,5 +466,84 @@ class TestTheWindowGate(unittest.TestCase):
 
 
 
+
+class TestTheOpsTable(unittest.TestCase):
+    """Appendix C, wired live (founder GO 2026-08-10). The closed set is the
+    layer that never grows; presentation derives from the TYPE alone; and the
+    mix caps stop one lane monopolising the flat budget — the founder's
+    "the interventions are only the text rewrites"."""
+
+    def test_the_C2_mapping_is_pinned(self):
+        cases = [
+            ({"kind": "replace"}, "REWRITE"),
+            ({"kind": "replace", "source": "new_take"}, "REWRITE"),
+            ({"kind": "insert"}, "ADD"),
+            ({"kind": "bold"}, "EMPHASISE"),
+            ({"kind": "advice", "device": "contrast"}, "EMPHASISE"),
+            ({"kind": "advice", "trigger": "charisma"}, "NOTICE"),
+        ]
+        for change, want in cases:
+            self.assertEqual(ic.intervention_type_of(change), want, change)
+
+    def test_presentation_derives_from_type_never_from_lane(self):
+        """C.4's one rule. Two changes of the same type from different lanes
+        must render identically."""
+        a = ic.visual_of({"kind": "replace", "source": "new_take"})
+        b = ic.visual_of({"kind": "replace", "source": "polish"})
+        self.assertEqual(a, b)
+        self.assertEqual(ic.visual_of({"kind": "bold"}), "bold")
+        self.assertEqual(
+            ic.visual_of({"kind": "advice", "trigger": "charisma"}), "star")
+        self.assertEqual(ic.visual_of({"kind": "insert"}), "underline")
+
+    def test_rewrites_cannot_eat_the_whole_budget(self):
+        """Five block rewrites + one metric emphasise: the pool caps REWRITE
+        at 2, so the emphasise ALWAYS survives to the served three."""
+        rewrites = [_change(i, kind="replace") for i in range(5)]
+        accent = _change(9, kind="bold")
+        accent["quote"] = "land these words"
+        out = ic.select(rewrites + [accent])["changes"]
+        kinds = [c["kind"] for c in out]
+        self.assertIn("bold", kinds)
+        self.assertLessEqual(kinds.count("replace"), 2)
+        self.assertLessEqual(len(out), 3)
+
+    def test_within_the_cap_document_order_still_decides(self):
+        """The kept rewrites are the FIRST in document order — the same
+        tie-break the engine itself uses, so capping changes WHICH lanes mix,
+        never which rewrite wins among rewrites."""
+        rewrites = [_change(i, kind="replace") for i in range(4)]
+        accent = _change(9, kind="bold")
+        accent["quote"] = "short phrase"
+        kept = ic.filter_by_type_caps(rewrites + [accent])
+        self.assertEqual([c["id"] for c in kept], ["c0", "c1", "c9"])
+
+    def test_an_all_rewrite_pool_is_NOT_rationed(self):
+        """A cap reserves space for a mix; with nothing to mix, serving two
+        of an available three would starve the student for no benefit."""
+        rewrites = [_change(i, kind="replace") for i in range(5)]
+        self.assertEqual(len(ic.filter_by_type_caps(rewrites)), 5)
+        self.assertEqual(len(ic.select(rewrites)["changes"]), 3)
+
+    def test_uncapped_types_pass_freely(self):
+        accents = []
+        for i in range(4):
+            a = _change(i, kind="bold")
+            a["quote"] = "short phrase here"
+            accents.append(a)
+        self.assertEqual(len(ic.filter_by_type_caps(accents)), 4)
+
+    def test_notice_is_never_capped_by_the_rewrite_row(self):
+        """Confident Voice is NOTICE — its own row. A wall of rewrites must
+        not silence the badge."""
+        rewrites = [_change(i, kind="replace") for i in range(5)]
+        cv = _change(8, kind="advice")
+        cv["trigger"] = "charisma"
+        cv["device"] = "contrast"
+        kept = ic.filter_by_type_caps(rewrites + [cv])
+        self.assertIn("c8", [c["id"] for c in kept])
+
+
+
 if __name__ == "__main__":
     unittest.main()
