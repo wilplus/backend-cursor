@@ -32,6 +32,7 @@ from services.ideal_text_parts import (
     InvalidParts,
     agrees_with_text,
     allowed_layer,
+    covered_by_locked_part,
     joined,
     layer_of_kind,
     part_at,
@@ -441,6 +442,55 @@ class TestR1TheLayerFilter(unittest.TestCase):
         changes = [self._change(parts, 0, "replace"),
                    self._change(parts, 1, "replace")]
         self.assertEqual(len(ic.select(changes)["changes"]), 2)
+
+
+class TestCoveredByLockedPart(unittest.TestCase):
+    """THE SAVE HOLE (founder-approved fix 2026-08-07).
+
+    Save resolves every unactioned offer as kept-mine so the document is left
+    clean. But R1 HIDES composition offers on a locked part — so a student
+    could lock a section, say it better in a later take, hit Save, and have
+    that upgrade silently declined without it ever reaching the screen. Same
+    defect R3 refuses on the lock button: a decision nobody made, written into
+    the one signal §6 depends on."""
+
+    LOCKED = [{"id": "a", "text": "We started in a tiny garage.",
+               "locked_at": "2026-08-07T10:00:00Z"},
+              {"id": "b", "text": "And then we shipped it fast.",
+               "locked_at": None}]
+
+    def test_words_inside_a_locked_part_are_covered(self):
+        self.assertTrue(
+            covered_by_locked_part("We started in a tiny garage.", self.LOCKED))
+
+    def test_a_fragment_of_a_locked_part_is_covered(self):
+        self.assertTrue(covered_by_locked_part("tiny garage", self.LOCKED))
+
+    def test_words_in_an_OPEN_part_are_not(self):
+        self.assertFalse(
+            covered_by_locked_part("And then we shipped it fast.", self.LOCKED))
+
+    def test_case_and_whitespace_do_not_decide_it(self):
+        """The served document is finalize-cased and stored block text is not
+        — the #230 raw-vs-document class. A capital must not be the difference
+        between holding an offer and silently declining it."""
+        self.assertTrue(
+            covered_by_locked_part("we  started   in a TINY garage.",
+                                   self.LOCKED))
+
+    def test_unrelated_words_are_not_covered(self):
+        self.assertFalse(
+            covered_by_locked_part("something else entirely", self.LOCKED))
+
+    def test_no_locked_parts_covers_nothing(self):
+        # Save then behaves exactly as it always did.
+        self.assertFalse(covered_by_locked_part("anything", []))
+        self.assertFalse(covered_by_locked_part("anything", None))
+
+    def test_junk(self):
+        self.assertFalse(covered_by_locked_part("", self.LOCKED))
+        self.assertFalse(covered_by_locked_part(None, self.LOCKED))
+        self.assertFalse(covered_by_locked_part("x", [None, "nope", {}]))
 
 
 try:

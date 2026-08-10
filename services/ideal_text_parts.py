@@ -147,6 +147,49 @@ def part_at(spans: Any, start: Any, end: Any) -> Optional[dict]:
     return None
 
 
+def _norm(text: Any) -> str:
+    """Whitespace- and case-insensitive form, for comparing a stored block's
+    words against a part's. The served document is finalize-cased (sentence
+    capitals) and stored block text is not — the #230 raw-vs-document class."""
+    if not isinstance(text, str):
+        return ""
+    return " ".join(text.split()).lower()
+
+
+def covered_by_locked_part(text: Any, parts: Any) -> bool:
+    """Are these words inside a LOCKED part?
+
+    THE SAVE HOLE THIS CLOSES (founder 2026-08-07). Save resolves every
+    unactioned offer as kept-mine so the document is left clean. But R1 hides
+    composition offers on a locked part — so a student could lock a section,
+    say it better in a later take, hit Save, and have that upgrade silently
+    DECLINED without it ever reaching the screen.
+
+    That is the same defect R3 refuses on the lock button: it writes a decision
+    the student never made, into the exact signal §6 depends on for
+    manager-engine precision. Suppressed must mean pending, not refused.
+
+    SUBSTRING, not span arithmetic, and deliberately so. Save has no served
+    document in hand — that value is derived per request from four sources —
+    and reconstructing it here would be a second implementation of the serve
+    path. A part's text IS a slice of that document, so "the block's words sit
+    inside a locked part's words" answers the same question without needing it.
+
+    WHEN IN DOUBT, SKIP. An unmatched offer stays pending, which at worst
+    leaves Save less tidy and the offer visible next time. The opposite error
+    declines something the student never saw, silently and unrecoverably.
+    """
+    needle = _norm(text)
+    if not needle:
+        return False
+    for p in (parts or []):
+        if not isinstance(p, dict) or not p.get("locked_at"):
+            continue
+        if needle in _norm(p.get("text")):
+            return True
+    return False
+
+
 class InvalidParts(ValueError):
     """The parts list cannot be trusted. Carries the reason for the 400."""
 

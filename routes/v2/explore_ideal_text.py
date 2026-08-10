@@ -1155,8 +1155,40 @@ def v2_explore_save_ideal_text(arc_id):
                             "error": "Could not read the document — "
                                      "try again."}), 500
         from services.master_document import decide_block
+        # ── SAVE MUST NOT DECIDE WHAT THE LOCK HID (founder 2026-08-07) ──
+        # R1 suppresses composition offers on a LOCKED part: the offer is
+        # created and stored, just not surfaced, so unlocking brings it back.
+        # Resolving it here as kept-mine would silently refuse an upgrade the
+        # student never saw — writing a decision they never made into the one
+        # signal §6 depends on, which is exactly what R3 refuses on the lock
+        # button. Suppressed means PENDING, not refused.
+        #
+        # Best-effort: an unreadable parts list leaves `_locked` empty, so
+        # nothing is skipped and Save behaves as it always did.
+        _locked = []
+        try:
+            from services.ideal_text_parts import covered_by_locked_part
+            _locked = [
+                p for p in (db.get_ideal_text_parts(
+                    arc_id, str(getattr(request, "user_id", "") or ""),
+                    with_lock=True) or [])
+                if isinstance(p, dict) and p.get("locked_at")
+            ]
+        except Exception as _lk_err:
+            logger.warning("save: locked parts unreadable arc=%s: %s",
+                           arc_id, _lk_err)
+
+        def _block_text(row) -> str:
+            return " ".join(
+                (p.get("text") or "").strip()
+                for p in (row.get("incumbent_pieces") or [])).strip()
+
         _resolve_failed = False
+        _held = 0
         for r in rows:
+            if _locked and covered_by_locked_part(_block_text(r), _locked):
+                _held += 1
+                continue
             if r.get("status") == "pending_upgrade":
                 ok, _e = decide_block(
                     arc_id, int(r.get("block_key")), "keep",
@@ -1167,6 +1199,9 @@ def v2_explore_save_ideal_text(arc_id):
                     arc_id, int(r.get("block_key")), "keep",
                     r.get("incumbent_take_session_id"), db)
                 _resolve_failed = _resolve_failed or not ok
+        if _held:
+            logger.info("save: %d offer(s) held pending behind a lock arc=%s",
+                        _held, arc_id)
         if _resolve_failed:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not resolve every open "
