@@ -128,6 +128,14 @@ app.register_blueprint(life_reminders_webhook_bp)
 from routes.jobs import jobs_bp
 app.register_blueprint(jobs_bp)
 
+# The same queue, for a HUMAN: /v2/admin/pipeline/{health,jobs,sweep}, gated
+# by @require_admin instead of X-Internal-Secret. Twins of the internal
+# routes above, not replacements — cron keeps its secret, an operator uses a
+# JWT, and PIPELINE_JOBS_SWEEP_SECRET is never carried on the admin path at
+# all. See docs/SPEC-pipeline-admin-panel.md.
+from routes.v2.admin_pipeline import admin_pipeline_bp
+app.register_blueprint(admin_pipeline_bp)
+
 # Rate limiting (services/rate_limits.py). The @rate_limits.*_limit
 # decorators on the paid routes registered themselves while the blueprints
 # above were imported; this call attaches the storage + the before_request
