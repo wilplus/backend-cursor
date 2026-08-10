@@ -1392,6 +1392,57 @@ def _locked_parts(arc_id, user_id, served_text) -> list:
         return []
 
 
+def _seed_parts_for_lock(arc_id, user_id, echo, raw_parts) -> list:
+    """Adopt the CLIENT's parts list so a lock can land on a document with no
+    stored identity. Returns the seeded parts in `_locked_parts` shape, or [].
+
+    SEED-ON-LOCK (SPEC-lockin-loop-and-coach-panel §2, the founder's DoD). The
+    founder's loop locks a paragraph the student never EDITED — record, accept
+    a chip, tap "Lock it" — and an unedited document has stored no parts, so
+    this endpoint used to 409 STALE on exactly the flow the product is for.
+    The refetch the FE answers a 409 with cannot help either: the GET serves
+    parts only when some were stored.
+
+    The trust model is the user-edit PUT's, unchanged: the client MINTS ids
+    (it owns the marker-aware splitter — §10.2), the server VALIDATES (real
+    UUIDs, joins back to the echoed document byte for byte) and stores. Two
+    refusals on top:
+
+      * ANY stored part carrying a lock → no seed. Stale-but-locked rows mean
+        the document moved under a locked paragraph, and compose_locked owns
+        that reconciliation on the next GET — adopting the client's fresh list
+        here would drop a lock the student already placed.
+      * `locked` flags inside the seed are IGNORED — every seeded part lands
+        open. The lock this request asks for still passes the R3 gate below;
+        honouring flags in the list would let one PUT lock paragraphs the
+        gate never checked.
+    """
+    try:
+        from services.ideal_text_parts import (
+            InvalidParts, agrees_with_text, validate,
+        )
+        if not isinstance(raw_parts, list) or not raw_parts:
+            return []
+        existing = db.get_ideal_text_parts(arc_id, user_id, with_lock=True)
+        if any(r.get("locked_at") for r in (existing or [])
+               if isinstance(r, dict)):
+            return []
+        try:
+            parts = validate(raw_parts)
+        except InvalidParts:
+            return []
+        if not parts or not agrees_with_text(parts, echo):
+            return []
+        rows = [{"id": p["id"], "ord": p["ord"], "text": p["text"],
+                 "locked_at": None} for p in parts]
+        if not db.replace_ideal_text_parts(arc_id, user_id, rows):
+            return []
+        return [dict(r, locked=False) for r in rows]
+    except Exception as e:
+        logger.warning("seed parts for lock failed arc=%s: %s", arc_id, e)
+        return []
+
+
 def _record_arms(result, session_id, user_id) -> None:
     """Persist one arbitration's experiment arms. Best-effort, never raises.
 
@@ -1678,6 +1729,15 @@ def v2_explore_set_part_lock(arc_id, part_id):
 
         user_id = str(getattr(request, "user_id", "") or "")
         parts = _locked_parts(arc_id, user_id, echo)
+        if not parts:
+            # SEED-ON-LOCK (SPEC-lockin-loop §2): no usable stored identity,
+            # but the client sent its derived parts list — validate and adopt
+            # it, so the founder's record→accept→"Lock it" loop works on a
+            # document the student never manually edited. Refused (no seed
+            # sent, malformed, disagrees with the echo, or a stored lock
+            # exists) → the 409 below, exactly as before.
+            parts = _seed_parts_for_lock(arc_id, user_id, echo,
+                                         body.get("parts"))
         if not parts:
             # Either no identity is stored, or it no longer describes this
             # document. Both mean the same thing to the caller: refetch.

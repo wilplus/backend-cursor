@@ -208,16 +208,24 @@ def main() -> int:
     # `finally`, so a chain never ends — and this used to start a fresh one
     # every boot. Ten restarts left ten immortal chains sweeping in parallel,
     # which is what "eleven sweeps in four seconds" was: not a hot loop,
-    # eleven accumulated chains coming due together. The lease makes it a
-    # singleton and self-healing — a dead chain's key expires and the next
-    # boot takes over.
+    # eleven accumulated chains coming due together.
+    #
+    # The lease value is the chain's IDENTITY (handoff 2026-08-10 §6.5): the
+    # chain carries this id through every re-enqueue and re-arms only while
+    # the key still holds it, so an accumulated duplicate drains itself
+    # within one interval instead of renewing a shared flag forever. A dead
+    # chain's key expires and the next boot takes over.
     try:
+        import uuid as _uuid
         interval = pipeline_jobs.sweep_interval_seconds()
+        chain_id = _uuid.uuid4().hex
         if job_queue.acquire_sweep_lease(
+                chain_id,
                 ttl_seconds=interval * pipeline_jobs.SWEEP_LEASE_INTERVALS):
-            job_queue.enqueue(pipeline_jobs.SWEEP_LOOP_PATH,
+            job_queue.enqueue(pipeline_jobs.SWEEP_LOOP_PATH, chain_id,
                               delay_seconds=interval)
-            logger.info("sweep chain started (every %ss)", interval)
+            logger.info("sweep chain %s started (every %ss)",
+                        chain_id, interval)
         else:
             logger.info("sweep chain already running elsewhere — not starting "
                         "a second")

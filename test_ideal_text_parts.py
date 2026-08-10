@@ -1007,5 +1007,131 @@ class TheLockEndpoint(unittest.TestCase):
         m_dec.assert_not_called()
 
 
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class SeedOnLock(unittest.TestCase):
+    """SPEC-lockin-loop §2 — the lock PUT adopts the client's parts list when
+    no usable identity is stored.
+
+    The founder's DoD locks a paragraph the student never manually edited
+    (record → accept a chip → "Lock it"), and an unedited document stores no
+    parts — without the seed, that exact flow 409s forever. The trust model is
+    the user-edit PUT's, unchanged: client mints, server validates and stores.
+    """
+
+    PA, PB = "11111111-1111-4111-8111-111111111111", \
+             "22222222-2222-4222-8222-222222222222"
+    DOC = "First part words.\n\nSecond part words."
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def _seed(self):
+        return [{"id": self.PA, "text": "First part words."},
+                {"id": self.PB, "text": "Second part words."}]
+
+    def _put(self, body, *, stored=None, changes=None, replace_ok=True,
+             part_id=None):
+        with self.app.test_request_context(json=body):
+            request.user_id = "u1"
+            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
+                       return_value=(True, [])), \
+                 patch.object(v2.db, "get_ideal_text_parts",
+                              return_value=stored or [], create=True), \
+                 patch.object(v2.db, "replace_ideal_text_parts",
+                              return_value=replace_ok,
+                              create=True) as m_replace, \
+                 patch("routes.v2.explore_ideal_text._tracked_changes_block",
+                       return_value={"changes": changes or []}), \
+                 patch.object(v2.db, "set_ideal_text_part_lock",
+                              return_value=True, create=True) as m_write:
+                out = v2.v2_explore_set_part_lock.__wrapped__(
+                    "a1", part_id or self.PA)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status, m_replace, m_write
+
+    def test_no_stored_parts_plus_a_valid_seed_locks(self):
+        """The DoD flow: never edited, so nothing stored — the seed lands and
+        the lock proceeds."""
+        body, status, m_replace, m_write = self._put(
+            {"locked": True, "text_echo": self.DOC, "parts": self._seed()})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["locked"])
+        m_replace.assert_called_once()
+        m_write.assert_called_once()
+
+    def test_the_seed_is_stored_all_OPEN(self):
+        """`locked` flags inside the seed are ignored — honouring them would
+        lock paragraphs the R3 gate never checked."""
+        seed = [dict(p, locked=True) for p in self._seed()]
+        _b, status, m_replace, _w = self._put(
+            {"locked": True, "text_echo": self.DOC, "parts": seed})
+        self.assertEqual(status, 200)
+        rows = m_replace.call_args[0][2]
+        self.assertTrue(all(r["locked_at"] is None for r in rows))
+
+    def test_no_seed_sent_is_still_STALE(self):
+        """Today's contract for clients that send no parts, unchanged."""
+        body, status, m_replace, m_write = self._put(
+            {"locked": True, "text_echo": self.DOC})
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "STALE_DOCUMENT")
+        m_replace.assert_not_called()
+        m_write.assert_not_called()
+
+    def test_a_seed_that_disagrees_with_the_echo_is_refused(self):
+        """The parts must join to the words the student is looking at — the
+        same invariant the user-edit PUT enforces."""
+        body, status, m_replace, _w = self._put(
+            {"locked": True, "text_echo": "entirely different words",
+             "parts": self._seed()})
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "STALE_DOCUMENT")
+        m_replace.assert_not_called()
+
+    def test_a_malformed_seed_is_refused_not_repaired(self):
+        for bad in ([{"id": "not-a-uuid", "text": "First part words."}],
+                    [{"id": self.PA}],
+                    [{"id": self.PA, "text": ""}],
+                    "not a list"):
+            body, status, m_replace, _w = self._put(
+                {"locked": True, "text_echo": self.DOC, "parts": bad})
+            self.assertEqual(status, 409, bad)
+            m_replace.assert_not_called()
+
+    def test_a_stored_LOCK_blocks_the_seed(self):
+        """Stale-but-locked rows mean the document moved under a locked
+        paragraph. compose_locked owns that reconciliation on the next GET;
+        adopting the client's fresh list here would drop a lock the student
+        already placed."""
+        stored = [{"id": self.PA, "ord": 0, "text": "old words entirely",
+                   "locked_at": "2026-08-07T10:00:00Z"}]
+        body, status, m_replace, _w = self._put(
+            {"locked": True, "text_echo": self.DOC, "parts": self._seed()},
+            stored=stored)
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "STALE_DOCUMENT")
+        m_replace.assert_not_called()
+
+    def test_the_R3_gate_still_runs_after_a_seed(self):
+        """Seeding identity does not skip the undecided-suggestions check —
+        the gate reads the same served pipeline either way."""
+        pending = [{"id": "c1", "kind": "replace",
+                    "span": {"start": 0, "end": 17}}]
+        body, status, _r, m_write = self._put(
+            {"locked": True, "text_echo": self.DOC, "parts": self._seed()},
+            changes=pending)
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "UNDECIDED")
+        m_write.assert_not_called()
+
+    def test_a_failed_seed_write_is_STALE_not_a_lock_on_nothing(self):
+        body, status, _r, m_write = self._put(
+            {"locked": True, "text_echo": self.DOC, "parts": self._seed()},
+            replace_ok=False)
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "STALE_DOCUMENT")
+        m_write.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
