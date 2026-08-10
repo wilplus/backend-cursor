@@ -71,10 +71,14 @@ DETECTORS = (FILLERS,)
 
 # Which dimension_evaluations rows a detector's version stamps. A dimension
 # absent here is stamped with NOTHING (honest NULL), never with a neighbour's
-# version. NOTE the near-miss deliberately excluded: stress_snippet_service
-# counts fillers from utils/filler_words.py's per-LANGUAGE lists — a second,
-# different lexicon that never feeds these rows. Mapping it to `fillers` here
-# would stamp measurements with a definition that did not produce them.
+# version.
+#
+# There WAS a second filler lexicon (utils/filler_words.py, per-language) that
+# fed clip selection rather than these rows; it was deliberately excluded here
+# and then deleted outright on 2026-08-10 with the snippet generators that
+# were its only reader. The rule it illustrated still stands: a lexicon that
+# never produces a dimension_evaluations row must not be mapped to one, or the
+# stamp claims a definition that did not produce the measurement.
 DETECTOR_FOR_DIMENSION = {"fillers": FILLERS}
 
 

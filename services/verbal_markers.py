@@ -3,8 +3,8 @@
 Companion: SPEC.md v3 D20 (Beta-Binomial estimation), D21 (the three-way
 split), Appendix F.4 (D8, hedge/booster window).
 
-WHY THREE LEXICONS AND NOT ONE. `utils/filler_words.py` mixes disfluencies,
-hedges and boosters into a single "filler" list. Hedges LOWER stated certainty
+WHY THREE LEXICONS AND NOT ONE. The retired `utils/filler_words.py` mixed
+disfluencies, hedges and boosters into a single "filler" list. Hedges LOWER stated certainty
 and boosters RAISE it, so summing them cancels the signal — a speaker who
 hedges ten times and boosts ten times reads identical to one who does neither.
 Split by what the marker does to certainty:

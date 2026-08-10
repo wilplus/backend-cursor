@@ -46,8 +46,10 @@ def _resolve_snippet_audio_url(snippet: dict) -> str | None:
         so it must win.
       - Path B (extract_recording_snippets): audio_segment_path = full URL,
         storage_path NULL.
-      - Path C (charisma_snippet_service) and student uploads: storage_path
-        set, audio_segment_path NULL.
+      - Path C (the ML snippet generator, DELETED 2026-08-10) and student
+        uploads: storage_path set, audio_segment_path NULL. Path C rows
+        already in the table still read through here, which is why this
+        branch stays.
 
     Precedence is therefore: storage_path → audio_segment_path → None.
     Returning None means there's truly nothing playable. Keeping

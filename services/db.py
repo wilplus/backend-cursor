@@ -1680,26 +1680,6 @@ class DatabaseService:
             logger.warning("v2_get_published_sessions_for_user failed: %s", e)
             return []
 
-    def v2_delete_stress_snippets_for_recording(self, recording_id: str) -> int:
-        """Delete previously generated snippet candidates for one recording."""
-        result = (
-            self.client.table("stress_snippets")
-            .delete()
-            .eq("recording_id", recording_id)
-            .execute()
-        )
-        return len(result.data or [])
-
-    def v2_insert_stress_snippets(self, snippets: list[dict]) -> list[dict]:
-        """Bulk insert snippet candidates."""
-        if not snippets:
-            return []
-        result = (
-            self.client.table("stress_snippets")
-            .insert(snippets)
-            .execute()
-        )
-        return result.data or []
 
     def v2_get_stress_snippet(self, snippet_id: str) -> Optional[dict]:
         """Return one stress snippet row by id."""
@@ -1712,180 +1692,25 @@ class DatabaseService:
         )
         return result.data[0] if result.data else None
 
-    def v2_set_stress_snippet_label(
-        self,
-        snippet_id: str,
-        reviewer_id: str,
-        label: str,
-        notes: Optional[str],
-        reviewer_email: Optional[str] = None,
-    ) -> Optional[dict]:
-        """Set coach binary label (stress/no_stress) for one snippet."""
-        payload = {
-            "coach_label": label,
-            "coach_label_notes": notes,
-            "labeled_by": reviewer_id,
-            "labeled_by_admin_id": reviewer_id,
-            "labeled_by_admin_email": (reviewer_email or "").strip() or None,
-            "labeled_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        result = (
-            self.client.table("stress_snippets")
-            .update(payload)
-            .eq("id", snippet_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_clear_stress_snippet_label(self, snippet_id: str) -> Optional[dict]:
-        """Remove coach label so the snippet returns to the unlabeled queue."""
-        payload = {
-            "coach_label": None,
-            "coach_label_notes": None,
-            "labeled_by": None,
-            "labeled_by_admin_id": None,
-            "labeled_by_admin_email": None,
-            "labeled_at": None,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        result = (
-            self.client.table("stress_snippets")
-            .update(payload)
-            .eq("id", snippet_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_merge_stress_snippet_features(self, snippet_id: str, patch: dict) -> Optional[dict]:
-        """Shallow-merge ``patch`` into ``features`` JSONB."""
-        row = self.v2_get_stress_snippet(snippet_id)
-        if not row:
-            return None
-        features = dict(row.get("features") or {})
-        for k, v in (patch or {}).items():
-            if v is None:
-                features.pop(k, None)
-            else:
-                features[k] = v
-        result = (
-            self.client.table("stress_snippets")
-            .update({
-                "features": features,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            })
-            .eq("id", snippet_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_list_stress_snippets(
-        self,
-        *,
-        source_type: Optional[str] = None,
-        recording_id: Optional[str] = None,
-        label_state: str = "all",
-        limit: int = 50,
-        offset: int = 0,
-        sort_created_desc: bool = True,
-        exclude_queue_skipped: bool = False,
-    ) -> list[dict]:
-        """List generated snippets with source-side recording metadata."""
-        query = self.client.table("stress_snippets").select("*")
-        query = query.order("created_at", desc=sort_created_desc)
-        query = query.range(offset, max(offset + limit - 1, offset))
-        if source_type:
-            query = query.eq("source_type", source_type)
-        if recording_id:
-            query = query.eq("recording_id", recording_id)
-        if label_state == "unlabeled":
-            query = query.is_("coach_label", "null")
-        result = query.execute()
-        rows = result.data or []
-        if label_state == "labeled":
-            rows = [r for r in rows if r.get("coach_label") is not None]
-        if exclude_queue_skipped:
-            rows = [
-                r
-                for r in rows
-                if not (isinstance(r.get("features"), dict) and r.get("features", {}).get("queue_skipped") is True)
-            ]
-        if not rows:
-            return []
-
-        recording_ids = [r.get("recording_id") for r in rows if r.get("recording_id")]
-        recordings_map: dict[str, dict] = {}
-        if recording_ids:
-            try:
-                recs = (
-                    self.client.table("recordings")
-                    .select("id, recording_origin, source_metadata, user_id, session_v2_id, created_at, storage_path")
-                    .in_("id", recording_ids)
-                    .execute()
-                )
-                recordings_map = {str(r["id"]): r for r in (recs.data or []) if r.get("id")}
-            except Exception:
-                recordings_map = {}
-
-        out = []
-        for row in rows:
-            item = dict(row)
-            rid = str(item.get("recording_id")) if item.get("recording_id") else None
-            item["recording"] = recordings_map.get(rid)
-            out.append(item)
-        return out
-
     # ------------------------------------------------------------------
     # Charisma snippets
     # ------------------------------------------------------------------
-
-    def v2_delete_charisma_snippets_for_recording(self, recording_id: str) -> int:
-        """Delete ONLY ML-generator candidate snippets for one recording.
-
-        IMPORTANT: this is the cleanup the ML pipeline
-        (charisma_snippet_service.generate_charisma_snippets_for_recording)
-        runs before re-inserting fresh candidates. Without the source_type
-        filter below, it would also wipe out:
-
-          - Interview-turn rows from /v2/public/interview/upload-answer
-            (Path A), which carry the user's actual recorded answers,
-            Whisper transcripts, and turn metadata
-          - Single-snippet rows from extract_recording_snippets (Path B)
-            that the cold-start claim flow produces
-
-        Production was hitting this exact failure: users recorded 3
-        EBCP turns, the per-turn inserts succeeded, then the analysis
-        pipeline ran and wiped the rows just before admin tried to
-        view them.
-
-        Only ML-generator rows have `source_type` populated ('student'
-        or 'internet'); Paths A and B leave it NULL. Filtering on
-        source_type IS NOT NULL preserves their data.
-        """
-        # supabase-py exposes `not_` as a property, NOT a callable —
-        # the chain is .not_.is_(col, "null"), matching every other
-        # usage in this file (e.g. .not_.is_("words_per_minute", "null")
-        # at db.py:374). A prior commit accidentally wrote
-        # .not_("source_type", "is", None) which raised
-        # "'SyncFilterRequestBuilder' object is not callable" at runtime,
-        # and the ML-generator cleanup silently failed every time it
-        # ran — letting stale snippet candidates accumulate.
-        result = (
-            self.client.table("charisma_snippets")
-            .delete()
-            .eq("recording_id", recording_id)
-            .not_.is_("source_type", "null")
-            .execute()
-        )
-        return len(result.data or [])
 
     def v2_delete_lab_snippets_for_recording(self, recording_id: str) -> int:
         """willab re-cut (UX Wave 3 BE-6): delete the auto-cut Lab snippets for
         a recording so process_lab_recording can re-insert a fresh set. willab
         snippets are created via create_charisma_snippet with source_type NULL
-        (snippet_type 'unlabeled'), so this targets EXACTLY those — the inverse
-        filter of v2_delete_charisma_snippets_for_recording, so it never
-        touches ML-generator rows (source_type populated) or any other path.
+        (snippet_type 'unlabeled'), so this targets EXACTLY those.
+
+        THE `source_type IS NULL` FILTER STAYS EVEN THOUGH THE ML GENERATOR IS
+        GONE (deleted 2026-08-10 with its paired cleanup,
+        v2_delete_charisma_snippets_for_recording). Its rows — source_type
+        'student' / 'internet' — are still IN the table; nothing was dropped.
+        Widening this delete to "all rows for the recording" would destroy
+        them, and would also start eating interview-turn and funnel rows that
+        happen to share a recording_id. The filter is what keeps four
+        producers' rows in one table from deleting each other.
+
         Coach authoring lives in the separate training_labels /
         coach_snippet_drafts tables; those rows are left as-is (orphaned by
         snippet_id, invisible to the new cut). Returns the delete count."""
