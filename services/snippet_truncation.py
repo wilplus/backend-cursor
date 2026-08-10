@@ -107,8 +107,10 @@ MAX_SNIPPETS: int = 6
 # Boundary snap radius — never cross the candidate's neighbour.
 BOUNDARY_SNAP_MS: int = 500
 
-# Filler word list, mirroring services.stress_snippet_service._FILLER_WORDS.
-# Kept inline here so the algorithm is self-contained for testing.
+# Filler word list. Was mirrored from the snippet generators' lexicon;
+# those were deleted 2026-08-10 and this inline copy is now the only one
+# the truncation algorithm has — which is what "self-contained" always
+# meant. Changing it changes where clips get cut, nothing measured.
 _FILLER_WORDS = (
     "um", "uh", "erm", "hmm", "like", "you know", "i mean", "sort of", "kind of",
 )

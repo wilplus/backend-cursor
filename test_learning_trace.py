@@ -20,7 +20,9 @@ Run: python3 -m unittest test_learning_trace
 """
 from __future__ import annotations
 
+import ast
 import os
+import pathlib
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -106,28 +108,55 @@ class StressLaneIsGoneTests(unittest.TestCase):
 
         Checked against CODE, not prose — the module docstrings deliberately
         still name what was deleted so the next reader knows why it went."""
-        for path in ("routes/internal_webhooks.py",
-                     "services/stress_snippet_service.py",
-                     "services/charisma_snippet_service.py"):
+        for path in ("routes/internal_webhooks.py",):
             code = _code_without_prose(path)
             self.assertNotIn("upsert_runtime_config(", code, path)
             self.assertNotIn("stress_baseline_model_path", code, path)
             self.assertNotIn("auto_promote", code, path)
 
-    def test_clip_selection_has_no_model_loader(self):
-        """The promoted model fed clip SELECTION only, and the no-model state
-        already ran heuristic suspicion scoring. Deleting the loader makes
-        that heuristic permanent — it must not have grown a hard dependency
-        on the model on the way out."""
+    def test_the_snippet_generators_are_gone(self):
+        """Founder 2026-08-10: the clip GENERATORS went too.
+
+        This supersedes two earlier assertions that read these files to prove
+        they carried no model loader and no promote key. A deleted file
+        carries neither, so the check got stronger, not weaker — but only if
+        it is stated as absence. Reading a file to assert what it does NOT
+        contain silently passes into a vacuum once the file is gone, which is
+        why those assertions were replaced rather than deleted.
+
+        `utils/filler_words.py` goes with them: its only reader was
+        stress_snippet_service._count_fillers. NOTE the table is NOT gone —
+        `charisma_snippets` still carries interview turns, funnel cold-start
+        rows and willab Lab auto-cuts, none of which the ML generator wrote.
+        """
         for path in ("services/stress_snippet_service.py",
-                     "services/charisma_snippet_service.py"):
-            with open(path, encoding="utf-8") as fh:
-                src = fh.read()
-            for gone in ("_load_baseline_model", "_predict_with_baseline_model",
-                         "_feature_vector_for_model"):
-                self.assertNotIn(f"def {gone}", src, f"{gone} in {path}")
-            # The heuristic the selector now runs on, permanently.
-            self.assertIn("suspicion = 0.45 * c.filler_density", src, path)
+                     "services/charisma_snippet_service.py",
+                     "utils/filler_words.py"):
+            self.assertFalse(os.path.exists(path),
+                             f"{path} is back — the clip generators are dead "
+                             f"and nothing calls them")
+
+    def test_nothing_imports_the_dead_generators(self):
+        """The deletion above is only real if no module still reaches for
+        them — a live import of a deleted module is an ImportError at boot,
+        which is the LIVE LOOP failure this whole sweep exists to avoid."""
+        root = pathlib.Path(__file__).parent
+        skip = {"test_learning_trace.py"}
+        for py in list(root.glob("*.py")) + list(root.glob("services/*.py")) \
+                + list(root.glob("routes/**/*.py")) + list(root.glob("utils/*.py")):
+            if py.name in skip:
+                continue
+            tree = ast.parse(py.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                mod = ""
+                if isinstance(node, ast.ImportFrom):
+                    mod = node.module or ""
+                elif isinstance(node, ast.Import):
+                    mod = ",".join(a.name for a in node.names)
+                for dead in ("stress_snippet_service", "charisma_snippet_service",
+                             "filler_words"):
+                    self.assertNotIn(dead, mod,
+                                     f"{py} imports the deleted {dead}")
 
     def test_local_file_path_model_fallback_is_gone(self):
         """A model ref pointing at a local path on Railway dies at the next
