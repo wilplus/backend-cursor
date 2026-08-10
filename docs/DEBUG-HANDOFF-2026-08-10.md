@@ -174,7 +174,23 @@ search terms must match the emitted string, not the table name.
 
 ## 5 · OPEN QUESTIONS FOR THE FOUNDER (the E2E spec)
 
-Answers to these define "wired end to end" for the fixing session.
+> **✅ ANSWERED 2026-08-10, all seven — the authoritative spec is
+> [`docs/SPEC-lockin-loop-and-coach-panel.md`](SPEC-lockin-loop-and-coach-panel.md)
+> ("exact product spec, do not deviate").** Headlines: strictly blocking
+> loading screen; three lock triggers (edit / accept / explicit "Lock it"),
+> Accept-chip → "Lock it" button flow; locked text takes NOTHING except a
+> confident-voice "better version pending…" prompt (narrows the R1
+> accentuation allowance); Confident Voice renders as a Star, other feedback
+> underline/bold, styling driven by the interventions ops table; budget = 3
+> per recording (= BUDGET_CEILING); live "you are here" anchoring display
+> during recording (F1-CORE adjacent); coach Lab panel two states — live =
+> full loop, uploaded = confident-voice recognition only, blind
+> triangulation; restore-first, then rebuild panels.
+>
+> **B1's root cause is CONFIRMED AND FIXED by the founder:** the star flags
+> were disabled on the worker service; now enabled. Verification sequence:
+> spec §7. The questions below are retained only as the record of what was
+> asked.
 
 1. **Student loop:** after a recording stops — is the screen a *blocking*
    "working on your take" state (old text inaccessible) until the new text is
