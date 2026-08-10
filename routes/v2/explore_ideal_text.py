@@ -803,8 +803,12 @@ def v2_explore_get_ideal_text(arc_id):
             # inert on an empty id by construction. Sending it here keeps the
             # decision in one place (MANAGER_CONTROLS_ENABLED, default off)
             # rather than in whether a call site remembered to.
-            **_tracked_changes_block(arc_id, _text,
-                                     getattr(request, "user_id", "") or ""),
+            **_tracked_changes_block(
+                arc_id, _text, getattr(request, "user_id", "") or "",
+                # The take this arbitration is about — NOT the doc-level id,
+                # which is None under the master flag (see _tracked_changes_
+                # block). It keys the withhold arm and every arm row.
+                _latest_take_sid or ""),
             # The moments-unlock price, top level (the FE reads it here
             # for the locked-moment prompt — the only paid item).
             "price_credits": int(getattr(
@@ -1388,7 +1392,35 @@ def _locked_parts(arc_id, user_id, served_text) -> list:
         return []
 
 
-def _tracked_changes_block(arc_id, served_text, user_id="") -> dict:
+def _record_arms(result, session_id, user_id) -> None:
+    """Persist one arbitration's experiment arms. Best-effort, never raises.
+
+    THE MODULE IS EXPLICIT that running the controls without this is strictly
+    WORSE than not running them: 12% of (user, lane) pairs receive nothing and
+    20% of winning notes are withheld, users pay that cost in feedback, and
+    without the arm stored next to the outcome no causal claim is recoverable
+    — while it looks from the outside exactly like a working experiment.
+
+    ONE ROW PER (session, lane) CONSIDERED, upserted on that pair. This surface
+    is POLLED, so the same arbitration is written repeatedly; the upsert makes
+    that idempotent, and every value it writes is deterministic for a given
+    (user, session) — the assignments are pure functions of the salts, and the
+    exploration roll is stable by construction — so a re-write cannot change a
+    recorded arm underneath the analysis.
+    """
+    try:
+        from services.manager_engine import arm_rows
+        rows = arm_rows(result, session_id=str(session_id or ""),
+                        user_id=str(user_id or ""))
+        if rows:
+            db.record_intervention_arms(rows)
+    except Exception as e:
+        logger.warning("intervention arms not recorded session=%s: %s",
+                       session_id, e)
+
+
+def _tracked_changes_block(arc_id, served_text, user_id="",
+                           take_session_id="") -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
     ABSENT and the FE keeps rendering today's star layer.
@@ -1555,13 +1587,28 @@ def _tracked_changes_block(arc_id, served_text, user_id="") -> dict:
         # `drop_overlaps` sweep — see intervention_candidates.select) and
         # returns the survivors in document order. A lane that is not
         # declared there does not reach the user. ──
-        changes = _select(changes, user_id=user_id,
-                          session_id=str(doc.get("take_session_id") or ""),
-                          # R1 — the layer filter runs inside the gate, BEFORE
-                          # the budget. A locked part takes accentuation only;
-                          # an open one takes composition only.
-                          parts=_locked_parts(arc_id, user_id, served_text),
-                          )["changes"]
+        # THE SESSION KEY, and it is not doc-level. Under the master flag
+        # `doc["take_session_id"]` is None (the same starvation review
+        # findings #12/#16 hit on the applied map), which would make
+        # `is_withheld` short-circuit to False — the withhold arm NEVER firing
+        # — and every arm row carry an empty session_id, which the writer
+        # drops. Flipping the controls on that would produce exactly the
+        # failure the module warns about: a table that looks like a working
+        # experiment while recording nothing. The caller passes the arc's
+        # latest spoken take instead: the take this arbitration is about.
+        _arm_sid = str(take_session_id or doc.get("take_session_id") or "")
+        _sel = _select(changes, user_id=user_id,
+                       session_id=_arm_sid,
+                       # R1 — the layer filter runs inside the gate, BEFORE
+                       # the budget. A locked part takes accentuation only;
+                       # an open one takes composition only.
+                       parts=_locked_parts(arc_id, user_id, served_text))
+        changes = _sel["changes"]
+        # THE EXPERIMENT'S RECORD. Only when the arms actually ran: rows
+        # written with the controls inert would stamp the policy (gamma,
+        # withhold_rate) as if an assignment had happened when none did.
+        if _sel.get("controls") and _sel.get("result") is not None:
+            _record_arms(_sel["result"], _arm_sid, user_id)
         # Additions ride OUTSIDE the budget and outside the span check — they
         # have no span. Absent when there are none, so the FE draws nothing
         # rather than an empty section. See master_document.block_additions for

@@ -170,9 +170,21 @@ def _controls_enabled() -> bool:
     `arm_rows()`, because the module is explicit that running the arms without
     storing them is strictly worse than not running them at all.
 
-    Tracked with its exit conditions in docs/OPS-FLAGS-AND-RELEASES.md.
+    DEFAULT FLIPPED ON 2026-08-10, after all three exit conditions landed in
+    one change (founder approval, Task II):
+
+      * `arm_rows()` is persisted — `_record_arms` in the ideal-text serve
+        path, gated on the controls actually having run;
+      * the exploration quota has a REAL roll — `exploration_roll`, stable per
+        (user, session) rather than random, because this surface is polled;
+      * the session key is the arc's latest spoken take, not the doc-level id
+        (None under the master flag, which would have silenced the withhold
+        arm and dropped every arm row).
+
+    Setting MANAGER_CONTROLS_ENABLED=0 in the environment still switches the
+    whole experiment off in one place, with no code change.
     """
-    return (os.getenv("MANAGER_CONTROLS_ENABLED") or "0").strip().lower() \
+    return (os.getenv("MANAGER_CONTROLS_ENABLED") or "1").strip().lower() \
         in ("1", "true", "yes")
 
 
@@ -339,19 +351,19 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
     try:
         rows = [c for c in (changes or []) if isinstance(c, dict)]
         if not rows:
-            return {"changes": [], "result": None}
+            return {"changes": [], "result": None, "controls": False}
         # R1 — the layer filter runs HERE, before anything is scored or
         # budgeted. See filter_by_layer for why the order is the rule.
         rows = filter_by_layer(rows, parts)
         if not rows:
-            return {"changes": [], "result": None}
+            return {"changes": [], "result": None, "controls": False}
         rows.sort(key=lambda c: (
             (c.get("span") or {}).get("start", 0),
             (c.get("span") or {}).get("end", 0)))
 
         candidates = to_candidates(rows)
         if not candidates:
-            return {"changes": [], "result": None}
+            return {"changes": [], "result": None, "controls": False}
 
         controls = _controls_enabled()
         state = user_state(candidates)
@@ -362,14 +374,18 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
                 p_mastery=state.p_mastery,
                 sessions_since_fired=state.sessions_since_fired)
 
+        # THE EXPLORATION QUOTA, armed with the controls. `exploration_roll`
+        # is DETERMINISTIC per (user, session) — never random.random, because
+        # this surface is polled and a fresh draw per request would re-decide
+        # the branch every few seconds, swapping the notes on screen while the
+        # student watched. It returns None without a stable key, and arbitrate
+        # then skips the branch entirely.
+        _sid = str(session_id or "")
         result = me.arbitrate(
             candidates, state,
-            session_id=str(session_id or "") if controls else "",
-            # No `roll`: the exploration quota needs randomness, and this
-            # module is pure. arbitrate() skips the branch entirely when roll
-            # is None, so the quota is simply not running — stated here rather
-            # than left to be discovered as "exploration never fires".
-            roll=None,
+            session_id=_sid if controls else "",
+            roll=(me.exploration_roll(str(user_id or ""), _sid)
+                  if controls else None),
             controls=controls)
 
         by_ref = {str(i): row for i, row in enumerate(rows)}
@@ -379,7 +395,12 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
             if row is not None:
                 kept.append(row)
         kept.sort(key=lambda c: (c["span"]["start"], c["span"]["end"]))
-        return {"changes": kept, "result": result}
+        # `controls` rides back so the caller knows whether an EXPERIMENT ran.
+        # It gates arm persistence: `intervention_arms` is the experiment's
+        # record, and rows written with the arms inert would carry the policy
+        # (gamma, withhold_rate) as if an assignment had happened when none
+        # did — a table that reads as populated while measuring nothing.
+        return {"changes": kept, "result": result, "controls": controls}
     except Exception as e:
         logger.warning("intervention selection failed: %s", e)
-        return {"changes": [], "result": None}
+        return {"changes": [], "result": None, "controls": False}
