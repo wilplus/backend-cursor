@@ -14,6 +14,23 @@ the FE locates each milestone the same way it locates a tracked change.
 
 This is the SHORTER view of the SAME text, never a summary and never a new
 claim. The full-vs-cue toggle is the FE's (E-2); the BE just serves both.
+
+──────────────────────────────────────────────────────────────────────────────
+NOT WIRED (founder 2026-08-07). Nothing calls this. `_tracked_changes_block`
+used to, behind KEY_POINTS_ENABLED, and that flag is gone with the call site.
+
+WHY, since the module is not broken: a cue sheet highlights each block's
+verbatim OPENING PHRASE — by contract, exactly as specified — and on screen a
+highlighted opening phrase is indistinguishable from an intervention. It was
+read as "the system marked this and will not say why". The founder's call was
+to replace it with real interventions from the manager engine and defer the
+cue sheet until the E-2 full↔key-words toggle gives it a surface of its own,
+where a milestone reads as navigation rather than as feedback.
+
+Kept, with its tests, because the deferral is about WHERE it renders, not
+about whether the derivation is right. Re-wiring it is one call in
+`_tracked_changes_block` — but it needs the toggle first.
+──────────────────────────────────────────────────────────────────────────────
 """
 from __future__ import annotations
 

@@ -196,6 +196,34 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
             "span": {"start": start, "end": end},
             "quote": quote,
         }
+        # THE REASON LINE. `why` is the model's FREE TEXT and the FE has
+        # always dropped it: it validates `why_key ?? why` against a closed
+        # vocabulary, so un-signed-off LLM prose can never reach a student
+        # (LIVE LOOP). That gate is right and stays. The field is kept because
+        # a row that ever carries a real key works unchanged.
+        #
+        # `why_key` is what actually renders, and it is a KEY not a string —
+        # the FE holds the copy, exactly as it does for the cross-take lanes.
+        # The four existing keys are all COMPARISON copy ("This take carried
+        # more energy…"), so reusing one here would have written a sentence
+        # about a second take that does not exist in this lane. Founder
+        # supplied the non-comparison copy 2026-08-07 and it splits in two.
+        #
+        # THE SPLIT IS THE LAYER BOUNDARY, not a lane list. A change either
+        # alters the words or styles the words that are already there — the
+        # same composition/accentuation line SPEC-parts-locking-and-layers §2
+        # draws, and the copy only makes sense on the right side of it: you
+        # cannot say "helps your main point stand out" about a word swap, and
+        # "sounds smoother and easier to follow" says nothing about a bold.
+        #
+        # `profanity` gets NEITHER. Its lead line already carries the whole
+        # message ("This might land differently than you meant"), and neither
+        # set is about that; a clarity claim on top would be a second reason
+        # nobody offered.
+        if kind == "replace" and source in ("polish", "wording"):
+            entry["why_key"] = "clarity"      # composition — changes words
+        elif kind == "bold":
+            entry["why_key"] = "emphasis"     # accentuation — styles words
         if kind == "replace":
             _repl = (sug.get("replacement_text") or "").strip()
             if not _repl:

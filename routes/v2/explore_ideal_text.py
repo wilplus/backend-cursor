@@ -706,6 +706,22 @@ def v2_explore_get_ideal_text(arc_id):
             # mapping is provable — null degrades the FE to its
             # exact-count zip, never a guessed attachment.
             "pieces": _ideal_text_pieces(arc_id, _text, _pres_ref),
+            # ── PARTS (SPEC-parts-locking-and-layers §3.1, Step 0): the
+            # document as an ordered list with STABLE ids, so PR 3 has
+            # something a lock can survive a reorder or a reword on.
+            #
+            # ABSENT, not [], when this document has no parts yet — the
+            # two mean different things and the FE branches on exactly
+            # that difference. Absent = "no identity stored, derive as
+            # you always did"; [] = "this document is empty". `text` is
+            # unchanged either way, so every read-only consumer is
+            # untouched. Only served when the parts still JOIN BACK to
+            # the served text: a new take or a coach verify can rewrite
+            # the document underneath stored parts, and stale identity
+            # pointing at words that are no longer there is worse than
+            # none (#219's rule, applied to parts). ──
+            **_ideal_parts_block(arc_id, getattr(request, "user_id", ""),
+                                 _text),
             # True when the served text is the student's own edit of the
             # current version (the FE labels it).
             "user_edited": _user_edited,
@@ -730,7 +746,13 @@ def v2_explore_get_ideal_text(arc_id):
             # document — strike/propose/bold/advice, each pointing at
             # exactly the words it is about. Absent when the flag is
             # off (the FE keeps rendering today's star layer). ──
-            **_tracked_changes_block(arc_id, _text),
+            # The user id is the CONTROL-ARM KEY, and passing it is the only
+            # thing that arms the manager's three randomisations — they are
+            # inert on an empty id by construction. Sending it here keeps the
+            # decision in one place (MANAGER_CONTROLS_ENABLED, default off)
+            # rather than in whether a call site remembered to.
+            **_tracked_changes_block(arc_id, _text,
+                                     getattr(request, "user_id", "") or ""),
             # The moments-unlock price, top level (the FE reads it here
             # for the locked-moment prompt — the only paid item).
             "price_credits": int(getattr(
@@ -1133,8 +1155,40 @@ def v2_explore_save_ideal_text(arc_id):
                             "error": "Could not read the document — "
                                      "try again."}), 500
         from services.master_document import decide_block
+        # ── SAVE MUST NOT DECIDE WHAT THE LOCK HID (founder 2026-08-07) ──
+        # R1 suppresses composition offers on a LOCKED part: the offer is
+        # created and stored, just not surfaced, so unlocking brings it back.
+        # Resolving it here as kept-mine would silently refuse an upgrade the
+        # student never saw — writing a decision they never made into the one
+        # signal §6 depends on, which is exactly what R3 refuses on the lock
+        # button. Suppressed means PENDING, not refused.
+        #
+        # Best-effort: an unreadable parts list leaves `_locked` empty, so
+        # nothing is skipped and Save behaves as it always did.
+        _locked = []
+        try:
+            from services.ideal_text_parts import covered_by_locked_part
+            _locked = [
+                p for p in (db.get_ideal_text_parts(
+                    arc_id, str(getattr(request, "user_id", "") or ""),
+                    with_lock=True) or [])
+                if isinstance(p, dict) and p.get("locked_at")
+            ]
+        except Exception as _lk_err:
+            logger.warning("save: locked parts unreadable arc=%s: %s",
+                           arc_id, _lk_err)
+
+        def _block_text(row) -> str:
+            return " ".join(
+                (p.get("text") or "").strip()
+                for p in (row.get("incumbent_pieces") or [])).strip()
+
         _resolve_failed = False
+        _held = 0
         for r in rows:
+            if _locked and covered_by_locked_part(_block_text(r), _locked):
+                _held += 1
+                continue
             if r.get("status") == "pending_upgrade":
                 ok, _e = decide_block(
                     arc_id, int(r.get("block_key")), "keep",
@@ -1145,6 +1199,9 @@ def v2_explore_save_ideal_text(arc_id):
                     arc_id, int(r.get("block_key")), "keep",
                     r.get("incumbent_take_session_id"), db)
                 _resolve_failed = _resolve_failed or not ok
+        if _held:
+            logger.info("save: %d offer(s) held pending behind a lock arc=%s",
+                        _held, arc_id)
         if _resolve_failed:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not resolve every open "
@@ -1200,6 +1257,38 @@ def _ideal_save_state(arc_id, current_version) -> dict:
         return {}
 
 
+def _ideal_parts_block(arc_id, user_id, served_text) -> dict:
+    """`{"parts": [...]}` for the student GET, or `{}` (the key ABSENT).
+
+    STALE PARTS ARE NOT SERVED. Parts are written by the client against the
+    document it was looking at; the document can then be rewritten underneath
+    them by a new take assembling or a coach verifying, and neither of those
+    goes through the arranger. Identity pointing at words that are no longer on
+    screen is worse than no identity — it is the same failure as a tracked
+    change anchored to a fragment that moved (#219), except a lock hung on it
+    in PR 3 would silently guard the wrong paragraph.
+
+    So the join has to match. When it does not, the key is simply absent and
+    the FE derives parts the way it does today; the next save re-mints them
+    against the text actually on screen.
+
+    Best-effort by construction: any failure yields {}, which is the
+    pre-migration payload exactly.
+    """
+    try:
+        from services.ideal_text_parts import agrees_with_text, serve
+        parts = serve(db.get_ideal_text_parts(arc_id, user_id,
+                                              with_lock=True))
+        if parts is None:
+            return {}
+        if not agrees_with_text(parts, served_text):
+            return {}
+        return {"parts": parts}
+    except Exception as e:
+        logger.warning("ideal parts failed arc=%s: %s", arc_id, e)
+        return {}
+
+
 def _previous_spoken_session(arc_id, current_session_id):
     """The spoken take immediately BEFORE the document's take — the
     comparison base for cross-take discernment. None when this is the
@@ -1218,15 +1307,36 @@ def _previous_spoken_session(arc_id, current_session_id):
         return None
 
 
-def _key_points_enabled() -> bool:
-    """E-1 presentation-mode cue sheet (founder 2026-07-24). DEFAULT OFF until
-    the FE ships the full↔key-words toggle (E-2); flip KEY_POINTS_ENABLED=1 in
-    Railway after. Absent key ⇒ the FE is unaffected."""
-    return (os.getenv("KEY_POINTS_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
+def _locked_parts(arc_id, user_id, served_text) -> list:
+    """The document's parts WITH their lock state, or [] when there are none.
+
+    Same staleness rule as `_ideal_parts_block`: parts that no longer join to
+    the served text describe a document the student is not looking at, and
+    their offsets would point the layer filter at the wrong paragraph. [] then
+    means "no locks to enforce", which is the safe direction — R1 suppresses
+    interventions, so a bad parts read must never silently suppress the whole
+    surface.
+    """
+    try:
+        from services.ideal_text_parts import agrees_with_text, serve
+        rows = db.get_ideal_text_parts(arc_id, user_id, with_lock=True)
+        parts = serve(rows)
+        if not parts or not agrees_with_text(parts, served_text):
+            return []
+        # `serve` carries the boolean for the wire; the layer filter reads
+        # `locked_at`, so hand it the raw column rather than a second name for
+        # the same fact.
+        by_id = {str(r.get("id")): r.get("locked_at")
+                 for r in rows if isinstance(r, dict)}
+        for p in parts:
+            p["locked_at"] = by_id.get(p["id"])
+        return parts
+    except Exception as e:
+        logger.warning("locked parts failed arc=%s: %s", arc_id, e)
+        return []
 
 
-def _tracked_changes_block(arc_id, served_text) -> dict:
+def _tracked_changes_block(arc_id, served_text, user_id="") -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
     ABSENT and the FE keeps rendering today's star layer.
@@ -1235,13 +1345,31 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
     the document came from is located as an exact substring, then the
     change is narrowed inside that window. A piece whose words are no
     longer there (baked, coach-corrected, student-edited) yields NO
-    change rather than a mis-pointed one (#219). Best-effort."""
+    change rather than a mis-pointed one (#219). Best-effort.
+
+    THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder 2026-08-07). The
+    three lanes below still PRODUCE candidates exactly as they did; none
+    of them SERVES one. Everything they assemble goes through
+    `intervention_candidates.select`, which applies Appendix H's budget
+    (≤3 per take, across every lane together) and collision resolution.
+    Concatenating the lanes and serving the result — which is what this
+    did — meant the budget the whole of Appendix H exists to enforce was
+    not enforced anywhere, because `manager_engine` had no caller.
+
+    THE CUE SHEET IS DEFERRED (founder 2026-08-07). E-1's `key_points`
+    was a starting-point milestone per block — a verbatim opening phrase,
+    working as designed — and it read on screen as an intervention that
+    explained nothing. Real interventions replace it. `services/
+    key_points.py` and its tests are kept; only the wiring is gone, so
+    `KEY_POINTS_ENABLED` no longer does anything and should be deleted
+    from Railway."""
     try:
         from services.ideal_text_block import _living_transcript_enabled
         if not _living_transcript_enabled():
             return {}
+        from services.intervention_candidates import select as _select
         from services.tracked_changes import (
-            build_tracked_changes, drop_overlaps, verify_changes,
+            build_tracked_changes, verify_changes,
         )
         from services.transcript_document import (
             build_transcript_document, relocate_pieces,
@@ -1274,18 +1402,6 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         # re-anchor the pieces onto it MONOTONICALLY (never a bare
         # first-occurrence search, the review's mis-anchor defect).
         _pieces = relocate_pieces(served_text, doc.get("pieces") or [])
-        # E-1 presentation-mode cue sheet (founder 2026-07-24): one verbatim
-        # starting-point milestone per block, for the FE's full↔key-words
-        # toggle. Flag-gated (default OFF) so the key is simply ABSENT until
-        # the FE ships it. L1-safe (a verbatim prefix of the served text).
-        _key_points = None
-        try:
-            if _key_points_enabled():
-                from services.key_points import build_key_points
-                _key_points = build_key_points(_pieces, served_text)
-        except Exception as _kpe:
-            logger.warning("key_points failed arc=%s: %s", arc_id, _kpe)
-            _key_points = None
         _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
         _applied = []
         try:
@@ -1334,14 +1450,26 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
         # comes back as an approvable change on this document. The
         # ranking blend does the judging (L2 untouched); a fragment the
         # student already decided on is never re-offered. Best-effort. ──
+        _additions: list = []
         if _master_on:
-            # Block-level upgrade offers + candidate additions — the
-            # master model's cross-take lane.
+            # Block-level upgrade offers — the master model's cross-take lane.
             try:
                 changes.extend(upgrade_changes(arc_id, served_text, db))
             except Exception as _up_err:
                 logger.warning("upgrade changes failed arc=%s: %s",
                                arc_id, _up_err)
+            # MATERIAL RECOVERY, a separate lane on purpose. A candidate block
+            # is a decked slide the master has never seen, carrying the words
+            # the speaker actually said over it. It is NOT a span-anchored
+            # edit — there is nothing in the document to anchor to — and while
+            # it was forced into the `changes` shape as a zero-width `insert`
+            # it reached nobody at all.
+            try:
+                from services.master_document import block_additions
+                _additions = block_additions(arc_id, served_text, db)
+            except Exception as _add_err:
+                logger.warning("block additions failed arc=%s: %s",
+                               arc_id, _add_err)
         try:
             _prev = None if _master_on else _previous_spoken_session(
                 arc_id, doc.get("take_session_id"))
@@ -1369,19 +1497,146 @@ def _tracked_changes_block(arc_id, served_text) -> dict:
             logger.warning("prior-take changes failed arc=%s: %s",
                            arc_id, _pt_err)
 
-        # One span may carry only ONE change — a polish star and a
-        # cross-take offer on the same words would render as overlapping
-        # strikes (review finding). Earliest-then-narrowest wins.
-        changes = drop_overlaps(changes)
-        _kp = {"key_points": _key_points} if _key_points is not None else {}
+        # ── THE GATE. Every lane above has now PROPOSED; nothing has been
+        # served. The manager applies the flat ≤3 budget across all of them
+        # together, resolves collisions (which subsumes the old
+        # `drop_overlaps` sweep — see intervention_candidates.select) and
+        # returns the survivors in document order. A lane that is not
+        # declared there does not reach the user. ──
+        changes = _select(changes, user_id=user_id,
+                          session_id=str(doc.get("take_session_id") or ""),
+                          # R1 — the layer filter runs inside the gate, BEFORE
+                          # the budget. A locked part takes accentuation only;
+                          # an open one takes composition only.
+                          parts=_locked_parts(arc_id, user_id, served_text),
+                          )["changes"]
+        # Additions ride OUTSIDE the budget and outside the span check — they
+        # have no span. Absent when there are none, so the FE draws nothing
+        # rather than an empty section. See master_document.block_additions for
+        # why they are not arbitrated: the ≤3 is a load limit on FEEDBACK, and
+        # this is material the speaker already said going missing from their
+        # own script.
+        _add = {"additions": _additions} if _additions else {}
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
-            return {"changes": [], **_kp}
-        return {"changes": changes, **_kp}
+            return {"changes": [], **_add}
+        return {"changes": changes, **_add}
     except Exception as e:
         logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
         return {}
+
+
+@v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/lock", methods=["PUT"])
+@require_auth
+def v2_explore_set_part_lock(arc_id, part_id):
+    """Lock or unlock ONE part (SPEC-parts-locking-and-layers §4, R3, R5).
+
+    THE LOCK IS NOT A SETTING — it changes which INTERVENTION LAYER may fire on
+    this paragraph. Open (`locked_at IS NULL`) takes composition: the machine
+    may propose changing the words. Locked takes accentuation: it may only
+    propose styling words already there. Offering the wrong one is worse than
+    offering nothing — a rewrite destroys memorisation the speaker has already
+    paid for, and an emphasis styles a sentence about to be replaced.
+
+    Body: {locked: bool, text_echo: str}.
+
+    `text_echo` IS THE DOCUMENT THE STUDENT WAS LOOKING AT, and it is required
+    rather than nice-to-have. A lock means "these words are settled", so it has
+    to be a claim about specific words. Between the GET and this PUT a new take
+    can assemble or the coach can verify, replacing the text underneath — and
+    locking a part id against a document that has moved settles a paragraph the
+    student never read. Same idiom as the block decide endpoint's
+    `challenger_session_echo`, and the same 409.
+
+    R2 — APPROVE IS NOT LOCK. This decides no intervention. It promotes one
+    part over a series of already-decided changes; the decisions themselves ride
+    their own endpoints and are untouched here.
+
+    R3 — a part with UNDECIDED interventions cannot be locked, and R5 applies it
+    in reverse for unlock. Locking makes composition illegal on this part, so a
+    pending rewrite there becomes unreachable — the alternative, auto-
+    disregarding it, would write a decision the student never made into the one
+    signal §6 depends on. Undecided is a real third state (R4), not a refusal.
+
+    200 {locked, part_id} · 400 · 404 · 409 STALE_DOCUMENT / UNDECIDED · 500
+    """
+    try:
+        from services.ideal_text_parts import agrees_with_text, part_spans
+        owned, _ = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        locked = body.get("locked")
+        if not isinstance(locked, bool):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "locked must be a boolean"}), 400
+        echo = body.get("text_echo")
+        if not isinstance(echo, str) or not echo.strip():
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "text_echo is required"}), 400
+        echo = echo.strip()
+
+        user_id = str(getattr(request, "user_id", "") or "")
+        parts = _locked_parts(arc_id, user_id, echo)
+        if not parts:
+            # Either no identity is stored, or it no longer describes this
+            # document. Both mean the same thing to the caller: refetch.
+            return jsonify({"code": "STALE_DOCUMENT",
+                            "error": "document moved"}), 409
+        if not agrees_with_text(parts, echo):
+            return jsonify({"code": "STALE_DOCUMENT",
+                            "error": "document moved"}), 409
+        target = next((p for p in parts if p["id"] == str(part_id).lower()),
+                      None)
+        if target is None:
+            return jsonify({"code": "NOT_FOUND", "error": "part not found"}), 404
+
+        # R3 / R5 — is anything on this part still undecided?
+        #
+        # DERIVED FROM THE SERVED INTERVENTIONS, not from a second count.
+        # Every lane already drops what the student decided (`applied` ids, the
+        # cross-take ledger, settled blocks), so a change still on screen IS an
+        # undecided one. Reading the same pipeline the student is looking at is
+        # what stops the gate and the button disagreeing.
+        try:
+            _served = (_tracked_changes_block(arc_id, echo, user_id)
+                       .get("changes") or [])
+            _lo, _hi, _ = next(
+                (s for s in part_spans(parts) if s[2]["id"] == target["id"]),
+                (None, None, None))
+            _pending = [
+                c for c in _served
+                if _lo is not None
+                and c.get("span", {}).get("start", -1) >= _lo
+                and c.get("span", {}).get("end", -1) <= _hi
+            ]
+        except Exception as _pe:
+            # A gate that cannot read the interventions must not pass. Locking
+            # over an unknown pending set is precisely the corruption R3 exists
+            # to prevent.
+            logger.warning("part lock gate failed arc=%s: %s", arc_id, _pe)
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not check this part — "
+                                     "try again."}), 500
+        if _pending:
+            return jsonify({
+                "code": "UNDECIDED",
+                "error": "decide every suggestion on this part first",
+                "pending": len(_pending),
+            }), 409
+
+        if not db.set_ideal_text_part_lock(arc_id, user_id, str(part_id),
+                                           locked):
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save"}), 500
+        return jsonify({"locked": locked, "part_id": str(part_id)}), 200
+    except Exception as e:
+        logger.error("part lock failed arc=%s part=%s: %s", arc_id, part_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to set the lock"}), 500
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/user-edit", methods=["PUT"])
@@ -1420,6 +1675,46 @@ def v2_explore_put_ideal_user_edit(arc_id):
             return jsonify({"code": "INVALID_INPUT",
                             "error": "text too long"}), 400
 
+        # ── PARTS (SPEC-parts-locking-and-layers §3.1, Step 0). OPTIONAL: an
+        # absent key is today's behaviour byte for byte. Present, it carries
+        # the document's IDENTITY — the stable ids a lock will hang on in
+        # PR 3 — and `text` must be its join.
+        #
+        # REFUSED, NEVER REPAIRED, and never accepted in part. Storing parts
+        # that disagree with the stored text would leave an identity map
+        # pointing at words the student is not looking at, and a lock set
+        # against it would guard the wrong paragraph. That is unrecoverable
+        # once written, because a wrong anchor is indistinguishable from a
+        # right one afterwards — the same argument that refuses a mis-pointed
+        # tracked change (#219) rather than nudging it into place.
+        #
+        # Each part is stripped with the SAME expression as `text`, on the
+        # adjacent line, because the two must survive identically or the join
+        # check fails on a document that is actually fine. ──
+        _parts = None
+        if "parts" in body:
+            from services.ideal_text_parts import (
+                InvalidParts, agrees_with_text, validate,
+            )
+            _raw = body.get("parts")
+            if isinstance(_raw, list):
+                _raw = [
+                    {**p, "text": re.sub(r"<[^>]*>", "", p.get("text"))}
+                    if isinstance(p, dict) and isinstance(p.get("text"), str)
+                    else p
+                    for p in _raw
+                ]
+            try:
+                _parts = validate(_raw)
+            except InvalidParts as e:
+                return jsonify({"code": "INVALID_INPUT",
+                                "error": str(e)}), 400
+            if not agrees_with_text(_parts, text):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "parts do not join to text",
+                }), 400
+
         # The current version — the edit only sticks against it. A newer
         # version having assembled since → 409 so the FE refetches + re-offers.
         _row = db.get_coach_arc_ideal_text(arc_id) or {}
@@ -1442,6 +1737,15 @@ def v2_explore_put_ideal_user_edit(arc_id):
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
+        # Identity follows the words, and only AFTER they landed. Writing
+        # parts first would leave ids for a document that failed to save.
+        # Best-effort in the other direction: the words are what matter, so a
+        # parts write that fails does not fail the edit — the GET then omits
+        # the key, the FE re-mints, and the next save stores them.
+        if _parts is not None:
+            if not db.replace_ideal_text_parts(
+                    arc_id, str(request.user_id), _parts):
+                logger.warning("ideal parts not stored arc=%s", arc_id)
         # RE-APPLY TELEMETRY (founder 2026-07-28): one log line per
         # successful one-click re-apply of a superseded edit — the
         # decision metric for the PARKED versioning change (how often do

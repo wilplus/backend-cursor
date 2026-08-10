@@ -17,9 +17,12 @@ import unittest
 from unittest.mock import patch
 
 from services.master_document import (
+    _newer_take,
     _quarter_split,
     assemble_master_document,
+    block_additions,
     build_skeleton,
+    candidate_block_key,
     decide_block,
     process_new_take,
     upgrade_changes,
@@ -470,16 +473,218 @@ class UpgradeChangesTests(unittest.TestCase):
         self.assertEqual(c["why_key"], "energy")
         self.assertEqual(c["take_session_id"], T2)
 
-    def test_candidate_serves_zero_width_insert(self):
+    def test_a_candidate_is_NOT_a_tracked_change(self):
+        """It used to ride here as a zero-width `insert` and reached NOBODY —
+        dropped by the FE's kind vocabulary, by its `end > start` span check,
+        and by the manager gate's zero-width guard. All three were right; the
+        mistake was upstream. Additions are their own lane now."""
         row = _block(10, text="brand new closing", status="candidate",
                      active=False, sess=T2, take=2)
         db = _Db(blocks=[_block(0), row])
-        doc = "The master words."
-        out = upgrade_changes(ARC, doc, db)
-        ins = [c for c in out if c["kind"] == "insert"][0]
-        self.assertEqual(ins["span"], {"start": len(doc), "end": len(doc)})
-        self.assertEqual(ins["proposed_text"], "brand new closing")
-        self.assertEqual(ins["source"], "new_take")
+        out = upgrade_changes(ARC, "The master words.", db)
+        self.assertEqual([c for c in out if c.get("kind") == "insert"], [])
+
+
+class CandidatePlacementTests(unittest.TestCase):
+    """THE APPEND BUG (founder-approved fix 2026-08-07).
+
+    A candidate used to take `max(block_key) + _KEY_STEP` — the end of the
+    document — so accepting the recovered words for slide 2 put them AFTER the
+    closer. The _KEY_STEP gap exists precisely so that cannot happen; the
+    intent was right and the arithmetic was not."""
+
+    SKELETON = [{"block_key": 0, "slide_index": 0},
+                {"block_key": 10, "slide_index": 2},
+                {"block_key": 20, "slide_index": 3}]
+
+    def test_a_missing_middle_slide_lands_between_its_neighbours(self):
+        key = candidate_block_key(self.SKELETON, 1)
+        self.assertGreater(key, 0)
+        self.assertLess(key, 10)
+
+    def test_a_new_last_slide_appends(self):
+        # Appending is CORRECT here — it really is the last slide.
+        self.assertEqual(candidate_block_key(self.SKELETON, 9), 30)
+
+    def test_a_slide_before_the_first_goes_below_it(self):
+        """A slide added before the first one the speaker ever spoke on. The
+        column is INTEGER and negative keys sort correctly, so this is a real
+        position rather than an edge case to refuse."""
+        self.assertLess(candidate_block_key([{"block_key": 0,
+                                              "slide_index": 1}], 0), 0)
+
+    def test_placement_is_by_SLIDE_not_by_key_order(self):
+        """Legacy rows appended by the old code break the correspondence
+        between key order and slide order. The neighbours are the nearest
+        slides, whatever their keys."""
+        legacy = self.SKELETON + [{"block_key": 30, "slide_index": 1}]
+        # Slide 1 already sits at key 30 (appended, wrongly). A new slide
+        # between 1 and 2 must land after THAT block, not after key 20.
+        key = candidate_block_key(legacy, 1)
+        self.assertIsNotNone(key)
+
+    def test_no_room_returns_None_rather_than_colliding(self):
+        """Block keys are public identity — carried in the FE's "block:<key>"
+        id and in the decide route — so a collision or a silent renumber is
+        worse than an honest failure the caller can report."""
+        tight = [{"block_key": 0, "slide_index": 0},
+                 {"block_key": 1, "slide_index": 5}]
+        self.assertIsNone(candidate_block_key(tight, 2))
+
+    def test_never_reuses_a_key_already_taken(self):
+        rows = self.SKELETON + [{"block_key": 5, "slide_index": 1}]
+        key = candidate_block_key(rows, 1)
+        self.assertNotIn(key, {0, 5, 10, 20})
+
+    def test_no_slide_information_appends_honestly(self):
+        # A deckless skeleton has no order to respect, so appending is the
+        # honest answer rather than a guess.
+        self.assertEqual(
+            candidate_block_key([{"block_key": 0}, {"block_key": 10}], 5), 20)
+
+    def test_junk(self):
+        self.assertEqual(candidate_block_key([], 3), 0)
+        for bad in (None, "2", True, 1.5):
+            self.assertIsNone(candidate_block_key(self.SKELETON, bad))
+
+
+class NewerTakeTests(unittest.TestCase):
+    def test_a_later_take_wins(self):
+        self.assertTrue(_newer_take(3, 2))
+
+    def test_an_equal_or_older_take_does_not(self):
+        self.assertFalse(_newer_take(2, 2))
+        self.assertFalse(_newer_take(1, 2))
+
+    def test_an_unprovable_take_never_displaces(self):
+        """The failure modes are not symmetric: replacing a good offer with an
+        older one loses material the speaker said; declining merely leaves the
+        existing offer up."""
+        for bad in (None, "3", True):
+            self.assertFalse(_newer_take(bad, 2))
+
+    def test_nothing_to_compare_against_lets_the_new_one_stand(self):
+        self.assertTrue(_newer_take(2, None))
+
+
+class CandidateDedupeTests(unittest.TestCase):
+    """ONE OFFER PER SLIDE, NEWEST TAKE WINS (founder 2026-08-07).
+
+    The dedupe used to key on (slide, TAKE), so a new slide spoken in take 2
+    and again in take 3 produced TWO live offers — and accepting both put that
+    slide into the script twice."""
+
+    def test_two_takes_on_one_new_slide_leave_ONE_offer(self):
+        db = _Db(
+            sessions=[{"id": T1, "take_index": 1, "recording_kind": "spoken"}],
+            blocks=[dict(_block(0), slide_index=0),
+                    dict(_block(10), slide_index=1)])
+        # take 2 speaks on slide 5 -> a candidate
+        db.snips_by_session = {T2: [_snip("n1", 0, "new slide words",
+                                          slide=5, score=0.5)]}
+        db.sessions.append({"id": T2, "take_index": 2,
+                            "recording_kind": "spoken"})
+        process_new_take(ARC, T2, database=db)
+        cands = [r for r in db.list_ideal_text_blocks(ARC)
+                 if r.get("status") == "candidate"]
+        self.assertEqual(len(cands), 1)
+        first_key = cands[0]["block_key"]
+
+        # take 3 speaks on the SAME new slide
+        T3 = "take-3-sess"
+        db.sessions.append({"id": T3, "take_index": 3,
+                            "recording_kind": "spoken"})
+        db.snips_by_session[T3] = [_snip("n2", 0, "said it better",
+                                         slide=5, score=0.9)]
+        process_new_take(ARC, T3, database=db)
+        cands = [r for r in db.list_ideal_text_blocks(ARC)
+                 if r.get("status") == "candidate"]
+        self.assertEqual(len(cands), 1, "one offer per slide")
+        self.assertEqual(cands[0]["incumbent_take_index"], 3, "newest wins")
+        self.assertEqual(cands[0]["block_key"], first_key,
+                         "the key holds, so the FE's block:<key> id stays valid")
+        # Case-insensitive: the pipeline sentence-cases stored text.
+        self.assertEqual(cands[0]["incumbent_pieces"][0]["text"].lower(),
+                         "said it better")
+
+    def test_the_same_take_twice_is_idempotent(self):
+        db = _Db(
+            sessions=[{"id": T1, "take_index": 1, "recording_kind": "spoken"},
+                      {"id": T2, "take_index": 2, "recording_kind": "spoken"}],
+            snips_by_session={T2: [_snip("n1", 0, "new slide words",
+                                         slide=5, score=0.5)]},
+            blocks=[dict(_block(0), slide_index=0),
+                    dict(_block(10), slide_index=1)])
+        process_new_take(ARC, T2, database=db)
+        before = len(db.writes)
+        process_new_take(ARC, T2, database=db)
+        self.assertEqual(len(db.writes), before, "no second write")
+
+    def test_a_new_slide_lands_in_SLIDE_ORDER_not_at_the_end(self):
+        """The whole point of the ordering fix: recovered words for a middle
+        slide must not appear after the closer."""
+        db = _Db(
+            sessions=[{"id": T1, "take_index": 1, "recording_kind": "spoken"},
+                      {"id": T2, "take_index": 2, "recording_kind": "spoken"}],
+            snips_by_session={T2: [_snip("n1", 0, "the missing middle",
+                                         slide=1, score=0.5)]},
+            blocks=[dict(_block(0), slide_index=0),
+                    dict(_block(10), slide_index=2)])
+        process_new_take(ARC, T2, database=db)
+        cand = [r for r in db.list_ideal_text_blocks(ARC)
+                if r.get("status") == "candidate"][0]
+        self.assertGreater(cand["block_key"], 0)
+        self.assertLess(cand["block_key"], 10)
+
+
+class BlockAdditionsTests(unittest.TestCase):
+    """Material the speaker SAID that is not in the master document at all — a
+    decked slide the skeleton never saw. Words on a slide of the student's own
+    deck, currently missing from their script: F1 piece (b), not scaffolding."""
+
+    def test_a_candidate_is_offered_with_no_span_at_all(self):
+        row = _block(10, text="brand new closing", status="candidate",
+                     active=False, sess=T2, take=2)
+        db = _Db(blocks=[_block(0), row])
+        out = block_additions(ARC, "The master words.", db)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["text"], "brand new closing")
+        self.assertEqual(out[0]["take_index"], 2)
+        self.assertEqual(out[0]["take_session_id"], T2)
+        self.assertEqual(out[0]["block_key"], 10)
+        # No span, no quote, no kind: there is nothing in the document to
+        # anchor to, and inventing an anchor is what broke this before.
+        for absent in ("span", "quote", "kind", "proposed_text"):
+            self.assertNotIn(absent, out[0])
+
+    def test_material_already_in_the_master_is_not_re_offered(self):
+        row = _block(10, text="brand new closing", status="candidate",
+                     active=False, sess=T2, take=2)
+        db = _Db(blocks=[_block(0), row])
+        self.assertEqual(
+            block_additions(ARC, "Before. BRAND NEW CLOSING. After.", db), [])
+
+    def test_only_candidates_are_additions(self):
+        db = _Db(blocks=[_block(0), _block(10, status="settled")])
+        self.assertEqual(block_additions(ARC, "The master words.", db), [])
+
+    def test_an_empty_candidate_is_dropped(self):
+        row = _block(10, text="", status="candidate", active=False,
+                     sess=T2, take=2)
+        row["incumbent_pieces"] = []
+        db = _Db(blocks=[row])
+        self.assertEqual(block_additions(ARC, "The master words.", db), [])
+
+    def test_additions_come_back_in_block_order(self):
+        rows = [_block(30, text="third bit", status="candidate",
+                       active=False, sess=T2, take=2),
+                _block(20, text="second bit", status="candidate",
+                       active=False, sess=T2, take=2)]
+        out = block_additions(ARC, "The master words.", _Db(blocks=rows))
+        self.assertEqual([a["text"] for a in out], ["second bit", "third bit"])
+
+    def test_no_blocks_is_empty(self):
+        self.assertEqual(block_additions(ARC, "doc", _Db(blocks=[])), [])
 
     def test_missing_incumbent_text_drops_the_offer(self):
         row = _block(0, text="words no longer in the doc")

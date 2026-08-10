@@ -1,0 +1,328 @@
+"""The manager engine is the SOLE source of `changes` (founder 2026-08-07).
+
+THE BUG THIS CLOSES. `services/manager_engine.py` is a complete, tested
+arbitration policy — the ≤3 budget, collision resolution, the certainty floor,
+the three randomisation arms — and it had NO CALLER IN PRODUCTION. Meanwhile
+`_tracked_changes_block` concatenated three lanes and served all of them. So
+Appendix H's budget was enforced nowhere, and the number of marks on a
+student's document was whatever the lanes happened to produce.
+
+WHAT THESE TESTS ARE FOR. Two different failures, and only the first is
+obvious:
+
+  1. the budget does not hold — more than three marks reach the screen;
+  2. a lane goes ROUND the engine. That one is silent: the payload looks
+     normal, the tests for each individual lane still pass, and the only
+     symptom is a fourth highlight nobody can account for. So the wiring is
+     pinned structurally as well as behaviourally.
+
+AC-9 is checked here rather than assumed: `priority`, `ppv` and `deviation`
+are arbitration inputs, and a change dict that carried one of them would put
+an internal number on a client-facing schema.
+
+Run: python3 -m unittest test_intervention_candidates
+"""
+from __future__ import annotations
+
+import ast
+import pathlib
+import unittest
+from unittest.mock import patch
+
+from services import intervention_candidates as ic
+from services import manager_engine as me
+
+ROOT = pathlib.Path(__file__).parent
+
+
+def _change(i, *, source="polish", kind="replace", start=None, end=None):
+    start = i * 100 if start is None else start
+    end = start + 10 if end is None else end
+    return {"id": f"c{i}", "snippet_id": f"s{i}", "take_session_id": "t1",
+            "kind": kind, "source": source,
+            "span": {"start": start, "end": end}, "quote": "x" * (end - start),
+            "proposed_text": "y"}
+
+
+class TestTheBudgetHolds(unittest.TestCase):
+
+    def test_ten_non_overlapping_changes_become_three(self):
+        out = ic.select([_change(i) for i in range(10)])["changes"]
+        self.assertEqual(len(out), 3)
+
+    def test_the_cap_is_the_appendix_ceiling_not_a_local_number(self):
+        """If someone raises BUDGET_CEILING the cap here moves with it. A
+        second hardcoded 3 in the adapter would be a copy that can disagree."""
+        self.assertEqual(me.BUDGET_CEILING, 3)
+
+    def test_the_budget_spans_LANES_not_each_lane_separately(self):
+        """The load limit is on the speaker. Three lanes producing two marks
+        each is six marks on one document, which is the exact failure the
+        founder named: 'the old lanes bypassing the engine and throwing extra
+        highlights onto the screen destroys the Max 3 budget'."""
+        changes = ([_change(i, source="polish") for i in range(2)]
+                   + [_change(i + 2, source="prior_take") for i in range(2)]
+                   + [_change(i + 4, source="new_take") for i in range(2)])
+        self.assertEqual(len(ic.select(changes)["changes"]), 3)
+
+    def test_fewer_than_the_budget_all_survive(self):
+        out = ic.select([_change(0), _change(1)])["changes"]
+        self.assertEqual([c["id"] for c in out], ["c0", "c1"])
+
+    def test_the_novice_cap_is_not_inherited_by_accident(self):
+        """`budget()` caps NOVICE at ONE. An empty UserState defaults every
+        dimension to NOVICE, so a caller that did not think about state ships
+        a budget of 1 — by omission, not decision. LANE_STATE is the declared
+        answer; this pins that it is declared."""
+        self.assertNotEqual(ic.LANE_STATE, me.NOVICE)
+        state = ic.user_state(ic.to_candidates([_change(0)]))
+        self.assertEqual(state.state("lane:polish"), ic.LANE_STATE)
+
+
+class TestCollisions(unittest.TestCase):
+
+    def test_two_lanes_on_the_same_span_yield_one_mark(self):
+        """A polish star and a cross-take offer on the same words would render
+        as overlapping strikes. The engine's independent_subset owns this now;
+        `drop_overlaps` used to."""
+        a = _change(0, source="polish", start=0, end=20)
+        b = _change(1, source="prior_take", start=10, end=30)
+        out = ic.select([a, b])["changes"]
+        self.assertEqual(len(out), 1)
+
+    def test_a_transitive_chain_keeps_both_ends(self):
+        """A overlaps B, B overlaps C, A and C do not. A linear
+        earliest-wins sweep drops C as well because it only tracks the last
+        end; the greedy independent set keeps A and C. This is the behaviour
+        difference that makes the engine the right owner of collisions, not
+        just a different owner."""
+        a = _change(0, start=0, end=20)
+        b = _change(1, start=15, end=35)
+        c = _change(2, start=30, end=50)
+        out = ic.select([a, b, c])["changes"]
+        self.assertEqual([x["id"] for x in out], ["c0", "c2"])
+
+    def test_touching_spans_do_not_collide(self):
+        out = ic.select([_change(0, start=0, end=10),
+                         _change(1, start=10, end=20)])["changes"]
+        self.assertEqual(len(out), 2)
+
+
+class TestOrderAndIdentity(unittest.TestCase):
+
+    def test_survivors_come_back_in_document_order(self):
+        """arbitrate() returns them RANKED. The FE renders the document top to
+        bottom, so serving the engine's order scatters the marks."""
+        out = ic.select([_change(2), _change(0), _change(1)])["changes"]
+        self.assertEqual([c["span"]["start"] for c in out], [0, 100, 200])
+
+    def test_the_returned_dicts_are_the_callers_own(self):
+        """Mapped back by identity, not rebuilt. A reconstruction would drop
+        every field this adapter does not know about — take_index, block_key,
+        why_key — and each of those absences is a silently dead control on the
+        FE."""
+        rows = [_change(0)]
+        out = ic.select(rows)["changes"]
+        self.assertIs(out[0], rows[0])
+
+    def test_two_lanes_minting_the_same_id_are_still_distinguished(self):
+        """`build_tracked_changes` keys on snippet_id and `prior_take` on
+        "prior:<snippet_id>", but nothing enforces uniqueness ACROSS lanes.
+        Correlating on `id` would collapse two changes into one; `ref` is the
+        submission index, unique by construction."""
+        a = dict(_change(0, start=0, end=10), id="same")
+        b = dict(_change(1, start=50, end=60), id="same")
+        out = ic.select([a, b])["changes"]
+        self.assertEqual(len(out), 2)
+        self.assertIsNot(out[0], out[1])
+
+
+class TestWhatIsRefused(unittest.TestCase):
+
+    def test_an_undeclared_lane_never_reaches_the_user(self):
+        """The gate is the only door, so an unknown source has to die here.
+        Admitting it under a guessed key would let a lane nobody decided on
+        consume a budget slot."""
+        self.assertEqual(ic.select([_change(0, source="mystery")])["changes"],
+                         [])
+
+    def test_every_declared_lane_is_admitted(self):
+        for src in ic.LANE_SOURCES:
+            with self.subTest(src=src):
+                out = ic.select([_change(0, source=src)])["changes"]
+                self.assertEqual(len(out), 1)
+
+    def test_a_change_with_no_span_is_dropped_not_repaired(self):
+        bad = _change(0)
+        bad.pop("span")
+        self.assertEqual(ic.select([bad, _change(1)])["changes"][0]["id"],
+                         "c1")
+
+    def test_a_zero_width_insert_does_not_eat_a_budget_slot(self):
+        """`upgrade_changes` anchors candidate block additions at
+        {start: len(doc), end: len(doc)} with kind "insert". The FE has always
+        dropped those, so they used to cost nothing — behind a budget they
+        would win a slot and render as nothing, and the student would see two
+        marks where the engine believes it served three."""
+        insert = {"id": "block:3", "block_key": 3, "snippet_id": None,
+                  "take_session_id": "t1", "kind": "insert",
+                  "source": "new_take", "span": {"start": 500, "end": 500},
+                  "quote": "", "proposed_text": "a whole new block"}
+        out = ic.select([insert, _change(0), _change(1), _change(2)],
+                        )["changes"]
+        self.assertEqual([c["id"] for c in out], ["c0", "c1", "c2"])
+
+    def test_failure_serves_NOTHING_rather_than_everything(self):
+        """A gatekeeper that fails open is not a gatekeeper. If arbitration
+        raises, the unbudgeted list must not be what the student gets."""
+        with patch.object(me, "arbitrate", side_effect=RuntimeError("boom")):
+            self.assertEqual(ic.select([_change(0)])["changes"], [])
+
+    def test_junk_input_is_survivable(self):
+        self.assertEqual(ic.select(None)["changes"], [])
+        self.assertEqual(ic.select([None, "nope", 7])["changes"], [])
+
+
+class TestTheControlsAreOff(unittest.TestCase):
+    """The three randomisations are a real experiment, not a safety dial.
+    Switching them on means 12% of (user, lane) pairs permanently receive
+    nothing from that lane and 20% of winning notes are suppressed — a founder
+    call about running an RCT on the LLM lanes, which wiring a budget must not
+    make on its own."""
+
+    def test_default_off(self):
+        with patch.dict("os.environ", {}, clear=False):
+            import os
+            os.environ.pop("MANAGER_CONTROLS_ENABLED", None)
+            self.assertFalse(ic._controls_enabled())
+
+    def test_the_user_id_is_withheld_while_they_are_off(self):
+        seen = {}
+
+        def _spy(cands, user, **kw):
+            seen["user_id"] = user.user_id
+            seen["controls"] = kw.get("controls")
+            seen["session_id"] = kw.get("session_id")
+            return {"selected": []}
+
+        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "0"}), \
+                patch.object(me, "arbitrate", side_effect=_spy):
+            ic.select([_change(0)], user_id="u1", session_id="sess1")
+        # An empty id makes in_control()/is_withheld() return False by
+        # construction — the arms cannot fire even if `controls` slipped True.
+        self.assertEqual(seen["user_id"], "")
+        self.assertFalse(seen["controls"])
+        self.assertEqual(seen["session_id"], "")
+
+    def test_flipping_the_flag_passes_the_arm_key_through(self):
+        seen = {}
+
+        def _spy(cands, user, **kw):
+            seen["user_id"] = user.user_id
+            seen["controls"] = kw.get("controls")
+            return {"selected": []}
+
+        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "1"}), \
+                patch.object(me, "arbitrate", side_effect=_spy):
+            ic.select([_change(0)], user_id="u1", session_id="sess1")
+        self.assertEqual(seen["user_id"], "u1")
+        self.assertTrue(seen["controls"])
+
+
+class TestAC9(unittest.TestCase):
+
+    def test_no_arbitration_number_reaches_the_payload(self):
+        out = ic.select([_change(0)])["changes"][0]
+        for internal in ("priority", "ppv", "deviation", "grade", "arm",
+                         "form", "exploration"):
+            self.assertNotIn(internal, out)
+
+    def test_the_ppv_is_the_published_floor_and_is_declared_an_assumption(self):
+        """0.70 is Wickens & Dixon's crossover. Sitting exactly ON it is the
+        weakest claim that still ships — and a lane later MEASURED below it
+        then dies automatically, which only works while nobody has quietly
+        raised the constant to make something surface."""
+        self.assertEqual(ic.LANE_PPV, me.PPV_FLOOR)
+        self.assertTrue(me.may_submit(ic.to_candidates([_change(0)])[0]))
+
+    def test_grade_C_would_silence_everything(self):
+        """EFFECT_SIZE['C'] is 0.0, so a C-graded candidate has priority
+        exactly 0 and can never win. Pinned because 'we have no measured
+        effect size' reads like an argument for C."""
+        self.assertEqual(me.EFFECT_SIZE["C"], 0.0)
+        self.assertGreater(me.EFFECT_SIZE[ic.LANE_GRADE], 0.0)
+
+
+class TestNothingBypassesTheGate(unittest.TestCase):
+    """The structural half. A lane added later must not be able to append to
+    the served list after the gate has run — that failure is invisible in the
+    payload and every per-lane test would still pass.
+
+    Read through the AST, never the source text. A comment EXPLAINING the
+    fence would otherwise trip it, which is a mistake this repo has now made
+    three times."""
+
+    SERVE = ROOT / "routes" / "v2" / "explore_ideal_text.py"
+
+    def _fn(self):
+        tree = ast.parse(self.SERVE.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) \
+                    and node.name == "_tracked_changes_block":
+                return node
+        raise AssertionError("_tracked_changes_block not found")
+
+    def _gate_line(self, fn):
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                    and node.func.id == "_select":
+                return node.lineno
+        raise AssertionError("the gate is not called at all")
+
+    def test_the_serve_path_imports_and_calls_the_gate(self):
+        fn = self._fn()
+        imported = any(
+            isinstance(n, ast.ImportFrom)
+            and n.module == "services.intervention_candidates"
+            and any(a.name == "select" for a in n.names)
+            for n in ast.walk(fn))
+        self.assertTrue(imported, "the gate is not imported")
+        self.assertGreater(self._gate_line(fn), 0)
+
+    def test_nothing_extends_changes_after_the_gate(self):
+        """Every lane's `changes.extend(...)` must sit ABOVE the `_select`
+        call. One below it is a lane serving straight to the user."""
+        fn = self._fn()
+        gate = self._gate_line(fn)
+        for node in ast.walk(fn):
+            appends = (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("extend", "append")
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "changes"
+            ) or (
+                isinstance(node, ast.AugAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "changes"
+            )
+            if appends:
+                self.assertLess(
+                    node.lineno, gate,
+                    f"line {node.lineno} adds to `changes` after the gate")
+
+    def test_the_old_unbudgeted_sweep_is_gone(self):
+        """`drop_overlaps` resolved collisions BEFORE any budget existed.
+        Leaving it in front of the gate would hide candidates from the engine;
+        leaving it after would be a second, disagreeing owner of the same
+        rule. The function still EXISTS (other callers, its own tests) — it
+        just may not run on the serve path."""
+        fn = self._fn()
+        names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
+        imported = {a.name for n in ast.walk(fn)
+                    if isinstance(n, ast.ImportFrom) for a in n.names}
+        self.assertNotIn("drop_overlaps", names | imported)
+
+
+if __name__ == "__main__":
+    unittest.main()

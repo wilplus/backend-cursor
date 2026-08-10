@@ -367,6 +367,79 @@ class TrackedChangeTests(unittest.TestCase):
         self.assertEqual(build_tracked_changes(self.DOC, self.PIECES, {}), [])
 
 
+
+class ReasonKeyTests(unittest.TestCase):
+    """The reason line rides a KEY; the FE holds the copy (founder 2026-08-07).
+
+    Before this, the star lane emitted only the model's free-text `why`, which
+    the FE validates against a closed vocabulary — so it always resolved to
+    null and NO reason line ever rendered from this lane. Fixing it by sending
+    the free text would have put un-signed-off model prose on a student's
+    screen (LIVE LOOP)."""
+
+    DOC = TrackedChangeTests.DOC
+    PIECES = TrackedChangeTests.PIECES
+
+    def _key(self, sug, sid=S2):
+        c = build_tracked_changes(self.DOC, self.PIECES, {sid: sug})
+        return c[0].get("why_key") if c else None
+
+    def test_a_word_change_gets_the_clarity_key(self):
+        self.assertEqual(self._key({
+            "kind": "replace", "trigger": "polish",
+            "replacement_text": "And then we launched it fast."}), "clarity")
+
+    def test_a_say_it_stronger_replace_is_also_a_word_change(self):
+        self.assertEqual(self._key({
+            "kind": "replace",
+            "replacement_text": "And then we launched it fast."}), "clarity")
+
+    def test_an_emphasis_gets_the_emphasis_key(self):
+        self.assertEqual(self._key({"kind": "emphasize"}), "emphasis")
+
+    def test_the_split_is_the_layer_boundary_not_the_lane(self):
+        """Composition (changes words) vs accentuation (styles words already
+        there) — SPEC-parts-locking-and-layers §2. The copy is only true on
+        the right side of it: "helps your main point stand out" says nothing
+        about a word swap."""
+        replace = self._key({"kind": "replace", "replacement_text": "x y z"})
+        bold = self._key({"kind": "emphasize"})
+        self.assertNotEqual(replace, bold)
+
+    def test_profanity_gets_NO_key(self):
+        """Its lead line already carries the whole message ("this might land
+        differently than you meant"). A clarity claim on top would be a second
+        reason nobody offered."""
+        self.assertIsNone(self._key({
+            "kind": "replace", "trigger": "profanity",
+            "replacement_text": "And then we shipped it fast."}))
+
+    def test_advice_gets_NO_key(self):
+        self.assertIsNone(self._key({"kind": "delivery",
+                                     "trigger": "pace_fast"}, sid=S1))
+
+    def test_a_comparison_key_never_reaches_this_lane(self):
+        """The four SwapWhy keys are all cross-take copy ("This take carried
+        more energy…"). There is no second take here, so one arriving would be
+        a sentence about something that did not happen."""
+        for sug in ({"kind": "replace", "trigger": "polish",
+                     "replacement_text": "And then we launched it fast."},
+                    {"kind": "emphasize"}):
+            self.assertNotIn(self._key(sug),
+                             ("energy", "steadiness", "coverage", "overall"))
+
+    def test_the_model_free_text_is_still_not_the_reason(self):
+        """`why` stays on the payload (a row carrying a real key works
+        unchanged) but it is not what renders — the FE reads why_key first."""
+        c = build_tracked_changes(self.DOC, self.PIECES, {S2: {
+            "kind": "replace", "trigger": "polish",
+            "replacement_text": "And then we launched it fast.",
+            "why": "Tighter, and it lands better."}})[0]
+        self.assertEqual(c["why"], "Tighter, and it lands better.")
+        self.assertEqual(c["why_key"], "clarity")
+
+
+
 class AssemblyFlagTests(unittest.TestCase):
     """Flag OFF must be byte-for-byte today's assembly; flag ON swaps the
     document source and leaves every other lane working."""

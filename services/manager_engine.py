@@ -234,6 +234,18 @@ class Candidate:
     k: int = 0                          # consecutive unacted impressions
     delta_t: float = 0.0                # sessions since last shown
     baseline_deviation: Optional[float] = None
+    # An OPAQUE caller handle. The manager never reads it, never compares on
+    # it, and carries it through `replace()` untouched.
+    #
+    # WHY IT EXISTS. arbitrate() returns Candidates, and a caller has to get
+    # from those back to whatever object it submitted — a change row, a
+    # suggestion, a span. Nothing else on this dataclass can do that job:
+    # every field is either a measurement (two candidates may legitimately
+    # share all of them) or is REWRITTEN by arbitrate(), so identity is lost
+    # the moment `replace()` runs. Correlating on `anchor` instead works only
+    # while no two lanes ever propose the same span, which is precisely the
+    # case collision resolution exists to handle.
+    ref: str = ""
     # Filled by arbitrate(); not an input.
     priority: float = 0.0
     form: str = FIRST_SHOWING
