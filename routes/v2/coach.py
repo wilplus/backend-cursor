@@ -2594,11 +2594,23 @@ def _resolve_audio_refs(rows: list, *, expires_in: int = 6 * 3600) -> None:
             continue
         if ref.startswith("http://") or ref.startswith("https://"):
             continue
-        key = ref.split("://", 1)[-1] if "://" in ref else ref
-        if key.startswith(f"{bucket}/"):
-            key = key[len(bucket) + 1:]
+        # ``s3://bucket/key`` — the snippet writer's FALLBACK ref when
+        # coach_media_public_url could not mint a public URL (observed
+        # 2026-08-10: worker-written snippets, per-service env again). The
+        # bucket in the ref is authoritative; assuming the coach-video
+        # bucket here signed a key that does not exist there, the URL
+        # 404ed, and the corpus player rendered with a dead button.
+        if "://" in ref:
+            rest = ref.split("://", 1)[-1]
+            ref_bucket, _, ref_key = rest.partition("/")
+            use_bucket, key = ((ref_bucket, ref_key) if ref_key
+                               else (bucket, rest))
+        else:
+            use_bucket, key = bucket, ref
+            if key.startswith(f"{bucket}/"):
+                key = key[len(bucket) + 1:]
         try:
-            signed = presigned_get_coach_object(bucket, key,
+            signed = presigned_get_coach_object(use_bucket, key,
                                                 expires_in=expires_in)
             if signed:
                 r["audio_ref"] = signed
