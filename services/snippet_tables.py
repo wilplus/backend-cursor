@@ -1,18 +1,29 @@
 """The physical name of the snippet table, in ONE place.
 
 WHY THIS MODULE EXISTS. `charisma_snippets` is not a charisma table. It is the
-shared snippet substrate, and it has four producers:
+shared snippet substrate, and it has FIVE producers:
 
     Path A  interview turns (/v2/public/interview/upload-answer)  source_type NULL
     Path B  extract_recording_snippets — the funnel cold-start    source_type NULL
     Path C  the ML generator                     'student' / 'internet'  DELETED
     Path D  willab Lab auto-cut (create_charisma_snippet)         source_type NULL
+    Path E  snippet_truncation's session re-cut          source_type 'auto_extracted'
 
 Path C is the only one the name ever described, and it was deleted on
-2026-08-10 (PR #368). The other three are live and carry real user
-recordings. So the name is a fossil that makes every reader of `user_chat.py`
-or `coaching.py` believe in a feature that does not exist — while the table
-under it is load-bearing.
+2026-08-10 (PR #368). The other four are live and carry real user recordings.
+So the name is a fossil that makes every reader of `user_chat.py` or
+`coaching.py` believe in a feature that does not exist — while the table under
+it is load-bearing. Production on 2026-08-10: 1216 NULL, 39 'student', 21
+'auto_extracted'.
+
+THE source_type FILTERS ARE OWNERSHIP CLAIMS, and they are disjoint on
+purpose. `v2_delete_lab_snippets_for_recording` deletes `source_type IS NULL`;
+`snippet_truncation` deletes only `source_type = 'auto_extracted'` and says
+plainly that rows outside that "we don't own". Widening either filter to
+"all rows for this session/recording" is the single most destructive edit
+available in this file's neighbourhood — it would make one producer's cleanup
+delete another's live rows, and the symptom would be users' recordings
+quietly disappearing.
 
 THE RENAME IS A TWO-STEP CUTOVER, AND THE ENV VAR IS WHY IT IS SAFE.
 
