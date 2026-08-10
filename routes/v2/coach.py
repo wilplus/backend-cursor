@@ -2391,10 +2391,19 @@ def v2_coach_arc_stars(arc_id):
                     _snip_id = str(_snip.get("id") or "")
                     if _snip_id not in _starred:
                         continue
+                    # Resolved (founder 2026-08-10: "I need the playbacks
+                    # to work in the feedbacks review") — an s3:// fallback
+                    # ref rendered every star row's player dead; the
+                    # resolver signs it against its own bucket and passes
+                    # healthy URLs through.
+                    from services.audio_ref_resolver import (
+                        resolve_playable_ref,
+                    )
                     snippets_by_id[_snip_id] = {
-                        "audio_ref": (_snip.get("audio_segment_path")
-                                      or _snip.get("audio_ref")
-                                      or _snip.get("storage_path")),
+                        "audio_ref": resolve_playable_ref(
+                            _snip.get("audio_segment_path")
+                            or _snip.get("audio_ref")
+                            or _snip.get("storage_path")),
                         "start_offset_ms": _snip.get("start_offset_ms"),
                         "duration_ms": _snip.get("duration_ms"),
                         "transcript": (_snip.get("transcript")
