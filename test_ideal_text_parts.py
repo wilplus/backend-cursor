@@ -371,38 +371,75 @@ class TestR1TheLayerFilter(unittest.TestCase):
         return {"id": f"c{i}-{kind}", "kind": kind, "source": "polish",
                 "span": {"start": start, "end": end}}
 
+    # ── GENERATION TWO (founder decision 2026-08-10, SPEC-lockin-loop §2) ──
+    # The first generation allowed the whole accentuation layer on locked
+    # parts and refused it on open ones. The founder overruled both halves:
+    # "Ordinary AI corrections skip locked text ENTIRELY. The ONLY exception
+    # is Confident Voice" — which passes through as a small pending prompt,
+    # never a normal offer. Open parts take everything; the budget decides.
+    # The tests below ARE that decision; do not "fix" them back.
+
     def test_a_locked_part_refuses_a_rewrite(self):
         parts = self._parts(True)
         self.assertEqual(
             ic.filter_by_layer([self._change(parts, 0, "replace")], parts), [])
 
-    def test_a_locked_part_accepts_an_emphasis(self):
+    def test_a_locked_part_refuses_an_emphasis_too(self):
+        """Gen-one kept this; the founder's rule is stricter — locked text is
+        the speaker's committed memory, and styling it is still touching it."""
         parts = self._parts(True)
-        c = self._change(parts, 0, "bold")
-        self.assertEqual(ic.filter_by_layer([c], parts), [c])
+        self.assertEqual(
+            ic.filter_by_layer([self._change(parts, 0, "bold")], parts), [])
+
+    def test_a_locked_part_passes_confident_voice_as_pending(self):
+        """The ONE exception, tagged rather than served as a normal offer:
+        the FE renders the founder's small prompt from `pending_copy`."""
+        parts = self._parts(True)
+        c = {**self._change(parts, 0, "bold"),
+             "trigger": ic.CONFIDENT_VOICE_TRIGGER}
+        out = ic.filter_by_layer([c], parts)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0]["pending_better_version"])
+        self.assertEqual(out[0]["pending_copy"],
+                         ic.PENDING_BETTER_VERSION_COPY)
+        # the original offer fields survive for the FE to anchor the prompt
+        self.assertEqual(out[0]["id"], c["id"])
 
     def test_an_open_part_accepts_a_rewrite(self):
         parts = self._parts(False)
         c = self._change(parts, 0, "replace")
         self.assertEqual(ic.filter_by_layer([c], parts), [c])
 
-    def test_an_open_part_refuses_an_emphasis(self):
-        """Styling a sentence that is about to be replaced is worse than
-        offering nothing — §1's other half."""
+    def test_an_open_part_accepts_an_emphasis_now(self):
+        """Gen-one refused this. Founder: an open paragraph may carry a
+        delivery accent while its wording still moves — the budget, not the
+        phase, decides what surfaces."""
         parts = self._parts(False)
-        self.assertEqual(
-            ic.filter_by_layer([self._change(parts, 0, "bold")], parts), [])
+        c = self._change(parts, 0, "bold")
+        self.assertEqual(ic.filter_by_layer([c], parts), [c])
 
-    def test_both_layers_live_at_once_on_one_document(self):
+    def test_the_locked_open_split_on_one_document(self):
         parts = self._parts(True, False)
-        keep_bold = self._change(parts, 0, "bold")
-        keep_repl = self._change(parts, 1, "replace")
-        drop_repl = self._change(parts, 0, "replace")
-        drop_bold = self._change(parts, 1, "bold")
+        drop_bold_locked = self._change(parts, 0, "bold")
+        drop_repl_locked = self._change(parts, 0, "replace")
+        keep_repl_open = self._change(parts, 1, "replace")
+        keep_bold_open = self._change(parts, 1, "bold")
         out = ic.filter_by_layer(
-            [keep_bold, drop_repl, keep_repl, drop_bold], parts)
+            [drop_bold_locked, drop_repl_locked,
+             keep_repl_open, keep_bold_open], parts)
         self.assertEqual([c["id"] for c in out],
-                         [keep_bold["id"], keep_repl["id"]])
+                         [keep_repl_open["id"], keep_bold_open["id"]])
+
+    def test_the_visual_registry(self):
+        """SPEC §3: Confident Voice = star; rewrites = underline; accents =
+        bold. One table, stamped on survivors in select()."""
+        self.assertEqual(
+            ic.visual_of({"kind": "bold",
+                          "trigger": ic.CONFIDENT_VOICE_TRIGGER}), "star")
+        self.assertEqual(ic.visual_of({"kind": "replace"}), "underline")
+        self.assertEqual(ic.visual_of({"kind": "insert"}), "underline")
+        self.assertEqual(ic.visual_of({"kind": "bold"}), "bold")
+        self.assertEqual(ic.visual_of({"kind": "advice"}), "bold")
 
     def test_NO_PARTS_means_everything_passes(self):
         """A document with no stored identity has no locks either. Gating on

@@ -277,8 +277,39 @@ def user_state(candidates: Any) -> me.UserState:
     )
 
 
+# ── Confident Voice, and the rendering registry ─────────────────────────────
+#
+# "Confident Voice" is the founder-facing name for the charisma-trigger star
+# family (the F2 signal; internal trigger string 'charisma'). CONSTRUCT fence:
+# it surfaces as a qualitative STAR badge, never a number.
+CONFIDENT_VOICE_TRIGGER = "charisma"
+
+# Founder copy, verbatim (SPEC-lockin-loop-and-coach-panel §2). LIVE LOOP:
+# changing this string needs founder sign-off.
+PENDING_BETTER_VERSION_COPY = "better version pending..."
+
+# SPEC §3 — visual styling is driven by THIS table, not hardcoded per surface:
+# Confident Voice renders as a star; every other feedback is underline (text
+# rewrites) or bold (behavioural accents). Today a module table; the ops-table
+# storage can replace the lookup without touching any caller.
+_VISUAL_COMPOSITION = "underline"     # replace / insert — text edits
+_VISUAL_ACCENT = "bold"               # bold / advice — behavioural accents
+_VISUAL_STAR = "star"                 # Confident Voice only
+
+
+def visual_of(change: Any) -> str:
+    """Which visual a change renders as. The registry, in one place."""
+    c = change if isinstance(change, dict) else {}
+    if c.get("trigger") == CONFIDENT_VOICE_TRIGGER:
+        return _VISUAL_STAR
+    from services.ideal_text_parts import COMPOSITION, layer_of_kind
+    return (_VISUAL_COMPOSITION
+            if layer_of_kind(c.get("kind")) == COMPOSITION
+            else _VISUAL_ACCENT)
+
+
 def filter_by_layer(changes: Any, parts: Any) -> list:
-    """R1 — drop every change the part it sits in does not currently allow.
+    """R1, second generation — the founder's locked-text rule (2026-08-10).
 
     RUNS BEFORE BUDGET SELECTION, and the order is the rule rather than an
     implementation detail. Filtering afterwards would spend budget slots
@@ -287,34 +318,47 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
     the student would see one intervention where the engine believes it served
     three.
 
+    THE RULE (SPEC-lockin-loop-and-coach-panel §2, verbatim founder decision):
+
+      * an OPEN part takes EVERYTHING — composition (rewrites) and
+        accentuation (bold/advice) both pass, and the budget decides.
+      * a LOCKED part takes NOTHING — "ordinary AI corrections skip locked
+        text entirely" — with ONE exception: a Confident Voice detection
+        passes through TAGGED (`pending_better_version` + the founder's
+        copy), so the FE renders a small prompt instead of a normal offer.
+
+    This supersedes the first generation, which allowed the whole
+    accentuation layer on locked parts and refused accentuation on open ones.
+    The founder overruled both halves in the same decision: locked text is
+    the speaker's committed memory — styling it is still touching it — and an
+    open paragraph may legitimately carry a delivery accent while its wording
+    is still moving.
+
     `parts` empty or absent → EVERY change passes. A document with no stored
     identity has no locks either, so there is nothing to enforce; gating on
     absent parts would silence the whole surface the moment a document had not
     been saved yet.
 
-    Two things are dropped rather than resolved:
+    Two things are dropped rather than resolved, unchanged from gen one:
 
       * a change whose `kind` no layer classifies. An unnamed lane is one
-        nobody decided the phase rules for, and defaulting it into composition
-        would let it rewrite locked text.
+        nobody decided the phase rules for, and defaulting it in would let an
+        unnamed lane touch locked text.
       * a change whose span STRADDLES two parts. Half of it is in a locked
-        paragraph and half is not, and there is no honest layer for that.
+        paragraph and half is not, and there is no honest rule for that.
 
-    This is what enforces L1 mechanically rather than by convention:
-    accentuation must never rewrite, and the filter is where "must never"
-    stops being a comment.
+    This is what enforces L1 mechanically rather than by convention: nothing
+    rewrites committed text, and the filter is where "must never" stops being
+    a comment.
     """
-    from services.ideal_text_parts import (
-        allowed_layer, layer_of_kind, part_at, part_spans,
-    )
+    from services.ideal_text_parts import layer_of_kind, part_at, part_spans
     rows = [c for c in (changes or []) if isinstance(c, dict)]
     spans = part_spans(parts)
     if not spans:
         return rows
     kept: list = []
     for c in rows:
-        layer = layer_of_kind(c.get("kind"))
-        if layer is None:
+        if layer_of_kind(c.get("kind")) is None:
             continue
         span = _span(c)
         if span is None:
@@ -322,8 +366,15 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
         part = part_at(spans, span[0], span[1])
         if part is None:
             continue
-        if allowed_layer(part) == layer:
+        locked = bool((part or {}).get("locked_at"))
+        if not locked:
             kept.append(c)
+            continue
+        if c.get("trigger") == CONFIDENT_VOICE_TRIGGER:
+            kept.append({**c, "pending_better_version": True,
+                         "pending_copy": PENDING_BETTER_VERSION_COPY})
+        # every other change on a locked part: dropped, silently — the
+        # founder's rule, not a failure.
     return kept
 
 
@@ -393,6 +444,15 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         for c in result.get("selected") or ():
             row = by_ref.get(c.ref)
             if row is not None:
+                # The rendering registry stamps every SURVIVOR (SPEC §3):
+                # Confident Voice = star, rewrites = underline, accents =
+                # bold. Stamped here — after the budget, before the FE — so
+                # one table governs every surface and the FE never derives a
+                # visual from kind on its own. IN PLACE, not a copy: the
+                # returned dicts must stay the caller's own objects (the
+                # identity contract that keeps take_index/block_key/why_key
+                # alive through this adapter).
+                row["visual"] = visual_of(row)
                 kept.append(row)
         kept.sort(key=lambda c: (c["span"]["start"], c["span"]["end"]))
         # `controls` rides back so the caller knows whether an EXPERIMENT ran.
