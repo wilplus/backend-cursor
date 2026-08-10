@@ -39,6 +39,14 @@ from services.secrets import enforce_at_boot  # noqa: E402
 
 enforce_at_boot()
 
+# Provenance boot check (SPEC-immutable-provenance §5, founder decision
+# 2026-08-10): hash the live detector definitions against detector_version.
+# A mismatch logs CRITICAL and marks new rows suspect — it NEVER stops the
+# boot (LIVE LOOP). Never raises; the worker is covered lazily on first write.
+from services.provenance_check import check_at_boot  # noqa: E402
+
+check_at_boot()
+
 app = Flask(__name__)
 # Global request cap: must allow both recording uploads and larger admin reference video uploads.
 app.config["MAX_CONTENT_LENGTH"] = max(
