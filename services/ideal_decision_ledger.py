@@ -27,7 +27,7 @@ import logging
 import re
 from typing import Any, Optional
 
-from services.ideal_text_block import wrap_accent
+from services.ideal_text_block import within_accent_window, wrap_accent
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +107,13 @@ def bake_piece(text: str, approved_rows: Any) -> str:
                 continue
             text = text[:lo] + repl + text[hi:]
         elif r.get("kind") == "emphasize":
+            if not within_accent_window(phrase):
+                # §F.4 — emphasis is a UNIT-window intervention (founder
+                # 2026-08-10). A moment accept's target is the WHOLE snippet
+                # transcript, and painting it wrapped sentences in orange.
+                # The row stays approved (the decision is the student's);
+                # only the paint is refused. Words untouched.
+                continue
             if "{{orange:" in found or text[max(0, lo - 9):lo].endswith(
                     "{{orange:"):
                 continue   # already wrapped (baked earlier / coach copy)

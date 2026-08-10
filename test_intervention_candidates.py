@@ -415,5 +415,56 @@ class TestNothingBypassesTheGate(unittest.TestCase):
         self.assertNotIn("drop_overlaps", names | imported)
 
 
+
+class TestTheWindowGate(unittest.TestCase):
+    """SPEC-APPENDIX-F §F.4 (founder 2026-08-10): accents are UNIT-window
+    interventions. An accent-class offer whose quote runs past the ceiling
+    would paint sentences on accept — the founder's screenshot — so it never
+    becomes an offer, and the budget never spends a slot on it."""
+
+    def _accent(self, i, words, *, kind="bold", trigger=None):
+        c = _change(i, kind=kind)
+        c["quote"] = " ".join(["word"] * words)
+        if trigger:
+            c["trigger"] = trigger
+        return c
+
+    def test_an_oversize_accent_never_becomes_an_offer(self):
+        out = ic.select([self._accent(0, 40)])["changes"]
+        self.assertEqual(out, [])
+
+    def test_a_unit_sized_accent_passes(self):
+        out = ic.select([self._accent(0, 8)])["changes"]
+        self.assertEqual(len(out), 1)
+
+    def test_the_ceiling_is_the_shared_constant_not_a_local_number(self):
+        from services.ideal_text_block import ACCENT_WINDOW_MAX_WORDS
+        ok = ic.select([self._accent(0, ACCENT_WINDOW_MAX_WORDS)])["changes"]
+        over = ic.select(
+            [self._accent(0, ACCENT_WINDOW_MAX_WORDS + 1)])["changes"]
+        self.assertEqual(len(ok), 1)
+        self.assertEqual(over, [])
+
+    def test_composition_is_not_windowed(self):
+        """A block upgrade is legitimately block-sized: the window rule is
+        about PAINT, and composition paints a diff, not a wash."""
+        c = _change(0, kind="replace")
+        c["quote"] = " ".join(["word"] * 80)
+        self.assertEqual(len(ic.select([c])["changes"]), 1)
+
+    def test_confident_voice_passes_regardless_of_size(self):
+        """The star is a badge at the span's end, never a painted wash — the
+        window rule does not bind it."""
+        c = self._accent(0, 80, kind="advice", trigger="charisma")
+        c["device"] = "contrast"
+        self.assertEqual(len(ic.select([c])["changes"]), 1)
+
+    def test_an_unmeasurable_accent_is_dropped_not_guessed(self):
+        c = self._accent(0, 8)
+        del c["quote"]
+        self.assertEqual(ic.select([c])["changes"], [])
+
+
+
 if __name__ == "__main__":
     unittest.main()
