@@ -4888,6 +4888,54 @@ class DatabaseService:
             logger.warning("list_active_processing_jobs: %s", e)
             return []
 
+    # The admin panel's projection. NEVER add `payload` or `result` to it.
+    #
+    # `payload` holds storage paths and upload flags; `result` holds pipeline
+    # output. The panel needs neither, and the smallest safe projection is the
+    # one that cannot leak a field nobody reviewed. A future `select("*")`
+    # here would silently widen an admin surface — test_pipeline_admin asserts
+    # on the RETURNED KEYS so that change fails a test rather than shipping.
+    _ADMIN_JOB_FIELDS = (
+        "id, kind, status, stage, percent, message, error, attempts, "
+        "max_attempts, user_id, session_id, enqueued_at, started_at, "
+        "finished_at, created_at"
+    )
+
+    def list_processing_jobs(
+        self, *, status: Optional[str] = None, limit: int = 50,
+        before: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Recent jobs for the admin panel, newest first. [] on any failure.
+
+        KEYSET PAGINATION on `enqueued_at`, not OFFSET. The queue mutates
+        while you page — jobs finish, new ones arrive — and OFFSET silently
+        skips rows when the set shifts underneath it, so page 2 would be
+        missing work that page 1 no longer holds. `before` is the previous
+        page's oldest `enqueued_at`.
+
+        BOUNDED BY CONSTRUCTION: limit is clamped to 100 here, at the data
+        layer, rather than trusted from the caller. An ops surface must never
+        be able to table-scan production, and a cap enforced only in the route
+        is one refactor away from being absent.
+        """
+        try:
+            capped = max(1, min(int(limit or 50), 100))
+        except (TypeError, ValueError):
+            capped = 50
+        try:
+            q = (self.client.table("processing_jobs")
+                 .select(self._ADMIN_JOB_FIELDS))
+            if status:
+                q = q.eq("status", str(status))
+            if before:
+                q = q.lt("enqueued_at", str(before))
+            res = (q.order("enqueued_at", desc=True)
+                    .limit(capped).execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_processing_jobs: %s", e)
+            return []
+
     def list_recent_finished_processing_jobs(
         self, max_rows: int = 200,
     ) -> List[Dict[str, Any]]:
