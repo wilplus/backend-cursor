@@ -14,6 +14,44 @@ code defaults are conservative and mostly left alone.
 
 ---
 
+## Retired in place
+
+### `stress_snippets` — no writer, no reader, rows kept (2026-08-10)
+
+Founder decision. **The table is not dropped and the rows are not deleted.**
+They are human-generated coach labels that cannot be re-derived: the clip
+generator that produced the candidates was deleted (PR #368) and the model
+that ranked them went before that.
+
+What went, in order: the label writer and the whole `v2_*_stress_snippet*`
+accessor family (#368), then the AI-draft writer, the coach-prefill draft
+generator, and the stress branch of the publish-time annotation capture in
+`record_snippet_publish_annotations`. That last one was a **second** reader,
+found while doing this work — it walked the session's recordings on every
+publish to look for stress rows, so it cost two queries per publish to find
+nothing new.
+
+`migrations/retire_stress_snippets.sql` (0261) writes a `COMMENT` and nothing
+else — no DROP, no DELETE, no TRUNCATE. Safe to run at any time; running it
+late costs nothing.
+
+`coach_label_notes` **stays** in `_PUBLISH_CAPTURE_FIELDS`. Events written
+before today carry that field name and the idempotency probe keys on the
+tuple; removing it would make the backfill unable to recognise its own prior
+writes.
+
+Enforcement is `test_stress_snippets_retired.py`, not a database trigger — a
+trigger raising on INSERT can only ever fire in production, on a path that was
+probably a mistake but might have been deliberate. The test fails in CI
+instead, and says what to do instead: **if the lane is ever revived, mint a
+new table** rather than mixing fresh rows into a frozen corpus — the same rule
+`detector_version` applies to a changed definition.
+
+`scripts/cleanup_corrupt_stress_snippets.py` is left runnable on purpose. The
+point of keeping the rows is that a human can still operate on them.
+
+---
+
 ## Cutovers in flight
 
 ### `SNIPPETS_TABLE` — unset (= `charisma_snippets`)
