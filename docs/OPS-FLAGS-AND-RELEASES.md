@@ -70,8 +70,23 @@ ones are interview turns, funnel cold-start rows and willab Lab auto-cuts.
 | # | step | how long | reversible by |
 |---|---|---|---|
 | 1 | deploy the code reading `SNIPPETS_TABLE` | a deploy | it is a no-op; nothing to revert |
-| 2 | run `migrations/rename_charisma_snippets_to_snippets.sql` | seconds | the reverse `ALTER` at the bottom of that file |
+| 2 | run `migrations/rename_charisma_snippets_to_snippets.sql` — renames **and** reloads the PostgREST schema cache | seconds | the reverse `ALTER` **plus `NOTIFY`** at the bottom of that file |
 | 3 | set `SNIPPETS_TABLE=snippets` in Railway | seconds | unset it |
+
+> **The PostgREST schema cache bit this cutover on 2026-08-10.** PostgREST
+> answers from a cached schema, a `RENAME` does not reliably invalidate it,
+> and this codebase swallows the resulting "not found in schema cache" error
+> by design — so the rename looked perfect in SQL while the app silently
+> wrote nothing. The migration now carries `NOTIFY pgrst, 'reload schema';`
+> inside its transaction, so the reload is atomic with the rename.
+>
+> **If a rename ever appears to have done nothing, run this first:**
+> ```sql
+> NOTIFY pgrst, 'reload schema';
+> ```
+> It is also the fix's other half on the way *back* — a rollback without it
+> leaves PostgREST serving the name you just reverted. The same failure is
+> already on the record at `services/db.py:8711` (PGRST204, 2026-05-11).
 
 **Have the Railway tab open before step 2.** Between 2 and 3 the running code
 queries a table that no longer exists; PostgREST returns 404 and this codebase

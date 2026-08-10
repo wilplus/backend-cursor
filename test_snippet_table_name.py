@@ -103,5 +103,52 @@ class TestTableNameIsCentralised(unittest.TestCase):
             "in the bucket is now unreachable and this must be reverted")
 
 
+class TestRenameMigrationsReloadTheSchemaCache(unittest.TestCase):
+    """Any migration that RENAMEs a table must also reload PostgREST.
+
+    THE INCIDENT THIS ENCODES (2026-08-10). The charisma_snippets -> snippets
+    rename ran cleanly, every SQL check passed, and the application silently
+    stopped writing. PostgREST answers from a CACHED schema; a rename does not
+    reliably invalidate it, so it kept serving the old name and returned
+    "Could not find the table 'public.snippets' in the schema cache" — which
+    this codebase swallows by design. A perfect-looking migration with a dead
+    app behind it.
+
+    The same class of failure is already on the record at services/db.py:8711
+    (PGRST204, 2026-05-11). Twice is a pattern, so it becomes a test.
+
+    NOTIFY belongs INSIDE the transaction: it is delivered at COMMIT, making
+    the reload atomic with the rename rather than a step someone remembers.
+    """
+
+    # Applied long ago, and left alone deliberately. `migrate.py` compares
+    # applied files against a recorded checksum, so editing one reports drift
+    # — a cost worth paying only when the fix still matters. It does not here:
+    # this migration renamed v2_post_recording_questions_pool, a table no live
+    # code path reads under either name (the live one is
+    # `post_recording_questions`), and its cache reloaded on the next restart
+    # years ago. The rename migration whose bug IS live-relevant — the one a
+    # rebuild would re-run — carries the NOTIFY.
+    _HISTORICAL = {"v2_post_recording_questions_table.sql"}
+
+    def test_every_rename_migration_notifies_pgrst(self):
+        offenders = []
+        for sql_path in (ROOT / "migrations").glob("*.sql"):
+            if sql_path.name in self._HISTORICAL:
+                continue
+            sql = sql_path.read_text(encoding="utf-8")
+            code = "\n".join(line.split("--")[0] for line in sql.splitlines())
+            if "RENAME TO" not in code.upper():
+                continue
+            if "NOTIFY" not in code.upper() or "RELOAD SCHEMA" not in code.upper():
+                offenders.append(sql_path.name)
+        self.assertEqual(
+            offenders, [],
+            "these migrations rename a table without reloading the PostgREST "
+            "schema cache — the rename will appear to work while the app "
+            "silently writes nothing. Add `NOTIFY pgrst, 'reload schema';` "
+            "before COMMIT: " + ", ".join(offenders))
+
+
 if __name__ == "__main__":
     unittest.main()
