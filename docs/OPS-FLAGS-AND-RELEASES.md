@@ -14,6 +14,44 @@ code defaults are conservative and mostly left alone.
 
 ---
 
+## Retired in place
+
+### `stress_snippets` — no writer, no reader, rows kept (2026-08-10)
+
+Founder decision. **The table is not dropped and the rows are not deleted.**
+They are human-generated coach labels that cannot be re-derived: the clip
+generator that produced the candidates was deleted (PR #368) and the model
+that ranked them went before that.
+
+What went, in order: the label writer and the whole `v2_*_stress_snippet*`
+accessor family (#368), then the AI-draft writer, the coach-prefill draft
+generator, and the stress branch of the publish-time annotation capture in
+`record_snippet_publish_annotations`. That last one was a **second** reader,
+found while doing this work — it walked the session's recordings on every
+publish to look for stress rows, so it cost two queries per publish to find
+nothing new.
+
+`migrations/retire_stress_snippets.sql` (0261) writes a `COMMENT` and nothing
+else — no DROP, no DELETE, no TRUNCATE. Safe to run at any time; running it
+late costs nothing.
+
+`coach_label_notes` **stays** in `_PUBLISH_CAPTURE_FIELDS`. Events written
+before today carry that field name and the idempotency probe keys on the
+tuple; removing it would make the backfill unable to recognise its own prior
+writes.
+
+Enforcement is `test_stress_snippets_retired.py`, not a database trigger — a
+trigger raising on INSERT can only ever fire in production, on a path that was
+probably a mistake but might have been deliberate. The test fails in CI
+instead, and says what to do instead: **if the lane is ever revived, mint a
+new table** rather than mixing fresh rows into a frozen corpus — the same rule
+`detector_version` applies to a changed definition.
+
+`scripts/cleanup_corrupt_stress_snippets.py` is left runnable on purpose. The
+point of keeping the rows is that a human can still operate on them.
+
+---
+
 ## Cutovers in flight
 
 ### `SNIPPETS_TABLE` — unset (= `charisma_snippets`)
@@ -32,15 +70,49 @@ ones are interview turns, funnel cold-start rows and willab Lab auto-cuts.
 | # | step | how long | reversible by |
 |---|---|---|---|
 | 1 | deploy the code reading `SNIPPETS_TABLE` | a deploy | it is a no-op; nothing to revert |
-| 2 | run `migrations/rename_charisma_snippets_to_snippets.sql` | seconds | the reverse `ALTER` at the bottom of that file |
+| 2 | run `migrations/rename_charisma_snippets_to_snippets.sql` — renames **and** reloads the PostgREST schema cache | seconds | the reverse `ALTER` **plus `NOTIFY`** at the bottom of that file |
 | 3 | set `SNIPPETS_TABLE=snippets` in Railway | seconds | unset it |
+
+> **The PostgREST schema cache bit this cutover on 2026-08-10.** PostgREST
+> answers from a cached schema, a `RENAME` does not reliably invalidate it,
+> and this codebase swallows the resulting "not found in schema cache" error
+> by design — so the rename looked perfect in SQL while the app silently
+> wrote nothing. The migration now carries `NOTIFY pgrst, 'reload schema';`
+> inside its transaction, so the reload is atomic with the rename.
+>
+> **If a rename ever appears to have done nothing, run this first:**
+> ```sql
+> NOTIFY pgrst, 'reload schema';
+> ```
+> It is also the fix's other half on the way *back* — a rollback without it
+> leaves PostgREST serving the name you just reverted. The same failure is
+> already on the record at `services/db.py:8711` (PGRST204, 2026-05-11).
 
 **Have the Railway tab open before step 2.** Between 2 and 3 the running code
 queries a table that no longer exists; PostgREST returns 404 and this codebase
 swallows those exceptions by design, so snippet writes would stop **silently**
 — no error page, no alert. Keep that window to seconds.
 
-**Verify after step 3** (should return rows, and match the count from before):
+**Verify step 3 took effect BEFORE testing anything.** On restart the process
+logs which table it resolved:
+
+```
+snippets: table resolved to 'snippets' (SNIPPETS_TABLE env)
+snippets: 'snippets' is readable
+```
+
+`(default)` instead of `(SNIPPETS_TABLE env)` means the variable did not
+reach the process — the restart did not complete, or the running commit
+predates the code that reads it. A `SNIPPET TABLE UNREACHABLE` line at
+CRITICAL means the name resolved but the table cannot be read; snippet
+writes are failing silently right now, so roll back.
+
+This log is the whole lesson of the 2026-08-10 attempt: every possible cause
+looked identical from outside the process, and twenty minutes went into
+distinguishing causes that this one line separates instantly. **Read it
+before running any other check.**
+
+**Then verify the data** (should return rows, and match the count from before):
 
 ```sql
 SELECT COUNT(*) FROM public.snippets;

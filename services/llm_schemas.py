@@ -271,36 +271,6 @@ COACH_NOTE_DRAFT_SCHEMA: dict[str, Any] = {
 }
 
 
-STRESS_DRAFT_SCHEMA: dict[str, Any] = {
-    # Phase 10 — AI prefill for stress_snippets.coach_label_notes.
-    # Same shape + tone as the charisma draft. The field name
-    # ("coach_notes") is more clinical than "admin_comment" but the
-    # UX role is identical: a coaching insight the admin keeps or edits.
-    "name": "stress_draft_v1",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["coach_notes"],
-        "properties": {
-            "coach_notes": {
-                "type": "string",
-                "maxLength": 220,
-                "description": (
-                    "One-sentence coaching insight on what tightened "
-                    "in this moment. Second-person, terse, specific. "
-                    "Example: \"Your voice tightened when the "
-                    "prospect said 'too expensive'.\" Quote the "
-                    "trigger phrase verbatim when it's in the "
-                    "transcript. Never start with \"This\" or \"The "
-                    "user\"."
-                ),
-            },
-        },
-    },
-}
-
-
 BASELINE_SUMMARY_SCHEMA: dict[str, Any] = {
     # Phase 16 — one-shot extraction call run when a user finishes
     # the EBCP turns 1-4 for the first time. Splits the

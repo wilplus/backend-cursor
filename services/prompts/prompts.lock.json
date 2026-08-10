@@ -334,7 +334,7 @@
     "llm_schemas.all": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "6795c0ceee4e69d901a6264f9e5a2c790848fdc0e10a75971a8a344f4d04fdae"
+      "sha256": "3e282149557e70b3ae8af006d4cc65f9a36fb49afdd6359ceb6f5084a1210f1a"
     },
     "master_doc_rag.anchor_metrics": {
       "kind": "source_ref",
@@ -500,16 +500,6 @@
       "kind": "source_ref",
       "module": "pending",
       "sha256": "de2e3eff1a264b2ea35f1e3829b87339bb269950ae8a93001281a5823164a4de"
-    },
-    "snippet_drafts.stress_system": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "7deb86288f8aa6ed2b16443d337f7790303da2b933fc29e2d8426bc8083425be"
-    },
-    "snippet_drafts.stress_user": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "953031bc25ab4c18b81dc7f3e36248068de2787199bd6c0238f942e5c78dee98"
     },
     "snippet_stickiness.system": {
       "kind": "builder",

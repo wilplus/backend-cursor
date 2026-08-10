@@ -4,7 +4,12 @@
 -- DEPLOYED. The cutover is three ordered steps and this file is step 2:
 --
 --   1. deploy the code that reads the name from SNIPPETS_TABLE  (no-op)
---   2. run THIS migration                                       (renames)
+--   2. run THIS migration                    (renames + reloads the PostgREST
+--                                             schema cache — see the NOTIFY
+--                                             at the bottom, which is the
+--                                             step this file originally
+--                                             missed and that cost a live
+--                                             incident on 2026-08-10)
 --   3. set SNIPPETS_TABLE=snippets in Railway                   (seconds)
 --
 -- Between 2 and 3 the running code queries a table that no longer exists.
@@ -74,7 +79,33 @@ COMMENT ON TABLE public.snippets IS
     'producer that no longer exists. Storage keys still carry the old prefix '
     'and are NOT renamed — those object paths are immutable history.';
 
+-- ── THE SCHEMA CACHE. NOT OPTIONAL. ───────────────────────────────────────
+--
+-- PostgREST serves every query this backend makes, and it answers from a
+-- CACHED copy of the schema. A rename does not reliably invalidate it, so
+-- without this line PostgREST keeps believing the table is called
+-- charisma_snippets: requests for `snippets` come back "Could not find the
+-- table 'public.snippets' in the schema cache", and this codebase swallows
+-- those exceptions BY DESIGN. The result is a rename that looks perfect in
+-- SQL and silently writes nothing.
+--
+-- This is not hypothetical here. services/db.py records the same class of
+-- failure in production on 2026-05-11 (PGRST204, "Could not find the
+-- 'end_time' column of 'charisma_snippets' in the schema cache"), and it
+-- happened AGAIN during this very cutover on 2026-08-10 because this line
+-- was missing — the runbook covered deploy ordering and the RLS hazard but
+-- not the cache.
+--
+-- Inside the transaction on purpose: NOTIFY is delivered at COMMIT, so the
+-- reload is atomic with the rename and there is no window where the new name
+-- exists but PostgREST cannot see it.
+NOTIFY pgrst, 'reload schema';
+
 COMMIT;
 
--- ROLLBACK (run this, THEN unset SNIPPETS_TABLE in Railway):
+-- ROLLBACK (run BOTH lines, THEN unset SNIPPETS_TABLE in Railway):
 --   ALTER TABLE public.snippets RENAME TO charisma_snippets;
+--   NOTIFY pgrst, 'reload schema';
+-- The NOTIFY matters just as much on the way back: without it PostgREST
+-- would still be serving the new name and the rollback would look like it
+-- did nothing.

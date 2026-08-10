@@ -1,10 +1,15 @@
 """AI-prefilled draft generation for snippet admin annotations.
 
-Phase 10 of the snippet-CTA learning loop. When a charisma or stress
-snippet is first extracted, this module generates an AI suggestion
-for the admin-typed field (admin_comment / coach_label_notes) so the
-admin sees a draft they can keep or edit instead of staring at an
-empty box.
+Phase 10 of the snippet-CTA learning loop. When a snippet is first
+extracted, this module generates an AI suggestion for the admin-typed
+field (admin_comment) so the admin sees a draft they can keep or edit
+instead of staring at an empty box.
+
+THE STRESS LANE IS GONE (2026-08-10). This module used to carry a mirror
+generator writing stress_snippets.coach_label_notes. Its only dispatcher
+passed kind="charisma" at the single call site, so the stress half had been
+unreachable for some time; `stress_snippets` is now retired-in-place — frozen
+rows, no writer, no reader. See docs/OPS-FLAGS-AND-RELEASES.md.
 
 Why generate at extraction time
 -------------------------------
@@ -77,32 +82,6 @@ def generate_charisma_draft_for_snippet(snippet_id: str) -> str | None:
     return draft if persisted else None
 
 
-def generate_stress_draft_for_snippet(snippet_id: str) -> str | None:
-    """Generate + persist an ai_draft_coach_notes for a stress snippet.
-
-    Mirror of generate_charisma_draft_for_snippet. Returns the draft
-    or None on any failure.
-    """
-    snippet = _load_stress(snippet_id)
-    if snippet is None:
-        return None
-    transcript = (snippet.get("transcript") or "").strip()
-    if not transcript:
-        return None
-
-    draft = _call_llm_draft(
-        system_prompt=_stress_system_prompt(),
-        user_prompt=_stress_user_prompt(snippet),
-        json_key="coach_notes",
-        schema_name="STRESS_DRAFT_SCHEMA",
-    )
-    if not draft:
-        return None
-
-    persisted = db.set_stress_snippet_ai_draft_notes(snippet_id, draft)
-    return draft if persisted else None
-
-
 # ── Internals ───────────────────────────────────────────────────────────────
 
 
@@ -116,14 +95,6 @@ def _load_charisma(snippet_id: str) -> dict | None:
         return None
 
 
-def _load_stress(snippet_id: str) -> dict | None:
-    try:
-        return db.v2_get_stress_snippet(snippet_id)
-    except Exception as e:
-        logger.warning("snippet_drafts: stress load failed %s: %s", snippet_id, e)
-        return None
-
-
 def _call_llm_draft(
     *,
     system_prompt: str,
@@ -133,9 +104,12 @@ def _call_llm_draft(
 ) -> str | None:
     """Run one LLM call and pull the named field out of the structured response.
 
-    schema_name selects which schema from services.llm_schemas to use
-    — kept as a string here so this helper can serve both charisma
-    and stress without importing both schemas eagerly.
+    schema_name selects which schema from services.llm_schemas to use. It
+    stays a string (rather than the schema object) now that only one lane
+    remains: the indirection is what keeps llm_schemas out of this module's
+    import graph, which matters because every failure path here is swallowed
+    and an eager import would move a schema error from "no draft" to "no
+    snippet pipeline".
     """
     try:
         from services.openai_service import OpenAIService
@@ -149,12 +123,10 @@ def _call_llm_draft(
     try:
         from services.llm_schemas import (
             CHARISMA_DRAFT_SCHEMA,
-            STRESS_DRAFT_SCHEMA,
             response_format,
         )
         schema = {
             "CHARISMA_DRAFT_SCHEMA": CHARISMA_DRAFT_SCHEMA,
-            "STRESS_DRAFT_SCHEMA": STRESS_DRAFT_SCHEMA,
         }[schema_name]
     except Exception as e:
         logger.warning("snippet_drafts: schema load failed: %s", e)
@@ -218,38 +190,10 @@ def _charisma_system_prompt() -> str:
     )
 
 
-def _stress_system_prompt() -> str:
-    from services.will_voice import with_voice_rules
-    return with_voice_rules(
-        "You write the one-sentence coach note a charisma coach "
-        "would leave on a snippet where a user's voice tightened "
-        "under pressure. The admin will see your suggestion as a "
-        "pre-filled draft they can keep or edit; match the tone "
-        "they'd write themselves.\n"
-        "\n"
-        "VOICE: Second-person, terse, specific. Quote the trigger "
-        "phrase from the transcript verbatim when it's identifiable. "
-        "No therapy-speak (\"anxiety\", \"panic\", \"nerves\").\n"
-        "GROUND in the transcript and acoustic features the user "
-        "prompt gives you.\n"
-        "OUTPUT: strict JSON with key \"coach_notes\" only."
-    )
-
-
 def _charisma_user_prompt(snippet: dict) -> str:
     transcript = (snippet.get("transcript") or "").strip()
     metrics = snippet.get("metrics") or {}
     feature_bits = _format_metrics(metrics)
-    return (
-        f"transcript: \"{transcript}\"\n"
-        f"acoustic features: {feature_bits or '(none captured)'}"
-    )
-
-
-def _stress_user_prompt(snippet: dict) -> str:
-    transcript = (snippet.get("transcript") or "").strip()
-    features = snippet.get("features") or {}
-    feature_bits = _format_metrics(features)
     return (
         f"transcript: \"{transcript}\"\n"
         f"acoustic features: {feature_bits or '(none captured)'}"

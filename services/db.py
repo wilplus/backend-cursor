@@ -1682,17 +1682,6 @@ class DatabaseService:
             return []
 
 
-    def v2_get_stress_snippet(self, snippet_id: str) -> Optional[dict]:
-        """Return one stress snippet row by id."""
-        result = (
-            self.client.table("stress_snippets")
-            .select("*")
-            .eq("id", snippet_id)
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
     # ------------------------------------------------------------------
     # Charisma snippets
     # ------------------------------------------------------------------
@@ -7318,32 +7307,6 @@ class DatabaseService:
             )
             return False
 
-    def set_stress_snippet_ai_draft_notes(
-        self,
-        snippet_id: str,
-        draft: str | None,
-    ) -> bool:
-        """Persist an AI-suggested coach_notes draft on a stress snippet."""
-        try:
-            now = datetime.now(timezone.utc).isoformat()
-            (
-                self.client.table("stress_snippets")
-                .update({
-                    "ai_draft_coach_notes": draft,
-                    "ai_draft_coach_notes_generated_at": now,
-                    "updated_at": now,
-                })
-                .eq("id", snippet_id)
-                .execute()
-            )
-            return True
-        except Exception as e:
-            logger.warning(
-                "set_stress_snippet_ai_draft_notes failed %s: %s",
-                snippet_id, e,
-            )
-            return False
-
     def record_snippet_publish_annotations(
         self,
         *,
@@ -7569,61 +7532,19 @@ class DatabaseService:
                     owner_user_id=owner_user_id,
                 )
 
-        # ── Stress side ────────────────────────────────────────────
-        # Stress snippets are extracted from recordings, not sessions
-        # directly — we need to look them up via the recordings that
-        # belong to this session. Most installs have one recording
-        # per session; small N either way.
-        try:
-            recording_ids_q = (
-                self.client.table("recordings")
-                .select("id")
-                .eq("session_id", session_id)
-                .execute()
-            )
-            recording_ids = [
-                str(r.get("id")) for r in (recording_ids_q.data or [])
-                if r.get("id")
-            ]
-        except Exception as e:
-            logger.warning(
-                "record_snippet_publish_annotations: recordings lookup "
-                "failed session=%s: %s", session_id, e,
-            )
-            recording_ids = []
-
-        if recording_ids:
-            try:
-                stress_rows = (
-                    self.client.table("stress_snippets")
-                    .select(
-                        "id, coach_label_notes, ai_draft_coach_notes"
-                    )
-                    .in_("recording_id", recording_ids)
-                    .execute()
-                    .data
-                ) or []
-            except Exception as e:
-                logger.warning(
-                    "record_snippet_publish_annotations: stress select "
-                    "failed: %s", e,
-                )
-                stress_rows = []
-
-            for row in stress_rows:
-                snippet_id = row.get("id")
-                if not snippet_id:
-                    continue
-                events_written += self._emit_publish_event_if_signal(
-                    session_id=session_id,
-                    admin_user_id=admin_user_id,
-                    section_type="stress_snippet",
-                    field_name="coach_label_notes",
-                    draft=row.get("ai_draft_coach_notes"),
-                    final=row.get("coach_label_notes"),
-                    draft_id=str(snippet_id),
-                    owner_user_id=owner_user_id,
-                )
+        # ── Stress side: REMOVED 2026-08-10 ───────────────────────
+        # This walked the session's recordings to find stress_snippets
+        # and emit a publish event per (ai_draft_coach_notes ->
+        # coach_label_notes) pair. stress_snippets is now retired-in-
+        # place: nothing writes it (the label writer went in #368, the
+        # draft writer with this change), so the block could only ever
+        # re-read frozen historical rows and cost two queries on every
+        # publish to find nothing new.
+        #
+        # "coach_label_notes" STAYS in _PUBLISH_CAPTURE_FIELDS below on
+        # purpose: events written before today carry that field name, and
+        # the idempotency probe keys on the tuple. Dropping it would make
+        # the backfill unable to recognise its own prior writes.
 
         return events_written
 

@@ -296,3 +296,4 @@
 0258	add_label_revision.sql
 0259	add_threshold_version.sql
 0260	rename_charisma_snippets_to_snippets.sql
+0261	retire_stress_snippets.sql

@@ -492,7 +492,7 @@ def apply_extracted_snippets(session_id: str) -> dict[str, Any]:
         # extractor returns immediately; failures are swallowed by
         # the generator and never block this pipeline.
         if inserted:
-            _spawn_draft_generators_async(inserted, kind="charisma")
+            _spawn_draft_generators_async(inserted)
 
     return {
         "session_id": session_id,
@@ -779,11 +779,7 @@ def _clamp01(x: float) -> float:
     return max(0.0, min(1.0, float(x)))
 
 
-def _spawn_draft_generators_async(
-    inserted_rows: list[dict],
-    *,
-    kind: str,
-) -> None:
+def _spawn_draft_generators_async(inserted_rows: list[dict]) -> None:
     """Fan out one daemon-thread LLM call per freshly-inserted snippet.
 
     Phase 10. The extractor finishes its DB writes synchronously, but
@@ -793,7 +789,10 @@ def _spawn_draft_generators_async(
     deploy. Worst case is a snippet missing its draft, which the
     admin sees as the existing empty-field UX.
 
-    ``kind`` is 'charisma' or 'stress' — selects the right generator.
+    The ``kind`` parameter is gone (2026-08-10). It chose between a charisma
+    and a stress generator, and the one call site below always passed
+    "charisma" — so the stress branch had been unreachable for some time.
+    stress_snippets is now retired-in-place.
     Failures inside each thread are already swallowed by the generator
     module; we don't propagate anything back here.
     """
@@ -801,7 +800,6 @@ def _spawn_draft_generators_async(
         import threading
         from services.snippet_drafts import (
             generate_charisma_draft_for_snippet,
-            generate_stress_draft_for_snippet,
         )
     except Exception as e:
         logger.warning(
@@ -809,11 +807,7 @@ def _spawn_draft_generators_async(
         )
         return
 
-    fn = (
-        generate_charisma_draft_for_snippet
-        if kind == "charisma"
-        else generate_stress_draft_for_snippet
-    )
+    fn = generate_charisma_draft_for_snippet
 
     for row in inserted_rows:
         snippet_id = (row or {}).get("id")

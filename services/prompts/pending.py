@@ -152,12 +152,8 @@ REGISTER = {
     "journal_image_brief.fallback": SourceRef("services/journal_image.py", "fallback_brief"),
     "snippet_drafts.charisma_system": SourceRef(
         "services/snippet_drafts.py", "_charisma_system_prompt"),
-    "snippet_drafts.stress_system": SourceRef(
-        "services/snippet_drafts.py", "_stress_system_prompt"),
     "snippet_drafts.charisma_user": SourceRef(
         "services/snippet_drafts.py", "_charisma_user_prompt"),
-    "snippet_drafts.stress_user": SourceRef(
-        "services/snippet_drafts.py", "_stress_user_prompt"),
     "dev_tasks.reference": SourceRef("services/dev_tasks.py", "_REFERENCE"),
     "dev_tasks.system": SourceRef("services/dev_tasks.py", "_SYSTEM"),
     "dev_tasks.reeval": SourceRef("services/dev_tasks.py", "_REEVAL_SYSTEM"),

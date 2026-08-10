@@ -47,6 +47,15 @@ from services.provenance_check import check_at_boot  # noqa: E402
 
 check_at_boot()
 
+# Which snippet table this process resolved, and whether it can read it.
+# Logs the name unconditionally so a cutover is VISIBLE, and CRITICAL if the
+# table is unreachable — snippet writers swallow their exceptions, so without
+# this a wrong name is a silent, total write failure (incident 2026-08-10).
+# Never raises; an unreachable table is a reason to shout, not to refuse boot.
+from services.snippet_tables import check_at_boot as snippets_check  # noqa: E402
+
+snippets_check()
+
 app = Flask(__name__)
 # Global request cap: must allow both recording uploads and larger admin reference video uploads.
 app.config["MAX_CONTENT_LENGTH"] = max(
