@@ -26,6 +26,45 @@ logger = logging.getLogger(__name__)
 _DEFAULT_EXPIRES = 6 * 3600
 
 
+def _public_base_buckets() -> list:
+    """[(public_base, bucket)] for every base this codebase mints URLs on.
+
+    The pairing is the writers' own: lab_audio_public_url mints on
+    R2_LAB_AUDIO_PUBLIC_BASE_URL (lab bucket) when segregation is on and on
+    R2_PUBLIC_BASE_URL (the coach bucket, R2_BUCKET_NAME override honoured)
+    otherwise; audio_storage mints on R2_AUDIO_PUBLIC_BASE_URL for
+    R2_AUDIO_BUCKET_NAME. Empty config halves drop out. Best-effort — an
+    unreadable config just means no re-signing, today's behavior."""
+    try:
+        from config import Config
+        coach_bucket = str(
+            (getattr(Config, "R2_BUCKET_NAME", "") or "").strip()
+            or getattr(Config, "COACH_FEEDBACK_VIDEO_BUCKET", "")
+            or "coach_feedback_videos")
+        pairs = [
+            (getattr(Config, "R2_LAB_AUDIO_PUBLIC_BASE_URL", "") or "",
+             getattr(Config, "R2_LAB_AUDIO_BUCKET", "") or ""),
+            (getattr(Config, "R2_PUBLIC_BASE_URL", "") or "", coach_bucket),
+            (getattr(Config, "R2_AUDIO_PUBLIC_BASE_URL", "") or "",
+             getattr(Config, "R2_AUDIO_BUCKET_NAME", "") or ""),
+        ]
+        return [(b.strip().rstrip("/"), k.strip())
+                for b, k in pairs if b.strip() and k.strip()]
+    except Exception:
+        return []
+
+
+def _sign(bucket: str, key: str, expires_in: int):
+    try:
+        from services.coach_video_storage import presigned_get_coach_object
+        return presigned_get_coach_object(bucket, key,
+                                          expires_in=expires_in)
+    except Exception as e:
+        logger.warning("resolve_playable_ref: could not sign %s/%s: %s",
+                       bucket, key, e)
+        return None
+
+
 def resolve_playable_ref(ref: Any, *, expires_in: int = _DEFAULT_EXPIRES,
                          default_bucket: Optional[str] = None
                          ) -> Optional[str]:
@@ -38,6 +77,23 @@ def resolve_playable_ref(ref: Any, *, expires_in: int = _DEFAULT_EXPIRES,
     if not isinstance(ref, str) or not ref:
         return None
     if ref.startswith("http://") or ref.startswith("https://"):
+        # OUR OWN public bases are not trusted blindly (founder 2026-08-11:
+        # every Feedbacks-review player dead while the env was set all
+        # along). A writer with the base configured mints
+        # `{base}/{key}` URLs whether or not the bucket actually SERVES
+        # that base — R2 only answers on a public base once the bucket's
+        # dev URL is enabled or a custom domain is attached, so a healthy-
+        # looking row can 403 on every play. A ref sitting on a base we
+        # minted is re-signed against that base's own bucket; signing works
+        # on any bucket in the account regardless of public access. A
+        # foreign https URL (imports store external ones) passes through
+        # untouched, and an already-signed URL lives on the S3 endpoint
+        # domain, which is not a configured base, so it never re-signs.
+        for base, base_bucket in _public_base_buckets():
+            if ref.startswith(base + "/"):
+                key = ref[len(base) + 1:].split("?", 1)[0]
+                signed = _sign(base_bucket, key, expires_in)
+                return signed or ref
         return ref
     try:
         from config import Config
