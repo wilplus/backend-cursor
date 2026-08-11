@@ -808,9 +808,29 @@ def v2_user_get_strengths():
                     a["end_ms"] = max(a.get("end_ms") or 0, end_ms)
 
             from services.audio_ref_resolver import resolve_playable_ref
+            # THE COACH'S CORRECTION WINS (founder 2026-08-11). A human who
+            # says "this was on slide N" outranks the tap timeline — that is
+            # the whole point of the label, and a coach who corrects a take
+            # and watches nothing move stops correcting.
+            #
+            # WHOLE-SNIPPET, deliberately: the correction is made at snippet
+            # grain, so it replaces the word split for that snippet rather
+            # than trying to be cleverer than the human. The FE only offers
+            # the affordance on snippets the split did NOT divide, so a
+            # correction can never flatten a boundary the pipeline got right.
+            _slide_fixes = db.get_snippet_slide_corrections(sid) or {}
             for s in (meta.get("all_snippets") or []):
                 off = s.get("start_offset_ms")
                 dur = s.get("duration_ms")
+                _fix = _slide_fixes.get(str(s.get("id")))
+                if isinstance(_fix, int):
+                    _txt = (
+                        s.get("transcript") or s.get("transcription_text") or ""
+                    ).strip()
+                    _end = (off + dur) if (off is not None and dur is not None) else None
+                    _accrue(_fix, _txt, off, _end,
+                            resolve_playable_ref(s.get("audio_segment_path")))
+                    continue
                 # Same parent URL on every row — the resolver passes a
                 # healthy public URL through and signs an s3:// fallback.
                 audio_ref = resolve_playable_ref(
