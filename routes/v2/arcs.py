@@ -864,7 +864,17 @@ def _take_key_moments(session_id, read_session_ids=None):
                 "start_offset_ms": s.get("start_offset_ms"),
                 "duration_ms": s.get("duration_ms"),
                 "comment_text": (d.get("note") or "").strip() or None,
-                "comment_video_ref": d.get("breakthrough_video_ref"),
+                # Resolved for the SAME reason the audio above is, and it was
+                # the one ref still going out raw (founder 2026-08-11, deck
+                # slice 4 — the coach's video moves into the chunk modal, so
+                # a dead one is now dead in front of the student's own text).
+                # A coach video is minted as a PUBLIC URL on the coach bucket's
+                # base, and R2 only answers on that base once the bucket's dev
+                # URL is enabled or a custom domain is attached — the exact
+                # 403-on-every-play class the resolver exists for. Signing is
+                # bucket-authoritative and works regardless of public access.
+                "comment_video_ref": _resolve_feedback_audio(
+                    d.get("breakthrough_video_ref")),
             })
     return out
 

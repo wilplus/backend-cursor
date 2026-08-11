@@ -174,6 +174,41 @@ class ThreatKeyMomentTests(_FeedbackHarness):
         kinds = {m["recording_kind"] for m in moments}
         self.assertEqual(kinds, {"spoken", "read"})
 
+    def test_the_coach_video_goes_out_RESOLVED_not_raw(self):
+        """Deck slice 4 (founder 2026-08-11): the coach's video now plays
+        inside the chunk modal, over the student's own text — so a dead one
+        is dead in front of their words.
+
+        It was the last ref still served raw. A coach video is stored as a
+        PUBLIC url on the coach bucket's base, and R2 only answers on that
+        base once the bucket's dev URL is on or a custom domain is attached:
+        the healthy-looking row that 403s on every play — exactly the class
+        audio_ref_resolver was written for, and which the audio beside it
+        has been signed against since 2026-08-10."""
+        from unittest.mock import patch
+        seen = []
+
+        def _fake(ref, **kw):
+            seen.append(ref)
+            return f"signed::{ref}" if ref else ref
+
+        with patch("services.audio_ref_resolver.resolve_playable_ref", _fake):
+            body, status = self._call(entitled=True, label_value="threat",
+                                      video_ref=self.VIDEO)
+        self.assertEqual(status, 200)
+        takes = {t["take_index"]: t for t in body["takes"]}
+        for m in takes[1]["key_moments"]:
+            self.assertEqual(m["comment_video_ref"], f"signed::{self.VIDEO}")
+        # …and it went through the SAME resolver as the audio beside it.
+        self.assertIn(self.VIDEO, seen)
+
+    def test_a_moment_with_no_video_stays_none_never_a_signed_nothing(self):
+        body, _ = self._call(entitled=True, label_value="threat",
+                             video_ref=None)
+        takes = {t["take_index"]: t for t in body["takes"]}
+        for m in takes[1]["key_moments"]:
+            self.assertIsNone(m["comment_video_ref"])
+
     def test_threat_moment_without_surfaced_stays_hidden(self):
         body, _ = self._call(entitled=True, label_value="threat",
                              surfaced=False, video_ref=self.VIDEO)
