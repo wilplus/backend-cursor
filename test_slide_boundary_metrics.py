@@ -113,12 +113,19 @@ class ImpactTests(unittest.TestCase):
 
 
 class FlagIndependenceTests(unittest.TestCase):
-    """F1-2 — the numbers describe the SNAP, not the live flag, so they stay
-    comparable across a flag flip. The flag is recorded for context only."""
+    """F1-2 — the numbers describe the SNAP, not any live setting, so they
+    stay comparable across time.
 
-    def _run(self, enabled):
-        with patch("services.slide_word_split._pause_snap_enabled",
-                   return_value=enabled):
+    They always did, and that is why they survived the flag's deletion
+    (founder 2026-08-11): pause-snap is no longer applied to any take, so
+    these are now purely diagnostic — "how much of this take sits near a
+    boundary, and was a pause even available there" — which is how we learn
+    whether the FE's MEASURED clock offset is doing its job."""
+
+    def _run(self, env_says):
+        # The env var is inert now; measuring under both values proves it.
+        with patch.dict("os.environ",
+                        {"SLIDE_PAUSE_SNAP_ENABLED": "1" if env_says else "0"}):
             return boundary_metrics(_w((0.5, "a"), (4.0, "b")), _adv(0, 3900),
                                     SLIDES, window_ms=1500)
 
@@ -128,8 +135,13 @@ class FlagIndependenceTests(unittest.TestCase):
                     "shift_ms_max"):
             self.assertEqual(on[key], off[key], key)
 
-    def test_the_live_flag_is_reported_alongside(self):
-        self.assertTrue(self._run(True)["snap_enabled"])
+    def test_snap_enabled_now_reports_the_TRUTH_the_pipeline_never_snaps(self):
+        # The field used to echo a live flag. The flag is gone, so it states
+        # a fact instead — and it stays in the payload rather than being
+        # dropped, because a historical row that said true means something
+        # different from one that says false, and a reader needs to be able
+        # to tell which era a measurement came from.
+        self.assertFalse(self._run(True)["snap_enabled"])
         self.assertFalse(self._run(False)["snap_enabled"])
 
 

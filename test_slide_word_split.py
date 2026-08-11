@@ -206,7 +206,7 @@ class SnapBoundariesToPausesTests(unittest.TestCase):
 
 
 class PauseSnapIntegrationTests(unittest.TestCase):
-    """build_slide_transcripts honours the flag end-to-end and fixes the leak."""
+    """build_slide_transcripts is retired from the pipeline (founder 2026-08-11)."""
 
     # tap logged at 2000ms; warm-up makes the new slide's first word "the"
     # appear at 1.85s → without snap it leaks onto slide 0. A 0.9→1.85s pause
@@ -221,21 +221,27 @@ class PauseSnapIntegrationTests(unittest.TestCase):
         out = build_slide_transcripts(self.WORDS, self.ADV2, SLIDES)
         return {t["index"]: t["transcript"] for t in out}
 
-    def test_flag_off_is_unchanged_and_leaks(self):
-        import unittest.mock as mock
-        with mock.patch.dict("os.environ", {}, clear=False):
-            import os
-            os.environ.pop("SLIDE_PAUSE_SNAP_ENABLED", None)
-            tx = self._build()
-        self.assertEqual(tx[0], "we begin the")   # "the" leaked onto slide 0
-        self.assertEqual(tx[1], "pitch")
-
-    def test_flag_on_snaps_and_fixes_the_leak(self):
+    def test_the_pipeline_never_snaps_no_matter_the_environment(self):
+        # Founder 2026-08-11: SLIDE_PAUSE_SNAP_ENABLED is DELETED, not set to
+        # 0. The FE measures the clock offset now, and an exact correction
+        # does not want a heuristic arguing with it — so the env var is inert
+        # and the assignment is the timeline's, always. (This take still
+        # "leaks" by the old reading: the boundary sits where the tap says,
+        # which is the whole point of correcting the tap instead.)
         import unittest.mock as mock
         with mock.patch.dict("os.environ", {"SLIDE_PAUSE_SNAP_ENABLED": "1"}):
             tx = self._build()
-        self.assertEqual(tx[0], "we begin")        # leak fixed
-        self.assertEqual(tx[1], "the pitch")
+        self.assertEqual(tx[0], "we begin the")
+        self.assertEqual(tx[1], "pitch")
+
+    def test_the_pause_finder_survives_as_an_analysis_helper(self):
+        # It is the instrument slide_boundary_metrics uses to ask "was a
+        # pause even available near this tap" — analysis, never assignment.
+        from services.slide_word_split import _snap_boundaries_to_pauses
+        snapped = _snap_boundaries_to_pauses(
+            self.ADV2, self.WORDS, window_ms=1200, min_gap_ms=200)
+        self.assertEqual(snapped[0]["t_ms"], 0)
+        self.assertLess(snapped[1]["t_ms"], 2000)  # found the 0.9→1.85s pause
 
 
 class ChunkWordsByCharsTests(unittest.TestCase):

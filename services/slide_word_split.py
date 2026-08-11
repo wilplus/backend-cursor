@@ -23,19 +23,24 @@ import re
 from typing import Any
 
 
-# ── Pause-snap (clock-offset robustness, flag-gated default OFF) ──────────
+# ── Pause-snap — RETIRED FROM THE PIPELINE (founder 2026-08-11) ───────────
 # The recorder warm-up makes Whisper word-times run slightly EARLIER than the
 # UI tap-times, so the first word(s) after a slide tap can land on the PREVIOUS
-# slide. When the speaker pauses as they tap (the common case), that offset sits
-# inside the silence — so snapping each boundary into the nearest real speech
-# pause recovers the true boundary WITHOUT knowing the offset and WITHOUT any
-# capture change. Ships dark; flip SLIDE_PAUSE_SNAP_ENABLED=1 after observing a
-# leak; instant rollback by flipping it off.
-
-def _pause_snap_enabled() -> bool:
-    return (os.getenv("SLIDE_PAUSE_SNAP_ENABLED") or "").strip().lower() in (
-        "1", "true", "yes", "on",
-    )
+# slide. Pause-snap GUESSED that offset: when the speaker pauses as they tap
+# (the common case) the offset sits inside the silence, so snapping each
+# boundary into the nearest pause recovers the true boundary without knowing
+# the number.
+#
+# The FE now MEASURES the number instead (`slide_clock_offset_ms`, applied by
+# apply_clock_offset below), and an exact correction does not want a heuristic
+# arguing with it. SLIDE_PAUSE_SNAP_ENABLED is deleted rather than left at 0:
+# a dark flag that would FIGHT the correct answer if anyone flipped it is a
+# trap, not an option, and it never ran in production a single time.
+#
+# `_snap_boundaries_to_pauses` SURVIVES as a pure analysis helper — it is the
+# instrument services/slide_boundary_metrics.py uses to ask "was a pause even
+# available near this tap", which is how we learn whether the measured offset
+# is doing its job. Analysis, never assignment.
 
 
 # ── Measured audio-vs-UI clock offset (F1, 2026-07-26) ───────────────────
@@ -289,16 +294,6 @@ def _bucket_words_by_slide(words_all: Any, slide_advances: Any,
     n = len(slides) if isinstance(slides, list) else 0
     if n == 0:
         return {}
-
-    # Pause-snap (flag-gated, default OFF) — absorb the recorder warm-up offset
-    # by moving each slide boundary into the speaker's pause. No-op when off, or
-    # when no qualifying pause is near a tap. Byte-identical to before when off.
-    if words_all and slide_advances and _pause_snap_enabled():
-        slide_advances = _snap_boundaries_to_pauses(
-            slide_advances, words_all,
-            window_ms=_env_int("SLIDE_PAUSE_SNAP_WINDOW_MS", 1200),
-            min_gap_ms=_env_int("SLIDE_PAUSE_SNAP_MIN_GAP_MS", 200),
-        )
 
     buckets: dict = {i: [] for i in range(n)}
     if words_all and slide_advances:
@@ -742,19 +737,12 @@ def _contiguous_slide_runs(words_all: Any, slide_advances: Any,
     never one merged bucket, so a piece cut from a run can never span a slide
     boundary or swallow another slide's audio.
 
-    Returns ``[(slide_index, [word dicts]), ...]`` time-ordered. Shares the
-    pause-snap boundary robustness with build_slide_transcripts. Pure.
+    Returns ``[(slide_index, [word dicts]), ...]`` time-ordered. Pure.
     """
     n = len(slides) if isinstance(slides, list) else 0
     if n == 0 or not words_all or not slide_advances:
         return []
     adv = slide_advances
-    if _pause_snap_enabled():
-        adv = _snap_boundaries_to_pauses(
-            slide_advances, words_all,
-            window_ms=_env_int("SLIDE_PAUSE_SNAP_WINDOW_MS", 1200),
-            min_gap_ms=_env_int("SLIDE_PAUSE_SNAP_MIN_GAP_MS", 200),
-        )
     from services.slide_alignment import slide_index_for_offset
     ordered = sorted(
         (w for w in words_all if isinstance(w, dict)

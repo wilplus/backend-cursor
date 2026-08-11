@@ -139,7 +139,7 @@ def boundary_metrics(words: Any, slide_advances: Any, slides: Any, *,
     """
     try:
         from services.slide_word_split import (
-            _snap_boundaries_to_pauses, _pause_snap_enabled,
+            _snap_boundaries_to_pauses,
         )
 
         n_slides = len(slides) if isinstance(slides, list) else 0
@@ -208,7 +208,14 @@ def boundary_metrics(words: Any, slide_advances: Any, slides: Any, *,
             "boundaries_already_aligned": already_aligned,
             "shift_ms_max": max(shifts) if shifts else 0,
             "shift_ms_median": sorted(shifts)[len(shifts) // 2] if shifts else 0,
-            "snap_enabled": bool(_pause_snap_enabled()),
+            # The pipeline no longer applies pause-snap at all (founder
+            # 2026-08-11 — the FE MEASURES the clock offset, so the
+            # heuristic was retired rather than left dark). These numbers
+            # are now purely diagnostic: "how much of this take sits near
+            # a boundary, and was a pause even available there" — the
+            # question that tells you whether the measured offset is
+            # doing its job.
+            "snap_enabled": False,
             "window_ms": int(window_ms),
             "min_gap_ms": int(min_gap_ms),
         }
