@@ -24,6 +24,7 @@ import uuid
 from unittest.mock import patch
 
 from services import intervention_candidates as ic
+from services import manager_engine as me
 from services.ideal_text_parts import (
     ACCENTUATION,
     COMPOSITION,
@@ -489,12 +490,16 @@ class TestR1TheLayerFilter(unittest.TestCase):
     def test_THE_FILTER_RUNS_BEFORE_THE_BUDGET(self):
         """The whole point of R1. Four rewrites where the first part is locked:
         if the filter ran AFTER selection, the locked part's rewrite would take
-        a budget slot and then be dropped, leaving two notes. Before, it never
-        competes and all three surviving slots carry real notes."""
+        a budget slot and then be dropped, leaving one note fewer than the cap.
+        Before, it never competes and EVERY surviving slot carries a real note.
+
+        Written against the ceiling rather than a literal — the cap moved to 2
+        per slide on 2026-08-11 and this property is about the ORDER of the
+        two steps, not about the number."""
         parts = self._parts(True, False, False, False)
         changes = [self._change(parts, i, "replace") for i in range(4)]
         out = ic.select(changes, parts=parts)["changes"]
-        self.assertEqual(len(out), 3)
+        self.assertEqual(len(out), me.BUDGET_CEILING)
         self.assertNotIn("c0-replace", [c["id"] for c in out])
 
     def test_select_without_parts_is_unchanged(self):

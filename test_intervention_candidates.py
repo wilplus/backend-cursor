@@ -63,9 +63,9 @@ class TestTheStyleLane(unittest.TestCase):
         open_pool = [_change(i, start=100 + i * 60, end=108 + i * 60)
                      for i in range(1, 6)]
         out = ic.select([style] + open_pool, parts=parts)
-        # The budgeted lane still serves its full ≤3 — the style row costs
-        # nothing…
-        self.assertEqual(len(out["changes"]), 3)
+        # The budgeted lane still serves its full cap — the style row
+        # costs nothing…
+        self.assertEqual(len(out["changes"]), me.BUDGET_CEILING)
         # …and rides beside it, visual stamped, style_lane tagged.
         self.assertEqual([c["id"] for c in out.get("style_changes") or []],
                          ["c0"])
@@ -101,9 +101,9 @@ class TestTheTakeBudget(unittest.TestCase):
 
     def test_decided_count_shrinks_the_serve(self):
         pool = [_change(i) for i in range(10)]
-        self.assertEqual(len(ic.select(pool)["changes"]), 3)
-        self.assertEqual(len(ic.select(pool, decided_count=1)["changes"]), 2)
-        self.assertEqual(len(ic.select(pool, decided_count=2)["changes"]), 1)
+        self.assertEqual(len(ic.select(pool)["changes"]), 2)
+        self.assertEqual(len(ic.select(pool, decided_count=1)["changes"]), 1)
+        self.assertEqual(len(ic.select(pool, decided_count=2)["changes"]), 0)
 
     def test_a_spent_take_serves_nothing(self):
         pool = [_change(i) for i in range(10)]
@@ -123,14 +123,14 @@ class TestTheTakeBudget(unittest.TestCase):
 
 class TestTheBudgetHolds(unittest.TestCase):
 
-    def test_ten_non_overlapping_changes_become_three(self):
+    def test_ten_non_overlapping_changes_become_the_cap(self):
         out = ic.select([_change(i) for i in range(10)])["changes"]
-        self.assertEqual(len(out), 3)
+        self.assertEqual(len(out), me.BUDGET_CEILING)
 
     def test_the_cap_is_the_appendix_ceiling_not_a_local_number(self):
         """If someone raises BUDGET_CEILING the cap here moves with it. A
         second hardcoded 3 in the adapter would be a copy that can disagree."""
-        self.assertEqual(me.BUDGET_CEILING, 3)
+        self.assertEqual(me.BUDGET_CEILING, 2)
 
     def test_the_budget_spans_LANES_not_each_lane_separately(self):
         """The load limit is on the speaker. Three lanes producing two marks
@@ -140,7 +140,7 @@ class TestTheBudgetHolds(unittest.TestCase):
         changes = ([_change(i, source="polish") for i in range(2)]
                    + [_change(i + 2, source="prior_take") for i in range(2)]
                    + [_change(i + 4, source="new_take") for i in range(2)])
-        self.assertEqual(len(ic.select(changes)["changes"]), 3)
+        self.assertEqual(len(ic.select(changes)["changes"]), 2)
 
     def test_fewer_than_the_budget_all_survive(self):
         out = ic.select([_change(0), _change(1)])["changes"]
@@ -191,7 +191,7 @@ class TestOrderAndIdentity(unittest.TestCase):
         """arbitrate() returns them RANKED. The FE renders the document top to
         bottom, so serving the engine's order scatters the marks."""
         out = ic.select([_change(2), _change(0), _change(1)])["changes"]
-        self.assertEqual([c["span"]["start"] for c in out], [0, 100, 200])
+        self.assertEqual([c["span"]["start"] for c in out], [0, 100])
 
     def test_the_returned_dicts_are_the_callers_own(self):
         """Mapped back by identity, not rebuilt. A reconstruction would drop
@@ -247,7 +247,11 @@ class TestWhatIsRefused(unittest.TestCase):
                   "quote": "", "proposed_text": "a whole new block"}
         out = ic.select([insert, _change(0), _change(1), _change(2)],
                         )["changes"]
-        self.assertEqual([c["id"] for c in out], ["c0", "c1", "c2"])
+        # The zero-width row is refused, so the real changes fill the cap in
+        # document order — it never takes a slot ahead of them.
+        self.assertEqual([c["id"] for c in out],
+                         ["c0", "c1"][:me.BUDGET_CEILING])
+        self.assertNotIn("block:3", [c["id"] for c in out])
 
     def test_failure_serves_NOTHING_rather_than_everything(self):
         """A gatekeeper that fails open is not a gatekeeper. If arbitration
@@ -593,14 +597,15 @@ class TestTheOpsTable(unittest.TestCase):
         accent = _change(9, kind="bold")
         accent["quote"] = "short phrase"
         kept = ic.filter_by_type_caps(rewrites + [accent])
-        self.assertEqual([c["id"] for c in kept], ["c0", "c1", "c9"])
+        self.assertEqual([c["id"] for c in kept], ["c0", "c9"])
 
     def test_an_all_rewrite_pool_is_NOT_rationed(self):
         """A cap reserves space for a mix; with nothing to mix, serving two
         of an available three would starve the student for no benefit."""
         rewrites = [_change(i, kind="replace") for i in range(5)]
         self.assertEqual(len(ic.filter_by_type_caps(rewrites)), 5)
-        self.assertEqual(len(ic.select(rewrites)["changes"]), 3)
+        self.assertEqual(len(ic.select(rewrites)["changes"]),
+                         me.BUDGET_CEILING)
 
     def test_uncapped_types_pass_freely(self):
         accents = []

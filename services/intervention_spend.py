@@ -119,3 +119,66 @@ def spent_count(database, arc_id: Any, take_session_id: Any) -> int:
         logger.warning("intervention_spend: count failed arc=%s: %s",
                        arc_id, e)
         return 0
+
+
+def paragraph_index_at(served_text: Any, offset: Any) -> int:
+    """Which "\\n\\n" paragraph of the served text `offset` falls in.
+
+    THE PARAGRAPH IS THE UNIT the budget is counted in (founder 2026-08-11:
+    "do it per slide up to 2"). It is not an approximation of the slide — the
+    document is built with one paragraph per slide, so they are the same
+    thing — and it is also exactly the CHUNK the student decides on, which is
+    the reason to count here rather than per take. 0 for anything unreadable:
+    a document with no paragraph breaks is one group, which is the old flat
+    cap."""
+    if not isinstance(served_text, str) or not served_text:
+        return 0
+    try:
+        at = int(offset)
+    except Exception:
+        return 0
+    if at <= 0:
+        return 0
+    return served_text.count("\n\n", 0, at)
+
+
+def spent_by_paragraph(database, arc_id: Any, take_session_id: Any,
+                       served_text: Any) -> dict:
+    """{paragraph index: slots spent there} for this take.
+
+    Placed by the decision row's own QUOTE — the words the slot was spent on
+    — which needs no schema change and survives the document being restruc-
+    tured, because it is matched by content rather than by an offset that
+    every reassembly invalidates. A quote no longer in the document (baked,
+    corrected, retyped) counts against nothing: the same drop-never-guess
+    rule the anchors follow, and it errs toward offering feedback rather than
+    withholding it. {} on any failure — the serve then degrades to a fresh
+    per-paragraph budget rather than going dark.
+
+    KNOWN LIMIT: `find` takes the FIRST occurrence, so a phrase the speaker
+    used on two slides charges the earlier one. Bounded — one slide
+    under-serves by one and its twin over-serves by one, both still inside the
+    cap — and the alternative is a schema change plus a backfill of history
+    that was never recorded. If that stops being acceptable the fix is a
+    `slide_index` column written at decide time, NOT a cleverer matcher: a
+    matcher that picks between two identical phrases is guessing."""
+    if not arc_id or not isinstance(served_text, str) or not served_text:
+        return {}
+    try:
+        rows = database.list_spent_intervention_decisions(
+            str(arc_id), str(take_session_id or "")) or []
+    except Exception as e:
+        logger.warning("intervention_spend: per-paragraph read failed "
+                       "arc=%s: %s", arc_id, e)
+        return {}
+    out: dict = {}
+    for r in rows:
+        quote = ((r or {}).get("quote") or "").strip()
+        if not quote:
+            continue
+        at = served_text.find(quote)
+        if at < 0:
+            continue
+        para = paragraph_index_at(served_text, at)
+        out[para] = out.get(para, 0) + 1
+    return out

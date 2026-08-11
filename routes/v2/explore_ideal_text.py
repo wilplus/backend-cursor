@@ -1581,10 +1581,20 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # slots: the count rides into the gate, which subtracts it from
         # H.1's ≤3, so the set on screen is chosen once and only shrinks.
         # A count miss reads 0 and degrades to the per-arbitration budget.
-        from services.intervention_spend import spent_count
+        from services.intervention_spend import (
+            spent_by_paragraph, spent_count,
+        )
         _sel = _select(changes, user_id=user_id,
                        session_id=_arm_sid,
                        decided_count=spent_count(db, arc_id, _arm_sid),
+                       # PER SLIDE, UP TO 2 (founder 2026-08-11). The served
+                       # text is the unit map: one paragraph per slide, and
+                       # the paragraph is the chunk the student decides on.
+                       # `decided_count` rides along untouched so a caller
+                       # without the text still gets the flat cap.
+                       served_text=served_text,
+                       spent_by_paragraph=spent_by_paragraph(
+                           db, arc_id, _arm_sid, served_text),
                        # R1 gen-3 — the layer filter runs inside the gate,
                        # BEFORE the budget: an open part takes everything;
                        # a locked part takes the STYLE LANE (bold only,
