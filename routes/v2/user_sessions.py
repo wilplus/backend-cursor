@@ -759,12 +759,16 @@ def v2_user_get_strengths():
                 if isinstance(t, dict) and isinstance(t.get("index"), int)
             } if isinstance(precomputed, list) and precomputed else {}
             if pre_by_idx:
-                parent_audio = next(
+                # Resolved, not raw: a writer missing its public-URL env
+                # leaves s3:// here and the slide player renders dead
+                # (founder 2026-08-10 — "the master thing not working").
+                from services.audio_ref_resolver import resolve_playable_ref
+                parent_audio = resolve_playable_ref(next(
                     (s.get("audio_segment_path")
                      for s in (meta.get("all_snippets") or [])
                      if s.get("audio_segment_path")),
                     None,
-                )
+                ))
                 for sg in slide_groups:
                     pt = pre_by_idx.get(sg["index"]) or {}
                     sg["transcript"] = pt.get("transcript") or ""
@@ -803,10 +807,14 @@ def v2_user_get_strengths():
                 if end_ms is not None:
                     a["end_ms"] = max(a.get("end_ms") or 0, end_ms)
 
+            from services.audio_ref_resolver import resolve_playable_ref
             for s in (meta.get("all_snippets") or []):
                 off = s.get("start_offset_ms")
                 dur = s.get("duration_ms")
-                audio_ref = s.get("audio_segment_path")
+                # Same parent URL on every row — the resolver passes a
+                # healthy public URL through and signs an s3:// fallback.
+                audio_ref = resolve_playable_ref(
+                    s.get("audio_segment_path"))
                 # #6 — PRECISE split: bucket each WORD to the slide on screen at
                 # its timestamp, so words spoken after a mid-snippet slide click
                 # move to the NEW slide. Returns [] (→ legacy whole-snippet
@@ -1209,8 +1217,11 @@ def v2_user_get_session_readout(session_id):
         )
 
         from services.lab_recording import build_readout_from_session
+        # include_upgrade_cards=False — USER surface: the manager engine is
+        # the sole gatekeeper (founder 2026-08-10); ungated LLM rewrite
+        # cards do not ride the student payload.
         readout = build_readout_from_session(
-            session_id, audit_paid=_audit_paid,
+            session_id, audit_paid=_audit_paid, include_upgrade_cards=False,
         )
 
         published = bool(session.get("results_published_at"))
@@ -1542,6 +1553,26 @@ def v2_user_suggestion_feedback(snippet_id):
                             fallback=(snip.get("transcript")
                                       or snip.get("transcription_text"))),
                         snippet_id=snippet_id, version=_ver)
+                    # THE TAKE'S BUDGET (founder 2026-08-10): a decided star
+                    # keeps its slot — applied and dismissed alike; a revert
+                    # returns it (undecided again, SPEC R4). The row doubles
+                    # as SPEC §6's ground truth. Best-effort.
+                    from services.intervention_spend import spend, unspend
+                    _star_key = f"star:{target}:{snippet_id}"
+                    _arc_sessions = db.get_arc_sessions(_arc) or []
+                    if action == "reverted":
+                        unspend(db, _arc, _arc_sessions,
+                                change_key=_star_key)
+                    else:
+                        spend(db, _arc, _arc_sessions,
+                              change_key=_star_key,
+                              decision=("approved" if action == "applied"
+                                        else "disregarded"),
+                              intervention_type=(
+                                  "EMPHASISE"
+                                  if target in ("moment_emphasize",
+                                                "document_bold")
+                                  else "REWRITE"))
                     # A dismissed star also stops being OFFERED right now:
                     # the ledger remembers the decision; the row removal
                     # kills the anchor/star on every future serve (rule 2
@@ -1897,6 +1928,82 @@ def v2_user_snippet_confidence_review(snippet_id):
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to record the confidence review",
+        }), 500
+
+
+@v2_bp.route("/user/snippets/<snippet_id>/owner-confidence-label",
+             methods=["PUT"])
+@require_auth
+def v2_put_owner_confidence_label(snippet_id):
+    """The ideal-text modal's blind label (founder 2026-08-10: "the modal
+    in the ideal text has an option to label the voice snippet").
+
+    The OWNER'S lane of the SAME ternary instrument every other lane
+    writes — yes / no / neutral XOR unrateable, into state_ratings
+    (confidence_labels), lane resolved to game_owner. This is what makes
+    "min twice labelled" reachable: coach + owner are the two labels that
+    admit a snippet to the game, and the panel grows from there.
+
+    OWNER-scoped, unlike the peer-review POST above: the modal is the
+    speaker labelling their own voice, so the snippet's session must
+    belong to the caller — 404 otherwise (no existence oracle).
+
+    BLIND at the ask (RATE_AND_REVEAL): the FE asks BEFORE any machine
+    read is shown and disables the control after commit, so the row's
+    saw_model_output=False invariant (I1) holds by construction here too.
+
+    Body: { value: "yes"|"no"|"neutral" XOR unrateable: true,
+            note?, latency_ms? }
+    200 {saved} · 400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "snippet_id must be a valid UUID",
+        }), 400
+    try:
+        from services.state_ratings import resolve_lane, validate_rating
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip:
+            return jsonify({
+                "code": "NOT_FOUND", "error": "snippet not found",
+            }), 404
+        sess = db.v2_get_session_by_id(str(snip.get("session_id") or ""))
+        if not sess or str(sess.get("user_id")) != str(request.user_id):
+            return jsonify({
+                "code": "NOT_FOUND", "error": "snippet not found",
+            }), 404
+        body = request.get_json(silent=True) or {}
+        row, err = validate_rating({
+            "state_id": "confidence",
+            "value": body.get("value"),
+            "unrateable": body.get("unrateable", False),
+            "note": body.get("note"),
+            "latency_ms": body.get("latency_ms"),
+        })
+        if err:
+            return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+        lane = resolve_lane(sess.get("source"), is_coach=False,
+                            is_owner=True)
+        saved = db.upsert_state_rating(
+            snippet_id=str(snippet_id), row=row,
+            rater_id=str(request.user_id),
+            session_id=str(sess.get("id")),
+            lane=lane)
+        if not saved:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "could not save the label (run "
+                         "migrations/add_state_generic_ratings.sql)",
+            }), 500
+        return jsonify({"saved": True, "snippet_id": snippet_id}), 200
+    except Exception as e:
+        logger.error("owner-confidence-label failed snip=%s: %s",
+                     snippet_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to save the label",
         }), 500
 
 

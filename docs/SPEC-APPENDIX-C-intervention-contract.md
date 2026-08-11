@@ -1,10 +1,12 @@
 # Appendix C — Intervention Contract: Finding → Intervention → Presentation
 
-**Last updated:** 2026-08-05.
+**Last updated:** 2026-08-10.
 
 **Companion to SPEC.md v3.** Defines the rigid layer between detection (Appendix A) and what the user sees. Inherits §8 (triage), §11 (delivery constraints), Appendix B (state modulation).
 
 > **Amended by SPEC.md §0 decisions D9–D12.** Severity is dropped from the presentation signature; lexical overlap routes to `CUT` only; four template bands not three; unadjudicated comments are withheld rather than flagged `pending`; an `ALBUM` surface joins the registry; C.8's one-file test carries a `NOTICE` carve-out. All amendments are applied inline below. Where this document and SPEC.md conflict, **SPEC.md wins.**
+
+> **Amended 2026-08-10 — the serving layer shipped.** The closed set is live code: the type mapping, type-keyed presentation, the ≤3 budget, the mix caps and the accent window are enforced in `services/intervention_candidates.py`. §11's / C.4's "exactly one per session" is superseded by the founder's §R1 budget (max 3 per take). Implementation state, the shipped registry, and the ops-page row→type mapping: **C.10**.
 
 ---
 
@@ -156,7 +158,7 @@ PRESENTATION: dict[InterventionType, Presentation] = {
 
 | Surface | Receives | Constraint |
 |---|---|---|
-| `SESSION_NOTE` | FEEDBACK types 1–6 | **Exactly one per session** (§11) |
+| `SESSION_NOTE` | FEEDBACK types 1–6 | ~~Exactly one per session (§11)~~ **≤3 per serve** (founder §R1, 2026-08-10 — see C.10) |
 | `GAME_MODAL` | `NOTICE` — **labelling** | Blind rating first; comment revealed after commit, and **only if adjudicated** (§3.3) |
 | `ALBUM` | `NOTICE` — **review** | Distinct from `GAME_MODAL`. Predict-then-reveal is a mandatory hard gate. Capped at the 5 most recent that qualified. **Never names the state** (AC-9) |
 | `PRACTICE_TAB` | `REHEARSE` | Between attempts, never during |
@@ -261,5 +263,78 @@ That is a quarter of work, not a file. Stated explicitly because C.8 otherwise r
 | Severity badges ("HIGH", "CRITICAL") | Normative framing; invites comparison; already encoded in weight and ordering. |
 | Red/green finding colours | Reads as verdict on the person, not task on the work. |
 | Free-form comments per finding | Thirty-one voices, no consistency, and coach edits stop being comparable. |
-| Multiple findings surfaced together | §11. One note per session, at every learner state. |
+| Multiple findings surfaced together | §11 as amended: ≤3 per serve (C.10), at every learner state — never a wall of marks. |
 | Cross-modal as a distinct intervention type | Modality is evidence, not remedy. C.5. |
+
+---
+
+## C.10 · Implementation state — the shipped serving layer (2026-08-10)
+
+Everything above defines the contract; this section records how much of it is now load-bearing code, and where the working ops page fits. One file implements it: `services/intervention_candidates.py`.
+
+### The one mapping, live
+
+`intervention_type_of(change)` assigns every live change exactly one member of the C.2 closed set — the C2 invariant as a function, not a field convention:
+
+| Live lane | C.2 type |
+|---|---|
+| `replace` / `new_take` / `prior_take` (block upgrades — L1's select) | `REWRITE` |
+| `insert` | `ADD` |
+| `bold` / `advice` (delivery & structural accents) | `EMPHASISE` |
+| `trigger == "charisma"` (Confident Voice) | `NOTICE` |
+
+Today's producers are the **composition lane and the Confident Voice star** — not the detector rows. The detectors still cannot fire (no `fire_at`; the chain stays cut on the detector side), but the serving side of the chain is no longer missing: the day a detector lands a threshold, it feeds this same gate.
+
+### Presentation derives from type — C.1 holds in code
+
+`TYPE_ROWS` is C.4's registry as shipped: keyed on the type and nothing else — `visual_of(change) = TYPE_ROWS[intervention_type_of(change)]["visual"]`; the lane is not an input. This surface has three affordances today:
+
+| Types | Visual |
+|---|---|
+| `REWRITE` `RESTRUCTURE` `ADD` `CUT` | underline (inline diff) |
+| `EMPHASISE` `DE_EMPHASISE` `REHEARSE` | bold |
+| `NOTICE` | star — Confident Voice only (CONSTRUCT: a badge, never paint, never a number) |
+
+The full C.4 registry (icons, verbs, affordances, surfaces) stands as the destination; `TYPE_ROWS` is its shipped subset plus one operational field the spec did not have — `serve_cap`.
+
+### The budget — §11's "one" is superseded, and the ceiling is PER TAKE
+
+Founder §R1 (SPEC-parts-locking-and-layers): **"max 3 interventions per take, total, across both layers"** — and, same day: *"each feedback needs to be there; full and end to end and waiting; not that it appears once the other is accepted."* Both are enforced now:
+
+- `budget()` computes the flat cap (`LANE_STATE` is a declared policy dial, not inferred progression — see the budget-dial comment in the module);
+- every explicit decision writes one `intervention_decisions` row (migration 0262 — SPEC §3.3's ground-truth table, doubling as the spend ledger; absence of a row is UNDECIDED per R4, and bulk/implicit paths are barred from writing);
+- the serve subtracts the take's spent count inside `arbitrate(budget_spent=…)`, **before** the arms — so a decided offer keeps its slot, nothing trickles in behind an accept, the exploration swap cannot resurrect a spent budget, and the set on screen is chosen once and only shrinks. A reverted star deletes its row: undecided again, the slot returns.
+
+### Mix caps — a reserve, not a ration
+
+`REWRITE` carries `serve_cap = 2`. The cap binds **only while another servable type proposes**: an all-rewrite pool passes untouched (serving two of an available three would starve the student for no benefit), but the moment a metric-driven `EMPHASISE` or a `NOTICE` proposes alongside, the capped type stops being able to fill every slot ahead of it. Zero-width spans neither arm the cap nor spend it. Applied to the pool BEFORE arbitration, in document order — the engine's own tie-break, so which rewrites survive is the same answer the uncapped system gave.
+
+### The two precision gates, in serve order
+
+`select()` runs: **lock layer → accent window → type caps → arbitrate (≤3) → visual stamp.**
+
+- **Lock layer (R1 gen-2, founder 2026-08-10):** an OPEN part takes everything; a LOCKED part takes **nothing** — except a Confident Voice detection, which passes tagged `pending_better_version` with the founder's copy. Unclassified kinds and part-straddling spans drop. This is L1 enforced mechanically: nothing rewrites committed text.
+- **Accent window (§F.4):** `EMPHASISE` / `DE_EMPHASISE` paint clamps to the intonation unit — `ACCENT_WINDOW_MAX_WORDS = 12`, two realised units — enforced at the offer gate AND again at ledger bake (the words stay, the paint is refused), so the two can never disagree. Confident Voice is exempt (a star at the span's end is not a wash); composition is exempt (block upgrades are legitimately block-sized).
+
+### `NOTICE` is live — and where the blind lanes sit now
+
+`NOTICE` is the first of the eight types to fire in production: the Confident Voice star, from **coach-verified** labels. The CONF *detector* stays OFF (ranking-inert until validated — ENGINE-MAP E10); the star lane does not depend on it. C.4's `GAME_MODAL` row stands for the user side (RATE_AND_REVEAL). On the coach side the blind lane is the snippet card's state ratings plus the confidence-question rows in the coach Feedbacks review panel (`DirectionLabel` retired 2026-08-07). BLIND COACH intact — the coach lane never shows the machine read.
+
+### The ops page — its "eight" are rows; C.2's eight are types
+
+The working ops table (the web page titled *Intervention contract*) carries eight **detector rows** — a coincidental eight, not the closed set. Per C.3 each row declares exactly one C.2 type; per C.1 its rendered mark derives from that type via the registry — the per-row mark column there (BOLD / HIGHLIGHT / UNDERLINE / COLOUR) is an **evidence pointer**, not a presentation choice a row gets to make.
+
+| Row | Construct | C.2 type |
+|---|---|---|
+| CONF | vocal confidence | `NOTICE` — all Album output |
+| SIS | sentence weakness | `REWRITE` |
+| D10 | conversational style | `REWRITE` — C.2 lists it there |
+| A2 | slide word overlap | `CUT` — SPEC.md D10: lexical overlap routes to `CUT` only |
+| D7a | collective pronoun rate | `REWRITE` — pronoun profile |
+| D7b | first-person singular | `REWRITE` — pronoun profile |
+| D1 | concreteness | `REWRITE` — C.2 lists it there |
+| A6 | topic discipline | `CUT` — topic drift |
+
+(The detector row named D10 and the SPEC.md §0 decision named D10 are unrelated namesakes — the row is conversational style; the decision is the lexical-overlap routing.)
+
+No current row is an `EMPHASISE`, `DE_EMPHASISE`, `RESTRUCTURE`, `ADD` or `REHEARSE` — those types' detector examples (the V-series) are not on the page yet. Today's live `EMPHASISE`s come from the composition lane's accent offers, not from a detector.

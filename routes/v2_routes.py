@@ -116,7 +116,6 @@ from routes.v2.explore_ideal_text import (  # noqa: F401 — re-exported for imp
     v2_explore_save_ideal_text,
     v2_explore_select_block_variant,
     v2_explore_set_part_lock,
-    v2_talk_ideal_text,
 )
 from routes.v2.user_chat import (  # noqa: F401 — re-exported for import compat
     _CONTEXTUAL_INTENTS,

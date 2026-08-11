@@ -495,6 +495,28 @@ def v2_lab_create_recording():
         # audio was stored, analysed and folded as that re-read. A spent
         # id is dropped and a fresh session minted — the response's
         # `session_id` is authoritative and the FE adopts it. ──
+        # ── THE RETRY COLLAPSE (founder 2026-08-10, the double recording).
+        # The dual-lane uploader re-sends the same FormData when the Worker
+        # socket dies AFTER the body already reached us; the spent-session
+        # guard below then — correctly, per its own lane rule — mints a
+        # fresh session, so one take landed as takes N and N+1 with
+        # identical audio. Same key = same take: echo the first session and
+        # store nothing twice. The key is a NEW field on purpose — reusing
+        # guest_session_id would fight that guard, which exists for a
+        # different bug. ──
+        _upload_key = (form.get("upload_idempotency_key") or "").strip()
+        if _upload_key:
+            _dup = db.v2_find_session_by_upload_key(_upload_key)
+            if _dup:
+                logger.info("lab: duplicate upload collapsed key=%s -> %s",
+                            _upload_key, _dup.get("id"))
+                return jsonify({
+                    "duplicate": True,
+                    "session_id": _dup.get("id"),
+                    "arc_id": _dup.get("arc_id"),
+                    "take_index": _dup.get("take_index"),
+                }), 200
+
         _sid_in = (form.get("guest_session_id") or "").strip()
         if _sid_in:
             _spent = False
@@ -547,6 +569,11 @@ def v2_lab_create_recording():
                 return jsonify({
                     "code": "V2_ERROR", "error": "Failed to create session",
                 }), 500
+        # Stamp the take's idempotency key so a lane-fallback retry finds
+        # this session instead of minting take N+1 (best-effort — a miss
+        # just means the retry cannot collapse).
+        if _upload_key:
+            db.v2_set_session_upload_key(guest_session_id, _upload_key)
 
         # Recording-flow tags (founder 2026-07-20): the intake-context
         # validator returns ONLY its canonical keys, so the flow tags the
@@ -947,8 +974,10 @@ def v2_lab_create_recording():
         _audit_paid = _arc_audit_paid(arc_id, getattr(request, "user_id", None))
         try:
             from services.lab_recording import build_readout_from_session
+            # USER surface — no ungated upgrade cards (founder 2026-08-10).
             _full = build_readout_from_session(
                 guest_session_id, audit_paid=_audit_paid,
+                include_upgrade_cards=False,
             )
             if isinstance(_full, dict) and _full.get("snippets"):
                 readout = _full
@@ -1070,7 +1099,9 @@ def v2_guest_get_recording_readout(session_id):
             }), 200
 
         from services.lab_recording import build_readout_from_session
-        readout = build_readout_from_session(session_id)
+        # USER surface — no ungated upgrade cards (founder 2026-08-10).
+        readout = build_readout_from_session(
+            session_id, include_upgrade_cards=False)
 
         if session.get("results_published_at"):
             state = "insights_ready"

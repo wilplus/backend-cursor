@@ -195,7 +195,10 @@ def build_readout_payload(
             "id": sid,
             "index": sd.get("index", i + 1),
             "transcript": sd.get("transcript") or "",
-            "audio_ref": sd.get("audio_ref"),
+            # Resolved: a writer missing its public-URL env leaves an
+            # s3:// fallback here, and an <audio src> can't play that
+            # (founder 2026-08-10 — the dead master player).
+            "audio_ref": _playable(sd.get("audio_ref")),
             "start_offset_ms": sd.get("start_offset_ms"),
             "duration_ms": sd.get("duration_ms"),
             "features": build_readout_features(sd.get("metrics")),
@@ -235,6 +238,16 @@ def _pieces_canonical_enabled() -> bool:
     import os
     return (os.getenv("PIECES_CANONICAL_ENABLED") or "1").strip().lower() \
         not in ("0", "false", "no")
+
+
+def _playable(ref):
+    """One storage ref → a playable URL. Healthy public URLs pass through;
+    the s3:// fallbacks a mis-configured writer leaves behind get signed
+    against their own bucket (services/audio_ref_resolver — the #378
+    branch, hoisted). Founder 2026-08-10: the master player was dead on
+    every user surface because only the coach queue resolved."""
+    from services.audio_ref_resolver import resolve_playable_ref
+    return resolve_playable_ref(ref)
 
 
 def _coach_prefill_enabled() -> bool:
@@ -1264,6 +1277,7 @@ def build_readout_from_session(
     include_insights: bool = True,
     include_slide_scores: bool = False,
     audit_paid: bool = True,
+    include_upgrade_cards: bool = True,
 ) -> dict:
     """Re-derive the §3.3 Readout from PERSISTED snippets — the canonical
     reader for parked-restore + history (contract: a report loads
@@ -1333,7 +1347,7 @@ def build_readout_from_session(
             "transcript": (
                 s.get("transcript") or s.get("transcription_text") or ""
             ),
-            "audio_ref": s.get("audio_segment_path"),
+            "audio_ref": _playable(s.get("audio_segment_path")),
             "start_offset_ms": s.get("start_offset_ms"),
             "duration_ms": s.get("duration_ms"),
             "features": build_readout_features(metrics),
@@ -1341,16 +1355,20 @@ def build_readout_from_session(
                 "composite": sticky.get("composite"),
                 "comment": sticky.get("comment"),
             },
-            # "Say It Stronger" — the qualitative rewrite-suggestion card
-            # that REPLACES the raw acoustic numbers on the user view (the
-            # numbers above stay in the payload for the coach surface).
-            # null until the post-upload daemon lands it (FE renders the
-            # shimmer / nothing). L1: display overlay only.
+            # "Say It Stronger" — the coach's correction surface for the
+            # wording lane. COACH VIEW ONLY (founder 2026-08-10: the
+            # manager engine is the sole gatekeeper — "no other exist"):
+            # on the user readout these LLM rewrite cards were an ungated
+            # feedback lane riding the payload, so user routes pass
+            # include_upgrade_cards=False and serve null. The lane still
+            # PRODUCES; the gate decides what the student sees.
             "say_it_stronger": (
-                s.get("say_it_stronger_final")
-                if isinstance(s.get("say_it_stronger_final"), dict)
-                else (s.get("say_it_stronger")
-                      if isinstance(s.get("say_it_stronger"), dict) else None)
+                (s.get("say_it_stronger_final")
+                 if isinstance(s.get("say_it_stronger_final"), dict)
+                 else (s.get("say_it_stronger")
+                       if isinstance(s.get("say_it_stronger"), dict)
+                       else None))
+                if include_upgrade_cards else None
             ),
             # The user's corrected text for THIS moment (null = no edit);
             # display-preferred on the FE, never shown to the coach as the
@@ -1506,7 +1524,7 @@ def build_readout_from_session(
         # <audio> on this per section span (slide_transcripts /
         # full_transcript_chunks start_offset_ms + duration_ms). Null when
         # the session has no snippets (nothing recorded → nothing to play).
-        "parent_audio_ref": (
+        "parent_audio_ref": _playable(
             snippets[0].get("audio_segment_path") if snippets else None
         ),
     }
@@ -1542,12 +1560,17 @@ def build_readout_from_session(
             "snippet_id": so.get("id"),
             **({"recording_kind": so.get("recording_kind")}
                if so.get("recording_kind") else {}),
-            "say_it_stronger": so.get("say_it_stronger"),
+            # Upgrade cards / auto-comment: GONE from the instant view
+            # (founder 2026-08-10 — the manager engine is the sole
+            # gatekeeper, and auto_comment was retired from both surfaces
+            # 2026-07-14; a persisted row must not resurrect it here).
+            # The coach reads say_it_stronger from `snippets`, flag-gated.
+            "say_it_stronger": (so.get("say_it_stronger")
+                                if include_upgrade_cards else None),
             # The user's currently-applied suggestion indexes (Approve state
             # survives reload — founder 2026-07-15). Absent when none.
             **({"applied_upgrade_indexes": so.get("applied_upgrade_indexes")}
                if so.get("applied_upgrade_indexes") else {}),
-            "auto_comment": so.get("auto_comment"),
             # Edit surfaces whether the FE keyed by snippet_id (preferred for
             # pieces) OR by chunk_index (deckless legacy pattern → the piece
             # ordinal): fold both so a saved edit never disappears.

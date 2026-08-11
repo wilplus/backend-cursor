@@ -2527,6 +2527,44 @@ class DatabaseService:
     # Curiosity Gate funnel (anonymous-first acquisition)
     # ------------------------------------------------------------------
 
+    def v2_find_session_by_upload_key(self, key: Optional[str]
+                                      ) -> Optional[dict]:
+        """The retry-collapse lookup (founder 2026-08-10, the double
+        recording): same key = same take = the same session. None on
+        anything missing — the POST then proceeds as a first attempt."""
+        if not key:
+            return None
+        try:
+            res = (
+                self.client.table("v2_sessions")
+                .select("*")
+                .eq("upload_idempotency_key", str(key))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("v2_find_session_by_upload_key failed: %s", e)
+            return None
+
+    def v2_set_session_upload_key(self, session_id: str,
+                                  key: Optional[str]) -> bool:
+        """Stamp the take's idempotency key on its session. Best-effort —
+        a miss just means a retry cannot collapse (today's behavior)."""
+        if not session_id or not key:
+            return False
+        try:
+            (self.client.table("v2_sessions")
+             .update({"upload_idempotency_key": str(key)})
+             .eq("id", str(session_id))
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning("v2_set_session_upload_key failed sid=%s: %s",
+                           session_id, e)
+            return False
+
     def v2_create_guest_session(
         self,
         guest_session_id: str,
@@ -11215,6 +11253,95 @@ class DatabaseService:
             logger.warning("delete_ideal_decision failed arc=%s: %s",
                            arc_id, e)
             return False
+
+    def record_intervention_decision(self, *, arc_id: str,
+                                     take_session_id: str,
+                                     change_key: str,
+                                     decision: str,
+                                     lane: Optional[str] = None,
+                                     intervention_type: Optional[str] = None,
+                                     ) -> bool:
+        """One decided intervention — SPEC §3.3's ground-truth row AND one
+        spent budget slot (founder 2026-08-10: the ≤3 is PER TAKE, and a
+        decided offer never frees its slot). Vocabulary is the SPEC's:
+        approved / disregarded; absence of a row means UNDECIDED (R4).
+        Upsert on the offer's identity so a re-tap updates in place rather
+        than double-spending. lane/intervention_type ride along when the
+        caller knows them — they are the §6 join to intervention_arms.
+        Best-effort."""
+        if not arc_id or not change_key \
+                or decision not in ("approved", "disregarded"):
+            return False
+        try:
+            self.client.table("intervention_decisions").upsert({
+                "arc_id": str(arc_id),
+                "take_session_id": str(take_session_id or ""),
+                "change_key": str(change_key),
+                "decision": decision,
+                "lane": lane,
+                "intervention_type": intervention_type,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, on_conflict="arc_id,take_session_id,change_key").execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "intervention_decisions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "record_intervention_decision: table missing (run "
+                    "migrations/add_intervention_decisions.sql)")
+                return False
+            logger.warning("record_intervention_decision failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def delete_intervention_decision(self, *, arc_id: str,
+                                     take_session_id: str,
+                                     change_key: str) -> bool:
+        """A reverted decision returns its slot — the offer is undecided
+        again and the take's budget grows back by one. Best-effort."""
+        if not arc_id or not change_key:
+            return False
+        try:
+            (self.client.table("intervention_decisions")
+             .delete()
+             .eq("arc_id", str(arc_id))
+             .eq("take_session_id", str(take_session_id or ""))
+             .eq("change_key", str(change_key))
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning("delete_intervention_decision failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def count_intervention_decisions(self, arc_id: Optional[str],
+                                     take_session_id: Optional[str]) -> int:
+        """Spent slots for one take. 0 pre-migration / on hiccup — the
+        serve degrades to the per-arbitration budget, never to silence."""
+        if not arc_id:
+            return 0
+        try:
+            res = (
+                self.client.table("intervention_decisions")
+                .select("id", count="exact")
+                .eq("arc_id", str(arc_id))
+                .eq("take_session_id", str(take_session_id or ""))
+                .execute()
+            )
+            if getattr(res, "count", None) is not None:
+                return int(res.count)
+            return len(res.data or [])
+        except Exception as e:
+            _e = str(e).lower()
+            if "intervention_decisions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return 0
+            logger.warning("count_intervention_decisions failed arc=%s: %s",
+                           arc_id, e)
+            return 0
 
     def list_ideal_decisions(self, arc_id: Optional[str]) -> list:
         """All ledger rows of an arc. [] pre-migration / on hiccup —

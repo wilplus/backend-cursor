@@ -2391,10 +2391,19 @@ def v2_coach_arc_stars(arc_id):
                     _snip_id = str(_snip.get("id") or "")
                     if _snip_id not in _starred:
                         continue
+                    # Resolved (founder 2026-08-10: "I need the playbacks
+                    # to work in the feedbacks review") — an s3:// fallback
+                    # ref rendered every star row's player dead; the
+                    # resolver signs it against its own bucket and passes
+                    # healthy URLs through.
+                    from services.audio_ref_resolver import (
+                        resolve_playable_ref,
+                    )
                     snippets_by_id[_snip_id] = {
-                        "audio_ref": (_snip.get("audio_segment_path")
-                                      or _snip.get("audio_ref")
-                                      or _snip.get("storage_path")),
+                        "audio_ref": resolve_playable_ref(
+                            _snip.get("audio_segment_path")
+                            or _snip.get("audio_ref")
+                            or _snip.get("storage_path")),
                         "start_offset_ms": _snip.get("start_offset_ms"),
                         "duration_ms": _snip.get("duration_ms"),
                         "transcript": (_snip.get("transcript")
@@ -2581,41 +2590,15 @@ def _resolve_audio_refs(rows: list, *, expires_in: int = 6 * 3600) -> None:
     mid-batch. Best-effort per row: a key that cannot be signed is left as
     it is rather than nulled, so the failure is visible and debuggable
     instead of a silently missing player."""
-    try:
-        from config import Config
-        from services.coach_video_storage import presigned_get_coach_object
-        bucket = getattr(Config, "COACH_FEEDBACK_VIDEO_BUCKET",
-                         "coach_feedback_videos")
-    except Exception:
-        return
+    # The bucket-authoritative branch is HOISTED (founder 2026-08-10):
+    # this fix lived only here while every user surface handed the raw
+    # column through — services/audio_ref_resolver.py is the one copy now.
+    from services.audio_ref_resolver import resolve_playable_ref
     for r in rows or []:
         ref = r.get("audio_ref")
-        if not isinstance(ref, str) or not ref:
-            continue
-        if ref.startswith("http://") or ref.startswith("https://"):
-            continue
-        # ``s3://bucket/key`` — the snippet writer's FALLBACK ref when
-        # coach_media_public_url could not mint a public URL (observed
-        # 2026-08-10: worker-written snippets, per-service env again). The
-        # bucket in the ref is authoritative; assuming the coach-video
-        # bucket here signed a key that does not exist there, the URL
-        # 404ed, and the corpus player rendered with a dead button.
-        if "://" in ref:
-            rest = ref.split("://", 1)[-1]
-            ref_bucket, _, ref_key = rest.partition("/")
-            use_bucket, key = ((ref_bucket, ref_key) if ref_key
-                               else (bucket, rest))
-        else:
-            use_bucket, key = bucket, ref
-            if key.startswith(f"{bucket}/"):
-                key = key[len(bucket) + 1:]
-        try:
-            signed = presigned_get_coach_object(use_bucket, key,
-                                                expires_in=expires_in)
-            if signed:
-                r["audio_ref"] = signed
-        except Exception as e:
-            logger.warning("could not sign audio_ref %s: %s", ref, e)
+        resolved = resolve_playable_ref(ref, expires_in=expires_in)
+        if resolved and resolved != ref:
+            r["audio_ref"] = resolved
 
 
 def _int_or(raw, default: int) -> int:

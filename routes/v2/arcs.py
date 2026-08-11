@@ -37,6 +37,14 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+def _resolve_feedback_audio(ref):
+    """One storage ref → a playable URL (services/audio_ref_resolver, the
+    #378 bucket-authoritative branch hoisted — founder 2026-08-10: only
+    the coach queue resolved while user surfaces served raw refs)."""
+    from services.audio_ref_resolver import resolve_playable_ref
+    return resolve_playable_ref(ref)
+
+
 def _presentation_id_from_slides(slides) -> str:
     """Stable content hash of a deck's slides, independent of the served PDF
     URL (which changes on every re-upload). Same deck text → same id → same
@@ -848,7 +856,11 @@ def _take_key_moments(session_id, read_session_ids=None):
                     (d.get("transcript_corrected") or "").strip()
                     or s.get("transcript") or s.get("transcription_text") or ""
                 ),
-                "audio_ref": s.get("audio_segment_path"),
+                # Resolved (founder 2026-08-10): an s3:// fallback ref
+                # renders a dead player; the resolver signs it against
+                # its own bucket and passes healthy URLs through.
+                "audio_ref": _resolve_feedback_audio(
+                    s.get("audio_segment_path")),
                 "start_offset_ms": s.get("start_offset_ms"),
                 "duration_ms": s.get("duration_ms"),
                 "comment_text": (d.get("note") or "").strip() or None,
@@ -1352,10 +1364,14 @@ def v2_arc_game_answer(arc_id):
         answer = body.get("answer")
         if answer is None:
             answer = body.get("answer_is_key")
-        if not isinstance(answer, bool):
+        # bool = the legacy wire; the ternary instrument is the contract
+        # now (founder 2026-08-10: "yes / no / idk" — idk rides as
+        # 'neutral', the same vocabulary every other label lane uses).
+        if not isinstance(answer, bool) and answer not in ("yes", "no",
+                                                           "neutral"):
             return jsonify({
                 "code": "INVALID_INPUT",
-                "error": "answer must be a boolean",
+                "error": "answer must be a boolean or yes/no/neutral",
             }), 400
         from services.game_engine import answer_round
         result = answer_round(

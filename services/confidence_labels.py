@@ -182,8 +182,26 @@ def corpus_summary(label_rows: Any) -> dict:
     'confident: true' will produce a model that says yes to everything, and
     this is where that shows up."""
     rows = [r for r in (label_rows or []) if isinstance(r, dict)]
-    yes = sum(1 for r in rows if r.get("confident") is True)
-    no = sum(1 for r in rows if r.get("confident") is False)
+    # TERNARY FIRST (the shipped instrument: value in yes/no/neutral,
+    # unrateable separate), legacy `confident` as the fallback for rows
+    # written before the migration. Counting only the binary here was the
+    # BE sibling of the FE's pickLabel bug: a stored neutral vanished
+    # from every count and the balance read as cleaner than the corpus.
+    def _answer(r):
+        v = r.get("value")
+        if v in ("yes", "no", "neutral"):
+            return v
+        if r.get("confident") is True:
+            return "yes"
+        if r.get("confident") is False:
+            return "no"
+        return None
+
+    yes = sum(1 for r in rows if _answer(r) == "yes")
+    no = sum(1 for r in rows if _answer(r) == "no")
+    neutral = sum(1 for r in rows if _answer(r) == "neutral")
+    unrateable = sum(1 for r in rows if r.get("unrateable") is True)
+    answered = yes + no + neutral
     by_intensity: dict = {}
     for r in rows:
         v = r.get("intensity")
@@ -194,7 +212,11 @@ def corpus_summary(label_rows: Any) -> dict:
         "total": len(rows),
         "confident_yes": yes,
         "confident_no": no,
-        "balance": (round(yes / len(rows), 3) if rows else None),
+        "neutral": neutral,
+        # Two abstentions are not two labels — unrateable rows carry no
+        # answer and stay out of `balance` (same rule as aggregate()).
+        "unrateable": unrateable,
+        "balance": (round(yes / answered, 3) if answered else None),
         "by_intensity": by_intensity,
         "mean_intensity": (
             round(sum(k * n for k, n in by_intensity.items()) / rated, 2)

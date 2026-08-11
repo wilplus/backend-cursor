@@ -515,7 +515,16 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     rows: list[dict] = []
     seen: set[str] = set()
 
+    # DEDUP HERE TOO. Two same-lane winners in one serve (routine — the
+    # budget is 3 and the lanes are few) would produce two rows with the
+    # same (session_id, dimension_id) inside ONE upsert, which Postgres
+    # rejects wholesale (21000: row affected twice) — and the writer's
+    # best-effort except would swallow it, recording the whole serve as
+    # zero rows. First winner carries the lane's row, same rule as the
+    # other three loops.
     for c in result.get("selected") or ():
+        if c.dimension in seen:
+            continue
         seen.add(c.dimension)
         rows.append(row(c.dimension,
                         ARM_EXPLORE if c.exploration else ARM_TREATED,
@@ -554,7 +563,8 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
               importance: Optional[Callable[[str], float]] = None,
               roll: Optional[Callable[[], float]] = None,
               exploration_rate: float = EXPLORATION_RATE,
-              controls: bool = True) -> dict:
+              controls: bool = True,
+              budget_spent: int = 0) -> dict:
     """H.7 — the whole policy, in the order the appendix specifies.
 
     Returns the selected findings AND the counterfactual: what would have
@@ -565,6 +575,15 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
 
     `roll` is injected rather than drawn here so the policy stays pure and a
     test can pin the exploration branch instead of retrying until it fires.
+
+    `budget_spent` (founder 2026-08-10) makes H.1's cap PER TAKE rather than
+    per arbitration: it is the number of already-DECIDED interventions on the
+    take this pass is about, and it subtracts from the budget before anything
+    is selected. Without it, every accept freed a slot on the next serve and a
+    fresh note appeared — the trickle the founder rejected ("each feedback
+    needs to be there ... not that it appears once the other is accepted").
+    Spent slots never come back; a reverted decision deletes its spend row at
+    the caller and the count simply arrives lower.
     """
     everything = list(candidates)
     rejected: list[tuple[Candidate, str]] = []
@@ -624,16 +643,22 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     rejected.extend((c, "collision") for c in scored if id(c) not in dropped)
 
     # 5 · budget — flat, not length-scaled                               (H.1)
-    n = budget(user, independent)
+    #     minus what the take has already spent (founder 2026-08-10): the
+    #     cap is per TAKE, so decided interventions keep their slots.
+    n = max(0, budget(user, independent) - max(0, int(budget_spent or 0)))
     selected = independent[:n]
     counterfactual = list(selected)
 
     # 6 · form, for anything previously unacted                          (H.4)
     selected = [replace(c, form=on_unacted(c.k)) for c in selected]
 
-    # 7 · exploration quota — surface rank 2 or 3, log the road not taken
+    # 7 · exploration quota — surface rank 2 or 3, log the road not taken.
+    #     `n > 0` is load-bearing: exploration REPLACES a slot, it never adds
+    #     one, and on a spent budget `selected[:-1] + [swap]` over an empty
+    #     selection would serve one note past the take's ceiling.
     explored = False
-    if roll is not None and len(independent) > n and roll() < exploration_rate:
+    if roll is not None and n > 0 and len(independent) > n \
+            and roll() < exploration_rate:
         swap = independent[n]
         selected = selected[:-1] + [replace(swap, form=on_unacted(swap.k),
                                             exploration=True)]

@@ -95,7 +95,14 @@ def _resolve_snippet_audio_url(snippet: dict) -> str | None:
             # fall through to audio_segment_path
     seg = (snippet.get("audio_segment_path") or "").strip()
     if seg:
-        return seg
+        # A lab writer missing its public-URL env leaves ``s3://bucket/
+        # key`` here (per-service config, the CONFIG-FIRST class). Handing
+        # that to an <audio src> is the dead master/snippet player the
+        # founder hit (2026-08-10) — resolve it the same bucket-
+        # authoritative way #378 fixed the coach queue. http(s) refs pass
+        # through untouched.
+        from services.audio_ref_resolver import resolve_playable_ref
+        return resolve_playable_ref(seg) or seg
     return None
 
 

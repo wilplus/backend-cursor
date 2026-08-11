@@ -427,6 +427,40 @@ class TestScienceControls(unittest.TestCase):
         self.assertFalse(me.is_withheld("u1", "wpm", ""))
 
 
+class TestTakeBudgetSpent(unittest.TestCase):
+    """Founder 2026-08-10 — the ≤3 is PER TAKE. `budget_spent` subtracts
+    already-decided interventions from H.1's cap inside arbitrate, so an
+    accept never frees a slot for a fresh note to trickle in behind it:
+    "each feedback needs to be there; full and end to end and waiting; not
+    that it appears once the other is accepted." """
+
+    def _run(self, spent, n=6, roll=None):
+        user = _user(me.APPRENTICE, dims=[f"d{i}" for i in range(n)])
+        cands = [_c(f"d{i}", anchor=(i * 10.0, i * 10.0 + 1))
+                 for i in range(n)]
+        return me.arbitrate(cands, user, controls=False, roll=roll,
+                            budget_spent=spent)
+
+    def test_one_decided_serves_two(self):
+        self.assertEqual(len(self._run(1)["selected"]), 2)
+
+    def test_three_decided_serves_nothing(self):
+        self.assertEqual(self._run(3)["selected"], [])
+
+    def test_overspend_never_goes_negative(self):
+        self.assertEqual(self._run(7)["selected"], [])
+
+    def test_the_recorded_budget_is_the_remaining_one(self):
+        self.assertEqual(self._run(2)["budget"], 1)
+
+    def test_exploration_cannot_resurrect_a_spent_budget(self):
+        """`selected[:-1] + [swap]` over an empty selection would serve one
+        note past the take's ceiling — the n > 0 guard is the fence."""
+        out = self._run(3, roll=lambda: 0.0)   # a firing roll
+        self.assertEqual(out["selected"], [])
+        self.assertFalse(out["exploration"])
+
+
 class TestArmRows(unittest.TestCase):
     """PM-8 — the experiment's record. Running the controls without this is
     strictly WORSE than not running them: users pay the cost in withheld
@@ -519,6 +553,23 @@ class TestArmRows(unittest.TestCase):
         rows = me.arm_rows(out, session_id="s1", user_id="")
         self.assertEqual(len(rows), 1)
         self.assertIsNone(rows[0]["user_id"])
+
+
+class TestArmRowsDedup(unittest.TestCase):
+
+    def test_two_same_lane_winners_produce_one_row(self):
+        """Two lane:polish winners in one serve would otherwise emit two
+        rows with the same (session_id, dimension_id) key inside a single
+        upsert — Postgres rejects the whole statement (21000: row affected
+        twice), the writer's best-effort except swallows it, and the serve
+        is recorded as ZERO rows. First winner carries the lane's row, the
+        same rule as the withheld/control/rejected loops."""
+        result = {"selected": [_c("lane:polish"), _c("lane:polish")],
+                  "withheld": [], "control_held": [], "rejected": [],
+                  "arms": {}}
+        rows = me.arm_rows(result, session_id="s1", user_id="u1")
+        self.assertEqual(
+            [r["dimension_id"] for r in rows], ["lane:polish"])
 
 
 class TestStatesAndConstants(unittest.TestCase):
