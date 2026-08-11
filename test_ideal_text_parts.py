@@ -383,10 +383,25 @@ class TestR1TheLayerFilter(unittest.TestCase):
     # never a normal offer. Open parts take everything; the budget decides.
     # The tests below ARE that decision; do not "fix" them back.
 
-    def test_a_locked_part_refuses_a_rewrite(self):
+    def test_a_locked_part_RE_OPENS_on_a_new_rewrite(self):
+        """R1 gen-4 (founder 2026-08-11, later the same day): "when the
+        engine is locked in keep it there… but if something new appears
+        there keep iterating and showing the suggestions."
+
+        Gen-3 dropped composition on locked text outright. It now passes,
+        TAGGED, and the chunk re-enters accept/discard → lock again.
+
+        This does NOT touch L1. L1 forbids the machine rewriting committed
+        words; it says nothing against the speaker being offered a better
+        version and choosing. The offer is still an offer, and the lock is
+        what the student re-applies."""
         parts = self._parts(True)
-        self.assertEqual(
-            ic.filter_by_layer([self._change(parts, 0, "replace")], parts), [])
+        out = ic.filter_by_layer([self._change(parts, 0, "replace")], parts)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0]["reopens_locked"])
+        # Nothing DECIDED can arrive here to be re-offered: a dismissed
+        # proposal's row is deleted and an approved one is baked into the
+        # document. "New" is the only thing left.
 
     def test_a_locked_part_takes_a_bold_only_as_the_STYLE_LANE(self):
         """R1 gen-3 (founder 2026-08-11, the deck respec): a locked part
@@ -444,15 +459,22 @@ class TestR1TheLayerFilter(unittest.TestCase):
         out = ic.filter_by_layer(
             [style_bold_locked, drop_repl_locked,
              keep_repl_open, keep_bold_open], parts)
-        # Gen-3: the locked bold survives TAGGED (the style lane);
-        # composition on locked text stays dropped — L1's mechanical
-        # enforcement is unchanged.
+        # Gen-4: the locked bold survives TAGGED (the style lane) and the
+        # locked REWRITE now survives too, tagged as a re-open. Both tags
+        # matter and they are different things — one is presentation on
+        # settled words, the other re-opens the decision on the words
+        # themselves.
         self.assertEqual([c["id"] for c in out],
-                         [style_bold_locked["id"], keep_repl_open["id"],
-                          keep_bold_open["id"]])
+                         [style_bold_locked["id"], drop_repl_locked["id"],
+                          keep_repl_open["id"], keep_bold_open["id"]])
         self.assertTrue(out[0]["style_lane"])
+        self.assertTrue(out[1]["reopens_locked"])
         self.assertNotIn("style_lane", out[1])
-        self.assertNotIn("style_lane", out[2])
+        # An OPEN part is untouched by either tag — it never needed
+        # re-opening and its accents ride the ordinary budget.
+        for c in out[2:]:
+            self.assertNotIn("style_lane", c)
+            self.assertNotIn("reopens_locked", c)
 
     def test_the_visual_registry(self):
         """SPEC §3: Confident Voice = star; rewrites = underline; accents =
@@ -500,7 +522,14 @@ class TestR1TheLayerFilter(unittest.TestCase):
         changes = [self._change(parts, i, "replace") for i in range(4)]
         out = ic.select(changes, parts=parts)["changes"]
         self.assertEqual(len(out), me.BUDGET_CEILING)
-        self.assertNotIn("c0-replace", [c["id"] for c in out])
+        # Since gen-4 the locked part's rewrite COMPETES rather than being
+        # dropped — it re-opens the chunk. What the order still guarantees
+        # is that the filter runs first, so no slot is spent on a change
+        # that would then be discarded at render time; every survivor is a
+        # real note on a part that can take it.
+        for c in out:
+            self.assertTrue(
+                c.get("reopens_locked") or "-replace" in c["id"])
 
     def test_select_without_parts_is_unchanged(self):
         # Safe-ahead: every existing caller keeps working.

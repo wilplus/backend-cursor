@@ -469,7 +469,9 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
     rewrites committed text, and the filter is where "must never" stops being
     a comment.
     """
-    from services.ideal_text_parts import layer_of_kind, part_at, part_spans
+    from services.ideal_text_parts import (
+        COMPOSITION, layer_of_kind, part_at, part_spans,
+    )
     rows = [c for c in (changes or []) if isinstance(c, dict)]
     spans = part_spans(parts)
     if not spans:
@@ -503,9 +505,66 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
         # enforcement is unchanged — nothing rewrites committed words.
         if c.get("kind") == "bold":
             kept.append({**c, "style_lane": True})
-        # every other change on a locked part: dropped, silently — the
-        # founder's rule, not a failure.
+            continue
+        # R1, FOURTH generation (founder 2026-08-11, later the same day):
+        # "when the engine is locked in keep it there… but if something new
+        # appears there keep iterating and showing the suggestions" — a
+        # locked part now takes NEW COMPOSITION again, and the chunk
+        # re-enters the review cycle: accept or discard, then lock again.
+        #
+        # This SUPERSEDES gen three's "composition on locked text stays
+        # dropped". It does not touch L1, and the distinction is the whole
+        # point: L1 forbids the machine REWRITING committed words, not the
+        # speaker being OFFERED a better version of them and choosing. The
+        # offer is still an offer; the lock is what the student re-applies.
+        #
+        # Nothing decided reaches here to be re-offered: a dismissed
+        # proposal's row is deleted and an approved one is baked into the
+        # document, so "new" is the only thing left.
+        #
+        # COMPOSITION ONLY, pending the founder's word. The flow he described
+        # is "accept or discard → lock in or reject", and only a change to
+        # the WORDS has that path — `advice` is a delivery prompt with no
+        # decision to make and nothing to re-lock, so it stays refused on a
+        # locked part exactly as before. The narrower reading is the
+        # reversible one: opening advice later is a line, closing it again
+        # after it has shipped is a retraction.
+        if layer_of_kind(c.get("kind")) == COMPOSITION:
+            kept.append({**c, "reopens_locked": True})
+        # advice on a locked part: still dropped, silently.
     return kept
+
+
+def suppress_style_where_feedback_waits(changes: Any, group_of: Any = None
+                                        ) -> list:
+    """THE ORDER OF THE TWO LANES (founder 2026-08-11).
+
+    "The style intervention appears if it was locked in and no new feedback
+    is queued" — style is what a chunk gets when it has nothing louder to
+    say. A bold/colour proposal beside an unread rewrite competes with it for
+    the same tap, and the rewrite is the one that changes what the speech
+    SAYS; presentation is the finishing pass, not a parallel one.
+
+    Suppressed, not dropped: the style row simply is not offered on this
+    serve. It returns the moment the chunk has no content feedback waiting,
+    which is exactly the "if no new feedback is queued" condition — no state
+    to store, nothing to expire.
+
+    Counted per GROUP (the slide/paragraph, same unit as the budget): a
+    rewrite waiting on slide 2 must not silence the accent on slide 7.
+
+    NO GROUPING ⇒ NO SUPPRESSION. Without the document there is no way to
+    tell whether the rewrite and the accent are even on the same paragraph,
+    and treating the whole take as one group would let a rewrite anywhere
+    silence every accent everywhere — the same drop-never-guess rule the rest
+    of this pipeline follows, pointed the safe way. Pure.
+    """
+    rows = [c for c in (changes or []) if isinstance(c, dict)]
+    if not callable(group_of):
+        return rows
+    busy = {group_of(c) for c in rows if not c.get("style_lane")}
+    return [c for c in rows
+            if not c.get("style_lane") or group_of(c) not in busy]
 
 
 def filter_by_window(changes: Any) -> list:
@@ -611,6 +670,10 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # ceiling would paint sentences on accept, lock or no lock), and
         # they take no arm assignment: the experiment measures the
         # budgeted serve, and free-lane rows would distort its record.
+        # CONTENT FIRST, STYLE WHEN THERE IS NOTHING LOUDER (founder
+        # 2026-08-11). Runs before the split so the decision sees both lanes
+        # at once, on the same paragraph key the budget is counted in.
+        rows = suppress_style_where_feedback_waits(rows, group_of=_para_of)
         style_rows = [c for c in rows if c.get("style_lane")]
         rows = [c for c in rows if not c.get("style_lane")]
         style_rows = filter_by_window(style_rows)

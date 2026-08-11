@@ -656,10 +656,16 @@ class TestTheFunnel(unittest.TestCase):
     def test_an_EMPTY_serve_still_reports_where_it_emptied(self):
         # The case that matters most: nothing on screen, and the funnel is
         # the only witness to which gate did it.
+        #
+        # ADVICE on a locked part, because since R1 gen-4 a REWRITE there
+        # re-opens the chunk rather than emptying the pool. Advice is the
+        # lane that still has nowhere to go on committed text: it carries no
+        # accept/discard and there is nothing to re-lock.
         locked = [{"id": "p0", "ord": 0, "text": "x" * 200,
                    "locked_at": "2026-08-11T10:00:00Z"}]
-        out = ic.select([_change(0, start=0, end=10)], parts=locked,
-                        session_id="s1")
+        advice = _change(0, kind="advice", start=0, end=10)
+        advice["device"] = "pause"
+        out = ic.select([advice], parts=locked, session_id="s1")
         self.assertEqual(out["changes"], [])
         self.assertEqual(out["funnel"]["in"], 1)
         self.assertEqual(out["funnel"]["after_layer"], 0)
