@@ -25,7 +25,7 @@ from services.tracked_changes import (
     build_tracked_changes, key_phrases_from_say_it_stronger, verify_changes,
 )
 from services.transcript_document import (
-    build_transcript_document, verify_spans,
+    build_transcript_document, relocate_pieces, verify_spans,
 )
 from services.transcript_smoothing import (
     finalize_document, hesitations_for, smooth_piece, strip_fillers,
@@ -509,13 +509,25 @@ class SpanRelocationTests(unittest.TestCase):
         for p in out:
             self.assertEqual(doc[p["start"]:p["end"]], p["text"])
 
-    def test_baked_away_piece_is_dropped_not_mispointed(self):
+    def test_baked_over_piece_keeps_its_own_region_never_a_neighbour_s(self):
+        # WAS "…is_dropped_not_mispointed" and asserted the drop. The founder
+        # reversed that half on 2026-08-11: dropping the piece the bake landed
+        # on costs its slide (the FE zips pieces 1:1 to build the deck) and any
+        # coach moment on it. The half this test was really protecting — a
+        # piece must NEVER be pointed at another piece's words — is unchanged
+        # and asserted below: "a" takes its OWN region, in its new spelling.
         from services.transcript_document import relocate_pieces
         doc = "We started big. Then we shipped."
         pieces = [{"snippet_id": "a", "text": "We started small."},
                   {"snippet_id": "b", "text": "Then we shipped."}]
         out = relocate_pieces(doc, pieces)
-        self.assertEqual([p["snippet_id"] for p in out], ["b"])
+        self.assertEqual([p["snippet_id"] for p in out], ["a", "b"])
+        self.assertEqual(doc[out[0]["start"]:out[0]["end"]],
+                         "We started big.")
+        self.assertEqual(out[0]["text"], "We started big.")
+        self.assertLessEqual(out[0]["end"], out[1]["start"])
+        self.assertEqual(doc[out[1]["start"]:out[1]["end"]],
+                         "Then we shipped.")
 
 
 class OverlapTests(unittest.TestCase):
@@ -594,6 +606,124 @@ class ApprovedChangeBakesTests(unittest.TestCase):
         # the untouched piece keeps an exact anchor on the NEW text
         self.assertTrue(verify_spans({"text": out["text"],
                                       "pieces": out["document"]["pieces"]}))
+
+
+class RelocateAfterBakeTests(unittest.TestCase):
+    """FOUNDER-CRITICAL (2026-08-11): baking a change must not COST a piece.
+
+    `relocate_pieces` re-anchors by an exact find of each piece's words and
+    dropped the ones it could not find — but a bake CHANGES those words
+    (a polish/replace swaps the phrase, an emphasis wraps {{orange:…}}
+    around it). So the very piece the student just accepted a change on
+    was the one that disappeared, and with it:
+
+      · its slide index — the FE zips pieces 1:1 against the document's
+        paragraphs to build the per-slide deck, so a short list collapses
+        the whole deck into one untitled section (the 1:1 north star);
+      · its coach key moment, when the piece was a surfaced breakthrough —
+        the note the founder requires to survive "even on a locked screen".
+
+    A piece is a REGION of the document, not a string that must still
+    exist verbatim. These tests pin that."""
+
+    class _Db(DocumentBuildTests._Db):
+        def __init__(self, snips, rows, *, surfaced=()):
+            super().__init__(snips)
+            self._rows = rows
+            self._surfaced = list(surfaced)
+
+        def list_ideal_decisions(self, arc_id):
+            return self._rows
+
+        def get_coach_snippet_drafts(self, sid):
+            return [{"snippet_id": s, "surfaced": True}
+                    for s in self._surfaced]
+
+    def _snips(self):
+        return [{"id": S1, "start_offset_ms": 0, "language": "en",
+                 "transcript": "we started small"},
+                {"id": S2, "start_offset_ms": 10, "language": "en",
+                 "transcript": "and this is the line that lands"}]
+
+    def test_an_approved_replace_does_not_cost_the_piece_it_changed(self):
+        from services.ideal_decision_ledger import normalize_phrase
+        from services.ideal_text_block import assemble_transcript_document
+        rows = [{"kind": "replace",
+                 "target_phrase": normalize_phrase("we started small"),
+                 "display_phrase": "We started small",
+                 "replacement_text": "We started tiny",
+                 "decision": "approved", "source": "user_star"}]
+        out = assemble_transcript_document(
+            ARC, database=self._Db(self._snips(), rows))
+        pieces = out["document"]["pieces"]
+        # THE regression: two snippets in, two pieces out. The changed one
+        # is still there — pointing at its NEW words.
+        self.assertEqual([p["snippet_id"] for p in pieces], [S1, S2])
+        self.assertTrue(verify_spans({"text": out["text"], "pieces": pieces}))
+        self.assertEqual(pieces[0]["text"], "We started tiny")
+
+    def test_an_approved_emphasis_does_not_cost_the_coach_key_moment(self):
+        from services.ideal_decision_ledger import normalize_phrase
+        from services.ideal_text_block import assemble_transcript_document
+        rows = [{"kind": "emphasize",
+                 "target_phrase": normalize_phrase("the line that lands"),
+                 "display_phrase": "the line that lands",
+                 "decision": "approved", "source": "user_star"}]
+        out = assemble_transcript_document(
+            ARC, database=self._Db(self._snips(), rows, surfaced=[S2]))
+        self.assertIn("{{orange:", out["text"])  # the bake really landed
+        pieces = out["document"]["pieces"]
+        self.assertEqual([p["snippet_id"] for p in pieces], [S1, S2])
+        # The founder's rule: the coach's moment survives the fold, and its
+        # anchor still indexes the SERVED text (that is the FE's join).
+        self.assertEqual([m["snippet_id"] for m in out["key_moments"]], [S2])
+        self.assertIn(out["key_moments"][0]["anchor"], out["text"])
+
+    def test_a_piece_whose_words_all_went_is_still_dropped(self):
+        # The original intent, kept: a piece with NOTHING left to point at
+        # has no region either. Deletion is the student's own edit lane.
+        doc = "We started tiny."
+        pieces = [{"snippet_id": S1, "text": "We started tiny.",
+                   "start": 0, "end": 16},
+                  {"snippet_id": S2, "text": "and this is the line",
+                   "start": 17, "end": 37}]
+        out = relocate_pieces(doc, pieces)
+        self.assertEqual([p["snippet_id"] for p in out], [S1])
+
+    def test_repeated_wording_still_cannot_steal_another_anchor(self):
+        # The monotonic rule the original fix was written for — unchanged.
+        doc = "we win. we win. we win."
+        pieces = [{"snippet_id": "a", "text": "we win."},
+                  {"snippet_id": "b", "text": "we win."},
+                  {"snippet_id": "c", "text": "we win."}]
+        out = relocate_pieces(doc, pieces)
+        self.assertEqual([(p["start"], p["end"]) for p in out],
+                         [(0, 7), (8, 15), (16, 23)])
+
+    def test_a_run_of_changed_pieces_keeps_every_one_in_order(self):
+        # Two ADJACENT pieces both baked: neither may be dropped, the
+        # spans stay ordered, non-overlapping, and inside the document.
+        doc = "We started tiny and we kept at it. And then we shipped."
+        pieces = [{"snippet_id": "a", "text": "We started small"},
+                  {"snippet_id": "b", "text": "and we kept going."},
+                  {"snippet_id": "c", "text": "And then we shipped."}]
+        out = relocate_pieces(doc, pieces)
+        self.assertEqual([p["snippet_id"] for p in out], ["a", "b", "c"])
+        self.assertTrue(verify_spans({"text": doc, "pieces": out}))
+        for prev, nxt in zip(out, out[1:]):
+            self.assertLessEqual(prev["end"], nxt["start"])
+        self.assertGreaterEqual(out[0]["start"], 0)
+        self.assertLessEqual(out[-1]["end"], len(doc))
+
+    def test_an_untouched_document_relocates_byte_for_byte(self):
+        doc = "We started small and we kept going."
+        pieces = [{"snippet_id": "a", "text": "We started small"},
+                  {"snippet_id": "b", "text": "and we kept going."}]
+        out = relocate_pieces(doc, pieces)
+        self.assertEqual([(p["start"], p["end"]) for p in out],
+                         [(0, 16), (17, 35)])
+        self.assertEqual([p["text"] for p in out],
+                         ["We started small", "and we kept going."])
 
 
 class ApprovalKeyRegressionTests(unittest.TestCase):
