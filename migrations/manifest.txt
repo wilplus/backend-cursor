@@ -303,3 +303,4 @@
 0265	add_ideal_text_part_iteration.sql
 0266	add_snippet_slide_corrections.sql
 0267	add_slide_ab_verdicts.sql
+0268	add_label_quorum_ledger.sql

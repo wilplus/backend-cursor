@@ -62,12 +62,20 @@ LANES = ("bootstrap", "coach", "game_peer", "game_owner")
 #
 #   bootstrap  — one rater on a MODEL-PROPOSED candidate (§6.2). Counting it
 #                would make a single expert opinion look like consensus.
-#   game_owner — §9.1's quorum is model + coach + PEER. The owner is not one of
-#                the three, and they are rating their OWN recording: they know
-#                what they intended, so their answer is self-assessment, not an
-#                independent judgment. In v1.0 the lane carries no question at
-#                all (§6.2, "plumbing only"), which makes this exclusion moot
-#                today and load-bearing the day it stops being moot.
+#   game_owner — the owner is not a peer (founder 2026-08-11, rule 2): they are
+#                rating their OWN recording and know what they intended, so
+#                their answer is self-assessment, not an independent judgment.
+#                It is calibration signal about that RATER and never one of the
+#                two quorum votes.
+#
+# NO MACHINE LANE, and that absence is rule 1: the machine selects which clip
+# gets rated, its prediction is stored beside the human answer
+# (confidence_labels.machine_value), and it is never a vote. Quorum is strictly
+# two humans — this supersedes SPEC §9.1's original model+coach+peer three-way.
+#
+# Identical to services.label_quorum.QUORUM_LANES, which is where the SETTLED
+# decision (quorum / needs_third / perceptually_ambiguous) is made; this
+# constant is the aggregation half of the same rule.
 PANEL_LANES = ("coach", "game_peer")
 
 
@@ -245,18 +253,28 @@ def aggregate(rows: Any, *, lanes: tuple = PANEL_LANES) -> Optional[dict]:
     Returns ``{value, agreement, n_raters, quality, by_value, unrateable_n}``
     or None when no row in an eligible lane carries an answer.
 
+    NOT THE QUORUM DECISION. This is the continuous read — where the panel
+    sits on the spectrum, and how much to trust that. Whether a snippet is
+    SETTLED (and so may enter the gold set or an evaluation) is
+    services.label_quorum.resolve, which counts an IDK as a response and this
+    one does not. Two functions because they answer different questions: a
+    trainer asks "is this ground truth", a ranker asks "how confident did the
+    panel find this moment".
+
     ``lanes`` defaults to PANEL_LANES — **bootstrap and game_owner are both
     excluded**. bootstrap is one rater on a model-proposed candidate, so
     counting it as a panel member would make a single expert opinion look like
-    consensus; game_owner is outside §9.1's model+coach+peer quorum and is the
-    speaker judging their own recording. Pass ``lanes=LANES`` deliberately, and
-    only for a corpus pull that wants everything.
+    consensus; game_owner is the speaker judging their own recording (rule 2 —
+    a self-report, never a peer). Pass ``lanes=LANES`` deliberately, and only
+    for a corpus pull that wants everything.
 
-    ``unrateable`` rows are counted but never aggregated: they carry no answer,
-    so including them in ``n_raters`` would inflate quality on the strength of
-    people who explicitly declined to judge. They are returned separately
-    because the abstention rate is itself a signal — a moment most raters
-    refuse is a fact about the moment.
+    ``unrateable`` rows are counted but never aggregated HERE: on this
+    spectrum they carry no position, so including them in ``n_raters`` would
+    inflate quality on the strength of people who explicitly declined to
+    judge. They are returned separately because the abstention rate is itself
+    a signal — a moment most raters refuse is a fact about the moment, and in
+    label_quorum that same fact is a first-class response that can SETTLE a
+    snippet as perceptually ambiguous (rule 4).
 
     ``agreement`` is the modal share. At n=1 it is trivially 1.0, which is
     fine and not misleading: ``quality`` discounts a single rater to 0.33

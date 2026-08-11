@@ -535,11 +535,13 @@ Templates are keyed on `intervention_type × state band` (Appendix C.6), **never
 
 ### 9.1 · Quorum and the override path
 
+> **SUPERSEDED 2026-08-11 — see [decisions log §J](SPEC-DECISIONS-LOG.md#j--the-label-ledger--quorum-self-report-and-routing-founder-2026-08-11).** The three-way quorum below is no longer the rule. **The machine is a ROUTER, not a rater:** it selects which clip gets rated, its proposal is stored beside the human answer (`confidence_labels.machine_value`), and it holds **no vote at all** — not even an asymmetric one. **Quorum is strictly two humans.** The override path below stops being an exception and becomes the general rule. The paragraphs are kept because the blind-spot corpus argument survives intact. Implemented in `services/label_quorum.py` and the `snippet_label_quorum` view.
+
 A moment enters the album at **three-way agreement** — model, coach, peer. The model's vote is **asymmetric by design**: it can help a moment in, never keep one out.
 
 **The override path:** where the coach marks a moment the model rejected and a peer confirms it, **two humans is sufficient** and the model is overridden. This is what preserves discovery — the album can contain moments the model missed.
 
-**Log the override rows separately from day one.** Every "coach yes, model no, peer confirms" is a labelled model miss with two independent human confirmations. That is the blind-spot corpus, and it will be the most valuable few hundred rows in the system.
+**Log the override rows separately from day one.** Every "coach yes, model no, peer confirms" is a labelled model miss with two independent human confirmations. That is the blind-spot corpus, and it will be the most valuable few hundred rows in the system. *(Still true, and now cheaper to pull: with the proposal stored per row, a model miss is `machine_value <> settled_value` on a settled snippet — a query, not a separate write path.)*
 
 ### 9.2 · Presentation
 

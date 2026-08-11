@@ -111,17 +111,42 @@ def _arc_moments(db, arc_id: Any) -> tuple:
 def build_game_rounds(db, arc_id: Any, user_id: Any,
                       first_snippet: Any = None) -> list:
     """The rounds payload — NO truth included. Keys + an equal number of
-    decoys (as available), deterministic order, ≤ _MAX_ROUNDS, the deep-linked
-    snippet pinned first when it belongs to the arc."""
-    keys, decoys, by_id, _sess_by_id = _arc_moments(db, arc_id)
+    decoys (as available), OWN RECORDINGS FIRST, deterministic order within
+    each group, ≤ _MAX_ROUNDS, the deep-linked snippet pinned first when it
+    belongs to the arc.
+
+    OWN-FIRST is rule 2's serving half (founder 2026-08-11: "serve the user's
+    own recordings first in the voice game UX"). Their own clips are what they
+    are owed a look at, and the answers are rater-calibration signal that
+    makes every later PEER rating they give interpretable — bought for free,
+    because a self-report was never going to count toward a quorum anyway
+    (services/label_quorum, rule 2).
+
+    Every session in an arc belongs to the arc owner TODAY, so the partition
+    is a no-op right now — the same way PANEL_LANES' game_owner exclusion is
+    moot until it isn't. It is load-bearing the day a round can carry another
+    user's clip or a YouTube clip, which is the case the rule was written for,
+    and answer_round already resolves ownership per session rather than
+    assuming it.
+    """
+    keys, decoys, by_id, sess_by_id = _arc_moments(db, arc_id)
     if not keys:
         return []  # nothing coach-confirmed yet → no game
-    keys = sorted(keys, key=lambda s: _order_key(arc_id, s))
-    decoys = sorted(decoys, key=lambda s: _order_key(arc_id, s))
+
+    def _order(snip_id: str) -> tuple:
+        from services.label_quorum import serving_rank
+        sess = sess_by_id.get(snip_id) or {}
+        is_own = bool(user_id) and str(sess.get("user_id")) == str(user_id)
+        # Own-first, then the existing deterministic sha1 order INSIDE each
+        # group — replayable, no random, exactly as before within a group.
+        return (serving_rank(is_own), _order_key(arc_id, snip_id))
+
+    keys = sorted(keys, key=_order)
+    decoys = sorted(decoys, key=_order)
     n_keys = min(len(keys), _MAX_ROUNDS // 2)
     n_decoys = min(len(decoys), n_keys)
     chosen = keys[:n_keys] + decoys[:n_decoys]
-    chosen = sorted(chosen, key=lambda s: _order_key(arc_id, s))
+    chosen = sorted(chosen, key=_order)
     if first_snippet and str(first_snippet) in chosen:
         chosen.remove(str(first_snippet))
         chosen.insert(0, str(first_snippet))
@@ -249,17 +274,27 @@ def answer_round(db, arc_id: Any, user_id: Any, snippet_id: Any,
         row, _err = validate_rating({"state_id": "confidence",
                                      "value": value})
         if row:
+            from services.label_quorum import machine_proposal
             sess = sess_by_id.get(snip_id) or {}
-            lane = resolve_lane(
-                sess.get("source"), is_coach=False,
-                is_owner=bool(user_id)
-                and str(sess.get("user_id")) == str(user_id))
+            is_owner = (bool(user_id)
+                        and str(sess.get("user_id")) == str(user_id))
+            lane = resolve_lane(sess.get("source"), is_coach=False,
+                                is_owner=is_owner)
             db.upsert_state_rating(
                 snippet_id=snip_id, row=row,
                 rater_id=str(user_id) if user_id else None,
                 session_id=(str(sess.get("id"))
                             if sess.get("id") else None),
-                lane=lane)
+                lane=lane,
+                # RULE 2 (founder 2026-08-11): rating your OWN clip is a
+                # self-report — calibration signal, never one of the two
+                # quorum votes. Rating someone else's makes you a valid peer,
+                # and the same answer then counts in full.
+                self_report=is_owner,
+                # RULE 1: the proposal that routed this clip into the round,
+                # stamped server-side beside the human answer. Truth is never
+                # in the rounds payload and neither is this (I1).
+                machine_value=machine_proposal(by_id.get(snip_id)))
     except Exception as e:
         logger.warning("game: confidence write failed snip=%s: %s",
                        snip_id, e)
