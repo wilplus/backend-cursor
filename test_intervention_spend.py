@@ -15,10 +15,13 @@ class _FakeDb:
 
     def record_intervention_decision(self, *, arc_id, take_session_id,
                                      change_key, decision, lane=None,
-                                     intervention_type=None):
+                                     intervention_type=None, quote=None,
+                                     proposed_text=None, why_key=None):
         self.rows[(arc_id, take_session_id, change_key)] = {
             "decision": decision, "lane": lane,
             "intervention_type": intervention_type,
+            "quote": quote, "proposed_text": proposed_text,
+            "why_key": why_key,
         }
         return True
 
@@ -28,8 +31,11 @@ class _FakeDb:
         return True
 
     def count_intervention_decisions(self, arc_id, take_session_id):
-        return len([1 for (a, t, _k) in self.rows
-                    if a == arc_id and t == take_session_id])
+        # Mirrors the real counter's slice-2 rule: lane:style rows ride
+        # OUTSIDE the ≤3 budget and never count.
+        return len([1 for (a, t, _k), row in self.rows.items()
+                    if a == arc_id and t == take_session_id
+                    and row.get("lane") != "lane:style"])
 
 
 def _take(i, sid=None, kind=None, paired=None):
@@ -58,6 +64,28 @@ class TestSpendUnspendCount(unittest.TestCase):
     def setUp(self):
         self.db = _FakeDb()
         self.sessions = [_take(1), _take(2)]
+
+    def test_a_style_lane_decision_never_spends_a_slot(self):
+        """Slice 2 (founder 2026-08-11, ruling 4: 'Outside'): a post-lock
+        style decision lands in the ledger — the learning loop wants every
+        explicit decision — but spent_count excludes it, so the ≤3 budget
+        is untouched by styling."""
+        sp.spend(self.db, "a1", self.sessions,
+                 change_key="star:document_bold:s9",
+              decision="approved", lane="lane:style",
+              intervention_type="EMPHASISE")
+        self.assertEqual(sp.spent_count(self.db, "a1", "s2"), 0)
+        # …while the row itself exists, texts and all.
+        self.assertEqual(len(self.db.rows), 1)
+        sp.spend(self.db, "a1", self.sessions, change_key="prior_take:x",
+              decision="approved", lane="lane:prior_take",
+              intervention_type="REWRITE", quote="said this",
+              proposed_text="say that", why_key="energy")
+        self.assertEqual(sp.spent_count(self.db, "a1", "s2"), 1)
+        row = self.db.rows[("a1", "s2", "prior_take:x")]
+        self.assertEqual(row["quote"], "said this")
+        self.assertEqual(row["proposed_text"], "say that")
+        self.assertEqual(row["why_key"], "energy")
 
     def test_spend_then_count(self):
         sp.spend(self.db, "a1", self.sessions, change_key="star:x:1",

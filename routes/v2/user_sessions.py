@@ -1560,6 +1560,21 @@ def v2_user_suggestion_feedback(snippet_id):
                     from services.intervention_spend import spend, unspend
                     _star_key = f"star:{target}:{snippet_id}"
                     _arc_sessions = db.get_arc_sessions(_arc) or []
+                    # THE STYLE LANE (slice 2, founder 2026-08-11): a post-
+                    # lock bold decision rides OUTSIDE the ≤3 — the FE marks
+                    # it and the row lands with lane:style, which
+                    # spent_count excludes. The row still lands (the
+                    # learning loop wants every explicit decision). A
+                    # forged flag frees only the student's own slots —
+                    # no fence rides on it.
+                    _style = bool(body.get("style_lane")) \
+                        and target == "document_bold"
+                    # PROPOSAL HISTORY: the texts ride when the client
+                    # sends them (optional — older clients simply write
+                    # text-less rows, which the history read skips).
+                    _q = body.get("quote")
+                    _pt = body.get("proposed_text")
+                    _wk = body.get("why_key")
                     if action == "reverted":
                         unspend(db, _arc, _arc_sessions,
                                 change_key=_star_key)
@@ -1568,11 +1583,19 @@ def v2_user_suggestion_feedback(snippet_id):
                               change_key=_star_key,
                               decision=("approved" if action == "applied"
                                         else "disregarded"),
+                              lane=("lane:style" if _style else None),
                               intervention_type=(
                                   "EMPHASISE"
                                   if target in ("moment_emphasize",
                                                 "document_bold")
-                                  else "REWRITE"))
+                                  else "REWRITE"),
+                              quote=(str(_q) if isinstance(_q, str)
+                                     and _q.strip() else None),
+                              proposed_text=(str(_pt)
+                                             if isinstance(_pt, str)
+                                             and _pt.strip() else None),
+                              why_key=(str(_wk) if isinstance(_wk, str)
+                                       and _wk.strip() else None))
                     # A dismissed star also stops being OFFERED right now:
                     # the ledger remembers the decision; the row removal
                     # kills the anchor/star on every future serve (rule 2

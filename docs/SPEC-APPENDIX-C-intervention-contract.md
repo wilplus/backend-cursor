@@ -338,3 +338,26 @@ The working ops table (the web page titled *Intervention contract*) carries eigh
 (The detector row named D10 and the SPEC.md §0 decision named D10 are unrelated namesakes — the row is conversational style; the decision is the lexical-overlap routing.)
 
 No current row is an `EMPHASISE`, `DE_EMPHASISE`, `RESTRUCTURE`, `ADD` or `REHEARSE` — those types' detector examples (the V-series) are not on the page yet. Today's live `EMPHASISE`s come from the composition lane's accent offers, not from a detector.
+
+---
+
+## C.11 — Slice 2 of the deck respec (founder 2026-08-11): the style lane, the proposal history, the maturity counter
+
+**Amended 2026-08-11.** Three additions, all founder-decided in the transcript-review-deck respec; none alters C.2's closed type set or the visuals registry.
+
+### The post-lock STYLE LANE (R1, third generation)
+
+R1's locked-part rule is re-ruled by the founder: a **locked** part now takes **bold/colour proposals** — "when the text was already locked in there comes only the suggestion … to bolden the text or to colour a part". Mechanics:
+
+- `filter_by_layer` passes a locked part's `kind == "bold"` changes TAGGED `style_lane: true`. Composition on locked text stays dropped (**L1's mechanical enforcement unchanged**); advice stays dropped (advice is not styling); the Confident-Voice tagged pass-through is unchanged.
+- The gate splits tagged rows off **before** the budget machinery: they serve as `style_changes` beside `changes`, span-verified against the same document, still **§F.4 window-clamped** (an over-long accent paints sentences, lock or no lock), **never arm-assigned** (the experiment measures the budgeted serve only).
+- **Outside the ≤3** (founder ruling: "Outside"): a style decision lands in `intervention_decisions` with `lane = "lane:style"`, which `spent_count` excludes. The row still lands — the learning loop records every explicit decision, budgeted or not.
+- Surfacing: the FE shows a style proposal **only inside the chunk's modal** — locked text is never re-underlined on the page (underline stays reserved for waiting feedback).
+
+### The PROPOSAL HISTORY (the ledger keeps the texts)
+
+`intervention_decisions` grows `quote`, `proposed_text`, `why_key` (additive migration 0264). Every decide lane sends them when it has them; a dismissed proposal's `moment_suggestions` row is deleted, so without these columns its text is unrecoverable. The student GET serves `decision_history` (text-bearing rows, newest first); the deck's editor joins rows to a chunk **by words** (normalize-and-contain — spans die on every reassembly), lists them as "Proposals from earlier iterations", and "Use this wording" loads a past proposal into the draft — committing it is a fresh lock-in, decided step by step. Rows predating the migration carry no text and are not listed — never invented.
+
+### The MATURITY COUNTER (a process count, never a score)
+
+`ideal_text_part` grows `iteration` (additive migration 0265): **+1 on every lock-in, never on unlock**, surfaced on the parts block as a plain int and rendered in the modal kickers ("Locked in · N iterations"). It counts lock-in cycles survived — work done, not quality — and is therefore AC-9-clean by construction. Identity carries it: reconcile keeps a matched part's counter through reorders and rewords; genuinely new words start at 0.

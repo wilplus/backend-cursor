@@ -442,7 +442,7 @@ def serve(rows: Any) -> Optional[list]:
     """
     if not rows:
         return None
-    ordered: list[tuple[int, str, str, bool]] = []
+    ordered: list[tuple[int, str, str, bool, int]] = []
     for r in rows:
         if not isinstance(r, dict):
             continue
@@ -454,12 +454,19 @@ def serve(rows: Any) -> Optional[list]:
         # sort as 0/1 and silently reorder the document.
         if not isinstance(ordv, int) or isinstance(ordv, bool):
             continue
-        ordered.append((ordv, pid, text, bool(r.get("locked_at"))))
+        # The maturity counter rides as a plain int (slice 2). Missing
+        # column / pre-migration rows read 0 — a chunk that never locked.
+        try:
+            _it = int(r.get("iteration") or 0)
+        except Exception:
+            _it = 0
+        ordered.append((ordv, pid, text, bool(r.get("locked_at")), _it))
     if not ordered:
         return None
     ordered.sort(key=lambda t: t[0])
-    out = [{"id": pid, "ord": ordv, "text": text, "locked": locked}
-           for ordv, pid, text, locked in ordered]
+    out = [{"id": pid, "ord": ordv, "text": text, "locked": locked,
+            "iteration": iteration}
+           for ordv, pid, text, locked, iteration in ordered]
     # Re-index on the way out. A gap in `ord` (a partial write, a row deleted
     # by hand) would otherwise reach the client as a position it cannot use,
     # and the client's own list index is what it renders from.
