@@ -25,3 +25,7 @@ ENV/
 # from a page that no longer matches. Regenerate instead:
 #   python scripts/render_doc_pdf.py docs/<doc>.md exports/<doc>.pdf "Title"
 exports/*.pdf
+
+# The CI mirror venv (scripts/local_ci.sh). Built from requirements.txt +
+# the pinned tools; reproducible, so committing it would only ever go stale.
+.venv-ci/

@@ -35,12 +35,29 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 # A slide version with fewer real words than this is not a delivery anyone
 # can judge — an empty slide, or a speaker who skipped past it. Comparing it
 # would collect a verdict about silence.
 _MIN_WORDS = 4
+
+
+class _Take(NamedTuple):
+    """One take, reduced to what a comparison needs.
+
+    Named fields rather than a plain dict, and not for tidiness: a dict
+    literal's inferred value type is the JOIN of everything in it, so a str,
+    an Any and a dict in the same literal make EVERY read
+    `str | dict | Any | None`. Under that type `pair_id(si, a["session_id"],
+    …)` and `min(a["session_id"], …)` below stop being checked at all —
+    which is precisely where a session id could go missing unnoticed. This
+    keeps them checked.
+    """
+
+    session_id: str
+    audio_ref: Any
+    by_index: dict
 
 
 def _words(text: Any) -> int:
@@ -103,21 +120,21 @@ def build_pairs(takes: Any, slides: Any) -> list:
     Returns [{pair_id, slide_index, slide_title, left:{…}, right:{…}}], slide
     order then pair order. A slide where fewer than two takes have real
     speech yields nothing — there is no comparison to make."""
-    rows = []
+    rows: list[_Take] = []
     for t in (takes or []):
         if isinstance(t, dict) and t.get("session_id"):
-            rows.append({
-                "session_id": str(t["session_id"]),
-                "audio_ref": t.get("audio_ref"),
-                "by_index": _by_index(t.get("slide_transcripts")),
-            })
+            rows.append(_Take(
+                session_id=str(t["session_id"]),
+                audio_ref=t.get("audio_ref"),
+                by_index=_by_index(t.get("slide_transcripts")),
+            ))
     if len(rows) < 2:
         return []
     deck = slides if isinstance(slides, list) else []
     out: list = []
     for si in range(len(deck)):
         have = [r for r in rows
-                if _words((r["by_index"].get(si) or {}).get("transcript"))
+                if _words((r.by_index.get(si) or {}).get("transcript"))
                 >= _MIN_WORDS]
         if len(have) < 2:
             continue
@@ -125,9 +142,9 @@ def build_pairs(takes: Any, slides: Any) -> list:
         for i in range(len(have)):
             for j in range(i + 1, len(have)):
                 a, b = have[i], have[j]
-                tok = pair_id(si, a["session_id"], b["session_id"])
-                lo_id = min(a["session_id"], b["session_id"])
-                first = a if a["session_id"] == lo_id else b
+                tok = pair_id(si, a.session_id, b.session_id)
+                lo_id = min(a.session_id, b.session_id)
+                first = a if a.session_id == lo_id else b
                 second = b if first is a else a
                 left, right = (
                     (first, second) if left_is_lo(tok) else (second, first)
@@ -142,14 +159,14 @@ def build_pairs(takes: Any, slides: Any) -> list:
     return out
 
 
-def _side(row: dict, slide_index: int) -> dict:
+def _side(row: _Take, slide_index: int) -> dict:
     """One side of a comparison — words, audio, timing. NOTHING that
     identifies WHICH take this is: no session id, no take index, no
     created_at. The blinding lives here."""
-    t = row["by_index"].get(slide_index) or {}
+    t = row.by_index.get(slide_index) or {}
     return {
         "transcript": t.get("transcript") or "",
-        "audio_ref": row.get("audio_ref"),
+        "audio_ref": row.audio_ref,
         "start_offset_ms": t.get("start_offset_ms"),
         "duration_ms": t.get("duration_ms"),
     }
