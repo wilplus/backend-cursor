@@ -596,12 +596,29 @@ def v2_explore_get_ideal_text(arc_id):
         # build_best_presentation uses for its canonical deck ref. Zero
         # extra queries (the ownership read already has the sessions). ──
         _pres_ref = None
+        # SLIDE TITLES (founder 2026-08-11: "yeah put only the title"). The
+        # read surface already groups the text by slide and had a title slot
+        # with nothing to put in it — the payload carried `slide_index` per
+        # paragraph and no way to say what slide 2 IS. Titles only: the body
+        # is what the speaker was meant to say, and printing it beside what
+        # they DID say turns their own speech into a diff against a script.
+        #
+        # MOST-COMPLETE DECK WINS, the same resolution build_best_presentation
+        # uses — a re-take that dropped its deck must not shorten the list and
+        # blank the later slides.
+        _slide_titles: list = []
         for _s in _spoken_rows:
             _ctx = _s.get("intake_context") if isinstance(
                 _s.get("intake_context"), dict) else {}
-            if _ctx.get("presentation_ref"):
+            _sl = _ctx.get("slides")
+            if isinstance(_sl, list) and len(_sl) >= len(_slide_titles):
+                _slide_titles = [
+                    ((x.get("title") or "").strip()
+                     if isinstance(x, dict) else "")
+                    for x in _sl
+                ]
+            if _pres_ref is None and _ctx.get("presentation_ref"):
                 _pres_ref = _ctx.get("presentation_ref")
-                break
 
         return jsonify({
             "arc_id": arc_id,
@@ -628,6 +645,12 @@ def v2_explore_get_ideal_text(arc_id):
             # a deckless arc; the FE treats anything but a non-empty
             # string as absent.
             "presentation_ref": _pres_ref or None,
+            # Slide titles by slide index — what the AUDIENCE saw, which is
+            # the one piece of deck context the reader is allowed (it says
+            # nothing about which take this is). [] when the arc has no deck;
+            # an empty string at an index means that slide is untitled, and
+            # the FE renders no title line rather than inventing one.
+            "slide_titles": _slide_titles,
             # One entry per "\n\n"-paragraph of `text`, carrying the deck
             # page (`slide_index`) its words were bucketed to when the
             # mapping is provable — null degrades the FE to its
