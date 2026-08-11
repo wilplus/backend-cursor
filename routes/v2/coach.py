@@ -3055,6 +3055,93 @@ def v2_coach_confidence_queue(session_id):
                         "error": "could not load the queue"}), 500
 
 
+@v2_bp.route("/coach/snippets/<snippet_id>/slide", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_put_snippet_slide(snippet_id):
+    """THE WORD→SLIDE GROUND TRUTH (founder 2026-08-11). The coach says which
+    slide was ON SCREEN while this snippet was spoken.
+
+        { slide_index: int }   this snippet was delivered on slide N
+        { slide_index: null }  withdraw a correction — the pipeline was right
+
+    WHAT THIS IS FOR. The pipeline buckets words by the tap timeline and
+    nothing has ever checked it against a human; services/slide_boundary_
+    metrics.py can only report exposure and impact, never accuracy, and says
+    so in its own header — the missing piece is exactly this row. Every
+    correction is also one (speech window, slide) training pair, which is the
+    corpus any learned aligner would need before it could be trained at all.
+
+    WHAT IT IS NOT. Not "these words are about slide N". Correctness here is
+    what the audience was looking at, so a speaker who ran ahead of their own
+    deck is not a bucketing error. The FE copy says so; this docstring is the
+    contract behind it, because a corpus that mixes the two teaches the
+    opposite of the thing we measure.
+
+    The index is validated against THIS session's deck: a correction pointing
+    at a slide the deck does not have is a corrupt label, and it fails here
+    rather than landing in the corpus.
+
+    Append-only — the row is inserted, never upserted, so the trail of what
+    the pipeline said and what the human said instead survives.
+
+    200 { saved, snippet_id, slide_index } · 400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    body = request.get_json(silent=True) or {}
+    if "slide_index" not in body:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "slide_index: required (null to withdraw)"}), 400
+    raw = body.get("slide_index")
+    if raw is not None and (isinstance(raw, bool) or not isinstance(raw, int)):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "slide_index: must be an integer or null"}), 400
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip or not snip.get("session_id"):
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "snippet not found"}), 404
+        session_id = str(snip.get("session_id"))
+        session = db.v2_get_session_by_id(session_id) or {}
+        ctx = session.get("intake_context")
+        ctx = ctx if isinstance(ctx, dict) else {}
+        slides = ctx.get("slides") or []
+        if raw is not None and not (0 <= raw < len(slides)):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": (f"slide_index: out of range for this deck "
+                          f"({len(slides)} slide(s))"),
+            }), 400
+        # What the pipeline says right now, recorded beside the correction:
+        # without it the corpus knows where the words belong but never how
+        # far off the timeline was, and the size of the miss IS the
+        # measurement.
+        was = None
+        try:
+            from services.slide_alignment import slide_for_snippet
+            was = slide_for_snippet(
+                snip, ctx.get("slide_advances") or [], slides
+            ) if slides else None
+        except Exception:
+            was = None
+        saved = db.record_snippet_slide_correction(
+            session_id=session_id,
+            snippet_id=snippet_id,
+            slide_index=raw,
+            was_slide_index=was,
+            corrected_by=str(getattr(request, "user_id", "") or "") or None,
+        )
+        return jsonify({"saved": bool(saved), "snippet_id": snippet_id,
+                        "slide_index": raw}), 200
+    except Exception as e:
+        logger.error("coach/snippet-slide failed snippet=%s err=%s",
+                     snippet_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the slide correction"}), 500
+
+
 @v2_bp.route("/coach/snippets/<snippet_id>/confidence-label", methods=["PUT"])
 @require_admin_or_coach
 def v2_coach_put_confidence_label(snippet_id):

@@ -11406,6 +11406,101 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    # ── THE COACH'S WORD→SLIDE GROUND TRUTH (founder 2026-08-11) ─────────
+    #
+    # Append-only by design (migrations/add_snippet_slide_corrections.sql):
+    # the latest row per snippet wins and the earlier ones stay as the audit
+    # trail. Never an upsert — a silently overwritten label is a corpus
+    # nobody can compare across time.
+
+    def record_snippet_slide_correction(self, *, session_id: str,
+                                        snippet_id: str,
+                                        slide_index: Optional[int],
+                                        was_slide_index: Optional[int] = None,
+                                        corrected_by: Optional[str] = None,
+                                        ) -> bool:
+        """One human judgment: the slide ON SCREEN while this snippet was
+        spoken was `slide_index`. None = the coach withdrew a correction and
+        the pipeline's own answer stands (stored, not deleted — "a human
+        checked and the pipeline was right" is a label too).
+
+        Best-effort: a labelling write must never break the coach's save."""
+        if not session_id or not snippet_id:
+            return False
+        try:
+            self.client.table("snippet_slide_corrections").insert({
+                "session_id": str(session_id),
+                "snippet_id": str(snippet_id),
+                "slide_index": slide_index,
+                "was_slide_index": was_slide_index,
+                "corrected_by": str(corrected_by) if corrected_by else None,
+            }).execute()
+            return True
+        except Exception as e:
+            logger.warning("record_snippet_slide_correction failed sid=%s "
+                           "snippet=%s: %s", session_id, snippet_id, e)
+            return False
+
+    def get_snippet_slide_corrections(self, session_id: str) -> dict:
+        """{snippet_id: slide_index} for one session — the LATEST correction
+        per snippet, reverts included as an explicit None.
+
+        Returns {} pre-migration / on hiccup: the pipeline's own bucketing is
+        the floor, so a missing table degrades to today's behaviour and never
+        darkens a take. Ordered newest-first and taken first-seen, which is
+        the append-only table's "latest wins" in one pass."""
+        if not session_id:
+            return {}
+        try:
+            res = (
+                self.client.table("snippet_slide_corrections")
+                .select("snippet_id,slide_index")
+                .eq("session_id", str(session_id))
+                .order("created_at", desc=True)
+                .order("id", desc=True)
+                .execute()
+            )
+            out: dict = {}
+            for r in (res.data or []):
+                sid = str((r or {}).get("snippet_id") or "")
+                if sid and sid not in out:
+                    out[sid] = (r or {}).get("slide_index")
+            return out
+        except Exception as e:
+            _e = str(e).lower()
+            if "snippet_slide_corrections" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return {}
+            logger.warning("get_snippet_slide_corrections failed sid=%s: %s",
+                           session_id, e)
+            return {}
+
+    def list_snippet_slide_corrections(self, session_id: str) -> list:
+        """Every row for a session, newest first — the audit trail + the
+        training corpus (each row is one (speech window, slide) pair with
+        what the pipeline said beside it). [] pre-migration."""
+        if not session_id:
+            return []
+        try:
+            res = (
+                self.client.table("snippet_slide_corrections")
+                .select("*")
+                .eq("session_id", str(session_id))
+                .order("created_at", desc=True)
+                .execute()
+            )
+            return list(res.data or [])
+        except Exception as e:
+            _e = str(e).lower()
+            if "snippet_slide_corrections" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return []
+            logger.warning("list_snippet_slide_corrections failed sid=%s: %s",
+                           session_id, e)
+            return []
+
     def count_intervention_decisions(self, arc_id: Optional[str],
                                      take_session_id: Optional[str]) -> int:
         """Spent slots for one take. 0 pre-migration / on hiccup — the
