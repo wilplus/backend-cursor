@@ -64,7 +64,7 @@ def _instant_ideal_enabled() -> bool:
         in ("1", "true", "yes")
 
 
-def _ideal_piece_provenance(arc_id):
+def _ideal_piece_provenance(arc_id, deckless_ok=True):
     """The machine assembly's per-piece slide identity, in served order —
     mirrors maybe_assemble_ideal_text's source choice WITHOUT re-running
     any composition on the student GET:
@@ -76,6 +76,10 @@ def _ideal_piece_provenance(arc_id):
         picks auto_text's paragraphs were joined from. No cache row →
         no attachment; the composer (its LLM pass included) NEVER runs
         on this GET.
+
+    ONE ENTRY PER SERVED PARAGRAPH, because that is what the caller aligns
+    it against. `deckless_ok` gates the LEGACY lane only — see the comment
+    at that branch.
 
     Each entry: {slide_index, snippet_id, take_session_id, take_index,
     status, challenger}. Best-effort; [] when nothing is provable."""
@@ -123,21 +127,44 @@ def _ideal_piece_provenance(arc_id):
     if _living_transcript_enabled():
         from services.transcript_document import build_transcript_document
         doc = build_transcript_document(arc_id, database=db)
-        pieces = (doc or {}).get("pieces") or []
-        if not pieces:
+        # ONE ROW PER PARAGRAPH (founder 2026-08-11). The consumer aligns
+        # this list against the served text's "\n\n" paragraphs by LENGTH,
+        # and `pieces` is per SNIPPET — so on any take where a slide held
+        # more than one piece the counts disagreed, the alignment test
+        # failed, and every slide attachment was dropped. `paragraphs` is
+        # cut the same way the text is, by construction.
+        rows = (doc or {}).get("paragraphs") or []
+        if not rows:
             return []
         sid = doc.get("take_session_id")
         snips = {str(s.get("id")): s
                  for s in (db.get_snippets_by_session(sid) or [])} \
             if sid else {}
         return [{
-            "slide_index": _snip_slide(snips.get(str(p.get("snippet_id")))),
+            # The document already resolved this (coach correction first,
+            # then the cutter's bucket); `_snip_slide` stays as the floor
+            # for a row that predates the field.
+            "slide_index": (
+                p.get("slide_index")
+                if isinstance(p.get("slide_index"), int)
+                and not isinstance(p.get("slide_index"), bool)
+                else _snip_slide(snips.get(str(p.get("snippet_id"))))
+            ),
             "snippet_id": p.get("snippet_id"),
             "take_session_id": p.get("take_session_id"),
             "take_index": p.get("take_index"),
             "status": "settled",
             "challenger": None,
-        } for p in pieces]
+        } for p in rows]
+    # LEGACY compose cache — and the ONLY lane the deckless guard belongs
+    # to. This one keys its picks by SECTION index, which is not a deck page,
+    # so without an uploaded deck it must not attach. The two lanes above
+    # read the CUTTER's own bucket (the slide that was on screen when the
+    # words were spoken), which is a real page whether or not a PDF was ever
+    # uploaded — and applying the guard to all three is what made the
+    # built-in mock deck attach nothing at all (founder 2026-08-11).
+    if not deckless_ok:
+        return []
     _get_cache = getattr(db, "get_best_presentation_cache", None)
     cached = _get_cache(arc_id) if callable(_get_cache) else None
     slides = ((cached or {}).get("payload") or {}).get("slides") or []
@@ -174,15 +201,21 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref):
     anything weaker). A reshaped text (user rewrite, coach restructure,
     stale cache) misaligns the counts and every slide_index degrades to
     null — the FE falls back to its exact-count zip, never a guessed
-    attachment. A deckless arc (no presentation_ref) never attaches:
-    the deckless compose keys picks by SECTION index, which is not a
-    deck page. Provenance only, no scores (AC-9). Best-effort; []."""
+    attachment. An arc with no UPLOADED deck still attaches when the cutter
+    bucketed its words against slides the speaker actually saw (the built-in
+    deck); only the legacy compose lane, which keys picks by SECTION index
+    rather than a deck page, stays deckless-gated — applying that guard to
+    every lane is what made the mock deck attach nothing (founder
+    2026-08-11). Provenance only, no scores (AC-9). Best-effort; []."""
     try:
         paragraphs = [p.strip() for p in (served_text or "").split("\n\n")
                       if p.strip()]
         if not paragraphs:
             return []
-        prov = _ideal_piece_provenance(arc_id) if presentation_ref else []
+        # The deckless guard is passed DOWN rather than applied here, so it
+        # lands on the one lane whose slide identity is not a deck page.
+        prov = _ideal_piece_provenance(
+            arc_id, deckless_ok=bool(presentation_ref))
         aligned = bool(prov) and len(prov) == len(paragraphs)
         out = []
         for i, para in enumerate(paragraphs):

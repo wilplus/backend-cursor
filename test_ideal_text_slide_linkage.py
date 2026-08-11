@@ -262,5 +262,83 @@ class MasterDocumentProvenanceTests(unittest.TestCase):
         self.assertIsNone(body["pieces"][0]["slide_index"])
 
 
+@unittest.skipIf(Flask is None, f"flask/app import failed: {_IMPORT_ERROR}")
+class LivingTranscriptProvenanceTests(unittest.TestCase):
+    """The two defects that stripped every slide off the read surface
+    (founder 2026-08-11).
+
+    Both were invisible: no error, no null field, just `slide_index: null`
+    everywhere and a deck with nothing to scroll through."""
+
+    def _prov(self, doc, **kw):
+        from routes.v2 import explore_ideal_text as mod
+        # Imported INSIDE the function, so the patch has to land on the
+        # source module rather than this one's namespace.
+        with patch("services.transcript_document.build_transcript_document",
+                   return_value=doc), \
+                patch("services.ideal_text_block._living_transcript_enabled",
+                      return_value=True), \
+                patch("services.master_document.master_document_enabled",
+                      return_value=False), \
+                patch.object(mod.db, "get_snippets_by_session",
+                             return_value=[], create=True):
+            return mod._ideal_piece_provenance(ARC, **kw)
+
+    def test_provenance_is_counted_in_PARAGRAPHS_not_snippets(self):
+        # THE BUG: the caller aligns this list against the served text's
+        # "\n\n" paragraphs BY LENGTH. Returning one row per snippet meant
+        # that on any take where a slide held more than one piece the counts
+        # disagreed, the alignment test failed, and every slide attachment
+        # was silently dropped.
+        doc = {
+            "take_session_id": "t1",
+            "pieces": [{"snippet_id": "a", "slide_index": 0},
+                       {"snippet_id": "b", "slide_index": 0},
+                       {"snippet_id": "c", "slide_index": 1}],
+            "paragraphs": [
+                {"snippet_id": "a", "slide_index": 0, "take_session_id": "t1",
+                 "take_index": 1},
+                {"snippet_id": "c", "slide_index": 1, "take_session_id": "t1",
+                 "take_index": 1},
+            ],
+        }
+        rows = self._prov(doc)
+        self.assertEqual(len(rows), 2)          # paragraphs, not the 3 pieces
+        self.assertEqual([r["slide_index"] for r in rows], [0, 1])
+
+    def test_slide_zero_survives(self):
+        # `or`-style falsiness on a 0 index would blank the FIRST slide of
+        # every deck and nothing else — the kind of bug that reads as "the
+        # intro is special".
+        doc = {"take_session_id": "t1", "pieces": [],
+               "paragraphs": [{"snippet_id": "a", "slide_index": 0,
+                               "take_session_id": "t1", "take_index": 1}]}
+        self.assertEqual(self._prov(doc)[0]["slide_index"], 0)
+
+    def test_an_arc_with_NO_UPLOADED_DECK_still_attaches(self):
+        # THE MOCK-DECK BUG: the deckless guard was applied to every lane,
+        # including this one. But the cutter buckets words against the slides
+        # the speaker actually SAW, and the built-in deck has slides and taps
+        # without ever producing a PDF — so a whole class of recordings got
+        # no slide attachment at all, for a reason that only applies to the
+        # legacy compose lane.
+        doc = {"take_session_id": "t1", "pieces": [],
+               "paragraphs": [{"snippet_id": "a", "slide_index": 2,
+                               "take_session_id": "t1", "take_index": 1}]}
+        rows = self._prov(doc, deckless_ok=False)
+        self.assertEqual([r["slide_index"] for r in rows], [2])
+
+    def test_the_LEGACY_lane_stays_deckless_gated(self):
+        # It keys picks by SECTION index, which is not a deck page. The guard
+        # was right; it was just standing in the wrong place.
+        from routes.v2 import explore_ideal_text as mod
+        with patch("services.ideal_text_block._living_transcript_enabled",
+                   return_value=False), \
+                patch("services.master_document.master_document_enabled",
+                      return_value=False):
+            self.assertEqual(
+                mod._ideal_piece_provenance(ARC, deckless_ok=False), [])
+
+
 if __name__ == "__main__":
     unittest.main()
