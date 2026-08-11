@@ -1,34 +1,63 @@
 name: tests
 
-# Regression gate for the Python test suite. Runs the unit-tier
-# tests on every push + PR. Integration-tier modules that need live
-# Supabase / network credentials are quarantined (see QUARANTINE
-# below) — they can't run in CI without secrets and would be red
-# for environmental reasons, not real bugs. A red-on-day-1 gate
-# gets ignored; this one stays green so it means something.
+# Regression gate for the Python test suite. Runs on every push + PR.
+# Integration-tier modules that need live Supabase / network credentials
+# are quarantined (see QUARANTINE below) — they can't run in CI without
+# secrets and would be red for environmental reasons, not real bugs. A
+# red-on-day-1 gate gets ignored; this one stays green so it means
+# something.
+#
+# CONSOLIDATED 2026-08-11 (founder), from six jobs to two.
+#
+# Six parallel jobs, four of them repeating `pip install -r
+# requirements.txt`, is a wall-clock optimisation billed as a minutes
+# problem: GitHub charges per JOB and rounds each one UP to the minute, so
+# the repeated setup was paid four times per run on a private repo. This
+# repo ran out of Actions minutes mid-afternoon, and every job after that
+# failed on runner allocation — zero billable ms, no logs, six red X's that
+# had nothing to do with the code.
+#
+#   checks  — ruff, mypy, pytest, migrations. One checkout, one install.
+#   evals   — the three OpenAI probes, behind ONE key check that exits
+#             before pip install when the secret is absent.
+#
+# Every gate that ran before still runs, under its own named step, so a
+# failure still says which one broke. What changed is how many machines
+# get rented to say it.
 #
 # When the quarantined modules get proper setUpModule/tearDownModule
-# stubbing (per the memory note on test-stub isolation), move them
-# out of the ignore list so CI covers them too.
+# stubbing (per the memory note on test-stub isolation), move them out of
+# the ignore list so CI covers them too.
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  # Manual trigger — run the suite + the master-doc probe on demand from
-  # the Actions tab (e.g. to capture the probe baseline on main right
-  # after adding the OPENAI_API_KEY secret, without a dummy push).
+  # Manual trigger — run the suite + the full eval sweep on demand from the
+  # Actions tab (e.g. to capture a probe baseline on main right after
+  # adding the OPENAI_API_KEY secret, without a dummy push).
   workflow_dispatch:
 
 jobs:
-  # Static analysis gate: ruff (real-bug lint classes only — config in
+  # ── The deterministic gates: lint, types, tests, migrations ────────────
+  #
+  # Static analysis: ruff (real-bug lint classes only — config in
   # ruff.toml) + mypy (whole prod surface, legacy-red modules parked as a
   # ratchet — config in mypy.ini). Both were green at introduction; a red
   # here is a NEW defect, not environmental noise.
-  lint:
+  #
+  # Migrations: catches the drift that used to be invisible until it hit
+  # prod — a .sql file added without a manifest entry (so it never runs
+  # anywhere), a manifest entry whose file was deleted or renamed, or a
+  # version renumbered after it had already been applied somewhere.
+  # `verify` reads files only: no database, no secrets. (Applying all the
+  # files to a throwaway Postgres would be the stronger check, but they
+  # target Supabase — auth.users, storage.*, service_role — so it would be
+  # red for environmental reasons forever.)
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -45,35 +74,26 @@ jobs:
           # Full requirements so mypy sees the real installed packages (and
           # their bundled type info) — same picture as a local `mypy .`.
           pip install -r requirements.txt
-          pip install ruff==0.15.8 mypy==2.3.0
+          # pytest is a CI-only runner (not a runtime dep). It runs the
+          # existing unittest-style tests as-is + gives clean exit codes
+          # and --ignore filtering for the quarantined modules.
+          pip install pytest ruff==0.15.8 mypy==2.3.0
+
+      # Migrations first, and deliberately: it is the cheapest gate and the
+      # only one whose failure means "this would have broken prod on the
+      # next container start" (MIGRATE_ON_BOOT=1 — merging a migration IS
+      # running it). Fail fast on the expensive mistake.
+      - name: Verify migration manifest
+        run: python scripts/migrate.py verify --verbose
+
+      - name: Migration runner unit tests
+        run: python -m unittest test_migrations -v
 
       - name: Ruff (lint)
         run: ruff check .
 
       - name: Mypy (type-check)
         run: mypy .
-
-  unittest:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.1"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          # pytest is a CI-only runner (not a runtime dep). It runs the
-          # existing unittest-style tests as-is + gives clean exit codes
-          # and --ignore filtering for the quarantined modules.
-          pip install pytest
 
       - name: Run unit-tier tests
         env:
@@ -99,62 +119,72 @@ jobs:
             -p no:cacheprovider \
             -q
 
-  # Migration manifest gate. Catches the drift that used to be invisible
-  # until it hit prod: a .sql file added without a manifest entry (so it
-  # never runs anywhere), a manifest entry whose file was deleted or
-  # renamed, or a version renumbered after it had already been applied
-  # somewhere.
+  # ── The behavioral gates: live-model probes ───────────────────────────
   #
-  # Hermetic on purpose — `verify` reads files only, so this gate needs no
-  # database and no secrets. It is green on day 1 and stays green unless
-  # something is actually wrong, which is the bar the rest of this workflow
-  # sets. (Applying all 239 files to a throwaway Postgres would be the
-  # stronger check, but they target Supabase — auth.users, storage.*,
-  # service_role — so it would be red for environmental reasons forever.)
-  migrations:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.1"
-
-      # No pip install: `verify` uses only the standard library, so this job
-      # stays fast and can't be broken by a dependency resolution problem.
-      - name: Verify migration manifest
-        run: python scripts/migrate.py verify --verbose
-
-      - name: Migration runner unit tests
-        run: python -m unittest test_migrations -v
-
-  # Lounge-bot behavioral probe (tests/evals/master_doc_probe.py). This is
-  # the ONLY gate that catches silent persona/capability drift in the
-  # master-doc system prompt (the attention-ceiling failure mode). It makes
-  # live OpenAI calls (~$0.06/run), so it can only gate when OPENAI_API_KEY
-  # is configured as a repo secret. Until then the step SKIPS green (it does
-  # NOT fail for a missing credential) — the gate is armed, not red-on-day-1.
+  # All three make live OpenAI calls (pennies per run) and all three used
+  # to be their own job, each paying for its own checkout + full pip
+  # install BEFORE discovering there was no key to run with. The key check
+  # now happens first, in a step that costs seconds, and everything after
+  # it is skipped when the secret is absent — so an unkeyed repo pays for
+  # a checkout instead of three dependency installs.
+  #
+  #   master_doc probe   — the ONLY gate that catches silent persona /
+  #                        capability drift in the master-doc system prompt
+  #                        (the attention-ceiling failure mode). BLOCKING.
+  #   prompt evals       — the behavioral half of the prompt-registry drift
+  #                        gate; the deterministic half
+  #                        (test_prompt_registry.py, lockfile vs code) runs
+  #                        free in `checks`. Golden-evals exactly the
+  #                        surfaces whose prompts changed. BLOCKING.
+  #   router parity      — the same probe with the two-stage router ON.
+  #                        NON-BLOCKING: the router is a parked, flag-OFF
+  #                        parallel path, so this score is the promotion
+  #                        signal (flip the prod flag once it reaches
+  #                        parity with the gating probe), not a merge gate.
+  #
   # To activate: add OPENAI_API_KEY under Settings → Secrets → Actions.
-  master-doc-probe:
+  evals:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
+      # Shallow, like before: the prompt evals fetch just the base ref they
+      # need (below). A full-history checkout to read one file would spend
+      # more than the job saves.
       - uses: actions/checkout@v4
 
+      # THE GATE ON EVERYTHING BELOW. A job-level `if:` cannot read
+      # secrets, so the key check is a step that publishes an output the
+      # rest of the job keys off. Skipping green (not failing) on a
+      # missing credential is deliberate: the gate is armed, not
+      # red-on-day-1.
+      - name: Is the probe key configured?
+        id: key
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY not set — skipping the probe + eval gates."
+            echo "Add it under Settings → Secrets → Actions to enable them."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Python 3.12
+        if: steps.key.outputs.present == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12.1"
           cache: pip
 
       - name: Install dependencies
+        if: steps.key.outputs.present == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run master_doc probe (skips without OPENAI_API_KEY)
+      - name: Master-doc probe
+        if: steps.key.outputs.present == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Placeholders so import-time config guards don't crash; the
@@ -173,91 +203,46 @@ jobs:
           SUPABASE_URL: https://ci-placeholder.invalid
           SUPABASE_KEY: ci-placeholder-key
           SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
-        run: |
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "OPENAI_API_KEY not set — skipping the probe gate."
-            echo "Add it under Settings → Secrets → Actions to enable it."
-            exit 0
-          fi
-          python tests/evals/master_doc_probe.py
+        run: python tests/evals/master_doc_probe.py
 
-  # Prompt golden evals (tests/evals/run_prompt_evals.py). The behavioral
-  # half of the prompt-registry drift gate: the deterministic half
-  # (test_prompt_registry.py, lockfile vs code) runs free in the unittest
-  # job above; THIS job diffs services/prompts/prompts.lock.json against
-  # the merge base and runs the founder's golden evals for exactly the
-  # surfaces whose prompts changed — the master-doc-probe pattern extended
-  # to the F1 surfaces (polish, claims/entailment, feedback drafting).
-  # Live OpenAI calls (pennies/run), so it gates only when OPENAI_API_KEY
-  # exists as a repo secret; until then it SKIPS green. On push to main /
-  # manual dispatch it runs --all as a full-baseline sweep.
-  prompt-evals:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.1"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run golden evals for changed prompts (skips without OPENAI_API_KEY)
+      - name: Golden evals for changed prompts
+        if: steps.key.outputs.present == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # Same placeholder env as master-doc-probe (see the comment
-          # there for why SUPABASE_SERVICE_ROLE_KEY must be a
-          # well-formed FAKE JWT — it's the public supabase local-dev
-          # demo token; the URL is invalid so nothing ever connects).
+          # Same placeholder env as the probe above (see there for why
+          # SUPABASE_SERVICE_ROLE_KEY must be a well-formed FAKE JWT).
           JWT_SECRET: ci-placeholder-secret
           SUPABASE_URL: https://ci-placeholder.invalid
           SUPABASE_KEY: ci-placeholder-key
           SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # Golden-eval only the surfaces whose prompts changed vs the
-            # merge base. A missing base lockfile (first PR that ships
-            # the registry) falls back to empty = everything changed.
-            git fetch origin "${{ github.base_ref }}" --depth=1
-            git show "origin/${{ github.base_ref }}:services/prompts/prompts.lock.json" \
+          # DIALLED BACK 2026-08-11 (founder): the full `--all` sweep
+          # re-runs every golden eval for every surface, and it used to do
+          # that on every push to main — paying for the whole registry to
+          # answer a question about the two prompts that changed. It is a
+          # BASELINE, so it belongs on the manual trigger, where you ask
+          # for a baseline. Pushes and PRs alike now eval exactly the
+          # surfaces whose prompts moved against the merge base.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python tests/evals/run_prompt_evals.py --all
+          else
+            BASE="${{ github.base_ref || github.event.repository.default_branch }}"
+            git fetch origin "$BASE" --depth=1 || true
+            # A missing base lockfile (the first PR that ships the
+            # registry) falls back to empty = everything changed.
+            git show "origin/$BASE:services/prompts/prompts.lock.json" \
               > /tmp/base-lock.json 2>/dev/null \
               || echo '{"prompts": {}}' > /tmp/base-lock.json
             python tests/evals/run_prompt_evals.py --changed-against /tmp/base-lock.json
-          else
-            python tests/evals/run_prompt_evals.py --all
           fi
 
-  # Router A/B parity probe — same probe with the two-stage router ON
-  # (LOUNGE_ROUTER_ENABLED=1). NON-BLOCKING (continue-on-error) because the
-  # router is a parked, flag-OFF parallel path: this job's score is the
-  # promotion signal (flip the prod flag only once it reaches parity with
-  # the gating master-doc-probe), not a merge gate. Skips green without the
-  # OpenAI key, same as the gating probe.
-  master-doc-probe-router:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.1"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run master_doc probe with router ON (non-blocking)
+      # LAST and non-blocking: a parked flag-OFF path may not fail a merge.
+      # `continue-on-error` on the step keeps exactly the semantics the
+      # separate job had, and running it last means its failure can never
+      # shadow a gate that does block.
+      - name: Router parity probe (non-blocking)
+        if: steps.key.outputs.present == 'true'
+        continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           LOUNGE_ROUTER_ENABLED: "1"
@@ -265,9 +250,4 @@ jobs:
           SUPABASE_URL: https://ci-placeholder.invalid
           SUPABASE_KEY: ci-placeholder-key
           SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
-        run: |
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "OPENAI_API_KEY not set — skipping the router parity probe."
-            exit 0
-          fi
-          python tests/evals/master_doc_probe.py
+        run: python tests/evals/master_doc_probe.py
