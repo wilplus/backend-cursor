@@ -57,7 +57,7 @@ class TestBudget(unittest.TestCase):
     def test_above_novice_caps_at_three_independent(self):
         user = _user(me.APPRENTICE, dims=[f"d{i}" for i in range(6)])
         cands = [_c(f"d{i}", anchor=(i * 10.0, i * 10.0 + 1)) for i in range(6)]
-        self.assertEqual(me.budget(user, cands), 3)
+        self.assertEqual(me.budget(user, cands), 2)
 
     def test_budget_never_drops_below_one(self):
         self.assertEqual(me.budget(_user(me.GRADUATE, dims=("a",)), []), 1)
@@ -76,7 +76,7 @@ class TestBudget(unittest.TestCase):
             user = _user(state, dims=("d0", "d1", "d2"))
             cands = [_c(f"d{i}", anchor=(i * 10.0, i * 10.0 + 1))
                      for i in range(3)]
-            self.assertEqual(me.budget(user, cands), 3, f"{state} was capped")
+            self.assertEqual(me.budget(user, cands), 2, f"{state} was capped")
 
     def test_the_leading_candidates_state_governs(self):
         """Appendix B makes state PER-DIMENSION, so one has to be picked. The
@@ -442,7 +442,7 @@ class TestTakeBudgetSpent(unittest.TestCase):
                             budget_spent=spent)
 
     def test_one_decided_serves_two(self):
-        self.assertEqual(len(self._run(1)["selected"]), 2)
+        self.assertEqual(len(self._run(1)["selected"]), 1)
 
     def test_three_decided_serves_nothing(self):
         self.assertEqual(self._run(3)["selected"], [])
@@ -451,7 +451,7 @@ class TestTakeBudgetSpent(unittest.TestCase):
         self.assertEqual(self._run(7)["selected"], [])
 
     def test_the_recorded_budget_is_the_remaining_one(self):
-        self.assertEqual(self._run(2)["budget"], 1)
+        self.assertEqual(self._run(2)["budget"], 0)
 
     def test_exploration_cannot_resurrect_a_spent_budget(self):
         """`selected[:-1] + [swap]` over an empty selection would serve one

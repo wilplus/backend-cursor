@@ -318,16 +318,25 @@ PENDING_BETTER_VERSION_COPY = "better version pending..."
 # `serve_cap` is the PER-ARBITRATION mix cap (founder 2026-08-10: block
 # rewrites were winning every budget slot — "the interventions are only the
 # text rewrites"). Priorities are uniform and ties break by document order,
-# so an uncapped REWRITE lane anchored early eats all three slots; capping
-# the POOL fed to the engine at 2 REWRITEs guarantees a metric-driven
-# EMPHASISE / NOTICE slot survives whenever one proposed. None = uncapped
-# (the flat ≤3 budget still binds).
+# so an uncapped REWRITE lane anchored early eats every slot; capping the
+# POOL fed to the engine guarantees a metric-driven EMPHASISE / NOTICE slot
+# survives whenever one proposed. None = uncapped (the budget still binds).
+#
+# THE CAP IS DERIVED, not a literal (founder 2026-08-11, when the ceiling
+# moved 3 → 2 and the budget's unit became the slide). It was written as the
+# number 2 against a ceiling of 3 — "all but one slot" — and a hard-coded 2
+# under a ceiling of 2 is not a reservation at all: the rewrites fill the
+# budget, document order puts them first, and the accent that Appendix C
+# exists to protect never lands. Deriving it keeps the RULE ("one lane may
+# not take the last slot") instead of the arithmetic that happened to
+# express it.
 _VISUAL_COMPOSITION = "underline"     # inline diff — text edits
 _VISUAL_ACCENT = "bold"               # behavioural accents
 _VISUAL_STAR = "star"                 # NOTICE — Confident Voice only
 
 TYPE_ROWS: dict = {
-    "REWRITE":      {"visual": _VISUAL_COMPOSITION, "serve_cap": 2},
+    "REWRITE":      {"visual": _VISUAL_COMPOSITION,
+                     "serve_cap": max(1, me.BUDGET_CEILING - 1)},
     "RESTRUCTURE":  {"visual": _VISUAL_COMPOSITION, "serve_cap": None},
     "ADD":          {"visual": _VISUAL_COMPOSITION, "serve_cap": None},
     "CUT":          {"visual": _VISUAL_COMPOSITION, "serve_cap": None},
@@ -357,8 +366,15 @@ def visual_of(change: Any) -> str:
     return TYPE_ROWS[intervention_type_of(change)]["visual"]
 
 
-def filter_by_type_caps(changes: Any) -> list:
+def filter_by_type_caps(changes: Any, group_of: Any = None) -> list:
     """The mix caps, applied to the POOL the engine arbitrates over.
+
+    COUNTED IN THE SAME UNIT AS THE BUDGET (founder 2026-08-11). The budget
+    is per slide now; a cap counted across the whole document would reserve
+    one accent slot for a TEN-SLIDE deck and starve nine slides of their
+    rewrites — a global cap and a per-slide budget silently disagree about
+    what "the mix" is. `group_of` absent counts document-wide, which is the
+    old behaviour and what a caller without the document gets.
 
     A cap RESERVES space, it does not ration: it binds ONLY while another
     type is actually proposing. An all-rewrite pool passes untouched — with
@@ -383,7 +399,16 @@ def filter_by_type_caps(changes: Any) -> list:
         span = _span(c)
         return span is not None and span[1] > span[0]
 
-    types = {intervention_type_of(c) for c in rows if _servable(c)}
+    def _g(c: dict) -> Any:
+        return group_of(c) if callable(group_of) else None
+
+    # "Another type is proposing" is a per-GROUP fact too: a bold on slide 7
+    # must not arm the cap over slide 2's rewrites, where nothing else is
+    # competing for the slot.
+    types: dict = {}
+    for c in rows:
+        if _servable(c):
+            types.setdefault(_g(c), set()).add(intervention_type_of(c))
     counts: dict = {}
     kept: list = []
     for c in rows:
@@ -391,11 +416,12 @@ def filter_by_type_caps(changes: Any) -> list:
             kept.append(c)   # passes through; to_candidates refuses it
             continue
         t = intervention_type_of(c)
+        g = _g(c)
         cap = (TYPE_ROWS.get(t) or {}).get("serve_cap")
-        others_propose = any(x != t for x in types)
-        if cap is not None and others_propose and counts.get(t, 0) >= cap:
+        others_propose = any(x != t for x in types.get(g, ()))
+        if cap is not None and others_propose and counts.get((g, t), 0) >= cap:
             continue
-        counts[t] = counts.get(t, 0) + 1
+        counts[(g, t)] = counts.get((g, t), 0) + 1
         kept.append(c)
     return kept
 
@@ -519,7 +545,8 @@ def filter_by_window(changes: Any) -> list:
 
 
 def select(changes: Any, *, user_id: str = "", session_id: str = "",
-           parts: Any = None, decided_count: int = 0) -> dict:
+           parts: Any = None, decided_count: int = 0,
+           served_text: Any = None, spent_by_paragraph: Any = None) -> dict:
     """Run every change through the manager and return the survivors.
 
     Returns ``{"changes": [...], "result": <arbitrate() dict>|None}``. The
@@ -551,6 +578,18 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         rows = [c for c in (changes or []) if isinstance(c, dict)]
         if not rows:
             return {"changes": [], "result": None, "controls": False}
+        # THE COUNTING UNIT (founder 2026-08-11: "do it per slide up to 2").
+        # One paragraph per slide, and the paragraph is the chunk the student
+        # decides on — so the mix caps below and the budget further down are
+        # counted in the same unit the student acts in. None without the
+        # document: every rule falls back to document-wide, unchanged.
+        _para_of = None
+        if isinstance(served_text, str) and served_text:
+            from services.intervention_spend import paragraph_index_at
+
+            def _para_of(c: dict) -> int:   # noqa: F811 — the guarded form
+                return paragraph_index_at(
+                    served_text, (c.get("span") or {}).get("start", 0))
         # R1 — the layer filter runs HERE, before anything is scored or
         # budgeted. See filter_by_layer for why the order is the rule.
         rows = filter_by_layer(rows, parts)
@@ -587,7 +626,7 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # Appendix C mix caps (founder GO 2026-08-10): cap the POOL per
         # C.2 type so one lane cannot monopolise the flat budget — see
         # filter_by_type_caps for why this runs before arbitration.
-        rows = filter_by_type_caps(rows)
+        rows = filter_by_type_caps(rows, group_of=_para_of)
         if not rows:
             return {"changes": [], "result": None, "controls": False,
                     **_style}
@@ -616,13 +655,31 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # student watched. It returns None without a stable key, and arbitrate
         # then skips the branch entirely.
         _sid = str(session_id or "")
+        # THE BUDGET IS COUNTED PER PARAGRAPH when the caller hands over the
+        # served text (founder 2026-08-11: "do it per slide up to 2"). The
+        # document carries one paragraph per slide and the paragraph IS the
+        # chunk the student decides on, so this is the slide, the chunk and
+        # the budget unit all at once. Without the text it falls back to the
+        # flat per-take cap — unchanged behaviour, and the guests / callers
+        # that have no document keep working.
+        _grp = None
+        _spent_g = None
+        if _para_of is not None:
+            _by_ref_para = {str(i): _para_of(row)
+                            for i, row in enumerate(rows)}
+
+            def _grp(c: Any) -> Any:   # noqa: F811 — the guarded form
+                return _by_ref_para.get(c.ref, 0)
+
+            _spent_g = dict(spent_by_paragraph or {})
         result = me.arbitrate(
             candidates, state,
             session_id=_sid if controls else "",
             roll=(me.exploration_roll(str(user_id or ""), _sid)
                   if controls else None),
             controls=controls,
-            budget_spent=max(0, int(decided_count or 0)))
+            budget_spent=max(0, int(decided_count or 0)),
+            group_of=_grp, spent_by_group=_spent_g)
 
         by_ref = {str(i): row for i, row in enumerate(rows)}
         kept: list = []

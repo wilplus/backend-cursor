@@ -11595,6 +11595,45 @@ class DatabaseService:
                            arc_id, e)
             return 0
 
+    def list_spent_intervention_decisions(self, arc_id: Optional[str],
+                                          take_session_id: Optional[str]
+                                          ) -> list:
+        """The take's spent slots WITH THE WORDS THEY WERE SPENT ON —
+        [{quote}], style-lane rows excluded by the same rule
+        `count_intervention_decisions` applies.
+
+        The budget is counted per SLIDE now (founder 2026-08-11), and this
+        table has no slide column: the quote is what places a spent slot in
+        the document, which needs no migration and no backfill. A row whose
+        quote predates the texts migration cannot be placed and is simply not
+        counted against any slide — history is never invented, and the error
+        runs toward offering MORE feedback rather than silently withholding
+        it. [] pre-migration / on hiccup."""
+        if not arc_id:
+            return []
+        try:
+            res = (
+                self.client.table("intervention_decisions")
+                .select("lane,quote")
+                .eq("arc_id", str(arc_id))
+                .eq("take_session_id", str(take_session_id or ""))
+                .execute()
+            )
+            return [r for r in (res.data or [])
+                    if isinstance(r, dict)
+                    and r.get("lane") != "lane:style"
+                    and (r.get("quote") or "").strip()]
+        except Exception as e:
+            _e = str(e).lower()
+            if "intervention_decisions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return []
+            logger.warning(
+                "list_spent_intervention_decisions failed arc=%s: %s",
+                arc_id, e)
+            return []
+
     def list_ideal_decisions(self, arc_id: Optional[str]) -> list:
         """All ledger rows of an arc. [] pre-migration / on hiccup —
         callers degrade to no-memory behavior."""
