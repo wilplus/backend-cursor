@@ -308,3 +308,4 @@
 0270	add_coach_arc_ideal_text_document.sql
 0271	add_ideal_decision_intent_key.sql
 0272	add_voice_album.sql
+0273	add_label_quorum_ledger.sql

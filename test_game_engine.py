@@ -131,6 +131,45 @@ class BuildRoundsTests(unittest.TestCase):
         b = [r["snippet_id"] for r in self._rounds()]
         self.assertEqual(a, b)
 
+    def test_own_recordings_are_served_first(self):
+        """Ledger rule 2's serving half (founder 2026-08-11). Every session in
+        an arc belongs to the arc owner today, so this only bites once a round
+        can carry someone else's clip — which is the case the rule was written
+        for. Two sessions, one owned by the player, one not."""
+        sessions = [{"id": "s1", "user_id": "u1"},
+                    {"id": "s2", "user_id": "u2"}]
+        snips = {
+            "s1": [_snip("mine-k", "My strong close.", 0, session_id="s1"),
+                   _snip("mine-d", "My aside.", 1000, session_id="s1")],
+            "s2": [_snip("their-k", "Their strong close.", 0,
+                         session_id="s2"),
+                   _snip("their-d", "Their aside.", 1000, session_id="s2")],
+        }
+        labels = {"s1": [{"snippet_id": "mine-k", "value": "challenge"}],
+                  "s2": [{"snippet_id": "their-k", "value": "challenge"}]}
+        from services.game_engine import build_game_rounds
+        rounds = build_game_rounds(_FakeDB(sessions, snips, labels),
+                                   "arc1", "u1")
+        served = [r["snippet_id"] for r in rounds]
+        self.assertEqual(served[:2], ["mine-k", "mine-d"])
+        self.assertEqual(sorted(served[2:]), ["their-d", "their-k"])
+
+    def test_own_first_is_still_deterministic(self):
+        sessions = [{"id": "s1", "user_id": "u1"},
+                    {"id": "s2", "user_id": "u2"}]
+        snips = {"s1": [_snip("a", "One.", 0, session_id="s1"),
+                        _snip("b", "Two.", 1000, session_id="s1")],
+                 "s2": [_snip("c", "Three.", 0, session_id="s2"),
+                        _snip("d", "Four.", 1000, session_id="s2")]}
+        labels = {"s1": [{"snippet_id": "a", "value": "challenge"}],
+                  "s2": [{"snippet_id": "c", "value": "challenge"}]}
+        from services.game_engine import build_game_rounds
+        runs = [[r["snippet_id"] for r in build_game_rounds(
+            _FakeDB(sessions, snips, labels), "arc1", "u1")]
+            for _ in range(3)]
+        self.assertEqual(runs[0], runs[1])
+        self.assertEqual(runs[1], runs[2])
+
     def test_audio_falls_back_to_storage_path(self):
         """Ear-first rounds (FE close-out 2026-07-28): audio_ref is
         load-bearing — a snippet carrying only storage_path (the
@@ -378,6 +417,44 @@ class AnswerTests(unittest.TestCase):
         answer_round(db, "arc1", "u2", "k1", False)
         self.assertEqual(db.state_ratings[0]["lane"], "game_peer")
         self.assertEqual(db.state_ratings[0]["row"]["value"], "no")
+
+    def test_the_owner_answering_their_own_clip_is_stamped_self_report(self):
+        """Ledger rule 2 (founder 2026-08-11) — the owner is not a peer. The
+        stamp is what excludes the row from the 2-peer quorum downstream, and
+        it must be written at the point where ownership is known; nothing
+        later can reconstruct it."""
+        db, _out = self._answer("k1", True)
+        self.assertIs(db.state_ratings[0]["self_report"], True)
+
+    def test_rating_someone_elses_clip_is_not_a_self_report(self):
+        from services.game_engine import answer_round
+        db = _db()
+        answer_round(db, "arc1", "u2", "k1", False)
+        self.assertIs(db.state_ratings[0]["self_report"], False)
+
+    def test_the_machine_proposal_rides_beside_the_answer_never_in_it(self):
+        """Ledger rule 1 — the machine is a router, not a rater. Its read is
+        stamped SERVER-SIDE into its own column; the human answer is
+        untouched, and the proposal is not in the round the rater saw."""
+        from services.game_engine import answer_round, build_game_rounds
+        db = _db()
+        for s in db._snips["s1"]:
+            s["metrics"] = dict(s["metrics"] or {})
+            s["metrics"]["voice_confidence"] = {"score": 0.7,
+                                                "band": "confident"}
+        answer_round(db, "arc1", "u1", "k1", False)
+        row = db.state_ratings[0]
+        self.assertEqual(row["machine_value"], "yes")   # its own column…
+        self.assertEqual(row["row"]["value"], "no")     # …never blended in
+        # I1: the rounds payload the rater answered carries no machine read.
+        for r in build_game_rounds(db, "arc1", "u1"):
+            self.assertNotIn("machine_value", r)
+            self.assertNotIn("voice_confidence", str(r))
+
+    def test_an_unmeasurable_clip_proposes_nothing(self):
+        # An honest absence, never a fabricated 'neutral' proposal.
+        db, _out = self._answer("k1", True)
+        self.assertIsNone(db.state_ratings[0]["machine_value"])
 
     def test_idk_is_a_label_but_not_a_guess(self):
         """'neutral' (the founder's missing idk): the confidence corpus

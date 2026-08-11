@@ -13615,6 +13615,8 @@ class DatabaseService:
         intensity: Optional[int] = None,
         model_version_at_time: Optional[str] = None,
         probe_score_at_time: Optional[float] = None,
+        machine_value: Optional[str] = None,
+        self_report: bool = False,
     ) -> bool:
         """Store (or replace) one rater's TERNARY rating on one snippet
         (SPEC.md v3 §3.2). ``row`` is the validated shape from
@@ -13637,6 +13639,21 @@ class DatabaseService:
         previous row: a stale 1-5 grade attached to an answer nobody graded is
         the failure the FULL-STATE upsert above exists to prevent, and absent
         training data beats wrong training data.
+
+        ``machine_value`` is the model's PROPOSAL (rule 1, founder 2026-08-11)
+        — the read that routed this clip to a rater. It lands in its own
+        column BESIDE ``value`` and is never blended into it: the machine
+        picks WHICH clip gets rated, it never holds one of the two votes.
+        Callers pass it from services.label_quorum.machine_proposal, i.e.
+        SERVER-SIDE off the stored acoustic read — never from a request body,
+        because a client-supplied proposal would mean the rater's screen could
+        have carried it (I1, and ``saw_model_output`` would be a lie).
+
+        ``self_report`` marks the rater as the OWNER of the clip (rule 2).
+        Excluded from the 2-peer quorum, kept for rater calibration. Distinct
+        from ``lane='game_owner'``: lane records the surface, this records
+        whose recording it was, and a coach rating their own session is a
+        self-report on the coach lane.
 
         Best-effort, missing-column-safe; NEVER raises."""
         if not snippet_id or not isinstance(row, dict):
@@ -13663,6 +13680,10 @@ class DatabaseService:
             # the stored one rather than carrying the previous answer's grade
             # onto a new answer.
             "intensity": intensity,
+            # Rule 2. Always written, never inferred at read time — an
+            # unstamped row would fall back to the lane, which is right for
+            # the game and wrong for every other surface.
+            "self_report": bool(self_report),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         if rater_id:
@@ -13673,6 +13694,11 @@ class DatabaseService:
             payload["model_version_at_time"] = str(model_version_at_time)
         if probe_score_at_time is not None:
             payload["probe_score_at_time"] = float(probe_score_at_time)
+        # Rule 1: a proposal outside the ternary domain is dropped rather than
+        # coerced. The column's CHECK would reject it and take the whole
+        # RATING down with it — the human answer is the thing worth saving.
+        if machine_value in ("yes", "no", "neutral"):
+            payload["machine_value"] = machine_value
         try:
             (self.client.table("confidence_labels")
                  .upsert(payload,
@@ -13685,6 +13711,33 @@ class DatabaseService:
             return True
         except Exception as e:
             err_low = str(e).lower()
+            # LEDGER COLUMNS MISSING -> RETRY WITHOUT THEM, don't lose the
+            # rating. The migration lands on web boot (MIGRATE_ON_BOOT), so a
+            # worker or a cron container can legitimately run this code for a
+            # few seconds against the older schema. The human answer is the
+            # irreplaceable half; the provenance stamps are re-derivable
+            # (machine_value from the stored acoustic read, self_report from
+            # ownership). Dropping the answer to protect a stamp is backwards.
+            if ("machine_value" in err_low or "self_report" in err_low) and (
+                    "column" in err_low or "pgrst204" in err_low):
+                logger.warning(
+                    "upsert_state_rating: ledger columns missing (run "
+                    "migrations/add_label_quorum_ledger.sql) — retrying "
+                    "without them snip=%s", snippet_id,
+                )
+                payload.pop("machine_value", None)
+                payload.pop("self_report", None)
+                try:
+                    (self.client.table("confidence_labels")
+                         .upsert(payload,
+                                 on_conflict="snippet_id,rater_id").execute())
+                    self._append_label_revision(payload)
+                    return True
+                except Exception as retry_err:
+                    logger.warning(
+                        "upsert_state_rating retry failed snip=%s: %s",
+                        snippet_id, retry_err)
+                    return False
             if ("column" in err_low and (
                     "state_id" in err_low or "unrateable" in err_low
                     or "question_version" in err_low or "lane" in err_low)):
@@ -13752,6 +13805,12 @@ class DatabaseService:
                 "session_id": payload.get("session_id"),
                 "model_version_at_time": payload.get("model_version_at_time"),
                 "probe_score_at_time": payload.get("probe_score_at_time"),
+                # Ledger provenance (rules 1/2). The CURRENT row keeps only
+                # the latest stamps, so without these the machine proposal a
+                # rater actually disagreed with is lost the moment they
+                # re-rate — which is exactly the row active learning wants.
+                "machine_value": payload.get("machine_value"),
+                "self_report": bool(payload.get("self_report")),
                 "origin": "live",
                 "supersedes_id": prev_id,
                 # The judgment's own timestamp — created_at is the INSERT's.
