@@ -42,8 +42,10 @@ def resolve_playable_ref(ref: Any, *, expires_in: int = _DEFAULT_EXPIRES,
     try:
         from config import Config
         from services.coach_video_storage import presigned_get_coach_object
-        bucket = default_bucket or getattr(
-            Config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
+        bucket = str(
+            default_bucket
+            or getattr(Config, "COACH_FEEDBACK_VIDEO_BUCKET", "")
+            or "coach_feedback_videos")
     except Exception:
         return ref
     if "://" in ref:
