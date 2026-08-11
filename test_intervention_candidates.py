@@ -626,6 +626,54 @@ class TestTheOpsTable(unittest.TestCase):
         self.assertIn("c8", [c["id"] for c in kept])
 
 
+class TestTheFunnel(unittest.TestCase):
+    """Eight gates stand between a stored suggestion and the screen, and every
+    one of them drops SILENTLY.
+
+    "Five suggestion rows in the table, one note on the page" cost a night of
+    database queries to narrow, and the answer was never recoverable from the
+    outside: a pool emptied by the PPV floor and a pool emptied by cooldown
+    looked identical. arbitrate() had computed the reason for every rejection
+    the whole time and the caller discarded it."""
+
+    def test_the_funnel_counts_every_stage(self):
+        out = ic.select([_change(i) for i in range(5)], session_id="s1")
+        f = out["funnel"]
+        for stage in ("in", "after_layer", "after_window", "after_type_caps",
+                      "arbitrated", "served"):
+            self.assertIn(stage, f)
+        self.assertEqual(f["in"], 5)
+        self.assertEqual(f["served"], len(out["changes"]))
+
+    def test_it_names_WHY_the_rest_went(self):
+        out = ic.select([_change(i) for i in range(5)], session_id="s1")
+        # Five candidates, a cap of two: the other three lost the budget, and
+        # the funnel says so in those words rather than leaving a subtraction
+        # for the reader to do.
+        self.assertEqual(out["funnel"]["rejected"].get("budget"),
+                         5 - me.BUDGET_CEILING)
+
+    def test_an_EMPTY_serve_still_reports_where_it_emptied(self):
+        # The case that matters most: nothing on screen, and the funnel is
+        # the only witness to which gate did it.
+        locked = [{"id": "p0", "ord": 0, "text": "x" * 200,
+                   "locked_at": "2026-08-11T10:00:00Z"}]
+        out = ic.select([_change(0, start=0, end=10)], parts=locked,
+                        session_id="s1")
+        self.assertEqual(out["changes"], [])
+        self.assertEqual(out["funnel"]["in"], 1)
+        self.assertEqual(out["funnel"]["after_layer"], 0)
+
+    def test_the_funnel_never_reaches_the_client(self):
+        # AC-9 is about what a USER sees. The funnel carries rejection reasons
+        # with PPV numbers in them and belongs in a server log — the change
+        # dicts must stay exactly what they were.
+        out = ic.select([_change(i) for i in range(3)], session_id="s1")
+        for c in out["changes"]:
+            self.assertNotIn("funnel", c)
+            self.assertNotIn("priority", c)
+            self.assertNotIn("ppv", c)
+
 
 if __name__ == "__main__":
     unittest.main()
