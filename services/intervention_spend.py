@@ -57,8 +57,21 @@ def latest_spoken_take_sid(sessions: Any) -> str:
 
 def spend(database, arc_id: Any, sessions: Any, *, change_key: str,
           decision: str, lane: Optional[str] = None,
-          intervention_type: Optional[str] = None) -> bool:
-    """Record one explicit decision. decision: approved | disregarded."""
+          intervention_type: Optional[str] = None,
+          quote: Optional[str] = None,
+          proposed_text: Optional[str] = None,
+          why_key: Optional[str] = None) -> bool:
+    """Record one explicit decision. decision: approved | disregarded.
+
+    quote / proposed_text / why_key ride along when the caller has them
+    (slice 2, founder 2026-08-11): the ledger doubles as the PROPOSAL
+    HISTORY the deck's editor lists per chunk, and without the text a
+    dismissed proposal is unrecoverable (its suggestion row is deleted).
+
+    LANE NOTE — "lane:style" marks a post-lock style decision. Style rides
+    OUTSIDE the ≤3 budget (ruling 4), so spent_count excludes that lane;
+    the row still lands here because the learning loop wants every
+    explicit decision, budgeted or not."""
     if not arc_id or not change_key:
         return False
     try:
@@ -68,7 +81,10 @@ def spend(database, arc_id: Any, sessions: Any, *, change_key: str,
             change_key=str(change_key),
             decision=decision,
             lane=lane,
-            intervention_type=intervention_type))
+            intervention_type=intervention_type,
+            quote=quote,
+            proposed_text=proposed_text,
+            why_key=why_key))
     except Exception as e:
         logger.warning("intervention_spend: spend failed arc=%s: %s",
                        arc_id, e)

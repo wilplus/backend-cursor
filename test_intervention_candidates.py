@@ -44,6 +44,56 @@ def _change(i, *, source="polish", kind="replace", start=None, end=None):
             "proposed_text": "y"}
 
 
+class TestTheStyleLane(unittest.TestCase):
+    """Slice 2 (founder 2026-08-11): a locked part's bold proposals ride
+    the STYLE LANE — outside the ≤3 budget, beside the budgeted list,
+    still window-clamped, never arm-assigned."""
+
+    def _parts(self):
+        # One locked part covering [0, 60), one open covering the rest.
+        return [
+            {"id": "p0", "ord": 0, "text": "x" * 58,
+             "locked_at": "2026-08-11T10:00:00Z"},
+            {"id": "p1", "ord": 1, "text": "y" * 400},
+        ]
+
+    def test_a_locked_bold_serves_beside_the_budget_not_inside_it(self):
+        parts = self._parts()
+        style = _change(0, kind="bold", start=0, end=8)
+        open_pool = [_change(i, start=100 + i * 60, end=108 + i * 60)
+                     for i in range(1, 6)]
+        out = ic.select([style] + open_pool, parts=parts)
+        # The budgeted lane still serves its full ≤3 — the style row costs
+        # nothing…
+        self.assertEqual(len(out["changes"]), 3)
+        # …and rides beside it, visual stamped, style_lane tagged.
+        self.assertEqual([c["id"] for c in out.get("style_changes") or []],
+                         ["c0"])
+        self.assertEqual(out["style_changes"][0]["visual"], "bold")
+        self.assertTrue(out["style_changes"][0]["style_lane"])
+
+    def test_the_style_lane_survives_an_empty_budget_lane(self):
+        parts = self._parts()
+        style = _change(0, kind="bold", start=0, end=8)
+        out = ic.select([style], parts=parts)
+        self.assertEqual(out["changes"], [])
+        self.assertEqual([c["id"] for c in out.get("style_changes") or []],
+                         ["c0"])
+
+    def test_the_style_lane_keeps_the_accent_window(self):
+        """A bold past the intonation ceiling paints sentences on accept —
+        lock or no lock — so §F.4 clamps the style lane too. The ceiling
+        counts WORDS (Chafe's intonation unit), so the fixture must exceed
+        it in words, not characters."""
+        parts = self._parts()
+        wide = _change(0, kind="bold", start=0, end=58)
+        wide["quote"] = "one two three four five six seven eight nine " \
+                        "ten eleven twelve thirteen"
+        out = ic.select([wide], parts=parts)
+        self.assertEqual(out["changes"], [])
+        self.assertNotIn("style_changes", out)
+
+
 class TestTheTakeBudget(unittest.TestCase):
     """Founder 2026-08-10: "each feedback needs to be there; full and end
     to end and waiting; not that it appears once the other is accepted."

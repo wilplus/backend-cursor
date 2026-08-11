@@ -299,3 +299,5 @@
 0261	retire_stress_snippets.sql
 0262	add_intervention_decisions.sql
 0263	add_upload_idempotency_key.sql
+0264	add_intervention_decision_texts.sql
+0265	add_ideal_text_part_iteration.sql

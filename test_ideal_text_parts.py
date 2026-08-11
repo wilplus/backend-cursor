@@ -243,7 +243,10 @@ class TestTheRoundTrip(unittest.TestCase):
                {"id": _id(), "text": "Close."}]
         stored = validate(raw)
         served = serve([dict(p) for p in stored])
-        self.assertEqual([{k: v for k, v in p.items() if k != "locked"}
+        # `locked` and `iteration` are serve-time additions (the lock flag
+        # and the slice-2 maturity counter); everything stored round-trips.
+        self.assertEqual([{k: v for k, v in p.items()
+                           if k not in ("locked", "iteration")}
                           for p in served], stored)
         self.assertTrue(agrees_with_text(served, joined(stored)))
 
@@ -384,12 +387,25 @@ class TestR1TheLayerFilter(unittest.TestCase):
         self.assertEqual(
             ic.filter_by_layer([self._change(parts, 0, "replace")], parts), [])
 
-    def test_a_locked_part_refuses_an_emphasis_too(self):
-        """Gen-one kept this; the founder's rule is stricter — locked text is
-        the speaker's committed memory, and styling it is still touching it."""
+    def test_a_locked_part_takes_a_bold_only_as_the_STYLE_LANE(self):
+        """R1 gen-3 (founder 2026-08-11, the deck respec): a locked part
+        takes bold/colour proposals TAGGED style_lane — routed outside the
+        ≤3 budget by the caller and surfaced only inside the chunk's modal,
+        never as an underline on the page. Gen-2 dropped these entirely;
+        the founder re-ruled it: "when the text was already locked in there
+        comes only the suggestion ... to bolden the text or to colour"."""
+        parts = self._parts(True)
+        out = ic.filter_by_layer([self._change(parts, 0, "bold")], parts)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0]["style_lane"])
+
+    def test_a_locked_part_still_refuses_advice(self):
+        """The style lane is bold/colour ONLY — advice is not styling, and
+        an unnamed pass-through would be gen-1 sneaking back."""
         parts = self._parts(True)
         self.assertEqual(
-            ic.filter_by_layer([self._change(parts, 0, "bold")], parts), [])
+            ic.filter_by_layer([self._change(parts, 0, "advice")], parts),
+            [])
 
     def test_a_locked_part_passes_confident_voice_as_pending(self):
         """The ONE exception, tagged rather than served as a normal offer:
@@ -420,15 +436,22 @@ class TestR1TheLayerFilter(unittest.TestCase):
 
     def test_the_locked_open_split_on_one_document(self):
         parts = self._parts(True, False)
-        drop_bold_locked = self._change(parts, 0, "bold")
+        style_bold_locked = self._change(parts, 0, "bold")
         drop_repl_locked = self._change(parts, 0, "replace")
         keep_repl_open = self._change(parts, 1, "replace")
         keep_bold_open = self._change(parts, 1, "bold")
         out = ic.filter_by_layer(
-            [drop_bold_locked, drop_repl_locked,
+            [style_bold_locked, drop_repl_locked,
              keep_repl_open, keep_bold_open], parts)
+        # Gen-3: the locked bold survives TAGGED (the style lane);
+        # composition on locked text stays dropped — L1's mechanical
+        # enforcement is unchanged.
         self.assertEqual([c["id"] for c in out],
-                         [keep_repl_open["id"], keep_bold_open["id"]])
+                         [style_bold_locked["id"], keep_repl_open["id"],
+                          keep_bold_open["id"]])
+        self.assertTrue(out[0]["style_lane"])
+        self.assertNotIn("style_lane", out[1])
+        self.assertNotIn("style_lane", out[2])
 
     def test_the_visual_registry(self):
         """SPEC §3: Confident Voice = star; rewrites = underline; accents =

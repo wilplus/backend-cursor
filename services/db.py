@@ -10949,18 +10949,53 @@ class DatabaseService:
         if not arc_id or not user_id or not part_id:
             return False
         try:
-            res = (
-                self.client.table("ideal_text_part")
-                .update({
-                    "locked_at": (datetime.now(timezone.utc).isoformat()
-                                  if locked else None),
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                })
-                .eq("id", str(part_id))
-                .eq("arc_id", str(arc_id))
-                .eq("user_id", str(user_id))
-                .execute()
-            )
+            update: dict = {
+                "locked_at": (datetime.now(timezone.utc).isoformat()
+                              if locked else None),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if locked:
+                # The MATURITY counter (slice 2, founder 2026-08-11): +1 on
+                # every lock-in, never on unlock. Read-then-write — this is
+                # a single-student tap path, not a contended counter — and
+                # best-effort: pre-migration the lock still lands, the
+                # counter simply holds at nothing.
+                try:
+                    cur = (
+                        self.client.table("ideal_text_part")
+                        .select("iteration")
+                        .eq("id", str(part_id))
+                        .eq("arc_id", str(arc_id))
+                        .eq("user_id", str(user_id))
+                        .limit(1)
+                        .execute()
+                    )
+                    row0 = (cur.data or [{}])[0] or {}
+                    update["iteration"] = int(row0.get("iteration") or 0) + 1
+                except Exception:
+                    pass
+            def _do(payload: dict):
+                return (
+                    self.client.table("ideal_text_part")
+                    .update(payload)
+                    .eq("id", str(part_id))
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .execute()
+                )
+            try:
+                res = _do(update)
+            except Exception as inner:
+                # Pre-migration column miss: the LOCK must land even when
+                # the counter cannot — retry without it, never fail the tap
+                # on a column that is not there yet.
+                if "iteration" in update and (
+                        "iteration" in str(inner).lower()
+                        or "pgrst204" in str(inner).lower()):
+                    update.pop("iteration", None)
+                    res = _do(update)
+                else:
+                    raise
             # An update that matched NOTHING is not a success. Postgres has no
             # complaint to make about it, so without this a lock on a part that
             # does not belong to this document returns 200 and does nothing —
@@ -11254,12 +11289,43 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    def list_intervention_decision_history(self, arc_id: Optional[str],
+                                           limit: int = 50) -> list:
+        """The arc's decided proposals THAT STILL CARRY THEIR TEXT — the
+        deck editor's "proposals from earlier iterations" (slice 2,
+        founder 2026-08-11). Rows written before the texts migration have
+        no quote and are unlistable — filtered here, never invented.
+        Newest first. [] pre-migration / on hiccup."""
+        if not arc_id:
+            return []
+        try:
+            res = (
+                self.client.table("intervention_decisions")
+                .select("change_key,decision,lane,intervention_type,"
+                        "quote,proposed_text,why_key,updated_at")
+                .eq("arc_id", str(arc_id))
+                .order("updated_at", desc=True)
+                .limit(max(1, int(limit)))
+                .execute()
+            )
+            return [r for r in (res.data or [])
+                    if isinstance(r, dict) and (r.get("quote")
+                                                or r.get("proposed_text"))]
+        except Exception as e:
+            logger.warning(
+                "list_intervention_decision_history failed arc=%s: %s",
+                arc_id, e)
+            return []
+
     def record_intervention_decision(self, *, arc_id: str,
                                      take_session_id: str,
                                      change_key: str,
                                      decision: str,
                                      lane: Optional[str] = None,
                                      intervention_type: Optional[str] = None,
+                                     quote: Optional[str] = None,
+                                     proposed_text: Optional[str] = None,
+                                     why_key: Optional[str] = None,
                                      ) -> bool:
         """One decided intervention — SPEC §3.3's ground-truth row AND one
         spent budget slot (founder 2026-08-10: the ≤3 is PER TAKE, and a
@@ -11273,7 +11339,7 @@ class DatabaseService:
                 or decision not in ("approved", "disregarded"):
             return False
         try:
-            self.client.table("intervention_decisions").upsert({
+            row: dict = {
                 "arc_id": str(arc_id),
                 "take_session_id": str(take_session_id or ""),
                 "change_key": str(change_key),
@@ -11281,7 +11347,31 @@ class DatabaseService:
                 "lane": lane,
                 "intervention_type": intervention_type,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
-            }, on_conflict="arc_id,take_session_id,change_key").execute()
+            }
+            # The proposal texts (slice 2 history) ride only when the caller
+            # HAS them: a re-tap without them must not null what an earlier
+            # write stored. Pre-migration these keys would 400 the upsert, so
+            # a schema-cache miss retries without them — the decision (the
+            # spend) must never be lost to the history columns.
+            texts = {k: v for k, v in (("quote", quote),
+                                       ("proposed_text", proposed_text),
+                                       ("why_key", why_key)) if v}
+            try:
+                self.client.table("intervention_decisions").upsert(
+                    {**row, **texts},
+                    on_conflict="arc_id,take_session_id,change_key").execute()
+            except Exception as inner:
+                if not texts:
+                    raise
+                _ie = str(inner).lower()
+                if "quote" in _ie or "proposed_text" in _ie \
+                        or "why_key" in _ie or "pgrst204" in _ie:
+                    self.client.table("intervention_decisions").upsert(
+                        row,
+                        on_conflict="arc_id,take_session_id,change_key"
+                    ).execute()
+                else:
+                    raise
             return True
         except Exception as e:
             _e = str(e).lower()
@@ -11319,20 +11409,25 @@ class DatabaseService:
     def count_intervention_decisions(self, arc_id: Optional[str],
                                      take_session_id: Optional[str]) -> int:
         """Spent slots for one take. 0 pre-migration / on hiccup — the
-        serve degrades to the per-arbitration budget, never to silence."""
+        serve degrades to the per-arbitration budget, never to silence.
+
+        STYLE-LANE rows (lane == "lane:style") do NOT count: the post-lock
+        style lane rides OUTSIDE the ≤3 budget (founder 2026-08-11, ruling
+        4). Counted in Python rather than with .neq — PostgREST's neq
+        drops NULL lanes too, and the star lane's rows carry lane NULL, so
+        a server-side filter would silently free slots that were spent."""
         if not arc_id:
             return 0
         try:
             res = (
                 self.client.table("intervention_decisions")
-                .select("id", count="exact")
+                .select("lane")
                 .eq("arc_id", str(arc_id))
                 .eq("take_session_id", str(take_session_id or ""))
                 .execute()
             )
-            if getattr(res, "count", None) is not None:
-                return int(res.count)
-            return len(res.data or [])
+            return sum(1 for r in (res.data or [])
+                       if (r or {}).get("lane") != "lane:style")
         except Exception as e:
             _e = str(e).lower()
             if "intervention_decisions" in _e and (

@@ -465,6 +465,18 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
         if c.get("trigger") == CONFIDENT_VOICE_TRIGGER:
             kept.append({**c, "pending_better_version": True,
                          "pending_copy": PENDING_BETTER_VERSION_COPY})
+            continue
+        # R1, THIRD generation (founder 2026-08-11, the deck respec): a
+        # locked part takes the STYLE LANE — bold/colour proposals that
+        # touch presentation, never the words ("this next suggestion is
+        # less intrusive and needs to keep the text coherent"). Tagged,
+        # not merged: the caller routes tagged rows OUTSIDE the ≤3 budget
+        # (ruling 4: "Outside") and the FE surfaces them only inside the
+        # chunk's modal — locked text is never re-underlined on the page.
+        # Composition on locked text stays dropped: L1's mechanical
+        # enforcement is unchanged — nothing rewrites committed words.
+        if c.get("kind") == "bold":
+            kept.append({**c, "style_lane": True})
         # every other change on a locked part: dropped, silently — the
         # founder's rule, not a failure.
     return kept
@@ -542,8 +554,25 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # R1 — the layer filter runs HERE, before anything is scored or
         # budgeted. See filter_by_layer for why the order is the rule.
         rows = filter_by_layer(rows, parts)
+        # THE STYLE LANE (R1 gen-3, founder 2026-08-11) splits off before
+        # the budget machinery: style rows ride OUTSIDE the ≤3 (ruling 4),
+        # so they see neither the type caps nor arbitrate — but they DO
+        # keep the §F.4 accent window (a style accent past the intonation
+        # ceiling would paint sentences on accept, lock or no lock), and
+        # they take no arm assignment: the experiment measures the
+        # budgeted serve, and free-lane rows would distort its record.
+        style_rows = [c for c in rows if c.get("style_lane")]
+        rows = [c for c in rows if not c.get("style_lane")]
+        style_rows = filter_by_window(style_rows)
+        for c in style_rows:
+            c["visual"] = visual_of(c)
+        style_rows.sort(key=lambda c: (
+            (c.get("span") or {}).get("start", 0),
+            (c.get("span") or {}).get("end", 0)))
+        _style = {"style_changes": style_rows} if style_rows else {}
         if not rows:
-            return {"changes": [], "result": None, "controls": False}
+            return {"changes": [], "result": None, "controls": False,
+                    **_style}
         # §F.4 — the emphasis WINDOW gate, same before-budget reasoning: an
         # accent-class offer whose quote exceeds the intonation-unit ceiling
         # would paint sentences on accept (the bake now refuses it), so a
@@ -553,20 +582,23 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # about PAINT, and composition paints a diff, not a wash.
         rows = filter_by_window(rows)
         if not rows:
-            return {"changes": [], "result": None, "controls": False}
+            return {"changes": [], "result": None, "controls": False,
+                    **_style}
         # Appendix C mix caps (founder GO 2026-08-10): cap the POOL per
         # C.2 type so one lane cannot monopolise the flat budget — see
         # filter_by_type_caps for why this runs before arbitration.
         rows = filter_by_type_caps(rows)
         if not rows:
-            return {"changes": [], "result": None, "controls": False}
+            return {"changes": [], "result": None, "controls": False,
+                    **_style}
         rows.sort(key=lambda c: (
             (c.get("span") or {}).get("start", 0),
             (c.get("span") or {}).get("end", 0)))
 
         candidates = to_candidates(rows)
         if not candidates:
-            return {"changes": [], "result": None, "controls": False}
+            return {"changes": [], "result": None, "controls": False,
+                    **_style}
 
         controls = _controls_enabled()
         state = user_state(candidates)
@@ -613,7 +645,8 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # record, and rows written with the arms inert would carry the policy
         # (gamma, withhold_rate) as if an assignment had happened when none
         # did — a table that reads as populated while measuring nothing.
-        return {"changes": kept, "result": result, "controls": controls}
+        return {"changes": kept, "result": result, "controls": controls,
+                **_style}
     except Exception as e:
         logger.warning("intervention selection failed: %s", e)
         return {"changes": [], "result": None, "controls": False}

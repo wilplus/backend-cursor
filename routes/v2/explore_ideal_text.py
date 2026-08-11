@@ -659,6 +659,12 @@ def v2_explore_get_ideal_text(arc_id):
                 # which is None under the master flag (see _tracked_changes_
                 # block). It keys the withhold arm and every arm row.
                 _latest_take_sid or ""),
+            # ── PROPOSAL HISTORY (slice 2, founder 2026-08-11): the arc's
+            # decided proposals, texts included, newest first — the deck
+            # editor's "proposals from earlier iterations". Rows predating
+            # the texts migration carry no text and are not listed. ──
+            "decision_history": db.list_intervention_decision_history(
+                arc_id),
             # The moments-unlock price, top level (the FE reads it here
             # for the locked-moment prompt — the only paid item).
             "price_credits": int(getattr(
@@ -773,7 +779,14 @@ def v2_explore_decide_prior_take(arc_id):
                   change_key="prior_take:" + normalize_phrase(quote),
                   decision=("approved" if action == "accept"
                             else "disregarded"),
-                  lane="lane:prior_take", intervention_type="REWRITE")
+                  lane="lane:prior_take", intervention_type="REWRITE",
+                  # PROPOSAL HISTORY (slice 2): this lane always has the
+                  # quote in hand — the body requires it; the replacement
+                  # rides on accepts (a keep has no proposed text to keep).
+                  quote=quote, proposed_text=(proposed or None),
+                  why_key=(str(body.get("why_key"))
+                           if isinstance(body.get("why_key"), str)
+                           and body.get("why_key").strip() else None))
         if ok and action == "accept":
             _reassemble_after_decision(arc_id)
         return jsonify({"saved": bool(ok)}), 200
@@ -841,11 +854,22 @@ def v2_explore_decide_block(arc_id, block_key):
         # ONLY this explicit tap spends: the save-time bulk auto-keeps must
         # never write here (SPEC R4 — fabricated refusals). Best-effort.
         from services.intervention_spend import spend
+        _bq = body.get("quote")
+        _bpt = body.get("proposed_text")
+        _bwk = body.get("why_key")
         spend(db, arc_id, _blk_sessions,
               change_key=f"block:{int(block_key)}:{echo}",
               decision=("approved" if action == "accept"
                         else "disregarded"),
-              lane="lane:new_take", intervention_type="REWRITE")
+              lane="lane:new_take", intervention_type="REWRITE",
+              # PROPOSAL HISTORY (slice 2): optional — older clients write
+              # text-less rows, which the history read skips.
+              quote=(str(_bq) if isinstance(_bq, str) and _bq.strip()
+                     else None),
+              proposed_text=(str(_bpt) if isinstance(_bpt, str)
+                             and _bpt.strip() else None),
+              why_key=(str(_bwk) if isinstance(_bwk, str)
+                       and _bwk.strip() else None))
         if action == "accept":
             _reassemble_after_decision(arc_id)
             try:
@@ -1528,12 +1552,22 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         _sel = _select(changes, user_id=user_id,
                        session_id=_arm_sid,
                        decided_count=spent_count(db, arc_id, _arm_sid),
-                       # R1 gen-2 — the layer filter runs inside the gate,
+                       # R1 gen-3 — the layer filter runs inside the gate,
                        # BEFORE the budget: an open part takes everything;
-                       # a locked part takes nothing but a pending
-                       # Confident Voice.
+                       # a locked part takes the STYLE LANE (bold only,
+                       # outside the ≤3 — founder 2026-08-11) plus a
+                       # pending Confident Voice, nothing else.
                        parts=_locked_parts(arc_id, user_id, served_text))
         changes = _sel["changes"]
+        # THE STYLE LANE rides beside the budgeted list, span-verified
+        # against the same served text; a failed check drops the style
+        # rows alone (fail closed, but never at the budgeted lane's cost).
+        _styles = _sel.get("style_changes") or []
+        if _styles and not verify_changes(served_text, _styles):
+            logger.warning("style lane: span check failed arc=%s "
+                           "(serving none)", arc_id)
+            _styles = []
+        _style = {"style_changes": _styles} if _styles else {}
         # Additions ride OUTSIDE the budget and outside the span check — they
         # have no span. Absent when there are none, so the FE draws nothing
         # rather than an empty section. See master_document.block_additions for
@@ -1544,7 +1578,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
-            return {"changes": [], **_add}
+            return {"changes": [], **_add, **_style}
         # THE EXPERIMENT'S RECORD — after the span check on purpose: a row
         # stamped surfaced=True for a serve the guard then zeroed would claim
         # notes the student never saw. Only when the arms actually ran: rows
@@ -1552,7 +1586,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # withhold_rate) as if an assignment had happened when none did.
         if _sel.get("controls") and _sel.get("result") is not None:
             _record_arms(_sel["result"], _arm_sid, user_id)
-        return {"changes": changes, **_add}
+        return {"changes": changes, **_add, **_style}
     except Exception as e:
         logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
         return {}
