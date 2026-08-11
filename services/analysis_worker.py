@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from services.db import db
@@ -40,6 +41,51 @@ def _moment_suggestions_enabled() -> bool:
     routes module from services; both read MOMENT_SUGGESTIONS_ENABLED)."""
     return (os.getenv("MOMENT_SUGGESTIONS_ENABLED") or "0").strip().lower() \
         in ("1", "true", "yes")
+
+
+class _Timeline:
+    """PHASE TIMINGS for one run (founder 2026-08-11: "put tracking timers on
+    the AI pipeline to see exactly which step takes the longest, rather than
+    blindly trying to fix it").
+
+    The wait after a take is long enough that the founder asked twice about
+    it, and nothing in this pipeline has ever recorded where the time goes —
+    the same position the intervention serve was in this evening, where an
+    hour of database queries answered a question one log line now answers.
+
+    Each phase is logged AS IT CLOSES rather than in one summary at the end,
+    which is deliberate: a run that CRASHES is exactly the run whose timings
+    you want, and a summary written after the last statement is the one you
+    never get. The totals line is a convenience on top, not the record.
+
+    AC-9: durations of machine work. Nothing here is a read on the speaker,
+    and none of it reaches a payload."""
+
+    __slots__ = ("_sid", "_t0", "_last", "_stage", "phases")
+
+    def __init__(self, session_id: str) -> None:
+        self._sid = str(session_id or "")
+        self._t0 = time.monotonic()
+        self._last = self._t0
+        # Named for what has been happening SINCE the caller handed us the
+        # take, which is where the user's wait actually starts.
+        self._stage = "intake"
+        self.phases: Dict[str, int] = {}
+
+    def mark(self, stage: str) -> None:
+        """Close the running phase and open `stage`."""
+        now = time.monotonic()
+        ms = int((now - self._last) * 1000)
+        self.phases[self._stage] = ms
+        logger.info("pipeline phase session=%s %s=%dms",
+                    self._sid, self._stage, ms)
+        self._stage, self._last = stage, now
+
+    def done(self) -> None:
+        self.mark("done")
+        total = int((time.monotonic() - self._t0) * 1000)
+        logger.info("pipeline timing session=%s total=%dms %s",
+                    self._sid, total, self.phases)
 
 
 def _emit(progress: ProgressFn, stage: str, percent: int,
@@ -79,7 +125,9 @@ def run_full_analysis(
     """
     from services.lab_recording import process_lab_recording
 
+    tl = _Timeline(session_id)
     _emit(progress, "analysis", 15, "Transcribing and analyzing your take…")
+    tl.mark("analysis")
     readout_local = process_lab_recording(
         session_id=session_id,
         user_id=user_id,  # fix #2b: attribute at record time
@@ -133,6 +181,7 @@ def run_full_analysis(
                        session_id, _gm_err)
 
     _emit(progress, "post_processing", 70, "Wrapping up…")
+    tl.mark("post_processing")
 
     # Explore-session cadence (Prompt A §6 C3) — after a take in an
     # arc, invite the NEXT take as a Lounge bubble. Authed only;
@@ -195,6 +244,7 @@ def run_full_analysis(
             )
 
     _emit(progress, "finalizing", 90, "Preparing your results…")
+    tl.mark("finalizing")
 
     # EAGER ideal-text assembly (founder 2026-07-15): the moment the
     # arc's 3rd SPOKEN take finishes analysis, assemble + persist the
@@ -303,4 +353,5 @@ def run_full_analysis(
                 "lab: eager ideal-text failed sid=%s: %s (non-fatal)",
                 session_id, _ea_err,
             )
+    tl.done()
     return readout_local, sent_local
