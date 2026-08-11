@@ -576,8 +576,18 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
     """
     try:
         rows = [c for c in (changes or []) if isinstance(c, dict)]
+        # THE FUNNEL (founder 2026-08-11). Eight gates stand between a stored
+        # suggestion and the screen and every one of them drops SILENTLY, so
+        # "five rows in the table, one note on the page" was a night of
+        # guessing to narrow down. arbitrate() has computed the reason for
+        # every rejection all along and the caller threw it away; this
+        # records the count at each stage and logs the whole shape once.
+        # Server-side only — AC-9 is about what a USER sees, and nothing here
+        # goes near a payload.
+        funnel: dict = {"in": len(rows)}
         if not rows:
-            return {"changes": [], "result": None, "controls": False}
+            return {"changes": [], "result": None, "controls": False,
+                    "funnel": funnel}
         # THE COUNTING UNIT (founder 2026-08-11: "do it per slide up to 2").
         # One paragraph per slide, and the paragraph is the chunk the student
         # decides on — so the mix caps below and the budget further down are
@@ -593,6 +603,7 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # R1 — the layer filter runs HERE, before anything is scored or
         # budgeted. See filter_by_layer for why the order is the rule.
         rows = filter_by_layer(rows, parts)
+        funnel["after_layer"] = len(rows)
         # THE STYLE LANE (R1 gen-3, founder 2026-08-11) splits off before
         # the budget machinery: style rows ride OUTSIDE the ≤3 (ruling 4),
         # so they see neither the type caps nor arbitrate — but they DO
@@ -609,9 +620,14 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
             (c.get("span") or {}).get("start", 0),
             (c.get("span") or {}).get("end", 0)))
         _style = {"style_changes": style_rows} if style_rows else {}
+        funnel["style_lane"] = len(style_rows)
         if not rows:
+            # THE EMPTY SERVE is the case the funnel exists for: nothing on
+            # screen, and this is the only witness to which gate did it.
+            logger.info("intervention funnel session=%s %s (empty after the "
+                        "layer filter)", session_id, funnel)
             return {"changes": [], "result": None, "controls": False,
-                    **_style}
+                    "funnel": funnel, **_style}
         # §F.4 — the emphasis WINDOW gate, same before-budget reasoning: an
         # accent-class offer whose quote exceeds the intonation-unit ceiling
         # would paint sentences on accept (the bake now refuses it), so a
@@ -620,24 +636,29 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # legitimately block-sized and has its own UI; the window rule is
         # about PAINT, and composition paints a diff, not a wash.
         rows = filter_by_window(rows)
+        funnel["after_window"] = len(rows)
         if not rows:
             return {"changes": [], "result": None, "controls": False,
-                    **_style}
+                    "funnel": funnel, **_style}
         # Appendix C mix caps (founder GO 2026-08-10): cap the POOL per
         # C.2 type so one lane cannot monopolise the flat budget — see
         # filter_by_type_caps for why this runs before arbitration.
         rows = filter_by_type_caps(rows, group_of=_para_of)
+        funnel["after_type_caps"] = len(rows)
         if not rows:
             return {"changes": [], "result": None, "controls": False,
-                    **_style}
+                    "funnel": funnel, **_style}
         rows.sort(key=lambda c: (
             (c.get("span") or {}).get("start", 0),
             (c.get("span") or {}).get("end", 0)))
 
         candidates = to_candidates(rows)
+        # to_candidates refuses zero-width and malformed spans — the one
+        # stage whose loss is invisible in the row list itself.
+        funnel["arbitrated"] = len(candidates)
         if not candidates:
             return {"changes": [], "result": None, "controls": False,
-                    **_style}
+                    "funnel": funnel, **_style}
 
         controls = _controls_enabled()
         state = user_state(candidates)
@@ -697,13 +718,26 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
                 row["visual"] = visual_of(row)
                 kept.append(row)
         kept.sort(key=lambda c: (c["span"]["start"], c["span"]["end"]))
+        funnel["served"] = len(kept)
+        # WHY the rest went, in the engine's own words. `rejected` has always
+        # carried (dimension, reason) and nothing ever read it — so a pool
+        # that emptied on the PPV floor and one that emptied on cooldown were
+        # indistinguishable from the outside, which is how "why is there only
+        # one note?" became unanswerable without a database session.
+        why: dict = {}
+        for _dim, reason in (result.get("rejected") or ()):
+            why[reason] = why.get(reason, 0) + 1
+        if result.get("budget_lost"):
+            why["budget"] = len(result["budget_lost"])
+        funnel["rejected"] = why
+        logger.info("intervention funnel session=%s %s", session_id, funnel)
         # `controls` rides back so the caller knows whether an EXPERIMENT ran.
         # It gates arm persistence: `intervention_arms` is the experiment's
         # record, and rows written with the arms inert would carry the policy
         # (gamma, withhold_rate) as if an assignment had happened when none
         # did — a table that reads as populated while measuring nothing.
         return {"changes": kept, "result": result, "controls": controls,
-                **_style}
+                "funnel": funnel, **_style}
     except Exception as e:
         logger.warning("intervention selection failed: %s", e)
         return {"changes": [], "result": None, "controls": False}
