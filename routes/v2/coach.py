@@ -3055,6 +3055,134 @@ def v2_coach_confidence_queue(session_id):
                         "error": "could not load the queue"}), 500
 
 
+@v2_bp.route("/coach/arcs/<arc_id>/ab-pairs", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_ab_pairs(arc_id):
+    """BLINDED A/B — the same slide, two takes, no labels (founder 2026-08-11).
+
+    The corpus that unblocks piece (b): power_score's DELIVERY term is
+    ranking-inert until the composite is anchored against blinded human
+    ratings, and line-level cross-take selection is disabled until a
+    fuzzy-alignment spike can run on real multi-take arcs. One coach act
+    produces both — a preference to correlate against, and a matched
+    cross-take pair.
+
+    THE PAYLOAD CARRIES NO TAKE IDENTITY. Each side is words + audio +
+    timing and nothing else: no session id, no take index, no timestamp. A
+    rater who can tell which take is later is rating a story about
+    improvement rather than a delivery, so the blinding is enforced in
+    services/ab_slide_pairs.py rather than trusted to the UI.
+
+    Already-rated pairs are dropped: `?all=1` keeps them (re-rating is
+    legitimate — it is how intra-rater reliability gets measured — but the
+    queue should not serve the same pair forever).
+
+      200 { arc_id, pairs: [{pair_id, slide_index, slide_title,
+                             left:{…}, right:{…}}], rated_count }
+      200 { pairs: [], reason } — fewer than two takes, or no deck
+    """
+    try:
+        from services.ab_slide_pairs import build_pairs
+        from services.audio_ref_resolver import resolve_playable_ref
+        from services.best_presentation import spoken_arc_sessions
+        sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id) or [])
+        if len(sessions) < 2:
+            return jsonify({"arc_id": arc_id, "pairs": [],
+                            "reason": "needs at least two spoken takes"}), 200
+        takes, slides = [], []
+        for sess in sessions:
+            sid = str(sess.get("id") or "")
+            if not sid:
+                continue
+            row = db.v2_get_session_by_id(sid) or {}
+            ctx = row.get("intake_context")
+            ctx = ctx if isinstance(ctx, dict) else {}
+            if not slides:
+                slides = ctx.get("slides") or []
+            takes.append({
+                "session_id": sid,
+                "slide_transcripts": db.get_session_slide_transcripts(sid),
+                "audio_ref": resolve_playable_ref(row.get("audio_path")),
+            })
+        if not slides:
+            return jsonify({"arc_id": arc_id, "pairs": [],
+                            "reason": "no deck on this arc"}), 200
+        pairs = build_pairs(takes, slides)
+        rated = db.list_slide_ab_verdicts(arc_id) or []
+        if (request.args.get("all") or "") not in ("1", "true", "yes"):
+            from services.ab_slide_pairs import pair_id as _pid
+            seen = {
+                _pid(r.get("slide_index") or 0,
+                     r.get("session_left") or "", r.get("session_right") or "")
+                for r in rated if isinstance(r, dict)
+            }
+            pairs = [p for p in pairs if p["pair_id"] not in seen]
+        return jsonify({"arc_id": arc_id, "pairs": pairs,
+                        "rated_count": len(rated)}), 200
+    except Exception as e:
+        logger.error("coach/ab-pairs failed arc=%s err=%s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to build the comparison queue"}), 500
+
+
+@v2_bp.route("/coach/arcs/<arc_id>/ab-verdict", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_ab_verdict(arc_id):
+    """One blinded judgment: { pair_id, verdict: 'left'|'right'|'tie' }.
+
+    The server resolves the blinded side back to a real session — the FE
+    never learns which take it picked, so a rater cannot drift toward "the
+    later one" over a session of ratings.
+
+    A TIE IS A VERDICT, stored with a NULL winner: "a human looked and could
+    not separate them" is exactly the signal that tells the composite where
+    NOT to claim a difference. Absence of a row means nobody looked.
+
+    Both texts ride along. A pair is only alignment ground truth if you can
+    still read both sides of it, and the document reassembles on every take.
+
+    200 { saved, slide_index, verdict } · 400 · 500
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        from services.ab_slide_pairs import resolve_verdict
+        resolved = resolve_verdict(body.get("pair_id"), body.get("verdict"))
+        if resolved is None:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "pair_id: unreadable, or verdict not left/right/tie",
+            }), 400
+        # The words as the rater read them, pulled from the same persisted
+        # per-slide transcript the pair was built from.
+        def _text(session_id):
+            for t in (db.get_session_slide_transcripts(session_id) or []):
+                if isinstance(t, dict) and t.get("index") == resolved["slide_index"]:
+                    return t.get("transcript") or ""
+            return None
+        saved = db.record_slide_ab_verdict(
+            arc_id=arc_id,
+            slide_index=resolved["slide_index"],
+            session_left=resolved["session_left"],
+            session_right=resolved["session_right"],
+            verdict=resolved["verdict"],
+            winner_session_id=resolved["winner_session_id"],
+            left_text=_text(resolved["session_left"]),
+            right_text=_text(resolved["session_right"]),
+            rated_by=str(getattr(request, "user_id", "") or "") or None,
+        )
+        return jsonify({"saved": bool(saved),
+                        "slide_index": resolved["slide_index"],
+                        "verdict": resolved["verdict"]}), 200
+    except Exception as e:
+        logger.error("coach/ab-verdict failed arc=%s err=%s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the comparison"}), 500
+
+
 @v2_bp.route("/coach/snippets/<snippet_id>/slide", methods=["PUT"])
 @require_admin_or_coach
 def v2_coach_put_snippet_slide(snippet_id):
