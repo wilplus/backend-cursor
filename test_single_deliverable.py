@@ -481,10 +481,11 @@ class HistoricalVersionTests(unittest.TestCase):
         m = body["key_moments"][0]
         self.assertEqual(m["anchor"], "the old span")
         self.assertIn(m["anchor"], body["text"])
-        # The star is EXPLICIT historically too (FE relay 2026-07-20) —
-        # the FE never infers star semantics.
-        self.assertEqual(m["star"], "suggestion")
-        self.assertEqual(m["suggestion"]["replacement"], "the new span")
+        # Sole-gatekeeper rip (founder 2026-08-10): the historical view is
+        # a frozen read-only step and no longer hand-assembles suggestion
+        # payloads outside the gate. Anchors stay; stars do not.
+        self.assertNotIn("star", m)
+        self.assertNotIn("suggestion", m)
         raw = json.dumps(body)
         for banned in ("threat", "charisma", "potentiometer"):
             self.assertNotIn(banned, raw)   # sanitized at write, held here
@@ -502,15 +503,17 @@ class HistoricalVersionTests(unittest.TestCase):
         self.assertNotIn("star", m)
         self.assertNotIn("suggestion", m)
 
-    def test_delivery_snapshot_serves_star_from_device(self):
+    def test_delivery_snapshot_serves_no_star(self):
+        # Sole-gatekeeper rip: a snapshot's delivery moment renders as a
+        # plain anchor — no star, whatever its device says.
         snap = {"arc_id": ARC, "version": 1, "text": self.SNAP_TEXT,
                 "created_at": "2026-07-19T10:00:00Z",
                 "moments": [{"snippet_id": UID, "kind": "delivery",
                              "device": "pace_fast", "quote": None}]}
         body, _ = self._get(version_param="1", snap=snap)
         m = body["key_moments"][0]
-        self.assertEqual(m["star"], "suggestion")
-        self.assertEqual(m["suggestion"]["device"], "pace_fast")
+        self.assertNotIn("star", m)
+        self.assertNotIn("suggestion", m)
 
     def test_missing_snapshot_reports_unavailable(self):
         body, status = self._get(version_param="1", snap=None)

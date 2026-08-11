@@ -41,82 +41,20 @@ def _snip(sid):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class IdealTextRouteCompositionTests(unittest.TestCase):
-    """The coach_finalized content gate (services.best_presentation): the
-    route returns 200 with an empty idealText until the coach has corrected
-    EVERY slide, then serves the real corrected text. (The 402 paywall that
-    used to gate this route was retired with the single-deliverable flag.)"""
+class TalksRouteIsDeletedTests(unittest.TestCase):
+    """/talks/<talk_id>/ideal-text is GONE (founder 2026-08-10: "older
+    feedback system should be ripped off") — it had no FE caller and the
+    audits product it served is retired. The coach_finalized content gate
+    the old composition tests exercised through it stays covered where it
+    lives: test_best_presentation.py's CoachFinalizedGateTests (the gate)
+    and test_ideal_text_report.py (the pure builder mapping)."""
 
-    def setUp(self):
-        self.app = Flask(__name__)
-        sessions = [_sess(f"s{i}") for i in range(3)]
-        snips = {f"s{i}": [_snip(f"c{i}")] for i in range(3)}
-        self._p = [
-            # v2_talk_ideal_text resolves this from routes.v2.explore_ideal_text;
-            # the pencil-edit route below resolves it from routes.v2.arcs. Patch
-            # both bindings so either route under test sees the stub.
-            patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
-                        lambda arc_id: (True, sessions)),
-            patch("routes.v2.arcs._arc_owned_by_caller",
-                        lambda arc_id: (True, sessions)),
-            patch.object(v2, "is_admin", lambda uid: False),
-            patch.object(v2, "is_coach", lambda uid: False),
-            patch.object(v2.db, "get_arc_sessions", lambda arc_id: sessions),
-            patch.object(v2.db, "get_snippets_by_session",
-                        lambda sid: snips.get(sid, [])),
-            patch.object(v2.db, "get_training_labels", lambda sid: []),
-            patch.object(v2.db, "get_best_presentation_edits",
-                        lambda arc_id: {}),
-        ]
-        for p in self._p:
-            p.start()
-        self._coach_edits = {}
-        self._purchase = None
-        _edits_patch = patch.object(
-            v2.db, "get_coach_best_presentation_edits",
-            lambda arc_id: dict(self._coach_edits),
-        )
-        _purchase_patch = patch.object(
-            v2.db, "get_arc_purchase", lambda arc_id: self._purchase,
-        )
-        self._p += [_edits_patch, _purchase_patch]
-        _edits_patch.start()
-        _purchase_patch.start()
+    def test_the_route_function_is_gone_from_the_aggregator(self):
+        self.assertFalse(hasattr(v2, "v2_talk_ideal_text"))
 
-    def tearDown(self):
-        for p in self._p:
-            p.stop()
-
-    def _call(self, talk_id="a1"):
-        with self.app.test_request_context():
-            request.user_id = "u1"
-            resp, status = v2.v2_talk_ideal_text.__wrapped__(talk_id)
-            return resp.get_json(), status
-
-    def test_paid_but_not_finalized_returns_200_with_empty_ideal_text(self):
-        self._purchase = {"arc_id": "a1", "user_id": "u1"}
-        self._coach_edits = {}  # coach hasn't corrected anything yet
-        body, status = self._call()
-        self.assertEqual(status, 200)
-        self.assertFalse(body["coachFinalized"])
-        for s in body["slides"]:
-            self.assertEqual(s["idealText"], "")
-
-    def test_paid_and_finalized_returns_real_ideal_text(self):
-        self._purchase = {"arc_id": "a1", "user_id": "u1"}
-        self._coach_edits = {0: "coach's corrected line"}
-        body, status = self._call()
-        self.assertEqual(status, 200)
-        self.assertTrue(body["coachFinalized"])
-        self.assertEqual(body["slides"][0]["idealText"],
-                         "coach's corrected line")
-
-    def test_not_owner_404s(self):
-        # this class drives v2_talk_ideal_text, which lives in explore_ideal_text
-        with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
-                          lambda arc_id: (False, [])):
-            body, status = self._call()
-        self.assertEqual(status, 404)
+    def test_the_route_function_is_gone_from_its_module(self):
+        from routes.v2 import explore_ideal_text
+        self.assertFalse(hasattr(explore_ideal_text, "v2_talk_ideal_text"))
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

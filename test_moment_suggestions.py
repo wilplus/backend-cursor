@@ -439,34 +439,48 @@ class StudentGetStarTests(unittest.TestCase):
                        "replacement_text": replacement,
                        "why": "It reads calmer.", "trigger": trigger}}
 
-    def test_polish_star_carries_narrow_diff_quote(self):
-        # Quote narrowing (founder 2026-07-20): a polish star underlines
-        # ONLY the changed span, computed from the verbatim-vs-polished
-        # diff — never the whole piece.
+    # ── THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder 2026-08-10:
+    # "no other exist, older feedback system should be ripped off"). The
+    # machine star/suggestion branches that served these rows unbudgeted
+    # from key_moments are GONE — the same moment_suggestions rows now
+    # reach the student ONLY through the gated `changes` lane. These tests
+    # pin the rip per lane: the moment keeps its anchor, ids and playback;
+    # it never carries a star or a suggestion. ──
+
+    def _serves_no_star(self, body):
+        m = body["key_moments"][0]
+        self.assertNotIn("star", m)
+        self.assertNotIn("suggestion", m)
+        # The moment itself stays — playback + album identity survive.
+        self.assertEqual(m["snippet_id"], SNIP)
+        self.assertEqual(m["id"], SNIP)
+        self.assertIn(m["anchor"], body["text"])
+        return m
+
+    def test_polish_replace_serves_no_star(self):
         body, _ = self._get(sugs=self._sug(
             trigger="polish", kind="replace", replacement="the pivot"))
-        sug = body["key_moments"][0]["suggestion"]
-        self.assertEqual(sug["quote"], "turn")
-        self.assertIn(sug["quote"], body["text"])
+        self._serves_no_star(body)
 
-    def test_threat_replace_is_icon_only_no_quote(self):
+    def test_threat_replace_serves_no_star(self):
         body, _ = self._get(sugs=self._sug(trigger="threat"))
-        self.assertIsNone(body["key_moments"][0]["suggestion"]["quote"])
+        self._serves_no_star(body)
 
-    def test_emphasize_is_icon_only_no_quote(self):
+    def test_emphasize_serves_no_star(self):
         body, _ = self._get(sugs=self._sug(kind="emphasize",
                                            replacement=None,
                                            trigger="charisma"))
-        self.assertIsNone(body["key_moments"][0]["suggestion"]["quote"])
+        body_m = self._serves_no_star(body)
+        # The internal vocabulary must not ride the payload either way
+        # (CONSTRUCT/AC-9) — the rip must not weaken that fence.
+        self.assertNotIn("charisma", json.dumps(body_m))
 
-    def test_profanity_replace_quotes_the_carrying_sentence(self):
+    def test_profanity_replace_serves_no_star(self):
         self.text = (f"Hello. [[moment:{SNIP}|{SESS}]]We tried hard. "
                      "Then the damn projector died. We laughed."
                      "[[/moment]] goodbye.")
         body, _ = self._get(sugs=self._sug(trigger="threat"))
-        sug = body["key_moments"][0]["suggestion"]
-        self.assertEqual(sug["quote"], "Then the damn projector died.")
-        self.assertIn(sug["quote"], body["text"])
+        self._serves_no_star(body)
 
     def test_explanations_available_tracks_coach_explanations(self):
         body, _ = self._get(sugs=self._sug())
@@ -475,37 +489,26 @@ class StudentGetStarTests(unittest.TestCase):
             {"snippet_id": SNIP, "surfaced": True, "note": "watch this"}])
         self.assertTrue(body["explanations_available"])
 
-    def test_replace_star_trigger_clamped_to_polish_or_none(self):
-        # The FE labels a 'polish' replace differently from the rest — but
-        # the raw internal vocabulary (threat/charisma/...) must NEVER ride
-        # a user payload (CONSTRUCT/AC-9; adversarial review 2026-07-18).
-        body, _ = self._get(sugs=self._sug(trigger="polish", replacement="X"))
-        self.assertEqual(body["key_moments"][0]["suggestion"]["trigger"],
-                         "polish")
-        body, _ = self._get(sugs=self._sug(trigger="threat"))
-        m = body["key_moments"][0]
-        self.assertIsNone(m["suggestion"]["trigger"])
-        self.assertNotIn("threat", json.dumps(m))
-        body, _ = self._get(sugs=self._sug(kind="emphasize",
-                                           replacement=None,
-                                           trigger="charisma"))
-        m = body["key_moments"][0]
-        self.assertIsNone(m["suggestion"]["trigger"])
-        self.assertNotIn("charisma", json.dumps(m))
+    def test_internal_vocabulary_never_rides_the_payload(self):
+        # CONSTRUCT/AC-9 held before the rip and must hold after it: the
+        # raw trigger vocabulary (threat/charisma/…) never reaches a user
+        # payload, star lane or no star lane.
+        for sugs in (self._sug(trigger="threat"),
+                     self._sug(kind="emphasize", replacement=None,
+                               trigger="charisma")):
+            body, _ = self._get(sugs=sugs)
+            raw = json.dumps(body["key_moments"])
+            self.assertNotIn("threat", raw)
+            self.assertNotIn("charisma", raw)
 
-    def test_grey_suggestion_star(self):
+    def test_replace_row_serves_no_star(self):
+        # The sole-gatekeeper rip (founder 2026-08-10): what used to be the
+        # grey suggestion star. The row still PRODUCES into the gated
+        # changes lane; key_moments carries only anchor, ids and playback.
         body, status = self._get(sugs=self._sug())
         self.assertEqual(status, 200)
-        m = body["key_moments"][0]
-        self.assertEqual(m["star"], "suggestion")
-        self.assertEqual(m["suggestion"]["kind"], "replace")
-        self.assertEqual(m["suggestion"]["replacement"], "steady words")
-        self.assertFalse(m["applied"])
+        m = self._serves_no_star(body)
         self.assertEqual(m["anchor"], "the turn")   # unapplied → original
-        # BOTH id keys: `snippet_id` is what the feedback POST keys on
-        # (audit 2026-07-18 — its absence sent an empty snippet id).
-        self.assertEqual(m["snippet_id"], SNIP)
-        self.assertEqual(m["id"], SNIP)
 
     def test_served_text_has_no_moment_wrappers_and_anchor_is_plain(self):
         # THE audit's headline gap: an anchor inside a [[moment:…]] token is
@@ -536,26 +539,19 @@ class StudentGetStarTests(unittest.TestCase):
                        "replacement_text": None, "why": quote,
                        "trigger": device}}
 
-    def test_structural_star_serves_device_and_quote(self):
+    def test_structural_row_serves_no_star(self):
+        # Sole-gatekeeper rip: the structural prompt reaches the student
+        # through the gated changes lane, never as a free key_moments star.
         body, _ = self._get(sugs=self._struct())
-        m = body["key_moments"][0]
-        self.assertEqual(m["star"], "suggestion")
-        s = m["suggestion"]
-        self.assertEqual(s["kind"], "structure")
-        self.assertEqual(s["device"], "contrast")
-        self.assertEqual(s["quote"], "the turn")   # the user's own words
-        self.assertIsNone(s["why"])                # no generated prose served
-        self.assertNotIn("replacement", s)
+        self._serves_no_star(body)
 
-    def test_structural_star_never_consumed_by_applied(self):
-        # A structural star is a delivery prompt — even a stray feedback row
-        # must never fold it away or drop it.
+    def test_structural_row_never_folds_on_a_stray_applied(self):
+        # A structural row is a delivery prompt — a stray feedback row must
+        # never fold the text (that rule predates the rip and survives it).
         feedback = [{"snippet_id": SNIP, "target": "moment_structure",
                      "action": "applied"}]
         body, _ = self._get(sugs=self._struct(), feedback=feedback)
-        m = body["key_moments"][0]
-        self.assertEqual(m["star"], "suggestion")
-        self.assertEqual(m["suggestion"]["kind"], "structure")
+        self._serves_no_star(body)
         self.assertNotIn("[[moment:", body["text"])   # never folded
 
     def test_verified_star_beats_suggestion(self):
@@ -613,28 +609,22 @@ class StudentGetStarTests(unittest.TestCase):
         self.assertNotIn("suggestion", m)
         self.assertNotIn("applied", m)
 
-    def test_delivery_star_serves_device_only(self):
-        # Measured delivery star (founder 2026-07-18): behavioural prompt,
-        # no prose, no numbers — the FE renders approved copy from device.
+    def test_delivery_row_serves_no_star_and_no_numbers(self):
+        # Sole-gatekeeper rip — and the AC-9 half of the old pin survives:
+        # nothing numeric rides the payload either way.
         sugs = {SNIP: {"snippet_id": SNIP, "arc_id": ARC, "kind": "delivery",
                        "replacement_text": None, "why": None,
                        "trigger": "pace_fast"}}
         body, _ = self._get(sugs=sugs)
-        m = body["key_moments"][0]
-        self.assertEqual(m["star"], "suggestion")
-        self.assertEqual(m["suggestion"]["kind"], "delivery")
-        self.assertEqual(m["suggestion"]["device"], "pace_fast")
-        self.assertIsNone(m["suggestion"]["quote"])
-        self.assertIsNone(m["suggestion"]["why"])
+        self._serves_no_star(body)
         raw = json.dumps(body)
         for banned in ("wpm", "z_score", "f0_sd", "dynamic_db",
                        "pause_ratio"):
             self.assertNotIn(banned, raw)   # nothing numeric rides along
 
     def test_delivery_unknown_device_yields_no_star(self):
-        # The FE renders copy PURELY from device (pinned) — an unknown
-        # spelling must yield NO star, and must NOT fall through to the
-        # generic text-suggestion branch either.
+        # An unknown device never minted a star before the rip; after it,
+        # NOTHING mints one — same observable, kept as the regression pin.
         sugs = {SNIP: {"snippet_id": SNIP, "arc_id": ARC, "kind": "delivery",
                        "replacement_text": None, "why": None,
                        "trigger": "volume_up"}}
