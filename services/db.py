@@ -11406,6 +11406,68 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    # ── BLINDED A/B SLIDE VERDICTS (founder 2026-08-11) ──────────────────
+    #
+    # The corpus that unblocks piece (b) — see
+    # migrations/add_slide_ab_verdicts.sql for what a row means and why the
+    # sides are stored AS SHOWN rather than as winner/loser.
+
+    def record_slide_ab_verdict(self, *, arc_id: str, slide_index: int,
+                                session_left: str, session_right: str,
+                                verdict: str,
+                                winner_session_id: Optional[str] = None,
+                                left_text: Optional[str] = None,
+                                right_text: Optional[str] = None,
+                                rated_by: Optional[str] = None) -> bool:
+        """One blinded comparison. Append-only — a re-rating is a new row, so
+        intra-rater reliability stays computable. Best-effort: a labelling
+        write must never break the review it rides with."""
+        if not arc_id or verdict not in ("left", "right", "tie"):
+            return False
+        try:
+            self.client.table("slide_ab_verdicts").insert({
+                "arc_id": str(arc_id),
+                "slide_index": int(slide_index),
+                "session_left": str(session_left),
+                "session_right": str(session_right),
+                "verdict": verdict,
+                "winner_session_id": (
+                    str(winner_session_id) if winner_session_id else None
+                ),
+                "left_text": left_text,
+                "right_text": right_text,
+                "rated_by": str(rated_by) if rated_by else None,
+            }).execute()
+            return True
+        except Exception as e:
+            logger.warning("record_slide_ab_verdict failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def list_slide_ab_verdicts(self, arc_id: str) -> list:
+        """Every verdict for an arc, newest first — the corpus AND the
+        already-rated set the serve subtracts. [] pre-migration."""
+        if not arc_id:
+            return []
+        try:
+            res = (
+                self.client.table("slide_ab_verdicts")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .order("created_at", desc=True)
+                .execute()
+            )
+            return list(res.data or [])
+        except Exception as e:
+            _e = str(e).lower()
+            if "slide_ab_verdicts" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return []
+            logger.warning("list_slide_ab_verdicts failed arc=%s: %s",
+                           arc_id, e)
+            return []
+
     # ── THE COACH'S WORD→SLIDE GROUND TRUTH (founder 2026-08-11) ─────────
     #
     # Append-only by design (migrations/add_snippet_slide_corrections.sql):
