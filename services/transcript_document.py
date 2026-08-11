@@ -185,29 +185,109 @@ def build_transcript_document(arc_id: Any, *, database=None,
         return None
 
 
+def _snap(doc: str, at: int, lo: int, hi: int) -> int:
+    """`at` moved to the nearest whitespace boundary inside [lo, hi] — so a
+    computed split never lands mid-word. Prefers the break at or before
+    `at`; falls back to the next one after it."""
+    left = doc.rfind(" ", lo, at)
+    if left > lo:
+        return left + 1
+    right = doc.find(" ", at, hi)
+    if 0 <= right < hi:
+        return right + 1
+    return at
+
+
+def _share_gap(doc: str, lo: int, hi: int, runs: list) -> list:
+    """Assign [lo, hi) to the `runs` pieces, in order, proportionally to
+    their ORIGINAL lengths and snapped to word boundaries.
+
+    Only reached for a piece whose words the bake changed, so there is no
+    exact anchor left to find. One piece takes the whole gap (the common
+    case, and exact). Two or more adjacent changed pieces cannot have
+    their internal boundary recovered from the text alone — proportional
+    is the honest approximation, and it is strictly better than the
+    alternative it replaces (dropping them, which loses the slide the
+    words belong to and any coach moment on them)."""
+    if lo >= hi or not runs:
+        return []
+    widths = [max(1, len((p.get("text") or "").strip())) for p in runs]
+    total = sum(widths)
+    out: list = []
+    at = lo
+    for i, p in enumerate(runs):
+        end = hi if i == len(runs) - 1 else _snap(
+            doc, lo + round((hi - lo) * sum(widths[:i + 1]) / total), at, hi)
+        end = min(max(end, at), hi)
+        chunk = doc[at:end]
+        start = at + (len(chunk) - len(chunk.lstrip()))
+        stop = end - (len(chunk) - len(chunk.rstrip()))
+        if stop > start:
+            out.append({**p, "start": start, "end": stop,
+                        "text": doc[start:stop]})
+        at = end
+    return out
+
+
 def relocate_pieces(text: Any, pieces: Any) -> list:
     """Re-anchor pieces onto a text that has CHANGED since the build (an
     approved change baked in, a coach correction landed).
 
-    The search is MONOTONIC — each piece is looked for after the previous
-    one's end — so repeated wording can never steal another piece's
-    anchor (the first-occurrence defect the review found). A piece whose
-    words are gone (it was the one that got replaced) is DROPPED: it has
-    nothing left to point at. Pure."""
+    A PIECE IS A REGION OF THE DOCUMENT, not a string that must still
+    exist verbatim (founder-critical fix 2026-08-11). This used to be a
+    single monotonic exact find that DROPPED whatever it could not
+    locate — and a bake changes exactly the words it lands on: a
+    polish/replace swaps the phrase, an emphasis wraps {{orange:…}}
+    around it. So the piece the student had just accepted a change on was
+    the one that vanished, taking with it the slide index the FE zips 1:1
+    to build the per-slide deck (a short list collapses the deck into one
+    untitled section — the 1:1 north star) and, when the piece was a
+    surfaced breakthrough, the coach's key moment on those words.
+
+    Two passes:
+      1. MONOTONIC EXACT FIND, unchanged — each piece looked for after
+         the previous one's end, so repeated wording can never steal
+         another piece's anchor (the first-occurrence defect the earlier
+         review found). Untouched documents come out byte-identical.
+      2. Every piece the find missed takes the GAP its located neighbours
+         leave. The document is its pieces in order, so the words between
+         two anchors belong to whatever sat between them — that IS the
+         changed piece, in its new spelling. Its `text` is re-read from
+         the document, which keeps `verify_spans` true and keeps every
+         anchor derived from it (key_moments) indexing the served text.
+
+    A piece whose gap is EMPTY is still dropped: the words really are
+    gone, so there is no region either. Pure."""
     doc = text if isinstance(text, str) else ""
-    out: list = []
+    src = [p for p in (pieces or [])
+           if isinstance(p, dict) and (p.get("text") or "").strip()]
+    # Pass 1 — where each piece still is, or None.
+    found: list = []
     cursor = 0
-    for p in (pieces or []):
-        if not isinstance(p, dict):
-            continue
+    for p in src:
         needle = (p.get("text") or "").strip()
-        if not needle:
-            continue
         i = doc.find(needle, cursor)
         if i < 0:
+            found.append(None)
             continue
-        out.append({**p, "start": i, "end": i + len(needle)})
+        found.append((i, i + len(needle)))
         cursor = i + len(needle)
+    # Pass 2 — hand each unlocated RUN the space between its neighbours.
+    out: list = []
+    i = 0
+    while i < len(src):
+        if found[i] is not None:
+            lo, hi = found[i]
+            out.append({**src[i], "start": lo, "end": hi})
+            i += 1
+            continue
+        j = i
+        while j < len(src) and found[j] is None:
+            j += 1
+        gap_lo = found[i - 1][1] if i > 0 and found[i - 1] else 0
+        gap_hi = found[j][0] if j < len(src) and found[j] else len(doc)
+        out.extend(_share_gap(doc, gap_lo, gap_hi, src[i:j]))
+        i = j
     return out
 
 
