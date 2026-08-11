@@ -118,6 +118,38 @@ when the environment is sound. Never prints a value.
 
 ## 3. Lab audio bucket split
 
+> **STATUS: PARKED (founder, 2026-08-11).** Not cut over — neither Railway
+> service carries `R2_LAB_AUDIO_BUCKET` / `R2_LAB_AUDIO_PUBLIC_BASE_URL`,
+> so `lab_audio_segregated()` is False and takes still write to the coach
+> bucket. Parked deliberately, and two facts from 2026-08-11 change the
+> plan for whoever un-parks it:
+>
+> 1. **Playback no longer needs a public base.** `services/
+>    audio_ref_resolver.py` re-signs every ref minted on our own bases
+>    (and signs `s3://` refs), so players work with zero public bucket
+>    access. The old plan's hardest step — a custom domain
+>    (`lab-audio.willpowerlab.com`) — is now OPTIONAL, and its r2.dev
+>    rate-limit worry is moot. It was also BLOCKED anyway:
+>    `willpowerlab.com`'s DNS is not a zone on this Cloudflare account
+>    (verified 2026-08-11, the Worker route hit the same wall).
+> 2. **The split's real payoff is retention/lifecycle separation**, and
+>    there is no privacy-policy retention window to encode yet. Without a
+>    rule the split buys almost nothing — that is why it is parked, not
+>    half-done.
+>
+> **Un-park when a retention promise exists.** The cutover then shrinks
+> to: create `willab-lab-audio` (lowercase-hyphens; R2 rejects
+> underscores) → **check the R2 API token is account-scoped, not
+> bucket-scoped** (the silent-403 trap — a token pinned to
+> `coach-feedback-videos` makes every upload to the new bucket fail AFTER
+> the take was recorded; if you recreate the token, the key id + secret
+> change and BOTH Railway services need the new pair) → set both
+> `R2_LAB_AUDIO_*` vars on BOTH services (any https base value works now;
+> the resolver signs) → add the lifecycle rule matching the policy →
+> verify per the steps below (new take plays + lands under `willab_lab/`
+> in the new bucket; an OLD take still plays via the read fallback).
+> Rollback stays: unset both vars, redeploy; never copy-move objects.
+
 ### The finding
 
 Lab takes were written to `coach_feedback_videos` — the coach's curated,
