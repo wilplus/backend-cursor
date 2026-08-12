@@ -173,13 +173,29 @@ def _newer_than(iso: Any, sessions: Any) -> int:
     against a reference that stopped tracking the speaker is worse than a
     slow one.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     def _dt(v: Any):
+        """Parse to an AWARE datetime, or None.
+
+        NAIVE VALUES ARE STAMPED UTC (bug, found in production 2026-08-12).
+        Postgres hands these two columns back differently — `computed_at`
+        arrives with an offset and `created_at` without — and comparing the
+        two raises "can't compare offset-naive and offset-aware datetimes".
+        That TypeError fires at the COMPARISON, not at the parse, so it fell
+        past this function's guard into the caller's except, which logged
+        "cached read failed" and rebuilt the baseline. Every take. The cache
+        never once served a hit, and the whole 1+N saving was silently
+        forfeited while the code looked correct.
+        UTC is the right stamp rather than a guess: this stack stores and
+        returns UTC everywhere, and the two values are minutes apart in
+        practice, so a wrong assumption here would be visible immediately.
+        """
         try:
-            return datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+            at = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
         except (TypeError, ValueError):
             return None
+        return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
 
     at = _dt(iso)
     if at is None:
@@ -187,7 +203,14 @@ def _newer_than(iso: Any, sessions: Any) -> int:
     n = 0
     for s in (sessions or []):
         made = _dt((s or {}).get("created_at")) if isinstance(s, dict) else None
-        if made is None or made > at:
+        try:
+            newer = made is None or made > at
+        except TypeError:      # pragma: no cover - _dt now normalises both
+            # Belt to the braces above. A comparison that raises must count as
+            # NEWER (rebuild), never escape and disable the cache wholesale —
+            # which is exactly how this failed the first time.
+            newer = True
+        if newer:
             n += 1
     return n
 

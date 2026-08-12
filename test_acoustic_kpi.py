@@ -289,6 +289,40 @@ class BaselineFreshnessTests(unittest.TestCase):
         self.assertEqual(ab._newer_than("2026-08-12T23:00:00Z", sess), 1)
         self.assertEqual(ab._newer_than(None, sess), 2)
 
+    def test_a_NAIVE_and_an_AWARE_timestamp_still_compare(self):
+        # PRODUCTION BUG, 2026-08-12. Postgres returns `computed_at` with an
+        # offset and `created_at` without, and comparing the two raises
+        # "can't compare offset-naive and offset-aware datetimes" — at the
+        # COMPARISON, not the parse, so it fell past _dt's guard into the
+        # caller's except, which logged "cached read failed" and rebuilt. Every
+        # take. The cache never served a single hit and the whole saving was
+        # forfeited while every test here passed, because the tests used
+        # uniformly Z-suffixed strings and production does not.
+        aware = "2026-08-12T10:26:39.552+00:00"
+        naive = [{"created_at": "2026-08-12T11:01:25.068"}]
+        self.assertEqual(ab._newer_than(aware, naive), 1)
+        # …and the other way round.
+        self.assertEqual(
+            ab._newer_than("2026-08-12T11:30:00",
+                           [{"created_at": "2026-08-12T10:00:00+00:00"}]), 0)
+
+    def test_a_mixed_pair_does_not_disable_the_cache_wholesale(self):
+        # The shape of the original failure: one bad comparison must cost one
+        # rebuild, never take the whole fast path down.
+        class _Db:
+            def get_current_user_acoustic_baseline(self, uid, *, detector_version=""):
+                return {"id": "b1", "computed_at": "2026-08-12T10:00:00+00:00",
+                        "features": {"f0_sd": {"mean": 1.0, "sd": 0.5}}}
+
+            def v2_list_user_lab_sessions(self, uid, *, limit=5):
+                return [{"created_at": "2026-08-12T09:00:00"}]   # naive, older
+
+            def get_snippets_by_session(self, sid):   # pragma: no cover
+                raise AssertionError("rebuilt when it should have reused")
+
+        base, kind = ab.resolve_for_take("u1", database=_Db())
+        self.assertEqual((base, kind), ({"f0_sd": (1.0, 0.5)}, "user"))
+
     def test_no_sessions_is_not_stale(self):
         self.assertEqual(ab._newer_than("2026-08-12T08:00:00Z", []), 0)
         self.assertEqual(ab._newer_than("2026-08-12T08:00:00Z", None), 0)
