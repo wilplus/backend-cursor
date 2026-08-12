@@ -45,6 +45,32 @@ class TimelineTests(unittest.TestCase):
         tl.mark("post_processing")
         self.assertEqual(sorted(tl.phases), ["analysis", "intake"])
 
+    def test_a_CRASHED_run_still_writes_its_totals_line(self):
+        # Founder 2026-08-12: "a recording went through and no timer fired!".
+        # Half of that was the missing root log handler; the other half is
+        # here — `tl.done()` written as the pipeline's last statement never
+        # runs when the pipeline raises, and a run that falls over after a
+        # long wait is exactly the run worth timing. The context manager
+        # closes the OPEN phase under its own name, so the last line before
+        # the traceback names the step that was running.
+        with self.assertLogs("services.analysis_worker", level="INFO") as cm:
+            with self.assertRaises(RuntimeError):
+                with _Timeline("sess-boom") as tl:
+                    tl.mark("analysis")
+                    raise RuntimeError("model call blew up")
+        blob = "\n".join(cm.output)
+        self.assertIn("analysis=", blob)
+        self.assertIn("pipeline timing session=sess-boom total=", blob)
+        # …and it is not silently indistinguishable from a clean run.
+        self.assertIn("ok=False", blob)
+
+    def test_the_context_manager_never_swallows_the_pipeline_error(self):
+        # Instrumentation that eats an exception is worse than no
+        # instrumentation: the take would report success (LIVE LOOP).
+        with self.assertRaises(ValueError):
+            with _Timeline("s1"):
+                raise ValueError("boom")
+
     def test_done_closes_the_LAST_phase(self):
         # "done" is a sentinel that closes `finalizing`; it is not itself a
         # phase and must never appear as one — a zero-length row in the
@@ -99,7 +125,74 @@ class WiringTests(unittest.TestCase):
         for stage in ("analysis", "post_processing", "finalizing"):
             self.assertIn(f'_emit(progress, "{stage}"', src)
             self.assertIn(f'tl.mark("{stage}")', src)
-        self.assertIn("tl.done()", src)
+        # The totals line is closed by the CONTEXT MANAGER, not by a trailing
+        # statement — a trailing `tl.done()` is skipped by the very crash whose
+        # timings you wanted, so its absence here is the point.
+        self.assertIn("with _Timeline(session_id) as tl:", src)
+        self.assertNotIn("\n    tl.done()", src)
+
+
+class RootLoggingTests(unittest.TestCase):
+    """The timers existed and could still not be found (founder 2026-08-12).
+
+    `logger.info` in this process propagates to the ROOT logger, and under
+    gunicorn root has no handler — records fall through to
+    logging.lastResort, which is fixed at WARNING. So every INFO line in the
+    web service was discarded, timers included. The worker was fine, which is
+    why it went unnoticed: PIPELINE_QUEUE_ENABLED decided whether the logs
+    existed.
+    """
+
+    def test_configure_logging_gives_the_root_logger_a_handler(self):
+        import logging as _logging
+
+        from services.logging_setup import configure_logging
+
+        root = _logging.getLogger()
+        saved = list(root.handlers)
+        try:
+            root.handlers.clear()
+            configure_logging()
+            self.assertTrue(root.handlers, "root logger still has no handler")
+            self.assertLessEqual(root.level, _logging.INFO)
+        finally:
+            root.handlers[:] = saved
+
+    def test_it_never_stomps_handlers_someone_else_installed(self):
+        # basicConfig semantics, kept on purpose: pytest's capture plugin and
+        # a future --log-config both own root legitimately. Losing the logs a
+        # second time, by clobbering, is harder to find than the first time.
+        import logging as _logging
+
+        from services.logging_setup import configure_logging
+
+        root = _logging.getLogger()
+        saved = list(root.handlers)
+        try:
+            mine = _logging.NullHandler()
+            root.handlers[:] = [mine]
+            configure_logging()
+            self.assertEqual(root.handlers, [mine])
+        finally:
+            root.handlers[:] = saved
+
+    def test_both_entrypoints_configure_it_before_anything_logs(self):
+        # app.py is the one that was broken; worker.py must keep using the
+        # same function so a run's timing lines look identical in either
+        # Railway service.
+        import re
+
+        for path in ("app.py", "worker.py"):
+            with open(path, encoding="utf-8") as fh:
+                src = fh.read()
+            self.assertIn("configure_logging()", src, path)
+            call = src.index("configure_logging()\n")
+            head = src[:call]
+            # Nothing that emits a boot log may run first — the boot checks
+            # are the first thing anyone reads in a Railway log.
+            for boot in re.findall(r"^\w[\w.]*\(\)$", head, re.M):
+                self.assertNotIn("check", boot, f"{path}: {boot} logs first")
+                self.assertNotIn("enforce", boot, f"{path}: {boot} logs first")
 
 
 if __name__ == "__main__":

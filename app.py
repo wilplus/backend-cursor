@@ -8,6 +8,19 @@ from config import Config
 
 config = Config()
 
+# ROOT LOGGING — FIRST, before anything that logs (founder 2026-08-12:
+# "a recording went through and no timer fired!").
+#
+# Under gunicorn the root logger has NO handler, so every `logger.info(...)`
+# in this process fell through to logging.lastResort (WARNING) and was
+# discarded — the pipeline timers, the auto-send result, the intervention
+# funnel, all of it. This has to run before the boot checks below, because
+# those log too and they are the first thing anyone reads in a Railway boot
+# log. See services/logging_setup.py.
+from services.logging_setup import configure_logging  # noqa: E402
+
+configure_logging()
+
 # Initialize Sentry.
 #
 # traces_sample_rate was 1.0 — a performance transaction for EVERY request,

@@ -715,6 +715,46 @@ class RelocateAfterBakeTests(unittest.TestCase):
         self.assertGreaterEqual(out[0]["start"], 0)
         self.assertLessEqual(out[-1]["end"], len(doc))
 
+    def test_ZERO_surviving_anchors_drops_rather_than_width_guessing(self):
+        # THE ANCHOR GUARD (2026-08-12). Pass 2 is a repair, and the located
+        # neighbours are what make it one — they bound the gap. When NOTHING
+        # anchors (a take recomposed the text, a coach retyped it, the wrong
+        # arc's pieces arrived) the run is the whole list, both bounds are
+        # invented, and the pieces get cut at width-proportional positions
+        # derived from nothing at all.
+        #
+        # It passes verify_spans, because the text is re-read from the
+        # document — which is exactly what made it dangerous. The FE zips
+        # pieces 1:1 to paragraphs for slide attachment and hangs the coach's
+        # chip on a piece's words, so the survivors are chips on words the
+        # coach never spoke about, indistinguishable from real ones.
+        doc = "Completely different words. Nothing here was ever said before."
+        pieces = [{"snippet_id": "a", "text": "We started small"},
+                  {"snippet_id": "b", "text": "and we kept going."},
+                  {"snippet_id": "c", "text": "And then we shipped."}]
+        self.assertEqual(relocate_pieces(doc, pieces), [])
+
+    def test_a_SINGLE_piece_may_still_take_the_whole_document(self):
+        # The one case that is not a guess: with one piece, "the piece is the
+        # document" is a tautology, not an invented split point. Dropping it
+        # would cost the slide index on every one-piece arc — the take-1 case.
+        doc = "We started tiny."
+        out = relocate_pieces(doc, [{"snippet_id": "a",
+                                     "text": "We started small"}])
+        self.assertEqual([p["snippet_id"] for p in out], ["a"])
+        self.assertTrue(verify_spans({"text": doc, "pieces": out}))
+
+    def test_ONE_surviving_anchor_still_repairs_its_neighbours(self):
+        # The guard must not overreach into the case it was written to
+        # protect: a single real anchor bounds every run beside it, so the
+        # baked pieces around it are still located, not dropped.
+        doc = "We started tiny and we kept at it. And then we shipped."
+        pieces = [{"snippet_id": "a", "text": "We started small"},
+                  {"snippet_id": "b", "text": "and we kept going."},
+                  {"snippet_id": "c", "text": "And then we shipped."}]
+        out = relocate_pieces(doc, pieces)
+        self.assertEqual([p["snippet_id"] for p in out], ["a", "b", "c"])
+
     def test_an_untouched_document_relocates_byte_for_byte(self):
         doc = "We started small and we kept going."
         pieces = [{"snippet_id": "a", "text": "We started small"},

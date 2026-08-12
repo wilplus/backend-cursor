@@ -403,7 +403,28 @@ def relocate_pieces(text: Any, pieces: Any) -> list:
          anchor derived from it (key_moments) indexing the served text.
 
     A piece whose gap is EMPTY is still dropped: the words really are
-    gone, so there is no region either. Pure."""
+    gone, so there is no region either.
+
+    THE ANCHOR GUARD (2026-08-12). Pass 2 is a REPAIR, and what makes it a
+    repair rather than a guess is the located neighbours: they are the
+    evidence that bounds the gap. Every unlocated run is bounded on at least
+    one side by a real anchor EXCEPT one — the run that is the whole list,
+    which happens when NOTHING anchored (a take recomposed the text, a coach
+    retyped it, the wrong arc's pieces were handed in). There the "gap" is
+    `0..len(doc)` and both bounds are invented, so the pieces get split at
+    width-proportional positions derived from nothing. The result passes
+    `verify_spans` — the text is re-read from the document — which is exactly
+    what makes it dangerous: slide indexes attach to arbitrary paragraphs and
+    every anchor derived from a piece (key_moments, the coach's video chip)
+    points at words the coach never spoke about.
+
+    So an unbounded run is dropped, with ONE exception that is not a guess: a
+    single piece IS the whole document by definition, so it may take it. Two
+    or more with no anchors is invention, and the deck's standing rule is
+    drop, never guess — a short piece list collapses the deck to one untitled
+    section, which is legible; chips on the wrong words are not.
+
+    Pure."""
     doc = text if isinstance(text, str) else ""
     src = [p for p in (pieces or [])
            if isinstance(p, dict) and (p.get("text") or "").strip()]
@@ -418,6 +439,12 @@ def relocate_pieces(text: Any, pieces: Any) -> list:
             continue
         found.append((i, i + len(needle)))
         cursor = i + len(needle)
+    if len(src) > 1 and not any(f is not None for f in found):
+        logger.warning(
+            "relocate_pieces: NO anchor survived — dropping %d pieces rather "
+            "than width-guessing them across %d chars (chips would point at "
+            "the wrong words)", len(src), len(doc))
+        return []
     # Pass 2 — hand each unlocated RUN the space between its neighbours.
     out: list = []
     i = 0
