@@ -561,13 +561,28 @@ class SnapshotSanitizeTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class MomentsUnlockTests(unittest.TestCase):
-    """BE-5 — the 5-credit unlock, atomic, no grandfathering."""
+    """BE-5 — the key-moment unlock: atomic, no grandfathering.
+
+    RE-POINTED AT TOKENS (founder 2026-08-12, the pricing pivot). The legacy
+    5-credit branch is gone from the endpoint, so these pin the one charging
+    path that remains: 2,500 tokens via token_account.charge, keyed on the arc
+    so a re-open is free.
+
+    THE REFUND ASSERTION IS GONE ON PURPOSE, and its absence is the point.
+    The credits path was deduct → insert → refund-on-conflict, three round
+    trips with two failure windows. `charge` is idempotent on (user, action,
+    ref_id): a raced second claim is reported ok with charged=0 rather than
+    debited and handed back, so there is no refund to make and no window in
+    which the money is gone and the entitlement is not."""
 
     def setUp(self):
         self.app = Flask(__name__)
 
-    def _post(self, *, entitled=False, balance=7, insert_row={"id": "u"},
-              owned=True):
+    def _post(self, *, entitled=False, ok=True, balance=7_500,
+              charged=2_500, insert_row={"id": "u"}, owned=True):
+        from services.token_account import ChargeResult
+        res = ChargeResult(ok, charged if ok else 0, balance,
+                           "" if ok else "insufficient", "moment_explanation")
         with self.app.test_request_context(json={}):
             request.user_id = UID
             with patch("routes.v2.arcs._arc_owned_by_caller",
@@ -575,47 +590,57 @@ class MomentsUnlockTests(unittest.TestCase):
                  patch.object(v2.db, "get_moment_unlock",
                               return_value=({"arc_id": ARC} if entitled
                                             else None)), \
-                 patch.object(v2.db, "deduct_credits_strict",
-                              return_value=balance) as m_deduct, \
+                 patch("services.token_account.charge",
+                       return_value=res) as m_charge, \
                  patch.object(v2.db, "insert_moment_unlock",
-                              return_value=insert_row) as m_ins, \
-                 patch.object(v2.db, "v2_increment_student_credits") \
-                    as m_refund, \
-                 patch.object(v2.db, "v2_get_student_details",
-                              return_value={"credits": 2}):
+                              return_value=insert_row) as m_ins:
                 out = v2.v2_unlock_moments.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
-                return resp.get_json(), status, m_deduct, m_ins, m_refund
+                return resp.get_json(), status, m_charge, m_ins
 
-    def test_unlock_deducts_five_and_claims(self):
-        body, status, m_deduct, m_ins, m_refund = self._post()
+    def test_unlock_charges_tokens_and_claims(self):
+        body, status, m_charge, m_ins = self._post()
         self.assertEqual(status, 200)
         self.assertTrue(body["unlocked"])
-        self.assertEqual(body["credits_remaining"], 7)
-        self.assertEqual(m_deduct.call_args.args[1], 5)   # the price
+        self.assertEqual(body["tokens_remaining"], 7_500)
+        # Keyed on the ARC, which is what makes every re-open free.
+        self.assertEqual(m_charge.call_args.args[1], "moment_explanation")
+        self.assertEqual(m_charge.call_args.kwargs["ref_id"], ARC)
         m_ins.assert_called_once()
-        m_refund.assert_not_called()
+
+    def test_the_legacy_credits_path_is_GONE(self):
+        """The pivot, pinned. A second charging path behind a flag nobody
+        intends to flip back is how two currencies drift apart — the unused
+        one stops being exercised and is still what runs the day an env var
+        gets cleared."""
+        import inspect
+        src = inspect.getsource(v2.v2_unlock_moments)
+        for legacy in ("deduct_credits_strict", "MOMENTS_UNLOCK_CREDITS",
+                       "INSUFFICIENT_CREDITS", "credits_remaining",
+                       "v2_increment_student_credits"):
+            self.assertNotIn(legacy, src)
 
     def test_already_entitled_never_charges(self):
-        body, status, m_deduct, m_ins, _ = self._post(entitled=True)
+        body, status, m_charge, m_ins = self._post(entitled=True)
         self.assertEqual(status, 200)
         self.assertTrue(body["already_entitled"])
-        m_deduct.assert_not_called()
+        m_charge.assert_not_called()
         m_ins.assert_not_called()
 
-    def test_insufficient_credits_402(self):
-        body, status, *_ = self._post(balance=None)
+    def test_insufficient_tokens_402(self):
+        body, status, *_ = self._post(ok=False, balance=100)
         self.assertEqual(status, 402)
-        self.assertEqual(body["code"], "INSUFFICIENT_CREDITS")
-        self.assertEqual(body["required"], 5)
+        self.assertEqual(body["code"], "INSUFFICIENT_TOKENS")
+        self.assertEqual(body["required"], 2_500)
+        self.assertEqual(body["current"], 100)
 
-    def test_raced_claim_refunds(self):
-        # insert conflicts → refund; the re-check still sees no entitlement
-        # in this fixture, so the caller gets the 500-with-refund path.
-        body, status, _d, _i, m_refund = self._post(insert_row=None)
-        self.assertIn(status, (409, 500))
-        m_refund.assert_called_once()
-        self.assertEqual(m_refund.call_args.args[1], 5)
+    def test_a_failed_claim_after_a_charge_reports_rather_than_lies(self):
+        # The insert conflicts AND the re-check still sees no entitlement.
+        # Nothing is refunded — the charge is idempotent on the arc, so the
+        # retry costs nothing and the entitlement lands then.
+        body, status, _c, _i = self._post(insert_row=None)
+        self.assertEqual(status, 500)
+        self.assertEqual(body["code"], "V2_ERROR")
 
     def test_unowned_404(self):
         body, status, *_ = self._post(owned=False)
