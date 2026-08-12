@@ -154,6 +154,29 @@ _CLAIM_PATTERNS = (
      "function"),
 )
 
+# ADDED COLUMNS (founder incident 2026-08-12, the THIRD baseline drift).
+#
+# 0233 add_legacy_credit_conversion.sql was recorded as applied, had never
+# run, and `doctor` could not see it — because the file creates no TABLE and
+# no FUNCTION, only `ALTER TABLE v2_student_details ADD COLUMN bonus_balance`.
+# The tool written to catch exactly this class of drift was blind to the
+# shape that caused it, and reported a clean bill of health while the admin
+# panel was failing on the missing column.
+#
+# A column IS unambiguous in the same way a table is: it either exists or it
+# does not, and a consumer fails hard on its absence. That is the bar the
+# docstring below sets, and this clears it.
+#
+# ONE STATEMENT MAY ADD SEVERAL COLUMNS — `ALTER TABLE t ADD COLUMN a INT,
+# ADD COLUMN b TEXT` is one match for the table and two for the columns — so
+# the table is captured once and every ADD COLUMN inside the statement is
+# scanned separately.
+_ALTER_TABLE_RE = re.compile(
+    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([\w.\"]+)([^;]*)",
+    re.I)
+_ADD_COLUMN_RE = re.compile(
+    r"ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w\"]+)", re.I)
+
 
 def qualified(name: str) -> str:
     """`public.` -qualify a bare object name and drop any quoting. Pure."""
@@ -169,22 +192,35 @@ def claimed_objects(sql: str) -> list[tuple[str, str]]:
     one row per block"), and a scanner that reads the prose would report
     objects the file never creates.
 
-    Deliberately narrow — tables, views and functions. Those are what a
-    consumer actually fails on ("table missing", "function not installed"),
-    and they are the ones whose absence is unambiguous. Indexes and grants
-    are skipped: a missing index degrades to a slow query rather than a
-    broken feature, and inferring index names from `CREATE INDEX IF NOT
-    EXISTS` on a partial expression is guesswork this check does not need.
+    Deliberately narrow — tables, views, functions and ADDED COLUMNS. Those
+    are what a consumer actually fails on ("table missing", "function not
+    installed", "column does not exist"), and they are the ones whose absence
+    is unambiguous. Indexes and grants are skipped: a missing index degrades
+    to a slow query rather than a broken feature, and inferring index names
+    from `CREATE INDEX IF NOT EXISTS` on a partial expression is guesswork
+    this check does not need.
+
+    Columns joined 2026-08-12, after the third baseline drift turned out to
+    be invisible here: 0233 adds one column and creates nothing, so the file
+    claimed nothing, so `doctor` passed it while the app failed on it.
     """
     body = strip_sql_comments(sql)
     out: list[tuple[str, str]] = []
     seen: set = set()
+
+    def _add(kind: str, name: str) -> None:
+        key = (kind, name)
+        if key not in seen:
+            seen.add(key)
+            out.append(key)
+
     for pattern, kind in _CLAIM_PATTERNS:
         for m in pattern.finditer(body):
-            key = (kind, qualified(m.group(1)))
-            if key not in seen:
-                seen.add(key)
-                out.append(key)
+            _add(kind, qualified(m.group(1)))
+    for m in _ALTER_TABLE_RE.finditer(body):
+        table = qualified(m.group(1))
+        for col in _ADD_COLUMN_RE.finditer(m.group(2) or ""):
+            _add("column", f"{table}.{col.group(1).replace(chr(34), '')}")
     return out
 
 
@@ -904,7 +940,16 @@ _DOCTOR_PREDICATE = (
     "         SELECT 1 FROM pg_proc p\n"
     "         JOIN pg_namespace n ON n.oid = p.pronamespace\n"
     "         WHERE n.nspname = split_part(c.obj, '.', 1)\n"
-    "           AND p.proname = split_part(c.obj, '.', 2)))"
+    "           AND p.proname = split_part(c.obj, '.', 2)))\n"
+    # A column claim is 'schema.table.column'. The table's own absence is
+    # already reported by its own row when the file created it; when the
+    # table came from an EARLIER migration this is the only thing that
+    # notices, which is exactly the 0233 case.
+    "   OR (c.kind = 'column'   AND NOT EXISTS (\n"
+    "         SELECT 1 FROM information_schema.columns ic\n"
+    "         WHERE ic.table_schema = split_part(c.obj, '.', 1)\n"
+    "           AND ic.table_name   = split_part(c.obj, '.', 2)\n"
+    "           AND ic.column_name  = split_part(c.obj, '.', 3)))"
 )
 
 

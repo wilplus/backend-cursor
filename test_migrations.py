@@ -711,16 +711,53 @@ class DoctorTests(unittest.TestCase):
                "CREATE TABLE IF NOT EXISTS public.a (id INT);")
         self.assertEqual(migrate.claimed_objects(sql), [("table", "public.a")])
 
-    def test_a_file_that_creates_nothing_claims_nothing(self):
-        # ALTER / INSERT / GRANT-only migrations are common here and must not
-        # produce a claim nobody can verify.
+    def test_an_ADDED_COLUMN_is_claimed(self):
+        """THE THIRD BASELINE DRIFT, 2026-08-12, and the one this check was
+        blind to. 0233 was recorded as applied, had never run, and created no
+        table and no function — only a column. So it claimed NOTHING, doctor
+        passed it, and the founder found it from an admin panel failing on a
+        missing column instead. A tool written to catch this class of drift
+        cannot be blind to the shape that caused it."""
         sql = ("ALTER TABLE public.a ADD COLUMN IF NOT EXISTS b INT;"
                "INSERT INTO public.a (b) VALUES (1) ON CONFLICT DO NOTHING;")
+        self.assertEqual(migrate.claimed_objects(sql),
+                         [("column", "public.a.b")])
+
+    def test_one_ALTER_may_add_several_columns(self):
+        sql = ("ALTER TABLE public.v2_student_details\n"
+               "  ADD COLUMN IF NOT EXISTS token_balance BIGINT,\n"
+               "  ADD COLUMN tier TEXT;")
+        self.assertEqual(
+            migrate.claimed_objects(sql),
+            [("column", "public.v2_student_details.token_balance"),
+             ("column", "public.v2_student_details.tier")])
+
+    def test_a_column_claim_is_schema_qualified_like_every_other(self):
+        self.assertEqual(
+            migrate.claimed_objects("ALTER TABLE ONLY t ADD COLUMN c INT;"),
+            [("column", "public.t.c")])
+
+    def test_a_described_column_in_prose_is_not_claimed(self):
+        # Same comment-stripping rule the table scanner follows: these files
+        # narrate their own DDL at length.
+        sql = "-- ALTER TABLE public.a ADD COLUMN b INT; (retired)\n"
+        self.assertEqual(migrate.claimed_objects(sql), [])
+
+    def test_a_file_that_touches_nothing_claims_nothing(self):
+        sql = "INSERT INTO public.a (b) VALUES (1) ON CONFLICT DO NOTHING;"
         self.assertEqual(migrate.claimed_objects(sql), [])
 
     def _claims(self, filename):
         return migrate.claimed_objects(
             (MIGRATIONS_DIR / filename).read_text(encoding="utf-8"))
+
+    def test_0233_claims_the_column_the_admin_panel_failed_on(self):
+        """The regression, pinned against the real file: the grant path could
+        not write bonus_balance because the column was absent, while
+        migrate.py reported nothing pending."""
+        self.assertIn(
+            ("column", "public.v2_student_details.bonus_balance"),
+            self._claims("add_legacy_credit_conversion.sql"))
 
     def test_0033_claims_the_table_the_app_says_is_missing(self):
         claims = self._claims("add_ideal_text_blocks.sql")
