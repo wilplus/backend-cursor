@@ -334,34 +334,48 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
             "(non-fatal)", session_id, _le,
         )
 
-    # ── willab credits — charge 5 ON COACH-FEEDBACK DELIVERY (founder re-lock:
-    # 15 free = 3 free feedbacks). This publish IS the delivery (insights_payload
-    # persisted + the "insights ready" card above). Idempotent per session (the
-    # feedback_credits_charged_at flag); a re-publish never re-charges; SOFT
-    # (floors at 0) so a low balance never withholds the coach's work — the gate
-    # is on STARTING the next recording (FE), not on receiving feedback. Best-
-    # effort: a credit hiccup must never unwind a published session.
+    # ── CHARGE COACH-FEEDBACK DELIVERY (founder 2026-08-12: 35,000 tokens,
+    # the coach_review price). This publish IS the delivery — insights_payload
+    # persisted plus the "insights ready" card above.
+    #
+    # SOFT, AND THAT RULE SURVIVED THE CURRENCY CHANGE UNCHANGED. `charge`
+    # floors the balance at zero and reports coverage in `ok`; nothing here
+    # branches on it. A student whose balance cannot cover the price still
+    # receives work the coach has already done — the gate is on STARTING the
+    # next recording (FE), never on receiving feedback. That is why this uses
+    # `coach_feedback` and not `coach_review`: the latter is in COACH_ACTIONS
+    # and would additionally consume a monthly coach slot, of which the free
+    # tier has zero, so delivery would be refused on the allowance before the
+    # balance was even read.
+    #
+    # IDEMPOTENT PER SESSION via ref_id — a re-publish never re-charges, the
+    # same guarantee the retired feedback_credits_charged_at flag gave.
+    #
+    # Best-effort: a billing hiccup must never unwind a published session.
     try:
-        _sess_for_credit = db.v2_get_session_by_id(session_id) or {}
-        _credit_owner = _sess_for_credit.get("user_id")
-        # Paid Audits (A2): an ARC session ("audit") is monetized per-arc via
-        # arc_purchases, NOT credits — so the #154 lab-publish 5-credit soft-
-        # deduct is SKIPPED for arc sessions. Non-arc (homework / standalone
-        # lab) sessions keep the credit charge exactly as before.
-        _is_arc_session = bool(_sess_for_credit.get("arc_id"))
-        if _credit_owner and not _is_arc_session:
-            db.v2_ensure_credits_initialized(str(_credit_owner))
-            db.v2_charge_feedback_credits_once(
-                session_id, str(_credit_owner), amount=5,
+        _sess_for_charge = db.v2_get_session_by_id(session_id) or {}
+        _charge_owner = _sess_for_charge.get("user_id")
+        # Paid Audits (A2), unchanged: an ARC session is monetized per-arc via
+        # arc_purchases and the per-arc token actions, so charging delivery
+        # here too would bill the same work twice.
+        _is_arc_session = bool(_sess_for_charge.get("arc_id"))
+        if _charge_owner and not _is_arc_session:
+            from services.token_account import charge as _charge
+            _res = _charge(str(_charge_owner), "coach_feedback",
+                           ref_id=str(session_id))
+            logger.info(
+                "publish_contract.feedback_charged session=%s charged=%s "
+                "ok=%s reason=%s", session_id, _res.charged, _res.ok,
+                _res.reason or "-",
             )
         elif _is_arc_session:
             logger.info(
-                "publish_contract.credit_skip_arc session=%s — arc audit "
-                "monetized via arc_purchases, not credits", session_id,
+                "publish_contract.charge_skip_arc session=%s — arc audit "
+                "monetized per-arc, not at delivery", session_id,
             )
     except Exception as _ce:
         logger.warning(
-            "publish_contract.credit_charge_failed session=%s err=%s "
+            "publish_contract.feedback_charge_failed session=%s err=%s "
             "(non-fatal)", session_id, _ce,
         )
 
