@@ -182,3 +182,59 @@ def spent_by_paragraph(database, arc_id: Any, take_session_id: Any,
         para = paragraph_index_at(served_text, at)
         out[para] = out.get(para, 0) + 1
     return out
+
+
+def style_spend(database, arc_id: Any, take_session_id: Any,
+                served_text: Any) -> dict:
+    """The take's spent STYLE slots: ``{"count": int, "by_paragraph": {}}``.
+
+    The style lane got its own ≤3-per-take / ≤2-per-slide budget on
+    2026-08-12, and a budget needs a ledger or it resets on every poll:
+    accepting an accent would summon a replacement, which is the trickle the
+    main take budget was built to kill.
+
+    A SEPARATE LEDGER OF THE SAME ROWS. `spend` has always written style
+    decisions here tagged ``lane:style``, and `spent_count` /
+    `spent_by_paragraph` have always excluded them because style rides
+    outside the ≤3. Nothing about that changes — this reads the rows those
+    two throw away, so the two budgets stay genuinely separate rather than
+    one quietly charging the other.
+
+    ONE READ FOR BOTH NUMBERS on purpose. This lands on the ideal-text GET,
+    which the deck polls; counting the take and placing the slides from one
+    row set costs one round trip instead of two, and the pair can never
+    disagree about which rows they saw.
+
+    Placement is the same quote match `spent_by_paragraph` documents, with
+    the same known limit (`find` takes the first occurrence) and the same
+    safe direction: a quote no longer in the document counts against no
+    slide, so the error runs toward offering feedback rather than
+    withholding it. Zeroes on any failure — a ledger miss must degrade to
+    the per-serve cap, never to silence.
+    """
+    empty = {"count": 0, "by_paragraph": {}}
+    if not arc_id:
+        return empty
+    try:
+        rows = database.list_style_intervention_decisions(
+            str(arc_id), str(take_session_id or "")) or []
+    except Exception as e:
+        logger.warning("intervention_spend: style read failed arc=%s: %s",
+                       arc_id, e)
+        return empty
+    by_para: dict = {}
+    doc = served_text if isinstance(served_text, str) else ""
+    for r in rows:
+        if not doc:
+            continue
+        quote = ((r or {}).get("quote") or "").strip()
+        if not quote:
+            continue
+        at = doc.find(quote)
+        if at < 0:
+            continue
+        para = paragraph_index_at(doc, at)
+        by_para[para] = by_para.get(para, 0) + 1
+    # The COUNT is every style decision, placed or not: a slot spent on words
+    # that have since been baked away is still spent against the take.
+    return {"count": len(rows), "by_paragraph": by_para}

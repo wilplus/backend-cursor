@@ -108,6 +108,95 @@ class TestTheStyleLane(unittest.TestCase):
         self.assertEqual(out["changes"], [])
         self.assertNotIn("style_changes", out)
 
+    def test_the_style_lane_is_CAPPED_at_three_per_take(self):
+        """Founder 2026-08-12: "an uncapped style lane would light up the
+        screen like a Christmas tree on a long document" — ≤3 per take.
+
+        The lane rides outside the ≤3 AND outside focus, so without this it
+        had no ceiling of any kind: one pill per locked chunk, forever."""
+        parts = [{"id": f"p{i}", "ord": i, "text": "x" * 40,
+                  "locked_at": "2026-08-11T10:00:00Z"} for i in range(6)]
+        text = "\n\n".join("x" * 40 for _ in range(6))
+        pool = [_change(i, kind="bold", start=i * 42, end=i * 42 + 8)
+                for i in range(6)]
+        out = ic.select(pool, parts=parts, served_text=text)
+        self.assertEqual(len(out["style_changes"]), ic.STYLE_BUDGET_CEILING)
+        # DOCUMENT ORDER decides which survive — the same tie-break the
+        # budgeted lane uses, and the only honest one while the engine does
+        # not rank these (identical grade / deviation / ppv on every row).
+        self.assertEqual([c["id"] for c in out["style_changes"]],
+                         ["c0", "c1", "c2"])
+        # The funnel witnesses the cut rather than silently shrinking.
+        self.assertEqual(out["funnel"]["style_proposed"], 6)
+        self.assertEqual(out["funnel"]["style_lane"], 3)
+
+    def test_the_style_lane_is_CAPPED_at_two_per_slide(self):
+        """"…and a maximum of ≤2 per slide." Per group FIRST, then the flat
+        cap: reversed, three accents on one slide would eat the whole take's
+        allowance and slides 2+ would get nothing."""
+        parts = [{"id": "p0", "ord": 0, "text": "x" * 40,
+                  "locked_at": "2026-08-11T10:00:00Z"},
+                 {"id": "p1", "ord": 1, "text": "y" * 40,
+                  "locked_at": "2026-08-11T10:00:00Z"}]
+        text = ("x" * 40) + "\n\n" + ("y" * 40)
+        # Three on slide 0, one on slide 1.
+        pool = [_change(0, kind="bold", start=0, end=8),
+                _change(1, kind="bold", start=10, end=18),
+                _change(2, kind="bold", start=20, end=28),
+                _change(3, kind="bold", start=42, end=50)]
+        out = ic.select(pool, parts=parts, served_text=text)
+        # Slide 0 keeps its first two; slide 1's accent is NOT starved by
+        # slide 0 having proposed more.
+        self.assertEqual([c["id"] for c in out["style_changes"]],
+                         ["c0", "c1", "c3"])
+
+    def test_a_decided_style_proposal_KEEPS_its_slot(self):
+        """Cumulative per take, exactly like the budgeted lane and for the
+        founder's own reason (2026-08-10): "each feedback needs to be there;
+        full and end to end and waiting; not that it appears once the other
+        is accepted." Without this, accepting an accent summons a
+        replacement — the trickle the take budget was built to kill."""
+        parts = [{"id": f"p{i}", "ord": i, "text": "x" * 40,
+                  "locked_at": "2026-08-11T10:00:00Z"} for i in range(6)]
+        text = "\n\n".join("x" * 40 for _ in range(6))
+        pool = [_change(i, kind="bold", start=i * 42, end=i * 42 + 8)
+                for i in range(6)]
+        self.assertEqual(
+            len(ic.select(pool, parts=parts, served_text=text,
+                          style_decided_count=1)["style_changes"]), 2)
+        self.assertNotIn("style_changes",
+                         ic.select(pool, parts=parts, served_text=text,
+                                   style_decided_count=3))
+
+    def test_a_slide_s_spent_style_slots_count_against_ITS_two(self):
+        parts = [{"id": "p0", "ord": 0, "text": "x" * 40,
+                  "locked_at": "2026-08-11T10:00:00Z"},
+                 {"id": "p1", "ord": 1, "text": "y" * 40,
+                  "locked_at": "2026-08-11T10:00:00Z"}]
+        text = ("x" * 40) + "\n\n" + ("y" * 40)
+        pool = [_change(0, kind="bold", start=0, end=8),
+                _change(1, kind="bold", start=10, end=18),
+                _change(2, kind="bold", start=42, end=50)]
+        out = ic.select(pool, parts=parts, served_text=text,
+                        style_spent_by_paragraph={0: 1})
+        # Slide 0 has one slot left, slide 1 is untouched.
+        self.assertEqual([c["id"] for c in out["style_changes"]],
+                         ["c0", "c2"])
+
+    def test_the_cap_is_pure_and_degrades_on_junk(self):
+        rows = [{"span": {"start": i, "end": i + 2}} for i in range(5)]
+        self.assertEqual(len(ic.cap_style_lane(rows)), 3)
+        self.assertEqual(ic.cap_style_lane(None), [])
+        self.assertEqual(ic.cap_style_lane([]), [])
+        # A count read that failed must not silence the lane — it degrades
+        # to the per-serve cap, the same direction every other ledger miss
+        # in this pipeline runs.
+        self.assertEqual(len(ic.cap_style_lane(rows, spent_count=None)), 3)
+        self.assertEqual(len(ic.cap_style_lane(rows, spent_count="x")), 3)
+        self.assertEqual(
+            len(ic.cap_style_lane(rows, group_of=lambda c: 0,
+                                  spent_by_group="not a dict")), 2)
+
     def test_the_style_lane_BYPASSES_single_point_focus(self):
         """Founder 2026-08-12: "a finishing touch like a bolded word is
         lightweight enough that it shouldn't be suppressed just because the

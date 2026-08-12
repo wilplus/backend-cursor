@@ -11919,6 +11919,49 @@ class DatabaseService:
                 arc_id, e)
             return []
 
+    def list_style_intervention_decisions(self, arc_id: Optional[str],
+                                          take_session_id: Optional[str]
+                                          ) -> list:
+        """The take's spent STYLE slots — [{quote}], the exact rows the two
+        methods above throw away.
+
+        The style lane got its own ≤3-per-take / ≤2-per-slide budget
+        (founder 2026-08-12) and needs its own ledger read, because
+        `count_intervention_decisions` and `list_spent_intervention_decisions`
+        both exclude `lane:style` on purpose: style rides OUTSIDE the ≤3
+        (ruling 4). Two budgets, two reads, neither charging the other.
+
+        Rows are kept even with a blank quote — the CALLER places what it can
+        and counts everything, since a slot spent on words that have since
+        been baked away is still spent against the take. Filtered in Python
+        for the same reason its siblings are: PostgREST's `.eq` on `lane`
+        would be fine here, but keeping all three on one code path means a
+        future change to what "style" means cannot update two of them and
+        miss the third. [] pre-migration / on hiccup — a ledger miss degrades
+        to the per-serve cap, never to silence."""
+        if not arc_id:
+            return []
+        try:
+            res = (
+                self.client.table("intervention_decisions")
+                .select("lane,quote")
+                .eq("arc_id", str(arc_id))
+                .eq("take_session_id", str(take_session_id or ""))
+                .execute()
+            )
+            return [r for r in (res.data or [])
+                    if isinstance(r, dict) and r.get("lane") == "lane:style"]
+        except Exception as e:
+            _e = str(e).lower()
+            if "intervention_decisions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return []
+            logger.warning(
+                "list_style_intervention_decisions failed arc=%s: %s",
+                arc_id, e)
+            return []
+
     def list_ideal_decisions(self, arc_id: Optional[str]) -> list:
         """All ledger rows of an arc. [] pre-migration / on hiccup —
         callers degrade to no-memory behavior."""
