@@ -121,6 +121,32 @@ def _account_payload(user_id: str) -> dict:
     }
 
 
+@admin_tokens_bp.route("/v2/admin/whoami", methods=["GET"])
+@require_admin
+def admin_whoami():
+    """200 {admin: true} for an admin, 403 for everyone else.
+
+    THE PROBE EVERY ADMIN PAGE RENDERS BEHIND (founder 2026-08-12: "gate it
+    so it is not publicly available"). It lives here rather than in a panel
+    of its own because it is about the CALLER, not about tokens — the deck of
+    admin surfaces all ask the same question.
+
+    IT IS NOT A NEW SECURITY BOUNDARY, and reading it as one would be the
+    mistake. Every admin endpoint already enforces `@require_admin` on its
+    own; a page that skipped this probe would still get 403s and no data.
+    What this closes is EXPOSURE, not authorization: without it the token
+    top-up form renders for anyone who knows the URL, publishing the shape of
+    a money endpoint and offering a ready-made phishing surface. The gate
+    removes the form; the decorator is what removes the access.
+
+    Deliberately carries NOTHING but the boolean. An admin probe that
+    returned the email, the admin list or a role would hand an unauthenticated
+    prober something to work with; a 403 with no body tells them only that
+    they are not on a list they cannot see.
+    """
+    return _no_store({"admin": True})
+
+
 @admin_tokens_bp.route("/v2/admin/tokens/lookup", methods=["GET"])
 @require_admin
 def admin_tokens_lookup():
