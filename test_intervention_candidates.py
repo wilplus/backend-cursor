@@ -841,6 +841,24 @@ class TestTheFunnel(unittest.TestCase):
         self.assertEqual(out["funnel"]["in"], 1)
         self.assertEqual(out["funnel"]["after_layer"], 0)
 
+    def test_an_EMPTY_INPUT_still_writes_a_funnel_line(self, ):
+        """FOUNDER INCIDENT 2026-08-12. This branch used to return silently.
+
+        He recorded eleven takes, saw no feedback, searched the web log for
+        `intervention funnel`, and found lines belonging to a DIFFERENT
+        session — because his own arc had produced no line to find. An
+        instrument that goes quiet exactly when the thing it measures is at
+        zero sends you looking downstream at a serving layer that was
+        working fine. `in: 0` says the problem is UPSTREAM of the gate, and
+        that is a different investigation from every drop below it."""
+        with self.assertLogs("services.intervention_candidates",
+                             level="INFO") as caught:
+            out = ic.select([], session_id="s1")
+        self.assertEqual(out["changes"], [])
+        self.assertEqual(out["funnel"], {"in": 0})
+        self.assertTrue(any("intervention funnel" in m and "s1" in m
+                            for m in caught.output), caught.output)
+
     def test_the_funnel_never_reaches_the_client(self):
         # AC-9 is about what a USER sees. The funnel carries rejection reasons
         # with PPV numbers in them and belongs in a server log — the change
