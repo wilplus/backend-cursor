@@ -41,6 +41,52 @@ def _sis_annotation_text(card: Any) -> Optional[str]:
         return None
 
 
+# Codes that genuinely mean "the object is not there", and nothing else.
+#
+#   42P01 undefined_table        42703 undefined_column
+#   42883 undefined_function     42P10 is NOT here on purpose: an invalid
+#                                column reference / bad ON CONFLICT arbiter
+#                                means the object EXISTS and the statement is
+#                                wrong, which is a different fix entirely.
+#   PGRST205 table not found in the schema cache
+#   PGRST204 column not found in the schema cache
+#   PGRST202 function not found in the schema cache
+#
+# The three PGRST codes are cache misses, not absences — the object can be
+# perfectly present and the API still cannot see it until
+# `NOTIFY pgrst, 'reload schema'`. They belong here because the CALLER's next
+# move is the same (make the object visible), but the hint must say so.
+_MISSING_OBJECT_CODES = frozenset({
+    "42P01", "42703", "42883", "PGRST205", "PGRST204", "PGRST202",
+})
+
+_PG_CODE_RE = re.compile(r"\b(PGRST\d{3}|[0-9A-Z]{5})\b")
+
+
+def _pg_error_code(exc: Any) -> str:
+    """The Postgres SQLSTATE or PostgREST code on an exception, or "".
+
+    Supabase raises APIError with a `code` attribute; psycopg2 uses `pgcode`;
+    everything else has to be read out of the message. Pure, and never raises
+    — an error path that can itself fail is worse than no error path.
+
+    WHY THIS EXISTS: a best-effort writer swallows its failures, so the log
+    line is the only account of why a table stopped filling. Matching on
+    prose ("does not exist", or worse, the table's own name) turns every
+    distinct failure into one wrong sentence — see the 2026-08-12 note in
+    record_dimension_evaluations.
+    """
+    for attr in ("code", "pgcode"):
+        v = getattr(exc, attr, None)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    try:
+        m = _PG_CODE_RE.search(str(exc))
+    except Exception:      # pragma: no cover - defensive
+        return ""
+    return m.group(1) if m else ""
+
+
 def _free_credit_grant() -> int:
     """The upfront free credit grant (config.WILLAB_FREE_CREDIT_GRANT, 25 for
     the testing phase, env-tunable). Single source of truth for both the lazy
@@ -13785,14 +13831,36 @@ class DatabaseService:
                     logger.warning(
                         "record_dimension_evaluations failed: %s", e2)
                     return 0
-            if "does not exist" in err_low or "dimension_evaluations" in err_low:
+            # THE ERROR IS THE ERROR (2026-08-12). This branch used to read
+            #
+            #     if "does not exist" in err_low or "dimension_evaluations" in err_low
+            #
+            # — a substring match on the TABLE'S OWN NAME, which every
+            # PostgREST error about this table contains. So a stale schema
+            # cache (PGRST204, "could not find the 'snippet_id' column … in
+            # the schema cache"), a bad arbiter (42P10) and a genuinely absent
+            # table all printed the same sentence: "table/columns missing (run
+            # …)". It sent a full afternoon after two migrations that had been
+            # applied the whole time, on a table holding 145 rows.
+            #
+            # A best-effort writer swallows its failures by design (see the
+            # docstring), so this log line is the ONLY thing that will ever
+            # say why the table stopped filling. It has to say the true thing.
+            # The migration hint survives, narrowed to the codes that actually
+            # mean the object is absent.
+            code = _pg_error_code(e)
+            missing = code in _MISSING_OBJECT_CODES or (
+                not code and "does not exist" in err_low)
+            if missing:
                 logger.warning(
-                    "record_dimension_evaluations: table/columns missing (run "
+                    "record_dimension_evaluations: %s — object missing (run "
                     "migrations/add_dimension_evaluations.sql then "
-                    "add_dimension_evaluations_snippet_grain.sql)",
-                )
+                    "add_dimension_evaluations_snippet_grain.sql; if those are "
+                    "applied, the PostgREST schema cache is stale — "
+                    "NOTIFY pgrst, 'reload schema')", code or "no code")
                 return 0
-            logger.warning("record_dimension_evaluations failed: %s", e)
+            logger.warning("record_dimension_evaluations failed [%s]: %s",
+                           code or "no code", e)
             return 0
 
     def record_intervention_arms(self, rows: list) -> int:
