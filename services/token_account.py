@@ -618,6 +618,76 @@ def _charge_legacy(db, user_id: str, action: str, price: int, *,
     return ChargeResult(True, price, new_balance, "", action)
 
 
+ADMIN_ADJUST = "admin_adjust"
+
+
+def admin_grant(user_id: str, tokens: int, *, ref_id: str,
+                database=None) -> Optional[dict]:
+    """Grant non-expiring tokens to one account. Returns the fresh account.
+
+    THE BUCKET IS `bonus_balance`, NOT `token_balance`, and the difference is
+    the whole reason this function exists rather than an UPDATE. The monthly
+    roll does `token_balance = grant_for(tier)` — SET, never add — so tokens
+    put there are DELETED at the user's next period roll. For a testing top-up
+    that is a top-up with a silent expiry date, and for a support gesture it is
+    worse: the operator sees it land and the user finds it gone.
+    `bonus_balance` is never touched by the roll, and it is spent SECOND, after
+    the expiring monthly allowance — the only order that does not quietly burn
+    the durable money first.
+
+    IDEMPOTENT ON `ref_id`, checked before the balance moves. The ledger's
+    partial unique index (user_id, action, ref_id) would absorb a duplicate
+    ROW, but the balance write is a separate statement and the index cannot
+    protect it — so a double-submitted form would grant twice and record once,
+    which is the exact irreconcilable state `token_charge`'s RPC was written to
+    close on the debit side.
+
+    NOT TRANSACTIONAL, and honestly so. The debit path earned a Postgres
+    function because it runs on the F1 live loop under concurrency; this runs
+    from one operator's browser at human speed. The residual risk is a balance
+    write landing while the ledger insert fails, which leaves the account RICHER
+    than the audit trail — the safe direction for a grant, and the inverse of
+    the debit case. If admin grants ever become automated, this needs the same
+    RPC treatment.
+
+    ``tokens`` may be negative (a correction). Never lets the bucket go below
+    zero. None on any failure — the caller reports it rather than showing a
+    balance that did not change.
+    """
+    db = database or _db()
+    try:
+        delta = int(tokens)
+    except (TypeError, ValueError):
+        return None
+    if not user_id or delta == 0:
+        return None
+    if _already_charged(user_id, ADMIN_ADJUST, ref_id, database=db):
+        logger.info("token_account: admin grant already applied user=%s "
+                    "ref=%s", user_id, ref_id)
+        return get_account(str(user_id), database=db)
+    current = _read_bonus_balance(str(user_id), database=db)
+    new_bonus = max(0, current + delta)
+    try:
+        (
+            db.client.table(_ACCOUNT_TABLE)
+            .update({"bonus_balance": new_bonus})
+            .eq("user_id", str(user_id))
+            # CAS: a concurrent spend must not be overwritten by this grant.
+            .eq("bonus_balance", current)
+            .execute()
+        )
+    except Exception as e:
+        logger.warning("token_account: admin grant failed user=%s err=%s",
+                       user_id, e)
+        return None
+    acct = get_account(str(user_id), database=db)
+    _ledger(str(user_id), new_bonus - current,
+            int((acct or {}).get("balance") or new_bonus),
+            ADMIN_ADJUST, ref_id=ref_id,
+            tier=(acct or {}).get("tier"), database=db)
+    return acct
+
+
 def _already_charged(user_id: str, action: str, ref_id: str, *,
                      database=None) -> bool:
     db = database or _db()
