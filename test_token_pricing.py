@@ -999,6 +999,77 @@ class LegacyCreditConversionTests(unittest.TestCase):
             self.assertNotIn("bonus_balance", w)
 
 
+class CoachFeedbackDeliveryTests(unittest.TestCase):
+    """Delivery is charged at publish, 35,000 tokens (founder 2026-08-12).
+
+    THE SEPARATE KEY IS THE POINT. `coach_review` carries the same price and
+    would have been the obvious thing to reuse — but it is in COACH_ACTIONS,
+    so charging it also consumes one of the tier's monthly coach slots, and
+    the free tier has ZERO. Delivery would then be refused on the ALLOWANCE
+    before the balance was read, which contradicts the rule locked in
+    publish.py: the charge is soft so a low balance never withholds work the
+    coach has already done."""
+
+    def setUp(self):
+        self.env = patch.dict("os.environ", {"TOKEN_PRICING_ENABLED": "1"})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+
+    def test_it_costs_the_coach_review_price(self):
+        from services.token_prices import PRICES
+        self.assertEqual(PRICES["coach_feedback"], PRICES["coach_review"])
+        self.assertEqual(PRICES["coach_feedback"], 35_000)
+
+    def test_it_does_NOT_consume_a_coach_slot(self):
+        """The whole reason it is not `coach_review`."""
+        from services.token_prices import COACH_ACTIONS, PER_ARC_ACTIONS
+        self.assertNotIn("coach_feedback", COACH_ACTIONS)
+        # Nor per-arc: delivery is per SESSION, so the ref_id is a session id
+        # and a second take's delivery must be able to charge again.
+        self.assertNotIn("coach_feedback", PER_ARC_ACTIONS)
+
+    def test_a_free_tier_user_is_never_refused_on_the_allowance(self):
+        """The failure this key exists to prevent: free tier has 0 coach
+        slots, so `coach_review` would refuse before the balance mattered."""
+        import services.token_account as ta
+        from services.token_prices import coach_reviews_for
+        self.assertEqual(coach_reviews_for("free"), 0)
+        db = FakeDB(account_row("free", balance=100_000))
+        res = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
+        self.assertTrue(res.ok)
+        self.assertEqual(res.charged, 35_000)
+
+    def test_an_empty_balance_still_DELIVERS(self):
+        """Soft by contract. `ok` reports coverage; publish does not branch
+        on it, so the coach's work reaches the student either way."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=10))
+        res = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
+        self.assertFalse(res.ok)
+        self.assertGreaterEqual(int(db.store["row"]["token_balance"]), 0)
+
+    def test_a_republish_never_re_charges(self):
+        """Idempotent per SESSION — the guarantee the retired
+        feedback_credits_charged_at flag used to give."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=100_000))
+        ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
+        after = int(db.store["row"]["token_balance"])
+        again = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
+        self.assertTrue(again.ok)
+        self.assertEqual(again.charged, 0)
+        self.assertEqual(int(db.store["row"]["token_balance"]), after)
+
+    def test_a_DIFFERENT_session_charges_again(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=100_000))
+        ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
+        second = ta.charge("u1", "coach_feedback", ref_id="s2", database=db)
+        self.assertEqual(second.charged, 35_000)
+
+
 class AdminGrantTests(unittest.TestCase):
     """The operator top-up (founder 2026-08-12).
 

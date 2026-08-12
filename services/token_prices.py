@@ -96,6 +96,25 @@ PRICES: dict[str, int] = {
     "life_panel":           800,
     # Human
     "coach_review":      35_000,   # verify pass + key-moment comment, ONE sitting
+    # DELIVERY of that review, charged at publish (founder 2026-08-12). Same
+    # price as `coach_review` by founder ruling — it buys the same sitting of
+    # the founder's time — but a SEPARATE KEY on purpose, and the separation
+    # is the whole design rather than bookkeeping:
+    #
+    #   * `coach_review` is in COACH_ACTIONS, so charging it also consumes one
+    #     of the tier's monthly coach slots. The free tier has ZERO, so wiring
+    #     delivery to that key would refuse every free-tier user on the
+    #     ALLOWANCE before their token balance was even consulted;
+    #   * and that would contradict a rule already locked in publish.py: the
+    #     charge is SOFT so a low balance never withholds the coach's work.
+    #     The gate is on STARTING the next recording, never on receiving
+    #     feedback that has already been done.
+    #
+    # So delivery gets its own key, outside COACH_ACTIONS and outside
+    # PER_ARC_ACTIONS (it is charged per SESSION, ref_id=session_id, so a
+    # re-publish never re-charges — the same idempotency the retired
+    # feedback_credits_charged_at flag provided).
+    "coach_feedback":    35_000,
 }
 
 PER_ARC_ACTIONS: tuple[str, ...] = (
