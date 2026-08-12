@@ -13766,9 +13766,41 @@ class DatabaseService:
             # None stays None: "no benchmark defined" is a real state, not a
             # negative decision. Only an explicit bool becomes a decision.
             decision = None if (insufficient or fired is None) else bool(fired)
+            # A SNIPPET-GRAIN ROW DOES NOT ALSO CLAIM THE RECORDING GRAIN
+            # (23505, found in production 2026-08-12 the moment the error
+            # handler above started printing real codes):
+            #
+            #   Key (recording_id, dimension_id, benchmark_version)
+            #     = (97d982ea…, wpm, measure-v1) already exists.
+            #   violates unique constraint "uq_dimension_evaluations_rec_dim_ver"
+            #
+            # `_windowed_rate_rows` sets snippet_id AND recording_id, so seven
+            # windows of one recording produce seven rows sharing a
+            # (recording_id, dimension_id, benchmark_version). The upsert's
+            # arbiter names the SNIPPET index, so Postgres never treats the
+            # recording-grain violation as a conflict to resolve — it raises,
+            # and a best-effort writer swallows it. That is why this table
+            # kept staying empty.
+            #
+            # 0249 already designed the way out: storage is SNIPPET grain
+            # ("ANALYSIS must aggregate to session grain first"), and the
+            # recording-grain index is PARTIAL — `WHERE recording_id IS NOT
+            # NULL`. That partiality only does its job if snippet-grain rows
+            # leave the column NULL, which is what this does. The row keeps
+            # its anchor (ck_dimension_evaluations_has_anchor is satisfied by
+            # snippet_id) and its session_id, which is the grain every reader
+            # actually uses: `get_dimension_evaluations_since` does not select
+            # recording_id at all, and the drift job aggregates to session
+            # before it computes anything.
+            #
+            # Rows already written keep their recording_id. Backfilling would
+            # rewrite historical calculations to fit a later understanding —
+            # the one thing the founder's immutability rule forbids — and no
+            # reader needs it.
+            _snip = row.get("snippet_id")
             entry = {
-                "snippet_id": row.get("snippet_id"),
-                "recording_id": row.get("recording_id"),
+                "snippet_id": _snip,
+                "recording_id": None if _snip else row.get("recording_id"),
                 "session_id": row.get("session_id"),
                 "user_id": row.get("user_id"),
                 "dimension_id": str(row["dimension_id"]),
