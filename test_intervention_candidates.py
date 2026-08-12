@@ -108,6 +108,54 @@ class TestTheStyleLane(unittest.TestCase):
         self.assertEqual(out["changes"], [])
         self.assertNotIn("style_changes", out)
 
+    def test_the_style_lane_BYPASSES_single_point_focus(self):
+        """Founder 2026-08-12: "a finishing touch like a bolded word is
+        lightweight enough that it shouldn't be suppressed just because the
+        paragraph isn't the main structural focus of the take."
+
+        Focus concentrates the STRUCTURAL work. p0 is locked and NOT the
+        focus, so its rewrite is suppressed — and its accent is not."""
+        parts = self._parts()
+        text = ("x" * 58) + "\n\n" + ("y" * 400)
+        style_off_focus = _change(0, kind="bold", start=0, end=8)
+        # A rewrite on the OPEN focus part, so the two land on different
+        # paragraphs and the content-first rule is not what is being tested.
+        on_focus = _change(1, kind="replace", start=100, end=110)
+        out = ic.select([style_off_focus, on_focus], parts=parts,
+                        served_text=text, focus_part_id="p1")
+        self.assertEqual([c["id"] for c in out["changes"]], ["c1"])
+        self.assertEqual([c["id"] for c in out["style_changes"]], ["c0"])
+
+    def test_focus_still_suppresses_the_BUDGETED_lane(self):
+        """The bypass is scoped to style. A rewrite off the focus part is
+        suppressed exactly as before — otherwise the exemption would have
+        quietly retired single-point focus."""
+        parts = self._parts()
+        text = ("x" * 58) + "\n\n" + ("y" * 400)
+        off_focus = _change(0, kind="replace", start=0, end=8)
+        out = ic.select([off_focus], parts=parts, served_text=text,
+                        focus_part_id="p1")
+        self.assertEqual(out["changes"], [])
+        self.assertNotIn("style_changes", out)
+        self.assertEqual(out["funnel"]["after_focus"], 0)
+
+    def test_content_first_is_judged_BEFORE_focus_deletes_the_content(self):
+        """THE ORDERING, and it is the rule rather than an accident.
+
+        p0 is locked, carries BOTH a rewrite and an accent, and is not the
+        focus. Focus will delete the rewrite. If content-first ran after
+        that, p0 would stop looking busy and the accent would surface —
+        telling the student "this paragraph is fine, just polish it" about
+        the one paragraph the engine actually had a rewrite for."""
+        parts = self._parts()
+        text = ("x" * 58) + "\n\n" + ("y" * 400)
+        style = _change(0, kind="bold", start=0, end=8)
+        rewrite = _change(1, kind="replace", start=20, end=30)
+        out = ic.select([style, rewrite], parts=parts, served_text=text,
+                        focus_part_id="p1")
+        self.assertEqual(out["changes"], [])          # focus took the rewrite
+        self.assertNotIn("style_changes", out)        # …and it stays quiet
+
     def test_content_still_wins_the_tap_on_the_same_chunk(self):
         """Founder 2026-08-11: "the style intervention appears if it was
         locked in and no new feedback is queued". A gen-4 re-open and a

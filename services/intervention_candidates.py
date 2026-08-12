@@ -726,27 +726,48 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # budgeted. See filter_by_layer for why the order is the rule.
         rows = filter_by_layer(rows, parts)
         funnel["after_layer"] = len(rows)
+        # CONTENT FIRST, STYLE WHEN THERE IS NOTHING LOUDER (founder
+        # 2026-08-11). Sees both lanes at once, on the same paragraph key the
+        # budget is counted in.
+        #
+        # AHEAD OF FOCUS ON PURPOSE (founder 2026-08-12). This decides "does
+        # this paragraph have something louder to say?", and the honest answer
+        # is about what the ENGINE FOUND, not about what survived a different
+        # gate. Run it after focus and the ordering would invert the rule:
+        # focus deletes the rewrite on paragraph 7, paragraph 7 stops looking
+        # busy, and the accent appears there — telling the student "this one
+        # is fine, just polish it" about the exact paragraph the engine had a
+        # rewrite for.
+        rows = suppress_style_where_feedback_waits(rows, group_of=_para_of)
+        funnel["after_style_order"] = len(rows)
         # SINGLE-POINT FOCUS (founder 2026-08-12) — beside the layer filter
         # and before the budget, for the same reason: a note suppressed after
         # arbitration has already eaten a slot the student never sees spent.
         # A no-op when no focus is established, which is every cold-start
         # case; the funnel records it either way so an empty serve can never
         # again be a night of guessing which gate did it.
-        rows = suppress_outside_focus(rows, parts, focus_part_id)
-        funnel["after_focus"] = len(rows)
-        # THE STYLE LANE (R1 gen-3, founder 2026-08-11) splits off before
-        # the budget machinery: style rows ride OUTSIDE the ≤3 (ruling 4),
-        # so they see neither the type caps nor arbitrate — but they DO
-        # keep the §F.4 accent window (a style accent past the intonation
-        # ceiling would paint sentences on accept, lock or no lock), and
-        # they take no arm assignment: the experiment measures the
-        # budgeted serve, and free-lane rows would distort its record.
-        # CONTENT FIRST, STYLE WHEN THERE IS NOTHING LOUDER (founder
-        # 2026-08-11). Runs before the split so the decision sees both lanes
-        # at once, on the same paragraph key the budget is counted in.
-        rows = suppress_style_where_feedback_waits(rows, group_of=_para_of)
+        #
+        # THE STYLE LANE BYPASSES IT (founder 2026-08-12): "a finishing touch
+        # like a bolded word is lightweight enough that it shouldn't be
+        # suppressed just because the paragraph isn't the main structural
+        # focus of the take." Focus concentrates the STRUCTURAL work; an
+        # accent on a chunk the student already locked is not competing with
+        # that work for attention, and it is already held back by the
+        # content-first rule above wherever it would.
+        #
+        # So the two lanes SPLIT HERE, one line earlier than they used to,
+        # and never recombine. Everything below this point — focus, the
+        # window, the type caps, arbitration — is the budgeted lane's
+        # pipeline; the style lane runs its own three steps and is done.
         style_rows = [c for c in rows if c.get("style_lane")]
-        rows = [c for c in rows if not c.get("style_lane")]
+        rows = suppress_outside_focus(
+            [c for c in rows if not c.get("style_lane")],
+            parts, focus_part_id)
+        funnel["after_focus"] = len(rows)
+        # The style lane keeps the §F.4 accent window (an accent past the
+        # intonation ceiling would paint sentences on accept, lock or no
+        # lock), and takes no arm assignment: the experiment measures the
+        # budgeted serve, and free-lane rows would distort its record.
         style_rows = filter_by_window(style_rows)
         for c in style_rows:
             c["visual"] = visual_of(c)
