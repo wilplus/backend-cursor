@@ -403,25 +403,40 @@ class TestR1TheLayerFilter(unittest.TestCase):
         # proposal's row is deleted and an approved one is baked into the
         # document. "New" is the only thing left.
 
-    def test_a_locked_part_takes_a_bold_only_as_the_STYLE_LANE(self):
-        """R1 gen-3 (founder 2026-08-11, the deck respec): a locked part
-        takes bold/colour proposals TAGGED style_lane — routed outside the
-        ≤3 budget by the caller and surfaced only inside the chunk's modal,
-        never as an underline on the page. Gen-2 dropped these entirely;
-        the founder re-ruled it: "when the text was already locked in there
-        comes only the suggestion ... to bolden the text or to colour"."""
-        parts = self._parts(True)
-        out = ic.filter_by_layer([self._change(parts, 0, "bold")], parts)
-        self.assertEqual(len(out), 1)
-        self.assertTrue(out[0]["style_lane"])
+    def test_the_STYLING_CLASS_is_parked(self):
+        """Founder 2026-08-11, later still: "for now we will dump the colours
+        and styling interventions."
 
-    def test_a_locked_part_still_refuses_advice(self):
-        """The style lane is bold/colour ONLY — advice is not styling, and
-        an unnamed pass-through would be gen-1 sneaking back."""
+        Refused at the layer filter rather than deleted through five files —
+        "for now" is a park, and the routing it would need back is worth more
+        intact than re-derived. Bold is the whole styling class: it is what a
+        colour or an emphasis offer arrives as."""
         parts = self._parts(True)
         self.assertEqual(
-            ic.filter_by_layer([self._change(parts, 0, "advice")], parts),
-            [])
+            ic.filter_by_layer([self._change(parts, 0, "bold")], parts), [])
+        # SCOPED TO THE POST-LOCK LANE. The parenthetical retracted the lane
+        # asked for one message earlier — bold/colour on ALREADY-LOCKED text
+        # — and nothing wider: emphasis on OPEN text is an older, shipped
+        # lane and still rides the ordinary budget.
+        open_parts = self._parts(False)
+        self.assertEqual(
+            len(ic.filter_by_layer([self._change(open_parts, 0, "bold")],
+                                   open_parts)), 1)
+
+    def test_a_locked_part_takes_ADVICE_too(self):
+        """Founder 2026-08-11, answering the question this code asked:
+        "advices are suggested always cause it is the feedback — it just is
+        next to the intervention in the text like cut off or rewrite."
+
+        Advice is not a lane of its own competing for the tap; it is the note
+        that rides BESIDE the cut or the rewrite. A locked part that took the
+        rewrite and refused its explanation would serve the instruction
+        without the reason."""
+        parts = self._parts(True)
+        c = self._change(parts, 0, "advice")
+        out = ic.filter_by_layer([c], parts)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0]["reopens_locked"])
 
     def test_a_locked_part_passes_confident_voice_as_pending(self):
         """The ONE exception, tagged rather than served as a normal offer:
@@ -453,28 +468,22 @@ class TestR1TheLayerFilter(unittest.TestCase):
     def test_the_locked_open_split_on_one_document(self):
         parts = self._parts(True, False)
         style_bold_locked = self._change(parts, 0, "bold")
-        drop_repl_locked = self._change(parts, 0, "replace")
+        repl_locked = self._change(parts, 0, "replace")
         keep_repl_open = self._change(parts, 1, "replace")
         keep_bold_open = self._change(parts, 1, "bold")
         out = ic.filter_by_layer(
-            [style_bold_locked, drop_repl_locked,
+            [style_bold_locked, repl_locked,
              keep_repl_open, keep_bold_open], parts)
-        # Gen-4: the locked bold survives TAGGED (the style lane) and the
-        # locked REWRITE now survives too, tagged as a re-open. Both tags
-        # matter and they are different things — one is presentation on
-        # settled words, the other re-opens the decision on the words
-        # themselves.
+        # Gen-4 + the post-lock style park: the LOCKED bold is gone, the
+        # locked rewrite survives tagged as a re-open, and the open part's
+        # rewrite and bold both pass plain on the ordinary budget.
         self.assertEqual([c["id"] for c in out],
-                         [style_bold_locked["id"], drop_repl_locked["id"],
-                          keep_repl_open["id"], keep_bold_open["id"]])
-        self.assertTrue(out[0]["style_lane"])
-        self.assertTrue(out[1]["reopens_locked"])
-        self.assertNotIn("style_lane", out[1])
-        # An OPEN part is untouched by either tag — it never needed
-        # re-opening and its accents ride the ordinary budget.
-        for c in out[2:]:
-            self.assertNotIn("style_lane", c)
+                         [repl_locked["id"], keep_repl_open["id"],
+                          keep_bold_open["id"]])
+        self.assertTrue(out[0]["reopens_locked"])
+        for c in out[1:]:
             self.assertNotIn("reopens_locked", c)
+            self.assertNotIn("style_lane", c)
 
     def test_the_visual_registry(self):
         """SPEC §3: Confident Voice = star; rewrites = underline; accents =

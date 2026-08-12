@@ -57,28 +57,29 @@ class TestTheStyleLane(unittest.TestCase):
             {"id": "p1", "ord": 1, "text": "y" * 400},
         ]
 
-    def test_a_locked_bold_serves_beside_the_budget_not_inside_it(self):
+    def test_the_post_lock_style_lane_is_PARKED(self):
+        """Founder 2026-08-11: "for now we will dump the colours and styling
+        interventions" — the lane he had asked for one message earlier,
+        bold/colour on ALREADY-LOCKED text.
+
+        Parked at the layer filter rather than deleted through five files:
+        "for now" is a park, and the routing it would need back is worth more
+        intact than re-derived. The budgeted lane is untouched — the style
+        row cost it nothing before and costs it nothing now."""
         parts = self._parts()
         style = _change(0, kind="bold", start=0, end=8)
         open_pool = [_change(i, start=100 + i * 60, end=108 + i * 60)
                      for i in range(1, 6)]
         out = ic.select([style] + open_pool, parts=parts)
-        # The budgeted lane still serves its full cap — the style row
-        # costs nothing…
         self.assertEqual(len(out["changes"]), me.BUDGET_CEILING)
-        # …and rides beside it, visual stamped, style_lane tagged.
-        self.assertEqual([c["id"] for c in out.get("style_changes") or []],
-                         ["c0"])
-        self.assertEqual(out["style_changes"][0]["visual"], "bold")
-        self.assertTrue(out["style_changes"][0]["style_lane"])
+        self.assertEqual(out.get("style_changes"), None)
 
-    def test_the_style_lane_survives_an_empty_budget_lane(self):
+    def test_a_locked_bold_ALONE_now_serves_nothing(self):
         parts = self._parts()
-        style = _change(0, kind="bold", start=0, end=8)
-        out = ic.select([style], parts=parts)
+        out = ic.select([_change(0, kind="bold", start=0, end=8)],
+                        parts=parts)
         self.assertEqual(out["changes"], [])
-        self.assertEqual([c["id"] for c in out.get("style_changes") or []],
-                         ["c0"])
+        self.assertNotIn("style_changes", out)
 
     def test_the_style_lane_keeps_the_accent_window(self):
         """A bold past the intonation ceiling paints sentences on accept —
@@ -657,15 +658,15 @@ class TestTheFunnel(unittest.TestCase):
         # The case that matters most: nothing on screen, and the funnel is
         # the only witness to which gate did it.
         #
-        # ADVICE on a locked part, because since R1 gen-4 a REWRITE there
-        # re-opens the chunk rather than emptying the pool. Advice is the
-        # lane that still has nowhere to go on committed text: it carries no
-        # accept/discard and there is nothing to re-lock.
+        # Since R1 gen-4 a rewrite AND an advice on a locked part both
+        # re-open the chunk rather than emptying the pool.
         locked = [{"id": "p0", "ord": 0, "text": "x" * 200,
                    "locked_at": "2026-08-11T10:00:00Z"}]
-        advice = _change(0, kind="advice", start=0, end=10)
-        advice["device"] = "pause"
-        out = ic.select([advice], parts=locked, session_id="s1")
+        # A BOLD on the locked part: the post-lock style lane is parked, so
+        # this is the one thing that still empties the pool there. A rewrite
+        # or an advice would re-open the chunk instead (R1 gen-4).
+        out = ic.select([_change(0, kind="bold", start=0, end=10)],
+                        parts=locked, session_id="s1")
         self.assertEqual(out["changes"], [])
         self.assertEqual(out["funnel"]["in"], 1)
         self.assertEqual(out["funnel"]["after_layer"], 0)

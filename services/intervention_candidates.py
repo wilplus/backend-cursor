@@ -469,9 +469,7 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
     rewrites committed text, and the filter is where "must never" stops being
     a comment.
     """
-    from services.ideal_text_parts import (
-        COMPOSITION, layer_of_kind, part_at, part_spans,
-    )
+    from services.ideal_text_parts import layer_of_kind, part_at, part_spans
     rows = [c for c in (changes or []) if isinstance(c, dict)]
     spans = part_spans(parts)
     if not spans:
@@ -494,6 +492,19 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
             kept.append({**c, "pending_better_version": True,
                          "pending_copy": PENDING_BETTER_VERSION_COPY})
             continue
+        # THE POST-LOCK STYLE LANE IS PARKED (founder 2026-08-11: "for now
+        # we will dump the colours and styling interventions"). That
+        # parenthetical retracts the lane he had asked for one message
+        # earlier — bold/colour offers on ALREADY-LOCKED text — and nothing
+        # wider: emphasis on OPEN text is an older, shipped lane and rides
+        # the ordinary budget untouched, which is why this sits inside the
+        # locked branch rather than above it.
+        #
+        # Refused rather than deleted through five files: "for now" is a
+        # park, and the routing it would need back is worth more intact than
+        # re-derived. One gate, one ruling, one line to reverse.
+        if c.get("kind") == "bold":
+            continue
         # R1, THIRD generation (founder 2026-08-11, the deck respec): a
         # locked part takes the STYLE LANE — bold/colour proposals that
         # touch presentation, never the words ("this next suggestion is
@@ -503,9 +514,6 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
         # chunk's modal — locked text is never re-underlined on the page.
         # Composition on locked text stays dropped: L1's mechanical
         # enforcement is unchanged — nothing rewrites committed words.
-        if c.get("kind") == "bold":
-            kept.append({**c, "style_lane": True})
-            continue
         # R1, FOURTH generation (founder 2026-08-11, later the same day):
         # "when the engine is locked in keep it there… but if something new
         # appears there keep iterating and showing the suggestions" — a
@@ -522,16 +530,14 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
         # proposal's row is deleted and an approved one is baked into the
         # document, so "new" is the only thing left.
         #
-        # COMPOSITION ONLY, pending the founder's word. The flow he described
-        # is "accept or discard → lock in or reject", and only a change to
-        # the WORDS has that path — `advice` is a delivery prompt with no
-        # decision to make and nothing to re-lock, so it stays refused on a
-        # locked part exactly as before. The narrower reading is the
-        # reversible one: opening advice later is a line, closing it again
-        # after it has shipped is a retraction.
-        if layer_of_kind(c.get("kind")) == COMPOSITION:
-            kept.append({**c, "reopens_locked": True})
-        # advice on a locked part: still dropped, silently.
+        # ADVICE COMES TOO (founder 2026-08-11, answering the question this
+        # code asked): "advices are suggested always cause it is the feedback
+        # — it just is next to the intervention in the text like cut off or
+        # rewrite." Advice is not a lane of its own competing for the tap; it
+        # is the note that rides BESIDE the cut or the rewrite. A locked part
+        # that takes the rewrite and refuses its explanation would serve the
+        # instruction without the reason.
+        kept.append({**c, "reopens_locked": True})
     return kept
 
 
