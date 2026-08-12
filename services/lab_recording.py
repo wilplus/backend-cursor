@@ -750,76 +750,103 @@ def process_lab_recording(
                 # fall back to the raw slice rather than a textless card.
                 p["transcript"] = _deduped[i] or p["transcript"]
 
-    # 2) Stickiness over transcripts BEFORE insert (one batch). Scored by
-    #    transcript/position, so no snippet ids are needed yet. Pieces mode:
-    #    only the LLM-budget pieces are scored (cost cap) — the rest carry
-    #    stickiness {composite: None} honestly.
-    if not _run_analytics:
-        # Analytics off (import lane): no LLM topic read. Honest absence —
-        # every piece carries stickiness {} exactly like an unbudgeted piece.
-        sticky = [{} for _ in prelim]
-    elif _pieces_mode:
-        _b_order = sorted(_llm_budget_idx)
-        _sticky_b = score_snippets_stickiness([
-            {"id": None, "transcript": prelim[i]["transcript"]}
-            for i in _b_order
-        ])
-        sticky = [{} for _ in prelim]
-        for j, i in enumerate(_b_order):
-            sticky[i] = _sticky_b[j] if j < len(_sticky_b) else {}
-    else:
-        sticky = score_snippets_stickiness([
-            {"id": None, "transcript": p["transcript"]} for p in prelim
-        ])
+    # 2 + 2b) THE TWO INDEPENDENT LLM UNITS, RUN AT THE SAME TIME
+    # (founder 2026-08-12, after the first production timing line:
+    # analysis=21548ms, of which these two were ~5.7s SEQUENTIAL —
+    # stickiness 2.22s, then slide_claims 1.56s → slide_entailment 1.97s).
+    #
+    # They share no data: stickiness reads transcripts, slide alignment
+    # reads transcripts + the deck, and neither consumes the other's
+    # output — they meet for the first time in the `overall` blend below.
+    # Inside 2b the two calls ARE chained (entailment needs the claims),
+    # so that side stays sequential and sets the floor at ~3.5s.
+    #
+    # NO AI IS REMOVED. Every call that ran before still runs; they stop
+    # waiting in line. `run_in_parallel` returns results in SUBMISSION
+    # order, which is what keeps the L2 ranking inputs identical run to
+    # run — see services/parallel.py for why that is the load-bearing
+    # property here. Both closures only READ `prelim` and return fresh
+    # lists, so there is no shared mutable state between them.
+    def _unit_stickiness() -> list:
+        # Stickiness over transcripts BEFORE insert (one batch). Scored by
+        # transcript/position, so no snippet ids are needed yet. Pieces mode:
+        # only the LLM-budget pieces are scored (cost cap) — the rest carry
+        # stickiness {composite: None} honestly.
+        if not _run_analytics:
+            # Analytics off (import lane): no LLM topic read. Honest absence —
+            # every piece carries stickiness {} exactly like an unbudgeted piece.
+            sticky = [{} for _ in prelim]
+        elif _pieces_mode:
+            _b_order = sorted(_llm_budget_idx)
+            _sticky_b = score_snippets_stickiness([
+                {"id": None, "transcript": prelim[i]["transcript"]}
+                for i in _b_order
+            ])
+            sticky = [{} for _ in prelim]
+            for j, i in enumerate(_b_order):
+                sticky[i] = _sticky_b[j] if j < len(_sticky_b) else {}
+        else:
+            sticky = score_snippets_stickiness([
+                {"id": None, "transcript": p["transcript"]} for p in prelim
+            ])
 
-    # 2b) Stickiness #2 — slide-delivery claim-ledger (UX Wave 4). BEST-EFFORT:
-    #     any failure here must NOT break the recording or #1. Per-snippet
-    #     on-slide-ness (ii) drives overall/rank; per-slide coverage ledger (i)
-    #     is the coach audit. Computed against the slides as recorded (lock).
-    _slide_per_snip: list = []
-    _slide_coverage: list = []
-    try:
-        _slides_ctx = (session_context or {}).get("slides")
-        # Pieces mode (founder fix-pack BE-5, 2026-07-16 — REVIVED): each
-        # piece already carries an EXACT slide_index from the cutter, so no
-        # window→slide inference is needed; what the original skip dropped
-        # was the text↔slide SCORE itself (cost: ~270 pieces can't all run
-        # entailment). Restored two-tier: EVERY piece gets a deterministic
-        # lexical relatedness vs its OWN slide (degraded=true, zero model
-        # cost); the LLM-budget subset (_llm_budget_idx, default 16) is
-        # upgraded via the legacy claim-decomposition (sha1-cached per
-        # slide → one call per deck) + entailment pipeline. Coach-only
-        # (include_slide_scores) + an L2 ranking input (power_score w_s);
-        # runs AFTER the _cap_snapshot above, so the raw candidate-window
-        # capture never sees it. Best-effort — LLM failure keeps the
-        # lexical tier; never blocks the 201 (live loop).
-        if _slides_ctx and _pieces_mode:
-            from services.slide_alignment import compute_piece_slide_scores
-            _slide_per_snip = compute_piece_slide_scores(
-                [{"transcript": p["transcript"], "duration_ms": p["dur_ms"],
-                  "slide_index": (
-                      (p["metrics"].get("piece") or {}).get("slide_index")
-                      if isinstance(p["metrics"].get("piece"), dict) else None
-                  )}
-                 for p in prelim],
-                _slides_ctx,
-                llm_budget_idx=_llm_budget_idx,
-            ) or []
-        elif _slides_ctx:
-            from services.slide_alignment import compute_slide_scores
-            _res = compute_slide_scores(
-                [{"start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
-                  "transcript": p["transcript"]} for p in prelim],
-                _slides_ctx,
-                (session_context or {}).get("slide_advances"),
+        return sticky
+
+    def _unit_slide_scores() -> tuple:
+        # 2b) Stickiness #2 — slide-delivery claim-ledger (UX Wave 4). BEST-EFFORT:
+        #     any failure here must NOT break the recording or #1. Per-snippet
+        #     on-slide-ness (ii) drives overall/rank; per-slide coverage ledger (i)
+        #     is the coach audit. Computed against the slides as recorded (lock).
+        _slide_per_snip: list = []
+        _slide_coverage: list = []
+        try:
+            _slides_ctx = (session_context or {}).get("slides")
+            # Pieces mode (founder fix-pack BE-5, 2026-07-16 — REVIVED): each
+            # piece already carries an EXACT slide_index from the cutter, so no
+            # window→slide inference is needed; what the original skip dropped
+            # was the text↔slide SCORE itself (cost: ~270 pieces can't all run
+            # entailment). Restored two-tier: EVERY piece gets a deterministic
+            # lexical relatedness vs its OWN slide (degraded=true, zero model
+            # cost); the LLM-budget subset (_llm_budget_idx, default 16) is
+            # upgraded via the legacy claim-decomposition (sha1-cached per
+            # slide → one call per deck) + entailment pipeline. Coach-only
+            # (include_slide_scores) + an L2 ranking input (power_score w_s);
+            # runs AFTER the _cap_snapshot above, so the raw candidate-window
+            # capture never sees it. Best-effort — LLM failure keeps the
+            # lexical tier; never blocks the 201 (live loop).
+            if _slides_ctx and _pieces_mode:
+                from services.slide_alignment import compute_piece_slide_scores
+                _slide_per_snip = compute_piece_slide_scores(
+                    [{"transcript": p["transcript"], "duration_ms": p["dur_ms"],
+                      "slide_index": (
+                          (p["metrics"].get("piece") or {}).get("slide_index")
+                          if isinstance(p["metrics"].get("piece"), dict) else None
+                      )}
+                     for p in prelim],
+                    _slides_ctx,
+                    llm_budget_idx=_llm_budget_idx,
+                ) or []
+            elif _slides_ctx:
+                from services.slide_alignment import compute_slide_scores
+                _res = compute_slide_scores(
+                    [{"start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
+                      "transcript": p["transcript"]} for p in prelim],
+                    _slides_ctx,
+                    (session_context or {}).get("slide_advances"),
+                )
+                _slide_per_snip = _res.get("per_snippet") or []
+                _slide_coverage = _res.get("slide_coverage") or []
+        except Exception as e:
+            logger.warning(
+                "process_lab_recording: slide scoring failed sid=%s err=%s",
+                session_id, e,
             )
-            _slide_per_snip = _res.get("per_snippet") or []
-            _slide_coverage = _res.get("slide_coverage") or []
-    except Exception as e:
-        logger.warning(
-            "process_lab_recording: slide scoring failed sid=%s err=%s",
-            session_id, e,
-        )
+
+        return _slide_per_snip, _slide_coverage
+
+    from services.parallel import run_in_parallel
+    sticky, (_slide_per_snip, _slide_coverage) = run_in_parallel(
+        _unit_stickiness, _unit_slide_scores)
 
     # overall = 0.5·#1 + 0.5·#2(ii); #2 null → overall = #1. Rank by overall
     # desc (tie-break #1, then earliest offset). Ranking only — selection above
