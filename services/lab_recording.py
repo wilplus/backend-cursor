@@ -591,19 +591,42 @@ def process_lab_recording(
         # never on the user readout — fence-tested). The LEARNED shadow model
         # stays out of this needle by design (labels blind).
         try:
+            from services.acoustic_baseline import as_baseline, snapshot
             from services.acoustic_read import (
-                attach_acoustic_read, resolve_read_baseline,
+                attach_acoustic_read, resolve_read_baseline_stats,
             )
             # Reference priority: the speaker's own baseline → (for a re-read)
             # its PARENT take's pieces → within-take/cold-start. Without the
             # parent fallback a 1–2-piece re-read pegged the needle neutral.
-            _ar_base, _ar_kind = resolve_read_baseline(
+            #
+            # The _stats form resolves the SAME pool once and keeps the
+            # per-feature sample counts, so persisting the baseline below costs
+            # no extra query on the upload path.
+            _ar_stats, _ar_kind, _ar_sessions = resolve_read_baseline_stats(
                 user_id, recording_kind=_rec_kind,
                 paired_session_id=paired_session_id,
             )
+            _ar_base = as_baseline(_ar_stats)
             attach_acoustic_read(
                 prelim, baseline=_ar_base, baseline_kind=_ar_kind,
             )
+            # KEEP IT (founder 2026-08-12, the KPI ruling). This baseline has
+            # been computed on every upload since 2026-07-14 and discarded
+            # every time; the per-part moving average cannot exist until the
+            # reference it is measured against outlives one request.
+            #
+            # Only the SPEAKER'S OWN baseline is persisted: a parent-take
+            # reference is a within-session comparison for the coach's needle,
+            # not a claim about where this speaker normally sits, and storing
+            # it as one would corrupt the series it feeds.
+            if _ar_kind == "user":
+                logger.info(
+                    "acoustic baseline sid=%s stored=%s features=%d "
+                    "sessions=%d",
+                    session_id,
+                    snapshot(user_id, _ar_stats,
+                             n_sessions=_ar_sessions) is not None,
+                    len(_ar_stats or {}), _ar_sessions)
         except Exception as _ar_err:
             logger.warning(
                 "process_lab_recording: acoustic read failed sid=%s: %s "

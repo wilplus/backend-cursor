@@ -88,25 +88,16 @@ _BASELINE_MIN_SAMPLES_PARENT = _MIN_PIECES_FOR_WITHIN_TAKE_READ
 def _baseline_from_metrics(metric_dicts: list, min_samples: int) -> Optional[dict]:
     """{feature_key: (mean, sd)} over a pool of piece-metric dicts, keeping
     only features with >= min_samples usable values and a non-zero spread.
-    None when nothing clears the bar. Pure."""
-    cols: dict = {name: [] for name, _w in _CONTROL_COMPONENTS}
-    for m in metric_dicts:
-        if not isinstance(m, dict):
-            continue
-        for name, _w in _CONTROL_COMPONENTS:
-            v = m.get(name)
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                cols[name].append(float(v))
-    out: dict = {}
-    for name, vals in cols.items():
-        if len(vals) < min_samples:
-            continue
-        mean = sum(vals) / len(vals)
-        var = sum((v - mean) ** 2 for v in vals) / len(vals)
-        sd = math.sqrt(var)
-        if sd > 0:
-            out[name] = (mean, sd)
-    return out or None
+    None when nothing clears the bar. Pure.
+
+    The arithmetic moved to services/acoustic_baseline.stats_from_metrics
+    (2026-08-12) so the PERSISTED baseline and this transient one can never
+    be computed two slightly different ways. That module keeps the per-feature
+    sample count, which the (mean, sd) shape here cannot carry; this wrapper
+    drops it and returns exactly what every existing caller already speaks.
+    """
+    from services.acoustic_baseline import as_baseline, stats_from_metrics
+    return as_baseline(stats_from_metrics(metric_dicts, min_samples))
 
 
 def _session_piece_metrics(session_id: Any, *, database=None) -> list:
@@ -127,16 +118,23 @@ def _session_piece_metrics(session_id: Any, *, database=None) -> list:
         return []
 
 
-def build_user_baseline(user_id: Optional[str], *, database=None) -> Optional[dict]:
-    """Per-speaker acoustic baseline: {feature_key: (mean, sd)} over the
-    user's historical piece metrics — the ISB hook score_control_direction
-    always had. None for guests / too-little history (< _BASELINE_MIN_SAMPLES
-    moments) → callers fall back to the parent take / within-take z-scores.
-    Best-effort: any read hiccup returns None, never raises (a baseline must
-    never break a recording)."""
+def build_user_baseline_stats(user_id: Optional[str], *,
+                              database=None) -> tuple:
+    """``(stats | None, n_sessions)`` — the baseline WITH its sample counts.
+
+    Same pool and same arithmetic as ``build_user_baseline``; the richer
+    return shape exists because the KPI persists this (founder 2026-08-12) and
+    a stored baseline has to record how much evidence is behind each feature.
+
+    Split out rather than added as a flag on the old function so the existing
+    callers keep a two-value baseline dict and nothing has to learn a new
+    shape. Best-effort: ``(None, 0)`` on any hiccup — a baseline must never
+    break a recording.
+    """
     if not user_id:
-        return None
+        return None, 0
     try:
+        from services.acoustic_baseline import stats_from_metrics
         if database is None:
             from services.db import db as database
         sessions = database.v2_list_user_lab_sessions(
@@ -144,11 +142,23 @@ def build_user_baseline(user_id: Optional[str], *, database=None) -> Optional[di
         pool = []
         for s in sessions:
             pool.extend(_session_piece_metrics(s.get("id"), database=database))
-        return _baseline_from_metrics(pool, _BASELINE_MIN_SAMPLES)
+        return stats_from_metrics(pool, _BASELINE_MIN_SAMPLES), len(sessions)
     except Exception as e:
-        logger.warning("acoustic_read: baseline build failed user=%s: %s",
+        logger.warning("acoustic_read: baseline stats failed user=%s: %s",
                        user_id, e)
-        return None
+        return None, 0
+
+
+def build_user_baseline(user_id: Optional[str], *, database=None) -> Optional[dict]:
+    """Per-speaker acoustic baseline: {feature_key: (mean, sd)} over the
+    user's historical piece metrics — the ISB hook score_control_direction
+    always had. None for guests / too-little history (< _BASELINE_MIN_SAMPLES
+    moments) → callers fall back to the parent take / within-take z-scores.
+    Best-effort: any read hiccup returns None, never raises (a baseline must
+    never break a recording)."""
+    from services.acoustic_baseline import as_baseline
+    stats, _n = build_user_baseline_stats(user_id, database=database)
+    return as_baseline(stats)
 
 
 def build_parent_take_baseline(parent_session_id: Any, *,
@@ -178,18 +188,40 @@ def resolve_read_baseline(user_id: Optional[str], *, recording_kind: str = "spok
     Returns (baseline|None, kind) where kind ∈ {"user", "parent_take", None}
     — `kind` rides the stamped blob so the coach packet is honest about what
     the needle was measured against. Best-effort; never raises."""
+    from services.acoustic_baseline import as_baseline
+    stats, kind, _n = resolve_read_baseline_stats(
+        user_id, recording_kind=recording_kind,
+        paired_session_id=paired_session_id, database=database)
+    return as_baseline(stats), kind
+
+
+def resolve_read_baseline_stats(user_id: Optional[str], *,
+                                recording_kind: str = "spoken",
+                                paired_session_id: Any = None,
+                                database=None) -> tuple:
+    """``(stats | None, kind | None, n_sessions)`` — same resolution order as
+    ``resolve_read_baseline``, keeping the per-feature sample counts.
+
+    ONE POOL READ. The caller that persists the baseline (founder 2026-08-12)
+    and the caller that z-scores this take's pieces are the same call site, so
+    the rich form is resolved once and the (mean, sd) form is derived from it —
+    rather than resolving twice and paying the 1+N session read a second time
+    on the upload path.
+    """
     try:
-        base = build_user_baseline(user_id, database=database)
-        if base:
-            return base, "user"
+        stats, n = build_user_baseline_stats(user_id, database=database)
+        if stats:
+            return stats, "user", n
         if recording_kind == "read" and paired_session_id:
-            parent = build_parent_take_baseline(
-                paired_session_id, database=database)
+            from services.acoustic_baseline import stats_from_metrics
+            parent = stats_from_metrics(
+                _session_piece_metrics(paired_session_id, database=database),
+                _BASELINE_MIN_SAMPLES_PARENT)
             if parent:
-                return parent, "parent_take"
+                return parent, "parent_take", 1
     except Exception as e:
         logger.warning("acoustic_read: baseline resolve failed: %s", e)
-    return None, None
+    return None, None, 0
 
 
 def attach_acoustic_read(pieces: list, *, baseline: Optional[dict] = None,
