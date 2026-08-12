@@ -1607,9 +1607,17 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         from services.intervention_spend import (
             spent_by_paragraph, spent_count,
         )
+        # SINGLE-POINT FOCUS (founder 2026-08-12): the one paragraph feedback
+        # is routed to until it comes onboard. None on cold start — no
+        # baseline, a first take, or a document whose worst part is already at
+        # the speaker's own level — and None means "behave exactly as before",
+        # never "suppress everything".
+        from services.part_acoustics import current_focus
         _sel = _select(changes, user_id=user_id,
                        session_id=_arm_sid,
                        decided_count=spent_count(db, arc_id, _arm_sid),
+                       focus_part_id=current_focus(arc_id, user_id,
+                                                   database=db),
                        # PER SLIDE, UP TO 2 (founder 2026-08-11). The served
                        # text is the unit map: one paragraph per slide, and
                        # the paragraph is the chunk the student decides on.

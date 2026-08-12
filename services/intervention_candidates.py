@@ -426,6 +426,52 @@ def filter_by_type_caps(changes: Any, group_of: Any = None) -> list:
     return kept
 
 
+def suppress_outside_focus(changes: Any, parts: Any,
+                           focus_part_id: Any) -> list:
+    """SINGLE-POINT FOCUS (founder 2026-08-12, item 6).
+
+    "Identify the single most consistently underperforming part. Route all
+    feedback and interventions to that specific part. Suppress feedback
+    everywhere else."
+
+    A no-op unless a focus was actually established. ``focus_part_id`` is None
+    for a guest, a first take, a document with no baseline yet, or one whose
+    worst part is already at the speaker's own level — and in every one of
+    those cases the correct behaviour is EXACTLY what happened before this
+    feature existed. This filter can concentrate feedback; it must never be
+    the reason a student sees nothing, which is why the None branch returns
+    the input untouched rather than returning [].
+
+    NO CARVE-OUTS. Advice, rewrites and the Confident Voice prompt are all
+    "feedback everywhere else" when they land off the focus part, and the
+    ruling names no exception. The layer filter still runs beside this one —
+    a locked focus part takes composition and advice through R1 gen-4's
+    re-open, so focusing on a locked part does not silence it.
+
+    Runs BEFORE the budget for the same reason the layer filter does: a
+    suppressed note that has already consumed a slot is a slot the student
+    never sees spent.
+    """
+    rows = [c for c in (changes or []) if isinstance(c, dict)]
+    focus = str(focus_part_id or "")
+    if not focus or not parts:
+        return rows
+    from services.ideal_text_parts import part_at, part_spans
+
+    spans = part_spans(parts)
+    if not spans:
+        return rows
+    kept: list = []
+    for c in rows:
+        span = c.get("span") or {}
+        part = part_at(spans, span.get("start"), span.get("end"))
+        # A change that straddles two parts belongs to neither (part_at is
+        # None) and is not on the focus part, so it goes with the rest.
+        if part and str(part.get("id") or "") == focus:
+            kept.append(c)
+    return kept
+
+
 def filter_by_layer(changes: Any, parts: Any) -> list:
     """R1, second generation — the founder's locked-text rule (2026-08-10).
 
@@ -611,7 +657,8 @@ def filter_by_window(changes: Any) -> list:
 
 def select(changes: Any, *, user_id: str = "", session_id: str = "",
            parts: Any = None, decided_count: int = 0,
-           served_text: Any = None, spent_by_paragraph: Any = None) -> dict:
+           served_text: Any = None, spent_by_paragraph: Any = None,
+           focus_part_id: Any = None) -> dict:
     """Run every change through the manager and return the survivors.
 
     Returns ``{"changes": [...], "result": <arbitrate() dict>|None}``. The
@@ -669,6 +716,14 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # budgeted. See filter_by_layer for why the order is the rule.
         rows = filter_by_layer(rows, parts)
         funnel["after_layer"] = len(rows)
+        # SINGLE-POINT FOCUS (founder 2026-08-12) — beside the layer filter
+        # and before the budget, for the same reason: a note suppressed after
+        # arbitration has already eaten a slot the student never sees spent.
+        # A no-op when no focus is established, which is every cold-start
+        # case; the funnel records it either way so an empty serve can never
+        # again be a night of guessing which gate did it.
+        rows = suppress_outside_focus(rows, parts, focus_part_id)
+        funnel["after_focus"] = len(rows)
         # THE STYLE LANE (R1 gen-3, founder 2026-08-11) splits off before
         # the budget machinery: style rows ride OUTSIDE the ≤3 (ruling 4),
         # so they see neither the type caps nor arbitrate — but they DO

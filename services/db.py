@@ -11034,6 +11034,37 @@ class DatabaseService:
         if not arc_id or not user_id or not isinstance(parts, list):
             return False
         try:
+            # ITERATION SURVIVES THE REPLACE (bug, found 2026-08-12).
+            #
+            # The insert below names the columns it writes, so EVERY column it
+            # omits silently returns to its DEFAULT — and `iteration` (0265)
+            # defaults to 0. Lock a chunk (iteration → 1), record another take,
+            # open the readout: `compose_locked` reports `changed`, the parts
+            # are replaced, and the founder's "Locked in · N iterations" kicker
+            # is back to zero with nothing in the logs to say so.
+            #
+            # All three call sites carefully read `locked_at` back and thread
+            # it through, and not one of them mentions `iteration` — which is
+            # the shape of the hazard: preserving a column is opt-in and
+            # forgetting is the default. So the preservation lives HERE, once,
+            # where it cannot be forgotten by a fourth caller.
+            #
+            # Read before the delete: afterwards there is nothing to read.
+            prev_iter: dict = {}
+            try:
+                _res = (self.client.table("ideal_text_part")
+                        .select("id, iteration")
+                        .eq("arc_id", str(arc_id))
+                        .eq("user_id", str(user_id))
+                        .execute())
+                prev_iter = {str(r.get("id")): int(r.get("iteration") or 0)
+                             for r in (_res.data or []) if isinstance(r, dict)}
+            except Exception as _it_err:
+                # A pre-0265 database has no such column. Degrade to "no
+                # maturity counters", never to a failed document write.
+                logger.warning(
+                    "replace_ideal_text_parts: iteration unreadable arc=%s: "
+                    "%s (counters reset)", arc_id, _it_err)
             (self.client.table("ideal_text_part")
                 .delete()
                 .eq("arc_id", str(arc_id))
@@ -11054,6 +11085,11 @@ class DatabaseService:
                     # timestamp through (never re-stamped — a decision made
                     # before a lock and one after mean different things, §6).
                     "locked_at": p.get("locked_at"),
+                    # An EXPLICIT caller value wins (a fresh part carries
+                    # none); otherwise the stored counter is carried across.
+                    "iteration": (p.get("iteration")
+                                  if isinstance(p.get("iteration"), int)
+                                  else prev_iter.get(str(p["id"]), 0)),
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 for p in parts
@@ -11069,6 +11105,209 @@ class DatabaseService:
                 return False
             logger.warning("replace_ideal_text_parts failed arc=%s: %s",
                            arc_id, e)
+            return False
+
+    # ── the acoustic KPI (founder 2026-08-12) ──────────────────────────────
+    # The speaker's own baseline, and the per-part moving average that is
+    # measured against it. Best-effort in the same sense as everything above:
+    # a missing table (migrations 0268/0269 not applied) degrades to "no
+    # baseline / no history", which is the cold-start state the readers are
+    # already written for and is exactly the pre-migration behaviour.
+
+    def insert_user_acoustic_baseline(
+        self, user_id: str, features: dict, *,
+        n_sessions: int = 0, n_samples: int = 0,
+        detector_version: str = "",
+    ) -> Optional[str]:
+        """Append a baseline snapshot; return its id, or None.
+
+        APPEND-ONLY (founder immutability rule). The insert lands FIRST and
+        the previous row is superseded after — interrupted between the two
+        leaves two current rows, and the reader takes the newest, which is
+        degraded but correct. The reverse order leaves a window with NO
+        current baseline, which reads as cold start and would drop the user
+        out of single-point focus for no reason at all.
+
+        The supersede is best-effort ON TOP of a successful insert: failing to
+        mark the old row must not lose the new one.
+        """
+        if not user_id or not isinstance(features, dict) or not features:
+            return None
+        try:
+            res = (self.client.table("user_acoustic_baseline")
+                   .insert({
+                       "user_id": str(user_id),
+                       "features": features,
+                       "n_sessions": int(n_sessions),
+                       "n_samples": int(n_samples),
+                       "detector_version": str(detector_version),
+                   })
+                   .execute())
+            rows = res.data or []
+            new_id = str(rows[0].get("id")) if rows else None
+        except Exception as e:
+            _e = str(e).lower()
+            if "user_acoustic_baseline" in _e and (
+                    "does not exist" in _e or "pgrst" in _e):
+                logger.warning(
+                    "insert_user_acoustic_baseline: table missing (run "
+                    "migrations/add_user_acoustic_baseline.sql) user=%s",
+                    user_id)
+                return None
+            logger.warning("insert_user_acoustic_baseline failed user=%s: %s",
+                           user_id, e)
+            return None
+        if not new_id:
+            return None
+        try:
+            (self.client.table("user_acoustic_baseline")
+                .update({"superseded_at": datetime.now(timezone.utc)
+                         .isoformat()})
+                .eq("user_id", str(user_id))
+                .eq("detector_version", str(detector_version))
+                .is_("superseded_at", "null")
+                .neq("id", new_id)
+                .execute())
+        except Exception as e:
+            logger.warning(
+                "insert_user_acoustic_baseline: supersede failed user=%s: %s "
+                "(new row %s stands)", user_id, e, new_id)
+        return new_id
+
+    def get_current_user_acoustic_baseline(
+        self, user_id: str, *, detector_version: str = "",
+    ) -> Optional[dict]:
+        """This user's current baseline row for one regime, or None.
+
+        Ordered newest-first and limited to one rather than assuming a single
+        current row: the append-then-supersede order above can legitimately
+        leave two, and "the newest wins" is the rule that makes that state
+        correct instead of ambiguous.
+        """
+        if not user_id:
+            return None
+        try:
+            res = (self.client.table("user_acoustic_baseline")
+                   .select("id, features, n_sessions, n_samples, computed_at")
+                   .eq("user_id", str(user_id))
+                   .eq("detector_version", str(detector_version))
+                   .is_("superseded_at", "null")
+                   .order("computed_at", desc=True)
+                   .limit(1)
+                   .execute())
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            _e = str(e).lower()
+            if "user_acoustic_baseline" in _e and (
+                    "does not exist" in _e or "pgrst" in _e):
+                logger.warning(
+                    "get_current_user_acoustic_baseline: table missing (run "
+                    "migrations/add_user_acoustic_baseline.sql) user=%s",
+                    user_id)
+                return None
+            logger.warning(
+                "get_current_user_acoustic_baseline failed user=%s: %s",
+                user_id, e)
+            return None
+
+    def get_arc_part_acoustics(
+        self, arc_id: Optional[str], user_id: Optional[str],
+    ) -> list:
+        """One document's per-part acoustic rows. [] on anything missing.
+
+        [] is the cold-start answer and the failure answer alike, and both are
+        safe in the same direction: `focus_part_id([])` is None, and None
+        means "no focus established — behave exactly as before". A bad read
+        can therefore never SUPPRESS feedback, only decline to concentrate it.
+        """
+        if not arc_id or not user_id:
+            return []
+        try:
+            res = (self.client.table("arc_part_acoustics")
+                   .select("part_id, ema_z, n_takes, came_onboard_at, "
+                           "baseline_id, last_take_session_id")
+                   .eq("arc_id", str(arc_id))
+                   .eq("user_id", str(user_id))
+                   .order("ema_z")
+                   .execute())
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if "arc_part_acoustics" in _e and (
+                    "does not exist" in _e or "pgrst" in _e):
+                logger.warning(
+                    "get_arc_part_acoustics: table missing (run "
+                    "migrations/add_arc_part_acoustics.sql) arc=%s", arc_id)
+                return []
+            logger.warning("get_arc_part_acoustics failed arc=%s: %s",
+                           arc_id, e)
+            return []
+
+    def upsert_arc_part_acoustics(self, rows: list) -> bool:
+        """Write per-part acoustic rows. True on success.
+
+        Per-row upsert on the PRIMARY KEY, NOT the wholesale delete-then-
+        insert `replace_ideal_text_parts` uses. The two are different problems:
+        parts are replaced together because a reorder moves many `ord` values
+        at once and the slot index cannot survive the intermediate state.
+        These rows have no ordering constraint between them, and a delete here
+        would throw away the take history of every part the current take did
+        not happen to cover — which is the exact hazard that put this table
+        beside `ideal_text_part` instead of on it.
+
+        `came_onboard_at` is stamped only on the TRANSITION. An already-onboard
+        row keeps its original timestamp: the ratchet records when a part came
+        onboard, and re-stamping it every take would erase that.
+        """
+        if not rows:
+            return False
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            prev = {}
+            first = rows[0] if isinstance(rows[0], dict) else {}
+            if first.get("arc_id") and first.get("user_id"):
+                prev = {
+                    str(r.get("part_id")): r.get("came_onboard_at")
+                    for r in (self.get_arc_part_acoustics(
+                        first["arc_id"], first["user_id"]) or [])
+                    if isinstance(r, dict) and r.get("came_onboard_at")
+                }
+            payload = []
+            for r in rows:
+                if not isinstance(r, dict) or not r.get("part_id"):
+                    continue
+                pid = str(r["part_id"])
+                onboard_at = prev.get(pid)
+                if not onboard_at and r.get("came_onboard"):
+                    onboard_at = now
+                payload.append({
+                    "part_id": pid,
+                    "arc_id": str(r.get("arc_id") or ""),
+                    "user_id": str(r.get("user_id") or ""),
+                    "ema_z": float(r.get("ema_z") or 0.0),
+                    "n_takes": int(r.get("n_takes") or 0),
+                    "last_take_session_id": r.get("last_take_session_id"),
+                    "came_onboard_at": onboard_at,
+                    "baseline_id": r.get("baseline_id"),
+                    "detector_version": str(r.get("detector_version") or ""),
+                    "updated_at": now,
+                })
+            if not payload:
+                return False
+            (self.client.table("arc_part_acoustics")
+                .upsert(payload, on_conflict="part_id")
+                .execute())
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "arc_part_acoustics" in _e and (
+                    "does not exist" in _e or "pgrst" in _e):
+                logger.warning(
+                    "upsert_arc_part_acoustics: table missing (run "
+                    "migrations/add_arc_part_acoustics.sql)")
+                return False
+            logger.warning("upsert_arc_part_acoustics failed: %s", e)
             return False
 
     # The star-suggestion kinds. MUST mirror the moment_suggestions kind

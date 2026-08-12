@@ -367,4 +367,30 @@ def run_full_analysis(
                     "lab: eager ideal-text failed sid=%s: %s (non-fatal)",
                     session_id, _ea_err,
                 )
+
+        # THE ACOUSTIC KPI (founder 2026-08-12) — fold this take into the
+        # per-part moving average and advance the single-point-focus ratchet.
+        #
+        # AFTER the eager assembly, deliberately: the average is measured over
+        # the CURRENT best-of document (L1's chosen takes), so folding before
+        # the assembly would score the previous take's selection and report it
+        # as this one's.
+        #
+        # Best-effort like everything else on this path. A KPI that cannot be
+        # written degrades to "no focus", which every reader treats as "behave
+        # exactly as before" — never as a take that fails (LIVE LOOP).
+        # Opened BEFORE the work, like every other phase here: a mark closes
+        # the phase that was running and starts the named one, so a mark
+        # written after the block would attribute the fold to `finalizing` and
+        # report `kpi` as 0ms forever.
+        tl.mark("kpi")
+        if arc_id and user_id and recording_kind == "spoken":
+            try:
+                from services.part_acoustics import fold_session
+                fold_session(arc_id, user_id, session_id)
+            except Exception as _pa_err:
+                logger.warning(
+                    "lab: part acoustics failed sid=%s: %s (non-fatal)",
+                    session_id, _pa_err,
+                )
     return readout_local, sent_local
