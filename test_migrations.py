@@ -650,5 +650,125 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, EXIT_OK)
 
 
+class DoctorTests(unittest.TestCase):
+    """THE LEDGER SAID APPLIED; THE DATABASE DISAGREED (production 2026-08-12).
+
+    The app logged, on every take::
+
+        upsert_ideal_text_block: table missing (run migrations/add_ideal_text_blocks.sql)
+        token_charge() not installed — using the legacy non-atomic path
+
+    while the runner reported ``nothing pending`` over 269/269 with ``verify
+    OK``. Token charging has therefore been running on the four-round-trip
+    non-atomic path — the exact half-state migration 0241 exists to close.
+
+    IT IS NOT A RUNNER BUG. `baseline` does what it documents: records
+    migrations as applied WITHOUT running them, on the stated assumption that
+    a hand-migrated database already had them. For 0033 and 0241 the
+    assumption was false, and nothing could ever have noticed — `verify`
+    compares the manifest to the disk, `status` compares the ledger to
+    checksums, and neither asks the database whether the objects are there.
+
+    These cover the half that needs no database: which objects a file CLAIMS.
+    A wrong answer there either cries wolf (and gets ignored) or misses the
+    drift entirely.
+    """
+
+    def test_it_finds_tables_views_and_functions(self):
+        sql = (
+            "CREATE TABLE IF NOT EXISTS public.alpha (id INT);\n"
+            "CREATE OR REPLACE VIEW beta AS SELECT 1;\n"
+            "CREATE OR REPLACE FUNCTION public.gamma(a INT) RETURNS INT AS $$ $$;\n"
+        )
+        self.assertEqual(
+            migrate.claimed_objects(sql),
+            [("table", "public.alpha"), ("table", "public.beta"),
+             ("function", "public.gamma")])
+
+    def test_a_bare_name_is_public_qualified(self):
+        # to_regclass('alpha') resolves through search_path, which is not the
+        # search_path the app runs under. Qualifying makes the check mean the
+        # same thing wherever it is pasted.
+        self.assertEqual(
+            migrate.claimed_objects("CREATE TABLE alpha (id INT);"),
+            [("table", "public.alpha")])
+
+    def test_PROSE_ABOUT_DDL_IS_NOT_A_CLAIM(self):
+        # These files describe their own schema at length. A scanner reading
+        # the comments would report objects the file never creates — and a
+        # check that cries wolf is one everyone learns to skip, the same
+        # failure `destructive_statements` strips comments to avoid.
+        sql = (
+            "-- CREATE TABLE public.described_only (id INT);\n"
+            "/* CREATE OR REPLACE FUNCTION public.also_described() */\n"
+            "CREATE TABLE IF NOT EXISTS public.real_one (id INT);\n"
+        )
+        self.assertEqual(migrate.claimed_objects(sql),
+                         [("table", "public.real_one")])
+
+    def test_the_same_object_twice_is_claimed_once(self):
+        sql = ("CREATE TABLE IF NOT EXISTS public.a (id INT);"
+               "CREATE TABLE IF NOT EXISTS public.a (id INT);")
+        self.assertEqual(migrate.claimed_objects(sql), [("table", "public.a")])
+
+    def test_a_file_that_creates_nothing_claims_nothing(self):
+        # ALTER / INSERT / GRANT-only migrations are common here and must not
+        # produce a claim nobody can verify.
+        sql = ("ALTER TABLE public.a ADD COLUMN IF NOT EXISTS b INT;"
+               "INSERT INTO public.a (b) VALUES (1) ON CONFLICT DO NOTHING;")
+        self.assertEqual(migrate.claimed_objects(sql), [])
+
+    def _claims(self, filename):
+        return migrate.claimed_objects(
+            (MIGRATIONS_DIR / filename).read_text(encoding="utf-8"))
+
+    def test_0033_claims_the_table_the_app_says_is_missing(self):
+        claims = self._claims("add_ideal_text_blocks.sql")
+        self.assertIn(("table", "public.ideal_text_blocks"), claims)
+        self.assertIn(("table", "public.ideal_text_saves"), claims)
+
+    def test_0241_claims_the_function_the_app_says_is_not_installed(self):
+        self.assertIn(("function", "public.token_charge"),
+                      self._claims("add_token_charge_rpc.sql"))
+
+    def test_both_drifted_files_are_SAFE_TO_RE_RUN(self):
+        # The remediation is "run these files again", so re-runnability is not
+        # a nicety here — it IS the fix. 0033 is entirely IF NOT EXISTS; 0241
+        # is CREATE OR REPLACE FUNCTION and its only DROP sits inside a
+        # comment, which is why the destructive scan strips comments first.
+        for name in ("add_ideal_text_blocks.sql", "add_token_charge_rpc.sql"):
+            sql = (MIGRATIONS_DIR / name).read_text(encoding="utf-8")
+            self.assertTrue(migrate.looks_idempotent(sql), name)
+            self.assertEqual(migrate.destructive_statements(sql), [], name)
+
+    def test_the_emitted_query_checks_relations_and_functions_differently(self):
+        # to_regclass answers for relations and returns NULL for a function,
+        # so one check for both would report every function as missing.
+        self.assertIn("to_regclass", migrate._DOCTOR_PREDICATE)
+        self.assertIn("pg_proc", migrate._DOCTOR_PREDICATE)
+
+    def test_the_sql_mode_needs_no_database_and_filters_to_baselined(self):
+        # The environment that most needs this check is the one without a
+        # DATABASE_URL — the same reason `baseline --sql` exists. And only
+        # baselined rows are suspect: a migration the runner applied was
+        # watched, so it committed or it failed loudly.
+        code, out = run_cli(["doctor", "--sql"])
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("WHERE m.baselined", out)
+        self.assertIn("'0033', 'add_ideal_text_blocks.sql', 'table', "
+                      "'public.ideal_text_blocks'", out)
+        self.assertIn("'0241', 'add_token_charge_rpc.sql', 'function', "
+                      "'public.token_charge'", out)
+        # READ-ONLY BY CONSTRUCTION: a diagnostic that can write is one nobody
+        # dares run against production. Checked structurally rather than by
+        # scanning for banned words — the header prose says "claims to CREATE",
+        # and a keyword scan that trips on its own documentation is the kind of
+        # check that gets deleted rather than fixed.
+        body = migrate.strip_sql_comments(out).strip()
+        self.assertTrue(body.startswith("WITH claimed"), body[:60])
+        self.assertEqual(body.count(";"), 1, "more than one statement")
+        self.assertTrue(body.endswith(";"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

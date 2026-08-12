@@ -17,6 +17,11 @@ COMMANDS
     apply      Run pending migrations in manifest order.
     baseline   Record migrations as applied WITHOUT running them. The adoption
                path for a database that was already migrated by hand.
+    doctor     Do the objects a BASELINED migration claims to create actually
+               EXIST? `verify` checks the manifest against disk and `status`
+               checks the ledger against checksums; neither one ever looked at
+               reality, which is how two migrations sat recorded-as-applied
+               with their table and their function absent (2026-08-12).
     new        Scaffold a new migration + append it to the manifest.
 
 DESIGN CONSTRAINTS (from CLAUDE.md — these are not preferences)
@@ -137,6 +142,50 @@ def looks_idempotent(sql: str) -> bool:
     signal for review, not a gate.
     """
     return bool(_IDEMPOTENCY_MARKERS.search(strip_sql_comments(sql)))
+
+
+_CLAIM_PATTERNS = (
+    (re.compile(
+        r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w.\"]+)", re.I), "table"),
+    (re.compile(
+        r"CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+([\w.\"]+)", re.I), "table"),
+    (re.compile(
+        r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([\w.\"]+)\s*\(", re.I),
+     "function"),
+)
+
+
+def qualified(name: str) -> str:
+    """`public.` -qualify a bare object name and drop any quoting. Pure."""
+    n = (name or "").replace('"', "").strip()
+    return n if "." in n else f"public.{n}"
+
+
+def claimed_objects(sql: str) -> list[tuple[str, str]]:
+    """[(kind, qualified_name)] this file CLAIMS to create. Pure.
+
+    Comments are stripped first, for the same reason `destructive_statements`
+    does it: these files describe their own DDL in prose ("ideal_text_blocks:
+    one row per block"), and a scanner that reads the prose would report
+    objects the file never creates.
+
+    Deliberately narrow — tables, views and functions. Those are what a
+    consumer actually fails on ("table missing", "function not installed"),
+    and they are the ones whose absence is unambiguous. Indexes and grants
+    are skipped: a missing index degrades to a slow query rather than a
+    broken feature, and inferring index names from `CREATE INDEX IF NOT
+    EXISTS` on a partial expression is guesswork this check does not need.
+    """
+    body = strip_sql_comments(sql)
+    out: list[tuple[str, str]] = []
+    seen: set = set()
+    for pattern, kind in _CLAIM_PATTERNS:
+        for m in pattern.finditer(body):
+            key = (kind, qualified(m.group(1)))
+            if key not in seen:
+                seen.add(key)
+                out.append(key)
+    return out
 
 
 def wants_no_transaction(sql: str) -> bool:
@@ -831,6 +880,149 @@ def _emit_baseline_sql(migrations: list[Migration], to_version: str | None) -> i
     return EXIT_OK
 
 
+# ---------------------------------------------------------------------------
+# doctor — does the DATABASE agree with the ledger?
+# ---------------------------------------------------------------------------
+
+
+def _doctor_rows(migrations: list[Migration]) -> list[tuple]:
+    """[(version, filename, kind, object)] over every manifest entry. Pure."""
+    rows: list[tuple] = []
+    for m in migrations:
+        try:
+            sql = m.read()
+        except OSError:
+            continue
+        for kind, obj in claimed_objects(sql):
+            rows.append((m.version, m.filename, kind, obj))
+    return rows
+
+
+_DOCTOR_PREDICATE = (
+    "      (c.kind = 'table'    AND to_regclass(c.obj) IS NULL)\n"
+    "   OR (c.kind = 'function' AND NOT EXISTS (\n"
+    "         SELECT 1 FROM pg_proc p\n"
+    "         JOIN pg_namespace n ON n.oid = p.pronamespace\n"
+    "         WHERE n.nspname = split_part(c.obj, '.', 1)\n"
+    "           AND p.proname = split_part(c.obj, '.', 2)))"
+)
+
+
+def cmd_doctor(args) -> int:
+    """Does the DATABASE actually have what the ledger says it has?
+
+    THE GAP THIS CLOSES (found in production 2026-08-12). `verify` checks the
+    manifest against the disk. `status` checks the ledger against the files'
+    checksums. NOTHING checked the ledger against REALITY — and on 2026-08-12
+    two migrations recorded as applied turned out to have never created their
+    objects: the app logged "upsert_ideal_text_block: table missing" and
+    "token_charge() not installed — using the legacy non-atomic path" while
+    `migrate.py` reported `nothing pending`.
+
+    That is not a runner bug. It is `baseline` doing exactly what it
+    documents: recording migrations as applied WITHOUT running them, on the
+    stated assumption that a hand-migrated database already had them. For
+    those two the assumption was false, and nothing existed that could ever
+    have noticed.
+
+    BASELINED ROWS ARE THE UNTRUSTED SET, and that is the whole design. A
+    migration the runner actually applied was watched — it either committed or
+    it failed loudly. A baselined row is an assumption somebody typed. The
+    ledger already records which is which (`baselined`), precisely so "nobody
+    later mistakes an assumption for a verified apply"; this is the command
+    that finally reads that column.
+
+    `--sql` emits a paste-able query instead of connecting, the same escape
+    hatch `baseline --sql` has and for the same reason: the environment that
+    most needs this check is the one without a DATABASE_URL.
+    """
+    migrations = load_manifest()
+    rows = _doctor_rows(migrations)
+    if not rows:
+        print("no table/view/function claims found in the manifest.")
+        return EXIT_OK
+
+    if args.sql:
+        print("-- willab migration doctor — generated by "
+              "scripts/migrate.py doctor --sql")
+        print("--")
+        print("-- Lists objects that a BASELINED migration claims to create "
+              "and that do")
+        print("-- NOT exist in this database. Baselined rows are assumptions "
+              "(recorded")
+        print("-- without running); a row the runner really applied was "
+              "watched and is")
+        print("-- trusted. Read-only: this query changes nothing.")
+        print("--")
+        print("-- Empty result = the ledger and the database agree.")
+        print()
+        print("WITH claimed(version, filename, kind, obj) AS (VALUES")
+        for i, (version, filename, kind, obj) in enumerate(rows):
+            tail = "," if i < len(rows) - 1 else ""
+            print(f"  ('{version}', '{filename}', '{kind}', '{obj}'){tail}")
+        print(")")
+        print("SELECT c.version, c.filename, c.kind, c.obj AS missing_object")
+        print("FROM claimed c")
+        print("JOIN public.schema_migrations m ON m.version = c.version")
+        print("WHERE m.baselined")
+        print("  AND (")
+        print(_DOCTOR_PREDICATE)
+        print("  )")
+        print("ORDER BY c.version, c.obj;")
+        return EXIT_OK
+
+    conn = connect(args.database_url)
+    try:
+        ensure_ledger(conn)
+        applied = fetch_applied(conn)
+        # Only the assumptions. A real apply either committed or failed loudly.
+        suspect = [r for r in rows
+                   if (applied.get(r[0]) or {}).get("baselined")]
+        if not suspect:
+            print("no baselined migrations — nothing here rests on an "
+                  "assumption.")
+            return EXIT_OK
+        missing: list[tuple] = []
+        with conn.cursor() as cur:
+            for version, filename, kind, obj in suspect:
+                if kind == "function":
+                    cur.execute(
+                        "SELECT 1 FROM pg_proc p JOIN pg_namespace n "
+                        "ON n.oid = p.pronamespace WHERE n.nspname = %s "
+                        "AND p.proname = %s LIMIT 1",
+                        (obj.split(".", 1)[0], obj.split(".", 1)[1]))
+                else:
+                    cur.execute("SELECT to_regclass(%s)", (obj,))
+                    row = cur.fetchone()
+                    if row and row[0] is not None:
+                        continue
+                    missing.append((version, filename, kind, obj))
+                    continue
+                if cur.fetchone() is None:
+                    missing.append((version, filename, kind, obj))
+
+        print(f"checked  : {len(suspect)} object(s) claimed by "
+              f"{len({r[0] for r in suspect})} baselined migration(s)")
+        if not missing:
+            print("\nOK — every baselined migration's objects are present.")
+            return EXIT_OK
+        print(f"\nMISSING  : {len(missing)} object(s) the ledger says exist\n")
+        for version, filename, kind, obj in missing:
+            print(f"  {version}  {filename}\n            {kind} {obj}")
+        print("\nThe ledger records these as applied because they were "
+              "BASELINED — recorded")
+        print("without running, on the assumption the database already had "
+              "them. It did not.")
+        print("\nTo fix, re-run those files against this database. Both the "
+              "guard check")
+        print("(`verify`) and the files themselves should be re-runnable; "
+              "confirm with:")
+        print("    python scripts/migrate.py verify --verbose")
+        return EXIT_FAILURE
+    finally:
+        conn.close()
+
+
 def cmd_new(args) -> int:
     slug = re.sub(r"[^a-z0-9_]+", "_", args.name.lower()).strip("_")
     if not slug:
@@ -907,6 +1099,12 @@ def build_parser() -> argparse.ArgumentParser:
                           help="print the SQL instead of running it, for the Supabase "
                                "SQL Editor (needs no DATABASE_URL)")
     baseline.set_defaults(func=cmd_baseline)
+
+    doctor = with_db(sub.add_parser(
+        "doctor", help="do the objects a BASELINED migration claims actually exist?"))
+    doctor.add_argument("--sql", action="store_true",
+                        help="print a paste-able query instead of connecting")
+    doctor.set_defaults(func=cmd_doctor)
 
     new = sub.add_parser("new", help="scaffold a migration and append it to the manifest")
     new.add_argument("name", help="slug, e.g. add_speaker_locale_to_recordings")
