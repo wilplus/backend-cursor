@@ -49,6 +49,25 @@ admin_tokens_bp = Blueprint("admin_tokens", __name__)
 # would be advice rather than a rule.
 MAX_GRANT = 10_000_000
 
+# Operator-facing, and each one names the next action rather than the symptom.
+# These are internal-tool strings, not product copy — /admin/tokens is not a
+# student surface, so the LIVE LOOP sign-off rule does not reach them.
+_GRANT_ERRORS = {
+    "column_missing": (
+        "The bonus_balance column is missing on this database — "
+        "migrations/add_legacy_credit_conversion.sql has not run. "
+        "Apply it, then grant again."),
+    "no_account": (
+        "No token account row for this user yet. They need to open the app "
+        "once so it seeds, then grant again."),
+    "no_row": (
+        "The balance changed while the grant was being written, so nothing "
+        "was applied. Look the account up again and retry."),
+    "read_failed": "Could not read the current balance. Try again.",
+    "write_failed": "Could not write the new balance. Try again.",
+    "invalid_amount": "That amount is not a usable number.",
+}
+
 
 def _no_store(payload, status: int = 200):
     """A cached balance is a wrong balance — and this panel exists to change
@@ -144,10 +163,21 @@ def admin_tokens_grant():
         return _no_store({"code": "INVALID_INPUT",
                           "error": "ref_id is required (idempotency key)"},
                          400)
-    acct = ta.admin_grant(user_id, tokens, ref_id=ref_id)
-    if acct is None:
-        return _no_store({"code": "GRANT_FAILED",
-                          "error": "Could not apply the grant"}, 500)
-    logger.info("admin_tokens: granted user=%s tokens=%s ref=%s balance=%s",
-                user_id, tokens, ref_id, acct.get("balance"))
+    out = ta.admin_grant(user_id, tokens, ref_id=ref_id)
+    if not out.get("ok"):
+        # THE REASON IS THE POINT. Every failure here needs a different human
+        # action, and "could not apply the grant" sends the operator to the
+        # server logs to find out which one. `column_missing` in particular is
+        # a migration that has not run — no amount of retrying the form finds
+        # it, and this repo's ledger has claimed applied-when-not before.
+        reason = out.get("reason") or "unknown"
+        return _no_store({
+            "code": "GRANT_FAILED",
+            "reason": reason,
+            "error": _GRANT_ERRORS.get(reason, "Could not apply the grant."),
+        }, 500)
+    acct = out.get("account") or {}
+    logger.info("admin_tokens: granted user=%s tokens=%s ref=%s balance=%s "
+                "reason=%s", user_id, tokens, ref_id,
+                acct.get("balance"), out.get("reason") or "ok")
     return _no_store(_account_payload(user_id))
