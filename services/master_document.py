@@ -296,7 +296,11 @@ def assemble_master_document(arc_id: str, *, database=None) -> dict:
             baked = bake_piece(doc, _approved)
             if baked != doc:
                 doc = baked
-                pieces = relocate_pieces(doc, pieces)
+                # Same reason as the transcript document: a bake changes
+                # the words it lands on, and the paragraph is still the
+                # honest region for the piece that was there.
+                pieces = relocate_pieces(doc, pieces,
+                                         paragraph_fallback=True)
     except Exception as _le:
         logger.warning("master_document: bake failed arc=%s: %s",
                        arc_id, _le)
