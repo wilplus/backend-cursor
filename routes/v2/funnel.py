@@ -228,20 +228,17 @@ def _merge_anonymous_session_into_user(session_id: str, user_id: str):
                 "error": "Recording was claimed but could not be sent for review. Please retry.",
                 "session_id": sid,
             }, 500)
-        # ── willab credits — seed the 15-grant on send; the CHARGE now happens
-        # on COACH-FEEDBACK DELIVERY (publish), NOT at send (founder re-lock:
-        # 15 free = 3 free feedbacks at 5 each — see _apply_willab_publish_
-        # contract). We only ENSURE the balance is initialized here so a brand-
-        # new user has their 15 before any spend. Best-effort: a credit hiccup
-        # must never unwind a sent slot.
-        if not send_result.get("already_sent"):
-            try:
-                db.v2_ensure_credits_initialized(str(user_id))
-            except Exception as _ce:
-                logger.warning(
-                    "willab_lab: credit init failed sid=%s err=%s (non-fatal)",
-                    sid, _ce,
-                )
+        # ── THE SEED GRANT IS GONE (founder 2026-08-12). "New users do not
+        # need an extra seed grant on top of the tier allowance. The standard
+        # 12,000/month free tier is perfectly sufficient."
+        #
+        # This block ensured a brand-new user held the legacy 15 credits before
+        # any spend. Under tokens the equivalent is not needed and would be
+        # actively wrong: token_account.ensure_period_current seeds the account
+        # on FIRST TOUCH with the tier's full monthly grant, lazily and
+        # self-healingly. A second seed on the send path would be a parallel
+        # grant with its own idempotency to get right, racing the one that
+        # already works.
         # Back-fill the ideal-text version bubbles (founder bug 2026-07-18):
         # the worker only fires them for a KNOWN owner, so a guest's takes
         # left the chat empty — and the chat IS the version history. Runs on
