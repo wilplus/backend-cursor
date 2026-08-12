@@ -165,22 +165,57 @@ def _generate_structural(database, arc_id, candidates, *,
         _cap = 2
     if _cap <= 0:
         return 0
+    # CONCURRENCY GROUP 2 (founder 2026-08-12, approved after the timing line
+    # put `finalizing` at 24.9s on a six-snippet take). Each candidate is an
+    # independent LLM call; they were running one after another.
+    #
+    # IN WAVES OF THE REMAINING CAP, not one big fan-out. The sequential loop
+    # BREAKS as soon as `stored` reaches the cap, so firing every candidate at
+    # once would spend model calls on results that are thrown away — trading
+    # cost for latency without saying so. A wave asks for exactly as many as
+    # are still needed: the common case (every candidate yields a device) is
+    # one wave and no waste at all, and the worst case is one extra wave's
+    # worth, not N.
+    #
+    # DOCUMENT ORDER SURVIVES. `run_in_parallel` returns results in submission
+    # order, so the stars stored are still the FIRST `_cap` candidates that
+    # yield a device — identical to the sequential outcome, which is what
+    # keeps two runs of the same take producing the same stars.
+    #
+    # The DETECTION is parallel; the WRITES stay sequential. They are cheap,
+    # they must respect the cap in order, and a shared counter across threads
+    # is exactly the sort of thing that makes a cap approximate.
+    from services.parallel import run_in_parallel
+
+    def _detect(transcript):
+        def _run():
+            try:
+                return detect_structural_device(transcript, user_id=user_id)
+            except Exception as e:
+                logger.warning("structural_star: detect failed: %s", e)
+                return None
+        return _run
+
     stored = 0
-    for snip_id, transcript in candidates:
-        if stored >= _cap:
-            break
-        try:
-            found = detect_structural_device(transcript, user_id=user_id)
+    at = 0
+    while at < len(candidates) and stored < _cap:
+        wave = candidates[at:at + (_cap - stored)]
+        at += len(wave)
+        found_all = run_in_parallel(*[_detect(t) for _sid, t in wave])
+        for (snip_id, _t), found in zip(wave, found_all):
+            if stored >= _cap:
+                break
             if not found:
                 continue
-            if database.upsert_moment_suggestion(
-                    snip_id, str(arc_id), "structure",
-                    None, found["quote"], found["device"]):
-                stored += 1
-        except Exception as e:
-            logger.warning("structural_star: snippet failed snip=%s: %s",
-                           snip_id, e)
-            continue
+            try:
+                if database.upsert_moment_suggestion(
+                        snip_id, str(arc_id), "structure",
+                        None, found["quote"], found["device"]):
+                    stored += 1
+            except Exception as e:
+                logger.warning("structural_star: snippet failed snip=%s: %s",
+                               snip_id, e)
+                continue
     if stored:
         logger.info("structural_star: stored %d arc=%s", stored, arc_id)
     return stored

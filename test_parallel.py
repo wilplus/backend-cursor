@@ -24,6 +24,7 @@ import logging
 import threading
 import time
 import unittest
+import unittest.mock
 
 from services.parallel import MAX_WORKERS, run_in_parallel
 
@@ -118,6 +119,98 @@ class BoundsTests(unittest.TestCase):
         out = run_in_parallel(*[work] * 20)
         self.assertEqual(len(out), 20)          # all of them ran
         self.assertLessEqual(live["peak"], MAX_WORKERS)
+
+
+class StructuralStarWaveTests(unittest.TestCase):
+    """GROUP 2 (founder 2026-08-12) — the structural-star fan-out.
+
+    Each candidate is an independent LLM call and they ran one after another
+    (1.27 + 0.86 + 1.07s on the measured take). The sequential loop BREAKS at
+    the cap, so a naive fan-out would fire every candidate and discard the
+    surplus — trading cost for latency without saying so. Waves of the
+    REMAINING cap ask for exactly as many as are still needed.
+    """
+
+    class _Db:
+        def __init__(self):
+            self.written = []
+
+        def upsert_moment_suggestion(self, snip, arc, kind, a, quote, device):
+            self.written.append((snip, quote))
+            return True
+
+    def _run(self, candidates, detect, cap=2):
+        import services.moment_suggestions as ms
+
+        db = self._Db()
+        with unittest.mock.patch.object(ms, "detect_structural_device",
+                                        side_effect=detect), \
+             unittest.mock.patch.object(ms, "_structural_stars_enabled",
+                                        return_value=True), \
+             unittest.mock.patch("config.Config") as _cfg:
+            _cfg.return_value.STRUCTURAL_STARS_MAX_PER_TAKE = cap
+            n = ms._generate_structural(db, "arc-1", candidates, user_id="u")
+        return n, db.written
+
+    def test_it_stops_at_the_cap_and_does_not_fire_the_rest(self):
+        # Five candidates, cap 2, every one yields: exactly two calls. A
+        # single fan-out would have made five.
+        calls = []
+
+        def detect(t, user_id=None):
+            calls.append(t)
+            return {"quote": t, "device": "anaphora"}
+
+        n, written = self._run([(f"s{i}", f"t{i}") for i in range(5)], detect)
+        self.assertEqual(n, 2)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual([w[0] for w in written], ["s0", "s1"])
+
+    def test_DOCUMENT_ORDER_survives_the_parallel_detection(self):
+        # The stars stored must be the FIRST candidates that yield a device —
+        # identical to the sequential outcome, so two runs of one take produce
+        # the same stars regardless of which model answered first.
+        def detect(t, user_id=None):
+            if t in ("t0", "t3"):
+                time.sleep(0.02)          # the early ones answer LAST
+            return {"quote": t, "device": "d"}
+
+        _n, written = self._run([(f"s{i}", f"t{i}") for i in range(5)], detect)
+        self.assertEqual([w[0] for w in written], ["s0", "s1"])
+
+    def test_a_barren_wave_moves_on_and_still_fills_the_cap(self):
+        # The early candidates yield nothing, so more waves are needed. The
+        # cap is still reached, and no candidate is visited twice.
+        seen = []
+
+        def detect(t, user_id=None):
+            seen.append(t)
+            return None if t in ("t0", "t1") else {"quote": t, "device": "d"}
+
+        n, written = self._run([(f"s{i}", f"t{i}") for i in range(5)], detect)
+        self.assertEqual(n, 2)
+        self.assertEqual([w[0] for w in written], ["s2", "s3"])
+        self.assertEqual(len(seen), len(set(seen)), "a candidate was re-run")
+
+    def test_one_failing_detection_does_not_lose_the_others(self):
+        def detect(t, user_id=None):
+            if t == "t0":
+                raise RuntimeError("model down")
+            return {"quote": t, "device": "d"}
+
+        n, written = self._run([(f"s{i}", f"t{i}") for i in range(4)], detect)
+        self.assertEqual(n, 2)
+        self.assertEqual([w[0] for w in written], ["s1", "s2"])
+
+    def test_a_cap_of_zero_fires_nothing(self):
+        calls = []
+
+        def detect(t, user_id=None):
+            calls.append(t)
+            return {"quote": t, "device": "d"}
+
+        n, _w = self._run([("s0", "t0")], detect, cap=0)
+        self.assertEqual((n, calls), (0, []))
 
 
 class WiringTests(unittest.TestCase):
