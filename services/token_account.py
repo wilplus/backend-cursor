@@ -620,10 +620,61 @@ def _charge_legacy(db, user_id: str, action: str, price: int, *,
 
 ADMIN_ADJUST = "admin_adjust"
 
+# The column `bonus_balance` lives in add_legacy_credit_conversion.sql, which
+# this repo's migration ledger has previously claimed to have applied when it
+# had not. A grant that fails because the column is absent must say so — the
+# fix is a migration, and no amount of retrying the form will find it.
+_NO_COLUMN = ("bonus_balance", "does not exist", "42703", "pgrst204")
+
+
+def _bonus_raw(user_id: str, *, database=None):
+    """(value, reason). value is int | None (SQL NULL); reason names the
+    failure when the read could not happen at all.
+
+    SEPARATE FROM `_read_bonus_balance`, WHICH CANNOT BE USED HERE. That one
+    collapses NULL, a missing column and a genuine zero into the integer 0 —
+    correct for a balance READ, where every one of those means "no bonus
+    tokens". It is wrong for a compare-and-swap, because `WHERE
+    bonus_balance = 0` never matches a NULL row: SQL comparison against NULL
+    is NULL, not true. Reading the raw value is what lets the caller pick
+    `.is_(…, "null")` over `.eq(…, 0)` and actually match the row it read.
+    """
+    db = database or _db()
+    try:
+        res = (
+            db.client.table(_ACCOUNT_TABLE)
+            .select("bonus_balance")
+            .eq("user_id", str(user_id)).limit(1).execute()
+        )
+    except Exception as e:
+        low = str(e).lower()
+        if all(s in low for s in ("bonus_balance", "does not exist")) or \
+                any(s in low for s in ("42703", "pgrst204")):
+            return None, "column_missing"
+        logger.warning("token_account: bonus read failed user=%s err=%s",
+                       user_id, e)
+        return None, "read_failed"
+    rows = res.data or []
+    if not rows:
+        return None, "no_account"
+    value = (rows[0] or {}).get("bonus_balance")
+    if value is None:
+        return None, ""
+    try:
+        return int(value), ""
+    except (TypeError, ValueError):
+        return None, ""
+
 
 def admin_grant(user_id: str, tokens: int, *, ref_id: str,
-                database=None) -> Optional[dict]:
-    """Grant non-expiring tokens to one account. Returns the fresh account.
+                database=None) -> dict:
+    """Grant non-expiring tokens to one account.
+
+    Returns ``{"ok": bool, "reason": str, "account": dict|None}``. A REASON
+    rather than a bare None, because every way this fails needs a different
+    human action — run a migration, pick another account, retry — and a panel
+    that can only say "could not apply the grant" sends the operator to the
+    server logs to find out which.
 
     THE BUCKET IS `bonus_balance`, NOT `token_balance`, and the difference is
     the whole reason this function exists rather than an UPDATE. The monthly
@@ -651,41 +702,61 @@ def admin_grant(user_id: str, tokens: int, *, ref_id: str,
     RPC treatment.
 
     ``tokens`` may be negative (a correction). Never lets the bucket go below
-    zero. None on any failure — the caller reports it rather than showing a
-    balance that did not change.
+    zero.
     """
     db = database or _db()
     try:
         delta = int(tokens)
     except (TypeError, ValueError):
-        return None
+        return {"ok": False, "reason": "invalid_amount", "account": None}
     if not user_id or delta == 0:
-        return None
+        return {"ok": False, "reason": "invalid_amount", "account": None}
     if _already_charged(user_id, ADMIN_ADJUST, ref_id, database=db):
         logger.info("token_account: admin grant already applied user=%s "
                     "ref=%s", user_id, ref_id)
-        return get_account(str(user_id), database=db)
-    current = _read_bonus_balance(str(user_id), database=db)
-    new_bonus = max(0, current + delta)
+        return {"ok": True, "reason": "already_applied",
+                "account": get_account(str(user_id), database=db)}
+
+    current, why = _bonus_raw(str(user_id), database=db)
+    if why:
+        return {"ok": False, "reason": why, "account": None}
+    new_bonus = max(0, (current or 0) + delta)
     try:
-        (
+        q = (
             db.client.table(_ACCOUNT_TABLE)
             .update({"bonus_balance": new_bonus})
             .eq("user_id", str(user_id))
-            # CAS: a concurrent spend must not be overwritten by this grant.
-            .eq("bonus_balance", current)
-            .execute()
         )
+        # CAS so a concurrent spend is not overwritten by this grant — and it
+        # has to match the value we actually READ. A never-granted account
+        # holds SQL NULL, and `.eq(col, 0)` does not match NULL, so the
+        # zero-that-is-really-NULL needs `.is_` or the very first grant on
+        # every account silently updates no rows at all.
+        q = (q.is_("bonus_balance", "null") if current is None
+             else q.eq("bonus_balance", current))
+        res = q.execute()
     except Exception as e:
-        logger.warning("token_account: admin grant failed user=%s err=%s",
-                       user_id, e)
-        return None
+        low = str(e).lower()
+        reason = ("column_missing"
+                  if all(s in low for s in ("bonus_balance", "does not exist"))
+                  else "write_failed")
+        logger.warning("token_account: admin grant failed user=%s reason=%s "
+                       "err=%s", user_id, reason, e)
+        return {"ok": False, "reason": reason, "account": None}
+    if not (res.data or []):
+        # Zero rows matched: the row moved under us, or there is no account
+        # row yet. Never retried blind — a second attempt with a stale read
+        # is how a grant lands twice.
+        logger.warning("token_account: admin grant matched no row user=%s "
+                       "(raced or no account)", user_id)
+        return {"ok": False, "reason": "no_row", "account": None}
+
     acct = get_account(str(user_id), database=db)
-    _ledger(str(user_id), new_bonus - current,
+    _ledger(str(user_id), new_bonus - (current or 0),
             int((acct or {}).get("balance") or new_bonus),
             ADMIN_ADJUST, ref_id=ref_id,
             tier=(acct or {}).get("tier"), database=db)
-    return acct
+    return {"ok": True, "reason": "", "account": acct}
 
 
 def _already_charged(user_id: str, action: str, ref_id: str, *,

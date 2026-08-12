@@ -52,8 +52,16 @@ def tearDownModule():
 UTC = timezone.utc
 
 
+class _Is:
+    """Marker for an IS filter, so the double can tell `= NULL` (never true)
+    from `IS NULL` (the only thing that matches an ungranted column)."""
+
+    def __init__(self, val):
+        self.val = val
+
+
 class FakeTable:
-    """Minimal supabase-py table double with working .eq() CAS semantics."""
+    """Minimal supabase-py table double with working .eq()/.is_() CAS."""
 
     def __init__(self, store: dict, ledger: list):
         self.store = store
@@ -81,6 +89,14 @@ class FakeTable:
 
     def eq(self, col, val):
         self._filters.append((col, val))
+        return self
+
+    def is_(self, col, val):
+        """PostgREST's IS predicate. Present because `WHERE col = 0` does NOT
+        match a NULL column and the production code has to use this to CAS on
+        a never-granted bonus_balance — a double that only understands eq()
+        would pass the exact bug that shipped (founder 2026-08-12)."""
+        self._filters.append((col, _Is(val)))
         return self
 
     def lt(self, *_a, **_k):
@@ -112,7 +128,14 @@ class AccountTable(FakeTable):
             for col, val in self._filters:
                 if col == "user_id":
                     continue
-                if str(row.get(col)) != str(val):
+                if isinstance(val, _Is):
+                    want_null = str(val.val).lower() == "null"
+                    if (row.get(col) is None) != want_null:
+                        return MagicMock(data=[])   # lost the race
+                    continue
+                # `= NULL` is never true in SQL, and the double must say so
+                # or it will green-light a CAS that matches nothing in prod.
+                if row.get(col) is None or str(row.get(col)) != str(val):
                     return MagicMock(data=[])   # lost the race
             row.update(self._payload)
             self.store["row"] = row
@@ -990,10 +1013,28 @@ class AdminGrantTests(unittest.TestCase):
     def tearDown(self):
         self.env.stop()
 
+    def test_a_FIRST_grant_lands_on_a_NULL_bonus_column(self):
+        """THE BUG THE FOUNDER HIT, 2026-08-12. A never-granted account holds
+        SQL NULL in bonus_balance, not 0. The first version CAS'd on the
+        value `_read_bonus_balance` returned — which collapses NULL to 0 —
+        so the UPDATE said `WHERE bonus_balance = 0`, matched no row (SQL
+        comparison against NULL is NULL, not true), and every first-ever
+        grant failed. It failed SILENTLY at the database and loudly in the
+        UI, which is the wrong way round."""
+        import services.token_account as ta
+        row = account_row("free", balance=9_000)
+        row.pop("bonus_balance", None)
+        row["bonus_balance"] = None
+        db = FakeDB(row)
+        out = ta.admin_grant("u1", 1_000_000, ref_id="r1", database=db)
+        self.assertTrue(out["ok"], out.get("reason"))
+        self.assertEqual(db.store["row"]["bonus_balance"], 1_000_000)
+
     def test_a_grant_lands_in_the_bucket_that_does_not_expire(self):
         import services.token_account as ta
         db = FakeDB(account_row("free", balance=9_000, bonus=0))
-        acct = ta.admin_grant("u1", 1_000_000, ref_id="r1", database=db)
+        acct = ta.admin_grant("u1", 1_000_000, ref_id="r1",
+                              database=db)["account"]
         self.assertEqual(db.store["row"]["bonus_balance"], 1_000_000)
         # The monthly half is UNTOUCHED — a top-up must not look like a
         # period grant, or the next roll would appear to delete it.
@@ -1040,9 +1081,11 @@ class AdminGrantTests(unittest.TestCase):
         import services.token_account as ta
         db = FakeDB(account_row("free", balance=0, bonus=0))
         for bad in (None, "x", 0):
-            self.assertIsNone(
-                ta.admin_grant("u1", bad, ref_id="r", database=db))
-        self.assertIsNone(ta.admin_grant("", 100, ref_id="r", database=db))
+            out = ta.admin_grant("u1", bad, ref_id="r", database=db)
+            self.assertFalse(out["ok"])
+            self.assertEqual(out["reason"], "invalid_amount")
+        self.assertFalse(
+            ta.admin_grant("", 100, ref_id="r", database=db)["ok"])
         self.assertEqual(db.store["row"]["bonus_balance"], 0)
 
     def test_the_movement_is_written_to_the_ledger(self):
