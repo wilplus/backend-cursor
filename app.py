@@ -148,6 +148,11 @@ app.register_blueprint(jobs_bp)
 # all. See docs/SPEC-pipeline-admin-panel.md.
 from routes.v2.admin_pipeline import admin_pipeline_bp
 app.register_blueprint(admin_pipeline_bp)
+# Admin token top-up (founder 2026-08-12) — the @require_admin replacement for
+# the password-in-body /v2/internal/student-credits/* pair, granting tokens
+# instead of legacy credits.
+from routes.v2.admin_tokens import admin_tokens_bp
+app.register_blueprint(admin_tokens_bp)
 
 # Rate limiting (services/rate_limits.py). The @rate_limits.*_limit
 # decorators on the paid routes registered themselves while the blueprints

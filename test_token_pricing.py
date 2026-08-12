@@ -976,6 +976,89 @@ class LegacyCreditConversionTests(unittest.TestCase):
             self.assertNotIn("bonus_balance", w)
 
 
+class AdminGrantTests(unittest.TestCase):
+    """The operator top-up (founder 2026-08-12).
+
+    Same bucket rule as the legacy conversion, and for the same reason: the
+    monthly roll SETS token_balance, so a grant put there has a silent 30-day
+    expiry. An operator watching it land would have no way to know."""
+
+    def setUp(self):
+        self.env = patch.dict("os.environ", {"TOKEN_PRICING_ENABLED": "1"})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+
+    def test_a_grant_lands_in_the_bucket_that_does_not_expire(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=9_000, bonus=0))
+        acct = ta.admin_grant("u1", 1_000_000, ref_id="r1", database=db)
+        self.assertEqual(db.store["row"]["bonus_balance"], 1_000_000)
+        # The monthly half is UNTOUCHED — a top-up must not look like a
+        # period grant, or the next roll would appear to delete it.
+        self.assertEqual(db.store["row"]["token_balance"], 9_000)
+        self.assertEqual(acct["balance"], 1_009_000)
+
+    def test_the_grant_survives_the_monthly_roll(self):
+        import services.token_account as ta
+        start = datetime.now(UTC) - timedelta(days=40)
+        db = FakeDB(account_row("free", balance=9_000, start=start, bonus=0))
+        ta.admin_grant("u1", 1_000_000, ref_id="r1", database=db)
+        ta.ensure_period_current("u1", database=db)
+        self.assertEqual(db.store["row"]["token_balance"], 12_000, "rolled")
+        self.assertEqual(db.store["row"]["bonus_balance"], 1_000_000)
+
+    def test_the_same_ref_id_never_grants_twice(self):
+        """A double-tapped button, a retried fetch, a refreshed tab. The
+        ledger's unique index would absorb the duplicate ROW, but the balance
+        write is a separate statement and the index cannot protect it — so
+        without this check the account would be credited twice and the audit
+        trail would show one movement."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=0, bonus=0))
+        ta.admin_grant("u1", 500_000, ref_id="same", database=db)
+        ta.admin_grant("u1", 500_000, ref_id="same", database=db)
+        self.assertEqual(db.store["row"]["bonus_balance"], 500_000)
+
+    def test_a_different_ref_id_grants_again(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=0, bonus=0))
+        ta.admin_grant("u1", 100, ref_id="a", database=db)
+        ta.admin_grant("u1", 100, ref_id="b", database=db)
+        self.assertEqual(db.store["row"]["bonus_balance"], 200)
+
+    def test_a_negative_grant_corrects_and_floors_at_zero(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=0, bonus=1_000))
+        ta.admin_grant("u1", -400, ref_id="fix", database=db)
+        self.assertEqual(db.store["row"]["bonus_balance"], 600)
+        ta.admin_grant("u1", -9_999, ref_id="fix2", database=db)
+        self.assertEqual(db.store["row"]["bonus_balance"], 0)
+
+    def test_junk_is_refused_rather_than_guessed(self):
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=0, bonus=0))
+        for bad in (None, "x", 0):
+            self.assertIsNone(
+                ta.admin_grant("u1", bad, ref_id="r", database=db))
+        self.assertIsNone(ta.admin_grant("", 100, ref_id="r", database=db))
+        self.assertEqual(db.store["row"]["bonus_balance"], 0)
+
+    def test_the_movement_is_written_to_the_ledger(self):
+        """The balance is a cache; the ledger is the truth. A grant nobody
+        can prove happened is the state this table exists to prevent."""
+        import services.token_account as ta
+        db = FakeDB(account_row("free", balance=1_000, bonus=0))
+        ta.admin_grant("u1", 250_000, ref_id="r1", database=db)
+        rows = [r for r in db.ledger
+                if r.get("action") == ta.ADMIN_ADJUST]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["delta"], 250_000)
+        self.assertEqual(rows[0]["balance_after"], 251_000)
+        self.assertEqual(rows[0]["ref_id"], "r1")
+
+
 class PlanStateTests(unittest.TestCase):
     """`plan` on the balance: is this tier a live subscription, or the default?
 
