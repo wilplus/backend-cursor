@@ -486,10 +486,7 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
 
       * an OPEN part takes EVERYTHING — composition (rewrites) and
         accentuation (bold/advice) both pass, and the budget decides.
-      * a LOCKED part takes NOTHING — "ordinary AI corrections skip locked
-        text entirely" — with ONE exception: a Confident Voice detection
-        passes through TAGGED (`pending_better_version` + the founder's
-        copy), so the FE renders a small prompt instead of a normal offer.
+      * a LOCKED part took NOTHING but a tagged Confident Voice prompt.
 
     This supersedes the first generation, which allowed the whole
     accentuation layer on locked parts and refused accentuation on open ones.
@@ -497,6 +494,17 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
     the speaker's committed memory — styling it is still touching it — and an
     open paragraph may legitimately carry a delivery accent while its wording
     is still moving.
+
+    WHAT A LOCKED PART TAKES TODAY, after two later rulings (the block below
+    carries each one's reasoning):
+
+      * a Confident Voice detection → tagged `pending_better_version`;
+      * a `bold` → tagged `style_lane`, routed OUTSIDE the ≤3 budget and
+        surfaced only inside the chunk's modal (gen-3, parked 2026-08-11,
+        un-parked 2026-08-12);
+      * composition and its advice → tagged `reopens_locked`; the chunk
+        re-enters the review cycle (gen-4);
+      * a change no layer classifies, or one straddling two parts → dropped.
 
     `parts` empty or absent → EVERY change passes. A document with no stored
     identity has no locks either, so there is nothing to enforce; gating on
@@ -538,19 +546,6 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
             kept.append({**c, "pending_better_version": True,
                          "pending_copy": PENDING_BETTER_VERSION_COPY})
             continue
-        # THE POST-LOCK STYLE LANE IS PARKED (founder 2026-08-11: "for now
-        # we will dump the colours and styling interventions"). That
-        # parenthetical retracts the lane he had asked for one message
-        # earlier — bold/colour offers on ALREADY-LOCKED text — and nothing
-        # wider: emphasis on OPEN text is an older, shipped lane and rides
-        # the ordinary budget untouched, which is why this sits inside the
-        # locked branch rather than above it.
-        #
-        # Refused rather than deleted through five files: "for now" is a
-        # park, and the routing it would need back is worth more intact than
-        # re-derived. One gate, one ruling, one line to reverse.
-        if c.get("kind") == "bold":
-            continue
         # R1, THIRD generation (founder 2026-08-11, the deck respec): a
         # locked part takes the STYLE LANE — bold/colour proposals that
         # touch presentation, never the words ("this next suggestion is
@@ -558,8 +553,23 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
         # not merged: the caller routes tagged rows OUTSIDE the ≤3 budget
         # (ruling 4: "Outside") and the FE surfaces them only inside the
         # chunk's modal — locked text is never re-underlined on the page.
-        # Composition on locked text stays dropped: L1's mechanical
-        # enforcement is unchanged — nothing rewrites committed words.
+        #
+        # PARKED the same day ("for now we will dump the colours and styling
+        # interventions"), UN-PARKED 2026-08-12 in the lock-flow review.
+        #
+        # The park was ONE LINE on purpose, and that is why reversing it is
+        # also one: nothing else was ever unwired. The span check, the §F.4
+        # accent window, `suppress_style_where_feedback_waits`, the
+        # `style_changes` payload and the FE's whole receiving end
+        # (styleFor → the modal's style card → onApplyStyle) all stayed
+        # standing through the park and needed no repair to come back.
+        #
+        # NOT AN L1 LOOPHOLE. Styling accents words that are already there;
+        # it does not rewrite them. Composition on a locked part rides
+        # gen-4's re-open below, on its own terms and inside the budget.
+        if c.get("kind") == "bold":
+            kept.append({**c, "style_lane": True})
+            continue
         # R1, FOURTH generation (founder 2026-08-11, later the same day):
         # "when the engine is locked in keep it there… but if something new
         # appears there keep iterating and showing the suggestions" — a
