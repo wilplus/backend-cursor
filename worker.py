@@ -34,10 +34,13 @@ try:
 except ImportError:
     pass
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
+# Same root configuration the web process now uses (2026-08-12). Shared
+# rather than duplicated because PIPELINE_QUEUE_ENABLED decides which of the
+# two services runs the pipeline, so a take's timing lines can land in either
+# log — and "pipeline timing session=…" has to look the same in both.
+from services.logging_setup import configure_logging  # noqa: E402
+
+configure_logging()
 logger = logging.getLogger("pipeline-worker")
 
 
