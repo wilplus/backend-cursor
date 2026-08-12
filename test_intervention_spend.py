@@ -37,6 +37,13 @@ class _FakeDb:
                     if a == arc_id and t == take_session_id
                     and row.get("lane") != "lane:style"])
 
+    def list_style_intervention_decisions(self, arc_id, take_session_id):
+        # The complement: the rows the two readers above throw away. Two
+        # budgets, two reads, neither charging the other.
+        return [row for (a, t, _k), row in self.rows.items()
+                if a == arc_id and t == take_session_id
+                and row.get("lane") == "lane:style"]
+
 
 def _take(i, sid=None, kind=None, paired=None):
     return {"id": sid or f"s{i}", "take_index": i,
@@ -118,6 +125,71 @@ class TestSpendUnspendCount(unittest.TestCase):
             def count_intervention_decisions(self, *a):
                 raise RuntimeError("boom")
         self.assertEqual(sp.spent_count(_Broken(), "a1", "s2"), 0)
+
+
+class TestTheStyleLedger(unittest.TestCase):
+    """The style lane's OWN budget (founder 2026-08-12): ≤3 per take, ≤2
+    per slide. Cumulative, so it needs a ledger — and that ledger is the
+    exact rows `spent_count` and `spent_by_paragraph` exclude. Two budgets
+    reading one table, neither charging the other."""
+
+    DOC = "First slide words.\n\nSecond slide words.\n\nThird slide words."
+
+    def setUp(self):
+        self.db = _FakeDb()
+        self.sessions = [_take(1), _take(2)]
+
+    def _style(self, key, quote):
+        sp.spend(self.db, "a1", self.sessions, change_key=key,
+                 decision="approved", lane="lane:style",
+                 intervention_type="EMPHASISE", quote=quote)
+
+    def test_style_slots_are_counted_and_placed(self):
+        self._style("s:1", "First slide")
+        self._style("s:2", "Third slide")
+        out = sp.style_spend(self.db, "a1", "s2", self.DOC)
+        self.assertEqual(out["count"], 2)
+        self.assertEqual(out["by_paragraph"], {0: 1, 2: 1})
+
+    def test_the_two_budgets_do_not_charge_each_other(self):
+        self._style("s:1", "First slide")
+        sp.spend(self.db, "a1", self.sessions, change_key="prior_take:x",
+                 decision="approved", quote="Second slide")
+        # The budgeted counter ignores the style row…
+        self.assertEqual(sp.spent_count(self.db, "a1", "s2"), 1)
+        # …and the style counter ignores the budgeted one.
+        self.assertEqual(sp.style_spend(self.db, "a1", "s2",
+                                        self.DOC)["count"], 1)
+
+    def test_an_unplaceable_quote_still_spends_the_TAKE_s_slot(self):
+        """A slot spent on words since baked away is still spent — but it
+        is charged to no slide, the same drop-never-guess rule
+        `spent_by_paragraph` follows, pointed the safe way."""
+        self._style("s:1", "words that are no longer anywhere")
+        out = sp.style_spend(self.db, "a1", "s2", self.DOC)
+        self.assertEqual(out["count"], 1)
+        self.assertEqual(out["by_paragraph"], {})
+
+    def test_no_served_text_counts_the_take_and_places_nothing(self):
+        self._style("s:1", "First slide")
+        for junk in (None, "", 42):
+            out = sp.style_spend(self.db, "a1", "s2", junk)
+            self.assertEqual(out["count"], 1)
+            self.assertEqual(out["by_paragraph"], {})
+
+    def test_another_take_is_another_epoch(self):
+        self._style("s:1", "First slide")
+        self.assertEqual(sp.style_spend(self.db, "a1", "s3",
+                                        self.DOC)["count"], 0)
+
+    def test_a_read_failure_degrades_to_zero_not_silence(self):
+        class _Broken:
+            def list_style_intervention_decisions(self, *a):
+                raise RuntimeError("boom")
+        self.assertEqual(sp.style_spend(_Broken(), "a1", "s2", self.DOC),
+                         {"count": 0, "by_paragraph": {}})
+        self.assertEqual(sp.style_spend(self.db, "", "s2", self.DOC),
+                         {"count": 0, "by_paragraph": {}})
 
 
 if __name__ == "__main__":

@@ -1613,8 +1613,13 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # H.1's ≤3, so the set on screen is chosen once and only shrinks.
         # A count miss reads 0 and degrades to the per-arbitration budget.
         from services.intervention_spend import (
-            spent_by_paragraph, spent_count,
+            spent_by_paragraph, spent_count, style_spend,
         )
+        # THE STYLE LANE'S OWN LEDGER (founder 2026-08-12). Its ≤3-per-take /
+        # ≤2-per-slide cap is cumulative like the budgeted one, so it needs
+        # the decisions the two reads above deliberately exclude. One read,
+        # both numbers — this lands on the polled ideal-text GET.
+        _style_spent = style_spend(db, arc_id, _arm_sid, served_text)
         # SINGLE-POINT FOCUS (founder 2026-08-12): the one paragraph feedback
         # is routed to until it comes onboard. None on cold start — no
         # baseline, a first take, or a document whose worst part is already at
@@ -1634,6 +1639,13 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                        served_text=served_text,
                        spent_by_paragraph=spent_by_paragraph(
                            db, arc_id, _arm_sid, served_text),
+                       # THE STYLE CAP (founder 2026-08-12): "≤3 total style
+                       # suggestions per take, and a maximum of ≤2 per
+                       # slide." Its own allowance, since style rides
+                       # outside the ≤3 and outside focus and would
+                       # otherwise have no ceiling at all.
+                       style_decided_count=_style_spent["count"],
+                       style_spent_by_paragraph=_style_spent["by_paragraph"],
                        # R1 gen-3 — the layer filter runs inside the gate,
                        # BEFORE the budget: an open part takes everything;
                        # a locked part takes the STYLE LANE (bold only,

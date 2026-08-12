@@ -597,6 +597,75 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
     return kept
 
 
+# THE STYLE LANE'S OWN BUDGET (founder 2026-08-12): "≤3 total style
+# suggestions per take, and a maximum of ≤2 per slide." Deliberately the same
+# numbers as the budgeted lane, and deliberately a SEPARATE allowance — style
+# rides outside the ≤3 (ruling 4), so it needs its own ceiling or it has none
+# at all.
+STYLE_BUDGET_CEILING = 3
+STYLE_PER_GROUP = 2
+
+
+def cap_style_lane(changes: Any, *, group_of: Any = None,
+                   spent_count: int = 0, spent_by_group: Any = None) -> list:
+    """The style lane's ≤2-per-slide, ≤3-per-take cap (founder 2026-08-12).
+
+    Un-parking the lane and then exempting it from single-point focus left it
+    with NO ceiling of any kind: outside the ≤3 and outside focus, a document
+    with twelve locked chunks could light twelve pills at once. The founder's
+    call: "an uncapped style lane would light up the screen like a Christmas
+    tree on a long document."
+
+    CUMULATIVE PER TAKE, exactly like the budgeted lane, and for the same
+    reason (founder 2026-08-10): "each feedback needs to be there; full and
+    end to end and waiting; not that it appears once the other is accepted."
+    A decided style proposal keeps its slot — `spent_count` and
+    `spent_by_group` are the take's already-decided style rows — so the set on
+    screen is chosen once and only shrinks. Without that, accepting one accent
+    would summon a replacement, which is the exact trickle the take budget was
+    built to kill.
+
+    PER GROUP FIRST, THEN THE FLAT CAP — the budgeted lane's order. Reversed,
+    three accents on one slide would eat the whole take's allowance before the
+    per-slide rule ever ran, and slides 2–10 would get nothing.
+
+    Which rows survive is DOCUMENT ORDER: the caller sorts by span before
+    calling, and that is the same tie-break the budgeted lane's arbitration
+    uses. There is nothing better available — the engine does not rank these
+    (every candidate carries the same grade, deviation and ppv), so any other
+    rule would be a preference dressed as a judgement.
+
+    `group_of` absent counts document-wide, which is what a caller without the
+    served text gets: one group, the flat cap alone. Pure.
+    """
+    rows = [c for c in (changes or []) if isinstance(c, dict)]
+    if not rows:
+        return rows
+    try:
+        budget = STYLE_BUDGET_CEILING - int(spent_count or 0)
+    except (TypeError, ValueError):
+        budget = STYLE_BUDGET_CEILING
+    if budget <= 0:
+        return []
+    _spent = spent_by_group if isinstance(spent_by_group, dict) else {}
+    used: dict = {}
+    kept: list = []
+    for c in rows:
+        if len(kept) >= budget:
+            break
+        if callable(group_of):
+            g = group_of(c)
+            try:
+                already = int(_spent.get(g, 0) or 0)
+            except (TypeError, ValueError):
+                already = 0
+            if used.get(g, already) >= STYLE_PER_GROUP:
+                continue
+            used[g] = used.get(g, already) + 1
+        kept.append(c)
+    return kept
+
+
 def suppress_style_where_feedback_waits(changes: Any, group_of: Any = None
                                         ) -> list:
     """THE ORDER OF THE TWO LANES (founder 2026-08-11).
@@ -668,7 +737,8 @@ def filter_by_window(changes: Any) -> list:
 def select(changes: Any, *, user_id: str = "", session_id: str = "",
            parts: Any = None, decided_count: int = 0,
            served_text: Any = None, spent_by_paragraph: Any = None,
-           focus_part_id: Any = None) -> dict:
+           focus_part_id: Any = None, style_decided_count: int = 0,
+           style_spent_by_paragraph: Any = None) -> dict:
     """Run every change through the manager and return the survivors.
 
     Returns ``{"changes": [...], "result": <arbitrate() dict>|None}``. The
@@ -774,6 +844,14 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         style_rows.sort(key=lambda c: (
             (c.get("span") or {}).get("start", 0),
             (c.get("span") or {}).get("end", 0)))
+        # THE STYLE CAP (founder 2026-08-12) — AFTER the sort, because the
+        # sort is what makes "which three survive" document order rather than
+        # whichever lane happened to propose first.
+        funnel["style_proposed"] = len(style_rows)
+        style_rows = cap_style_lane(
+            style_rows, group_of=_para_of,
+            spent_count=style_decided_count,
+            spent_by_group=style_spent_by_paragraph)
         _style = {"style_changes": style_rows} if style_rows else {}
         funnel["style_lane"] = len(style_rows)
         if not rows:
