@@ -57,28 +57,42 @@ class TestTheStyleLane(unittest.TestCase):
             {"id": "p1", "ord": 1, "text": "y" * 400},
         ]
 
-    def test_the_post_lock_style_lane_is_PARKED(self):
-        """Founder 2026-08-11: "for now we will dump the colours and styling
-        interventions" — the lane he had asked for one message earlier,
-        bold/colour on ALREADY-LOCKED text.
+    def test_the_style_lane_costs_the_budget_NOTHING(self):
+        """Ruling 4: "Outside". A locked part's bold rides beside the
+        budgeted list, so the ≤3 still fills up from the open pool — the
+        student loses no content feedback to gain a finishing touch.
 
-        Parked at the layer filter rather than deleted through five files:
-        "for now" is a park, and the routing it would need back is worth more
-        intact than re-derived. The budgeted lane is untouched — the style
-        row cost it nothing before and costs it nothing now."""
+        (Parked 2026-08-11 — "for now we will dump the colours and styling
+        interventions" — and un-parked 2026-08-12 in the lock-flow review.
+        The park was one line, which is why this test's assertion moved and
+        nothing else did.)"""
         parts = self._parts()
         style = _change(0, kind="bold", start=0, end=8)
         open_pool = [_change(i, start=100 + i * 60, end=108 + i * 60)
                      for i in range(1, 6)]
         out = ic.select([style] + open_pool, parts=parts)
         self.assertEqual(len(out["changes"]), me.BUDGET_CEILING)
-        self.assertEqual(out.get("style_changes"), None)
+        self.assertEqual([c["id"] for c in out["style_changes"]], ["c0"])
+        # The style row is never IN the budgeted list — one row rendering
+        # twice is the defect the two lanes exist to keep apart.
+        self.assertNotIn("c0", [c["id"] for c in out["changes"]])
 
-    def test_a_locked_bold_ALONE_now_serves_nothing(self):
+    def test_a_locked_bold_ALONE_serves_the_style_lane(self):
         parts = self._parts()
         out = ic.select([_change(0, kind="bold", start=0, end=8)],
                         parts=parts)
         self.assertEqual(out["changes"], [])
+        self.assertEqual([c["id"] for c in out["style_changes"]], ["c0"])
+
+    def test_an_OPEN_part_s_bold_is_NOT_the_style_lane(self):
+        """The lane is defined by the LOCK, not by the kind. An open
+        paragraph's accent is an ordinary budgeted offer and must keep
+        competing for a slot — routing it outside the budget would let
+        every bold in the document bypass the ≤3."""
+        parts = self._parts()
+        out = ic.select([_change(0, kind="bold", start=100, end=108)],
+                        parts=parts)
+        self.assertEqual([c["id"] for c in out["changes"]], ["c0"])
         self.assertNotIn("style_changes", out)
 
     def test_the_style_lane_keeps_the_accent_window(self):
@@ -93,6 +107,23 @@ class TestTheStyleLane(unittest.TestCase):
         out = ic.select([wide], parts=parts)
         self.assertEqual(out["changes"], [])
         self.assertNotIn("style_changes", out)
+
+    def test_content_still_wins_the_tap_on_the_same_chunk(self):
+        """Founder 2026-08-11: "the style intervention appears if it was
+        locked in and no new feedback is queued". A gen-4 re-open and a
+        style accent on the SAME locked paragraph would compete for one tap,
+        and the rewrite is the one that changes what the speech says."""
+        parts = self._parts()
+        text = ("x" * 58) + "\n\n" + ("y" * 400)
+        style = _change(0, kind="bold", start=0, end=8)
+        rewrite = _change(1, kind="replace", start=20, end=30)
+        out = ic.select([style, rewrite], parts=parts, served_text=text)
+        self.assertEqual([c["id"] for c in out["changes"]], ["c1"])
+        self.assertTrue(out["changes"][0]["reopens_locked"])
+        self.assertNotIn("style_changes", out)
+        # …and it comes back the moment nothing louder is queued.
+        back = ic.select([style], parts=parts, served_text=text)
+        self.assertEqual([c["id"] for c in back["style_changes"]], ["c0"])
 
 
 class TestTheTakeBudget(unittest.TestCase):
@@ -658,16 +689,18 @@ class TestTheFunnel(unittest.TestCase):
         # The case that matters most: nothing on screen, and the funnel is
         # the only witness to which gate did it.
         #
-        # Since R1 gen-4 a rewrite AND an advice on a locked part both
-        # re-open the chunk rather than emptying the pool.
+        # A locked part now RELEASES almost everything: a rewrite and its
+        # advice re-open the chunk (gen-4), and a bold rides the style lane
+        # (gen-3, un-parked 2026-08-12). What the layer filter still empties
+        # on is a kind NO LAYER CLASSIFIES — nobody decided the phase rules
+        # for it, so defaulting it in would let an unnamed lane touch locked
+        # text. That is the honest fixture for "the pool emptied HERE".
         locked = [{"id": "p0", "ord": 0, "text": "x" * 200,
                    "locked_at": "2026-08-11T10:00:00Z"}]
-        # A BOLD on the locked part: the post-lock style lane is parked, so
-        # this is the one thing that still empties the pool there. A rewrite
-        # or an advice would re-open the chunk instead (R1 gen-4).
-        out = ic.select([_change(0, kind="bold", start=0, end=10)],
+        out = ic.select([_change(0, kind="teleport", start=0, end=10)],
                         parts=locked, session_id="s1")
         self.assertEqual(out["changes"], [])
+        self.assertNotIn("style_changes", out)
         self.assertEqual(out["funnel"]["in"], 1)
         self.assertEqual(out["funnel"]["after_layer"], 0)
 

@@ -403,25 +403,30 @@ class TestR1TheLayerFilter(unittest.TestCase):
         # proposal's row is deleted and an approved one is baked into the
         # document. "New" is the only thing left.
 
-    def test_the_STYLING_CLASS_is_parked(self):
-        """Founder 2026-08-11, later still: "for now we will dump the colours
-        and styling interventions."
+    def test_the_STYLING_CLASS_rides_its_own_lane_on_a_LOCKED_part(self):
+        """Founder 2026-08-11: "for now we will dump the colours and styling
+        interventions" — parked. Un-parked 2026-08-12 in the lock-flow
+        review.
 
-        Refused at the layer filter rather than deleted through five files —
-        "for now" is a park, and the routing it would need back is worth more
-        intact than re-derived. Bold is the whole styling class: it is what a
-        colour or an emphasis offer arrives as."""
+        Bold is the whole styling class: it is what a colour or an emphasis
+        offer arrives as. On a LOCKED part it comes back TAGGED, which is
+        what routes it outside the ≤3 budget and into the chunk's modal
+        instead of onto the page."""
         parts = self._parts(True)
-        self.assertEqual(
-            ic.filter_by_layer([self._change(parts, 0, "bold")], parts), [])
-        # SCOPED TO THE POST-LOCK LANE. The parenthetical retracted the lane
-        # asked for one message earlier — bold/colour on ALREADY-LOCKED text
-        # — and nothing wider: emphasis on OPEN text is an older, shipped
-        # lane and still rides the ordinary budget.
+        out = ic.filter_by_layer([self._change(parts, 0, "bold")], parts)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0]["style_lane"])
+        # It is a STYLE row, not a re-open: the two tags route to different
+        # lanes and a row carrying both would be served twice.
+        self.assertNotIn("reopens_locked", out[0])
+        # SCOPED TO THE POST-LOCK LANE, as it always was. Emphasis on OPEN
+        # text is an older, shipped lane and still rides the ordinary
+        # budget — untagged, competing for a slot like any other offer.
         open_parts = self._parts(False)
-        self.assertEqual(
-            len(ic.filter_by_layer([self._change(open_parts, 0, "bold")],
-                                   open_parts)), 1)
+        open_out = ic.filter_by_layer(
+            [self._change(open_parts, 0, "bold")], open_parts)
+        self.assertEqual(len(open_out), 1)
+        self.assertNotIn("style_lane", open_out[0])
 
     def test_a_locked_part_takes_ADVICE_too(self):
         """Founder 2026-08-11, answering the question this code asked:
@@ -474,14 +479,18 @@ class TestR1TheLayerFilter(unittest.TestCase):
         out = ic.filter_by_layer(
             [style_bold_locked, repl_locked,
              keep_repl_open, keep_bold_open], parts)
-        # Gen-4 + the post-lock style park: the LOCKED bold is gone, the
-        # locked rewrite survives tagged as a re-open, and the open part's
-        # rewrite and bold both pass plain on the ordinary budget.
+        # THE FOUR OUTCOMES ON ONE DOCUMENT. The locked bold takes the style
+        # lane, the locked rewrite re-opens the chunk, and the open part's
+        # rewrite and bold both pass PLAIN on the ordinary budget — the lock,
+        # not the kind, is what decides which lane a change lands in.
         self.assertEqual([c["id"] for c in out],
-                         [repl_locked["id"], keep_repl_open["id"],
-                          keep_bold_open["id"]])
-        self.assertTrue(out[0]["reopens_locked"])
-        for c in out[1:]:
+                         [style_bold_locked["id"], repl_locked["id"],
+                          keep_repl_open["id"], keep_bold_open["id"]])
+        self.assertTrue(out[0]["style_lane"])
+        self.assertNotIn("reopens_locked", out[0])
+        self.assertTrue(out[1]["reopens_locked"])
+        self.assertNotIn("style_lane", out[1])
+        for c in out[2:]:
             self.assertNotIn("reopens_locked", c)
             self.assertNotIn("style_lane", c)
 
