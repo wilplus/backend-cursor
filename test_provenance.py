@@ -295,6 +295,76 @@ class TestEvaluationStamping(unittest.TestCase):
         self.assertEqual(n, 2)
 
 
+class TestSnippetGrainDoesNotClaimTheRecordingGrain(unittest.TestCase):
+    """23505, found in production 2026-08-12::
+
+        Key (recording_id, dimension_id, benchmark_version)
+          = (97d982ea…, wpm, measure-v1) already exists.
+        violates unique constraint "uq_dimension_evaluations_rec_dim_ver"
+
+    `_windowed_rate_rows` sets snippet_id AND recording_id, so seven windows
+    of one recording produce seven rows sharing a (recording_id,
+    dimension_id, benchmark_version). The upsert's arbiter names the SNIPPET
+    index, so Postgres never treats the recording-grain violation as a
+    conflict to resolve — it raises, and a best-effort writer swallows it.
+    That is why this table kept staying empty.
+
+    0249 designed the way out: storage is snippet grain and the
+    recording-grain index is PARTIAL (`WHERE recording_id IS NOT NULL`), which
+    only works if snippet rows leave the column NULL.
+    """
+
+    def setUp(self):
+        from services.db import db
+        self.db = db
+
+    def _write(self, rows):
+        client = FakeSupabaseClient({"dimension_evaluations": []})
+        with swap_attr(self.db, "client", client):
+            n = self.db.record_dimension_evaluations(rows)
+        return n, client.tables["dimension_evaluations"].payload
+
+    def test_a_snippet_row_writes_a_NULL_recording_id(self):
+        n, payload = self._write([
+            {"dimension_id": "wpm", "snippet_id": "s1",
+             "recording_id": "rec-1", "session_id": "sess-1",
+             "raw_value": 140.0},
+        ])
+        self.assertEqual(n, 1)
+        self.assertIsNone(payload[0]["recording_id"])
+        # The anchor and the analysis grain both survive: has_anchor is
+        # satisfied by snippet_id, and session_id is what every reader uses.
+        self.assertEqual(payload[0]["snippet_id"], "s1")
+        self.assertEqual(payload[0]["session_id"], "sess-1")
+
+    def test_many_windows_of_ONE_recording_no_longer_collide(self):
+        # The exact production shape: several rows, one recording, one
+        # dimension. Before the fix every one of them carried the same
+        # recording_id and the second insert raised 23505.
+        rows = [{"dimension_id": "wpm", "snippet_id": f"s{i}",
+                 "recording_id": "rec-1", "session_id": "sess-1",
+                 "raw_value": 100.0 + i} for i in range(7)]
+        n, payload = self._write(rows)
+        self.assertEqual(n, 7)
+        self.assertTrue(all(p["recording_id"] is None for p in payload))
+        # …and they remain distinct on the arbiter the upsert actually names.
+        keys = {(p["snippet_id"], p["dimension_id"], p["benchmark_version"])
+                for p in payload}
+        self.assertEqual(len(keys), 7)
+
+    def test_a_RECORDING_grain_row_keeps_its_recording_id(self):
+        # Nulling is scoped to rows that have a finer anchor. A row whose only
+        # anchor IS the recording must keep it, or it loses its anchor
+        # entirely and ck_dimension_evaluations_has_anchor rejects it.
+        n, payload = self._write([
+            {"dimension_id": "wpm", "recording_id": "rec-1",
+             "raw_value": 140.0},
+        ])
+        self.assertEqual(n, 1)
+        self.assertEqual(payload[0]["recording_id"], "rec-1")
+        self.assertIsNone(payload[0]["snippet_id"])
+
+
 class TestLabelRevision(unittest.TestCase):
     """The append-only shadow of upsert_state_rating."""
 
