@@ -624,18 +624,21 @@ def v2_arc_unlock(arc_id):
 def v2_unlock_moments(arc_id):
     """THE one paid item under the single deliverable (founder re-shape
     2026-07-17): open the presentation's key-moment EXPLANATIONS (the coach's
-    note/video per moment) — 5 credits, one-time per presentation, covering
-    all current AND future moments. The ideal text itself is always free.
-    ARC-KEYED path — the FE contract pin (their 748c33d).
+    note/video per moment) — one-time per presentation, covering all current
+    AND future moments. The ideal text itself is always free. ARC-KEYED path —
+    the FE contract pin (their 748c33d).
 
-    Same deduct-first atomic ordering as the retired arc unlock (deduct →
-    exclusive insert → refund on conflict), against the SEPARATE
-    moment_unlocks table (no grandfathering from arc_purchases).
+    Charged in TOKENS (2,500) since the 2026-08-12 pivot. The charge is keyed
+    on the arc, so the claim below needs no refund arm: the retired credits
+    ordering was deduct → insert → refund-on-conflict, three round trips with
+    a window where the money was gone and the entitlement was not. `charge` is
+    idempotent on (user, action, ref_id) — a raced second claim comes back ok
+    with charged=0, so a retry costs nothing and there is nothing to hand back.
 
-    200 { unlocked: true, arc_id, credits_remaining }
+    200 { unlocked: true, arc_id, tokens_remaining }
     200 { already_entitled: true, arc_id }
-    402 { code: INSUFFICIENT_CREDITS, required, current }
-    404 · 409 (raced; refunded) · 500
+    402 { code: INSUFFICIENT_TOKENS, required, current, reason }
+    404 · 500
     """
     try:
         owned, _ = _arc_owned_by_caller(arc_id)
@@ -646,57 +649,40 @@ def v2_unlock_moments(arc_id):
             return jsonify({"already_entitled": True,
                             "arc_id": arc_id}), 200
 
-        # Token pricing Phase 1: when the flag is on, key-moment explanations
-        # cost TOKENS (2,500 = $0.25), not the legacy 5 credits ($5) — a 20×
-        # cut the founder approved on 2026-07-27, because the explanations were
-        # already generated during the take and cost us nothing to unlock.
-        # Flag off ⇒ the legacy credits path below runs byte-for-byte unchanged.
-        from services.token_account import enabled as _tokens_on
-        if _tokens_on():
-            from services.token_account import charge as _charge
-            res = _charge(str(request.user_id), "moment_explanation",
-                          ref_id=str(arc_id))
-            if not res.ok:
-                return jsonify({
-                    "code": "INSUFFICIENT_TOKENS",
-                    "required": res.charged or 2500,
-                    "current": res.balance,
-                    "reason": res.reason,
-                }), 402
-            unlock = db.insert_moment_unlock(str(arc_id),
-                                             str(request.user_id), 0)
-            if not unlock and not _moments_entitled(arc_id):
-                return jsonify({"code": "V2_ERROR",
-                                "error": "Could not start the unlock"}), 500
-            return jsonify({"unlocked": True, "arc_id": arc_id,
-                            "tokens_remaining": res.balance}), 200
-
-        amount = int(getattr(config, "MOMENTS_UNLOCK_CREDITS", 5) or 5)
-
-        new_balance = db.deduct_credits_strict(str(request.user_id), amount)
-        if new_balance is None:
-            details = db.v2_get_student_details(str(request.user_id)) or {}
-            current = int(details.get("credits") or 0)
+        # TOKENS ARE THE CURRENCY (founder 2026-08-12, the pricing pivot).
+        # Key-moment explanations cost 2,500 tokens ($0.25), not the legacy 5
+        # credits ($5) — a 20× cut approved 2026-07-27, because the
+        # explanations were already generated during the take and cost us
+        # nothing to unlock.
+        #
+        # The legacy branch that sat below this is gone. It was reachable only
+        # with TOKEN_PRICING_ENABLED off, and the flag is on in prod on both
+        # web and worker (founder 2026-08-12). Keeping a second charging path
+        # alive behind a flag nobody intends to flip back is how two
+        # currencies drift apart: the legacy one stops being exercised, stops
+        # being tested against reality, and is still the thing that runs on
+        # the day someone clears an env var.
+        #
+        # `charge` never raises and is soft by contract (fence §6.1), so the
+        # unforked path degrades exactly as it did — it does not need the flag
+        # to be safe, only to be correct about the price.
+        from services.token_account import charge as _charge
+        res = _charge(str(request.user_id), "moment_explanation",
+                      ref_id=str(arc_id))
+        if not res.ok:
             return jsonify({
-                "code": "INSUFFICIENT_CREDITS",
-                "required": amount, "current": current,
+                "code": "INSUFFICIENT_TOKENS",
+                "required": res.charged or 2500,
+                "current": res.balance,
+                "reason": res.reason,
             }), 402
-
-        unlock = db.insert_moment_unlock(
-            str(arc_id), str(request.user_id), amount)
-        if not unlock:
-            db.v2_increment_student_credits(str(request.user_id), amount)
-            if _moments_entitled(arc_id):
-                return jsonify({"code": "MOMENTS_ALREADY_UNLOCKED",
-                                "arc_id": arc_id}), 409
-            return jsonify({
-                "code": "V2_ERROR", "error": "Could not start the unlock",
-            }), 500
-
-        return jsonify({
-            "unlocked": True, "arc_id": arc_id,
-            "credits_remaining": new_balance,
-        }), 200
+        unlock = db.insert_moment_unlock(str(arc_id),
+                                         str(request.user_id), 0)
+        if not unlock and not _moments_entitled(arc_id):
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not start the unlock"}), 500
+        return jsonify({"unlocked": True, "arc_id": arc_id,
+                        "tokens_remaining": res.balance}), 200
     except Exception as e:
         logger.error("unlock-moments failed arc=%s: %s", arc_id, e,
                      exc_info=True)
