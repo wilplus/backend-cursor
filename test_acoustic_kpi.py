@@ -240,23 +240,126 @@ class WiringTests(unittest.TestCase):
         # coach's needle, not a claim about where this speaker normally sits.
         # Storing it as one would corrupt the series it feeds.
         import inspect
-        from services import lab_recording as lr
 
-        src = inspect.getsource(lr.process_lab_recording)
-        self.assertIn('_ar_kind == "user"', src)
+        src = inspect.getsource(ab.resolve_for_take)
+        self.assertIn('kind == "user"', src)
         self.assertIn("snapshot(user_id", src)
 
-    def test_the_baseline_snapshot_costs_no_extra_query(self):
-        # resolve_read_baseline_stats resolves the SAME pool once and the
-        # (mean, sd) form is derived from it. Calling both resolvers would pay
-        # the 1+N session read twice on the upload path — the exact cost the
-        # pipeline timers were added to find.
+    def test_the_upload_path_READS_the_baseline_it_does_not_rebuild_it(self):
+        # The 1+N cut (founder 2026-08-12, "can we still do smth with the wait
+        # time?"). The upload path must go through the resolver that serves the
+        # stored snapshot — calling the rebuilder directly would pay five
+        # get_snippets_by_session round-trips on every take, which is what this
+        # change exists to stop.
         import inspect
         from services import lab_recording as lr
 
         src = inspect.getsource(lr.process_lab_recording)
-        self.assertIn("resolve_read_baseline_stats", src)
+        self.assertIn("resolve_for_take", src)
+        self.assertNotIn("resolve_read_baseline_stats", src)
         self.assertNotIn("resolve_read_baseline(", src)
+
+
+class BaselineFreshnessTests(unittest.TestCase):
+    """The refresh rule is the whole risk in caching this.
+
+    Never refreshing does not merely age the reference — it INVERTS the
+    measurement, because the KPI's job is to notice improvement and a frozen
+    baseline reports improvement as drift away from itself.
+    """
+
+    def test_it_counts_only_the_sessions_NEWER_than_the_snapshot(self):
+        sess = [{"created_at": "2026-08-12T10:00:00Z"},
+                {"created_at": "2026-08-12T09:00:00Z"},
+                {"created_at": "2026-08-11T09:00:00Z"}]
+        # Two, not three: the last session is the PREVIOUS DAY, so it predates
+        # the snapshot and is not evidence that the baseline has fallen behind.
+        self.assertEqual(ab._newer_than("2026-08-12T08:00:00Z", sess), 2)
+        self.assertEqual(ab._newer_than("2026-08-10T08:00:00Z", sess), 3)
+        self.assertEqual(ab._newer_than("2026-08-12T09:30:00Z", sess), 1)
+        self.assertEqual(ab._newer_than("2026-08-12T23:00:00Z", sess), 0)
+
+    def test_an_UNPARSEABLE_timestamp_forces_a_rebuild(self):
+        # The bias is deliberate. Over-counting costs a recompute — correct,
+        # merely not free. Under-counting would pin a stale baseline in place
+        # forever, and a reference that stopped tracking the speaker is worse
+        # than a slow one.
+        sess = [{"created_at": "2026-08-12T10:00:00Z"}, {"created_at": None}]
+        self.assertEqual(ab._newer_than("not-a-date", sess), 2)
+        self.assertEqual(ab._newer_than("2026-08-12T23:00:00Z", sess), 1)
+        self.assertEqual(ab._newer_than(None, sess), 2)
+
+    def test_no_sessions_is_not_stale(self):
+        self.assertEqual(ab._newer_than("2026-08-12T08:00:00Z", []), 0)
+        self.assertEqual(ab._newer_than("2026-08-12T08:00:00Z", None), 0)
+
+    def test_the_freshness_window_is_the_REBUILD_window(self):
+        # The staleness check and the rebuild must agree about how far back
+        # "recent" goes, or the cache could be judged fresh against five
+        # sessions and rebuilt from a different five.
+        from services.acoustic_read import _BASELINE_MAX_SESSIONS
+        self.assertEqual(ab._max_sessions(), _BASELINE_MAX_SESSIONS)
+
+    def test_a_stored_baseline_is_reused_without_touching_the_snippets(self):
+        # The point of the whole change: the expensive call is
+        # get_snippets_by_session, once per session in the window.
+        calls: list = []
+
+        class _Db:
+            def get_current_user_acoustic_baseline(self, uid, *, detector_version=""):
+                calls.append("baseline")
+                return {"id": "b1", "computed_at": "2026-08-12T10:00:00Z",
+                        "features": {"f0_sd": {"mean": 1.0, "sd": 0.5}}}
+
+            def v2_list_user_lab_sessions(self, uid, *, limit=5):
+                calls.append("sessions")
+                return [{"created_at": "2026-08-12T11:00:00Z"}]
+
+            def get_snippets_by_session(self, sid):    # pragma: no cover
+                calls.append("snippets")
+                return []
+
+        base, kind = ab.resolve_for_take("u1", database=_Db())
+        self.assertEqual(kind, "user")
+        self.assertEqual(base, {"f0_sd": (1.0, 0.5)})
+        self.assertEqual(calls, ["baseline", "sessions"])   # two, not six
+
+    def test_it_rebuilds_once_the_window_has_passed(self):
+        calls: list = []
+
+        class _Db:
+            def get_current_user_acoustic_baseline(self, uid, *, detector_version=""):
+                calls.append("baseline")
+                return {"id": "b1", "computed_at": "2026-08-12T00:00:00Z",
+                        "features": {"f0_sd": {"mean": 1.0, "sd": 0.5}}}
+
+            def v2_list_user_lab_sessions(self, uid, *, limit=5):
+                calls.append("sessions")
+                return [{"id": "s1", "created_at": "2026-08-12T10:00:00Z"},
+                        {"id": "s2", "created_at": "2026-08-12T11:00:00Z"},
+                        {"id": "s3", "created_at": "2026-08-12T12:00:00Z"}]
+
+            def get_snippets_by_session(self, sid):
+                calls.append("snippets")
+                return []
+
+        ab.resolve_for_take("u1", database=_Db())
+        self.assertGreaterEqual(calls.count("snippets"), 1)
+
+    def test_a_read_hiccup_costs_a_rebuild_never_a_take(self):
+        class _Db:
+            def get_current_user_acoustic_baseline(self, uid, *, detector_version=""):
+                raise RuntimeError("table gone")
+
+            def v2_list_user_lab_sessions(self, uid, *, limit=5):
+                return []
+
+            def get_snippets_by_session(self, sid):    # pragma: no cover
+                return []
+
+        # No raise, and the cold-start answer rather than a crash.
+        self.assertEqual(ab.resolve_for_take("u1", database=_Db()),
+                         (None, None))
 
 
 class PartIterationRegressionTests(unittest.TestCase):

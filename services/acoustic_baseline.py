@@ -56,6 +56,14 @@ BASELINE_VERSION = "acoustic-baseline-v1"
 BASELINE_FEATURES: tuple = ("f0_sd", "pause_regularity", "dynamic_db",
                             "voiced_ratio")
 
+# How many takes a stored baseline serves before it is rebuilt. Not "never":
+# a reference that stops tracking the speaker does not merely age, it INVERTS
+# the measurement — the KPI's whole job is to notice improvement, and a frozen
+# baseline reports improvement as drift away from itself. Not "every take"
+# either: that pays six sequential round-trips for a mean that moves by a
+# fraction of one sample. Three is one rehearsal round.
+REFRESH_EVERY_TAKES = 3
+
 
 def weights_fingerprint() -> str:
     """A stable string over the live weights — what the version PROMISES.
@@ -154,6 +162,107 @@ def snapshot(user_id: Any, features: Any, *, n_sessions: int = 0,
         logger.warning("acoustic_baseline: snapshot failed user=%s: %s",
                        user_id, e)
         return None
+
+
+def _newer_than(iso: Any, sessions: Any) -> int:
+    """How many of `sessions` were created after `iso`. Pure.
+
+    Unparseable timestamps count as NEWER. The bias is deliberate: over-
+    counting causes a recompute (correct, merely not free), while under-
+    counting would pin a stale baseline in place forever — and a KPI measured
+    against a reference that stopped tracking the speaker is worse than a
+    slow one.
+    """
+    from datetime import datetime
+
+    def _dt(v: Any):
+        try:
+            return datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+
+    at = _dt(iso)
+    if at is None:
+        return len(sessions or [])
+    n = 0
+    for s in (sessions or []):
+        made = _dt((s or {}).get("created_at")) if isinstance(s, dict) else None
+        if made is None or made > at:
+            n += 1
+    return n
+
+
+def resolve_for_take(user_id: Any, *, recording_kind: str = "spoken",
+                     paired_session_id: Any = None, database=None) -> tuple:
+    """``(baseline | None, kind | None)`` — the reference for THIS take, read
+    from the store when it is still fresh.
+
+    THE QUERY CUT (founder 2026-08-12, "can we still do smth with the wait
+    time?"). Rebuilding the baseline reads up to ``_BASELINE_MAX_SESSIONS``
+    sessions AND one ``get_snippets_by_session`` per session — six sequential
+    round-trips, on the upload path, every take. Now that the result is
+    persisted, most takes can read one row instead.
+
+    THE REFRESH RULE, and why it is not "never" or "always". A baseline that
+    is never refreshed stops describing the speaker the moment they improve,
+    which is precisely the improvement the KPI exists to detect — so a stale
+    reference does not just age, it inverts the measurement. Recomputing every
+    take pays the full 1+N for a mean that moves by a fraction of a sample.
+
+    So: recompute once every ``REFRESH_EVERY_TAKES`` takes, counted from the
+    stored snapshot's own timestamp against the session list — which is ONE
+    cheap query, not the N expensive ones. Steady state is 2 queries where it
+    was 6, with a full rebuild on every third take.
+
+    Cold start, a guest, and a re-read with no user baseline all fall through
+    to the existing resolver unchanged: the fast path requires a stored row,
+    and there is nothing to store yet.
+    """
+    from services.acoustic_read import resolve_read_baseline_stats
+
+    if database is None:
+        from services.db import db as database
+    try:
+        row = database.get_current_user_acoustic_baseline(
+            str(user_id or ""), detector_version=BASELINE_VERSION) \
+            if user_id else None
+        if isinstance(row, dict):
+            fresh = as_baseline(row.get("features"))
+            if fresh:
+                sessions = database.v2_list_user_lab_sessions(
+                    str(user_id), limit=_max_sessions()) or []
+                if _newer_than(row.get("computed_at"),
+                               sessions) < REFRESH_EVERY_TAKES:
+                    logger.info("acoustic baseline reused id=%s features=%d",
+                                row.get("id"), len(fresh))
+                    return fresh, "user"
+    except Exception as e:
+        # A read hiccup must cost a recompute, never a take (LIVE LOOP).
+        logger.warning("acoustic_baseline: cached read failed user=%s: %s",
+                       user_id, e)
+
+    stats, kind, n_sessions = resolve_read_baseline_stats(
+        user_id, recording_kind=recording_kind,
+        paired_session_id=paired_session_id, database=database)
+    if kind == "user":
+        # Only the SPEAKER'S OWN baseline is stored. A parent-take reference is
+        # a within-session comparison for the coach's needle, not a claim about
+        # where this speaker normally sits, and storing it as one would corrupt
+        # the series it feeds.
+        logger.info("acoustic baseline rebuilt stored=%s features=%d "
+                    "sessions=%d",
+                    snapshot(user_id, stats,
+                             n_sessions=n_sessions) is not None,
+                    len(stats or {}), n_sessions)
+    return as_baseline(stats), kind
+
+
+def _max_sessions() -> int:
+    """The session window the baseline is built over — read from the module
+    that owns it, so the freshness check and the rebuild can never disagree
+    about how far back "recent" goes."""
+    from services.acoustic_read import _BASELINE_MAX_SESSIONS
+    return _BASELINE_MAX_SESSIONS
 
 
 def current(user_id: Any, *, database=None) -> tuple:
