@@ -778,6 +778,26 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # goes near a payload.
         funnel: dict = {"in": len(rows)}
         if not rows:
+            # NOTHING ARRIVED, AND THAT IS THE LOUDEST CASE, not the quietest
+            # (founder incident 2026-08-12). This branch used to return
+            # silently. The funnel exists to answer "which gate emptied the
+            # serve" on a blank screen — and on the blankest screen of all,
+            # where no candidate was ever generated, it wrote nothing at all.
+            #
+            # The founder recorded eleven takes, saw nothing, searched the web
+            # log for `intervention funnel`, and found lines belonging to a
+            # DIFFERENT session — because his own arc produced no line to
+            # find. An instrument that is silent exactly when the thing it
+            # measures is at zero sends you looking downstream at a serving
+            # layer that was working fine.
+            #
+            # `in: 0` says the problem is UPSTREAM of arbitration — no
+            # moment_suggestions for this take's snippets — which is a
+            # completely different investigation from any of the gate drops
+            # below, and the log line is what tells the two apart.
+            logger.info("intervention funnel session=%s %s (nothing "
+                        "generated for this take — upstream of the gate)",
+                        session_id, funnel)
             return {"changes": [], "result": None, "controls": False,
                     "funnel": funnel}
         # THE COUNTING UNIT (founder 2026-08-11: "do it per slide up to 2").
