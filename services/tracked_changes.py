@@ -24,6 +24,16 @@ elsewhere in the talk can never steal the anchor; if the piece text is
 gone (baked, coach-corrected, student-edited) the change is DROPPED
 rather than pointed at the wrong words.
 
+ANCHOR GRAIN (founder 2026-08-12). `relocate_pieces` may now hand back a
+piece anchored to its PARAGRAPH rather than to its words, so a locked
+chunk no longer takes the whole feedback engine dark. Such a piece is
+tagged `anchor_grain='paragraph'` and this builder reads the tag: a
+change that RE-WRITES or STYLES words (replace, bold) is served only if
+narrowing found the exact phrase inside that paragraph — otherwise its
+quote would be the entire paragraph, and "strike all of this" / "bold all
+of this" is a claim about words nobody made. `advice` rides the paragraph
+freely: it changes nothing, and its span is a pointer, not an assertion.
+
 AC-9/CONSTRUCT: `source`/`device` are the closed vocabularies already in
 use; the internal trigger vocabulary (threat/charisma/…) never rides a
 user payload — 'polish' is the one trigger the FE may distinguish.
@@ -33,11 +43,18 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from services.transcript_document import WORD_GRAIN
+
 logger = logging.getLogger(__name__)
 
 # What the FE may receive in `source` (copy keys, never internals).
 SOURCES = ("polish", "profanity", "wording", "prior_take",
            "delivery", "structural")
+
+# Kinds that make a claim ABOUT SPECIFIC WORDS — the ones that must decline
+# a coarse anchor. `advice` is deliberately absent: it is the one kind whose
+# span points rather than asserts.
+_WORD_PRECISE_KINDS = ("replace", "bold")
 
 
 def _find_window(text: str, needle: str) -> Optional[tuple]:
@@ -176,8 +193,34 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
             if rel < 0:
                 quote = None
         if quote:
+            # Narrowing found the phrase INSIDE the window, so this anchor is
+            # word-exact however the window itself was established — the words
+            # are demonstrably on screen. Coarse-grained pieces are welcome
+            # here; the check below is only for the whole-window fallback.
             start, end = w_start + rel, w_start + rel + len(quote)
         else:
+            # THE WHOLE-WINDOW FALLBACK, and the paragraph-grain decline.
+            #
+            # Falling back means "the change is about the entire piece". At
+            # word grain that is a sentence the student actually said, which
+            # is what these lanes have always meant. At PARAGRAPH grain the
+            # piece IS the paragraph, and the same fallback silently promotes
+            # every change to whole-paragraph scope: a `replace` renders as
+            # "strike this whole chunk, here is one sentence instead", and a
+            # `bold` accents the entire chunk — the exact whole-fragment
+            # problem T3 was built to kill, at maximum width.
+            #
+            # So composition and accentuation abstain, and only `advice`
+            # survives — it alters nothing and its span merely points at the
+            # region the coaching is about, which a paragraph honestly is.
+            if p.get("anchor_grain", WORD_GRAIN) != WORD_GRAIN \
+                    and kind in _WORD_PRECISE_KINDS:
+                logger.info(
+                    "tracked_changes: declining %s/%s on snippet=%s — piece is "
+                    "anchored at PARAGRAPH grain and narrowing found no exact "
+                    "phrase, so the quote would be the whole paragraph",
+                    kind, source, sid)
+                continue
             quote, start, end = window_text, w_start, w_end
 
         entry = {

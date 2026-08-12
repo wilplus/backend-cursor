@@ -1486,7 +1486,15 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # The served text may already carry approved bakes / coach text —
         # re-anchor the pieces onto it MONOTONICALLY (never a bare
         # first-occurrence search, the review's mis-anchor defect).
-        _pieces = relocate_pieces(served_text, doc.get("pieces") or [])
+        # PARAGRAPH FALLBACK (founder 2026-08-12). This is the call that
+        # was taking the feedback engine dark: lock a paragraph — even the
+        # AI's own words, unedited — and the NEXT take's pieces no longer
+        # match the composed text, so every one of them was dropped and
+        # build_tracked_changes below received nothing to anchor to.
+        # Unlocatable pieces now take their paragraph's span, tagged
+        # anchor_grain='paragraph' so word-precise consumers decline.
+        _pieces = relocate_pieces(served_text, doc.get("pieces") or [],
+                                  paragraph_fallback=True)
         _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
         _applied = []
         try:

@@ -254,7 +254,13 @@ def assemble_transcript_document(arc_id: str, *, database=None) -> dict:
             baked = bake_piece(text, _approved)
             if baked != text:
                 text = baked
-                pieces = relocate_pieces(text, pieces)
+                # paragraph_fallback: a baked change rewrites the very
+                # words it lands on, so the piece it touched is the one
+                # that vanishes. Anchoring it to its paragraph keeps the
+                # piece — and its slide index and its coach moment —
+                # instead of losing all three to a successful accept.
+                pieces = relocate_pieces(text, pieces,
+                                         paragraph_fallback=True)
     except Exception as _le:
         logger.warning("living_transcript: bake failed arc=%s: %s",
                        arc_id, _le)
@@ -262,6 +268,20 @@ def assemble_transcript_document(arc_id: str, *, database=None) -> dict:
     # Coach-surfaced pieces stay KEY MOMENTS on the document: the
     # explanations lane (and the only paid surface) must not go dark in
     # transcript mode (review finding).
+    # A COACH MOMENT SURVIVES A COARSE ANCHOR — deliberately, and against my
+    # first instinct (2026-08-12). Dropping paragraph-grain moments looked
+    # like the careful move ("don't put the coach's name on words they never
+    # marked"), and `test_an_approved_emphasis_does_not_cost_the_coach_key_
+    # moment` proved it wrong: it is the same drop the founder already ruled
+    # out — the note must survive "even on a locked screen".
+    #
+    # The reason it is safe is the UNIT. The coach marks a SNIPPET — one
+    # slide's spoken chunk — not a phrase inside it, and the fallback is
+    # 1:1, so piece i is paragraph i is that slide. Widening the anchor to
+    # the paragraph therefore still points at the chunk the coach marked; it
+    # loses precision INSIDE a chunk the moment never claimed. That is the
+    # opposite of a replace/bold, whose whole meaning is "these exact words"
+    # and which does decline at this grain (services/tracked_changes.py).
     key_moments = [{
         "snippet_id": p["snippet_id"],
         "take_session_id": p.get("take_session_id"),

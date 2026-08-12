@@ -375,7 +375,35 @@ def _share_gap(doc: str, lo: int, hi: int, runs: list) -> list:
     return out
 
 
-def relocate_pieces(text: Any, pieces: Any) -> list:
+# How exactly a piece's span was established. Two values, because there is
+# exactly one question a consumer needs answered: may I trust this to the
+# word? A gap-shared span is less precise than a paragraph one, and both
+# answer that question the same way.
+WORD_GRAIN = "word"
+PARAGRAPH_GRAIN = "paragraph"
+
+
+def paragraph_spans(text: Any) -> list:
+    """[(start, end)] of the document's non-blank paragraphs. Pure.
+
+    The same `\\n\\n` split the parts, the deck chunks and the per-slide
+    provenance all use — one definition of "paragraph", not a fourth.
+    Offsets are into `text` and exclude the surrounding blank space.
+    """
+    doc = text if isinstance(text, str) else ""
+    out: list = []
+    at = 0
+    for block in doc.split(_PARA):
+        stripped = block.strip()
+        if stripped:
+            lo = at + (len(block) - len(block.lstrip()))
+            out.append((lo, lo + len(stripped)))
+        at += len(block) + len(_PARA)
+    return out
+
+
+def relocate_pieces(text: Any, pieces: Any, *,
+                    paragraph_fallback: bool = False) -> list:
     """Re-anchor pieces onto a text that has CHANGED since the build (an
     approved change baked in, a coach correction landed).
 
@@ -439,11 +467,61 @@ def relocate_pieces(text: Any, pieces: Any) -> list:
             continue
         found.append((i, i + len(needle)))
         cursor = i + len(needle)
+    # ── Pass 2a — THE PARAGRAPH FALLBACK (founder 2026-08-12) ──────────────
+    #
+    # "If a chunk is locked (edited or not), the AI shouldn't drop the new
+    # feedback entirely just because the cross-take words shifted."
+    #
+    # THIS IS THE NORMAL PATH, not an edge case. Lock a paragraph — even the
+    # AI's own words, unedited — and record again: `compose_locked` keeps the
+    # locked text while the pieces come from the NEW take's assembly, so not
+    # one of them is found. Every later take makes it worse. R1 gen-4 exists
+    # to re-open a locked chunk on new feedback and had never once been able
+    # to fire, because the anchoring died upstream of it.
+    #
+    # WHY THIS IS NOT THE GUESSING THE GUARD FORBIDS. The paragraph split is
+    # the same `\n\n` the parts, the chunks and the provenance all use, and
+    # `compose_locked` BUILDS the served text out of those paragraphs. So a
+    # paragraph span is not a match and not an interpolation — it is a
+    # construction, exact in its own coordinate system. What it loses is
+    # PRECISION, not correctness, and `anchor_grain` says so out loud rather
+    # than letting a consumer assume word-level accuracy it no longer has.
+    #
+    # Only on an exact 1:1 count — the same safe-ahead rule the slide zip
+    # follows. A mismatch means the pieces and the document disagree about
+    # what the paragraphs are, and then position is a guess again.
+    para = paragraph_spans(doc) if paragraph_fallback else []
+    if para and len(para) == len(src):
+        zipped: list = []
+        for i, p in enumerate(src):
+            if found[i] is not None:
+                lo, hi = found[i]
+                zipped.append({**p, "start": lo, "end": hi,
+                               "anchor_grain": WORD_GRAIN})
+            else:
+                lo, hi = para[i]
+                # Re-read from the document, so `verify_spans` holds and
+                # tracked_changes' own words-still-there check passes.
+                zipped.append({**p, "start": lo, "end": hi,
+                               "text": doc[lo:hi],
+                               "anchor_grain": PARAGRAPH_GRAIN})
+        _coarse = sum(1 for q in zipped
+                      if q["anchor_grain"] == PARAGRAPH_GRAIN)
+        if _coarse:
+            logger.info(
+                "relocate_pieces: %d/%d piece(s) anchored at PARAGRAPH grain "
+                "(cross-take drift or a locked paragraph) — feedback keeps "
+                "flowing, word-precise consumers will decline",
+                _coarse, len(zipped))
+        return zipped
+
     if len(src) > 1 and not any(f is not None for f in found):
         logger.warning(
             "relocate_pieces: NO anchor survived — dropping %d pieces rather "
             "than width-guessing them across %d chars (chips would point at "
-            "the wrong words)", len(src), len(doc))
+            "the wrong words). No paragraph fallback available: "
+            "fallback=%s paragraphs=%d pieces=%d",
+            len(src), len(doc), paragraph_fallback, len(para), len(src))
         return []
     # Pass 2 — hand each unlocated RUN the space between its neighbours.
     out: list = []
@@ -451,7 +529,8 @@ def relocate_pieces(text: Any, pieces: Any) -> list:
     while i < len(src):
         if found[i] is not None:
             lo, hi = found[i]
-            out.append({**src[i], "start": lo, "end": hi})
+            out.append({**src[i], "start": lo, "end": hi,
+                        "anchor_grain": WORD_GRAIN})
             i += 1
             continue
         j = i
@@ -459,7 +538,13 @@ def relocate_pieces(text: Any, pieces: Any) -> list:
             j += 1
         gap_lo = found[i - 1][1] if i > 0 and found[i - 1] else 0
         gap_hi = found[j][0] if j < len(src) and found[j] else len(doc)
-        out.extend(_share_gap(doc, gap_lo, gap_hi, src[i:j]))
+        # A gap-shared span is a width interpolation — LESS precise than a
+        # paragraph, and certainly not word-exact. It answers the only
+        # question a consumer asks ("may I trust this to the word?") the same
+        # way a paragraph span does, so it carries the same grain rather than
+        # inventing a third value nobody would branch on differently.
+        out.extend({**q, "anchor_grain": PARAGRAPH_GRAIN}
+                   for q in _share_gap(doc, gap_lo, gap_hi, src[i:j]))
         i = j
     return out
 

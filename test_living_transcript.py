@@ -25,7 +25,7 @@ from services.tracked_changes import (
     build_tracked_changes, key_phrases_from_say_it_stronger, verify_changes,
 )
 from services.transcript_document import (
-    build_transcript_document, relocate_pieces, verify_spans,
+    build_transcript_document, paragraph_spans, relocate_pieces, verify_spans,
 )
 from services.transcript_smoothing import (
     finalize_document, hesitations_for, smooth_piece, strip_fillers,
@@ -678,6 +678,36 @@ class RelocateAfterBakeTests(unittest.TestCase):
         # anchor still indexes the SERVED text (that is the FE's join).
         self.assertEqual([m["snippet_id"] for m in out["key_moments"]], [S2])
         self.assertIn(out["key_moments"][0]["anchor"], out["text"])
+        # …AND the piece it rode in on is genuinely coarse — this test is
+        # what caught me trying to make coach moments decline a coarse
+        # anchor (2026-08-12), so pin the precondition or the guard is
+        # vacuous the next time someone "tightens" it.
+        self.assertEqual(pieces[1]["anchor_grain"], "paragraph")
+
+    def test_the_coach_moment_is_the_ONE_lane_that_rides_a_coarse_anchor(self):
+        # The asymmetry, asserted on ONE document so both halves are visible
+        # at once: the SAME coarse piece keeps its coach moment and loses its
+        # emphasis. A moment is per-SNIPPET — one slide's spoken chunk — and
+        # the relocation is 1:1, so a paragraph-wide anchor still points at
+        # the chunk the coach marked. A bold means "these exact words", and
+        # at this grain that would accent the entire chunk.
+        from services.ideal_decision_ledger import normalize_phrase
+        from services.ideal_text_block import assemble_transcript_document
+        rows = [{"kind": "emphasize",
+                 "target_phrase": normalize_phrase("the line that lands"),
+                 "display_phrase": "the line that lands",
+                 "decision": "approved", "source": "user_star"}]
+        out = assemble_transcript_document(
+            ARC, database=self._Db(self._snips(), rows, surfaced=[S2]))
+        coarse = out["document"]["pieces"][1]
+        self.assertEqual(coarse["anchor_grain"], "paragraph")
+        # Half one — the moment rode it.
+        self.assertEqual([m["snippet_id"] for m in out["key_moments"]], [S2])
+        # Half two — a bold on the very same piece declines.
+        self.assertEqual(
+            build_tracked_changes(out["text"], [coarse],
+                                  {S2: {"kind": "emphasize", "why": "y"}}),
+            [])
 
     def test_a_piece_whose_words_all_went_is_still_dropped(self):
         # The original intent, kept: a piece with NOTHING left to point at
@@ -764,6 +794,223 @@ class RelocateAfterBakeTests(unittest.TestCase):
                          [(0, 16), (17, 35)])
         self.assertEqual([p["text"] for p in out],
                          ["We started small", "and we kept going."])
+
+
+class ParagraphGrainFallbackTests(unittest.TestCase):
+    """FOUNDER-CRITICAL (2026-08-12): a locked chunk took the whole feedback
+    engine dark.
+
+    Founder, after locking a chunk and recording again: "i did not get any
+    feedback on this take, like zero ... there it is locked but no
+    suggestions". And on the cause: "I actually didn't manually edit the
+    text at all; I just locked the exact words the AI generated on the
+    previous take. However ... because I recorded a *new* take, the new
+    transcript didn't 100%% match the *old* locked text. This is definitely
+    a structural flaw. If a chunk is locked (edited or not), the AI
+    shouldn't drop the new feedback entirely just because the cross-take
+    words shifted."
+
+    `compose_locked` serves the LOCKED paragraph while the pieces come from
+    the NEW take, so no piece is found, the anchor guard fires, and every
+    downstream lane — tracked changes, slide zip, coach moments — receives
+    an empty list. The fallback anchors those pieces to their PARAGRAPH,
+    which `compose_locked` literally built the document out of, and tags
+    them so that consumers needing word precision can decline."""
+
+    def _locked_case(self):
+        """The founder's case, minimally: three paragraphs, the middle one
+        locked to the previous take's wording, all three pieces from the
+        new take. Not one of them occurs in the served text."""
+        doc = ("We started small in a garage.\n\n"
+               "And then we shipped it fast.\n\n"
+               "That is the whole story.")
+        pieces = [{"snippet_id": "a", "take_session_id": T1,
+                   "text": "We started off small in a garage."},
+                  {"snippet_id": "b", "take_session_id": T1,
+                   "text": "And then we shipped the thing really fast."},
+                  {"snippet_id": "c", "take_session_id": T1,
+                   "text": "That is basically the whole story."}]
+        return doc, pieces
+
+    # ── paragraph_spans ────────────────────────────────────────────────
+    def test_paragraph_spans_are_the_same_split_the_rest_of_the_app_uses(self):
+        doc = "One.\n\nTwo.\n\nThree."
+        self.assertEqual(paragraph_spans(doc), [(0, 4), (6, 10), (12, 18)])
+        for lo, hi in paragraph_spans(doc):
+            self.assertEqual(doc[lo:hi].strip(), doc[lo:hi])
+
+    def test_paragraph_spans_skip_blank_blocks_and_trim_whitespace(self):
+        doc = "\n\n  One.  \n\n\n\nTwo.\n\n   \n\n"
+        spans = paragraph_spans(doc)
+        self.assertEqual([doc[lo:hi] for lo, hi in spans], ["One.", "Two."])
+
+    def test_paragraph_spans_on_junk_is_empty_never_raises(self):
+        for junk in (None, 42, "", "   ", {"a": 1}):
+            self.assertEqual(paragraph_spans(junk), [])
+
+    # ── the fallback itself ────────────────────────────────────────────
+    def test_the_locked_chunk_no_longer_takes_every_piece_with_it(self):
+        doc, pieces = self._locked_case()
+        # Today's behaviour, unchanged when nobody asks for the fallback:
+        # the anchor guard drops all three rather than width-guessing.
+        self.assertEqual(relocate_pieces(doc, pieces), [])
+        # With the fallback, all three survive — on their paragraphs.
+        out = relocate_pieces(doc, pieces, paragraph_fallback=True)
+        self.assertEqual([p["snippet_id"] for p in out], ["a", "b", "c"])
+        self.assertEqual([p["anchor_grain"] for p in out],
+                         ["paragraph"] * 3)
+        self.assertTrue(verify_spans({"text": doc, "pieces": out}))
+
+    def test_a_fallback_piece_reads_its_text_back_from_the_document(self):
+        # The piece is a REGION; its text must be what the student is
+        # actually looking at, or every downstream words-still-there check
+        # (verify_spans, build_tracked_changes) would reject it.
+        doc, pieces = self._locked_case()
+        out = relocate_pieces(doc, pieces, paragraph_fallback=True)
+        self.assertEqual([p["text"] for p in out],
+                         ["We started small in a garage.",
+                          "And then we shipped it fast.",
+                          "That is the whole story."])
+
+    def test_located_pieces_keep_word_grain_beside_a_coarse_neighbour(self):
+        # Only the locked paragraph is coarse. The precision tag is
+        # per-piece, so the other two keep every word-precise lane.
+        doc = ("We started small.\n\n"
+               "And then we shipped it fast.\n\n"
+               "That is the whole story.")
+        pieces = [{"snippet_id": "a", "text": "We started small."},
+                  {"snippet_id": "b", "text": "And then we launched it."},
+                  {"snippet_id": "c", "text": "That is the whole story."}]
+        out = relocate_pieces(doc, pieces, paragraph_fallback=True)
+        self.assertEqual([p["anchor_grain"] for p in out],
+                         ["word", "paragraph", "word"])
+        self.assertTrue(verify_spans({"text": doc, "pieces": out}))
+
+    def test_a_count_mismatch_refuses_the_fallback(self):
+        # 1:1 or nothing — the same safe-ahead rule the slide zip follows.
+        # Disagreeing about what the paragraphs ARE makes position a guess
+        # again, and the guard is right to drop.
+        doc = "One paragraph only, but three pieces claim it."
+        pieces = [{"snippet_id": "a", "text": "Completely other words."},
+                  {"snippet_id": "b", "text": "Nothing here matches."},
+                  {"snippet_id": "c", "text": "Nor does this."}]
+        self.assertEqual(
+            relocate_pieces(doc, pieces, paragraph_fallback=True), [])
+
+    def test_the_fallback_is_opt_in_untouched_callers_are_byte_for_byte(self):
+        doc = "We started small and we kept going."
+        pieces = [{"snippet_id": "a", "text": "We started small"},
+                  {"snippet_id": "b", "text": "and we kept going."}]
+        out = relocate_pieces(doc, pieces)
+        self.assertEqual([(p["start"], p["end"]) for p in out],
+                         [(0, 16), (17, 35)])
+
+    def test_a_gap_shared_span_is_coarse_too(self):
+        # Pass 2's width interpolation is LESS precise than a paragraph, so
+        # it answers "may I trust this to the word?" the same way.
+        doc = "We started tiny and we kept at it. And then we shipped."
+        pieces = [{"snippet_id": "a", "text": "We started small"},
+                  {"snippet_id": "b", "text": "and we kept going."},
+                  {"snippet_id": "c", "text": "And then we shipped."}]
+        out = relocate_pieces(doc, pieces)
+        by_id = {p["snippet_id"]: p["anchor_grain"] for p in out}
+        self.assertEqual(by_id, {"a": "paragraph", "b": "paragraph",
+                                 "c": "word"})
+
+
+class GrainAwareChangeTests(unittest.TestCase):
+    """Step 2 of the same founder fix: the fallback keeps feedback FLOWING,
+    and the grain tag keeps it HONEST.
+
+    A coarse piece is exact in its own coordinate system but has lost word
+    precision. Any change that RE-WRITES or STYLES words must therefore be
+    able to point at the exact phrase inside that paragraph — otherwise its
+    quote degenerates to the entire paragraph and the student is shown
+    "strike all of this" or "bold all of this", a claim nobody made.
+    `advice` is the exception on purpose: it alters nothing and its span is
+    a pointer at the region the coaching is about."""
+
+    DOC = ("We started small in a garage.\n\n"
+           "And then we shipped it fast.")
+
+    def _pieces(self, grain):
+        return [{"snippet_id": S1, "take_session_id": T1, "start": 31,
+                 "end": 59, "text": "And then we shipped it fast.",
+                 "anchor_grain": grain}]
+
+    def _changes(self, sug, grain="paragraph", **kw):
+        return build_tracked_changes(self.DOC, self._pieces(grain),
+                                     {S1: sug}, **kw)
+
+    def test_the_span_the_test_pins_is_really_the_second_paragraph(self):
+        self.assertEqual(self.DOC[31:59], "And then we shipped it fast.")
+
+    # ── the declines ───────────────────────────────────────────────────
+    def test_a_whole_paragraph_replace_is_declined(self):
+        # "Strike this entire locked chunk, here is one sentence instead."
+        sug = {"kind": "replace", "trigger": "prior_take",
+               "replacement_text": "A completely different sentence.",
+               "why": "Stronger."}
+        self.assertEqual(self._changes(sug), [])
+        # …and at word grain it is exactly what it always was.
+        c = self._changes(sug, grain="word")[0]
+        self.assertEqual(c["quote"], "And then we shipped it fast.")
+
+    def test_a_whole_paragraph_bold_is_declined(self):
+        # T3's whole-fragment problem, at maximum width.
+        sug = {"kind": "emphasize", "why": "This lands."}
+        self.assertEqual(self._changes(sug), [])
+        self.assertEqual(self._changes(sug, grain="word")[0]["kind"], "bold")
+
+    def test_an_untagged_piece_is_word_grain_nothing_regresses(self):
+        # Every piece written before this change carries no tag at all.
+        pieces = [{"snippet_id": S1, "take_session_id": T1, "start": 31,
+                   "end": 59, "text": "And then we shipped it fast."}]
+        out = build_tracked_changes(
+            self.DOC, pieces, {S1: {"kind": "emphasize", "why": "y"}})
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["quote"], "And then we shipped it fast.")
+
+    # ── what still flows ───────────────────────────────────────────────
+    def test_advice_rides_the_paragraph(self):
+        # The lane that must NOT go dark: it changes no words, so the
+        # paragraph is an honest region for it to point at.
+        for kind, source in (("delivery", "delivery"),
+                             ("structure", "structural")):
+            c = self._changes({"kind": kind, "trigger": "pace"})[0]
+            self.assertEqual((c["kind"], c["source"]), ("advice", source))
+            self.assertEqual(c["span"], {"start": 31, "end": 59})
+            self.assertTrue(verify_changes(self.DOC, [c]))
+
+    def test_a_polish_that_still_narrows_survives_word_exact(self):
+        # The founder's own case: he locked the AI's words and re-recorded
+        # nearly the same thing, so the polish delta is still a small,
+        # exact phrase INSIDE the locked paragraph. Those words really are
+        # on screen, so the strike is honest and the change is served.
+        sug = {"kind": "replace", "trigger": "polish",
+               "replacement_text": "And then we launched it fast.",
+               "why": "Tighter."}
+        c = self._changes(sug)[0]
+        self.assertEqual(c["quote"], "shipped")
+        self.assertEqual(self.DOC[c["span"]["start"]:c["span"]["end"]],
+                         "shipped")
+        self.assertTrue(verify_changes(self.DOC, [c]))
+
+    def test_an_emphasis_that_finds_its_key_phrase_survives(self):
+        c = self._changes({"kind": "emphasize", "why": "y"},
+                          key_phrases_by_snippet={S1: ["shipped it fast"]})[0]
+        self.assertEqual(c["kind"], "bold")
+        self.assertEqual(c["quote"], "shipped it fast")
+        self.assertTrue(verify_changes(self.DOC, [c]))
+
+    def test_verify_changes_holds_across_every_grain(self):
+        for grain in ("word", "paragraph"):
+            for sug in ({"kind": "delivery", "trigger": "pace"},
+                        {"kind": "replace", "trigger": "polish",
+                         "replacement_text": "And then we launched it fast."},
+                        {"kind": "emphasize"}):
+                out = self._changes(sug, grain=grain)
+                self.assertTrue(verify_changes(self.DOC, out))
 
 
 class ApprovalKeyRegressionTests(unittest.TestCase):
