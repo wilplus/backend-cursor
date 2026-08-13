@@ -62,17 +62,19 @@ MIN_TAKES_FOR_FOCUS = 2
 
 # ── THE PRAISE LANE'S THRESHOLD (founder 2026-08-13) ──────────────────────
 #
-# How far above a part's OWN rolling average this take has to land before it
-# counts as a strong moment. The system has had detectors for problems since
-# the beginning and none at all for "this one landed", which is why a settled
-# document produced a blank screen: nothing was notable, so nothing was
-# generated, so every lane downstream had nothing to route.
+# How far above THE VERSION ALREADY IN THE DOCUMENT this take has to land
+# before it is worth offering as a swap. The system has had detectors for
+# problems since the beginning and none at all for "this one landed", which is
+# why a settled document produced a blank screen: nothing was notable, so
+# nothing was generated, so every lane downstream had nothing to route.
 #
-# MEASURED AGAINST THE SPEAKER'S OWN BASELINE, never against other speakers
-# and never against an absolute bar (founder ruling, Q2). That is what keeps
-# it inside AC-9: the comparison is private, and what reaches the student is a
-# qualitative line about the mechanics ("Strong delivery"), never the number
-# or the fact that a comparison happened at all.
+# A HEAD-TO-HEAD, not a comparison to a rolling average (founder reversal
+# 2026-08-13 — see beats_incumbent for why the rolling version was silently
+# biased to never fire). Still never against other speakers and never against
+# an absolute bar, which is what keeps it inside AC-9: the comparison is
+# private, and what reaches the student is a qualitative line about the
+# mechanics ("Strong delivery"), never the number or the fact that a
+# comparison happened at all.
 #
 # 0.5 is a starting value and the ONE number to tune here. Too low and every
 # take praises something, which devalues the mark; too high and the lane is as
@@ -83,52 +85,55 @@ MIN_TAKES_FOR_FOCUS = 2
 STRONG_Z_MARGIN = 0.5
 
 
-def strong_parts(take_z: Any, rows: Any, *,
-                 margin: float = STRONG_Z_MARGIN) -> list:
-    """Parts this take delivered ABOVE their own rolling average.
+def beats_incumbent(take_z: Any, doc_z: Any, *,
+                    margin: float = STRONG_Z_MARGIN) -> list:
+    """Parts this take delivered BETTER THAN THE VERSION IN THE DOCUMENT.
 
-    ``[(part_id, lift)]``, best lift first. The exact mirror of
-    ``focus_part_id``: same table, same ``ema_z``, same consistency floor —
-    that one picks the worst part to route feedback AT, this one picks the
-    parts that went well. Pure.
+    ``[(part_id, lift)]``, biggest lift first. Pure.
 
-    LOCK-AGNOSTIC ON PURPOSE. A moment is strong or it is not; whether that
-    becomes a swap offer (locked chunks) or a lock recommendation (open ones)
-    is a ROUTING decision the caller owns, and it differs per lane. Filtering
-    by lock here would bake one lane's rule into a detector both lanes share.
+    THE HEAD-TO-HEAD, AND WHY IT REPLACED A ROLLING-BASELINE COMPARISON
+    (founder reversal 2026-08-13). The first cut of this compared the take
+    against ``arc_part_acoustics.ema_z`` — which sounded right and was
+    silently biased to never fire. That EMA is folded from the PERSISTED
+    DOCUMENT, i.e. the best-of assembly (see fold_session: "scoring the
+    assembly answers how good is this paragraph AT ITS BEST"). Comparing a
+    raw take against a rolling average of best-of scores asks a raw take to
+    beat the strongest version that has ever survived, which it almost never
+    does. The lane would have shipped looking built and fired approximately
+    never — the exact failure this product spent a day removing from three
+    other places.
 
-    THE SAME CONSISTENCY FLOOR as focus, and for the mirrored reason: one
-    observation is not a claim. Below ``MIN_TAKES_FOR_FOCUS`` there is no
-    rolling average worth exceeding, so nothing is strong yet — which is also
-    why no praise can appear on a first take, exactly as the founder's design
-    requires ("this requires multiple takes to compare against").
+    BOTH SIDES COME FROM ``take_z_by_part``. Caller scores this take's pieces
+    for ``take_z`` and the persisted document's pieces for ``doc_z``, with
+    the same baseline. Same function, same units, same scorer — which is what
+    makes the subtraction meaningful rather than a comparison of two things
+    that merely look like numbers.
 
-    Ties break on part id so the choice is stable across calls: an unstable
-    order would move the student's praise around the document between two
-    identical takes.
+    NO CONSISTENCY FLOOR IS NEEDED, and its absence is not an oversight. On a
+    first take the document IS that take, so ``doc_z == take_z``, the lift is
+    zero, and no offer exists. The "requires multiple takes" property the
+    design asks for falls out of the arithmetic instead of being enforced by
+    a rule that could drift from it.
+
+    LOCK-AGNOSTIC, like everything else here: routing a lift to a swap offer
+    (locked chunks) or a lock recommendation (open ones) is the caller's
+    decision and the two lanes differ.
+
+    Ties break on part id so the choice is stable across calls.
     """
-    if not isinstance(take_z, dict) or not take_z:
-        return []
-    if not isinstance(rows, (list, tuple)):
+    if not isinstance(take_z, dict) or not isinstance(doc_z, dict):
         return []
     out: list = []
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        pid = str(r.get("part_id") or "")
-        if not pid or pid not in take_z:
-            continue
-        if int(r.get("n_takes") or 0) < MIN_TAKES_FOR_FOCUS:
-            continue
-        ema = r.get("ema_z")
-        if not isinstance(ema, (int, float)) or isinstance(ema, bool):
+    for pid, now in take_z.items():
+        key = str(pid or "")
+        if not key or key not in doc_z:
             continue
         try:
-            lift = float(take_z[pid]) - float(ema)
+            lift = float(now) - float(doc_z[key])
         except (TypeError, ValueError):
             continue
         if lift > margin:
-            out.append((pid, lift))
+            out.append((key, lift))
     out.sort(key=lambda t: (-t[1], t[0]))
     return out
 
