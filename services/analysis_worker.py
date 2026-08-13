@@ -393,4 +393,25 @@ def run_full_analysis(
                     "lab: part acoustics failed sid=%s: %s (non-fatal)",
                     session_id, _pa_err,
                 )
+            # THE ACOUSTIC SWAP OFFER (founder 2026-08-13, stage 4). A locked
+            # paragraph is invisible to the ranker, so a later take that
+            # finally lands it has no way in — this is the one path that asks.
+            #
+            # AFTER the fold, and the order is load-bearing twice over: the
+            # fold is what makes the document's per-part acoustics current,
+            # and it runs on the assembly this take just contributed to. A
+            # swap offered before it would compare against the previous take's
+            # numbers.
+            #
+            # Its own try/except rather than sharing the fold's: a swap that
+            # cannot be offered must not look like a KPI that could not be
+            # written, and neither may cost the take (LIVE LOOP).
+            try:
+                from services.swap_detector import offer_for_take
+                offer_for_take(arc_id, user_id, session_id)
+            except Exception as _sw_err:
+                logger.warning(
+                    "lab: swap offer failed sid=%s: %s (non-fatal)",
+                    session_id, _sw_err,
+                )
     return readout_local, sent_local

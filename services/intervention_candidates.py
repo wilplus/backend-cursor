@@ -101,6 +101,7 @@ LANE_SOURCES = (
     "structural",   # advice — structural star
     "prior_take",   # cross-take: an earlier take said it better
     "new_take",     # master model: a newer take beat this block
+    "acoustic_swap",  # THIS take delivered a LOCKED part better — swap?
 )
 
 
