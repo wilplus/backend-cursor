@@ -120,26 +120,55 @@ class CollisionTests(unittest.TestCase):
         db = self._Db({"s9": {"kind": "replace"}})
         self.assertFalse(sd._already_starred("s1", "a1", db))
 
-    def test_an_unreadable_ledger_FAILS_CLOSED(self):
-        """The opposite direction from most reads on this path, on purpose.
-        The suggestion table is snippet-keyed, so writing blind would OVERWRITE
-        a correction the student was about to see. An unreadable ledger costs
-        one praise offer; failing open costs a content fix, silently."""
+    def test_a_RAISING_reader_fails_closed_but_production_never_raises(self):
+        """⚠️ THIS PATH IS DEAD IN PRODUCTION, and the test name used to claim
+        the opposite. `get_moment_suggestions_by_arc` catches its own
+        exceptions and returns {} (services/db.py), so a real read failure is
+        indistinguishable from "no suggestions" and _already_starred returns
+        False — it fails OPEN, and the snippet-keyed upsert can then replace a
+        correction. Only a fake that raises reaches the guard below.
+
+        Kept as documentation of the gap rather than deleted, and renamed so it
+        stops advertising a protection the product does not have."""
         self.assertTrue(sd._already_starred("s1", "a1", self._Db(explode=True)))
+
+    def test_the_REAL_reader_shape_fails_OPEN(self):
+        """The production behaviour, pinned so the gap is visible in the suite
+        rather than only in a docstring."""
+        class _SwallowingDb:          # what services/db.py actually does
+            def get_moment_suggestions_by_arc(self, arc_id):
+                return {}             # empty AND error look identical
+        self.assertFalse(sd._already_starred("s1", "a1", _SwallowingDb()))
 
 
 class NoLockedPartsTests(unittest.TestCase):
+    """⚠️ THE FAKE MUST ACCEPT with_lock. The first version of this class took
+    (arc_id, user_id) only, so once offer_for_take started passing
+    `with_lock=True` the call raised TypeError, the outer best-effort handler
+    swallowed it, and the test passed on the EXCEPTION rather than on the lock
+    logic — green whether or not the lane worked at all. A test double whose
+    signature has drifted from its caller proves nothing."""
+
     class _Db:
-        def get_ideal_text_parts(self, arc_id, user_id):
-            return [{"id": "p0", "text": "Nothing locked.", "locked": False}]
+        def __init__(self):
+            self.with_lock_seen = None
+
+        def get_ideal_text_parts(self, arc_id, user_id, *, with_lock=False):
+            self.with_lock_seen = with_lock
+            # The real projection under with_lock=True — nothing locked.
+            return [{"id": "p0", "ord": 0, "text": "Nothing locked.",
+                     "locked_at": None}]
 
     def test_it_stops_before_any_expensive_work(self):
+        db = self._Db()
         with patch("services.acoustic_baseline.current",
                    return_value=({"f0": 1.0}, "b1")), \
              patch("services.transcript_document.build_transcript_document") as b:
             self.assertEqual(
-                sd.offer_for_take("a1", "u1", "s1", database=self._Db()), 0)
+                sd.offer_for_take("a1", "u1", "s1", database=db), 0)
             b.assert_not_called()
+        # …and it got there through the LOCK LOGIC, having asked for the column.
+        self.assertIs(db.with_lock_seen, True)
 
 
 class GateChainTests(unittest.TestCase):
