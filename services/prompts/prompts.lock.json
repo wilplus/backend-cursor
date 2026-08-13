@@ -521,6 +521,11 @@
       "module": "moment_suggestions",
       "sha256": "afddc06242feeacdf42217b9db5b6a81c3bef5168d99b20d9a9516c87bae4fe0"
     },
+    "swap_continuity.system": {
+      "kind": "builder",
+      "module": "swap_continuity",
+      "sha256": "66724ce7050e82476950b4c81760caf3a8eaa092563e97bcfc4e83b17daed12e"
+    },
     "whisper_snippet.priming": {
       "kind": "source_ref",
       "module": "pending",
