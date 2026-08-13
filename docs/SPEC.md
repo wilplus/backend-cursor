@@ -373,7 +373,22 @@ Its rules:
 
 ## §7 · `power_score` after the re-point
 
-### 7.1 · What exists today
+> **STATUS: SHIPPED 2026-08-13.** This section was a design until the founder
+> re-locked the north star and retired the charisma construct; §7.2 is now the
+> blend in `services/power_phrase_ranking.py`. `_W_D`/`_DIRECTION_TERM` are
+> deleted, `_W_B` fires on `state_ratings.clears_album_quorum`, and confidence
+> enters once via `confidence_term()`. `is_challenge` became
+> `moment_confidence.is_confident`. §7.1 below is kept as the BEFORE picture —
+> it is what the code looked like, not what it looks like.
+>
+> Not shipped with it, and deliberately: the coach's challenge/threat rows in
+> `training_labels` and the shadow classifier fitted on them. §3.2 says the
+> wording IS the construct and changing it starts a NEW corpus with a new
+> version key — so re-pointing that vocabulary is a data decision about an
+> existing corpus, not part of this change. `services/challenge_threat.py`
+> survives for exactly that lane and touches ranking nowhere.
+
+### 7.1 · What exists today (BEFORE the re-point — kept for the diff)
 
 ```python
 _COACH_TERM     = {"strong": 1.0, "to_work_on": -1.0}

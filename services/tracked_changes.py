@@ -56,6 +56,13 @@ SOURCES = ("polish", "profanity", "wording", "prior_take",
 # span points rather than asserts.
 _WORD_PRECISE_KINDS = ("replace", "bold")
 
+# The acoustic swap lane. The internal TRIGGER (persisted) and the SERVED
+# source are separate strings on purpose — the trigger vocabulary never rides
+# a user payload, and this is the one lane where the two would otherwise be
+# confused for each other.
+_SWAP_TRIGGER = "acoustic_swap"
+_SWAP_SOURCE = "acoustic_swap"
+
 
 def _find_window(text: str, needle: str) -> Optional[tuple]:
     """(start, end) of the piece inside the document — exact first, then
@@ -143,6 +150,12 @@ def _kind_and_source(sug: dict) -> tuple:
             return ("replace", "polish")
         if sug.get("trigger") == "profanity":
             return ("replace", "profanity")
+        # The acoustic swap lane (founder 2026-08-13) — its OWN source, not
+        # 'wording'. The FE labels it "Delivery" and it is exempt from the
+        # paragraph-grain decline below; both need to tell it apart from an
+        # ordinary replace, and the trigger does not ride the payload.
+        if sug.get("trigger") == _SWAP_TRIGGER:
+            return ("replace", _SWAP_SOURCE)
         return ("replace", "wording")
     return (None, None)
 
@@ -213,8 +226,19 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
             # So composition and accentuation abstain, and only `advice`
             # survives — it alters nothing and its span merely points at the
             # region the coaching is about, which a paragraph honestly is.
+            # THE SWAP LANE IS EXEMPT, and it is the one exemption that does
+            # not weaken the rule (founder 2026-08-13). The decline exists
+            # because a whole-paragraph quote OVERSTATES an ordinary replace:
+            # the lane meant "these exact words" and the fallback silently
+            # widened it to "this whole chunk". The acoustic swap means the
+            # whole paragraph in the first place — it offers this take's
+            # delivery of a LOCKED PART, and a part IS a paragraph. Its quote
+            # is not a widened claim, it is the claim. Declining it at
+            # paragraph grain would mute the lane exactly where it applies,
+            # since a locked chunk is precisely what gets a coarse anchor.
             if p.get("anchor_grain", WORD_GRAIN) != WORD_GRAIN \
-                    and kind in _WORD_PRECISE_KINDS:
+                    and kind in _WORD_PRECISE_KINDS \
+                    and source != _SWAP_SOURCE:
                 logger.info(
                     "tracked_changes: declining %s/%s on snippet=%s — piece is "
                     "anchored at PARAGRAPH grain and narrowing found no exact "
@@ -283,14 +307,37 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
     return out
 
 
+def _lane_rank(change: Any) -> int:
+    """Precedence when two lanes want the same words (founder 2026-08-13):
+    CORRECTIONS > SWAP > STYLE. Lower sorts first = wins.
+
+    Stated explicitly rather than left to emerge from span width, because
+    width gets the middle case WRONG. The tie-break below prefers the
+    narrower span as "more specific", which is right for advice but backwards
+    for the swap: the swap's span is a whole paragraph BY CONSTRUCTION (it
+    offers a locked part's replacement), so it is the widest change on the
+    document and would lose every collision to any narrow style bold — a
+    'make this word orange' suggestion silently outranking 'you delivered
+    this whole paragraph better'. Content still wins, which is the rule that
+    matters; style does not.
+    """
+    c = change if isinstance(change, dict) else {}
+    if c.get("source") == _SWAP_SOURCE:
+        return 1
+    if c.get("style_lane") or c.get("kind") == "bold":
+        return 2
+    return 0        # corrections: replace/advice from every other lane
+
+
 def drop_overlaps(changes: Any) -> list:
     """One span may carry only ONE change. Two lanes can legitimately
     fire on the same words (a polish star and a cross-take offer) — the
-    FE would render overlapping strikes. Earliest start wins; on a tie
-    the NARROWER span wins (the more specific advice). Pure."""
+    FE would render overlapping strikes. Earliest start wins; on a tie the
+    LANE PRECEDENCE decides, and only then the narrower span. Pure."""
     ordered = sorted(
         [c for c in (changes or []) if isinstance(c, dict) and c.get("span")],
         key=lambda c: (c["span"]["start"],
+                       _lane_rank(c),
                        c["span"]["end"] - c["span"]["start"]))
     out: list = []
     last_end = -1

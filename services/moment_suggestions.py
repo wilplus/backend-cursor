@@ -1,9 +1,9 @@
 """Star-suggestion generation (founder 2026-07-18).
 
 After a take's analysis, each notable snippet (resolved by
-services.moment_direction: coach label → potentiometer; replace triggers:
-threat / profanity / very low slide stickiness) gets ONE generated
-suggestion the grey star opens:
+services.moment_confidence: panel label → machine read; replace triggers:
+an unconfident read / profanity / very low slide stickiness) gets ONE
+generated suggestion the grey star opens:
 
   * emphasize — a short qualitative "why this landed" line;
   * replace   — an audience-appropriate replacement phrase, in the
@@ -269,9 +269,11 @@ def _generate_delivery(database, arc_id, candidates, baseline) -> list:
 def generate_for_session(session_id: str, arc_id: Optional[str], *,
                          database=None) -> int:
     """Analysis-time hook (flag-gated at the caller): resolve + generate +
-    persist suggestions for one take's snippets. Coach labels don't exist at
-    record time, so resolution here is potentiometer/profanity/stickiness;
-    a later coach-verified star supersedes at serve. Capped per take
+    persist suggestions for one take's snippets. NO HUMAN LABEL EXISTS AT
+    RECORD TIME — neither a coach tag nor a blind panel rating, both of which
+    arrive later — so resolution here is machine-read/profanity/stickiness and
+    the panel argument is None by construction, not by oversight. A later
+    coach-verified star supersedes at serve. Capped per take
     (MOMENT_SUGGESTIONS_MAX_PER_TAKE). Returns the number stored."""
     if not session_id or not arc_id:
         return 0
@@ -280,8 +282,8 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
             from services.db import db as database
         from config import Config
         from services.lab_recording import build_readout_from_session
-        from services.moment_direction import (
-            resolve_moment_direction, resolve_suggestion_kind,
+        from services.moment_confidence import (
+            UNCONFIDENT, resolve_moment_confidence, resolve_suggestion_kind,
         )
 
         try:
@@ -298,6 +300,23 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # Internal read only — nothing here is a user payload.
         readout = build_readout_from_session(
             session_id, include_slide_scores=True)
+        # The confidence composite comes from the SNIPPET ROWS, not the
+        # readout, and the extra read is the price of a fence rather than an
+        # oversight. The readout serializer is an allowlist that deliberately
+        # carries no confidence blob on EITHER branch: putting one on the
+        # coach packet would show a rater the machine's read of a clip they
+        # are supposed to judge blind (test_voice_confidence pins this at
+        # source level). Reading the metrics here keeps the routing input on
+        # the machine side of that wall.
+        _metrics_by_id: dict = {}
+        try:
+            for _row in (database.get_snippets_by_session(session_id) or []):
+                _rm = _row.get("metrics")
+                _metrics_by_id[str(_row.get("id"))] = (
+                    _rm if isinstance(_rm, dict) else {})
+        except Exception as _m_err:
+            logger.warning("moment_suggestion: metrics read failed sid=%s: %s",
+                           session_id, _m_err)
         session = {}
         try:
             session = database.v2_get_session_by_id(session_id) or {}
@@ -365,6 +384,21 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         _decided = 0         # decision ledger: already approved/dismissed
         _no_gen = 0          # generation returned nothing (LLM or guard)
         _errored = 0         # per-snippet exception, swallowed below
+        # ── THE SILENT ZERO (founder 2026-08-13) ──────────────────────
+        # `_unstarred` already counted the snippets this lane declined, but
+        # not WHY, and the two reasons want completely different fixes. A
+        # moment can arrive with no confidence read at all — unstamped piece,
+        # superseded weighting, or a genuine dead-zone middle — and then the
+        # EMPHASIZE branch cannot fire no matter how the words read, because
+        # its only trigger is a confident lean. That is a measurement gap.
+        # The other reason is a real decision: we measured it, it leans
+        # unconfident-or-nothing, and no replace trigger fired either.
+        #
+        # Both used to leave the same trace: nothing. This is the fourth
+        # lane this session found built-correctly-and-firing-never, and the
+        # pattern each time was a stage that declines without saying so.
+        _no_conf_read = 0    # no lean available (unstamped / dead zone)
+        _measured_no_star = 0  # read fine, no branch qualified
         # Snippets with NO acoustic star → candidates for a DELIVERY star
         # (measured, deterministic), then a STRUCTURAL star. Priority per
         # founder 2026-07-18: acoustic > delivery > structural; a snippet
@@ -378,15 +412,22 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                 if not snip_id or not transcript:
                     _no_text += 1
                     continue
-                direction = resolve_moment_direction(
-                    None, snip.get("acoustic_read"))
+                # Panel is None at record time (see the docstring) — the
+                # blind raters have not seen this clip yet, so the machine
+                # read is the only source there is.
+                confidence = resolve_moment_confidence(
+                    None, _metrics_by_id.get(str(snip_id)))
                 _stick = snip.get("slide_stickiness")
                 if isinstance(_stick, dict):
                     _stick = _stick.get("composite")
                 kind = resolve_suggestion_kind(
-                    direction, transcript,
+                    confidence, transcript,
                     slide_stickiness=_stick, stickiness_max=_sticky_max)
                 if kind is None:
+                    if confidence is None:
+                        _no_conf_read += 1
+                    else:
+                        _measured_no_star += 1
                     _unstarred.append((str(snip_id), transcript,
                                        snip.get("features") or {}))
                     continue
@@ -409,21 +450,28 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                                        snip.get("features") or {}))
                     continue
                 from services.text_flags import has_profanity
-                # Rule 4a: a STICKINESS replace (no direction, no
+                # Rule 4a: a STICKINESS replace (no confidence lean, no
                 # profanity) on wording the speaker uses in >= 2 takes is
-                # their voice — never forced. Threat and profanity still
-                # replace (the harmful carve-out). The snippet stays
-                # eligible for the behavioural lanes.
-                if kind == "replace" and direction is None \
+                # their voice — never forced. An unconfident read and
+                # profanity still replace (the harmful carve-out). The
+                # snippet stays eligible for the behavioural lanes.
+                if kind == "replace" and confidence is None \
                         and not has_profanity(transcript) \
                         and phrase_recurs(transcript, _take_texts):
                     _unstarred.append((str(snip_id), transcript,
                                        snip.get("features") or {}))
                     continue
-                trigger = ("threat" if direction == "threat"
+                # THE PERSISTED TRIGGER VOCABULARY MOVED WITH THE CONSTRUCT
+                # (founder 2026-08-13): 'threat' → 'unconfident', 'charisma'
+                # → 'confident'. New rows only — historical rows keep the
+                # words they were written with and stay interpretable, per
+                # the standing rule that detector definitions are versioned,
+                # never overwritten in place. services/intervention_
+                # candidates.py reads both vocabularies for that reason.
+                trigger = ("unconfident" if confidence == UNCONFIDENT
                            else "profanity" if has_profanity(transcript)
                            else "stickiness" if kind == "replace"
-                           else "charisma")
+                           else "confident")
                 gen = generate_moment_suggestion(
                     kind, transcript, audience=audience,
                     strategic_context=strategic_context,
@@ -534,12 +582,18 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # with everything else zero means every candidate fell through the
         # acoustic/delivery/structural lanes on their own thresholds, which
         # is a legitimate outcome and now a visible one.
+        #
+        # `no_conf_read` ≈ `seen` is the one line worth alerting on: it says
+        # the confidence lane measured NOTHING all take, so EMPHASIZE could
+        # not have fired whatever the speaker did. That is a broken stamp or
+        # a superseded weighting, not a quiet take.
         logger.info(
             "moment_suggestion: sid=%s arc=%s seen=%d stored=%d "
             "(no_text=%d capped=%d decided=%d no_gen=%d errored=%d) "
-            "unstarred=%d",
+            "unstarred=%d (no_conf_read=%d measured_no_star=%d)",
             session_id, arc_id, _seen, stored,
-            _no_text, _capped, _decided, _no_gen, _errored, len(_unstarred))
+            _no_text, _capped, _decided, _no_gen, _errored, len(_unstarred),
+            _no_conf_read, _measured_no_star)
         return stored
     except Exception as e:
         logger.warning("moment_suggestion: session pass failed sid=%s: %s",

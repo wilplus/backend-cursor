@@ -10592,7 +10592,8 @@ class DatabaseService:
             return False
 
     def persist_auto_ideal_text(self, arc_id: str, text: str,
-                                *, take_count: Optional[int] = None) -> bool:
+                                *, take_count: Optional[int] = None,
+                                document: Optional[dict] = None) -> bool:
         """Persist the MACHINE-assembled ideal-text draft (eager assembly at
         take 3, founder 2026-07-15; instant lane 2026-07-17).
 
@@ -10622,6 +10623,19 @@ class DatabaseService:
                 "auto_text": text,
                 "auto_updated_at": _now,
             }
+            # PIECE PROVENANCE for the text we are writing, in the same upsert
+            # so the two can never describe different documents. Character
+            # offsets are only meaningful against the exact string they were
+            # anchored to, so a document persisted a beat later than its text
+            # is a document pointing at the wrong words.
+            #
+            # services/part_acoustics.fold_session reads this and had NOTHING
+            # to read for its entire life — the column did not exist, the read
+            # resolved to NULL, and the fold returned {} on every take without
+            # a word in the log (fixed 2026-08-13, migrations/
+            # add_coach_arc_ideal_text_document.sql).
+            if isinstance(document, dict) and document.get("pieces"):
+                payload["document"] = document
             # ── Versioning: THE VERSION IS THE TAKE COUNT (founder
             # 2026-08-05, "each take is different and each should be
             # verified"). Take 1 → 1.0, take 2 → 2.0, always. A bump
@@ -10665,6 +10679,20 @@ class DatabaseService:
                 return True
             except Exception as _e_auto:
                 _low = str(_e_auto).lower()
+                if "document" in _low and "document" in payload:
+                    # The provenance column is not migrated yet (run
+                    # migrations/add_coach_arc_ideal_text_document.sql).
+                    # Write the text anyway: a missing KPI input must never
+                    # cost the student their assembled document.
+                    payload.pop("document", None)
+                    logger.warning(
+                        "persist_auto_ideal_text: document column missing "
+                        "(run migrations/add_coach_arc_ideal_text_document"
+                        ".sql) — part acoustics will not fold arc=%s", arc_id,
+                    )
+                    self.client.table("coach_arc_ideal_text").upsert(
+                        payload, on_conflict="arc_id").execute()
+                    return True
                 if "version" in _low and "version" in payload:
                     # Versioning columns not migrated yet (run
                     # migrations/add_ideal_text_versioning.sql) — write the

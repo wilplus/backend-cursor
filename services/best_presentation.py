@@ -1,24 +1,31 @@
 """Best-Presentation composition (willab Prompt D §4) — REPLACES the audit.
 
 After the explore arc's 3 (optional 4th) takes, this assembles the user's
-strongest version of the talk: for EACH slide, their best-rated CHALLENGE
-delivery of that slide across takes, lightly stitched into continuous "ideal
-presentation" text, with threat→challenge breakthrough markers.
+strongest version of the talk: for EACH slide, their best-rated delivery of
+that slide across takes, lightly stitched into continuous "ideal presentation"
+text.
 
 Pieces:
-  • select_best_per_slide — PURE: filter to challenge, rank with the combined
-    power_score (challenge-threat terms ON), keep the best per slide.
+  • select_best_per_slide — PURE: rank with the combined power_score, keep the
+    best per slide.
   • compose_presentation — ONE constrained LLM pass that MOSTLY keeps the user's
     words and changes only a few per slide for continuity + slide-accuracy; on
     any failure it falls back to the snippet VERBATIM (the §9-safe degradation).
-  • build_best_presentation — orchestration: pulls the arc's takes, resolves
-    direction (coach blind label → shadow), detects breakthroughs per take,
-    builds candidates, selects, composes, returns the payload.
+  • build_best_presentation — orchestration: pulls the arc's takes, resolves the
+    confidence lane per snippet, builds candidates, selects, composes, returns
+    the payload.
 
-FENCES (§0/§7): user sees ONLY challenge moments (threat informs ranking +
-marks where the breakthrough started, never shown); the composed text is
-grounded — no invented content, empty slide stays blank; scores are internal
-(AC-9), never serialized.
+RANKING RUNS ON CONFIDENCE, NOT CHARISMA (founder 2026-08-13, SPEC §7.2). The
+retired blend carried a ``direction`` term over challenge/threat and gave its
+top automatic bonus to a single coach ``challenge`` mark. Both are gone:
+confidence enters exactly once — blind panel aggregate when one exists, the
+speaker-relative machine composite otherwise (SPEC D8, never summed) — and the
+2.5 bonus now fires only on the ALBUM QUORUM, a multi-rater consensus event
+(SPEC §9.1). The coach's strong / to_work_on tag keeps its dominant weight:
+that is an expert assessment of the phrase, not a percept.
+
+FENCES (§0/§7): the composed text is grounded — no invented content, empty
+slide stays blank; scores are internal (AC-9), never serialized.
 """
 from __future__ import annotations
 
@@ -71,14 +78,15 @@ def _is_complete_sentence(text: Any) -> bool:
 
 def select_best_per_slide(candidates: Any) -> dict:
     """candidates = list of per-snippet dicts: {slide_index, snippet_id,
-    transcript, audio_ref, take_index, direction, breakthrough, activation,
-    slide_stickiness, tag}. Returns ``{slide_index: winning_candidate}`` — the
-    best line per slide.
+    transcript, audio_ref, take_index, panel_confidence, machine_confidence,
+    album_quorum, activation, slide_stickiness, tag}. Returns
+    ``{slide_index: winning_candidate}`` — the best line per slide.
 
-    NOT a challenge-only filter (founder, 2026-06-17): every moment is eligible,
-    so a slide always shows its best line (never blank). The challenge/threat
-    label is a RATING adjustment inside power_score — challenge ADDS, threat
-    DOWNGRADES, a threat→challenge breakthrough is the top bonus.
+    NOT a confidence-only filter (founder, 2026-06-17, and unchanged by the
+    2026-08-13 re-point): every moment is eligible, so a slide always shows its
+    best line (never blank). Confidence is a RATING adjustment inside
+    power_score — an assured delivery lifts, an unsure one sinks, and a clip
+    that cleared the album quorum takes the top bonus.
 
     #4 (2026-06-21) — read as coherent prose:
       • PREFER a COMPLETE sentence over a higher-scored truncated fragment
@@ -101,9 +109,9 @@ def select_best_per_slide(candidates: Any) -> dict:
             activation=c.get("activation"),
             slide_stickiness=c.get("slide_stickiness"),
             tag=c.get("tag"),
-            direction=c.get("direction"),
-            breakthrough=bool(c.get("breakthrough")),
-            voice_confidence=c.get("voice_confidence"),
+            panel_confidence=c.get("panel_confidence"),
+            machine_confidence=c.get("machine_confidence"),
+            album_quorum=bool(c.get("album_quorum")),
         )
         by_slide.setdefault(si, []).append({**c, "_score": score})
 
@@ -238,9 +246,9 @@ def select_best_deckless(candidates: Any, max_sections: int = _DECKLESS_MAX_SECT
             activation=c.get("activation"),
             slide_stickiness=c.get("slide_stickiness"),
             tag=c.get("tag"),
-            direction=c.get("direction"),
-            breakthrough=bool(c.get("breakthrough")),
-            voice_confidence=c.get("voice_confidence"),
+            panel_confidence=c.get("panel_confidence"),
+            machine_confidence=c.get("machine_confidence"),
+            album_quorum=bool(c.get("album_quorum")),
         )
         pool.append({**c, "_score": score})
     if not pool:
@@ -479,6 +487,42 @@ def _arc_labels(db, labels_batch, sid):
     return db.get_training_labels(sid) or []
 
 
+def _panel_by_snippet(db, snippet_ids: list) -> dict:
+    """``{snippet_id: {"panel": aggregate|None, "quorum": bool}}`` for the arc.
+
+    The blind ternary panel (SPEC §3.2) is the human half of the confidence
+    term the 2026-08-13 re-point put into power_score, and the quorum flag is
+    what `_W_B` now fires on. ONE batched query for the whole arc — the same
+    N+1 lesson `_batch_arc_reads` exists for.
+
+    Best-effort by design: {} when the db predates the reader (injected fakes
+    in tests) or the query fails. An arc with no panel rows then ranks on the
+    machine composite alone, which is exactly the pre-panel behaviour and the
+    only safe direction for a read path in the live loop.
+    """
+    ids = [str(s) for s in (snippet_ids or []) if s]
+    if not ids or not hasattr(db, "get_confidence_labels_by_snippet_ids"):
+        return {}
+    try:
+        rows_by_snippet = db.get_confidence_labels_by_snippet_ids(ids) or {}
+    except Exception as e:
+        logger.warning("best_presentation: panel read failed: %s", e)
+        return {}
+    try:
+        from services.state_ratings import aggregate, clears_album_quorum
+    except Exception:
+        return {}
+    out: dict = {}
+    for snippet_id, rows in rows_by_snippet.items():
+        if not isinstance(rows, list):
+            continue
+        out[str(snippet_id)] = {
+            "panel": aggregate(rows),
+            "quorum": clears_album_quorum(rows),
+        }
+    return out
+
+
 # Bump when the cached compose PAYLOAD shape changes (a new per-slide field
 # must force one recompute per arc — the content signature alone can't see
 # shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
@@ -620,6 +664,19 @@ def build_best_presentation(
     # behavior; getattr guards keep injected fake dbs (tests) on the per-session
     # fallback below.
     _snips_batch, _labels_batch = _batch_arc_reads(db, sessions)
+    # Resolve every take's snippets ONCE, up front, so the arc's snippet ids
+    # are known before the candidate loop — the panel read is per-snippet and
+    # batching it is the same N+1 lesson as the two reads above. On the
+    # fake-db fallback this is still exactly one read per session, not two.
+    _snips_by_sid = {
+        str(s.get("id")): _arc_snippets(db, _snips_batch, s.get("id"))
+        for s in sessions if isinstance(s, dict) and s.get("id")
+    }
+    _panel = _panel_by_snippet(db, [
+        sn.get("id")
+        for rows in _snips_by_sid.values() if isinstance(rows, list)
+        for sn in rows if isinstance(sn, dict)
+    ])
 
     candidates = []
     canonical_slides: list = []
@@ -636,7 +693,7 @@ def build_best_presentation(
         if canonical_presentation_ref is None and ctx.get("presentation_ref"):
             canonical_presentation_ref = ctx.get("presentation_ref")
         take_index = sess.get("take_index")
-        snippets = _arc_snippets(db, _snips_batch, sid)
+        snippets = _snips_by_sid.get(str(sid), [])
         coach_labels = {
             str(r.get("snippet_id")): r.get("value")
             for r in _arc_labels(db, _labels_batch, sid)
@@ -680,13 +737,26 @@ def build_best_presentation(
                 "start_offset_ms": s.get("start_offset_ms"),
                 "duration_ms": s.get("duration_ms"),
                 "take_index": take_index,
-                "direction": s.get("direction"),
+                # BADGE ONLY, and no longer a ranking input (SPEC §7.2). This
+                # is the coach's own challenge mark behind the breakthrough
+                # badge; the 2.5 ranking bonus moved to `album_quorum` below,
+                # because one person calling a moment good is not a consensus
+                # event. Kept on the payload so the badge surfaces are
+                # unchanged by the re-point.
                 "breakthrough": s.get("id") in breakthroughs,
                 "activation": metrics.get("overall_score"),
                 "slide_stickiness": stick,
-                # The DELIVERY term (L2). None when the ranking flag is off or
-                # the piece predates the composite → power_score no-op.
-                "voice_confidence": _voice_confidence_term(metrics),
+                # CONFIDENCE — enters power_score exactly once (SPEC D8). The
+                # panel blob wins when the blind raters have seen this clip;
+                # the machine composite covers the unlabelled majority and is
+                # None whenever the ranking flag is off or the piece predates
+                # the composite → power_score no-op.
+                "panel_confidence": _panel.get(str(s.get("id")), {}).get("panel"),
+                "machine_confidence": _voice_confidence_term(metrics),
+                # The redefined `_W_B` (SPEC §7.2/§9.1) — a multi-rater
+                # consensus event, not a single mark.
+                "album_quorum": _panel.get(
+                    str(s.get("id")), {}).get("quorum", False),
                 "tag": None,  # coach 'strong'/'to_work_on' lives in drafts; not here
                 # score-free plain-language delivery qualities — the "why" the
                 # user expands on a breakthrough badge (reuses the cross-take

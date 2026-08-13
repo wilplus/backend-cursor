@@ -437,8 +437,7 @@ def _block_score(piece_ids: list, resolver: dict) -> Optional[float]:
                 stick = stick.get("composite")
             scores.append(power_score(activation=act,
                                       slide_stickiness=stick,
-                                      tag=None, direction=None,
-                                      breakthrough=False))
+                                      tag=None))
         return (sum(scores) / len(scores)) if scores else None
     except Exception:
         return None

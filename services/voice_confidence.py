@@ -647,17 +647,22 @@ def attach_voice_confidence(pieces: list, *, baseline: Optional[dict] = None,
         logger.warning("voice_confidence: attach failed (non-fatal): %s", e)
 
 
-def rank_term(metrics: Any) -> Optional[float]:
-    """The value to hand power_score's ``voice_confidence`` kwarg — the stamped
-    score, or None.
+def stamped_score(metrics: Any) -> Optional[float]:
+    """This piece's stamped composite in [-1, 1], or None. NOT FLAG-GATED.
 
-    None whenever the ranking flag is OFF, the piece was never stamped (older
-    takes), the stamp came from a SUPERSEDED WEIGHTING (see
-    _RANKABLE_VERSIONS), or the blob is malformed. None is power_score's
-    documented no-op, so the ranking is byte-for-byte unchanged until the flag
-    is flipped."""
-    if not ranking_enabled():
-        return None
+    None when the piece was never stamped (older takes), when the stamp came
+    from a SUPERSEDED WEIGHTING (see _RANKABLE_VERSIONS — a score produced by
+    weights we no longer use is not comparable to one produced by the current
+    ones), or when the blob is malformed.
+
+    THE FLAG IS DELIBERATELY NOT CHECKED HERE, and the split matters.
+    ``VOICE_CONFIDENCE_RANKING_ENABLED`` asks one question — "is the machine
+    fallback trusted for RANKING yet" (SPEC §7.3) — and ranking is not the only
+    consumer. services/moment_confidence.py routes the star lane off this read
+    and must keep working while that validation gate is closed, because the
+    alternative is a surface that goes dark. Callers that mean "ranking" want
+    ``rank_term``; callers that mean "what did we measure" want this.
+    """
     if not isinstance(metrics, dict):
         return None
     read = metrics.get("voice_confidence")
@@ -669,3 +674,16 @@ def rank_term(metrics: Any) -> Optional[float]:
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(v)
     return None
+
+
+def rank_term(metrics: Any) -> Optional[float]:
+    """The value to hand power_score's ``machine_confidence`` kwarg — the
+    stamped score, or None.
+
+    None whenever the ranking flag is OFF, on top of every reason
+    ``stamped_score`` returns None. None is power_score's documented no-op, so
+    the ranking is byte-for-byte unchanged until the flag is flipped (SPEC
+    §7.3: with it off, an unlabelled clip contributes 0 for confidence)."""
+    if not ranking_enabled():
+        return None
+    return stamped_score(metrics)

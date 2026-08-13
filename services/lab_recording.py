@@ -1444,6 +1444,15 @@ def build_readout_from_session(
             _ar = metrics.get("acoustic_read") if isinstance(metrics, dict) else None
             if isinstance(_ar, dict):
                 snip_out["acoustic_read"] = _ar
+            # ⛔ THE CONFIDENCE COMPOSITE DOES NOT GO HERE — not on this branch
+            # either. It was put on the coach packet during the 2026-08-13
+            # re-point so services/moment_suggestions.py could route the star
+            # lane off it, and test_voice_confidence's source-level fence
+            # caught it: showing the coach the machine's confidence read is
+            # exactly the anchoring BLIND COACH exists to stop, and this
+            # serializer is an allowlist precisely so a convenience field
+            # cannot slip onto a surface. That module reads the metrics blob
+            # from the DB itself instead.
         out_snips.append(snip_out)
 
     # Applied-suggestion state (founder 2026-07-15) — replay the session's

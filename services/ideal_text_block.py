@@ -476,7 +476,12 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         # so the number the badge shows and the number that gated assembly
         # can never disagree.
         ok = database.persist_auto_ideal_text(
-            arc_id, text, take_count=len(spoken))
+            arc_id, text, take_count=len(spoken),
+            # The piece provenance for THIS text, written in the same upsert.
+            # It is what services/part_acoustics.fold_session scores per part;
+            # before 2026-08-13 it was never persisted at all, so the fold had
+            # nothing to read and the acoustic KPI never measured a take.
+            document=auto.get("document"))
         if ok:
             logger.info(
                 "ideal_text: eager draft persisted arc=%s chars=%d v=%d",

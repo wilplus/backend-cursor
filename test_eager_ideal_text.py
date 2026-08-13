@@ -75,7 +75,13 @@ class EagerAssemblyTests(unittest.TestCase):
             def get_coach_arc_ideal_text(self, a):
                 return existing_row
 
-            def persist_auto_ideal_text(self, a, text, *, take_count=None):
+            def persist_auto_ideal_text(self, a, text, *, take_count=None,
+                                        document=None):
+                # `document` is the piece provenance the real writer
+                # persists beside the text (2026-08-13). A double that
+                # omits it raises TypeError, which the caller swallows —
+                # the same shape of bug a test double hid once already.
+                calls["document"] = document
                 calls["persisted"] = text
                 # The version is the SPOKEN take count (founder 2026-08-05).
                 calls["take_count"] = take_count
@@ -360,3 +366,34 @@ class ArcReviewStateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DocumentProvenanceTests(unittest.TestCase):
+    """The piece provenance rides the SAME upsert as the text it describes
+    (founder 2026-08-13, migrations/add_coach_arc_ideal_text_document.sql).
+
+    services/part_acoustics.fold_session read this column for its entire life
+    before it existed: the read resolved to NULL, the fold returned {} on every
+    take without a log line, and no arc_part_acoustics row was ever written.
+    A KPI that measured nothing was indistinguishable from a quiet arc."""
+
+    def test_the_assembly_persists_its_pieces_beside_its_text(self):
+        _ok, calls = EagerAssemblyTests()._run(
+            [_spoken(1), _spoken(2), _spoken(3)],
+            auto={"text": "assembled block", "key_moments": [], "ready": True,
+                  "document": {"pieces": [{"snippet_id": "s1", "start": 0,
+                                           "end": 15, "text": "assembled"}],
+                               "take_session_id": "t3", "take_index": 3}})
+        self.assertEqual(calls["persisted"], "assembled block")
+        self.assertEqual(
+            calls["document"]["pieces"][0]["snippet_id"], "s1")
+
+    def test_an_assembly_with_no_provenance_still_persists_its_text(self):
+        """Character offsets are only meaningful against the exact string they
+        were anchored to, so a missing document is a missing KPI — never a
+        withheld document. The student's text is not collateral."""
+        _ok, calls = EagerAssemblyTests()._run(
+            [_spoken(1), _spoken(2), _spoken(3)],
+            auto={"text": "assembled block", "key_moments": [], "ready": True})
+        self.assertEqual(calls["persisted"], "assembled block")
+        self.assertIsNone(calls["document"])

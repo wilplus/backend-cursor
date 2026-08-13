@@ -91,7 +91,8 @@ class PolishPersistTests(unittest.TestCase):
         def get_moment_suggestions_by_arc(self, a):
             return self.existing
 
-        def persist_auto_ideal_text(self, a, t, *, take_count=None):
+        def persist_auto_ideal_text(self, a, t, *, take_count=None,
+                                    document=None):
             return True
 
         def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):

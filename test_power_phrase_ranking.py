@@ -56,41 +56,107 @@ class PowerScoreTests(unittest.TestCase):
         )
 
 
-class DirectionTermTests(unittest.TestCase):
-    """Prompt D — direction/breakthrough are opt-in, /strengths unchanged."""
+class TheCharismaTermIsGoneTests(unittest.TestCase):
+    """Founder 2026-08-13 / SPEC §7.2 — `_W_D` retired with the construct.
 
-    def test_no_direction_is_byte_for_byte_unchanged(self):
-        # The live /strengths path passes neither → identical to before.
+    The old kwargs are not silently ignored, and that is the point of this
+    class. A ``direction=`` that quietly evaluated to a no-op would let the
+    retired construct be passed from a caller nobody updated, forever, with
+    nothing anywhere saying it stopped mattering. TypeError says it once,
+    loudly, at the call site."""
+
+    def test_the_retired_kwargs_raise_rather_than_no_op(self):
+        for kw in ({"direction": "challenge"}, {"breakthrough": True},
+                   {"voice_confidence": 0.5}):
+            with self.assertRaises(TypeError, msg=kw):
+                power_score(activation=0.5, **kw)
+
+    def test_no_construct_vocabulary_survives_in_the_blend(self):
+        import inspect
+
+        from services import power_phrase_ranking as mod
+        src = inspect.getsource(mod.power_score)
+        for word in ("challenge", "threat", "charisma"):
+            self.assertNotIn(word, src.lower(), word)
+
+
+class ConfidenceTermTests(unittest.TestCase):
+    """SPEC §7.2 — confidence enters EXACTLY ONCE (D8), panel or machine."""
+
+    def test_no_confidence_is_byte_for_byte_unchanged(self):
+        # The live /strengths path passes none of it → identical to before.
         self.assertEqual(
             power_score(activation=0.5, slide_stickiness=0.3, tag="strong"),
             power_score(activation=0.5, slide_stickiness=0.3, tag="strong",
-                        direction=None, breakthrough=False),
+                        panel_confidence=None, machine_confidence=None,
+                        album_quorum=False),
         )
 
-    def test_challenge_outranks_threat(self):
-        ch = power_score(activation=0.5, direction="challenge")
-        th = power_score(activation=0.5, direction="threat")
-        self.assertGreater(ch, th)
+    def test_an_assured_delivery_outranks_an_unsure_one(self):
+        up = power_score(activation=0.5, machine_confidence=0.8)
+        down = power_score(activation=0.5, machine_confidence=-0.8)
+        self.assertGreater(up, down)
 
-    def test_ambiguous_is_neutral(self):
+    def test_a_dead_zone_read_is_neutral(self):
         self.assertEqual(
-            power_score(activation=0.5, direction="ambiguous"),
+            power_score(activation=0.5, machine_confidence=0.0),
             power_score(activation=0.5),
         )
 
-    def test_breakthrough_is_top_auto_signal(self):
-        # A breakthrough challenge moment beats a plain challenge one, and even
-        # a high-activation non-breakthrough.
-        bt = power_score(activation=0.3, direction="challenge", breakthrough=True)
-        plain = power_score(activation=0.9, direction="challenge")
-        self.assertGreater(bt, plain)
+    def test_the_panel_is_used_INSTEAD_of_the_machine_never_as_well(self):
+        """D8's whole content. Summing them would double-count one property
+        of one clip — and it would do it silently, since both terms are
+        legitimate on their own."""
+        from services.power_phrase_ranking import (
+            SOURCE_PANEL, confidence_term,
+        )
+        term, source = confidence_term({"value": 1.0, "quality": 1.0}, 0.9)
+        self.assertEqual(source, SOURCE_PANEL)
+        panel_only, _ = confidence_term({"value": 1.0, "quality": 1.0}, None)
+        self.assertEqual(term, panel_only)
 
-    def test_coach_verdict_outweighs_direction(self):
-        # The human verdict (w_c=2) dominates the direction term (w_d=1):
-        # a coach-strong moment beats an untagged challenge one.
+    def test_a_thin_panel_moves_ranking_less_than_a_deep_one(self):
+        from services.state_ratings import quality
+        thin = power_score(panel_confidence={
+            "value": 1.0, "quality": quality(2, 1.0)})
+        deep = power_score(panel_confidence={
+            "value": 1.0, "quality": quality(10, 1.0)})
+        self.assertGreater(deep, thin)
+
+    def test_the_panel_outweighs_the_machine_at_equal_lean(self):
+        # A real aggregated human judgment should move the pick further than
+        # an estimate standing in for one.
+        panel = power_score(panel_confidence={"value": 1.0, "quality": 1.0})
+        machine = power_score(machine_confidence=1.0)
+        self.assertGreater(panel, machine)
+
+
+class OrderingOfAuthorityTests(unittest.TestCase):
+    """SPEC §7.1 — the invariant that SURVIVES the re-point. Coach verdict
+    dominant > quorum bonus > panel > machine. Every one of these is a
+    weight-sizing claim the file makes in prose; here it is arithmetic."""
+
+    def test_the_coach_verdict_outweighs_any_confidence_read(self):
         strong = power_score(activation=0.0, tag="strong")
-        untagged_challenge = power_score(activation=0.0, direction="challenge")
-        self.assertGreater(strong, untagged_challenge)
+        for conf in ({"panel_confidence": {"value": 1.0, "quality": 1.0}},
+                     {"machine_confidence": 1.0}):
+            self.assertGreater(strong, power_score(activation=0.0, **conf))
+
+    def test_the_coach_gap_is_wider_than_the_panels_full_swing(self):
+        gap = (power_score(tag="strong") - power_score(tag="to_work_on"))
+        swing = (power_score(panel_confidence={"value": 1.0, "quality": 1.0})
+                 - power_score(panel_confidence={"value": -1.0,
+                                                 "quality": 1.0}))
+        self.assertGreater(gap, swing)
+
+    def test_the_quorum_bonus_is_the_top_automatic_signal(self):
+        quorum = power_score(activation=0.3, album_quorum=True)
+        loud = power_score(activation=0.9, machine_confidence=1.0)
+        self.assertGreater(quorum, loud)
+
+    def test_the_quorum_bonus_sits_below_the_coach_gap(self):
+        gap = (power_score(tag="strong") - power_score(tag="to_work_on"))
+        self.assertGreater(gap, power_score(album_quorum=True))
 
 
 if __name__ == "__main__":

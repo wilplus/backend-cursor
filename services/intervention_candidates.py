@@ -101,6 +101,7 @@ LANE_SOURCES = (
     "structural",   # advice — structural star
     "prior_take",   # cross-take: an earlier take said it better
     "new_take",     # master model: a newer take beat this block
+    "acoustic_swap",  # THIS take delivered a LOCKED part better — swap?
 )
 
 
@@ -279,10 +280,30 @@ def user_state(candidates: Any) -> me.UserState:
 
 # ── Confident Voice, and the rendering registry ─────────────────────────────
 #
-# "Confident Voice" is the founder-facing name for the charisma-trigger star
-# family (the F2 signal; internal trigger string 'charisma'). CONSTRUCT fence:
-# it surfaces as a qualitative STAR badge, never a number.
-CONFIDENT_VOICE_TRIGGER = "charisma"
+# "Confident Voice" is the founder-facing name for this star family. The
+# founder-facing name was ALREADY the construct the 2026-08-13 re-point landed
+# on; only the internal string lagged, and now it does not.
+#
+# TWO STRINGS, ONE FAMILY, AND THE OLD ONE IS NOT DEAD WEIGHT. New rows are
+# written 'confident' (services/moment_suggestions.py); rows written before the
+# re-point say 'charisma' and are never rewritten, because detector definitions
+# are versioned rather than overwritten — a backfill would silently restate
+# what an old detector decided. A reader that knew only the new word would drop
+# every historical star off the NOTICE path and out of the serve mix.
+#
+# CONSTRUCT fence: this family surfaces as a qualitative STAR badge, never a
+# number, under either string.
+CONFIDENT_VOICE_TRIGGER = "confident"
+_LEGACY_CONFIDENT_VOICE_TRIGGER = "charisma"
+CONFIDENT_VOICE_TRIGGERS = (
+    CONFIDENT_VOICE_TRIGGER, _LEGACY_CONFIDENT_VOICE_TRIGGER,
+)
+
+
+def is_confident_voice(change: Any) -> bool:
+    """Is this change the Confident Voice star family, in either vocabulary?"""
+    return (change.get("trigger") in CONFIDENT_VOICE_TRIGGERS
+            if isinstance(change, dict) else False)
 
 # Founder copy, verbatim (SPEC-lockin-loop-and-coach-panel §2). LIVE LOOP:
 # changing this string needs founder sign-off.
@@ -350,7 +371,7 @@ TYPE_ROWS: dict = {
 def intervention_type_of(change: Any) -> str:
     """The C.2 closed-set type of one live change. The ONE mapping."""
     c = change if isinstance(change, dict) else {}
-    if c.get("trigger") == CONFIDENT_VOICE_TRIGGER:
+    if is_confident_voice(c):
         return "NOTICE"
     kind = c.get("kind")
     if kind == "insert":
@@ -542,7 +563,7 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
         if not locked:
             kept.append(c)
             continue
-        if c.get("trigger") == CONFIDENT_VOICE_TRIGGER:
+        if is_confident_voice(c):
             kept.append({**c, "pending_better_version": True,
                          "pending_copy": PENDING_BETTER_VERSION_COPY})
             continue
@@ -726,7 +747,7 @@ def filter_by_window(changes: Any) -> list:
         if layer_of_kind(c.get("kind")) != ACCENTUATION:
             kept.append(c)
             continue
-        if c.get("trigger") == CONFIDENT_VOICE_TRIGGER:
+        if is_confident_voice(c):
             kept.append(c)
             continue
         if within_accent_window(c.get("quote")):

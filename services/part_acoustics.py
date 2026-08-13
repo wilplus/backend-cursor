@@ -302,6 +302,58 @@ def fold_take(arc_id: Any, user_id: Any, *, pieces: Any, parts: Any,
         return {}
 
 
+def _with_metrics(pieces: Any, arc_id: Any, database) -> list:
+    """The document's pieces with each one's ACOUSTICS joined on. Best-effort.
+
+    OPTION (C), founder 2026-08-13. `take_z_by_part` scores
+    `piece["metrics"]`, and the persisted document does not carry any: the
+    piece contract from services/transcript_document.py is
+    `{snippet_id, take_session_id, take_index, start, end, text, slide_index}`
+    — anchors and provenance, no measurements. So even with the document
+    column in place the fold would have found `usable == []` and returned {}.
+    Two independent breaks, stacked.
+
+    THE MEASUREMENTS ARE JOINED, NOT COPIED INTO THE DOCUMENT. Persisting a
+    second copy of per-piece acoustics beside the text would mint a staler
+    home for numbers that already have one, and the founder's standing rule on
+    detector data is that measurements live in one versioned place and are
+    never duplicated into a form that can drift from it. The join key is
+    `snippet_id`, which is the piece contract's own identity.
+
+    Pieces whose snippet has no metrics are DROPPED rather than defaulted:
+    `take_z_by_part` averages z-scores per part, so admitting a piece with a
+    fabricated zero would report "delivered exactly at baseline" for a
+    paragraph nobody measured.
+    """
+    rows = [p for p in (pieces or []) if isinstance(p, dict)]
+    if not rows:
+        return []
+    try:
+        from services.best_presentation import spoken_arc_sessions
+        sess_ids = [
+            s.get("id")
+            for s in spoken_arc_sessions(database.get_arc_sessions(arc_id))
+            if isinstance(s, dict) and s.get("id")
+        ]
+        by_session = (database.get_snippets_by_sessions(sess_ids) or {}
+                      if sess_ids else {})
+        by_id = {
+            str(s.get("id")): s.get("metrics")
+            for rows_ in by_session.values() if isinstance(rows_, list)
+            for s in rows_ if isinstance(s, dict) and s.get("id")
+        }
+    except Exception as e:
+        logger.warning("part_acoustics: metrics join failed arc=%s: %s",
+                       arc_id, e)
+        return []
+    out = []
+    for p in rows:
+        m = by_id.get(str(p.get("snippet_id") or ""))
+        if isinstance(m, dict) and m:
+            out.append({**p, "metrics": m})
+    return out
+
+
 def fold_session(arc_id: Any, user_id: Any, session_id: Any, *,
                  database=None) -> dict:
     """Fold the current assembly into the per-part averages after a take.
@@ -335,17 +387,44 @@ def fold_session(arc_id: Any, user_id: Any, session_id: Any, *,
 
         baseline, baseline_id = current_baseline(user_id, database=database)
         if not baseline:
-            return {}       # cold start — nothing to measure against yet
+            # Cold start — nothing to measure against yet. The ONLY silent
+            # skip here, because it is the one that is genuinely expected: a
+            # speaker with no baseline has not recorded enough to have one.
+            logger.info("part_acoustics: no baseline yet arc=%s", arc_id)
+            return {}
         parts = database.get_ideal_text_parts(str(arc_id), str(user_id))
         if not parts:
-            return {}       # a document nobody has opened has no parts
+            logger.info(
+                "part_acoustics: fold skipped — no stored parts arc=%s "
+                "(document never opened)", arc_id)
+            return {}
         row = database.get_coach_arc_ideal_text(str(arc_id)) or {}
         doc = row.get("document") if isinstance(row, dict) else None
         pieces = (doc or {}).get("pieces") if isinstance(doc, dict) else None
         if not pieces:
+            # ⚠️ THE LINE THAT WAS MISSING FOR THIS FUNCTION'S ENTIRE LIFE.
+            # `document` was read here before the column existed, so every
+            # call landed on this branch and returned {} without a word: no
+            # part row was ever written, `focus_part_id` returned None for
+            # every arc, and a KPI measuring nothing was indistinguishable
+            # from a quiet arc. Post-migration this should only fire for arcs
+            # assembled before 2026-08-13, and it says so out loud.
+            logger.warning(
+                "part_acoustics: fold skipped — no piece provenance on the "
+                "ideal text arc=%s (pre-2026-08-13 assembly, or "
+                "migrations/add_coach_arc_ideal_text_document.sql pending). "
+                "No acoustic KPI will be recorded for this take.", arc_id)
+            return {}
+        scored = _with_metrics(pieces, arc_id, database)
+        if not scored:
+            logger.warning(
+                "part_acoustics: fold skipped — the document's pieces carry "
+                "no acoustics arc=%s (snippet metrics missing for every "
+                "piece). No acoustic KPI will be recorded for this take.",
+                arc_id)
             return {}
         return fold_take(
-            arc_id, user_id, pieces=pieces, parts=parts, baseline=baseline,
+            arc_id, user_id, pieces=scored, parts=parts, baseline=baseline,
             baseline_id=baseline_id, session_id=session_id,
             database=database)
     except Exception as e:

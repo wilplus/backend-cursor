@@ -299,6 +299,59 @@ def aggregate(rows: Any, *, lanes: tuple = PANEL_LANES) -> Optional[dict]:
     }
 
 
+# ── album quorum (SPEC §9.1) ────────────────────────────────────────────────
+
+_QUORUM_LANES = ("coach", "game_peer")
+
+
+def clears_album_quorum(rows: Any) -> bool:
+    """Has this moment cleared the album quorum? SPEC §9.1. Pure.
+
+    THE MODEL'S VOTE IS NOT CONSULTED, and that is the spec, not a shortcut.
+    §9.1 makes the model asymmetric — "it can help a moment in, never keep one
+    out" — and names the override path outright: where the coach marks a moment
+    the model rejected and a peer confirms it, TWO HUMANS IS SUFFICIENT and the
+    model is overridden. A predicate that could be satisfied without the model
+    is therefore a predicate the model cannot appear in. That override path is
+    also what preserves discovery: the album can contain moments the model
+    missed, and those rows are the blind-spot corpus.
+
+    Two humans FROM THE TWO LANES — one coach, one peer. Two peers are not the
+    override §9.1 describes, and two coaches are one lane wearing two hats.
+
+    A STRICT MAJORITY OF ANSWERED RATERS SAID YES. Not merely "the aggregate
+    leans positive": with two raters a yes + a neutral averages to +0.5, which
+    would let a moment nobody actually confirmed carry the ranking's largest
+    single bonus (`_W_B`, 2.5). ``neutral`` is a real judgment that the moment
+    reads as middling (§17) — it is not a half-yes, and counting it as one
+    would put the middle of the distribution into the album.
+
+    ``unrateable`` rows never count: they carry no answer, and a moment most
+    raters refuse to judge is the opposite of a consensus event.
+
+    False on junk, on an empty panel, or on anything malformed — the safe
+    direction, since a false positive here mints a permanent album entry that
+    §9.2 says never ages out.
+    """
+    if not isinstance(rows, list):
+        return False
+    lanes_seen: set = set()
+    counts = {v: 0 for v in VALUES}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        lane = r.get("lane")
+        if lane not in _QUORUM_LANES or r.get("unrateable"):
+            continue
+        v = r.get("value")
+        if isinstance(v, str) and v in VALUES:
+            counts[v] += 1
+            lanes_seen.add(lane)
+    if len(lanes_seen) < len(_QUORUM_LANES):
+        return False
+    return counts["yes"] > counts["no"] + counts["neutral"]
+
+
 def corpus_summary(rows: Any) -> dict:
     """Class balance for a training pull, so a run can see whether the data is
     usable BEFORE it trains on it.
