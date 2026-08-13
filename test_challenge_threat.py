@@ -6,9 +6,7 @@ from __future__ import annotations
 
 import unittest
 
-from services.challenge_threat import (
-    detect_breakthroughs, is_challenge, resolve_direction,
-)
+from services.challenge_threat import detect_breakthroughs, resolve_direction
 
 
 class ResolveDirectionTests(unittest.TestCase):
@@ -57,11 +55,32 @@ class ConfidenceGateTests(unittest.TestCase):
             "challenge")
 
 
-class IsChallengeTests(unittest.TestCase):
-    def test_only_challenge_passes(self):
-        self.assertTrue(is_challenge("challenge"))
-        for d in ("threat", "ambiguous", None, ""):
-            self.assertFalse(is_challenge(d), d)
+class TheRankingLaneIsGoneTests(unittest.TestCase):
+    """Founder 2026-08-13 / SPEC §7.2 — this module is a CORPUS lane now.
+
+    `is_challenge` moved to services/moment_confidence.py as `is_confident`
+    and changed construct on the way. The pin is not sentimentality about a
+    deleted function: the whole point of the re-point was that ranking stops
+    consulting challenge/threat, and a re-added surfacing filter here is the
+    most natural-looking way for that to creep back in."""
+
+    def test_the_surfacing_filter_did_not_survive_here(self):
+        import services.challenge_threat as mod
+        self.assertFalse(hasattr(mod, "is_challenge"))
+
+    def test_the_replacement_lives_on_the_confidence_construct(self):
+        from services.moment_confidence import CONFIDENT, is_confident
+        self.assertTrue(is_confident(CONFIDENT))
+        for c in ("unconfident", "challenge", None, ""):
+            self.assertFalse(is_confident(c), c)
+
+    def test_ranking_no_longer_imports_this_lane(self):
+        import inspect
+
+        from services import power_phrase_ranking
+        src = inspect.getsource(power_phrase_ranking)
+        self.assertNotIn("challenge_threat", src)
+        self.assertNotIn("_DIRECTION_TERM", src)
 
 
 class BreakthroughTests(unittest.TestCase):

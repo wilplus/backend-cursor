@@ -107,7 +107,10 @@ def _rank_inputs(snippet: dict) -> dict:
         "tag": _tag_from_coach_label(snippet.get("coach_label")),
         "rank": metrics.get("rank"),
         # Delivery term (L2) — None when the flag is off / piece unstamped.
-        "voice_confidence": confidence,
+        # MACHINE lane only: this reader has one snippet row and no panel
+        # rows, so it never has the human aggregate to prefer (SPEC D8 —
+        # confidence enters once, and the panel is the caller's job to fetch).
+        "machine_confidence": confidence,
     }
 
 

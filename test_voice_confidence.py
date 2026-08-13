@@ -381,25 +381,25 @@ class TestRankTermFlag(unittest.TestCase):
 class TestPowerScoreBlend(unittest.TestCase):
 
     def test_absent_term_is_byte_for_byte_no_op(self):
-        """Every pre-existing caller passes no voice_confidence; their score
-        must be identical to before the term existed."""
+        """Every pre-existing caller passes no confidence; their score must be
+        identical to before the term existed."""
         from services.power_phrase_ranking import power_score
         for kwargs in (
             {"activation": 0.8, "slide_stickiness": 0.5},
             {"tag": "strong", "activation": 0.2},
-            {"direction": "challenge", "breakthrough": True},
+            {"album_quorum": True},
             {"rank": 2},
         ):
             self.assertEqual(power_score(**kwargs),
-                             power_score(voice_confidence=None, **kwargs))
+                             power_score(machine_confidence=None, **kwargs))
 
     def test_confidence_lifts_and_doubt_drops(self):
         from services.power_phrase_ranking import power_score
         base = power_score(activation=0.5, slide_stickiness=0.5)
         up = power_score(activation=0.5, slide_stickiness=0.5,
-                         voice_confidence=0.9)
+                         machine_confidence=0.9)
         down = power_score(activation=0.5, slide_stickiness=0.5,
-                           voice_confidence=-0.9)
+                           machine_confidence=-0.9)
         self.assertGreater(up, base)
         self.assertLess(down, base)
 
@@ -409,31 +409,35 @@ class TestPowerScoreBlend(unittest.TestCase):
         a less confident one that covered the slide."""
         from services.power_phrase_ranking import power_score
         confident_offtopic = power_score(
-            activation=0.0, slide_stickiness=0.0, voice_confidence=1.0)
+            activation=0.0, slide_stickiness=0.0, machine_confidence=1.0)
         flat_ontopic = power_score(
-            activation=1.0, slide_stickiness=1.0, voice_confidence=0.0)
+            activation=1.0, slide_stickiness=1.0, machine_confidence=0.0)
         self.assertGreater(flat_ontopic, confident_offtopic)
 
     def test_coach_verdict_still_dominates_delivery(self):
         from services.power_phrase_ranking import power_score
         coach_strong_but_doubtful = power_score(tag="strong",
-                                                voice_confidence=-1.0)
+                                                machine_confidence=-1.0)
         coach_towork_but_confident = power_score(tag="to_work_on",
-                                                 voice_confidence=1.0)
+                                                 machine_confidence=1.0)
         self.assertGreater(coach_strong_but_doubtful,
                            coach_towork_but_confident)
 
-    def test_breakthrough_still_outranks_delivery(self):
+    def test_the_album_quorum_still_outranks_delivery(self):
+        """SPEC §7.2 re-pointed `_W_B` from a single coach mark onto the
+        multi-rater quorum, but its PLACE in the ordering of authority did not
+        move: a consensus event still beats the loudest machine read."""
         from services.power_phrase_ranking import power_score
-        self.assertGreater(power_score(breakthrough=True, voice_confidence=0.0),
-                           power_score(breakthrough=False, voice_confidence=1.0))
+        self.assertGreater(
+            power_score(album_quorum=True, machine_confidence=0.0),
+            power_score(album_quorum=False, machine_confidence=1.0))
 
     def test_junk_value_is_neutral(self):
         from services.power_phrase_ranking import power_score
         base = power_score(activation=0.5)
         for junk in ("0.9", True, None, [], {}):
             self.assertEqual(power_score(activation=0.5,
-                                         voice_confidence=junk), base)
+                                         machine_confidence=junk), base)
 
 
 class TestSelectionUsesTheTerm(unittest.TestCase):
@@ -441,7 +445,7 @@ class TestSelectionUsesTheTerm(unittest.TestCase):
     def _cand(self, si, sid, text, confidence):
         return {"slide_index": si, "snippet_id": sid, "transcript": text,
                 "activation": 0.5, "slide_stickiness": 0.5,
-                "voice_confidence": confidence}
+                "machine_confidence": confidence}
 
     def test_more_confident_delivery_wins_a_tied_slide(self):
         from services.best_presentation import select_best_per_slide

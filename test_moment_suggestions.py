@@ -39,55 +39,85 @@ SNIP = "aaaa1111-aaaa-1111-aaaa-111111111111"
 SESS = "bbbb2222-bbbb-2222-bbbb-222222222222"
 
 
-class DirectionResolutionTests(unittest.TestCase):
-    def _resolve(self, label, pot):
-        from services.moment_direction import resolve_moment_direction
-        read = {"potentiometer": pot} if pot is not None else None
-        return resolve_moment_direction(label, read)
+class ConfidenceResolutionTests(unittest.TestCase):
+    """SPEC §7.2 / §17 — the star lane routes on ``confidence``.
 
-    def test_coach_override_always_wins(self):
-        self.assertEqual(self._resolve("challenge", -0.9), "charisma")
-        self.assertEqual(self._resolve("threat", 0.9), "threat")
-        # ambiguous = the coach said NEITHER — beats a strong lean
-        self.assertIsNone(self._resolve("ambiguous", 0.9))
+    It used to route on ``charisma`` / ``threat``, resolved from
+    ``acoustic_read.tone_hint``. That construct had no written operational
+    definition, and §17 names charisma explicitly as something ``confidence``
+    must NOT be folded together with — so an undefined subjective label was
+    deciding, on every take with no human in the loop, whether a moment got a
+    replace star, an emphasize star, or silence."""
 
-    def test_potentiometer_fallback(self):
-        self.assertEqual(self._resolve(None, 0.5), "charisma")
-        self.assertEqual(self._resolve(None, -0.5), "threat")
-        self.assertIsNone(self._resolve(None, 0.1))   # neutral band
-        self.assertIsNone(self._resolve(None, None))  # no read
+    def _resolve(self, panel, score):
+        from services.moment_confidence import resolve_moment_confidence
+        metrics = ({"voice_confidence": {"score": score,
+                                         "version": "voice-confidence-v2"}}
+                   if score is not None else None)
+        return resolve_moment_confidence(panel, metrics)
+
+    def test_the_panel_overrides_the_machine_including_when_it_says_neither(self):
+        self.assertEqual(self._resolve({"value": 1.0}, -0.9), "confident")
+        self.assertEqual(self._resolve({"value": -1.0}, 0.9), "unconfident")
+        # 0.0 = people looked and landed in the middle. `neutral` is a
+        # judgment about the moment (§17), not an absence of one, so it must
+        # not fall through to an estimate standing in for the humans who
+        # actually answered.
+        self.assertIsNone(self._resolve({"value": 0.0}, 0.9))
+
+    def test_the_machine_covers_the_unlabelled_majority(self):
+        self.assertEqual(self._resolve(None, 0.5), "confident")
+        self.assertEqual(self._resolve(None, -0.5), "unconfident")
+        self.assertIsNone(self._resolve(None, 0.0))   # the dead zone
+        self.assertIsNone(self._resolve(None, None))  # never stamped
+
+    def test_the_machine_read_is_NOT_gated_on_the_ranking_flag(self):
+        """SPEC §7.3 scopes VOICE_CONFIDENCE_RANKING_ENABLED to RANKING. This
+        is not ranking. Gating it here would take the whole EMPHASIZE branch
+        dark until validation passes — a surface going silent, which is the
+        bug class this lane keeps producing, not a safety measure."""
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"VOICE_CONFIDENCE_RANKING_ENABLED": "0"}):
+            self.assertEqual(self._resolve(None, 0.5), "confident")
 
     def test_blind_coach_shadow_model_banned(self):
         # The docstring may NAME the ban; the IMPORT is what's banned.
-        import services.moment_direction as mod
+        import services.moment_confidence as mod
         src = inspect.getsource(mod)
         self.assertNotIn("from services.learning_serve", src)
         self.assertNotIn("import learning_serve", src)
         self.assertNotIn("predict_direction", src)
 
+    def test_the_retired_module_is_gone_rather_than_deprecated(self):
+        with self.assertRaises(ImportError):
+            import services.moment_direction  # noqa: F401
+
 
 class KindResolutionTests(unittest.TestCase):
-    def _kind(self, direction, text="clean words", stick=None):
-        from services.moment_direction import resolve_suggestion_kind
-        return resolve_suggestion_kind(direction, text,
+    def _kind(self, confidence, text="clean words", stick=None):
+        from services.moment_confidence import resolve_suggestion_kind
+        return resolve_suggestion_kind(confidence, text,
                                        slide_stickiness=stick,
                                        stickiness_max=0.15)
 
-    def test_threat_replaces(self):
-        self.assertEqual(self._kind("threat"), "replace")
+    def test_an_unsure_delivery_replaces(self):
+        self.assertEqual(self._kind("unconfident"), "replace")
 
-    def test_clean_charisma_emphasizes(self):
-        self.assertEqual(self._kind("charisma"), "emphasize")
+    def test_a_clean_assured_delivery_emphasizes(self):
+        self.assertEqual(self._kind("confident"), "emphasize")
 
-    def test_profanity_replaces_even_on_charisma(self):
-        self.assertEqual(self._kind("charisma", "this is fucking great"),
+    def test_profanity_replaces_even_on_an_assured_delivery(self):
+        self.assertEqual(self._kind("confident", "this is fucking great"),
                          "replace")
 
-    def test_low_stickiness_replaces_without_direction(self):
+    def test_low_stickiness_replaces_without_a_confidence_read(self):
+        # Two of the three REPLACE triggers never depended on the construct,
+        # which is why this lane did not go quiet when it changed hands.
         self.assertEqual(self._kind(None, stick=0.1), "replace")
         self.assertEqual(self._kind(None, stick=0.15), "replace")  # inclusive
 
-    def test_ok_stickiness_no_direction_no_star(self):
+    def test_ok_stickiness_no_read_no_star(self):
         self.assertIsNone(self._kind(None, stick=0.6))
         self.assertIsNone(self._kind(None))
 
@@ -778,11 +808,24 @@ class LedgerGenerationFilterTests(unittest.TestCase):
             self.upserts.append((snip, kind, trig))
             return True
 
+        def get_snippets_by_session(self, sid):
+            # The star lane reads the CONFIDENCE composite from the snippet
+            # rows, not from the readout — the readout serializer is an
+            # allowlist that deliberately carries no confidence blob on
+            # either branch (BLIND COACH: a rater must not see the machine's
+            # read of a clip they judge blind).
+            return [{"id": s, "metrics": {"voice_confidence": {
+                "score": 0.9, "version": "voice-confidence-v2"}}}
+                for s in self.confident_snippets]
+
+        confident_snippets: tuple = ()
+
     def test_decided_phrase_skipped_fresh_phrase_generated(self):
         from services import moment_suggestions as ms
         db = self._Db([{"kind": "emphasize",
                         "target_phrase": "keep this phrase",
                         "decision": "dismissed"}])
+        db.confident_snippets = ("s1", "s2")
         readout = {"snippets": [
             {"id": "s1", "transcript": "Keep   THIS phrase",
              "acoustic_read": {"potentiometer": 0.9}},
@@ -830,6 +873,13 @@ class ContextDocumentReachesGenerationTests(unittest.TestCase):
         def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
             self.upserts.append(snip)
             return True
+
+        def get_snippets_by_session(self, sid):
+            # The star lane reads the CONFIDENCE composite from the snippet
+            # rows rather than the readout — see the fence note in
+            # services/moment_suggestions.py.
+            return [{"id": "s1", "metrics": {"voice_confidence": {
+                "score": 0.9, "version": "voice-confidence-v2"}}}]
 
     def _run(self, db):
         from services import moment_suggestions as ms

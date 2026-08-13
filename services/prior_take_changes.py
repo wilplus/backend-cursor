@@ -136,9 +136,9 @@ def _score(cand: dict) -> Optional[float]:
             activation=cand.get("activation"),
             slide_stickiness=cand.get("slide_stickiness"),
             tag=cand.get("tag"),
-            direction=cand.get("direction"),
-            breakthrough=bool(cand.get("breakthrough")),
-            voice_confidence=cand.get("voice_confidence"),
+            panel_confidence=cand.get("panel_confidence"),
+            machine_confidence=cand.get("machine_confidence"),
+            album_quorum=bool(cand.get("album_quorum")),
         )
     except Exception:
         return None

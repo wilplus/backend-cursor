@@ -10,13 +10,18 @@ import unittest
 import services.best_presentation as bp
 
 
-def _cand(slide_index, sid, direction, **kw):
+def _cand(slide_index, sid, confidence, **kw):
+    """One ranking candidate. ``confidence`` is the MACHINE composite in
+    [-1, 1] — SPEC §7.2's re-point of the retired challenge/threat direction
+    term. Positive = the speaker sounded assured on this line, negative =
+    unsure, 0.0/None = the dead-zone middle."""
     base = {
         "slide_index": slide_index, "snippet_id": sid,
         "transcript": kw.get("transcript", f"line {sid}"),
         "audio_ref": kw.get("audio_ref", f"s3://{sid}"),
         "take_index": kw.get("take_index", 1),
-        "direction": direction, "breakthrough": kw.get("breakthrough", False),
+        "machine_confidence": confidence,
+        "album_quorum": kw.get("album_quorum", False),
         "activation": kw.get("activation", 0.5),
         "slide_stickiness": kw.get("slide_stickiness", 0.0),
         "tag": kw.get("tag"),
@@ -25,40 +30,42 @@ def _cand(slide_index, sid, direction, **kw):
 
 
 class SelectBestPerSlideTests(unittest.TestCase):
-    def test_challenge_outranks_threat_by_rating(self):
-        # NOT a hard filter — challenge wins because its rating is boosted
-        # (+1) while threat is penalised (-1), even with lower activation.
+    def test_an_assured_line_outranks_an_unsure_one_by_rating(self):
+        # NOT a hard filter — the assured line wins because confidence lifts
+        # its rating and doubt sinks the other, even at lower activation.
         cands = [
-            _cand(0, "t", "threat", activation=0.9),
-            _cand(0, "c", "challenge", activation=0.4),
+            _cand(0, "t", -0.8, activation=0.9),
+            _cand(0, "c", 0.8, activation=0.4),
         ]
         best = bp.select_best_per_slide(cands)
         self.assertEqual(best[0]["snippet_id"], "c")
 
-    def test_threat_surfaces_when_it_is_all_the_slide_has(self):
-        # No challenge-only filter → a slide with only threat still gets its
-        # best line (never blank).
+    def test_an_unsure_line_surfaces_when_it_is_all_the_slide_has(self):
+        # No confidence-only filter → a slide with only unsure lines still
+        # gets its best one (never blank).
         cands = [
-            _cand(0, "lo", "threat", activation=0.2),
-            _cand(0, "hi", "threat", activation=0.8),
+            _cand(0, "lo", -0.8, activation=0.2),
+            _cand(0, "hi", -0.8, activation=0.8),
         ]
         best = bp.select_best_per_slide(cands)
         self.assertEqual(best[0]["snippet_id"], "hi")
 
-    def test_best_challenge_per_slide(self):
+    def test_best_line_per_slide(self):
         cands = [
-            _cand(0, "lo", "challenge", activation=0.2),
-            _cand(0, "hi", "challenge", activation=0.9),
-            _cand(1, "x", "challenge", activation=0.5),
+            _cand(0, "lo", 0.8, activation=0.2),
+            _cand(0, "hi", 0.8, activation=0.9),
+            _cand(1, "x", 0.8, activation=0.5),
         ]
         best = bp.select_best_per_slide(cands)
         self.assertEqual(best[0]["snippet_id"], "hi")
         self.assertEqual(best[1]["snippet_id"], "x")
 
-    def test_breakthrough_wins_over_higher_activation(self):
+    def test_the_album_quorum_wins_over_higher_activation(self):
+        # SPEC §7.2: `_W_B` (2.5) is still the top automatic signal, but it
+        # now fires on a multi-rater consensus rather than one coach mark.
         cands = [
-            _cand(0, "plain", "challenge", activation=0.9),
-            _cand(0, "bt", "challenge", activation=0.2, breakthrough=True),
+            _cand(0, "plain", 0.8, activation=0.9),
+            _cand(0, "bt", 0.8, activation=0.2, album_quorum=True),
         ]
         best = bp.select_best_per_slide(cands)
         self.assertEqual(best[0]["snippet_id"], "bt")
@@ -66,9 +73,9 @@ class SelectBestPerSlideTests(unittest.TestCase):
     def test_prefers_complete_sentence_over_higher_scored_fragment(self):
         # #4: a complete line beats a higher-scored truncated fragment.
         cands = [
-            _cand(0, "frag", "challenge", activation=0.9,
+            _cand(0, "frag", 0.8, activation=0.9,
                   transcript="and going back to the days when I"),
-            _cand(0, "whole", "challenge", activation=0.3,
+            _cand(0, "whole", 0.8, activation=0.3,
                   transcript="We are raising two million dollars."),
         ]
         best = bp.select_best_per_slide(cands)
@@ -78,8 +85,8 @@ class SelectBestPerSlideTests(unittest.TestCase):
         # No complete line on the slide → still keep the best-scored (#4: never
         # blank).
         cands = [
-            _cand(0, "lo", "challenge", activation=0.2, transcript="a stray bit"),
-            _cand(0, "hi", "challenge", activation=0.9, transcript="another stray"),
+            _cand(0, "lo", 0.8, activation=0.2, transcript="a stray bit"),
+            _cand(0, "hi", 0.8, activation=0.9, transcript="another stray"),
         ]
         best = bp.select_best_per_slide(cands)
         self.assertEqual(best[0]["snippet_id"], "hi")
@@ -88,9 +95,9 @@ class SelectBestPerSlideTests(unittest.TestCase):
         # #4: the same line never lands on two slides — slide 1 takes its next.
         same = "We are raising two million dollars."
         cands = [
-            _cand(0, "s0", "challenge", activation=0.9, transcript=same),
-            _cand(1, "s1", "challenge", activation=0.9, transcript=same),
-            _cand(1, "alt", "challenge", activation=0.4,
+            _cand(0, "s0", 0.8, activation=0.9, transcript=same),
+            _cand(1, "s1", 0.8, activation=0.9, transcript=same),
+            _cand(1, "alt", 0.8, activation=0.4,
                   transcript="So here is exactly where it goes."),
         ]
         best = bp.select_best_per_slide(cands)
@@ -99,7 +106,7 @@ class SelectBestPerSlideTests(unittest.TestCase):
 
     def test_drops_bad_slide_index_and_input(self):
         self.assertEqual(bp.select_best_per_slide(None), {})
-        self.assertEqual(bp.select_best_per_slide([_cand(-1, "x", "challenge")]), {})
+        self.assertEqual(bp.select_best_per_slide([_cand(-1, "x", 0.8)]), {})
 
 
 class ComposeTests(unittest.TestCase):
@@ -111,21 +118,21 @@ class ComposeTests(unittest.TestCase):
 
     def test_verbatim_fallback_when_llm_returns_none(self):
         bp._render_composition = lambda picks, slides: None
-        picks = {0: _cand(0, "c", "challenge", transcript="my best line")}
+        picks = {0: _cand(0, "c", 0.8, transcript="my best line")}
         out = bp.compose_presentation(picks, [{"title": "S1", "body": "b"}])
         self.assertEqual(out[0]["text"], "my best line")  # verbatim
         self.assertEqual(out[0]["title"], "S1")
 
     def test_light_edit_used_when_present(self):
         bp._render_composition = lambda picks, slides: {0: "my polished line"}
-        picks = {0: _cand(0, "c", "challenge", transcript="my best line")}
+        picks = {0: _cand(0, "c", 0.8, transcript="my best line")}
         out = bp.compose_presentation(picks, [{"title": "S1", "body": "b"}])
         self.assertEqual(out[0]["text"], "my polished line")
 
     def test_empty_slide_stays_blank(self):
         bp._render_composition = lambda picks, slides: {}
         # slide 1 has no pick → blank, never invented.
-        picks = {0: _cand(0, "c", "challenge", transcript="line")}
+        picks = {0: _cand(0, "c", 0.8, transcript="line")}
         out = bp.compose_presentation(picks, [{"title": "S1"}, {"title": "S2"}])
         self.assertEqual(out[1]["text"], "")
         self.assertIsNone(out[1]["audio_ref"])
@@ -135,7 +142,7 @@ class ComposeTests(unittest.TestCase):
 
     def test_ac9_no_internal_score_leaks(self):
         bp._render_composition = lambda picks, slides: {}
-        picks = {0: _cand(0, "c", "challenge")}
+        picks = {0: _cand(0, "c", 0.8)}
         out = bp.compose_presentation(picks, [{"title": "S1"}])
         # RANKING internals must never leak (AC-9). snippet_id is NOT one —
         # it's an opaque reference the FE deep-links the PDF's "Key moment"
@@ -148,9 +155,9 @@ class ComposeTests(unittest.TestCase):
     def test_breakthrough_note_only_when_breakthrough(self):
         bp._render_composition = lambda picks, slides: {}
         picks = {
-            0: {**_cand(0, "bt", "challenge", breakthrough=True),
+            0: {**_cand(0, "bt", 0.8), "breakthrough": True,
                 "note": "Comfortable pace, natural rise and fall."},
-            1: {**_cand(1, "plain", "challenge"), "note": "Some note."},
+            1: {**_cand(1, "plain", 0.8), "note": "Some note."},
         }
         out = bp.compose_presentation(picks, [{"title": "S1"}, {"title": "S2"}])
         # the breakthrough slide carries the "why"; the plain one does not
@@ -233,25 +240,50 @@ class BuildTests(unittest.TestCase):
         ]}
         return _FakeDB(sessions, snips, labels)
 
-    def test_build_surfaces_challenge_breakthrough(self):
-        # coach_view=True: this test verifies COMPOSITION/SELECTION logic, the
-        # surface where the auto-assembled draft is actually visible (founder
-        # 2026-07-06 — the student never sees it pre-coach-correction; see
-        # CoachFinalizedGateTests below for that gate itself).
+    def test_build_ranks_on_the_measured_terms_not_the_coach_label(self):
+        """THE BEHAVIOUR CHANGE OF THE 2026-08-13 RE-POINT, pinned.
+
+        This fixture is the old blend's showcase: 'nervous open' has the far
+        better content score (0.9 vs 0.4) and lost anyway, because a coach
+        `challenge` mark on 'strong close' was worth +1.0 direction AND the
+        +2.5 breakthrough bonus — 3.5 points of override on a 1.6-point scale.
+        One subjective label outranked every measurement in the blend.
+
+        SPEC §7.2 retired the direction term and re-pointed the bonus onto the
+        album quorum, so the labels no longer touch ranking at all and the
+        higher-activation line wins on its merits. THE BADGE IS UNAFFECTED —
+        it is still the coach's own mark, on the snippet they marked (see the
+        next test). Ranking and badging were one thing; now they are two.
+
+        coach_view=True: this verifies COMPOSITION/SELECTION logic, the
+        surface where the auto-assembled draft is actually visible (founder
+        2026-07-06 — the student never sees it pre-coach-correction; see
+        CoachFinalizedGateTests below for that gate itself).
+        """
         out = bp.build_best_presentation(
             "arc1", database=self._db(), coach_view=True,
         )
         self.assertEqual(out["progress"]["takes_done"], 1)
         self.assertFalse(out["ready"])  # only 1 of 3 takes
         slide0 = out["slides"][0]
-        # The challenge close wins (threat 'nervous open' is filtered out),
-        # and it follows a threat → breakthrough.
-        self.assertEqual(slide0["text"], "strong close")
-        self.assertTrue(slide0["breakthrough"])
-        self.assertEqual(slide0["audio_ref"], "s3://c1")
+        self.assertEqual(slide0["text"], "nervous open")
+        self.assertEqual(slide0["audio_ref"], "s3://t1")
         # #1 — the line's span rides through so the FE clamps playback to it.
-        self.assertEqual(slide0["start_offset_ms"], 2000)
-        self.assertEqual(slide0["duration_ms"], 1500)
+        self.assertEqual(slide0["start_offset_ms"], 0)
+        self.assertEqual(slide0["duration_ms"], 1800)
+
+    def test_the_breakthrough_badge_still_follows_the_coachs_own_mark(self):
+        """The re-point took the coach's label OUT OF RANKING; it did not take
+        the badge away from them. `c1` carries the coach's `challenge` mark, so
+        `c1` is the breakthrough — whether or not it wins its slide."""
+        out = bp.build_best_presentation(
+            "arc1", database=self._db(), coach_view=True,
+        )
+        by_id = {s.get("snippet_id"): s for s in out["slides"]}
+        self.assertNotIn("c1", by_id)          # it did not win the slide…
+        # …and the winning slide is not badged, because its snippet was the
+        # one the coach marked `threat`.
+        self.assertFalse(out["slides"][0]["breakthrough"])
 
     def test_coach_reviewed_false_pre_publish(self):
         # Auto-composed from the takes before any coach review → draft.
@@ -894,10 +926,10 @@ class CorrectedVerbatimTests(unittest.TestCase):
 class SelectBestDecklessTests(unittest.TestCase):
     """Deckless section selection — same blended ranking, speech order."""
 
-    def _cand(self, sid, text, offset, score=0.5, direction="challenge"):
+    def _cand(self, sid, text, offset, score=0.5, confidence=0.8):
         return {"snippet_id": sid, "transcript": text,
                 "start_offset_ms": offset, "duration_ms": 1000,
-                "direction": direction, "breakthrough": False,
+                "machine_confidence": confidence, "album_quorum": False,
                 "activation": score, "slide_stickiness": None,
                 "tag": None, "slide_index": None}
 
