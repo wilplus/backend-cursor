@@ -156,9 +156,24 @@ published copy is what a user — or the UODO — will hold us to. Either build 
 or amend the copy at the next revision; leaving it in this list indefinitely is
 the one outcome that is not acceptable.
 
+**Where the documents live.** Both are JSX in the frontend repo, not markdown:
+
+| Published as | Source file | Version |
+|---|---|---|
+| `willpowerlab.com/terms` | `frontend-cursor/src/app/terms/page.tsx` | Terms of Service **v1.1**, effective 2026-08-13 |
+| `willpowerlab.com/privacy` | `frontend-cursor/src/app/privacy/page.tsx` | Privacy Policy **v1.1**, effective 2026-08-13 |
+
+Each item names its exact section below. Both files also carry the same list in
+their docblocks, so it is visible to whoever edits the copy next. The engine-side
+view — which detector each obligation binds — is the *legal constraint* column on
+the intervention-contract page.
+
 **L-1 — Model-improvement opt-out** · Feature · ⛔ BLOCKING THE NEXT REVISION
 > As a user, I want to stop my recordings being used to train the models,
 > without giving up the Service.
+
+**Document:** Terms **§4** "How your content improves the Service" · Privacy
+**§5** "How your content improves our models" and **§11** (Art. 21 bullet).
 
 The only user-facing consent flags are `mic` / `share` / `email` / `terms`
 (`add_consent_preferences_to_user_settings.sql`); there is no
@@ -167,48 +182,79 @@ all. **The claim was REMOVED from both documents rather than published false.**
 Terms §4 and Privacy §5 now offer only the Art. 21 objection route, served by
 hand at the contact address. Restore the sentence when the toggle ships.
 
+**Note the operational cost while it is open:** Privacy §5 says "write to us and
+we will stop using your content to improve our models." There is no exclusion
+flag, so honouring one objection today means finding and pulling that user's
+labels by hand — inside Art. 12(3)'s one month.
+
 **L-2 — Per-recording sharing consent** · Feature · Published, unbuilt
 > As a user, I want to choose per recording whether other people can hear it,
 > and take it back later.
 
-Terms §5 and Privacy §7 say sharing is "opt-in, per recording, and revocable at
-any time". `share_consent` is one account-level boolean scoped to the coach —
-not per-recording, and not the peer-rating surface. Needs a per-snippet consent
-row, a revocation path that pulls the extract from circulation, and a control
-in front of `/game`.
+**Document:** Terms **§5** "Community sharing and peer review" · Privacy **§7**
+of the same name.
+
+Both say sharing is "opt-in, per recording, and revocable at any time".
+`share_consent` is one account-level boolean scoped to the coach — not
+per-recording, and not the peer-rating surface. Needs a per-snippet consent row,
+a revocation path that pulls the extract from circulation, and a control in
+front of `/game`.
+
+**The most acute item on this list.** It is the only one describing a
+*disclosure to third parties*: if `/game` is reachable by real users today, one
+user's voice is audible to another under consent that does not have the shape
+the published text describes. Confirm reachability first; everything else here
+is a right we serve slowly, this one is data already moving.
 
 **L-3 — User data export** · Feature · Published, unbuilt
 > As a user, I want to download my recordings, transcripts and Ideal Text
 > before I delete my account.
 
-Terms §10 promises it and Privacy §11 leans on it for GDPR Art. 20. No
-user-facing export route exists — the export routes here are internal
+**Document:** Terms **§10** "Account termination" (final sentence) · Privacy
+**§11** (Art. 20 portability bullet).
+
+No user-facing export route exists — the export routes here are internal
 (annotation export, dev-tasks) or belong to the Life panel. Portability
 requests are served by hand meanwhile, against Art. 12(3)'s one-month clock.
 
 **L-4 — Account deletion** · Feature · Published, unbuilt
 > As a user, I want to delete my account and have my content go with it.
 
-Terms §10 says "you may delete your account at any time"; Privacy §11 promises
-Art. 17 erasure. Per-take and per-session deletes exist; whole-account erasure
-does not. Manual until it does.
+**Document:** Terms **§10** "Account termination" (opening sentence) · Privacy
+**§11** (Art. 17 erasure bullet).
+
+Per-take and per-session deletes exist; whole-account erasure does not. Manual
+until it does.
 
 **L-5 — Voice-data retention maximum** · Ops · Published as criteria
 > As a user, I want to know my audio does not sit on a disk forever.
+
+**Document:** Privacy **§10** "Data retention" (Voice Data bullet).
 
 Privacy v1.0 promised audio was "automatically deleted no later than 30 days".
 **No retention or purge job exists** — the Railway crons are annotation-export,
 dev-bugs, drift, life-reminders, migrate, web and worker. v1.1 states retention
 *criteria* instead (permitted by Art. 13(2)(a)), but the founder's original
 intent was a hard maximum. Set the period, then build the job that enforces it.
+Art. 5(1)(e) storage limitation is the exposure.
 
 **L-6 — Sub-processor DPAs** · Ops · Confirm
-Privacy §9 now lists Sentry, Resend and Cloudflare R2 alongside Supabase,
-Railway, OpenAI and Stripe — added on code evidence. Confirm a DPA and a
-transfer safeguard is actually in place for each. The frontend's hosting
-provider is still unidentified and unlisted.
+**Document:** Privacy **§9** "Sub-processors and international transfers".
+
+The table now lists **Sentry, Resend, Cloudflare R2 and Vercel** alongside
+Supabase, Railway, OpenAI and Stripe. Confirm a DPA and a transfer safeguard is
+actually in place for each — **§9 asserts both, so an unsigned DPA makes the
+published policy false.**
+
+**Vercel is the lesson, not just a row.** It was missing from the first draft
+because the audit read the repository, and the repository never names its own
+host — it surfaced only when Vercel ran the checks on the v1.1 PR. **A
+sub-processor list cannot be audited from the tree alone.** The next pass reads
+the Vercel and Supabase dashboards, DNS, and the Railway service variables.
 
 **L-7 — Terms §9 consumer-law review** · Ops · Confirm
+**Document:** Terms **§9** "Payments, plans, and cancellation".
+
 §9 was rewritten away from the approved draft because the draft described
 one-time per-presentation unlocks while the live model is recurring monthly
 plans funding a token wallet. The rewrite is structural and unreviewed.
@@ -217,8 +263,72 @@ subscription, and whether the express immediate-performance consent is actually
 captured at checkout — **it was not found in the token-wallet components.**
 
 **L-8 — Prior-notice obligation** · Ops · Confirm
-Terms §16 requires reasonable prior notice for material changes. v1.1 is
-material. Confirm whether any user accepted v1.0; if so, they are owed notice.
+**Document:** Terms **§16** "Changes to these Terms" · Privacy **§14**
+"Changes to this Policy".
+
+Both require notice for material changes, and v1.1 is material. Confirm whether
+any user accepted v1.0; if so, they are owed notice. `user_consents` is the
+ledger that answers this — one row per accepted version.
+
+---
+
+### Added 2026-08-13 (second pass) — obligations that exist with no document at all
+
+L-1 to L-8 are commitments the published copy makes. **These three are the
+reverse: obligations that bind us whether or not anything is written, and
+nothing is written.** None of them lives in Terms or Privacy — each needs its
+own artefact.
+
+**L-9 — Data Protection Impact Assessment (GDPR Art. 35)** · Ops · ⛔ None exists
+> As the controller, I need to have assessed the risk before the processing
+> runs, not after.
+
+**Document: NONE — a DPIA is a standalone internal record.** It is not part of
+Terms or Privacy and cannot be satisfied by them; it is what a regulator asks
+for first. Nothing in either repo resembles one.
+
+Art. 35(3) triggers this is close to: systematic and extensive evaluation of
+personal aspects by automated processing (delivery profiling across takes), and
+processing that may involve special-category data (the voice inference behind
+`voice_confidence` / CONF). A DPIA has to be in place **before** the processing
+starts, so if it is required it is already late. It also feeds L-11 and the
+open Art. 9 question directly — do this one first, because its output decides
+what the other two say.
+
+**L-10 — Records of processing activities (GDPR Art. 30)** · Ops · ⛔ None exists
+> As the controller, I need a written record of what we process and why.
+
+**Document: NONE — a standalone processing register**, internal, produced on
+request to the UODO. Privacy §2 and §9 contain much of the raw material
+(categories, purposes, recipients, transfers) but a privacy policy is not an
+Art. 30 record and does not discharge the duty.
+
+The under-250-employees exemption in Art. 30(5) **does not apply** here: it
+lapses when processing is other than occasional, or involves special-category
+data. Recording every user continuously is not occasional. Cheap to produce
+once — mostly assembling what Privacy §2, §9 and §10 already say.
+
+**L-11 — EU AI Act, emotion recognition** · Ops · ⛔ Unassessed
+> As the operator, I need to know which AI Act duties attach to inferring a
+> speaker's state from their voice.
+
+**Document:** the *prohibition* is already mirrored — Terms **§7**, final
+bullet, bans employer and educational-institution use and promises account
+termination. **The transparency duty has no document**, and the disclosure that
+would carry it is Privacy **§6** "What we infer from your voice".
+
+The system infers a state of the speaker from voice, which is what the AI Act's
+emotion-recognition provisions govern: prohibited in workplace and education
+contexts, and subject to a duty to inform people exposed to it elsewhere.
+Applicability dates phase in through 2025–2026 — **verify the current position
+with counsel rather than assuming.**
+
+Two things to settle: whether our framing (coaching the speaker on their own
+delivery, at their own request) lands inside or outside the emotion-recognition
+definition, and whether Privacy §6 as written already discharges the
+transparency duty or needs an in-product notice. Engine-side, this binds
+exactly one detector — **CONF** — and nothing else on the intervention
+contract; the other seven rows read text and infer nothing about the person.
 
 ## Verify — both closed ✅
 

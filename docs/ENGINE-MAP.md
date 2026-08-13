@@ -20,18 +20,26 @@ transcription).
 
 ## 1. The engines
 
-| # | Engine | Lives in | Eats | Produces | Who sees it |
-|---|---|---|---|---|---|
-| E1 | **Transcription** | `audio_metrics` (decode/compress), Whisper, `slide_word_split` (punctuation restore, run-on splits, 200-char pieces) | raw audio + slide vocab prime | word-level transcript, cut into ≤200-char pieces 1:1 with slides | everyone (it's the text) |
-| E2 | **Acoustic measurement** | `audio_metrics` | 16 kHz PCM per piece | the 11-feature metrics blob (f0, pauses, loudness, rate…) + librosa extras on budget pieces | nobody directly — feeds E3–E7 |
-| E3 | **Selection gate** | `snippet_salience` | metrics | which pieces get the LLM budget / become coach candidates (transient scores, never stored) | nobody |
-| E4 | **Content reads** | `snippet_stickiness`, `slide_alignment` | transcript + slides | topic + slide coherence → `overall_score` | coach packet only |
-| E5 | **Ranking** | `power_phrase_ranking` → `best_presentation`, `cross_take_selection`, `prior_take_changes` | coach label + `overall_score` + slide stickiness + direction + breakthrough (+ `voice_confidence`, flag-off) | the winning line per slide → the ideal text | nobody sees the score; everyone sees the winner |
-| E6 | **Coach reads** | `acoustic_read` (stress↔charisma needle + triage flag), `auto_comment` (coach branch) | metrics vs the speaker's own baseline | the potentiometer + outside-normal-range flag | **coach only** |
-| E7 | **Advice engines** | `delivery_stars`, `delivery_alignment` (congruence), `moment_suggestions` (emphasize/replace/structure), `say_it_stronger`, `prior_take_changes`, `auto_comment` (user branch), `user_patterns` | metrics + transcript (+ LLM) | stars, cards, rewrites, qualitative notes | user (qualitative only, AC-9) |
-| E8 | **Ideal text assembly** | `ideal_text_block` | E5's picks + coach corrections + approved suggestions | the one marker-carrying block, auto draft frozen in `auto_text` | coach edits it; user reads the verified version |
-| E9 | **The game** | `game_engine` | coach `challenge` labels (keys) + the user's other moments (decoys) | ≤10 blind rounds; every answer → a peer label | user (owner only) |
-| E10 | **Voice-confidence composite** | `voice_confidence` | 7 Jiang & Pell cues vs own baseline, **cue weights routed by speaker sex** (`user_settings.profile_sex`; cue 1 REVERSES direction, so the sex term is explicit and normalisation cannot stand in for it) | a −1…+1 spectrum score per piece, stamped with `sex`/`sex_source`, **ranking-inert until validated** (flag off) | nobody |
+**Legal column added 2026-08-13**, when Terms v1.1 and Privacy v1.1 went live
+(`frontend-cursor/src/app/{terms,privacy}/page.tsx`). It names the published
+section that governs each engine and the open backlog item that gates it —
+Epic L in [docs/BACKLOG.md](BACKLOG.md). Three things bind every row and are not
+repeated: audio is **Voice Data** and transcripts **Text Data** (Privacy §2),
+both retained under Privacy §10 (**L-5**, no purge job exists), and anything a
+coach corrects trains the models under Privacy §5 (objection route **L-1**).
+
+| # | Engine | Lives in | Eats | Produces | Who sees it | Legal constraint |
+|---|---|---|---|---|---|---|
+| E1 | **Transcription** | `audio_metrics` (decode/compress), Whisper, `slide_word_split` (punctuation restore, run-on splits, 200-char pieces) | raw audio + slide vocab prime | word-level transcript, cut into ≤200-char pieces 1:1 with slides | everyone (it's the text) | Privacy **§2** (Voice + Text Data) · retention **§10** → **L-5**. The transcript is the User Content the licence in Terms **§3** covers. |
+| E2 | **Acoustic measurement** | `audio_metrics` | 16 kHz PCM per piece | the 11-feature metrics blob (f0, pauses, loudness, rate…) + librosa extras on budget pieces | nobody directly — feeds E3–E7 | Privacy **§6** — these are the "acoustic measurements" §6 discloses. Internal only; surfacing one as a number breaks AC-9 **and** §6's own promise. |
+| E3 | **Selection gate** | `snippet_salience` | metrics | which pieces get the LLM budget / become coach candidates (transient scores, never stored) | nobody | Transient, never stored → nothing to disclose. Privacy **§10** by omission. |
+| E4 | **Content reads** | `snippet_stickiness`, `slide_alignment` | transcript + slides | topic + slide coherence → `overall_score` | coach packet only | Coach packet only ⇒ human review, Terms **§6** / Privacy **§8**. `share_consent` is the live consent. |
+| E5 | **Ranking** | `power_phrase_ranking` → `best_presentation`, `cross_take_selection`, `prior_take_changes` | coach label + `overall_score` + slide stickiness + direction + breakthrough (+ `voice_confidence`, flag-off) | the winning line per slide → the ideal text | nobody sees the score; everyone sees the winner | Privacy **§6** ("used to select which version… to assemble"). Score never surfaced — AC-9 and §6 agree. |
+| E6 | **Coach reads** | `acoustic_read` (stress↔charisma needle + triage flag), `auto_comment` (coach branch) | metrics vs the speaker's own baseline | the potentiometer + outside-normal-range flag | **coach only** | Terms **§6** / Privacy **§8** — human review, consent-gated, withdrawable. BLIND COACH is a product fence, not a legal one. |
+| E7 | **Advice engines** | `delivery_stars`, `delivery_alignment` (congruence), `moment_suggestions` (emphasize/replace/structure), `say_it_stronger`, `prior_take_changes`, `auto_comment` (user branch), `user_patterns` | metrics + transcript (+ LLM) | stars, cards, rewrites, qualitative notes | user (qualitative only, AC-9) | Terms **§7** — output is AI-generated unless marked human-reviewed. User-facing, so LIVE LOOP: copy needs founder sign-off. |
+| E8 | **Ideal text assembly** | `ideal_text_block` | E5's picks + coach corrections + approved suggestions | the one marker-carrying block, auto draft frozen in `auto_text` | coach edits it; user reads the verified version | Terms **§3** — user owns the words; the licence permits transform-to-serve. L1 (select + light polish) is what keeps that short of an authorship claim. |
+| E9 | **The game** | `game_engine` | coach `challenge` labels (keys) + the user's other moments (decoys) | ≤10 blind rounds; every answer → a peer label | user (owner only) | ⚠ **The sharp one.** Peer labels mean users hear each other ⇒ Terms **§5** / Privacy **§7**, which promise per-recording, revocable consent that **does not exist** — gate **L-2**. Confirm `/game` reachability. |
+| E10 | **Voice-confidence composite** | `voice_confidence` | 7 Jiang & Pell cues vs own baseline, **cue weights routed by speaker sex** (`user_settings.profile_sex`; cue 1 REVERSES direction, so the sex term is explicit and normalisation cannot stand in for it) | a −1…+1 spectrum score per piece, stamped with `sex`/`sex_source`, **ranking-inert until validated** (flag off) | nobody | ⚠ **EU AI Act — emotion recognition** (**L-11**): infers a speaker state from voice. Prohibited in workplace/education (mirrored in Terms **§7**); transparency duty unassessed. Open **GDPR Art. 9** question and the DPIA trigger (**L-9**). Privacy **§6** claims it is opt-in and off by default — true only while gated on `mic_consent`. |
 
 ## 2. The learning corpora — what the system remembers, as of this wave
 
