@@ -120,95 +120,91 @@ class MovingAverageTests(unittest.TestCase):
             {})
 
 
-class StrongPartTests(unittest.TestCase):
-    """THE PRAISE LANE'S DETECTOR (founder 2026-08-13).
-
-    The exact mirror of the focus ratchet: same table, same ema_z, same
-    consistency floor — focus picks the WORST part to route feedback at, this
-    picks the parts that went well.
+class BeatsIncumbentTests(unittest.TestCase):
+    """THE PRAISE LANE'S DETECTOR (founder 2026-08-13, Option C).
 
     It exists because the system had detectors for problems and none at all
     for "this one landed", which is why a fully-settled document produced a
     blank screen: nothing was notable, so nothing was generated, so every
-    lane downstream had nothing to route."""
+    lane downstream had nothing to route.
 
-    def test_a_part_above_its_own_average_is_strong(self):
-        rows = [_row("a", 0.0), _row("b", 0.0)]
-        # b beat its rolling average by 1.2, a matched it.
-        out = pa.strong_parts({"a": 0.05, "b": 1.2}, rows)
-        self.assertEqual([p for p, _ in out], ["b"])
+    IT IS A HEAD-TO-HEAD, and the first cut was not. That version compared
+    the take against arc_part_acoustics.ema_z — which is folded from the
+    PERSISTED DOCUMENT, i.e. the best-of assembly. Asking a raw take to beat
+    a rolling average of best-of scores asks it to beat the strongest version
+    that ever survived, which it almost never does. The lane would have
+    shipped looking built and fired approximately never."""
 
-    def test_the_biggest_LIFT_comes_first(self):
-        # Not the highest absolute z — the biggest improvement over that
-        # part's OWN average, which is what "you did this better than usual"
-        # actually means.
-        rows = [_row("a", 1.0), _row("b", -1.0)]
-        out = pa.strong_parts({"a": 1.9, "b": 0.6}, rows)
-        self.assertEqual([p for p, _ in out], ["b", "a"])
-
-    def test_it_is_measured_against_SELF_never_an_absolute_bar(self):
-        """AC-9's shape, in the detector rather than the copy: a part whose z
-        is low in absolute terms is STILL strong if the speaker beat their own
-        average for it. The comparison never leaves this function."""
-        out = pa.strong_parts({"a": -1.5}, [_row("a", -3.0)])
+    def test_a_take_that_beats_the_document_version_is_offerable(self):
+        out = pa.beats_incumbent({"a": 1.2, "b": 0.1}, {"a": 0.0, "b": 0.0})
         self.assertEqual([p for p, _ in out], ["a"])
 
-    def test_ONE_take_is_not_a_claim_either(self):
-        # Mirrors the focus rule: below the floor there is no rolling average
-        # worth exceeding. This is also what makes praise impossible on a
-        # first take, which the founder's design requires.
-        self.assertEqual(pa.strong_parts({"a": 9.0}, [_row("a", 0.0, takes=1)]),
-                         [])
-        self.assertEqual(
-            [p for p, _ in pa.strong_parts({"a": 9.0},
-                                           [_row("a", 0.0, takes=2)])], ["a"])
+    def test_the_biggest_LIFT_comes_first(self):
+        # Not the highest absolute score — the biggest improvement over the
+        # incumbent, which is what "you just said this better" means.
+        out = pa.beats_incumbent({"a": 1.9, "b": 0.6}, {"a": 1.0, "b": -1.0})
+        self.assertEqual([p for p, _ in out], ["b", "a"])
 
-    def test_matching_your_average_is_not_praise(self):
-        self.assertEqual(pa.strong_parts({"a": 0.0}, [_row("a", 0.0)]), [])
-        self.assertEqual(pa.strong_parts({"a": -2.0}, [_row("a", 0.0)]), [])
+    def test_a_FIRST_take_can_never_offer_a_swap(self):
+        """No consistency floor is needed and its absence is not an
+        oversight: on take one the document IS that take, so the two scores
+        are identical, the lift is zero, and no offer exists. The design's
+        "requires multiple takes" property falls out of the arithmetic rather
+        than being enforced by a rule that could drift from it."""
+        same = {"a": 2.5, "b": -1.0}
+        self.assertEqual(pa.beats_incumbent(same, dict(same)), [])
+
+    def test_matching_or_losing_to_the_incumbent_is_not_an_offer(self):
+        self.assertEqual(pa.beats_incumbent({"a": 0.0}, {"a": 0.0}), [])
+        self.assertEqual(pa.beats_incumbent({"a": -2.0}, {"a": 0.0}), [])
+
+    def test_a_WEAK_take_can_still_beat_a_weaker_incumbent(self):
+        """Absolute quality is not the question. A paragraph the speaker has
+        always struggled with is exactly where an improvement is worth
+        offering, even though both sides sit below their baseline."""
+        out = pa.beats_incumbent({"a": -1.5}, {"a": -3.0})
+        self.assertEqual([p for p, _ in out], ["a"])
+
+    def test_a_part_not_spoken_this_take_is_absent_not_zero(self):
+        # take_z_by_part omits parts with no pieces. Treating that as 0.0
+        # would offer a swap on a paragraph the student skipped.
+        self.assertEqual(pa.beats_incumbent({"b": 5.0}, {"a": 0.0}), [])
+
+    def test_a_part_not_in_the_document_is_skipped(self):
+        # No incumbent means nothing to beat — and nothing to replace.
+        self.assertEqual(pa.beats_incumbent({"a": 5.0}, {}), [])
 
     def test_the_margin_is_the_one_number_to_tune(self):
-        rows = [_row("a", 0.0)]
-        self.assertEqual(pa.strong_parts({"a": 0.4}, rows), [])
-        self.assertEqual([p for p, _ in pa.strong_parts({"a": 0.4}, rows,
-                                                        margin=0.1)], ["a"])
+        self.assertEqual(pa.beats_incumbent({"a": 0.4}, {"a": 0.0}), [])
+        self.assertEqual(
+            [p for p, _ in pa.beats_incumbent({"a": 0.4}, {"a": 0.0},
+                                              margin=0.1)], ["a"])
         self.assertLess(pa.STRONG_Z_MARGIN, 1.2,
                         "a problem should need more evidence than a good "
                         "moment: a false problem costs trust, a false "
                         "positive costs one ignored mark")
 
-    def test_a_part_not_spoken_this_take_is_absent_not_zero(self):
-        # take_z omits parts with no pieces this take. Treating that as 0.0
-        # would praise a paragraph the student skipped.
-        self.assertEqual(pa.strong_parts({"b": 5.0}, [_row("a", 0.0)]), [])
-
     def test_it_is_LOCK_AGNOSTIC(self):
-        """A moment is strong or it is not. Whether that becomes a swap offer
-        (locked chunks) or a lock recommendation (open ones) is the caller's
-        routing decision, and the two lanes differ — baking one lane's rule
-        in here would break the other."""
-        # The DOCSTRING is stripped first: it explains lock-agnosticism at
-        # length and names both lanes, so scanning the raw source would fail
-        # on the record of the decision rather than a breach of it — the same
-        # trap the FE fence tests strip comments to avoid.
+        """A lift is a lift. Whether it becomes a swap offer (locked chunks)
+        or a lock recommendation (open ones) is the caller's routing decision
+        and the two lanes differ — baking one lane's rule in here would break
+        the other. The DOCSTRING is stripped first: it names both lanes, so
+        scanning the raw source would fail on the record of the decision
+        rather than a breach of it."""
         import inspect
-        src = inspect.getsource(pa.strong_parts)
-        body = src.split('"""')[-1]
+        body = inspect.getsource(pa.beats_incumbent).split('"""')[-1]
         for leak in ("locked", "lock_at", "locked_at"):
             self.assertNotIn(leak, body)
 
-    def test_junk_degrades_to_no_praise_never_a_crash(self):
-        for bad in (None, [], "x", 42, {}):
-            self.assertEqual(pa.strong_parts(bad, [_row("a", 0.0)]), [])
-            self.assertEqual(pa.strong_parts({"a": 1.0}, bad), [])
-        self.assertEqual(pa.strong_parts({"a": "x"}, [_row("a", 0.0)]), [])
-        self.assertEqual(pa.strong_parts({"a": 1.0}, [{"part_id": "a"}]), [])
-        self.assertEqual(pa.strong_parts({"a": 1.0}, [_row("a", True)]), [])
+    def test_junk_degrades_to_no_offer_never_a_crash(self):
+        for bad in (None, [], "x", 42):
+            self.assertEqual(pa.beats_incumbent(bad, {"a": 0.0}), [])
+            self.assertEqual(pa.beats_incumbent({"a": 1.0}, bad), [])
+        self.assertEqual(pa.beats_incumbent({"a": "x"}, {"a": 0.0}), [])
 
     def test_ties_are_stable_across_calls(self):
-        rows = [_row("b", 0.0), _row("a", 0.0)]
-        z = {"a": 1.0, "b": 1.0}
-        self.assertEqual([p for p, _ in pa.strong_parts(z, rows)], ["a", "b"])
+        out = pa.beats_incumbent({"b": 1.0, "a": 1.0}, {"a": 0.0, "b": 0.0})
+        self.assertEqual([p for p, _ in out], ["a", "b"])
 
 
 class RatchetTests(unittest.TestCase):
