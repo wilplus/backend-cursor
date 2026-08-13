@@ -59,11 +59,99 @@ The strongest lift wins (`beats_incumbent` returns sorted)."""
 
 
 def _locked_part_ids(parts: Any) -> set:
+    """The parts the student has settled, from a STORED row.
+
+    ⚠️ THE COLUMN IS `locked_at`, NOT `locked`. `locked` is a WIRE field: it
+    exists only after `ideal_text_parts.serve()` folds the timestamp down to a
+    boolean for the client (see its docstring — "the timestamp stays
+    server-side"). A stored row has never carried it. Reading `locked` here
+    returned falsy for every part on every take, so this lane declined 100% of
+    the time through its own "no locked parts" branch, which reads like the
+    common case and is not (fixed 2026-08-13, same day it shipped).
+
+    The caller must ALSO ask for the column: `get_ideal_text_parts` projects
+    `id, ord, text` and adds `locked_at` only under `with_lock=True`.
+    """
     return {
         str(p.get("id"))
         for p in (parts or [])
-        if isinstance(p, dict) and p.get("locked") and p.get("id")
+        if isinstance(p, dict) and p.get("locked_at") and p.get("id")
     }
+
+
+def _take_z_by_slide(pieces: Any, baseline: Any = None) -> dict:
+    """``{slide_index: z}`` for ONE take. Pure.
+
+    WHY NOT `take_z_by_part`, WHICH IS RIGHT THERE. Because the two sides of
+    this comparison are measured in different coordinate systems, and using it
+    here silently mis-buckets.
+
+    `part_spans` lays character offsets over `joined(parts)` — THE DOCUMENT
+    (services/ideal_text_parts.py, and its own docstring warns the offsets may
+    only be trusted "against a document the parts actually join to"). But this
+    take's pieces come from `build_transcript_document(session_id=…)`, whose
+    start/end are offsets into THAT TAKE'S OWN assembled text. Two different
+    strings. Feeding the take's offsets to the document's spans buckets pieces
+    onto whichever paragraph happens to sit at the same character index, drops
+    the ones that straddle, and produces numbers that look plausible.
+
+    SLIDE INDEX IS THE MAPPING THAT ACTUALLY HOLDS. Both sides carry it:
+    `build_transcript_document` stamps `slide_index` on every piece from the
+    slide run it belongs to, and the document is assembled one paragraph per
+    slide run. So "which part of the talk is this?" is answerable across takes
+    by slide, and is not answerable by character offset — the whole point of
+    this lane is that the words differ.
+
+    A slide with no pieces this take is ABSENT rather than 0.0, for the same
+    reason `take_z_by_part` gives: the student may simply not have covered it,
+    and a fabricated zero reads as "delivered exactly at baseline".
+    """
+    from services.snippet_salience import score_control_direction
+
+    usable = [p for p in (pieces or [])
+              if isinstance(p, dict) and isinstance(p.get("metrics"), dict)
+              and isinstance(p.get("slide_index"), int)
+              and not isinstance(p.get("slide_index"), bool)]
+    if not usable:
+        return {}
+    scores = score_control_direction(usable, baseline=baseline)
+    buckets: dict = {}
+    for piece, z in zip(usable, scores):
+        buckets.setdefault(int(piece["slide_index"]), []).append(float(z))
+    return {si: sum(v) / len(v) for si, v in buckets.items()}
+
+
+def _part_slides(doc_pieces: Any, parts: Any) -> dict:
+    """``{part_id: slide_index}`` — which slide each document part came from.
+
+    The join between the two coordinate systems, and it is derivable because
+    the persisted document's pieces carry BOTH: their start/end are in the
+    document's own text (so `part_at` is valid for them, unlike the take's),
+    and their `slide_index` names the slide run they were spoken on.
+
+    First piece wins for a part that spans several slide runs — parts are
+    paragraphs and the document is joined one paragraph per run, so that is
+    normally a 1:1 already; taking the first keeps it stable rather than
+    letting a long paragraph's tail decide.
+    """
+    from services.ideal_text_parts import part_at, part_spans
+    spans = part_spans(parts)
+    if not spans:
+        return {}
+    out: dict = {}
+    for p in (doc_pieces or []):
+        if not isinstance(p, dict):
+            continue
+        si = p.get("slide_index")
+        if not isinstance(si, int) or isinstance(si, bool):
+            continue
+        part = part_at(spans, p.get("start"), p.get("end"))
+        if not part:
+            continue
+        pid = str(part.get("id") or "")
+        if pid and pid not in out:
+            out[pid] = int(si)
+    return out
 
 
 def _take_text_for_part(pieces: Any, part_id: Any, parts: Any) -> str:
@@ -113,13 +201,26 @@ def offer_for_take(arc_id: Any, user_id: Any, session_id: Any, *,
         baseline, _bid = current_baseline(user_id, database=database)
         if not baseline:
             return 0                     # cold start; nothing to compare on
-        parts = database.get_ideal_text_parts(str(arc_id), str(user_id))
+        # with_lock=True is LOAD-BEARING: without it the projection is
+        # `id, ord, text` and no row carries a lock at all, so every part reads
+        # as open and this lane declines on every take (the bug it shipped
+        # with). The layer filter already asks for it the same way.
+        parts = database.get_ideal_text_parts(
+            str(arc_id), str(user_id), with_lock=True)
         locked = _locked_part_ids(parts)
         if not locked:
-            # NOTHING TO OFFER, and this is the common case rather than a
-            # fault: a student who has locked nothing has no frozen paragraph
-            # for a better take to be shut out of.
-            logger.info("swap_detector: no locked parts arc=%s", arc_id)
+            # NOTHING TO OFFER, and this is a legitimate common case: a student
+            # who has locked nothing has no frozen paragraph for a better take
+            # to be shut out of. It is logged WITH the part count so "nobody
+            # locked anything" cannot be confused with "the lock field never
+            # arrived" — telling those two apart took a production audit once.
+            logger.info(
+                "swap_detector: no locked parts arc=%s (parts=%d, "
+                "lock field present on %d)",
+                arc_id,
+                len(parts or []),
+                sum(1 for p in (parts or [])
+                    if isinstance(p, dict) and "locked_at" in p))
             return 0
 
         row = database.get_coach_arc_ideal_text(str(arc_id)) or {}
@@ -137,14 +238,27 @@ def offer_for_take(arc_id: Any, user_id: Any, session_id: Any, *,
                 arc_id, len(doc_scored), len(take_scored))
             return 0
 
-        take_z = take_z_by_part(take_scored, parts, baseline)
+        # THE TWO SIDES ARE MEASURED DIFFERENTLY BECAUSE THEY LIVE IN
+        # DIFFERENT COORDINATE SYSTEMS (see _take_z_by_slide).
+        #   document side — its pieces ARE anchored in the document's own text,
+        #                   so part_at is valid and take_z_by_part is correct.
+        #   take side     — its pieces are anchored in THIS TAKE's text, so the
+        #                   same call would bucket by character positions in a
+        #                   string the parts do not describe. Bucket by SLIDE,
+        #                   then map slide→part using the document's own pieces.
         doc_z = take_z_by_part(doc_scored, parts, baseline)
+        take_by_slide = _take_z_by_slide(take_scored, baseline)
+        part_slide = _part_slides(doc_scored, parts)
+        take_z = {pid: take_by_slide[si]
+                  for pid, si in part_slide.items() if si in take_by_slide}
         winners = [(pid, lift) for pid, lift in beats_incumbent(take_z, doc_z)
                    if pid in locked]
         if not winners:
             logger.info(
                 "swap_detector: no locked part beat its incumbent arc=%s "
-                "(scored=%d locked=%d)", arc_id, len(take_z), len(locked))
+                "(locked=%d doc_parts=%d take_slides=%d comparable=%d)",
+                arc_id, len(locked), len(doc_z), len(take_by_slide),
+                len(take_z))
             return 0
 
         return _offer_best(winners, arc_id, session_id, parts, take_scored,
@@ -238,15 +352,27 @@ def _snippet_for_part(pieces: Any, part_id: Any, parts: Any) -> Optional[str]:
 def _already_starred(snippet_id: Any, arc_id: Any, database) -> bool:
     """Does this snippet already carry a suggestion? Best-effort.
 
-    TRUE ON ERROR — the safe direction here, and the opposite of most reads on
-    this path. Failing open would let the swap OVERWRITE a correction the
-    student was about to see (the upsert is snippet-keyed), so an unreadable
-    ledger costs at most one praise offer instead of silently eating a
-    content fix.
+    ⚠️ THIS FAILS OPEN, AND IT CANNOT BE MADE TO FAIL CLOSED FROM HERE. The
+    except below is DEAD: `get_moment_suggestions_by_arc` catches its own
+    exceptions and returns {} on a missing table or a failed query
+    (services/db.py, its docstring says so). So a read failure is
+    indistinguishable from "this arc has no suggestions", and the caller then
+    writes — where the upsert is snippet-keyed and would REPLACE a correction
+    the student was about to see.
+
+    It is kept and documented rather than silently deleted because the earlier
+    version of this docstring claimed the opposite ("TRUE ON ERROR — the safe
+    direction"), and a comment asserting a protection that does not exist is
+    worse than no comment: the next reader budgets for a risk that is still
+    live. Closing it for real needs the reader to distinguish empty from
+    failed, which is a change to db.py and a separate decision.
+
+    Residual exposure is bounded: one praise offer replacing one correction, on
+    an arc whose suggestion table is already erroring.
     """
     try:
         existing = database.get_moment_suggestions_by_arc(str(arc_id)) or {}
-    except Exception as e:
+    except Exception as e:      # pragma: no cover — see the docstring
         logger.warning("swap_detector: suggestion read failed arc=%s: %s",
                        arc_id, e)
         return True
