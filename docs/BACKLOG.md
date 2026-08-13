@@ -144,6 +144,82 @@ simulation scenario design (parked — needs a plan on paper first).
 
 **O-1** screen-by-screen onboarding, PM-designed.
 
+## Epic L — Legal commitments (opened 2026-08-13)
+
+Terms of Service v1.1 and Privacy Policy v1.1 went live on 2026-08-13. A
+pre-publication audit against the code found several commitments in the copy
+that the system does not yet keep. The founder ruled: publish, drop the claim
+we are furthest from (the model-improvement opt-out), and track the rest here.
+
+**Each item below is a live legal exposure, not a feature request.** The
+published copy is what a user — or the UODO — will hold us to. Either build it
+or amend the copy at the next revision; leaving it in this list indefinitely is
+the one outcome that is not acceptable.
+
+**L-1 — Model-improvement opt-out** · Feature · ⛔ BLOCKING THE NEXT REVISION
+> As a user, I want to stop my recordings being used to train the models,
+> without giving up the Service.
+
+The only user-facing consent flags are `mic` / `share` / `email` / `terms`
+(`add_consent_preferences_to_user_settings.sql`); there is no
+model-improvement flag, and the frontend has no account-settings surface at
+all. **The claim was REMOVED from both documents rather than published false.**
+Terms §4 and Privacy §5 now offer only the Art. 21 objection route, served by
+hand at the contact address. Restore the sentence when the toggle ships.
+
+**L-2 — Per-recording sharing consent** · Feature · Published, unbuilt
+> As a user, I want to choose per recording whether other people can hear it,
+> and take it back later.
+
+Terms §5 and Privacy §7 say sharing is "opt-in, per recording, and revocable at
+any time". `share_consent` is one account-level boolean scoped to the coach —
+not per-recording, and not the peer-rating surface. Needs a per-snippet consent
+row, a revocation path that pulls the extract from circulation, and a control
+in front of `/game`.
+
+**L-3 — User data export** · Feature · Published, unbuilt
+> As a user, I want to download my recordings, transcripts and Ideal Text
+> before I delete my account.
+
+Terms §10 promises it and Privacy §11 leans on it for GDPR Art. 20. No
+user-facing export route exists — the export routes here are internal
+(annotation export, dev-tasks) or belong to the Life panel. Portability
+requests are served by hand meanwhile, against Art. 12(3)'s one-month clock.
+
+**L-4 — Account deletion** · Feature · Published, unbuilt
+> As a user, I want to delete my account and have my content go with it.
+
+Terms §10 says "you may delete your account at any time"; Privacy §11 promises
+Art. 17 erasure. Per-take and per-session deletes exist; whole-account erasure
+does not. Manual until it does.
+
+**L-5 — Voice-data retention maximum** · Ops · Published as criteria
+> As a user, I want to know my audio does not sit on a disk forever.
+
+Privacy v1.0 promised audio was "automatically deleted no later than 30 days".
+**No retention or purge job exists** — the Railway crons are annotation-export,
+dev-bugs, drift, life-reminders, migrate, web and worker. v1.1 states retention
+*criteria* instead (permitted by Art. 13(2)(a)), but the founder's original
+intent was a hard maximum. Set the period, then build the job that enforces it.
+
+**L-6 — Sub-processor DPAs** · Ops · Confirm
+Privacy §9 now lists Sentry, Resend and Cloudflare R2 alongside Supabase,
+Railway, OpenAI and Stripe — added on code evidence. Confirm a DPA and a
+transfer safeguard is actually in place for each. The frontend's hosting
+provider is still unidentified and unlisted.
+
+**L-7 — Terms §9 consumer-law review** · Ops · Confirm
+§9 was rewritten away from the approved draft because the draft described
+one-time per-presentation unlocks while the live model is recurring monthly
+plans funding a token wallet. The rewrite is structural and unreviewed.
+Two open points: whether the 14-day withdrawal wording is right for a
+subscription, and whether the express immediate-performance consent is actually
+captured at checkout — **it was not found in the token-wallet components.**
+
+**L-8 — Prior-notice obligation** · Ops · Confirm
+Terms §16 requires reasonable prior notice for material changes. v1.1 is
+material. Confirm whether any user accepted v1.0; if so, they are owed notice.
+
 ## Verify — both closed ✅
 
 VER-1 (new project mid-arc) and VER-2 (auto-minor / approve-major behavior)
