@@ -10,20 +10,61 @@ from unittest.mock import patch
 from services import swap_detector as sd
 
 
+# ⚠️ THE REAL DB PROJECTION, NOT A CONVENIENT ONE. `get_ideal_text_parts`
+# selects `id, ord, text` and adds `locked_at` only under with_lock=True
+# (services/db.py). There is no `locked` column anywhere — `locked` is minted
+# by ideal_text_parts.serve() for the WIRE, folding the timestamp to a boolean.
+#
+# The first version of this file invented {"locked": True} rows, so it agreed
+# with the code instead of with the database, and the lane shipped unable to
+# fire with a green suite behind it. Every fixture here now mirrors a real
+# row shape; if that shape changes, these tests must fail.
 PARTS = [
-    {"id": "p0", "ord": 0, "text": "First slide words go here.", "locked": False},
-    {"id": "p1", "ord": 1, "text": "Second slide words go here.", "locked": True},
-    {"id": "p2", "ord": 2, "text": "Third slide words go here.", "locked": True},
+    {"id": "p0", "ord": 0, "text": "First slide words go here.",
+     "locked_at": None},
+    {"id": "p1", "ord": 1, "text": "Second slide words go here.",
+     "locked_at": "2026-08-13T10:00:00Z"},
+    {"id": "p2", "ord": 2, "text": "Third slide words go here.",
+     "locked_at": "2026-08-13T10:01:00Z"},
 ]
 
+# What the projection returns when the caller FORGETS with_lock=True — the
+# exact bug, pinned so it cannot come back unnoticed.
+PARTS_NO_LOCK_FIELD = [{k: v for k, v in p.items() if k != "locked_at"}
+                       for p in PARTS]
 
-def _piece(snippet_id, start, end, text):
-    return {"snippet_id": snippet_id, "start": start, "end": end, "text": text}
+
+def _piece(snippet_id, start, end, text, slide_index=None):
+    """A document piece. `slide_index` is stamped by
+    build_transcript_document on every piece and is the ONLY key that maps
+    across takes — start/end are per-document character offsets."""
+    p = {"snippet_id": snippet_id, "start": start, "end": end, "text": text}
+    if slide_index is not None:
+        p["slide_index"] = slide_index
+    return p
 
 
 class LockedPartTests(unittest.TestCase):
     def test_only_locked_parts_are_eligible(self):
         self.assertEqual(sd._locked_part_ids(PARTS), {"p1", "p2"})
+
+    def test_the_lock_is_read_from_locked_at_not_locked(self):
+        """THE SHIPPED BUG, pinned. `locked` is a wire field minted by
+        serve(); a stored row only ever carries `locked_at`. Reading the
+        wrong one made every part read as open, so the lane declined on
+        100% of takes through a branch whose log says 'no locked parts'."""
+        wire_shaped = [{"id": "p1", "ord": 1, "text": "x", "locked": True}]
+        self.assertEqual(sd._locked_part_ids(wire_shaped), set())
+
+    def test_a_projection_without_the_lock_column_yields_nothing(self):
+        """The other half: even correct key-reading finds nothing if the
+        caller omitted with_lock=True. offer_for_take must pass it."""
+        self.assertEqual(sd._locked_part_ids(PARTS_NO_LOCK_FIELD), set())
+
+    def test_offer_for_take_ASKS_for_the_lock_column(self):
+        import inspect
+        src = inspect.getsource(sd.offer_for_take)
+        self.assertIn("with_lock=True", src)
 
     def test_junk_is_survivable(self):
         for bad in (None, [], [None, 42, {}], {"nope": 1}):
@@ -79,26 +120,55 @@ class CollisionTests(unittest.TestCase):
         db = self._Db({"s9": {"kind": "replace"}})
         self.assertFalse(sd._already_starred("s1", "a1", db))
 
-    def test_an_unreadable_ledger_FAILS_CLOSED(self):
-        """The opposite direction from most reads on this path, on purpose.
-        The suggestion table is snippet-keyed, so writing blind would OVERWRITE
-        a correction the student was about to see. An unreadable ledger costs
-        one praise offer; failing open costs a content fix, silently."""
+    def test_a_RAISING_reader_fails_closed_but_production_never_raises(self):
+        """⚠️ THIS PATH IS DEAD IN PRODUCTION, and the test name used to claim
+        the opposite. `get_moment_suggestions_by_arc` catches its own
+        exceptions and returns {} (services/db.py), so a real read failure is
+        indistinguishable from "no suggestions" and _already_starred returns
+        False — it fails OPEN, and the snippet-keyed upsert can then replace a
+        correction. Only a fake that raises reaches the guard below.
+
+        Kept as documentation of the gap rather than deleted, and renamed so it
+        stops advertising a protection the product does not have."""
         self.assertTrue(sd._already_starred("s1", "a1", self._Db(explode=True)))
+
+    def test_the_REAL_reader_shape_fails_OPEN(self):
+        """The production behaviour, pinned so the gap is visible in the suite
+        rather than only in a docstring."""
+        class _SwallowingDb:          # what services/db.py actually does
+            def get_moment_suggestions_by_arc(self, arc_id):
+                return {}             # empty AND error look identical
+        self.assertFalse(sd._already_starred("s1", "a1", _SwallowingDb()))
 
 
 class NoLockedPartsTests(unittest.TestCase):
+    """⚠️ THE FAKE MUST ACCEPT with_lock. The first version of this class took
+    (arc_id, user_id) only, so once offer_for_take started passing
+    `with_lock=True` the call raised TypeError, the outer best-effort handler
+    swallowed it, and the test passed on the EXCEPTION rather than on the lock
+    logic — green whether or not the lane worked at all. A test double whose
+    signature has drifted from its caller proves nothing."""
+
     class _Db:
-        def get_ideal_text_parts(self, arc_id, user_id):
-            return [{"id": "p0", "text": "Nothing locked.", "locked": False}]
+        def __init__(self):
+            self.with_lock_seen = None
+
+        def get_ideal_text_parts(self, arc_id, user_id, *, with_lock=False):
+            self.with_lock_seen = with_lock
+            # The real projection under with_lock=True — nothing locked.
+            return [{"id": "p0", "ord": 0, "text": "Nothing locked.",
+                     "locked_at": None}]
 
     def test_it_stops_before_any_expensive_work(self):
+        db = self._Db()
         with patch("services.acoustic_baseline.current",
                    return_value=({"f0": 1.0}, "b1")), \
              patch("services.transcript_document.build_transcript_document") as b:
             self.assertEqual(
-                sd.offer_for_take("a1", "u1", "s1", database=self._Db()), 0)
+                sd.offer_for_take("a1", "u1", "s1", database=db), 0)
             b.assert_not_called()
+        # …and it got there through the LOCK LOGIC, having asked for the column.
+        self.assertIs(db.with_lock_seen, True)
 
 
 class GateChainTests(unittest.TestCase):
@@ -184,3 +254,65 @@ class LiveLoopTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoordinateSystemTests(unittest.TestCase):
+    """The bug UNDER the two shape bugs, and the one that would have survived
+    fixing them: the take and the document are measured in different strings.
+
+    `part_spans(parts)` lays character offsets over `joined(parts)` — the
+    DOCUMENT. But this take's pieces come from build_transcript_document with a
+    session_id, whose start/end index THAT TAKE's own assembled text. Feeding
+    the take's offsets to the document's spans buckets pieces onto whichever
+    paragraph sits at the same character index — plausible numbers, wrong
+    pieces. `slide_index` is the key that genuinely maps across takes, which is
+    why the take side is bucketed by slide and joined back through the
+    document's own pieces."""
+
+    # The take said its second slide in far fewer characters than the document
+    # devotes to it — so document offsets and take offsets disagree, which is
+    # the normal case rather than a contrived one.
+    TAKE_PIECES = [
+        {**_piece("t0", 0, 9, "Slide one", slide_index=0),
+         "metrics": {"f0_mean": 120.0}},
+        {**_piece("t1", 11, 21, "Slide two!", slide_index=1),
+         "metrics": {"f0_mean": 190.0}},
+    ]
+    DOC_PIECES = [
+        {**_piece("d0", 0, 26, "First slide words go here.", slide_index=0),
+         "metrics": {"f0_mean": 118.0}},
+        {**_piece("d1", 28, 55, "Second slide words go here.", slide_index=1),
+         "metrics": {"f0_mean": 140.0}},
+    ]
+
+    def test_the_take_is_bucketed_by_SLIDE_not_by_character_offset(self):
+        by_slide = sd._take_z_by_slide(self.TAKE_PIECES)
+        self.assertEqual(set(by_slide), {0, 1})
+
+    def test_a_piece_with_no_slide_index_is_dropped_not_guessed(self):
+        pieces = [{**_piece("x", 0, 5, "words"), "metrics": {"f0_mean": 1.0}}]
+        self.assertEqual(sd._take_z_by_slide(pieces), {})
+
+    def test_the_document_supplies_the_part_to_slide_join(self):
+        # p0 spans 0..26 and p1 spans 28..55 of the joined parts document,
+        # which is where the DOC pieces are anchored — so part_at is valid
+        # for them, and only for them.
+        self.assertEqual(sd._part_slides(self.DOC_PIECES, PARTS),
+                         {"p0": 0, "p1": 1})
+
+    def test_take_offsets_would_have_mapped_to_the_WRONG_part(self):
+        """The proof the old code was wrong rather than merely fragile: run
+        the take's pieces through the DOCUMENT's spans, as the shipped version
+        did, and piece t1 — slide two — lands on part p0."""
+        from services.ideal_text_parts import part_at, part_spans
+        spans = part_spans(PARTS)
+        landed = part_at(spans, 11, 21)          # the take's slide-two offsets
+        self.assertEqual(landed["id"], "p0")     # …lands on slide ONE's part
+        # Via slide index it maps where it belongs.
+        self.assertEqual(sd._part_slides(self.DOC_PIECES, PARTS)["p1"], 1)
+
+    def test_junk_never_raises(self):
+        for bad in (None, [], [None, 42], {"a": 1}):
+            self.assertEqual(sd._take_z_by_slide(bad), {})
+            self.assertEqual(sd._part_slides(bad, PARTS), {})
+            self.assertEqual(sd._part_slides(self.DOC_PIECES, bad), {})
