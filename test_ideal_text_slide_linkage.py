@@ -243,8 +243,11 @@ class MasterDocumentProvenanceTests(unittest.TestCase):
         self.assertEqual(body["pieces"][0]["challenger"], 2)
 
     def test_multi_block_single_paragraph_degrades_to_null(self):
-        # The master text joins blocks with a space — two blocks over one
-        # served paragraph is not a provable per-paragraph mapping.
+        # A LEGACY/stale persisted text: two blocks but one served
+        # paragraph (the pre-§11.1 space-join wall). The mirror emits one
+        # row per would-be paragraph (2), the wall has 1 — counts
+        # disagree, every index degrades to null rather than guessing.
+        # Self-heals on the next take, when the capped assembly persists.
         blocks = [
             {"block_key": 0, "active": True, "status": "settled",
              "slide_index": 0, "incumbent_take_session_id": "t1",
@@ -260,6 +263,52 @@ class MasterDocumentProvenanceTests(unittest.TestCase):
         body, _ = self._get(blocks=blocks, text="One. Two.")
         self.assertEqual(len(body["pieces"]), 1)
         self.assertIsNone(body["pieces"][0]["slide_index"])
+
+    def test_two_blocks_two_paragraphs_both_attach(self):
+        # The §11.1 world: block boundary = paragraph boundary, so the
+        # capped assembly's text aligns 1:1 and both slides attach.
+        blocks = [
+            {"block_key": 0, "active": True, "status": "settled",
+             "slide_index": 0, "incumbent_take_session_id": "t1",
+             "incumbent_take_index": 1,
+             "incumbent_pieces": [{"snippet_id": "sn1", "text": "One."}],
+             "challenger_take_index": None},
+            {"block_key": 10, "active": True, "status": "settled",
+             "slide_index": 1, "incumbent_take_session_id": "t1",
+             "incumbent_take_index": 1,
+             "incumbent_pieces": [{"snippet_id": "sn2", "text": "Two."}],
+             "challenger_take_index": None},
+        ]
+        body, _ = self._get(blocks=blocks, text="One.\n\nTwo.")
+        self.assertEqual([p["slide_index"] for p in body["pieces"]],
+                         [0, 1])
+        self.assertEqual([p["block_key"] for p in body["pieces"]],
+                         [0, 10])
+
+    def test_a_capped_block_serves_one_row_per_paragraph_same_slide(self):
+        # SPEC §11.1: a long block packs into SEVERAL served paragraphs.
+        # The provenance mirror runs the same packer over the same rows,
+        # so the counts align and every sibling paragraph carries the
+        # block's slide and key. (3 × ~90-char pieces pack [2, 1] under
+        # the 200 cap — the served text just has to agree on the count.)
+        long_piece = "x" * 90
+        blocks = [
+            {"block_key": 7, "active": True, "status": "settled",
+             "slide_index": 4, "incumbent_take_session_id": "t1",
+             "incumbent_take_index": 1,
+             "incumbent_pieces": [
+                 {"snippet_id": f"sn{i}", "text": long_piece}
+                 for i in range(3)],
+             "challenger_take_index": None},
+        ]
+        body, _ = self._get(blocks=blocks,
+                            text="first served paragraph\n\nsecond one")
+        self.assertEqual([p["slide_index"] for p in body["pieces"]],
+                         [4, 4])
+        self.assertEqual([p["block_key"] for p in body["pieces"]],
+                         [7, 7])
+        self.assertEqual([p["snippet_id"] for p in body["pieces"]],
+                         ["sn0", "sn2"])
 
 
 @unittest.skipIf(Flask is None, f"flask/app import failed: {_IMPORT_ERROR}")

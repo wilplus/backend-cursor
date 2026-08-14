@@ -212,13 +212,58 @@ class AssembleMasterTests(unittest.TestCase):
             _block(0, text="the opening words", take=1, sid="s1"),
         ])
         out = assemble_master_document(ARC, database=db)
+        # A block boundary is a PARAGRAPH boundary (SPEC §11.1) — the old
+        # " ".join served the whole master as one wall-of-text chunk.
         self.assertEqual(out["text"],
-                         "The opening words then the middle words.")
+                         "The opening words.\n\nThen the middle words.")
         badges = [(p["take_index"], p["block_key"])
                   for p in out["document"]["pieces"]]
         self.assertEqual(badges, [(1, 0), (2, 10)])
         for p in out["document"]["pieces"]:
             self.assertEqual(out["text"][p["start"]:p["end"]], p["text"])
+        # One provenance row per "\n\n" paragraph, block_key carried.
+        paras = out["document"]["paragraphs"]
+        self.assertEqual(len(paras), len(out["text"].split("\n\n")))
+        self.assertEqual([p["block_key"] for p in paras], [0, 10])
+        for p in paras:
+            self.assertEqual(out["text"][p["start"]:p["end"]].strip(),
+                             out["text"][p["start"]:p["end"]])
+
+    def test_a_long_block_splits_at_the_cap_never_inside_a_piece(self):
+        # SPEC §11.1: within a block, pieces pack greedily up to
+        # PARAGRAPH_CAP_CHARS; piece boundaries are the only cut points,
+        # so the joined words are IDENTICAL — only separators change.
+        words = [f"piece {i} carries about enough words to be a real "
+                 f"spoken fragment of the talk here" for i in range(6)]
+        db = _Db(blocks=[{
+            "arc_id": ARC, "block_key": 0, "label": None,
+            "active": True, "status": "settled",
+            "incumbent_take_session_id": T1, "incumbent_take_index": 1,
+            "incumbent_pieces": [
+                {"snippet_id": f"s{i}", "text": w}
+                for i, w in enumerate(words)],
+            "challenger_take_session_id": None,
+            "challenger_take_index": None,
+            "challenger_pieces": None, "challenger_why": None,
+            "rejected_take_session_ids": []}])
+        out = assemble_master_document(ARC, database=db)
+        paras = out["text"].split("\n\n")
+        self.assertGreater(len(paras), 1)
+        from services.slide_word_split import PARAGRAPH_CAP_CHARS
+        # Every multi-piece paragraph respects the cap (a single
+        # sentence-extended piece may legally exceed it; none here does).
+        for para in paras:
+            self.assertLessEqual(len(para), PARAGRAPH_CAP_CHARS + 1)
+        # Provenance rows stay 1:1 with the served paragraphs, all on the
+        # same block.
+        prows = out["document"]["paragraphs"]
+        self.assertEqual(len(prows), len(paras))
+        self.assertEqual({p["block_key"] for p in prows}, {0})
+        # Verbatim: the words survive with only separators/casing/terminal
+        # marks differing — every piece span still reads back exactly.
+        for p in out["document"]["pieces"]:
+            self.assertEqual(out["text"][p["start"]:p["end"]], p["text"])
+        self.assertEqual(len(out["document"]["pieces"]), len(words))
 
     def test_candidates_and_inactive_blocks_are_excluded(self):
         db = _Db(blocks=[

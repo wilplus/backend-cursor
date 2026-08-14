@@ -255,32 +255,74 @@ def assemble_master_document(arc_id: str, *, database=None) -> dict:
     if not rows:
         return empty
 
-    parts, pieces, cursor = [], [], 0
+    # THE MASTER AUTHORS PARAGRAPHS TOO (SPEC §11.1, founder 2026-08-14).
+    # This join used to be `" ".join(parts)` — the whole master document
+    # was ONE flowing paragraph, so the read surface (chunk = "\n\n"
+    # paragraph) served the entire talk as a single wall: the 2026-08-11
+    # slide-aware join landed in the transcript builder only, and the
+    # master path silently regressed past it. Now: a BLOCK boundary is a
+    # hard paragraph break (blocks are the master's slides), and WITHIN a
+    # block pieces pack greedily up to PARAGRAPH_CAP_CHARS — the same one
+    # packer, one cap, one `_close` seam rule the transcript builder uses.
+    from services.slide_word_split import PARAGRAPH_CAP_CHARS
+    from services.transcript_document import _close, pack_items
+    pieces, para_meta = [], []
+    out_frag: list = []
+    cursor = 0
+    para_i = 0
     for row in sorted((r for r in rows if r.get("active", True)
                        and r.get("status") != "candidate"),
                       key=lambda r: r.get("block_key") or 0):
+        items = []
         for p in (row.get("incumbent_pieces") or []):
             text = (p.get("text") or "").strip()
-            if not text:
-                continue
-            if parts:
-                cursor += 1          # the joining space
-            start = cursor
-            cursor += len(text)
-            parts.append(text)
-            pieces.append({
-                "snippet_id": str(p.get("snippet_id")),
+            if text:
+                items.append((p, text))
+        for pack in pack_items(items, PARAGRAPH_CAP_CHARS):
+            if para_i:
+                out_frag.append("\n\n")
+                cursor += 2
+            para_i += 1
+            para_start = cursor
+            for i, (p, text) in enumerate(pack):
+                if i:
+                    out_frag.append(" ")
+                    cursor += 1
+                mark = ""
+                if i == len(pack) - 1:
+                    text, mark = _close(text)
+                start = cursor
+                cursor += len(text)
+                out_frag.append(text)
+                pieces.append({
+                    "snippet_id": str(p.get("snippet_id")),
+                    "take_session_id": row.get("incumbent_take_session_id"),
+                    "take_index": row.get("incumbent_take_index"),
+                    "block_key": row.get("block_key"),
+                    "block_label": row.get("label"),
+                    "start": start,
+                    "end": cursor,
+                    "text": text,
+                })
+                # OUTSIDE the piece's span — see transcript_document._close.
+                if mark:
+                    out_frag.append(mark)
+                    cursor += len(mark)
+            # One provenance row per emitted paragraph — the count the
+            # serve-side zip aligns against. Sibling paragraphs of one
+            # block repeat their block's slide_index.
+            para_meta.append({
+                "slide_index": row.get("slide_index"),
+                "block_key": row.get("block_key"),
+                "snippet_id": str(pack[0][0].get("snippet_id")),
                 "take_session_id": row.get("incumbent_take_session_id"),
                 "take_index": row.get("incumbent_take_index"),
-                "block_key": row.get("block_key"),
-                "block_label": row.get("label"),
-                "start": start,
+                "start": para_start,
                 "end": cursor,
-                "text": text,
             })
     if not pieces:
         return empty
-    doc = finalize_document(" ".join(parts))
+    doc = finalize_document("".join(out_frag))
     for p in pieces:
         p["text"] = doc[p["start"]:p["end"]]
 
@@ -305,6 +347,29 @@ def assemble_master_document(arc_id: str, *, database=None) -> dict:
         logger.warning("master_document: bake failed arc=%s: %s",
                        arc_id, _le)
 
+    # Paragraph provenance for the FINAL text. A bake rewrites words inside
+    # paragraphs, never the separators between them, so the counts must
+    # agree; re-deriving the spans from the finished document keeps every
+    # offset exact for the exact text being returned. If a bake ever DOES
+    # change the paragraph count (a replacement smuggling a "\n\n"), the
+    # meta no longer describes the text — serve nothing rather than
+    # attaching slides to the wrong paragraphs (drop, never guess).
+    paragraphs: list = []
+    try:
+        from services.transcript_document import paragraph_spans
+        _spans = paragraph_spans(doc)
+        if len(_spans) == len(para_meta):
+            paragraphs = [dict(m, start=lo, end=hi)
+                          for m, (lo, hi) in zip(para_meta, _spans)]
+        else:
+            logger.warning(
+                "master_document: paragraph count changed under bake "
+                "arc=%s (%d -> %d) — paragraph provenance dropped",
+                arc_id, len(para_meta), len(_spans))
+    except Exception as _pe:
+        logger.warning("master_document: paragraph provenance failed "
+                       "arc=%s: %s", arc_id, _pe)
+
     return {
         "text": doc,
         "key_moments": [],
@@ -312,6 +377,7 @@ def assemble_master_document(arc_id: str, *, database=None) -> dict:
         "ready": True,
         "document": {
             "pieces": pieces,
+            "paragraphs": paragraphs,
             "take_session_id": None,   # the master spans takes by design
             "take_index": None,
         },

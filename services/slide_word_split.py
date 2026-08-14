@@ -381,6 +381,15 @@ def build_slide_transcripts(words_all: Any, slide_advances: Any,
 
 _DECKLESS_CHUNK_CHARS = 200
 
+# THE ONE CHUNK-SIZE NUMBER (SPEC-parts-locking-and-layers §11.1, founder
+# 2026-08-14). The read surface's paragraph cap IS the piece cutter's
+# target — the document builders pack pieces into "\n\n" paragraphs no
+# larger than this, so "how big is a chunk" has exactly one home. ~200
+# chars ≈ 4 rendered lines on the reference mobile viewport (the founder's
+# acceptance criterion); a second literal elsewhere is the §2 drift
+# failure, so import THIS name, don't restate the number.
+PARAGRAPH_CAP_CHARS = _DECKLESS_CHUNK_CHARS
+
 # The sentence-extension window: a piece may run past the target up to
 # target+100 (=300 for default pieces) to reach a sentence end. Founder-locked
 # 2026-07-15 ("300").
