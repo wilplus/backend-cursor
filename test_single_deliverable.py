@@ -719,7 +719,14 @@ class MomentExplanationGetTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class LegacyRetirementTests(unittest.TestCase):
-    """The $25 unlock + the coach publish route are retired — always 410."""
+    """The $25 unlock is retired — always 410.
+
+    THE COACH PUBLISH ROUTE IS NOT. It was a 410 tombstone here until
+    2026-08-14, when the coach panel's "Publish the full analysis" button was
+    found to be POSTing straight at it — so publishing was impossible from
+    the app, and the only code that sets results_published_at sat behind an
+    /internal route with no BFF path. Restored; see
+    PublishAnalysisRestoredTests in test_eager_ideal_text.py."""
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -731,13 +738,18 @@ class LegacyRetirementTests(unittest.TestCase):
             resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 410)
 
-    def test_publish_analysis_410(self):
+    def test_publish_analysis_is_NOT_a_tombstone_any_more(self):
+        """Regression pin for the dead-end button. Whatever this route
+        answers, it must never be 410 again: the FE's publish button targets
+        it, and a tombstone there means the coach cannot deliver work they
+        have already done."""
         with self.app.test_request_context(json={}):
             request.user_id = "coach1"
-            out = v2.v2_coach_publish_analysis.__wrapped__(ARC)
+            with patch.object(v2.db, "get_arc_sessions", return_value=[]):
+                out = v2.v2_coach_publish_analysis.__wrapped__(ARC)
             resp, status = out if isinstance(out, tuple) else (out, 200)
-        self.assertEqual(status, 410)
-        self.assertIn("verify", resp.get_json()["error"].lower())
+        self.assertNotEqual(status, 410)
+        self.assertEqual(status, 404)   # no such arc, in this fixture
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

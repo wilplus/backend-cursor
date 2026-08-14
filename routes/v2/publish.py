@@ -142,6 +142,73 @@ def _assemble_labels_from_store(session_id):
     return out
 
 
+def publish_one_session(session_id, actor_user_id):
+    """Publish ONE take, end to end. Returns
+    ``{session_id, published: bool, reason: str|None}`` and NEVER raises.
+
+    THE SHARED CORE OF EVERY PUBLISH DOOR. Extracted 2026-08-14 when the
+    coach panel's "Publish the full analysis" button was found to be a dead
+    end: it POSTed to /v2/coach/arc/<id>/publish-analysis, which had been a
+    410 tombstone since publish was replaced by verify (2026-07-17), while
+    the ONLY code that sets ``results_published_at`` sat behind
+    /v2/internal/publish-session-results — a route the frontend has no BFF
+    path to. So nothing the coach could click published anything, which is
+    why 46 August sessions were recorded and none delivered.
+
+    Rather than give the arc route its own copy of the sequence (the exact
+    drift the shared contract helper exists to prevent), both doors now call
+    this: contract → flip the flag → refresh the album.
+
+    NO EMAIL HERE, deliberately. The internal door owns the results-ready
+    email because it owns the address lookup and the unsubscribe pipeline;
+    the in-app Lounge card fires inside the contract helper either way, so a
+    coach-panel publish still nudges the student.
+    """
+    out = {"session_id": str(session_id), "published": False, "reason": None}
+    try:
+        # notify_client opts into ASSEMBLE mode: both lanes are built from the
+        # coach's persisted per-snippet drafts, which is exactly what the
+        # panel has been saving all along.
+        contract = _apply_willab_publish_contract(
+            session_id, {"notify_client": False}, actor_user_id,
+        )
+        if contract is not None:
+            # (response, status). A 422 here is the LIBRARY FLOOR: this take
+            # carries no surfaced, noted snippet, so there is nothing to
+            # deliver. That is a skip, not a failure of the publish.
+            try:
+                _resp, _status = contract
+                _payload = _resp.get_json() or {}
+                out["reason"] = str(_payload.get("code") or f"HTTP_{_status}")
+            except Exception:
+                out["reason"] = "CONTRACT_FAILED"
+            return out
+
+        db.v2_publish_session_results(session_id)
+
+        # THE VOICE ALBUM — publish releases the coach signal, so this is the
+        # moment an aligned moment can land. Best-effort: an album miss never
+        # blocks a publish (LIVE LOOP).
+        try:
+            _sess = db.v2_get_session_by_id(str(session_id)) or {}
+            _arc = _sess.get("arc_id")
+            if _arc:
+                from services.voice_album import refresh_voice_album
+                refresh_voice_album(_arc, database=db)
+        except Exception as _va_err:
+            logger.warning("voice_album: publish hook failed sid=%s: %s",
+                           session_id, _va_err)
+
+        out["published"] = True
+        return out
+    except Exception as e:
+        logger.error("publish_one_session failed sid=%s: %s", session_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        out["reason"] = "PUBLISH_FAILED"
+        return out
+
+
 def _apply_willab_publish_contract(session_id, body, actor_user_id):
     """Shared willab publish-contract gate (handoff §3.9 / §3.10).
 
