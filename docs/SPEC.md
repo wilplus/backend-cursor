@@ -869,6 +869,24 @@ V22 is the obvious sixth Feedback finding. It is not in v1.0 scope and is noted 
 
 **What it is not.** Not `confidence` (`conf-q-v1`) itself — that is the panel's perceptual judgment; this is the machine's threshold read of the same voice property, and the two never sum (D8). Not a score anywhere on a surface (AC-9): the threshold crossing surfaces only as the qualitative card above.
 
+### `lexical-dilution-v1` — the Verbal lane (machine read; founder mini-brief 2026-08-14 — SPECCED, NOT BUILT)
+
+| | |
+|---|---|
+| **`state_id`** | `lexical_dilution` |
+| **Construct** | A chunk whose TEXT carries **weak phrasing, filler words, or excessive hedging**: specific weak n-grams, or a word-count-to-information ratio evaluated as excessively high. Strictly text analysis — it measures *what* the user said, explicitly ignoring *how* they said it (blind to acoustic delivery). |
+| **Engine** | MACHINE — lexical/statistical detector for the trigger; ONE live LLM call generates the offered rewrite. No rater, no question. |
+| **Surfaces as** | The **Verbal** card — standard suggestion modal mechanics (Lock / Decline). Body: the founder-signed prefix *"It weakens your impact, try this:"* followed by the LLM-generated rewrite, which passes `_guard_copy` and is an OFFER only (L1: serve-time copy, applies solely on the student's approval — the canonical text is never touched). |
+| **Budget** | INSIDE the standard ≤3 per-slide budget, token-priced exactly like normal feedback generation (the live LLM call is why — founder: "we charge to fix problems"). |
+
+**What it is not.** Three fences, said out loud:
+
+- **Not `confidence`, and never an input to it (D19).** D19 bans a per-piece "contains a hedge?" flag as a variance-reduction trick inside the CONF instrument. This state is the OPPOSITE construction: a content-lane state of its own, blind to the voice, never blended into, summed with, or gating the confidence read. The two measure disjoint halves — dilution reads the words, confidence reads the voice.
+- **Not the filler-rate detectors' data.** The weak-n-gram lexicon is **versioned and immutable** once shipped (the standing filler-data constraint: filler detections feed cross-database comparisons, so lexicons and thresholds are never silently overwritten — a change is a NEW version, and backfills validate on a copy first).
+- **Not a surfaced ratio (AC-9).** The word-to-information ratio and any n-gram counts are internal trigger mechanics only; the student sees the qualitative card and the offered words, never a number.
+
+**Status:** specced by founder mini-brief 2026-08-14; **build waits for the founder's production reality test** of the shipped pipeline.
+
 ### Adding an entry
 
 A new entry requires, in order: the construct written out; what it is explicitly *not*, naming the adjacent constructs it will be confused with; the single-barrelled question; the answer semantics; the engine; and an external anchor if one exists. Then the lane, then the capacity.
