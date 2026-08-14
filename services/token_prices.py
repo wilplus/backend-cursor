@@ -28,27 +28,58 @@ from __future__ import annotations
 from typing import Optional
 
 
-PRICE_VERSION = "2026-08-01-v2"
+PRICE_VERSION = "2026-08-14-v3"
 """Bump on ANY change to the numbers in this file."""
 
 
-# ── Tiers ────────────────────────────────────────────────────────────
+# ── Tiers (v3 — founder 2026-08-14) ──────────────────────────────────
 #
 # Founder 2026-07-28: every tier renews monthly, free included, and NOTHING
 # rolls over. `tokens` is SET at each period roll, never added to.
 #
-# `coach_reviews` is a SECOND, independent limit. It deliberately does not
-# follow the 1×/6×/30× token ladder: at ~15 minutes of the founder's own time
-# per review, scaling it 30× would sell his calendar at $13/hour. The cap
-# protects the calendar, not the margin (plan §5.1). The tighter of the two
-# limits binds — a Max user can hold 1.4M tokens and still be out of reviews.
+# WHAT v3 CHANGED, AND WHY. The old ladder scaled BOTH limits together
+# (1×/6×/30×), which sold the founder's calendar at ~$13/hour at the top:
+# 30 reviews × ~15 min = 7.5 hours for $100. v3 separates the two axes —
+# TOKENS scale with machine use, PRICE scales with coach reviews — because
+# they are different goods. Tokens meter machine work, which is cheap and
+# elastic; a coach review is a human sitting, which is neither.
+#
+# `coach_reviews` is a SECOND, independent limit and the tighter of the two
+# binds: an Intensive user can hold plenty of tokens and still be out of
+# reviews.
 
 TIERS: dict[str, dict] = {
-    "free":    {"tokens":    12_000, "coach_reviews":  0, "usd": 0},
-    "starter": {"tokens":    50_000, "coach_reviews":  1, "usd": 5},
-    "pro":     {"tokens":   300_000, "coach_reviews":  6, "usd": 25},
+    # ── SOLD ──
+    "free":      {"tokens":  12_000, "coach_reviews": 0, "usd":  0},
+    "practice":  {"tokens": 150_000, "coach_reviews": 0, "usd": 12},
+    "coached":   {"tokens": 150_000, "coach_reviews": 3, "usd": 39},
+    "intensive": {"tokens": 400_000, "coach_reviews": 8, "usd": 89},
+
+    # ── RETIRED, NOT SOLD (founder 2026-08-14: the grandfathering SCHEME is
+    # dropped — no aliases, no legacy cards, no special entitlement rules).
+    #
+    # These three entries remain for ONE reason: an existing subscription's
+    # renewal webhook resolves its Stripe price to a tier key, and a key that
+    # resolves to nothing grants nothing. Deleting them would charge a live
+    # subscriber and hand them a zero balance. That is not grandfathering,
+    # it is not breaking live billing.
+    #
+    # They are absent from SOLD_TIERS, so they cannot be bought, do not
+    # appear on the sales sheet, and render no card. If there are no legacy
+    # subscribers left, these three lines can simply be deleted.
+    "starter": {"tokens":    50_000, "coach_reviews":  1, "usd":   5},
+    "pro":     {"tokens":   300_000, "coach_reviews":  6, "usd":  25},
     "max":     {"tokens": 1_500_000, "coach_reviews": 30, "usd": 100},
 }
+
+SOLD_TIERS: tuple[str, ...] = ("free", "practice", "coached", "intensive")
+"""What may be BOUGHT and what the sales sheet shows.
+
+Separate from TIERS on purpose: TIERS answers "what does this key grant"
+(every key that can arrive from a webhook, retired ones included), while this
+answers "what is for sale today". Checkout validates against this; a retired
+key is rejected, because nothing may create a NEW subscription on a tier that
+is no longer sold."""
 
 DEFAULT_TIER = "free"
 
@@ -75,7 +106,19 @@ def coach_reviews_for(tier: Optional[str]) -> int:
 # Machine prices are measured cost × 7 (plan §2). The unlock-style actions
 # (moment_explanation, game, insights) have NO marginal cost at all — their
 # content is generated during the take — so ×7 cannot apply and they are
-# value-priced. coach_review is priced against the founder's calendar.
+# value-priced.
+#
+# EVERY KEY IN HERE IS CHARGED SOMEWHERE (audit 2026-08-14). Five keys used
+# to sit in this table with no live charge call site at all — `assembly`,
+# `say_it_stronger`, `piece_retranscribe`, `life_panel` and `coach_review` —
+# and the wallet rendered every one of them in its "what things cost" list.
+# A published price for something that never bills is a lie in the one place
+# a user checks before acting, so they are gone. `assembly` fires a real
+# (~$0.0007) model call after each spoken take; its cost is carried by the
+# take price, which already prices at ×7.
+#
+# If an action is added back here, it must be charged. test_token_pricing
+# pins that direction: a price with no call site fails the suite.
 
 PRICES: dict[str, int] = {
     # Recording. Bands by duration; chosen BEFORE recording, never after.
@@ -83,42 +126,27 @@ PRICES: dict[str, int] = {
     "take_medium":        3_000,   # 2–6 min
     "take_long":          6_000,   # 6–15 min
     "reread":             1_500,   # paired re-read; never counts as a take
-    # Assembly + overlays
-    "assembly":             500,
-    "say_it_stronger":      500,
-    "piece_retranscribe":    300,
     # Deliverables (zero marginal cost — value-priced)
     "moment_explanation": 2_500,
     "game":               1_500,
     "insights":           1_000,
     # Conversation
     "chat":                 150,
-    "life_panel":           800,
-    # Human
-    "coach_review":      35_000,   # verify pass + key-moment comment, ONE sitting
-    # DELIVERY of that review, charged at publish (founder 2026-08-12). Same
-    # price as `coach_review` by founder ruling — it buys the same sitting of
-    # the founder's time — but a SEPARATE KEY on purpose, and the separation
-    # is the whole design rather than bookkeeping:
+    # HUMAN WORK IS METERED IN REVIEWS, NOT TOKENS (v3, founder 2026-08-14).
     #
-    #   * `coach_review` is in COACH_ACTIONS, so charging it also consumes one
-    #     of the tier's monthly coach slots. The free tier has ZERO, so wiring
-    #     delivery to that key would refuse every free-tier user on the
-    #     ALLOWANCE before their token balance was even consulted;
-    #   * and that would contradict a rule already locked in publish.py: the
-    #     charge is SOFT so a low balance never withholds the coach's work.
-    #     The gate is on STARTING the next recording, never on receiving
-    #     feedback that has already been done.
+    # Delivery of a coach review costs ZERO tokens and consumes ONE of the
+    # tier's monthly coach slots instead. The tier price already bought the
+    # sitting: charging 35,000 tokens on top would bill the same thing twice
+    # and, at v3's grants, a single review would eat a quarter of a Coached
+    # month's tokens for something the user had already paid for.
     #
-    # So delivery gets its own key, outside COACH_ACTIONS and outside
-    # PER_ARC_ACTIONS (it is charged per SESSION, ref_id=session_id, so a
-    # re-publish never re-charges — the same idempotency the retired
-    # feedback_credits_charged_at flag provided).
-    "coach_feedback":    35_000,
+    # Charged per SESSION (ref_id=session_id), so a re-publish never
+    # re-charges or double-counts a slot.
+    "coach_feedback":         0,
 }
 
 PER_ARC_ACTIONS: tuple[str, ...] = (
-    "insights", "game", "moment_explanation", "coach_review",
+    "insights", "game", "moment_explanation",
 )
 """Actions charged ONCE PER ARC (``ref_id=arc_id``), so every re-open is free.
 
@@ -188,9 +216,22 @@ def legacy_credit_tokens(credits: Optional[int]) -> int:
     return max(0, c - LEGACY_CREDIT_FREE_FLOOR) * LEGACY_CREDIT_TOKENS
 
 
-COACH_ACTIONS = frozenset({"coach_review"})
-"""Actions that also consume the per-period coach-review allowance. Kept as a
-set rather than a flag on the price so the two limits stay visibly separate."""
+COACH_ACTIONS = frozenset({"coach_feedback"})
+"""Actions that consume the per-period coach-review allowance. Kept as a set
+rather than a flag on the price so the two limits stay visibly separate.
+
+⚠️ THE MEMBER CHANGED IN v3 (founder 2026-08-14), and it is the fix for a
+meter that was dead in production. The only member used to be `coach_review`
+— a key NOTHING ever charged. So every part of the machinery below it (the
+CAS'd counter, the atomic RPC's coach branch, the per-tier allowance, the
+"protects the founder's calendar" fence) ran exactly zero times, while the
+key that DID fire at publish, `coach_feedback`, sat deliberately outside this
+set and billed tokens instead.
+
+The result was a tier selling "3 coach reviews" against a counter no code
+path could move. v3 prices the ladder ON coach reviews, so the meter has to
+be real: delivery now consumes a slot, and tokens are left to meter machine
+work."""
 
 
 # ── Recording bands ──────────────────────────────────────────────────
@@ -253,17 +294,24 @@ def band_for_balance(balance: Optional[int]) -> Optional[dict]:
 
 def public_price_list() -> dict:
     """What GET /v2/tokens/prices serves. The FE must read prices from here
-    rather than hardcoding them — these numbers change once Phase 0's
-    measurements land, which is the entire point of Phase 0."""
+    rather than hardcoding them — that is what makes a repricing a config
+    change instead of a deploy.
+
+    THE SALES SHEET, NOT THE TIER UNIVERSE. Only SOLD_TIERS ship here, so a
+    retired tier renders no card and cannot be bought. A legacy subscriber's
+    own tier still comes back on /v2/tokens/balance, which means `balance.tier`
+    can legitimately name a key that appears in no card — the FE treats
+    "matches nothing" as correct rather than as a bug."""
     return {
         "price_version": PRICE_VERSION,
         "actions": dict(PRICES),
         "bands": [{"max_seconds": s, "action": a, "price": price_of(a)}
                   for s, a in BANDS],
         "tiers": {
-            name: {"tokens_per_month": t["tokens"],
-                   "coach_reviews_per_month": t["coach_reviews"],
-                   "usd_per_month": t["usd"]}
-            for name, t in TIERS.items()
+            name: {"tokens_per_month": TIERS[name]["tokens"],
+                   "coach_reviews_per_month": TIERS[name]["coach_reviews"],
+                   "usd_per_month": TIERS[name]["usd"]}
+            for name in SOLD_TIERS
+            if name in TIERS
         },
     }

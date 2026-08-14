@@ -334,48 +334,55 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
             "(non-fatal)", session_id, _le,
         )
 
-    # ── CHARGE COACH-FEEDBACK DELIVERY (founder 2026-08-12: 35,000 tokens,
-    # the coach_review price). This publish IS the delivery — insights_payload
-    # persisted plus the "insights ready" card above.
+    # ── METER THE COACH REVIEW (v3, founder 2026-08-14). This publish IS the
+    # delivery — insights_payload persisted plus the "insights ready" card
+    # above — so it consumes ONE of the tier's monthly coach slots and ZERO
+    # tokens. Human work is metered in reviews; tokens meter machine work.
     #
-    # SOFT, AND THAT RULE SURVIVED THE CURRENCY CHANGE UNCHANGED. `charge`
-    # floors the balance at zero and reports coverage in `ok`; nothing here
-    # branches on it. A student whose balance cannot cover the price still
-    # receives work the coach has already done — the gate is on STARTING the
-    # next recording (FE), never on receiving feedback. That is why this uses
-    # `coach_feedback` and not `coach_review`: the latter is in COACH_ACTIONS
-    # and would additionally consume a monthly coach slot, of which the free
-    # tier has zero, so delivery would be refused on the allowance before the
-    # balance was even read.
+    # TWO DEFECTS FIXED HERE, both of which made the allowance fictional:
     #
-    # IDEMPOTENT PER SESSION via ref_id — a re-publish never re-charges, the
-    # same guarantee the retired feedback_credits_charged_at flag gave.
+    #   1. `coach_feedback` used to sit OUTSIDE COACH_ACTIONS while the only
+    #      member, `coach_review`, had no call site anywhere. So no publish in
+    #      production ever moved `coach_reviews_used`, and a tier selling
+    #      "3 coach reviews" metered nothing at all.
+    #   2. ARC SESSIONS WERE SKIPPED ENTIRELY — and the coached product runs
+    #      on arcs, so the flagship flow delivered founder time for free. The
+    #      old justification (arcs are "monetized per-arc") does not survive
+    #      v3: the per-arc token actions buy machine deliverables, never a
+    #      sitting of the founder's time.
+    #
+    # STILL SOFT, and that rule is untouched: nothing below branches on the
+    # result. A student past their allowance still receives work the coach has
+    # already done — the gate belongs on STARTING a review, never on
+    # delivering one that exists. A refusal is logged loudly instead, because
+    # an over-allowance review is a real cost to the founder's calendar and
+    # must not be silent.
+    #
+    # IDEMPOTENT PER SESSION via ref_id — a re-publish never double-counts.
     #
     # Best-effort: a billing hiccup must never unwind a published session.
     try:
         _sess_for_charge = db.v2_get_session_by_id(session_id) or {}
         _charge_owner = _sess_for_charge.get("user_id")
-        # Paid Audits (A2), unchanged: an ARC session is monetized per-arc via
-        # arc_purchases and the per-arc token actions, so charging delivery
-        # here too would bill the same work twice.
-        _is_arc_session = bool(_sess_for_charge.get("arc_id"))
-        if _charge_owner and not _is_arc_session:
+        if _charge_owner:
             from services.token_account import charge as _charge
             _res = _charge(str(_charge_owner), "coach_feedback",
                            ref_id=str(session_id))
-            logger.info(
-                "publish_contract.feedback_charged session=%s charged=%s "
-                "ok=%s reason=%s", session_id, _res.charged, _res.ok,
-                _res.reason or "-",
-            )
-        elif _is_arc_session:
-            logger.info(
-                "publish_contract.charge_skip_arc session=%s — arc audit "
-                "monetized per-arc, not at delivery", session_id,
-            )
+            if _res.reason == "coach_cap_reached":
+                logger.warning(
+                    "publish_contract.coach_review_over_allowance "
+                    "session=%s user=%s — DELIVERED anyway (soft); the "
+                    "tier's monthly coach slots are spent",
+                    session_id, _charge_owner,
+                )
+            else:
+                logger.info(
+                    "publish_contract.coach_review_metered session=%s ok=%s "
+                    "reason=%s", session_id, _res.ok, _res.reason or "-",
+                )
     except Exception as _ce:
         logger.warning(
-            "publish_contract.feedback_charge_failed session=%s err=%s "
+            "publish_contract.coach_review_meter_failed session=%s err=%s "
             "(non-fatal)", session_id, _ce,
         )
 

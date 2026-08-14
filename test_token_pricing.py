@@ -316,18 +316,49 @@ def account_row(tier="free", balance=12000, start=None, reviews=0, bonus=None):
 
 class PriceTableTests(unittest.TestCase):
     def test_tier_grants_match_the_founder_approved_ladder(self):
-        from services.token_prices import grant_for, coach_reviews_for
-        self.assertEqual(grant_for("free"), 12_000)
-        self.assertEqual(grant_for("starter"), 50_000)
-        self.assertEqual(grant_for("pro"), 300_000)
-        self.assertEqual(grant_for("max"), 1_500_000)
-        # Founder 2026-08-01: Max moves 10 -> 30 reviews. This REVERSES the
-        # earlier "30 would be 7.5 hours of the founder's month" note, with the
-        # calendar cost known and accepted at that size. The cap still exists
-        # and still binds independently of balance; only its Max value moved.
-        self.assertEqual([coach_reviews_for(t)
-                          for t in ("free", "starter", "pro", "max")],
-                         [0, 1, 6, 30])
+        from services.token_prices import (SOLD_TIERS, coach_reviews_for,
+                                            grant_for)
+        # v3 (founder 2026-08-14): the two axes separate. TOKENS scale with
+        # machine use; PRICE scales with coach reviews. Practice and Coached
+        # carry the SAME grant and differ only in reviews, which is the whole
+        # statement of the ladder.
+        self.assertEqual(SOLD_TIERS, ("free", "practice", "coached",
+                                      "intensive"))
+        self.assertEqual([grant_for(t) for t in SOLD_TIERS],
+                         [12_000, 150_000, 150_000, 400_000])
+        self.assertEqual([coach_reviews_for(t) for t in SOLD_TIERS],
+                         [0, 0, 3, 8])
+
+    def test_retired_tiers_still_resolve_but_are_never_sold(self):
+        """The grandfathering SCHEME is dropped (no aliases, no legacy cards).
+        These keys survive for one reason only: an existing subscription's
+        renewal webhook resolves a price to a tier key, and a key that
+        resolves to nothing would grant nothing to someone who just paid."""
+        from services.token_prices import SOLD_TIERS, TIERS, grant_for
+        for retired in ("starter", "pro", "max"):
+            self.assertIn(retired, TIERS)
+            self.assertNotIn(retired, SOLD_TIERS)
+            self.assertGreater(grant_for(retired), 0)
+        # And nothing may ever alias one onto a sold tier: that silently
+        # rewrites a paying user's entitlements.
+        from services.token_prices import normalize_tier
+        for retired in ("starter", "pro", "max"):
+            self.assertEqual(normalize_tier(retired), retired)
+
+    def test_the_sales_sheet_shows_only_sold_tiers(self):
+        from services.token_prices import public_price_list
+        self.assertEqual(sorted(public_price_list()["tiers"]),
+                         ["coached", "free", "intensive", "practice"])
+
+    def test_every_published_price_is_actually_charged_somewhere(self):
+        """A price with no call site is a lie in the one place a user checks
+        before acting. Five keys used to sit in the table charging nothing —
+        assembly, say_it_stronger, piece_retranscribe, life_panel and
+        coach_review — and the wallet listed all five."""
+        from services.token_prices import PRICES
+        for dead in ("assembly", "say_it_stronger", "piece_retranscribe",
+                     "life_panel", "coach_review"):
+            self.assertNotIn(dead, PRICES)
 
     def test_unknown_tier_degrades_to_free_never_raises(self):
         from services.token_prices import grant_for, normalize_tier
@@ -493,38 +524,46 @@ class ChargeTests(unittest.TestCase):
                          12_000 - 450)
 
     def test_insufficient_balance_reports_but_never_raises(self):
-        # A tier that HAS reviews, so the balance is what actually bites.
-        db = FakeDB(account_row("pro", balance=100))
-        r = self.ta.charge("u1", "coach_review", ref_id="arc1", database=db)
+        # A token-priced action, so the BALANCE is what bites (coach reviews
+        # are metered in slots now, never in tokens).
+        db = FakeDB(account_row("coached", balance=100))
+        r = self.ta.charge("u1", "moment_explanation", ref_id="arc1",
+                           database=db)
         self.assertFalse(r.ok)
         self.assertEqual(r.reason, "insufficient")
         self.assertEqual(r.balance, 100)
 
-    def test_free_tier_cannot_buy_a_coach_review_at_any_balance(self):
+    def test_free_tier_has_no_coach_slot_at_any_balance(self):
         """The cap is checked BEFORE the balance, and that ordering is the
         useful one: a free user needs to UPGRADE, not top up, so the reason
-        the FE receives has to say cap — not 'insufficient'."""
+        the FE receives has to say cap — not 'insufficient'. (Publish still
+        DELIVERS on this reason; it is soft. It just does not meter a slot
+        the tier never sold.)"""
         db = FakeDB(account_row("free", balance=10_000_000))
-        r = self.ta.charge("u1", "coach_review", ref_id="arc1", database=db)
+        r = self.ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
         self.assertFalse(r.ok)
         self.assertEqual(r.reason, "coach_cap_reached")
 
     def test_coach_cap_binds_independently_of_a_large_balance(self):
         """A Max user holding 1.4M tokens can still be out of reviews. That is
         the design: the cap protects the founder's calendar, not the margin."""
-        db = FakeDB(account_row("max", balance=1_400_000, reviews=30))
-        r = self.ta.charge("u1", "coach_review", ref_id="arc9", database=db)
+        db = FakeDB(account_row("intensive", balance=400_000, reviews=8))
+        r = self.ta.charge("u1", "coach_feedback", ref_id="s9", database=db)
         self.assertFalse(r.ok)
         self.assertEqual(r.reason, "coach_cap_reached")
-        self.assertEqual(r.balance, 1_400_000, "balance must be untouched")
+        self.assertEqual(r.balance, 400_000, "balance must be untouched")
 
-    def test_coach_review_consumes_the_allowance(self):
-        db = FakeDB(account_row("pro", balance=300_000, reviews=0))
-        self.assertTrue(self.ta.charge("u1", "coach_review", ref_id="a1",
+    def test_delivering_a_coach_review_consumes_the_allowance(self):
+        """v3: this is the meter that was dead. The only member of
+        COACH_ACTIONS used to be `coach_review`, which nothing charged, so
+        `coach_reviews_used` never moved in production and a tier selling
+        "3 coach reviews" metered nothing at all."""
+        db = FakeDB(account_row("coached", balance=150_000, reviews=0))
+        self.assertTrue(self.ta.charge("u1", "coach_feedback", ref_id="s1",
                                        database=db).ok)
         acct = self.ta.get_account("u1", database=db)
         self.assertEqual(acct["coach_reviews"]["used"], 1)
-        self.assertEqual(acct["coach_reviews"]["remaining"], 5)
+        self.assertEqual(acct["coach_reviews"]["remaining"], 2)
 
     def test_flag_off_charges_nothing(self):
         db = FakeDB(account_row(balance=12_000))
@@ -827,15 +866,20 @@ class LegacyCreditConversionTests(unittest.TestCase):
         self.env.stop()
 
     # ── the rate and the floor ───────────────────────────────────────
-    def test_the_rate_is_arc_equivalence_not_a_guess(self):
-        """25 credits bought an arc unlock; the same four deliverables cost
-        40,000 tokens. 40,000/25 = 1,600. If any of those prices move, this
-        assertion is the thing that says the conversion rate moved too."""
-        from services.token_prices import LEGACY_CREDIT_TOKENS, PRICES
-        arc = (PRICES["insights"] + PRICES["game"]
-               + PRICES["moment_explanation"] + PRICES["coach_review"])
-        self.assertEqual(arc, 40_000)
-        self.assertEqual(arc // 25, LEGACY_CREDIT_TOKENS)
+    def test_the_rate_is_a_FROZEN_historical_constant(self):
+        """1,600 was derived once, from the prices in force on 2026-08-01:
+        25 credits bought an arc unlock, and the same four deliverables
+        (insights 1,000 + game 1,500 + moment_explanation 2,500 +
+        coach_review 35,000) came to 40,000 tokens. 40,000/25 = 1,600.
+
+        IT MUST NOT FOLLOW THE PRICE TABLE. The rate is written into
+        add_legacy_credit_conversion.sql and into every ledger row already
+        stamped 'legacy-credits-1600-v1'; re-deriving it from today's prices
+        would pay a different amount than the ledger claims was paid. v3
+        removed `coach_review` from the table entirely, which is exactly the
+        kind of move that would silently rewrite it."""
+        from services.token_prices import LEGACY_CREDIT_TOKENS
+        self.assertEqual(LEGACY_CREDIT_TOKENS, 1_600)
 
     def test_the_free_grant_is_not_converted(self):
         """Everyone holds >=25 for free. Converting those would pay every
@@ -949,13 +993,13 @@ class LegacyCreditConversionTests(unittest.TestCase):
         told them they had."""
         import services.token_account as ta
         db = FakeDB(account_row("free", balance=0, bonus=40_000))
-        res = ta.charge("u1", "coach_review", database=db)  # 35,000
+        res = ta.charge("u1", "moment_explanation", database=db)  # 2,500
         self.assertNotEqual(res.reason, "insufficient")
 
     def test_running_out_of_both_still_reports_rather_than_raises(self):
         import services.token_account as ta
         db = FakeDB(account_row("free", balance=100, bonus=100))
-        res = ta.charge("u1", "coach_review", database=db)
+        res = ta.charge("u1", "moment_explanation", database=db)  # 2,500
         self.assertFalse(res.ok)
         self.assertEqual(res.balance, 200)
 
@@ -1000,15 +1044,23 @@ class LegacyCreditConversionTests(unittest.TestCase):
 
 
 class CoachFeedbackDeliveryTests(unittest.TestCase):
-    """Delivery is charged at publish, 35,000 tokens (founder 2026-08-12).
+    """Delivery is metered at publish in COACH SLOTS, not tokens (v3,
+    founder 2026-08-14).
 
-    THE SEPARATE KEY IS THE POINT. `coach_review` carries the same price and
-    would have been the obvious thing to reuse — but it is in COACH_ACTIONS,
-    so charging it also consumes one of the tier's monthly coach slots, and
-    the free tier has ZERO. Delivery would then be refused on the ALLOWANCE
-    before the balance was read, which contradicts the rule locked in
-    publish.py: the charge is soft so a low balance never withholds work the
-    coach has already done."""
+    WHAT THIS REPLACED, AND WHY. Delivery used to cost 35,000 tokens and sit
+    deliberately OUTSIDE COACH_ACTIONS, while the one member of that set —
+    `coach_review` — had no call site anywhere in the product. Two
+    consequences, both live in production:
+
+      * the coach-review allowance metered NOTHING. A tier could sell "3
+        coach reviews" against a counter no code path could move.
+      * a coached user paid twice: once in the tier price that bought the
+        sitting, and again in tokens at delivery.
+
+    v3 splits the two goods cleanly — tokens meter machine work, slots meter
+    human work — so delivery consumes one slot and zero tokens. The SOFT rule
+    is untouched: publish does not branch on the result, so work the coach
+    has already done always reaches the student."""
 
     def setUp(self):
         self.env = patch.dict("os.environ", {"TOKEN_PRICING_ENABLED": "1"})
@@ -1017,57 +1069,80 @@ class CoachFeedbackDeliveryTests(unittest.TestCase):
     def tearDown(self):
         self.env.stop()
 
-    def test_it_costs_the_coach_review_price(self):
+    def test_it_costs_no_tokens(self):
+        """The tier price already bought the sitting. Charging tokens on top
+        bills the same thing twice — and at v3 grants, one 35,000-token
+        review would eat a quarter of a Coached month for something already
+        paid for."""
         from services.token_prices import PRICES
-        self.assertEqual(PRICES["coach_feedback"], PRICES["coach_review"])
-        self.assertEqual(PRICES["coach_feedback"], 35_000)
+        self.assertEqual(PRICES["coach_feedback"], 0)
 
-    def test_it_does_NOT_consume_a_coach_slot(self):
-        """The whole reason it is not `coach_review`."""
+    def test_it_DOES_consume_a_coach_slot(self):
+        """The meter that was dead. This membership is the fix."""
         from services.token_prices import COACH_ACTIONS, PER_ARC_ACTIONS
-        self.assertNotIn("coach_feedback", COACH_ACTIONS)
-        # Nor per-arc: delivery is per SESSION, so the ref_id is a session id
-        # and a second take's delivery must be able to charge again.
+        self.assertIn("coach_feedback", COACH_ACTIONS)
+        # Not per-arc: delivery is per SESSION, so the ref_id is a session id
+        # and a second session's delivery meters its own slot.
         self.assertNotIn("coach_feedback", PER_ARC_ACTIONS)
 
-    def test_a_free_tier_user_is_never_refused_on_the_allowance(self):
-        """The failure this key exists to prevent: free tier has 0 coach
-        slots, so `coach_review` would refuse before the balance mattered."""
+    def test_a_free_tier_user_meters_no_slot_but_is_still_delivered(self):
+        """Free sells zero reviews, so there is no slot to consume and the
+        charge reports coach_cap_reached. publish.py does not branch on that
+        — it logs loudly and delivers, because the coach has already done the
+        work by the time this runs."""
         import services.token_account as ta
         from services.token_prices import coach_reviews_for
         self.assertEqual(coach_reviews_for("free"), 0)
         db = FakeDB(account_row("free", balance=100_000))
         res = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
-        self.assertTrue(res.ok)
-        self.assertEqual(res.charged, 35_000)
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "coach_cap_reached")
+        # And it costs them nothing in tokens either way.
+        self.assertEqual(int(db.store["row"]["token_balance"]), 100_000)
 
     def test_an_empty_balance_still_DELIVERS(self):
         """Soft by contract. `ok` reports coverage; publish does not branch
         on it, so the coach's work reaches the student either way."""
         import services.token_account as ta
-        db = FakeDB(account_row("free", balance=10))
+        db = FakeDB(account_row("coached", balance=10))
         res = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
-        self.assertFalse(res.ok)
+        self.assertTrue(res.ok)
         self.assertGreaterEqual(int(db.store["row"]["token_balance"]), 0)
 
-    def test_a_republish_never_re_charges(self):
+    def test_a_republish_never_double_counts_a_slot(self):
         """Idempotent per SESSION — the guarantee the retired
         feedback_credits_charged_at flag used to give."""
         import services.token_account as ta
-        db = FakeDB(account_row("free", balance=100_000))
+        db = FakeDB(account_row("coached", balance=150_000, reviews=0))
         ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
-        after = int(db.store["row"]["token_balance"])
+        self.assertEqual(db.store["row"]["coach_reviews_used"], 1)
         again = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
         self.assertTrue(again.ok)
         self.assertEqual(again.charged, 0)
-        self.assertEqual(int(db.store["row"]["token_balance"]), after)
+        self.assertEqual(db.store["row"]["coach_reviews_used"], 1,
+                         "a re-publish must not spend a second slot")
 
-    def test_a_DIFFERENT_session_charges_again(self):
+    def test_a_DIFFERENT_session_meters_its_own_slot(self):
         import services.token_account as ta
-        db = FakeDB(account_row("free", balance=100_000))
+        db = FakeDB(account_row("coached", balance=150_000, reviews=0))
         ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
         second = ta.charge("u1", "coach_feedback", ref_id="s2", database=db)
-        self.assertEqual(second.charged, 35_000)
+        self.assertTrue(second.ok)
+        self.assertEqual(db.store["row"]["coach_reviews_used"], 2)
+
+    def test_the_allowance_is_what_runs_out_not_the_balance(self):
+        """Coached sells 3. The fourth delivery finds no slot — while the
+        token balance is untouched throughout, because human work is not
+        metered in tokens any more."""
+        import services.token_account as ta
+        db = FakeDB(account_row("coached", balance=150_000, reviews=0))
+        for i in range(3):
+            self.assertTrue(ta.charge("u1", "coach_feedback",
+                                      ref_id=f"s{i}", database=db).ok)
+        fourth = ta.charge("u1", "coach_feedback", ref_id="s4", database=db)
+        self.assertFalse(fourth.ok)
+        self.assertEqual(fourth.reason, "coach_cap_reached")
+        self.assertEqual(int(db.store["row"]["token_balance"]), 150_000)
 
 
 class AdminGrantTests(unittest.TestCase):
@@ -1424,7 +1499,7 @@ class ChargeAtomicityTests(unittest.TestCase):
     def test_the_coach_counter_moves_in_the_same_write_as_the_debit(self):
         import services.token_account as ta
         db = FakeDB(account_row("pro", balance=300_000, reviews=0))
-        res = ta.charge("u1", "coach_review", ref_id="arc1", database=db)
+        res = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
         self.assertTrue(res.ok)
         self.assertEqual(db.store["row"]["coach_reviews_used"], 1)
         # One write carrying both, not a debit plus a second CAS that can fail
@@ -1436,7 +1511,7 @@ class ChargeAtomicityTests(unittest.TestCase):
     def test_a_capped_coach_review_writes_nothing_at_all(self):
         import services.token_account as ta
         db = FakeDB(account_row("starter", balance=50_000, reviews=1))
-        res = ta.charge("u1", "coach_review", ref_id="arc1", database=db)
+        res = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
         self.assertFalse(res.ok)
         self.assertEqual(res.reason, "coach_cap_reached")
         self.assertEqual(db.account_writes, [])

@@ -32,6 +32,7 @@ from routes.admin import is_admin, is_coach
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
 from services.db import db
+from services.token_prices import price_of as _price_of
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -696,7 +697,7 @@ def v2_arc_unlock(arc_id):
     return jsonify({
         "code": "GONE",
         "error": "This product was retired. The ideal text is free; "
-                 "key-moment explanations unlock for 5 credits.",
+                 "key-moment explanations unlock with tokens.",
     }), 410
 
 
@@ -793,10 +794,13 @@ def v2_get_moment_explanation(arc_id, moment_id):
             return jsonify({"code": "NOT_FOUND",
                             "error": "presentation not found"}), 404
         if not _moments_entitled(arc_id):
+            # TOKENS, not credits. This body used to quote `price_credits`
+            # off MOMENTS_UNLOCK_CREDITS (5) while the actual charge was
+            # 2,500 tokens — a retired currency, in a live response, at the
+            # wrong magnitude. The price comes from the one price table.
             return jsonify({
                 "code": "MOMENTS_LOCKED",
-                "price_credits": int(getattr(
-                    config, "MOMENTS_UNLOCK_CREDITS", 5) or 5),
+                "price_tokens": _price_of("moment_explanation"),
             }), 402
         spoken, reads = _spoken_takes_and_reads(sessions)
         _want = str(moment_id)
