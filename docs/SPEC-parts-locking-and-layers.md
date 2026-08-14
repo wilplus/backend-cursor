@@ -571,3 +571,29 @@ wording:
 * Un-blocking is the user's: unlock/re-open of the chunk, or an explicit
   new-take decision surface, may clear the pair — the machine never
   clears it for itself.
+
+### 11.7 · Session backlog (founder, 2026-08-14, post-build field notes — NOT built)
+
+Three amendments logged for the next window, refining §11.5/§11.3/§11.4:
+
+1. **Lock-in closes the modal and the chunk wears the lock.** On a
+   successful lock-in the modal CLOSES (or at minimum transitions to a
+   distinct Locked state — never keeps showing the just-locked text as if
+   still editable), and the chunk on the page shows its locked lock
+   immediately. Sharpens §11.5: the confirmation is the closed modal plus
+   the locked icon on that chunk, not a state inside an open modal.
+
+2. **A screen is the slide's display unit, and it has its own cap.** The
+   per-slide text visible at once must fit ONE screen view: ~9 lines max,
+   and those lines arrive as ~3 paragraphs (9 lines → 3 paragraphs,
+   6 → 2 — i.e. the §11.1 ~4-line chunk grain, roughly three chunks to a
+   screen). The builder's chunk cap (§11.1) already makes the paragraphs;
+   this adds the SCREEN grain above them.
+
+3. **A slide longer than one screen CONTINUES on the next screen, and
+   the scroll says so.** Overflow chunks of the same slide form a second
+   (third, …) screen in the nested scroll — same slide, continued — and
+   the indicator (§11.4) makes the continuation visible: the reader can
+   see the slide spans multiple screens and where they stand in it.
+   Extends the two-grain rail with the screen grain: slide → screen →
+   chunk, all position, never a grade (AC-9).
