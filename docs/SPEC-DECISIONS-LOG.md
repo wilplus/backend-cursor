@@ -1,6 +1,6 @@
 # Decisions log — settled in review, not yet folded into SPEC.md
 
-**Last updated:** 2026-08-06.
+**Last updated:** 2026-08-14.
 
 **Purpose:** everything agreed after SPEC.md v3 was committed. This file exists so a long
 review session survives itself. Entries here are **binding** and get folded into the numbered
@@ -87,9 +87,12 @@ album page → toggle → any snippet registered by the system and/or verified b
 disclosure; superseded — display only **"Registered — waiting for the coach."**
 
 **C4 · Quorum.** Machine **proposes** (candidate generator, §3.1 — it is not a peer). Coach,
-owner and peers **agree blindly**. The machine's vote is asymmetric: it can help a moment in,
-never keep one out. Coach + peer override where the machine rejected → **log those rows
+owner and peers **agree blindly**. ~~The machine's vote is asymmetric: it can help a moment in,
+never keep one out.~~ Coach + peer override where the machine rejected → **log those rows
 separately, they are the blind-spot corpus.**
+**Amended 2026-08-11 (§J):** the machine has **no vote**, asymmetric or otherwise, and the
+**owner is not one of the agreeing parties** — a self-report is calibration signal, not a peer
+judgment. Quorum is **two humans, neither of them the speaker.**
 
 **C5 · Why blindness matters, and it is not mainly statistical.** "Three people who couldn't see
 each other's answers all heard this as strong" is a different object from "our algorithm liked
@@ -237,5 +240,77 @@ label lane and panel capacity apiece.
 3. Can two findings mark the same span?
 4. Do mutations survive a version edit?
 5. What is a "take" for max-marks-per-take?
-6. **`PANEL_LANES` bug** — `services/state_ratings.py` includes `game_owner`; §9.1 excludes the
-   owner from agreement. Should be `("coach", "game_peer")`.
+6. ~~**`PANEL_LANES` bug** — `services/state_ratings.py` includes `game_owner`; §9.1 excludes the
+   owner from agreement. Should be `("coach", "game_peer")`.~~ **CLOSED** — `PANEL_LANES` is
+   `("coach", "game_peer")`, and §J·2 makes the exclusion a stamped column rather than a lane
+   inference, so a self-report on the *coach* lane is caught too.
+
+---
+
+## J · The label ledger — quorum, self-report and routing (founder 2026-08-11)
+
+Four rules for the voice-game labelling pipeline. The one thing they protect: the ground-truth
+corpus must not contain **circular logic** — no number in it may trace back to a prediction made
+by the thing it will be used to evaluate. Implemented in `services/label_quorum.py`,
+`migrations/add_label_quorum_ledger.sql` (columns + the `snippet_label_quorum` view).
+
+**J1 · The machine is a ROUTER, not a rater.** It selects **which** clip gets rated. Its
+prediction **does not count as a vote** — not as a full vote, not as the asymmetric half-vote
+§9.1 gave it. **Quorum is strictly 2 humans.** The proposal is stored in its own column
+(`confidence_labels.machine_value`) **beside** the human label, never blended into it, stamped
+server-side (a client-supplied proposal would mean the rater's screen carried it — I1).
+
+*Why storage and not just exclusion:* "which prediction did this human disagree with" is
+unanswerable after the fact without it, and that disagreement is the whole of J3's active
+learning. Excluding the machine from the vote and keeping its proposal are the same decision.
+
+**J2 · The owner is not a peer.** Rating your own clip is a **self-report**: flagged
+(`self_report`), excluded from the 2-peer quorum ground truth, kept for **rater calibration
+only**. The speaker knows what they intended — the one judgment that is not independent of the
+thing judged. Rating **another user's clip or a YouTube clip** makes them an ordinary valid 2nd
+peer and the answer counts in full. The voice game **serves the user's own recordings first**
+*(2026-08-14: extended into the full three-class queue order — own voice → consented app users
+→ YouTube corpus — one law in `game_engine._source_class`).*
+
+*Why a column and not `lane='game_owner'`:* lane records the **surface**, not the **ownership**.
+A coach rating a session they own writes `lane='coach'` and is still a self-report.
+
+**J3 · The singleton is weak supervision.** One rating is **never** gold and **never** used for
+evaluation — it is calibration signal. **Active-learning priority:** when the lone rating
+*disagrees with the machine's proposal*, that clip is the most informative unrated thing in the
+corpus (either a model miss or a rater miss, and one more peer says which) — it routes
+**immediately** for a 2nd peer.
+
+**J4 · IDK is a RESPONSE, not a null.** Counted like any other answer:
+- **1 definite + 1 IDK** = not a quorum → **route to a 3rd rater**.
+- **2 IDKs** = **settled**, marked **"perceptually ambiguous"** in the DB. This is a
+  high-value ground-truth state: it trains the detector to **output uncertainty rather than
+  faking confidence** where humans are genuinely uncertain (I10 — "keep disagreement", low
+  agreement is a finding).
+
+**J5 · One rule generates all four cases** (`label_quorum.resolve`, mirrored in the view):
+count every eligible response with IDK included; a snippet is **settled** when one response is
+**strictly modal with ≥2 votes** — modal IDK settles as *perceptually ambiguous*, any other
+modal settles as *quorum*, one response is a *singleton*, and anything else *needs a third*.
+
+**J6 · Two flagged gaps — gap 1 now CLOSED by founder ruling.**
+1. ~~**What "IDK" maps to.**~~ **CLOSED — founder ruling 2026-08-14:** *"IDK strictly means
+   'ambiguous to judge' (it is a valid perceptual rating of the audio, not a technical 'I can't
+   hear the clip' failure)."* So **`neutral` IS the IDK** — the ternary's third value, the arc
+   game's "yes / no / idk" — and it **counts**: two of them settle as `perceptually_ambiguous`.
+   **`unrateable` is the technical abstention** — a failure of the artifact, not a reading of
+   the voice — and is **no response at all**: never counted, never settling anything (the same
+   treatment the twice-labelled game gate always gave it). Implemented in
+   `label_quorum.response_of` (`IDK_VALUES = ("neutral",)`, `NON_RESPONSE_FLAGS =
+   ("unrateable",)`) and mirrored in the `snippet_label_quorum` view. A capture-time abstention
+   *reason* is therefore unnecessary — the two shapes now mean two different things by
+   construction.
+2. **Two conflicting definites (yes + no).** Not specified. Treated the same as J4's case B —
+   two humans who disagree have not reached a quorum → 3rd rater, rather than booking a
+   coin-flip as ground truth.
+
+**J7 · What this does NOT build.** The **cross-user / YouTube peer serving queue** J2 implies.
+Today every session in an arc belongs to the arc owner, so the game is 100% self-report and the
+own-first ordering is a no-op that becomes load-bearing the day a round can carry someone else's
+clip. `routing_priority` / `rating_queue` are the ordering that queue will read; the queue
+itself, its consent surface and its FE are a separate build.

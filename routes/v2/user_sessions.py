@@ -2057,11 +2057,21 @@ def v2_put_owner_confidence_label(snippet_id):
             return jsonify({"code": "INVALID_INPUT", "error": err}), 400
         lane = resolve_lane(sess.get("source"), is_coach=False,
                             is_owner=True)
+        # RULE 2 (founder 2026-08-11): this route IS the owner labelling their
+        # own voice, so every row it writes is a self-report — excluded from
+        # the 2-peer quorum, kept for rater calibration. Stamped rather than
+        # inferred from the lane downstream.
+        from services.label_quorum import machine_proposal
         saved = db.upsert_state_rating(
             snippet_id=str(snippet_id), row=row,
             rater_id=str(request.user_id),
             session_id=str(sess.get("id")),
-            lane=lane)
+            lane=lane,
+            self_report=True,
+            # RULE 1: the machine's proposal, stamped SERVER-SIDE off the
+            # stored acoustic read, into its own column. It never entered the
+            # payload this rater answered (I1) and it never becomes a vote.
+            machine_value=machine_proposal(snip))
         if not saved:
             return jsonify({
                 "code": "V2_ERROR",

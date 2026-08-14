@@ -81,9 +81,14 @@ console, never smuggled through `MIGRATE_ON_BOOT`.
 
 ## Current state (2026-08-14)
 
-- **Open PRs: ZERO in both repos.** #389 (label-quorum ledger) was
-  closed unmerged 2026-08-14 with full rationale in its closing comment;
-  its branch `claude/voice-game-quorum-rules-96w9hw` is intact.
+- **Open PRs: ZERO in both repos.** #389 (label-quorum ledger) was first
+  closed unmerged 2026-08-14, then REVIVED the same day on the founder's
+  IDK ruling and merged as the quorum-ledger revival PR: strict 2-human
+  quorum (`services/label_quorum.py` + the `snippet_label_quorum` view,
+  migration 0273), self-report stamping at all three write paths,
+  machine proposals stored beside answers, and IDK = the ternary
+  `neutral` (perceptual "ambiguous to judge") while `unrateable` stays a
+  technical non-response — decisions log §J, gap J6.1 closed.
 - Tier 3 is closed: **Voice Album** (three-way entry rule, mirror
   semantics, presentation-order read), **Confident Voice** (deterministic
   founder-signed card, 0-cost, feeds the album), coach tagging, and the
@@ -113,16 +118,16 @@ console, never smuggled through `MIGRATE_ON_BOOT`.
 2. **§12.2 follow-on** — move accent/bold markers fully out of served
    text into metadata (the serve boundary is currently clean via the
    fold; the metadata migration is the durable form).
-3. **PR #389 substance** (strict 2-human quorum resolver, self-report
-   stamping, machine-proposal-beside-answer). Revival preconditions are
-   in its closing comment: renumber the migration, re-point
-   charisma→confidence, rebase onto the shipped queue order, and get the
-   founder's ruling on the IDK mapping.
-4. **Game-queue multi-source ingestion** — the consent surface and
+3. **Game-queue multi-source ingestion** — the consent surface and
    corpus attachment that make the three-class queue order load-bearing
    beyond own-voice arcs. Product context exists; not a build order.
-5. **FE**: §11.5/§11.6 modal auto-open + smart re-triggering policy;
-   e2e `continue-on-error` flip (see the FE HANDOFF).
+4. **FE**: §11.5/§11.6 modal auto-open + smart re-triggering policy
+   (spec-only; see the FE HANDOFF).
+
+*(Formerly parked here and now shipped 2026-08-14: the PR #389
+quorum-ledger substance — revived and merged on the founder's IDK
+ruling — and the FE deck-e2e `continue-on-error` flip, made blocking by
+founder decision without waiting for Actions minutes.)*
 
 ## Standing data-safety rules (founder — non-negotiable)
 

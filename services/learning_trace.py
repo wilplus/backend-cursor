@@ -245,14 +245,51 @@ def _confidence_corpus() -> dict:
     summary = corpus_summary(rows)
     summary["scan_capped_at"] = _LABEL_SCAN_LIMIT
     summary["trains_today"] = False
+    summary["ledger"] = _quorum_ledger(rows)
     summary["note"] = (
         "Ternary (yes/no/neutral) + unrateable, blind lanes only at the "
         "write (saw_model_output recorded per row). The direction lane "
         "(training_labels) is what the shadow classifier fits on; THIS "
         "corpus awaits its own fit — visibility first, so the day it "
-        "trains the balance was watched, not discovered."
+        "trains the balance was watched, not discovered. `ledger` is the "
+        "honest denominator: rows are not ground truth, SETTLED SNIPPETS "
+        "are (founder 2026-08-11, §J)."
     )
     return summary
+
+
+def _quorum_ledger(rows: Any) -> dict:
+    """How much of the confidence corpus is actually GROUND TRUTH — the
+    label ledger rolled up (services/label_quorum.py, founder 2026-08-11).
+
+    WHY THIS SITS NEXT TO THE ROW COUNTS AND NOT INSTEAD OF THEM. A row
+    count answers "is capture working"; it says nothing about whether the
+    corpus can train or evaluate anything. A corpus that is 80% singletons
+    and self-reports reads as 80% labelled and is 0% gold — this is the
+    number that catches that, and it is the same number the day the fit
+    turns on.
+
+    `gold` counts SETTLED snippets only (2-human quorum, or two IDKs
+    settling as perceptually ambiguous). `weak` and `blocked` are the two
+    work queues — singletons awaiting a 2nd peer, and snippets a 3rd rater
+    would unblock. `machine_votes` is rule 1 reported rather than asserted:
+    non-zero means a machine got a vote and every agreement number computed
+    off this corpus is circular.
+
+    Best-effort — a ledger read must never take the trace down, and the
+    trace is diagnostics.
+    """
+    try:
+        from services.label_quorum import corpus_ledger, resolve
+        by_snippet: dict = {}
+        for r in (rows or []):
+            if not isinstance(r, dict) or not r.get("snippet_id"):
+                continue
+            by_snippet.setdefault(str(r["snippet_id"]), []).append(r)
+        return corpus_ledger([resolve(rs) for rs in by_snippet.values()])
+    except Exception as e:
+        logger.warning("confidence ledger roll-up failed: %s", e)
+        return {"error": "ledger unavailable"}
 
 
 def _intervention_decision_corpus() -> dict:

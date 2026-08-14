@@ -3349,11 +3349,25 @@ def v2_coach_put_confidence_label(snippet_id):
         sess = db.v2_get_session_by_id(str(session_id)) if session_id else None
         lane = resolve_lane((sess or {}).get("source"), is_coach=True)
 
+        # RULE 2 (founder 2026-08-11) — the owner is not a peer, and that is
+        # about WHOSE CLIP it is, not which surface rated it. A coach rating a
+        # session they own writes lane='coach' and is still a self-report, so
+        # ownership is compared explicitly here rather than read off the lane.
+        rater_id = getattr(request, "user_id", None)
+        self_report = bool(
+            rater_id and sess and str(sess.get("user_id")) == str(rater_id))
+        from services.label_quorum import machine_proposal
         saved = db.upsert_state_rating(
             snippet_id=snippet_id, row=row,
-            rater_id=getattr(request, "user_id", None),
+            rater_id=rater_id,
             session_id=session_id, lane=lane,
             intensity=legacy_intensity,
+            self_report=self_report,
+            # RULE 1 — the proposal that routed this clip here, stamped
+            # server-side into its own column. The coach never saw it (BLIND
+            # COACH / I1); it is stored so "which prediction did this human
+            # disagree with" stays answerable, and it is never a vote.
+            machine_value=machine_proposal(snip),
         )
         if not saved:
             return jsonify({
