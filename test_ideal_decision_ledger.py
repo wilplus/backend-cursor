@@ -199,5 +199,92 @@ class RecordStarDecisionTests(unittest.TestCase):
         self.assertEqual((db.upserts, db.deletes), ([], []))
 
 
+class LaneClassTests(unittest.TestCase):
+    """§12.3 — the BE half of the deck's class mapping, one home. The
+    precedence pins mirror FE displayKind.ts (source before kind, kind
+    before why); the contract test below keeps the two from drifting."""
+
+    def test_source_beats_kind(self):
+        from services.ideal_decision_ledger import lane_class
+        # An acoustic swap is kind='replace' on the wire but IS delivery.
+        self.assertEqual(
+            lane_class("replace", source="acoustic_swap"), "delivery")
+
+    def test_kind_classes(self):
+        from services.ideal_decision_ledger import lane_class
+        self.assertEqual(lane_class("emphasize"), "style")
+        self.assertEqual(lane_class("bold"), "style")
+        self.assertEqual(lane_class("advice"), "flow")
+
+    def test_why_routes_cross_take_to_flow(self):
+        from services.ideal_decision_ledger import lane_class
+        for why in ("energy", "steadiness", "coverage", "overall"):
+            self.assertEqual(lane_class("replace", why=why), "flow")
+
+    def test_default_is_clarity(self):
+        from services.ideal_decision_ledger import lane_class
+        self.assertEqual(lane_class("replace"), "clarity")
+        self.assertEqual(lane_class("polish"), "clarity")
+        self.assertEqual(lane_class(None), "clarity")
+
+
+class IntentKeysTests(unittest.TestCase):
+    def test_pairs_from_rows_that_know_where(self):
+        from services.ideal_decision_ledger import intent_keys
+        rows = [
+            {"slide_index": 2, "lane_class": "clarity"},
+            {"slide_index": 0, "lane_class": "style"},
+            {"slide_index": None, "lane_class": "clarity"},   # legacy row
+            {"slide_index": True, "lane_class": "clarity"},   # bool ≠ slide
+            {"slide_index": 3, "lane_class": None},           # legacy row
+        ]
+        self.assertEqual(intent_keys(rows),
+                         {(2, "clarity"), (0, "style")})
+        self.assertEqual(intent_keys([]), set())
+        self.assertEqual(intent_keys(None), set())
+
+
+class RecordCarriesIntentTests(unittest.TestCase):
+    """record_star_decision writes the §12.3 intent key alongside the
+    phrase key — and never invents one it does not have."""
+
+    class _Db:
+        def __init__(self):
+            self.kw = None
+
+        def upsert_ideal_decision(self, **kw):
+            self.kw = kw
+            return True
+
+    def test_slide_and_class_ride_the_upsert(self):
+        from services.ideal_decision_ledger import record_star_decision
+        db = self._Db()
+        ok = record_star_decision(
+            db, "arc-1", suggestion={"trigger": "unconfident"},
+            target="document_replace", action="dismissed",
+            target_text="the words", snippet_id="sn1", slide_index=4)
+        self.assertTrue(ok)
+        self.assertEqual(db.kw["slide_index"], 4)
+        self.assertEqual(db.kw["lane_class"], "clarity")
+
+    def test_emphasize_records_style(self):
+        from services.ideal_decision_ledger import record_star_decision
+        db = self._Db()
+        record_star_decision(
+            db, "arc-1", suggestion={}, target="document_bold",
+            action="applied", target_text="the words",
+            snippet_id="sn1", slide_index=1)
+        self.assertEqual(db.kw["lane_class"], "style")
+
+    def test_unknown_slide_stays_none(self):
+        from services.ideal_decision_ledger import record_star_decision
+        db = self._Db()
+        record_star_decision(
+            db, "arc-1", suggestion={}, target="document_replace",
+            action="dismissed", target_text="the words",
+            snippet_id="sn1", slide_index=True)   # bool ≠ slide
+        self.assertIsNone(db.kw["slide_index"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -11544,39 +11544,63 @@ class DatabaseService:
                               replacement_text: Optional[str],
                               decision: str, source: Optional[str],
                               snippet_id: Optional[str],
-                              version: Optional[int]) -> bool:
+                              version: Optional[int],
+                              slide_index: Optional[int] = None,
+                              lane_class: Optional[str] = None) -> bool:
         """One decision per (arc, kind, phrase) — last write wins (an
-        applied→dismissed flip updates in place). Best-effort."""
+        applied→dismissed flip updates in place). Best-effort.
+
+        ``slide_index``/``lane_class`` are §12.3's intent key (cross-take
+        location + suggestion class). Pre-migration the columns are
+        missing: the payload retries WITHOUT them rather than dropping the
+        decision — the phrase key must never be lost to the intent key."""
         if not arc_id or not target_phrase \
                 or kind not in ("polish", "replace", "emphasize") \
                 or decision not in ("approved", "dismissed"):
             return False
-        try:
-            self.client.table("ideal_decision_ledger").upsert({
-                "arc_id": str(arc_id),
-                "kind": kind,
-                "target_phrase": target_phrase,
-                "display_phrase": display_phrase,
-                "replacement_text": replacement_text,
-                "decision": decision,
-                "source": source,
-                "snippet_id": snippet_id,
-                "version": version,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }, on_conflict="arc_id,kind,target_phrase").execute()
-            return True
-        except Exception as e:
-            _e = str(e).lower()
-            if "ideal_decision_ledger" in _e and (
-                "does not exist" in _e or "pgrst" in _e
-            ):
-                logger.warning(
-                    "upsert_ideal_decision: table missing (run "
-                    "migrations/add_ideal_decision_ledger.sql)")
+        payload = {
+            "arc_id": str(arc_id),
+            "kind": kind,
+            "target_phrase": target_phrase,
+            "display_phrase": display_phrase,
+            "replacement_text": replacement_text,
+            "decision": decision,
+            "source": source,
+            "snippet_id": snippet_id,
+            "version": version,
+            "slide_index": slide_index,
+            "lane_class": lane_class,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        for _attempt in (1, 2):
+            try:
+                self.client.table("ideal_decision_ledger").upsert(
+                    payload, on_conflict="arc_id,kind,target_phrase"
+                ).execute()
+                return True
+            except Exception as e:
+                _e = str(e).lower()
+                if _attempt == 1 and ("slide_index" in _e
+                                      or "lane_class" in _e):
+                    logger.warning(
+                        "upsert_ideal_decision: intent columns missing "
+                        "(run migrations/add_ideal_decision_intent_key"
+                        ".sql) — writing the phrase key only arc=%s",
+                        arc_id)
+                    payload.pop("slide_index", None)
+                    payload.pop("lane_class", None)
+                    continue
+                if "ideal_decision_ledger" in _e and (
+                    "does not exist" in _e or "pgrst" in _e
+                ):
+                    logger.warning(
+                        "upsert_ideal_decision: table missing (run "
+                        "migrations/add_ideal_decision_ledger.sql)")
+                    return False
+                logger.warning("upsert_ideal_decision failed arc=%s: %s",
+                               arc_id, e)
                 return False
-            logger.warning("upsert_ideal_decision failed arc=%s: %s",
-                           arc_id, e)
-            return False
+        return False
 
     def delete_moment_suggestion(self, snippet_id: Optional[str]) -> bool:
         """Drop one star row — a DISMISSED star must not survive to the

@@ -69,6 +69,40 @@ def ledger_keys(rows: Any) -> set:
     return out
 
 
+def lane_class(kind: Any, *, source: Any = None, why: Any = None) -> str:
+    """The deterministic suggestion CLASS a decision belongs to — §12.3's
+    lane-class, the BE half of the deck's Clarity/Flow/Style/Delivery
+    mapping (FE: displayKind in displayKind.ts; the contract test pins the
+    two against each other). Internal vocabulary only — never surfaced.
+
+    Same precedence as the FE: source before kind (an acoustic swap is
+    kind='replace' but IS the delivery lane), kind before why."""
+    if source == "acoustic_swap":
+        return "delivery"
+    if kind in ("emphasize", "bold"):
+        return "style"
+    if kind == "advice":
+        return "flow"
+    if why in ("energy", "steadiness", "coverage", "overall"):
+        return "flow"
+    return "clarity"
+
+
+def intent_keys(rows: Any) -> set:
+    """{(slide_index, lane_class)} over ANY decision that knows where it
+    was made — §12.3's INTENT key. A declined Clarity on slide 2 blocks
+    every future Clarity on slide 2, however the phrasing drifts (the
+    phrase key catches nothing once the LLM rewords — field report #4).
+    Rows from before the intent columns (NULL location/class) contribute
+    nothing here and keep their phrase-key behavior exactly."""
+    out = set()
+    for r in (rows or []):
+        si, lc = r.get("slide_index"), r.get("lane_class")
+        if isinstance(si, int) and not isinstance(si, bool) and lc:
+            out.add((si, lc))
+    return out
+
+
 def bake_piece(text: str, approved_rows: Any) -> str:
     """Apply the APPROVED decisions to one piece of assembled text —
     rule 1. Replaces/polishes swap the phrase for its replacement;
@@ -128,7 +162,8 @@ def bake_piece(text: str, approved_rows: Any) -> str:
 def record_star_decision(database, arc_id: Any, *, suggestion: Any,
                          target: str, action: str, target_text: Any,
                          snippet_id: Any = None,
-                         version: Any = None) -> bool:
+                         version: Any = None,
+                         slide_index: Any = None) -> bool:
     """Feedback-time write — maps one star tap onto the ledger:
       applied   → approved (bakes from the next assembly on)
       dismissed → dismissed (never offered again)
@@ -157,6 +192,12 @@ def record_star_decision(database, arc_id: Any, *, suggestion: Any,
             return bool(database.delete_ideal_decision(
                 str(arc_id), kind, norm))
         decision = "approved" if action == "applied" else "dismissed"
+        # §12.3 — the INTENT key rides every new decision: WHERE it was
+        # made (the snippet's slide — the only cross-take location) and
+        # WHICH class was decided. The phrase key above stays for the bake
+        # and history; these two are what the generation gate blocks on.
+        _si = slide_index if isinstance(slide_index, int) \
+            and not isinstance(slide_index, bool) else None
         return bool(database.upsert_ideal_decision(
             arc_id=str(arc_id), kind=kind, target_phrase=norm,
             display_phrase=phrase_raw,
@@ -164,7 +205,10 @@ def record_star_decision(database, arc_id: Any, *, suggestion: Any,
                               if kind != "emphasize" else None),
             decision=decision, source="user_star",
             snippet_id=(str(snippet_id) if snippet_id else None),
-            version=(version if isinstance(version, int) else None)))
+            version=(version if isinstance(version, int) else None),
+            slide_index=_si,
+            lane_class=lane_class(kind, source=sug.get("trigger"),
+                                  why=sug.get("why"))))
     except Exception as e:
         logger.warning("ideal_ledger: record failed arc=%s: %s", arc_id, e)
         return False
