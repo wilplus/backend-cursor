@@ -28,6 +28,7 @@ from services import manager_engine as me
 from services.ideal_text_parts import (
     ACCENTUATION,
     COMPOSITION,
+    pinned_parts,
     MAX_DOCUMENT_CHARS,
     MAX_PARTS,
     InvalidParts,
@@ -1210,3 +1211,105 @@ class SeedOnLock(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAnchorRule(unittest.TestCase):
+    """SPEC §12.1 (founder 2026-08-14): 'Typed words are invincible.' A
+    locked part is a hard immutable anchor; the machine aligns around it,
+    never through it — and its words can never serve twice."""
+
+    def _rows(self, *specs):
+        return [{"id": _id(), "ord": i, "text": t,
+                 "locked_at": "2026-08-14T00:00:00Z" if lk else None}
+                for i, (t, lk) in enumerate(specs)]
+
+    def test_a_moved_locked_paragraph_serves_ONCE_under_its_lock(self):
+        # THE DUPLICATION KILL. The machine kept the locked words but moved
+        # them to the end. The old positional path pinned them at slot 1
+        # AND served the machine's copy as a fresh paragraph — the same
+        # words twice, one locked, one not. The anchor pass makes the lock
+        # travel with its words.
+        rows = self._rows(("Open one.", False), ("MY TYPED WORDS.", True),
+                          ("Open two.", False))
+        lock_id = rows[1]["id"]
+        out = compose_locked(
+            "Fresh open one.\n\nFresh open two.\n\nMY TYPED WORDS.", rows)
+        self.assertEqual(
+            out["text"],
+            "Fresh open one.\n\nFresh open two.\n\nMY TYPED WORDS.")
+        locked = [p for p in out["parts"] if p["locked"]]
+        self.assertEqual(len(locked), 1)
+        self.assertEqual(locked[0]["id"], lock_id)
+        self.assertEqual(out["text"].count("MY TYPED WORDS."), 1)
+
+    def test_anchored_locks_let_every_open_paragraph_refresh(self):
+        # All locks anchored → regions refresh independently, even when
+        # EVERY open paragraph changed AND the counts diverged (the old
+        # flat diff bundled this into one replace opcode and pinned all).
+        rows = self._rows(("Old a.", False), ("KEPT LOCK.", True),
+                          ("Old b.", False))
+        out = compose_locked(
+            "New a1.\n\nNew a2.\n\nKEPT LOCK.\n\nNew b.", rows)
+        self.assertEqual(out["text"],
+                         "New a1.\n\nNew a2.\n\nKEPT LOCK.\n\nNew b.")
+        self.assertEqual([p["locked"] for p in out["parts"]],
+                         [False, False, True, False])
+
+    def test_mixed_anchoring_pins_the_previous_state(self):
+        # One lock's words survive in the machine text, the other's are
+        # gone. Placing the unfound one relative to the found one is a
+        # guess → the previous composed state serves wholesale.
+        rows = self._rows(("LOCK ONE.", True), ("LOCK TWO.", True))
+        out = compose_locked("LOCK ONE.\n\nEntirely new words.", rows)
+        self.assertEqual(out["text"], "LOCK ONE.\n\nLOCK TWO.")
+        self.assertEqual([p["locked"] for p in out["parts"]], [True, True])
+
+    def test_twin_locks_with_one_machine_copy_pin(self):
+        # Two locks with identical text, one machine copy: the first
+        # anchors, the second cannot — mixed → pinned, never a guess about
+        # which twin the machine kept.
+        rows = self._rows(("SAME WORDS.", True), ("SAME WORDS.", True))
+        out = compose_locked("SAME WORDS.", rows)
+        self.assertEqual(out["text"], "SAME WORDS.\n\nSAME WORDS.")
+        self.assertEqual(len([p for p in out["parts"] if p["locked"]]), 2)
+
+    def test_every_branch_upholds_the_invariant(self):
+        # Whatever path composes, every locked part reaches the output
+        # exactly once with id and text intact.
+        cases = [
+            ("One NEW.\n\nMachine rework.\n\nThree NEW.",       # positional
+             self._rows(("One old.", False), ("PINNED.", True),
+                        ("Three old.", False))),
+            ("Just one paragraph now.",                          # flat diff
+             self._rows(("Old a.", False), ("PINNED.", True),
+                        ("Old b.", False))),
+            ("PINNED.\n\nNew tail.",                             # anchored
+             self._rows(("PINNED.", True), ("Old tail.", False))),
+        ]
+        for base, rows in cases:
+            want = [(r["id"], r["text"]) for r in rows if r["locked_at"]]
+            out = compose_locked(base, rows)
+            got = [(p["id"], p["text"]) for p in out["parts"]
+                   if p["locked"]]
+            self.assertEqual(got, want, f"base={base!r}")
+
+
+class TestPinnedParts(unittest.TestCase):
+    """§12.1's failed-rebuild fallback for the route: when compose RAISES,
+    the previous composed state serves — never the raw machine text with
+    every lock invisible."""
+
+    def test_locked_rows_pin(self):
+        rows = [{"id": _id(), "ord": 0, "text": "Open.", "locked_at": None},
+                {"id": _id(), "ord": 1, "text": "LOCKED.",
+                 "locked_at": "2026-08-14T00:00:00Z"}]
+        out = pinned_parts(rows)
+        self.assertEqual(out["text"], "Open.\n\nLOCKED.")
+        self.assertFalse(out["changed"])
+        self.assertEqual([p["locked"] for p in out["parts"]], [False, True])
+
+    def test_nothing_to_pin_is_none(self):
+        self.assertIsNone(pinned_parts([]))
+        self.assertIsNone(pinned_parts(None))
+        self.assertIsNone(pinned_parts(
+            [{"id": _id(), "ord": 0, "text": "Open.", "locked_at": None}]))

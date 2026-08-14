@@ -391,3 +391,55 @@ class LivingTranscriptProvenanceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(Flask is None, f"flask/app import failed: {_IMPORT_ERROR}")
+class ComposeFailureFallbackTests(unittest.TestCase):
+    """SPEC §12.1 (founder 2026-08-14): a compose exception used to serve
+    the RAW machine text — stored parts no longer joined, the parts block
+    dropped off the wire, every lock invisible in one GET (field report
+    #5). Now the pinned stored composition serves instead."""
+
+    def test_compose_exception_serves_the_pinned_state_with_its_locks(self):
+        app = Flask(__name__)
+        sessions = [_sess("t1", 1, presentation_ref=DECK)]
+        row = _row(auto_text="Machine text after a new take.")
+        locked_rows = [
+            {"id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "ord": 0,
+             "text": "MY TYPED WORDS.",
+             "locked_at": "2026-08-14T00:00:00Z"},
+        ]
+        with app.test_request_context():
+            request.user_id = "u1"
+            with patch.dict(os.environ,
+                            {"LIVING_TRANSCRIPT_ENABLED": "1"}), \
+                 patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
+                       return_value=(True, sessions)), \
+                 patch("routes.v2.explore_ideal_text._moments_entitled",
+                       return_value=False), \
+                 patch("routes.v2.explore_ideal_text."
+                       "_moment_explanations_map", return_value={}), \
+                 patch("routes.v2.explore_ideal_text._ideal_save_state",
+                       return_value={}), \
+                 patch("routes.v2.explore_ideal_text."
+                       "_tracked_changes_block", return_value={}), \
+                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                              return_value=row), \
+                 patch.object(v2.db, "get_user_ideal_edit",
+                              return_value=None), \
+                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                              return_value=None), \
+                 patch.object(v2.db, "get_ideal_text_parts",
+                              return_value=locked_rows, create=True), \
+                 patch("services.ideal_text_parts.compose_locked",
+                       side_effect=RuntimeError("alignment blew up")):
+                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+            resp, status = out if isinstance(out, tuple) else (out, 200)
+            body = resp.get_json()
+        self.assertEqual(status, 200)
+        # The pinned composition — NOT the raw machine text.
+        self.assertEqual(body["text"], "MY TYPED WORDS.")
+        # And the lock is still on the wire.
+        parts = body.get("parts")
+        self.assertIsNotNone(parts)
+        self.assertEqual([p["locked"] for p in parts], [True])

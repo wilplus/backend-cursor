@@ -475,6 +475,7 @@ def v2_explore_get_ideal_text(arc_id):
         # into a locked paragraph's machine words simply fail to match and
         # drop — which IS the per-paragraph star fence, mechanically. ──
         _composed = None
+        _p_rows = None
         try:
             from services.ideal_text_parts import compose_locked
             _p_rows = db.get_ideal_text_parts(
@@ -500,8 +501,26 @@ def v2_explore_get_ideal_text(arc_id):
                         logger.warning(
                             "compose: parts not persisted arc=%s", arc_id)
         except Exception as _cmp_err:
-            logger.warning("compose failed arc=%s: %s", arc_id, _cmp_err)
-            _composed = None
+            # §12.1 (founder 2026-08-14): a compose failure used to fall
+            # through to the RAW machine text — the stored parts no longer
+            # joined to it, the parts block dropped off the wire, and every
+            # lock went invisible in one GET while the new take's
+            # suggestions attached to unprotected text (field report #5).
+            # A rebuild that cannot place the locks is a FAILED rebuild:
+            # the previous composed state serves instead.
+            logger.error(
+                "compose failed arc=%s: %s — serving the pinned stored "
+                "composition (§12.1 failed-rebuild rule)", arc_id, _cmp_err)
+            try:
+                from services.ideal_text_parts import pinned_parts
+                _composed = pinned_parts(_p_rows)
+                if _composed is not None:
+                    _text = _composed["text"]
+            except Exception as _pin_err:
+                logger.error(
+                    "compose pin fallback ALSO failed arc=%s: %s — locks "
+                    "will be invisible this read", arc_id, _pin_err)
+                _composed = None
         _has_expl = _moment_explanations_map(
             [m.get("take_session_id") for m in _moments])
         _playback = _moment_playback_map(
@@ -1305,6 +1324,17 @@ def _ideal_parts_block(arc_id, user_id, served_text) -> dict:
         if parts is None:
             return {}
         if not agrees_with_text(parts, served_text):
+            # Dropping OPEN parts here is routine staleness. Dropping a
+            # LOCK is not — every lock on this document just went invisible
+            # for this read, which is field report #5's shape. Under the
+            # §12.1 compose fallback the served text always agrees when
+            # locks exist, so this firing means a path skipped compose:
+            # say so loudly instead of degrading in silence.
+            if any(p.get("locked") for p in parts):
+                logger.error(
+                    "ideal parts: %d stored parts (WITH locks) no longer "
+                    "join to the served text arc=%s — locks invisible this "
+                    "read (§12.1)", len(parts), arc_id)
             return {}
         return {"parts": parts}
     except Exception as e:
@@ -1345,6 +1375,17 @@ def _locked_parts(arc_id, user_id, served_text) -> list:
         rows = db.get_ideal_text_parts(arc_id, user_id, with_lock=True)
         parts = serve(rows)
         if not parts or not agrees_with_text(parts, served_text):
+            # [] = "no locks to enforce" — R1 then filters NOTHING, and a
+            # composition suggestion can land on a locked paragraph. When
+            # the dropped parts actually carried a lock, that is field
+            # report #5's second half; the §12.1 compose fallback makes the
+            # served text agree whenever locks exist, so a firing here is a
+            # path that skipped compose — log it at error, not silence.
+            if parts and any(p.get("locked") for p in parts):
+                logger.error(
+                    "locked parts: %d stored parts (WITH locks) do not "
+                    "join to the served text arc=%s — layer filter runs "
+                    "EMPTY this read (§12.1)", len(parts), arc_id)
             return []
         # `serve` carries the boolean for the wire; the layer filter reads
         # `locked_at`, so hand it the raw column rather than a second name for
