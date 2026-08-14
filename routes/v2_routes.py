@@ -82,6 +82,7 @@ from routes.v2.arcs import (  # noqa: F401 — re-exported for import compat
     v2_arc_snippet_library,
     v2_arc_unlock,
     v2_explore_arc_best_presentation,
+    v2_explore_arc_voice_album,
     v2_explore_arc_breakthroughs,
     v2_explore_arc_edit_slide,
     v2_explore_arc_feedback,
