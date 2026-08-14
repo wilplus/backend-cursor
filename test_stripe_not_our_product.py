@@ -51,7 +51,7 @@ def tearDownModule():
 OURS = "price_ours"
 FOREIGN = "price_someone_elses"
 CREDITS_MAP = '{"price_ours": 25}'
-TIER_MAP = '{"price_starter":"starter","price_pro":"pro"}'
+TIER_MAP = '{"price_practice":"practice","price_coached":"coached"}'
 
 
 class _Cfg:
@@ -164,7 +164,7 @@ class CreditsRetiredTests(unittest.TestCase):
         checkout.session.completed too, and it lands right here."""
         class _NoCredits(_Cfg):
             STRIPE_CHECKOUT_PRICE_CREDITS_JSON = ""
-        sub_session = _session(["price_pro"], user_id="u1")
+        sub_session = _session(["price_coached"], user_id="u1")
         sub_session["mode"] = "subscription"
         res, _ = self._apply(_NoCredits, sub_session)
         self.assertTrue(res.ok)
@@ -214,7 +214,7 @@ class ForeignSubscriptionTests(unittest.TestCase):
     def test_our_tier_without_a_user_still_reports_missing_user_id(self):
         """This is the bare-Payment-Link renewal failure. It must stay loud."""
         from services.stripe_subscription_tiers import apply_subscription_event
-        out = apply_subscription_event(self._event("price_pro"), TIER_MAP)
+        out = apply_subscription_event(self._event("price_coached"), TIER_MAP)
         self.assertFalse(out["handled"])
         self.assertEqual(out["reason"], "missing_user_id")
 
@@ -251,13 +251,13 @@ class TierCheckoutTests(unittest.TestCase):
         every renewal from month two arrives unattributable and grants zero —
         while checkout and the first payment look perfectly fine."""
         cap: dict = {}
-        res = self._create("pro", cap)
+        res = self._create("coached", cap)
         self.assertTrue(res.ok)
         sub_meta = (cap.get("subscription_data") or {}).get("metadata") or {}
         self.assertEqual(sub_meta.get("user_id"), "user-123",
                          "renewals will grant nothing without this")
         self.assertEqual(cap.get("mode"), "subscription")
-        self.assertEqual(cap["line_items"][0]["price"], "price_pro")
+        self.assertEqual(cap["line_items"][0]["price"], "price_coached")
         # and the session-level copies, for checkout.session.completed
         self.assertEqual(cap.get("client_reference_id"), "user-123")
         self.assertEqual((cap.get("metadata") or {}).get("user_id"), "user-123")
@@ -277,8 +277,8 @@ class TierCheckoutTests(unittest.TestCase):
         from services.tier_checkout import create_tier_checkout_session
 
         class _NoMax(_Cfg):
-            STRIPE_PRICE_TIER_JSON = '{"price_starter":"starter"}'
-        res = create_tier_checkout_session(user_id="u1", tier="max",
+            STRIPE_PRICE_TIER_JSON = '{"price_practice":"practice"}'
+        res = create_tier_checkout_session(user_id="u1", tier="intensive",
                                            app_config=_NoMax)
         self.assertFalse(res.ok)
         self.assertEqual(res.payload["code"], "MISCONFIGURED")
@@ -322,7 +322,7 @@ class SecondSubscriptionTests(unittest.TestCase):
         return {"balance": 1, "tier": plan.get("tier", "free"), "plan": plan}
 
     def test_same_tier_is_a_calm_no_op_not_a_second_charge(self):
-        res = self._create("pro", self._acct(managed=True, tier="pro"))
+        res = self._create("coached", self._acct(managed=True, tier="coached"))
         self.assertFalse(res.ok)
         self.assertEqual(res.http_status, 409)
         self.assertEqual(res.payload["code"], "ALREADY_ON_TIER")
@@ -330,7 +330,7 @@ class SecondSubscriptionTests(unittest.TestCase):
     def test_a_different_tier_is_sent_to_the_portal_to_SWITCH(self):
         """Not a refusal to change plan — a refusal to change it by buying a
         second one. The portal is where a switch happens."""
-        res = self._create("pro", self._acct(managed=True, tier="starter"))
+        res = self._create("coached", self._acct(managed=True, tier="practice"))
         self.assertFalse(res.ok)
         self.assertEqual(res.http_status, 409)
         self.assertEqual(res.payload["code"], "MANAGE_EXISTING")
@@ -340,21 +340,21 @@ class SecondSubscriptionTests(unittest.TestCase):
         returns the 'free' default, so every managed user looks like a tier
         mismatch: ALREADY_ON_TIER could never fire and re-tapping your own plan
         reported MANAGE_EXISTING instead."""
-        res = self._create("starter", self._acct(managed=True, tier="starter"))
+        res = self._create("practice", self._acct(managed=True, tier="practice"))
         self.assertEqual(res.payload["code"], "ALREADY_ON_TIER")
 
     def test_an_unmanaged_tier_still_sells(self):
         """Everyone on free — the whole point of the endpoint."""
-        res = self._create("pro", self._acct(managed=False, tier="free"))
+        res = self._create("coached", self._acct(managed=False, tier="free"))
         self.assertTrue(res.ok)
-        self.assertEqual(res.payload["tier"], "pro")
+        self.assertEqual(res.payload["tier"], "coached")
 
     def test_an_unreadable_account_sells_rather_than_blocking_the_sale(self):
         """Refuse only on POSITIVE knowledge of a live subscription. An
         unreadable account, and every database where add_subscription_state.sql
         has not run yet, must not become 'nobody can subscribe'."""
-        self.assertTrue(self._create("pro", None).ok)
-        self.assertTrue(self._create("pro", {}).ok)
+        self.assertTrue(self._create("coached", None).ok)
+        self.assertTrue(self._create("coached", {}).ok)
 
 
 class BillingPortalTests(unittest.TestCase):

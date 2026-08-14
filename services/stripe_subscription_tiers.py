@@ -57,10 +57,21 @@ def parse_price_tier_map(raw: str) -> dict[str, str]:
     if not isinstance(parsed, dict):
         logger.warning("STRIPE_PRICE_TIER_JSON must be an object")
         return {}
+    # VALIDATED AGAINST THE TIER TABLE, never a hardcoded list. This used to
+    # read `if tier in ("free", "starter", "pro", "max")`, which is the same
+    # defect as a hardcoded ladder in the frontend and strictly worse in its
+    # consequences: the day a new tier is sold, its price id maps to a tier
+    # this parser has never heard of, the entry is dropped with a warning, and
+    # the renewal webhook grants NOTHING to someone who has just been charged.
+    #
+    # TIERS (not SOLD_TIERS) is the right gate here: a retired tier must still
+    # resolve, because existing subscriptions on it keep renewing.
+    from services.token_prices import TIERS
+
     out: dict[str, str] = {}
     for k, v in parsed.items():
         tier = str(v).strip().lower()
-        if tier in ("free", "starter", "pro", "max"):
+        if tier in TIERS:
             out[str(k).strip()] = tier
         else:
             logger.warning("STRIPE_PRICE_TIER_JSON: unknown tier %r for %s",

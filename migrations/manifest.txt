@@ -309,3 +309,4 @@
 0271	add_ideal_decision_intent_key.sql
 0272	add_voice_album.sql
 0273	add_label_quorum_ledger.sql
+0274	add_pricing_v3_tiers.sql

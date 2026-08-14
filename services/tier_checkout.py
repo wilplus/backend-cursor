@@ -73,15 +73,20 @@ def create_tier_checkout_session(
     """Open a Stripe Checkout Session for a recurring token tier."""
     import stripe
 
-    from services.token_prices import TIERS
+    from services.token_prices import SOLD_TIERS
 
+    # SOLD_TIERS, not TIERS. A retired tier still RESOLVES (an existing
+    # subscription's renewal webhook has to grant something), but nothing may
+    # open a NEW subscription on one — so the buyable set is the sales sheet,
+    # never the full tier table.
+    sellable = tuple(t for t in SOLD_TIERS if t != "free")
     tier = (tier or "").strip().lower()
-    if tier not in TIERS or tier == "free":
+    if tier not in sellable:
         # 'free' is not purchasable — it is the default state, granted by the
         # period roll, and offering it for sale would create a $0 subscription.
         return TierCheckoutResult.error(
             400, "INVALID_TIER",
-            f"tier must be one of: {', '.join(t for t in TIERS if t != 'free')}")
+            f"tier must be one of: {', '.join(sellable)}")
 
     if not (user_id or "").strip():
         return TierCheckoutResult.error(400, "INVALID_INPUT", "user_id is required")

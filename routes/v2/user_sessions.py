@@ -1727,7 +1727,13 @@ def _build_user_session_status(user_id):
     the display price AND its live credits cost (see arc_entitlement.audit_price).
     """
     from services.arc_entitlement import is_arc_entitled, audit_price
-    credits = int(db.v2_ensure_credits_initialized(str(user_id)))
+    # CREDITS ARE RETIRED (tokens only). This used to call
+    # v2_ensure_credits_initialized, which SEEDED 25 credits into
+    # v2_student_details for every account that had never been touched — a
+    # live write, on a live read path, in a currency nothing spends any more.
+    # The key stays on the payload at 0 so an older client parsing it does
+    # not trip; no FE code reads it.
+    credits = 0
 
     audit_paid = False
     if is_admin(user_id) or is_coach(user_id):

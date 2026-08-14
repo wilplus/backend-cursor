@@ -40,6 +40,7 @@ from routes.v2.arcs import (
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.rate_limits import llm_limit
+from services.token_prices import price_of as _price_of
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -758,9 +759,10 @@ def v2_explore_get_ideal_text(arc_id):
             "decision_history": db.list_intervention_decision_history(
                 arc_id),
             # The moments-unlock price, top level (the FE reads it here
-            # for the locked-moment prompt — the only paid item).
-            "price_credits": int(getattr(
-                config, "MOMENTS_UNLOCK_CREDITS", 5) or 5),
+            # for the locked-moment prompt — the only paid item). TOKENS:
+            # this used to serve `price_credits` from a retired currency's
+            # constant while the charge itself was 2,500 tokens.
+            "price_tokens": _price_of("moment_explanation"),
             # The personal notebook copy — free with the text now.
             "notes_text": _notes, "notes": _notes, "user_notes": _notes,
         }), 200

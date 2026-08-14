@@ -269,7 +269,9 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
         self.assertEqual(body["text"], "machine text")
         self.assertFalse(body["moments_unlocked"])
         self.assertEqual(body["notes_text"], "notes")
-        self.assertEqual(body["price_credits"], 5)   # FE reads this top-level
+        # TOKENS now: the body used to quote a retired currency at the
+        # wrong magnitude (5 credits vs a 2,500-token charge).
+        self.assertEqual(body["price_tokens"], 2_500)
         self.assertNotIn("paywall", body)
 
     def test_verified_serves_the_snapshot(self):
@@ -650,7 +652,7 @@ class MomentsUnlockTests(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class MomentExplanationGetTests(unittest.TestCase):
     """The FE contract pin: per-moment GET at
-    /v2/explore/arc/<id>/moments/<moment_id>; the 402 carries price_credits."""
+    /v2/explore/arc/<id>/moments/<moment_id>; the 402 carries price_tokens."""
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -684,7 +686,7 @@ class MomentExplanationGetTests(unittest.TestCase):
         body, status = self._get(entitled=False)
         self.assertEqual(status, 402)
         self.assertEqual(body["code"], "MOMENTS_LOCKED")
-        self.assertEqual(body["price_credits"], 5)
+        self.assertEqual(body["price_tokens"], 2_500)
 
     def test_entitled_serves_flat_note_and_video_ref(self):
         body, status = self._get(entitled=True)
