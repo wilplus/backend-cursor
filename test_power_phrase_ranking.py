@@ -88,8 +88,7 @@ class ConfidenceTermTests(unittest.TestCase):
         self.assertEqual(
             power_score(activation=0.5, slide_stickiness=0.3, tag="strong"),
             power_score(activation=0.5, slide_stickiness=0.3, tag="strong",
-                        panel_confidence=None, machine_confidence=None,
-                        album_quorum=False),
+                        panel_confidence=None, machine_confidence=None),
         )
 
     def test_an_assured_delivery_outranks_an_unsure_one(self):
@@ -149,14 +148,28 @@ class OrderingOfAuthorityTests(unittest.TestCase):
                                                  "quality": 1.0}))
         self.assertGreater(gap, swing)
 
-    def test_the_quorum_bonus_is_the_top_automatic_signal(self):
-        quorum = power_score(activation=0.3, album_quorum=True)
-        loud = power_score(activation=0.9, machine_confidence=1.0)
-        self.assertGreater(quorum, loud)
+    def test_the_quorum_bonus_is_GONE_not_ignored(self):
+        """Founder verdict, 2026-08-13 evening: `_W_B` deleted outright — a
+        ghost of the retired charisma system whose re-pointed quorum no
+        production data could satisfy. Same rule as the other retired kwargs:
+        a stale caller raises rather than silently no-ops."""
+        with self.assertRaises(TypeError):
+            power_score(activation=0.3, album_quorum=True)
 
-    def test_the_quorum_bonus_sits_below_the_coach_gap(self):
+    def test_no_combination_of_automatic_terms_crosses_the_coach_gap(self):
+        """Deleting the bonus is what made §7.1 arithmetically TRUE. The
+        audit's counterexample — to_work_on + quorum + positive panel beating
+        strong + negative panel — is now impossible: the automatic maximum is
+        the full panel swing plus content, strictly under the 4.0 gap."""
         gap = (power_score(tag="strong") - power_score(tag="to_work_on"))
-        self.assertGreater(gap, power_score(album_quorum=True))
+        best_auto = power_score(
+            tag="to_work_on", activation=1.0, slide_stickiness=1.0,
+            panel_confidence={"value": 1.0, "quality": 1.0})
+        worst_human = power_score(
+            tag="strong", activation=0.0, slide_stickiness=0.0,
+            panel_confidence={"value": -1.0, "quality": 1.0})
+        self.assertGreater(gap, 3.0)
+        self.assertGreater(worst_human, best_auto - gap)  # coach still decides
 
 
 if __name__ == "__main__":
