@@ -11602,6 +11602,85 @@ class DatabaseService:
                 return False
         return False
 
+    def insert_voice_album_entry(self, *, arc_id: str, snippet_id: str,
+                                 take_session_id: Optional[str] = None,
+                                 slide_index: Optional[int] = None) -> bool:
+        """One album entry (SPEC F2 / founder 2026-08-14) — insert-if-
+        missing on (arc, snippet); an existing entry is left untouched
+        (append-only capture). Best-effort; False pre-migration."""
+        if not arc_id or not snippet_id:
+            return False
+        try:
+            self.client.table("voice_album").upsert({
+                "arc_id": str(arc_id),
+                "snippet_id": str(snippet_id),
+                "take_session_id": take_session_id,
+                "slide_index": slide_index,
+            }, on_conflict="arc_id,snippet_id",
+                ignore_duplicates=True).execute()
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "voice_album" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "insert_voice_album_entry: table missing (run "
+                    "migrations/add_voice_album.sql) arc=%s", arc_id)
+                return False
+            logger.warning("insert_voice_album_entry failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def delete_voice_album_entry(self, *, arc_id: str,
+                                 snippet_id: str) -> bool:
+        """Remove one album entry — the MIRROR ruling (founder
+        2026-08-14): a withdrawn signal (a reverted approval) removes the
+        moment; the album reflects current state, never a graveyard of
+        changed minds. Best-effort."""
+        if not arc_id or not snippet_id:
+            return False
+        try:
+            (self.client.table("voice_album")
+             .delete()
+             .eq("arc_id", str(arc_id))
+             .eq("snippet_id", str(snippet_id))
+             .execute())
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "voice_album" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return False
+            logger.warning("delete_voice_album_entry failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
+    def list_voice_album(self, arc_id: Optional[str]) -> list:
+        """All album entries for an arc, oldest first. [] pre-migration /
+        on hiccup — the capture refresh then simply re-checks everything,
+        and the insert's on-conflict keeps it idempotent."""
+        if not arc_id:
+            return []
+        try:
+            res = (
+                self.client.table("voice_album")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .order("entered_at", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if "voice_album" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return []
+            logger.warning("list_voice_album failed arc=%s: %s", arc_id, e)
+            return []
+
     def delete_moment_suggestion(self, snippet_id: Optional[str]) -> bool:
         """Drop one star row — a DISMISSED star must not survive to the
         next serve/anchor pass (founder 2026-07-20 rule 2; the ledger
