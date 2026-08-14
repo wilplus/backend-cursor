@@ -861,6 +861,37 @@ class LedgerGenerationFilterTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ConfidentVoiceDeterministicTests(unittest.TestCase):
+    """The Confident Voice card (founder mini-brief 2026-08-14, §17
+    acoustic-confidence-v1): purely positive, founder-signed body, NO LLM
+    — deterministic and free."""
+
+    def test_confident_emphasize_skips_the_llm_and_stores_signed_copy(self):
+        from services import moment_suggestions as ms
+        db = LedgerGenerationFilterTests._Db([])
+        db.confident_snippets = ("s1",)
+        readout = {"snippets": [
+            {"id": "s1", "transcript": "the words that landed",
+             "acoustic_read": {"potentiometer": 0.9}},
+        ]}
+
+        def _boom(**kwargs):
+            raise AssertionError("the Confident Voice card must not "
+                                 "ride an LLM call")
+
+        stored = []
+        db.upsert_moment_suggestion = (
+            lambda snip, arc, kind, repl, why, trig:
+            stored.append((snip, kind, repl, why, trig)) or True)
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value=readout), \
+             patch("services.llm.chat_complete", side_effect=_boom):
+            ms.generate_for_session("sess-1", ARC, database=db)
+        self.assertEqual(stored, [("s1", "emphasize", None,
+                                   ms.CONFIDENT_VOICE_WHY, "confident")])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class IntentKeyGenerationFilterTests(unittest.TestCase):
     """§12.3 (founder 2026-08-14) — the phrase-drift zombie kill. Take 2
     rewords the snippet, the normalized phrase no longer matches the
@@ -963,9 +994,13 @@ class ContextDocumentReachesGenerationTests(unittest.TestCase):
         def get_snippets_by_session(self, sid):
             # The star lane reads the CONFIDENCE composite from the snippet
             # rows rather than the readout — see the fence note in
-            # services/moment_suggestions.py.
+            # services/moment_suggestions.py. UNCONFIDENT on purpose since
+            # the Confident Voice card went deterministic (founder
+            # 2026-08-14): a confident read no longer calls the LLM at
+            # all, and these tests exist to inspect the PROMPT — the
+            # replace path is where a prompt still exists to inspect.
             return [{"id": "s1", "metrics": {"voice_confidence": {
-                "score": 0.9, "version": "voice-confidence-v2"}}}]
+                "score": -0.9, "version": "voice-confidence-v2"}}}]
 
     def _run(self, db):
         from services import moment_suggestions as ms
@@ -978,7 +1013,7 @@ class ContextDocumentReachesGenerationTests(unittest.TestCase):
         def _capture(**kwargs):
             captured.append(kwargs.get("user") or "")
             return type("R", (), {"parsed": {"why": "Plain and strong.",
-                                             "replacement": None},
+                                             "replacement": "steadier words"},
                                   "text": ""})()
 
         with patch("services.lab_recording.build_readout_from_session",

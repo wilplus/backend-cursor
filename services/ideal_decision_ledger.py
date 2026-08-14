@@ -79,6 +79,12 @@ def lane_class(kind: Any, *, source: Any = None, why: Any = None) -> str:
     kind='replace' but IS the delivery lane), kind before why."""
     if source == "acoustic_swap":
         return "delivery"
+    if source in ("confident", "charisma", "confident_voice"):
+        # The Confident Voice card (§17 acoustic-confidence-v1) — its own
+        # intent class: a decided one blocks re-serving on that slide
+        # without touching the style lane's pairs. Both trigger
+        # vocabularies + the served source name all land here.
+        return "confident_voice"
     if kind in ("emphasize", "bold"):
         return "style"
     if kind == "advice":

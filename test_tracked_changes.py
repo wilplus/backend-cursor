@@ -76,3 +76,26 @@ class LanePrecedenceTests(unittest.TestCase):
         kept = tc.drop_overlaps([self._c("acoustic_swap", 0, 20),
                                  self._c("wording", 30, 40)])
         self.assertEqual(len(kept), 2)
+
+
+class ConfidentVoiceSourceTests(unittest.TestCase):
+    """§17 acoustic-confidence-v1: the Confident Voice card gets its OWN
+    served source, so the FE can title it and key its signed body."""
+
+    def test_confident_trigger_routes_to_its_own_source(self):
+        from services.tracked_changes import _kind_and_source
+        self.assertEqual(
+            _kind_and_source({"kind": "emphasize", "trigger": "confident"}),
+            ("bold", "confident_voice"))
+        # Historical charisma-era rows stay interpretable (corpus rule).
+        self.assertEqual(
+            _kind_and_source({"kind": "emphasize", "trigger": "charisma"}),
+            ("bold", "confident_voice"))
+        # An ordinary emphasize is untouched.
+        self.assertEqual(
+            _kind_and_source({"kind": "emphasize", "trigger": None}),
+            ("bold", "wording"))
+
+    def test_confident_voice_is_a_served_source(self):
+        from services.tracked_changes import SOURCES
+        self.assertIn("confident_voice", SOURCES)

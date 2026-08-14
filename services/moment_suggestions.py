@@ -35,6 +35,12 @@ from services.prompts.moment_suggestions import STRUCT_SYSTEM as _STRUCT_SYSTEM
 # 40k chars and this rides every snippet's call, so the excerpt is bounded.
 _MAX_DOC_EXCERPT = 1200
 
+# THE CONFIDENT VOICE CARD (founder mini-brief 2026-08-14, §17
+# acoustic-confidence-v1). Purely positive, founder-signed, and
+# DETERMINISTIC — the threshold read is the detector and the body is
+# fixed copy, so no LLM rides this card and it costs nothing.
+CONFIDENT_VOICE_WHY = "You sounded incredibly confident and natural here."
+
 
 def generate_moment_suggestion(
     kind: str, transcript: str, *,
@@ -497,11 +503,16 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                            else "profanity" if has_profanity(transcript)
                            else "stickiness" if kind == "replace"
                            else "confident")
-                gen = generate_moment_suggestion(
-                    kind, transcript, audience=audience,
-                    strategic_context=strategic_context,
-                    context_document=context_document, trigger=trigger,
-                    user_id=session.get("user_id"))
+                if trigger == "confident":
+                    # Confident Voice (§17 acoustic-confidence-v1): the
+                    # signed body, no LLM call — deterministic and free.
+                    gen = {"why": CONFIDENT_VOICE_WHY, "replacement": None}
+                else:
+                    gen = generate_moment_suggestion(
+                        kind, transcript, audience=audience,
+                        strategic_context=strategic_context,
+                        context_document=context_document, trigger=trigger,
+                        user_id=session.get("user_id"))
                 if not gen:
                     _no_gen += 1
                     continue
