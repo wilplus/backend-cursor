@@ -17,7 +17,6 @@ from config import Config
 from routes.admin import is_coach
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _client_ip_from_request
-from routes.v2.user_sessions import _build_user_session_status
 from services.db import db
 
 logger = logging.getLogger(__name__)
