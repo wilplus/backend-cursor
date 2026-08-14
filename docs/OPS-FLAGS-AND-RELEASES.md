@@ -253,8 +253,9 @@ side yet" is not the same as "we turned this off because it was wrong".
 | `COACH_PREFILL_ENABLED` | coach review prefill | |
 | `DELIVERY_ALIGNMENT_ENABLED` | delivery alignment pass | |
 | `TAKE_ALIGNMENT_ENABLED` | cross-take alignment pass | |
+| *(no own flag)* — **the acoustic swap lane** (`services/swap_detector.py`, 2026-08-13) | offers this take's better delivery of a LOCKED paragraph; rides the analysis worker unconditionally after the acoustic fold; persists `moment_suggestions` rows with `trigger='acoustic_swap'`, served as `source='acoustic_swap'` | needs: a locked part + a post-0270 assembled document + an acoustic baseline; one offer max per take |
 | `TOKEN_PRICING_ENABLED` | token-priced credits | see `PRICING-TOKENS-PLAN.md` |
-| `VOICE_CONFIDENCE_RANKING_ENABLED` | voice confidence as a RANKING term | **off by decision** — ranking-inert until validated (`dimension_registry`: `conf`, `disabled_reason`) |
+| `VOICE_CONFIDENCE_RANKING_ENABLED` | **"is the MACHINE confidence fallback trusted for ranking yet"** (SPEC §7.3 re-scoped it 2026-08-13: with it off, an unlabelled clip contributes 0 for confidence; a PANEL label enters regardless, and non-ranking consumers — the star lane, the swap lane — read the stamp ungated via `stamped_score`) | **off by decision** — machine term ranking-inert until validated (`dimension_registry`: `conf`, `disabled_reason`) |
 
 ---
 

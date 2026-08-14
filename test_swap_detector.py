@@ -120,25 +120,30 @@ class CollisionTests(unittest.TestCase):
         db = self._Db({"s9": {"kind": "replace"}})
         self.assertFalse(sd._already_starred("s1", "a1", db))
 
-    def test_a_RAISING_reader_fails_closed_but_production_never_raises(self):
-        """⚠️ THIS PATH IS DEAD IN PRODUCTION, and the test name used to claim
-        the opposite. `get_moment_suggestions_by_arc` catches its own
-        exceptions and returns {} (services/db.py), so a real read failure is
-        indistinguishable from "no suggestions" and _already_starred returns
-        False — it fails OPEN, and the snippet-keyed upsert can then replace a
-        correction. Only a fake that raises reaches the guard below.
-
-        Kept as documentation of the gap rather than deleted, and renamed so it
-        stops advertising a protection the product does not have."""
+    def test_a_read_failure_FAILS_CLOSED_via_the_strict_read(self):
+        """Closed for real (2026-08-13): the reader now takes strict=True and
+        RE-RAISES on a genuine failure instead of returning {}, so a broken
+        ledger can no longer masquerade as an empty one. The guard declines
+        the offer — one lost praise beats a praise overwriting a correction
+        through the snippet-keyed upsert. This test's earlier incarnations
+        first claimed fail-closed falsely, then documented the fail-open gap;
+        this is the third and hopefully last story it has to tell."""
+        class _StrictDb:
+            def get_moment_suggestions_by_arc(self, arc_id, *, strict=False):
+                if strict:
+                    raise RuntimeError("query failed")
+                return {}
+        self.assertTrue(sd._already_starred("s1", "a1", _StrictDb()))
+        # A raising legacy double (no kwarg) also lands closed.
         self.assertTrue(sd._already_starred("s1", "a1", self._Db(explode=True)))
 
-    def test_the_REAL_reader_shape_fails_OPEN(self):
-        """The production behaviour, pinned so the gap is visible in the suite
-        rather than only in a docstring."""
-        class _SwallowingDb:          # what services/db.py actually does
-            def get_moment_suggestions_by_arc(self, arc_id):
-                return {}             # empty AND error look identical
-        self.assertFalse(sd._already_starred("s1", "a1", _SwallowingDb()))
+    def test_a_genuinely_EMPTY_ledger_still_reads_as_open(self):
+        """strict distinguishes failed from empty — it must not turn every
+        quiet arc into a blocked one."""
+        class _EmptyStrictDb:
+            def get_moment_suggestions_by_arc(self, arc_id, *, strict=False):
+                return {}
+        self.assertFalse(sd._already_starred("s1", "a1", _EmptyStrictDb()))
 
 
 class NoLockedPartsTests(unittest.TestCase):

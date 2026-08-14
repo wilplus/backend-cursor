@@ -11424,9 +11424,19 @@ class DatabaseService:
                            snippet_id, e)
             return False
 
-    def get_moment_suggestions_by_arc(self, arc_id: Optional[str]) -> dict:
+    def get_moment_suggestions_by_arc(self, arc_id: Optional[str], *,
+                                      strict: bool = False) -> dict:
         """{snippet_id: suggestion row} for one presentation. Best-effort:
         {} on missing table / error (no stars, never a break).
+
+        ``strict=True`` RE-RAISES on a real read failure instead of returning
+        {} (a genuinely missing table still returns {} — that is an empty
+        ledger, not a broken one). Exists for the ONE caller that must not
+        confuse "no suggestions" with "could not read": the swap lane's
+        collision check writes through a snippet-keyed upsert, so treating a
+        failed read as empty would let a praise offer REPLACE a correction
+        the student was about to see (audit finding: the check failed open
+        and its docstring claimed the opposite).
 
         FOLD (founder 2026-07-28, coach star-text corrections): the returned
         ``why`` / ``replacement_text`` are the coach's final WHEN one exists,
@@ -11467,6 +11477,8 @@ class DatabaseService:
                 return {}
             logger.warning("get_moment_suggestions_by_arc failed arc=%s: %s",
                            arc_id, e)
+            if strict:
+                raise
             return {}
 
     # Sentinel for set_moment_suggestion_final: "this field was not sent —

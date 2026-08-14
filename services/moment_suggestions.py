@@ -384,21 +384,21 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         _decided = 0         # decision ledger: already approved/dismissed
         _no_gen = 0          # generation returned nothing (LLM or guard)
         _errored = 0         # per-snippet exception, swallowed below
-        # ── THE SILENT ZERO (founder 2026-08-13) ──────────────────────
-        # `_unstarred` already counted the snippets this lane declined, but
-        # not WHY, and the two reasons want completely different fixes. A
-        # moment can arrive with no confidence read at all — unstamped piece,
-        # superseded weighting, or a genuine dead-zone middle — and then the
-        # EMPHASIZE branch cannot fire no matter how the words read, because
-        # its only trigger is a confident lean. That is a measurement gap.
-        # The other reason is a real decision: we measured it, it leans
-        # unconfident-or-nothing, and no replace trigger fired either.
+        # ── THE CONFIDENCE-GAP COUNTER (founder 2026-08-13, corrected same
+        # evening). One counter, not two: `resolve_suggestion_kind` returns
+        # None ONLY when confidence is None (both REPLACE triggers that do
+        # not need confidence fire regardless), so the "measured but no
+        # star" case is unreachable by construction — the audit caught the
+        # second counter as dead code and it was removed.
         #
-        # Both used to leave the same trace: nothing. This is the fourth
-        # lane this session found built-correctly-and-firing-never, and the
-        # pattern each time was a stage that declines without saying so.
+        # READ no_conf_read HONESTLY: the dead zone (voice_confidence
+        # _DEAD_ZONE=0.25) puts roughly 40-50%% of a HEALTHY take's pieces at
+        # exactly 0.0, which resolves to None here. no_conf_read ≈ seen is
+        # the NORMAL shape of a quiet, well-delivered take — it is a broken
+        # stamp only when it holds across MANY takes AND voice_metrics are
+        # otherwise present.
         _no_conf_read = 0    # no lean available (unstamped / dead zone)
-        _measured_no_star = 0  # read fine, no branch qualified
+
         # Snippets with NO acoustic star → candidates for a DELIVERY star
         # (measured, deterministic), then a STRUCTURAL star. Priority per
         # founder 2026-07-18: acoustic > delivery > structural; a snippet
@@ -424,10 +424,7 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                     confidence, transcript,
                     slide_stickiness=_stick, stickiness_max=_sticky_max)
                 if kind is None:
-                    if confidence is None:
-                        _no_conf_read += 1
-                    else:
-                        _measured_no_star += 1
+                    _no_conf_read += 1     # the only reachable reason
                     _unstarred.append((str(snip_id), transcript,
                                        snip.get("features") or {}))
                     continue
@@ -583,17 +580,13 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # acoustic/delivery/structural lanes on their own thresholds, which
         # is a legitimate outcome and now a visible one.
         #
-        # `no_conf_read` ≈ `seen` is the one line worth alerting on: it says
-        # the confidence lane measured NOTHING all take, so EMPHASIZE could
-        # not have fired whatever the speaker did. That is a broken stamp or
-        # a superseded weighting, not a quiet take.
         logger.info(
             "moment_suggestion: sid=%s arc=%s seen=%d stored=%d "
             "(no_text=%d capped=%d decided=%d no_gen=%d errored=%d) "
-            "unstarred=%d (no_conf_read=%d measured_no_star=%d)",
+            "unstarred=%d (no_conf_read=%d)",
             session_id, arc_id, _seen, stored,
             _no_text, _capped, _decided, _no_gen, _errored, len(_unstarred),
-            _no_conf_read, _measured_no_star)
+            _no_conf_read)
         return stored
     except Exception as e:
         logger.warning("moment_suggestion: session pass failed sid=%s: %s",

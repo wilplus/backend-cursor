@@ -105,6 +105,19 @@ LANE_SOURCES = (
 )
 
 
+def _collision_rank(change: Any) -> int:
+    """Founder precedence (2026-08-13): CORRECTIONS > SWAP > STYLE when two
+    changes want the same words. Lower wins a collision. Everything that is
+    not the swap lane or a style row is a correction — the safe default,
+    since the rule exists to stop praise and paint outranking a fix."""
+    c = change if isinstance(change, dict) else {}
+    if c.get("source") == "acoustic_swap":
+        return 1
+    if c.get("style_lane") or c.get("kind") == "bold":
+        return 2
+    return 0
+
+
 def lane_of(change: Any) -> Optional[str]:
     """The manager key for one change, or None when the lane is undeclared."""
     src = (change or {}).get("source") if isinstance(change, dict) else None
@@ -775,14 +788,19 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
     order, uniform priorities, a per-(user, session) stable roll), so the
     undecided members persist across refetches rather than being redrawn.
 
-    The input is sorted by (start, end) BEFORE arbitration on purpose.
-    `independent_subset` is a stable greedy sort by priority, and with today's
-    uniform priorities that makes input order the tie-break; sorting first
-    reproduces exactly the earliest-then-narrowest preference `drop_overlaps`
-    used to apply, so removing that call changes no behaviour it was
-    responsible for. Collision resolution itself now belongs to the engine,
-    which resolves transitive chains correctly (A/B/C where A and C do not
-    overlap) where a linear sweep drops one span too many.
+    The input is sorted by (LANE RANK, start, end) BEFORE arbitration, and
+    the lane rank is the founder's 2026-08-13 precedence ruling — CORRECTIONS
+    > SWAP > STYLE — finally wired into the sweep that actually runs.
+    `independent_subset` is a stable greedy sort by priority, and with
+    today's uniform priorities input order IS the collision winner; the
+    ruling first landed in `tracked_changes.drop_overlaps`, which nothing in
+    production calls (the audit's finding #4), and even there rank was
+    sorted AFTER start — the swap's span is a whole paragraph by
+    construction, so it starts earliest and won every collision before its
+    rank was read. Rank leads here for exactly that reason: a correction
+    beats an overlapping swap wherever either begins. Non-colliding rows all
+    survive regardless of order, and the serve re-sorts by span afterwards,
+    so document order on screen is unchanged.
 
     Never raises: on any failure it returns NOTHING rather than the unbudgeted
     list. A gatekeeper that fails open is not a gatekeeper.
@@ -923,6 +941,7 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
             return {"changes": [], "result": None, "controls": False,
                     "funnel": funnel, **_style}
         rows.sort(key=lambda c: (
+            _collision_rank(c),
             (c.get("span") or {}).get("start", 0),
             (c.get("span") or {}).get("end", 0)))
 

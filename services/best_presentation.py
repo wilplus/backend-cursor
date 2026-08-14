@@ -525,7 +525,12 @@ def _panel_by_snippet(db, snippet_ids: list) -> dict:
 # Bump when the cached compose PAYLOAD shape changes (a new per-slide field
 # must force one recompute per arc — the content signature alone can't see
 # shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
-_BP_PAYLOAD_VERSION = "v8"  # v8: power_score re-pointed onto confidence and
+_BP_PAYLOAD_VERSION = "v9"  # v9: the coach tag now enters assembly ranking
+                            # (publish-gated) — a published arc with tags and
+                            # a warm v8 cache would keep serving untagged
+                            # picks with no row moving, so only a bump forces
+                            # the recompute.
+                            # (v8: power_score re-pointed onto confidence and
                             # _W_B deleted (2026-08-13) — the RANKING SEMANTICS
                             # changed while no session row moved, so every
                             # warm cache was still serving picks ranked by the
@@ -703,6 +708,33 @@ def build_best_presentation(
             str(r.get("snippet_id")): r.get("value")
             for r in _arc_labels(db, _labels_batch, sid)
         }
+        # OPTION D (founder 2026-08-13): the coach's strong/to_work_on tag
+        # finally reaches the F1 assembly ranking. `_W_C` (2.0) is the blend's
+        # DOMINANT term and had never fired on this path — "tag": None was
+        # hardcoded below since the beginning, so the human verdict ordered
+        # /strengths but not the ideal text. Safe to wire now BECAUSE `_W_B`
+        # is deleted: the audit showed the old bonus + a panel read could
+        # cross the 4.0 coach gap, and wiring the tag was exactly the change
+        # that would have armed it.
+        #
+        # PUBLISH-GATED, deliberately. Tags live in coach_snippet_drafts from
+        # the moment the coach types; ranking on a draft would leak work-in-
+        # progress into the student's document before the coach said "done" —
+        # and `_bp_signature` only changes on publish, so a pre-publish tag
+        # would also be invisible to the cache. Gate and signature move
+        # together or not at all.
+        coach_tags: dict = {}
+        if sess.get("results_published_at"):
+            try:
+                coach_tags = {
+                    str(d.get("snippet_id")): d.get("tag")
+                    for d in (db.get_coach_snippet_drafts(sid) or [])
+                    if d.get("snippet_id") and d.get("tag")
+                }
+            except Exception as _tag_err:
+                logger.warning(
+                    "best_presentation: coach tag read failed sid=%s: %s",
+                    sid, _tag_err)
         directed = _resolve_take_directions(snippets, coach_labels)
         from services.challenge_threat import detect_breakthroughs
         # COACH-CONFIRMED breakthroughs only (gate on coach_direction, not the
@@ -759,7 +791,9 @@ def build_best_presentation(
                 # the composite → power_score no-op.
                 "panel_confidence": _panel.get(str(s.get("id")), {}).get("panel"),
                 "machine_confidence": _voice_confidence_term(metrics),
-                "tag": None,  # coach 'strong'/'to_work_on' lives in drafts; not here
+                # power_score's _COACH_TERM maps only strong/to_work_on;
+                # any other draft tag value harmlessly scores 0.
+                "tag": coach_tags.get(str(s.get("id"))),
                 # score-free plain-language delivery qualities — the "why" the
                 # user expands on a breakthrough badge (reuses the cross-take
                 # rationale; AC-9 — no numbers).
