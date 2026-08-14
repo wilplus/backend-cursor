@@ -2,7 +2,11 @@
 
 **Status:** design agreed (founder, 2026-08-07). **Step 0 built 2026-08-07**
 — see §10 for the two places the build had to diverge from this document and
-why. Locking (PR 3) is not built.
+why. **Locking has since shipped** with the transcript review deck (the lock
+icon rides `locked_at`; chunk model in FE `deckChunks.ts`, 2026-08-11).
+**§11 (founder spec 2026-08-14) re-grains the chunk** — size cap at the
+document builder, nested scroll, two-grain indicator. Agreed, NOT built;
+ships together with the lock-identity fix, first in the next window.
 **Ships in three PRs:** this spec · stable parts (Step 0) · locking.
 
 ---
@@ -333,3 +337,119 @@ the part the student locked.
 it, so the schema never claims a capability the system does not have — the same
 distinction `dimension_registry` draws between "switched off by decision" and
 "not built yet".
+
+---
+
+## 11 · Chunk grain re-spec: size cap, nested scroll, two-grain indicator (founder, 2026-08-14)
+
+Field report (founder, 2026-08-14, first live decked run through the deck):
+one slide's whole text arrived as a single chunk — it did not fit the screen,
+could not be read as a unit, and could not be saved. That is not the chunk
+model misbehaving; it is the chunk model doing exactly what the 2026-08-11
+join fix told it to. `transcript_document` joins a contiguous slide run into
+ONE `\n\n` paragraph (within a slide, `" "`; across slides, `"\n\n"`), so a
+slide the speaker spent two minutes on is one paragraph, one part, one chunk,
+one lock — a wall. The 2026-08-11 fix moved the grain from "whole talk = one
+chunk" to "one chunk per slide"; this section moves it once more, and this
+time the upper bound is READABILITY, not the slide.
+
+**The founder's three requirements, verbatim in substance:**
+
+1. **Size cap (backend).** Chunks are split at the document builder level.
+   No chunk larger than ~4 rendered lines, borrowing the ~200-char logic
+   from the deckless path.
+2. **Nested scroll (frontend).** Scroll events progress through the chunks
+   *within* the active slide first; only when the user reaches the final
+   chunk of the current slide does the scroll bubble up and advance to the
+   next slide.
+3. **Visual indicator (UI).** The scroll track/icon shows macro-progress
+   (which slide) AND micro-progress (position within the current slide's
+   chunks).
+
+### 11.1 · The size cap lives at the builder, and that is §10.2-legal
+
+§10.2 says "the backend never splits text" — so name precisely why this is
+not a contradiction, or someone will cite §10.2 to un-ship it. §10.2 bans a
+SECOND definition of "paragraph": a Python mirror of
+`splitBadgeParagraphSpans` run over text a user saved, drifting from the
+client scanner on exactly the hard documents. The builder is not that. The
+builder is the AUTHOR of `\n\n` in machine-assembled text — it decides where
+paragraphs begin before the text is ever a document, in the run→paragraph
+loop of `services/transcript_document.py` (PASS 2 over `_slide_runs`) and
+the master-document assembly's equivalent join. Capping the paragraphs it
+emits is the inverse of its own join, not a re-split of anyone's document.
+One splitter per document still holds, and it is the same split the FE
+chunker already names as the compliant path ("physically split long
+paragraphs — one splitter, one identity", `deckChunks.ts` header). The FE
+chunk model needs ZERO changes for the cap: a chunk IS a part IS a `\n\n`
+paragraph, unchanged — the builder just emits more of them.
+
+**Mechanism.** Within a slide run, consecutive pieces pack greedily into a
+paragraph; when appending the next piece would cross the cap, close the
+paragraph and open a new one **in the same slide run**. A slide boundary
+still forces a break exactly as today. Piece boundaries are the ONLY legal
+cut points: a cut between pieces changes a separator (`" "` becomes
+`"\n\n"`) and never a word — L1 verbatim holds by construction, every
+piece's provenance row stays exact, and no audio span moves.
+
+**The constant has one home.** The cap is the piece cutter's own target —
+`_DECKLESS_CHUNK_CHARS = 200` in `services/slide_word_split.py`, the number
+already behind `chunk_words_by_chars` (deckless flat cut) and
+`chunk_slide_words_by_chars` (decked, within-slide) — imported or pinned by
+test, never a second literal. Two numbers named "chunk size" drifting apart
+is the exact §2 failure. "~4 lines" is the founder's acceptance criterion
+(≈200 chars ≈ 4 lines on the reference mobile viewport); characters are the
+mechanism, because the backend cannot measure rendered lines.
+
+**The cap is a target, not a guillotine.** The cutter prefers sentence ends
+and may extend a piece up to `_SENTENCE_EXTENSION_CHARS` past target to
+reach one, so a single piece can legally exceed 200 chars — and since a
+piece is never cut, a one-piece paragraph inherits that. Correct: verbatim
+beats the cap. The bound the builder guarantees is "never more than one
+cap's worth of pieces PLUS the piece that crossed the line", which in
+practice is the ~4-line read the founder asked for.
+
+**Provenance is unchanged in rule, larger in count.** `paragraphs` stays one
+row per emitted paragraph (§10's "one row per paragraph" alignment rule);
+consecutive paragraphs now share a `slide_index`, which the deck's
+`groupChunksBySlide` already folds into one slide section — the FE grouping
+was built for exactly this shape and has simply never received it.
+
+### 11.2 · Locks: the cap never re-cuts a locked part (ships WITH fix #5)
+
+Finer paragraphs mean re-minted identity across the transition:
+`reconcileParts` cannot match one giant old paragraph to its four new
+fragments (no equal text on either pass), so the fragments get fresh ids.
+On an OPEN part that is invisible — nothing hangs on the id. On a LOCKED
+part it would detach the lock: the machine re-graining text out from under
+a student's decision, which is the same failure class as the 2026-08-14
+field report #5 (a locked chunk arriving unlocked with a recommendation on
+it). So the rule is absolute: **the machine never re-cuts text under a
+lock.** `compose_locked` already pins a locked part's text verbatim; the
+cap applies to machine-authored regions only. A student who locked a
+wall-of-text keeps the wall until they unlock it — their grain, their call.
+
+This section and the lock-identity fix ship TOGETHER, first in the next
+window (founder priority, 2026-08-14). Same seam — both are about which
+paragraph keeps which id across a rebuild — and the tests that pin one are
+the tests that pin the other.
+
+### 11.3 · Nested scroll: the chunk is the step, the slide is the section
+
+A scroll step advances one CHUNK. While the active slide has chunks below
+the current one, scroll moves through them and the slide does NOT change;
+only from the final chunk of the active slide does the next scroll step
+bubble up and advance to the next slide (and symmetrically backwards from a
+slide's first chunk). The two grains already exist in the deck's render
+model (`DeckSlideGroup`: slide sections containing chunks in order) — this
+binds the gesture to them instead of to the page.
+
+### 11.4 · The indicator shows position on both grains — and stays position
+
+The scroll track/icon shows which SLIDE the user is on (macro) and where
+within that slide's chunks they are (micro). AC-9 note, so nobody
+"improves" this later: the indicator is NAVIGATION — "slide 3, second of
+four chunks" is a position, not a measurement. It must never be restyled
+into a quality or progress read (a percentage, a completion score, a
+per-chunk verdict); the moment it grades rather than locates, it crosses
+AC-9 and dies at the fence.
