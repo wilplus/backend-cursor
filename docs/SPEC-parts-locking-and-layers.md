@@ -5,8 +5,10 @@
 why. **Locking has since shipped** with the transcript review deck (the lock
 icon rides `locked_at`; chunk model in FE `deckChunks.ts`, 2026-08-11).
 **§11 (founder spec 2026-08-14) re-grains the chunk** — size cap at the
-document builder, nested scroll, two-grain indicator. Agreed, NOT built;
-ships together with the lock-identity fix, first in the next window.
+document builder, nested scroll, two-grain indicator; §11.1/§11.3/§11.4
+entered build the same day on founder order. **§12 (founder specs
+2026-08-14)** names the three integrity rules — Anchor Rule, Clean Serve
+Boundary, Intent Ledger — fixed next window, lock survivability first.
 **Ships in three PRs:** this spec · stable parts (Step 0) · locking.
 
 ---
@@ -453,3 +455,118 @@ four chunks" is a position, not a measurement. It must never be restyled
 into a quality or progress read (a percentage, a completion score, a
 per-chunk verdict); the moment it grades rather than locates, it crosses
 AC-9 and dies at the fence.
+
+### 11.5 · Lock feedback is immediate (founder, 2026-08-14)
+
+When the user locks a chunk, the UI acknowledges the state change
+IMMEDIATELY: the lock icon animates/updates, and the open modal itself
+visually transitions into its Locked state. The user must see instant
+confirmation that the system registered and applied the change — not a
+silent close, not a state that only looks different after the next fetch.
+The lock is an optimistic UI transition confirmed by the server, never a
+spinner-then-maybe. (A failed server lock must roll the visual state back
+and say so; showing a lock the server refused would be the inverse of
+field report #5 — a lock the user believes in that does not exist.)
+
+### 11.6 · Smart re-triggering: a locked chunk drops in interruption priority (founder, 2026-08-14)
+
+Locking does not silence a chunk — the 2026-08-11 rule stands (pending
+work beats the lock for *display*: new suggestions on a locked chunk are
+announced and openable). What changes is the modal's AUTO-OPEN behaviour
+on later takes. A locked chunk is a decision already made; the deck should
+interrupt for it last:
+
+* **A locked chunk's modal does not aggressively auto-open on subsequent
+  takes.** It may auto-open only when the REST of the deck is settled —
+  no open chunk is holding an undecided composition-lane (verbal
+  correction) suggestion. Open text in flux always outranks revisiting a
+  decision.
+* **When it does re-open, it opens for accentuation — Styling or Delivery
+  (the swap lane) —** the layers a locked part is actually in (§4).
+* **A verbal correction on a locked chunk auto-opens ONLY when every
+  other verbal correction in the deck is of lower urgency** — i.e. it is
+  the top-ranked correction remaining under the served lane precedence
+  (Corrections > Swap > Style, the `_collision_rank` ordering already
+  wired into the sweep). A mid-pack correction on locked text waits its
+  turn behind every correction on open text.
+
+This is an INTERRUPTION policy, not a serving change: candidates are
+generated, budgeted and precedence-sorted exactly as today; §11.6 only
+governs which chunk's modal the deck opens in the user's face, and when.
+
+---
+
+## 12 · The three integrity rules (founder specs, 2026-08-14 — fix next window, #5 first)
+
+Three defects from the 2026-08-14 field reports are data-integrity
+failures, not polish. Each gets a named rule here so the fix has a spec to
+build against and a fence to cite. Build order is founder-set: **lock
+survivability (#5) first** — stable part identity is the foundation the
+other two (and §11.1's re-grain) stand on.
+
+### 12.1 · The Anchor Rule (field report #5 — lock loss). "Typed words are invincible."
+
+A locked part is a HARD, IMMUTABLE ANCHOR during any alignment,
+recomposition, or rebuild. The document builder and composer are strictly
+forbidden from re-IDing, editing, or dropping a locked part; the machine
+aligns new audio AROUND the locked text, never through it. Concretely:
+
+* No pass may mint a fresh id for a paragraph whose part is locked —
+  difflib/reconcile misalignment re-minting a locked part's identity is
+  the defect, not an edge case (`reconcileParts`' "a paragraph the
+  machine rewrote is not the part the student locked" applies to OPEN
+  parts only; a locked part's words cannot have been rewritten, because
+  rewriting them is forbidden one clause up).
+* A rebuild that cannot place a locked part exactly (verbatim text,
+  intact id) is a FAILED rebuild for that document: serve the previous
+  composed state rather than a new one that lost a lock. Losing a lock
+  silently is strictly worse than serving yesterday's text.
+* The staleness guard (`agrees_with_text`) currently protects only the
+  KPI fold; the same refusal belongs on every path that would SERVE or
+  PERSIST a parts/text pair that no longer joins.
+
+§11.2's builder rule ("the cap never re-cuts a locked part") is a special
+case of this rule and ships under it.
+
+### 12.2 · The Clean Serve Boundary (field report #3 — the all-orange save)
+
+The backend serves document text 100% CLEAN of presentation markers.
+Baking a paragraph-wide rich-marker (`{{orange:...}}`) into the raw
+document text on save is the defect: it violates the no-paint ruling
+(2026-08-11: "NOTHING paints the text"; the state lives in the chunk's
+icon) and it corrupts the one string every span, part and lock is
+anchored to — a marker baked into the text shifts every offset behind it.
+
+* Data and presentation separate at the API boundary: the DOCUMENT is
+  words; styling is metadata (spans/ids) the frontend applies dynamically
+  — and an approved style renders ONLY where the user explicitly decided
+  it, never as a whole-paragraph wash on save.
+* The style lane keeps proposing accentuation as designed; what it may
+  never do is write its rendering into the served text. A marker the
+  backend must persist for its own bookkeeping stays in its own field,
+  stripped before the document string leaves the API.
+
+### 12.3 · The Intent Ledger (field report #4 — the phrase-drift bypass). "Never re-litigated."
+
+The decisions ledger exists so a declined suggestion stays declined. It
+currently keys on the normalized PHRASE, so the LLM bypasses it by
+rewording: decline "try 'X'" on take 1, get "try 'X-prime'" on take 2 —
+same intent, new words, served again. The ledger must key on INTENT, not
+wording:
+
+* **Key = (location, lane-class), not the phrase.** Location is the part
+  (chunk) the suggestion targets — part id where identity exists,
+  snippet/piece where it does not. Lane-class is the deterministic class
+  the deck already names (the Clarity / Flow / Style / Delivery mapping,
+  derived from backend-authored `source`/`kind`/`why` — one mapping, one
+  home per side, pinned by contract test, per §2).
+* Declining a Clarity suggestion on chunk A blocks EVERY future Clarity
+  suggestion on chunk A for that arc, across takes, however the phrasing
+  drifts. A re-serve of the same intent in new words is a ledger bypass,
+  full stop.
+* The phrase key does not disappear — it stays as the JOIN key for
+  history display (`historyForChunk`); it just stops being the thing that
+  decides whether the machine may ask again.
+* Un-blocking is the user's: unlock/re-open of the chunk, or an explicit
+  new-take decision surface, may clear the pair — the machine never
+  clears it for itself.
