@@ -8,7 +8,8 @@ icon rides `locked_at`; chunk model in FE `deckChunks.ts`, 2026-08-11).
 document builder, nested scroll, two-grain indicator; §11.1/§11.3/§11.4
 entered build the same day on founder order. **§12 (founder specs
 2026-08-14)** names the three integrity rules — Anchor Rule, Clean Serve
-Boundary, Intent Ledger — fixed next window, lock survivability first.
+Boundary, Intent Ledger; §12.1 pulled into build the same day (founder
+order), §12.2/§12.3 next.
 **Ships in three PRs:** this spec · stable parts (Step 0) · locking.
 
 ---
@@ -496,7 +497,7 @@ governs which chunk's modal the deck opens in the user's face, and when.
 
 ---
 
-## 12 · The three integrity rules (founder specs, 2026-08-14 — fix next window, #5 first)
+## 12 · The three integrity rules (founder specs, 2026-08-14 — §12.1 pulled into build the same day; §12.2/§12.3 next)
 
 Three defects from the 2026-08-14 field reports are data-integrity
 failures, not polish. Each gets a named rule here so the fix has a spec to
