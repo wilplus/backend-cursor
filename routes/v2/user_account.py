@@ -17,7 +17,6 @@ from config import Config
 from routes.admin import is_coach
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _client_ip_from_request
-from routes.v2.user_sessions import _build_user_session_status
 from services.db import db
 
 logger = logging.getLogger(__name__)
@@ -652,28 +651,6 @@ def v2_user_set_profile():
             "code": "V2_ERROR",
             "error": "Failed to save profile",
         }), 500
-
-
-@v2_bp.route("/user/credits", methods=["GET"])
-@require_auth
-def v2_user_get_credits():
-    """willab credit balance + the Phase-1 audit gate.
-
-    GET → {credits, can_start_analysis, audit_paid, audit_price}.
-
-    Lazy-seeds the 15-credit grant on first touch (idempotent via
-    credits_initialized_at — never re-granted after spend-to-zero). The credit
-    DECREMENT is a side-effect of COACH-FEEDBACK DELIVERY (publish: 5/feedback),
-    NEVER a separate FE call. can_start_analysis is always True (founder
-    2026-07-06 — recording is never blocked; payment gates only the human-
-    feedback view). Same payload as GET /v2/session/status.
-    """
-    try:
-        return jsonify(_build_user_session_status(request.user_id)), 200
-    except Exception as e:
-        logger.error("user/credits GET failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch credits"}), 500
 
 
 @v2_bp.route("/user/recording-progress", methods=["GET"])

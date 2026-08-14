@@ -3022,23 +3022,6 @@ class DatabaseService:
         except Exception:
             return set()
 
-    def v2_deduct_session_credits(self, user_id: str, amount: int = 5) -> int | None:
-        """Deduct credits from a student's balance. Returns new credits value or None on failure."""
-        try:
-            details = self.v2_get_student_details(user_id)
-            current = (details or {}).get("credits")
-            if current is None:
-                current = _free_credit_grant()
-            new_credits = max(0, int(current) - amount)
-            result = (
-                self.client.table("v2_student_details")
-                .upsert({"user_id": user_id, "credits": new_credits, "updated_at": datetime.now(timezone.utc).isoformat()}, on_conflict="user_id")
-                .execute()
-            )
-            return (result.data[0] or {}).get("credits") if result.data else new_credits
-        except Exception:
-            return None
-
     def v2_increment_student_credits(self, user_id: str, delta: int) -> int | None:
         """Add delta to credits (e.g. Stripe payment). Negative delta allowed for corrections; result floors at 0. Returns new balance or None on failure."""
         try:
@@ -3065,28 +3048,6 @@ class DatabaseService:
                 e,
                 exc_info=True,
             )
-            return None
-
-    def v2_set_student_credits(self, user_id: str, credits: int) -> int | None:
-        """Set the credit balance to an ABSOLUTE value (testing admin tool,
-        founder 2026-07-13). Floors at 0; marks credits_initialized_at so the
-        lazy seed never re-grants over it. Returns the new balance or None."""
-        try:
-            c = max(0, int(credits))
-            now = datetime.now(timezone.utc).isoformat()
-            result = (
-                self.client.table("v2_student_details")
-                .upsert(
-                    {"user_id": user_id, "credits": c,
-                     "credits_initialized_at": now, "updated_at": now},
-                    on_conflict="user_id",
-                )
-                .execute()
-            )
-            return (result.data[0] or {}).get("credits") if result.data else c
-        except Exception as e:
-            logger.warning("v2_set_student_credits failed user_id=%s credits=%s: %s",
-                           user_id, credits, e, exc_info=True)
             return None
 
     def v2_find_user_id_by_email(self, email: str) -> Optional[str]:
@@ -3135,42 +3096,6 @@ class DatabaseService:
             self.client.table("stripe_checkout_credit_grants").delete().eq("checkout_session_id", sid).execute()
         except Exception as e:
             logger.warning("stripe_checkout_grant_release failed session=%s: %s", sid, e)
-
-    def v2_charge_homework_completion_credits_once(self, session_id: str, user_id: str, amount: int = 5) -> None:
-        """
-        Deduct `amount` credits once per session when homework completes with a report.
-        Idempotent: sets homework_credits_charged_at only when NULL, then deducts.
-        If deduct fails, clears homework_credits_charged_at so a retry can succeed.
-        """
-        now = datetime.now(timezone.utc).isoformat()
-        try:
-            result = (
-                self.client.table("v2_sessions")
-                .update({"homework_credits_charged_at": now})
-                .eq("id", session_id)
-                .eq("user_id", user_id)
-                .eq("status", "completed")
-                .is_("homework_credits_charged_at", "null")
-                .execute()
-            )
-            if not result.data:
-                return
-        except Exception as e:
-            sentry_sdk.capture_exception(e)
-            logger.warning("v2_charge_homework_completion_credits_once: flag update failed session_id=%s: %s", session_id, e)
-            return
-
-        new_bal = self.v2_deduct_session_credits(user_id, amount=amount)
-        if new_bal is None:
-            logger.warning(
-                "v2_charge_homework_completion_credits_once: deduct failed after flag; clearing flag session_id=%s user_id=%s",
-                session_id,
-                user_id,
-            )
-            try:
-                self.client.table("v2_sessions").update({"homework_credits_charged_at": None}).eq("id", session_id).eq("user_id", user_id).execute()
-            except Exception:
-                pass
 
     def v2_charge_lab_credits_once(self, session_id: str, user_id: str, amount: int = 1) -> None:
         """Deduct `amount` credits once per willab Lab session at SEND.
@@ -3229,67 +3154,6 @@ class DatabaseService:
             logger.info(
                 "v2_charge_lab_credits_once: charged %d sid=%s user=%s new_balance=%s",
                 amount, session_id, user_id, new_bal,
-            )
-
-    def v2_charge_feedback_credits_once(
-        self, session_id: str, user_id: str, amount: int = 5,
-    ) -> None:
-        """Deduct `amount` credits once per session WHEN COACH FEEDBACK IS
-        DELIVERED to the user (the publish 'insights ready' moment) — the willab
-        monetization trigger (founder re-lock 2026: 15 free credits = 3 free
-        coach feedbacks at 5 each). Idempotent: sets feedback_credits_charged_at
-        only when NULL, so a re-publish / re-view NEVER re-charges (one charge
-        per session's first feedback delivery), then deducts SOFTLY —
-        v2_deduct_session_credits floors at 0, so a low balance never withholds
-        the coach's work (the gate is on starting the NEXT recording, not on
-        receiving feedback). On deduct failure, clears the flag so a retry can
-        succeed. Best-effort: never raises into the publish path; no-op if the
-        column is missing."""
-        if not session_id or not user_id:
-            return
-        now = datetime.now(timezone.utc).isoformat()
-        try:
-            result = (
-                self.client.table("v2_sessions")
-                .update({"feedback_credits_charged_at": now})
-                .eq("id", session_id)
-                .is_("feedback_credits_charged_at", "null")
-                .execute()
-            )
-            if not result.data:
-                return  # already charged (idempotent no-op), or no such row
-        except Exception as e:
-            err_low = str(e).lower()
-            if "feedback_credits_charged_at" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                logger.warning(
-                    "v2_charge_feedback_credits_once: column missing (run "
-                    "migrations/add_feedback_credits_charged_at.sql) sid=%s",
-                    session_id,
-                )
-            else:
-                logger.warning(
-                    "v2_charge_feedback_credits_once: flag update failed sid=%s "
-                    "err=%s", session_id, e,
-                )
-            return
-        new_bal = self.v2_deduct_session_credits(user_id, amount=amount)
-        if new_bal is None:
-            logger.warning(
-                "v2_charge_feedback_credits_once: deduct failed after flag; "
-                "clearing flag sid=%s user=%s", session_id, user_id,
-            )
-            try:
-                self.client.table("v2_sessions").update(
-                    {"feedback_credits_charged_at": None}
-                ).eq("id", session_id).execute()
-            except Exception:
-                pass
-        else:
-            logger.info(
-                "v2_charge_feedback_credits_once: charged %d sid=%s user=%s "
-                "new_balance=%s", amount, session_id, user_id, new_bal,
             )
 
     def v2_ensure_credits_initialized(self, user_id: str, grant: Optional[int] = None) -> int:

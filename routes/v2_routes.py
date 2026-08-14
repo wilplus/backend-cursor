@@ -143,7 +143,6 @@ from routes.v2.user_account import (  # noqa: F401 — re-exported for import co
     v2_user_consent,
     v2_user_game_sessions,
     v2_user_get_audits,
-    v2_user_get_credits,
     v2_user_get_profile,
     v2_user_get_sharing_consent,
     v2_user_kpi_timeline,

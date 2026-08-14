@@ -13,7 +13,7 @@ at zero and the caller is told what happened, but nothing here can abort a
 recording, drop a transcript, or fail analysis. Callers on the F1 path gate at
 the START of an action and then run to completion regardless. Precedent already
 in this codebase — ``v2_charge_lab_credits_once`` deducts softly and
-``v2_deduct_session_credits`` floors at 0.
+the retired per-session decrement floored at 0.
 
 **Flat published prices.** Every number comes from ``token_prices``. Nothing
 here inspects what an action actually cost us.
