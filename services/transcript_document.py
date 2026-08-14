@@ -127,10 +127,12 @@ def _slide_runs(rows: list) -> list:
 
     A run breaks only on a PROVABLE change of slide. A piece whose slide is
     unknown (no deck, no timeline, no correction) joins the run it is in and
-    never starts one: an unprovable boundary must not become a lock unit, and
-    a document with no slide information at all stays a single flowing
-    paragraph — precisely today's behaviour, which is the right degradation
-    rather than invented structure."""
+    never starts one: an unprovable boundary must not become a lock unit,
+    and a document with no slide information at all stays a single flowing
+    RUN — no invented structure. (Since SPEC §11.1 the CAP may still split
+    a long run into readable paragraphs; that split is at piece
+    boundaries, carries no slide claim, and is the founder-specced grain,
+    not a guessed slide boundary.)"""
     runs: list = []
     for snip, text, si in rows:
         last = runs[-1] if runs else None
@@ -142,6 +144,37 @@ def _slide_runs(rows: list) -> list:
         else:
             runs.append({"slide": si, "items": [(snip, text)]})
     return runs
+
+
+def pack_items(items: list, cap: int) -> list:
+    """Greedily pack a run's [(snip, text)] items into paragraph-sized
+    packs of ≤ `cap` joined characters (SPEC §11.1, founder 2026-08-14).
+
+    THE RULES, in order of authority:
+      * an item NEVER splits — piece boundaries are the only legal cut
+        points, so a cut changes a separator and never a word (L1
+        verbatim by construction);
+      * therefore a single over-cap item (a sentence-extended piece) is
+        its own pack, legally over the cap — verbatim beats the cap;
+      * otherwise close the pack when appending the next item (plus its
+        joining space) would cross the cap.
+
+    Pure; shared by BOTH document builders (transcript + master) so the
+    packing rule, like the cap itself, has exactly one home. Returns
+    [[(snip, text), …], …] — never an empty pack."""
+    packs: list = []
+    cur: list = []
+    cur_len = 0
+    for item in items or []:
+        width = len(item[1])
+        if cur and cur_len + len(_JOIN) + width > cap:
+            packs.append(cur)
+            cur, cur_len = [], 0
+        cur.append(item)
+        cur_len += (len(_JOIN) if cur_len else 0) + width
+    if cur:
+        packs.append(cur)
+    return packs
 
 
 def _close(text: str) -> tuple:
@@ -251,55 +284,74 @@ def build_transcript_document(arc_id: Any, *, database=None,
 
         # PASS 2 — slide runs become paragraphs, and the spans are laid out
         # over the separators that actually go between them.
+        #
+        # THE CAP (SPEC §11.1, founder 2026-08-14). A slide run is no longer
+        # automatically ONE paragraph: within a run, pieces pack greedily up
+        # to PARAGRAPH_CAP_CHARS and the run splits into as many paragraphs
+        # as that takes. The 2026-08-11 join fix moved the grain from "whole
+        # talk = one chunk" to "one chunk per slide"; a two-minute slide was
+        # still a wall the founder could not read or save. The upper bound
+        # of a chunk is now READABILITY, not the slide. A slide boundary
+        # still forces a break exactly as before; the cap only adds breaks
+        # INSIDE a run, at piece boundaries, so every cut changes a
+        # separator and never a word.
+        from services.slide_word_split import PARAGRAPH_CAP_CHARS
         pieces: list = []
         paragraphs: list = []
         out: list = []
         cursor = 0
-        for run_i, run in enumerate(_slide_runs(rows)):
-            if run_i:
-                out.append(_PARA)
-                cursor += len(_PARA)
-            para_start = cursor
-            items = run["items"]
-            for i, (s, text) in enumerate(items):
-                if i:
-                    out.append(_JOIN)
-                    cursor += len(_JOIN)
-                mark = ""
-                if i == len(items) - 1:
-                    text, mark = _close(text)
-                start = cursor
-                cursor += len(text)
-                out.append(text)
-                pieces.append({
-                    "snippet_id": str(s.get("id")),
+        para_i = 0
+        for run in _slide_runs(rows):
+            for pack in pack_items(run["items"], PARAGRAPH_CAP_CHARS):
+                if para_i:
+                    out.append(_PARA)
+                    cursor += len(_PARA)
+                para_i += 1
+                para_start = cursor
+                for i, (s, text) in enumerate(pack):
+                    if i:
+                        out.append(_JOIN)
+                        cursor += len(_JOIN)
+                    mark = ""
+                    if i == len(pack) - 1:
+                        # Every paragraph end is a read seam now — the cap
+                        # splits mid-run exactly as slides split mid-talk,
+                        # and `_close`'s own reasoning applies unchanged.
+                        text, mark = _close(text)
+                    start = cursor
+                    cursor += len(text)
+                    out.append(text)
+                    pieces.append({
+                        "snippet_id": str(s.get("id")),
+                        "take_session_id": sid,
+                        "take_index": take_index,
+                        "start": start,
+                        "end": cursor,
+                        "text": text,
+                        "slide_index": run["slide"],
+                        "breakthrough": str(s.get("id")) in breakthroughs,
+                        "start_offset_ms": s.get("start_offset_ms"),
+                        "duration_ms": s.get("duration_ms"),
+                    })
+                    # OUTSIDE the piece's span, on purpose — see `_close`.
+                    if mark:
+                        out.append(mark)
+                        cursor += len(mark)
+                # ONE ROW PER PARAGRAPH — the read surface's chunks are the
+                # document's paragraphs, so provenance has to be counted the
+                # same way. Serving one row per SNIPPET is what made the
+                # consumer's "same length?" alignment test fail and drop
+                # every slide attachment on the floor. Sibling paragraphs of
+                # one run repeat their slide_index; the deck's grouping
+                # folds them into one slide section.
+                paragraphs.append({
+                    "slide_index": run["slide"],
+                    "snippet_id": str(pack[0][0].get("id")),
                     "take_session_id": sid,
                     "take_index": take_index,
-                    "start": start,
+                    "start": para_start,
                     "end": cursor,
-                    "text": text,
-                    "slide_index": run["slide"],
-                    "breakthrough": str(s.get("id")) in breakthroughs,
-                    "start_offset_ms": s.get("start_offset_ms"),
-                    "duration_ms": s.get("duration_ms"),
                 })
-                # OUTSIDE the piece's span, on purpose — see `_close`.
-                if mark:
-                    out.append(mark)
-                    cursor += len(mark)
-            # ONE ROW PER PARAGRAPH — the read surface's chunks are the
-            # document's paragraphs, so provenance has to be counted the same
-            # way. Serving one row per SNIPPET is what made the consumer's
-            # "same length?" alignment test fail and drop every slide
-            # attachment on the floor.
-            paragraphs.append({
-                "slide_index": run["slide"],
-                "snippet_id": str(items[0][0].get("id")),
-                "take_session_id": sid,
-                "take_index": take_index,
-                "start": para_start,
-                "end": cursor,
-            })
 
         # DOCUMENT-level finish: length-preserving casing + ONE terminal
         # mark at the very end, so every span above stays valid. The

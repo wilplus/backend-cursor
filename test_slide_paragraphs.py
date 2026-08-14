@@ -187,3 +187,105 @@ class CoachCorrectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParagraphCapTests(unittest.TestCase):
+    """SPEC §11.1 (founder 2026-08-14): within a slide run, pieces pack
+    greedily up to PARAGRAPH_CAP_CHARS — the slide stops being the chunk's
+    upper bound of readability; the cap is. Piece boundaries are the only
+    cut points, so every split changes a separator and never a word."""
+
+    def _long_pieces(self, n, slide=None, start_sid=0):
+        text = ("these are the spoken words of one piece long enough to "
+                "carry real content across the line")           # ~90 chars
+        return [_snip(f"s{start_sid + i}", (start_sid + i) * 1000, text,
+                      slide=slide) for i in range(n)]
+
+    def test_a_long_single_slide_run_splits_at_the_cap(self):
+        doc = build_transcript_document(
+            ARC, database=_Db(self._long_pieces(6, slide=0)))
+        paras = doc["text"].split("\n\n")
+        self.assertGreater(len(paras), 1)
+        from services.slide_word_split import PARAGRAPH_CAP_CHARS
+        for para in paras:
+            self.assertLessEqual(len(para), PARAGRAPH_CAP_CHARS + 1)
+        # One provenance row per paragraph, ALL still slide 0 — sibling
+        # paragraphs repeat their run's slide; the deck groups them back
+        # into one slide section.
+        rows = doc["paragraphs"]
+        self.assertEqual(len(rows), len(paras))
+        self.assertEqual({p["slide_index"] for p in rows}, {0})
+        self.assertTrue(verify_spans(doc))
+
+    def test_the_cap_never_cuts_inside_a_piece(self):
+        # A single piece longer than the cap is its own paragraph, legally
+        # over — verbatim beats the cap (a piece never splits). Distinct
+        # tokens on purpose: smooth_piece collapses repeated words.
+        big = " ".join(f"token{i}" for i in range(40))           # ~290 chars
+        doc = build_transcript_document(
+            ARC, database=_Db([_snip("s0", 0, big, slide=0)]))
+        self.assertEqual(len(doc["paragraphs"]), 1)
+        self.assertEqual(len(doc["pieces"]), 1)
+        from services.slide_word_split import PARAGRAPH_CAP_CHARS
+        self.assertGreater(len(doc["text"]), PARAGRAPH_CAP_CHARS)
+        self.assertNotIn("\n\n", doc["text"])
+
+    def test_the_words_survive_only_separators_change(self):
+        # L1 verbatim by construction: strip the separators/terminal marks
+        # and the capped document reads the same words in the same order.
+        snips = self._long_pieces(6, slide=0)
+        doc = build_transcript_document(ARC, database=_Db(snips))
+        def _words(s):
+            return [w for w in s.replace("\n\n", " ").split() ]
+        joined = " ".join(s["transcript"] for s in snips)
+        self.assertEqual(
+            [w.lower().rstrip(".") for w in _words(doc["text"])],
+            [w.lower() for w in _words(joined)])
+
+    def test_a_long_no_slide_document_still_splits_readably(self):
+        # No slide info = one RUN (no invented slide boundary), but the
+        # cap still makes it readable paragraphs; none claims a slide.
+        doc = build_transcript_document(
+            ARC, database=_Db(self._long_pieces(6, slide=None)))
+        self.assertGreater(len(doc["text"].split("\n\n")), 1)
+        self.assertEqual({p["slide_index"] for p in doc["paragraphs"]},
+                         {None})
+
+    def test_a_slide_change_still_breaks_even_mid_pack(self):
+        # The cap adds breaks; it never removes the slide boundary. Two
+        # short slides stay two paragraphs even though one pack could
+        # have held both.
+        doc = build_transcript_document(ARC, database=_Db([
+            _snip("s0", 0, "short words on slide one", slide=0),
+            _snip("s1", 1000, "short words on slide two", slide=1)]))
+        self.assertEqual(len(doc["text"].split("\n\n")), 2)
+        self.assertEqual([p["slide_index"] for p in doc["paragraphs"]],
+                         [0, 1])
+
+
+class PackItemsTests(unittest.TestCase):
+    """The shared packer itself — one home for the packing rule."""
+
+    def _items(self, *widths):
+        return [({"id": f"s{i}"}, "x" * w) for i, w in enumerate(widths)]
+
+    def test_greedy_close_exactly_when_the_next_item_would_cross(self):
+        from services.transcript_document import pack_items
+        # 90 + 1 + 90 = 181 ≤ 200; adding another 90 (272) crosses.
+        packs = pack_items(self._items(90, 90, 90), 200)
+        self.assertEqual([len(p) for p in packs], [2, 1])
+
+    def test_an_oversize_item_is_its_own_pack_never_split(self):
+        from services.transcript_document import pack_items
+        packs = pack_items(self._items(50, 300, 50), 200)
+        self.assertEqual([len(p) for p in packs], [1, 1, 1])
+        self.assertEqual(len(packs[1][0][1]), 300)
+
+    def test_everything_under_the_cap_stays_one_pack(self):
+        from services.transcript_document import pack_items
+        packs = pack_items(self._items(50, 50, 50), 200)
+        self.assertEqual([len(p) for p in packs], [3])
+
+    def test_empty_in_empty_out(self):
+        from services.transcript_document import pack_items
+        self.assertEqual(pack_items([], 200), [])

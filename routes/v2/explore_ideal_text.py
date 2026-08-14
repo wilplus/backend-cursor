@@ -103,25 +103,42 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True):
              if r.get("active", True) and r.get("status") != "candidate"),
             key=lambda r: r.get("block_key") or 0)
         if rows:
+            # ONE ROW PER SERVED PARAGRAPH, not per block (SPEC §11.1).
+            # Since the cap, a block packs into one OR MORE "\n\n"
+            # paragraphs, so a per-block list under-counts and the
+            # caller's count-zip drops every slide attachment. Mirror the
+            # assembly's packing exactly — same pure packer, same cap,
+            # same strip-empty filter, over the same rows — WITHOUT
+            # re-running any composition on the student GET. A block with
+            # no incumbent text contributes no paragraph in the assembly,
+            # so it contributes no row here either.
+            from services.slide_word_split import PARAGRAPH_CAP_CHARS
+            from services.transcript_document import pack_items
             out = []
             for r in rows:
-                inc = r.get("incumbent_pieces") or []
-                out.append({
-                    "slide_index": r.get("slide_index"),
-                    # The KEYED pill→picker join (FE picker handoff
-                    # 2026-08-03): the FE deep-links a paragraph's pill
-                    # into the variants sheet by block_key — never by
-                    # index-zipping two lists that merely happen to be
-                    # sorted the same way.
-                    "block_key": r.get("block_key"),
-                    "snippet_id": (inc[0].get("snippet_id")
-                                   if inc else None),
-                    "take_session_id": r.get("incumbent_take_session_id"),
-                    "take_index": r.get("incumbent_take_index"),
-                    "status": r.get("status") or "settled",
-                    "challenger": r.get("challenger_take_index"),
-                })
-            return out
+                items = []
+                for p in (r.get("incumbent_pieces") or []):
+                    _t = (p.get("text") or "").strip()
+                    if _t:
+                        items.append((p, _t))
+                for pack in pack_items(items, PARAGRAPH_CAP_CHARS):
+                    out.append({
+                        "slide_index": r.get("slide_index"),
+                        # The KEYED pill→picker join (FE picker handoff
+                        # 2026-08-03): the FE deep-links a paragraph's
+                        # pill into the variants sheet by block_key —
+                        # never by index-zipping two lists that merely
+                        # happen to be sorted the same way. Sibling
+                        # paragraphs of one block share its key.
+                        "block_key": r.get("block_key"),
+                        "snippet_id": pack[0][0].get("snippet_id"),
+                        "take_session_id": r.get("incumbent_take_session_id"),
+                        "take_index": r.get("incumbent_take_index"),
+                        "status": r.get("status") or "settled",
+                        "challenger": r.get("challenger_take_index"),
+                    })
+            if out:
+                return out
         # No skeleton yet → the living-transcript document, exactly the
         # fallback the assembly itself makes.
     if _living_transcript_enabled():
