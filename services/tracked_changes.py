@@ -48,8 +48,11 @@ from services.transcript_document import WORD_GRAIN
 logger = logging.getLogger(__name__)
 
 # What the FE may receive in `source` (copy keys, never internals).
+# ⚠️ KEEP COMPLETE. The audit found this missing new_take and acoustic_swap —
+# two LIVE lanes — while claiming to be the contract; anyone hardening the
+# serve against it would have killed both.
 SOURCES = ("polish", "profanity", "wording", "prior_take",
-           "delivery", "structural")
+           "delivery", "structural", "new_take", "acoustic_swap")
 
 # Kinds that make a claim ABOUT SPECIFIC WORDS — the ones that must decline
 # a coarse anchor. `advice` is deliberately absent: it is the one kind whose

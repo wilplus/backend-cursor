@@ -44,5 +44,7 @@ REDIRECT: <if not a clean ADVANCE-F1: the nearest F1-advancing action. Default t
 
 - **Never break the live loop.** New work branches off `origin/main`; ship via gate-routed PRs (branch → PR → CI green → squash-merge). Never auto-drop tables/columns/migrations.
 - **AC-9 split-sink:** no scores/verdicts to users — the read is qualitative. Coach labels stay blind (shadow model never surfaces a guess).
-- **Migrations are idempotent** (`IF NOT EXISTS`) and degrade gracefully; "on `main`" ≠ "run in prod" — call out migrations to run.
+- **Migrations are idempotent** (`IF NOT EXISTS`) and degrade gracefully. **⚠️ In prod, "on `main`" DOES mean "run in prod": `MIGRATE_ON_BOOT=1` is set, so `bin/railway-web.sh` applies pending migrations during container start — merging a migration IS running it.** (This line said the exact inverse until 2026-08-13, discovered on the day a migration shipped; CLAUDE.md always had it right, and this file is what non-Claude agents read.)
+- **When Actions is out of minutes, the gate is `scripts/local_ci.sh`** — merge on local evidence, document the override in the squash commit (founder ruling 2026-08-11, DO NOT UPGRADE). An ad-hoc `pytest && ruff && mypy` is not the job; the script rebuilds the pinned CI environment.
+- **CONFIG-FIRST RULE:** when a migration's correctness depends on an env var, set it on EVERY Railway service (web, worker, cron) BEFORE merging; verify from each service's boot log, not the UI. Full rationale: [docs/MIGRATIONS.md](docs/MIGRATIONS.md).
 - **Product copy is held for founder sign-off.** The master document has a construct fence (`_CONSTRUCT_RE`) + CI probe — never surface the retired charisma/stress *score* vocabulary — and, since 2026-08-13, never surface the charisma/threat construct at all.

@@ -281,7 +281,8 @@ Everything above defines the contract; this section records how much of it is no
 | `replace` / `new_take` / `prior_take` (block upgrades — L1's select) | `REWRITE` |
 | `insert` | `ADD` |
 | `bold` / `advice` (delivery & structural accents) | `EMPHASISE` |
-| `trigger == "charisma"` (Confident Voice) | `NOTICE` |
+| `trigger in ("confident", "charisma")` (Confident Voice — renamed 2026-08-13 with the construct retirement; historical rows keep the old word) | `NOTICE` |
+| `source == "acoustic_swap"` (the swap lane, 2026-08-13 — this take delivered a LOCKED paragraph better; `kind='replace'`, exempt from the paragraph-grain decline because the paragraph IS its claim) | `REWRITE` |
 
 Today's producers are the **composition lane and the Confident Voice star** — not the detector rows. The detectors still cannot fire (no `fire_at`; the chain stays cut on the detector side), but the serving side of the chain is no longer missing: the day a detector lands a threshold, it feeds this same gate.
 
@@ -313,7 +314,7 @@ Founder §R1 (SPEC-parts-locking-and-layers): **"max 3 interventions per take, t
 
 `select()` runs: **lock layer → accent window → type caps → arbitrate (≤3) → visual stamp.**
 
-- **Lock layer (R1 gen-2, founder 2026-08-10):** an OPEN part takes everything; a LOCKED part takes **nothing** — except a Confident Voice detection, which passes tagged `pending_better_version` with the founder's copy. Unclassified kinds and part-straddling spans drop. This is L1 enforced mechanically: nothing rewrites committed text.
+- **Lock layer (R1 gen-2, founder 2026-08-10):** an OPEN part takes everything; a LOCKED part takes **nothing** — except a Confident Voice detection (passes tagged `pending_better_version` with the founder's copy) and, since 2026-08-13, an **acoustic swap offer** (`source='acoustic_swap'`): the one lane built precisely to reach locked text, offering this take's better-delivered version of the same paragraph. Unclassified kinds and part-straddling spans drop. This is L1 enforced mechanically: nothing rewrites committed text.
 - **Accent window (§F.4):** `EMPHASISE` / `DE_EMPHASISE` paint clamps to the intonation unit — `ACCENT_WINDOW_MAX_WORDS = 12`, two realised units — enforced at the offer gate AND again at ledger bake (the words stay, the paint is refused), so the two can never disagree. Confident Voice is exempt (a star at the span's end is not a wash); composition is exempt (block upgrades are legitimately block-sized).
 
 ### `NOTICE` is live — and where the blind lanes sit now

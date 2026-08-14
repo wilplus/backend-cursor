@@ -435,9 +435,15 @@ def _block_score(piece_ids: list, resolver: dict) -> Optional[float]:
             stick = m.get("slide_stickiness")
             if isinstance(stick, dict):
                 stick = stick.get("composite")
+            try:
+                from services.voice_confidence import rank_term
+                _conf = rank_term(m)
+            except Exception:
+                _conf = None
             scores.append(power_score(activation=act,
                                       slide_stickiness=stick,
-                                      tag=None))
+                                      tag=None,
+                                      machine_confidence=_conf))
         return (sum(scores) / len(scores)) if scores else None
     except Exception:
         return None

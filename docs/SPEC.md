@@ -1,6 +1,6 @@
 # Speech Coaching System — Canonical Specification
 
-**Last updated:** 2026-08-06.
+**Last updated:** 2026-08-13.
 
 **Version:** v3. Supersedes v1 and v2 entirely.
 **Status:** v1.0 scope locked. Build to this document.

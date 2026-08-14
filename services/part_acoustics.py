@@ -164,14 +164,29 @@ def take_z_by_part(pieces: Any, parts: Any, baseline: Any = None) -> dict:
     scores = score_control_direction(usable, baseline=baseline)
 
     buckets: dict = {}
+    dropped = 0
     for piece, z in zip(usable, scores):
         part = part_at(spans, piece.get("start"), piece.get("end"))
         if not part:
+            dropped += 1
             continue
         pid = str(part.get("id") or "")
         if not pid:
             continue
         buckets.setdefault(pid, []).append(float(z))
+    if not buckets:
+        # ⚠️ THE LAST UNLOGGED DECLINE (audit finding #5's second half). Every
+        # guard upstream says why it skipped; this was the one stage that ate
+        # a take silently — usually a coordinate/staleness disagreement
+        # between the pieces and the parts, which is exactly the thing worth
+        # shouting about.
+        logger.warning(
+            "part_acoustics: no piece mapped into any part span "
+            "(pieces=%d parts=%d dropped=%d) — nothing folded",
+            len(usable), len(spans), dropped)
+    elif dropped:
+        logger.info("part_acoustics: %d/%d piece(s) straddled/missed a part "
+                    "span and were dropped", dropped, len(usable))
     return {pid: sum(vals) / len(vals) for pid, vals in buckets.items()}
 
 
@@ -347,10 +362,24 @@ def _with_metrics(pieces: Any, arc_id: Any, database) -> list:
                        arc_id, e)
         return []
     out = []
+    metricless = 0
     for p in rows:
         m = by_id.get(str(p.get("snippet_id") or ""))
-        if isinstance(m, dict) and m:
+        # AT LEAST ONE REAL ACOUSTIC KEY, not merely a non-empty dict (audit
+        # C2.6): a sub-second piece stores only {piece, recording_kind},
+        # scores exactly 0.0 in score_control_direction, and — because
+        # ONBOARD_Z is 0.0 — would GRADUATE the focus ratchet for a part
+        # nobody measured, excluding it from focus forever. The keys mirror
+        # snippet_salience._CONTROL_COMPONENTS.
+        if isinstance(m, dict) and any(
+                k in m for k in ("f0_sd", "pause_regularity",
+                                 "dynamic_db", "voiced_ratio")):
             out.append({**p, "metrics": m})
+        elif m is not None:
+            metricless += 1
+    if metricless:
+        logger.info("part_acoustics: %d piece(s) carry no acoustic keys and "
+                    "were dropped from the fold", metricless)
     return out
 
 
@@ -422,6 +451,22 @@ def fold_session(arc_id: Any, user_id: Any, session_id: Any, *,
                 "no acoustics arc=%s (snippet metrics missing for every "
                 "piece). No acoustic KPI will be recorded for this take.",
                 arc_id)
+            return {}
+        # THE STALENESS GUARD (audit finding #5). part_spans' offsets are only
+        # meaningful against a document the parts actually join to — its own
+        # docstring says so — and the stored parts refresh only via HTTP
+        # routes while the document refreshes every take. Folding against
+        # disagreeing pairs produced z-scores for the WRONG paragraphs
+        # (reproduced: 3 of 6 pieces silently dropped, one part vanished).
+        # Declining loudly beats firing wrong.
+        from services.ideal_text_parts import agrees_with_text
+        doc_text = (row.get("auto_text") or row.get("text") or "")
+        if doc_text and not agrees_with_text(parts, doc_text):
+            logger.warning(
+                "part_acoustics: fold skipped — stored parts do not join to "
+                "the assembled document arc=%s (parts lag the assembly; they "
+                "refresh on the next document open). No acoustic KPI for "
+                "this take.", arc_id)
             return {}
         return fold_take(
             arc_id, user_id, pieces=scored, parts=parts, baseline=baseline,

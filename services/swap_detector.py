@@ -350,30 +350,28 @@ def _snippet_for_part(pieces: Any, part_id: Any, parts: Any) -> Optional[str]:
 
 
 def _already_starred(snippet_id: Any, arc_id: Any, database) -> bool:
-    """Does this snippet already carry a suggestion? Best-effort.
+    """Does this snippet already carry a suggestion? FAILS CLOSED.
 
-    ⚠️ THIS FAILS OPEN, AND IT CANNOT BE MADE TO FAIL CLOSED FROM HERE. The
-    except below is DEAD: `get_moment_suggestions_by_arc` catches its own
-    exceptions and returns {} on a missing table or a failed query
-    (services/db.py, its docstring says so). So a read failure is
-    indistinguishable from "this arc has no suggestions", and the caller then
-    writes — where the upsert is snippet-keyed and would REPLACE a correction
-    the student was about to see.
-
-    It is kept and documented rather than silently deleted because the earlier
-    version of this docstring claimed the opposite ("TRUE ON ERROR — the safe
-    direction"), and a comment asserting a protection that does not exist is
-    worse than no comment: the next reader budgets for a risk that is still
-    live. Closing it for real needs the reader to distinguish empty from
-    failed, which is a change to db.py and a separate decision.
-
-    Residual exposure is bounded: one praise offer replacing one correction, on
-    an arc whose suggestion table is already erroring.
+    The reader is called with ``strict=True`` (added 2026-08-13, closing the
+    audit's fail-open finding): a real read failure re-raises instead of
+    returning {}, so it can no longer masquerade as an empty ledger, and the
+    guard below declines the offer. A genuinely missing table still reads as
+    empty — an empty ledger is not a broken one. The stakes: the suggestion
+    upsert is snippet-keyed, so writing past a failed read would REPLACE a
+    correction the student was about to see with praise.
     """
     try:
-        existing = database.get_moment_suggestions_by_arc(str(arc_id)) or {}
-    except Exception as e:      # pragma: no cover — see the docstring
-        logger.warning("swap_detector: suggestion read failed arc=%s: %s",
-                       arc_id, e)
+        try:
+            existing = database.get_moment_suggestions_by_arc(
+                str(arc_id), strict=True) or {}
+        except TypeError:
+            # A double without the kwarg — the plain read, which cannot
+            # distinguish empty from failed. Real db.py has the kwarg.
+            existing = database.get_moment_suggestions_by_arc(
+                str(arc_id)) or {}
+    except Exception as e:
+        logger.warning("swap_detector: suggestion read failed arc=%s — "
+                       "declining the offer rather than risking an "
+                       "overwrite: %s", arc_id, e)
         return True
     return str(snippet_id) in {str(k) for k in existing}

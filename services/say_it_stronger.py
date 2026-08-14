@@ -53,7 +53,16 @@ _GUARD_CONSTRUCT_RE = re.compile(
     r"|\bt\s*:\s*c\b"
     r"|\bcharisma\s+(?:score|profile|classifier|ratio)\b"
     r"|\bstress\s+(?:score|classifier)\b"
-    r"|\bkpi\b",
+    r"|\bkpi\b"
+    # Surfaced ACOUSTIC VALUES (backlog 2026-08-13): raw measurement units in
+    # coaching copy are a number wearing a lab coat — "your pitch was 180Hz"
+    # is as much a scored verdict as "7/10". The digit guard already kills
+    # most of these; the unit words catch the model spelling numbers out
+    # ("one eighty hertz") or leaning on the unit alone.
+    r"|\b(?:hertz|decibel|semitone)s?\b"
+    r"|\bwords\s+per\s+minute\b"
+    r"|\b(?:hz|db|wpm)\b"
+    r"|\bz[\s\-]?score\b",
     re.IGNORECASE,
 )
 
