@@ -2295,13 +2295,58 @@ def v2_coach_arc_review_state(arc_id):
             "takes_done": min(len(spoken), TAKES_TARGET),
         }
 
+        # ── WHAT ACTUALLY BLOCKS A PUBLISH (founder ruling 2026-08-14) ──
+        #
+        # "Post it when I want, even with a single feedback." The old gate
+        # demanded EVERY take saved AND the ideal text verified, which made
+        # coach work all-or-nothing: review 17 of 18 moments, save one take
+        # of two, skip the verify — and the student saw exactly as much as if
+        # the panel had never been opened. That is how a month of recordings
+        # produced nothing.
+        #
+        # The library floor stays, and is now the ONLY content gate: at least
+        # one surfaced snippet carrying a note, somewhere in the arc. It is
+        # what guarantees a publish delivers something rather than an empty
+        # envelope, and it is enforced again per-take at publish time.
+        _has_a_note = False
+        for s in spoken:
+            try:
+                for d in (db.get_coach_snippet_drafts(str(s.get("id"))) or []):
+                    if d.get("surfaced") and (d.get("note") or "").strip():
+                        _has_a_note = True
+                        break
+            except Exception:
+                # A read miss must not fabricate a blocker and lock the coach
+                # out of publishing; publish re-checks per take anyway.
+                _has_a_note = True
+            if _has_a_note:
+                break
+
+        # ONLY ONE BLOCKER SURVIVES: there is nothing recorded to publish.
+        #
+        # Not even the library floor blocks HERE, and that is deliberate.
+        # `get_coach_snippet_drafts` returns [] on a read failure exactly as
+        # it does when there genuinely are no drafts, so blocking on it would
+        # let one transient hiccup grey out the publish button with a reason
+        # the coach cannot act on. The floor is re-checked per take at publish
+        # time against fresh reads, where a miss is a 409 with copy that says
+        # what to do — a false ENABLE costs one clear error message, a false
+        # DISABLE costs a coach who cannot ship work they have already done.
         blockers = []
         if not spoken:
             blockers.append("NO_TAKES")
+
+        # ADVISORIES, not blockers. The panel shows them so the coach knows
+        # what a publish right now would leave out — unsaved takes are
+        # skipped and stay visibly "to review" (partial publish, founder
+        # 2026-08-14) — but nothing here disables the button.
+        advisories = []
         if pending:
-            blockers.append("TAKES_NOT_SAVED")
+            advisories.append("TAKES_NOT_SAVED")
         if not _approved:
-            blockers.append("IDEAL_TEXT_NOT_APPROVED")
+            advisories.append("IDEAL_TEXT_NOT_APPROVED")
+        if spoken and not _has_a_note:
+            advisories.append("NO_FEEDBACK")
 
         _body = {
             "arc_id": arc_id,
@@ -2314,6 +2359,7 @@ def v2_coach_arc_review_state(arc_id):
             "ideal": ideal,
             "can_publish": not blockers,
             "blockers": blockers,
+            "advisories": advisories,
             "pending_session_ids": pending,
         }
         # Single deliverable (2026-07-17): the wrap-up's action is VERIFY —
@@ -3460,14 +3506,70 @@ def v2_coach_put_star_text(snippet_id):
 @v2_bp.route("/coach/arc/<arc_id>/publish-analysis", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_publish_analysis(arc_id):
-    """RETIRED (single-deliverable, founder 2026-07-17): publish was replaced
-    by VERIFY (POST /v2/coach/arc/<arc_id>/verify). Always 410 GONE."""
+    """PUBLISH the arc's reviewed takes — RESTORED 2026-08-14 (founder).
+
+    ⚠️ THIS WAS A 410 TOMBSTONE, AND THE FE'S PUBLISH BUTTON POINTED AT IT.
+    When publish was replaced by verify (2026-07-17) this route was retired,
+    but `publishArc()` in the coach panel was never re-pointed — so
+    "Publish the full analysis" POSTed here and got GONE, every time, even
+    with every gate satisfied. Meanwhile the only code that sets
+    `results_published_at` sat behind /v2/internal/publish-session-results,
+    which the frontend has no BFF route to. Net effect: nothing a coach
+    could click published anything. 46 sessions were recorded in August and
+    none was delivered.
+
+    PARTIAL PUBLISH IS THE POINT (founder 2026-08-14). Every take carrying
+    at least one surfaced, noted snippet is published; takes with nothing on
+    them are SKIPPED and stay visibly "to review" rather than being
+    published empty or blocking their siblings. The old all-or-nothing gate
+    meant an interrupted review delivered exactly as much as no review at
+    all, which is how a whole month produced nothing.
+
+    Idempotent per take: a take already delivered is reported as such and
+    never re-charged (the contract's ref_id=session_id guard).
+
+    200 {arc_id, takes_published, takes_skipped, delivered_at, takes: [...]}
+    404 NOT_FOUND · 409 NOTHING_TO_PUBLISH · 500 V2_ERROR
+    """
     try:
+        sessions = db.get_arc_sessions(arc_id)
+        if not sessions:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        spoken, _reads = _spoken_takes_and_reads(sessions)
+        if not spoken:
+            return jsonify({"code": "NOTHING_TO_PUBLISH",
+                            "error": "No recordings to publish yet."}), 409
+
+        from routes.v2.publish import publish_one_session
+        results = []
+        for s in spoken:
+            sid = str(s.get("id"))
+            if s.get("results_published_at"):
+                results.append({"session_id": sid, "published": True,
+                                "reason": "already_published"})
+                continue
+            results.append(publish_one_session(sid, str(request.user_id)))
+
+        published = [r for r in results if r.get("published")]
+        skipped = [r for r in results if not r.get("published")]
+        if not published:
+            # Nothing carried a note anywhere in the arc. Publishing would
+            # deliver an empty envelope, so this is the ONE remaining gate.
+            return jsonify({
+                "code": "NOTHING_TO_PUBLISH",
+                "error": "Add a note to at least one moment first.",
+                "takes": results,
+            }), 409
+
+        logger.info("coach publish arc=%s published=%d skipped=%d",
+                    arc_id, len(published), len(skipped))
         return jsonify({
-            "code": "GONE",
-            "error": "Publish was replaced by Verify "
-                     "(POST /v2/coach/arc/<arc_id>/verify).",
-        }), 410
+            "arc_id": arc_id,
+            "takes_published": len(published),
+            "takes_skipped": len(skipped),
+            "delivered_at": datetime.now(timezone.utc).isoformat(),
+            "takes": results,
+        }), 200
     except Exception as e:
         logger.error("publish-analysis failed arc=%s: %s", arc_id, e,
                      exc_info=True)

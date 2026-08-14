@@ -289,7 +289,13 @@ class GuestProgressTests(unittest.TestCase):
 class ArcReviewStateTests(unittest.TestCase):
     """GET /coach/arc/<id>/review-state (founder 2026-07-17) — the one read
     the post-last-take screen renders from: Open the ideal text → PUBLISH.
-    Its can_publish must mirror publish-analysis' own 409 preconditions."""
+    Its can_publish must mirror publish-analysis' own 409 preconditions.
+
+    RELAXED 2026-08-14 (founder): "post it when I want, even with a single
+    feedback". Unsaved takes and an unverified ideal text are ADVISORIES now,
+    not blockers — the old all-or-nothing gate meant an interrupted review
+    delivered exactly as much as no review at all. The library floor is the
+    only content gate left."""
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -328,31 +334,36 @@ class ArcReviewStateTests(unittest.TestCase):
         self.assertFalse(takes[2]["has_reread"])
         self.assertEqual(takes[1]["review_state"], "reviewed")
 
-    def test_unsaved_take_blocks_and_names_it(self):
+    def test_unsaved_take_ADVISES_and_names_it_but_never_blocks(self):
         body, _ = self._get(
             [_spoken(1), _spoken(2, saved=False), _spoken(3)],
             {"text": "b", "approved_at": "2026-07-16T12:00:00Z"})
-        self.assertFalse(body["can_publish"])
-        self.assertIn("TAKES_NOT_SAVED", body["blockers"])
+        # Publishing is allowed: the saved takes deliver, and s2 stays
+        # visibly "to review" (partial publish, founder 2026-08-14).
+        self.assertTrue(body["can_publish"])
+        self.assertNotIn("TAKES_NOT_SAVED", body["blockers"])
+        self.assertIn("TAKES_NOT_SAVED", body["advisories"])
         self.assertEqual(body["pending_session_ids"], ["s2"])
         self.assertEqual(body["takes_saved"], 2)
 
-    def test_unapproved_ideal_blocks(self):
+    def test_unapproved_ideal_ADVISES_but_never_blocks(self):
         body, _ = self._get(
             [_spoken(1), _spoken(2), _spoken(3)],
             {"text": "machine draft", "updated_by": None,
              "approved_at": None})
-        self.assertFalse(body["can_publish"])
-        self.assertEqual(body["blockers"], ["IDEAL_TEXT_NOT_APPROVED"])
+        self.assertTrue(body["can_publish"])
+        self.assertEqual(body["blockers"], [])
+        self.assertIn("IDEAL_TEXT_NOT_APPROVED", body["advisories"])
         self.assertEqual(body["ideal"]["source"], "machine")
         self.assertTrue(body["ideal"]["ready"])   # there IS a block to open
 
-    def test_no_ideal_row_reads_pending_and_blocks(self):
+    def test_no_ideal_row_reads_pending_and_only_ADVISES(self):
         body, _ = self._get([_spoken(1), _spoken(2), _spoken(3)], None)
         self.assertEqual(body["ideal"]["assembly_state"], "pending")
         self.assertFalse(body["ideal"]["ready"])
         self.assertIsNone(body["ideal"]["source"])
-        self.assertIn("IDEAL_TEXT_NOT_APPROVED", body["blockers"])
+        self.assertIn("IDEAL_TEXT_NOT_APPROVED", body["advisories"])
+        self.assertNotIn("IDEAL_TEXT_NOT_APPROVED", body["blockers"])
 
     def test_published_arc_reports_published(self):
         rows = [dict(_spoken(i), results_published_at="2026-07-16T13:00:00Z")
@@ -397,3 +408,102 @@ class DocumentProvenanceTests(unittest.TestCase):
             auto={"text": "assembled block", "key_moments": [], "ready": True})
         self.assertEqual(calls["persisted"], "assembled block")
         self.assertIsNone(calls["document"])
+
+
+class PublishAnalysisRestoredTests(unittest.TestCase):
+    """POST /v2/coach/arc/<id>/publish-analysis — RESTORED 2026-08-14.
+
+    THE DEFECT THIS PINS: this route was a 410 tombstone (publish → verify,
+    2026-07-17) while the coach panel's "Publish the full analysis" button
+    still POSTed to it. So the button was a dead end even with every gate
+    satisfied — and the only code that sets `results_published_at` lived
+    behind an /internal route the frontend has no BFF path to. Nothing a
+    coach could click published anything.
+    """
+
+    def _post(self, sessions, publish_results):
+        from flask import Flask
+        app = Flask(__name__)
+        with app.test_request_context():
+            from flask import request as _rq
+            _rq.user_id = "coach-1"
+            with patch.object(v2.db, "get_arc_sessions",
+                              return_value=sessions), \
+                 patch("routes.v2.publish.publish_one_session",
+                       side_effect=publish_results):
+                out = v2.v2_coach_publish_analysis.__wrapped__("arc-1")
+            resp, status = out if isinstance(out, tuple) else (out, 200)
+            return resp.get_json(), status
+
+    _SPOKEN = [
+        {"id": "s1", "take_index": 1, "recording_kind": "spoken"},
+        {"id": "s2", "take_index": 2, "recording_kind": "spoken"},
+    ]
+
+    def test_it_is_no_longer_a_410_tombstone(self):
+        body, status = self._post(
+            self._SPOKEN,
+            lambda sid, actor: {"session_id": sid, "published": True,
+                                "reason": None},
+        )
+        self.assertNotEqual(status, 410)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["takes_published"], 2)
+
+    def test_a_take_with_no_note_is_SKIPPED_not_a_failure(self):
+        # Partial publish (founder 2026-08-14): the reviewed take delivers,
+        # the empty one stays visibly "to review" rather than blocking it.
+        def _pub(sid, actor):
+            if sid == "s2":
+                return {"session_id": sid, "published": False,
+                        "reason": "PUBLISH_CONTRACT_VIOLATION"}
+            return {"session_id": sid, "published": True, "reason": None}
+
+        body, status = self._post(self._SPOKEN, _pub)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["takes_published"], 1)
+        self.assertEqual(body["takes_skipped"], 1)
+
+    def test_one_note_anywhere_is_enough(self):
+        """The founder's ruling, as a test: a single piece of feedback on a
+        single take publishes the arc."""
+        def _pub(sid, actor):
+            return {"session_id": sid, "published": sid == "s1",
+                    "reason": None if sid == "s1" else "PUBLISH_CONTRACT_VIOLATION"}
+
+        body, status = self._post(self._SPOKEN, _pub)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["takes_published"], 1)
+
+    def test_nothing_reviewed_anywhere_409s_with_actionable_copy(self):
+        body, status = self._post(
+            self._SPOKEN,
+            lambda sid, actor: {"session_id": sid, "published": False,
+                                "reason": "PUBLISH_CONTRACT_VIOLATION"},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "NOTHING_TO_PUBLISH")
+        self.assertIn("note", body["error"].lower())
+
+    def test_an_already_published_take_is_never_re_published(self):
+        sessions = [
+            {"id": "s1", "take_index": 1, "recording_kind": "spoken",
+             "results_published_at": "2026-08-01T00:00:00Z"},
+            {"id": "s2", "take_index": 2, "recording_kind": "spoken"},
+        ]
+        calls = []
+
+        def _pub(sid, actor):
+            calls.append(sid)
+            return {"session_id": sid, "published": True, "reason": None}
+
+        body, status = self._post(sessions, _pub)
+        self.assertEqual(status, 200)
+        self.assertEqual(calls, ["s2"], "a delivered take must not re-publish")
+        self.assertEqual(body["takes_published"], 2)
+
+    def test_an_arc_with_no_takes_409s(self):
+        body, status = self._post([{"id": "r1", "recording_kind": "read"}],
+                                  lambda sid, actor: None)
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "NOTHING_TO_PUBLISH")
