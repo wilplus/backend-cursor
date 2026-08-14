@@ -3,8 +3,9 @@
 ⚠️ THIS MODULE NO LONGER TOUCHES RANKING. Founder decision 2026-08-13 retired
 the charisma construct from the north star and SPEC §7.2 re-pointed
 ``power_score`` onto ``confidence`` (``conf-q-v1``): the ``direction`` term
-(``_W_D``) is gone, and ``_W_B`` now fires on the album quorum rather than on a
-coach ``challenge`` mark. ``is_challenge`` moved to
+(``_W_D``) is gone, and ``_W_B`` was first re-pointed onto the album quorum and
+then DELETED outright the same evening (founder verdict — a ghost of this
+retired system; the album is an entry decision, not a ranking term). ``is_challenge`` moved to
 services/moment_confidence.py as ``is_confident`` and changed construct with
 the move. Nothing here feeds services/power_phrase_ranking.py any more.
 

@@ -7,7 +7,7 @@ The coach is the GATE — they tag (strong / to_work_on) + surface the acoustic
 was DELIVERED and how well it covered its topic/slide:
 
     power_score = w_c·coach_term + w_a·activation + w_s·slide_stickiness
-                + confidence_term + w_b·album_quorum
+                + confidence_term
 
 WHAT THE 2026-08-13 RE-POINT CHANGED, AND WHY IT WAS NOT COSMETIC. The old
 blend carried a ``direction`` term over {challenge, threat, ambiguous} — the
@@ -48,20 +48,24 @@ instrument every other state uses.
       [-1, 1], used only where no panel label exists. NOT bucketed into three
       classes: that would destroy the variance needed to break ties across the
       unlabelled majority, which is most of the corpus.
-- album_quorum: the redefined ``_W_B``. Fires when a clip CLEARS THE ALBUM
-  QUORUM — multi-rater agreement (SPEC §9.1) — not when one person calls it
-  confident. That distinction is what keeps it clear of the double-count ban:
-  the confidence term is ONE AGGREGATED JUDGMENT on a clip, this is a
-  CONSENSUS EVENT. Because nothing ages out of the album (§9.2), "cleared
-  quorum" and "is in the album" are the same predicate, so the bonus does not
-  decay — had the album rotated, ranking would drift for reasons unconnected
-  to the speech.
+- ⚠️ 2026-08-13, SAME DAY, SECOND FOUNDER VERDICT: ``_W_B`` IS DELETED, not
+  re-pointed. The morning re-lock moved the 2.5 bonus from the coach's
+  challenge mark onto an "album quorum"; the evening audit showed that quorum
+  (coach + game_peer) is satisfiable by no production data, and the founder
+  ruled the bonus itself a ghost of the retired charisma system: the Voice
+  Album paradigm (acoustic moment → user agrees → coach agrees) is an ALBUM
+  ENTRY rule, not a ranking term. Nothing about being in the album lifts a
+  line's rank; the confidence term already carries everything delivery may
+  say here. Do not re-add a bonus without a founder re-lock.
 
-THE ORDERING OF AUTHORITY IS THE INVARIANT, and it survives the re-point
-(SPEC §7.1). Coach verdict dominant (swing 4.0) > breakthrough/quorum bonus
-(2.5) > panel confidence (swing 3.0 at perfect quality, and quality is bounded
-below 1) > machine confidence (swing 2.0) ≈ the content term. Delivery informs
-the pick; it never overrules a human verdict.
+THE ORDERING OF AUTHORITY IS THE INVARIANT, and deleting ``_W_B`` is what
+made it arithmetically TRUE rather than asserted (SPEC §7.1). Coach verdict
+dominant (swing 4.0) > panel confidence (swing 3.0 at perfect quality, and
+quality is bounded below 1) > machine confidence (swing 2.0) ≈ the content
+term. With the bonus gone no combination of automatic terms can cross the
+coach gap — the audit showed quorum + panel together could, because the
+quorum guaranteed a positive panel value and the two summed. Delivery
+informs the pick; it never overrules a human verdict.
 
 Selection of the ≤10 stays PURELY acoustic (snippet_salience) — this only
 reorders what the coach approved. AC-9: the score is internal, never surfaced.
@@ -72,9 +76,8 @@ from __future__ import annotations
 from typing import Any, Optional
 
 _COACH_TERM = {"strong": 1.0, "to_work_on": -1.0}
-# w_c dominant (human EXPERT verdict) > w_b quorum (consensus event) > the rest.
+# w_c dominant (human EXPERT verdict) > the rest.
 _W_C, _W_A, _W_S = 2.0, 1.0, 0.6
-_W_B = 2.5
 
 # Two weights for confidence because the two sources are on DIFFERENT SCALES
 # and carry different reliability: the panel emits three discrete values
@@ -128,7 +131,6 @@ def power_score(
     rank: Any = None,
     panel_confidence: Any = None,
     machine_confidence: Any = None,
-    album_quorum: bool = False,
 ) -> float:
     """Coach-adjusted surfacing score (higher = better power phrase).
 
@@ -156,5 +158,4 @@ def power_score(
         a = 1.0 / float(rank)  # rank 1 → 1.0, rank 2 → 0.5, …
     s = _num(slide_stickiness)
     conf, _source = confidence_term(panel_confidence, machine_confidence)
-    b = _W_B if album_quorum else 0.0
-    return _W_C * coach + _W_A * a + _W_S * s + conf + b
+    return _W_C * coach + _W_A * a + _W_S * s + conf

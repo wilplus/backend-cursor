@@ -21,7 +21,6 @@ def _cand(slide_index, sid, confidence, **kw):
         "audio_ref": kw.get("audio_ref", f"s3://{sid}"),
         "take_index": kw.get("take_index", 1),
         "machine_confidence": confidence,
-        "album_quorum": kw.get("album_quorum", False),
         "activation": kw.get("activation", 0.5),
         "slide_stickiness": kw.get("slide_stickiness", 0.0),
         "tag": kw.get("tag"),
@@ -60,15 +59,16 @@ class SelectBestPerSlideTests(unittest.TestCase):
         self.assertEqual(best[0]["snippet_id"], "hi")
         self.assertEqual(best[1]["snippet_id"], "x")
 
-    def test_the_album_quorum_wins_over_higher_activation(self):
-        # SPEC §7.2: `_W_B` (2.5) is still the top automatic signal, but it
-        # now fires on a multi-rater consensus rather than one coach mark.
+    def test_no_quorum_bonus_survives_selection(self):
+        # Founder verdict 2026-08-13 evening: `_W_B` deleted. A stray
+        # album_quorum key on a candidate is inert — higher activation wins.
         cands = [
             _cand(0, "plain", 0.8, activation=0.9),
-            _cand(0, "bt", 0.8, activation=0.2, album_quorum=True),
+            _cand(0, "bt", 0.8, activation=0.2),
         ]
+        cands[1]["album_quorum"] = True   # stale producer key — must be inert
         best = bp.select_best_per_slide(cands)
-        self.assertEqual(best[0]["snippet_id"], "bt")
+        self.assertEqual(best[0]["snippet_id"], "plain")
 
     def test_prefers_complete_sentence_over_higher_scored_fragment(self):
         # #4: a complete line beats a higher-scored truncated fragment.
@@ -929,7 +929,7 @@ class SelectBestDecklessTests(unittest.TestCase):
     def _cand(self, sid, text, offset, score=0.5, confidence=0.8):
         return {"snippet_id": sid, "transcript": text,
                 "start_offset_ms": offset, "duration_ms": 1000,
-                "machine_confidence": confidence, "album_quorum": False,
+                "machine_confidence": confidence,
                 "activation": score, "slide_stickiness": None,
                 "tag": None, "slide_index": None}
 

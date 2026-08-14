@@ -387,7 +387,6 @@ class TestPowerScoreBlend(unittest.TestCase):
         for kwargs in (
             {"activation": 0.8, "slide_stickiness": 0.5},
             {"tag": "strong", "activation": 0.2},
-            {"album_quorum": True},
             {"rank": 2},
         ):
             self.assertEqual(power_score(**kwargs),
@@ -423,14 +422,12 @@ class TestPowerScoreBlend(unittest.TestCase):
         self.assertGreater(coach_strong_but_doubtful,
                            coach_towork_but_confident)
 
-    def test_the_album_quorum_still_outranks_delivery(self):
-        """SPEC §7.2 re-pointed `_W_B` from a single coach mark onto the
-        multi-rater quorum, but its PLACE in the ordering of authority did not
-        move: a consensus event still beats the loudest machine read."""
+    def test_the_album_quorum_bonus_is_deleted(self):
+        """Founder verdict 2026-08-13 evening: `_W_B` is gone entirely. The
+        retired kwarg raises like the other retired kwargs do."""
         from services.power_phrase_ranking import power_score
-        self.assertGreater(
-            power_score(album_quorum=True, machine_confidence=0.0),
-            power_score(album_quorum=False, machine_confidence=1.0))
+        with self.assertRaises(TypeError):
+            power_score(album_quorum=True)
 
     def test_junk_value_is_neutral(self):
         from services.power_phrase_ranking import power_score

@@ -112,7 +112,12 @@ def _candidate(snip: Any) -> dict:
         "slide_stickiness": stick,
         "tag": None,
         "breakthrough": False,
-        "voice_confidence": _confidence_term(metrics),
+        # MACHINE lane, and the KEY MUST MATCH _score's kwarg below. The
+        # 2026-08-13 re-point renamed the consumer and left this producer as
+        # "voice_confidence", so the term was computed and dropped on the
+        # floor — this lane ranked content-only while its docstring promised
+        # the blend (caught by the same-evening audit).
+        "machine_confidence": _confidence_term(metrics),
         "metrics": metrics,
     }
 
@@ -138,7 +143,6 @@ def _score(cand: dict) -> Optional[float]:
             tag=cand.get("tag"),
             panel_confidence=cand.get("panel_confidence"),
             machine_confidence=cand.get("machine_confidence"),
-            album_quorum=bool(cand.get("album_quorum")),
         )
     except Exception:
         return None

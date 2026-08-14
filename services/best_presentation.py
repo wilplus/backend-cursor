@@ -19,10 +19,12 @@ RANKING RUNS ON CONFIDENCE, NOT CHARISMA (founder 2026-08-13, SPEC §7.2). The
 retired blend carried a ``direction`` term over challenge/threat and gave its
 top automatic bonus to a single coach ``challenge`` mark. Both are gone:
 confidence enters exactly once — blind panel aggregate when one exists, the
-speaker-relative machine composite otherwise (SPEC D8, never summed) — and the
-2.5 bonus now fires only on the ALBUM QUORUM, a multi-rater consensus event
-(SPEC §9.1). The coach's strong / to_work_on tag keeps its dominant weight:
-that is an expert assessment of the phrase, not a percept.
+speaker-relative machine composite otherwise (SPEC D8, never summed). The 2.5
+breakthrough bonus is DELETED outright (founder verdict, same evening): it was
+a ghost of the retired charisma system, and the Voice Album it was briefly
+re-pointed at is an ENTRY decision (acoustic moment → user agrees → coach
+agrees), never a ranking term. The coach's strong / to_work_on tag keeps its
+dominant weight: that is an expert assessment of the phrase, not a percept.
 
 FENCES (§0/§7): the composed text is grounded — no invented content, empty
 slide stays blank; scores are internal (AC-9), never serialized.
@@ -79,14 +81,15 @@ def _is_complete_sentence(text: Any) -> bool:
 def select_best_per_slide(candidates: Any) -> dict:
     """candidates = list of per-snippet dicts: {slide_index, snippet_id,
     transcript, audio_ref, take_index, panel_confidence, machine_confidence,
-    album_quorum, activation, slide_stickiness, tag}. Returns
+    activation, slide_stickiness, tag}. Returns
     ``{slide_index: winning_candidate}`` — the best line per slide.
 
     NOT a confidence-only filter (founder, 2026-06-17, and unchanged by the
     2026-08-13 re-point): every moment is eligible, so a slide always shows its
     best line (never blank). Confidence is a RATING adjustment inside
-    power_score — an assured delivery lifts, an unsure one sinks, and a clip
-    that cleared the album quorum takes the top bonus.
+    power_score — an assured delivery lifts, an unsure one sinks. (The
+    short-lived album-quorum bonus was deleted the day it shipped — founder
+    verdict: the album is an entry decision, never a ranking term.)
 
     #4 (2026-06-21) — read as coherent prose:
       • PREFER a COMPLETE sentence over a higher-scored truncated fragment
@@ -111,7 +114,6 @@ def select_best_per_slide(candidates: Any) -> dict:
             tag=c.get("tag"),
             panel_confidence=c.get("panel_confidence"),
             machine_confidence=c.get("machine_confidence"),
-            album_quorum=bool(c.get("album_quorum")),
         )
         by_slide.setdefault(si, []).append({**c, "_score": score})
 
@@ -248,7 +250,6 @@ def select_best_deckless(candidates: Any, max_sections: int = _DECKLESS_MAX_SECT
             tag=c.get("tag"),
             panel_confidence=c.get("panel_confidence"),
             machine_confidence=c.get("machine_confidence"),
-            album_quorum=bool(c.get("album_quorum")),
         )
         pool.append({**c, "_score": score})
     if not pool:
@@ -491,9 +492,10 @@ def _panel_by_snippet(db, snippet_ids: list) -> dict:
     """``{snippet_id: {"panel": aggregate|None, "quorum": bool}}`` for the arc.
 
     The blind ternary panel (SPEC §3.2) is the human half of the confidence
-    term the 2026-08-13 re-point put into power_score, and the quorum flag is
-    what `_W_B` now fires on. ONE batched query for the whole arc — the same
-    N+1 lesson `_batch_arc_reads` exists for.
+    term the 2026-08-13 re-point put into power_score. ONE batched query for
+    the whole arc — the same N+1 lesson `_batch_arc_reads` exists for.
+    (It briefly also computed an album-quorum flag for the `_W_B` bonus;
+    both were deleted the same day by founder verdict.)
 
     Best-effort by design: {} when the db predates the reader (injected fakes
     in tests) or the query fails. An arc with no panel rows then ranks on the
@@ -509,24 +511,27 @@ def _panel_by_snippet(db, snippet_ids: list) -> dict:
         logger.warning("best_presentation: panel read failed: %s", e)
         return {}
     try:
-        from services.state_ratings import aggregate, clears_album_quorum
+        from services.state_ratings import aggregate
     except Exception:
         return {}
     out: dict = {}
     for snippet_id, rows in rows_by_snippet.items():
         if not isinstance(rows, list):
             continue
-        out[str(snippet_id)] = {
-            "panel": aggregate(rows),
-            "quorum": clears_album_quorum(rows),
-        }
+        out[str(snippet_id)] = {"panel": aggregate(rows)}
     return out
 
 
 # Bump when the cached compose PAYLOAD shape changes (a new per-slide field
 # must force one recompute per arc — the content signature alone can't see
 # shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
-_BP_PAYLOAD_VERSION = "v7"  # v7: the voice-confidence WEIGHTING changed (sex
+_BP_PAYLOAD_VERSION = "v8"  # v8: power_score re-pointed onto confidence and
+                            # _W_B deleted (2026-08-13) — the RANKING SEMANTICS
+                            # changed while no session row moved, so every
+                            # warm cache was still serving picks ranked by the
+                            # retired charisma blend. Only a payload bump can
+                            # force the recompute (the audit's finding #3).
+                            # (v7: the voice-confidence WEIGHTING changed (sex
                             # routing) and history was backfilled — the stamped
                             # scores under a warm cache are not the ones that
                             # produced its picks, and no session row moved, so
@@ -739,10 +744,11 @@ def build_best_presentation(
                 "take_index": take_index,
                 # BADGE ONLY, and no longer a ranking input (SPEC §7.2). This
                 # is the coach's own challenge mark behind the breakthrough
-                # badge; the 2.5 ranking bonus moved to `album_quorum` below,
-                # because one person calling a moment good is not a consensus
-                # event. Kept on the payload so the badge surfaces are
-                # unchanged by the re-point.
+                # badge. The 2.5 ranking bonus it used to carry is DELETED
+                # (founder verdict, 2026-08-13 evening — a ghost of the
+                # retired charisma system; the Voice Album is an entry
+                # decision, never a ranking term). Kept on the payload so the
+                # badge surfaces are unchanged.
                 "breakthrough": s.get("id") in breakthroughs,
                 "activation": metrics.get("overall_score"),
                 "slide_stickiness": stick,
@@ -753,10 +759,6 @@ def build_best_presentation(
                 # the composite → power_score no-op.
                 "panel_confidence": _panel.get(str(s.get("id")), {}).get("panel"),
                 "machine_confidence": _voice_confidence_term(metrics),
-                # The redefined `_W_B` (SPEC §7.2/§9.1) — a multi-rater
-                # consensus event, not a single mark.
-                "album_quorum": _panel.get(
-                    str(s.get("id")), {}).get("quorum", False),
                 "tag": None,  # coach 'strong'/'to_work_on' lives in drafts; not here
                 # score-free plain-language delivery qualities — the "why" the
                 # user expands on a breakthrough badge (reuses the cross-take

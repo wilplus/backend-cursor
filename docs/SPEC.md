@@ -373,13 +373,26 @@ Its rules:
 
 ## §7 · `power_score` after the re-point
 
-> **STATUS: SHIPPED 2026-08-13.** This section was a design until the founder
-> re-locked the north star and retired the charisma construct; §7.2 is now the
-> blend in `services/power_phrase_ranking.py`. `_W_D`/`_DIRECTION_TERM` are
-> deleted, `_W_B` fires on `state_ratings.clears_album_quorum`, and confidence
-> enters once via `confidence_term()`. `is_challenge` became
-> `moment_confidence.is_confident`. §7.1 below is kept as the BEFORE picture —
-> it is what the code looked like, not what it looks like.
+> **STATUS: SHIPPED 2026-08-13, AMENDED SAME EVENING.** This section was a
+> design until the founder re-locked the north star and retired the charisma
+> construct; §7.2 is now the blend in `services/power_phrase_ranking.py`.
+> `_W_D`/`_DIRECTION_TERM` are deleted and confidence enters once via
+> `confidence_term()`. `is_challenge` became `moment_confidence.is_confident`.
+>
+> **⚠️ `_W_B` IS DELETED, not re-pointed (founder verdict, 2026-08-13
+> evening).** The morning ship re-pointed the 2.5 bonus onto
+> `clears_album_quorum`; the same-day audit showed that predicate (coach +
+> game_peer on one snippet) is satisfiable by no production flow — the game is
+> owner-only — so the blend's largest automatic term had gone from firing to
+> never firing, silently. The founder ruled the bonus itself a ghost of the
+> retired charisma system: the Voice Album paradigm is *acoustic moment → user
+> agrees → coach agrees*, an ALBUM-ENTRY rule, never a ranking term. §7.2's
+> `_W_B` prose below is therefore historical; the shipped blend is
+> `w_c·coach + w_a·activation + w_s·slide_stickiness + confidence_term`, and
+> deleting the bonus is what made §7.1's ordering-of-authority invariant
+> arithmetically true (no combination of automatic terms can cross the 4.0
+> coach gap). §7.1 below is kept as the BEFORE picture — it is what the code
+> looked like, not what it looks like.
 >
 > Not shipped with it, and deliberately: the coach's challenge/threat rows in
 > `training_labels` and the shadow classifier fitted on them. §3.2 says the
