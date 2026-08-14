@@ -857,6 +857,18 @@ V22 is the obvious sixth Feedback finding. It is not in v1.0 scope and is noted 
 - **`neutral`** — it sounds middling; neither reads
 - **`unrateable`** — you cannot judge it, usually because of the audio. **Not** a synonym for `neutral`: `neutral` is a judgment about the moment, `unrateable` is a judgment about your ability to make one
 
+### `acoustic-confidence-v1` — Acoustic Confidence (machine read; founder spec 2026-08-14)
+
+| | |
+|---|---|
+| **`state_id`** | `acoustic_confidence` |
+| **Construct** | A chunk with **exceptionally strong acoustic delivery**: the `machine_confidence` read crossing a HIGH threshold on a piece/part. Derived entirely from audio telemetry (pacing, volume variance, …). It measures *how* the user spoke, absolutely blind to *what* they said. |
+| **Engine** | MACHINE — no rater, no question; the threshold gate IS the detector (a NOTICE-class entry per C.8: a scope decision, not a new detector) |
+| **Surfaces as** | The **Confident Voice** card — standard suggestion modal mechanics (Lock / Decline), body copy founder-signed: *"You sounded incredibly confident and natural here."* Purely positive; serves OUTSIDE the ≤3 budget, free. |
+| **Feeds** | The Voice Album pipeline: user lock/apply + coach publish quorum transfers the moment automatically — no custom save affordance. Never a ranking term. |
+
+**What it is not.** Not `confidence` (`conf-q-v1`) itself — that is the panel's perceptual judgment; this is the machine's threshold read of the same voice property, and the two never sum (D8). Not a score anywhere on a surface (AC-9): the threshold crossing surfaces only as the qualitative card above.
+
 ### Adding an entry
 
 A new entry requires, in order: the construct written out; what it is explicitly *not*, naming the adjacent constructs it will be confused with; the single-barrelled question; the answer semantics; the engine; and an external anchor if one exists. Then the lane, then the capacity.
