@@ -13,8 +13,11 @@ below coach truth (L2/L3 fence: never joined into training_labels).
   3. the moment's plain-language delivery technique (_moment_note).
 Plus the coach's breakthrough video when one is attached to the moment.
 
-Order is DETERMINISTIC (sha1 of arc+snippet — no random, replayable), with
-an optional pinned first round for /game?snippet=<id> deep links.
+Order is DETERMINISTIC (no random, replayable): rounds rank by VOICE
+SOURCE first (founder queue order 2026-08-14 — the player's own voice,
+then consented app users, then the coach-labelled YouTube corpus), sha1
+of arc+snippet within a class, with an optional pinned first round for
+/game?snippet=<id> deep links.
 """
 from __future__ import annotations
 
@@ -29,6 +32,24 @@ _MAX_ROUNDS = 10
 
 def _order_key(arc_id: Any, snippet_id: Any) -> str:
     return hashlib.sha1(f"{arc_id}:{snippet_id}".encode("utf-8")).hexdigest()
+
+
+def _source_class(sess: Any, user_id: Any) -> int:
+    """Whose voice a round carries decides its place in the queue
+    (founder 2026-08-14, unparked from product context): the PLAYER's
+    own voice first (0), then other consented app users (1), then the
+    machine-extracted, coach-labelled YouTube corpus (2 — sessions with
+    source='training_import', the same import lane resolve_lane stamps
+    bootstrap). "Own" means the person playing, not the arc owner: a
+    peer labelling someone else's arc hears their own takes first if any
+    are present. Consent itself is enforced upstream (what may reach the
+    arc at all); this ranks only what is already legitimately here."""
+    s = sess if isinstance(sess, dict) else {}
+    if str(s.get("source") or "") == "training_import":
+        return 2
+    if user_id is not None and str(s.get("user_id") or "") == str(user_id):
+        return 0
+    return 1
 
 
 def _playable_ref(ref):
@@ -113,7 +134,7 @@ def build_game_rounds(db, arc_id: Any, user_id: Any,
     """The rounds payload — NO truth included. Keys + an equal number of
     decoys (as available), deterministic order, ≤ _MAX_ROUNDS, the deep-linked
     snippet pinned first when it belongs to the arc."""
-    keys, decoys, by_id, _sess_by_id = _arc_moments(db, arc_id)
+    keys, decoys, by_id, sess_by_id = _arc_moments(db, arc_id)
     if not keys:
         return []  # nothing coach-confirmed yet → no game
     keys = sorted(keys, key=lambda s: _order_key(arc_id, s))
@@ -121,7 +142,14 @@ def build_game_rounds(db, arc_id: Any, user_id: Any,
     n_keys = min(len(keys), _MAX_ROUNDS // 2)
     n_decoys = min(len(decoys), n_keys)
     chosen = keys[:n_keys] + decoys[:n_decoys]
-    chosen = sorted(chosen, key=lambda s: _order_key(arc_id, s))
+    # Queue order (founder 2026-08-14): voice-source class first — own →
+    # consented app users → YouTube corpus — sha1 within a class. The
+    # class ranks the ORDER only; which keys/decoys are chosen stays
+    # hash-deterministic above, and the deep-link pin below still beats
+    # everything (explicit navigation).
+    chosen = sorted(chosen, key=lambda s: (
+        _source_class(sess_by_id.get(s), user_id),
+        _order_key(arc_id, s)))
     if first_snippet and str(first_snippet) in chosen:
         chosen.remove(str(first_snippet))
         chosen.insert(0, str(first_snippet))

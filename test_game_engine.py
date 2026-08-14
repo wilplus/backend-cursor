@@ -175,6 +175,69 @@ class BuildRoundsTests(unittest.TestCase):
         self.assertIn("t1", decoys)
 
 
+class QueueSourceOrderTests(unittest.TestCase):
+    """Founder queue order (2026-08-14, unparked): the player's OWN voice
+    → consented app users → the coach-labelled YouTube corpus
+    (source='training_import'). Class ranks the order only — selection
+    stays sha1-deterministic, and the deep-link pin beats everything."""
+
+    def _db(self):
+        sessions = [
+            {"id": "yt", "user_id": "corpus-import",
+             "source": "training_import"},
+            {"id": "peer", "user_id": "u2"},
+            {"id": "own", "user_id": "u1"},
+        ]
+        snips = {
+            "yt": [_snip("y1", "a corpus key line", 0, session_id="yt"),
+                   _snip("y2", "a corpus aside", 1000, session_id="yt")],
+            "peer": [_snip("p1", "a peer key line", 0, session_id="peer"),
+                     _snip("p2", "a peer aside", 1000, session_id="peer")],
+            "own": [_snip("o1", "my key line", 0, session_id="own"),
+                    _snip("o2", "my aside", 1000, session_id="own")],
+        }
+        labels = {
+            "yt": [{"snippet_id": "y1", "value": "challenge"}],
+            "peer": [{"snippet_id": "p1", "value": "challenge"}],
+            "own": [{"snippet_id": "o1", "value": "challenge"}],
+        }
+        return _FakeDB(sessions, snips, labels)
+
+    def _rounds(self, uid="u1", first=None):
+        from services.game_engine import build_game_rounds
+        return build_game_rounds(self._db(), "arc1", uid,
+                                 first_snippet=first)
+
+    def test_own_then_app_users_then_youtube(self):
+        rounds = self._rounds()
+        self.assertEqual(len(rounds), 6)   # 3 keys + 3 decoys, all classes
+        rank = {"o": 0, "p": 1, "y": 2}
+        ranks = [rank[r["snippet_id"][0]] for r in rounds]
+        self.assertEqual(ranks, sorted(ranks))
+        self.assertEqual({r["snippet_id"] for r in rounds[:2]},
+                         {"o1", "o2"})
+        self.assertEqual({r["snippet_id"] for r in rounds[-2:]},
+                         {"y1", "y2"})
+
+    def test_own_means_the_player_not_the_arc_owner(self):
+        # A peer playing this arc hears THEIR voice first; the corpus
+        # stays last for everyone.
+        rounds = self._rounds(uid="u2")
+        self.assertEqual({r["snippet_id"] for r in rounds[:2]},
+                         {"p1", "p2"})
+        self.assertEqual({r["snippet_id"] for r in rounds[-2:]},
+                         {"y1", "y2"})
+
+    def test_class_order_is_deterministic(self):
+        a = [r["snippet_id"] for r in self._rounds()]
+        b = [r["snippet_id"] for r in self._rounds()]
+        self.assertEqual(a, b)
+
+    def test_deep_link_pin_beats_class_order(self):
+        rounds = self._rounds(first="y1")
+        self.assertEqual(rounds[0]["snippet_id"], "y1")
+
+
 class TwiceLabelledGateTests(unittest.TestCase):
     """Founder 2026-08-10: "min twice labelled voice snippet goes to the
     game." The gate lives in _arc_moments, so serving and answering close
