@@ -4,7 +4,7 @@
 -- three new sold keys are storable. Nothing is renamed, nothing is migrated,
 -- and NO LIVE ROW IS REWRITTEN.
 --
---   sold now:  free · practice · coached · intensive
+--   sold now:  free · practice · coaching · intensive
 --   retired:   starter · pro · max   (kept VALID on purpose — see below)
 --
 -- WHY THE RETIRED KEYS STAY IN THE CONSTRAINT. The grandfathering *scheme*
@@ -35,7 +35,7 @@ BEGIN
             ADD CONSTRAINT v2_student_details_tier_valid
             CHECK (tier IS NULL OR tier IN (
                 -- sold
-                'free', 'practice', 'coached', 'intensive',
+                'free', 'practice', 'coaching', 'intensive',
                 -- retired, still resolvable for existing subscriptions
                 'starter', 'pro', 'max'
             ));
@@ -43,7 +43,7 @@ BEGIN
 END$$;
 
 COMMENT ON COLUMN public.v2_student_details.tier IS
-    'Subscription tier. SOLD: free, practice, coached, intensive (pricing v3, '
+    'Subscription tier. SOLD: free, practice, coaching, intensive (pricing v3, '
     'founder 2026-08-14). RETIRED but still valid so existing subscriptions '
     'renew and grant: starter, pro, max. No key is ever aliased onto another — '
     'an alias silently rewrites a paying user''s entitlements.';

@@ -52,7 +52,7 @@ TIERS: dict[str, dict] = {
     # ── SOLD ──
     "free":      {"tokens":  12_000, "coach_reviews": 0, "usd":  0},
     "practice":  {"tokens": 150_000, "coach_reviews": 0, "usd": 12},
-    "coached":   {"tokens": 150_000, "coach_reviews": 3, "usd": 39},
+    "coaching":  {"tokens": 150_000, "coach_reviews": 3, "usd": 39},
     "intensive": {"tokens": 400_000, "coach_reviews": 8, "usd": 89},
 
     # ── RETIRED, NOT SOLD (founder 2026-08-14: the grandfathering SCHEME is
@@ -72,7 +72,7 @@ TIERS: dict[str, dict] = {
     "max":     {"tokens": 1_500_000, "coach_reviews": 30, "usd": 100},
 }
 
-SOLD_TIERS: tuple[str, ...] = ("free", "practice", "coached", "intensive")
+SOLD_TIERS: tuple[str, ...] = ("free", "practice", "coaching", "intensive")
 """What may be BOUGHT and what the sales sheet shows.
 
 Separate from TIERS on purpose: TIERS answers "what does this key grant"
