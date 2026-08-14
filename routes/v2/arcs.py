@@ -309,7 +309,9 @@ def v2_explore_arc_voice_album(arc_id):
 
     Response 200 {"arc_id", "entries": [{snippet_id, take_session_id,
     take_index, slide_index, entered_at, text, audio_url,
-    start_offset_ms, duration_ms}]} — entry order (oldest first).
+    start_offset_ms, duration_ms}]} — PRESENTATION order (founder
+    2026-08-14): slide_index ascending, entries without a slide last,
+    entered_at ascending within a slide.
     404 NOT_FOUND · 500 V2_ERROR
     """
     try:
@@ -318,6 +320,17 @@ def v2_explore_arc_voice_album(arc_id):
             return jsonify({"code": "NOT_FOUND",
                             "error": "arc not found"}), 404
         entries = db.list_voice_album(str(arc_id)) or []
+
+        # The DB's entered_at base order is CAPTURE order — lock slide 7's
+        # moment before slide 2's and the album would read 7-then-2 forever.
+        # The album reads in DECK position; same-slide ties keep earn order.
+        def _deck_pos(e):
+            si = e.get("slide_index") if isinstance(e, dict) else None
+            positioned = isinstance(si, int) and not isinstance(si, bool)
+            return (0 if positioned else 1, si if positioned else 0,
+                    str(e.get("entered_at") or "") if isinstance(e, dict)
+                    else "")
+        entries = sorted(entries, key=_deck_pos)
         take_index_by_sid = {str(s.get("id")): s.get("take_index")
                              for s in sessions}
         snips_by_sid: dict = {}

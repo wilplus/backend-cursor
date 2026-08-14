@@ -227,3 +227,36 @@ class VoiceAlbumReadTests(unittest.TestCase):
         body, status = self._get(sessions=self._SESS, entries=[], snips=[])
         self.assertEqual(status, 200)
         self.assertEqual(body["entries"], [])
+
+    def test_entries_read_in_presentation_order_not_capture_order(self):
+        # Founder 2026-08-14: the album reads in DECK position, whatever
+        # order the moments were earned in. Capture order (the DB's
+        # entered_at base) put slide 7 first when it was locked first;
+        # an entry with no slide reads last.
+        entries = [
+            {"snippet_id": "s7", "take_session_id": "t1", "slide_index": 7,
+             "entered_at": "2026-08-01T10:00:00Z"},
+            {"snippet_id": "sN", "take_session_id": "t1",
+             "slide_index": None,
+             "entered_at": "2026-08-02T10:00:00Z"},
+            {"snippet_id": "s2", "take_session_id": "t1", "slide_index": 2,
+             "entered_at": "2026-08-03T10:00:00Z"},
+        ]
+        body, status = self._get(sessions=self._SESS, entries=entries,
+                                 snips=self._SNIPS)
+        self.assertEqual(status, 200)
+        self.assertEqual([e["snippet_id"] for e in body["entries"]],
+                         ["s2", "s7", "sN"])
+
+    def test_same_slide_ties_break_on_entered_at(self):
+        # Two moments on one slide keep earn order (oldest first).
+        entries = [
+            {"snippet_id": "late", "take_session_id": "t1",
+             "slide_index": 4, "entered_at": "2026-08-05T10:00:00Z"},
+            {"snippet_id": "early", "take_session_id": "t1",
+             "slide_index": 4, "entered_at": "2026-08-01T10:00:00Z"},
+        ]
+        body, _ = self._get(sessions=self._SESS, entries=entries,
+                            snips=self._SNIPS)
+        self.assertEqual([e["snippet_id"] for e in body["entries"]],
+                         ["early", "late"])
