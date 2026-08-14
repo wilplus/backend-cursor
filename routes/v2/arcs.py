@@ -1012,7 +1012,7 @@ def _fold_applied_moments(text, moments) -> str:
       * replace   → the inner span is swapped for the generated replacement
         (not bold, not orange — just replaced).
     The [[moment:…]] anchor survives (revert stays addressable). Pure."""
-    from services.ideal_text_block import accent_span
+    from services.ideal_text_block import accent_span, within_accent_window
     if not isinstance(text, str) or not text:
         return text
     for m in moments or []:
@@ -1044,8 +1044,19 @@ def _fold_applied_moments(text, moments) -> str:
                 # moment's inner span can run across a paragraph break,
                 # and a marker that straddles a newline printed a bare
                 # `{{orange:` line into the student's text.
+                #
+                # THE F.4 WINDOW, HERE TOO (SPEC §12.2, founder 2026-08-14
+                # — field report #3, "my saved text went all orange"). A
+                # moment's inner span is the WHOLE snippet transcript — a
+                # whole chunk — and this fold painted all of it. bake_piece
+                # has refused that since §F.4 (within_accent_window); the
+                # serve fold was the second writer with the rule missing.
+                # Over the window: the moment folds to ITSELF — the applied
+                # decision stands, only the paint is refused, words
+                # untouched — exactly bake_piece's rule.
                 lambda mt: (
                     mt.group(0) if "{{orange:" in mt.group("inner")
+                    or not within_accent_window(mt.group("inner"))
                     else (f"[[moment:{_id}|{_sid}]]"
                           f"{accent_span(mt.group('inner'))}[[/moment]]")),
                 text, count=1)

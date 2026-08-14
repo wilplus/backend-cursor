@@ -407,6 +407,22 @@ class AppliedMapAndFoldTests(unittest.TestCase):
         self.assertIn("{{orange:shaky bit}}", folded2)
         self.assertNotIn("**{{orange:", folded2)
 
+    def test_over_window_emphasize_folds_to_itself_no_paint(self):
+        # SPEC §12.2 (founder 2026-08-14, field report #3 — "my saved text
+        # went all orange"). A moment's inner span is the WHOLE snippet
+        # transcript; painting it wrapped the entire chunk. The serve fold
+        # now applies the same §F.4 window bake_piece has always had: over
+        # the window, the applied decision stands and the paint is refused
+        # — the words come back untouched, marker-free.
+        inner = " ".join(f"w{i}" for i in range(13))   # 13 > 12-word window
+        text = f"Start. [[moment:{SNIP}|{SESS}]]{inner}[[/moment]] end."
+        folded = v2._fold_applied_moments(text, [{
+            "id": SNIP, "take_session_id": SESS, "applied": True,
+            "suggestion": {"kind": "emphasize"},
+        }])
+        self.assertEqual(folded, text)
+        self.assertNotIn("{{orange:", folded)
+
     def test_unapplied_untouched(self):
         text = f"[[moment:{SNIP}|{SESS}]]x[[/moment]]"
         self.assertEqual(v2._fold_applied_moments(text, [{
