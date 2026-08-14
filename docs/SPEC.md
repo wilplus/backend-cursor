@@ -889,6 +889,33 @@ V22 is the obvious sixth Feedback finding. It is not in v1.0 scope and is noted 
 
 **Status:** specced by founder mini-brief 2026-08-14; **build waits for the founder's production reality test** of the shipped pipeline.
 
+### `key-moment-v1` — the Key Moment (coach read; founder ruling 2026-08-14)
+
+| | |
+|---|---|
+| **`state_id`** | `key_moment` |
+| **Construct** | A delivered moment the COACH judges **STRONG** — worth keeping and worth replaying. It is a judgment about *this delivery of this passage*, not about the speaker and not about the words. Recorded as `coach_snippet_drafts.tag = 'strong'` on a **surfaced** draft, and it does not exist until the session is **published**. |
+| **Question** | The single-barrelled one the coach already answers on the review card: **"Was this moment strong, or one to work on?"** |
+| **Answer semantics** | `strong` → a key moment · `to_work_on` → explicitly NOT one (a real judgment, not an absence) · no tag → not judged. Absence and negation are different states and must not collapse. |
+| **Engine** | **HUMAN — the coach.** The machine is a ROUTER, never a rater (label-ledger rule 1, decisions log §J): acoustic confidence may decide *which* moments the coach is shown, and can never make one key. |
+| **Surfaces as** | The key-moment card (the coach's note, the student's VERBATIM words, playback of that span, the coach's video when attached), the voice-game round, and the paid key-moment explanation. Qualitative only — never a count, a rank or a score (AC-9). |
+
+**Why this entry exists.** "Key moment" was live on five surfaces — the game, the feedback page, the **only hard paywall**, the breakthrough badge, and the breakthroughs overlay — with **no §17 entry at all**, meaning nothing could say what was being claimed. Its live definition was `training_labels.value == 'challenge'`, from the **retired** challenge/threat construct, under two mutually contradictory rules (the game counted `challenge` only; the feedback page and the paywall counted `challenge` OR `threat`, so a `threat` moment was simultaneously a key moment behind the paywall and a WRONG ANSWER in the game). The coach control that created those labels was deleted from the FE on 2026-08-07, so the corpus has been frozen since: every session reviewed after that date produces zero key moments, and the paid unlock opens onto nothing. This entry re-bases the state on a signal the coach can still create, and makes one definition serve all three surfaces.
+
+**What it is not.**
+
+- **Not `challenge` / `threat` (retired).** Those rows stay a versioned CORPUS (§3.2) and are never rewritten, but they stop being the definition. During the cutover the read path honours a legacy `challenge`/`threat` row on a surfaced draft as a key moment — the underlying artefact is the same coach-authored note and video — while **every new write uses `strong` only**. This is a vocabulary migration, not a reinterpretation: a `challenge` label is not a `strong` label and neither is re-labelled as the other.
+- **Not `confidence` (`conf-q-v1`), and not derivable from it.** Confidence is the panel's percept of the VOICE — how assured a delivery sounds. A key moment is the coach's SELECTION of a moment. A moment can sound perfectly assured and not be worth keeping; a moment can be the best thing in the take and not be the most assured. Nothing may compute one from the other, and `key_moment` never enters `power_score`.
+- **Not the Voice Album.** The album is the strict SUBSET where three signals agree — key moment ∩ acoustic emphasis ∩ the student's own approval. Every album entry is a key moment; most key moments are not album entries.
+- **Not `acoustic-confidence-v1`.** That is the machine's threshold read, and it is the ROUTER here: it may raise a moment for the coach's attention, and it may never make one key on its own.
+- **Not a score, a count or a badge (AC-9).** How many key moments a take has is never surfaced, and "no key moments" is never rendered as a verdict on the speaker.
+
+**Blind until publish (BLIND COACH).** A tag is invisible to the student before `results_published_at`, exactly as the album already requires. This is what keeps the coach's judgment blind while the review is in progress.
+
+**Open item, flagged not buried — the game's blindness.** Once an arc is published, its key moments are visible on the feedback page; a round drawn from that same arc asks the student to guess something they have already been shown. The old construct had the identical leak. Two mitigations already exist and neither is yet an enforced rule: game answers are declared SECOND-ORDER signal below coach truth, and the queue's three-class order (own → consented peers → corpus, 2026-08-14) makes cross-user rounds the default the day ingestion lands. **Needs a founder call:** draw rounds only from unpublished arcs, prefer other speakers' clips, or accept the leak on the grounds that the answer is non-authoritative anyway.
+
+**Status:** ruled by the founder 2026-08-14 (Option 1 — re-point to `confidence`, after the audit found the paywall selling an empty room). Wiring the game, the feedback page and the paid unlock onto this definition, and removing the coach instructions that name a deleted control, is the rescue build that follows this entry.
+
 ### Adding an entry
 
 A new entry requires, in order: the construct written out; what it is explicitly *not*, naming the adjacent constructs it will be confused with; the single-barrelled question; the answer semantics; the engine; and an external anchor if one exists. Then the lane, then the capacity.
