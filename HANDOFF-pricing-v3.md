@@ -119,6 +119,25 @@ initially misread as one.
 
 ---
 
+### ⛔ OPEN — "Coach feedback — 0" in *What things cost*
+
+Verified live: the wallet's cost table now lists `Coach feedback` at **0**. The
+five phantom actions are correctly gone (`assembly`, `say_it_stronger`,
+`piece_retranscribe`, `life_panel`, `coach_review`), so that part of #440 landed.
+
+But 0 is the wrong currency, not a discount. `coach_feedback` costs **one review
+slot** — the scarcest resource on the ladder and the whole reason Coached ($39)
+sits above Practice ($12). A user reads "0" as free. It sits directly under
+"Coach reviews · Not included on your plan", which is where the real price is
+stated, making the contradiction visible in one glance.
+
+Two candidate fixes: drop it from the token cost table entirely (it is not a
+token cost), or render it in its own unit ("1 review"). Either is user-facing
+copy — **founder sign-off required** (LIVE LOOP).
+
+Not a regression from #440 in the strict sense — the row is honest about tokens.
+It is the *table* that assumes one currency.
+
 ## 4. Also open, not blocking
 
 - **Token top-up products are recurring.** `1,500,000 tokens` / `300,000
