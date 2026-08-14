@@ -1582,6 +1582,26 @@ def v2_user_suggestion_feedback(snippet_id):
                                       or snip.get("transcription_text"))),
                         snippet_id=snippet_id, version=_ver,
                         slide_index=_slide_i)
+                    # THE VOICE ALBUM (founder 2026-08-14, mirror ruling):
+                    # an APPLIED emphasize is the USER signal of the entry
+                    # rule — if the acoustic star and a published coach
+                    # 'strong' already agree, the moment lands now. A
+                    # REVERT withdraws that signal, and the album is a
+                    # pure reflection of current state ("not an
+                    # append-only graveyard of changed minds"), so the
+                    # same refresh REMOVES the entry. Best-effort: never
+                    # breaks the decide POST.
+                    if action in ("applied", "reverted") and target in (
+                            "moment_emphasize", "document_bold"):
+                        try:
+                            from services.voice_album import (
+                                refresh_voice_album,
+                            )
+                            refresh_voice_album(_arc, database=db)
+                        except Exception as _va_err:
+                            logger.warning(
+                                "voice_album: decide hook failed arc=%s: "
+                                "%s", _arc, _va_err)
                     # THE TAKE'S BUDGET (founder 2026-08-10): a decided star
                     # keeps its slot — applied and dismissed alike; a revert
                     # returns it (undecided again, SPEC R4). The row doubles

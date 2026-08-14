@@ -535,6 +535,20 @@ def v2_internal_publish_session_results():
         # the user from reaching their results via direct link.
         db.v2_publish_session_results(session_id)
 
+        # THE VOICE ALBUM (founder 2026-08-14): publish releases the coach
+        # signal, so this is the moment an aligned moment can land —
+        # acoustic emphasize + user approved + coach 'strong', now public.
+        # Best-effort: an album miss never blocks a publish (LIVE LOOP).
+        try:
+            _arc_for_album = (session or {}).get("arc_id") \
+                if isinstance(session, dict) else None
+            if _arc_for_album:
+                from services.voice_album import refresh_voice_album
+                refresh_voice_album(_arc_for_album, database=db)
+        except Exception as _va_err:
+            logger.warning("voice_album: publish hook failed sid=%s: %s",
+                           session_id, _va_err)
+
         # (Old charisma-profile compute removed in the old-subsystem
         # excision — willab publishes never used the result, and AC-9
         # already strips charisma_profile from user payloads. The legacy
