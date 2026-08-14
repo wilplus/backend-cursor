@@ -25,6 +25,7 @@ class _Db:
         self.drafts = drafts or {}
         self.album = album or []
         self.inserted = []
+        self.deleted = []
 
     def list_ideal_decisions(self, arc_id):
         return self.ledger
@@ -43,6 +44,10 @@ class _Db:
 
     def insert_voice_album_entry(self, **kw):
         self.inserted.append(kw)
+        return True
+
+    def delete_voice_album_entry(self, **kw):
+        self.deleted.append(kw)
         return True
 
 
@@ -98,6 +103,26 @@ class EntryRuleTests(unittest.TestCase):
         db.album = [{"snippet_id": "sn1"}]
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
         self.assertEqual(db.inserted, [])
+        # Still aligned — the mirror leaves it exactly in place.
+        self.assertEqual(db.deleted, [])
+
+    def test_a_reverted_approval_removes_the_entry(self):
+        # THE MIRROR RULING (founder 2026-08-14): the album is a pure
+        # reflection of current state — un-apply the emphasize and the
+        # moment leaves the album, never a graveyard of changed minds.
+        db = _all_three()
+        db.ledger = []                       # the user signal withdrew
+        db.album = [{"snippet_id": "sn1"}]
+        self.assertEqual(refresh_voice_album(ARC, database=db), 0)
+        self.assertEqual(db.inserted, [])
+        self.assertEqual([d["snippet_id"] for d in db.deleted], ["sn1"])
+
+    def test_one_lands_while_another_leaves_in_one_pass(self):
+        db = _all_three()
+        db.album = [{"snippet_id": "sn_old"}]   # no longer aligned
+        self.assertEqual(refresh_voice_album(ARC, database=db), 1)
+        self.assertEqual([i["snippet_id"] for i in db.inserted], ["sn1"])
+        self.assertEqual([d["snippet_id"] for d in db.deleted], ["sn_old"])
 
     def test_a_phrase_only_approval_cannot_enter(self):
         # The entry is a MOMENT: a ledger row with no snippet id has

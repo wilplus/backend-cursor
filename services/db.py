@@ -11632,6 +11632,31 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    def delete_voice_album_entry(self, *, arc_id: str,
+                                 snippet_id: str) -> bool:
+        """Remove one album entry — the MIRROR ruling (founder
+        2026-08-14): a withdrawn signal (a reverted approval) removes the
+        moment; the album reflects current state, never a graveyard of
+        changed minds. Best-effort."""
+        if not arc_id or not snippet_id:
+            return False
+        try:
+            (self.client.table("voice_album")
+             .delete()
+             .eq("arc_id", str(arc_id))
+             .eq("snippet_id", str(snippet_id))
+             .execute())
+            return True
+        except Exception as e:
+            _e = str(e).lower()
+            if "voice_album" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return False
+            logger.warning("delete_voice_album_entry failed arc=%s: %s",
+                           arc_id, e)
+            return False
+
     def list_voice_album(self, arc_id: Optional[str]) -> list:
         """All album entries for an arc, oldest first. [] pre-migration /
         on hiccup — the capture refresh then simply re-checks everything,
