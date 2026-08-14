@@ -60,12 +60,36 @@ application of the CONFIG-FIRST rule, corrected after checking the importers.
 
 ---
 
-## 3. ⛔ THE OPEN ITEM — pick up here
+## 3. ✅ CUTOVER VERIFIED — and one live defect it exposed
 
-**The pricing page was last seen rendering the OLD ladder** (starter $5 / pro
-$25 / max $100), after the merge.
+**Resolved.** After a hard refresh the pricing page renders the v3 ladder
+correctly: Practice $12 / 150,000 / no reviews · Coached $39 / 150,000 / 3 ·
+Intensive $89 / 400,000 / 8. The earlier old-ladder sighting was a stale
+client-side read, exactly as the timestamps predicted. No backend defect.
 
-What is established:
+### ⛔ OPEN — the card label reads "COACHED"
+
+The live cards render **COACHED** and the button **"Choose coached"** — the
+label the founder explicitly rejected (see §1). The Stripe product was named
+"Coaching", but **the frontend derives the card label from the tier key, not
+from the Stripe product name**, so that rename never reached the page.
+
+Fix in the **frontend** display layer only — a presentation-string map from tier
+key → label. **Do NOT rename the `coached` key** to fix this: the key is written
+into the tier table, migration 0274, the Stripe metadata, the price map now live
+on Railway, and the tests. Renaming it is a migration plus a config change to
+solve a text problem.
+
+While in there: the buttons read "Choose practice" / "Choose coached" in
+lowercase mid-sentence, which is the same key-as-copy shortcut showing through.
+
+User-facing copy — **needs founder sign-off before shipping** (LIVE LOOP fence;
+"Coaching" is the founder's stated preference but the exact card and button
+strings are not signed off).
+
+### Historical — how the cutover was diagnosed
+
+What was established:
 - Merge `bacabb7` committed **2026-08-14 23:14 UTC**
 - Railway deployment `48b09bc4` went Active **2026-08-15 01:14 GMT+2 = 23:14 UTC**
 - Same minute ⇒ the active deployment **is** the merge. Backend is on v3.
@@ -75,24 +99,19 @@ What is established:
 So the stale cards are ❓ most likely a client-side read: either the page was
 loaded before the deploy finished, or the prices cache added in #298.
 
-**Next action, in order:**
+**Still to do:**
 
-1. Hard-refresh the pricing page. Expect Free / Practice $12 / Coaching $39 /
-   Intensive $89.
-2. If still old: DevTools → Network → `prices` → Response → read
-   `price_version`.
-   - `2026-08-14-v3` → backend fine, **frontend misrenders** — real bug, dig in
-     the FE.
-   - `2026-08-01-v2` → something is serving old code despite an Active deploy.
-3. Confirm migration `0274_add_pricing_v3_tiers.sql` applied — search the web
+1. **Live purchase test — the only real proof left.** Stripe test mode does not
+   exercise the live webhook path, which is exactly where the tier map matters.
+   Put a real card through on Practice and confirm the wallet reflects the
+   grant. Until this passes, "the webhook resolves the new price id → tier →
+   grant" is inferred, not observed.
+2. Confirm migration `0274_add_pricing_v3_tiers.sql` applied — search the web
    service's **Deploy Logs** for `0274`. (Searching for `price_version` there is
    pointless; it is a response field, never logged.)
-4. **Live purchase test.** Stripe test mode does not exercise the live webhook
-   path, which is exactly where the tier map matters. Put a real card through on
-   Practice and confirm the wallet reflects the grant.
 
 Note: a sandboxed agent cannot curl the live site from this environment
-(connection blocked, status 000). Steps 1–2 require the founder's browser.
+(connection blocked, status 000). Browser-side checks need the founder.
 
 Also unverified: the free-tier token count is **12,000 in both v2 and v3**, so
 that line on the page is *not* a signal of which version is live. It was
