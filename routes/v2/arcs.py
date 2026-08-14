@@ -292,6 +292,74 @@ def _arc_owned_by_caller(arc_id):
     return owned, sessions
 
 
+@v2_bp.route("/explore/arc/<arc_id>/voice-album", methods=["GET"])
+@require_auth
+def v2_explore_arc_voice_album(arc_id):
+    """The Voice Album read — the arc's aligned moments (SPEC F2; the
+    founder's entry rule 2026-08-14: acoustic + user + coach, mirrored to
+    current state).
+
+    DATA ONLY. The surface copy and UI are the founder's (LIVE LOOP);
+    this serves what any compliant surface needs and nothing it must not
+    show: each entry carries the moment's verbatim words, playback for
+    its own audio span, and its position (slide, take) plus entered_at.
+    NO confidence, NO tags, NO scores (AC-9). The FACT of entry is
+    post-publish and three-way agreed, so it reveals no blind label
+    (BLIND COACH holds by construction).
+
+    Response 200 {"arc_id", "entries": [{snippet_id, take_session_id,
+    take_index, slide_index, entered_at, text, audio_url,
+    start_offset_ms, duration_ms}]} — entry order (oldest first).
+    404 NOT_FOUND · 500 V2_ERROR
+    """
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "arc not found"}), 404
+        entries = db.list_voice_album(str(arc_id)) or []
+        take_index_by_sid = {str(s.get("id")): s.get("take_index")
+                             for s in sessions}
+        snips_by_sid: dict = {}
+        out = []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            sid = str(e.get("take_session_id") or "")
+            snip = None
+            if sid:
+                if sid not in snips_by_sid:
+                    try:
+                        snips_by_sid[sid] = {
+                            str(s.get("id")): s
+                            for s in (db.get_snippets_by_session(sid)
+                                      or [])}
+                    except Exception:
+                        snips_by_sid[sid] = {}
+                snip = snips_by_sid[sid].get(str(e.get("snippet_id")))
+            _s = snip or {}
+            out.append({
+                "snippet_id": e.get("snippet_id"),
+                "take_session_id": e.get("take_session_id"),
+                "take_index": take_index_by_sid.get(sid),
+                "slide_index": e.get("slide_index"),
+                "entered_at": e.get("entered_at"),
+                # The student's own words, verbatim — never a paraphrase.
+                "text": (_s.get("transcript")
+                         or _s.get("transcription_text") or "").strip(),
+                "audio_url": (_resolve_snippet_audio_url(_s)
+                              if snip else None),
+                "start_offset_ms": _s.get("start_offset_ms"),
+                "duration_ms": _s.get("duration_ms"),
+            })
+        return jsonify({"arc_id": arc_id, "entries": out}), 200
+    except Exception as e:
+        logger.error("explore/arc voice-album failed arc=%s: %s", arc_id,
+                     e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
 @require_auth
 def v2_explore_arc_best_presentation(arc_id):
