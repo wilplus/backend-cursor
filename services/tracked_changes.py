@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 # ⚠️ KEEP COMPLETE. The audit found this missing new_take and acoustic_swap —
 # two LIVE lanes — while claiming to be the contract; anyone hardening the
 # serve against it would have killed both.
-SOURCES = ("polish", "profanity", "wording", "prior_take",
+SOURCES = ("polish", "profanity", "wording", "confident_voice", "prior_take",
            "delivery", "structural", "new_take", "acoustic_swap")
 
 # Kinds that make a claim ABOUT SPECIFIC WORDS — the ones that must decline
@@ -147,6 +147,14 @@ def _kind_and_source(sug: dict) -> tuple:
     if k == "structure":
         return ("advice", "structural")
     if k == "emphasize":
+        # THE CONFIDENT VOICE CARD (founder mini-brief 2026-08-14, §17
+        # acoustic-confidence-v1): its OWN source, so the FE can title it
+        # "Confident Voice" and key its signed body — the trigger never
+        # rides the payload. Both vocabularies on purpose: historical rows
+        # keep the words they were written with (charisma-era rows stay
+        # interpretable; the construct is retired, the rows are corpus).
+        if sug.get("trigger") in ("confident", "charisma"):
+            return ("bold", "confident_voice")
         return ("bold", "wording")
     if k == "replace":
         if sug.get("trigger") == "polish":
@@ -266,6 +274,11 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
             "span": {"start": start, "end": end},
             "quote": quote,
         }
+        if source == "confident_voice":
+            # The founder-signed body renders FE-side by KEY (the FE's
+            # closed why vocabulary holds the copy — LIVE LOOP): "You
+            # sounded incredibly confident and natural here."
+            entry["why_key"] = "confident_voice"
         # THE REASON LINE. `why` is the model's FREE TEXT and the FE has
         # always dropped it: it validates `why_key ?? why` against a closed
         # vocabulary, so un-signed-off LLM prose can never reach a student

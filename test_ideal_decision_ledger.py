@@ -221,6 +221,12 @@ class LaneClassTests(unittest.TestCase):
         for why in ("energy", "steadiness", "coverage", "overall"):
             self.assertEqual(lane_class("replace", why=why), "flow")
 
+    def test_confident_voice_is_its_own_class(self):
+        from services.ideal_decision_ledger import lane_class
+        for src in ("confident", "charisma", "confident_voice"):
+            self.assertEqual(lane_class("emphasize", source=src),
+                             "confident_voice")
+
     def test_default_is_clarity(self):
         from services.ideal_decision_ledger import lane_class
         self.assertEqual(lane_class("replace"), "clarity")
