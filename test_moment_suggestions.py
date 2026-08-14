@@ -861,6 +861,76 @@ class LedgerGenerationFilterTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class IntentKeyGenerationFilterTests(unittest.TestCase):
+    """§12.3 (founder 2026-08-14) — the phrase-drift zombie kill. Take 2
+    rewords the snippet, the normalized phrase no longer matches the
+    ledger, and a declined suggestion came back in new clothes (field
+    report #4). The intent key blocks on (slide, class) instead: same
+    place + same class = same intent, blocked, however the words drift."""
+
+    class _Db(LedgerGenerationFilterTests._Db):
+        slide_by_snippet: dict = {}
+
+        def get_snippets_by_session(self, sid):
+            return [{"id": s, "metrics": {
+                "voice_confidence": {"score": 0.9,
+                                     "version": "voice-confidence-v2"},
+                "piece": {"slide_index": self.slide_by_snippet.get(s)},
+            }} for s in self.confident_snippets]
+
+    def test_same_slide_same_class_blocked_across_phrasing(self):
+        from services import moment_suggestions as ms
+        # Take 1: a STYLE decision on slide 2 ("keep this phrase",
+        # dismissed). Take 2's snippet on slide 2 carries entirely new
+        # words — the phrase key misses; the intent key must not.
+        db = self._Db([{"kind": "emphasize",
+                        "target_phrase": "keep this phrase",
+                        "decision": "dismissed",
+                        "slide_index": 2, "lane_class": "style"}])
+        db.confident_snippets = ("s1", "s2")
+        db.slide_by_snippet = {"s1": 2, "s2": 3}
+        readout = {"snippets": [
+            {"id": "s1", "transcript": "totally reworded by the model",
+             "acoustic_read": {"potentiometer": 0.9}},
+            {"id": "s2", "transcript": "a different slide's words",
+             "acoustic_read": {"potentiometer": 0.9}},
+        ]}
+        result = type("R", (), {"parsed": {"why": "Plain and strong.",
+                                           "replacement": None},
+                                "text": ""})()
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value=readout), \
+             patch("services.llm.chat_complete", return_value=result):
+            ms.generate_for_session("sess-1", ARC, database=db)
+        kinds = [(snip, kind) for (snip, kind, _t) in db.upserts]
+        self.assertNotIn(("s1", "emphasize"), kinds)   # intent → blocked
+        self.assertIn(("s2", "emphasize"), kinds)      # other slide serves
+
+    def test_legacy_rows_without_intent_change_nothing(self):
+        from services import moment_suggestions as ms
+        # A pre-§12.3 row (no slide, no class) must not block anything
+        # beyond its phrase — reworded text on the same slide still serves.
+        db = self._Db([{"kind": "emphasize",
+                        "target_phrase": "keep this phrase",
+                        "decision": "dismissed"}])
+        db.confident_snippets = ("s1",)
+        db.slide_by_snippet = {"s1": 2}
+        readout = {"snippets": [
+            {"id": "s1", "transcript": "totally reworded by the model",
+             "acoustic_read": {"potentiometer": 0.9}},
+        ]}
+        result = type("R", (), {"parsed": {"why": "Plain and strong.",
+                                           "replacement": None},
+                                "text": ""})()
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value=readout), \
+             patch("services.llm.chat_complete", return_value=result):
+            ms.generate_for_session("sess-1", ARC, database=db)
+        self.assertIn(("s1", "emphasize"),
+                      [(snip, kind) for (snip, kind, _t) in db.upserts])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class ContextDocumentReachesGenerationTests(unittest.TestCase):
     """X-1 v2 (2026-07-25) — THE integration point. X-1 shipped the upload +
     storage, but nothing ever read the stored text into a prompt, so an

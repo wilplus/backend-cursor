@@ -1565,6 +1565,14 @@ def v2_user_suggestion_feedback(snippet_id):
                     # keyed on the raw transcript could never be found by
                     # the bake and the approval silently did nothing
                     # ("the system does not accept my approval").
+                    # §12.3 — the intent key's location: the cutter's own
+                    # slide bucket for this snippet (the one cross-take
+                    # key). Missing/legacy metrics → None; the row then
+                    # carries the phrase key only, exactly as before.
+                    _piece = (snip.get("metrics") or {}).get("piece") \
+                        if isinstance(snip.get("metrics"), dict) else None
+                    _slide_i = _piece.get("slide_index") \
+                        if isinstance(_piece, dict) else None
                     record_star_decision(
                         db, _arc, suggestion=_sug_row, target=target,
                         action=action,
@@ -1572,7 +1580,8 @@ def v2_user_suggestion_feedback(snippet_id):
                             _arc, snippet_id,
                             fallback=(snip.get("transcript")
                                       or snip.get("transcription_text"))),
-                        snippet_id=snippet_id, version=_ver)
+                        snippet_id=snippet_id, version=_ver,
+                        slide_index=_slide_i)
                     # THE TAKE'S BUDGET (founder 2026-08-10): a decided star
                     # keeps its slot — applied and dismissed alike; a revert
                     # returns it (undecided again, SPEC R4). The row doubles

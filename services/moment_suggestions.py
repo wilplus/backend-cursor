@@ -348,13 +348,20 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # decided on (approved → baked / dismissed → remembered) never
         # regenerate. Best-effort — empty pre-migration.
         from services.ideal_decision_ledger import (
+            intent_keys, lane_class as _lane_class,
             ledger_keys, normalize_phrase as _norm_phrase,
         )
         try:
-            _decided_keys = ledger_keys(
-                database.list_ideal_decisions(str(arc_id)))
+            _ledger_rows = database.list_ideal_decisions(str(arc_id))
+            _decided_keys = ledger_keys(_ledger_rows)
+            # §12.3 — the INTENT keys beside the phrase keys: a decided
+            # (slide, class) pair blocks regeneration however the LLM
+            # rephrases the words on the next take (field report #4 — the
+            # phrase-drift zombies).
+            _intent_keys = intent_keys(_ledger_rows)
         except Exception:
             _decided_keys = set()
+            _intent_keys = set()
 
         # Protected phrases (founder 2026-07-20, rule 4a): wording the
         # speaker repeats across takes is THEIR voice — stickiness
@@ -382,6 +389,7 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         _no_text = 0         # no id or empty transcript
         _capped = 0          # over MOMENT_SUGGESTIONS_MAX_PER_TAKE
         _decided = 0         # decision ledger: already approved/dismissed
+        _decided_intent = 0  # §12.3 intent key: same slide+class decided
         _no_gen = 0          # generation returned nothing (LLM or guard)
         _errored = 0         # per-snippet exception, swallowed below
         # ── THE CONFIDENCE-GAP COUNTER (founder 2026-08-13, corrected same
@@ -443,6 +451,26 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                 # (those are behavioural prompts, not text edits).
                 if (kind, _norm_phrase(transcript)) in _decided_keys:
                     _decided += 1
+                    _unstarred.append((str(snip_id), transcript,
+                                       snip.get("features") or {}))
+                    continue
+                # §12.3 — THE INTENT KEY (founder 2026-08-14). The phrase
+                # gate above dies the moment the LLM rewords: take 2's
+                # snippet carries fresh words, the normalized phrase no
+                # longer matches, and a suggestion the student already
+                # declined comes back in new clothes (field report #4).
+                # Same slide + same class = same intent, blocked — the
+                # student un-blocks by reverting the decision, never the
+                # machine by paraphrasing.
+                _mtx_i = _metrics_by_id.get(str(snip_id))
+                _piece_i = (_mtx_i or {}).get("piece") \
+                    if isinstance(_mtx_i, dict) else None
+                _slide_i = _piece_i.get("slide_index") \
+                    if isinstance(_piece_i, dict) else None
+                if isinstance(_slide_i, int) \
+                        and not isinstance(_slide_i, bool) \
+                        and (_slide_i, _lane_class(kind)) in _intent_keys:
+                    _decided_intent += 1
                     _unstarred.append((str(snip_id), transcript,
                                        snip.get("features") or {}))
                     continue
@@ -582,10 +610,12 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         #
         logger.info(
             "moment_suggestion: sid=%s arc=%s seen=%d stored=%d "
-            "(no_text=%d capped=%d decided=%d no_gen=%d errored=%d) "
+            "(no_text=%d capped=%d decided=%d decided_intent=%d no_gen=%d "
+            "errored=%d) "
             "unstarred=%d (no_conf_read=%d)",
             session_id, arc_id, _seen, stored,
-            _no_text, _capped, _decided, _no_gen, _errored, len(_unstarred),
+            _no_text, _capped, _decided, _decided_intent, _no_gen, _errored,
+            len(_unstarred),
             _no_conf_read)
         return stored
     except Exception as e:

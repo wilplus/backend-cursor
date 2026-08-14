@@ -306,3 +306,4 @@
 0268	add_user_acoustic_baseline.sql
 0269	add_arc_part_acoustics.sql
 0270	add_coach_arc_ideal_text_document.sql
+0271	add_ideal_decision_intent_key.sql
