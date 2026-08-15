@@ -151,10 +151,15 @@
       "module": "pending",
       "sha256": "2c709e071146b4c3c9104b4f5b507f90fb5af76755668e0380c447b4f92a49c8"
     },
+    "emphasis_phrase.cue_hints": {
+      "kind": "static",
+      "module": "moment_suggestions",
+      "sha256": "7ac4263501fc6167b2fb469efc07b9bb14be0c120460b830c9e568e98f33cd97"
+    },
     "emphasis_phrase.system": {
       "kind": "static",
       "module": "moment_suggestions",
-      "sha256": "d62f2770c729eb98325cf23fd7ebf0f8f86ebe95d5fe90c6948e63cd856e136e"
+      "sha256": "df7f1f8e2d4d8ed66a53700972db8cbb26dc658d79e8399deeb23e52a1b6884f"
     },
     "goal_update.builder": {
       "kind": "source_ref",

@@ -1,0 +1,35 @@
+-- willab — WHAT THE VOICE DID on a starred moment (founder 2026-08-15).
+--
+-- "For the underlining use the verbal and vocal cues of what the user said
+--  to determine that it was confident … not just random", and "in the
+--  justification of the positive feedback explain using the vocal and
+--  verbal cues."
+--
+-- services/voice_confidence.py already reads seven acoustic cues per moment
+-- and folds them into ONE number. That number is the right shape for
+-- ranking and the wrong shape for both asks above: an accent needs to know
+-- WHERE inside the moment the delivery landed, and a praise line needs to
+-- know WHICH cues carried it. A scalar has discarded both by the time
+-- anyone reads it.
+--
+-- services/delivery_cues.py re-reads the same cues through the same weight
+-- tables and keeps them UNSUMMED; the strongest few land here, as KEYS from
+-- a closed vocabulary (delivery_cues.CUE_KEYS). The FE holds the copy for
+-- each key, exactly as it does for why_key — so this column can never carry
+-- a score, a ratio or an unsigned-off sentence to a student (AC-9 + LIVE
+-- LOOP). A key says which true thing may be said; it does not say it.
+--
+-- NOT A NEW CONSTRUCT: these are the observed cues BEHIND the `confidence`
+-- read (conf-q-v1, SPEC §17), not a second measured state. Nothing here is
+-- rated, aggregated or entered into quorum.
+--
+-- NULL on every row that has no cue reading, which is most of them: no
+-- baseline yet on a first take, a middling delivery, a lane that accents
+-- nothing. Written per take and never merged with a prior row's list — a
+-- detector's output is versioned, never accumulated in place.
+--
+-- Additive and idempotent; RLS is already ON for this table
+-- (service-role only). No backfill: the cues are a reading of audio at
+-- analysis time and cannot be recovered after the fact.
+ALTER TABLE public.moment_suggestions
+    ADD COLUMN IF NOT EXISTS cue_keys JSONB NULL;

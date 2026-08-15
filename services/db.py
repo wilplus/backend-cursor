@@ -11259,6 +11259,7 @@ class DatabaseService:
         self, snippet_id: str, arc_id: str, kind: str,
         replacement_text: Optional[str], why: Optional[str],
         trigger: Optional[str], *, emphasis_quote: Optional[str] = None,
+        cue_keys: Any = None,
     ) -> bool:
         """One star suggestion per snippet (founder 2026-07-18). Idempotent
         on snippet_id (a reassembly regenerates in place). Best-effort.
@@ -11267,10 +11268,21 @@ class DatabaseService:
         accent (founder 2026-08-15, migrations/add_moment_emphasis_quote
         .sql). Keyword-only and defaulted: the delivery / structural /
         congruence / swap writers store no accent target and say so by not
-        passing one."""
+        passing one.
+
+        ``cue_keys`` — WHAT THE VOICE DID on this moment, as keys from
+        services.delivery_cues.CUE_KEYS (founder 2026-08-15). The evidence a
+        praise line cites; never a number, never free text (AC-9). Stored as
+        given and never merged with a prior row's list: cues are a reading of
+        ONE take's audio, and a detector's output is versioned, not
+        accumulated."""
         if not snippet_id or not arc_id \
                 or kind not in self.SUGGESTION_KINDS:
             return False
+        _cues = None
+        if isinstance(cue_keys, (list, tuple)):
+            _cues = [str(k) for k in cue_keys if isinstance(k, str) and k] \
+                or None
         row = {
             "snippet_id": str(snippet_id),
             "arc_id": str(arc_id),
@@ -11279,6 +11291,7 @@ class DatabaseService:
             "why": why,
             "trigger": trigger,
             "emphasis_quote": emphasis_quote,
+            "cue_keys": _cues,
         }
         try:
             self.client.table("moment_suggestions").upsert(
@@ -11292,13 +11305,15 @@ class DatabaseService:
             # write that is the ONLY way a star is ever stored is exactly the
             # shape that takes a live lane dark, and the star is worth more
             # than its accent target.
-            if "emphasis_quote" in _e:
+            if "emphasis_quote" in _e or "cue_keys" in _e:
                 logger.warning(
-                    "upsert_moment_suggestion: emphasis_quote column missing "
-                    "(run migrations/add_moment_emphasis_quote.sql) — storing "
-                    "the star without its accent target")
+                    "upsert_moment_suggestion: accent columns missing (run "
+                    "migrations/add_moment_emphasis_quote.sql and "
+                    "add_moment_cue_keys.sql) — storing the star without its "
+                    "accent target and cues")
                 try:
                     row.pop("emphasis_quote", None)
+                    row.pop("cue_keys", None)
                     self.client.table("moment_suggestions").upsert(
                         row, on_conflict="snippet_id").execute()
                     return True
