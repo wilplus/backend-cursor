@@ -178,3 +178,65 @@ class FlagDefaultTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BubbleCarriesItsOwnNameTests(unittest.TestCase):
+    """THE ROW KNOWS ITS PROJECT (founder 2026-08-15).
+
+    The bubble carried `arc_id` and nothing else, so the card had to GET the
+    document on mount just to render a heading — showing "Your ideal text"
+    until it landed, on every bubble, on every app open. The name is free at
+    write time; fetching it at read time was the whole defect."""
+
+    class _Db:
+        def __init__(self, sessions=None, boom=False):
+            self._sessions = sessions if sessions is not None else [
+                {"id": "s1", "user_id": "u1", "recording_kind": "spoken",
+                 "intake_context": {"topic": "Book really"}},
+            ]
+            self._boom = boom
+            self.rows = []
+
+        def get_arc_sessions(self, arc_id):
+            if self._boom:
+                raise RuntimeError("db down")
+            return list(self._sessions)
+
+        def insert_lounge_messages(self, user_id, messages):
+            self.rows.extend(messages)
+            return list(messages)
+
+    def _meta(self, db):
+        return db.rows[0]["metadata"]
+
+    def test_the_instant_bubble_carries_the_topic(self):
+        from services.arc_notifications import fire_instant_ideal_ready
+        db = self._Db()
+        self.assertTrue(fire_instant_ideal_ready(db, "u1", "arc-1"))
+        self.assertEqual(self._meta(db)["topic"], "Book really")
+
+    def test_the_version_bubble_carries_the_topic(self):
+        from services.arc_notifications import fire_ideal_version_ready
+        db = self._Db()
+        fire_ideal_version_ready(db, "u1", "arc-1", 2)
+        self.assertEqual(self._meta(db)["topic"], "Book really")
+
+    def test_a_missing_topic_is_None_not_an_empty_string(self):
+        # The FE falls back on a falsy topic either way, but "" stored as if it
+        # were a name is the same class of lie the FE cache refuses to persist.
+        from services.arc_notifications import fire_instant_ideal_ready
+        db = self._Db(sessions=[{"id": "s1", "user_id": "u1",
+                                 "recording_kind": "spoken",
+                                 "intake_context": {"topic": "   "}}])
+        fire_instant_ideal_ready(db, "u1", "arc-1")
+        self.assertIsNone(self._meta(db)["topic"])
+
+    def test_a_topic_lookup_failure_NEVER_blocks_the_bubble(self):
+        # The name is decoration; the bubble is the delivery. A DB hiccup must
+        # cost a heading, never the card telling the student their text is
+        # ready (LIVE LOOP).
+        from services.arc_notifications import fire_instant_ideal_ready
+        db = self._Db(boom=True)
+        self.assertTrue(fire_instant_ideal_ready(db, "u1", "arc-1"))
+        self.assertIsNone(self._meta(db)["topic"])
+        self.assertEqual(self._meta(db)["arc_id"], "arc-1")

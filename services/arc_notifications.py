@@ -183,6 +183,35 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
     )
 
 
+def _arc_topic(db, arc_id: Any) -> Optional[str]:
+    """The arc's project name, for stamping on a bubble at WRITE time.
+
+    THE BUBBLE IS THE ONLY THING THAT KNOWS ITS OWN NAME (founder 2026-08-15:
+    "first they display the placeholder and only later load the database's
+    name"). An ideal-text row carried `arc_id` and nothing else, so the card
+    had to GET the document on mount just to render a heading — every bubble,
+    every app open, showing "Your ideal text" until it landed.
+
+    A name is not volatile and it is free right here, at the one moment the
+    row is written. Stamping it means a brand-new bubble is correct on its
+    FIRST paint, with no request at all; the FE's cache covers the rows
+    written before today.
+
+    Never raises and never blocks the bubble: a missing topic just means the
+    FE falls back exactly as it does now.
+    """
+    if not arc_id:
+        return None
+    try:
+        _owner, _n, topic = _arc_owner_and_topic(db, arc_id)
+        t = (topic or "").strip() if isinstance(topic, str) else ""
+        return t or None
+    except Exception as e:
+        logger.warning("arc_notifications: topic lookup failed arc=%s: %s",
+                       arc_id, e)
+        return None
+
+
 def fire_instant_ideal_ready(db, user_id: Any, arc_id: Any) -> bool:
     """The INSTANT ideal-text bubble (founder re-lock 2026-07-17): fired the
     moment the arc's machine draft persists at spoken take 3 — the free,
@@ -202,7 +231,8 @@ def fire_instant_ideal_ready(db, user_id: Any, arc_id: Any) -> bool:
             "kind": "ideal_text",
             "body": ("Your instant ideal text is ready. Your coach is "
                      "still polishing the full version."),
-            "metadata": {"arc_id": str(arc_id), "variant": "instant"},
+            "metadata": {"arc_id": str(arc_id), "variant": "instant",
+                         "topic": _arc_topic(db, arc_id)},
             "client_created_at": datetime.now(timezone.utc).isoformat(),
         }])
         if not persisted:
@@ -230,8 +260,11 @@ def _fire_ideal_bubble(db, user_id: Any, arc_id: Any, *, client_key: str,
             "role": "bot",
             "kind": "ideal_text",
             "body": body,
+            # `topic` — the project's name, stamped at WRITE time so the card
+            # never has to fetch one just to draw its heading (see _arc_topic).
             "metadata": {"arc_id": str(arc_id), "variant": variant,
-                         "version": version},
+                         "version": version,
+                         "topic": _arc_topic(db, arc_id)},
             "client_created_at": datetime.now(timezone.utc).isoformat(),
         }])
         if not persisted:
