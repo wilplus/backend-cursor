@@ -128,6 +128,7 @@ def send_publish_results_email(
     snippet_count: int,
     top_theme: Optional[str],
     session_id: str,
+    arc_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Render + send one PostSessionResultsEmail to ``user_email``.
 
@@ -166,10 +167,25 @@ def send_publish_results_email(
         return {"status": "skipped", "reason": "send_emails_disabled"}
 
     unsubscribe_url = build_unsubscribe_url(user_id)
-    # Deep-link → Lounge chat. The "insights ready" card is already
-    # appended to the thread on publish; the user lands there and sees
-    # it at the bottom. No overlay auto-open (?insight=) — just chat.
-    journey_url = f"{cfg.PUBLIC_FRONTEND_URL.rstrip('/')}/chat"
+    # DEEP-LINK STRAIGHT TO THE REVIEWED TEXT (founder 2026-08-15: "does the
+    # link from the email lead to this particular ideal text that holds these
+    # reviews? if not make it a deep link").
+    #
+    # It did not. The CTA landed on /chat and left the student to find the
+    # right bubble in a thread — for the ONE email whose entire subject is
+    # "your coach reviewed this specific talk". `?idealArc=` opens that arc's
+    # notebook on mount, the same way `?arc=` already opens the best
+    # presentation and `?insight=` the insights overlay.
+    #
+    # Falls back to plain /chat when the arc is unknown: a take with no arc is
+    # a real (if odd) state, and a link to nothing is worse than a link to the
+    # thread that holds the card.
+    _base = cfg.PUBLIC_FRONTEND_URL.rstrip("/")
+    _arc = (arc_id or "").strip()
+    journey_url = (
+        f"{_base}/chat?idealArc={_url_quote(_arc, safe='')}" if _arc
+        else f"{_base}/chat"
+    )
 
     props: dict[str, Any] = {
         "userFirstName": (user_first_name or "").strip() or None,
