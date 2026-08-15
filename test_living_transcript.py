@@ -419,6 +419,57 @@ class TrackedChangeTests(unittest.TestCase):
         self.assertEqual(build_tracked_changes(self.DOC, self.PIECES, {}), [])
 
 
+class PraiseEvidenceTests(unittest.TestCase):
+    """THE PRAISE LANE CITES ITS EVIDENCE (founder 2026-08-15): "explain
+    using the vocal and verbal cues." The cues ride as KEYS — the FE holds a
+    sentence per key, so nothing here can be a number or an unsigned-off
+    wording."""
+
+    DOC = "We started small. Then we shipped it fast."
+    PIECES = [{"snippet_id": S1, "text": DOC, "take_session_id": T1,
+               "start": 0, "end": len(DOC)}]
+
+    def _changes(self, sug):
+        return build_tracked_changes(self.DOC, self.PIECES, {S1: sug})
+
+    def test_the_cues_ride_with_the_praise(self):
+        c = self._changes({"kind": "delivery", "trigger": "impeccable",
+                           "cue_keys": ["landed_ending", "full_volume"]})[0]
+        self.assertEqual(c["kind"], "advice")
+        self.assertEqual(c["device"], "impeccable")
+        self.assertEqual(c["cue_keys"], ["landed_ending", "full_volume"])
+
+    def test_an_UNKNOWN_key_never_reaches_a_user_payload(self):
+        # A row written before the vocabulary existed, or by a future writer,
+        # must not put a key the FE has no copy for on screen.
+        c = self._changes({"kind": "delivery", "trigger": "impeccable",
+                           "cue_keys": ["landed_ending", "vibes", 7, None]})[0]
+        self.assertEqual(c["cue_keys"], ["landed_ending"])
+
+    def test_no_cues_no_key_at_all(self):
+        # Absent, not empty: an empty list on the payload reads as "we
+        # measured and found nothing", which is a different claim.
+        c = self._changes({"kind": "delivery", "trigger": "impeccable"})[0]
+        self.assertNotIn("cue_keys", c)
+        c = self._changes({"kind": "delivery", "trigger": "impeccable",
+                           "cue_keys": []})[0]
+        self.assertNotIn("cue_keys", c)
+
+    def test_junk_cue_keys_never_break_the_serve(self):
+        for bad in ("landed_ending", 42, {"a": 1}):
+            c = self._changes({"kind": "delivery", "trigger": "pace_fast",
+                               "cue_keys": bad})[0]
+            self.assertNotIn("cue_keys", c)
+
+    def test_the_praise_still_alters_nothing(self):
+        # It is advice: no proposed text, no strike, and the span only points.
+        c = self._changes({"kind": "delivery", "trigger": "impeccable",
+                           "cue_keys": ["no_hesitation"]})[0]
+        self.assertNotIn("proposed_text", c)
+        self.assertIsNone(c["why"])
+        self.assertEqual(c["quote"], self.DOC)
+
+
 class AccentWidthTests(unittest.TestCase):
     """THE ACCENT WIDTH RULE (founder 2026-08-15): "try not to style the
     whole paragraphs or chunks but key few words or a sentence — so

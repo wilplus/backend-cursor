@@ -341,16 +341,34 @@ def _delivery_stars_enabled() -> bool:
         in ("1", "true", "yes")
 
 
-def _generate_delivery(database, arc_id, candidates, baseline) -> list:
+def _generate_delivery(database, arc_id, candidates, baseline, *,
+                       cue_baseline=None, sex=None,
+                       metrics_by_id=None) -> list:
     """Measured delivery stars (founder 2026-07-18): deterministic, no LLM.
     ``candidates`` = [(snip_id, features_dict), ...] for the snippets with
     NO acoustic star. Persists up to DELIVERY_STARS_MAX_PER_TAKE rows
     (kind='delivery', trigger=device, no replacement, no why — the FE
     renders the approved copy from `device`). Returns the snip_ids that
-    got a delivery star (so structural skips them — never double-star)."""
+    got a delivery star (so structural skips them — never double-star).
+
+    THE PRAISE HALF (founder 2026-08-15): *"if the delivery was impeccable,
+    just give them the feedback in the praise lane."* Checked FIRST, and it
+    SHORT-CIRCUITS the issue detector, which is the whole point.
+    ``detect_delivery_issue`` is one-sided by construction — it looks only
+    for flatness, rushing, dragging and over-pausing — so on a moment
+    delivered well it either finds nothing or, worse, returns whichever
+    complaint was least far from its threshold. Handing that to somebody who
+    just nailed it is exactly the note the founder asked to replace.
+
+    The praise is decided by services.delivery_cues.is_impeccable, which
+    reads the FULL seven-cue set against the speaker's own confidence
+    baseline rather than this module's four one-sided z-tests, and the cues
+    that earned it are stored with the row so the line can cite its
+    evidence instead of asserting it."""
     if not _delivery_stars_enabled() or not arc_id \
             or not candidates or not baseline:
         return []
+    from services.delivery_cues import cue_keys_for_piece, is_impeccable
     from services.delivery_stars import detect_delivery_issue
     try:
         from config import Config
@@ -361,22 +379,43 @@ def _generate_delivery(database, arc_id, candidates, baseline) -> list:
     if _cap <= 0:
         return []
     starred: list = []
+    praised = 0
     for snip_id, feats in candidates:
         if len(starred) >= _cap:
             break
         try:
-            device = detect_delivery_issue(feats, baseline, z_threshold=_z)
+            # The praise gate reads the RAW metrics when we have them — the
+            # same blob the confidence baseline was built from — so cue and
+            # baseline are measured off one source. `feats` (the readout
+            # spelling) is the fallback; normalize_features folds both.
+            _pm = (metrics_by_id or {}).get(str(snip_id)) or feats
+            _score = None
+            if isinstance(_pm, dict) \
+                    and isinstance(_pm.get("voice_confidence"), dict):
+                _score = _pm["voice_confidence"].get("score")
+            _cues: list = []
+            device = None
+            if is_impeccable(_pm, cue_baseline, sex, confidence_score=_score):
+                device = "impeccable"
+                _cues = cue_keys_for_piece(_pm, cue_baseline, sex)
+            else:
+                device = detect_delivery_issue(feats, baseline,
+                                               z_threshold=_z)
             if not device:
                 continue
             if database.upsert_moment_suggestion(
-                    snip_id, str(arc_id), "delivery", None, None, device):
+                    snip_id, str(arc_id), "delivery", None, None, device,
+                    cue_keys=(_cues or None)):
                 starred.append(snip_id)
+                if device == "impeccable":
+                    praised += 1
         except Exception as e:
             logger.warning("delivery_star: snippet failed snip=%s: %s",
                            snip_id, e)
             continue
     if starred:
-        logger.info("delivery_star: stored %d arc=%s", len(starred), arc_id)
+        logger.info("delivery_star: stored %d arc=%s (praise=%d)",
+                    len(starred), arc_id, praised)
     return starred
 
 
@@ -750,7 +789,12 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
             database, arc_id,
             [(sid, feats) for (sid, _t, feats) in _unstarred
              if sid not in _congruence_starred],
-            _baseline))
+            _baseline,
+            # The praise half reads the CONFIDENCE baseline, not the delivery
+            # one: those are different feature sets with different floors, and
+            # "impeccable" is a claim about the confidence cues.
+            cue_baseline=_vc_baseline, sex=_vc_sex,
+            metrics_by_id=_metrics_by_id))
         stored += len(_deliv)
         # congruence IS a delivery star → fold it in so structural skips it too.
         _delivery_starred = _congruence_starred | _deliv

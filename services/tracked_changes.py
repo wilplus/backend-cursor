@@ -399,6 +399,20 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
         else:   # advice — the FE renders copy from the device
             entry["device"] = sug.get("trigger")
             entry["why"] = None
+            # THE PRAISE LANE'S EVIDENCE (founder 2026-08-15: "explain using
+            # the vocal and verbal cues"). KEYS only, from the closed
+            # delivery_cues vocabulary — the FE holds a sentence per key, so
+            # this can carry no number and no unsigned-off wording (AC-9 +
+            # LIVE LOOP). Filtered rather than trusted: a row written before
+            # the vocabulary existed, or by a future writer, must not put an
+            # unknown key on a user payload.
+            _cues = sug.get("cue_keys")
+            if isinstance(_cues, (list, tuple)):
+                from services.delivery_cues import CUE_KEYS as _KNOWN
+                _cues = [c for c in _cues
+                         if isinstance(c, str) and c in _KNOWN]
+                if _cues:
+                    entry["cue_keys"] = _cues
         out.append(entry)
     out.sort(key=lambda c: (c["span"]["start"], c["span"]["end"]))
     return out

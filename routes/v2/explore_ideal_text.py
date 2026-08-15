@@ -1598,6 +1598,42 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             served_text, _pieces, _sugs, applied=_applied,
             key_phrases_by_snippet=_kp_by_snip)
 
+        # ── HEAR IT (founder 2026-08-15) ──────────────────────────────────
+        # "in the justification of the positive feedback give them the
+        # playback of that phrase emphasising that it was said really well."
+        #
+        # The praise lane is the ONE lane whose claim is about the SOUND, so
+        # it is the one lane that cannot be taken on trust: "you delivered
+        # this beautifully" over words the student cannot replay is an
+        # assertion, and the whole point of citing the cues is that it should
+        # be evidence. Playback makes it checkable in one tap.
+        #
+        # FREE, and deliberately from the free map: `_moment_playback_map`
+        # exists precisely because the star sheet plays a student's own
+        # recording ABOVE the paywall (audit 2026-07-18). Sourcing it from
+        # the paid moments read would put a paywall between somebody and
+        # their own voice.
+        #
+        # ONLY the praise device gets it. Every other change is a claim about
+        # WORDS and reads fine without audio; attaching a player to all of
+        # them would be a per-snippet resolve on every serve for no reason.
+        try:
+            _praise = [c for c in changes
+                       if isinstance(c, dict) and c.get("device") ==
+                       "impeccable" and c.get("take_session_id")]
+            if _praise:
+                _pb = _moment_playback_map(
+                    sorted({c["take_session_id"] for c in _praise}))
+                for _c in _praise:
+                    _row = _pb.get(str(_c.get("snippet_id") or ""))
+                    if _row and _row.get("snippet_audio_ref"):
+                        _c.update(_row)
+        except Exception as _pb_err:
+            # No player is a smaller loss than no praise. The line still
+            # renders and still names its cues.
+            logger.warning("praise playback failed arc=%s: %s",
+                           arc_id, _pb_err)
+
         # ── CROSS-TAKE DISCERNMENT (founder decision 2026-07-20 #4):
         # where the PREVIOUS take said the same thing better, its wording
         # comes back as an approvable change on this document. The
