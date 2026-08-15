@@ -140,10 +140,11 @@ def fire_human_check_note(db, user_id: Any, arc_id: Any) -> bool:
         db, str(user_id),
         client_key=f"willab-humancheck:{arc_id}",
         kind="text",
-        body=(
-            "This was your automatic overview. Your take is also being "
-            "checked by your coach."
-        ),
+        # SHORTENED 2026-08-15 (founder). Two sentences to one, same two
+        # facts: the read they just saw was the machine's, and a human is
+        # looking too. AC-9 unchanged — it reports WHO is looking, never a
+        # verdict, and it still never promises when.
+        body="That was the automatic read — your coach is checking this take too.",
         metadata={"arc_id": str(arc_id), "note": "human_check"},
     )
 
