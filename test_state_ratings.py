@@ -278,3 +278,53 @@ class TestCorpusSummary(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnchoredSelfCheckTests(unittest.TestCase):
+    """"Do you agree?" on the Confident Voice card (founder 2026-08-15).
+
+    The card shows the machine's read and THEN asks. That rating is anchored,
+    and the corpus has to say so — an anchored label is indistinguishable
+    from a blind one once stored, which is why I1 exists."""
+
+    def test_blind_is_the_DEFAULT_not_a_choice(self):
+        # A caller that forgets gets the old, stricter behaviour. The only
+        # way to record an anchored row is for a route to say so.
+        row, err = validate_rating({"state_id": "confidence",
+                                    "value": "yes"})
+        self.assertIsNone(err)
+        self.assertIs(row["saw_model_output"], False)
+
+    def test_the_anchored_surface_RECORDS_it(self):
+        row, err = validate_rating({"state_id": "confidence", "value": "yes"},
+                                   saw_model_output=True)
+        self.assertIsNone(err)
+        self.assertIs(row["saw_model_output"], True)
+
+    def test_the_PAYLOAD_can_never_set_it(self):
+        # I1's storage half: facts about the rater's SCREEN are stamped
+        # server-side, because a client that could describe its own screen
+        # could describe it wrongly.
+        row, _ = validate_rating({"state_id": "confidence", "value": "yes",
+                                  "saw_model_output": True})
+        self.assertIs(row["saw_model_output"], False)
+
+    def test_the_owner_lane_still_cannot_reach_quorum(self):
+        # Excluded TWICE over — the owner is not a peer (rule 2), and this
+        # rating was anchored (I1). Both by constants that already exist.
+        from services.label_quorum import QUORUM_LANES
+        from services.state_ratings import PANEL_LANES, resolve_lane
+        lane = resolve_lane("app", is_coach=False, is_owner=True)
+        self.assertEqual(lane, "game_owner")
+        self.assertNotIn(lane, PANEL_LANES)
+        self.assertNotIn(lane, QUORUM_LANES)
+
+    def test_the_route_stamps_it_rather_than_trusting_the_client(self):
+        import inspect
+
+        from routes.v2 import user_sessions as us
+        src = inspect.getsource(us.v2_put_confidence_agree)
+        self.assertIn("saw_model_output=True", src)
+        self.assertIn("self_report=True", src)
+        # The machine's proposal is read from storage, never from the body.
+        self.assertIn("machine_proposal(snip)", src)

@@ -134,8 +134,16 @@ def describe_question(question_version: Any) -> Optional[dict]:
 
 # ── validation ──────────────────────────────────────────────────────────────
 
-def validate_rating(payload: Any) -> tuple[Optional[dict], Optional[str]]:
+def validate_rating(payload: Any, *,
+                    saw_model_output: bool = False
+                    ) -> tuple[Optional[dict], Optional[str]]:
     """Validate one ternary rating -> ``(row, None)`` or ``(None, error)``.
+
+    ``saw_model_output`` is set BY THE ROUTE, never from the payload, and
+    defaults to blind. It says whether the surface that collected this rating
+    had already shown the machine's read (founder 2026-08-15's
+    agree-with-the-Confident-Voice-card panel is the one that has). See the
+    field's note below for why it is recorded rather than asserted.
 
     Body::
 
@@ -198,8 +206,24 @@ def validate_rating(payload: Any) -> tuple[Optional[dict], Optional[str]]:
         "unrateable": unrateable,
         "note": (note.strip()[:1000] or None) if isinstance(note, str) else None,
         "latency_ms": latency_ms,
-        # I1: never true for a rating. Stored so the invariant is auditable.
-        "saw_model_output": False,
+        # I1, AND IT IS NOW RECORDED RATHER THAN ASSERTED (founder 2026-08-15).
+        #
+        # This was the literal `False`, on every row, forever. That was safe
+        # only while every collecting surface was genuinely blind — and the
+        # founder has now asked for one that is not: the Confident Voice card
+        # says "you sounded incredibly confident and natural here" and THEN
+        # asks whether the speaker agrees. A rating taken there is ANCHORED,
+        # and writing `False` over it would put a claim in the corpus that
+        # cannot be un-made afterwards, because an anchored label is
+        # indistinguishable from a blind one once stored.
+        #
+        # SERVER-SUPPLIED, NEVER CLIENT-SUPPLIED, and it defaults to blind: a
+        # caller that forgets gets the old, stricter behaviour, and the only
+        # way to record `True` is for a route to say so — which is the same
+        # reason machine_value is stamped off the stored read rather than
+        # accepted from the payload. The surface is not something the surface
+        # gets to describe.
+        "saw_model_output": bool(saw_model_output),
     }, None
 
 

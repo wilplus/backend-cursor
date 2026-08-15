@@ -2100,6 +2100,106 @@ def v2_put_owner_confidence_label(snippet_id):
         }), 500
 
 
+@v2_bp.route("/user/snippets/<snippet_id>/confidence-agree",
+             methods=["PUT"])
+@require_auth
+def v2_put_confidence_agree(snippet_id):
+    """"Do you agree?" on the Confident Voice card (founder 2026-08-15).
+
+    THE SAME instrument, the SAME question, the SAME answer space as every
+    other lane — and ONE thing different, which is the whole reason this is a
+    separate route: the surface has already told the speaker what the machine
+    thinks. That makes the rating ANCHORED, and the row says so.
+
+    WHY A ROUTE AND NOT A FLAG. I1's storage half stamps facts about the
+    RATER'S SCREEN server-side, because a client that could describe its own
+    screen could describe it wrongly — the same argument that keeps
+    `machine_value` off the payload. A body field would let a buggy or
+    replayed client write `saw_model_output: false` from the one surface where
+    it is false. The endpoint IS the evidence: everything reaching here came
+    from the card that shows the read, so the stamp holds by construction and
+    not by discipline.
+
+    WHAT IT IS AND IS NOT. It is a self-report, twice over — the speaker
+    rating their own clip (rule 2), having been shown the machine's answer
+    (I1) — so it is excluded from quorum on BOTH counts, by constants that
+    already exist: `game_owner` is absent from PANEL_LANES and from
+    label_quorum.QUORUM_LANES. Nothing here changes that, and nothing here
+    needs to: the value of this answer is that it arrives fast and often, in
+    the place the student already is.
+
+    WHAT IT IS FOR. Rater calibration, and ROUTING. label_quorum rule 3: a
+    lone rating that DISAGREES with the machine marks the most informative
+    unrated clip in the corpus — either a model miss or a rater miss, and one
+    more peer says which. A disagreement here is exactly that signal, arriving
+    from somebody who was there. It sends the clip to real raters sooner; it
+    does not vote.
+
+    TO MAKE IT COUNT toward quorum, `game_owner` would have to enter
+    PANEL_LANES/QUORUM_LANES and the blind requirement would have to be
+    relaxed — a founder re-lock of rule 2 and I1, not a code change. Both are
+    one constant each, deliberately.
+
+    Body: { value: "yes"|"no"|"neutral" XOR unrateable: true, note?,
+            latency_ms? }
+    200 {saved} · 400 · 404 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "snippet_id must be a valid UUID",
+        }), 400
+    try:
+        from services.state_ratings import resolve_lane, validate_rating
+        snip = db.get_snippet_by_id(snippet_id)
+        if not snip:
+            return jsonify({
+                "code": "NOT_FOUND", "error": "snippet not found",
+            }), 404
+        sess = db.v2_get_session_by_id(str(snip.get("session_id") or ""))
+        # OWNER-SCOPED, like the blind owner route: this card only ever
+        # appears on the speaker's own document. A 404 rather than a 403 —
+        # no existence oracle.
+        if not sess or str(sess.get("user_id")) != str(request.user_id):
+            return jsonify({
+                "code": "NOT_FOUND", "error": "snippet not found",
+            }), 404
+        body = request.get_json(silent=True) or {}
+        row, err = validate_rating({
+            "state_id": "confidence",
+            "value": body.get("value"),
+            "unrateable": body.get("unrateable", False),
+            "note": body.get("note"),
+            "latency_ms": body.get("latency_ms"),
+        }, saw_model_output=True)
+        if err:
+            return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+        from services.label_quorum import machine_proposal
+        saved = db.upsert_state_rating(
+            snippet_id=str(snippet_id), row=row,
+            rater_id=str(request.user_id),
+            session_id=str(sess.get("id")),
+            lane=resolve_lane(sess.get("source"), is_coach=False,
+                              is_owner=True),
+            self_report=True,
+            machine_value=machine_proposal(snip))
+        if not saved:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "could not save the answer (run "
+                         "migrations/add_state_generic_ratings.sql)",
+            }), 500
+        return jsonify({"saved": True, "snippet_id": snippet_id}), 200
+    except Exception as e:
+        logger.error("confidence-agree failed snip=%s: %s",
+                     snippet_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to save the answer",
+        }), 500
+
+
 @v2_bp.route("/session/status", methods=["GET"])
 @require_auth
 def v2_session_status():
