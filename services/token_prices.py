@@ -52,7 +52,7 @@ TIERS: dict[str, dict] = {
     # ── SOLD ──
     "free":      {"tokens":  12_000, "coach_reviews": 0, "usd":  0},
     "practice":  {"tokens": 150_000, "coach_reviews": 0, "usd": 12},
-    "coached":   {"tokens": 150_000, "coach_reviews": 3, "usd": 39},
+    "coaching":  {"tokens": 150_000, "coach_reviews": 3, "usd": 39},
     "intensive": {"tokens": 400_000, "coach_reviews": 8, "usd": 89},
 
     # ── RETIRED, NOT SOLD (founder 2026-08-14: the grandfathering SCHEME is
@@ -70,9 +70,19 @@ TIERS: dict[str, dict] = {
     "starter": {"tokens":    50_000, "coach_reviews":  1, "usd":   5},
     "pro":     {"tokens":   300_000, "coach_reviews":  6, "usd":  25},
     "max":     {"tokens": 1_500_000, "coach_reviews": 30, "usd": 100},
+
+    # `coached` — the SPELLING this tier shipped under before 2026-08-15, kept
+    # resolvable for exactly the reason above. The founder's word is
+    # "coaching" ("in my product I have called it coaching") and the frontend
+    # already enforces that spelling, but a Railway STRIPE_PRICE_TIER_JSON or
+    # a stored subscription row may still say `coached` at the moment this
+    # deploys. An unresolvable key grants NOTHING to someone who has paid, so
+    # both spellings resolve and only `coaching` is sold. Delete this line
+    # once every price map and tier row reads `coaching`.
+    "coached": {"tokens": 150_000, "coach_reviews": 3, "usd": 39},
 }
 
-SOLD_TIERS: tuple[str, ...] = ("free", "practice", "coached", "intensive")
+SOLD_TIERS: tuple[str, ...] = ("free", "practice", "coaching", "intensive")
 """What may be BOUGHT and what the sales sheet shows.
 
 Separate from TIERS on purpose: TIERS answers "what does this key grant"

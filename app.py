@@ -69,6 +69,17 @@ from services.snippet_tables import check_at_boot as snippets_check  # noqa: E40
 
 snippets_check()
 
+# What THIS service read out of STRIPE_PRICE_TIER_JSON (founder 2026-08-15).
+# The CONFIG-FIRST rule says to verify a per-service variable from the boot
+# log rather than the Railway UI — for the tier map there was no such line, so
+# the only proof it had landed was a renewal webhook, i.e. finding out at the
+# moment someone is charged. A missing map is silent by design (the parser
+# degrades to {} so one bad env var cannot lose unrelated Stripe events), so
+# it needs a voice here. Never raises.
+from services.stripe_subscription_tiers import check_at_boot as tiers_check  # noqa: E402
+
+tiers_check()
+
 app = Flask(__name__)
 # Global request cap: must allow both recording uploads and larger admin reference video uploads.
 app.config["MAX_CONTENT_LENGTH"] = max(

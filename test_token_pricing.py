@@ -319,10 +319,10 @@ class PriceTableTests(unittest.TestCase):
         from services.token_prices import (SOLD_TIERS, coach_reviews_for,
                                             grant_for)
         # v3 (founder 2026-08-14): the two axes separate. TOKENS scale with
-        # machine use; PRICE scales with coach reviews. Practice and Coached
+        # machine use; PRICE scales with coach reviews. Practice and Coaching
         # carry the SAME grant and differ only in reviews, which is the whole
         # statement of the ladder.
-        self.assertEqual(SOLD_TIERS, ("free", "practice", "coached",
+        self.assertEqual(SOLD_TIERS, ("free", "practice", "coaching",
                                       "intensive"))
         self.assertEqual([grant_for(t) for t in SOLD_TIERS],
                          [12_000, 150_000, 150_000, 400_000])
@@ -345,10 +345,43 @@ class PriceTableTests(unittest.TestCase):
         for retired in ("starter", "pro", "max"):
             self.assertEqual(normalize_tier(retired), retired)
 
+    def test_the_OLD_SPELLING_coached_still_resolves_but_is_not_sold(self):
+        """Founder 2026-08-15. The tier the founder calls "coaching" shipped
+        in the backend as `coached`, and only the FRONTEND rename landed —
+        the FE's own tier-key fence asserts `coaching` while SOLD_TIERS still
+        said `coached`. That split is money-shaped in both directions:
+
+          * a STRIPE_PRICE_TIER_JSON entry saying "coaching" was DROPPED by
+            parse_price_tier_map as an unknown tier, so the renewal webhook
+            granted NOTHING to someone who had just been charged;
+          * checkout for "coaching" raised "no Stripe price mapped".
+
+        Fixed by renaming to `coaching` and keeping `coached` RESOLVABLE, for
+        the same reason the other retired keys resolve: at the moment this
+        deploys, a Railway price map or a stored tier row may still say
+        `coached`, and an unresolvable key grants nothing."""
+        from services.token_prices import (SOLD_TIERS, TIERS, grant_for,
+                                           normalize_tier)
+        self.assertIn("coaching", SOLD_TIERS)
+        self.assertNotIn("coached", SOLD_TIERS)     # cannot be bought
+        self.assertIn("coached", TIERS)             # but still grants
+        self.assertEqual(normalize_tier("coached"), "coached")
+        self.assertEqual(grant_for("coached"), grant_for("coaching"))
+
+    def test_the_backend_ladder_matches_the_frontend_tier_key_fence(self):
+        """The FE pins its sellable keys in tierKeyFence.test.ts. If these two
+        lists ever disagree again, the symptom is silent: the FE renders a
+        card for a tier the BE will not sell, or the BE sells a key the FE
+        cannot render. Keep them equal."""
+        from services.token_prices import SOLD_TIERS
+        self.assertEqual(
+            sorted(t for t in SOLD_TIERS if t != "free"),
+            ["coaching", "intensive", "practice"])
+
     def test_the_sales_sheet_shows_only_sold_tiers(self):
         from services.token_prices import public_price_list
         self.assertEqual(sorted(public_price_list()["tiers"]),
-                         ["coached", "free", "intensive", "practice"])
+                         ["coaching", "free", "intensive", "practice"])
 
     def test_every_published_price_is_actually_charged_somewhere(self):
         """A price with no call site is a lie in the one place a user checks
@@ -526,7 +559,7 @@ class ChargeTests(unittest.TestCase):
     def test_insufficient_balance_reports_but_never_raises(self):
         # A token-priced action, so the BALANCE is what bites (coach reviews
         # are metered in slots now, never in tokens).
-        db = FakeDB(account_row("coached", balance=100))
+        db = FakeDB(account_row("coaching", balance=100))
         r = self.ta.charge("u1", "moment_explanation", ref_id="arc1",
                            database=db)
         self.assertFalse(r.ok)
@@ -558,7 +591,7 @@ class ChargeTests(unittest.TestCase):
         COACH_ACTIONS used to be `coach_review`, which nothing charged, so
         `coach_reviews_used` never moved in production and a tier selling
         "3 coach reviews" metered nothing at all."""
-        db = FakeDB(account_row("coached", balance=150_000, reviews=0))
+        db = FakeDB(account_row("coaching", balance=150_000, reviews=0))
         self.assertTrue(self.ta.charge("u1", "coach_feedback", ref_id="s1",
                                        database=db).ok)
         acct = self.ta.get_account("u1", database=db)
@@ -1104,7 +1137,7 @@ class CoachFeedbackDeliveryTests(unittest.TestCase):
         """Soft by contract. `ok` reports coverage; publish does not branch
         on it, so the coach's work reaches the student either way."""
         import services.token_account as ta
-        db = FakeDB(account_row("coached", balance=10))
+        db = FakeDB(account_row("coaching", balance=10))
         res = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
         self.assertTrue(res.ok)
         self.assertGreaterEqual(int(db.store["row"]["token_balance"]), 0)
@@ -1113,7 +1146,7 @@ class CoachFeedbackDeliveryTests(unittest.TestCase):
         """Idempotent per SESSION — the guarantee the retired
         feedback_credits_charged_at flag used to give."""
         import services.token_account as ta
-        db = FakeDB(account_row("coached", balance=150_000, reviews=0))
+        db = FakeDB(account_row("coaching", balance=150_000, reviews=0))
         ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
         self.assertEqual(db.store["row"]["coach_reviews_used"], 1)
         again = ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
@@ -1124,7 +1157,7 @@ class CoachFeedbackDeliveryTests(unittest.TestCase):
 
     def test_a_DIFFERENT_session_meters_its_own_slot(self):
         import services.token_account as ta
-        db = FakeDB(account_row("coached", balance=150_000, reviews=0))
+        db = FakeDB(account_row("coaching", balance=150_000, reviews=0))
         ta.charge("u1", "coach_feedback", ref_id="s1", database=db)
         second = ta.charge("u1", "coach_feedback", ref_id="s2", database=db)
         self.assertTrue(second.ok)
@@ -1135,7 +1168,7 @@ class CoachFeedbackDeliveryTests(unittest.TestCase):
         token balance is untouched throughout, because human work is not
         metered in tokens any more."""
         import services.token_account as ta
-        db = FakeDB(account_row("coached", balance=150_000, reviews=0))
+        db = FakeDB(account_row("coaching", balance=150_000, reviews=0))
         for i in range(3):
             self.assertTrue(ta.charge("u1", "coach_feedback",
                                       ref_id=f"s{i}", database=db).ok)
