@@ -194,7 +194,17 @@ def publish_one_session(session_id, actor_user_id):
             _arc = _sess.get("arc_id")
             if _arc:
                 from services.voice_album import refresh_voice_album
-                refresh_voice_album(_arc, database=db)
+                _landed = refresh_voice_album(_arc, database=db)
+                # ANNOUNCE IT (founder 2026-08-15). The album filled silently
+                # until today — capture-only, because its read surface needed
+                # signed copy. Only on an actual insert, and the bubble is
+                # idempotent per ARC, so a second moment on a later take does
+                # not re-announce it.
+                if _landed and _sess.get("user_id"):
+                    from services.arc_notifications import (
+                        fire_voice_album_ready,
+                    )
+                    fire_voice_album_ready(db, _sess.get("user_id"), _arc)
         except Exception as _va_err:
             logger.warning("voice_album: publish hook failed sid=%s: %s",
                            session_id, _va_err)
@@ -611,14 +621,21 @@ def v2_internal_publish_session_results():
 
         # THE VOICE ALBUM (founder 2026-08-14): publish releases the coach
         # signal, so this is the moment an aligned moment can land —
-        # acoustic emphasize + user approved + coach 'strong', now public.
-        # Best-effort: an album miss never blocks a publish (LIVE LOOP).
+        # acoustic emphasize + user approved + coach CONFIDENCE QUORUM, now
+        # public. Best-effort: an album miss never blocks a publish (LIVE LOOP).
         try:
             _arc_for_album = (session or {}).get("arc_id") \
                 if isinstance(session, dict) else None
             if _arc_for_album:
                 from services.voice_album import refresh_voice_album
-                refresh_voice_album(_arc_for_album, database=db)
+                _landed = refresh_voice_album(_arc_for_album, database=db)
+                # ANNOUNCE IT (founder 2026-08-15) — same rule as the shared
+                # helper: only on a real insert, idempotent per arc.
+                if _landed and user_id:
+                    from services.arc_notifications import (
+                        fire_voice_album_ready,
+                    )
+                    fire_voice_album_ready(db, user_id, _arc_for_album)
         except Exception as _va_err:
             logger.warning("voice_album: publish hook failed sid=%s: %s",
                            session_id, _va_err)
@@ -670,12 +687,16 @@ def v2_internal_publish_session_results():
             send_publish_results_email,
         )
 
-        # Deep-link → Lounge chat. On open the chat auto-scrolls to the
-        # bottom, showing the "insights ready" card the publish contract
-        # already appended to the thread. No overlay param — the user just
-        # lands in the Lounge and sees the recent message.
+        # Deep-link → the arc's ideal text (founder 2026-08-15). Same URL the
+        # email's CTA carries, built the same way, because this value is
+        # echoed to the caller and a response that disagreed with the email
+        # would be two different answers to "where did we send them".
+        from urllib.parse import quote as _q
+        _arc_for_link = str((sess_row or {}).get("arc_id") or "").strip()
+        _fe = config.PUBLIC_FRONTEND_URL.rstrip("/")
         results_url = (
-            f"{config.PUBLIC_FRONTEND_URL.rstrip('/')}/chat"
+            f"{_fe}/chat?idealArc={_q(_arc_for_link, safe='')}"
+            if _arc_for_link else f"{_fe}/chat"
         )
 
         # notify_client gate (C): the in-app Lounge nudge already fired in the
@@ -698,6 +719,7 @@ def v2_internal_publish_session_results():
             user_id=user_id,
             user_email=user_email,
             user_first_name=first_name,
+            arc_id=_arc_for_link or None,
             snippet_count=snippet_count,
             top_theme=top_theme,
             session_id=session_id,

@@ -149,6 +149,40 @@ def fire_human_check_note(db, user_id: Any, arc_id: Any) -> bool:
     )
 
 
+def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
+    """THE VOICE ALBUM HAS ITS FIRST MOMENT (founder 2026-08-15: "when is the
+    bubble with voice album posted in the chat? if not post it once it is
+    available").
+
+    It was posted NOWHERE. The album has filled quietly since it shipped —
+    capture-only by design, because the read surface needed signed copy — and
+    the read route and its /game "Voice album" tab both exist now, so a
+    student could reach it only by knowing it was there.
+
+    Fired from the publish hook, and only when `refresh_voice_album` actually
+    inserted something: the album is the one place all three signals agreed,
+    so "there is a moment in it" is the whole news. Idempotent per ARC, not
+    per publish — a later take adding a second moment must not re-announce the
+    album, which would turn a landmark into a nag.
+
+    AC-9: says a moment landed and where to hear it. Never how many, never how
+    good, never a score.
+    """
+    if not user_id or not arc_id:
+        return False
+    return _insert(
+        db, str(user_id),
+        client_key=f"willab-voicealbum:{arc_id}",
+        kind="text",
+        body=(
+            "A moment from this talk landed in your Voice Album — the "
+            "acoustics, you, and your coach all pointed at the same words. "
+            "It's in the Voice album tab of the voice-game."
+        ),
+        metadata={"arc_id": str(arc_id), "note": "voice_album_ready"},
+    )
+
+
 def fire_instant_ideal_ready(db, user_id: Any, arc_id: Any) -> bool:
     """The INSTANT ideal-text bubble (founder re-lock 2026-07-17): fired the
     moment the arc's machine draft persists at spoken take 3 — the free,

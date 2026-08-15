@@ -174,3 +174,111 @@ class DedupeWindowTranscriptsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VoiceAlbumBubbleTests(unittest.TestCase):
+    """THE ALBUM ANNOUNCES ITSELF (founder 2026-08-15: "when is the bubble
+    with voice album posted in the chat? if not post it once it is
+    available").
+
+    It was posted nowhere. The album filled quietly from its first day —
+    capture-only on purpose, because the read surface needed signed copy — so
+    the only way to find a moment in it was to already know it was there."""
+
+    class _Db:
+        def __init__(self):
+            self.rows = []
+
+        def insert_lounge_messages(self, user_id, messages):
+            for m in messages:
+                if any(r["client_id"] == m["client_id"] for r in self.rows):
+                    continue          # mirror the real upsert idempotency
+                self.rows.append({**m, "_user": user_id})
+            return list(messages)
+
+    def test_it_fires_and_points_at_the_album(self):
+        from services.arc_notifications import fire_voice_album_ready
+        db = self._Db()
+        self.assertTrue(fire_voice_album_ready(db, "u1", "arc-1"))
+        self.assertEqual(len(db.rows), 1)
+        body = db.rows[0]["body"].lower()
+        self.assertIn("voice album", body)
+        self.assertEqual(db.rows[0]["metadata"]["arc_id"], "arc-1")
+
+    def test_idempotent_per_ARC_not_per_publish(self):
+        # A later take adding a SECOND moment must not re-announce the album —
+        # that turns a landmark into a nag.
+        from services.arc_notifications import fire_voice_album_ready
+        db = self._Db()
+        fire_voice_album_ready(db, "u1", "arc-1")
+        fire_voice_album_ready(db, "u1", "arc-1")
+        self.assertEqual(len(db.rows), 1)
+
+    def test_ac9_it_never_counts_or_grades(self):
+        from services.arc_notifications import fire_voice_album_ready
+        db = self._Db()
+        fire_voice_album_ready(db, "u1", "arc-1")
+        body = db.rows[0]["body"].lower()
+        for banned in ("score", "best", "top", "rank", "%", "points"):
+            self.assertNotIn(banned, body)
+        # No count either — "a moment", never "3 moments".
+        self.assertFalse(any(ch.isdigit() for ch in body))
+
+    def test_missing_user_or_arc_is_a_noop(self):
+        from services.arc_notifications import fire_voice_album_ready
+        db = self._Db()
+        self.assertFalse(fire_voice_album_ready(db, None, "arc-1"))
+        self.assertFalse(fire_voice_album_ready(db, "u1", None))
+        self.assertEqual(db.rows, [])
+
+    def test_the_publish_hook_fires_it_ONLY_on_a_real_insert(self):
+        # `refresh_voice_album` returns how many moments landed. Announcing on
+        # a zero would tell the student to go look at an empty album.
+        import inspect
+
+        from routes.v2 import publish
+        src = inspect.getsource(publish)
+        self.assertIn("if _landed and", src)
+        self.assertIn("fire_voice_album_ready", src)
+
+
+class ResultsEmailDeepLinkTests(unittest.TestCase):
+    """THE CTA LANDS ON THE REVIEWED TEXT (founder 2026-08-15: "does the link
+    from the email lead to this particular ideal text that holds these
+    reviews? if not make it a deep link").
+
+    It led to bare /chat — for the one email whose entire subject is "your
+    coach reviewed this talk", leaving the student to find the right bubble in
+    a thread."""
+
+    def test_the_journey_url_carries_the_arc(self):
+        import inspect
+
+        from services import post_session_results_email as pe
+        src = inspect.getsource(pe.send_publish_results_email)
+        self.assertIn("idealArc=", src)
+
+    def test_it_falls_back_to_plain_chat_without_an_arc(self):
+        # A take with no arc is a real state, and a link to nothing is worse
+        # than a link to the thread that holds the card.
+        import inspect
+
+        from services import post_session_results_email as pe
+        src = inspect.getsource(pe.send_publish_results_email)
+        self.assertIn('else f"{_base}/chat"', src)
+
+    def test_the_arc_is_url_escaped(self):
+        import inspect
+
+        from services import post_session_results_email as pe
+        src = inspect.getsource(pe.send_publish_results_email)
+        self.assertIn("_url_quote(_arc", src)
+
+    def test_the_route_echoes_the_SAME_url_it_emailed(self):
+        # results_url is returned to the caller; if the two disagreed we would
+        # have two different answers to "where did we send them".
+        import inspect
+
+        from routes.v2 import publish
+        src = inspect.getsource(publish)
+        self.assertIn("idealArc={_q(_arc_for_link", src)
