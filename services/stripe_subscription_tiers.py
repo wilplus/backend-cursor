@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -77,6 +78,60 @@ def parse_price_tier_map(raw: str) -> dict[str, str]:
             logger.warning("STRIPE_PRICE_TIER_JSON: unknown tier %r for %s",
                            v, k)
     return out
+
+
+def check_at_boot() -> None:
+    """Say what THIS process read out of STRIPE_PRICE_TIER_JSON.
+
+    WHY THIS EXISTS — the CONFIG-FIRST rule (CLAUDE.md) says to verify a
+    per-service variable "from each service's boot log, not the Railway UI:
+    the UI shows what you set, the log shows what the process read." For this
+    variable there was no such line, so the rule was unfollowable: the only
+    evidence that the map had landed was a subscription webhook firing, which
+    means finding out at the moment someone is charged.
+
+    The failure this catches is the quiet one. A malformed or missing map does
+    not 500 anything — `parse_price_tier_map` degrades to {} on purpose, so a
+    bad env var cannot lose unrelated Stripe events. The webhook then logs an
+    error and grants NOTHING to a paying customer. Same shape as the
+    2026-08-10 snippets incident: writes stop, nothing goes red.
+
+    Logs which TIERS are mapped and how many price ids resolved — never the
+    raw JSON. Price ids are not secrets, but a boot log is the wrong place to
+    print a config blob, and the tier names are what actually answer "did the
+    v3 ladder land on this service?".
+
+    NEVER RAISES (LIVE LOOP): an unconfigured payments map is a reason to
+    shout, never a reason to refuse to boot.
+    """
+    raw = os.getenv("STRIPE_PRICE_TIER_JSON") or ""
+    if not raw.strip():
+        logger.error("stripe tiers: STRIPE_PRICE_TIER_JSON is UNSET on this "
+                     "service — subscription events cannot be mapped to a "
+                     "tier, and a renewal would grant nothing")
+        return
+    try:
+        price_map = parse_price_tier_map(raw)
+    except Exception as e:            # defensive; the parser swallows already
+        logger.error("stripe tiers: could not parse STRIPE_PRICE_TIER_JSON: "
+                     "%s", e)
+        return
+    if not price_map:
+        logger.error("stripe tiers: STRIPE_PRICE_TIER_JSON is SET but mapped "
+                     "0 prices — malformed JSON, or every tier name in it is "
+                     "unknown to services/token_prices.TIERS")
+        return
+
+    from services.token_prices import SOLD_TIERS
+    mapped = sorted(set(price_map.values()))
+    logger.info("stripe tiers: %d price(s) mapped → %s",
+                len(price_map), ", ".join(mapped))
+    missing = [t for t in SOLD_TIERS if t != "free" and t not in mapped]
+    if missing:
+        # Not an error: a tier can be legitimately unsold for a while. But it
+        # is the thing you want to see the moment a ladder changes.
+        logger.warning("stripe tiers: sold tier(s) with NO price mapped on "
+                       "this service: %s", ", ".join(missing))
 
 
 def is_subscription_event(event_type: Optional[str]) -> bool:

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import sys
 import types
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -51,7 +52,7 @@ def tearDownModule():
 OURS = "price_ours"
 FOREIGN = "price_someone_elses"
 CREDITS_MAP = '{"price_ours": 25}'
-TIER_MAP = '{"price_practice":"practice","price_coached":"coached"}'
+TIER_MAP = '{"price_practice":"practice","price_coaching":"coaching"}'
 
 
 class _Cfg:
@@ -164,7 +165,7 @@ class CreditsRetiredTests(unittest.TestCase):
         checkout.session.completed too, and it lands right here."""
         class _NoCredits(_Cfg):
             STRIPE_CHECKOUT_PRICE_CREDITS_JSON = ""
-        sub_session = _session(["price_coached"], user_id="u1")
+        sub_session = _session(["price_coaching"], user_id="u1")
         sub_session["mode"] = "subscription"
         res, _ = self._apply(_NoCredits, sub_session)
         self.assertTrue(res.ok)
@@ -214,7 +215,7 @@ class ForeignSubscriptionTests(unittest.TestCase):
     def test_our_tier_without_a_user_still_reports_missing_user_id(self):
         """This is the bare-Payment-Link renewal failure. It must stay loud."""
         from services.stripe_subscription_tiers import apply_subscription_event
-        out = apply_subscription_event(self._event("price_coached"), TIER_MAP)
+        out = apply_subscription_event(self._event("price_coaching"), TIER_MAP)
         self.assertFalse(out["handled"])
         self.assertEqual(out["reason"], "missing_user_id")
 
@@ -251,13 +252,13 @@ class TierCheckoutTests(unittest.TestCase):
         every renewal from month two arrives unattributable and grants zero —
         while checkout and the first payment look perfectly fine."""
         cap: dict = {}
-        res = self._create("coached", cap)
+        res = self._create("coaching", cap)
         self.assertTrue(res.ok)
         sub_meta = (cap.get("subscription_data") or {}).get("metadata") or {}
         self.assertEqual(sub_meta.get("user_id"), "user-123",
                          "renewals will grant nothing without this")
         self.assertEqual(cap.get("mode"), "subscription")
-        self.assertEqual(cap["line_items"][0]["price"], "price_coached")
+        self.assertEqual(cap["line_items"][0]["price"], "price_coaching")
         # and the session-level copies, for checkout.session.completed
         self.assertEqual(cap.get("client_reference_id"), "user-123")
         self.assertEqual((cap.get("metadata") or {}).get("user_id"), "user-123")
@@ -322,7 +323,7 @@ class SecondSubscriptionTests(unittest.TestCase):
         return {"balance": 1, "tier": plan.get("tier", "free"), "plan": plan}
 
     def test_same_tier_is_a_calm_no_op_not_a_second_charge(self):
-        res = self._create("coached", self._acct(managed=True, tier="coached"))
+        res = self._create("coaching", self._acct(managed=True, tier="coaching"))
         self.assertFalse(res.ok)
         self.assertEqual(res.http_status, 409)
         self.assertEqual(res.payload["code"], "ALREADY_ON_TIER")
@@ -330,7 +331,7 @@ class SecondSubscriptionTests(unittest.TestCase):
     def test_a_different_tier_is_sent_to_the_portal_to_SWITCH(self):
         """Not a refusal to change plan — a refusal to change it by buying a
         second one. The portal is where a switch happens."""
-        res = self._create("coached", self._acct(managed=True, tier="practice"))
+        res = self._create("coaching", self._acct(managed=True, tier="practice"))
         self.assertFalse(res.ok)
         self.assertEqual(res.http_status, 409)
         self.assertEqual(res.payload["code"], "MANAGE_EXISTING")
@@ -345,16 +346,16 @@ class SecondSubscriptionTests(unittest.TestCase):
 
     def test_an_unmanaged_tier_still_sells(self):
         """Everyone on free — the whole point of the endpoint."""
-        res = self._create("coached", self._acct(managed=False, tier="free"))
+        res = self._create("coaching", self._acct(managed=False, tier="free"))
         self.assertTrue(res.ok)
-        self.assertEqual(res.payload["tier"], "coached")
+        self.assertEqual(res.payload["tier"], "coaching")
 
     def test_an_unreadable_account_sells_rather_than_blocking_the_sale(self):
         """Refuse only on POSITIVE knowledge of a live subscription. An
         unreadable account, and every database where add_subscription_state.sql
         has not run yet, must not become 'nobody can subscribe'."""
-        self.assertTrue(self._create("coached", None).ok)
-        self.assertTrue(self._create("coached", {}).ok)
+        self.assertTrue(self._create("coaching", None).ok)
+        self.assertTrue(self._create("coaching", {}).ok)
 
 
 class BillingPortalTests(unittest.TestCase):
@@ -412,3 +413,56 @@ class BillingPortalTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TierMapBootCheckTests(unittest.TestCase):
+    """The CONFIG-FIRST rule (CLAUDE.md) says verify a per-service variable
+    from the BOOT LOG, not the Railway UI. For STRIPE_PRICE_TIER_JSON there
+    was no boot line at all, so the rule was unfollowable: the first evidence
+    the map had landed was a renewal webhook — i.e. finding out at the moment
+    a customer is charged. These pin the line into existence."""
+
+    def _run(self, raw):
+        from unittest.mock import patch
+
+        import services.stripe_subscription_tiers as st
+        env = {} if raw is None else {"STRIPE_PRICE_TIER_JSON": raw}
+        with patch.dict("os.environ", env, clear=False):
+            if raw is None:
+                os.environ.pop("STRIPE_PRICE_TIER_JSON", None)
+            with self.assertLogs("services.stripe_subscription_tiers") as cm:
+                st.check_at_boot()
+        return "\n".join(cm.output)
+
+    def test_unset_is_an_ERROR_not_a_shrug(self):
+        out = self._run(None)
+        self.assertIn("ERROR", out)
+        self.assertIn("UNSET", out)
+
+    def test_set_but_unmappable_is_an_ERROR(self):
+        # Distinct message from UNSET on purpose: "you set it and it is wrong"
+        # and "you never set it" are different fixes on a sleepy night.
+        out = self._run('{"price_x":"a_tier_that_does_not_exist"}')
+        self.assertIn("ERROR", out)
+        self.assertIn("0 prices", out)
+
+    def test_malformed_json_never_raises(self):
+        out = self._run("{not json")
+        self.assertIn("ERROR", out)
+
+    def test_a_good_map_names_the_tiers_it_resolved(self):
+        out = self._run('{"price_a":"practice","price_b":"coaching",'
+                        '"price_c":"intensive"}')
+        self.assertIn("3 price(s) mapped", out)
+        for tier in ("practice", "coaching", "intensive"):
+            self.assertIn(tier, out)
+
+    def test_a_sold_tier_with_no_price_is_flagged(self):
+        out = self._run('{"price_a":"practice"}')
+        self.assertIn("WARNING", out)
+        self.assertIn("coaching", out)
+        self.assertIn("intensive", out)
+
+    def test_the_raw_config_blob_is_never_logged(self):
+        out = self._run('{"price_SECRETLOOKING":"practice"}')
+        self.assertNotIn("price_SECRETLOOKING", out)
