@@ -151,6 +151,11 @@
       "module": "pending",
       "sha256": "2c709e071146b4c3c9104b4f5b507f90fb5af76755668e0380c447b4f92a49c8"
     },
+    "emphasis_phrase.system": {
+      "kind": "static",
+      "module": "moment_suggestions",
+      "sha256": "d62f2770c729eb98325cf23fd7ebf0f8f86ebe95d5fe90c6948e63cd856e136e"
+    },
     "goal_update.builder": {
       "kind": "source_ref",
       "module": "pending",

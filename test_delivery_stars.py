@@ -159,7 +159,7 @@ class GenerateDeliveryTests(unittest.TestCase):
         def __init__(self):
             self.rows = []
 
-        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig, **_kw):
             self.rows.append((snip, kind, trig, repl, why))
             return True
 

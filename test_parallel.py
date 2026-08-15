@@ -135,7 +135,7 @@ class StructuralStarWaveTests(unittest.TestCase):
         def __init__(self):
             self.written = []
 
-        def upsert_moment_suggestion(self, snip, arc, kind, a, quote, device):
+        def upsert_moment_suggestion(self, snip, arc, kind, a, quote, device, **_kw):
             self.written.append((snip, quote))
             return True
 

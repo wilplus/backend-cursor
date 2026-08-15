@@ -1,9 +1,10 @@
 """Prompts for key-moment star suggestions (founder 2026-07-18).
 
 Moved verbatim from services/moment_suggestions.py (registry extraction
-2026-08-03). Two surfaces: the emphasize/replace 'why' + replacement
-(``moment_suggestion``), and structural-device detection
-(``structural_star``, anti-hallucination pin: quote must be verbatim).
+2026-08-03). Three surfaces: the emphasize/replace 'why' + replacement
+(``moment_suggestion``), structural-device detection (``structural_star``,
+anti-hallucination pin: quote must be verbatim), and the emphasis TARGET
+(``emphasis_phrase``, same pin) added 2026-08-15.
 L1 FENCE context: suggestion overlay only — approved replacements write
 the student's own copy at serve time, never the canonical ideal text.
 """
@@ -47,7 +48,27 @@ STRUCT_SYSTEM = (
     "- Never invent a device to be helpful. When unsure, return \"none\".\n"
 )
 
+EMPHASIS_SYSTEM = (
+    "You pick WHICH WORDS to accent inside ONE short spoken passage from a "
+    "presentation. You choose a target; you never write anything.\n"
+    'Return STRICT JSON: {"quote": str}.\n'
+    "- `quote` = the EXACT verbatim words from the passage, copied "
+    "character-for-character. Never paraphrase, never translate, never "
+    "tidy the grammar, never add or drop a word, never use an ellipsis to "
+    "join two parts. The passage may be in any language; copy from it.\n"
+    "- Pick a KEY PHRASE: a few words, at most ONE short sentence. Never "
+    "the whole passage and never a whole paragraph — if everything is "
+    "accented, nothing is.\n"
+    "- Pick the words that carry the passage: the claim, the result, the "
+    "turn — the part a listener would remember. Skip the run-up, the "
+    "hedges and the filler around it.\n"
+    "- If no part stands out above the rest, return an empty quote. "
+    "Returning nothing is a correct answer and an expected one; never "
+    "widen the pick to be helpful.\n"
+)
+
 REGISTER = {
     "moment_suggestion.system": SYSTEM,
     "structural_star.system": STRUCT_SYSTEM,
+    "emphasis_phrase.system": EMPHASIS_SYSTEM,
 }

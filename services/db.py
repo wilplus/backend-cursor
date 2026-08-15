@@ -11258,25 +11258,55 @@ class DatabaseService:
     def upsert_moment_suggestion(
         self, snippet_id: str, arc_id: str, kind: str,
         replacement_text: Optional[str], why: Optional[str],
-        trigger: Optional[str],
+        trigger: Optional[str], *, emphasis_quote: Optional[str] = None,
     ) -> bool:
         """One star suggestion per snippet (founder 2026-07-18). Idempotent
-        on snippet_id (a reassembly regenerates in place). Best-effort."""
+        on snippet_id (a reassembly regenerates in place). Best-effort.
+
+        ``emphasis_quote`` — the verbatim words an emphasize star should
+        accent (founder 2026-08-15, migrations/add_moment_emphasis_quote
+        .sql). Keyword-only and defaulted: the delivery / structural /
+        congruence / swap writers store no accent target and say so by not
+        passing one."""
         if not snippet_id or not arc_id \
                 or kind not in self.SUGGESTION_KINDS:
             return False
+        row = {
+            "snippet_id": str(snippet_id),
+            "arc_id": str(arc_id),
+            "kind": kind,
+            "replacement_text": replacement_text,
+            "why": why,
+            "trigger": trigger,
+            "emphasis_quote": emphasis_quote,
+        }
         try:
-            self.client.table("moment_suggestions").upsert({
-                "snippet_id": str(snippet_id),
-                "arc_id": str(arc_id),
-                "kind": kind,
-                "replacement_text": replacement_text,
-                "why": why,
-                "trigger": trigger,
-            }, on_conflict="snippet_id").execute()
+            self.client.table("moment_suggestions").upsert(
+                row, on_conflict="snippet_id").execute()
             return True
         except Exception as e:
             _e = str(e).lower()
+            # THE COLUMN-AHEAD-OF-THE-MIGRATION RETRY. The migration ships in
+            # the same PR and MIGRATE_ON_BOOT applies it before the app
+            # starts, so this should never fire — but a new column in a
+            # write that is the ONLY way a star is ever stored is exactly the
+            # shape that takes a live lane dark, and the star is worth more
+            # than its accent target.
+            if "emphasis_quote" in _e:
+                logger.warning(
+                    "upsert_moment_suggestion: emphasis_quote column missing "
+                    "(run migrations/add_moment_emphasis_quote.sql) — storing "
+                    "the star without its accent target")
+                try:
+                    row.pop("emphasis_quote", None)
+                    self.client.table("moment_suggestions").upsert(
+                        row, on_conflict="snippet_id").execute()
+                    return True
+                except Exception as e2:
+                    logger.warning(
+                        "upsert_moment_suggestion retry failed snip=%s: %s",
+                        snippet_id, e2)
+                    return False
             if "moment_suggestions" in _e and (
                 "does not exist" in _e or "pgrst" in _e
             ):

@@ -79,6 +79,17 @@ def _structural_star(inp: dict) -> Any:
     return detect_structural_device(inp.get("transcript") or "")
 
 
+def _emphasis_phrase(inp: dict) -> Any:
+    """Wrapped as {"quote": …} so the rubric can dot-path into it. NO pick
+    stays None rather than {"quote": None}: "nothing stands out above the
+    rest" is a real answer on this surface, and None is the shape
+    `allow_none_output` speaks — a case that expects a pick still fails
+    loudly, a flat passage passes."""
+    from services.moment_suggestions import pick_emphasis_phrase
+    phrase = pick_emphasis_phrase(inp.get("transcript") or "")
+    return {"quote": phrase} if phrase else None
+
+
 ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "say_it_stronger": _say_it_stronger,
     "best_presentation": _best_presentation,
@@ -87,4 +98,5 @@ ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "coach_comment_draft": _coach_comment_draft,
     "moment_suggestion": _moment_suggestion,
     "structural_star": _structural_star,
+    "emphasis_phrase": _emphasis_phrase,
 }

@@ -44,7 +44,7 @@ class FakeDB:
         self.ok = ok
         self.calls = []
 
-    def upsert_moment_suggestion(self, snip_id, arc_id, kind, replacement, why, device):
+    def upsert_moment_suggestion(self, snip_id, arc_id, kind, replacement, why, device, **_kw):
         self.calls.append((snip_id, arc_id, kind, replacement, why, device))
         return self.ok
 

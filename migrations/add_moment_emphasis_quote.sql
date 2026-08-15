@@ -1,0 +1,31 @@
+-- willab — the accent TARGET on an emphasize star (founder 2026-08-15).
+--
+-- "Try not to style the whole paragraphs or chunks but key few words or a
+-- sentence — so effectively delete that."
+--
+-- An emphasize star stored WHY it landed and never WHICH WORDS carried it,
+-- so services/tracked_changes.py had to reconstruct the target at serve
+-- time from the snippet's say-it-stronger UPGRADE wordings. That list is
+-- empty by construction for a moment delivered well — say-it-stronger only
+-- proposes upgrades where the wording is WEAK — and the Confident Voice
+-- card fires on exactly those moments, so its narrowing had nothing to
+-- work with and the serve fell back to bolding the entire piece.
+--
+-- The target is now chosen once at generation
+-- (services.moment_suggestions.pick_emphasis_phrase) and stored here,
+-- verbatim from the moment's own words: the same anti-hallucination pin the
+-- structural star uses — not a substring of what the speaker said, not
+-- stored. The serve re-checks it against the served document before
+-- anchoring, so this column is evidence, never authority.
+--
+-- NULL is the honest value on every other row: delivery, structural,
+-- congruence and swap stars accent nothing, and an emphasize row written
+-- before this migration simply has no target — such a row narrows the old
+-- way, and where that fails the bold is now DROPPED rather than widened to
+-- the whole chunk.
+--
+-- Additive and idempotent; RLS is already ON for this table
+-- (service-role only). No backfill: a target cannot be invented after the
+-- fact, and detector output is versioned, never rewritten in place.
+ALTER TABLE public.moment_suggestions
+    ADD COLUMN IF NOT EXISTS emphasis_quote TEXT NULL;
