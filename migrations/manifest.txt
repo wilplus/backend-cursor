@@ -310,3 +310,4 @@
 0272	add_voice_album.sql
 0273	add_label_quorum_ledger.sql
 0274	add_pricing_v3_tiers.sql
+0275	add_moment_emphasis_quote.sql

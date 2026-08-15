@@ -186,7 +186,7 @@ class GateChainTests(unittest.TestCase):
         def get_moment_suggestions_by_arc(self, arc_id):
             return {}
 
-        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig, **_kw):
             self.upserts.append((snip, kind, repl, trig))
             return True
 

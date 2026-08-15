@@ -326,6 +326,81 @@ class StructuralDetectionTests(unittest.TestCase):
         self.assertIsNone(detect_structural_device("   "))
 
 
+class EmphasisPhraseTests(unittest.TestCase):
+    """THE ACCENT TARGET (founder 2026-08-15): "try not to style the whole
+    paragraphs or chunks but key few words or a sentence."
+
+    Same anti-hallucination pin as the structural star — the phrase must be
+    verbatim in the moment or there is no target."""
+
+    # Three sentences: wide enough that an accent has to choose.
+    MOMENT = ("We started small. Then we shipped it fast. "
+              "And the customers stayed.")
+
+    def _pick(self, parsed, moment=None):
+        from services import moment_suggestions as ms
+        result = type("R", (), {"parsed": parsed, "text": ""})()
+        with patch("services.llm.chat_complete", return_value=result):
+            return ms.pick_emphasis_phrase(moment or self.MOMENT)
+
+    def test_a_verbatim_phrase_is_the_target(self):
+        self.assertEqual(self._pick({"quote": "shipped it fast"}),
+                         "shipped it fast")
+
+    def test_an_invented_phrase_is_dropped(self):
+        # THE pin: the model cannot accent words the speaker never said.
+        self.assertIsNone(self._pick({"quote": "we crushed our targets"}))
+
+    def test_the_moments_own_characters_are_returned(self):
+        # Matching is case-insensitive so the model may echo differently,
+        # but the stored target is what the speaker actually said — the FE
+        # anchors on it as an exact substring.
+        self.assertEqual(self._pick({"quote": "SHIPPED IT FAST"}),
+                         "shipped it fast")
+
+    def test_the_whole_passage_is_not_a_pick(self):
+        self.assertIsNone(self._pick({"quote": self.MOMENT}))
+
+    def test_a_pick_wider_than_a_sentence_is_dropped(self):
+        self.assertIsNone(
+            self._pick({"quote": "Then we shipped it fast. And the "
+                                 "customers stayed."}))
+
+    def test_an_empty_quote_is_a_valid_answer(self):
+        # "If no part stands out, return an empty quote." Nothing to accent
+        # is a real outcome, not a failure.
+        self.assertIsNone(self._pick({"quote": ""}))
+        self.assertIsNone(self._pick({}))
+        self.assertIsNone(self._pick(None))
+
+    def test_a_moment_that_is_ALREADY_an_accent_costs_no_call(self):
+        # This rides every emphasize star on every take, so the short case
+        # never reaches the model — the serve will accent it whole.
+        from services import moment_suggestions as ms
+        with patch("services.llm.chat_complete") as _llm:
+            self.assertIsNone(ms.pick_emphasis_phrase("We shipped it fast."))
+        _llm.assert_not_called()
+
+    def test_blank_transcript(self):
+        from services.moment_suggestions import pick_emphasis_phrase
+        self.assertIsNone(pick_emphasis_phrase("   "))
+        self.assertIsNone(pick_emphasis_phrase(None))
+
+    def test_a_broken_model_call_never_raises(self):
+        from services import moment_suggestions as ms
+        with patch("services.llm.chat_complete", side_effect=RuntimeError("x")):
+            self.assertIsNone(ms.pick_emphasis_phrase(self.MOMENT))
+
+    def test_the_prompt_asks_for_a_key_phrase_and_pins_it_verbatim(self):
+        from services.prompts.moment_suggestions import EMPHASIS_SYSTEM
+        low = EMPHASIS_SYSTEM.lower()
+        self.assertIn("verbatim", low)
+        self.assertIn("key phrase", low)
+        self.assertIn("never the whole passage", low)
+        # It picks a target; it never writes copy (L1 + LIVE LOOP).
+        self.assertIn("you never write anything", low)
+
+
 class StructuralPassTests(unittest.TestCase):
     """The second pass: only no-acoustic-star snippets, own cap, flag-gated,
     acoustic stars never displaced."""
@@ -334,7 +409,7 @@ class StructuralPassTests(unittest.TestCase):
         def __init__(self):
             self.calls = []
 
-        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig, **_kw):
             self.calls.append((snip, kind, why, trig))
             return True
 
@@ -820,7 +895,7 @@ class LedgerGenerationFilterTests(unittest.TestCase):
         def list_ideal_decisions(self, arc_id):
             return self.decided
 
-        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig, **_kw):
             self.upserts.append((snip, kind, trig))
             return True
 
@@ -881,7 +956,7 @@ class ConfidentVoiceDeterministicTests(unittest.TestCase):
 
         stored = []
         db.upsert_moment_suggestion = (
-            lambda snip, arc, kind, repl, why, trig:
+            lambda snip, arc, kind, repl, why, trig, **_kw:
             stored.append((snip, kind, repl, why, trig)) or True)
         with patch("services.lab_recording.build_readout_from_session",
                    return_value=readout), \
@@ -889,6 +964,40 @@ class ConfidentVoiceDeterministicTests(unittest.TestCase):
             ms.generate_for_session("sess-1", ARC, database=db)
         self.assertEqual(stored, [("s1", "emphasize", None,
                                    ms.CONFIDENT_VOICE_WHY, "confident")])
+
+    def test_a_WIDE_confident_moment_buys_exactly_one_call_for_its_target(self):
+        # Founder 2026-08-15. The card's BODY stays deterministic and signed
+        # — the model is asked one thing only, which words to accent, and
+        # only when the moment is wider than an accent. Without this the
+        # card had no target at all and the serve bolded the whole chunk.
+        from services import moment_suggestions as ms
+        db = LedgerGenerationFilterTests._Db([])
+        db.confident_snippets = ("s1",)
+        wide = ("We started small. Then we shipped it fast. "
+                "And the customers stayed.")
+        readout = {"snippets": [
+            {"id": "s1", "transcript": wide,
+             "acoustic_read": {"potentiometer": 0.9}},
+        ]}
+        calls = []
+
+        def _pick(**kwargs):
+            calls.append(kwargs)
+            return type("R", (), {"parsed": {"quote": "shipped it fast"},
+                                  "text": ""})()
+
+        stored = []
+        db.upsert_moment_suggestion = (
+            lambda snip, arc, kind, repl, why, trig, **kw:
+            stored.append((snip, why, kw.get("emphasis_quote"))) or True)
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value=readout), \
+             patch("services.llm.chat_complete", side_effect=_pick):
+            ms.generate_for_session("sess-1", ARC, database=db)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].get("surface"), "emphasis_phrase")
+        self.assertEqual(
+            stored, [("s1", ms.CONFIDENT_VOICE_WHY, "shipped it fast")])
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -987,7 +1096,7 @@ class ContextDocumentReachesGenerationTests(unittest.TestCase):
                 raise RuntimeError("table missing (migration pending)")
             return self.doc
 
-        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig, **_kw):
             self.upserts.append(snip)
             return True
 
@@ -1101,7 +1210,7 @@ class GenerationRecurrenceProtectionTests(unittest.TestCase):
             i = int(sid[1:])
             return [{"transcript": self._takes[i]}]
 
-        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig, **_kw):
             self.upserts.append((snip, kind, trig))
             return True
 
@@ -1169,7 +1278,7 @@ class PolishRecurrenceProtectionTests(unittest.TestCase):
                                     document=None):
             return True
 
-        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig):
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig, **_kw):
             self.upserts.append((snip, trig))
             return True
 
@@ -1231,7 +1340,7 @@ class VersionSnapshotWriteTests(unittest.TestCase):
         def get_coach_arc_ideal_text(self, arc_id):
             return {"arc_id": arc_id, "version": 4}
 
-        def upsert_moment_suggestion(self, *a):
+        def upsert_moment_suggestion(self, *a, **_kw):
             return True
 
         def upsert_ideal_text_version(self, arc_id, version, text, moments):

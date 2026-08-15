@@ -13,7 +13,8 @@ Every intervention on the document is ONE span-anchored change:
   * kind='bold'    — the quote gets the accent; approving keeps it bold.
     The span can be HALF A SENTENCE (founder: "bolden only the second
     part of it") — it is whatever the narrowing resolved, never
-    automatically the whole piece;
+    automatically the whole piece. Since 2026-08-15 that is enforced
+    rather than merely intended: see THE ACCENT WIDTH RULE below;
   * kind='advice'  — delivery/structural coaching: no text change at
     all, the span only points at what the advice is about.
 
@@ -34,6 +35,21 @@ quote would be the entire paragraph, and "strike all of this" / "bold all
 of this" is a claim about words nobody made. `advice` rides the paragraph
 freely: it changes nothing, and its span is a pointer, not an assertion.
 
+THE ACCENT WIDTH RULE (founder 2026-08-15): "try not to style the whole
+paragraphs or chunks but key few words or a sentence — so effectively
+delete that." A bold's quote is now capped at ONE SENTENCE by
+`is_accent_width`, and a bold that cannot narrow to it is DROPPED rather
+than widened to the whole piece. The old whole-window fallback was not a
+rare edge: the Confident Voice card is generated with no LLM at all, so
+its only narrowing signal was the say-it-stronger UPGRADE wordings — a
+list that is empty by construction for a moment delivered well, since
+say-it-stronger only proposes upgrades where the wording is WEAK. Every
+confident bold therefore fell through to "bold the entire piece". The
+generator now picks the phrase up front (services.moment_suggestions
+.pick_emphasis_phrase, verbatim-pinned) and stores it on the row, so the
+narrowing normally succeeds; the drop is the floor under it, not the
+common path.
+
 AC-9/CONSTRUCT: `source`/`device` are the closed vocabularies already in
 use; the internal trigger vocabulary (threat/charisma/…) never rides a
 user payload — 'polish' is the one trigger the FE may distinguish.
@@ -41,6 +57,7 @@ user payload — 'polish' is the one trigger the FE may distinguish.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Optional
 
 from services.transcript_document import WORD_GRAIN
@@ -87,6 +104,37 @@ def _find_window(text: str, needle: str) -> Optional[tuple]:
 # the whole-fragment problem T3 exists to kill.
 _MAX_EMPHASIS_SPAN = 60
 
+# THE ACCENT WIDTH RULE (founder 2026-08-15). The widest thing that may
+# carry an accent: "key few words or a SENTENCE", never a paragraph or a
+# chunk. Two conditions, and both have to hold.
+#
+# The character cap is the backstop, not the rule. Spoken transcripts run
+# long without punctuation — a breathless run-on is one "sentence" by the
+# regex and a paragraph to a reader — so a hard ceiling catches what the
+# sentence test cannot. 160 is generous for one long spoken sentence and
+# far below any chunk.
+_MAX_BOLD_SPAN = 160
+
+# An INTERNAL sentence break: a terminator followed by whitespace (so a
+# trailing full stop does not count as one), or a line break. Closing
+# quotes/brackets may sit between the two. Deliberately naive about
+# abbreviations — "Mr. Smith" reads as two sentences here and the accent is
+# declined, which errs toward the founder's instruction rather than away
+# from it, and speech transcripts carry very few of them.
+_SENTENCE_BREAK_RE = re.compile(r"[.!?…。！？][\"'’”\)\]]?\s|\n")
+
+
+def is_accent_width(s: Any) -> bool:
+    """Is `s` narrow enough to be STYLED — at most one sentence, and no
+    longer than the cap? The one definition of the founder's "key few words
+    or a sentence", shared by the generator (which asks the model to pick a
+    phrase this narrow) and the serve (which refuses to bold anything
+    wider). Pure."""
+    t = s.strip() if isinstance(s, str) else ""
+    if not t or len(t) > _MAX_BOLD_SPAN:
+        return False
+    return _SENTENCE_BREAK_RE.search(t) is None
+
 
 def key_phrases_from_say_it_stronger(sis: Any) -> list:
     """The say-it-stronger UPGRADE wordings for a snippet — the founder's
@@ -122,12 +170,26 @@ def _narrow(window_text: str, sug: dict,
         if sug.get("kind") == "replace" and has_profanity(window_text):
             return profanity_sentence(window_text)
         if sug.get("kind") == "emphasize":
-            # Bold only the strongest phrase, not the whole fragment
+            low = window_text.lower()
+            # ① THE PHRASE THE MODEL PICKED (founder 2026-08-15). Chosen at
+            # generation time from the moment's own words and pinned verbatim
+            # there; re-checked here because the served document may have
+            # moved on since. Must still be INSIDE this window, still narrower
+            # than it, and still of accent width — a stored quote is evidence,
+            # not authority.
+            picked = sug.get("emphasis_quote")
+            picked = picked.strip() if isinstance(picked, str) else ""
+            if picked and len(picked) < len(window_text):
+                i = low.find(picked.lower())
+                if i >= 0:
+                    cand = window_text[i:i + len(picked)]
+                    if is_accent_width(cand):
+                        return cand
+            # ② Bold only the strongest phrase, not the whole fragment
             # (founder T3): the first say-it-stronger upgrade wording that
             # occurs in this window AND is genuinely narrower than it.
             # Return the window's OWN slice (case-exact), so the caller's
             # substring anchor lands.
-            low = window_text.lower()
             for phrase in (key_phrases or []):
                 if not phrase or len(phrase) >= len(window_text):
                     continue
@@ -255,6 +317,25 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
                     "anchored at PARAGRAPH grain and narrowing found no exact "
                     "phrase, so the quote would be the whole paragraph",
                     kind, source, sid)
+                continue
+            # THE ACCENT WIDTH RULE, at every grain (founder 2026-08-15).
+            # The paragraph-grain decline above already refused the widest
+            # case; this refuses the rest of it. A `bold` whose narrowing
+            # failed would take the ENTIRE piece, and a piece is routinely
+            # several sentences — "style the whole chunk", which is exactly
+            # what the founder asked to delete. A single-sentence piece still
+            # falls through and is bolded whole: that is "or a sentence",
+            # which he allowed in the same breath.
+            #
+            # Only `bold` is held to this. `replace` states which words to
+            # swap and `advice` only points; neither becomes a claim about
+            # emphasis by being wide.
+            if kind == "bold" and not is_accent_width(window_text):
+                logger.info(
+                    "tracked_changes: declining bold/%s on snippet=%s — "
+                    "narrowing found no phrase and the piece is wider than an "
+                    "accent (%d chars), so the quote would be the whole chunk",
+                    source, sid, len(window_text))
                 continue
             quote, start, end = window_text, w_start, w_end
 

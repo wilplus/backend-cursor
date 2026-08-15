@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 # 2026-08-03; hash-locked in prompts.lock.json.
 from services.prompts.moment_suggestions import SYSTEM as _SYSTEM
 from services.prompts.moment_suggestions import STRUCT_SYSTEM as _STRUCT_SYSTEM
+from services.prompts.moment_suggestions import (
+    EMPHASIS_SYSTEM as _EMPHASIS_SYSTEM,
+)
 
 # Cap on the context-document excerpt per prompt. The stored text can reach
 # 40k chars and this rides every snippet's call, so the excerpt is bounded.
@@ -99,6 +102,70 @@ def generate_moment_suggestion(
         return {"why": why, "replacement": replacement}
     except Exception as e:
         logger.warning("moment_suggestion: generation failed: %s", e)
+        return None
+
+
+def pick_emphasis_phrase(transcript: str, *,
+                         user_id: Optional[str] = None) -> Optional[str]:
+    """The FEW WORDS worth accenting inside one moment, verbatim — or None.
+
+    THE DEFECT THIS CLOSES (founder 2026-08-15): "try not to style the whole
+    paragraphs or chunks but key few words or a sentence." An emphasize star
+    stored no target at all, so the serve had to guess one from the
+    say-it-stronger UPGRADE wordings — a list that is EMPTY by construction
+    for a moment delivered well, because say-it-stronger only proposes
+    upgrades where the wording is weak. The Confident Voice card fires
+    precisely on the moments that have no upgrades, so its narrowing never
+    had anything to work with and every one of them bolded the whole piece.
+    The target is now chosen here, once, from the moment's own words.
+
+    ANTI-HALLUCINATION PIN, identical to detect_structural_device: the
+    returned phrase MUST be a verbatim (case-insensitive) substring of the
+    moment, and the MOMENT's own characters are returned, not the model's
+    echo. Not a substring → None. It must also be genuinely narrower than
+    the moment and of accent width — a model that answers "all of it" has
+    not picked anything.
+
+    Skips the call entirely when the moment is ALREADY accent-width: there
+    is nothing to narrow, the serve will accent it whole, and this rides
+    every emphasize star on every take. Guarded; never raises.
+    """
+    from services.tracked_changes import is_accent_width
+
+    if not isinstance(transcript, str) or not transcript.strip():
+        return None
+    moment = transcript.strip()[:600]
+    if is_accent_width(moment):
+        return None
+    try:
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_MOMENT_SUGGESTION
+
+        result = chat_complete(
+            spec=SPEC_MOMENT_SUGGESTION,
+            system=_EMPHASIS_SYSTEM,
+            user=moment,
+            surface="emphasis_phrase",
+            user_id=user_id,
+        )
+        parsed = getattr(result, "parsed", None) if result else None
+        if not isinstance(parsed, dict):
+            return None
+        quote = (parsed.get("quote") or "").strip()
+        if not quote or len(quote) >= len(moment):
+            return None
+        _idx = moment.lower().find(quote.lower())
+        if _idx < 0:
+            logger.info("emphasis_phrase: quote not verbatim — dropped")
+            return None
+        quote = moment[_idx:_idx + len(quote)]
+        if not is_accent_width(quote):
+            logger.info("emphasis_phrase: pick too wide (%d chars) — dropped",
+                        len(quote))
+            return None
+        return quote
+    except Exception as e:
+        logger.warning("emphasis_phrase: pick failed: %s", e)
         return None
 
 
@@ -516,9 +583,18 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                 if not gen:
                     _no_gen += 1
                     continue
+                # THE ACCENT TARGET (founder 2026-08-15). Picked here, on
+                # the moment's own words, so the serve narrows to a phrase
+                # instead of falling back to the whole chunk. Costs nothing
+                # on a moment that is already accent-width, and a None
+                # simply leaves the serve's own narrowing to try.
+                _emph_quote = (pick_emphasis_phrase(
+                    transcript, user_id=session.get("user_id"))
+                    if kind == "emphasize" else None)
                 if database.upsert_moment_suggestion(
                         str(snip_id), str(arc_id), kind,
-                        gen.get("replacement"), gen.get("why"), trigger):
+                        gen.get("replacement"), gen.get("why"), trigger,
+                        emphasis_quote=_emph_quote):
                     stored += 1
             except Exception as _snip_err:
                 _errored += 1

@@ -22,7 +22,8 @@ import unittest
 from unittest.mock import patch
 
 from services.tracked_changes import (
-    build_tracked_changes, key_phrases_from_say_it_stronger, verify_changes,
+    build_tracked_changes, is_accent_width, key_phrases_from_say_it_stronger,
+    verify_changes,
 )
 from services.transcript_document import (
     build_transcript_document, paragraph_spans, relocate_pieces, verify_spans,
@@ -295,12 +296,63 @@ class TrackedChangeTests(unittest.TestCase):
                          c["quote"])
         self.assertTrue(verify_changes(self.DOC, [c]))
 
-    def test_emphasis_without_key_phrase_falls_back_to_fragment(self):
-        # No say-it-stronger signal → the whole fragment (today's
-        # behavior), never a guessed span.
+    def test_emphasis_without_key_phrase_falls_back_to_the_one_sentence(self):
+        # No narrowing signal at all → the whole fragment, never a guessed
+        # span. Still allowed here because the fragment IS one sentence —
+        # "key few words or a SENTENCE" (founder 2026-08-15). A wider piece
+        # is a different case; see AccentWidthTests.
         sugs = {S2: {"kind": "emphasize", "why": "It lands."}}
         c = build_tracked_changes(self.DOC, self.PIECES, sugs,
                                   key_phrases_by_snippet={})[0]
+        self.assertEqual(c["quote"], "And then we shipped it fast.")
+        self.assertTrue(is_accent_width(c["quote"]))
+
+    def test_emphasis_takes_the_phrase_THE_MODEL_PICKED(self):
+        # Founder 2026-08-15: the accent target is chosen at generation and
+        # stored on the row, so the serve narrows instead of guessing.
+        sugs = {S2: {"kind": "emphasize", "why": "It lands.",
+                     "emphasis_quote": "shipped it fast"}}
+        c = build_tracked_changes(self.DOC, self.PIECES, sugs)[0]
+        self.assertEqual(c["kind"], "bold")
+        self.assertEqual(c["quote"], "shipped it fast")
+        self.assertEqual(self.DOC[c["span"]["start"]:c["span"]["end"]],
+                         "shipped it fast")
+        self.assertTrue(verify_changes(self.DOC, [c]))
+
+    def test_the_picked_phrase_outranks_the_say_it_stronger_fallback(self):
+        # The model saw the moment; say-it-stronger only ever saw the weak
+        # wordings. When both offer a span, the picked one wins.
+        sugs = {S2: {"kind": "emphasize", "why": "y",
+                     "emphasis_quote": "shipped it fast"}}
+        c = build_tracked_changes(self.DOC, self.PIECES, sugs,
+                                  key_phrases_by_snippet={S2: ["And then"]})[0]
+        self.assertEqual(c["quote"], "shipped it fast")
+
+    def test_a_picked_phrase_that_moved_is_ignored_not_forced(self):
+        # The document may have been baked/edited since generation. A stored
+        # target is evidence, not authority — it is re-checked here.
+        sugs = {S2: {"kind": "emphasize", "why": "y",
+                     "emphasis_quote": "words nobody said"}}
+        c = build_tracked_changes(self.DOC, self.PIECES, sugs)[0]
+        self.assertEqual(c["quote"], "And then we shipped it fast.")
+
+    def test_a_picked_phrase_from_another_fragment_never_bleeds_in(self):
+        sugs = {S2: {"kind": "emphasize", "why": "y",
+                     "emphasis_quote": "started small"}}   # that is S1's
+        c = build_tracked_changes(self.DOC, self.PIECES, sugs)[0]
+        self.assertEqual(c["quote"], "And then we shipped it fast.")
+
+    def test_a_picked_phrase_matches_case_insensitively_but_serves_the_doc(self):
+        sugs = {S2: {"kind": "emphasize", "why": "y",
+                     "emphasis_quote": "SHIPPED IT FAST"}}
+        c = build_tracked_changes(self.DOC, self.PIECES, sugs)[0]
+        self.assertEqual(c["quote"], "shipped it fast")   # the DOC's own chars
+        self.assertTrue(verify_changes(self.DOC, [c]))
+
+    def test_a_picked_phrase_that_is_the_whole_window_narrows_nothing(self):
+        sugs = {S2: {"kind": "emphasize", "why": "y",
+                     "emphasis_quote": "And then we shipped it fast."}}
+        c = build_tracked_changes(self.DOC, self.PIECES, sugs)[0]
         self.assertEqual(c["quote"], "And then we shipped it fast.")
 
     def test_emphasis_key_phrase_must_be_in_the_window(self):
@@ -366,6 +418,87 @@ class TrackedChangeTests(unittest.TestCase):
         self.assertEqual(build_tracked_changes(self.DOC, [], {}), [])
         self.assertEqual(build_tracked_changes(self.DOC, self.PIECES, {}), [])
 
+
+class AccentWidthTests(unittest.TestCase):
+    """THE ACCENT WIDTH RULE (founder 2026-08-15): "try not to style the
+    whole paragraphs or chunks but key few words or a sentence — so
+    effectively delete that."
+
+    A bold that cannot narrow is DROPPED. It used to be widened to the whole
+    piece, and because the Confident Voice card has no say-it-stronger
+    upgrades to narrow with (that lane only proposes upgrades where the
+    wording is WEAK, and this card fires on moments delivered well), that
+    fallback was the common path, not the edge."""
+
+    # One piece, three sentences — a chunk, which is precisely what must
+    # never be accented whole.
+    DOC = ("We started small. Then we shipped it fast. "
+           "And the customers stayed.")
+    PIECES = [{"snippet_id": S1, "text": DOC, "take_session_id": T1,
+               "start": 0, "end": len(DOC)}]
+
+    def _changes(self, sug, **kw):
+        return build_tracked_changes(self.DOC, self.PIECES, {S1: sug}, **kw)
+
+    def test_is_accent_width(self):
+        self.assertTrue(is_accent_width("shipped it fast"))
+        self.assertTrue(is_accent_width("We shipped it fast."))   # trailing .
+        self.assertTrue(is_accent_width("Did we ship it?"))
+        self.assertFalse(is_accent_width("We shipped. We stayed."))
+        self.assertFalse(is_accent_width("Ship it! Now."))
+        self.assertFalse(is_accent_width("one line\nanother line"))
+        self.assertFalse(is_accent_width("word " * 60))   # the run-on cap
+        self.assertFalse(is_accent_width(""))
+        self.assertFalse(is_accent_width(None))
+        self.assertFalse(is_accent_width(42))
+
+    def test_a_bold_that_cannot_narrow_is_DROPPED_not_widened(self):
+        self.assertEqual(self._changes({"kind": "emphasize", "why": "y"}), [])
+
+    def test_the_same_bold_survives_once_it_has_a_target(self):
+        c = self._changes({"kind": "emphasize", "why": "y",
+                           "emphasis_quote": "shipped it fast"})[0]
+        self.assertEqual(c["quote"], "shipped it fast")
+        self.assertTrue(verify_changes(self.DOC, [c]))
+
+    def test_the_confident_voice_card_obeys_the_same_rule(self):
+        # It is the lane the defect actually shipped on, so it is pinned by
+        # name rather than left to the generic case above.
+        wide = {"kind": "emphasize", "trigger": "confident", "why": "y"}
+        self.assertEqual(self._changes(wide), [])
+        c = self._changes({**wide, "emphasis_quote": "the customers stayed"})[0]
+        self.assertEqual(c["source"], "confident_voice")
+        self.assertEqual(c["quote"], "the customers stayed")
+
+    def test_a_say_it_stronger_phrase_still_rescues_a_wide_piece(self):
+        c = self._changes({"kind": "emphasize", "why": "y"},
+                          key_phrases_by_snippet={S1: ["shipped it fast"]})[0]
+        self.assertEqual(c["quote"], "shipped it fast")
+
+    def test_a_replace_is_NEVER_dropped_for_being_wide(self):
+        # The width rule is about accentuation only. A replace says which
+        # words to swap and an advice only points; neither becomes a claim
+        # about emphasis by covering more ground.
+        c = self._changes({"kind": "replace", "trigger": "stickiness",
+                           "replacement_text": "We grew.", "why": "y"})[0]
+        self.assertEqual(c["kind"], "replace")
+        self.assertEqual(c["quote"], self.DOC)
+
+    def test_advice_is_NEVER_dropped_for_being_wide(self):
+        c = self._changes({"kind": "delivery", "trigger": "pace_fast"})[0]
+        self.assertEqual(c["kind"], "advice")
+        self.assertEqual(c["quote"], self.DOC)
+
+    def test_the_generator_and_the_serve_share_ONE_definition(self):
+        # pick_emphasis_phrase asks the model for a phrase this narrow and
+        # drops a wider answer; build_tracked_changes refuses a wider quote.
+        # Two copies of the rule would drift apart and the drop would start
+        # eating phrases the generator thought were fine, so there is one.
+        import inspect
+
+        from services import moment_suggestions as ms
+        self.assertIn("from services.tracked_changes import is_accent_width",
+                      inspect.getsource(ms.pick_emphasis_phrase))
 
 
 class ReasonKeyTests(unittest.TestCase):
