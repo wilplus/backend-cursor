@@ -9,10 +9,13 @@ snippet:
     (a `moment_suggestions` row; the machine's confident read);
   * USER     — the student APPLIED it (an `ideal_decision_ledger` row,
     kind 'emphasize', decision 'approved', snippet-keyed);
-  * COACH    — the coach tagged the snippet 'strong' AND the session is
-    PUBLISHED. Blind until publish: an entry may never reveal a label
-    the coach has not released (BLIND COACH), so the coach signal simply
-    does not exist here before `results_published_at`.
+  * COACH    — the snippet reached CONFIDENCE QUORUM = YES (SPEC §17
+    `conf-q-v1`, settled through services/label_quorum) AND the session
+    is PUBLISHED. Blind until publish: an entry may never reveal a
+    verdict the coach has not released (BLIND COACH), so the coach
+    signal simply does not exist here before `results_published_at`.
+    Re-pointed 2026-08-14 off the `strong` tag — see below for why that
+    tag was never the judgment it looked like.
 
 NEVER a ranking term. The founder deleted the album-quorum bonus with
 `_W_B` (2026-08-14): the album is a DESTINATION for aligned moments, not
@@ -39,7 +42,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_STRONG_TAG = "strong"
+# The coach leg reads CONFIDENCE QUORUM, not a tag (founder 2026-08-14).
+# It used to be `tag == "strong"`, which looked like a judgment and was not:
+# no picker for it exists anywhere, and the FE wrote `tag: cs.tag ?? "strong"`
+# — defaulted as a side effect of typing a note. So the album's "coach agrees"
+# leg really meant "the coach wrote something", which is weaker than the entry
+# rule claimed. It now means what it says.
 
 
 def _approved_emphasizes(database, arc_id: Any) -> dict:
@@ -78,7 +86,12 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
             if isinstance(row, dict) and row.get("kind") == "emphasize"
         }
 
-        # COACH — 'strong' tags on PUBLISHED sessions only.
+        # COACH — CONFIDENCE QUORUM = YES, on PUBLISHED sessions only.
+        #
+        # The publish gate is unchanged and load-bearing: a quorum can settle
+        # while the coach is still working, and BLIND COACH means none of it
+        # exists for the student until the review is released.
+        from services.key_moments import key_snippet_ids
         coach_ok: dict = {}   # snippet_id -> take_session_id
         for sess in (database.get_arc_sessions(arc_id) or []):
             if not sess.get("results_published_at"):
@@ -87,13 +100,13 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
             if not sid:
                 continue
             try:
-                drafts = database.get_coach_snippet_drafts(sid) or []
+                snips = database.get_snippets_by_session(sid) or []
             except Exception:
                 continue
-            for d in drafts:
-                if isinstance(d, dict) and d.get("tag") == _STRONG_TAG \
-                        and d.get("snippet_id"):
-                    coach_ok[str(d.get("snippet_id"))] = sid
+            _ids = [str(x.get("id")) for x in snips
+                    if isinstance(x, dict) and x.get("id")]
+            for snip_id in key_snippet_ids(database, _ids):
+                coach_ok[str(snip_id)] = sid
 
         # `aligned` may legitimately be EMPTY — the mirror still has to
         # run, because an empty alignment with existing entries means

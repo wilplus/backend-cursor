@@ -130,10 +130,21 @@ def validate_insights_payload(body: Any) -> dict:
             )
 
         # tag — OPTIONAL since the §1.C publish-floor relaxation (FE handoff
-        # 2026-06-19): a missing / null / blank tag defaults to "strong" (the
-        # lenient floor — a present note is what gates publish, not the coach
-        # remembering to tag). An explicit WRONG value still 422s so a typo
-        # surfaces instead of silently flipping to strong.
+        # 2026-06-19): a present note is what gates publish, not the coach
+        # remembering to tag. An explicit WRONG value still 422s so a typo
+        # surfaces instead of being silently rewritten.
+        #
+        # ⚠️ THE "strong" FALLBACK IS A STORAGE REQUIREMENT, NOT A JUDGMENT
+        # (2026-08-14). strong_sides_library.tag is TEXT NOT NULL CHECK IN
+        # ('strong','to_work_on'), so an untagged note needs SOME value to be
+        # stored at all — and losing the note would cost the clone corpus (L3)
+        # far more than an inert tag costs. It is inert now: as of this date
+        # nothing reads tag == "strong" as evidence of anything. power_score
+        # dropped it from the coach term, the Voice Album reads the confidence
+        # quorum instead, and the Lounge bot no longer calls it the coach's
+        # "best". Treat this value as "note exists", because that is all it has
+        # ever meant. Making it honestly nullable is a migration on a live
+        # table and is deliberately NOT bundled here.
         tag = n.get("tag")
         if tag is None or (isinstance(tag, str) and not tag.strip()):
             tag = "strong"

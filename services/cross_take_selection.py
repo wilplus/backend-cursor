@@ -28,7 +28,7 @@ no "improving" trajectory.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +62,15 @@ def preflight_granularity(arc_sessions: list[dict]) -> str:
     return "take"
 
 
-def _tag_from_coach_label(coach_label: Any) -> Optional[str]:
-    """Map the snippet's coach_label to the power_score coach term. Unreviewed
-    takes (label None) → no coach term, pure acoustic ordering."""
-    if coach_label == "charisma":
-        return "strong"
-    if coach_label == "no_charisma":
-        return "to_work_on"
-    return None
+# _tag_from_coach_label was DELETED 2026-08-14. It synthesised a power_score
+# coach term out of `snippets.coach_label` — the RETIRED charisma classifier
+# ("charisma" → strong, "no_charisma" → to_work_on). Two independent reasons it
+# had to go: charisma is a retired construct (2026-08-13 re-lock) and must not
+# route live ranking, and the tag it produced was never the coach's real
+# to_work_on veto anyway — that lives on coach_snippet_drafts, which this
+# reader does not load. So it was a retired construct wearing the coach's
+# authority. This path now orders on content + machine confidence, both of
+# which are measured and defined.
 
 
 def _moment_rationale(snippet: dict) -> str:
@@ -104,7 +105,6 @@ def _rank_inputs(snippet: dict) -> dict:
     return {
         "activation": metrics.get("overall_score"),
         "slide_stickiness": stick,
-        "tag": _tag_from_coach_label(snippet.get("coach_label")),
         "rank": metrics.get("rank"),
         # Delivery term (L2) — None when the flag is off / piece unstamped.
         # MACHINE lane only: this reader has one snippet row and no panel

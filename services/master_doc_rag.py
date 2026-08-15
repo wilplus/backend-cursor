@@ -491,10 +491,12 @@ _SYSTEM_PROMPT = with_voice_rules(
 _LIBRARIAN_GUARDRAIL = (
     "─── STRONG-SIDES LIBRARY — LIBRARIAN RULES (read before using it) ───\n"
     "The block below is THIS user's own library: notes their HUMAN COACH "
-    "wrote about specific past moments, each tagged strong / to-work-on. "
-    "You are a LIBRARIAN of these notes, never a judge:\n"
+    "wrote about specific past moments. Some are marked to-work-on; the rest "
+    "are the coach's remarks and carry NO verdict — do not upgrade a note "
+    "into praise the coach did not write. You are a LIBRARIAN of these "
+    "notes, never a judge:\n"
     "  • You MAY retrieve + replay these coach notes (in the coach's own "
-    "    words), surface the strong / to-work-on moments, and offer to "
+    "    words), surface the moments they are about, and offer to "
     "    pull them up.\n"
     "  • You MUST NOT compute, assert, or imply trajectory, improvement, "
     "    decline, or any cross-session synthesis ('you're getting "
@@ -502,8 +504,8 @@ _LIBRARIAN_GUARDRAIL = (
     "    scope and the data here cannot support it.\n"
     "  • You MUST NOT INVENT a score or ratio about the user, and MUST "
     "    NOT pre-empt or second-guess the coach's read. You MAY, however, "
-    "    cite the raw Readout metrics of the TWO anchors (best / to-work-"
-    "    on) given in the block below — the user's own factual "
+    "    cite the raw Readout metrics of the TWO anchors (coach-noted / "
+    "    to-work-on) given in the block below — the user's own factual "
     "    measurements — but ONLY those two, and NEVER strung into a "
     "    series, trend, velocity, or cross-session comparison.\n"
     "  • You MUST NOT author new coaching, critique, or advice of your "
@@ -515,8 +517,8 @@ _LIBRARIAN_GUARDRAIL = (
     "    weakness') — do NOT provide point-by-point score tracking, "
     "    velocity charts, or historical trend lines. Redirect to "
     "    actionable qualitative insights: reference the coach's specific "
-    "    written comments and contrast the current session's best vs "
-    "    to-work-on acoustic anchors. Focus the response on expanding "
+    "    written comments and contrast the current session's two "
+    "    acoustic anchors. Focus the response on expanding "
     "    user awareness of their current strengths and blockers. Ground "
     "    the explanation in the specific text feedback from the coach. "
     "    Do not allow the user to gamify or obsess over continuous "
@@ -551,9 +553,15 @@ def _render_two_anchors(entries: Optional[list]) -> str:
     construction: two points from ONE session, no series, no other
     sessions. Pure; None-safe.
 
-    NB: willab has no charisma/stress probability (that classifier was
-    excised) — the coach's strong / to_work_on tag IS the best/worst
-    signal, so the anchors are the coach's own picks, not a machine score.
+    ⚠️ 2026-08-14 — THE "BEST" ANCHOR NO LONGER CLAIMS A VERDICT. It used to
+    render 'Best (coach marked "strong")' off `tag == "strong"`, which the
+    coach never picked: the FE wrote `tag: cs.tag ?? "strong"` and publish
+    defaults a missing tag the same way, so the tag meant "a note exists". The
+    bot was told a moment was the coach's BEST when the coach had only typed
+    something about it — a fabricated judgment, on the surface that talks to
+    the user. The coach's WORDS are real, so they stay; only the verdict
+    wrapped around them is gone. `to_work_on` keeps its claim: no default ever
+    produced that value, so those rows were explicitly chosen.
     """
     rows = [e for e in (entries or []) if isinstance(e, dict)]
     if not rows:
@@ -567,11 +575,13 @@ def _render_two_anchors(entries: Optional[list]) -> str:
         [e for e in rows_sorted if e.get("session_id") == cur]
         if cur else rows_sorted
     )
-    best = next((e for e in in_session if e.get("tag") == "strong"), None)
     worst = next((e for e in in_session if e.get("tag") == "to_work_on"), None)
+    # Any note that is not an explicit to_work_on: the coach's remark on the
+    # moment, offered as a remark and nothing more.
+    noted = next((e for e in in_session if e.get("tag") != "to_work_on"), None)
     out: list = []
     for label, e in (
-        ('Best (coach marked "strong")', best),
+        ("Coach noted this moment", noted),
         ('To work on (coach marked "to work on")', worst),
     ):
         if not e:
@@ -610,7 +620,9 @@ def _render_library_block(entries: Optional[list]) -> str:
         note = (e.get("note") or "").strip()
         if not note:
             continue
-        label = "strong" if e.get("tag") == "strong" else "to work on"
+        # Only to_work_on states a verdict (see _render_two_anchors) — the
+        # rest are notes, and get labelled as notes.
+        label = "to work on" if e.get("tag") == "to_work_on" else "coach note"
         ref = e.get("snippet_ref") or {}
         tx = (ref.get("transcript") or "").strip() if isinstance(ref, dict) else ""
         if len(tx) > 160:

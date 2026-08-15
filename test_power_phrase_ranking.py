@@ -131,22 +131,45 @@ class ConfidenceTermTests(unittest.TestCase):
 
 
 class OrderingOfAuthorityTests(unittest.TestCase):
-    """SPEC §7.1 — the invariant that SURVIVES the re-point. Coach verdict
-    dominant > quorum bonus > panel > machine. Every one of these is a
+    """SPEC §7.1 — the invariant that SURVIVES both re-points. Stated
+    RELATIVELY since 2026-08-14: a coach veto is never earned back, because
+    every other term is available to the vetoed phrase too. Each of these is a
     weight-sizing claim the file makes in prose; here it is arithmetic."""
 
-    def test_the_coach_verdict_outweighs_any_confidence_read(self):
-        strong = power_score(activation=0.0, tag="strong")
+    def test_the_strong_tag_is_NOT_a_verdict_and_lifts_NOTHING(self):
+        """Founder 2026-08-14. No picker for "strong" exists: the FE sent
+        `cs.tag ?? "strong"` and publish defaults a missing tag the same way,
+        so the value meant "a coach typed a note". It was worth +2.0 — the
+        largest single term in the blend — which let a commented-on phrase
+        outrank a measurably better one. A note is not a judgment."""
+        self.assertEqual(power_score(tag="strong"), power_score(tag=None))
+        self.assertEqual(power_score(tag="strong"), power_score())
+        # And it must not be re-added by accident: the term is one-sided.
+        from services.power_phrase_ranking import _COACH_TERM
+        self.assertNotIn("strong", _COACH_TERM)
+
+    def test_a_vetoed_phrase_never_reaches_an_untagged_one(self):
+        """The whole ordering invariant, in one comparison. to_work_on is a
+        REAL pick (no default ever produced it), so it still costs 2.0 — and
+        since content/panel/machine are all available to BOTH phrases, no
+        combination of them closes the gap. True at any weight."""
+        best_case_for_the_vetoed = power_score(
+            tag="to_work_on", activation=1.0, slide_stickiness=1.0,
+            panel_confidence={"value": 1.0, "quality": 1.0})
+        same_phrase_untagged = power_score(
+            activation=1.0, slide_stickiness=1.0,
+            panel_confidence={"value": 1.0, "quality": 1.0})
+        self.assertLess(best_case_for_the_vetoed, same_phrase_untagged)
+
+    def test_the_veto_outweighs_any_single_confidence_read(self):
+        """Delivery informs the pick; it never overturns a human's explicit
+        negative. A perfect panel (1.5) and a perfect machine read (1.0) are
+        each strictly smaller than the 2.0 the veto removes."""
+        veto = power_score(tag=None) - power_score(tag="to_work_on")
         for conf in ({"panel_confidence": {"value": 1.0, "quality": 1.0}},
                      {"machine_confidence": 1.0}):
-            self.assertGreater(strong, power_score(activation=0.0, **conf))
-
-    def test_the_coach_gap_is_wider_than_the_panels_full_swing(self):
-        gap = (power_score(tag="strong") - power_score(tag="to_work_on"))
-        swing = (power_score(panel_confidence={"value": 1.0, "quality": 1.0})
-                 - power_score(panel_confidence={"value": -1.0,
-                                                 "quality": 1.0}))
-        self.assertGreater(gap, swing)
+            lift = power_score(**conf) - power_score()
+            self.assertGreater(veto, lift)
 
     def test_the_quorum_bonus_is_GONE_not_ignored(self):
         """Founder verdict, 2026-08-13 evening: `_W_B` deleted outright — a
@@ -156,20 +179,26 @@ class OrderingOfAuthorityTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             power_score(activation=0.3, album_quorum=True)
 
-    def test_no_combination_of_automatic_terms_crosses_the_coach_gap(self):
-        """Deleting the bonus is what made §7.1 arithmetically TRUE. The
-        audit's counterexample — to_work_on + quorum + positive panel beating
-        strong + negative panel — is now impossible: the automatic maximum is
-        the full panel swing plus content, strictly under the 4.0 gap."""
-        gap = (power_score(tag="strong") - power_score(tag="to_work_on"))
-        best_auto = power_score(
-            tag="to_work_on", activation=1.0, slide_stickiness=1.0,
-            panel_confidence={"value": 1.0, "quality": 1.0})
-        worst_human = power_score(
-            tag="strong", activation=0.0, slide_stickiness=0.0,
-            panel_confidence={"value": -1.0, "quality": 1.0})
-        self.assertGreater(gap, 3.0)
-        self.assertGreater(worst_human, best_auto - gap)  # coach still decides
+    def test_no_combination_of_automatic_terms_crosses_the_veto(self):
+        """Deleting `_W_B` is what made §7.1 arithmetically TRUE, and dropping
+        the fake `strong` half is what stopped the gap being fictional in the
+        other direction. Maxing EVERY automatic term at once still does not
+        recover the veto."""
+        veto = power_score(tag=None) - power_score(tag="to_work_on")
+        all_automatic_maxed = power_score(
+            activation=1.0, slide_stickiness=1.0,
+            panel_confidence={"value": 1.0, "quality": 1.0}) - power_score()
+        # 2.0 removed vs 1.0 + 0.6 + 1.5 available — but the point is that the
+        # untagged phrase can claim all of it too, so the comparison below is
+        # the one that decides ordering.
+        self.assertGreater(
+            power_score(activation=1.0, slide_stickiness=1.0,
+                        panel_confidence={"value": 1.0, "quality": 1.0}),
+            power_score(tag="to_work_on", activation=1.0,
+                        slide_stickiness=1.0,
+                        panel_confidence={"value": 1.0, "quality": 1.0}))
+        self.assertEqual(veto, 2.0)
+        self.assertGreater(all_automatic_maxed, 0.0)
 
 
 if __name__ == "__main__":
