@@ -459,12 +459,12 @@
     "session_cadence.beats": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "2995b388db329d98e630a3d8bb4b1fbaf74c3a1b544f01402e2526e8b32e3600"
+      "sha256": "3e3fbf546a2ba48192dee0586ac88b17c91448dc69cf77a830c2b7fe47ebecf3"
     },
     "session_cadence.render_beat": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "d1658dc743bc76385a0f35f86f803ca5ae6dcc3b175f2fcc18ac51044fb8b817"
+      "sha256": "5ef31fa4cc48a162b2daf1a34a1482e08143f7a425492e5833d7bf1200ba9e74"
     },
     "shared_blocks.admin_dont_ask": {
       "kind": "source_ref",

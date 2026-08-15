@@ -51,16 +51,19 @@ BEATS: dict[int, dict[str, Any]] = {
         "fires_after_take": None,  # pre-take-1 framing
         "mode": None,
         "weave_goal": True,
+        # SHORTENED 2026-08-15 (founder, on the delivered bubbles). Same
+        # doctrine, half the words: the three takes, the varied setup, the
+        # day-spacing nudge and "this one is the baseline" all survive — the
+        # scaffolding around them ("for the best result", "not just a
+        # different voice", "varied surroundings … give a cleaner read than
+        # doing them all back-to-back in the same spot") did not. A chat
+        # bubble is read in one glance; anything that is not the next action
+        # is spent attention.
         "intent": (
-            "For the best result you'll deliver the SAME talk a few times, "
-            "each in a different style, so together we find your strongest "
-            "version of each line. Try to record each take in a different "
-            "setup — a different room or place, not just a different voice — "
-            "and if you can, space at least one out to another day; varied "
-            "surroundings and a little spacing give a cleaner read than doing "
-            "them all back-to-back in the same spot. This first one is just "
-            "your natural baseline — say it the way you'd say it today, "
-            "wherever you are right now."
+            "Same talk, three times, each in a different style and a "
+            "different setup — that's how we find your strongest version of "
+            "each line. Space one out to another day if you can. This first "
+            "one is your baseline: say it the way you'd say it today."
         ),
         "fixed_facts": [
             # #2 (2026-06-21): no time promise — the natural baseline may run
@@ -83,10 +86,8 @@ BEATS: dict[int, dict[str, Any]] = {
         "mode": "Confidant (chill)",
         "weave_goal": False,
         "intent": (
-            "That's your baseline. Now record the SAME talk again, loosened: "
-            "like you're telling one trusted friend over coffee — slower, "
-            "warmer, no audience. A fresh spot — and ideally another day — "
-            "gives the cleanest read, but if you're ready now, go ahead."
+            "Same talk again, loosened — like telling one trusted friend over "
+            "coffee. Slower, warmer, no audience. A new spot if you can."
         ),
         "fixed_facts": [],
         "safety_caveat": None,
@@ -98,11 +99,9 @@ BEATS: dict[int, dict[str, Any]] = {
         "mode": "Authority (data)",
         "weave_goal": False,
         "intent": (
-            "The SAME talk once more, in authority gear: slow down, drop your "
-            "pitch slightly, put weight on the key numbers and claims — like "
-            "the person who knows this cold. Ideally somewhere different again "
-            "— a day apart gives a cleaner read — or right now if you'd "
-            "rather; it's your call."
+            "Same talk in authority gear: slower, pitch slightly lower, "
+            "weight on the key numbers and claims — like the person who knows "
+            "this cold. Somewhere different again if you can."
         ),
         "fixed_facts": [],
         "safety_caveat": None,
@@ -115,9 +114,8 @@ BEATS: dict[int, dict[str, Any]] = {
         "spark_only": True,  # fires only if spark appetite is on
         "weave_goal": False,
         "intent": (
-            "Last one, SAME talk, full energy. You're warmed up now — get the "
-            "energy up, then record straight away while it's up. This is "
-            "usually the most alive take."
+            "Last one, same talk, full energy. Get it up, then record "
+            "straight away while it's up — usually the most alive take."
         ),
         "fixed_facts": [
             "10 pushups or jumping jacks",
@@ -196,8 +194,18 @@ def _render_beat(
         "Tone is 'Will': observational, calm, guides the very next action. "
         "NOT a cheerleader — never 'great job', 'amazing', 'you're crushing "
         "it', and never imply a score, grade, or that they're improving.",
-        "Keep it to a short chat bubble (2–4 sentences). No preamble, no "
-        "headers, no emoji unless the user's language norm expects it.",
+        # TIGHTENED 2026-08-15 (founder). "2–4 sentences" reliably produced
+        # four, and the delivered bubbles read as briefings. This is the lever
+        # that actually caps the OUTPUT — shortening `intent` alone only
+        # shortens the source the model is free to expand from.
+        "Keep it SHORT: TWO sentences, about 40 words. This is a chat bubble "
+        "someone reads in one glance, not a briefing — cut anything that is "
+        "not the next action. Do not restate the protocol back to them, do "
+        "not explain WHY the method works, and do not add an encouraging "
+        "sign-off. A safety caveat, where one is present, is exempt from this "
+        "limit and may add a sentence — never trim that.",
+        "No preamble, no headers, no emoji unless the user's language norm "
+        "expects it.",
     ]
     if beat.get("mode"):
         rules.append(

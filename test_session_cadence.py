@@ -161,5 +161,70 @@ class FirePathTests(unittest.TestCase):
         self.assertEqual(len(fake.inserted), 0)
 
 
+class BubblesStayShortTests(unittest.TestCase):
+    """The bubbles are CHAT, not briefings (founder 2026-08-15).
+
+    The delivered messages had grown to four dense sentences apiece — the
+    founder read them back and asked for them shortened. Two things had to
+    move together and both are pinned here, because fixing only one does
+    nothing: the `intent` is the SOURCE the renderer voices, and the length
+    RULE is what caps what the model expands it into. A short intent under a
+    "2-4 sentences" rule just gets padded back out."""
+
+    # Generous on purpose — this is a creep guard, not a style straitjacket.
+    _MAX_INTENT_WORDS = 55
+
+    def test_every_intent_is_short_enough_to_read_in_one_glance(self):
+        for n, beat in sc.BEATS.items():
+            words = len(beat["intent"].split())
+            self.assertLessEqual(
+                words, self._MAX_INTENT_WORDS,
+                f"beat {n} intent is {words} words — a chat bubble is read in "
+                "one glance; cut what is not the next action",
+            )
+
+    @staticmethod
+    def _rule_source() -> str:
+        """`_render_beat` minus its comments — the strings actually SENT.
+
+        Comments are stripped because the change note above the rule quotes
+        the old "2-4 sentences" wording to explain what was wrong with it, and
+        a naive substring check flagged that history as the defect. What must
+        not carry the old cap is the PROMPT, not the paper trail."""
+        import inspect
+        return "\n".join(
+            line for line in inspect.getsource(sc._render_beat).splitlines()
+            if not line.lstrip().startswith("#")
+        )
+
+    def test_the_render_rule_asks_for_TWO_sentences(self):
+        # The lever that actually caps the OUTPUT. It read "2-4 sentences"
+        # and reliably produced four.
+        src = self._rule_source()
+        self.assertIn("TWO sentences", src)
+        for old in ("2–4 sentences", "2-4 sentences"):
+            self.assertNotIn(old, src)
+
+    def test_the_safety_caveat_is_EXEMPT_from_the_brevity_rule(self):
+        # The wellbeing fence outranks brevity in every language (§7). A
+        # length rule that could trim it would be the one shortening that
+        # actually costs something.
+        src = self._rule_source()
+        self.assertIn("exempt", src.lower())
+        self.assertIn("never trim that", src)
+
+    def test_shortening_did_not_drop_the_doctrine(self):
+        # What the words are allowed to lose is scaffolding, never a fact the
+        # protocol carries. Beat 0 still states the varied setup and the
+        # day-spacing nudge; the spark beat still carries its caveat.
+        intent0 = sc.BEATS[0]["intent"].lower()
+        self.assertIn("setup", intent0)
+        self.assertIn("day", intent0)
+        self.assertIn("baseline", intent0)
+        self.assertTrue(sc.BEATS[3]["safety_caveat"])
+        for phrase in ("optional", "not medical"):
+            self.assertIn(phrase, sc.BEATS[3]["safety_caveat"].lower())
+
+
 if __name__ == "__main__":
     unittest.main()
