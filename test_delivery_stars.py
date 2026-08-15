@@ -88,7 +88,104 @@ class DetectorTests(unittest.TestCase):
     def test_devices_are_the_closed_set(self):
         self.assertEqual(DELIVERY_DEVICES,
                          ("emphasis", "pace_fast", "pace_slow", "pause",
-                          "congruence"))
+                          "congruence", "impeccable"))
+
+    def test_the_PRAISE_device_is_never_detected_here(self):
+        # `impeccable` is in the vocabulary so the serve can render it, but
+        # this detector is one-sided by construction — it looks for flatness,
+        # rushing, dragging and over-pausing, and nothing else. The praise
+        # decision reads the full seven-cue set and lives in
+        # services/delivery_cues.py; a detector that could return it from
+        # four one-sided z-tests would be praising on the absence of a
+        # complaint.
+        import inspect
+
+        from services import delivery_stars as ds
+        self.assertNotIn("impeccable",
+                         inspect.getsource(ds.detect_delivery_issue))
+
+
+class PraiseShortCircuitsTheComplaintTests(unittest.TestCase):
+    """Founder 2026-08-15: "if the delivery was impeccable, just give them
+    the feedback in the praise lane."
+
+    The load-bearing half is the SHORT-CIRCUIT. detect_delivery_issue is
+    one-sided, so on a well-delivered moment it returns either nothing or
+    whichever complaint sat closest to its threshold — and handing that to
+    somebody who just nailed it is the note this replaces."""
+
+    class _Db:
+        def __init__(self):
+            self.rows = []
+
+        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig,
+                                     **kw):
+            self.rows.append((snip, kind, trig, kw.get("cue_keys")))
+            return True
+
+    # Unit-sd baselines so a feature value reads as its own z.
+    CUE_BASE = {k: (10.0, 1.0) for k in
+                ("f0_sd", "dynamic_db", "pause_ratio", "pause_ms", "f0_mean",
+                 "wpm", "f0_mid_end_delta", "intensity_envelope")}
+    DELIV_BASE = {k: (10.0, 1.0) for k in
+                  ("f0_sd", "dynamic_db", "wpm", "pause_ratio")}
+
+    def _run(self, metrics, **kw):
+        import os
+        from unittest.mock import patch
+
+        from services import moment_suggestions as ms
+        db = self._Db()
+        kw.setdefault("cue_baseline", self.CUE_BASE)
+        with patch.dict(os.environ, {"DELIVERY_STARS_ENABLED": "1"}):
+            ms._generate_delivery(db, "arc-1", [("s1", metrics)],
+                                  self.DELIV_BASE, **kw)
+        return db.rows
+
+    def test_an_impeccable_delivery_is_PRAISED_not_complained_about(self):
+        # Wide range + full volume + no hesitation, AND flat enough on the
+        # delivery detector's own axes that it would have said "emphasis".
+        rows = self._run({"f0_sd": 12.0, "dynamic_db": 12.0,
+                          "pause_ratio": 8.0, "pause_ms": 8.0,
+                          "voice_confidence": {"score": 0.85}},
+                         sex="female")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][2], "impeccable")
+        self.assertIn("wide_range", rows[0][3])
+
+    def test_a_MIDDLING_delivery_still_gets_its_note(self):
+        # The praise gate must not swallow the to-work-on lane: this one is
+        # genuinely flat and should still hear about it.
+        rows = self._run({"f0_sd": 7.0, "dynamic_db": 7.0,
+                          "voice_confidence": {"score": 0.0}},
+                         sex="female")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][2], "emphasis")
+        self.assertIsNone(rows[0][3])
+
+    def test_a_BORDERLINE_read_is_not_praised(self):
+        rows = self._run({"f0_sd": 12.0, "dynamic_db": 12.0,
+                          "pause_ratio": 8.0, "pause_ms": 8.0,
+                          "voice_confidence": {"score": 0.3}},
+                         sex="female")
+        self.assertNotEqual(rows[0][2] if rows else None, "impeccable")
+
+    def test_no_confidence_baseline_no_praise(self):
+        rows = self._run({"f0_sd": 12.0, "dynamic_db": 12.0,
+                          "voice_confidence": {"score": 0.9}},
+                         sex="female", cue_baseline=None)
+        self.assertNotEqual(rows[0][2] if rows else None, "impeccable")
+
+    def test_the_raw_metrics_win_over_the_readout_spelling(self):
+        # Cue and baseline must be measured off one source; metrics_by_id is
+        # the blob the confidence baseline was built from.
+        rows = self._run({"f0_sd": 7.0},   # readout copy says flat …
+                         sex="female",
+                         metrics_by_id={"s1": {
+                             "f0_sd": 12.0, "dynamic_db": 12.0,
+                             "pause_ratio": 8.0, "pause_ms": 8.0,
+                             "voice_confidence": {"score": 0.9}}})
+        self.assertEqual(rows[0][2], "impeccable")   # … the raw blob decides
 
 
 class NormalizationTests(unittest.TestCase):
