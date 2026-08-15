@@ -457,6 +457,56 @@ class ContinueTopicArcBatchTests(unittest.TestCase):
         self.assertEqual(
             v2._continue_topic_arc("u1", "My Talk", "fresh", 1), ("arc-A", 4))
 
+    def _scaffold(self, sid, arc, topic="My Talk"):
+        """A take on the DEFAULT DECK: it HAS slides (so bucketing is defined)
+        but no PDF behind them."""
+        return {"id": sid, "arc_id": arc,
+                "intake_context": {"topic": topic,
+                                   "slides": [{"title": "Intro — the hook + "
+                                                        "the promise.",
+                                               "body": "Rule: say what "
+                                                       "you're going to say."}],
+                                   "presentation_ref": None}}
+
+    def test_default_deck_takes_of_the_SAME_talk_still_group(self):
+        """Second half of the 2026-08-15 bug. This filter read
+        `if ctx.get("slides"): continue` — correct while "has slides" meant
+        "has a deck", but the default deck (2026-08-11) gives EVERY deckless
+        take slides. So topic continuation started skipping every candidate:
+        it matched nothing, and re-recording the same talk minted a fresh arc
+        each time — the exact split this function exists to prevent (founder
+        bug #4/#6). The uploaded deck is marked by its PDF, so test that."""
+        self._patch_sessions([self._scaffold(f"p{i}", "arc-A")
+                              for i in range(3)])
+        self.assertEqual(
+            v2._continue_topic_arc("u1", "My Talk", "fresh", 1), ("arc-A", 4))
+
+    def test_a_DIFFERENT_topic_on_the_default_deck_starts_ITS_OWN_arc(self):
+        """The founder's report, exactly: three takes of "testtt" existed, a
+        new take of "book" was recorded on the same default deck, and it was
+        swallowed into the testtt arc as take 4 — inheriting testtt's locked
+        text as its own "analysis". Different talk, different arc."""
+        self._patch_sessions([self._scaffold(f"p{i}", "arc-testtt",
+                                             topic="testtt")
+                              for i in range(3)])
+        self.assertEqual(
+            v2._continue_topic_arc("u1", "book", "fresh-book", 1),
+            ("fresh-book", 1))
+
+    def test_a_scaffold_take_never_joins_an_UPLOADED_decks_arc(self):
+        """The original reason for this filter, preserved: a take on the
+        generic deck must not land in an arc whose slides are a real deck's
+        words, even when the topic happens to match — per-slide ranking would
+        be comparing against slides this take never saw."""
+        self._patch_sessions([{
+            "id": "p1", "arc_id": "arc-realdeck",
+            "intake_context": {"topic": "My Talk",
+                               "slides": [{"title": "Q3 revenue"}],
+                               "presentation_ref": "https://x/deck.pdf"},
+        }])
+        self.assertEqual(
+            v2._continue_topic_arc("u1", "My Talk", "fresh", 1), ("fresh", 1))
+
 
 if __name__ == "__main__":
     unittest.main()

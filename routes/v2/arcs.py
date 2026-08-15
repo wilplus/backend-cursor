@@ -64,6 +64,51 @@ def _presentation_id_from_slides(slides) -> str:
     return hashlib.sha1(canonical.encode("utf-8")).hexdigest()[:16]
 
 
+def _presentation_group_key(ctx) -> str:
+    """The identity of the TALK a session belongs to — "" when it has none.
+
+    Grouping used to be the slide hash alone, on the reasoning that one deck =
+    one talk. That held until 2026-08-11, when the DEFAULT DECK began shipping
+    on every deckless take so word→slide bucketing would always be defined.
+    The default deck is a CONSTANT, so its hash is one fixed value shared by
+    every deckless talk any user has ever given, and three surfaces silently
+    collapsed:
+
+      * /user/strengths showed unrelated talks as takes of ONE presentation
+        (the founder's report: three "testtt" takes and a new "book" take
+        rendered as one four-take training);
+      * take NUMBERING counted across all of them;
+      * DELETE presentation resolved its delete set the same way, so removing
+        one deckless talk would have hard-deleted every deckless session the
+        user owned. That one had not fired yet.
+
+    So the key asks what actually identifies the talk. An UPLOADED deck is the
+    identity — its slides are the speech. A generic scaffold is not, and there
+    the TOPIC is. The uploaded deck is marked by the PDF behind it: the FE
+    sends `presentation_ref: null` for the default deck deliberately ("never
+    claim a PDF that isn't there"). Preferred over mirroring the deck's text
+    here and comparing hashes — that copy is the founder's and lives in the
+    frontend, so a backend mirror would go stale on the next word he changes
+    and this bug would come back silently. A missing PDF cannot drift.
+
+    Returns "" for anything unidentifiable (no slides, or a scaffold with no
+    topic). Callers treat "" as "not part of any presentation", which keeps an
+    unnameable take out of a group AND out of a delete set. Pure."""
+    if not isinstance(ctx, dict):
+        return ""
+    slides = ctx.get("slides") or []
+    if not slides:
+        return ""
+    if ctx.get("presentation_ref"):
+        return _presentation_id_from_slides(slides)
+    topic = ctx.get("topic")
+    if not isinstance(topic, str) or not topic.strip():
+        return ""
+    norm = " ".join(topic.strip().lower().split())
+    # Namespaced so a topic key can never collide with a deck hash.
+    return "t:" + hashlib.sha1(norm.encode("utf-8")).hexdigest()[:14]
+
+
 def _continue_deck_arc(user_id, slides, fresh_arc_id, fresh_take_index):
     """Continue-one-arc (single-deliverable, founder 2026-07-17): every take of
     the SAME deck (same user) joins that deck's most-developed arc — takes
@@ -132,10 +177,19 @@ def _continue_topic_arc(user_id, topic, fresh_arc_id, fresh_take_index):
             aid = s.get("arc_id")
             if not aid or not isinstance(s_topic, str):
                 continue
-            # DECKLESS candidates only (review): a deckless take must not join
-            # a DECK arc that happens to share the topic — mixing alignment-
-            # less takes into a per-slide best-presentation arc.
-            if (ctx or {}).get("slides"):
+            # NO-REAL-DECK candidates only: a scaffold take must not join a
+            # take's arc that was recorded against an UPLOADED deck, whose
+            # slides are different words entirely.
+            #
+            # ⚠️ 2026-08-15 — this tested `ctx.get("slides")` until today, back
+            # when "has slides" and "has a deck" were the same statement. The
+            # DEFAULT DECK (2026-08-11) gives every deckless take slides, so
+            # that test started skipping EVERY candidate: topic continuation
+            # matched nothing, and re-recording the same talk minted a fresh
+            # arc each time — the exact split this function was written to fix
+            # (founder bug #4/#6). The uploaded deck is marked by its PDF, so
+            # the ref is what to test. Same rule as the record path's branch.
+            if (ctx or {}).get("presentation_ref"):
                 continue
             if " ".join(s_topic.strip().lower().split()) == norm:
                 counts[aid] = counts.get(aid, 0) + 1

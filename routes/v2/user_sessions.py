@@ -19,7 +19,7 @@ from config import Config
 from routes.admin import is_admin, is_coach
 from routes.v2.arcs import (
     _arc_audit_paid,
-    _presentation_id_from_slides,
+    _presentation_group_key,
     _reassemble_after_decision,
 )
 from routes.v2.blueprint import v2_bp
@@ -667,7 +667,10 @@ def v2_user_get_strengths():
                 "slide_transcripts": session.get("slide_transcripts"),
                 "created_at": session.get("created_at") or "",
                 "arc_id": session.get("arc_id"),
-                "presentation_id": _presentation_id_from_slides(slides),
+                # The TALK's identity, not the deck's bytes — a generic
+                # scaffold deck is shared by every deckless talk, so it groups
+                # by topic instead (see _presentation_group_key, 2026-08-15).
+                "presentation_id": _presentation_group_key(ctx),
             }
 
         # Split: no-deck sessions → general; deck sessions → grouped by pid.
@@ -1011,7 +1014,7 @@ def _user_presentation_groups(user_id: str) -> dict:
         slides = (ctx or {}).get("slides") or []
         if not slides:
             continue  # deckless moments live in `general`, not a presentation
-        pid = _presentation_id_from_slides(slides)
+        pid = _presentation_group_key(ctx)
         if not pid:
             continue
         groups.setdefault(pid, []).append((session.get("created_at") or "", sid))
@@ -1050,8 +1053,10 @@ def _user_presentation_sessions_all(user_id: str, presentation_id: str) -> list:
     for s in (db.v2_list_user_lab_sessions(user_id) or []):
         ctx = s.get("intake_context") if isinstance(
             s.get("intake_context"), dict) else {}
-        slides = (ctx or {}).get("slides") or []
-        if slides and _presentation_id_from_slides(slides) == pid:
+        # Same key the grouping uses — a delete set derived differently from
+        # the group it claims to delete is how a "delete one training" wipes
+        # every deckless session the user owns.
+        if _presentation_group_key(ctx) == pid:
             matches.append((s.get("created_at") or "", str(s.get("id"))))
     return [sid for _, sid in sorted(matches)]
 

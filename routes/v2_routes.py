@@ -69,6 +69,7 @@ from routes.v2.arcs import (  # noqa: F401 — re-exported for import compat
     _moment_reference_map,
     _moment_suggestions_enabled,
     _moments_entitled,
+    _presentation_group_key,
     _presentation_id_from_slides,
     _reassemble_after_decision,
     _spoken_takes_and_reads,
