@@ -51,24 +51,63 @@ STRUCT_SYSTEM = (
 EMPHASIS_SYSTEM = (
     "You pick WHICH WORDS to accent inside ONE short spoken passage from a "
     "presentation. You choose a target; you never write anything.\n"
+    'Input is JSON: {"moment": str, "delivery"?: {"landed"?: "opening"|'
+    '"closing", "voice"?: [str]}}.\n'
     'Return STRICT JSON: {"quote": str}.\n'
-    "- `quote` = the EXACT verbatim words from the passage, copied "
+    "- `quote` = the EXACT verbatim words from `moment`, copied "
     "character-for-character. Never paraphrase, never translate, never "
     "tidy the grammar, never add or drop a word, never use an ellipsis to "
     "join two parts. The passage may be in any language; copy from it.\n"
     "- Pick a KEY PHRASE: a few words, at most ONE short sentence. Never "
     "the whole passage and never a whole paragraph — if everything is "
     "accented, nothing is.\n"
-    "- Pick the words that carry the passage: the claim, the result, the "
-    "turn — the part a listener would remember. Skip the run-up, the "
-    "hedges and the filler around it.\n"
+    "- TWO KINDS OF EVIDENCE, and you need both to agree.\n"
+    "  VERBAL: the words that carry the passage — the claim, the result, "
+    "the turn, the part a listener would repeat afterwards. Skip the "
+    "run-up, the hedges and the filler around them.\n"
+    "  VOCAL: `delivery` describes how this passage was actually SPOKEN, "
+    "measured against how this same speaker usually sounds. `landed` says "
+    "which end of the passage the delivery landed on — pick INSIDE that "
+    "half. `voice` lists what the voice did there.\n"
+    "- The accent marks where the speaking and the wording agree. When "
+    "`delivery` points at a part whose words carry nothing, or the "
+    "strongest words sit in the other half, say so by returning an empty "
+    "quote — do NOT accent one on the strength of the other.\n"
+    "- When `delivery` is absent there is no vocal evidence, so judge on "
+    "the words alone and be stricter, not looser.\n"
     "- If no part stands out above the rest, return an empty quote. "
     "Returning nothing is a correct answer and an expected one; never "
     "widen the pick to be helpful.\n"
+)
+
+#: How each cue key is DESCRIBED to the model. Prompt-side wording only — the
+#: student-facing copy for these keys lives in the FE and is founder-signed
+#: (LIVE LOOP). Kept here so it is hash-locked with the prompt that reads it:
+#: a cue re-worded without the lockfile noticing would silently change what
+#: the model was told the voice did. Never a number (AC-9); every phrase is
+#: relative to the speaker's own norm, which is how the cues are measured.
+EMPHASIS_CUE_HINTS = {
+    "wide_range": "the pitch moved more than this speaker usually lets it",
+    "even_pitch": "the pitch stayed unusually steady for this speaker",
+    "full_volume": "the volume moved more than usual — not held flat",
+    "no_hesitation": "fewer and shorter pauses than this speaker usually takes",
+    "settled_pitch": "the voice sat lower than this speaker's own norm",
+    "kept_moving": "the pace held up rather than slowing into uncertainty",
+    "landed_ending": "the ending was brought DOWN rather than drifting up",
+    "opened_strong": "the energy was spent at the START and eased after",
+}
+
+#: The hints as ONE deterministic string, so the registry hash-locks them.
+#: They are prompt text — a cue re-worded here changes what the model is told
+#: the voice did — and a dict is not a shape REGISTER accepts, so they are
+#: serialized rather than left outside the lock.
+EMPHASIS_CUE_HINTS_TEXT = "\n".join(
+    f"{k}: {EMPHASIS_CUE_HINTS[k]}" for k in sorted(EMPHASIS_CUE_HINTS)
 )
 
 REGISTER = {
     "moment_suggestion.system": SYSTEM,
     "structural_star.system": STRUCT_SYSTEM,
     "emphasis_phrase.system": EMPHASIS_SYSTEM,
+    "emphasis_phrase.cue_hints": EMPHASIS_CUE_HINTS_TEXT,
 }

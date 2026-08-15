@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +106,24 @@ def generate_moment_suggestion(
 
 
 def pick_emphasis_phrase(transcript: str, *,
+                         region: Optional[str] = None,
+                         cue_keys: Any = None,
                          user_id: Optional[str] = None) -> Optional[str]:
     """The FEW WORDS worth accenting inside one moment, verbatim — or None.
+
+    THE VOCAL HALF (founder 2026-08-15: *"use the verbal and vocal cues of
+    what the user said to determine that it was confident or highly engaging,
+    not just random"*). `region` and `cue_keys` come from
+    services.delivery_cues: which end of the moment the delivery landed on,
+    and what the voice measurably did there, both against the speaker's OWN
+    baseline. They are EVIDENCE HANDED TO THE MODEL, not a second selector —
+    the accent still has to be words that carry meaning, and the prompt is
+    told to return nothing when the two halves point at different places
+    rather than to accent one on the strength of the other.
+
+    Both are optional and often absent (no baseline yet on a first take, a
+    delivery with no standout cue). Absent = judge on the words alone, which
+    the prompt is told to do more strictly, not less.
 
     THE DEFECT THIS CLOSES (founder 2026-08-15): "try not to style the whole
     paragraphs or chunks but key few words or a sentence." An emphasize star
@@ -140,11 +156,36 @@ def pick_emphasis_phrase(transcript: str, *,
     try:
         from services.llm import chat_complete
         from services.llm_config import SPEC_MOMENT_SUGGESTION
+        from services.prompts.moment_suggestions import EMPHASIS_CUE_HINTS
 
+        payload: dict = {"moment": moment}
+        # The cue KEYS never ride the prompt: the model is told what the voice
+        # DID, in the hint wording that is hash-locked beside the prompt. An
+        # unknown key is dropped rather than passed through — a raw key would
+        # read to the model as a made-up token.
+        #
+        # The shape is checked rather than trusted. A malformed cue list is a
+        # reason to lose the VOCAL EVIDENCE, never a reason to lose the accent:
+        # letting it raise would have dropped the whole pick, and the words
+        # alone are still a valid basis (the prompt is told to be stricter
+        # when `delivery` is absent).
+        _voice = [EMPHASIS_CUE_HINTS[k]
+                  for k in (cue_keys if isinstance(cue_keys, (list, tuple))
+                            else [])
+                  if isinstance(k, str) and k in EMPHASIS_CUE_HINTS]
+        _delivery: dict = {}
+        if region in ("opening", "closing"):
+            _delivery["landed"] = region
+        if _voice:
+            _delivery["voice"] = _voice
+        # Omitted entirely when empty, so "no vocal evidence" reaches the model
+        # as an ABSENT field rather than an empty one it might read as a claim.
+        if _delivery:
+            payload["delivery"] = _delivery
         result = chat_complete(
             spec=SPEC_MOMENT_SUGGESTION,
             system=_EMPHASIS_SYSTEM,
-            user=moment,
+            user=json.dumps(payload, ensure_ascii=False),
             surface="emphasis_phrase",
             user_id=user_id,
         )
@@ -400,6 +441,38 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         audience = (ctx or {}).get("audience") or None
         strategic_context = (ctx or {}).get("strategic_context") or None
 
+        # ── THE VOCAL EVIDENCE (founder 2026-08-15) ───────────────────────
+        # "use the verbal and vocal cues of what the user said to determine
+        # that it was confident … not just random."
+        #
+        # Resolved ONCE per take, exactly as lab_recording resolves it for the
+        # composite — same functions, same order (sex after the baseline,
+        # because the acoustic fallback reads the speaker's baseline mean f0).
+        # Reading it here rather than trusting the stamped blob keeps the cue
+        # ORDER available, which is the thing the composite throws away.
+        #
+        # Best-effort and often absent: a first take has no baseline, and an
+        # absent baseline means no cues and no region — which the picker is
+        # told to treat as "judge on the words alone, stricter", never as
+        # permission to guess a half of the moment.
+        _vc_baseline = None
+        _vc_sex = None
+        try:
+            from services.voice_confidence import (
+                resolve_confidence_baseline, resolve_take_sex,
+            )
+            _vc_baseline, _ = resolve_confidence_baseline(
+                session.get("user_id"),
+                [_m for _m in _metrics_by_id.values() if isinstance(_m, dict)],
+            )
+            _vc_sex, _ = resolve_take_sex(
+                session.get("user_id"), ctx, _vc_baseline,
+            )
+        except Exception as _vc_err:
+            logger.warning(
+                "moment_suggestion: cue baseline failed sid=%s: %s",
+                session_id, _vc_err)
+
         # X-1 v2 (2026-07-25): the context DOCUMENT the user attached to this
         # project (a brief / case metrics / Q&A). Arc-scoped, fetched once per
         # take and passed to each snippet's generation exactly like `audience`.
@@ -584,17 +657,36 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
                     _no_gen += 1
                     continue
                 # THE ACCENT TARGET (founder 2026-08-15). Picked here, on
-                # the moment's own words, so the serve narrows to a phrase
-                # instead of falling back to the whole chunk. Costs nothing
-                # on a moment that is already accent-width, and a None
+                # the moment's own words AND on what the voice did with them,
+                # so the serve narrows to a phrase instead of falling back to
+                # the whole chunk — and narrows to the phrase the delivery
+                # actually landed on rather than to a plausible one. Costs
+                # nothing on a moment that is already accent-width, and a None
                 # simply leaves the serve's own narrowing to try.
-                _emph_quote = (pick_emphasis_phrase(
-                    transcript, user_id=session.get("user_id"))
-                    if kind == "emphasize" else None)
+                _cue_keys: list = []
+                _emph_quote = None
+                if kind == "emphasize":
+                    _pm = _metrics_by_id.get(str(snip_id))
+                    try:
+                        from services.delivery_cues import (
+                            accent_region, cue_keys_for_piece,
+                        )
+                        _cue_keys = cue_keys_for_piece(
+                            _pm, _vc_baseline, _vc_sex)
+                        _region = accent_region(_pm, _vc_baseline, _vc_sex)
+                    except Exception as _cue_err:
+                        logger.warning(
+                            "moment_suggestion: cues failed snip=%s: %s",
+                            snip_id, _cue_err)
+                        _cue_keys, _region = [], None
+                    _emph_quote = pick_emphasis_phrase(
+                        transcript, region=_region, cue_keys=_cue_keys,
+                        user_id=session.get("user_id"))
                 if database.upsert_moment_suggestion(
                         str(snip_id), str(arc_id), kind,
                         gen.get("replacement"), gen.get("why"), trigger,
-                        emphasis_quote=_emph_quote):
+                        emphasis_quote=_emph_quote,
+                        cue_keys=(_cue_keys or None)):
                     stored += 1
             except Exception as _snip_err:
                 _errored += 1

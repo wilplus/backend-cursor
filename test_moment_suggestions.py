@@ -400,6 +400,81 @@ class EmphasisPhraseTests(unittest.TestCase):
         # It picks a target; it never writes copy (L1 + LIVE LOOP).
         self.assertIn("you never write anything", low)
 
+    def test_the_prompt_asks_for_BOTH_kinds_of_evidence(self):
+        # Founder 2026-08-15: "use the verbal and vocal cues … not just
+        # random". Words alone is what "random" meant.
+        from services.prompts.moment_suggestions import EMPHASIS_SYSTEM
+        low = EMPHASIS_SYSTEM.lower()
+        self.assertIn("verbal", low)
+        self.assertIn("vocal", low)
+        self.assertIn("landed", low)
+        # And it refuses rather than accenting on one half alone.
+        self.assertIn("do not accent one on the strength of the other", low)
+
+
+class EmphasisVocalEvidenceTests(unittest.TestCase):
+    """THE VOCAL HALF (founder 2026-08-15). The delivery evidence reaches the
+    model as evidence — never as a second selector that could carry an accent
+    on its own."""
+
+    MOMENT = ("We started small. Then we shipped it fast. "
+              "And the customers stayed.")
+
+    def _capture(self, parsed, **kw):
+        """Returns (the payload the model saw, the picked phrase)."""
+        from services import moment_suggestions as ms
+        seen = {}
+
+        def _run(**kwargs):
+            seen.update(kwargs)
+            return type("R", (), {"parsed": parsed, "text": ""})()
+
+        with patch("services.llm.chat_complete", side_effect=_run):
+            out = ms.pick_emphasis_phrase(self.MOMENT, **kw)
+        return json.loads(seen.get("user") or "{}"), out
+
+    def test_the_region_rides_the_payload(self):
+        payload, _ = self._capture({"quote": "shipped it fast"},
+                                   region="closing")
+        self.assertEqual(payload["delivery"]["landed"], "closing")
+
+    def test_cue_keys_ride_as_DESCRIPTIONS_never_as_raw_keys(self):
+        # A bare key reads to the model as a made-up token; the hint wording
+        # is hash-locked beside the prompt so the two cannot drift.
+        payload, _ = self._capture({"quote": "shipped it fast"},
+                                   cue_keys=["landed_ending", "full_volume"])
+        voice = payload["delivery"]["voice"]
+        self.assertNotIn("landed_ending", voice)
+        self.assertTrue(any("ending" in v for v in voice))
+        self.assertTrue(any("volume" in v for v in voice))
+
+    def test_an_unknown_cue_key_is_dropped_not_passed_through(self):
+        payload, _ = self._capture({"quote": "shipped it fast"},
+                                   cue_keys=["landed_ending", "made_up_cue"])
+        self.assertEqual(len(payload["delivery"]["voice"]), 1)
+
+    def test_NO_evidence_is_an_ABSENT_field_not_an_empty_one(self):
+        # An empty object would read to the model as a claim about the
+        # delivery. Absence is the honest shape for "we could not measure".
+        payload, _ = self._capture({"quote": "shipped it fast"})
+        self.assertNotIn("delivery", payload)
+
+    def test_a_bad_region_never_reaches_the_model(self):
+        payload, _ = self._capture({"quote": "shipped it fast"},
+                                   region="somewhere")
+        self.assertNotIn("delivery", payload)
+
+    def test_the_moment_still_rides_and_the_pin_still_holds(self):
+        payload, out = self._capture({"quote": "we crushed it"},
+                                     region="closing")
+        self.assertEqual(payload["moment"], self.MOMENT)
+        self.assertIsNone(out)   # invented words, still dropped
+
+    def test_junk_cue_keys_never_raise(self):
+        for bad in (None, "landed_ending", 42, [None, 7]):
+            _, out = self._capture({"quote": "shipped it fast"}, cue_keys=bad)
+            self.assertEqual(out, "shipped it fast")
+
 
 class StructuralPassTests(unittest.TestCase):
     """The second pass: only no-acoustic-star snippets, own cap, flag-gated,
