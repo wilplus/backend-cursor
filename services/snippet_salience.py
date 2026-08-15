@@ -19,6 +19,14 @@ coach candidates changes.
 
 PROVISIONAL WEIGHTS — NOT calibrated, NOT a fixed scientific formula
 -------------------------------------------------------------------
+APPROVED FOR V1 AS-IS (founder ruling 2026-08-15, SPEC §9). The
+provisional-equal weights SHIP; calibration is deliberately DEFERRED
+until a quorum-settled human corpus exists to fit against. This is a
+decision, not an oversight: §3.1 makes an uncalibrated detector safe
+(it owes recall; the two-human quorum owes truth), and the fence below
+means calibration is a separate pilot rather than an in-line tune.
+Do NOT read this ruling as licence to tune the weights here.
+
 The five salience components are combined with EQUAL 0.2 weights as a
 provisional placeholder ("provisional-equal"). These weights are NOT
 calibrated and are pending a separate dedicated pilot. They are
