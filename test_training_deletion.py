@@ -39,18 +39,26 @@ class PresentationDeleteCompleteSetTests(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
-        self._pid = v2._presentation_id_from_slides(DECK)
+        # Keyed the same way the route keys it (2026-08-15): an UPLOADED
+        # deck — the PDF is what makes slides an identity.
+        self._ref = "https://x/deck.pdf"
+        self._pid = v2._presentation_group_key(
+            {"slides": DECK, "presentation_ref": self._ref})
         # 3 takes of the deck; only ONE has library rows (the old grouping
         # saw just that one). +1 unrelated deck session.
         self._sessions = [
             {"id": "t1", "created_at": "2026-07-01",
-             "intake_context": {"slides": DECK}},
+             "intake_context": {"slides": DECK,
+                                "presentation_ref": "https://x/deck.pdf"}},
             {"id": "t2", "created_at": "2026-07-02",
-             "intake_context": {"slides": DECK}},
+             "intake_context": {"slides": DECK,
+                                "presentation_ref": "https://x/deck.pdf"}},
             {"id": "t3", "created_at": "2026-07-03",
-             "intake_context": {"slides": DECK}},
+             "intake_context": {"slides": DECK,
+                                "presentation_ref": "https://x/deck.pdf"}},
             {"id": "x1", "created_at": "2026-07-04",
-             "intake_context": {"slides": [{"title": "Other", "body": "z"}]}},
+             "intake_context": {"slides": [{"title": "Other", "body": "z"}],
+                                "presentation_ref": "https://x/other.pdf"}},
         ]
         self._deleted = []
         self._p = [

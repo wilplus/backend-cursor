@@ -32,15 +32,23 @@ class PresentationDeleteTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
         self.originals = {}
-        # Two decks: A has two takes (s1 oldest, s2 newest), B has one (s3);
-        # s4 is deckless (→ general, never a presentation).
+        # Two UPLOADED decks: A has two takes (s1 oldest, s2 newest), B has
+        # one (s3); s4 is deckless (→ general, never a presentation).
+        #
+        # `presentation_ref` is what marks a deck as UPLOADED (2026-08-15) —
+        # a real deck always has the PDF behind it, and it is now what
+        # identifies the presentation. Slides alone stopped being enough the
+        # day the generic default deck started shipping on deckless takes.
         self._sessions = {
             "s1": {"created_at": "2026-01-01T00:00:00Z",
-                   "intake_context": {"slides": [{"title": "Intro", "body": "hello"}]}},
+                   "intake_context": {"slides": [{"title": "Intro", "body": "hello"}],
+                                      "presentation_ref": "https://x/a.pdf"}},
             "s2": {"created_at": "2026-02-01T00:00:00Z",
-                   "intake_context": {"slides": [{"title": "Intro", "body": "hello"}]}},
+                   "intake_context": {"slides": [{"title": "Intro", "body": "hello"}],
+                                      "presentation_ref": "https://x/a.pdf"}},
             "s3": {"created_at": "2026-03-01T00:00:00Z",
-                   "intake_context": {"slides": [{"title": "Other", "body": "x"}]}},
+                   "intake_context": {"slides": [{"title": "Other", "body": "x"}],
+                                      "presentation_ref": "https://x/b.pdf"}},
             "s4": {"created_at": "2026-04-01T00:00:00Z",
                    "intake_context": {"slides": []}},
         }
@@ -147,3 +155,54 @@ class PresentationDeleteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class DefaultDeckIsNotAPresentationTests(unittest.TestCase):
+    """THE LATENT MASS-DELETE (found 2026-08-15, never fired).
+
+    The delete set was resolved by hashing a session's SLIDES. That was a
+    sound identity while slides meant "an uploaded deck" — but since
+    2026-08-11 the generic DEFAULT DECK ships on every deckless take so
+    word→slide bucketing is always defined, and it is a CONSTANT. Every
+    deckless talk a user has ever given therefore hashed to the SAME value.
+
+    Deleting one of them would have hard-deleted all of them: sessions and
+    library rows, durably, with no undo. The founder hit the read-side half of
+    this (unrelated talks rendered as takes of one training, and a new take
+    inheriting an unrelated arc's locked text) before the delete-side half
+    could fire."""
+
+    SCAFFOLD = [{"title": "Intro — the hook + the promise.",
+                 "body": "Rule: say what you're going to say."}]
+
+    def _key(self, topic, ref=None):
+        from routes.v2.arcs import _presentation_group_key
+        return _presentation_group_key(
+            {"slides": self.SCAFFOLD, "topic": topic, "presentation_ref": ref})
+
+    def test_two_talks_on_the_default_deck_are_two_presentations(self):
+        self.assertNotEqual(self._key("testtt"), self._key("book"))
+
+    def test_the_same_talk_re_recorded_is_one_presentation(self):
+        self.assertEqual(self._key("My Talk"), self._key("  my   talk  "))
+
+    def test_an_uploaded_deck_is_still_keyed_on_its_SLIDES(self):
+        # Two takes of one uploaded deck group even if the topic was retyped —
+        # the 2026-06-20 continue-one-arc doctrine, untouched.
+        a = self._key("first wording", ref="https://x/deck.pdf")
+        b = self._key("second wording", ref="https://x/deck.pdf")
+        self.assertEqual(a, b)
+
+    def test_a_topic_key_can_never_collide_with_a_deck_hash(self):
+        self.assertTrue(self._key("anything").startswith("t:"))
+        self.assertFalse(self._key("x", ref="https://x/d.pdf").startswith("t:"))
+
+    def test_an_unnameable_take_joins_NO_group_and_NO_delete_set(self):
+        # No topic and no deck: it cannot be identified, so it must not be
+        # swept into someone else's group — and "" keeps it out of both.
+        self.assertEqual(self._key(""), "")
+        self.assertEqual(self._key(None), "")
+        from routes.v2.arcs import _presentation_group_key
+        self.assertEqual(_presentation_group_key({"slides": []}), "")
+        self.assertEqual(_presentation_group_key(None), "")

@@ -113,17 +113,48 @@ class ExplicitSelectionTests(unittest.TestCase):
         m_deck.assert_not_called()
         m_topic.assert_not_called()
 
-    def test_carried_arc_id_still_uses_the_deck_heuristic(self):
-        # The 2026-06-20 continue-one-arc lock must be untouched.
+    def test_an_UPLOADED_deck_still_uses_the_deck_heuristic(self):
+        # The 2026-06-20 continue-one-arc lock must be untouched: a real deck
+        # is still identified by its slides, and its re-takes still join it.
         _, status, m_deck, m_topic = self._post(
             {"arc_id": ARC, "take_index": "2",
-             "slides": '[{"title":"a"}]'})
+             "slides": '[{"title":"a"}]',
+             "presentation_ref": "https://x/deck.pdf"})
         m_deck.assert_called_once()
         m_topic.assert_not_called()
 
     def test_deckless_carried_path_uses_topic_heuristic(self):
         _, status, m_deck, m_topic = self._post(
             {"arc_id": ARC, "take_index": "2"})
+        m_topic.assert_called_once()
+        m_deck.assert_not_called()
+
+    def test_the_DEFAULT_DECK_continues_by_TOPIC_not_by_deck_hash(self):
+        """THE 2026-08-15 BUG, pinned. The default deck (2026-08-11) ships on
+        every deckless take so word→slide bucketing is always defined — and it
+        is a CONSTANT, so its content hash is one fixed value shared by every
+        deckless talk a user has ever given.
+
+        Routing that to the deck heuristic made `_continue_deck_arc` treat all
+        of them as re-takes of one deck: a brand-new topic was appended to the
+        most-developed unrelated arc and inherited that arc's locked ideal
+        text, so the new take's "analysis" was the old take's words. It also
+        meant the topic guard — the only thing that separates two talks — was
+        never reached.
+
+        Slides with NO `presentation_ref` are a scaffold, not an identity."""
+        _, status, m_deck, m_topic = self._post(
+            {"arc_id": ARC, "take_index": "2",
+             "slides": '[{"title":"Intro — the hook + the promise.",'
+                       '"body":"Rule: say what you\'re going to say."}]'})
+        m_topic.assert_called_once()
+        m_deck.assert_not_called()
+
+    def test_an_empty_presentation_ref_is_not_a_deck(self):
+        # A blank string must not read as "there is a PDF here".
+        _, status, m_deck, m_topic = self._post(
+            {"arc_id": ARC, "take_index": "2",
+             "slides": '[{"title":"a"}]', "presentation_ref": ""})
         m_topic.assert_called_once()
         m_deck.assert_not_called()
 

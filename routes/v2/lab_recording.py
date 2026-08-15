@@ -667,10 +667,37 @@ def v2_lab_create_recording():
         # the coach saw one take per arc). Guests keep the fresh arc.
         # `_explicit_arc` → the user chose the project: NO guessing (the
         # deck-hash / topic-normalisation matching is skipped entirely).
+        #
+        # ⚠️ 2026-08-15 — THE BRANCH IS CHOSEN ON `presentation_ref`, NOT ON
+        # `slides`. It used to read "has slides → it is a deck → match by deck
+        # hash", and that was true until 2026-08-11, when the DEFAULT DECK
+        # started shipping on every deckless take so word→slide bucketing
+        # would always be defined. The default deck is a CONSTANT: identical
+        # bytes for every deckless recording, forever. So its content hash is
+        # one fixed value shared by every deckless talk a user has ever given,
+        # `_continue_deck_arc` treated them all as re-takes of one deck, and a
+        # brand-new topic was appended to the most-developed unrelated arc —
+        # inheriting that arc's locked ideal text, so the "analysis" of the
+        # new take was the old take's text. Worse, `slides` being non-empty
+        # meant the TOPIC guard below — the one thing that would have kept the
+        # two talks apart — was never reached at all.
+        #
+        # "Same deck" means "same UPLOADED deck", and the thing that marks one
+        # is the PDF behind it: the FE sends `presentationRef: null` for the
+        # default deck on purpose ("never claim a PDF that isn't there"). So a
+        # take with a real ref keeps deck-hash continuation exactly as before,
+        # and a take standing on the scaffold continues by TOPIC, which is
+        # what actually identifies the talk when the deck is generic.
+        #
+        # Chosen over mirroring the deck's text here and comparing hashes: the
+        # copy is the founder's and lives in the frontend, so a BE mirror would
+        # go stale on the next word he changes and this bug would return
+        # silently. A missing PDF cannot drift.
         if getattr(request, "user_id", None) and arc_id \
                 and _rec_kind != "read" and not _explicit_arc:
             _slides_for_arc = (session_context or {}).get("slides") or []
-            if _slides_for_arc:
+            _deck_ref = (session_context or {}).get("presentation_ref")
+            if _slides_for_arc and _deck_ref:
                 arc_id, take_index = _continue_deck_arc(
                     request.user_id, _slides_for_arc, arc_id, take_index,
                 )
