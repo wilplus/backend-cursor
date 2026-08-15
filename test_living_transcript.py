@@ -1325,3 +1325,69 @@ class ServeChangesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProposalNeverPaintsTests(unittest.TestCase):
+    """SPEC-parts-locking-and-layers R8 (founder 2026-08-15): "before it is
+    applied do not fire any stylings … the styling applies to the text only
+    after being accepted as a styling suggestion."
+
+    The BE half of the rule: a pending change is metadata BESIDE the served
+    text, never a mark inside it."""
+
+    DOC = "We started small. Then we shipped it fast."
+    PIECES = [{"snippet_id": S1, "text": DOC, "take_session_id": T1,
+               "start": 0, "end": len(DOC)}]
+
+    def test_a_pending_bold_leaves_the_document_UNTOUCHED(self):
+        # build_tracked_changes is pure and returns spans; the document it was
+        # handed is not among its outputs, and nothing it produces is a marker.
+        sugs = {S1: {"kind": "emphasize", "why": "y",
+                     "emphasis_quote": "shipped it fast"}}
+        changes = build_tracked_changes(self.DOC, self.PIECES, sugs)
+        self.assertEqual(len(changes), 1)
+        for c in changes:
+            self.assertNotIn("{{orange:", c["quote"])
+            self.assertNotIn("**", c["quote"])
+        # The span points INTO the untouched document.
+        c = changes[0]
+        self.assertEqual(self.DOC[c["span"]["start"]:c["span"]["end"]],
+                         c["quote"])
+
+    def test_the_accent_writer_has_exactly_ONE_caller_and_it_is_the_bake(self):
+        # wrap_accent is what puts orange in the text. If anything other than
+        # the approved-rows bake could call it, a proposal could paint.
+        import pathlib
+        import re
+        root = pathlib.Path(__file__).parent
+        callers = set()
+        for path in list(root.glob("services/*.py")) + \
+                list(root.glob("routes/**/*.py")):
+            src = path.read_text(encoding="utf-8")
+            # Strip comments/docstrings crudely — this rule is discussed at
+            # length in prose, and prose must not count as a call site.
+            src = re.sub(r'"""[\s\S]*?"""', "", src)
+            src = re.sub(r"^\s*#.*$", "", src, flags=re.M)
+            # The DEFINITION is not a call site.
+            src = re.sub(r"def\s+wrap_accent\s*\(", "", src)
+            if re.search(r"\bwrap_accent\s*\(", src):
+                callers.add(path.name)
+        # ideal_text_block.py is where it lives; the ledger is the only
+        # module that invokes it, and the ledger only bakes approved rows.
+        self.assertEqual(callers, {"ideal_decision_ledger.py"}, callers)
+
+    def test_the_bake_takes_only_APPROVED_rows(self):
+        from services.ideal_decision_ledger import bake_piece
+        text = "We started small. Then we shipped it fast."
+        # `display_phrase` is what bake_piece matches on — the words as the
+        # student saw them; target_phrase is the normalized ledger KEY.
+        rows = [{"kind": "emphasize", "display_phrase": "shipped it fast",
+                 "decision": "pending"},
+                {"kind": "emphasize", "display_phrase": "started small",
+                 "decision": "dismissed"}]
+        self.assertEqual(bake_piece(text, rows), text)
+        approved = [{"kind": "emphasize", "display_phrase": "shipped it fast",
+                     "decision": "approved"}]
+        self.assertEqual(bake_piece(text, approved),
+                         "We started small. Then we "
+                         "{{orange:shipped it fast}}.")

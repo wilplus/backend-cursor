@@ -184,6 +184,52 @@ Approving *is* the acknowledgement. The user asked for the change; telling them
 it happened is noise. This is what retires the superseded prompt honestly
 rather than merely deleting it.
 
+### R8 · A PROPOSAL NEVER PAINTS THE TEXT (founder 2026-08-15)
+
+> *"before it is applied do not fire any stylings — we ripped it out that the
+> underlined text was indicating smth; the styling applies to the text only
+> after being accepted as a styling suggestion."*
+
+**The document carries the marks of DECISIONS, never of offers.** A pending
+suggestion — style or otherwise — is metadata beside the text (`quote`, `span`,
+`kind`, `device`, `cue_keys`). It is rendered in the modal that opens on the
+chunk, and it changes not one character of the document until the student
+accepts it.
+
+This is not a preference about tinting. A talk can arrive as one chunk, and a
+single pending note then striped 233 words amber — the page became unreadable
+in exactly the state where reading it is the task. Worse than the noise: a
+document that paints what was merely *proposed* is telling the student their
+words already changed. The accent is the record of a choice they made, so
+showing it before the choice is a claim about their intent.
+
+**The chain, and where each link is enforced:**
+
+| Stage | What holds the accent | Enforced by |
+|---|---|---|
+| proposed | nothing in the text — metadata only | `build_tracked_changes` returns spans and quotes; it never writes into the served document |
+| accepted | `{{orange:…}}` baked into the part | `ideal_decision_ledger.bake_piece` filters `decision == "approved"`, and it is the **only** caller of `ideal_text_block.wrap_accent` |
+| rendered | the marks present in the text, and nothing else | the deck renders `<RichText text={c.part.text} />`; `deckSurface.test.ts` pins that its source carries no `underline`, no `bg-pending`, no `decoration-`, no `CHUNK_TEXT_CLS` |
+
+**`visual` is a TYPE label, not a paint order.** `intervention_candidates`
+maps each C.2 type to `underline` / `bold` / `star`, and the FE parses the
+field but no component renders from it. Reviving it as a pre-acceptance
+treatment re-creates exactly what was ripped out.
+
+**The two marks are not interchangeable.** `bold` is the *proposed*-accent
+label; `{{orange:…}}` is the *accepted* accent, and it is the one accent
+colour. A surface that paints bold at the moment of acceptance is showing the
+pre-decision state as the result of the decision — which is what the FE's
+optimistic apply did between 2026-08-15 (FE #311) and the fix in the same
+day's follow-up. The optimistic paint must write **the token the server will
+bake**, so the click and the refetch agree.
+
+**The one thing that may paint before the server confirms** is the student's
+own tap. Applying a style writes the accepted mark into the draft on the
+click — the founder's *"I want it to happen right the moment you click"* — and
+rolls it back if the write fails. That is not a proposal painting itself; it
+is the decision rendering at the moment it is made.
+
 ---
 
 ## 6 · What `disregarded` buys
