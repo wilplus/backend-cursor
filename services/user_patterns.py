@@ -109,15 +109,35 @@ def _feature_value(metrics: Any, aliases: tuple) -> Optional[float]:
     return None
 
 
-def classify_moment(coach_label: Any, coach_tag: Any) -> str:
-    """positive | negative | neutral — from COACH signals only (blind-coach
-    fence: shadow guesses never classify here). Pure."""
-    label = (coach_label or "").strip().lower() if isinstance(coach_label, str) else ""
-    tag = (coach_tag or "").strip().lower() if isinstance(coach_tag, str) else ""
-    if label == "challenge" or tag == "strong":
+def classify_moment(verdict: Any) -> str:
+    """positive | negative | neutral — from the SETTLED confidence verdict.
+
+    `verdict` is one value out of `key_moments.confidence_verdicts`: "yes",
+    "no", "ambiguous", or None/absent when the panel has not settled. Only a
+    settled panel classifies; everything else is neutral, which here means "we
+    have nothing to say", not "average".
+
+    RE-POINTED 2026-08-14 (founder). It used to take `(coach_label, coach_tag)`
+    and read `challenge`/`strong` → positive, `threat`/`to_work_on` → negative.
+    THREE of those four inputs were unusable. challenge/threat is the retired
+    charisma construct and its coach control was deleted 2026-08-07, so it has
+    been frozen ever since; `strong` was never chosen by anyone (the FE
+    defaulted it whenever a note was typed), so "positive" fired on the coach
+    having WRITTEN something. Patterns mined from that were reporting what the
+    coach commented on, dressed as what the speaker does well. The confidence
+    quorum is the one thing a coach actually judges, and it is defined (§17
+    `conf-q-v1`) and multi-rater (label ledger rule 3).
+
+    Blind-coach fence unchanged: `resolve()` counts human QUORUM_LANES only, so
+    a shadow guess still cannot classify anything here. Pure."""
+    v = verdict.strip().lower() if isinstance(verdict, str) else ""
+    if v == "yes":
         return "positive"
-    if label == "threat" or tag == "to_work_on":
+    if v == "no":
         return "negative"
+    # "ambiguous" lands here on purpose: a panel that settled on "we cannot
+    # tell" is a real finding about the moment, and the honest thing to mine
+    # from it is nothing.
     return "neutral"
 
 
@@ -178,22 +198,15 @@ def build_user_patterns(user_id: Any, database=None) -> list:
             sid = sess.get("id")
             if not sid:
                 continue
-            labels = {
-                str(r.get("snippet_id")): r.get("value")
-                for r in (database.get_training_labels(sid) or [])
-            }
-            tags = {}
-            _get_drafts = getattr(database, "get_coach_snippet_drafts", None)
-            if callable(_get_drafts):
-                for d in (_get_drafts(sid) or []):
-                    if d.get("snippet_id") is not None:
-                        tags[str(d["snippet_id"])] = d.get("tag")
-            for s in (database.get_snippets_by_session(sid) or []):
+            snippets = (database.get_snippets_by_session(sid) or [])
+            from services.key_moments import confidence_verdicts
+            verdicts = confidence_verdicts(
+                database, [s.get("id") for s in snippets])
+            for s in snippets:
                 snip_id = str(s.get("id"))
                 moments.append({
                     "metrics": s.get("metrics"),
-                    "cls": classify_moment(
-                        labels.get(snip_id), tags.get(snip_id)),
+                    "cls": classify_moment(verdicts.get(snip_id)),
                 })
         return mine_patterns(moments)
     except Exception as e:

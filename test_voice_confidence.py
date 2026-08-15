@@ -413,14 +413,19 @@ class TestPowerScoreBlend(unittest.TestCase):
             activation=1.0, slide_stickiness=1.0, machine_confidence=0.0)
         self.assertGreater(flat_ontopic, confident_offtopic)
 
-    def test_coach_verdict_still_dominates_delivery(self):
+    def test_coach_veto_still_dominates_delivery(self):
+        """RE-PINNED 2026-08-14. This used to read `strong` vs `to_work_on`,
+        which stopped meaning anything when the fake `strong` half of the coach
+        term was deleted — no picker for it exists, so it fired on "the coach
+        typed a note". The surviving claim is the one that matters and is
+        stronger: on THE SAME phrase, the coach's explicit to_work_on is never
+        undone by how well it was delivered. Delivery is identical on both
+        sides here, so only the human verdict separates them."""
         from services.power_phrase_ranking import power_score
-        coach_strong_but_doubtful = power_score(tag="strong",
-                                                machine_confidence=-1.0)
-        coach_towork_but_confident = power_score(tag="to_work_on",
-                                                 machine_confidence=1.0)
-        self.assertGreater(coach_strong_but_doubtful,
-                           coach_towork_but_confident)
+        for delivery in (-1.0, 0.0, 1.0):
+            vetoed = power_score(tag="to_work_on", machine_confidence=delivery)
+            untouched = power_score(machine_confidence=delivery)
+            self.assertLess(vetoed, untouched)
 
     def test_the_album_quorum_bonus_is_deleted(self):
         """Founder verdict 2026-08-13 evening: `_W_B` is gone entirely. The

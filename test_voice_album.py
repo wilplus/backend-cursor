@@ -16,13 +16,20 @@ from services.voice_album import refresh_voice_album
 ARC = "arc-1"
 
 
+def _quorum(value):
+    """Two QUORUM-lane raters agreeing — a settled confidence verdict."""
+    return [{"rater_id": "coach1", "lane": "coach", "value": value},
+            {"rater_id": "peer1", "lane": "game_peer", "value": value}]
+
+
 class _Db:
     def __init__(self, *, ledger=None, suggestions=None, sessions=None,
-                 drafts=None, album=None):
+                 snips=None, conf=None, album=None):
         self.ledger = ledger or []
         self.suggestions = suggestions or {}
         self.sessions = sessions or []
-        self.drafts = drafts or {}
+        self.snips = snips or {}
+        self.conf = conf or {}
         self.album = album or []
         self.inserted = []
         self.deleted = []
@@ -36,8 +43,11 @@ class _Db:
     def get_arc_sessions(self, arc_id):
         return self.sessions
 
-    def get_coach_snippet_drafts(self, sid):
-        return self.drafts.get(sid, [])
+    def get_snippets_by_session(self, sid):
+        return self.snips.get(sid, [])
+
+    def get_confidence_labels_by_snippet_ids(self, ids):
+        return {i: self.conf.get(i, []) for i in ids}
 
     def list_voice_album(self, arc_id):
         return self.album
@@ -52,7 +62,12 @@ class _Db:
 
 
 def _all_three(published=True):
-    """A db where snippet sn1 carries all three signals."""
+    """A db where snippet sn1 carries all three signals.
+
+    The COACH leg is CONFIDENCE QUORUM = YES (founder 2026-08-14), not the
+    old `strong` tag — which was never chosen by anyone (the FE defaulted it
+    whenever a note was typed), so it meant "the coach wrote something"
+    rather than "the coach judged this strong"."""
     return _Db(
         ledger=[{"kind": "emphasize", "decision": "approved",
                  "snippet_id": "sn1", "slide_index": 2}],
@@ -60,7 +75,8 @@ def _all_three(published=True):
         sessions=[{"id": "t1",
                    "results_published_at":
                        "2026-08-14T10:00:00Z" if published else None}],
-        drafts={"t1": [{"snippet_id": "sn1", "tag": "strong"}]},
+        snips={"t1": [{"id": "sn1"}]},
+        conf={"sn1": _quorum("yes")},
     )
 
 
@@ -87,15 +103,26 @@ class EntryRuleTests(unittest.TestCase):
         db.suggestions = {"sn1": {"kind": "replace"}}
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
 
-    def test_coach_tag_without_publish_is_invisible(self):
-        # BLIND COACH: the coach signal does not exist before publish.
+    def test_quorum_without_publish_is_invisible(self):
+        # BLIND COACH: a quorum can settle while the review is still in
+        # progress; none of it exists for the student until publish.
         db = _all_three(published=False)
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
         self.assertEqual(db.inserted, [])
 
-    def test_work_on_tag_is_not_agreement(self):
+    def test_a_settled_NO_is_not_agreement(self):
+        # A quorum that settled the other way is a real verdict, and the
+        # opposite of an album entry.
         db = _all_three()
-        db.drafts = {"t1": [{"snippet_id": "sn1", "tag": "to_work_on"}]}
+        db.conf = {"sn1": _quorum("no")}
+        self.assertEqual(refresh_voice_album(ARC, database=db), 0)
+
+    def test_a_SINGLE_confident_rating_is_not_enough(self):
+        # Ledger rule 3: one rating is weak supervision, never ground truth.
+        # An album built on one opinion would sell a guess as a finding.
+        db = _all_three()
+        db.conf = {"sn1": [{"rater_id": "coach1", "lane": "coach",
+                            "value": "yes"}]}
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
 
     def test_idempotent_second_refresh_inserts_nothing(self):

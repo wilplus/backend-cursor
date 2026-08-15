@@ -1,8 +1,9 @@
 """Coach-adjusted surfacing score for power phrases (willab Phase 4, 2026-06-15;
 re-pointed onto the CONFIDENCE construct 2026-08-13 per SPEC.md §7.2).
 
-The coach is the GATE — they tag (strong / to_work_on) + surface the acoustic
-≤10 AFTER selection. This orders that already-approved set into the user's
+The coach is the GATE — they surface the acoustic ≤10 AFTER selection (and may
+veto a phrase with to_work_on). This orders that already-approved set into the
+user's
 "power phrases" by blending the human verdict (DOMINANT) with how the moment
 was DELIVERED and how well it covered its topic/slide:
 
@@ -20,13 +21,26 @@ property of the voice, not of the content." Single-barrelled, externally
 anchored (Jiang & Pell 2017), and rated by a blind panel on the ternary
 instrument every other state uses.
 
-- coach_term: strong=+1, to_work_on=-1, untagged=0 — DOMINANT, so a coach-strong
-  moment always outranks a to-work-on one. SMOOTHING: untagged → 0 → the order
-  falls back to the automatic terms (no cold-start cliff before the coach
-  reviews). NOT a percept, so it stays privileged (SPEC §7.2): strong /
-  to_work_on is an EXPERT ASSESSMENT of whether the phrase is good, which is
-  Feedback-type by §2's routing principle. Expert authority is appropriate
-  there and inappropriate for a percept.
+- coach_term: to_work_on=-1, everything else=0 — a one-sided VETO. NOT a
+  percept, so it stays privileged (SPEC §7.2): to_work_on is an EXPERT
+  ASSESSMENT of whether the phrase is good, which is Feedback-type by §2's
+  routing principle. Expert authority is appropriate there and inappropriate
+  for a percept.
+- ⚠️ 2026-08-14 — THE ``strong`` HALF OF THIS TERM IS DELETED (founder ruling).
+  It was never an assessment. No picker for it exists anywhere in the product:
+  the FE wrote ``tag: cs.tag ?? "strong"`` and insights_payload defaults a
+  missing tag to "strong" at publish, so the value was manufactured by the act
+  of the coach TYPING A NOTE. That handed +1 at the dominant weight — the
+  single largest term in this blend — to every snippet a coach happened to
+  write on, which is a comment, not a verdict on the phrase. A term firing on
+  "someone typed something" is worse than no term: it outranked the measured
+  ones. ``to_work_on`` SURVIVES because it is the opposite case — no default
+  ever produced it, so the rows that carry it were explicitly chosen (the
+  picker that wrote them was removed 2026-08-07, which freezes the value, it
+  does not falsify it). The coach's live positive verdict is not lost: it is
+  the confidence panel below, where the coach actually rates, and where §17
+  says what the rating means. SMOOTHING is unchanged: untagged → 0 → the order
+  falls back to the automatic terms (no cold-start cliff before review).
 - activation: ``metrics["overall_score"]`` (~0-1); rank-derived proxy (1/rank)
   when it is absent. NAMING WARNING: despite the name this is NOT acoustic
   activation. services/lab_recording.py computes overall_score as
@@ -58,14 +72,14 @@ instrument every other state uses.
   line's rank; the confidence term already carries everything delivery may
   say here. Do not re-add a bonus without a founder re-lock.
 
-THE ORDERING OF AUTHORITY IS THE INVARIANT, and deleting ``_W_B`` is what
-made it arithmetically TRUE rather than asserted (SPEC §7.1). Coach verdict
-dominant (swing 4.0) > panel confidence (swing 3.0 at perfect quality, and
-quality is bounded below 1) > machine confidence (swing 2.0) ≈ the content
-term. With the bonus gone no combination of automatic terms can cross the
-coach gap — the audit showed quorum + panel together could, because the
-quorum guaranteed a positive panel value and the two summed. Delivery
-informs the pick; it never overrules a human verdict.
+THE ORDERING OF AUTHORITY IS THE INVARIANT (SPEC §7.1), and with the coach
+term now one-sided it is stated RELATIVELY, which is both stronger and easier
+to check: a ``to_work_on`` phrase can never reach an otherwise-identical
+untagged one. Every other term — content, slide coverage, panel, machine — is
+available to BOTH phrases, so the 2.0 the veto removes is never earned back by
+anything. That holds at any weight, so it cannot rot the way "swing 4.0 beats
+swing 3.0" could; deleting ``_W_B`` (below) is what closed the last arithmetic
+route around it. Delivery informs the pick; it never overrules a human verdict.
 
 Selection of the ≤10 stays PURELY acoustic (snippet_salience) — this only
 reorders what the coach approved. AC-9: the score is internal, never surfaced.
@@ -75,7 +89,9 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-_COACH_TERM = {"strong": 1.0, "to_work_on": -1.0}
+# ONE-SIDED on purpose (2026-08-14): "strong" is not in this map and must not
+# be re-added without a picker that a human actually chooses it with.
+_COACH_TERM = {"to_work_on": -1.0}
 # w_c dominant (human EXPERT verdict) > the rest.
 _W_C, _W_A, _W_S = 2.0, 1.0, 0.6
 

@@ -91,16 +91,27 @@ def _twice_labelled(db, snippet_ids: Any) -> set:
 
 
 def _arc_moments(db, arc_id: Any) -> tuple:
-    """(keys, decoys, snippets_by_id, session_by_snippet) for the arc —
-    coach truth only. keys = challenge-labeled; decoys = everything else
-    (unlabeled + threat: both are honestly 'not a key moment').
+    """(keys, decoys, snippets_by_id, session_by_snippet) for the arc.
+
+    KEYS = CONFIDENCE QUORUM = YES (founder ruling 2026-08-14, SPEC §17
+    `conf-q-v1`). Decoys are everything else eligible — a settled `no`, a
+    settled `perceptually_ambiguous`, or simply a moment the panel has not
+    settled. All three are honestly "not a key moment".
+
+    THIS USED TO READ `training_labels.value == 'challenge'` — the retired
+    challenge/threat construct, whose coach control was deleted from the FE
+    on 2026-08-07. The corpus froze that day, so every arc reviewed since
+    returned NO_KEY_MOMENTS_YET and the game had nothing to serve. The
+    replacement is not a new construct: it is the same ternary the coach is
+    already answering, settled through services/label_quorum.
 
     GATED (founder 2026-08-10): only snippets already labelled by ≥2
     distinct raters reach the game — serving AND answer-validation both,
     from this one place, so a snippet that stops being eligible also
     stops being answerable (a stale open tab must not post a junk
-    label)."""
-    from services.challenge_threat import resolve_direction
+    label). That gate reads the same table the keys now come from, which
+    is why a key is always at least two humans by construction."""
+    from services.key_moments import key_snippet_ids
     keys: list = []
     decoys: list = []
     by_id: dict = {}
@@ -109,18 +120,15 @@ def _arc_moments(db, arc_id: Any) -> tuple:
         sid = sess.get("id")
         if not sid:
             continue
-        labels = {
-            str(r.get("snippet_id")): r.get("value")
-            for r in (db.get_training_labels(sid) or [])
-        }
         for s in (db.get_snippets_by_session(sid) or []):
             snip_id = str(s.get("id"))
             if not (s.get("transcript") or "").strip():
                 continue
             by_id[snip_id] = s
             sess_by_id[snip_id] = sess
-            coach_dir = resolve_direction(labels.get(snip_id), None)
-            (keys if coach_dir == "challenge" else decoys).append(snip_id)
+    _key_ids = key_snippet_ids(db, list(by_id.keys()))
+    for snip_id in by_id:
+        (keys if snip_id in _key_ids else decoys).append(snip_id)
     eligible = _twice_labelled(db, list(by_id.keys()))
     keys = [s for s in keys if s in eligible]
     decoys = [d for d in decoys if d in eligible]

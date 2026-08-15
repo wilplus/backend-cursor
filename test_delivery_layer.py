@@ -75,9 +75,26 @@ def _snips(sid):
 class _FeedbackHarness(unittest.TestCase):
     """Shared harness for GET /explore/arc/<id>/feedback route tests.
 
-    ``label_value`` / ``surfaced`` / ``video_ref`` parameterize the coach's
-    private direction label and draft on EVERY snippet, so tests can steer
-    what the key-moments SELECT sees."""
+    ``confidence`` / ``surfaced`` / ``video_ref`` parameterize the blind panel
+    verdict and the coach's draft on EVERY snippet, so tests can steer what the
+    key-moments SELECT sees.
+
+    RE-POINTED 2026-08-14 (founder): the knob used to be ``label_value``, a
+    `training_labels` direction over challenge/threat. That construct is
+    retired and its coach control was deleted 2026-08-07, so the selector it
+    fed had been returning nothing on every real session since — this page's
+    key moments were empty in production while these tests passed. A key
+    moment is now confidence quorum = yes (`conf-q-v1`), so the fixture states
+    a panel verdict instead of a direction."""
+
+    @staticmethod
+    def _panel(value):
+        """Two QUORUM-lane raters agreeing — a settled verdict. `None` = the
+        panel never rated it, which settles nothing."""
+        if value is None:
+            return []
+        return [{"rater_id": "coach1", "lane": "coach", "value": value},
+                {"rater_id": "peer1", "lane": "game_peer", "value": value}]
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -90,7 +107,7 @@ class _FeedbackHarness(unittest.TestCase):
         for p in self._p:
             p.stop()
 
-    def _call(self, entitled=False, caller="u1", label_value="challenge",
+    def _call(self, entitled=False, caller="u1", confidence="yes",
               surfaced=True, video_ref=None):
         with self.app.test_request_context():
             request.user_id = caller
@@ -108,10 +125,10 @@ class _FeedbackHarness(unittest.TestCase):
                                   "transcript_corrected": f"corrected {sid}",
                                   "breakthrough_video_ref": video_ref,
                               }]), \
-                 patch.object(v2.db, "get_training_labels",
-                              side_effect=lambda sid: [{
-                                  "snippet_id": f"{sid}-p0",
-                                  "value": label_value}]), \
+                 patch.object(v2.db, "get_confidence_labels_by_snippet_ids",
+                              side_effect=lambda ids: {
+                                  str(i): self._panel(confidence)
+                                  for i in ids}), \
                  patch.object(v2.db, "get_user_transcript_edits",
                               return_value=[]), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
@@ -150,19 +167,22 @@ class FeedbackRouteTests(_FeedbackHarness):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class ThreatKeyMomentTests(_FeedbackHarness):
-    """BE-6 (founder fix-pack 2026-07-16): the coach's video may ride a
-    THREAT-labeled moment too — a coach-SURFACED threat moment shows on the
-    feedback page exactly like a challenge one (same fields, same
-    comment_video_ref lane, no badge). The private direction label still
-    only SELECTS: it is never serialized (AC-9 / blind coach), and the
-    breakthrough badge stays challenge-only."""
+class CoachVideoOnAKeyMomentTests(_FeedbackHarness):
+    """BE-6 (founder fix-pack 2026-07-16), re-pointed 2026-08-14: a
+    coach-SURFACED key moment carries the coach's video on the feedback page
+    (same fields, same comment_video_ref lane, no badge). The panel verdict
+    only SELECTS — it is never serialized (AC-9 / blind coach).
+
+    This class used to be ThreatKeyMomentTests and turned on threat-vs-
+    challenge, a distinction that no longer exists: the two surfaces reading
+    that construct did not even agree on it (the game counted challenge only,
+    this page counted challenge OR threat, so one moment was a key moment here
+    and a wrong answer there). One construct now, so there is one rule."""
 
     VIDEO = "https://x/coach-video.webm"
 
-    def test_threat_moment_with_video_surfaces(self):
-        body, status = self._call(entitled=True, label_value="threat",
-                                  video_ref=self.VIDEO)
+    def test_key_moment_with_video_surfaces(self):
+        body, status = self._call(entitled=True, video_ref=self.VIDEO)
         self.assertEqual(status, 200)
         takes = {t["take_index"]: t for t in body["takes"]}
         moments = takes[1]["key_moments"]
@@ -170,7 +190,7 @@ class ThreatKeyMomentTests(_FeedbackHarness):
         for m in moments:
             self.assertEqual(m["comment_video_ref"], self.VIDEO)
             self.assertEqual(m["comment_text"], "This is the turn.")
-        # the paired READ's threat moment folds in too, same as challenge
+        # the paired READ's key moment folds in too
         kinds = {m["recording_kind"] for m in moments}
         self.assertEqual(kinds, {"spoken", "read"})
 
@@ -193,8 +213,7 @@ class ThreatKeyMomentTests(_FeedbackHarness):
             return f"signed::{ref}" if ref else ref
 
         with patch("services.audio_ref_resolver.resolve_playable_ref", _fake):
-            body, status = self._call(entitled=True, label_value="threat",
-                                      video_ref=self.VIDEO)
+            body, status = self._call(entitled=True, video_ref=self.VIDEO)
         self.assertEqual(status, 200)
         takes = {t["take_index"]: t for t in body["takes"]}
         for m in takes[1]["key_moments"]:
@@ -203,36 +222,37 @@ class ThreatKeyMomentTests(_FeedbackHarness):
         self.assertIn(self.VIDEO, seen)
 
     def test_a_moment_with_no_video_stays_none_never_a_signed_nothing(self):
-        body, _ = self._call(entitled=True, label_value="threat",
-                             video_ref=None)
+        body, _ = self._call(entitled=True, video_ref=None)
         takes = {t["take_index"]: t for t in body["takes"]}
         for m in takes[1]["key_moments"]:
             self.assertIsNone(m["comment_video_ref"])
 
-    def test_threat_moment_without_surfaced_stays_hidden(self):
-        body, _ = self._call(entitled=True, label_value="threat",
-                             surfaced=False, video_ref=self.VIDEO)
+    def test_key_moment_without_surfaced_stays_hidden(self):
+        body, _ = self._call(entitled=True, surfaced=False,
+                             video_ref=self.VIDEO)
         for t in body["takes"]:
             self.assertEqual(t.get("key_moments"), [])
         # nothing leaks around the surfaced gate — not even the video ref
         self.assertNotIn(self.VIDEO, json.dumps(body))
 
-    def test_other_labels_stay_hidden(self):
-        for value in ("ambiguous", None, ""):
-            body, _ = self._call(entitled=True, label_value=value,
+    def test_only_a_settled_YES_is_a_key_moment(self):
+        # "no" and the ambiguous class are settled verdicts too — they are
+        # simply not this one. None = never rated.
+        for value in ("no", "neutral", None):
+            body, _ = self._call(entitled=True, confidence=value,
                                  video_ref=self.VIDEO)
             for t in body["takes"]:
                 self.assertEqual(t.get("key_moments"), [], value)
 
-    def test_label_is_never_serialized(self):
-        # the direction label SELECTS the moment but never ships (AC-9 /
-        # blind coach): no label field, no 'threat'/'challenge' anywhere.
-        for value in ("threat", "challenge"):
-            body, _ = self._call(entitled=True, label_value=value,
+    def test_the_verdict_is_never_serialized(self):
+        # the panel verdict SELECTS the moment but never ships (AC-9 / blind
+        # coach): no verdict field, no confidence value, no retired construct.
+        for value in ("yes",):
+            body, _ = self._call(entitled=True, confidence=value,
                                  video_ref=self.VIDEO)
             raw = json.dumps(body)
-            self.assertNotIn("threat", raw)
-            self.assertNotIn("challenge", raw)
+            for banned in ("threat", "challenge", "confidence", "quorum"):
+                self.assertNotIn(banned, raw)
             takes = {t["take_index"]: t for t in body["takes"]}
             for m in takes[1]["key_moments"]:
                 self.assertEqual(set(m.keys()), {

@@ -17,17 +17,36 @@ def _m(cls, **metrics):
 
 
 class ClassifyMomentTests(unittest.TestCase):
-    def test_coach_signals_define_classes(self):
-        self.assertEqual(classify_moment("challenge", None), "positive")
-        self.assertEqual(classify_moment(None, "strong"), "positive")
-        self.assertEqual(classify_moment("threat", None), "negative")
-        self.assertEqual(classify_moment(None, "to_work_on"), "negative")
-        self.assertEqual(classify_moment(None, None), "neutral")
-        self.assertEqual(classify_moment("", ""), "neutral")
+    """RE-POINTED 2026-08-14 onto the settled confidence verdict. The old
+    inputs were `(coach_label, coach_tag)` over challenge/threat (the retired
+    charisma construct, frozen since its control was deleted 2026-08-07) and
+    strong/to_work_on (where `strong` was auto-written whenever a note was
+    typed). Patterns mined from those described what the coach commented on,
+    not what the speaker does."""
 
-    def test_label_beats_missing_tag_and_vice_versa(self):
-        self.assertEqual(classify_moment("CHALLENGE", None), "positive")
-        self.assertEqual(classify_moment(None, "TO_WORK_ON"), "negative")
+    def test_the_settled_verdict_defines_the_class(self):
+        self.assertEqual(classify_moment("yes"), "positive")
+        self.assertEqual(classify_moment("no"), "negative")
+
+    def test_an_unsettled_panel_says_nothing(self):
+        # confidence_verdicts omits unsettled snippets, so the caller passes
+        # None. Neutral here means "no finding", never "average".
+        self.assertEqual(classify_moment(None), "neutral")
+        self.assertEqual(classify_moment(""), "neutral")
+
+    def test_a_settled_AMBIGUOUS_is_a_finding_but_not_a_class(self):
+        # The panel agreed it cannot tell. Mining a trait from that would
+        # invent a pattern out of the raters' uncertainty.
+        self.assertEqual(classify_moment("ambiguous"), "neutral")
+
+    def test_case_is_not_significant(self):
+        self.assertEqual(classify_moment("YES"), "positive")
+        self.assertEqual(classify_moment(" No "), "negative")
+
+    def test_the_retired_constructs_no_longer_classify_anything(self):
+        # challenge/threat/strong must not sneak back in through this door.
+        for dead in ("challenge", "threat", "strong", "to_work_on"):
+            self.assertEqual(classify_moment(dead), "neutral")
 
 
 class MinePatternsTests(unittest.TestCase):

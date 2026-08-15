@@ -344,12 +344,12 @@
     "master_doc_rag.librarian_guardrail": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "a872a58ca109492400ccab4afa342e5d6e186bc46c6eeed332471f0b43cae265"
+      "sha256": "de008a1f4f3aa72a7bf4afa6cb96ad5e382853d3cd293d5b39659c71c1361917"
     },
     "master_doc_rag.library_block": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "ab90f9fed0265114a931b147e1969d9b5082265543204a739f289b9f725b8034"
+      "sha256": "3c8292db07832616705040cedb6794126fa37a781a38ed4d016985a86db849f0"
     },
     "master_doc_rag.life_block": {
       "kind": "source_ref",
@@ -374,7 +374,7 @@
     "master_doc_rag.two_anchors": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "13efbc7b0988ec6584e5b0c3977db9d20c30ea1a5fac23553aee8ef87d3c96b2"
+      "sha256": "df2d91443a4f879a8ca3d9c374ce27ae0376bb150d7ded95fbcb91864fc249b5"
     },
     "master_doc_rag_lane.base": {
       "kind": "source_ref",

@@ -36,12 +36,18 @@ def _snip(sid, transcript="a strong line", offset=0, session_id="s1", **over):
     return base
 
 
-def _two_labels():
-    """The founder's admission ticket (2026-08-10): two distinct raters
-    with committed answers — coach + owner, the current n=2."""
+def _two_labels(value="no"):
+    """Two distinct QUORUM-lane raters agreeing — the shape that both
+    satisfies the twice-labelled admission ticket (founder 2026-08-10) and
+    settles a confidence quorum (label_quorum.resolve).
+
+    `value="yes"` makes the snippet a KEY MOMENT; anything else settles as
+    a decoy. Note game_owner is deliberately NOT used here: a self-report is
+    excluded from quorum (ledger rule 2), so a coach+owner pair reaches the
+    admission gate but never settles."""
     return [
-        {"rater_id": "coach1", "lane": "coach", "value": "yes"},
-        {"rater_id": "u1", "lane": "game_owner", "value": "no"},
+        {"rater_id": "coach1", "lane": "coach", "value": value},
+        {"rater_id": "peer1", "lane": "game_peer", "value": value},
     ]
 
 
@@ -52,11 +58,26 @@ class _FakeDB:
         self._snips = snips
         self._labels = labels
         self._drafts = drafts or {}
-        # Default: every snippet is twice-labelled (eligible). Tests for
-        # the gate pass their own map.
+        # Default: every snippet is twice-labelled (eligible), and the ones
+        # the fixture marked 'challenge' settle as CONFIDENCE QUORUM = YES —
+        # i.e. they are the key moments. Keys moved off training_labels onto
+        # the confidence quorum (founder 2026-08-14); translating here keeps
+        # every fixture below expressed in the vocabulary it was written in.
+        # Tests for the gate itself pass their own map.
         self._conf_labels = conf_labels
         self.peer_labels: list = []
         self.state_ratings: list = []
+
+    @property
+    def _key_ids(self):
+        """Derived on READ, not at construction: fixtures mutate `_labels`
+        after the fact to mean "nothing is a key any more"."""
+        return {
+            str(r.get("snippet_id"))
+            for rows in (self._labels or {}).values()
+            for r in (rows or [])
+            if r.get("value") == "challenge" and r.get("snippet_id")
+        }
 
     def get_arc_sessions(self, arc_id):
         return list(self._sessions)
@@ -70,7 +91,8 @@ class _FakeDB:
     def get_confidence_labels_by_snippet_ids(self, ids):
         if self._conf_labels is not None:
             return {i: self._conf_labels.get(i, []) for i in ids}
-        return {i: _two_labels() for i in ids}
+        return {i: _two_labels("yes" if i in self._key_ids else "no")
+                for i in ids}
 
     def get_coach_snippet_drafts(self, sid):
         return list(self._drafts.get(sid, []))
@@ -283,7 +305,9 @@ class TwiceLabelledGateTests(unittest.TestCase):
     together."""
 
     def _conf(self, **per_snip):
-        base = {s: _two_labels()
+        # k1/k2 settle as CONFIDENCE QUORUM = YES so they are keys; the rest
+        # settle NO. Overrides then isolate the admission gate itself.
+        base = {s: _two_labels("yes" if s in ("k1", "k2") else "no")
                 for s in ("k1", "k2", "d1", "d2", "t1")}
         base.update(per_snip)
         return base

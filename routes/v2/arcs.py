@@ -884,13 +884,22 @@ def _take_full_text(session_id):
 
 
 def _take_key_moments(session_id, read_session_ids=None):
-    """A take's key moments (locked assumption A2/A3): coach-SURFACED snippets
-    marked 'challenge' OR 'threat' (founder 2026-07-16: the coach's video may
-    ride a threat-labeled moment too — 'challenge' alone remains the
-    breakthrough badge), from the spoken take AND ALL its paired mid-take
-    re-reads. Each: playback span + the coach's comment (text and/or video) +
-    recording_kind + slide_index. No scores (AC-9); the private direction
-    label itself is never serialized — it only SELECTS."""
+    """A take's key moments: coach-SURFACED snippets that reached CONFIDENCE
+    QUORUM = YES (founder ruling 2026-08-14, SPEC §17 `conf-q-v1`), from the
+    spoken take AND ALL its paired mid-take re-reads. Each: playback span +
+    the coach's comment (text and/or video) + recording_kind + slide_index.
+
+    Both halves of the old rule are gone. It required a `challenge` OR
+    `threat` label from the retired construct — a corpus that froze when the
+    coach's control was deleted on 2026-08-07, so this returned EMPTY for
+    every session reviewed after that date, including the ones behind the
+    paid unlock. And it disagreed with the game, which counted `challenge`
+    alone: the same moment was a key moment here and a wrong answer there.
+    One construct now serves both.
+
+    SURFACED still gates: quorum says the voice was confident, the coach's
+    push says it is ready for the student. No scores (AC-9) — the quorum
+    verdict SELECTS and is never serialized."""
     _reads = read_session_ids or []
     if isinstance(_reads, str):
         _reads = [_reads]
@@ -899,22 +908,22 @@ def _take_key_moments(session_id, read_session_ids=None):
                               + [(r, "read") for r in _reads]):
         if not sid:
             continue
-        labels = {
-            str(r.get("snippet_id")): r.get("value")
-            for r in (db.get_training_labels(sid) or [])
-        }
         drafts = {
             str(d.get("snippet_id")): d
             for d in (db.get_coach_snippet_drafts(sid) or [])
             if d.get("snippet_id")
         }
+        # KEY = CONFIDENCE QUORUM = YES (founder 2026-08-14). One batched
+        # read per take rather than a lookup per snippet.
+        from services.key_moments import key_snippet_ids
+        _key_ids = key_snippet_ids(db, list(drafts.keys()))
         for s in sorted(db.get_snippets_by_session(sid) or [],
                         key=lambda x: (x.get("start_offset_ms") or 0)):
             _sid = str(s.get("id"))
             d = drafts.get(_sid)
             if not d or not d.get("surfaced"):
                 continue
-            if labels.get(_sid) not in ("challenge", "threat"):
+            if _sid not in _key_ids:
                 continue
             m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
             _piece = m.get("piece") if isinstance(m.get("piece"), dict) else {}

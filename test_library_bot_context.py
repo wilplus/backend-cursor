@@ -55,13 +55,16 @@ class RenderLibraryBlockTests(unittest.TestCase):
         self.assertEqual(self._render(None), "")
         self.assertEqual(self._render([]), "")
 
-    def test_renders_note_and_tag_and_transcript(self):
+    def test_renders_note_and_label_and_transcript(self):
         out = self._render([{
             "tag": "strong",
             "note": "Strongest 8 seconds — do more of this.",
             "snippet_ref": {"transcript": "and that's when I realized the whole thing"},
         }])
-        self.assertIn("strong", out)
+        # The bot is handed the coach's WORDS, labelled as a note. It is not
+        # told the coach marked this "strong" — nobody ever did (2026-08-14).
+        self.assertIn("[coach note]", out)
+        self.assertNotIn("[strong]", out)
         self.assertIn("Strongest 8 seconds", out)
         self.assertIn("that's when I realized", out)
 
@@ -136,7 +139,13 @@ class RenderLibraryBlockTests(unittest.TestCase):
              "snippet_ref": {"features": {"speech_rate": 190, "mean_pause": 100}}},
         ])
         self.assertIn("TWO ANCHORS", out)
-        self.assertIn('Best (coach marked "strong")', out)
+        # RE-PINNED 2026-08-14: the positive anchor no longer claims a verdict.
+        # It used to render 'Best (coach marked "strong")' off a tag the coach
+        # never picked — the FE sent `cs.tag ?? "strong"`, so it meant "a note
+        # exists". The coach's WORDS are real and still go to the bot; the
+        # fabricated "best" wrapped around them does not.
+        self.assertIn("Coach noted this moment", out)
+        self.assertNotIn("Best (coach marked", out)
         self.assertIn("To work on", out)
         self.assertIn("145 wpm", out)
         self.assertIn("0.4s", out)        # mean_pause 400ms → 0.4s (ms→s)
@@ -163,7 +172,7 @@ class RenderLibraryBlockTests(unittest.TestCase):
             for i in range(6)
         ]
         out = self._render(entries)
-        self.assertEqual(out.count("• Best"), 1)        # one anchor, not a series
+        self.assertEqual(out.count("• Coach noted"), 1)  # one anchor, not a series
         self.assertNotIn("• To work on", out)            # no to_work_on present
         # metrics live ONLY in the anchor block, never in the notes list
         notes_section = out.split("TWO ANCHORS")[0]
