@@ -269,6 +269,11 @@ def v2_lab_create_recording():
                             the take appends strictly to it, the
                             continue-arc heuristics are skipped, and the
                             server numbers the take. Owner-only (404)
+      project_intent        (optional) new | continue. New clients send this
+                            explicit identity boundary: new MUST carry no arc
+                            id and always mints one; continue MUST carry the
+                            selected continue_arc_id. Legacy omission retains
+                            the prior heuristic behaviour.
 
     Flow (invariant order):
       1. read audio
@@ -386,6 +391,19 @@ def v2_lab_create_recording():
         # against a project the caller does not own (same fail-fast rule
         # as the read guard above). ──
         _explicit_arc = (form.get("continue_arc_id") or "").strip()
+        from services.explore_arc import validate_project_intent
+        _project_intent, _intent_error = validate_project_intent(
+            form.get("project_intent"),
+            form.get("arc_id"),
+            _explicit_arc,
+        )
+        if _intent_error:
+            logger.warning("lab: invalid project identity contract: %s",
+                           _intent_error)
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "Something went wrong on our end.",
+            }), 400
         if _explicit_arc:
             if not _is_valid_uuid(_explicit_arc):
                 return jsonify({
@@ -458,6 +476,24 @@ def v2_lab_create_recording():
             }, require_topic=True)
         except IntakeContextError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 422
+
+        # THE RETRY COLLAPSE must run BEFORE project-name uniqueness. A cloud
+        # fallback POST for a just-accepted `project_intent=new` take has the
+        # same topic but no arc id (correctly); if uniqueness runs first, that
+        # retry looks like a second same-named project and returns 409 instead
+        # of adopting the first session. Same key means same captured take.
+        _upload_key = (form.get("upload_idempotency_key") or "").strip()
+        if _upload_key:
+            _dup = db.v2_find_session_by_upload_key(_upload_key)
+            if _dup:
+                logger.info("lab: duplicate upload collapsed key=%s -> %s",
+                            _upload_key, _dup.get("id"))
+                return jsonify({
+                    "duplicate": True,
+                    "session_id": _dup.get("id"),
+                    "arc_id": _dup.get("arc_id"),
+                    "take_index": _dup.get("take_index"),
+                }), 200
 
         # Project names are unique per owner; project identity is the UUID.
         # A continuation may reuse its own name only when it carries that UUID.
@@ -543,28 +579,6 @@ def v2_lab_create_recording():
         # audio was stored, analysed and folded as that re-read. A spent
         # id is dropped and a fresh session minted — the response's
         # `session_id` is authoritative and the FE adopts it. ──
-        # ── THE RETRY COLLAPSE (founder 2026-08-10, the double recording).
-        # The dual-lane uploader re-sends the same FormData when the Worker
-        # socket dies AFTER the body already reached us; the spent-session
-        # guard below then — correctly, per its own lane rule — mints a
-        # fresh session, so one take landed as takes N and N+1 with
-        # identical audio. Same key = same take: echo the first session and
-        # store nothing twice. The key is a NEW field on purpose — reusing
-        # guest_session_id would fight that guard, which exists for a
-        # different bug. ──
-        _upload_key = (form.get("upload_idempotency_key") or "").strip()
-        if _upload_key:
-            _dup = db.v2_find_session_by_upload_key(_upload_key)
-            if _dup:
-                logger.info("lab: duplicate upload collapsed key=%s -> %s",
-                            _upload_key, _dup.get("id"))
-                return jsonify({
-                    "duplicate": True,
-                    "session_id": _dup.get("id"),
-                    "arc_id": _dup.get("arc_id"),
-                    "take_index": _dup.get("take_index"),
-                }), 200
-
         _sid_in = (form.get("guest_session_id") or "").strip()
         if _sid_in:
             _spent = False
@@ -715,6 +729,12 @@ def v2_lab_create_recording():
         # the coach saw one take per arc). Guests keep the fresh arc.
         # `_explicit_arc` → the user chose the project: NO guessing (the
         # deck-hash / topic-normalisation matching is skipped entirely).
+        # `_project_intent == "new"` is the other explicit boundary: this is a
+        # brand-new project, so the freshly minted UUID MUST survive. A topic,
+        # an uploaded deck, and the shared default deck are content only; none
+        # may reconnect this recording to an earlier arc. This is forward-only:
+        # clients that omit project_intent keep the legacy resolver and no
+        # historical rows are touched.
         #
         # ⚠️ 2026-08-15 — THE BRANCH IS CHOSEN ON `presentation_ref`, NOT ON
         # `slides`. It used to read "has slides → it is a deck → match by deck
@@ -742,7 +762,8 @@ def v2_lab_create_recording():
         # go stale on the next word he changes and this bug would return
         # silently. A missing PDF cannot drift.
         if getattr(request, "user_id", None) and arc_id \
-                and _rec_kind != "read" and not _explicit_arc:
+                and _rec_kind != "read" and not _explicit_arc \
+                and _project_intent != "new":
             _slides_for_arc = (session_context or {}).get("slides") or []
             _deck_ref = (session_context or {}).get("presentation_ref")
             if _slides_for_arc and _deck_ref:
