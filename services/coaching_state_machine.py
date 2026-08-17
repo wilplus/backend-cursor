@@ -43,9 +43,9 @@ The frontend reads the structured output and:
     "do you agree with the coach?" reflection input.
   - On step==2: renders ActionBubble ("Yes, accurate" / "Not
     quite") wired to POST /v2/user/snippets/<id>/confidence-review
-    with {"ai_correct": true|false} — the PEER-REVIEW beat
-    (founder-signed 2026-08-04). It validates the AI's pick, not
-    the user's self-image. Trigger renamed to
+    with {"ai_correct": true|false} — the Voice Album routing beat.
+    It validates the AI's pick, not the user's self-image, and is
+    never a training/calibration/quorum vote. Trigger renamed to
     show_confidence_review_buttons; the old
     show_charisma_label_buttons pointed at a deleted route.
   - On step==3..7: renders standard chat bubbles for each
@@ -83,13 +83,14 @@ NEGOTIATION_FLOOR_PRICE = 90
 # the missing positions.
 _MAX_SCRIPT_QUESTIONS = 5
 
-# ── STEP 2: the peer-review beat (founder-signed copy, 2026-08-04) ────────
+# ── STEP 2: the Voice Album routing beat (signed copy) ───────────────────
 #
 # STEP 2 used to ask "would you label your voice here as Charismatic?" and
 # wire its Yes/No to POST /v2/user/snippets/<id>/label. That route died with
 # the stress lane (2026-08-03); the button had been inert since. The founder
-# signed off this replacement: the beat now validates the AI's pick and feeds
-# the peer-review corpus (POST /v2/user/snippets/<id>/confidence-review).
+# signed off this replacement: the beat validates the AI's pick and routes an
+# agreed moment to the Voice Album. It never feeds learning, calibration or
+# quorum (POST /v2/user/snippets/<id>/confidence-review).
 #
 # THESE THREE STRINGS ARE SIGNED USER-FACING COPY (LIVE LOOP). Do not reword
 # them, and do not let the model reword them: the question is marked VERBATIM

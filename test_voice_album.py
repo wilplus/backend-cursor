@@ -3,7 +3,7 @@
 The entry rule, verbatim: "Acoustic data indicates a great moment ->
 User agrees -> Coach agrees = This moment lands in the Voice Album."
 These pins hold the JOIN: all three signals or no entry, blind until
-publish, append-only, idempotent, and never a ranking term.
+publish, routing withdrawal, idempotence, and never a ranking term.
 
 Run: python3 -m unittest test_voice_album
 """
@@ -23,9 +23,9 @@ def _quorum(value):
 
 
 class _Db:
-    def __init__(self, *, ledger=None, suggestions=None, sessions=None,
+    def __init__(self, *, routes=None, suggestions=None, sessions=None,
                  snips=None, conf=None, album=None):
-        self.ledger = ledger or []
+        self.routes = routes or []
         self.suggestions = suggestions or {}
         self.sessions = sessions or []
         self.snips = snips or {}
@@ -34,8 +34,8 @@ class _Db:
         self.inserted = []
         self.deleted = []
 
-    def list_ideal_decisions(self, arc_id):
-        return self.ledger
+    def list_owner_voice_album_routes(self, arc_id):
+        return self.routes
 
     def get_moment_suggestions_by_arc(self, arc_id):
         return self.suggestions
@@ -69,8 +69,8 @@ def _all_three(published=True):
     whenever a note was typed), so it meant "the coach wrote something"
     rather than "the coach judged this strong"."""
     return _Db(
-        ledger=[{"kind": "emphasize", "decision": "approved",
-                 "snippet_id": "sn1", "slide_index": 2}],
+        routes=[{"snippet_id": "sn1", "response": "yes",
+                 "slide_index": 2}],
         suggestions={"sn1": {"kind": "emphasize"}},
         sessions=[{"id": "t1",
                    "results_published_at":
@@ -92,8 +92,7 @@ class EntryRuleTests(unittest.TestCase):
 
     def test_no_user_approval_no_entry(self):
         db = _all_three()
-        db.ledger = [{"kind": "emphasize", "decision": "dismissed",
-                      "snippet_id": "sn1"}]
+        db.routes = [{"snippet_id": "sn1", "response": "no"}]
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
         self.assertEqual(db.inserted, [])
 
@@ -138,7 +137,7 @@ class EntryRuleTests(unittest.TestCase):
         # reflection of current state — un-apply the emphasize and the
         # moment leaves the album, never a graveyard of changed minds.
         db = _all_three()
-        db.ledger = []                       # the user signal withdrew
+        db.routes = []                       # the user signal withdrew
         db.album = [{"snippet_id": "sn1"}]
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
         self.assertEqual(db.inserted, [])
@@ -151,12 +150,11 @@ class EntryRuleTests(unittest.TestCase):
         self.assertEqual([i["snippet_id"] for i in db.inserted], ["sn1"])
         self.assertEqual([d["snippet_id"] for d in db.deleted], ["sn_old"])
 
-    def test_a_phrase_only_approval_cannot_enter(self):
-        # The entry is a MOMENT: a ledger row with no snippet id has
-        # nowhere to land.
+    def test_a_route_without_snippet_cannot_enter(self):
+        # The entry is a MOMENT: a routing row with no snippet id has nowhere
+        # to land.
         db = _all_three()
-        db.ledger = [{"kind": "emphasize", "decision": "approved",
-                      "snippet_id": None}]
+        db.routes = [{"response": "yes", "snippet_id": None}]
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
 
     def test_broken_db_never_raises(self):
@@ -164,8 +162,7 @@ class EntryRuleTests(unittest.TestCase):
             def get_arc_sessions(self, arc_id):
                 raise RuntimeError("db down")
         self.assertEqual(refresh_voice_album(ARC, database=_Boom(
-            ledger=[{"kind": "emphasize", "decision": "approved",
-                     "snippet_id": "sn1"}],
+            routes=[{"response": "yes", "snippet_id": "sn1"}],
             suggestions={"sn1": {"kind": "emphasize"}})), 0)
 
 

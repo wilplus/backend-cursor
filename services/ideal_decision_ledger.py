@@ -69,6 +69,48 @@ def ledger_keys(rows: Any) -> set:
     return out
 
 
+def frozen_approved_replacement(rows: Any, snippet_id: Any,
+                                suggestion: Any) -> Optional[str]:
+    """The exact replacement most recently accepted for this snippet.
+
+    Coach-final columns are mutable. The decision ledger is the immutable
+    acceptance record, so a later coach edit can never rewrite accepted words
+    merely because the user reloaded the document.
+    """
+    sid = str(snippet_id or "")
+    approved = [r for r in (rows or [])
+                if isinstance(r, dict)
+                and r.get("decision") == "approved"
+                and r.get("source") == "user_star"
+                and str(r.get("snippet_id") or "") == sid]
+    approved.sort(key=lambda r: (r.get("updated_at") or "",
+                                 int(r.get("version") or 0)))
+    if approved:
+        return approved[-1].get("replacement_text")
+    sug = suggestion if isinstance(suggestion, dict) else {}
+    return (sug.get("replacement_text_draft")
+            or sug.get("replacement_text"))
+
+
+def _chain_order(rows: list) -> list:
+    """Apply A→B before B→C while retaining the old longest-first tie-break."""
+    pending = list(rows)
+    out = []
+    while pending:
+        generated = {normalize_phrase(r.get("replacement_text"))
+                     for r in pending if r.get("replacement_text")}
+        roots = [r for r in pending
+                 if normalize_phrase(r.get("display_phrase")) not in generated]
+        if not roots:
+            roots = list(pending)
+        roots.sort(key=lambda r: -len(r.get("display_phrase")
+                                      or r.get("target_phrase") or ""))
+        out.extend(roots)
+        root_ids = {id(r) for r in roots}
+        pending = [r for r in pending if id(r) not in root_ids]
+    return out
+
+
 def lane_class(kind: Any, *, source: Any = None, why: Any = None) -> str:
     """The deterministic suggestion CLASS a decision belongs to — §12.3's
     lane-class, the BE half of the deck's Clarity/Flow/Style/Delivery
@@ -121,8 +163,7 @@ def bake_piece(text: str, approved_rows: Any) -> str:
         return text
     rows = [r for r in (approved_rows or [])
             if r.get("decision") == "approved"]
-    rows.sort(key=lambda r: -len(r.get("display_phrase")
-                                 or r.get("target_phrase") or ""))
+    rows = _chain_order(rows)
     for r in rows:
         phrase = (r.get("display_phrase") or "").strip()
         if not phrase:

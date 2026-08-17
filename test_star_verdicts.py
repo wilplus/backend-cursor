@@ -443,10 +443,9 @@ class TestBlindCoachFence(unittest.TestCase):
 
 class TestAC9Fence(unittest.TestCase):
 
-    def test_no_student_surface_reads_star_verdicts(self):
-        """A verdict is coach->machine. If a student payload ever joined this
-        table, the student would be reading the coach's judgment of the advice
-        they were given."""
+    def test_student_surface_only_reads_verdicts_for_supersession(self):
+        """Verdicts may govern suppression and fresh coach proposals, but the
+        raw judgment row must not spread to any other student surface."""
         import subprocess
         result = subprocess.run(
             ["grep", "-rn", "--include=*.py", "star_verdict",
@@ -457,6 +456,7 @@ class TestAC9Fence(unittest.TestCase):
             self.assertIn(path, (
                 "services/star_verdicts.py", "services/db.py",
                 "routes/v2_routes.py", "routes/v2/coach.py",
+                "routes/v2/explore_ideal_text.py",
             ), f"unexpected reader of star_verdicts: {line}")
 
     def test_the_routes_are_coach_gated(self):

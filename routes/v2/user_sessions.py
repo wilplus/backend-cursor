@@ -1578,13 +1578,28 @@ def v2_user_suggestion_feedback(snippet_id):
                         if isinstance(snip.get("metrics"), dict) else None
                     _slide_i = _piece.get("slide_index") \
                         if isinstance(_piece, dict) else None
+                    _decision_text = _document_phrase_for(
+                        _arc, snippet_id,
+                        fallback=(snip.get("transcript")
+                                  or snip.get("transcription_text")))
+                    # A coach revision is a new proposal against the text the
+                    # user currently has. Store its visible before/after pair
+                    # so accepting it never mutates an earlier machine
+                    # decision in place.
+                    if body.get("source") == "coach_revision":
+                        _quote = body.get("quote")
+                        _proposed = body.get("proposed_text")
+                        if (isinstance(_quote, str) and _quote.strip()
+                                and isinstance(_proposed, str)
+                                and _proposed.strip()):
+                            _decision_text = _quote.strip()
+                            _sug_row = {
+                                **(_sug_row or {}),
+                                "replacement_text": _proposed.strip(),
+                            }
                     record_star_decision(
                         db, _arc, suggestion=_sug_row, target=target,
-                        action=action,
-                        target_text=_document_phrase_for(
-                            _arc, snippet_id,
-                            fallback=(snip.get("transcript")
-                                      or snip.get("transcription_text"))),
+                        action=action, target_text=_decision_text,
                         snippet_id=snippet_id, version=_ver,
                         slide_index=_slide_i)
                     # THE VOICE ALBUM (founder 2026-08-14, mirror ruling):
@@ -1909,108 +1924,64 @@ def _document_phrase_for(arc_id, snippet_id, *, fallback=None):
 @v2_bp.route("/user/snippets/<snippet_id>/confidence-review", methods=["POST"])
 @require_auth
 def v2_user_snippet_confidence_review(snippet_id):
-    """The PEER-REVIEW VALIDATION LOOP (founder 2026-08-03) — what the retired
-    acoustic stress lane became.
+    """Backward-compatible Confident Voice routing endpoint.
 
-    A user or peer is shown the AI's confidence choice on one snippet and
-    answers one question: did it get this right?
-
-    Body::
-
-        { "ai_correct": true | false, "model_version": "…" }   // version optional
-
-    ``ai_correct`` must be a REAL boolean. The string "true" is a 400, not a
-    coercion — this is training data, and a coerced value is a fabricated
-    label indistinguishable from a real one afterwards (the same rule the
-    coach confidence-label route holds).
-
-    ``model_version`` records WHICH prediction was validated. Omitted → the
-    currently-shadowed version is stamped server-side, because "the AI got
-    this right" is meaningless without knowing which AI.
-
-    Replace-on-reflag: one row per (snippet_id, reviewer_user_id). A reviewer
-    who changes their mind updates their row; duplicate rows from one rater
-    are junk labels (N3, same as the voice game). Different reviewers keep
-    their own rows so peer agreement stays computable.
-
-    NOT owner-scoped, deliberately — this is PEER review, so the reviewer is
-    frequently not the speaker. ``require_auth`` + a real snippet is the gate;
-    the unique constraint is what stops one account stuffing the corpus.
-
-    Responses::
-
-        200 { "saved": true, "snippet_id": ..., "ai_correct": ... }
-        400 INVALID_INPUT — bad UUID / non-boolean ai_correct / bad
-                            model_version type
-        404 NOT_FOUND     — snippet doesn't exist
-        500 V2_ERROR
-
-    AC-9: capture only. Nothing here is ever read back to a user as a score,
-    verdict or ratio. BLIND COACH: these flags are NON-BLIND (the reviewer saw
-    the AI's call) and are stored in their own table under their own
-    provenance so they can never blend indistinguishably into the coach's
-    blind corpus — see migrations/add_snippet_confidence_reviews.sql.
+    The response is owner-scoped and writes only owner_voice_album_routing.
+    It is not a peer vote, training label, quorum input, calibration row,
+    evaluation, SFT or DPO signal.
     """
     if not _is_valid_uuid(snippet_id):
         return jsonify({
             "code": "INVALID_INPUT",
             "error": "snippet_id must be a valid UUID",
         }), 400
-
-    from services.confidence_reviews import validate_confidence_review
-
-    row, err = validate_confidence_review(request.get_json(silent=True) or {})
+    from services.voice_album_routing import validate_owner_voice_album_route
+    row, err = validate_owner_voice_album_route(
+        request.get_json(silent=True) or {})
     if err:
         return jsonify({"code": "INVALID_INPUT", "error": err}), 400
-
     try:
-        if not db.get_snippet_by_id(snippet_id):
+        snip = db.get_snippet_by_id(snippet_id)
+        sess = db.v2_get_session_by_id(
+            str((snip or {}).get("session_id") or ""))
+        if (not snip or not sess
+                or str(sess.get("user_id")) != str(request.user_id)
+                or not sess.get("arc_id")):
             return jsonify({
                 "code": "NOT_FOUND", "error": "snippet not found",
             }), 404
-
-        model_version = row["model_version"]
-        if not model_version:
-            # Attribute the prediction server-side. Best-effort: an
-            # unattributed row is still a usable verdict, so a registry read
-            # that fails must never cost us the label.
-            try:
-                from services.learning_serve import current_shadow_version
-                model_version = current_shadow_version()
-            except Exception as e:
-                logger.warning(
-                    "confidence_review: shadow version lookup failed snip=%s: "
-                    "%s (storing unattributed)", snippet_id, e,
-                )
-                model_version = None
-
-        saved = db.upsert_snippet_confidence_review(
-            snippet_id=snippet_id,
-            reviewer_user_id=str(request.user_id),
-            ai_correct=row["ai_correct"],
-            model_version=model_version,
+        piece = ((snip.get("metrics") or {}).get("piece")
+                 if isinstance(snip.get("metrics"), dict) else {})
+        slide_index = (piece.get("slide_index")
+                       if isinstance(piece, dict) else None)
+        response = row["response"]
+        saved = db.upsert_owner_voice_album_route(
+            snippet_id=str(snippet_id),
+            owner_user_id=str(request.user_id),
+            arc_id=str(sess["arc_id"]),
+            response=response,
+            slide_index=slide_index,
+            model_version=row.get("model_version"),
         )
         if not saved:
             return jsonify({
                 "code": "V2_ERROR",
-                "error": "could not save the review (run "
-                         "migrations/add_snippet_confidence_reviews.sql)",
+                "error": "could not save Voice Album routing (run "
+                         "migrations/add_owner_voice_album_routing.sql)",
             }), 500
-
+        from services.voice_album import refresh_voice_album
+        refresh_voice_album(sess["arc_id"], database=db)
         return jsonify({
-            "saved": True,
-            "snippet_id": snippet_id,
+            "saved": True, "snippet_id": snippet_id,
             "ai_correct": row["ai_correct"],
         }), 200
     except Exception as e:
-        logger.error(
-            "confidence_review.error snip=%s err=%s", snippet_id, e,
-            exc_info=True,
-        )
+        logger.error("confidence_review.error snip=%s err=%s",
+                     snippet_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({
             "code": "V2_ERROR",
-            "error": "Failed to record the confidence review",
+            "error": "Failed to save Voice Album routing",
         }), 500
 
 
@@ -2104,45 +2075,12 @@ def v2_put_owner_confidence_label(snippet_id):
              methods=["PUT"])
 @require_auth
 def v2_put_confidence_agree(snippet_id):
-    """"Do you agree?" on the Confident Voice card (founder 2026-08-15).
+    """Route the owner's answer on a displayed Confident Voice card.
 
-    THE SAME instrument, the SAME question, the SAME answer space as every
-    other lane — and ONE thing different, which is the whole reason this is a
-    separate route: the surface has already told the speaker what the machine
-    thinks. That makes the rating ANCHORED, and the row says so.
-
-    WHY A ROUTE AND NOT A FLAG. I1's storage half stamps facts about the
-    RATER'S SCREEN server-side, because a client that could describe its own
-    screen could describe it wrongly — the same argument that keeps
-    `machine_value` off the payload. A body field would let a buggy or
-    replayed client write `saw_model_output: false` from the one surface where
-    it is false. The endpoint IS the evidence: everything reaching here came
-    from the card that shows the read, so the stamp holds by construction and
-    not by discipline.
-
-    WHAT IT IS AND IS NOT. It is a self-report, twice over — the speaker
-    rating their own clip (rule 2), having been shown the machine's answer
-    (I1) — so it is excluded from quorum on BOTH counts, by constants that
-    already exist: `game_owner` is absent from PANEL_LANES and from
-    label_quorum.QUORUM_LANES. Nothing here changes that, and nothing here
-    needs to: the value of this answer is that it arrives fast and often, in
-    the place the student already is.
-
-    WHAT IT IS FOR. Rater calibration, and ROUTING. label_quorum rule 3: a
-    lone rating that DISAGREES with the machine marks the most informative
-    unrated clip in the corpus — either a model miss or a rater miss, and one
-    more peer says which. A disagreement here is exactly that signal, arriving
-    from somebody who was there. It sends the clip to real raters sooner; it
-    does not vote.
-
-    TO MAKE IT COUNT toward quorum, `game_owner` would have to enter
-    PANEL_LANES/QUORUM_LANES and the blind requirement would have to be
-    relaxed — a founder re-lock of rule 2 and I1, not a code change. Both are
-    one constant each, deliberately.
-
-    Body: { value: "yes"|"no"|"neutral" XOR unrateable: true, note?,
-            latency_ms? }
-    200 {saved} · 400 · 404 · 500
+    This endpoint is the evidence that the response is anchored. It writes a
+    routing-only row used by the Voice Album reconciliation and nothing else.
+    In particular it does not write state_ratings/confidence_labels, so it
+    cannot enter training, quorum, calibration, evaluation, SFT or DPO.
     """
     if not _is_valid_uuid(snippet_id):
         return jsonify({
@@ -2150,46 +2088,42 @@ def v2_put_confidence_agree(snippet_id):
             "error": "snippet_id must be a valid UUID",
         }), 400
     try:
-        from services.state_ratings import resolve_lane, validate_rating
-        snip = db.get_snippet_by_id(snippet_id)
-        if not snip:
-            return jsonify({
-                "code": "NOT_FOUND", "error": "snippet not found",
-            }), 404
-        sess = db.v2_get_session_by_id(str(snip.get("session_id") or ""))
-        # OWNER-SCOPED, like the blind owner route: this card only ever
-        # appears on the speaker's own document. A 404 rather than a 403 —
-        # no existence oracle.
-        if not sess or str(sess.get("user_id")) != str(request.user_id):
-            return jsonify({
-                "code": "NOT_FOUND", "error": "snippet not found",
-            }), 404
-        body = request.get_json(silent=True) or {}
-        row, err = validate_rating({
-            "state_id": "confidence",
-            "value": body.get("value"),
-            "unrateable": body.get("unrateable", False),
-            "note": body.get("note"),
-            "latency_ms": body.get("latency_ms"),
-        }, saw_model_output=True)
+        from services.voice_album_routing import routing_response_from_rating
+        response, err = routing_response_from_rating(
+            request.get_json(silent=True) or {})
         if err:
             return jsonify({"code": "INVALID_INPUT", "error": err}), 400
-        from services.label_quorum import machine_proposal
-        saved = db.upsert_state_rating(
-            snippet_id=str(snippet_id), row=row,
-            rater_id=str(request.user_id),
-            session_id=str(sess.get("id")),
-            lane=resolve_lane(sess.get("source"), is_coach=False,
-                              is_owner=True),
-            self_report=True,
-            machine_value=machine_proposal(snip))
+        snip = db.get_snippet_by_id(snippet_id)
+        sess = db.v2_get_session_by_id(
+            str((snip or {}).get("session_id") or ""))
+        if (not snip or not sess
+                or str(sess.get("user_id")) != str(request.user_id)
+                or not sess.get("arc_id")):
+            return jsonify({
+                "code": "NOT_FOUND", "error": "snippet not found",
+            }), 404
+        piece = ((snip.get("metrics") or {}).get("piece")
+                 if isinstance(snip.get("metrics"), dict) else {})
+        slide_index = (piece.get("slide_index")
+                       if isinstance(piece, dict) else None)
+        saved = db.upsert_owner_voice_album_route(
+            snippet_id=str(snippet_id),
+            owner_user_id=str(request.user_id),
+            arc_id=str(sess["arc_id"]),
+            response=str(response),
+            slide_index=slide_index,
+        )
         if not saved:
             return jsonify({
                 "code": "V2_ERROR",
                 "error": "could not save the answer (run "
-                         "migrations/add_state_generic_ratings.sql)",
+                         "migrations/add_owner_voice_album_routing.sql)",
             }), 500
-        return jsonify({"saved": True, "snippet_id": snippet_id}), 200
+        from services.voice_album import refresh_voice_album
+        refresh_voice_album(sess["arc_id"], database=db)
+        return jsonify({
+            "saved": True, "snippet_id": snippet_id, "response": response,
+        }), 200
     except Exception as e:
         logger.error("confidence-agree failed snip=%s: %s",
                      snippet_id, e, exc_info=True)

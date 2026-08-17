@@ -158,6 +158,44 @@ def _all_devices() -> tuple:
     return tuple(out)
 
 
+_USER_SUPPRESS_VERDICTS = ("wrong_kind", "should_not_fire")
+
+
+def released_user_verdicts(verdicts: Any, pieces: Any,
+                            sessions: Any) -> dict:
+    """Coach verdicts released for the student surface after publish only."""
+    rows = verdicts if isinstance(verdicts, dict) else {}
+    published = {
+        str(session.get("id")) for session in (sessions or [])
+        if isinstance(session, dict) and session.get("id")
+        and session.get("results_published_at")
+    }
+    snippet_sessions = {
+        str(piece.get("snippet_id")): str(piece.get("take_session_id"))
+        for piece in (pieces or []) if isinstance(piece, dict)
+        and piece.get("snippet_id") and piece.get("take_session_id")
+    }
+    return {
+        str(snippet_id): row for snippet_id, row in rows.items()
+        if snippet_sessions.get(str(snippet_id)) in published
+    }
+
+
+def filter_user_suggestions(suggestions: Any, verdicts: Any) -> dict:
+    """Suppress coach-rejected pending machine feedback on the user surface.
+
+    Already accepted words are protected by the ledger; a coach correction or
+    retraction is emitted separately as a fresh proposal.
+    """
+    rows = suggestions if isinstance(suggestions, dict) else {}
+    judged = verdicts if isinstance(verdicts, dict) else {}
+    return {
+        str(sid): row for sid, row in rows.items()
+        if (judged.get(str(sid)) or {}).get("verdict")
+        not in _USER_SUPPRESS_VERDICTS
+    }
+
+
 # The ONLY snippet fields that may ride the coach review list — playback +
 # context, requested by the FE (2026-07-28). An allowlist on purpose: the
 # snippet row also carries metrics (acoustic_read, voice_confidence,

@@ -14354,6 +14354,68 @@ class DatabaseService:
             logger.warning("get_snippet_confidence_reviews failed: %s", e)
             return []
 
+    # ── Confident Voice → Voice Album routing (owner only) ───────────
+
+    def upsert_owner_voice_album_route(
+        self, *, snippet_id: str, owner_user_id: str, arc_id: str,
+        response: str, slide_index: Optional[int] = None,
+        model_version: Optional[str] = None,
+    ) -> bool:
+        """Persist routing only; never write a label or learning corpus."""
+        if (not snippet_id or not owner_user_id or not arc_id
+                or response not in ("yes", "no", "neutral", "unrateable")):
+            return False
+        payload = {
+            "snippet_id": str(snippet_id),
+            "owner_user_id": str(owner_user_id),
+            "arc_id": str(arc_id),
+            "response": response,
+            "slide_index": (slide_index if isinstance(slide_index, int)
+                            and not isinstance(slide_index, bool) else None),
+            "model_version": model_version,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            (self.client.table("owner_voice_album_routing")
+             .upsert(payload,
+                     on_conflict="snippet_id,owner_user_id").execute())
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            if "owner_voice_album_routing" in err_low and (
+                    "does not exist" in err_low or "pgrst" in err_low
+                    or "42p01" in err_low):
+                logger.warning(
+                    "owner Voice Album routing table missing (run "
+                    "migrations/add_owner_voice_album_routing.sql)")
+                return False
+            logger.warning(
+                "upsert_owner_voice_album_route failed snip=%s: %s",
+                snippet_id, e)
+            return False
+
+    def list_owner_voice_album_routes(self, arc_id: str) -> list:
+        """Current owner routing responses for one arc; [] pre-migration."""
+        if not arc_id:
+            return []
+        try:
+            return (
+                self.client.table("owner_voice_album_routing")
+                .select("snippet_id, owner_user_id, arc_id, slide_index, response, "
+                        "updated_at")
+                .eq("arc_id", str(arc_id))
+                .execute().data
+            ) or []
+        except Exception as e:
+            err_low = str(e).lower()
+            if "owner_voice_album_routing" in err_low and (
+                    "does not exist" in err_low or "pgrst" in err_low
+                    or "42p01" in err_low):
+                return []
+            logger.warning(
+                "list_owner_voice_album_routes failed arc=%s: %s", arc_id, e)
+            return []
+
     def find_training_import_by_key(self, key: str) -> Optional[dict]:
         """The SUCCESSFUL import already created under this idempotency key,
         or None.

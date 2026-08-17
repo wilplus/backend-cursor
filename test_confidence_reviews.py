@@ -1,15 +1,13 @@
-"""The peer-review validation loop (founder 2026-08-03) — the capture that
-replaced the retired acoustic stress lane.
+"""Confident Voice owner response: Voice Album routing only.
 
 1) ValidateConfidenceReviewTests — the pure validator. The load-bearing rule
    is STRICT BOOLEAN: "true" the string is a 400, not a coercion, because a
    coerced value is a fabricated training label and afterwards it is
    indistinguishable from a real one.
-2) ConfidenceReviewRouteTests — POST /v2/user/snippets/<id>/confidence-review:
-   auth, 404 on an unknown snippet, replace-on-reflag, and the server-side
-   model_version attribution when the client omits it.
-3) ReviewCorpusSummaryTests — the class-balance read a trainer would need
-   BEFORE training on this corpus.
+2) ConfidenceReviewRouteTests — the legacy POST remains compatible but writes
+   only the owner-scoped Voice Album routing table.
+3) ReviewCorpusSummaryTests — historical audit rows remain readable and
+   permanently excluded from learning.
 
 Flask/Supabase-dependent → skips locally without deps, runs in CI.
 
@@ -114,42 +112,45 @@ class ConfidenceReviewRouteTests(unittest.TestCase):
         self.app = Flask(__name__)
         self.app.register_blueprint(v2_routes.v2_bp, url_prefix="/v2")
         self.client = self.app.test_client()
-
-        # @require_auth is bound at import time, so the token check is what
-        # gets stubbed — not the decorator (same pattern as test_speaker_sex).
         self.reviewer = _REVIEWER
         self._orig_verify = auth.verify_supabase_token
         auth.verify_supabase_token = lambda token: {"sub": self.reviewer}
         self._auth = auth
-
         self.saved: list[dict] = []
         self.snippet_exists = True
+        self.owner = _REVIEWER
 
         def fake_get_snippet(snippet_id, user_id=None):
-            return {"id": snippet_id, "session_id": "sess"} \
-                if self.snippet_exists else None
+            if not self.snippet_exists:
+                return None
+            return {"id": snippet_id, "session_id": "sess",
+                    "metrics": {"piece": {"slide_index": 3}}}
+
+        def fake_session(session_id):
+            return {"id": session_id, "user_id": self.owner, "arc_id": "arc-1"}
 
         def fake_upsert(**kwargs):
-            # Replace-on-reflag, modelled the way the unique constraint
-            # behaves: one row per (snippet_id, reviewer_user_id).
-            key = (kwargs["snippet_id"], kwargs["reviewer_user_id"])
+            key = (kwargs["snippet_id"], kwargs["owner_user_id"])
             self.saved[:] = [r for r in self.saved
-                             if (r["snippet_id"], r["reviewer_user_id"]) != key]
+                             if (r["snippet_id"], r["owner_user_id"]) != key]
             self.saved.append(dict(kwargs))
             return True
 
         self._p = [
             patch.object(self.v2.db, "get_snippet_by_id",
                          side_effect=fake_get_snippet),
-            patch.object(self.v2.db, "upsert_snippet_confidence_review",
+            patch.object(self.v2.db, "v2_get_session_by_id",
+                         side_effect=fake_session),
+            patch.object(self.v2.db, "upsert_owner_voice_album_route",
                          side_effect=fake_upsert, create=True),
+            patch("services.voice_album.refresh_voice_album", return_value=0),
         ]
-        for p in self._p:
-            p.start()
+        for item in self._p:
+            item.start()
 
     def tearDown(self):
-        for p in self._p:
-            p.stop()
+        for item in self._p:
+            item.stop()
         self._auth.verify_supabase_token = self._orig_verify
 
     def _post(self, body, snippet_id=_SNIPPET):
@@ -159,91 +160,54 @@ class ConfidenceReviewRouteTests(unittest.TestCase):
             headers={"Authorization": "Bearer test"},
         )
 
-    def test_saves_a_flag(self):
-        r = self._post({"ai_correct": True})
-        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
-        data = r.get_json()
-        self.assertTrue(data["saved"])
-        self.assertEqual(data["snippet_id"], _SNIPPET)
-        self.assertIs(data["ai_correct"], True)
+    def test_saves_owner_scoped_voice_album_routing(self):
+        response = self._post({"ai_correct": True, "model_version": "v9"})
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(self.saved, [{
+            "snippet_id": _SNIPPET,
+            "owner_user_id": _REVIEWER,
+            "arc_id": "arc-1",
+            "response": "yes",
+            "slide_index": 3,
+            "model_version": "v9",
+        }])
+
+    def test_changing_answer_replaces_the_routing_state(self):
+        self._post({"ai_correct": True})
+        self._post({"ai_correct": False})
         self.assertEqual(len(self.saved), 1)
-        self.assertEqual(self.saved[0]["reviewer_user_id"], _REVIEWER)
+        self.assertEqual(self.saved[0]["response"], "no")
 
     def test_string_true_is_a_400_at_the_route(self):
-        r = self._post({"ai_correct": "true"})
-        self.assertEqual(r.status_code, 400)
-        self.assertEqual(r.get_json()["code"], "INVALID_INPUT")
+        response = self._post({"ai_correct": "true"})
+        self.assertEqual(response.status_code, 400)
         self.assertEqual(self.saved, [])
 
     def test_bad_uuid_is_a_400(self):
-        r = self._post({"ai_correct": True}, snippet_id="not-a-uuid")
-        self.assertEqual(r.status_code, 400)
-        self.assertEqual(self.saved, [])
+        self.assertEqual(self._post({"ai_correct": True}, "bad").status_code, 400)
 
     def test_unknown_snippet_is_a_404(self):
         self.snippet_exists = False
-        r = self._post({"ai_correct": True})
-        self.assertEqual(r.status_code, 404)
+        self.assertEqual(self._post({"ai_correct": True}).status_code, 404)
         self.assertEqual(self.saved, [])
 
-    def test_reflagging_replaces_rather_than_stacks(self):
-        """N3: duplicate rows from one rater are junk labels. A reviewer who
-        changes their mind should leave ONE row carrying their current view."""
-        self._post({"ai_correct": True})
-        self._post({"ai_correct": False})
-        self.assertEqual(len(self.saved), 1)
-        self.assertIs(self.saved[0]["ai_correct"], False)
+    def test_foreign_owner_is_a_404(self):
+        self.owner = "12121212-3434-5656-7878-909090909090"
+        self.assertEqual(self._post({"ai_correct": True}).status_code, 404)
+        self.assertEqual(self.saved, [])
 
-    def test_a_second_reviewer_gets_their_own_row(self):
-        """Multi-rater agreement has to stay computable — replace-on-reflag is
-        per reviewer, not per snippet."""
-        self._post({"ai_correct": True})
-        other = "12121212-3434-5656-7878-909090909090"
-        self.reviewer = other
-        self._post({"ai_correct": False})
-        self.assertEqual(len(self.saved), 2)
-        self.assertEqual({r["reviewer_user_id"] for r in self.saved},
-                         {_REVIEWER, other})
-
-    def test_absent_model_version_is_attributed_server_side(self):
-        """"The AI got this right" is meaningless without knowing which AI."""
-        from services import learning_serve
-        with patch.object(learning_serve, "current_shadow_version",
-                          return_value="direction-v1-20260801T000000Z"):
-            self._post({"ai_correct": True})
-        self.assertEqual(self.saved[0]["model_version"],
-                         "direction-v1-20260801T000000Z")
-
-    def test_client_supplied_model_version_wins(self):
-        from services import learning_serve
-        with patch.object(learning_serve, "current_shadow_version",
-                          return_value="server-side-version"):
-            self._post({"ai_correct": True, "model_version": "client-v9"})
-        self.assertEqual(self.saved[0]["model_version"], "client-v9")
-
-    def test_version_lookup_failure_still_saves_the_label(self):
-        """An unattributed verdict is still a usable verdict — a registry read
-        that blows up must never cost us the human's answer."""
-        from services import learning_serve
-        with patch.object(learning_serve, "current_shadow_version",
-                          side_effect=RuntimeError("registry down")):
-            r = self._post({"ai_correct": False})
-        self.assertEqual(r.status_code, 200)
-        self.assertIsNone(self.saved[0]["model_version"])
-
-    def test_missing_table_surfaces_as_a_500_naming_the_migration(self):
-        with patch.object(self.v2.db, "upsert_snippet_confidence_review",
+    def test_missing_table_names_the_routing_migration(self):
+        with patch.object(self.v2.db, "upsert_owner_voice_album_route",
                           return_value=False, create=True):
-            r = self._post({"ai_correct": True})
-        self.assertEqual(r.status_code, 500)
-        self.assertIn("add_snippet_confidence_reviews.sql",
-                      r.get_json()["error"])
+            response = self._post({"ai_correct": True})
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("add_owner_voice_album_routing.sql",
+                      response.get_json()["error"])
 
-    def test_response_carries_no_score_or_verdict(self):
-        """AC-9: capture only. The response says it saved and echoes the
-        human's own answer — never a machine read of any kind."""
+    def test_response_carries_no_machine_score_or_training_label(self):
         data = self._post({"ai_correct": True}).get_json()
         self.assertEqual(set(data), {"saved", "snippet_id", "ai_correct"})
+        self.assertNotIn("value", data)
 
 
 # ── 3) corpus summary ──────────────────────────────────────────────────────

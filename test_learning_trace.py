@@ -6,8 +6,8 @@
    "someone quietly brings the second lane back".
 2) LearningTraceServiceTests — GET /v2/admin/learning/trace aggregation:
    the two surviving lanes present, lane_acoustic gone, per-section failures
-   degrade to null + errors[], and the peer_review provenance bucket shows up
-   with its retrain-trigger decision attached.
+   degrade to null + errors[], historical non-blind rows stay audit-only,
+   and owner Voice Album routing is documented as outside learning.
 
 The trainer feature-parity tests that used to live here went with the
 trainer: the 16-vs-17 feature vector skew they guarded cannot recur, because
@@ -178,9 +178,9 @@ class StressLaneIsGoneTests(unittest.TestCase):
         v2_src = _v2_route_layer_source()
         self.assertNotIn('"/user/snippets/<snippet_id>/label"', v2_src)
 
-    def test_the_replacement_capture_exists(self):
-        """The lane is not merely deleted — it is pivoted. The peer-review
-        capture is the thing it became."""
+    def test_the_voice_album_routing_endpoint_exists(self):
+        """The live owner response still has its compatibility endpoint, but
+        its destination is routing rather than a learning corpus."""
         v2_src = _v2_route_layer_source()
         self.assertIn('"/user/snippets/<snippet_id>/confidence-review"', v2_src)
 
@@ -349,9 +349,8 @@ class LearningTraceServiceTests(unittest.TestCase):
         self.assertEqual(len(ann["export_runs"]), 1)
         self.assertIsNone(ann["copilot_model"])  # key absent in fake store
 
-    def test_peer_review_corpus_is_reported_with_its_own_provenance(self):
-        """Separate provenance, always: peer flags are NON-BLIND and must be
-        countable apart from the blind coach corpus."""
+    def test_historical_review_rows_are_marked_audit_only(self):
+        """Historical non-blind rows remain inspectable but retired."""
         shadow = learning_trace.build_learning_trace()["lane_shadow"]
         peer = shadow["peer_review"]
         self.assertEqual(peer["total"], 3)
@@ -362,16 +361,14 @@ class LearningTraceServiceTests(unittest.TestCase):
         self.assertFalse(peer["blind"])
         self.assertEqual(peer["by_model_version"],
                          {"direction-v1-a": 2, "(unattributed)": 1})
+        self.assertTrue(peer["retired"])
+        self.assertIn("audit-only", peer["decision"])
 
-    def test_peer_review_shows_in_the_selection_source_mix(self):
-        """The trace breaks the corpus down by_selection_source so the MIX of
-        blind coach truth vs non-blind peer flags stays visible."""
+    def test_non_blind_owner_rows_never_enter_training_source_mix(self):
         labels = learning_trace.build_learning_trace(
         )["lane_shadow"]["training_labels"]
         self.assertEqual(labels["by_selection_source"],
-                         {"heuristic": 1, "random": 1, "peer_review": 3})
-        # `total` still means BLIND coach labels only — the peer rows live in
-        # their own table and must never inflate the coach-truth count.
+                         {"heuristic": 1, "random": 1})
         self.assertEqual(labels["total"], 2)
 
     def test_retrain_trigger_excludes_peer_review_by_decision(self):
@@ -380,7 +377,8 @@ class LearningTraceServiceTests(unittest.TestCase):
         shadow = learning_trace.build_learning_trace()["lane_shadow"]
         self.assertFalse(shadow["auto_retrain"]["counts_peer_review"])
         self.assertFalse(shadow["peer_review"]["counts_toward_retrain_trigger"])
-        self.assertIn("do NOT count", shadow["peer_review"]["decision"])
+        self.assertIn("excluded from training",
+                      shadow["peer_review"]["decision"])
 
     def test_missing_peer_table_does_not_break_the_coach_counts(self):
         """Pre-migration, the peer bucket is simply absent — a new table may
@@ -413,12 +411,12 @@ class LearningTraceServiceTests(unittest.TestCase):
         self.assertEqual(retired["acoustic_baseline"]["retired_at"],
                          "2026-08-03")
 
-    def test_known_gaps_surface_the_peer_weighting_question(self):
-        """The charisma-uses-stress-model gap is closed by deletion; the open
-        question is now how a non-blind peer label should weigh."""
+    def test_known_gaps_record_owner_routing_as_closed(self):
+        """Owner agreement has one settled role: Voice Album routing."""
         payload = learning_trace.build_learning_trace()
         gap_ids = [g["id"] for g in payload["known_gaps"]]
-        self.assertIn("peer_review_weighting_undecided", gap_ids)
+        self.assertIn("owner_voice_album_routing_isolated", gap_ids)
+        self.assertNotIn("peer_review_weighting_undecided", gap_ids)
         self.assertNotIn("charisma_uses_stress_model", gap_ids)
 
     def test_trace_route_is_admin_only(self):

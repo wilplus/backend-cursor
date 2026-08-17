@@ -426,6 +426,10 @@ def v2_explore_get_ideal_text(arc_id):
             _applied = _moment_applied_map(
                 [m.get("take_session_id") for m in _pre])
             if not _user_edited and _applied:
+                from services.ideal_decision_ledger import (
+                    frozen_approved_replacement, load_ledger,
+                )
+                _decision_rows = load_ledger(db, arc_id)
                 _fold_info = []
                 for m in _pre:
                     _mid = str(m.get("snippet_id"))
@@ -437,7 +441,8 @@ def v2_explore_get_ideal_text(arc_id):
                             "applied": True,
                             "suggestion": {
                                 "kind": _s.get("kind"),
-                                "replacement": _s.get("replacement_text"),
+                                "replacement": frozen_approved_replacement(
+                                    _decision_rows, _mid, _s),
                             },
                         })
                 _text = _fold_applied_moments(_text, _fold_info)
@@ -482,6 +487,18 @@ def v2_explore_get_ideal_text(arc_id):
             _p_rows = db.get_ideal_text_parts(
                 arc_id, str(request.user_id), with_lock=True)
             _composed = compose_locked(_text, _p_rows)
+            if _composed is not None:
+                from services.ideal_text_quality_gate import (
+                    validate_composed_text,
+                )
+                _quality = validate_composed_text(
+                    _composed.get("text"), _p_rows)
+                if not _quality["ok"]:
+                    from services.ideal_text_parts import pinned_parts
+                    logger.warning(
+                        "compose quality gate rejected arc=%s reasons=%s",
+                        arc_id, _quality["reasons"])
+                    _composed = pinned_parts(_p_rows)
             if _composed is not None:
                 _text = _composed["text"]
                 # The refreshed paragraphs carry SERVER-minted ids; they must
@@ -1556,6 +1573,19 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         _pieces = relocate_pieces(served_text, doc.get("pieces") or [],
                                   paragraph_fallback=True)
         _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
+        from services.ideal_decision_ledger import load_ledger
+        _ledger = load_ledger(db, arc_id)
+        _verdicts = db.get_star_verdicts_by_snippet_ids(
+            list(_sugs.keys())) if _sugs else {}
+        from services.star_verdicts import (
+            filter_user_suggestions, released_user_verdicts,
+        )
+        # BLIND COACH / publish boundary: a saved coach verdict is still
+        # private review state. It can suppress or supersede user feedback
+        # only after that snippet's take has been published.
+        _released_verdicts = released_user_verdicts(
+            _verdicts, _pieces, db.get_arc_sessions(arc_id) or [])
+        _user_sugs = filter_user_suggestions(_sugs, _released_verdicts)
         _applied = []
         try:
             # The master document spans takes: feed EVERY distinct origin
@@ -1582,7 +1612,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             from services.tracked_changes import (
                 key_phrases_from_say_it_stronger,
             )
-            _emph_ids = [k for k, v in (_sugs or {}).items()
+            _emph_ids = [k for k, v in (_user_sugs or {}).items()
                          if isinstance(v, dict)
                          and v.get("kind") == "emphasize"]
             if _emph_ids:
@@ -1595,8 +1625,11 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             logger.warning("emphasis key-phrases failed arc=%s: %s",
                            arc_id, _kp_err)
         changes = build_tracked_changes(
-            served_text, _pieces, _sugs, applied=_applied,
+            served_text, _pieces, _user_sugs, applied=_applied,
             key_phrases_by_snippet=_kp_by_snip)
+        from services.tracked_changes import build_coach_revision_changes
+        changes.extend(build_coach_revision_changes(
+            served_text, _pieces, _sugs, _ledger, _released_verdicts))
 
         # ── HEAR IT (founder 2026-08-15) ──────────────────────────────────
         # "in the justification of the positive feedback give them the

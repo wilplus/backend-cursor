@@ -7,8 +7,8 @@ snippet:
 
   * ACOUSTIC — the star lane generated an EMPHASIZE for the snippet
     (a `moment_suggestions` row; the machine's confident read);
-  * USER     — the student APPLIED it (an `ideal_decision_ledger` row,
-    kind 'emphasize', decision 'approved', snippet-keyed);
+  * USER     — the owner answered yes on the displayed Confident Voice card
+    (an owner_voice_album_routing row, structurally outside learning);
   * COACH    — the snippet reached CONFIDENCE QUORUM = YES (SPEC §17
     `conf-q-v1`, settled through services/label_quorum) AND the session
     is PUBLISHED. Blind until publish: an entry may never reveal a
@@ -27,7 +27,7 @@ the album fills quietly and correctly.
 
 A MIRROR, NOT A GRAVEYARD (founder ruling 2026-08-14): the album is "a
 pure reflection of the current state" — when a signal withdraws (the
-user reverts their approval, most commonly), the entry is REMOVED, "not
+owner changes their answer, most commonly), the entry is REMOVED, "not
 an append-only graveyard of changed minds". `refresh_voice_album` is a
 full reconciliation: it inserts newly aligned moments AND removes
 entries that no longer align. Still-aligned entries are untouched (the
@@ -50,17 +50,18 @@ logger = logging.getLogger(__name__)
 # rule claimed. It now means what it says.
 
 
-def _approved_emphasizes(database, arc_id: Any) -> dict:
-    """{snippet_id: ledger row} for the USER signal — approved emphasizes
-    that know their snippet. A row without a snippet id cannot enter the
-    album (the entry is a moment, not a phrase)."""
-    from services.ideal_decision_ledger import load_ledger
+def _owner_agreements(database, arc_id: Any) -> dict:
+    """{snippet_id: routing row} for the Voice Album's USER signal.
+
+    The Confident Voice card is an anchored response, so it lives in the
+    routing-only table and never in confidence_labels/training corpora.
+    Only an explicit yes satisfies the album entry rule.
+    """
     out: dict = {}
-    for r in load_ledger(database, arc_id):
-        if r.get("kind") == "emphasize" \
-                and r.get("decision") == "approved" \
-                and r.get("snippet_id"):
-            out[str(r.get("snippet_id"))] = r
+    for row in database.list_owner_voice_album_routes(str(arc_id)) or []:
+        if (isinstance(row, dict) and row.get("response") == "yes"
+                and row.get("snippet_id")):
+            out[str(row["snippet_id"])] = row
     return out
 
 
@@ -76,7 +77,7 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
         if database is None:
             from services.db import db as database
 
-        user_ok = _approved_emphasizes(database, arc_id)
+        user_ok = _owner_agreements(database, arc_id)
 
         # ACOUSTIC — the machine's emphasize stars for this arc.
         acoustic_ok = {

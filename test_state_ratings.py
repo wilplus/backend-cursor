@@ -283,9 +283,8 @@ if __name__ == "__main__":
 class AnchoredSelfCheckTests(unittest.TestCase):
     """"Do you agree?" on the Confident Voice card (founder 2026-08-15).
 
-    The card shows the machine's read and THEN asks. That rating is anchored,
-    and the corpus has to say so — an anchored label is indistinguishable
-    from a blind one once stored, which is why I1 exists."""
+    The card shows the machine's read and THEN asks. Its answer is routing to
+    the Voice Album only; it must never enter the rating corpus."""
 
     def test_blind_is_the_DEFAULT_not_a_choice(self):
         # A caller that forgets gets the old, stricter behaviour. The only
@@ -319,12 +318,16 @@ class AnchoredSelfCheckTests(unittest.TestCase):
         self.assertNotIn(lane, PANEL_LANES)
         self.assertNotIn(lane, QUORUM_LANES)
 
-    def test_the_route_stamps_it_rather_than_trusting_the_client(self):
-        import inspect
+    def test_the_route_is_routing_only_not_a_rating_writer(self):
+        from pathlib import Path
 
-        from routes.v2 import user_sessions as us
-        src = inspect.getsource(us.v2_put_confidence_agree)
-        self.assertIn("saw_model_output=True", src)
-        self.assertIn("self_report=True", src)
-        # The machine's proposal is read from storage, never from the body.
-        self.assertIn("machine_proposal(snip)", src)
+        source = Path("routes/v2/user_sessions.py").read_text()
+        start = source.index("def v2_put_confidence_agree")
+        end = source.index("\n\n@v2_bp.route", start)
+        src = source[start:end]
+        self.assertIn("upsert_owner_voice_album_route", src)
+        self.assertIn("refresh_voice_album", src)
+        self.assertNotIn("upsert_state_rating", src)
+        self.assertNotIn("saw_model_output=True", src)
+        self.assertNotIn("self_report=True", src)
+        self.assertNotIn("machine_proposal", src)

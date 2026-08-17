@@ -62,6 +62,34 @@ def _parse_lab_vocabulary(raw):
     return [t.strip() for t in s.split(",") if t.strip()]
 
 
+def _normalized_project_name(value):
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.strip().lower().split())
+
+
+def _duplicate_project_arc(database, user_id, topic, requested_arc=None):
+    """Return an existing different arc using this owner's project name.
+
+    Project identity is the UUID; the normalized topic is a display-name
+    uniqueness constraint only. A continuation carrying that UUID is allowed.
+    """
+    norm = _normalized_project_name(topic)
+    if not user_id or not norm:
+        return None
+    requested = str(requested_arc or "")
+    for session in (database.v2_list_user_lab_sessions(str(user_id)) or []):
+        ctx = (session.get("intake_context")
+               if isinstance(session.get("intake_context"), dict) else {})
+        arc_id = str(session.get("arc_id") or "")
+        if not arc_id or _normalized_project_name(ctx.get("topic")) != norm:
+            continue
+        if requested and arc_id == requested:
+            continue
+        return arc_id
+    return None
+
+
 @v2_bp.route("/lab/presentation/extract", methods=["POST"])
 @heavy_limit
 @optional_auth
@@ -430,6 +458,26 @@ def v2_lab_create_recording():
             }, require_topic=True)
         except IntakeContextError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 422
+
+        # Project names are unique per owner; project identity is the UUID.
+        # A continuation may reuse its own name only when it carries that UUID.
+        # Reject before storage/analysis so two same-named projects can never be
+        # silently glued together by the old topic-matching heuristic.
+        _uid = getattr(request, "user_id", None)
+        _requested_arc = _explicit_arc or (form.get("arc_id") or "").strip()
+        try:
+            _collision = _duplicate_project_arc(
+                db, _uid, session_context.get("topic"), _requested_arc)
+        except Exception as _dup_err:
+            logger.warning("lab: project-name uniqueness check failed: %s",
+                           _dup_err)
+            _collision = None
+        if _collision:
+            return jsonify({
+                "code": "DUPLICATE_PROJECT_NAME",
+                "error": ("A project with this name already exists. Choose "
+                          "that project or use a unique name."),
+            }), 409
 
         # Whisper-prime fallback: the FE dropped the keywords input, so
         # domain_vocabulary now arrives empty. Auto-seed it from the user's

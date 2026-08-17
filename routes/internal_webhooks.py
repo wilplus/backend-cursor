@@ -10,8 +10,9 @@ RETIRED (founder 2026-08-03, stress-lane deletion): POST /v2/internal/stress-
 model/train. It ran a `subprocess.run` train pipeline INSIDE the request
 handler (30-minute timeout on a web dyno), defaulted `auto_promote` to true,
 and promoted `runtime_config.stress_baseline_model_path`. The whole second
-lane is gone and there is NO replacement trainer — the peer-review validation
-loop (POST /v2/user/snippets/<id>/confidence-review) replaces it. Do not
+lane is gone and there is NO replacement trainer. The live owner answer at
+POST /v2/user/snippets/<id>/confidence-review is Voice Album routing only and
+must never train, calibrate, vote in quorum, evaluate or feed DPO. Do not
 reintroduce a trainer in a request handler; nothing may promote a model
 artifact without a quality gate AND a human decision.
 """

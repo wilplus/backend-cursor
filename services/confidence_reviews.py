@@ -1,21 +1,14 @@
-"""Peer-review validation of the AI's confidence call (founder 2026-08-03).
+"""Historical confidence-review rows retained for audit only.
 
-What the retired acoustic stress lane became. A user or peer is shown the
-AI's confidence choice on one snippet and answers one question: did it get
-this right? ``ai_correct`` true/false. Nothing else.
+The live owner answer moved to ``owner_voice_album_routing``. These old rows
+must never train, calibrate, vote in quorum, evaluate, or feed SFT/DPO.
 
-STRICT BOOLEAN, and it is worth being explicit about why the string "true" is
-a 400 rather than a coercion: this is TRAINING DATA. A coerced value is a
-fabricated label — it records a human verdict that no human gave, and it is
-indistinguishable from a real one afterwards. The same rule the coach
-confidence-label route holds (services/confidence_labels.py). A caller that
-sends the wrong type has a bug; a corpus that swallowed it has a lie in it.
+STRICT BOOLEAN remains useful for interpreting the historical audit rows:
+a coerced value would claim a human answer that no human gave.
 
-PROVENANCE. These labels are NON-BLIND — the reviewer saw the AI's choice
-before answering — unlike the coach labels, which stay blind (N1/N2). They
-are captured under their own ``SELECTION_SOURCE`` so the two can never be
-mixed indistinguishably downstream: validation of a prediction correlates
-with the prediction, and an unlabelled blend invites a confirmation loop.
+PROVENANCE. These rows are NON-BLIND because the owner saw the AI's choice.
+They remain separate solely so historical audits can identify and exclude
+them from every learning corpus.
 
 AC-9. Capture only. Nothing in this module is ever serialized back to a user
 as a score, verdict or ratio.
@@ -32,14 +25,7 @@ logger = logging.getLogger(__name__)
 # stays visible on /admin/learning (by_selection_source).
 SELECTION_SOURCE = "peer_review"
 
-# Whether peer_review rows count toward the shadow lane's auto-retrain trigger
-# (>=50 total corpus / >=25 new). DECISION, not a default (BE 2026-08-03):
-# NO. The trigger governs the BLIND coach-truth corpus. Peer flags are
-# non-blind validations of the model's own predictions, so counting them would
-# let prediction-correlated labels set the retrain schedule for the very model
-# they grade — the confirmation loop this whole split exists to prevent. It is
-# also the reversible direction: turning this on later is a one-line change,
-# whereas a corpus already retrained on a bad blend cannot be un-trained.
+# Permanent fence: historical non-blind rows never count toward retraining.
 COUNTS_TOWARD_RETRAIN_TRIGGER = False
 
 _MAX_MODEL_VERSION_LEN = 200
