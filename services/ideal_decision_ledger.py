@@ -103,8 +103,15 @@ def _chain_order(rows: list) -> list:
                  if normalize_phrase(r.get("display_phrase")) not in generated]
         if not roots:
             roots = list(pending)
-        roots.sort(key=lambda r: -len(r.get("display_phrase")
-                                      or r.get("target_phrase") or ""))
+        # A rewrite that overlaps an accepted flagship supersedes that
+        # flagship. For an exact same-phrase collision the replacement must
+        # run before emphasis; otherwise emphasis wraps the old phrase first
+        # and the later replacement leaves the new words orange, silently
+        # preserving an anchor the user explicitly replaced.
+        roots.sort(key=lambda r: (
+            -len(r.get("display_phrase") or r.get("target_phrase") or ""),
+            1 if r.get("kind") == "emphasize" else 0,
+        ))
         out.extend(roots)
         root_ids = {id(r) for r in roots}
         pending = [r for r in pending if id(r) not in root_ids]
@@ -245,7 +252,7 @@ def record_star_decision(database, arc_id: Any, *, suggestion: Any,
         # and history; these two are what the generation gate blocks on.
         _si = slide_index if isinstance(slide_index, int) \
             and not isinstance(slide_index, bool) else None
-        return bool(database.upsert_ideal_decision(
+        saved = bool(database.upsert_ideal_decision(
             arc_id=str(arc_id), kind=kind, target_phrase=norm,
             display_phrase=phrase_raw,
             replacement_text=(sug.get("replacement_text")
@@ -256,6 +263,29 @@ def record_star_decision(database, arc_id: Any, *, suggestion: Any,
             slide_index=_si,
             lane_class=lane_class(kind, source=sug.get("trigger"),
                                   why=sug.get("why"))))
+        if saved and action == "applied" and kind in ("replace", "polish"):
+            # The accepted rewrite owns this word range now. Remove any
+            # overlapping accepted flagship decision rather than merely
+            # letting it fail to match this one assembly; otherwise a later
+            # take that repeats the old wording resurrects an orange anchor
+            # the user already superseded.
+            try:
+                for row in database.list_ideal_decisions(str(arc_id)) or []:
+                    if (not isinstance(row, dict)
+                            or row.get("kind") != "emphasize"
+                            or row.get("decision") != "approved"):
+                        continue
+                    accepted = normalize_phrase(
+                        row.get("display_phrase")
+                        or row.get("target_phrase"))
+                    if accepted and (accepted in norm or norm in accepted):
+                        database.delete_ideal_decision(
+                            str(arc_id), "emphasize", accepted)
+            except Exception as e:
+                logger.warning(
+                    "ideal_ledger: overlapping flagship cleanup failed "
+                    "arc=%s: %s", arc_id, e)
+        return saved
     except Exception as e:
         logger.warning("ideal_ledger: record failed arc=%s: %s", arc_id, e)
         return False

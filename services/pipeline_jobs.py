@@ -167,6 +167,28 @@ def enqueue_session_recording_job(
     return row
 
 
+def retry_failed_session_job(session_id: str, user_id: str = "") -> Optional[dict]:
+    """Requeue the stored recording; never asks the user to record again."""
+    if not session_id or not job_queue.queue_configured():
+        return None
+    job = db.get_latest_processing_job_by_session(str(session_id))
+    if not job or str(job.get("user_id") or "") != str(user_id):
+        return None
+    status = str(job.get("status") or "")
+    if status in ("pending", "processing"):
+        return job
+    if status != "failed":
+        return None
+    job_id = str(job.get("id") or "")
+    if not job_id or not db.reset_processing_job_for_manual_retry(job_id):
+        return None
+    if not job_queue.enqueue(TASK_PATH, job_id):
+        db.finish_processing_job(job_id, "failed", error="enqueue failed")
+        return None
+    db.set_session_analysis_state(str(session_id), "processing")
+    return db.get_processing_job(job_id) or {**job, "status": "pending"}
+
+
 # ── the worker task ──────────────────────────────────────────────────────
 
 class _Heartbeat:
@@ -268,7 +290,7 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
         _cleanup_before_rerun(payload)
 
     db.update_processing_job(job_id, {
-        "stage": "fetch_audio", "percent": 5,
+        "stage": "processing_recording", "percent": 5,
         "message": "Loading your recording…",
     })
     # Provider agreement, checked BEFORE the download so the failure names

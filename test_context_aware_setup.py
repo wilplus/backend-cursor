@@ -146,11 +146,11 @@ class ExplicitSelectionTests(unittest.TestCase):
         m_deck.assert_not_called()
         m_topic.assert_not_called()
 
-    def test_two_future_default_projects_get_two_distinct_uuids(self):
+    def test_two_same_named_future_projects_get_two_distinct_uuids(self):
         captured = []
-        for topic in ("future project one", "future project two"):
+        for _ in range(2):
             _, status, m_deck, m_topic = self._post(
-                {"project_intent": "new", "topic": topic,
+                {"project_intent": "new", "topic": "Quarterly update",
                  "slides": '[{"title":"the same shared default"}]'},
                 captured_arcs=captured)
             self.assertEqual(status, 500)
@@ -159,7 +159,7 @@ class ExplicitSelectionTests(unittest.TestCase):
         self.assertEqual(len(captured), 2)
         self.assertNotEqual(captured[0], captured[1])
 
-    def test_new_project_retry_collapses_before_name_uniqueness(self):
+    def test_new_project_retry_collapses_by_capture_key(self):
         duplicate = {"id": T1, "arc_id": ARC, "take_index": 1}
         body, status, m_deck, m_topic = self._post(
             {"project_intent": "new", "topic": "already accepted",

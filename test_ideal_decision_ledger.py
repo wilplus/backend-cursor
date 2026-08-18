@@ -112,6 +112,15 @@ class BakePieceTests(unittest.TestCase):
         self.assertIn("LONG", out)
         self.assertNotIn("SHORT", out)
 
+    def test_rewrite_supersedes_same_phrase_flagship_without_orange(self):
+        rows = [
+            _row(kind="emphasize", phrase="the old words", repl=None),
+            _row(kind="replace", phrase="the old words", repl="clearer words"),
+        ]
+        out = bake_piece("say the old words now", rows)
+        self.assertEqual(out, "say clearer words now")
+        self.assertNotIn("{{orange:", out)
+
     def test_noop_replacement_skipped(self):
         text = "the old words stay"
         self.assertEqual(
@@ -134,8 +143,29 @@ class _FakeDb:
         self.deletes.append((arc_id, kind, phrase))
         return True
 
+    def list_ideal_decisions(self, arc_id):
+        return []
+
 
 class RecordStarDecisionTests(unittest.TestCase):
+    def test_applied_rewrite_removes_overlapping_accepted_flagship(self):
+        db = _FakeDb()
+        db.list_ideal_decisions = lambda arc_id: [{
+            "kind": "emphasize",
+            "decision": "approved",
+            "target_phrase": "old words",
+            "display_phrase": "old words",
+        }]
+        self.assertTrue(record_star_decision(
+            db, "arc-1",
+            suggestion={"kind": "replace", "replacement_text": "clearer"},
+            target="document_replace", action="applied",
+            target_text="the old words today",
+        ))
+        self.assertIn(
+            ("arc-1", "emphasize", "old words"), db.deletes,
+        )
+
     def test_applied_replace_with_polish_trigger_maps_to_polish(self):
         db = _FakeDb()
         ok = record_star_decision(

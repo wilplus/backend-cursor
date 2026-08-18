@@ -1672,9 +1672,11 @@ def v2_user_suggestion_feedback(snippet_id):
                     # next assembly).
                     if action == "dismissed":
                         db.delete_moment_suggestion(str(snippet_id))
-                    if action == "applied":
+                    if action in ("applied", "reverted"):
                         # Living Transcript: an approved change must
-                        # disappear from the document NOW, not next take.
+                        # appear in the document NOW, and an Undo must restore
+                        # the original NOW rather than waiting for another
+                        # take to trigger assembly.
                         _reassemble_after_decision(_arc)
             except Exception as _led_err:
                 logger.warning(
@@ -1971,6 +1973,15 @@ def v2_user_snippet_confidence_review(snippet_id):
             }), 500
         from services.voice_album import refresh_voice_album
         refresh_voice_album(sess["arc_id"], database=db)
+        from services.arc_notifications import fire_voice_album_ready
+        fire_voice_album_ready(
+            db, request.user_id, sess["arc_id"])
+        from services.confidence_review_policy import (
+            reconcile_confidence_review,
+        )
+        reconcile_confidence_review(
+            db, snippet_id=snippet_id, session=sess,
+            owner_user_id=request.user_id)
         return jsonify({
             "saved": True, "snippet_id": snippet_id,
             "ai_correct": row["ai_correct"],
@@ -2121,6 +2132,15 @@ def v2_put_confidence_agree(snippet_id):
             }), 500
         from services.voice_album import refresh_voice_album
         refresh_voice_album(sess["arc_id"], database=db)
+        from services.arc_notifications import fire_voice_album_ready
+        fire_voice_album_ready(
+            db, request.user_id, sess["arc_id"])
+        from services.confidence_review_policy import (
+            reconcile_confidence_review,
+        )
+        reconcile_confidence_review(
+            db, snippet_id=snippet_id, session=sess,
+            owner_user_id=request.user_id)
         return jsonify({
             "saved": True, "snippet_id": snippet_id, "response": response,
         }), 200

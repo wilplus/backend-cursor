@@ -1279,9 +1279,11 @@ class ServeChangesTests(unittest.TestCase):
     def _block(self, *, flag, sugs=None, snips=None):
         _snips = snips if snips is not None else [
             {"id": S1, "start_offset_ms": 0,
-             "transcript": "We started small."},
+             "transcript": "We started small.",
+             "metrics": {"piece": {"slide_index": 0}}},
             {"id": S2, "start_offset_ms": 10,
-             "transcript": "And then we shipped it fast."}]
+             "transcript": "And then we shipped it fast.",
+             "metrics": {"piece": {"slide_index": 0}}}]
         with patch.dict("os.environ",
                         {"LIVING_TRANSCRIPT_ENABLED": "1" if flag else "0"}), \
              patch.object(v2.db, "get_arc_sessions",

@@ -45,6 +45,43 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+def _parse_inline_context_document(upload):
+    """Read and extract an optional Take-1 context document.
+
+    A new project has no arc id before this request resolves it, so the brief
+    must ride the recording multipart rather than the arc-scoped upload route.
+    Return ``(parsed, error)`` where error is ``(code, message, status)``.
+    Parsing happens before audio storage: a bad document cannot leave a user
+    with a stored take that never entered processing.
+    """
+    if upload is None:
+        return None, None
+    max_bytes = max(1, int(
+        getattr(config, "CONTEXT_DOC_MAX_MB", 25) or 25)) * 1024 * 1024
+    try:
+        data = read_capped(upload, max_bytes)
+    except UploadTooLarge:
+        return None, (
+            "FILE_TOO_LARGE", "the context document is too large", 413,
+        )
+    if not data:
+        return None, (
+            "INVALID_INPUT", "the context document is empty", 400,
+        )
+    from services.context_document import extract_context_text
+    parsed = extract_context_text(
+        data,
+        content_type=getattr(upload, "content_type", None),
+        filename=getattr(upload, "filename", None),
+    )
+    if not parsed.get("text"):
+        return None, (
+            "NO_TEXT", "no readable text found in the context document", 400,
+        )
+    parsed["filename"] = getattr(upload, "filename", None)
+    return parsed, None
+
+
 def _parse_lab_vocabulary(raw):
     """Parse the multipart domain_vocabulary field — accepts a JSON
     array string or a comma-separated list. Returns a list or None."""
@@ -60,34 +97,6 @@ def _parse_lab_vocabulary(raw):
     except Exception:
         pass
     return [t.strip() for t in s.split(",") if t.strip()]
-
-
-def _normalized_project_name(value):
-    if not isinstance(value, str):
-        return ""
-    return " ".join(value.strip().lower().split())
-
-
-def _duplicate_project_arc(database, user_id, topic, requested_arc=None):
-    """Return an existing different arc using this owner's project name.
-
-    Project identity is the UUID; the normalized topic is a display-name
-    uniqueness constraint only. A continuation carrying that UUID is allowed.
-    """
-    norm = _normalized_project_name(topic)
-    if not user_id or not norm:
-        return None
-    requested = str(requested_arc or "")
-    for session in (database.v2_list_user_lab_sessions(str(user_id)) or []):
-        ctx = (session.get("intake_context")
-               if isinstance(session.get("intake_context"), dict) else {})
-        arc_id = str(session.get("arc_id") or "")
-        if not arc_id or _normalized_project_name(ctx.get("topic")) != norm:
-            continue
-        if requested and arc_id == requested:
-            continue
-        return arc_id
-    return None
 
 
 @v2_bp.route("/lab/presentation/extract", methods=["POST"])
@@ -299,10 +308,18 @@ def v2_lab_create_recording():
             }), 400
         audio_file = request.files.get("audio_file")
         max_bytes = _LAB_MAX_AUDIO_MB * 1024 * 1024
-        if (request.content_length or 0) > max_bytes:
+        # A new-project brief rides beside the audio. Keep a total-request
+        # ceiling as well as the bounded per-part reads below; the small extra
+        # allowance covers multipart fields/boundaries, not another payload.
+        _context_max_bytes = max(1, int(
+            getattr(config, "CONTEXT_DOC_MAX_MB", 25) or 25)) * 1024 * 1024
+        _request_max = max_bytes + 1024 * 1024
+        if request.files.get("context_document") is not None:
+            _request_max += _context_max_bytes
+        if (request.content_length or 0) > _request_max:
             return jsonify({
                 "code": "FILE_TOO_LARGE",
-                "error": f"audio_file exceeds {_LAB_MAX_AUDIO_MB}MB",
+                "error": "the recording or context document is too large",
             }), 413
         # BOUNDED read (P0 audit 2026-08-03). Content-Length above is a
         # client assertion — a chunked or mis-declared body sails past it,
@@ -332,6 +349,19 @@ def v2_lab_create_recording():
                 "code": "AUDIO_ONLY",
                 "error": "Upload an audio file — video isn't supported.",
             }), 415
+
+        # Optional uploaded context for a BRAND-NEW project. Existing projects
+        # use the owner-checked arc endpoint, while this request mints the arc
+        # only later. Extract now, then persist immediately after arc resolution
+        # and before any analysis job can begin.
+        _context_document, _context_error = _parse_inline_context_document(
+            request.files.get("context_document"),
+        )
+        if _context_error:
+            _ctx_code, _ctx_message, _ctx_status = _context_error
+            return jsonify({
+                "code": _ctx_code, "error": _ctx_message,
+            }), _ctx_status
 
         # ── 2. session_context (inline; topic required) ─────────────
         from services.intake_context import (
@@ -477,15 +507,25 @@ def v2_lab_create_recording():
         except IntakeContextError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 422
 
-        # THE RETRY COLLAPSE must run BEFORE project-name uniqueness. A cloud
-        # fallback POST for a just-accepted `project_intent=new` take has the
-        # same topic but no arc id (correctly); if uniqueness runs first, that
-        # retry looks like a second same-named project and returns 409 instead
-        # of adopting the first session. Same key means same captured take.
+        # Collapse a retry by the captured-take key. Project display names are
+        # intentionally irrelevant: two same-named projects are valid and are
+        # kept independent by authenticated owner + immutable arc UUID.
         _upload_key = (form.get("upload_idempotency_key") or "").strip()
         if _upload_key:
             _dup = db.v2_find_session_by_upload_key(_upload_key)
             if _dup:
+                # A retry can heal the narrow failure window where the take was
+                # accepted but its optional brief had not yet been persisted.
+                _dup_arc = _dup.get("arc_id")
+                if _context_document and _dup_arc:
+                    db.upsert_arc_context_document(
+                        _dup_arc,
+                        _context_document["text"],
+                        _context_document["pages"],
+                        _context_document["chars"],
+                        filename=_context_document.get("filename"),
+                        truncated=_context_document["truncated"],
+                    )
                 logger.info("lab: duplicate upload collapsed key=%s -> %s",
                             _upload_key, _dup.get("id"))
                 return jsonify({
@@ -494,26 +534,6 @@ def v2_lab_create_recording():
                     "arc_id": _dup.get("arc_id"),
                     "take_index": _dup.get("take_index"),
                 }), 200
-
-        # Project names are unique per owner; project identity is the UUID.
-        # A continuation may reuse its own name only when it carries that UUID.
-        # Reject before storage/analysis so two same-named projects can never be
-        # silently glued together by the old topic-matching heuristic.
-        _uid = getattr(request, "user_id", None)
-        _requested_arc = _explicit_arc or (form.get("arc_id") or "").strip()
-        try:
-            _collision = _duplicate_project_arc(
-                db, _uid, session_context.get("topic"), _requested_arc)
-        except Exception as _dup_err:
-            logger.warning("lab: project-name uniqueness check failed: %s",
-                           _dup_err)
-            _collision = None
-        if _collision:
-            return jsonify({
-                "code": "DUPLICATE_PROJECT_NAME",
-                "error": ("A project with this name already exists. Choose "
-                          "that project or use a unique name."),
-            }), 409
 
         # Whisper-prime fallback: the FE dropped the keywords input, so
         # domain_vocabulary now arrives empty. Auto-seed it from the user's
@@ -805,6 +825,25 @@ def v2_lab_create_recording():
                     take_index = _cnt + 1
                 db.set_session_arc(guest_session_id, arc_id, take_index)
             arc_take_count = take_index
+
+        # Persist the Take-1 brief against the immutable project id before the
+        # worker is enqueued. The qualitative layer reads it from this table;
+        # it never becomes speaker text and never participates in project
+        # identity. This is best-effort like the existing arc upload endpoint:
+        # an optional document can sharpen feedback but cannot lose a take.
+        if _context_document and arc_id:
+            _stored_context = db.upsert_arc_context_document(
+                arc_id,
+                _context_document["text"],
+                _context_document["pages"],
+                _context_document["chars"],
+                filename=_context_document.get("filename"),
+                truncated=_context_document["truncated"],
+            )
+            if not _stored_context:
+                logger.warning(
+                    "lab: context document was not persisted arc=%s", arc_id,
+                )
 
         # Founder re-lock 2026-07-06: recording/analysis/send are NEVER
         # payment-gated — every take of every arc records, analyzes, and reaches
@@ -1184,9 +1223,21 @@ def v2_guest_get_recording_readout(session_id):
         # this route (guests included) until analysis_state ready|failed.
         _an_state = session.get("analysis_state")
         if _an_state == "processing":
+            _job = db.get_latest_processing_job_by_session(session_id)
+            _progress = None
+            if _job:
+                try:
+                    _percent = max(0, min(100, int(_job.get("percent") or 0)))
+                except (TypeError, ValueError):
+                    _percent = 0
+                _progress = {
+                    "stage": str(_job.get("stage") or "processing_recording"),
+                    "percent": _percent,
+                }
             return jsonify({
                 "session_id": session_id, "state": "processing",
                 "analysis_state": "processing", "readout": None,
+                "processing": _progress,
             }), 200
         if _an_state == "failed":
             return jsonify({
@@ -1221,6 +1272,31 @@ def v2_guest_get_recording_readout(session_id):
         )
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch readout"}), 500
+
+
+@v2_bp.route("/lab/recordings/<session_id>/retry-processing", methods=["POST"])
+@optional_auth
+def v2_retry_recording_processing(session_id):
+    """Retry analysis against the preserved recording object."""
+    if not _is_valid_uuid(session_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "session_id must be a valid UUID"}), 400
+    session = db.v2_get_session_by_id(session_id)
+    caller = getattr(request, "user_id", None)
+    owner = (session or {}).get("user_id")
+    if not session or (owner and str(owner) != str(caller or "")):
+        return jsonify({"code": "SESSION_NOT_FOUND",
+                        "error": "Recording not found"}), 404
+    from services.pipeline_jobs import retry_failed_session_job
+    job = retry_failed_session_job(session_id, str(owner or caller or ""))
+    if not job:
+        return jsonify({"code": "RETRY_UNAVAILABLE",
+                        "error": "Processing could not be restarted"}), 409
+    return jsonify({
+        "session_id": session_id,
+        "state": "processing",
+        "job_id": job.get("id"),
+    }), 202
 
 
 @v2_bp.route("/config/recording", methods=["GET"])

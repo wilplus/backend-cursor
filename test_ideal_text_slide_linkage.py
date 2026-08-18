@@ -105,6 +105,8 @@ class SlideLinkageTests(unittest.TestCase):
         self.assertEqual(pieces[0]["status"], "settled")
         self.assertIsNone(pieces[0]["challenger"])
         self.assertEqual(pieces[0]["text"], "First slide's words.")
+        self.assertEqual(pieces[0]["root_phrase"], "First slide's words")
+        self.assertEqual(pieces[0]["root_type"], "neutral")
 
     def test_deckless_retake_never_clobbers_the_deck_ref(self):
         # Take 2 dropped presentation_ref — the arc still has its deck.

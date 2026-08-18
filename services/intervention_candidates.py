@@ -120,6 +120,10 @@ def _collision_rank(change: Any) -> int:
 
 def lane_of(change: Any) -> Optional[str]:
     """The manager key for one change, or None when the lane is undeclared."""
+    family = (change or {}).get("feedback_family") \
+        if isinstance(change, dict) else None
+    if family in FEEDBACK_FAMILIES:
+        return LANE_PREFIX + "feedback:" + str(family)
     src = (change or {}).get("source") if isinstance(change, dict) else None
     if src in LANE_SOURCES:
         return LANE_PREFIX + str(src)
@@ -315,8 +319,60 @@ CONFIDENT_VOICE_TRIGGERS = (
 
 def is_confident_voice(change: Any) -> bool:
     """Is this change the Confident Voice star family, in either vocabulary?"""
-    return (change.get("trigger") in CONFIDENT_VOICE_TRIGGERS
+    return (bool(change.get("source") == "confident_voice"
+                 or change.get("trigger") in CONFIDENT_VOICE_TRIGGERS)
             if isinstance(change, dict) else False)
+
+
+FEEDBACK_FAMILIES = (
+    "confident_voice",
+    "great_formulation",
+    "rewrite_clarity",
+)
+
+
+def feedback_family_of(change: Any) -> Optional[str]:
+    """The MVP's three visible feedback families, or None.
+
+    Verbal feedback needs an exact text span, not a separate audio clip.
+    Confident Voice is the only family whose claim is acoustic and therefore
+    requires a playable, bounded recording excerpt before it may surface.
+    """
+    c = change if isinstance(change, dict) else {}
+    if is_confident_voice(c):
+        return "confident_voice" if c.get("snippet_audio_ref") else None
+    if c.get("kind") == "replace":
+        return "rewrite_clarity" if c.get("proposed_text") else None
+    if c.get("kind") == "bold" or c.get("source") == "structural":
+        return "great_formulation"
+    return None
+
+
+def enforce_mvp_feedback_mix(changes: Any, *, remaining: int = 3) -> list:
+    """At most one defensible item per family and three across the take.
+
+    Selection is deterministic. Family order protects the intended mix;
+    document order is restored for rendering. No family is manufactured when
+    it has no valid candidate.
+    """
+    try:
+        room = max(0, min(3, int(remaining)))
+    except (TypeError, ValueError):
+        room = 3
+    first: dict[str, dict] = {}
+    for row in (changes or []):
+        if not isinstance(row, dict) or _span(row) is None:
+            continue
+        family = feedback_family_of(row)
+        if family and family not in first:
+            row["feedback_family"] = family
+            first[family] = row
+    kept = [first[f] for f in FEEDBACK_FAMILIES if f in first][:room]
+    kept.sort(key=lambda c: (
+        (c.get("span") or {}).get("start", 0),
+        (c.get("span") or {}).get("end", 0),
+    ))
+    return kept
 
 # Founder copy, verbatim (SPEC-lockin-loop-and-coach-panel §2). LIVE LOOP:
 # changing this string needs founder sign-off.
@@ -632,17 +688,17 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
 
 
 # THE STYLE LANE'S OWN BUDGET (founder 2026-08-12): "≤3 total style
-# suggestions per take, and a maximum of ≤2 per slide." Deliberately the same
-# numbers as the budgeted lane, and deliberately a SEPARATE allowance — style
+# suggestions per take, and a maximum of one per slide." Deliberately a
+# SEPARATE allowance — style
 # rides outside the ≤3 (ruling 4), so it needs its own ceiling or it has none
 # at all.
 STYLE_BUDGET_CEILING = 3
-STYLE_PER_GROUP = 2
+STYLE_PER_GROUP = 1
 
 
 def cap_style_lane(changes: Any, *, group_of: Any = None,
                    spent_count: int = 0, spent_by_group: Any = None) -> list:
-    """The style lane's ≤2-per-slide, ≤3-per-take cap (founder 2026-08-12).
+    """The style lane's one-per-slide, ≤3-per-take cap.
 
     Un-parking the lane and then exempting it from single-point focus left it
     with NO ceiling of any kind: outside the ≤3 and outside focus, a document
@@ -772,7 +828,8 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
            parts: Any = None, decided_count: int = 0,
            served_text: Any = None, spent_by_paragraph: Any = None,
            focus_part_id: Any = None, style_decided_count: int = 0,
-           style_spent_by_paragraph: Any = None) -> dict:
+           style_spent_by_paragraph: Any = None,
+           mvp_feedback_contract: bool = False) -> dict:
     """Run every change through the manager and return the survivors.
 
     Returns ``{"changes": [...], "result": <arbitrate() dict>|None}``. The
@@ -807,6 +864,15 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
     """
     try:
         rows = [c for c in (changes or []) if isinstance(c, dict)]
+        if mvp_feedback_contract:
+            # Resolved interactions keep their slots. The machine may surface
+            # fewer than three, but never replaces a decided item with a new
+            # one and never adds a fourth family to make the page look busy.
+            rows = enforce_mvp_feedback_mix(
+                rows,
+                remaining=(3 - max(0, int(decided_count or 0))
+                           - max(0, int(style_decided_count or 0))),
+            )
         # THE FUNNEL (founder 2026-08-11). Eight gates stand between a stored
         # suggestion and the screen and every one of them drops SILENTLY, so
         # "five rows in the table, one note on the page" was a night of
@@ -978,7 +1044,7 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # that have no document keep working.
         _grp = None
         _spent_g = None
-        if _para_of is not None:
+        if _para_of is not None and not mvp_feedback_contract:
             _by_ref_para = {str(i): _para_of(row)
                             for i, row in enumerate(rows)}
 
@@ -993,6 +1059,7 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
                   if controls else None),
             controls=controls,
             budget_spent=max(0, int(decided_count or 0)),
+            budget_limit=(3 if mvp_feedback_contract else None),
             group_of=_grp, spent_by_group=_spent_g)
 
         by_ref = {str(i): row for i, row in enumerate(rows)}

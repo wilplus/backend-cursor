@@ -189,6 +189,15 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
         def __init__(self):
             self.rows = []
 
+        def list_voice_album(self, arc_id):
+            return [{"snippet_id": "clip-1"}]
+
+        def get_arc_sessions(self, arc_id):
+            return [
+                {"id": f"take-{index}", "analysis_state": "ready"}
+                for index in range(1, 4)
+            ]
+
         def insert_lounge_messages(self, user_id, messages):
             for m in messages:
                 if any(r["client_id"] == m["client_id"] for r in self.rows):
@@ -204,6 +213,8 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
         body = db.rows[0]["body"].lower()
         self.assertIn("voice album", body)
         self.assertEqual(db.rows[0]["metadata"]["arc_id"], "arc-1")
+        self.assertEqual(
+            db.rows[0]["metadata"]["actions"], ["find_voice_album"])
 
     def test_idempotent_per_ARC_not_per_publish(self):
         # A later take adding a SECOND moment must not re-announce the album —
@@ -231,15 +242,25 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
         self.assertFalse(fire_voice_album_ready(db, "u1", None))
         self.assertEqual(db.rows, [])
 
-    def test_the_publish_hook_fires_it_ONLY_on_a_real_insert(self):
-        # `refresh_voice_album` returns how many moments landed. Announcing on
-        # a zero would tell the student to go look at an empty album.
+    def test_the_publish_hook_checks_eligibility_after_every_reconciliation(self):
+        # The first clip can land before Take 3. A later reconciliation must
+        # still be able to introduce it once the journey is complete.
         import inspect
 
         from routes.v2 import publish
         src = inspect.getsource(publish)
-        self.assertIn("if _landed and", src)
+        self.assertNotIn("if _landed and", src)
         self.assertIn("fire_voice_album_ready", src)
+
+    def test_it_waits_for_take_three(self):
+        from services.arc_notifications import fire_voice_album_ready
+        db = self._Db()
+        db.get_arc_sessions = lambda _arc: [
+            {"id": "take-1", "analysis_state": "ready"},
+            {"id": "take-2", "analysis_state": "ready"},
+        ]
+        self.assertFalse(fire_voice_album_ready(db, "u1", "arc-1"))
+        self.assertEqual(db.rows, [])
 
 
 class ResultsEmailDeepLinkTests(unittest.TestCase):

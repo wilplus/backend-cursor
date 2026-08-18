@@ -122,7 +122,10 @@ class WiringTests(unittest.TestCase):
         from services import analysis_worker as aw
 
         src = inspect.getsource(aw.run_full_analysis)
-        for stage in ("analysis", "post_processing", "finalizing"):
+        for stage in (
+            "transcribing", "ideal_text", "feedback_moments",
+            "speaking_anchors",
+        ):
             self.assertIn(f'_emit(progress, "{stage}"', src)
             self.assertIn(f'tl.mark("{stage}")', src)
         # The totals line is closed by the CONTEXT MANAGER, not by a trailing

@@ -40,8 +40,8 @@ class ScrubTests(unittest.TestCase):
         self.assertIn("***jwt***", out)
 
     def test_postgres_dsn_credentials_are_redacted(self):
-        out = scrub("could not connect: postgresql://user:hunter2@db.host:5432/app")
-        self.assertNotIn("hunter2", out)
+        out = scrub("could not connect: postgresql://user:secret-pass@db.host:5432/app")
+        self.assertNotIn("secret-pass", out)
 
     def test_absolute_server_paths_are_redacted(self):
         out = scrub('File "/app/services/lab_recording.py", line 812, in process')

@@ -313,3 +313,4 @@
 0275	add_moment_emphasis_quote.sql
 0276	add_moment_cue_keys.sql
 0277	add_owner_voice_album_routing.sql
+0278	add_confidence_rereview_queue.sql

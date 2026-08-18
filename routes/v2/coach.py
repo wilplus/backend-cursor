@@ -3062,6 +3062,15 @@ def v2_coach_confidence_queue(session_id):
             picked = stratified_label_queue(snippets, seed=str(session_id))
 
         rows = queue_payload(picked)
+        pending_rereviews = {
+            str(item.get("snippet_id")): item
+            for item in db.list_pending_confidence_rereviews(session_id) or []
+            if item.get("snippet_id")
+        }
+        if pending_rereviews:
+            rows.sort(key=lambda item: (
+                0 if str(item.get("snippet_id")) in pending_rereviews else 1,
+            ))
         # PLAYABLE urls, not storage keys (FE §2): this is a LISTENING screen
         # — the coach hears the piece and judges. A bare key renders a dead
         # player and the surface silently degrades to labelling TEXT, which
@@ -3072,6 +3081,7 @@ def v2_coach_confidence_queue(session_id):
             [r["snippet_id"] for r in rows]) or {}
         labelled = 0
         for r in rows:
+            r["re_review"] = str(r["snippet_id"]) in pending_rereviews
             mine = [lbl for lbl in labels.get(str(r["snippet_id"]), [])
                     if str(lbl.get("rater_id") or "")
                     == str(getattr(request, "user_id", "") or "")]
@@ -3363,6 +3373,7 @@ def v2_coach_put_confidence_label(snippet_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
+    is_rereview = body.get("re_review") is True
 
     from services.state_ratings import resolve_lane, validate_rating
 
@@ -3422,6 +3433,15 @@ def v2_coach_put_confidence_label(snippet_id):
                          "migrations/add_state_generic_ratings.sql)",
             }), 500
         value = row["value"]
+        if lane == "coach" and not self_report and sess and sess.get("user_id"):
+            from services.confidence_review_policy import (
+                reconcile_confidence_review,
+            )
+            reconcile_confidence_review(
+                db, snippet_id=snippet_id, session=sess,
+                owner_user_id=sess.get("user_id"), coach_value=value,
+                coach_note=row.get("note"), coach_write=True,
+                is_rereview=is_rereview)
         return jsonify({
             "saved": True, "snippet_id": snippet_id,
             "state_id": row["state_id"], "value": value,

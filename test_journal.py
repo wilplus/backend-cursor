@@ -250,7 +250,7 @@ class ValidationTests(unittest.TestCase):
 
     def test_password_and_id_never_become_columns(self):
         out = jr.validate_post_body(
-            {"title": "t", "password": "hunter2", "id": "x",
+            {"title": "t", "password": "secret-pass", "id": "x",
              "created_at": "nope"}, partial=False)
         for banned in ("password", "id", "created_at"):
             self.assertNotIn(banned, out)

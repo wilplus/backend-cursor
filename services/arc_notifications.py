@@ -170,16 +170,72 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
     """
     if not user_id or not arc_id:
         return False
+    # Eligibility and frequency are deliberately separate. The Album may gain
+    # its first qualified clip before the guided journey ends; in that case it
+    # stays quiet until Take 3 is complete. Conversely, a coach may qualify the
+    # first clip days later, so every reconciliation may call this helper.
+    # The existing per-project client key remains the frequency policy until
+    # product decides between once-per-user and once-per-project.
+    try:
+        entries = db.list_voice_album(str(arc_id)) or []
+        sessions = db.get_arc_sessions(str(arc_id)) or []
+        completed = [
+            row for row in sessions
+            if row.get("recording_kind") != "read"
+            and not row.get("paired_session_id")
+            and row.get("analysis_state") in (None, "ready")
+        ]
+        if not entries or len(completed) < 3:
+            return False
+    except Exception as e:
+        logger.warning("voice_album intro eligibility failed arc=%s: %s",
+                       arc_id, e)
+        return False
     return _insert(
         db, str(user_id),
         client_key=f"willab-voicealbum:{arc_id}",
         kind="text",
         body=(
-            "A moment from this talk landed in your Voice Album — the "
-            "acoustics, you, and your coach all pointed at the same words. "
-            "It's in the Voice album tab of the voice-game."
+            "Your Voice Album is ready.\n\n"
+            "It holds moments where you and a coach heard your confident "
+            "voice. Listen before presenting to feel calmer and remember "
+            "how confident you already sound.\n\n"
+            "Find it anytime in the menu."
         ),
-        metadata={"arc_id": str(arc_id), "note": "voice_album_ready"},
+        metadata={
+            "arc_id": str(arc_id),
+            "note": "voice_album_ready",
+            "voice_album_ready": True,
+            "actions": ["find_voice_album"],
+        },
+    )
+
+
+def fire_confidence_not_confirmed(
+    db, user_id: Any, arc_id: Any, session_id: Any, snippet_id: Any,
+    coach_note: Any = None,
+) -> bool:
+    """One non-blocking Chat correction after the required second listen."""
+    if not user_id or not arc_id or not session_id or not snippet_id:
+        return False
+    note = (coach_note or "").strip() if isinstance(coach_note, str) else ""
+    body = (
+        "Your coach heard this confident-voice moment differently after a "
+        "second listen.\n\n"
+        + (note if note else
+           "They did not confirm it as an example for your Voice Album.")
+    )
+    return _insert(
+        db, str(user_id),
+        client_key=f"willab-confidence-not-confirmed:{snippet_id}",
+        kind="text", body=body,
+        metadata={
+            "arc_id": str(arc_id),
+            "take_session_id": str(session_id),
+            "snippet_id": str(snippet_id),
+            "note": "confidence_not_confirmed",
+            "confidence_material_correction": True,
+        },
     )
 
 

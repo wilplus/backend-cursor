@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 import types
 import unittest
+import inspect
 from unittest.mock import patch
 
 import io
@@ -90,6 +91,38 @@ class TextPathTests(unittest.TestCase):
     def test_junk_is_safe(self):
         for bad in (None, b"", "not bytes", 123):
             self.assertEqual(extract_context_text(bad)["text"], "")
+
+
+@unittest.skipIf(_V2_ERR is not None, f"needs app deps: {_V2_ERR}")
+class InlineTakeOneUploadTests(unittest.TestCase):
+    def _upload(self, body=b"Board approval is the goal.",
+                filename="brief.txt", content_type="text/plain"):
+        from werkzeug.datastructures import FileStorage
+        return FileStorage(
+            stream=io.BytesIO(body), filename=filename,
+            content_type=content_type,
+        )
+
+    def test_inline_document_is_extracted_with_filename(self):
+        from routes.v2.lab_recording import _parse_inline_context_document
+        parsed, error = _parse_inline_context_document(self._upload())
+        self.assertIsNone(error)
+        self.assertEqual(parsed["text"], "Board approval is the goal.")
+        self.assertEqual(parsed["filename"], "brief.txt")
+
+    def test_empty_inline_document_is_rejected_before_processing(self):
+        from routes.v2.lab_recording import _parse_inline_context_document
+        parsed, error = _parse_inline_context_document(self._upload(body=b""))
+        self.assertIsNone(parsed)
+        self.assertEqual(error[0], "INVALID_INPUT")
+
+    def test_route_persists_brief_before_queueing_analysis(self):
+        source = inspect.getsource(v2.v2_lab_create_recording)
+        self.assertIn('request.files.get("context_document")', source)
+        persist_at = source.rfind("db.upsert_arc_context_document(")
+        enqueue_at = source.index("if _pipeline_queue_enabled():")
+        self.assertGreater(persist_at, 0)
+        self.assertLess(persist_at, enqueue_at)
 
 
 class PdfPathTests(unittest.TestCase):

@@ -9,13 +9,10 @@ snippet:
     (a `moment_suggestions` row; the machine's confident read);
   * USER     — the owner answered yes on the displayed Confident Voice card
     (an owner_voice_album_routing row, structurally outside learning);
-  * COACH    — the snippet reached CONFIDENCE QUORUM = YES (SPEC §17
-    `conf-q-v1`, settled through services/label_quorum) AND the session
-    is PUBLISHED. Blind until publish: an entry may never reveal a
-    verdict the coach has not released (BLIND COACH), so the coach
-    signal simply does not exist here before `results_published_at`.
-    Re-pointed 2026-08-14 off the `strong` tag — see below for why that
-    tag was never the judgment it looked like.
+  * COACH    — an explicit professional coach confidence label is YES and the
+    session is PUBLISHED. Peer labels and owner self-reports never satisfy
+    this leg. Blind until publish: an unreleased coach answer does not exist
+    on the user surface.
 
 NEVER a ranking term. The founder deleted the album-quorum bonus with
 `_W_B` (2026-08-14): the album is a DESTINATION for aligned moments, not
@@ -42,12 +39,31 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# The coach leg reads CONFIDENCE QUORUM, not a tag (founder 2026-08-14).
-# It used to be `tag == "strong"`, which looked like a judgment and was not:
-# no picker for it exists anywhere, and the FE wrote `tag: cs.tag ?? "strong"`
-# — defaulted as a side effect of typing a note. So the album's "coach agrees"
-# leg really meant "the coach wrote something", which is weaker than the entry
-# rule claimed. It now means what it says.
+def _professional_coach_yes(rows: Any) -> bool:
+    """True only for a released professional coach's explicit Yes.
+
+    Provenance is structural: peer lanes, bootstrap rows, unrateable labels,
+    and self-reports are never upgraded into a coach judgment by agreement.
+    """
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        lane = row.get("lane")
+        # Rows written before the provenance migration have no lane but retain
+        # ``source=coach``. That is still an explicit professional judgment;
+        # bootstrap and peer/game rows remain excluded.
+        professional = lane == "coach" or (
+            lane is None and row.get("source") == "coach"
+        )
+        if not professional or row.get("self_report") is True:
+            continue
+        if row.get("state_id") not in (None, "confidence"):
+            continue
+        if row.get("unrateable") is True:
+            continue
+        if str(row.get("value") or "").strip().lower() == "yes":
+            return True
+    return False
 
 
 def _owner_agreements(database, arc_id: Any) -> dict:
@@ -87,12 +103,11 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
             if isinstance(row, dict) and row.get("kind") == "emphasize"
         }
 
-        # COACH — CONFIDENCE QUORUM = YES, on PUBLISHED sessions only.
+        # COACH — explicit professional coach YES, on PUBLISHED sessions only.
         #
         # The publish gate is unchanged and load-bearing: a quorum can settle
         # while the coach is still working, and BLIND COACH means none of it
         # exists for the student until the review is released.
-        from services.key_moments import key_snippet_ids
         coach_ok: dict = {}   # snippet_id -> take_session_id
         for sess in (database.get_arc_sessions(arc_id) or []):
             if not sess.get("results_published_at"):
@@ -106,8 +121,10 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
                 continue
             _ids = [str(x.get("id")) for x in snips
                     if isinstance(x, dict) and x.get("id")]
-            for snip_id in key_snippet_ids(database, _ids):
-                coach_ok[str(snip_id)] = sid
+            labels = database.get_confidence_labels_by_snippet_ids(_ids) or {}
+            for snip_id in _ids:
+                if _professional_coach_yes(labels.get(snip_id)):
+                    coach_ok[str(snip_id)] = sid
 
         # `aligned` may legitimately be EMPTY — the mirror still has to
         # run, because an empty alignment with existing entries means

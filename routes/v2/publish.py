@@ -194,13 +194,13 @@ def publish_one_session(session_id, actor_user_id):
             _arc = _sess.get("arc_id")
             if _arc:
                 from services.voice_album import refresh_voice_album
-                _landed = refresh_voice_album(_arc, database=db)
+                refresh_voice_album(_arc, database=db)
                 # ANNOUNCE IT (founder 2026-08-15). The album filled silently
                 # until today — capture-only, because its read surface needed
                 # signed copy. Only on an actual insert, and the bubble is
                 # idempotent per ARC, so a second moment on a later take does
                 # not re-announce it.
-                if _landed and _sess.get("user_id"):
+                if _sess.get("user_id"):
                     from services.arc_notifications import (
                         fire_voice_album_ready,
                     )
@@ -628,10 +628,10 @@ def v2_internal_publish_session_results():
                 if isinstance(session, dict) else None
             if _arc_for_album:
                 from services.voice_album import refresh_voice_album
-                _landed = refresh_voice_album(_arc_for_album, database=db)
+                refresh_voice_album(_arc_for_album, database=db)
                 # ANNOUNCE IT (founder 2026-08-15) — same rule as the shared
                 # helper: only on a real insert, idempotent per arc.
-                if _landed and user_id:
+                if user_id:
                     from services.arc_notifications import (
                         fire_voice_album_ready,
                     )

@@ -16,10 +16,9 @@ from services.voice_album import refresh_voice_album
 ARC = "arc-1"
 
 
-def _quorum(value):
-    """Two QUORUM-lane raters agreeing — a settled confidence verdict."""
-    return [{"rater_id": "coach1", "lane": "coach", "value": value},
-            {"rater_id": "peer1", "lane": "game_peer", "value": value}]
+def _coach(value):
+    return [{"rater_id": "coach1", "lane": "coach", "value": value,
+             "state_id": "confidence", "self_report": False}]
 
 
 class _Db:
@@ -64,10 +63,8 @@ class _Db:
 def _all_three(published=True):
     """A db where snippet sn1 carries all three signals.
 
-    The COACH leg is CONFIDENCE QUORUM = YES (founder 2026-08-14), not the
-    old `strong` tag — which was never chosen by anyone (the FE defaulted it
-    whenever a note was typed), so it meant "the coach wrote something"
-    rather than "the coach judged this strong"."""
+    The COACH leg is an explicit professional coach YES. Peer and owner labels
+    remain separately typed evidence and cannot substitute for it."""
     return _Db(
         routes=[{"snippet_id": "sn1", "response": "yes",
                  "slide_index": 2}],
@@ -76,7 +73,7 @@ def _all_three(published=True):
                    "results_published_at":
                        "2026-08-14T10:00:00Z" if published else None}],
         snips={"t1": [{"id": "sn1"}]},
-        conf={"sn1": _quorum("yes")},
+        conf={"sn1": _coach("yes")},
     )
 
 
@@ -102,8 +99,8 @@ class EntryRuleTests(unittest.TestCase):
         db.suggestions = {"sn1": {"kind": "replace"}}
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
 
-    def test_quorum_without_publish_is_invisible(self):
-        # BLIND COACH: a quorum can settle while the review is still in
+    def test_coach_yes_without_publish_is_invisible(self):
+        # BLIND COACH: a coach answer can exist while the review is still in
         # progress; none of it exists for the student until publish.
         db = _all_three(published=False)
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
@@ -113,16 +110,30 @@ class EntryRuleTests(unittest.TestCase):
         # A quorum that settled the other way is a real verdict, and the
         # opposite of an album entry.
         db = _all_three()
-        db.conf = {"sn1": _quorum("no")}
+        db.conf = {"sn1": _coach("no")}
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
 
-    def test_a_SINGLE_confident_rating_is_not_enough(self):
-        # Ledger rule 3: one rating is weak supervision, never ground truth.
-        # An album built on one opinion would sell a guess as a finding.
+    def test_peer_agreement_cannot_replace_the_professional_coach(self):
         db = _all_three()
-        db.conf = {"sn1": [{"rater_id": "coach1", "lane": "coach",
-                            "value": "yes"}]}
+        db.conf = {"sn1": [
+            {"rater_id": "peer1", "lane": "game_peer", "value": "yes"},
+            {"rater_id": "peer2", "lane": "game_peer", "value": "yes"},
+        ]}
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
+
+    def test_owner_self_report_cannot_replace_the_professional_coach(self):
+        db = _all_three()
+        db.conf = {"sn1": [{"rater_id": "owner", "lane": "coach",
+                            "value": "yes", "self_report": True,
+                            "state_id": "confidence"}]}
+        self.assertEqual(refresh_voice_album(ARC, database=db), 0)
+
+    def test_legacy_explicit_coach_row_remains_eligible(self):
+        db = _all_three()
+        db.conf = {"sn1": [{"rater_id": "coach1", "source": "coach",
+                            "value": "yes", "state_id": "confidence",
+                            "self_report": False}]}
+        self.assertEqual(refresh_voice_album(ARC, database=db), 1)
 
     def test_idempotent_second_refresh_inserts_nothing(self):
         db = _all_three()

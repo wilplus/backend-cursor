@@ -582,6 +582,7 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
               exploration_rate: float = EXPLORATION_RATE,
               controls: bool = True,
               budget_spent: int = 0,
+              budget_limit: Optional[int] = None,
               group_of: Optional[Callable[[Candidate], Any]] = None,
               spent_by_group: Optional[Mapping[Any, int]] = None) -> dict:
     """H.7 — the whole policy, in the order the appendix specifies.
@@ -674,7 +675,8 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     #     reproduces the flat cap exactly, and the group cap is the SAME
     #     budget() the flat one uses, so a NOVICE still gets one (per slide
     #     now, not per take) and the H.1 reasoning survives the regrouping.
-    cap = budget(user, independent)
+    cap = (max(0, int(budget_limit)) if budget_limit is not None
+           else budget(user, independent))
     if group_of is None:
         n = max(0, cap - max(0, int(budget_spent or 0)))
         selected = independent[:n]

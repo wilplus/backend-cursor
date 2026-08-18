@@ -4677,6 +4677,50 @@ class DatabaseService:
             logger.warning("get_active_processing_job_by_dedup failed: %s", e)
             return None
 
+    def get_latest_processing_job_by_session(
+        self, session_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Latest durable progress row for a submitted recording.
+
+        Read-only and best-effort: older deployments without the table simply
+        omit real progress while the session state remains authoritative.
+        """
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .select("*")
+                .eq("session_id", session_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.warning("get_latest_processing_job_by_session failed: %s", e)
+            return None
+
+    def reset_processing_job_for_manual_retry(self, job_id: str) -> bool:
+        """Re-open one terminal failed job without replacing its audio."""
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (
+                self.client.table("processing_jobs")
+                .update({
+                    "status": "pending", "attempts": 0,
+                    "stage": "processing_recording", "percent": 0,
+                    "error": None, "result": None,
+                    "started_at": None, "finished_at": None,
+                    "heartbeat_at": None, "updated_at": now,
+                })
+                .eq("id", job_id)
+                .eq("status", "failed")
+                .execute()
+            )
+            return bool(res.data)
+        except Exception as e:
+            logger.warning("reset_processing_job_for_manual_retry failed: %s", e)
+            return False
+
     def claim_processing_job(
         self, job_id: str, expected_attempts: int,
     ) -> Optional[Dict[str, Any]]:
@@ -14416,6 +14460,74 @@ class DatabaseService:
                 "list_owner_voice_album_routes failed arc=%s: %s", arc_id, e)
             return []
 
+    def get_confidence_rereview(self, snippet_id: str) -> Optional[dict]:
+        """Current operational second-listen state for one snippet."""
+        try:
+            rows = (self.client.table("confidence_rereview_queue")
+                    .select("*").eq("snippet_id", str(snippet_id))
+                    .limit(1).execute().data) or []
+            return rows[0] if rows else None
+        except Exception as e:
+            if "confidence_rereview_queue" not in str(e).lower():
+                logger.warning("get_confidence_rereview failed: %s", e)
+            return None
+
+    def upsert_confidence_rereview(
+        self, *, snippet_id: str, session_id: str, arc_id: str,
+        owner_user_id: str,
+    ) -> bool:
+        """Request a second listen. Idempotent while already pending."""
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            (self.client.table("confidence_rereview_queue").upsert({
+                "snippet_id": str(snippet_id),
+                "session_id": str(session_id),
+                "arc_id": str(arc_id),
+                "owner_user_id": str(owner_user_id),
+                "status": "pending",
+                "coach_note": None,
+                "resolved_at": None,
+                "updated_at": now,
+            }, on_conflict="snippet_id").execute())
+            return True
+        except Exception as e:
+            logger.warning("upsert_confidence_rereview failed: %s", e)
+            return False
+
+    def resolve_confidence_rereview(
+        self, snippet_id: str, *, confirmed_no: bool = False,
+        coach_note: Optional[str] = None,
+    ) -> bool:
+        """Resolve a pending second listen, or remove it after agreement."""
+        try:
+            query = self.client.table("confidence_rereview_queue")
+            if not confirmed_no:
+                query.delete().eq("snippet_id", str(snippet_id)).execute()
+                return True
+            now = datetime.now(timezone.utc).isoformat()
+            (query.update({
+                "status": "confirmed_no",
+                "coach_note": ((coach_note or "").strip() or None),
+                "resolved_at": now,
+                "updated_at": now,
+            }).eq("snippet_id", str(snippet_id)).execute())
+            return True
+        except Exception as e:
+            logger.warning("resolve_confidence_rereview failed: %s", e)
+            return False
+
+    def list_pending_confidence_rereviews(self, session_id: str) -> list:
+        """Pending second listens for a session, oldest request first."""
+        try:
+            return ((self.client.table("confidence_rereview_queue")
+                     .select("*").eq("session_id", str(session_id))
+                     .eq("status", "pending").order("requested_at")
+                     .execute().data) or [])
+        except Exception as e:
+            if "confidence_rereview_queue" not in str(e).lower():
+                logger.warning(
+                    "list_pending_confidence_rereviews failed: %s", e)
+            return []
     def find_training_import_by_key(self, key: str) -> Optional[dict]:
         """The SUCCESSFUL import already created under this idempotency key,
         or None.
@@ -16160,6 +16272,26 @@ class DatabaseService:
                 user_id, len(rows), e,
             )
             return []
+
+    def get_lounge_message_by_client_id(
+        self, user_id: str, client_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """One owner-scoped idempotent Lounge event, if it exists."""
+        if not user_id or not client_id:
+            return None
+        try:
+            res = (
+                self.client.table("lounge_messages")
+                .select("id,client_id,role,kind,body,metadata,client_created_at")
+                .eq("user_id", user_id)
+                .eq("client_id", client_id)
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.warning("get_lounge_message_by_client_id failed: %s", e)
+            return None
 
     def delete_lounge_messages_for_user(self, user_id: str) -> bool:
         """Delete the entire Lounge thread for a user (BE contract

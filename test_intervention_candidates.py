@@ -130,8 +130,8 @@ class TestTheStyleLane(unittest.TestCase):
         self.assertEqual(out["funnel"]["style_proposed"], 6)
         self.assertEqual(out["funnel"]["style_lane"], 3)
 
-    def test_the_style_lane_is_CAPPED_at_two_per_slide(self):
-        """"…and a maximum of ≤2 per slide." Per group FIRST, then the flat
+    def test_the_style_lane_is_CAPPED_at_one_per_slide(self):
+        """One styling suggestion per slide. Per group FIRST, then the flat
         cap: reversed, three accents on one slide would eat the whole take's
         allowance and slides 2+ would get nothing."""
         parts = [{"id": "p0", "ord": 0, "text": "x" * 40,
@@ -145,10 +145,10 @@ class TestTheStyleLane(unittest.TestCase):
                 _change(2, kind="bold", start=20, end=28),
                 _change(3, kind="bold", start=42, end=50)]
         out = ic.select(pool, parts=parts, served_text=text)
-        # Slide 0 keeps its first two; slide 1's accent is NOT starved by
+        # Slide 0 keeps its first; slide 1's accent is NOT starved by
         # slide 0 having proposed more.
         self.assertEqual([c["id"] for c in out["style_changes"]],
-                         ["c0", "c1", "c3"])
+                         ["c0", "c3"])
 
     def test_a_decided_style_proposal_KEEPS_its_slot(self):
         """Cumulative per take, exactly like the budgeted lane and for the
@@ -168,7 +168,7 @@ class TestTheStyleLane(unittest.TestCase):
                          ic.select(pool, parts=parts, served_text=text,
                                    style_decided_count=3))
 
-    def test_a_slide_s_spent_style_slots_count_against_ITS_two(self):
+    def test_a_slide_s_spent_style_slot_blocks_another_on_that_slide(self):
         parts = [{"id": "p0", "ord": 0, "text": "x" * 40,
                   "locked_at": "2026-08-11T10:00:00Z"},
                  {"id": "p1", "ord": 1, "text": "y" * 40,
@@ -179,9 +179,9 @@ class TestTheStyleLane(unittest.TestCase):
                 _change(2, kind="bold", start=42, end=50)]
         out = ic.select(pool, parts=parts, served_text=text,
                         style_spent_by_paragraph={0: 1})
-        # Slide 0 has one slot left, slide 1 is untouched.
+        # Slide 0 used its only slot; slide 1 is untouched.
         self.assertEqual([c["id"] for c in out["style_changes"]],
-                         ["c0", "c2"])
+                         ["c2"])
 
     def test_the_cap_is_pure_and_degrades_on_junk(self):
         rows = [{"span": {"start": i, "end": i + 2}} for i in range(5)]
@@ -195,7 +195,7 @@ class TestTheStyleLane(unittest.TestCase):
         self.assertEqual(len(ic.cap_style_lane(rows, spent_count="x")), 3)
         self.assertEqual(
             len(ic.cap_style_lane(rows, group_of=lambda c: 0,
-                                  spent_by_group="not a dict")), 2)
+                                  spent_by_group="not a dict")), 1)
 
     def test_the_style_lane_BYPASSES_single_point_focus(self):
         """Founder 2026-08-12: "a finishing touch like a bolded word is
@@ -592,6 +592,40 @@ class TestAC9(unittest.TestCase):
         effect size' reads like an argument for C."""
         self.assertEqual(me.EFFECT_SIZE["C"], 0.0)
         self.assertGreater(me.EFFECT_SIZE[ic.LANE_GRADE], 0.0)
+
+
+class TestMvpFeedbackContract(unittest.TestCase):
+    def test_surfaces_at_most_one_of_each_approved_family(self):
+        confident = _change(0, source="confident_voice", kind="bold")
+        confident["snippet_audio_ref"] = "https://audio.example/clip.webm"
+        formulation = _change(1, source="wording", kind="bold")
+        duplicate_formulation = _change(2, source="wording", kind="bold")
+        rewrite = _change(3, source="wording", kind="replace")
+        out = ic.select(
+            [confident, formulation, duplicate_formulation, rewrite],
+            mvp_feedback_contract=True,
+        )["changes"]
+        self.assertEqual(len(out), 3)
+        self.assertEqual(
+            {row["feedback_family"] for row in out},
+            {"confident_voice", "great_formulation", "rewrite_clarity"},
+        )
+
+    def test_confident_voice_without_playable_audio_is_not_surfaced(self):
+        confident = _change(0, source="confident_voice", kind="bold")
+        out = ic.select([confident], mvp_feedback_contract=True)["changes"]
+        self.assertEqual(out, [])
+
+    def test_verbal_feedback_does_not_require_audio(self):
+        formulation = _change(0, source="wording", kind="bold")
+        rewrite = _change(1, source="wording", kind="replace")
+        out = ic.select(
+            [formulation, rewrite], mvp_feedback_contract=True
+        )["changes"]
+        self.assertEqual(
+            {row["feedback_family"] for row in out},
+            {"great_formulation", "rewrite_clarity"},
+        )
 
 
 class TestNothingBypassesTheGate(unittest.TestCase):

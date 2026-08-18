@@ -140,8 +140,8 @@ def run_full_analysis(
     from services.lab_recording import process_lab_recording
 
     with _Timeline(session_id) as tl:
-        _emit(progress, "analysis", 15, "Transcribing and analyzing your take…")
-        tl.mark("analysis")
+        _emit(progress, "transcribing", 15, "Transcribing your take…")
+        tl.mark("transcribing")
         readout_local = process_lab_recording(
             session_id=session_id,
             user_id=user_id,  # fix #2b: attribute at record time
@@ -194,28 +194,20 @@ def run_full_analysis(
             logger.warning("lab: session globals failed sid=%s err=%s",
                            session_id, _gm_err)
 
-        _emit(progress, "post_processing", 70, "Wrapping up…")
-        tl.mark("post_processing")
+        _emit(progress, "ideal_text", 55, "Building your Ideal Text…")
+        tl.mark("ideal_text")
 
         # Explore-session cadence (Prompt A §6 C3) — after a take in an
         # arc, invite the NEXT take as a Lounge bubble. Authed only;
         # best-effort + idempotent.
         if user_id and arc_id:
             try:
-                from services.session_cadence import (
-                    fire_arc_start, fire_post_take,
-                )
+                from services.session_cadence import fire_arc_start
                 _goal = (db.get_user_profile(user_id) or {}).get("goal")
                 # Always-on (2026-06-17): the framing fires here on take 1.
                 # Idempotent per arc.
                 if take_index == 1:
                     fire_arc_start(user_id, arc_id, goal=_goal)
-                fire_post_take(
-                    user_id, arc_id, take_index,
-                    take_count=arc_take_count,
-                    spark_enabled=spark_enabled,
-                    goal=_goal,
-                )
             except Exception as _ce:
                 logger.warning("lab: cadence fire failed sid=%s: %s",
                                session_id, _ce)
@@ -257,9 +249,6 @@ def run_full_analysis(
                     session_id, _bpe,
                 )
 
-        _emit(progress, "finalizing", 90, "Preparing your results…")
-        tl.mark("finalizing")
-
         # EAGER ideal-text assembly (founder 2026-07-15): the moment the
         # arc's 3rd SPOKEN take finishes analysis, assemble + persist the
         # machine draft so the coach's panel opens instantly ("no loading
@@ -285,6 +274,9 @@ def run_full_analysis(
                 # Star suggestions (2026-07-18): generate BEFORE the
                 # assembly so the fresh text's anchors include the
                 # suggestion-flagged picks. Best-effort.
+                _emit(progress, "feedback_moments", 72,
+                      "Finding feedback moments…")
+                tl.mark("feedback_moments")
                 if _moment_suggestions_enabled():
                     try:
                         from services.moment_suggestions import (
@@ -321,6 +313,9 @@ def run_full_analysis(
                         "lab: master-document take processing "
                         "failed sid=%s: %s (non-fatal)",
                         session_id, _md_err)
+                _emit(progress, "speaking_anchors", 90,
+                      "Preparing your speaking anchors…")
+                tl.mark("speaking_anchors")
                 _eager_ok = maybe_assemble_ideal_text(
                     arc_id, require_target=False,
                     include_suggestion_anchors=(

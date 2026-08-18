@@ -40,10 +40,97 @@ from routes.v2.arcs import (
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.rate_limits import llm_limit
+from services.rehearsal_roots import rehearsal_root
 from services.token_prices import price_of as _price_of
 
 logger = logging.getLogger(__name__)
 config = Config()
+
+
+def _completed_spoken_sessions(sessions):
+    """Official takes whose processing completed successfully.
+
+    Legacy synchronous rows predate ``analysis_state`` and therefore count as
+    ready. Pending and failed submissions remain resumable recordings, but
+    must not advance the guided journey or its take number.
+    """
+    return [
+        row for row in (sessions or [])
+        if row.get("recording_kind") != "read"
+        and not row.get("paired_session_id")
+        and row.get("analysis_state") in (None, "ready")
+    ]
+
+
+def _confidence_review_status_map(arc_id, moments):
+    """Visible workflow state for owner-routed Confident Voice moments.
+
+    This is deliberately a *presentation* join, not another source of truth:
+    the owner's response remains in the routing table and the coach's blind
+    judgement remains in the ratings table.  We only combine them here so the
+    student can see whether a review is pending or complete without either
+    signal being copied into the other's corpus.
+    """
+    try:
+        routes = db.list_owner_voice_album_routes(str(arc_id)) or []
+    except Exception:
+        return {}
+    owner_by_snippet = {
+        str(row.get("snippet_id")): row.get("response")
+        for row in routes if isinstance(row, dict) and row.get("snippet_id")
+    }
+    snippet_ids = [
+        str(moment.get("snippet_id")) for moment in (moments or [])
+        if isinstance(moment, dict)
+        and str(moment.get("snippet_id") or "") in owner_by_snippet
+    ]
+    if not snippet_ids:
+        return {}
+    try:
+        labels = db.get_confidence_labels_by_snippet_ids(snippet_ids) or {}
+    except Exception:
+        labels = {}
+
+    result = {}
+    for snippet_id in snippet_ids:
+        owner = owner_by_snippet.get(snippet_id)
+        professional = [
+            row for row in (labels.get(snippet_id) or [])
+            if isinstance(row, dict)
+            and not row.get("self_report")
+            and (row.get("lane") == "coach"
+                 or (row.get("lane") is None
+                     and row.get("source") == "coach"))
+            and row.get("state_id") in (None, "confidence")
+            and not row.get("unrateable")
+            and row.get("value") in ("yes", "no")
+        ]
+        professional.sort(key=lambda row: row.get("updated_at") or "")
+        coach = professional[-1].get("value") if professional else None
+
+        # A No is a resolved project decision: it never styles the text.  The
+        # later Voice Album disagreement exercise is intentionally separate.
+        if owner != "yes":
+            if coach == "yes":
+                result[snippet_id] = "coach_reviewed"
+            continue
+        if coach == "yes":
+            result[snippet_id] = "coach_reviewed"
+            continue
+        if coach != "no":
+            result[snippet_id] = "pending_coach_review"
+            continue
+        try:
+            rereview = db.get_confidence_rereview(snippet_id)
+        except Exception:
+            rereview = None
+        result[snippet_id] = (
+            "not_confirmed"
+            if isinstance(rereview, dict)
+            and rereview.get("status") == "confirmed_no"
+            else "pending_coach_review"
+        )
+    return result
 
 
 # The /talks/<talk_id>/ideal-text route (Paid Audits A7) was DELETED here
@@ -238,6 +325,7 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref):
         out = []
         for i, para in enumerate(paragraphs):
             src = prov[i] if aligned else {}
+            root = rehearsal_root(para)
             si = src.get("slide_index")
             if isinstance(si, bool) or not isinstance(si, int) or si < 0:
                 si = None
@@ -247,6 +335,8 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref):
             out.append({
                 "piece_key": i,
                 "text": para,
+                "root_phrase": root["text"],
+                "root_type": root["type"],
                 "slide_index": si,
                 "block_key": (_bk if isinstance(_bk, int)
                               and not isinstance(_bk, bool) else None),
@@ -543,6 +633,7 @@ def v2_explore_get_ideal_text(arc_id):
             [m.get("take_session_id") for m in _moments])
         _playback = _moment_playback_map(
             [m.get("take_session_id") for m in _moments])
+        _review_status = _confidence_review_status_map(arc_id, _moments)
         # Ticket 6: resolve every attached post ONCE per request, not once per
         # moment (see _moment_reference_map — the per-moment form is an N+1).
         # isinstance-guarded: this map's values are dicts in production, but
@@ -568,6 +659,8 @@ def v2_explore_get_ideal_text(arc_id):
                 "anchor": m.get("anchor") or "",
                 "take_session_id": m.get("take_session_id"),
                 "has_explanation": bool(_has_expl.get(_mid)),
+                **({"confidence_review_status": _review_status[_mid]}
+                   if _mid in _review_status else {}),
                 # FREE playback of the student's own recording (parent+
                 # offset → the FE clamps to [start, start+duration]).
                 **(_playback.get(_mid) or {}),
@@ -619,11 +712,7 @@ def v2_explore_get_ideal_text(arc_id):
         # table until the teardown migration runs, and they must never
         # be counted as takes. Once the columns are dropped this reads
         # every row as spoken, which is then the truth. ──
-        _spoken_rows = [
-            _s for _s in (_sessions or [])
-            if _s.get("recording_kind") != "read"
-            and not _s.get("paired_session_id")
-        ]
+        _spoken_rows = _completed_spoken_sessions(_sessions)
         _spoken_rows.sort(key=lambda s: (s.get("take_index") or 0))
         _title = None
         for _s in _spoken_rows:   # latest take wins (trainings parity)
@@ -640,6 +729,9 @@ def v2_explore_get_ideal_text(arc_id):
         # Same continuable-project rule as GET /explore/arc/<id>/setup,
         # so the two can never disagree about whether a take can start.
         _can_record_take = bool(_spoken_rows)
+        from services.journey_messages import journey_seen
+        _journey_seen = journey_seen(
+            db, request.user_id, arc_id, len(_spoken_rows))
 
         # ── SLIDE LINKAGE (FE handoff 2026-08-03, FE PR #222): the deck
         # url + per-paragraph slide identity, so the reading view can
@@ -694,6 +786,7 @@ def v2_explore_get_ideal_text(arc_id):
             # this is true. True once the project has a spoken take
             # (same continuable-project rule as /setup).
             "can_record_take": _can_record_take,
+            "journey_next_steps_seen": _journey_seen,
             "text": _text,
             # The arc's served deck PDF (FE handoff 2026-08-03) — null on
             # a deckless arc; the FE treats anything but a non-empty
@@ -790,6 +883,36 @@ def v2_explore_get_ideal_text(arc_id):
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to load ideal text",
         }), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/journey/next-steps", methods=["POST"])
+@require_auth
+def v2_explore_arc_journey_next_steps(arc_id):
+    """Append the current take's exact journey bubble, idempotently."""
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        spoken = _completed_spoken_sessions(sessions)
+        take_index = len(spoken)
+        from services.journey_messages import journey_message
+        message = journey_message(request.user_id, arc_id, take_index)
+        if message is None:
+            return jsonify({
+                "code": "INVALID_STATE",
+                "error": "Next steps are available after takes one to three.",
+            }), 409
+        persisted = db.insert_lounge_messages(request.user_id, [message])
+        if not persisted:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Failed to save next steps"}), 500
+        return jsonify({"message": persisted[0]}), 200
+    except Exception as e:
+        logger.error("journey next-steps failed arc=%s: %s", arc_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save next steps"}), 500
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/notes", methods=["PUT"])
@@ -1652,8 +1775,10 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # them would be a per-snippet resolve on every serve for no reason.
         try:
             _praise = [c for c in changes
-                       if isinstance(c, dict) and c.get("device") ==
-                       "impeccable" and c.get("take_session_id")]
+                       if isinstance(c, dict)
+                       and (c.get("source") == "confident_voice"
+                            or c.get("device") == "impeccable")
+                       and c.get("take_session_id")]
             if _praise:
                 _pb = _moment_playback_map(
                     sorted({c["take_session_id"] for c in _praise}))
@@ -1760,7 +1885,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                        decided_count=spent_count(db, arc_id, _arm_sid),
                        focus_part_id=current_focus(arc_id, user_id,
                                                    database=db),
-                       # PER SLIDE, UP TO 2 (founder 2026-08-11). The served
+                       # PER SLIDE, UP TO 1. The served
                        # text is the unit map: one paragraph per slide, and
                        # the paragraph is the chunk the student decides on.
                        # `decided_count` rides along untouched so a caller
@@ -1769,12 +1894,13 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                        spent_by_paragraph=spent_by_paragraph(
                            db, arc_id, _arm_sid, served_text),
                        # THE STYLE CAP (founder 2026-08-12): "≤3 total style
-                       # suggestions per take, and a maximum of ≤2 per
+                       # suggestions per take, and a maximum of one per
                        # slide." Its own allowance, since style rides
                        # outside the ≤3 and outside focus and would
                        # otherwise have no ceiling at all.
                        style_decided_count=_style_spent["count"],
                        style_spent_by_paragraph=_style_spent["by_paragraph"],
+                       mvp_feedback_contract=True,
                        # R1 gen-3 — the layer filter runs inside the gate,
                        # BEFORE the budget: an open part takes everything;
                        # a locked part takes the STYLE LANE (bold only,
@@ -1786,6 +1912,46 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # against the same served text; a failed check drops the style
         # rows alone (fail closed, but never at the budgeted lane's cost).
         _styles = _sel.get("style_changes") or []
+
+        # Exact evidence coordinates are part of the feedback item, not an
+        # optional UI convenience. Verbal feedback stops at text evidence;
+        # only Confident Voice carries playback. A row whose project/take/
+        # slide/paragraph cannot be proven is withheld rather than guessed.
+        from services.intervention_spend import paragraph_index_at
+
+        def _with_evidence(rows):
+            grounded = []
+            for row in rows or []:
+                span = row.get("span") if isinstance(row, dict) else None
+                if not isinstance(span, dict):
+                    continue
+                start, end = span.get("start"), span.get("end")
+                if not isinstance(start, int) or not isinstance(end, int) \
+                        or end <= start:
+                    continue
+                piece = next((p for p in _pieces
+                              if isinstance(p.get("start"), int)
+                              and isinstance(p.get("end"), int)
+                              and p["start"] <= start and end <= p["end"]),
+                             None)
+                take_id = row.get("take_session_id") \
+                    or (piece or {}).get("take_session_id")
+                slide_index = (piece or {}).get("slide_index")
+                if not take_id or not isinstance(slide_index, int) \
+                        or slide_index < 0:
+                    continue
+                row["evidence"] = {
+                    "project_id": str(arc_id),
+                    "take_session_id": str(take_id),
+                    "slide_index": slide_index,
+                    "paragraph_index": paragraph_index_at(served_text, start),
+                    "span": {"start": start, "end": end},
+                }
+                grounded.append(row)
+            return grounded
+
+        changes = _with_evidence(changes)
+        _styles = _with_evidence(_styles)
         if _styles and not verify_changes(served_text, _styles):
             logger.warning("style lane: span check failed arc=%s "
                            "(serving none)", arc_id)
