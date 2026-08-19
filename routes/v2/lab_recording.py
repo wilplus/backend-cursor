@@ -421,6 +421,7 @@ def v2_lab_create_recording():
         # against a project the caller does not own (same fail-fast rule
         # as the read guard above). ──
         _explicit_arc = (form.get("continue_arc_id") or "").strip()
+        _explicit_arc_sessions = []
         from services.explore_arc import validate_project_intent
         _project_intent, _intent_error = validate_project_intent(
             form.get("project_intent"),
@@ -444,9 +445,12 @@ def v2_lab_create_recording():
             _owned = False
             if _uid:
                 try:
+                    _explicit_arc_sessions = db.get_arc_sessions(
+                        _explicit_arc
+                    ) or []
                     _owned = any(
                         str(x.get("user_id")) == str(_uid)
-                        for x in (db.get_arc_sessions(_explicit_arc) or []))
+                        for x in _explicit_arc_sessions)
                 except Exception as _own_err:
                     logger.warning(
                         "lab: continue_arc ownership check failed arc=%s: "
@@ -506,6 +510,25 @@ def v2_lab_create_recording():
             }, require_topic=True)
         except IntakeContextError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 422
+
+        # A project's Ideal Text, feedback, roots, and accepted flagships are
+        # indexed against the slide structure captured by Take 1.  Once that
+        # take exists, a continued-project upload must keep the exact deck.
+        # New-project requests carry no continue_arc_id and bypass this guard.
+        if _explicit_arc_sessions:
+            from services.presentation_change_intent import (
+                deck_matches_recorded_project,
+            )
+            if not deck_matches_recorded_project(
+                _explicit_arc_sessions, session_context,
+            ):
+                return jsonify({
+                    "code": "PRESENTATION_LOCKED",
+                    "error": (
+                        "Your current roadmap is connected to these slides. "
+                        "Create a new project for the updated deck."
+                    ),
+                }), 409
 
         # Collapse a retry by the captured-take key. Project display names are
         # intentionally irrelevant: two same-named projects are valid and are

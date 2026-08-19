@@ -67,6 +67,16 @@ class PersistChatTurnTests(unittest.TestCase):
         self.assertEqual(bot_row["metadata"]["suggested_action"], "trainings")
         self.assertEqual(bot_row["metadata"]["bubbles"], ["Tap the button below."])
 
+    def test_project_choice_pair_rides_in_bot_metadata(self):
+        actions = ["replace_pdf", "create_new_project"]
+        v2._persist_chat_turn(
+            "u1", "replace my deck", "Choose what happens next.",
+            suggested_actions=actions,
+            intent="replace_pre_take_deck", user_client_id=str(uuid.uuid4()),
+        )
+        _, msgs = self.captured[0]
+        self.assertEqual(msgs[-1]["metadata"]["suggested_actions"], actions)
+
     def test_deterministic_ids_idempotent(self):
         # same user id → same user+bot client_ids (re-post is a DB no-op).
         cid = str(uuid.uuid4())

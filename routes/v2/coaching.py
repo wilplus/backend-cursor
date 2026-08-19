@@ -1182,8 +1182,9 @@ def v2_chat_session_state():
 
 
 def _persist_chat_turn(
-    user_id, question, answer, *, suggested_action=None, bubbles=None,
-    intent=None, user_client_id=None, user_created_at=None,
+    user_id, question, answer, *, suggested_action=None,
+    suggested_actions=None, bubbles=None, intent=None, user_client_id=None,
+    user_created_at=None,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
     never disappear). Writes the user message + the bot reply to lounge_messages
@@ -1194,9 +1195,9 @@ def _persist_chat_turn(
     is a no-op (UNIQUE(user_id, client_id)). The user-turn id prefers the FE's
     own client_id (so it de-dupes with the FE's optimistic local copy + preserves
     merge ordering); the bot-turn id derives from it → exactly one bot row per
-    user turn. The bot row carries suggested_action + bubbles in metadata so the
-    FE reconstructs the contextual chip (trainings / strong_sides / audit) on
-    rehydrate — the chip that was vanishing on relogin. Mirrors the existing
+    user turn. The bot row carries suggested_action/suggested_actions + bubbles
+    in metadata so the FE reconstructs contextual choices on rehydrate. Mirrors
+    the existing
     server-insert pattern (publish 'insights ready' card, session cadence).
 
     Returns the bot row's client_id (so the FE can de-dupe its optimistic
@@ -1239,6 +1240,8 @@ def _persist_chat_turn(
     meta = {"intent": intent}
     if suggested_action:
         meta["suggested_action"] = suggested_action
+    if suggested_actions:
+        meta["suggested_actions"] = suggested_actions
     if bubbles:
         meta["bubbles"] = bubbles
     rows.append({
@@ -1294,6 +1297,7 @@ def v2_chat_query():
               "show_record_ui": bool,   # per-turn record affordance
                                          # toggle (RULE I) — in-app mic
               "suggested_action": str | None,  # the one contextual button
+              "suggested_actions": [str],      # deliberate pair, when needed
               "debug":          {...},  # model + history_used / error
               # present only when persist=true + signed in:
               "persisted":         bool,   # bot turn written server-side
@@ -1350,6 +1354,7 @@ def v2_chat_query():
         audio_bytes: bytes | None = None
         transcript_source = "web_speech"
         audio_duration_sec: float = 0.0
+        presentation_context: dict = {}
 
         # #2 — BE-owned thread persistence (signed-in only; FE opt-in). The FE
         # sends persist=true plus the user message's client_id/client_created_at
@@ -1374,6 +1379,16 @@ def v2_chat_query():
                     # Same leniency as the JSON path — bad history
                     # never breaks the answer.
                     history = None
+
+            presentation_context_raw = request.form.get("presentation_context")
+            if presentation_context_raw:
+                try:
+                    import json as _json
+                    _pc = _json.loads(presentation_context_raw)
+                    if isinstance(_pc, dict):
+                        presentation_context = _pc
+                except Exception:
+                    presentation_context = {}
 
             persist_thread = (request.form.get("persist") or "").strip().lower() in (
                 "1", "true", "yes", "on",
@@ -1416,6 +1431,8 @@ def v2_chat_query():
             user_client_id = _cid if isinstance(_cid, str) else None
             _cca = body.get("client_created_at")
             user_created_at = _cca if isinstance(_cca, str) else None
+            _pc = body.get("presentation_context")
+            presentation_context = _pc if isinstance(_pc, dict) else {}
 
         if not isinstance(question, str) or not question.strip():
             return jsonify({
@@ -1434,6 +1451,7 @@ def v2_chat_query():
                 bot_cid = _persist_chat_turn(
                     request.user_id, question, resp.get("answer"),
                     suggested_action=resp.get("suggested_action"),
+                    suggested_actions=resp.get("suggested_actions"),
                     bubbles=resp.get("bubbles"), intent=intent,
                     user_client_id=user_client_id,
                     user_created_at=user_created_at,
@@ -1556,6 +1574,33 @@ def v2_chat_query():
                     "chat/query: audit intercept failed user=%s: %s",
                     request.user_id, _ae,
                 )
+
+        # Presentation/deck changes are project-boundary decisions, not open-
+        # ended coaching prose.  Resolve them deterministically from the
+        # current project's explicit state before the general librarian can
+        # improvise a mutation or collapse two talks together.
+        try:
+            from services.presentation_change_intent import (
+                handle_presentation_change,
+            )
+            from services.master_doc_rag import split_answer_into_bubbles
+            _pi = handle_presentation_change(
+                question.strip(), presentation_context,
+            )
+            if _pi:
+                _ans = _pi["answer"]
+                return _finalize({
+                    "answer": _ans,
+                    "bubbles": split_answer_into_bubbles(_ans),
+                    "show_record_ui": False,
+                    "suggested_action": None,
+                    "suggested_actions": _pi["suggested_actions"],
+                    "debug": {"intent": _pi["intent"]},
+                }, intent=_pi["intent"])
+        except Exception as _pie:
+            logger.warning(
+                "chat/query: presentation-change intercept failed: %s", _pie,
+            )
 
         # ── Lounge-bot deterministic intercepts (chat-audit 2026-06-21) —
         # BEFORE the librarian (§0: keep these OUT of master_doc_rag's mega-
