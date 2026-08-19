@@ -394,6 +394,27 @@ def v2_explore_arc_voice_album(arc_id):
             if not isinstance(e, dict):
                 continue
             sid = str(e.get("take_session_id") or "")
+            if e.get("source_kind") == "practice_attempt":
+                attempt_id = str(e.get("practice_attempt_id") or "")
+                attempt = db.get_confident_voice_practice_attempt(attempt_id)
+                if not attempt:
+                    continue
+                out.append({
+                    # Stable playback key for the existing Album client. It is
+                    # deliberately namespaced so it can never be mistaken for
+                    # the original snippet that prompted the exercise.
+                    "snippet_id": f"practice:{attempt_id}",
+                    "take_session_id": e.get("take_session_id"),
+                    "take_index": take_index_by_sid.get(sid),
+                    "slide_index": e.get("slide_index"),
+                    "entered_at": e.get("entered_at"),
+                    "text": str(attempt.get("transcript") or "").strip(),
+                    "audio_url": _resolve_feedback_audio(
+                        attempt.get("audio_ref")),
+                    "start_offset_ms": 0,
+                    "duration_ms": attempt.get("duration_ms"),
+                })
+                continue
             snip = None
             if sid:
                 if sid not in snips_by_sid:

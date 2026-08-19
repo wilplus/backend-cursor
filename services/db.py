@@ -11624,7 +11624,30 @@ class DatabaseService:
                 .order("entered_at", desc=False)
                 .execute()
             )
-            return res.data or []
+            original = [dict(row, source_kind="snippet")
+                        for row in (res.data or [])]
+            try:
+                practice_res = (
+                    self.client.table("voice_album_practice")
+                    .select("*")
+                    .eq("arc_id", str(arc_id))
+                    .order("entered_at", desc=False)
+                    .execute()
+                )
+                practice = [dict(row, source_kind="practice_attempt")
+                            for row in (practice_res.data or [])]
+            except Exception as practice_error:
+                low = str(practice_error).lower()
+                if not ("voice_album_practice" in low and (
+                        "does not exist" in low or "pgrst" in low)):
+                    logger.warning(
+                        "list_voice_album practice read failed arc=%s: %s",
+                        arc_id, practice_error)
+                practice = []
+            return sorted(
+                original + practice,
+                key=lambda row: str(row.get("entered_at") or ""),
+            )
         except Exception as e:
             _e = str(e).lower()
             if "voice_album" in _e and (
@@ -11633,6 +11656,46 @@ class DatabaseService:
                 return []
             logger.warning("list_voice_album failed arc=%s: %s", arc_id, e)
             return []
+
+    def insert_voice_album_practice_entry(
+        self, *, arc_id: str, practice_attempt_id: str,
+        take_session_id: Optional[str] = None,
+        slide_index: Optional[int] = None,
+    ) -> bool:
+        if not arc_id or not practice_attempt_id:
+            return False
+        try:
+            self.client.table("voice_album_practice").upsert({
+                "arc_id": str(arc_id),
+                "practice_attempt_id": str(practice_attempt_id),
+                "take_session_id": take_session_id,
+                "slide_index": slide_index,
+            }, on_conflict="arc_id,practice_attempt_id",
+                ignore_duplicates=True).execute()
+            return True
+        except Exception as e:
+            logger.warning(
+                "insert_voice_album_practice_entry failed arc=%s: %s",
+                arc_id, e)
+            return False
+
+    def delete_voice_album_practice_entry(
+        self, *, arc_id: str, practice_attempt_id: str,
+    ) -> bool:
+        if not arc_id or not practice_attempt_id:
+            return False
+        try:
+            (self.client.table("voice_album_practice")
+             .delete()
+             .eq("arc_id", str(arc_id))
+             .eq("practice_attempt_id", str(practice_attempt_id))
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning(
+                "delete_voice_album_practice_entry failed arc=%s: %s",
+                arc_id, e)
+            return False
 
     def delete_moment_suggestion(self, snippet_id: Optional[str]) -> bool:
         """Drop one star row — a DISMISSED star must not survive to the
@@ -17550,6 +17613,261 @@ class DatabaseService:
             logger.warning("list_confident_voices failed user=%s: %s",
                            user_id, e)
             return []
+
+    # ── Confident Voice micro-practice ────────────────────────────────
+    # These tables are intentionally isolated from presentation text,
+    # intervention decisions and state_ratings. Keeping an attempt does not
+    # write Voice Album state; only the separate post-coach three-signal
+    # reconciler may mirror the selected recording there.
+
+    def get_confident_voice_practice_candidates(
+        self, snippet_ids: Any,
+    ) -> list[dict]:
+        """Heavy fields needed only by the narrow exercise eligibility read.
+
+        ``get_snippets_by_ids`` intentionally omits transcripts, word timing
+        and audio references for the hot document-ranking path. Reusing it
+        made every exercise candidate look unaligned. Keep this separate so
+        ordinary Ideal Text reads do not pay for the larger JSONB payload.
+        """
+        ids = [str(value) for value in (snippet_ids or []) if value]
+        if not ids:
+            return []
+        try:
+            res = (self.client.table(SNIPPETS_TABLE)
+                   .select("id, transcript, words, duration_ms, "
+                           "start_offset_ms, audio_segment_path, metrics")
+                   .in_("id", ids).execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning(
+                "get_confident_voice_practice_candidates failed (%d ids): %s",
+                len(ids), e)
+            return []
+
+    def get_active_diagnostic_exercise(
+        self, exercise_id: str,
+    ) -> Optional[dict]:
+        if not exercise_id:
+            return None
+        try:
+            res = (self.client.table("diagnostic_exercise").select("*")
+                   .eq("exercise_id", str(exercise_id))
+                   .eq("active", True).limit(1).execute())
+            row = (res.data or [None])[0]
+            if not row or not row.get("journal_post_id") \
+                    or not row.get("explanation_video_url"):
+                return None
+            # A mapping is explicit but its content asset must also be live.
+            post = self.get_journal_post_by_id(str(row["journal_post_id"]))
+            if not post or post.get("status") != "published":
+                return None
+            return row
+        except Exception as e:
+            logger.warning("get_active_diagnostic_exercise failed id=%s: %s",
+                           exercise_id, e)
+            return None
+
+    def list_diagnostic_exercises(self) -> list[dict]:
+        try:
+            res = (self.client.table("diagnostic_exercise").select("*")
+                   .order("exercise_id").execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_diagnostic_exercises failed: %s", e)
+            return []
+
+    def upsert_diagnostic_exercise(self, row: dict) -> Optional[dict]:
+        if not isinstance(row, dict) or not row.get("exercise_id"):
+            return None
+        payload = dict(row)
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (self.client.table("diagnostic_exercise")
+                   .upsert(payload, on_conflict="exercise_id").execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("upsert_diagnostic_exercise failed id=%s: %s",
+                           row.get("exercise_id"), e)
+            return None
+
+    def get_confident_voice_practice_by_take(
+        self, take_session_id: str, owner_user_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        if not take_session_id:
+            return None
+        try:
+            query = (self.client.table("confident_voice_practice").select("*")
+                     .eq("take_session_id", str(take_session_id)))
+            if owner_user_id:
+                query = query.eq("owner_user_id", str(owner_user_id))
+            res = query.limit(1).execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_confident_voice_practice_by_take failed sid=%s: %s",
+                           take_session_id, e)
+            return None
+
+    def get_confident_voice_practice(
+        self, practice_id: str, owner_user_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        if not practice_id:
+            return None
+        try:
+            query = (self.client.table("confident_voice_practice").select("*")
+                     .eq("id", str(practice_id)))
+            if owner_user_id:
+                query = query.eq("owner_user_id", str(owner_user_id))
+            res = query.limit(1).execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_confident_voice_practice failed id=%s: %s",
+                           practice_id, e)
+            return None
+
+    def create_confident_voice_practice(self, row: dict) -> Optional[dict]:
+        if not isinstance(row, dict):
+            return None
+        try:
+            res = (self.client.table("confident_voice_practice")
+                   .insert(row).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            # The DB unique(take_session_id) is the final one-per-take guard.
+            # A concurrent create simply re-reads the winner.
+            logger.warning("create_confident_voice_practice failed take=%s: %s",
+                           row.get("take_session_id"), e)
+            return self.get_confident_voice_practice_by_take(
+                str(row.get("take_session_id") or ""),
+                str(row.get("owner_user_id") or "") or None)
+
+    def list_confident_voice_practice_attempts(
+        self, practice_id: str,
+    ) -> list[dict]:
+        if not practice_id:
+            return []
+        try:
+            res = (self.client.table("confident_voice_practice_attempt")
+                   .select("*").eq("practice_id", str(practice_id))
+                   .order("attempt_index").execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_confident_voice_practice_attempts failed id=%s: %s",
+                           practice_id, e)
+            return []
+
+    def get_confident_voice_practice_attempt(
+        self, attempt_id: str, practice_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        if not attempt_id:
+            return None
+        try:
+            query = (self.client.table("confident_voice_practice_attempt")
+                     .select("*").eq("id", str(attempt_id)))
+            if practice_id:
+                query = query.eq("practice_id", str(practice_id))
+            res = query.limit(1).execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning(
+                "get_confident_voice_practice_attempt failed id=%s: %s",
+                attempt_id, e)
+            return None
+
+    def insert_confident_voice_practice_attempt(
+        self, row: dict,
+    ) -> Optional[dict]:
+        if not isinstance(row, dict):
+            return None
+        try:
+            res = (self.client.table("confident_voice_practice_attempt")
+                   .insert(row).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("insert_confident_voice_practice_attempt failed practice=%s: %s",
+                           row.get("practice_id"), e)
+            return None
+
+    def set_confident_voice_practice_strongest(
+        self, practice_id: str, attempt_id: str,
+    ) -> bool:
+        if not practice_id or not attempt_id:
+            return False
+        try:
+            (self.client.table("confident_voice_practice_attempt")
+             .update({"is_strongest": False})
+             .eq("practice_id", str(practice_id)).execute())
+            res = (self.client.table("confident_voice_practice_attempt")
+                   .update({"is_strongest": True})
+                   .eq("practice_id", str(practice_id))
+                   .eq("id", str(attempt_id)).execute())
+            return bool(res.data)
+        except Exception as e:
+            logger.warning("set_confident_voice_practice_strongest failed id=%s: %s",
+                           practice_id, e)
+            return False
+
+    def update_confident_voice_practice(
+        self, practice_id: str, owner_user_id: Optional[str], patch: dict,
+    ) -> Optional[dict]:
+        if not practice_id or not isinstance(patch, dict):
+            return None
+        clean = dict(patch)
+        clean["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            query = (self.client.table("confident_voice_practice")
+                     .update(clean).eq("id", str(practice_id)))
+            if owner_user_id:
+                query = query.eq("owner_user_id", str(owner_user_id))
+            res = query.execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("update_confident_voice_practice failed id=%s: %s",
+                           practice_id, e)
+            return None
+
+    def keep_confident_voice_practice_attempt(
+        self, practice_id: str, attempt_id: str, user_answer: str,
+    ) -> Optional[dict]:
+        if user_answer not in ("yes", "no"):
+            return None
+        try:
+            # Only an attempt belonging to this practice can be selected.
+            res = (self.client.table("confident_voice_practice_attempt")
+                   .update({
+                       "kept": user_answer == "yes",
+                       "user_answer": user_answer,
+                   })
+                   .eq("id", str(attempt_id))
+                   .eq("practice_id", str(practice_id)).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("keep_confident_voice_practice_attempt failed id=%s: %s",
+                           attempt_id, e)
+            return None
+
+    def set_confident_voice_practice_attempt_coach_decision(
+        self, practice_id: str, attempt_id: str, decision: str,
+        coach_user_id: str,
+    ) -> Optional[dict]:
+        if decision not in ("yes", "no"):
+            return None
+        try:
+            res = (self.client.table("confident_voice_practice_attempt")
+                   .update({
+                       "coach_confidence_decision": decision,
+                       "coach_confidence_decided_by": str(coach_user_id),
+                       "coach_confidence_decided_at": datetime.now(
+                           timezone.utc).isoformat(),
+                   })
+                   .eq("id", str(attempt_id))
+                   .eq("practice_id", str(practice_id)).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning(
+                "set practice attempt coach decision failed id=%s: %s",
+                attempt_id, e)
+            return None
 
 
 # Singleton instance

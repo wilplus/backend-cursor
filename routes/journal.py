@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
@@ -216,6 +217,71 @@ def journal_admin_get():
     if not row:
         return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
     return jsonify({"post": jr.serialize_admin(row)}), 200
+
+
+@journal_bp.route("/v2/internal/journal/diagnostic-exercises/list",
+                  methods=["POST"])
+def journal_admin_list_diagnostic_exercises():
+    """Explicit diagnostic pool. Ordinary posts never appear by themselves."""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    return jsonify({"exercises": db.list_diagnostic_exercises()}), 200
+
+
+@journal_bp.route("/v2/internal/journal/diagnostic-exercises/save",
+                  methods=["POST"])
+def journal_admin_save_diagnostic_exercise():
+    """Mark one reviewed post/video as the MVP's diagnostic exercise."""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    body = _body()
+    exercise_id = body.get("exercise_id")
+    if exercise_id != "hear-every-word-v1":
+        return _invalid("only hear-every-word-v1 may be active in this MVP")
+    allowed = {
+        "exercise_id", "journal_post_id", "title", "instruction",
+        "introduction_copy", "confident_introduction_copy",
+        "explanation_video_url", "acoustic_problem_tags",
+        "supported_confidence_patterns", "matching_criteria", "exclusions",
+        "active", "version",
+    }
+    row = {key: body.get(key) for key in allowed if key in body}
+    required = ("journal_post_id", "title", "instruction",
+                "introduction_copy", "explanation_video_url")
+    if any(not row.get(key) for key in required):
+        return _invalid(
+            "an exercise mapping requires a post, title, instruction, "
+            "introduction and explanation video")
+    if body.get("active") not in (True, False):
+        return _invalid("active: must be true or false")
+    video_url = str(row.get("explanation_video_url") or "").strip()
+    if not re.match(r"^https?://[^\s]+$", video_url, re.IGNORECASE):
+        return _invalid("explanation_video_url: must use http or https")
+    for key in ("acoustic_problem_tags", "supported_confidence_patterns"):
+        value = row.get(key)
+        if not isinstance(value, list) or not value \
+                or not all(isinstance(item, str) and item.strip()
+                           for item in value):
+            return _invalid(f"{key}: must be a non-empty string list")
+    for key in ("matching_criteria", "exclusions"):
+        if not isinstance(row.get(key), dict):
+            return _invalid(f"{key}: must be an object")
+    version = row.get("version")
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        return _invalid("version: must be a positive integer")
+    row["explanation_video_url"] = video_url
+    post = db.get_journal_post_by_id(str(row.get("journal_post_id") or ""))
+    if not post:
+        return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
+    if body.get("active") and post.get("status") != "published":
+        return _invalid("publish the linked post before activating the exercise")
+    saved = db.upsert_diagnostic_exercise(row)
+    if not saved:
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not save the exercise"}), 500
+    return jsonify({"exercise": saved}), 200
 
 
 @journal_bp.route("/v2/internal/journal/posts/create", methods=["POST"])
