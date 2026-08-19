@@ -239,6 +239,26 @@ def fire_confidence_not_confirmed(
     )
 
 
+def fire_confidence_practice_shared(
+    db, user_id: Any, arc_id: Any, practice_id: Any,
+) -> bool:
+    """One coach-explicit exercise bubble; never changes journey state."""
+    if not user_id or not arc_id or not practice_id:
+        return False
+    return _insert(
+        db, str(user_id),
+        client_key=f"willab-confidence-practice:{practice_id}",
+        kind="text",
+        body="Your coach added a new exercise for the voice pattern you practised.",
+        metadata={
+            "arc_id": str(arc_id),
+            "practice_id": str(practice_id),
+            "note": "confidence_practice_shared",
+            "actions": ["open_confidence_practice"],
+        },
+    )
+
+
 def _arc_topic(db, arc_id: Any) -> Optional[str]:
     """The arc's project name, for stamping on a bubble at WRITE time.
 

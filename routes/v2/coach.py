@@ -16,6 +16,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 import sentry_sdk
 from flask import jsonify, request
@@ -1222,6 +1223,253 @@ def _save_coach_snippet_lanes(session_id, snippet_id, body):
             updated_by=str(request.user_id),
         )
     return None
+
+
+def _coach_practice_payload(practice: dict) -> dict:
+    """Coach-only attempt bundle, intentionally separate from blind packet."""
+    from services.audio_ref_resolver import resolve_playable_ref
+    from services.confident_voice_practice import ASSESSMENT_COPY
+    original_raw = db.get_active_diagnostic_exercise(
+        str(practice.get("exercise_id") or "")) or \
+        (practice.get("exercise_snapshot")
+         if isinstance(practice.get("exercise_snapshot"), dict) else {})
+    original_exercise: dict[str, Any] = (
+        original_raw if isinstance(original_raw, dict) else {})
+    custom_exercise = practice.get("coach_custom_exercise")
+    exercise: dict[str, Any]
+    if isinstance(custom_exercise, dict):
+        exercise = custom_exercise
+    else:
+        selected_exercise = db.get_active_diagnostic_exercise(
+            str(practice.get("coach_selected_exercise_id")
+                or practice.get("exercise_id") or "")) or original_exercise
+        exercise = (selected_exercise
+                    if isinstance(selected_exercise, dict) else {})
+    available_exercises = []
+    for row in db.list_diagnostic_exercises():
+        active = db.get_active_diagnostic_exercise(
+            str(row.get("exercise_id") or ""))
+        if active:
+            available_exercises.append({
+                "exercise_id": active.get("exercise_id"),
+                "version": active.get("version"),
+                "title": active.get("title"),
+                "instruction": active.get("instruction"),
+                "explanation_video_ref": active.get("explanation_video_url"),
+            })
+    attempts = db.list_confident_voice_practice_attempts(
+        str(practice.get("id")))
+    return {
+        "id": str(practice.get("id")),
+        "project_id": str(practice.get("project_id")),
+        "take_session_id": str(practice.get("take_session_id")),
+        "snippet_id": str(practice.get("snippet_id")),
+        "slide_index": practice.get("slide_index"),
+        "paragraph_index": practice.get("paragraph_index"),
+        "evidence_span": practice.get("evidence_span"),
+        "exact_passage": practice.get("exact_passage"),
+        "original_audio_ref": resolve_playable_ref(
+            practice.get("original_audio_ref")),
+        "original_start_offset_ms": practice.get("original_start_offset_ms"),
+        "original_duration_ms": practice.get("original_duration_ms"),
+        "original_user_answer": practice.get("original_user_answer"),
+        "final_user_answer": practice.get("final_user_answer"),
+        "selected_attempt_id": practice.get("selected_attempt_id"),
+        "professional_coach_decision": practice.get(
+            "professional_coach_decision"),
+        "coach_shared_at": practice.get("coach_shared_at"),
+        "exercise": {
+            "exercise_id": exercise.get("exercise_id")
+                           or practice.get("exercise_id"),
+            "version": exercise.get("version")
+                       or practice.get("exercise_version"),
+            "title": exercise.get("title"),
+            "instruction": exercise.get("instruction"),
+            "explanation_video_ref": (
+                practice.get("coach_explanation_video_url")
+                or exercise.get("explanation_video_url")
+                or exercise.get("explanation_video_ref")
+            ),
+            "is_custom": isinstance(custom_exercise, dict),
+        },
+        "available_exercises": available_exercises,
+        "attempts": [{
+            "id": str(row.get("id")),
+            "attempt_index": row.get("attempt_index"),
+            "audio_ref": resolve_playable_ref(row.get("audio_ref")),
+            "duration_ms": row.get("duration_ms"),
+            "comparison": row.get("comparison"),
+            "assessment_key": row.get("assessment_key"),
+            "assessment": ASSESSMENT_COPY.get(
+                str(row.get("assessment_key") or ""),
+                "Acoustically similar."),
+            "is_strongest": bool(row.get("is_strongest")),
+            "is_selected": str(row.get("id")) == str(
+                practice.get("selected_attempt_id") or ""),
+            "kept": bool(row.get("kept")),
+            "user_answer": row.get("user_answer"),
+            # The machine leg remains private so it cannot anchor this
+            # professional judgment. The coach sees only their own saved
+            # answer on the selected practice recording.
+            "coach_confidence_decision": row.get(
+                "coach_confidence_decision"),
+        } for row in attempts],
+    }
+
+
+@v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/confidence-practice",
+    methods=["GET", "PUT"],
+)
+@require_admin_or_coach
+def v2_coach_confident_voice_practice(session_id, snippet_id):
+    """Review/share practice only after the coach's blind moment rating.
+
+    This is a separate request rather than a field in the normal session
+    packet.  Therefore the machine-routed exercise and owner answers cannot
+    anchor the coach before their independent confidence judgment is saved.
+    """
+    if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "session_id and snippet_id must be UUIDs"}), 400
+    session = db.v2_get_session_by_id(session_id)
+    if not session:
+        return jsonify({"code": "SESSION_NOT_FOUND",
+                        "error": "Session not found"}), 404
+    owner_sid = _snippet_owner_map(session_id).get(snippet_id)
+    if not owner_sid:
+        return jsonify({"code": "SNIPPET_NOT_FOUND",
+                        "error": "Snippet not in this session"}), 404
+    # Hard blind gate: the current coach must first commit a definite rating.
+    state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
+    coach_state = state.get(str(snippet_id)) or {}
+    if coach_state.get("rating_value") not in ("yes", "no"):
+        return jsonify({"code": "BLIND_RATING_REQUIRED",
+                        "error": "Rate the original moment before reviewing practice."}), 409
+    practice = db.get_confident_voice_practice_by_take(owner_sid)
+    if not practice or str(practice.get("snippet_id")) != str(snippet_id):
+        return jsonify({"code": "NOT_FOUND",
+                        "error": "practice not found"}), 404
+    if request.method == "GET":
+        return jsonify({"practice": _coach_practice_payload(practice)}), 200
+
+    body = request.get_json(silent=True) or {}
+    decision = body.get("professional_coach_decision")
+    if decision not in ("yes", "no", "refine"):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "professional_coach_decision is required"}), 400
+    selected_attempt_id = str(practice.get("selected_attempt_id") or "")
+    selected_attempt_decision = body.get("selected_attempt_coach_decision")
+    if selected_attempt_id and selected_attempt_decision not in ("yes", "no"):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "Judge the selected practice recording itself.",
+        }), 400
+    custom_body = body.get("custom_exercise")
+    custom_exercise = None
+    exercise_id = None
+    if custom_body is not None:
+        if not isinstance(custom_body, dict):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "custom_exercise must be an object."}), 400
+        custom_title = str(custom_body.get("title") or "").strip()
+        custom_instruction = str(custom_body.get("instruction") or "").strip()
+        custom_video = str(custom_body.get("explanation_video_url") or "").strip()
+        if not custom_title or len(custom_title) > 120 \
+                or not custom_instruction or len(custom_instruction) > 1000:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "A short exercise title and instruction are required."}), 400
+        if custom_video and not re.match(
+                r"^https?://[^\s]+$", custom_video, re.IGNORECASE):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "explanation video must use http or https."}), 400
+        custom_exercise = {
+            "exercise_id": f"coach-custom-{practice.get('id')}",
+            "version": 1,
+            "title": custom_title,
+            "instruction": custom_instruction,
+            "explanation_video_url": custom_video or None,
+            "source": "professional_coach",
+        }
+        exercise = custom_exercise
+    else:
+        exercise_id = str(body.get("exercise_id") or practice.get("exercise_id"))
+        exercise = db.get_active_diagnostic_exercise(exercise_id)
+        if not exercise:
+            return jsonify({"code": "EXERCISE_UNAVAILABLE",
+                            "error": "Select an active reviewed exercise."}), 409
+    requested_video_url = body.get("explanation_video_url")
+    if requested_video_url is not None:
+        if not isinstance(requested_video_url, str):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "explanation_video_url must be a URL."}), 400
+        requested_video_url = requested_video_url.strip()
+        if requested_video_url and not re.match(
+                r"^https?://[^\s]+$", requested_video_url, re.IGNORECASE):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "explanation_video_url must use http or https."}), 400
+    final_video_url = (
+        requested_video_url
+        or exercise.get("explanation_video_url")
+        or exercise.get("explanation_video_ref")
+    )
+    share = body.get("share_with_user") is True
+    if share and not final_video_url:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "Add an explanation video before sharing."}), 400
+    exercise_snapshot = {
+        "exercise_id": exercise.get("exercise_id"),
+        "version": int(exercise.get("version") or 1),
+        "title": exercise.get("title"),
+        "instruction": exercise.get("instruction"),
+        "explanation_video_url": final_video_url,
+        "source": exercise.get("source") or "diagnostic_library",
+    }
+    patch = {
+        "professional_coach_decision": decision,
+        "coach_selected_exercise_id": exercise_id,
+        "coach_custom_exercise": custom_exercise,
+        "coach_explanation_video_url": final_video_url,
+    }
+    if share:
+        patch.update({
+            "coach_shared_exercise": exercise_snapshot,
+            "coach_shared_by": str(request.user_id),
+            "coach_shared_at": datetime.now(timezone.utc).isoformat(),
+        })
+    if selected_attempt_id:
+        selected_attempt = db.set_confident_voice_practice_attempt_coach_decision(
+            str(practice.get("id")), selected_attempt_id,
+            str(selected_attempt_decision), str(request.user_id))
+        if not selected_attempt:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Could not save the selected recording judgment.",
+            }), 500
+    updated = db.update_confident_voice_practice(
+        str(practice.get("id")), None, patch)
+    if not updated:
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not save the coach decision."}), 500
+    if selected_attempt_id:
+        from services.confident_voice_practice import (
+            reconcile_practice_voice_album,
+        )
+        admitted = reconcile_practice_voice_album(updated, database=db)
+        if admitted:
+            from services.arc_notifications import fire_voice_album_ready
+            fire_voice_album_ready(
+                db, practice.get("owner_user_id"), practice.get("project_id"))
+    if share:
+        from services.arc_notifications import fire_confidence_practice_shared
+        emitted = fire_confidence_practice_shared(
+            db, practice.get("owner_user_id"), practice.get("project_id"),
+            practice.get("id"))
+        if emitted:
+            db.update_confident_voice_practice(
+                str(practice.get("id")), None,
+                {"chat_emitted_at": datetime.now(timezone.utc).isoformat()})
+    return jsonify({"practice": _coach_practice_payload(updated)}), 200
 
 
 @v2_bp.route("/coach/sessions/<session_id>/snippets/<snippet_id>", methods=["POST"])

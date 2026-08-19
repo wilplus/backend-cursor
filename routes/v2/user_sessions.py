@@ -10,6 +10,8 @@ endpoint names and the URL map are unchanged.
 Re-exported from ``routes.v2_routes`` for import compatibility.
 """
 import logging
+import uuid
+from datetime import datetime, timezone
 
 import sentry_sdk
 from flask import jsonify, request
@@ -2152,6 +2154,413 @@ def v2_put_confidence_agree(snippet_id):
             "code": "V2_ERROR",
             "error": "Failed to save the answer",
         }), 500
+
+
+def _practice_user_payload(practice, attempts=None):
+    """Owner-safe practice shape. Raw metrics/comparison scores stay private."""
+    from services.confident_voice_practice import (
+        FINAL_QUESTION, FINAL_STRONGEST, INSTRUCTION, TITLE, UNSUCCESSFUL,
+        public_attempt,
+    )
+    # A coach's private draft is never user-visible. Only an explicit Share
+    # copies a complete exercise snapshot into coach_shared_exercise; until
+    # then the owner continues to see the original manager-selected exercise.
+    shared_exercise = practice.get("coach_shared_exercise")
+    if practice.get("coach_shared_at") and isinstance(shared_exercise, dict):
+        exercise = shared_exercise
+    else:
+        exercise = db.get_active_diagnostic_exercise(
+            str(practice.get("exercise_id") or "")) or \
+            (practice.get("exercise_snapshot")
+             if isinstance(practice.get("exercise_snapshot"), dict) else {})
+    rows = attempts if attempts is not None else \
+        db.list_confident_voice_practice_attempts(str(practice.get("id")))
+    from services.audio_ref_resolver import resolve_playable_ref
+    public_rows = [public_attempt({
+        **row,
+        "audio_ref": resolve_playable_ref(row.get("audio_ref")),
+    }) for row in rows]
+    strongest = next((row for row in public_rows if row["is_strongest"]), None)
+    improved = any(bool((row.get("comparison") or {}).get("improved"))
+                   for row in rows if isinstance(row, dict))
+    final_ready = len(public_rows) >= 3
+    final_message = (
+        UNSUCCESSFUL if final_ready and not improved
+        else FINAL_STRONGEST if strongest else None
+    )
+    return {
+        "id": str(practice.get("id")),
+        "status": practice.get("status") or "open",
+        "exercise": {
+            "exercise_id": exercise.get("exercise_id")
+                           or practice.get("exercise_id"),
+            "version": exercise.get("version")
+                       or practice.get("exercise_version"),
+            "title": exercise.get("title") or TITLE,
+            "instruction": exercise.get("instruction") or INSTRUCTION,
+            "explanation_video_ref": (
+                exercise.get("explanation_video_url")
+                or exercise.get("explanation_video_ref")
+            ),
+        },
+        "passage": practice.get("exact_passage") or "",
+        "original_audio_ref": _resolve_snippet_audio_url({
+            "audio_segment_path": practice.get("original_audio_ref"),
+        }),
+        "original_start_offset_ms": practice.get("original_start_offset_ms") or 0,
+        "original_duration_ms": practice.get("original_duration_ms") or 0,
+        "attempts": public_rows,
+        "attempts_remaining": max(0, 3 - len(public_rows)),
+        "strongest_attempt": strongest,
+        "final_ready": final_ready,
+        "final_message": final_message,
+        "final_question": FINAL_QUESTION if final_ready or strongest else None,
+        "final_user_answer": practice.get("final_user_answer"),
+        "selected_attempt_id": practice.get("selected_attempt_id"),
+    }
+
+
+@v2_bp.route("/user/snippets/<snippet_id>/confidence-practice",
+             methods=["POST"])
+@require_auth
+def v2_start_confident_voice_practice(snippet_id):
+    """Open/resume the one optional same-passage practice for this take."""
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    body = request.get_json(silent=True) or {}
+    original_answer = body.get("original_user_answer")
+    if original_answer not in ("yes", "no"):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "original_user_answer must be yes or no"}), 400
+    try:
+        snip = db.get_snippet_by_id(snippet_id)
+        session = db.v2_get_session_by_id(
+            str((snip or {}).get("session_id") or ""))
+        if (not snip or not session
+                or str(session.get("user_id")) != str(request.user_id)
+                or not session.get("arc_id")):
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "snippet not found"}), 404
+        owner_route = next((
+            row for row in db.list_owner_voice_album_routes(
+                str(session.get("arc_id")))
+            if str(row.get("snippet_id")) == str(snippet_id)
+            and str(row.get("owner_user_id")) == str(request.user_id)
+        ), None)
+        if not owner_route or owner_route.get("response") != original_answer:
+            return jsonify({"code": "ANSWER_REQUIRED",
+                            "error": "Answer the Confident Voice question first."}), 409
+        exercise_id = str(body.get("exercise_id") or "hear-every-word-v1")
+        exercise = db.get_active_diagnostic_exercise(exercise_id)
+        if not exercise:
+            return jsonify({"code": "EXERCISE_UNAVAILABLE",
+                            "error": "This exercise is not available."}), 409
+        take_id = str(session.get("id"))
+        existing = db.get_confident_voice_practice_by_take(
+            take_id, str(request.user_id))
+        if existing:
+            if str(existing.get("snippet_id")) != str(snippet_id):
+                return jsonify({"code": "TAKE_EXERCISE_LIMIT",
+                                "error": "An exercise was already offered for this take."}), 409
+            return jsonify({"practice": _practice_user_payload(existing)}), 200
+
+        from services.confident_voice_practice import exercise_eligibility
+        take_snippets = db.get_snippets_by_session(take_id) or []
+        wpms = []
+        for row in take_snippets:
+            resolved = resolve_all(row)
+            wpm = resolved.get("wpm")
+            if isinstance(wpm, (int, float)) and not isinstance(wpm, bool):
+                wpms.append(float(wpm))
+        import statistics
+        verdict = exercise_eligibility(
+            snip,
+            session_median_wpm=statistics.median(wpms) if wpms else None,
+        )
+        if not verdict.get("eligible"):
+            return jsonify({"code": "NOT_ELIGIBLE",
+                            "error": "This moment does not match the exercise."}), 409
+        supported = exercise.get("supported_confidence_patterns")
+        if isinstance(supported, list) and supported \
+                and verdict.get("pattern") not in supported:
+            return jsonify({"code": "NOT_ELIGIBLE",
+                            "error": "This moment does not match the exercise."}), 409
+        evidence = body.get("evidence") if isinstance(body.get("evidence"), dict) else {}
+        span = evidence.get("span") if isinstance(evidence.get("span"), dict) else {}
+        slide_index = evidence.get("slide_index")
+        paragraph_index = evidence.get("paragraph_index")
+        if str(evidence.get("project_id") or "") != str(session.get("arc_id")) \
+                or str(evidence.get("take_session_id") or "") != take_id \
+                or not isinstance(slide_index, int) or slide_index < 0 \
+                or not isinstance(paragraph_index, int) or paragraph_index < 0 \
+                or not isinstance(span.get("start"), int) \
+                or not isinstance(span.get("end"), int) \
+                or span["end"] <= span["start"]:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "exact feedback evidence is required"}), 400
+        transcript = (snip.get("transcript") or "").strip()
+        audio_ref = snip.get("audio_segment_path") or snip.get("audio_ref")
+        created = db.create_confident_voice_practice({
+            "owner_user_id": str(request.user_id),
+            "project_id": str(session["arc_id"]),
+            "take_session_id": take_id,
+            "snippet_id": str(snippet_id),
+            "exercise_id": exercise_id,
+            "exercise_version": int(exercise.get("version") or 1),
+            "exercise_snapshot": {
+                "exercise_id": exercise_id,
+                "version": int(exercise.get("version") or 1),
+                "title": exercise.get("title"),
+                "instruction": exercise.get("instruction"),
+                "explanation_video_url": exercise.get("explanation_video_url"),
+                "source": "diagnostic_library",
+            },
+            "slide_index": slide_index,
+            "paragraph_index": paragraph_index,
+            "evidence_span": span,
+            "exact_passage": transcript,
+            "original_audio_ref": str(audio_ref),
+            "original_start_offset_ms": int(snip.get("start_offset_ms") or 0),
+            "original_duration_ms": int(snip.get("duration_ms") or 0),
+            "machine_assessment": {
+                "pattern": verdict.get("pattern"),
+                "priority": verdict.get("priority"),
+            },
+            "acoustic_evidence": {
+                "signals": verdict.get("signals"),
+                "snapshot": verdict.get("snapshot"),
+                "pace_high": verdict.get("pace_high"),
+            },
+            "original_user_answer": original_answer,
+        })
+        if not created:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not start this practice."}), 500
+        return jsonify({"practice": _practice_user_payload(created, [])}), 201
+    except Exception as e:
+        logger.error("confidence-practice start failed snip=%s: %s",
+                     snippet_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not start this practice."}), 500
+
+
+@v2_bp.route("/user/confidence-practice/<practice_id>", methods=["GET"])
+@require_auth
+def v2_get_confident_voice_practice(practice_id):
+    if not _is_valid_uuid(practice_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "practice_id must be a valid UUID"}), 400
+    practice = db.get_confident_voice_practice(
+        practice_id, str(request.user_id))
+    if not practice:
+        return jsonify({"code": "NOT_FOUND", "error": "practice not found"}), 404
+    return jsonify({"practice": _practice_user_payload(practice)}), 200
+
+
+@v2_bp.route("/user/confidence-practice/<practice_id>/attempts",
+             methods=["POST"])
+@require_auth
+def v2_add_confident_voice_practice_attempt(practice_id):
+    """Transcribe and acoustically compare one retained same-text attempt."""
+    if not _is_valid_uuid(practice_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "practice_id must be a valid UUID"}), 400
+    practice = db.get_confident_voice_practice(
+        practice_id, str(request.user_id))
+    if not practice:
+        return jsonify({"code": "NOT_FOUND", "error": "practice not found"}), 404
+    if practice.get("status") != "open":
+        return jsonify({"code": "PRACTICE_CLOSED",
+                        "error": "This practice is already closed."}), 409
+    existing = db.list_confident_voice_practice_attempts(practice_id)
+    if len(existing) >= 3:
+        return jsonify({"code": "ATTEMPT_LIMIT",
+                        "error": "This practice already has three attempts."}), 409
+    upload = request.files.get("audio_file")
+    if not upload:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "audio_file is required"}), 400
+    try:
+        audio_bytes = upload.read()
+        if len(audio_bytes) < 1000:
+            return jsonify({"code": "AUDIO_TOO_SHORT",
+                            "error": "That recording was too short. Try again."}), 422
+        mime = (upload.mimetype or "audio/webm").split(";", 1)[0]
+        ext = ".webm" if "webm" in mime else ".m4a" if "mp4" in mime else ".wav"
+        from services.snippet_transcription import transcribe_snippet_bytes
+        transcription = transcribe_snippet_bytes(
+            audio_bytes, hint_filename=f"practice{ext}")
+        if not transcription or not transcription.get("transcript"):
+            return jsonify({"code": "TRANSCRIPTION_FAILED",
+                            "error": "We couldn't hear that clearly. Try again."}), 422
+        from services.confident_voice_practice import (
+            acoustic_snapshot, comparison_for_attempt, passage_alignment,
+        )
+        alignment = passage_alignment(
+            str(practice.get("exact_passage") or ""),
+            str(transcription.get("transcript") or ""))
+        if not alignment.get("matches"):
+            return jsonify({"code": "PASSAGE_MISMATCH",
+                            "error": "Please read the exact passage shown and try again."}), 422
+        from services.audio_metrics import analyze_audio
+        duration_ms = transcription.get("transcribed_duration_ms")
+        try:
+            captured_duration_sec = max(
+                0.0, float(request.form.get("duration_sec") or 0.0))
+        except (TypeError, ValueError):
+            captured_duration_sec = 0.0
+        duration_sec = (float(duration_ms) / 1000.0
+                        if isinstance(duration_ms, int) and duration_ms > 0
+                        else captured_duration_sec)
+        metrics = analyze_audio(
+            audio_bytes, str(transcription["transcript"]), duration_sec)
+        if not metrics:
+            return jsonify({"code": "ANALYSIS_FAILED",
+                            "error": "We couldn't compare that attempt. Try again."}), 422
+        # Apply the SAME existing, self-relative acoustic confidence signal
+        # used by full-take snippets when a valid speaker/take baseline is
+        # available. Honest absence stays None; we never synthesize a score.
+        try:
+            from services.voice_confidence import (
+                read_for_piece, resolve_confidence_baseline, resolve_take_sex,
+            )
+            take_rows = db.get_snippets_by_session(
+                str(practice.get("take_session_id"))) or []
+            take_metrics = [row.get("metrics") for row in take_rows
+                            if isinstance(row.get("metrics"), dict)]
+            baseline, baseline_kind = resolve_confidence_baseline(
+                str(practice.get("owner_user_id") or request.user_id),
+                take_metrics, database=db)
+            session = db.v2_get_session_by_id(
+                str(practice.get("take_session_id"))) or {}
+            sex, sex_source = resolve_take_sex(
+                str(practice.get("owner_user_id") or request.user_id),
+                session, baseline, database=db)
+            confidence_read = read_for_piece(
+                metrics, baseline, baseline_kind, sex, sex_source)
+            if confidence_read:
+                metrics["voice_confidence"] = confidence_read
+        except Exception as confidence_err:
+            logger.info(
+                "confidence-practice attempt confidence unavailable id=%s: %s",
+                practice_id, confidence_err)
+        current_snapshot = acoustic_snapshot({
+            "metrics": metrics,
+            "words": transcription.get("words") or [],
+            "duration_ms": duration_ms or int(duration_sec * 1000),
+            "audio_ref": "captured",
+            "transcript": transcription["transcript"],
+        })
+        from services.confident_voice_practice import (
+            machine_confidence_decision,
+        )
+        original = ((practice.get("acoustic_evidence") or {}).get("snapshot")
+                    if isinstance(practice.get("acoustic_evidence"), dict) else {}) or {}
+        previous = (existing[-1].get("acoustic_metrics") if existing else None)
+        strongest_row = next((row for row in existing if row.get("is_strongest")), None)
+        strongest_snapshot = (strongest_row or {}).get("acoustic_metrics")
+        comparison = comparison_for_attempt(
+            original, current_snapshot, previous, strongest_snapshot)
+        attempt_index = len(existing) + 1
+        key = (f"confidence-practice/{request.user_id}/{practice_id}/"
+               f"{attempt_index}-{uuid.uuid4().hex}{ext}")
+        from services.lab_audio_storage import (
+            lab_audio_public_url, put_lab_audio_bytes, target_bucket,
+        )
+        bucket = put_lab_audio_bytes(key, audio_bytes, mime)
+        audio_ref = lab_audio_public_url(key) or f"s3://{bucket or target_bucket()}/{key}"
+        inserted = db.insert_confident_voice_practice_attempt({
+            "practice_id": str(practice_id),
+            "attempt_index": attempt_index,
+            "storage_path": key,
+            "audio_ref": audio_ref,
+            "mime_type": mime,
+            "duration_ms": int(duration_ms or max(1, duration_sec * 1000)),
+            "transcript": str(transcription["transcript"]),
+            "transcript_alignment": alignment,
+            "acoustic_metrics": current_snapshot,
+            "comparison": comparison,
+            "assessment_key": comparison["assessment_key"],
+            "machine_confidence_decision": machine_confidence_decision(
+                current_snapshot),
+        })
+        if not inserted:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save that attempt."}), 500
+        candidates = existing + [inserted]
+        def _attempt_strength(row):
+            value = (row.get("comparison") or {}).get("internal_strength")
+            return float(value) if isinstance(value, (int, float)) else -999.0
+        strongest = max(
+            candidates,
+            key=_attempt_strength,
+        )
+        db.set_confident_voice_practice_strongest(
+            practice_id, str(strongest.get("id")))
+        refreshed = db.list_confident_voice_practice_attempts(practice_id)
+        return jsonify({"practice": _practice_user_payload(practice, refreshed)}), 201
+    except Exception as e:
+        logger.error("confidence-practice attempt failed id=%s: %s",
+                     practice_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not compare that attempt."}), 500
+
+
+@v2_bp.route("/user/confidence-practice/<practice_id>/complete",
+             methods=["PUT"])
+@require_auth
+def v2_complete_confident_voice_practice(practice_id):
+    """Dismiss or retain an attempt. Never writes any presentation surface."""
+    if not _is_valid_uuid(practice_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "practice_id must be a valid UUID"}), 400
+    practice = db.get_confident_voice_practice(
+        practice_id, str(request.user_id))
+    if not practice:
+        return jsonify({"code": "NOT_FOUND", "error": "practice not found"}), 404
+    body = request.get_json(silent=True) or {}
+    if practice.get("status") != "open":
+        return jsonify({"code": "PRACTICE_CLOSED",
+                        "error": "This practice is already closed."}), 409
+    now = datetime.now(timezone.utc).isoformat()
+    if body.get("action") == "dismiss":
+        updated = db.update_confident_voice_practice(
+            practice_id, str(request.user_id),
+            {"status": "dismissed", "closed_at": now})
+        if not updated:
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not close this practice."}), 500
+        return jsonify({"practice": _practice_user_payload(updated)}), 200
+    answer, attempt_id = body.get("user_answer"), body.get("attempt_id")
+    if answer not in ("yes", "no") or not _is_valid_uuid(str(attempt_id or "")):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "attempt_id and user_answer are required"}), 400
+    attempts = db.list_confident_voice_practice_attempts(practice_id)
+    strongest = next((row for row in attempts if row.get("is_strongest")), None)
+    if not strongest or str(strongest.get("id")) != str(attempt_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "Choose the acoustically strongest attempt."}), 400
+    kept = db.keep_confident_voice_practice_attempt(
+        practice_id, str(attempt_id), str(answer))
+    if not kept:
+        return jsonify({"code": "NOT_FOUND",
+                        "error": "attempt not found"}), 404
+    updated = db.update_confident_voice_practice(
+        practice_id, str(request.user_id), {
+            "status": "completed",
+            "selected_attempt_id": str(attempt_id),
+            "final_user_answer": str(answer),
+            "closed_at": now,
+        })
+    if not updated:
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not finish this practice."}), 500
+    # Deliberate absence: no ideal-text, decision, style, cue, flagship or
+    # voice_album call belongs here. Professional review remains separate.
+    return jsonify({"practice": _practice_user_payload(updated)}), 200
 
 
 @v2_bp.route("/session/status", methods=["GET"])

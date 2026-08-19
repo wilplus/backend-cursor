@@ -133,7 +133,9 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
 
         existing = {str(e.get("snippet_id"))
                     for e in (database.list_voice_album(str(arc_id)) or [])
-                    if isinstance(e, dict)}
+                    if isinstance(e, dict)
+                    and e.get("source_kind") != "practice_attempt"
+                    and e.get("snippet_id")}
 
         new = 0
         for snip_id in sorted(aligned - existing):

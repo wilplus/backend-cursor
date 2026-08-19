@@ -1952,6 +1952,20 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
 
         changes = _with_evidence(changes)
         _styles = _with_evidence(_styles)
+        # OPTIONAL CONFIDENT VOICE MICRO-PRACTICE.  This runs only after the
+        # Feedback Manager has selected the take's final ≤3 interactions, so
+        # the exercise cannot become a fourth card or bypass the manager's
+        # feedback mix.  It annotates at most one already-selected Confident
+        # Voice row; no new intervention is created.  Missing migration/config
+        # is a clean no-offer, never a reason to lose the feedback itself.
+        try:
+            from services.confident_voice_practice import attach_exercise_offer
+            changes = attach_exercise_offer(
+                changes, take_session_id=_arm_sid, database=db)
+        except Exception as _practice_err:
+            logger.warning(
+                "confident voice practice offer failed arc=%s take=%s: %s",
+                arc_id, _arm_sid, _practice_err)
         if _styles and not verify_changes(served_text, _styles):
             logger.warning("style lane: span check failed arc=%s "
                            "(serving none)", arc_id)
