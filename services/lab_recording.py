@@ -49,6 +49,10 @@ from services.readout_snippets import (
     prepare_readout_snippets,
     replay_applied_upgrades,
 )
+from services.readout_context import (
+    attach_readout_context,
+    attach_suggestions_to_chunks as _attach_suggestions_to_chunks,
+)
 
 __all__ = [
     "_WHISPER_MAX_BYTES",
@@ -58,6 +62,7 @@ __all__ = [
     "PiecesCanonicalUnavailable",
     "process_lab_recording",
     "replay_applied_upgrades",
+    "_attach_suggestions_to_chunks",
 ]
 
 
@@ -442,53 +447,6 @@ def process_lab_recording(
     return build_readout_payload(snippets_data, stickiness_list)
 
 
-def _attach_suggestions_to_chunks(chunks: list, out_snips: list) -> list:
-    """Instant-view assembly (founder 2026-07-13): ONE deduped chunk list —
-    each span of the full transcript appears EXACTLY once, with the salient
-    snippet's say_it_stronger card attached to the chunk it was spoken in
-    (matched by the snippet's audio-span midpoint). Kills the deckless double
-    render (the same sentence riding both ``snippets[]`` and
-    ``full_transcript_chunks[]``) and gives the FE the founder's display
-    order per chunk: text → corrections (upgrades) → commentary (why).
-
-    Each snippet attaches to AT MOST one chunk (first span match, offset
-    order); snippets without a span, without a card, or outside every chunk
-    span attach nowhere (still available on ``snippets[]``). Pure — returns
-    new dicts, never mutates the source entries.
-    """
-    out: list = []
-    used: set = set()
-    for c in chunks:
-        if not isinstance(c, dict):
-            continue
-        cc = dict(c)
-        cc.setdefault("say_it_stronger", None)
-        cc.setdefault("snippet_id", None)
-        cs, cd = cc.get("start_offset_ms"), cc.get("duration_ms")
-        if (isinstance(cs, (int, float)) and isinstance(cd, (int, float))
-                and cd > 0):
-            for sn in out_snips:
-                sid = str(sn.get("id"))
-                if sid in used:
-                    continue
-                if not isinstance(sn.get("say_it_stronger"), dict):
-                    continue
-                ss, sd = sn.get("start_offset_ms"), sn.get("duration_ms")
-                if not isinstance(ss, (int, float)):
-                    continue
-                mid = ss + (
-                    sd / 2.0
-                    if isinstance(sd, (int, float)) and sd > 0 else 0
-                )
-                if cs <= mid < cs + cd:
-                    cc["say_it_stronger"] = sn.get("say_it_stronger")
-                    cc["snippet_id"] = sn.get("id")
-                    used.add(sid)
-                    break
-        out.append(cc)
-    return out
-
-
 def build_readout_from_session(
     session_id: str,
     *,
@@ -566,192 +524,16 @@ def build_readout_from_session(
         ),
     }
 
-    # PIECES-CANONICAL identity join (founder 2026-07-14): when this session's
-    # rows ARE the ≤200-char pieces (metrics.piece provenance present), the
-    # instant view list is the rows themselves — 1:1 by construction, no
-    # midpoint guessing, nothing rendered twice. Each entry: the piece text +
-    # exact span + its own card/comment/edit. The legacy midpoint join below
-    # keeps serving OLD sessions (salient-window rows) untouched.
-    _piece_rows = [
-        so for so in out_snips if so.get("piece_index") is not None
-    ]
-    if _piece_rows:
-        # Dedup by piece_index — a retry/re-process can leave two full piece
-        # sets on the session (create has no conflict guard); keep the FIRST
-        # per index so the instant view never renders a chunk twice.
-        _seen_pi: set = set()
-        _ic_rows = []
-        for so in sorted(_piece_rows, key=lambda x: (x.get("piece_index") or 0)):
-            _pi = so.get("piece_index")
-            if _pi in _seen_pi:
-                continue
-            _seen_pi.add(_pi)
-            _ic_rows.append(so)
-        result["instant_chunks"] = [{
-            "index": so.get("piece_index"),
-            **({"slide_index": so.get("slide_index")}
-               if so.get("slide_index") is not None else {}),
-            "transcript": so.get("transcript") or "",
-            "start_offset_ms": so.get("start_offset_ms"),
-            "duration_ms": so.get("duration_ms"),
-            "snippet_id": so.get("id"),
-            **({"recording_kind": so.get("recording_kind")}
-               if so.get("recording_kind") else {}),
-            # Upgrade cards / auto-comment: GONE from the instant view
-            # (founder 2026-08-10 — the manager engine is the sole
-            # gatekeeper, and auto_comment was retired from both surfaces
-            # 2026-07-14; a persisted row must not resurrect it here).
-            # The coach reads say_it_stronger from `snippets`, flag-gated.
-            "say_it_stronger": (so.get("say_it_stronger")
-                                if include_upgrade_cards else None),
-            # The user's currently-applied suggestion indexes (Approve state
-            # survives reload — founder 2026-07-15). Absent when none.
-            **({"applied_upgrade_indexes": so.get("applied_upgrade_indexes")}
-               if so.get("applied_upgrade_indexes") else {}),
-            # Edit surfaces whether the FE keyed by snippet_id (preferred for
-            # pieces) OR by chunk_index (deckless legacy pattern → the piece
-            # ordinal): fold both so a saved edit never disappears.
-            "user_edited_text": (
-                so.get("user_edited_text")
-                or _edits_by_chunk.get(so.get("piece_index"))
-            ),
-        } for so in _ic_rows]
-
-    # Slide-deck context (UX Wave 4 BE-S6a) — session-level so the report can
-    # render the deck (presentation_ref via PDF.js) + the per-snippet slide.
-    try:
-        ctx = db.get_session_intake_context(session_id) or {}
-    except Exception:
-        ctx = {}
-    if isinstance(ctx, dict):
-        # Take-N setup restore (founder bug 2026-07-13: "second recording
-        # doesn't work" — the FE restored the deck from localStorage only, so
-        # a fresh tab / evicted PWA storage / guest killed take 2 with
-        # "Couldn't load your presentation"). Ride the training's setup on
-        # the readout so "Record the next take" prefills SERVER-side, on the
-        # authed AND guest re-read routes alike. Omitted when the context
-        # carries nothing usable.
-        if (ctx.get("topic") or ctx.get("slides")):
-            result["setup"] = {
-                "topic": ctx.get("topic"),
-                "audience": ctx.get("audience"),
-                "target_length_seconds": ctx.get("target_length_seconds"),
-                "slides": ctx.get("slides") or [],
-                "presentation_ref": ctx.get("presentation_ref"),
-            }
-        # Audience (backlog 1.4) — the training-setup field the FE suffixes
-        # onto insight one-liners ("(audience: investors)"). Deck and
-        # deckless alike; absent/blank → key omitted (FE hides the suffix).
-        _aud = (ctx.get("audience") or "").strip() \
-            if isinstance(ctx.get("audience"), str) else ""
-        if _aud:
-            result["audience"] = _aud
-        slides = ctx.get("slides")
-        if slides:
-            result["slides"] = slides
-            # BE-S4/S6b — map each snippet to the slide on screen when it was
-            # spoken (exact from the tap timeline; text-overlap fallback only
-            # when no timeline). The user readout renders this slide above the
-            # snippet; it's the user's own deck, not a verdict (AC-9-safe).
-            from services.slide_alignment import slide_for_snippet
-            advances = ctx.get("slide_advances")
-            for snip in out_snips:
-                sl = slide_for_snippet(snip, advances, slides)
-                if sl is not None:
-                    snip["slide"] = sl
-            # #A (readout) — the COMPLETE per-slide 1:1 transcript so the FE can
-            # show EACH deck slide with exactly what was said while it was on
-            # screen (every word bucketed by the click timeline), including the
-            # quiet first slide the per-snippet view dropped ("first slide not
-            # caught / shifted"). Prefer the value persisted at record time;
-            # fall back to the per-snippet word union for older recordings.
-            _stx = None
-            try:
-                _stx = db.get_session_slide_transcripts(session_id)
-            except Exception:
-                _stx = None
-            if not _stx:
-                try:
-                    from services.slide_word_split import build_slide_transcripts
-                    _union: list = []
-                    for s in snippets:
-                        ws = s.get("words") if isinstance(s, dict) else None
-                        if isinstance(ws, list):
-                            _union.extend(ws)
-                    if _union:
-                        _cand = build_slide_transcripts(_union, advances, slides)
-                        if any((t.get("transcript") or "").strip()
-                               for t in _cand):
-                            _stx = _cand
-                except Exception as _stx_err:
-                    logger.warning(
-                        "readout: slide_transcripts fallback failed sid=%s: %s",
-                        session_id, _stx_err,
-                    )
-            if _stx:
-                result["slide_transcripts"] = _stx
-                # Instant synonym view (founder 2026-07-13) — DECKED: the deck
-                # IS the chunking (one chunk per slide, the slide's own audio
-                # span), each carrying the say_it_stronger card of the salient
-                # snippet spoken on it. The FE renders the instant view from
-                # THIS list alone — no snippet/chunk double render.
-                if "instant_chunks" not in result:  # pieces identity wins
-                    _ic_src = [{
-                        "index": i,
-                        "slide_index": t.get("index"),
-                        "transcript": (t.get("transcript") or "").strip(),
-                        "start_offset_ms": t.get("start_offset_ms"),
-                        "duration_ms": t.get("duration_ms"),
-                    } for i, t in enumerate(_stx)
-                        if isinstance(t, dict)
-                        and (t.get("transcript") or "").strip()]
-                    result["instant_chunks"] = _attach_suggestions_to_chunks(
-                        _ic_src, out_snips,
-                    )
-        else:
-            # DECKLESS (founder bug #2, re-cut 2026-07-11): fold the persisted
-            # whole-recording transcript as a plain string PLUS the canonical
-            # ≤200-char chunk list — new-style persists carry per-chunk audio
-            # spans (start_offset_ms/duration_ms against parent_audio_ref) so
-            # each chunk's play control plays exactly its segment; legacy
-            # single-blob persists re-chunk at read time, text-only (the FE
-            # hides the play control when a chunk has no span). Each chunk
-            # carries the user's own edit when one exists (display layer).
-            try:
-                _stx = db.get_session_slide_transcripts(session_id)
-                if _stx:
-                    _full = " ".join(
-                        (t.get("transcript") or "").strip()
-                        for t in _stx
-                        if isinstance(t, dict) and (t.get("transcript") or "").strip()
-                    ).strip()
-                    if _full:
-                        result["full_transcript"] = _full
-                        from services.slide_word_split import (
-                            deckless_chunks_from_stx,
-                        )
-                        _chunks = deckless_chunks_from_stx(_stx)
-                        for _c in _chunks:
-                            _c["user_edited_text"] = _edits_by_chunk.get(
-                                _c.get("index"))
-                        result["full_transcript_chunks"] = _chunks
-                        # Instant synonym view (founder 2026-07-13) —
-                        # DECKLESS: the canonical ≤200-char chunks, each
-                        # carrying the say_it_stronger card of the snippet
-                        # spoken in it. The FE renders the instant view from
-                        # THIS list alone (chunk text → corrections →
-                        # commentary) — never snippets[] AND chunks[], which
-                        # doubled the same sentence. Pieces-canonical
-                        # sessions already built the identity list above.
-                        if "instant_chunks" not in result:
-                            result["instant_chunks"] = (
-                                _attach_suggestions_to_chunks(
-                                    _chunks, out_snips)
-                            )
-            except Exception:
-                pass
-        if ctx.get("presentation_ref"):
-            result["presentation_ref"] = ctx.get("presentation_ref")
+    attach_readout_context(
+        db,
+        session_id,
+        snippets,
+        out_snips,
+        result,
+        edits_by_chunk=_edits_by_chunk,
+        include_upgrade_cards=include_upgrade_cards,
+        log=logger,
+    )
 
     # Per-slide coverage ledger (Stickiness #2 (i)) — COACH-ONLY audit; parked
     # once on the first snippet's metrics at process time.
