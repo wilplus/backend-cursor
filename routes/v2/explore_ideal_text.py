@@ -43,6 +43,7 @@ from services.ideal_text_read import (
     resolve_historical_read,
     resolve_live_text,
     resolve_ideal_text_source,
+    resolve_project_read,
     resolve_suggestion_display,
 )
 from services.rate_limits import llm_limit
@@ -645,23 +646,19 @@ def v2_explore_get_ideal_text(arc_id):
         # table until the teardown migration runs, and they must never
         # be counted as takes. Once the columns are dropped this reads
         # every row as spoken, which is then the truth. ──
-        _spoken_rows = _completed_spoken_sessions(_sessions)
-        _spoken_rows.sort(key=lambda s: (s.get("take_index") or 0))
-        _title = None
-        for _s in _spoken_rows:   # latest take wins (trainings parity)
-            _ctx = _s.get("intake_context") if isinstance(
-                _s.get("intake_context"), dict) else {}
-            _t = _ctx.get("topic")
-            if isinstance(_t, str) and _t.strip():
-                _title = _t.strip()
-        _latest_take_sid = (str(_spoken_rows[-1].get("id"))
-                            if _spoken_rows else None)
+        _project = resolve_project_read(
+            _sessions,
+            completed_spoken=_completed_spoken_sessions,
+        )
+        _spoken_rows = _project.spoken_rows
+        _title = _project.title
+        _latest_take_sid = _project.latest_take_session_id
         # ── NEXT TAKE (founder 2026-07-24, T1 · 1.2): available the
         # moment this project has a spoken take, so a finished recording
         # drops the student straight back here ready to record again.
         # Same continuable-project rule as GET /explore/arc/<id>/setup,
         # so the two can never disagree about whether a take can start.
-        _can_record_take = bool(_spoken_rows)
+        _can_record_take = _project.can_record_take
         from services.journey_messages import journey_seen
         _journey_seen = journey_seen(
             db, request.user_id, arc_id, len(_spoken_rows))
@@ -674,7 +671,7 @@ def v2_explore_get_ideal_text(arc_id):
         # the same never-clobbered-by-a-deckless-retake resolution
         # build_best_presentation uses for its canonical deck ref. Zero
         # extra queries (the ownership read already has the sessions). ──
-        _pres_ref = None
+        _pres_ref = _project.presentation_ref
         # SLIDE TITLES (founder 2026-08-11: "yeah put only the title"). The
         # read surface already groups the text by slide and had a title slot
         # with nothing to put in it — the payload carried `slide_index` per
@@ -685,19 +682,7 @@ def v2_explore_get_ideal_text(arc_id):
         # MOST-COMPLETE DECK WINS, the same resolution build_best_presentation
         # uses — a re-take that dropped its deck must not shorten the list and
         # blank the later slides.
-        _slide_titles: list = []
-        for _s in _spoken_rows:
-            _ctx = _s.get("intake_context") if isinstance(
-                _s.get("intake_context"), dict) else {}
-            _sl = _ctx.get("slides")
-            if isinstance(_sl, list) and len(_sl) >= len(_slide_titles):
-                _slide_titles = [
-                    ((x.get("title") or "").strip()
-                     if isinstance(x, dict) else "")
-                    for x in _sl
-                ]
-            if _pres_ref is None and _ctx.get("presentation_ref"):
-                _pres_ref = _ctx.get("presentation_ref")
+        _slide_titles = _project.slide_titles
 
         return jsonify({
             "arc_id": arc_id,

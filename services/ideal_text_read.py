@@ -60,6 +60,18 @@ class SuggestionDisplayRead:
     text: str
 
 
+@dataclass(frozen=True)
+class IdealTextProjectRead:
+    """Project/take/deck metadata derived from the ownership session read."""
+
+    spoken_rows: list[Mapping[str, Any]]
+    title: str | None
+    latest_take_session_id: str | None
+    can_record_take: bool
+    presentation_ref: Any
+    slide_titles: list[str]
+
+
 def resolve_ideal_text_source(
     row: Mapping[str, Any] | None,
 ) -> IdealTextSource:
@@ -228,3 +240,48 @@ def resolve_suggestion_display(
             },
         })
     return SuggestionDisplayRead(enabled, fold_applied(text, fold_info))
+
+
+def resolve_project_read(
+    sessions: Any,
+    *,
+    completed_spoken: Callable[[Any], list[Mapping[str, Any]]],
+) -> IdealTextProjectRead:
+    """Resolve take count, title, and deck identity with existing precedence."""
+    spoken_rows = completed_spoken(sessions)
+    spoken_rows.sort(key=lambda session: (session.get("take_index") or 0))
+
+    title = None
+    for session in spoken_rows:
+        raw_context = session.get("intake_context")
+        context = raw_context if isinstance(raw_context, dict) else {}
+        topic = context.get("topic")
+        if isinstance(topic, str) and topic.strip():
+            title = topic.strip()
+
+    latest_take_session_id = (
+        str(spoken_rows[-1].get("id")) if spoken_rows else None
+    )
+    presentation_ref = None
+    slide_titles: list[str] = []
+    for session in spoken_rows:
+        raw_context = session.get("intake_context")
+        context = raw_context if isinstance(raw_context, dict) else {}
+        slides = context.get("slides")
+        if isinstance(slides, list) and len(slides) >= len(slide_titles):
+            slide_titles = [
+                ((slide.get("title") or "").strip()
+                 if isinstance(slide, dict) else "")
+                for slide in slides
+            ]
+        if presentation_ref is None and context.get("presentation_ref"):
+            presentation_ref = context.get("presentation_ref")
+
+    return IdealTextProjectRead(
+        spoken_rows=spoken_rows,
+        title=title,
+        latest_take_session_id=latest_take_session_id,
+        can_record_take=bool(spoken_rows),
+        presentation_ref=presentation_ref,
+        slide_titles=slide_titles,
+    )

@@ -6,6 +6,7 @@ from services.ideal_text_read import (
     resolve_historical_read,
     resolve_live_text,
     resolve_ideal_text_source,
+    resolve_project_read,
     resolve_suggestion_display,
 )
 
@@ -306,3 +307,80 @@ class SuggestionDisplayTests(TestCase):
                 "replacement": "frozen approved text",
             },
         }])
+
+
+class IdealTextProjectReadTests(TestCase):
+    def test_take_order_controls_latest_title_and_first_deck_reference(self):
+        sessions = [
+            {
+                "id": "take-2",
+                "take_index": 2,
+                "intake_context": {
+                    "topic": " Latest topic ",
+                    "presentation_ref": "deck-2.pdf",
+                    "slides": [{"title": "Only slide"}],
+                },
+            },
+            {
+                "id": "take-1",
+                "take_index": 1,
+                "intake_context": {
+                    "topic": "Earlier topic",
+                    "presentation_ref": "deck-1.pdf",
+                    "slides": [
+                        {"title": " First "},
+                        {"title": "Second"},
+                    ],
+                },
+            },
+        ]
+
+        result = resolve_project_read(
+            sessions, completed_spoken=lambda rows: list(rows)
+        )
+
+        self.assertEqual(
+            [row["id"] for row in result.spoken_rows],
+            ["take-1", "take-2"],
+        )
+        self.assertEqual(result.title, "Latest topic")
+        self.assertEqual(result.latest_take_session_id, "take-2")
+        self.assertTrue(result.can_record_take)
+        self.assertEqual(result.presentation_ref, "deck-1.pdf")
+        self.assertEqual(result.slide_titles, ["First", "Second"])
+
+    def test_equal_size_later_deck_refreshes_titles_without_deck_identity(self):
+        sessions = [
+            {
+                "id": "take-1",
+                "take_index": 1,
+                "intake_context": {
+                    "presentation_ref": "canonical.pdf",
+                    "slides": [{"title": "Old"}],
+                },
+            },
+            {
+                "id": "take-2",
+                "take_index": 2,
+                "intake_context": {"slides": [{"title": "Refreshed"}]},
+            },
+        ]
+
+        result = resolve_project_read(
+            sessions, completed_spoken=lambda rows: list(rows)
+        )
+
+        self.assertEqual(result.presentation_ref, "canonical.pdf")
+        self.assertEqual(result.slide_titles, ["Refreshed"])
+
+    def test_empty_project_has_no_take_or_deck_metadata(self):
+        result = resolve_project_read(
+            [{"id": "pending"}], completed_spoken=lambda _rows: []
+        )
+
+        self.assertEqual(result.spoken_rows, [])
+        self.assertIsNone(result.title)
+        self.assertIsNone(result.latest_take_session_id)
+        self.assertFalse(result.can_record_take)
+        self.assertIsNone(result.presentation_ref)
+        self.assertEqual(result.slide_titles, [])
