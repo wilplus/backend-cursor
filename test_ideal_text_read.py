@@ -3,6 +3,7 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from services.ideal_text_read import (
+    decorate_key_moments,
     resolve_historical_read,
     resolve_live_text,
     resolve_ideal_text_source,
@@ -36,6 +37,79 @@ class IdealTextSourceTests(TestCase):
 
         self.assertEqual(result.machine_text, "")
         self.assertIsNone(result.version)
+
+
+class DecorateKeyMomentsTests(TestCase):
+    def test_machine_lane_off_keeps_playback_and_review_without_a_star(self):
+        result = decorate_key_moments(
+            [{
+                "snippet_id": "snippet-1",
+                "anchor": "exact words",
+                "take_session_id": "session-1",
+            }],
+            suggestions_enabled=False,
+            explanations={"snippet-1": {"has_video": True}},
+            playback={"snippet-1": {
+                "snippet_audio_ref": "clip.mp3",
+                "start_offset_ms": 100,
+                "duration_ms": 900,
+            }},
+            review_status={"snippet-1": "pending_coach_review"},
+            references={},
+        )
+
+        self.assertEqual(result, [{
+            "id": "snippet-1",
+            "snippet_id": "snippet-1",
+            "anchor": "exact words",
+            "take_session_id": "session-1",
+            "has_explanation": True,
+            "confidence_review_status": "pending_coach_review",
+            "snippet_audio_ref": "clip.mp3",
+            "start_offset_ms": 100,
+            "duration_ms": 900,
+        }])
+
+    def test_coach_explanation_adds_only_the_verified_album_star(self):
+        reference = {
+            "slug": "voice-confidence",
+            "title": "Voice confidence",
+            "url": "/blog/voice-confidence",
+        }
+        result = decorate_key_moments(
+            [{"snippet_id": 42, "take_session_id": "session-1"}],
+            suggestions_enabled=True,
+            explanations={"42": {
+                "has_video": True,
+                "reference_post_slug": " voice-confidence ",
+            }},
+            playback={},
+            review_status={},
+            references={"voice-confidence": reference},
+        )
+
+        self.assertEqual(result[0]["star"], "verified")
+        self.assertEqual(result[0]["coach"], {
+            "has_message": True,
+            "has_video": True,
+            "reference": reference,
+        })
+        self.assertNotIn("suggestion", result[0])
+
+    def test_missing_public_reference_is_omitted(self):
+        result = decorate_key_moments(
+            [{"snippet_id": "snippet-1"}],
+            suggestions_enabled=True,
+            explanations={"snippet-1": {
+                "has_video": False,
+                "reference_post_slug": "unpublished",
+            }},
+            playback={},
+            review_status={},
+            references={},
+        )
+
+        self.assertNotIn("reference", result[0]["coach"])
 
 
 class HistoricalIdealTextTests(TestCase):
@@ -131,6 +205,7 @@ class LiveIdealTextTests(TestCase):
         )
 
         self.assertTrue(result.verified)
+        self.assertEqual(result.status, "verified")
         self.assertEqual(result.text, "coach approved")
         self.assertFalse(result.user_edited)
 
@@ -172,6 +247,7 @@ class LiveIdealTextTests(TestCase):
         )
 
         self.assertFalse(result.user_edited)
+        self.assertEqual(result.status, "unverified")
         self.assertEqual(result.text, "new machine copy")
         self.assertEqual(result.prior_edit, {
             "text": "my earlier wording",

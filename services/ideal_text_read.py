@@ -47,6 +47,7 @@ class LiveTextRead:
     """The exact live text selected before suggestions and parts compose."""
 
     verified: bool
+    status: str
     text: str
     user_edited: bool
     prior_edit: dict[str, Any] | None
@@ -70,6 +71,55 @@ class IdealTextProjectRead:
     can_record_take: bool
     presentation_ref: Any
     slide_titles: list[str]
+
+
+def decorate_key_moments(
+    moments: Any,
+    *,
+    suggestions_enabled: bool,
+    explanations: Mapping[str, Any],
+    playback: Mapping[str, Any],
+    review_status: Mapping[str, Any],
+    references: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Build playback/coach metadata without serving machine feedback twice."""
+    decorated = []
+    for moment in moments:
+        moment_id = str(moment.get("snippet_id"))
+        entry = {
+            "id": moment.get("snippet_id"),
+            "snippet_id": moment.get("snippet_id"),
+            "anchor": moment.get("anchor") or "",
+            "take_session_id": moment.get("take_session_id"),
+            "has_explanation": bool(explanations.get(moment_id)),
+            **(
+                {"confidence_review_status": review_status[moment_id]}
+                if moment_id in review_status else {}
+            ),
+            **(playback.get(moment_id) or {}),
+        }
+        if not suggestions_enabled:
+            decorated.append(entry)
+            continue
+        if explanations.get(moment_id):
+            entry["star"] = "verified"
+            entry["coach"] = {
+                "has_message": True,
+                "has_video": bool(explanations[moment_id].get("has_video")),
+            }
+            explanation = explanations[moment_id]
+            slug = (
+                explanation.get("reference_post_slug")
+                if isinstance(explanation, dict) else None
+            )
+            reference = (
+                references.get(slug.strip())
+                if isinstance(slug, str) else None
+            )
+            if reference:
+                entry["coach"]["reference"] = reference
+        decorated.append(entry)
+    return decorated
 
 
 def resolve_ideal_text_source(
@@ -186,7 +236,13 @@ def resolve_live_text(
     except Exception:
         prior_edit = None
 
-    return LiveTextRead(verified, text, user_edited, prior_edit)
+    return LiveTextRead(
+        verified=verified,
+        status="verified" if verified else "unverified",
+        text=text,
+        user_edited=user_edited,
+        prior_edit=prior_edit,
+    )
 
 
 def resolve_suggestion_display(

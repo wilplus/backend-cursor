@@ -40,6 +40,7 @@ from routes.v2.arcs import (
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.ideal_text_read import (
+    decorate_key_moments,
     resolve_historical_read,
     resolve_live_text,
     resolve_ideal_text_source,
@@ -440,7 +441,6 @@ def v2_explore_get_ideal_text(arc_id):
             _source,
             database=db,
         )
-        _verified = _live.verified
         _user_edited = _live.user_edited
         _text = _live.text
         # ── SUPERSEDED-EDIT RE-OFFER (founder 2026-07-28): when a newer
@@ -579,60 +579,14 @@ def v2_explore_get_ideal_text(arc_id):
             for v in _has_expl.values()
         ])
 
-        def _decorate(m):
-            _mid = str(m.get("snippet_id"))
-            entry = {
-                "id": m.get("snippet_id"),
-                # Both keys on purpose: `id` is the moment-explanation
-                # identity, `snippet_id` is what the Approve/Revert
-                # feedback POST keys on (audit 2026-07-18 — its absence
-                # sent an EMPTY snippet id and Approve never persisted).
-                "snippet_id": m.get("snippet_id"),
-                # The literal text fragment the FE underlines + taps
-                # (SD contract pin — a moment with no anchor is dropped).
-                "anchor": m.get("anchor") or "",
-                "take_session_id": m.get("take_session_id"),
-                "has_explanation": bool(_has_expl.get(_mid)),
-                **({"confidence_review_status": _review_status[_mid]}
-                   if _mid in _review_status else {}),
-                # FREE playback of the student's own recording (parent+
-                # offset → the FE clamps to [start, start+duration]).
-                **(_playback.get(_mid) or {}),
-            }
-            if not _stars_on:
-                return entry
-            if _has_expl.get(_mid):
-                # Coach override wins: the ORANGE verified star —
-                # permanent, re-openable; message content stays behind
-                # the paid moments GET.
-                entry["star"] = "verified"
-                entry["coach"] = {
-                    "has_message": True,
-                    "has_video": bool(
-                        _has_expl[_mid].get("has_video")),
-                }
-                # Ticket 6: further reading the coach attached to THIS moment.
-                # Key omitted entirely when there is none, or when the post is
-                # no longer published — the FE renders the link only when the
-                # key is present. Not gated behind the paid moments GET: a
-                # public blog link is not the coach's message.
-                _expl = _has_expl[_mid]
-                _slug = _expl.get("reference_post_slug") if isinstance(_expl, dict) else None
-                _ref = _refs.get(_slug.strip()) if isinstance(_slug, str) else None
-                if _ref:
-                    entry["coach"]["reference"] = _ref
-            # THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder
-            # 2026-08-10: "no other exist, older feedback system should
-            # be ripped off"). The machine star/suggestion branches that
-            # lived here — delivery, structural, text — served the SAME
-            # `moment_suggestions` rows the gate arbitrates, unbudgeted:
-            # one row could render twice, once as a budgeted change and
-            # once as a free star. The lanes still PRODUCE from those
-            # rows inside `_tracked_changes_block`; nothing SERVES them
-            # here. What key_moments keeps: the anchor (playback +
-            # album identity) and the coach's verified star (the ALBUM
-            # surface — a coach judgement, not machine feedback).
-            return entry
+        _key_moments = decorate_key_moments(
+            _moments,
+            suggestions_enabled=_stars_on,
+            explanations=_has_expl,
+            playback=_playback,
+            review_status=_review_status,
+            references=_refs,
+        )
 
         _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
 
@@ -687,7 +641,7 @@ def v2_explore_get_ideal_text(arc_id):
         return jsonify({
             "arc_id": arc_id,
             "version": _version,
-            "status": "verified" if _verified else "unverified",
+            "status": _live.status,
             "title": _title,
             "updated_at": _r.get("updated_at"),
             "latest_take_session_id": _latest_take_sid,
@@ -752,7 +706,7 @@ def v2_explore_get_ideal_text(arc_id):
             # lane (no locked parts) for older clients.
             **({"prior_edit": _prior_edit}
                if _prior_edit and _composed is None else {}),
-            "key_moments": [_decorate(m) for m in _moments],
+            "key_moments": _key_moments,
             "moments_unlocked": _moments_entitled(arc_id),
             # Founder 2026-07-20: the 5-credit unlock buys COACH
             # explanations — the FE must show the unlock CTA ONLY when
