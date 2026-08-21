@@ -711,6 +711,33 @@ def _persist_acoustic_candidate(
     )
 
 
+def _resolve_delivery_baseline_and_capture_arousal(
+    context: _GenerationContext,
+    database: Any,
+) -> Any:
+    """Resolve delivery reference and persist its private arousal axis."""
+    from services.delivery_stars import arousal_z, resolve_delivery_baseline
+
+    snippets = context.readout.get("snippets") or []
+    baseline = resolve_delivery_baseline(
+        context.session.get("user_id"),
+        [snippet.get("features") or {} for snippet in snippets],
+        database=database,
+    )
+    if not baseline:
+        return baseline
+    for snippet in snippets:
+        try:
+            snippet_id = str(snippet.get("id") or "")
+            activation = arousal_z(
+                snippet.get("features") or {}, baseline)
+            if snippet_id and activation is not None:
+                database.set_snippet_arousal(snippet_id, activation)
+        except Exception:
+            continue
+    return baseline
+
+
 def generate_for_session(session_id: str, arc_id: Optional[str], *,
                          database=None) -> int:
     """Analysis-time hook (flag-gated at the caller): resolve + generate +
@@ -816,14 +843,10 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # deterministic vs the speaker's own reference — cross-take baseline
         # first, else within-take means at >= 6 pieces (decision BE-1a(b)),
         # else silent. No LLM. Only no-acoustic-star snippets.
-        from services.delivery_stars import (
-            arousal_z, emphasis_z, resolve_delivery_baseline,
-        )
-        _baseline = resolve_delivery_baseline(
-            session.get("user_id"),
-            [s.get("features") or {}
-             for s in (readout.get("snippets") or [])],
-            database=database)
+        from services.delivery_stars import emphasis_z
+
+        _baseline = _resolve_delivery_baseline_and_capture_arousal(
+            context, database)
 
         # ── Arousal capture (founder 2026-07-24, capture-first / surface-
         # later): a baseline-relative ACTIVATION read per snippet, stored for
@@ -832,16 +855,6 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # the arousal axis only (calm↔activated), never a discrete emotion.
         # Best-effort per snippet — a pending migration or any error is
         # swallowed and never disturbs the suggestion path.
-        if _baseline:
-            for _snip in (readout.get("snippets") or []):
-                try:
-                    _sid = str(_snip.get("id") or "")
-                    _av = arousal_z(_snip.get("features") or {}, _baseline)
-                    if _sid and _av is not None:
-                        database.set_snippet_arousal(_sid, _av)
-                except Exception:
-                    continue
-
         # ── Congruence delivery star, BEFORE the deterministic ones (founder
         # 2026-07-24 sign-off): the content-aware member of the delivery family
         # — upbeat words over a flat/low-arousal delivery (arousal_z low + a
