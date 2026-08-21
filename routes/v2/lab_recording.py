@@ -43,6 +43,11 @@ from services.lab_recording_intake import (
     parse_recording_lane,
     parse_session_context,
 )
+from services.lab_project_identity import (
+    ensure_presentation_unchanged,
+    find_duplicate_upload,
+    validate_project_selection,
+)
 
 from config import Config
 
@@ -395,46 +400,22 @@ def v2_lab_create_recording():
         # Validated HERE, before any storage: a take must never be stored
         # against a project the caller does not own (same fail-fast rule
         # as the read guard above). ──
-        _explicit_arc = (form.get("continue_arc_id") or "").strip()
-        _explicit_arc_sessions = []
-        from services.explore_arc import validate_project_intent
-        _project_intent, _intent_error = validate_project_intent(
-            form.get("project_intent"),
-            form.get("arc_id"),
-            _explicit_arc,
-        )
-        if _intent_error:
-            logger.warning("lab: invalid project identity contract: %s",
-                           _intent_error)
+        try:
+            project_selection = validate_project_selection(
+                form,
+                user_id=getattr(request, "user_id", None),
+                database=db,
+                is_valid_uuid=_is_valid_uuid,
+                log=logger,
+            )
+        except RecordingIntakeError as intake_error:
             return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "Something went wrong on our end.",
-            }), 400
-        if _explicit_arc:
-            if not _is_valid_uuid(_explicit_arc):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "continue_arc_id must be a UUID",
-                }), 400
-            _uid = getattr(request, "user_id", None)
-            _owned = False
-            if _uid:
-                try:
-                    _explicit_arc_sessions = db.get_arc_sessions(
-                        _explicit_arc
-                    ) or []
-                    _owned = any(
-                        str(x.get("user_id")) == str(_uid)
-                        for x in _explicit_arc_sessions)
-                except Exception as _own_err:
-                    logger.warning(
-                        "lab: continue_arc ownership check failed arc=%s: "
-                        "%s", _explicit_arc, _own_err)
-                    _owned = False
-            if not _owned:
-                # No existence leak: unknown and foreign look identical.
-                return jsonify({"code": "NOT_FOUND",
-                                "error": "project not found"}), 404
+                "code": intake_error.code,
+                "error": intake_error.message,
+            }), intake_error.status
+        _explicit_arc = project_selection.explicit_arc_id
+        _project_intent = project_selection.intent
+
         try:
             session_context = parse_session_context(
                 form,
@@ -450,48 +431,30 @@ def v2_lab_create_recording():
         # indexed against the slide structure captured by Take 1.  Once that
         # take exists, a continued-project upload must keep the exact deck.
         # New-project requests carry no continue_arc_id and bypass this guard.
-        if _explicit_arc_sessions:
-            from services.presentation_change_intent import (
-                deck_matches_recorded_project,
-            )
-            if not deck_matches_recorded_project(
-                _explicit_arc_sessions, session_context,
-            ):
-                return jsonify({
-                    "code": "PRESENTATION_LOCKED",
-                    "error": (
-                        "Your current roadmap is connected to these slides. "
-                        "Create a new project for the updated deck."
-                    ),
-                }), 409
+        try:
+            ensure_presentation_unchanged(project_selection, session_context)
+        except RecordingIntakeError as intake_error:
+            return jsonify({
+                "code": intake_error.code,
+                "error": intake_error.message,
+            }), intake_error.status
 
         # Collapse a retry by the captured-take key. Project display names are
         # intentionally irrelevant: two same-named projects are valid and are
         # kept independent by authenticated owner + immutable arc UUID.
-        _upload_key = (form.get("upload_idempotency_key") or "").strip()
-        if _upload_key:
-            _dup = db.v2_find_session_by_upload_key(_upload_key)
-            if _dup:
-                # A retry can heal the narrow failure window where the take was
-                # accepted but its optional brief had not yet been persisted.
-                _dup_arc = _dup.get("arc_id")
-                if _context_document and _dup_arc:
-                    db.upsert_arc_context_document(
-                        _dup_arc,
-                        _context_document["text"],
-                        _context_document["pages"],
-                        _context_document["chars"],
-                        filename=_context_document.get("filename"),
-                        truncated=_context_document["truncated"],
-                    )
-                logger.info("lab: duplicate upload collapsed key=%s -> %s",
-                            _upload_key, _dup.get("id"))
-                return jsonify({
-                    "duplicate": True,
-                    "session_id": _dup.get("id"),
-                    "arc_id": _dup.get("arc_id"),
-                    "take_index": _dup.get("take_index"),
-                }), 200
+        _upload_key, duplicate_upload = find_duplicate_upload(
+            form,
+            database=db,
+            context_document=_context_document,
+            log=logger,
+        )
+        if duplicate_upload:
+            return jsonify({
+                "duplicate": True,
+                "session_id": duplicate_upload.get("id"),
+                "arc_id": duplicate_upload.get("arc_id"),
+                "take_index": duplicate_upload.get("take_index"),
+            }), 200
 
         # Whisper-prime fallback: the FE dropped the keywords input, so
         # domain_vocabulary now arrives empty. Auto-seed it from the user's
