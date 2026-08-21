@@ -39,6 +39,7 @@ from services.recording_feedback_scoring import (
     score_recording_feedback,
 )
 from services.recording_persistence import persist_recording_snippets
+from services.recording_transcript_persistence import persist_recording_transcript
 from services.recording_transcription import (
     WHISPER_MAX_BYTES as _WHISPER_MAX_BYTES,
     merge_slide_vocabulary as _merge_slide_vocab,
@@ -345,7 +346,6 @@ def process_lab_recording(
     # returned state keeps the raw candidate snapshot separate from derived
     # coach/user reads, preserving validation-sample independence.
     state = analyze_canonical_pieces(state, log=logger)
-    _piece_list = list(state.canonical_pieces)
     _llm_budget_idx = set(state.llm_budget_indices)
 
     # Stage 3 — independent text and slide analysis, joined deterministically.
@@ -366,55 +366,8 @@ def process_lab_recording(
         session_id, _diag, len(snippets_data), _voiced, bool(segments),
     )
 
-    # #A (2026-06-22) — the COMPLETE per-slide 1:1 transcript, bucketed from the
-    # WHOLE-recording word list by the slide-click timeline (NOT just the salient
-    # snippets, which dropped quiet slides → "first slide not caught / shifted").
-    # Persisted at session level so the take viewer reads it directly (complete +
-    # fast). Best-effort: never break the recording; only persist when there's
-    # real content (else the take viewer keeps its per-snippet fallback).
-    try:
-        _slides_for_tx = (session_context or {}).get("slides")
-        if _slides_for_tx and words_all:
-            from services.slide_word_split import build_slide_transcripts
-            _slide_tx = build_slide_transcripts(
-                words_all, (session_context or {}).get("slide_advances"),
-                _slides_for_tx,
-            )
-            if any((t.get("transcript") or "").strip() for t in _slide_tx):
-                db.set_session_slide_transcripts(session_id, _slide_tx)
-            # F1 (2026-07-26): measure the word→slide boundary on this take.
-            # Pause-snap has been live for a while and nothing ever recorded
-            # what it does. EXPOSURE + IMPACT only — there is no ground truth
-            # here, so this is deliberately not an accuracy rate (see the
-            # module docstring). Internal/coach-side, never user-facing (AC-9).
-            # Best-effort: a measurement must never break a recording.
-            try:
-                from services.slide_boundary_metrics import boundary_metrics
-                _bm = boundary_metrics(
-                    words_all,
-                    (session_context or {}).get("slide_advances"),
-                    _slides_for_tx,
-                )
-                if _bm:
-                    db.set_session_boundary_metrics(session_id, _bm)
-            except Exception as _bm_err:
-                logger.warning(
-                    "boundary metrics failed sid=%s: %s", session_id, _bm_err)
-        elif not _slides_for_tx:
-            # DECKLESS: persist the canonical pieces directly so the transcript
-            # workspace and feedback rows share the exact same boundaries.
-            # With word timestamps (founder 2026-07-11): persist the whole
-            # recording pre-chunked — ≤200-char pieces broken at word
-            # boundaries, EACH with its audio span from the word times — so
-            # every chunk's playback control plays exactly its own segment
-            # and text/audio boundaries share one source (no drift).
-            db.set_session_slide_transcripts(session_id, _piece_list)
-    except Exception as _stx_err:
-        # F1a (per-slide 1:1 transcript) degraded → the take viewer falls back to
-        # coarser per-snippet bucketing. Make it observable (no payload change).
-        from services.f1_observability import observe_f1_degrade
-        observe_f1_degrade("slide_transcript_failed", exc=_stx_err,
-                           session_id=session_id)
+    # Stage 5 — persist the complete slide/deckless transcript and diagnostics.
+    persist_recording_transcript(state, database=db, log=logger)
 
     # AI-Commentator coach-note pre-fill — RETIRED by default (founder
     # 2026-07-14): "no pre-filled comment; the system should learn from what
