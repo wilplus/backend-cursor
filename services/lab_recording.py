@@ -6,23 +6,22 @@ already-decoded inputs (bytes + session_id + session_context dict +
 a stored parent_audio_url) and returns the §3.3 Readout payload. The
 thin route owns multipart parsing + guest/auth + storage.
 
-Pipeline (synchronous, ~3-5s):
+Pipeline:
   decode once
   → Whisper the WHOLE recording once (verbose_json segments, vocab-primed)
-  → segment_into_snippets → per window: features + transcript sliced from
-     the Whisper segment timestamps (NOT N per-window Whisper calls — that
-     would blow the sync budget)
+  → cut the word-timestamp stream into canonical ≤200-character pieces
+     (slide boundaries first for deck takes)
+  → analyze every exact text/audio piece
   → score_snippets_stickiness (one batch call)
-  → create one charisma_snippets row per window (parent+offset model)
+  → create one charisma_snippets row per piece (parent+offset model)
   → assemble the §3.3 Readout payload
 
-Best-effort throughout: Whisper down → empty transcripts; LLM down →
-no stickiness; decode fail → empty snippets. The Readout still renders
-the raw acoustic features.
+LLM layers remain best-effort, but canonical piece construction is required:
+missing word timestamps fail processing visibly instead of activating a
+different definition of a feedback moment.
 
-Pure helpers (slice_transcript_for_window / build_readout_features /
-build_readout_payload) are split out + unit-tested without the audio
-stack; only process_lab_recording does the I/O.
+Pure contract helpers are split out + unit-tested without the audio stack;
+only process_lab_recording does the I/O.
 """
 from __future__ import annotations
 
@@ -50,73 +49,6 @@ _FEATURE_MAP = {
     "intensity_envelope": "intensity_envelope",
     "f0_mid_end_delta": "f0_mid_end_delta",
 }
-
-
-def slice_transcript_for_window(
-    segments: list,
-    start_ms: int,
-    end_ms: int,
-) -> str:
-    """Join Whisper segment texts overlapping the window [start_ms, end_ms].
-
-    ``segments`` = [{start (sec), end (sec), text}] from the whole-
-    recording verbose_json. A segment counts if it overlaps the window
-    at all (seg.end > start AND seg.start < end). Pure — unit-tested.
-    """
-    if not segments:
-        return ""
-    start_s = start_ms / 1000.0
-    end_s = end_ms / 1000.0
-    parts: list = []
-    for seg in segments:
-        if not isinstance(seg, dict):
-            continue
-        s = seg.get("start")
-        e = seg.get("end")
-        if not isinstance(s, (int, float)) or not isinstance(e, (int, float)):
-            continue
-        if e > start_s and s < end_s:
-            text = (seg.get("text") or "").strip()
-            if text:
-                parts.append(text)
-    return " ".join(parts).strip()
-
-
-def dedupe_window_transcripts(windows: list, segments: list) -> list:
-    """Claim-once transcript attribution (founder bug #2, 2026-07-06).
-
-    ``slice_transcript_for_window`` includes ANY overlapping Whisper segment, so
-    a sentence straddling two adjacent windows appears in BOTH snippets — the
-    user saw the same sentence twice. This assigns each segment to EXACTLY ONE
-    window — the one with the LARGEST time-overlap (ties → the earlier window) —
-    so every spoken sentence appears once, where it was mostly spoken.
-
-    ``windows``  = [(start_ms, end_ms)] CHRONOLOGICAL (the surfaced set).
-    ``segments`` = whole-recording Whisper segments [{start(s), end(s), text}].
-    Returns one transcript string per window (possibly ""). Pure.
-    """
-    texts: list = [[] for _ in windows]
-    if not windows or not segments:
-        return ["" for _ in windows]
-    for seg in segments:
-        if not isinstance(seg, dict):
-            continue
-        s = seg.get("start")
-        e = seg.get("end")
-        text = (seg.get("text") or "").strip()
-        if not text or not isinstance(s, (int, float)) or not isinstance(e, (int, float)):
-            continue
-        s_ms, e_ms = s * 1000.0, e * 1000.0
-        best_i = None
-        best_overlap = 0.0
-        for i, (w_start, w_end) in enumerate(windows):
-            overlap = min(e_ms, w_end) - max(s_ms, w_start)
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best_i = i
-        if best_i is not None:
-            texts[best_i].append(text)
-    return [" ".join(t).strip() for t in texts]
 
 
 def build_readout_features(metrics: Optional[dict]) -> dict:
@@ -229,15 +161,122 @@ def build_readout_payload(
 _WHISPER_MAX_BYTES = 24 * 1024 * 1024
 
 
-def _pieces_canonical_enabled() -> bool:
-    """PIECES-CANONICAL kill-switch (founder 2026-07-14). Default ON: every
-    ≤200-char transcript piece becomes a first-class charisma_snippets row
-    (the moment the user reads = the moment the coach labels = the learning
-    unit). Set PIECES_CANONICAL_ENABLED=0 to fall back to the legacy
-    salient-window cutter (live-loop safety valve)."""
-    import os
-    return (os.getenv("PIECES_CANONICAL_ENABLED") or "1").strip().lower() \
-        not in ("0", "false", "no")
+class PiecesCanonicalUnavailable(RuntimeError):
+    """The take cannot be represented by the canonical text/audio pieces.
+
+    There is deliberately no alternate segmentation algorithm. Raising keeps
+    the stored take retryable and makes loss of Whisper word timestamps
+    observable instead of silently changing what a feedback moment means.
+    """
+
+
+def _build_canonical_pieces(words_all: list, session_context: Optional[dict]) -> list:
+    """Build the one authoritative moment set from Whisper word timestamps.
+
+    Deck takes are cut at slide boundaries first; deckless takes use the same
+    sentence-aware ≤200-character cutter without slide provenance.
+    """
+    if not words_all:
+        raise PiecesCanonicalUnavailable(
+            "Canonical piece processing requires Whisper word-level timestamps"
+        )
+
+    from services.slide_word_split import (
+        chunk_slide_words_by_chars,
+        chunk_words_by_chars,
+    )
+
+    context = session_context or {}
+    slides = context.get("slides")
+    if slides:
+        pieces = chunk_slide_words_by_chars(
+            words_all,
+            context.get("slide_advances"),
+            slides,
+        )
+    else:
+        pieces = chunk_words_by_chars(words_all)
+
+    usable = [
+        piece for piece in (pieces or [])
+        if isinstance(piece, dict) and (piece.get("transcript") or "").strip()
+    ]
+    if not usable:
+        raise PiecesCanonicalUnavailable(
+            "Whisper word-level timestamps produced no canonical pieces"
+        )
+    return usable
+
+
+def _voice_metrics_diagnostic(
+    snippets_data: list,
+    segments: list,
+) -> tuple[bool, str]:
+    """Classify canonical-piece acoustic availability for telemetry only."""
+    voiced = any(
+        _has_voice_metrics(build_readout_features(snippet.get("metrics")))
+        for snippet in snippets_data
+    )
+    if not snippets_data:
+        return voiced, "no_snippets"
+    if not voiced:
+        return voiced, "no_voiced_speech"
+    if not segments:
+        return voiced, "ok_acoustics_no_transcript"
+    return voiced, "ok"
+
+
+def _full_transcript_text(segments: list, words_all: list) -> str:
+    """Prefer Whisper segment text, falling back to its word stream."""
+    segment_text = " ".join(
+        (segment.get("text") or "").strip()
+        for segment in (segments or [])
+        if isinstance(segment, dict) and (segment.get("text") or "").strip()
+    ).strip()
+    if segment_text:
+        return segment_text
+    return " ".join(
+        (word.get("word") or "").strip()
+        for word in (words_all or [])
+        if isinstance(word, dict) and (word.get("word") or "").strip()
+    ).strip()
+
+
+def _compute_overall_ranking(
+    prelim: list,
+    stickiness: list,
+    slide_scores: list,
+    llm_budget_indices: set[int],
+) -> tuple[dict[int, float], dict[int, int]]:
+    """Blend delivery and slide scores, then rank canonical budget pieces."""
+    overall_by_index: dict[int, float] = {}
+    rank_inputs: list[tuple[float, float, int, int]] = []
+    for index in sorted(llm_budget_indices):
+        piece = prelim[index]
+        delivery = (
+            stickiness[index] if index < len(stickiness) else {}
+        ).get("composite")
+        delivery = (
+            float(delivery) if isinstance(delivery, (int, float)) else 0.0
+        )
+        slide = slide_scores[index] if index < len(slide_scores) else None
+        slide_score = slide.get("composite") if isinstance(slide, dict) else None
+        overall = (
+            0.5 * delivery + 0.5 * float(slide_score)
+            if isinstance(slide_score, (int, float))
+            else delivery
+        )
+        overall_by_index[index] = overall
+        rank_inputs.append((overall, delivery, piece["start_ms"], index))
+
+    rank_by_index = {
+        item[3]: rank + 1
+        for rank, item in enumerate(sorted(
+            rank_inputs,
+            key=lambda value: (-value[0], -value[1], value[2]),
+        ))
+    }
+    return overall_by_index, rank_by_index
 
 
 def _playable(ref):
@@ -325,7 +364,7 @@ def process_lab_recording(
     Assumes the min-content gate already passed and the parent audio is
     already stored at ``parent_audio_url`` (the shared audio_ref for
     every snippet, parent+offset model). Persists one charisma_snippets
-    row per window. Returns {"snippets": [...]}.
+    row per canonical piece. Returns {"snippets": [...]}.
 
     ``recording_kind`` (founder 2026-07-14) — 'spoken' (the original take)
     or 'read' (the re-read of the suggestion-corrected text). Stamped on
@@ -364,14 +403,8 @@ def process_lab_recording(
 
     _rec_kind = recording_kind if recording_kind in ("spoken", "read") \
         else "spoken"
-    from services.audio_metrics import (
-        decode_audio_to_pcm, segment_into_snippets, analyze_pcm_window,
-        SEGMENT_MAX_SNIPPETS,
-    )
-    from services.snippet_salience import (
-        rank_candidates_by_salience, select_extremes_by_control,
-        SALIENCE_CANDIDATE_POOL, NOTABLE_POOL_SIZE,
-    )
+    from services.audio_metrics import decode_audio_to_pcm, analyze_pcm_window
+    from services.snippet_salience import rank_candidates_by_salience
     from services.snippet_stickiness import score_snippets_stickiness
     from services.slide_word_split import slice_words_for_window
     from services.db import db
@@ -501,30 +534,13 @@ def process_lab_recording(
     # char cap within each slide; deckless is the flat ≤200-char cut. EVERY
     # piece becomes a charisma_snippets row with its exact word-derived audio
     # span + its own acoustic metrics: what the user reads = what the coach
-    # hears and labels = what the model learns from. The legacy acoustic
-    # salient-window cutter below survives ONLY as (a) the no-word-timestamps
-    # fallback (segments-only Whisper) and (b) the PIECES_CANONICAL_ENABLED=0
-    # kill-switch.
-    _pieces_mode = False
-    _piece_list: list = []
-    _slides_ctx0 = (session_context or {}).get("slides")
-    if words_all and _pieces_canonical_enabled():
-        from services.slide_word_split import (
-            chunk_slide_words_by_chars, chunk_words_by_chars,
-        )
-        if _slides_ctx0:
-            _piece_list = chunk_slide_words_by_chars(
-                words_all, (session_context or {}).get("slide_advances"),
-                _slides_ctx0,
-            )
-        else:
-            _piece_list = chunk_words_by_chars(words_all)
-        _piece_list = [pc for pc in (_piece_list or [])
-                       if (pc.get("transcript") or "").strip()]
-        _pieces_mode = bool(_piece_list)
+    # hears and labels = what the model learns from. No alternate segmentation
+    # path exists: missing timestamps fail above and leave the stored take
+    # retryable through the processing-job contract.
+    _piece_list = _build_canonical_pieces(words_all, session_context)
 
     _llm_budget_idx: set = set()
-    if _pieces_mode:
+    if _piece_list:
         # The LLM budget FIRST (needs only text length) — the most
         # acoustically-activated pieces get the model layers; but we don't have
         # metrics yet, so budget after a cheap first metrics pass below.
@@ -688,68 +704,6 @@ def process_lab_recording(
         # Capture corpus semantics: offered = every piece, notable = budget set.
         candidates = prelim
         notable = [prelim[i] for i in sorted(_llm_budget_idx)]
-    else:
-        # ── LEGACY acoustic salient-window path (fallback) ─────────────
-        # Candidate windows: ask the segmenter for a GENEROUS pool, not
-        # the final cap. Level 1 salience selection picks the top-N most
-        # acoustically-activated of these, so it must score across the whole
-        # recording's moments rather than re-order a pre-capped few.
-        candidate_windows = segment_into_snippets(
-            sig, max_snippets=SALIENCE_CANDIDATE_POOL,
-        )
-
-        # 1) Features + transcript per CANDIDATE window (in-memory; no insert
-        #    yet; index assigned AFTER selection so persisted snippets are
-        #    1..N chronological).
-        candidates = []
-        for (start_ms, end_ms) in candidate_windows:
-            dur_ms = end_ms - start_ms
-            # Slice the transcript FIRST and pass it in — analyze_pcm_window
-            # needs the words to compute wpm (→ the speech_rate metric).
-            transcript = slice_transcript_for_window(segments, start_ms, end_ms)
-            metrics = analyze_pcm_window(
-                sig, start_offset_ms=start_ms, duration_ms=dur_ms,
-                transcript=transcript,
-            ) or {}
-            candidates.append({
-                "start_ms": start_ms, "dur_ms": dur_ms,
-                "metrics": metrics, "transcript": transcript,
-            })
-
-        # ── SELECTION = two axes (Phase 1 directional re-ranker) ──────────
-        #  (a) ACTIVATION GATE — top NOTABLE_POOL_SIZE by acoustic activation.
-        #  (b) CONTROL SPLIT — top-N/2 by control composite (likely-strong) +
-        #      bottom-N/2 (likely-shaky), N = SEGMENT_MAX_SNIPPETS.
-        # Both composites are TRANSIENT — computed, used to select, discarded
-        # (split-sink / AC-9 / §6 label hygiene: coach labels blind).
-        # baseline=None → cold-start within-recording z-score.
-        notable = rank_candidates_by_salience(
-            candidates, top_n=NOTABLE_POOL_SIZE,
-        )
-        prelim = select_extremes_by_control(
-            notable, top_n=SEGMENT_MAX_SNIPPETS, baseline=None,
-        )
-        for idx, p in enumerate(prelim, start=1):
-            p["idx"] = idx
-
-        # Claim-once transcript attribution (founder bug #2): a sentence
-        # straddling two surfaced windows showed up TWICE. Re-slice the
-        # SURFACED set so each segment lands in exactly one snippet (largest
-        # overlap wins). Pieces mode never needs this — piece text comes from
-        # the word list directly, non-overlapping by construction.
-        if segments and prelim:
-            _deduped = dedupe_window_transcripts(
-                [(p["start_ms"], p["start_ms"] + p["dur_ms"]) for p in prelim],
-                segments,
-            )
-            for i, p in enumerate(prelim):
-                # keep the raw window-local slice for the candidate-pool
-                # capture (training wants window-local text).
-                p.setdefault("transcript_raw", p["transcript"])
-                # A short window can lose ALL its text to a bigger neighbour —
-                # fall back to the raw slice rather than a textless card.
-                p["transcript"] = _deduped[i] or p["transcript"]
-
     # 2 + 2b) THE TWO INDEPENDENT LLM UNITS, RUN AT THE SAME TIME
     # (founder 2026-08-12, after the first production timing line:
     # analysis=21548ms, of which these two were ~5.7s SEQUENTIAL —
@@ -776,7 +730,7 @@ def process_lab_recording(
             # Analytics off (import lane): no LLM topic read. Honest absence —
             # every piece carries stickiness {} exactly like an unbudgeted piece.
             sticky = [{} for _ in prelim]
-        elif _pieces_mode:
+        else:
             _b_order = sorted(_llm_budget_idx)
             _sticky_b = score_snippets_stickiness([
                 {"id": None, "transcript": prelim[i]["transcript"]}
@@ -785,11 +739,6 @@ def process_lab_recording(
             sticky = [{} for _ in prelim]
             for j, i in enumerate(_b_order):
                 sticky[i] = _sticky_b[j] if j < len(_sticky_b) else {}
-        else:
-            sticky = score_snippets_stickiness([
-                {"id": None, "transcript": p["transcript"]} for p in prelim
-            ])
-
         return sticky
 
     def _unit_slide_scores() -> tuple:
@@ -808,13 +757,13 @@ def process_lab_recording(
             # entailment). Restored two-tier: EVERY piece gets a deterministic
             # lexical relatedness vs its OWN slide (degraded=true, zero model
             # cost); the LLM-budget subset (_llm_budget_idx, default 16) is
-            # upgraded via the legacy claim-decomposition (sha1-cached per
+            # upgraded via claim decomposition (sha1-cached per
             # slide → one call per deck) + entailment pipeline. Coach-only
             # (include_slide_scores) + an L2 ranking input (power_score w_s);
             # runs AFTER the _cap_snapshot above, so the raw candidate-window
             # capture never sees it. Best-effort — LLM failure keeps the
             # lexical tier; never blocks the 201 (live loop).
-            if _slides_ctx and _pieces_mode:
+            if _slides_ctx:
                 from services.slide_alignment import compute_piece_slide_scores
                 _slide_per_snip = compute_piece_slide_scores(
                     [{"transcript": p["transcript"], "duration_ms": p["dur_ms"],
@@ -826,16 +775,6 @@ def process_lab_recording(
                     _slides_ctx,
                     llm_budget_idx=_llm_budget_idx,
                 ) or []
-            elif _slides_ctx:
-                from services.slide_alignment import compute_slide_scores
-                _res = compute_slide_scores(
-                    [{"start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
-                      "transcript": p["transcript"]} for p in prelim],
-                    _slides_ctx,
-                    (session_context or {}).get("slide_advances"),
-                )
-                _slide_per_snip = _res.get("per_snippet") or []
-                _slide_coverage = _res.get("slide_coverage") or []
         except Exception as e:
             logger.warning(
                 "process_lab_recording: slide scoring failed sid=%s err=%s",
@@ -859,23 +798,12 @@ def process_lab_recording(
     # ranking signal; None keeps it neutral — it competes on coach direction +
     # slide_stickiness only, which is honest). _scored_i = the indices that get
     # a real overall/rank.
-    _scored_i = (sorted(_llm_budget_idx) if _pieces_mode
-                 else list(range(len(prelim))))
-    _overall_by_i: dict = {}
-    _rank_inputs: list = []
-    for i in _scored_i:
-        p = prelim[i]
-        _s1 = (sticky[i] if i < len(sticky) else {}).get("composite")
-        _s1 = float(_s1) if isinstance(_s1, (int, float)) else 0.0
-        _ss = _slide_per_snip[i] if i < len(_slide_per_snip) else None
-        _s2 = _ss.get("composite") if isinstance(_ss, dict) else None
-        _ov = (0.5 * _s1 + 0.5 * float(_s2)) if isinstance(_s2, (int, float)) else _s1
-        _overall_by_i[i] = _ov
-        _rank_inputs.append((_ov, _s1, p["start_ms"], i))
-    _rank_by_i = {
-        t[3]: r + 1
-        for r, t in enumerate(sorted(_rank_inputs, key=lambda t: (-t[0], -t[1], t[2])))
-    }
+    _overall_by_i, _rank_by_i = _compute_overall_ranking(
+        prelim,
+        sticky,
+        _slide_per_snip,
+        _llm_budget_idx,
+    )
 
     # 3) Insert each snippet with stickiness PERSISTED into its metrics
     #    blob (metrics["stickiness"]), so a later re-read rebuilds the
@@ -896,8 +824,8 @@ def process_lab_recording(
         _ss = _slide_per_snip[i] if i < len(_slide_per_snip) else None
         if isinstance(_ss, dict) and _ss.get("composite") is not None:
             metrics_full["slide_stickiness"] = _ss
-        # overall_score / rank: ONLY for delivery-scored pieces (all in legacy;
-        # the budget set in pieces mode). Non-budget pieces omit both → neutral
+        # overall_score / rank: ONLY for delivery-scored budget pieces.
+        # Non-budget pieces omit both → neutral
         # downstream (see the _scored_i note above).
         if i in _overall_by_i:
             metrics_full["overall_score"] = round(_overall_by_i[i], 3)
@@ -910,44 +838,27 @@ def process_lab_recording(
             words_all, p["start_ms"], p["start_ms"] + p["dur_ms"],
         ) if words_all else None
         _metrics_by_i.append(metrics_full)
-        if _pieces_mode:
-            _rows_to_insert.append({
-                "session_id": session_id, "user_id": user_id,
-                "recording_id": recording_id,
-                "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
-                "audio_segment_path": parent_audio_url,
-                "metrics": metrics_full,
-                "transcript": p["transcript"] or None,
-                "words": snip_words or None,
-            })
-        else:
-            row = db.create_charisma_snippet(
-                session_id=session_id, user_id=user_id,
-                recording_id=recording_id,
-                start_offset_ms=p["start_ms"], duration_ms=p["dur_ms"],
-                audio_segment_path=parent_audio_url, metrics=metrics_full,
-                transcript=p["transcript"] or None, words=snip_words or None,
-            )
-            snippets_data.append({
-                "id": row.get("id") if row else None, "index": p["idx"],
-                "transcript": p["transcript"], "audio_ref": parent_audio_url,
-                "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
-                "metrics": metrics_full,
-            })
+        _rows_to_insert.append({
+            "session_id": session_id, "user_id": user_id,
+            "recording_id": recording_id,
+            "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
+            "audio_segment_path": parent_audio_url,
+            "metrics": metrics_full,
+            "transcript": p["transcript"] or None,
+            "words": snip_words or None,
+        })
 
-    if _pieces_mode:
-        # ONE bulk insert instead of ~N sequential REST round-trips — the
-        # live-loop cost fix for long takes (a 60-min take is ~270 pieces).
-        # Ids come back in insert order; on a bulk hiccup, fall back to
-        # per-row so a recording is never lost.
-        _ids = db.create_charisma_snippets_bulk(_rows_to_insert)
-        for i, p in enumerate(prelim):
-            snippets_data.append({
-                "id": _ids[i] if i < len(_ids) else None, "index": p["idx"],
-                "transcript": p["transcript"], "audio_ref": parent_audio_url,
-                "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
-                "metrics": _metrics_by_i[i],
-            })
+    # ONE bulk insert instead of ~N sequential REST round-trips — the
+    # live-loop cost fix for long takes (a 60-min take is ~270 pieces).
+    # Ids come back in insert order; the DB helper owns its per-row fallback.
+    _ids = db.create_charisma_snippets_bulk(_rows_to_insert)
+    for i, p in enumerate(prelim):
+        snippets_data.append({
+            "id": _ids[i] if i < len(_ids) else None, "index": p["idx"],
+            "transcript": p["transcript"], "audio_ref": parent_audio_url,
+            "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
+            "metrics": _metrics_by_i[i],
+        })
 
     stickiness_list = [
         {
@@ -959,20 +870,16 @@ def process_lab_recording(
     ]
 
     # ── Candidate-pool capture (automation-audit fix #1: "offered vs chosen") ──
-    # The pipeline scored the FULL `candidates` pool, kept `notable`, surfaced
-    # `prelim` (<=10) — and would now discard the rest. Persist the WHOLE pool +
-    # each window's raw feature vector + which cut it made, so the SELECTION
-    # step can later be LEARNED instead of re-coded (the dropped windows are the
-    # only signal for "which moments to surface"; lost otherwise, every session).
+    # Persist every canonical piece's raw feature vector plus whether it entered
+    # the LLM budget. That distinction is the training signal for improving the
+    # expensive-layer router without redefining the feedback moment itself.
     #
     # Training-bound / split-sink (AC-9: storing != surfacing) and FENCE-safe
     # (snippet_salience.py): we store the raw `metrics` vector + the heuristic's
     # PROVISIONAL surfaced/notable decision, NEVER the transient salience score.
     # Best-effort: a failure here NEVER breaks the recording (live-loop fence).
     try:
-        from services.candidate_capture import (
-            build_candidate_rows, SELECTOR_VERSION,
-        )
+        from services.candidate_capture import build_candidate_rows
         _surfaced_info = {
             p["start_ms"]: {
                 "rank": _rank_by_i.get(i),
@@ -981,30 +888,19 @@ def process_lab_recording(
             }
             for i, p in enumerate(prelim)
         }
-        # Surfaced candidates carry the DEDUPED display text after the claim-
-        # once pass; the capture wants each window's RAW window-local slice
-        # (preserved as transcript_raw) — restore it on shallow copies.
-        #
-        # Pieces mode: use the RAW metrics snapshot taken BEFORE acoustic_read
+        # Use the RAW metrics snapshot taken BEFORE acoustic_read
         # / user_tone_word were stamped, so the training corpus never carries
         # a derived composite (the documented fence: candidate_windows stays
         # RAW — validation-sample independence). The 'piece' provenance key is
         # also stripped (it isn't an acoustic feature).
-        if _pieces_mode:
-            _cap_candidates = []
-            for i, c in enumerate(candidates):
-                _raw_m = dict(_cap_snapshot[i]) if i < len(_cap_snapshot) else {}
-                _raw_m.pop("piece", None)
-                _cap_candidates.append({
-                    "start_ms": c["start_ms"], "dur_ms": c["dur_ms"],
-                    "metrics": _raw_m, "transcript": c.get("transcript"),
-                })
-        else:
-            _cap_candidates = [
-                ({**c, "transcript": c.get("transcript_raw")}
-                 if c.get("transcript_raw") is not None else c)
-                for c in candidates
-            ]
+        _cap_candidates = []
+        for i, c in enumerate(candidates):
+            _raw_m = dict(_cap_snapshot[i]) if i < len(_cap_snapshot) else {}
+            _raw_m.pop("piece", None)
+            _cap_candidates.append({
+                "start_ms": c["start_ms"], "dur_ms": c["dur_ms"],
+                "metrics": _raw_m, "transcript": c.get("transcript"),
+            })
         _cap_rows = build_candidate_rows(
             _cap_candidates,
             notable_starts={n.get("start_ms") for n in notable},
@@ -1012,12 +908,9 @@ def process_lab_recording(
             session_id=session_id,
             recording_id=recording_id,
             user_id=user_id,
-            # Pieces mode re-versions the corpus semantics: offered = every
-            # ≤200-char piece (all surfaced), notable = the LLM-budget set.
-            # The legacy selector version stays on legacy-path rows so the
-            # two regimes never mix in training.
-            heuristic_version=("pieces-200char-v1" if _pieces_mode
-                               else SELECTOR_VERSION),
+            # Canonical corpus semantics: offered = every ≤200-char piece
+            # (all surfaced), notable = the LLM-budget set.
+            heuristic_version="pieces-200char-v1",
         )
         _n_cap = db.insert_candidate_windows(_cap_rows)
         logger.info(
@@ -1038,18 +931,7 @@ def process_lab_recording(
     # Voice-metrics diagnostic (telemetry) — distinguish WHY acoustics are empty
     # so we can isolate device/PWA capture issues before re-engaging the native
     # mic path. (decode_failed is logged at the early return above.)
-    _voiced = any(
-        _has_voice_metrics(build_readout_features(sd.get("metrics")))
-        for sd in snippets_data
-    )
-    if not snippets_data:
-        _diag = "no_snippets"          # decode ok but no salient windows
-    elif not _voiced:
-        _diag = "no_voiced_speech"     # snippets exist but too quiet/silent
-    elif not segments:
-        _diag = "ok_acoustics_no_transcript"  # voice read; transcript missing
-    else:
-        _diag = "ok"
+    _voiced, _diag = _voice_metrics_diagnostic(snippets_data, segments)
     logger.info(
         "process_lab_recording.voice_metrics_diag sid=%s status=%s "
         "snippets=%d voiced=%s transcribed=%s",
@@ -1090,46 +972,15 @@ def process_lab_recording(
             except Exception as _bm_err:
                 logger.warning(
                     "boundary metrics failed sid=%s: %s", session_id, _bm_err)
-        elif not _slides_for_tx and (words_all or segments):
-            # DECKLESS (the deck guard matters: a DECK session whose Whisper
-            # fell back to segments-only must NOT land here, or the whole talk
-            # gets persisted under pseudo-slide 0 and the per-slide reader
-            # would prefer it — review must-fix).
-            #
+        elif not _slides_for_tx:
+            # DECKLESS: persist the canonical pieces directly so the transcript
+            # workspace and feedback rows share the exact same boundaries.
             # With word timestamps (founder 2026-07-11): persist the whole
             # recording pre-chunked — ≤200-char pieces broken at word
             # boundaries, EACH with its audio span from the word times — so
             # every chunk's playback control plays exactly its own segment
             # and text/audio boundaries share one source (no drift).
-            # An empty chunk list (malformed words) falls THROUGH to the
-            # segments blob below rather than silently persisting nothing
-            # (review fix — elif chains would have eaten the fallback).
-            _chunks: list = []
-            if words_all:
-                from services.slide_word_split import chunk_words_by_chars
-                _chunks = chunk_words_by_chars(words_all)
-            if _chunks:
-                db.set_session_slide_transcripts(session_id, _chunks)
-            elif segments:
-                # Segments-only Whisper fallback (no usable word timestamps):
-                # persist the WHOLE recording's transcript as a single legacy
-                # blob (index 0) — the readout re-chunks it at read time,
-                # text-only (no per-chunk spans).
-                _full = " ".join(
-                    (seg.get("text") or "").strip()
-                    for seg in segments
-                    if isinstance(seg, dict) and (seg.get("text") or "").strip()
-                ).strip()
-                if _full:
-                    _last_end = max(
-                        (seg.get("end") or 0) for seg in segments
-                        if isinstance(seg, dict)
-                    )
-                    db.set_session_slide_transcripts(session_id, [{
-                        "index": 0, "transcript": _full,
-                        "start_offset_ms": 0,
-                        "duration_ms": int(float(_last_end) * 1000),
-                    }])
+            db.set_session_slide_transcripts(session_id, _piece_list)
     except Exception as _stx_err:
         # F1a (per-slide 1:1 transcript) degraded → the take viewer falls back to
         # coarser per-snippet bucketing. Make it observable (no payload change).
@@ -1147,12 +998,10 @@ def process_lab_recording(
     if _coach_prefill_enabled():
         try:
             from services.coach_comment_drafter import dispatch_coach_note_drafts
-            _llm_ids = None
-            if _pieces_mode:
-                _llm_ids = {
-                    str(snippets_data[i]["id"]) for i in _llm_budget_idx
-                    if i < len(snippets_data) and snippets_data[i].get("id")
-                }
+            _llm_ids = {
+                str(snippets_data[i]["id"]) for i in _llm_budget_idx
+                if i < len(snippets_data) and snippets_data[i].get("id")
+            }
             dispatch_coach_note_drafts(
                 session_id,
                 snippets_data,
@@ -1178,29 +1027,18 @@ def process_lab_recording(
         from services.say_it_stronger import dispatch_say_it_stronger
         from services.audio_metrics import SAMPLE_RATE
         _ctx = session_context or {}
-        _full_tx = " ".join(
-            (seg.get("text") or "").strip()
-            for seg in (segments or [])
-            if isinstance(seg, dict) and (seg.get("text") or "").strip()
-        ).strip() or " ".join(
-            (w.get("word") or "").strip()
-            for w in (words_all or [])
-            if isinstance(w, dict) and (w.get("word") or "").strip()
-        ).strip()
-        # Pieces mode: cards only for the LLM-budget pieces (cost cap) —
+        _full_tx = _full_transcript_text(segments, words_all)
+        # Cards only for the LLM-budget pieces (cost cap) —
         # the instant view's suggestions ride the most salient moments;
         # the other pieces still carry text/audio/auto-comment.
-        _sis_snips = snippets_data
-        _sis_means = None
-        if _pieces_mode:
-            _sis_snips = [
-                snippets_data[i] for i in sorted(_llm_budget_idx)
-                if i < len(snippets_data)
-            ]
-            # "your average" must be the WHOLE take's, not the budget subset's
-            # (the budget set is the most-activated extremes → biased mean).
-            from services.say_it_stronger import aggregate_session_means
-            _sis_means = aggregate_session_means(snippets_data)
+        _sis_snips = [
+            snippets_data[i] for i in sorted(_llm_budget_idx)
+            if i < len(snippets_data)
+        ]
+        # "your average" must be the WHOLE take's, not the budget subset's
+        # (the budget set is the most-activated extremes → biased mean).
+        from services.say_it_stronger import aggregate_session_means
+        _sis_means = aggregate_session_means(snippets_data)
         dispatch_say_it_stronger(session_id, _sis_snips, context={
             "topic": _ctx.get("topic"),
             "audience": _ctx.get("audience"),
@@ -1814,5 +1652,3 @@ def build_readout_from_session(
                     )
 
     return result
-
-

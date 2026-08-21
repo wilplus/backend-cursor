@@ -364,7 +364,13 @@ class PipelineWiringTests(unittest.TestCase):
         )
 
         try:
-            with patch.dict(os.environ, {"WILLAB_PIECE_LLM_BUDGET": "1"}), \
+            # The retired flag must not be able to reactivate a second
+            # segmentation algorithm, even if a stale deployment still sets
+            # it to false.
+            with patch.dict(os.environ, {
+                     "WILLAB_PIECE_LLM_BUDGET": "1",
+                     "PIECES_CANONICAL_ENABLED": "0",
+                 }), \
                  patch("services.audio_metrics.decode_audio_to_pcm",
                        return_value=[0.0] * 16000), \
                  patch("services.audio_metrics.analyze_pcm_window",

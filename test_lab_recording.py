@@ -12,45 +12,6 @@ from __future__ import annotations
 import unittest
 
 
-class SliceTranscriptTests(unittest.TestCase):
-
-    def _slice(self, segs, a, b):
-        from services.lab_recording import slice_transcript_for_window
-        return slice_transcript_for_window(segs, a, b)
-
-    SEGS = [
-        {"start": 0.0, "end": 3.0, "text": "Hello there"},
-        {"start": 3.0, "end": 6.0, "text": "this is the middle"},
-        {"start": 6.0, "end": 9.0, "text": "and the end"},
-    ]
-
-    def test_window_picks_overlapping_segments(self):
-        # [2.5s, 6.5s] overlaps seg0 (ends 3.0), seg1 (3-6), seg2 (starts 6.0)
-        out = self._slice(self.SEGS, 2500, 6500)
-        self.assertIn("Hello there", out)
-        self.assertIn("this is the middle", out)
-        self.assertIn("and the end", out)
-
-    def test_window_excludes_non_overlapping(self):
-        # [3.0s, 6.0s] — seg0 ends exactly at 3.0 (e>start false), seg2
-        # starts exactly at 6.0 (s<end false) → only the middle
-        out = self._slice(self.SEGS, 3000, 6000)
-        self.assertEqual(out, "this is the middle")
-
-    def test_empty_segments_returns_empty(self):
-        self.assertEqual(self._slice([], 0, 5000), "")
-        self.assertEqual(self._slice(None, 0, 5000), "")
-
-    def test_malformed_segments_skipped(self):
-        segs = [
-            {"start": "bad", "end": 3.0, "text": "skip me"},
-            "not a dict",
-            {"start": 0.0, "end": 2.0, "text": "keep me"},
-        ]
-        out = self._slice(segs, 0, 5000)
-        self.assertEqual(out, "keep me")
-
-
 class FeatureMapTests(unittest.TestCase):
 
     def _map(self, m):
@@ -178,6 +139,168 @@ class PayloadAssemblyTests(unittest.TestCase):
     def test_transcript_defaults_to_empty_string(self):
         out = self._build([{"id": "s1", "index": 1, "metrics": {}}], [])
         self.assertEqual(out["snippets"][0]["transcript"], "")
+
+
+class CanonicalPieceContractTests(unittest.TestCase):
+    """The recording pipeline has one moment identity: canonical pieces."""
+
+    WORDS = [
+        {"word": "A", "start": 0.0, "end": 0.2},
+        {"word": "clear", "start": 0.2, "end": 0.5},
+        {"word": "opening.", "start": 0.5, "end": 0.9},
+    ]
+
+    def test_deckless_words_build_exact_canonical_pieces(self):
+        from services.lab_recording import _build_canonical_pieces
+
+        pieces = _build_canonical_pieces(self.WORDS, None)
+
+        self.assertEqual(len(pieces), 1)
+        self.assertEqual(pieces[0]["transcript"], "A clear opening.")
+        self.assertEqual(pieces[0]["start_offset_ms"], 0)
+        self.assertEqual(pieces[0]["duration_ms"], 900)
+
+    def test_missing_word_timestamps_is_an_explicit_processing_failure(self):
+        from services.lab_recording import (
+            PiecesCanonicalUnavailable,
+            _build_canonical_pieces,
+        )
+
+        with self.assertRaisesRegex(
+            PiecesCanonicalUnavailable,
+            "word-level timestamps",
+        ):
+            _build_canonical_pieces([], {"slides": [{"title": "Opening"}]})
+
+    def test_malformed_words_cannot_silently_activate_another_pipeline(self):
+        from services.lab_recording import (
+            PiecesCanonicalUnavailable,
+            _build_canonical_pieces,
+        )
+
+        with self.assertRaises(PiecesCanonicalUnavailable):
+            _build_canonical_pieces(
+                [{"word": "missing timestamps"}],
+                None,
+            )
+
+    def test_legacy_creation_switch_and_branch_are_absent(self):
+        import inspect
+        from services import lab_recording as lr
+
+        module_source = inspect.getsource(lr)
+        process_source = inspect.getsource(lr.process_lab_recording)
+        self.assertNotIn("PIECES_CANONICAL_ENABLED", module_source)
+        self.assertNotIn("_pieces_canonical_enabled", module_source)
+        self.assertNotIn("segment_into_snippets", process_source)
+        self.assertNotIn("select_extremes_by_control", process_source)
+        self.assertNotIn("dedupe_window_transcripts", module_source)
+
+
+class VoiceMetricsDiagnosticTests(unittest.TestCase):
+    def _diagnose(self, snippets, segments):
+        from services.lab_recording import _voice_metrics_diagnostic
+        return _voice_metrics_diagnostic(snippets, segments)
+
+    def test_no_persisted_pieces(self):
+        self.assertEqual(self._diagnose([], [{"text": "spoken"}]),
+                         (False, "no_snippets"))
+
+    def test_pieces_without_acoustics(self):
+        snippets = [{"metrics": {"wpm": 130}}]
+        self.assertEqual(self._diagnose(snippets, [{"text": "spoken"}]),
+                         (False, "no_voiced_speech"))
+
+    def test_acoustics_without_segment_transcript(self):
+        snippets = [{"metrics": {"f0_mean": 150.0}}]
+        self.assertEqual(self._diagnose(snippets, []),
+                         (True, "ok_acoustics_no_transcript"))
+
+    def test_acoustics_and_transcript(self):
+        snippets = [{"metrics": {"dynamic_db": 10.0}}]
+        self.assertEqual(self._diagnose(snippets, [{"text": "spoken"}]),
+                         (True, "ok"))
+
+
+class FullTranscriptTextTests(unittest.TestCase):
+    def _text(self, segments, words):
+        from services.lab_recording import _full_transcript_text
+        return _full_transcript_text(segments, words)
+
+    def test_segment_text_has_priority(self):
+        self.assertEqual(
+            self._text([{"text": "Segment truth."}], [{"word": "words"}]),
+            "Segment truth.",
+        )
+
+    def test_words_are_the_fallback(self):
+        self.assertEqual(
+            self._text([], [{"word": "Word"}, {"word": "truth."}]),
+            "Word truth.",
+        )
+
+    def test_malformed_and_blank_entries_are_ignored(self):
+        self.assertEqual(
+            self._text([None, {"text": "  "}], ["bad", {"word": " usable "}]),
+            "usable",
+        )
+
+    def test_empty_sources_return_empty_text(self):
+        self.assertEqual(self._text(None, None), "")
+
+
+class OverallRankingTests(unittest.TestCase):
+    PRELIM = [
+        {"start_ms": 3000},
+        {"start_ms": 1000},
+        {"start_ms": 2000},
+    ]
+
+    def _rank(self, sticky, slide_scores, budget):
+        from services.lab_recording import _compute_overall_ranking
+        return _compute_overall_ranking(
+            self.PRELIM,
+            sticky,
+            slide_scores,
+            budget,
+        )
+
+    def test_blends_delivery_and_slide_scores(self):
+        overall, ranks = self._rank(
+            [{"composite": 0.8}, {"composite": 0.6}],
+            [{"composite": 0.4}, {"composite": 1.0}],
+            {0, 1},
+        )
+        self.assertAlmostEqual(overall[0], 0.6)
+        self.assertAlmostEqual(overall[1], 0.8)
+        self.assertEqual(ranks, {1: 1, 0: 2})
+
+    def test_missing_slide_score_falls_back_to_delivery(self):
+        overall, ranks = self._rank([{"composite": 0.7}], [], {0})
+        self.assertEqual(overall, {0: 0.7})
+        self.assertEqual(ranks, {0: 1})
+
+    def test_only_budget_pieces_receive_overall_and_rank(self):
+        overall, ranks = self._rank(
+            [{"composite": 0.9}, {"composite": 0.8}, {"composite": 0.7}],
+            [],
+            {1},
+        )
+        self.assertEqual(overall, {1: 0.8})
+        self.assertEqual(ranks, {1: 1})
+
+    def test_equal_scores_use_earliest_offset(self):
+        _, ranks = self._rank(
+            [{"composite": 0.5}, {"composite": 0.5}, {"composite": 0.5}],
+            [],
+            {0, 1, 2},
+        )
+        self.assertEqual(ranks, {1: 1, 2: 2, 0: 3})
+
+    def test_non_numeric_delivery_score_is_zero(self):
+        overall, _ = self._rank([{"composite": "high"}], [], {0})
+        self.assertEqual(overall, {0: 0.0})
+
 
 
 if __name__ == "__main__":

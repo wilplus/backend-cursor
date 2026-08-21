@@ -10,7 +10,6 @@ import unittest
 from services.arc_notifications import (
     fire_human_check_note, maybe_fire_best_presentation_ready,
 )
-from services.lab_recording import dedupe_window_transcripts
 
 
 class _FakeDB:
@@ -140,36 +139,6 @@ class NotesTests(unittest.TestCase):
         _, msg = db.inserted[0]
         self.assertEqual(msg["kind"], "text")
         self.assertEqual(msg["metadata"]["note"], "human_check")
-
-
-class DedupeWindowTranscriptsTests(unittest.TestCase):
-    # Founder #2: a sentence straddling two windows must appear ONCE, in the
-    # window where it was mostly spoken.
-    def test_straddling_segment_goes_to_larger_overlap(self):
-        windows = [(0, 5000), (5000, 10000)]
-        segments = [
-            {"start": 0.0, "end": 4.0, "text": "Sentence A."},
-            # straddles the boundary, mostly in window 2 (4.5s→8s)
-            {"start": 4.5, "end": 8.0, "text": "Sentence B."},
-        ]
-        out = dedupe_window_transcripts(windows, segments)
-        self.assertEqual(out[0], "Sentence A.")
-        self.assertEqual(out[1], "Sentence B.")  # once, not in both
-
-    def test_each_sentence_appears_exactly_once(self):
-        windows = [(0, 3000), (2800, 6000), (5800, 9000)]  # padded overlaps
-        segments = [
-            {"start": 0.0, "end": 2.9, "text": "One."},
-            {"start": 2.9, "end": 5.9, "text": "Two."},
-            {"start": 5.9, "end": 8.9, "text": "Three."},
-        ]
-        joined = " ".join(dedupe_window_transcripts(windows, segments))
-        for word in ("One.", "Two.", "Three."):
-            self.assertEqual(joined.count(word), 1, word)
-
-    def test_empty_inputs(self):
-        self.assertEqual(dedupe_window_transcripts([], []), [])
-        self.assertEqual(dedupe_window_transcripts([(0, 1000)], []), [""])
 
 
 if __name__ == "__main__":
