@@ -47,6 +47,10 @@ from services.lab_project_identity import (
     find_duplicate_upload,
     validate_project_selection,
 )
+from services.lab_recording_gate import (
+    RecordingRejected,
+    require_analyzable_recording,
+)
 
 from config import Config
 
@@ -391,35 +395,19 @@ def v2_lab_create_recording():
                 logger.warning("lab: domain-vocab autoseed failed: %s", _ve)
 
         # ── 3. MIN-CONTENT GATE before processing (§5.5) ────────────
-        from services.min_content_gate import evaluate_min_content_bytes
-        gate = evaluate_min_content_bytes(file_bytes)
-        if not gate["ok"]:
-            # Survivorship capture (audit fix #2c): gate-failed takes are dropped
-            # before any storage, so we had no "bad take" record. Log the gate
-            # METRICS only (no audio — privacy + cost). Best-effort, never blocks
-            # the 422 re-record prompt.
-            try:
-                db.insert_rejected_take(
-                    reason=gate.get("reason"),
-                    duration_sec=gate.get("duration_sec"),
-                    voiced_sec=gate.get("voiced_sec"),
-                    thresholds=gate.get("thresholds"),
-                    user_id=getattr(request, "user_id", None),
-                    guest_session_id=(form.get("guest_session_id") or None),
-                    arc_id=(form.get("arc_id") or None),
-                    take_index=form.get("take_index"),
-                )
-            except Exception as _rej_err:
-                logger.warning(
-                    "lab: rejected-take capture failed: %s (non-fatal)", _rej_err,
-                )
-            # Minimum duration RETIRED (founder 2026-07-15) — the only
-            # rejections left are no_speech / no_audio (pipeline validity,
-            # not a UX minimum).
+        try:
+            gate = require_analyzable_recording(
+                file_bytes,
+                database=db,
+                form=form,
+                user_id=getattr(request, "user_id", None),
+                log=logger,
+            )
+        except RecordingRejected as rejected:
             return jsonify({
                 "code": "RECORDING_REJECTED",
                 "error": "No speech detected — try recording again.",
-                "gate": gate,  # {reason, duration_sec, voiced_sec, thresholds}
+                "gate": rejected.gate,
             }), 422
 
         # ── 4. store + session + recording ──────────────────────────
