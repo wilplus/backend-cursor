@@ -34,6 +34,10 @@ from services.recording_piece_analysis import (
     analyze_canonical_pieces,
     build_canonical_pieces as _build_canonical_pieces,
 )
+from services.recording_feedback_scoring import (
+    compute_overall_ranking as _compute_overall_ranking,
+    score_recording_feedback,
+)
 from services.recording_transcription import (
     WHISPER_MAX_BYTES as _WHISPER_MAX_BYTES,
     merge_slide_vocabulary as _merge_slide_vocab,
@@ -44,6 +48,7 @@ __all__ = [
     "_WHISPER_MAX_BYTES",
     "_merge_slide_vocab",
     "_build_canonical_pieces",
+    "_compute_overall_ranking",
     "PiecesCanonicalUnavailable",
     "process_lab_recording",
 ]
@@ -210,43 +215,6 @@ def _full_transcript_text(segments: list, words_all: list) -> str:
     ).strip()
 
 
-def _compute_overall_ranking(
-    prelim: list,
-    stickiness: list,
-    slide_scores: list,
-    llm_budget_indices: set[int],
-) -> tuple[dict[int, float], dict[int, int]]:
-    """Blend delivery and slide scores, then rank canonical budget pieces."""
-    overall_by_index: dict[int, float] = {}
-    rank_inputs: list[tuple[float, float, int, int]] = []
-    for index in sorted(llm_budget_indices):
-        piece = prelim[index]
-        delivery = (
-            stickiness[index] if index < len(stickiness) else {}
-        ).get("composite")
-        delivery = (
-            float(delivery) if isinstance(delivery, (int, float)) else 0.0
-        )
-        slide = slide_scores[index] if index < len(slide_scores) else None
-        slide_score = slide.get("composite") if isinstance(slide, dict) else None
-        overall = (
-            0.5 * delivery + 0.5 * float(slide_score)
-            if isinstance(slide_score, (int, float))
-            else delivery
-        )
-        overall_by_index[index] = overall
-        rank_inputs.append((overall, delivery, piece["start_ms"], index))
-
-    rank_by_index = {
-        item[3]: rank + 1
-        for rank, item in enumerate(sorted(
-            rank_inputs,
-            key=lambda value: (-value[0], -value[1], value[2]),
-        ))
-    }
-    return overall_by_index, rank_by_index
-
-
 def _playable(ref):
     """One storage ref → a playable URL. Healthy public URLs pass through;
     the s3:// fallbacks a mis-configured writer leaves behind get signed
@@ -331,7 +299,6 @@ def process_lab_recording(
     _rec_kind = recording_kind if recording_kind in ("spoken", "read") \
         else "spoken"
     from services.audio_metrics import decode_audio_to_pcm
-    from services.snippet_stickiness import score_snippets_stickiness
     from services.slide_word_split import slice_words_for_window
     from services.db import db
 
@@ -386,106 +353,14 @@ def process_lab_recording(
     # Capture corpus semantics: offered = every piece, notable = budget set.
     candidates = prelim
     notable = [prelim[index] for index in sorted(_llm_budget_idx)]
-    # 2 + 2b) THE TWO INDEPENDENT LLM UNITS, RUN AT THE SAME TIME
-    # (founder 2026-08-12, after the first production timing line:
-    # analysis=21548ms, of which these two were ~5.7s SEQUENTIAL —
-    # stickiness 2.22s, then slide_claims 1.56s → slide_entailment 1.97s).
-    #
-    # They share no data: stickiness reads transcripts, slide alignment
-    # reads transcripts + the deck, and neither consumes the other's
-    # output — they meet for the first time in the `overall` blend below.
-    # Inside 2b the two calls ARE chained (entailment needs the claims),
-    # so that side stays sequential and sets the floor at ~3.5s.
-    #
-    # NO AI IS REMOVED. Every call that ran before still runs; they stop
-    # waiting in line. `run_in_parallel` returns results in SUBMISSION
-    # order, which is what keeps the L2 ranking inputs identical run to
-    # run — see services/parallel.py for why that is the load-bearing
-    # property here. Both closures only READ `prelim` and return fresh
-    # lists, so there is no shared mutable state between them.
-    def _unit_stickiness() -> list:
-        # Stickiness over transcripts BEFORE insert (one batch). Scored by
-        # transcript/position, so no snippet ids are needed yet. Pieces mode:
-        # only the LLM-budget pieces are scored (cost cap) — the rest carry
-        # stickiness {composite: None} honestly.
-        if not _run_analytics:
-            # Analytics off (import lane): no LLM topic read. Honest absence —
-            # every piece carries stickiness {} exactly like an unbudgeted piece.
-            sticky = [{} for _ in prelim]
-        else:
-            _b_order = sorted(_llm_budget_idx)
-            _sticky_b = score_snippets_stickiness([
-                {"id": None, "transcript": prelim[i]["transcript"]}
-                for i in _b_order
-            ])
-            sticky = [{} for _ in prelim]
-            for j, i in enumerate(_b_order):
-                sticky[i] = _sticky_b[j] if j < len(_sticky_b) else {}
-        return sticky
+    # Stage 3 — independent text and slide analysis, joined deterministically.
+    state = score_recording_feedback(state, log=logger)
+    sticky = list(state.stickiness)
+    _slide_per_snip = list(state.slide_scores)
+    _slide_coverage = list(state.slide_coverage)
 
-    def _unit_slide_scores() -> tuple:
-        # 2b) Stickiness #2 — slide-delivery claim-ledger (UX Wave 4). BEST-EFFORT:
-        #     any failure here must NOT break the recording or #1. Per-snippet
-        #     on-slide-ness (ii) drives overall/rank; per-slide coverage ledger (i)
-        #     is the coach audit. Computed against the slides as recorded (lock).
-        _slide_per_snip: list = []
-        _slide_coverage: list = []
-        try:
-            _slides_ctx = (session_context or {}).get("slides")
-            # Pieces mode (founder fix-pack BE-5, 2026-07-16 — REVIVED): each
-            # piece already carries an EXACT slide_index from the cutter, so no
-            # window→slide inference is needed; what the original skip dropped
-            # was the text↔slide SCORE itself (cost: ~270 pieces can't all run
-            # entailment). Restored two-tier: EVERY piece gets a deterministic
-            # lexical relatedness vs its OWN slide (degraded=true, zero model
-            # cost); the LLM-budget subset (_llm_budget_idx, default 16) is
-            # upgraded via claim decomposition (sha1-cached per
-            # slide → one call per deck) + entailment pipeline. Coach-only
-            # (include_slide_scores) + an L2 ranking input (power_score w_s);
-            # runs AFTER the _cap_snapshot above, so the raw candidate-window
-            # capture never sees it. Best-effort — LLM failure keeps the
-            # lexical tier; never blocks the 201 (live loop).
-            if _slides_ctx:
-                from services.slide_alignment import compute_piece_slide_scores
-                _slide_per_snip = compute_piece_slide_scores(
-                    [{"transcript": p["transcript"], "duration_ms": p["dur_ms"],
-                      "slide_index": (
-                          (p["metrics"].get("piece") or {}).get("slide_index")
-                          if isinstance(p["metrics"].get("piece"), dict) else None
-                      )}
-                     for p in prelim],
-                    _slides_ctx,
-                    llm_budget_idx=_llm_budget_idx,
-                ) or []
-        except Exception as e:
-            logger.warning(
-                "process_lab_recording: slide scoring failed sid=%s err=%s",
-                session_id, e,
-            )
-
-        return _slide_per_snip, _slide_coverage
-
-    from services.parallel import run_in_parallel
-    sticky, (_slide_per_snip, _slide_coverage) = run_in_parallel(
-        _unit_stickiness, _unit_slide_scores)
-
-    # overall = 0.5·#1 + 0.5·#2(ii); #2 null → overall = #1. Rank by overall
-    # desc (tie-break #1, then earliest offset). Ranking only — selection above
-    # is unchanged, so #2 never biases the salience set.
-    #
-    # Pieces mode: ONLY the budget pieces were delivery-scored (#1). A
-    # non-budget piece has no delivery signal, so it gets overall_score/rank =
-    # None (NOT 0.0 — a stored 0.0 would make power_score treat it as
-    # worst-activation and the 1/rank fallback would turn chronology into a
-    # ranking signal; None keeps it neutral — it competes on coach direction +
-    # slide_stickiness only, which is honest). _scored_i = the indices that get
-    # a real overall/rank.
-    _overall_by_i, _rank_by_i = _compute_overall_ranking(
-        prelim,
-        sticky,
-        _slide_per_snip,
-        _llm_budget_idx,
-    )
+    _overall_by_i = dict(state.overall_by_index)
+    _rank_by_i = dict(state.rank_by_index)
 
     # 3) Insert each snippet with stickiness PERSISTED into its metrics
     #    blob (metrics["stickiness"]), so a later re-read rebuilds the

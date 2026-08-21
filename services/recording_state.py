@@ -33,6 +33,11 @@ class RecordingState:
     analyzed_pieces: tuple[dict, ...] = field(default_factory=tuple)
     llm_budget_indices: frozenset[int] = field(default_factory=frozenset)
     raw_metrics_snapshot: tuple[dict, ...] = field(default_factory=tuple)
+    stickiness: tuple[dict, ...] = field(default_factory=tuple)
+    slide_scores: tuple[dict, ...] = field(default_factory=tuple)
+    slide_coverage: tuple[dict, ...] = field(default_factory=tuple)
+    overall_by_index: dict[int, float] = field(default_factory=dict)
+    rank_by_index: dict[int, int] = field(default_factory=dict)
 
     @property
     def persisted_recording_kind(self) -> str:

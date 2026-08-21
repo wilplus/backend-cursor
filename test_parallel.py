@@ -218,18 +218,21 @@ class WiringTests(unittest.TestCase):
         import inspect
 
         from services import lab_recording as lr
+        from services import recording_feedback_scoring as rfs
 
-        src = inspect.getsource(lr.process_lab_recording)
+        pipeline_src = inspect.getsource(lr.process_lab_recording)
+        src = inspect.getsource(rfs.score_recording_feedback)
+        self.assertIn("score_recording_feedback", pipeline_src)
         self.assertIn("def _unit_stickiness", src)
         self.assertIn("def _unit_slide_scores", src)
         self.assertIn("run_in_parallel(\n        _unit_stickiness, "
-                      "_unit_slide_scores)", src)
+                      "_unit_slide_scores", src)
         # Both results are consumed AFTER the join, never read from inside the
         # other closure — that would reintroduce the dependency the split
         # exists to remove.
         join = src.index("run_in_parallel(")
         self.assertLess(src.index("def _unit_slide_scores"), join)
-        self.assertLess(join, src.index("_overall_by_i"))
+        self.assertLess(join, src.index("overall, ranks"))
 
     def test_the_chained_pair_stays_chained(self):
         # slide_entailment consumes slide_claims' output, so those two are NOT
