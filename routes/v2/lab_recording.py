@@ -26,9 +26,7 @@ from services.rate_limits import heavy_limit, whisper_limit
 # Module scope on purpose: `except DeadlineExceeded` in the upload routes
 # must resolve even when the failure happens BEFORE the try body reaches
 # its own imports — otherwise the handler NameErrors while handling.
-from services.upload_guard import (
-    DeadlineExceeded, UploadTooLarge, deadline_for, read_capped,
-)
+from services.upload_guard import DeadlineExceeded
 from routes.v2.common import (
     _LAB_MAX_AUDIO_MB,
     _PRESENTATION_MAX_MB,
@@ -43,6 +41,7 @@ from services.lab_recording_intake import (
     parse_recording_lane,
     parse_session_context,
 )
+from services.lab_audio_intake import read_recording_upload
 from services.lab_project_identity import (
     ensure_presentation_unchanged,
     find_duplicate_upload,
@@ -53,43 +52,6 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 config = Config()
-
-
-def _parse_inline_context_document(upload):
-    """Read and extract an optional Take-1 context document.
-
-    A new project has no arc id before this request resolves it, so the brief
-    must ride the recording multipart rather than the arc-scoped upload route.
-    Return ``(parsed, error)`` where error is ``(code, message, status)``.
-    Parsing happens before audio storage: a bad document cannot leave a user
-    with a stored take that never entered processing.
-    """
-    if upload is None:
-        return None, None
-    max_bytes = max(1, int(
-        getattr(config, "CONTEXT_DOC_MAX_MB", 25) or 25)) * 1024 * 1024
-    try:
-        data = read_capped(upload, max_bytes)
-    except UploadTooLarge:
-        return None, (
-            "FILE_TOO_LARGE", "the context document is too large", 413,
-        )
-    if not data:
-        return None, (
-            "INVALID_INPUT", "the context document is empty", 400,
-        )
-    from services.context_document import extract_context_text
-    parsed = extract_context_text(
-        data,
-        content_type=getattr(upload, "content_type", None),
-        filename=getattr(upload, "filename", None),
-    )
-    if not parsed.get("text"):
-        return None, (
-            "NO_TEXT", "no readable text found in the context document", 400,
-        )
-    parsed["filename"] = getattr(upload, "filename", None)
-    return parsed, None
 
 
 def _parse_lab_vocabulary(raw):
@@ -311,67 +273,23 @@ def v2_lab_create_recording():
     """
     try:
         # ── 1. audio ────────────────────────────────────────────────
-        if "audio_file" not in request.files:
-            return jsonify({
-                "code": "AUDIO_FILE_REQUIRED",
-                "error": "audio_file is required",
-            }), 400
-        audio_file = request.files.get("audio_file")
-        max_bytes = _LAB_MAX_AUDIO_MB * 1024 * 1024
-        # A new-project brief rides beside the audio. Keep a total-request
-        # ceiling as well as the bounded per-part reads below; the small extra
-        # allowance covers multipart fields/boundaries, not another payload.
-        _context_max_bytes = max(1, int(
-            getattr(config, "CONTEXT_DOC_MAX_MB", 25) or 25)) * 1024 * 1024
-        _request_max = max_bytes + 1024 * 1024
-        if request.files.get("context_document") is not None:
-            _request_max += _context_max_bytes
-        if (request.content_length or 0) > _request_max:
-            return jsonify({
-                "code": "FILE_TOO_LARGE",
-                "error": "the recording or context document is too large",
-            }), 413
-        # BOUNDED read (P0 audit 2026-08-03). Content-Length above is a
-        # client assertion — a chunked or mis-declared body sails past it,
-        # and the old unbounded .read() then pulled the whole thing into
-        # the worker's heap. read_capped stops one byte past the cap.
-        deadline = deadline_for("lab-upload")
         try:
-            file_bytes = read_capped(audio_file, max_bytes)
-        except UploadTooLarge:
+            recording_upload = read_recording_upload(
+                request.files,
+                content_length=request.content_length,
+                max_audio_mb=_LAB_MAX_AUDIO_MB,
+                context_max_mb=getattr(config, "CONTEXT_DOC_MAX_MB", 25),
+                video_extensions=_VIDEO_UPLOAD_EXTS,
+            )
+        except RecordingIntakeError as intake_error:
             return jsonify({
-                "code": "FILE_TOO_LARGE",
-                "error": f"audio_file exceeds {_LAB_MAX_AUDIO_MB}MB",
-            }), 413
-        if not file_bytes:
-            return jsonify({
-                "code": "INVALID_INPUT", "error": "audio_file is empty",
-            }), 400
-        # Reject VIDEO (defensive — the FE picker blocks it and the Vercel
-        # edge caps size, but a video that slips through should fail clean,
-        # not as a confusing downstream decode error). By mimetype (incl.
-        # video/webm) OR a video-only extension. NOTE: never include "webm"
-        # here — the live mic records audio/webm (.webm); that must pass.
-        _up_ct = (audio_file.mimetype or "").strip().lower()
-        _up_ext = os.path.splitext(audio_file.filename or "")[1].lower().lstrip(".")
-        if _up_ct.startswith("video/") or _up_ext in _VIDEO_UPLOAD_EXTS:
-            return jsonify({
-                "code": "AUDIO_ONLY",
-                "error": "Upload an audio file — video isn't supported.",
-            }), 415
-
-        # Optional uploaded context for a BRAND-NEW project. Existing projects
-        # use the owner-checked arc endpoint, while this request mints the arc
-        # only later. Extract now, then persist immediately after arc resolution
-        # and before any analysis job can begin.
-        _context_document, _context_error = _parse_inline_context_document(
-            request.files.get("context_document"),
-        )
-        if _context_error:
-            _ctx_code, _ctx_message, _ctx_status = _context_error
-            return jsonify({
-                "code": _ctx_code, "error": _ctx_message,
-            }), _ctx_status
+                "code": intake_error.code,
+                "error": intake_error.message,
+            }), intake_error.status
+        audio_file = recording_upload.audio_file
+        file_bytes = recording_upload.audio_bytes
+        _context_document = recording_upload.context_document
+        deadline = recording_upload.deadline
 
         # ── 2. session_context (inline; topic required) ─────────────
         from services.intake_context import IntakeContextError

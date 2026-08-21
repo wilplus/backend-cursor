@@ -104,21 +104,21 @@ class InlineTakeOneUploadTests(unittest.TestCase):
         )
 
     def test_inline_document_is_extracted_with_filename(self):
-        from routes.v2.lab_recording import _parse_inline_context_document
-        parsed, error = _parse_inline_context_document(self._upload())
-        self.assertIsNone(error)
+        from services.lab_audio_intake import _parse_context_document
+        parsed = _parse_context_document(self._upload(), 1024)
         self.assertEqual(parsed["text"], "Board approval is the goal.")
         self.assertEqual(parsed["filename"], "brief.txt")
 
     def test_empty_inline_document_is_rejected_before_processing(self):
-        from routes.v2.lab_recording import _parse_inline_context_document
-        parsed, error = _parse_inline_context_document(self._upload(body=b""))
-        self.assertIsNone(parsed)
-        self.assertEqual(error[0], "INVALID_INPUT")
+        from services.lab_audio_intake import _parse_context_document
+        from services.lab_recording_intake import RecordingIntakeError
+        with self.assertRaises(RecordingIntakeError) as raised:
+            _parse_context_document(self._upload(body=b""), 1024)
+        self.assertEqual(raised.exception.code, "INVALID_INPUT")
 
     def test_route_persists_brief_before_queueing_analysis(self):
         source = inspect.getsource(v2.v2_lab_create_recording)
-        self.assertIn('request.files.get("context_document")', source)
+        self.assertIn("read_recording_upload(", source)
         persist_at = source.rfind("db.upsert_arc_context_document(")
         enqueue_at = source.index("if _pipeline_queue_enabled():")
         self.assertGreater(persist_at, 0)
