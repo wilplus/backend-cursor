@@ -120,7 +120,7 @@ class InlineTakeOneUploadTests(unittest.TestCase):
         source = inspect.getsource(v2.v2_lab_create_recording)
         self.assertIn("read_recording_upload(", source)
         persist_at = source.rfind("db.upsert_arc_context_document(")
-        enqueue_at = source.index("if _pipeline_queue_enabled():")
+        enqueue_at = source.index("dispatch_recording_analysis(")
         self.assertGreater(persist_at, 0)
         self.assertLess(persist_at, enqueue_at)
 

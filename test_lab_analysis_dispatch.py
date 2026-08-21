@@ -1,0 +1,140 @@
+"""Unit tests for Lab recording analysis execution modes."""
+from __future__ import annotations
+
+import unittest
+from unittest.mock import Mock, patch
+
+from services.lab_analysis_dispatch import (
+    AnalysisInputs,
+    CompletedAnalysis,
+    PendingAnalysis,
+    dispatch_recording_analysis,
+)
+
+
+def _inputs() -> AnalysisInputs:
+    return AnalysisInputs(
+        session_id="session-1",
+        user_id="user-1",
+        recording_id="recording-1",
+        audio_bytes=b"audio",
+        filename="take.webm",
+        session_context={"topic": "Talk"},
+        parent_audio_url="https://audio",
+        recording_kind="spoken",
+        paired_session_id=None,
+        arc_id="arc-1",
+        take_index=2,
+        arc_take_count=2,
+        spark_enabled=True,
+        bucket="audio-bucket",
+        storage_key="take/key.webm",
+        duration_seconds=601,
+    )
+
+
+class AnalysisDispatchTests(unittest.TestCase):
+
+    def test_durable_queue_returns_job_polling_payload(self):
+        database = Mock()
+        worker = Mock()
+        with patch(
+            "services.pipeline_jobs.enqueue_session_recording_job",
+            return_value={"id": "job-1"},
+        ) as enqueue, patch(
+            "services.analysis_worker.run_full_analysis",
+            worker,
+        ):
+            result = dispatch_recording_analysis(
+                _inputs(),
+                database=database,
+                queue_enabled=lambda: True,
+                async_enabled=lambda: False,
+                audit_paid_for_arc=lambda _a, _u: True,
+                log=Mock(),
+            )
+        self.assertIsInstance(result, PendingAnalysis)
+        self.assertEqual(result.payload["job_id"], "job-1")
+        self.assertEqual(result.payload["job_status_url"], "/v2/jobs/job-1/status")
+        self.assertEqual(result.payload["audits_needed"], 2)
+        enqueue.assert_called_once()
+        worker.assert_not_called()
+        database.set_session_analysis_state.assert_called_once_with(
+            "session-1",
+            "processing",
+        )
+
+    def test_queue_failure_preserves_the_sync_fallback(self):
+        database = Mock()
+        log = Mock()
+        with patch(
+            "services.pipeline_jobs.enqueue_session_recording_job",
+            side_effect=RuntimeError("broker down"),
+        ), patch(
+            "services.analysis_worker.run_full_analysis",
+            return_value=({"snippets": []}, True),
+        ) as worker:
+            result = dispatch_recording_analysis(
+                _inputs(),
+                database=database,
+                queue_enabled=lambda: True,
+                async_enabled=lambda: False,
+                audit_paid_for_arc=lambda _a, _u: False,
+                log=log,
+            )
+        self.assertEqual(result, CompletedAnalysis({"snippets": []}, True))
+        worker.assert_called_once()
+        self.assertGreaterEqual(log.warning.call_count, 2)
+
+    def test_daemon_returns_immediately_and_updates_state_when_run(self):
+        database = Mock()
+        thread = Mock()
+        with patch(
+            "services.lab_analysis_dispatch.threading.Thread",
+            return_value=thread,
+        ) as thread_factory, patch(
+            "services.analysis_worker.run_full_analysis",
+        ) as worker:
+            result = dispatch_recording_analysis(
+                _inputs(),
+                database=database,
+                queue_enabled=lambda: False,
+                async_enabled=lambda: True,
+                audit_paid_for_arc=lambda _a, _u: False,
+                log=Mock(),
+            )
+        self.assertIsInstance(result, PendingAnalysis)
+        self.assertNotIn("job_id", result.payload)
+        thread.start.assert_called_once()
+        worker.assert_not_called()
+
+        target = thread_factory.call_args.kwargs["target"]
+        target()
+        worker.assert_called_once()
+        self.assertEqual(
+            database.set_session_analysis_state.call_args_list[-1].args,
+            ("session-1", "ready"),
+        )
+
+    def test_synchronous_mode_returns_worker_result(self):
+        with patch(
+            "services.analysis_worker.run_full_analysis",
+            return_value=({"snippets": [{"id": "one"}]}, False),
+        ) as worker:
+            result = dispatch_recording_analysis(
+                _inputs(),
+                database=Mock(),
+                queue_enabled=lambda: False,
+                async_enabled=lambda: False,
+                audit_paid_for_arc=lambda _a, _u: False,
+                log=Mock(),
+            )
+        self.assertEqual(
+            result,
+            CompletedAnalysis({"snippets": [{"id": "one"}]}, False),
+        )
+        self.assertEqual(worker.call_args.kwargs["recording_kind"], "spoken")
+
+
+if __name__ == "__main__":
+    unittest.main()

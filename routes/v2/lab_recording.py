@@ -53,6 +53,12 @@ from services.lab_recording_gate import (
 )
 from services.lab_session_identity import choose_guest_session_id
 from services.lab_arc_assignment import assign_recording_arc
+from services.lab_analysis_dispatch import (
+    AnalysisInputs,
+    CompletedAnalysis,
+    PendingAnalysis,
+    dispatch_recording_analysis,
+)
 
 from config import Config
 
@@ -632,142 +638,37 @@ def v2_lab_create_recording():
             "1", "true", "yes", "on",
         )
 
-        def _run_analysis_pipeline():
-            """Runs to completion server-side. Returns (readout, sent).
-
-            Body lives in services/analysis_worker.py::run_full_analysis
-            (durable-queue work): the SAME code serves this sync path, the
-            ASYNC_ANALYSIS_ENABLED daemon below, and the queue worker
-            (services/pipeline_jobs.py) — one implementation, three
-            execution modes, so behaviour can't drift between them.
-            """
-            from services.analysis_worker import run_full_analysis
-            return run_full_analysis(
+        dispatch = dispatch_recording_analysis(
+            AnalysisInputs(
                 session_id=guest_session_id,
-                user_id=_uploader_id,  # fix #2b: attribute at record time
+                user_id=_uploader_id,
                 recording_id=recording_id,
                 audio_bytes=file_bytes,
                 filename=_worker_filename,
                 session_context=session_context,
                 parent_audio_url=parent_url,
-                recording_kind=_rec_kind,  # spoken | read (2026-07-14)
-                # A re-read z-scores against its PARENT take (2026-07-17).
+                recording_kind=_rec_kind,
                 paired_session_id=_paired_session_id,
                 arc_id=arc_id,
                 take_index=take_index,
                 arc_take_count=arc_take_count,
                 spark_enabled=_worker_spark,
-            )
-
-        # DURABLE QUEUE mode (async-queue work 2026-08-03): create a
-        # processing_jobs row (Postgres = state of record) and hand the
-        # job_id to the Redis/RQ worker service; 202 with job_id + the
-        # poll URL. This retires the daemon's accepted gap: a redeploy
-        # mid-job is re-run by the sweeper, never stranded. On ANY
-        # failure (flag off, broker down, insert failed) fall through to
-        # the daemon/sync paths below — the queue can only ADD capacity,
-        # never block an upload (live loop).
-        if _pipeline_queue_enabled():
-            from services.pipeline_jobs import enqueue_session_recording_job
-            _job_row = None
-            try:
-                _job_row = enqueue_session_recording_job(
-                    session_id=guest_session_id,
-                    user_id=_uploader_id,
-                    recording_id=recording_id,
-                    bucket=bucket,
-                    storage_key=parent_key,
-                    filename=_worker_filename,
-                    session_context=session_context,
-                    parent_audio_url=parent_url,
-                    recording_kind=_rec_kind,
-                    paired_session_id=_paired_session_id,
-                    arc_id=arc_id,
-                    take_index=take_index,
-                    arc_take_count=arc_take_count,
-                    spark_enabled=_worker_spark,
-                )
-            except Exception as _q_err:
-                logger.warning(
-                    "lab: queue enqueue raised sid=%s: %s (falling back)",
-                    guest_session_id, _q_err,
-                )
-            if _job_row:
-                # State AFTER a confirmed enqueue: if we flipped it first
-                # and then fell back to the sync path, nothing would ever
-                # write 'ready' and the readout GET would show
-                # 'processing' forever. (The worker also stamps
-                # 'processing' on claim, covering a crash right here.)
-                db.set_session_analysis_state(guest_session_id, "processing")
-                _dur_secs_q = int(_rec_duration or 0)
-                _job_id_q = str(_job_row.get("id"))
-                return jsonify({
-                    "status": "processing",
-                    "state": "processing",
-                    "job_id": _job_id_q,
-                    "job_status_url": f"/v2/jobs/{_job_id_q}/status",
-                    "session_id": guest_session_id,
-                    "recording_id": recording_id,
-                    "duration_minutes": round(_dur_secs_q / 60.0, 1),
-                    "audits_needed": max(1, -(-_dur_secs_q // 600)),
-                    "session_context": session_context,
-                    "readout": None,
-                    "arc_id": arc_id,
-                    "take_index": take_index,
-                    "take_count": arc_take_count,
-                    "audit_paid": _arc_audit_paid(arc_id, _cad_user),
-                }), 202
-            logger.warning(
-                "lab: queue unavailable sid=%s — falling back to %s path",
-                guest_session_id,
-                "daemon" if _async_analysis_enabled() else "sync",
-            )
-
-        # ASYNC mode (founder 2026-07-15, flag default OFF until the FE ships
-        # polling): flip the session to 'processing', run the pipeline in a
-        # daemon that survives client disconnect, and 202 immediately. The FE
-        # polls the readout GET until state ready|failed. Accepted gap
-        # (decision 2026-07-15): a backend redeploy mid-job strands that one
-        # job in 'processing' — the FE times out at ~3 min and offers
-        # re-record. SUPERSEDED by the durable-queue branch above when
-        # PIPELINE_QUEUE_ENABLED is on; kept as its fallback.
-        if _async_analysis_enabled():
-            db.set_session_analysis_state(guest_session_id, "processing")
-
-            def _analysis_daemon():
-                try:
-                    _run_analysis_pipeline()
-                    db.set_session_analysis_state(guest_session_id, "ready")
-                except Exception as _bg_err:
-                    logger.error(
-                        "lab: ASYNC analysis failed sid=%s: %s",
-                        guest_session_id, _bg_err, exc_info=True,
-                    )
-                    sentry_sdk.capture_exception(_bg_err)
-                    db.set_session_analysis_state(
-                        guest_session_id, "failed", str(_bg_err),
-                    )
-
-            import threading as _threading
-            _threading.Thread(target=_analysis_daemon, daemon=True).start()
-
-            _dur_secs_a = int(_rec_duration or 0)
-            return jsonify({
-                "status": "processing",
-                "state": "processing",
-                "session_id": guest_session_id,
-                "recording_id": recording_id,
-                "duration_minutes": round(_dur_secs_a / 60.0, 1),
-                "audits_needed": max(1, -(-_dur_secs_a // 600)),
-                "session_context": session_context,
-                "readout": None,
-                "arc_id": arc_id,
-                "take_index": take_index,
-                "take_count": arc_take_count,
-                "audit_paid": _arc_audit_paid(arc_id, _cad_user),
-            }), 202
-
-        readout, _sent_to_coach = _run_analysis_pipeline()
+                bucket=bucket,
+                storage_key=parent_key,
+                duration_seconds=_rec_duration,
+            ),
+            database=db,
+            queue_enabled=_pipeline_queue_enabled,
+            async_enabled=_async_analysis_enabled,
+            audit_paid_for_arc=_arc_audit_paid,
+            log=logger,
+        )
+        if isinstance(dispatch, PendingAnalysis):
+            return jsonify(dispatch.payload), 202
+        if not isinstance(dispatch, CompletedAnalysis):
+            raise RuntimeError("analysis dispatch returned an invalid result")
+        readout = dispatch.readout
+        _sent_to_coach = dispatch.sent_to_coach
 
         # Recording-progress toward the first audit (BE-4) — so the FE can
         # refresh the "X:XX left to unlock" line IMMEDIATELY instead of showing
