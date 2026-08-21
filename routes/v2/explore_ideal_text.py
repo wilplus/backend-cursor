@@ -39,6 +39,10 @@ from routes.v2.arcs import (
 )
 from routes.v2.blueprint import v2_bp
 from services.db import db
+from services.ideal_text_read import (
+    resolve_historical_read,
+    resolve_ideal_text_source,
+)
 from services.rate_limits import llm_limit
 from services.rehearsal_roots import rehearsal_root
 from services.token_prices import price_of as _price_of
@@ -402,12 +406,10 @@ def v2_explore_get_ideal_text(arc_id):
         # text is FREE in both states — no 402 on this endpoint, ever. The
         # only paid thing in the app is the key-moment EXPLANATIONS
         # (GET /presentation/<id>/moments, 5 credits). ──
-        _r = row or {}
-        _coach_owned = bool(_r.get("updated_by") or _r.get("approved_at"))
-        _machine = ((_r.get("auto_text") or "").strip()
-                    or ((_r.get("text") or "").strip()
-                        if not _coach_owned else ""))
-        _version = _r.get("version") or (1 if _machine else None)
+        _source = resolve_ideal_text_source(row)
+        _r = _source.row
+        _machine = _source.machine_text
+        _version = _source.version
 
         # ── HISTORICAL view, ?version=N (founder 2026-07-20): an old
         # version bubble opens ITS OWN step — the frozen text + that
@@ -416,55 +418,14 @@ def v2_explore_get_ideal_text(arc_id):
         # before history existed) → historical_unavailable and the FE
         # falls back to the live view. Free, owner-only (same gate as
         # the live read). ──
-        _hv_raw = request.args.get("version")
-        if _hv_raw not in (None, ""):
-            try:
-                _hv = int(_hv_raw)
-            except (TypeError, ValueError):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "version must be an integer",
-                }), 400
-            if _version is None or _hv != _version:
-                _snap = db.get_ideal_text_version(arc_id, _hv)
-                if not _snap or not (_snap.get("text") or "").strip():
-                    return jsonify({
-                        "arc_id": arc_id,
-                        "historical_unavailable": True,
-                        "requested_version": _hv,
-                        "current_version": _version,
-                    }), 200
-                from services.ideal_text_block import (
-                    extract_key_moments, sanitize_markers,
-                    strip_moment_markers,
-                )
-                _s_text = _snap["text"]
-                _s_moments = extract_key_moments(_s_text)
-                # THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder
-                # 2026-08-10: "no other exist, older feedback system
-                # should be ripped off"). The historical view is a frozen
-                # read-only step; it no longer hand-assembles
-                # star/suggestion payloads outside the gate. Anchors stay
-                # — they mark where the moments were — suggestions do not.
-                _s_out = [{
-                    "id": m.get("snippet_id"),
-                    "snippet_id": m.get("snippet_id"),
-                    "anchor": m.get("anchor") or "",
-                    "take_session_id": m.get("take_session_id"),
-                } for m in _s_moments]
-                return jsonify({
-                    "arc_id": arc_id,
-                    "version": _hv,
-                    "historical": True,
-                    "status": "superseded",
-                    "current_version": _version,
-                    "created_at": _snap.get("created_at"),
-                    # A snapshot was baked before wrap_accent existed, so
-                    # an old version can still carry a newline-straddling
-                    # accent — sanitize on the way out too.
-                    "text": sanitize_markers(strip_moment_markers(_s_text)),
-                    "key_moments": _s_out,
-                }), 200
+        _historical = resolve_historical_read(
+            arc_id,
+            request.args.get("version"),
+            _version,
+            database=db,
+        )
+        if _historical is not None:
+            return jsonify(_historical.payload), _historical.status
         _vv = _r.get("verified_version")
         _vtext = (_r.get("verified_text") or "").strip()
         _verified = bool(_version is not None
