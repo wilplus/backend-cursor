@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,134 @@ _MAX_DOC_EXCERPT = 1200
 # DETERMINISTIC — the threshold read is the detector and the body is
 # fixed copy, so no LLM rides this card and it costs nothing.
 CONFIDENT_VOICE_WHY = "You sounded incredibly confident and natural here."
+
+
+@dataclass(frozen=True)
+class _GenerationContext:
+    """Read-only evidence shared by every candidate lane for one take."""
+
+    cap: int
+    sticky_max: float
+    readout: dict[str, Any]
+    metrics_by_id: dict[str, dict[str, Any]]
+    session: dict[str, Any]
+    audience: Optional[str]
+    strategic_context: Optional[str]
+    confidence_baseline: Any
+    sex: Optional[str]
+    context_document: Optional[str]
+    decided_keys: set
+    intent_keys: set
+    take_texts: list
+
+
+def _load_generation_context(
+    session_id: str,
+    arc_id: str,
+    database: Any,
+) -> _GenerationContext:
+    """Load take-wide inputs without making any candidate decision."""
+    from config import Config
+    from services.ideal_decision_ledger import intent_keys, ledger_keys
+    from services.lab_recording import build_readout_from_session
+    from services.protected_phrases import collect_take_texts
+
+    try:
+        cap = max(1, int(Config().MOMENT_SUGGESTIONS_MAX_PER_TAKE))
+    except Exception:
+        cap = 8
+    try:
+        sticky_max = max(
+            0, int(Config().MOMENT_REPLACE_STICKINESS_MAX_PCT)) / 100.0
+    except Exception:
+        sticky_max = 0.15
+
+    # Internal coach-view read only. Its serializer deliberately omits the
+    # machine-confidence blob, so that evidence is loaded from snippet rows.
+    readout = build_readout_from_session(
+        session_id, include_slide_scores=True)
+    metrics_by_id: dict[str, dict[str, Any]] = {}
+    try:
+        for row in (database.get_snippets_by_session(session_id) or []):
+            row_metrics = row.get("metrics")
+            metrics_by_id[str(row.get("id"))] = (
+                row_metrics if isinstance(row_metrics, dict) else {})
+    except Exception as metrics_error:
+        logger.warning(
+            "moment_suggestion: metrics read failed sid=%s: %s",
+            session_id,
+            metrics_error,
+        )
+
+    session: dict[str, Any] = {}
+    try:
+        session = database.v2_get_session_by_id(session_id) or {}
+    except Exception:
+        pass
+    intake = session.get("intake_context")
+    context = intake if isinstance(intake, dict) else {}
+    audience = context.get("audience") or None
+    strategic_context = context.get("strategic_context") or None
+
+    confidence_baseline = None
+    sex = None
+    try:
+        from services.voice_confidence import (
+            resolve_confidence_baseline,
+            resolve_take_sex,
+        )
+
+        confidence_baseline, _ = resolve_confidence_baseline(
+            session.get("user_id"),
+            [
+                metric
+                for metric in metrics_by_id.values()
+                if isinstance(metric, dict)
+            ],
+        )
+        sex, _ = resolve_take_sex(
+            session.get("user_id"), context, confidence_baseline)
+    except Exception as baseline_error:
+        logger.warning(
+            "moment_suggestion: cue baseline failed sid=%s: %s",
+            session_id,
+            baseline_error,
+        )
+
+    context_document = None
+    try:
+        document = database.get_arc_context_document(arc_id) or {}
+        context_document = (document.get("text") or "").strip() or None
+    except Exception as document_error:
+        logger.warning(
+            "moment_suggestions: context doc read failed arc=%s: %s",
+            arc_id,
+            document_error,
+        )
+
+    try:
+        ledger_rows = database.list_ideal_decisions(arc_id)
+        decided_keys = ledger_keys(ledger_rows)
+        decision_intent_keys = intent_keys(ledger_rows)
+    except Exception:
+        decided_keys = set()
+        decision_intent_keys = set()
+
+    return _GenerationContext(
+        cap=cap,
+        sticky_max=sticky_max,
+        readout=readout,
+        metrics_by_id=metrics_by_id,
+        session=session,
+        audience=audience,
+        strategic_context=strategic_context,
+        confidence_baseline=confidence_baseline,
+        sex=sex,
+        context_document=context_document,
+        decided_keys=decided_keys,
+        intent_keys=decision_intent_keys,
+        take_texts=collect_take_texts(database, arc_id),
+    )
 
 
 def generate_moment_suggestion(
@@ -433,130 +562,30 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
     try:
         if database is None:
             from services.db import db as database
-        from config import Config
-        from services.lab_recording import build_readout_from_session
+        from services.ideal_decision_ledger import (
+            lane_class as _lane_class,
+            normalize_phrase as _norm_phrase,
+        )
         from services.moment_confidence import (
             UNCONFIDENT, resolve_moment_confidence, resolve_suggestion_kind,
         )
+        from services.protected_phrases import phrase_recurs
 
-        try:
-            _cap = max(1, int(Config().MOMENT_SUGGESTIONS_MAX_PER_TAKE))
-        except Exception:
-            _cap = 8
-        try:
-            _sticky_max = max(
-                0, int(Config().MOMENT_REPLACE_STICKINESS_MAX_PCT)) / 100.0
-        except Exception:
-            _sticky_max = 0.15
-
-        # Coach-view readout = full metrics (acoustic_read + stickiness).
-        # Internal read only — nothing here is a user payload.
-        readout = build_readout_from_session(
-            session_id, include_slide_scores=True)
-        # The confidence composite comes from the SNIPPET ROWS, not the
-        # readout, and the extra read is the price of a fence rather than an
-        # oversight. The readout serializer is an allowlist that deliberately
-        # carries no confidence blob on EITHER branch: putting one on the
-        # coach packet would show a rater the machine's read of a clip they
-        # are supposed to judge blind (test_voice_confidence pins this at
-        # source level). Reading the metrics here keeps the routing input on
-        # the machine side of that wall.
-        _metrics_by_id: dict = {}
-        try:
-            for _row in (database.get_snippets_by_session(session_id) or []):
-                _rm = _row.get("metrics")
-                _metrics_by_id[str(_row.get("id"))] = (
-                    _rm if isinstance(_rm, dict) else {})
-        except Exception as _m_err:
-            logger.warning("moment_suggestion: metrics read failed sid=%s: %s",
-                           session_id, _m_err)
-        session = {}
-        try:
-            session = database.v2_get_session_by_id(session_id) or {}
-        except Exception:
-            pass
-        ctx = session.get("intake_context") \
-            if isinstance(session.get("intake_context"), dict) else {}
-        audience = (ctx or {}).get("audience") or None
-        strategic_context = (ctx or {}).get("strategic_context") or None
-
-        # ── THE VOCAL EVIDENCE (founder 2026-08-15) ───────────────────────
-        # "use the verbal and vocal cues of what the user said to determine
-        # that it was confident … not just random."
-        #
-        # Resolved ONCE per take, exactly as lab_recording resolves it for the
-        # composite — same functions, same order (sex after the baseline,
-        # because the acoustic fallback reads the speaker's baseline mean f0).
-        # Reading it here rather than trusting the stamped blob keeps the cue
-        # ORDER available, which is the thing the composite throws away.
-        #
-        # Best-effort and often absent: a first take has no baseline, and an
-        # absent baseline means no cues and no region — which the picker is
-        # told to treat as "judge on the words alone, stricter", never as
-        # permission to guess a half of the moment.
-        _vc_baseline = None
-        _vc_sex = None
-        try:
-            from services.voice_confidence import (
-                resolve_confidence_baseline, resolve_take_sex,
-            )
-            _vc_baseline, _ = resolve_confidence_baseline(
-                session.get("user_id"),
-                [_m for _m in _metrics_by_id.values() if isinstance(_m, dict)],
-            )
-            _vc_sex, _ = resolve_take_sex(
-                session.get("user_id"), ctx, _vc_baseline,
-            )
-        except Exception as _vc_err:
-            logger.warning(
-                "moment_suggestion: cue baseline failed sid=%s: %s",
-                session_id, _vc_err)
-
-        # X-1 v2 (2026-07-25): the context DOCUMENT the user attached to this
-        # project (a brief / case metrics / Q&A). Arc-scoped, fetched once per
-        # take and passed to each snippet's generation exactly like `audience`.
-        # BACKGROUND only — it informs the qualitative suggestion so a
-        # replacement phrase can use the project's real terminology instead of
-        # inventing one. It never becomes the verbatim ideal text (L1), and the
-        # excerpt is hard-capped because this rides every snippet's prompt.
-        context_document = None
-        if arc_id:
-            try:
-                _doc = database.get_arc_context_document(arc_id) or {}
-                context_document = (_doc.get("text") or "").strip() or None
-            except Exception as _doc_err:
-                logger.warning(
-                    "moment_suggestions: context doc read failed arc=%s: %s",
-                    arc_id, _doc_err)
-
-        # Decision ledger (founder 2026-07-20): phrases the student already
-        # decided on (approved → baked / dismissed → remembered) never
-        # regenerate. Best-effort — empty pre-migration.
-        from services.ideal_decision_ledger import (
-            intent_keys, lane_class as _lane_class,
-            ledger_keys, normalize_phrase as _norm_phrase,
-        )
-        try:
-            _ledger_rows = database.list_ideal_decisions(str(arc_id))
-            _decided_keys = ledger_keys(_ledger_rows)
-            # §12.3 — the INTENT keys beside the phrase keys: a decided
-            # (slide, class) pair blocks regeneration however the LLM
-            # rephrases the words on the next take (field report #4 — the
-            # phrase-drift zombies).
-            _intent_keys = intent_keys(_ledger_rows)
-        except Exception:
-            _decided_keys = set()
-            _intent_keys = set()
-
-        # Protected phrases (founder 2026-07-20, rule 4a): wording the
-        # speaker repeats across takes is THEIR voice — stickiness
-        # replaces never target it. Threat/profanity keep their carve-out
-        # (harmful content is still flagged). Best-effort: [] → no
-        # protection, today's behavior.
-        from services.protected_phrases import (
-            collect_take_texts, phrase_recurs,
-        )
-        _take_texts = collect_take_texts(database, arc_id)
+        context = _load_generation_context(
+            session_id, str(arc_id), database)
+        _cap = context.cap
+        _sticky_max = context.sticky_max
+        readout = context.readout
+        _metrics_by_id = context.metrics_by_id
+        session = context.session
+        audience = context.audience
+        strategic_context = context.strategic_context
+        _vc_baseline = context.confidence_baseline
+        _vc_sex = context.sex
+        context_document = context.context_document
+        _decided_keys = context.decided_keys
+        _intent_keys = context.intent_keys
+        _take_texts = context.take_texts
 
         stored = 0
         # ── FUNNEL COUNTERS (2026-08-10) ──────────────────────────────
