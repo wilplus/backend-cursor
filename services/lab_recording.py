@@ -45,6 +45,10 @@ from services.recording_transcription import (
     merge_slide_vocabulary as _merge_slide_vocab,
     transcribe_recording,
 )
+from services.readout_snippets import (
+    prepare_readout_snippets,
+    replay_applied_upgrades,
+)
 
 __all__ = [
     "_WHISPER_MAX_BYTES",
@@ -53,6 +57,7 @@ __all__ = [
     "_compute_overall_ranking",
     "PiecesCanonicalUnavailable",
     "process_lab_recording",
+    "replay_applied_upgrades",
 ]
 
 
@@ -437,47 +442,6 @@ def process_lab_recording(
     return build_readout_payload(snippets_data, stickiness_list)
 
 
-def replay_applied_upgrades(feedback_rows: list, card_sizes: dict) -> dict:
-    """Rebuild each snippet's CURRENT applied-suggestion set from the
-    chronological Apply/revert tap log (founder 2026-07-15 — the FE's
-    Approve toggle must survive reload):
-
-      * action='applied',  target='upgrade' → add that upgrade_index;
-      * action='reverted', target='upgrade' → remove it;
-      * action='apply_all'                  → add EVERY index of the
-        snippet's card (card_sizes[snippet_id] = len(upgrades) at serve).
-
-    Returns {snippet_id: sorted [indexes]} — only sets that end non-empty.
-    Indexes outside the card's current size are dropped (a regenerated card
-    can shrink). Pure; unknown rows skipped."""
-    applied: dict = {}
-    for r in (feedback_rows or []):
-        if not isinstance(r, dict):
-            continue
-        sid = str(r.get("snippet_id") or "")
-        if not sid:
-            continue
-        action = r.get("action")
-        target = r.get("target")
-        idx = r.get("upgrade_index")
-        cur = applied.setdefault(sid, set())
-        if action == "apply_all":
-            cur.update(range(int(card_sizes.get(sid) or 0)))
-        elif target == "upgrade" and isinstance(idx, int) \
-                and not isinstance(idx, bool):
-            if action == "applied":
-                cur.add(idx)
-            elif action == "reverted":
-                cur.discard(idx)
-    out: dict = {}
-    for sid, idxs in applied.items():
-        size = int(card_sizes.get(sid) or 0)
-        kept = sorted(i for i in idxs if 0 <= i < size)
-        if kept:
-            out[sid] = kept
-    return out
-
-
 def _attach_suggestions_to_chunks(chunks: list, out_snips: list) -> list:
     """Instant-view assembly (founder 2026-07-13): ONE deduped chunk list —
     each span of the full transcript appears EXACTLY once, with the salient
@@ -572,208 +536,18 @@ def build_readout_from_session(
 
     snippets = db.get_snippets_by_session(session_id) or []
 
-    # User transcript edits (founder 2026-07-07) — the user's OWN display
-    # layer; the coach keeps reviewing the original. One read, mapped to both
-    # target kinds (snippet / deckless chunk). Best-effort — {} pre-migration.
-    _edits_by_snippet: dict = {}
-    _edits_by_chunk: dict = {}
-    try:
-        for _e in db.get_user_transcript_edits(session_id) or []:
-            _txt = (_e.get("text") or "").strip()
-            if not _txt:
-                continue
-            if _e.get("snippet_id"):
-                _edits_by_snippet[str(_e["snippet_id"])] = _txt
-            elif isinstance(_e.get("chunk_index"), int):
-                _edits_by_chunk[_e["chunk_index"]] = _txt
-    except Exception:
-        pass
-
-    out_snips: list = []
-    for i, s in enumerate(snippets):
-        metrics = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
-        sticky = metrics.get("stickiness") if isinstance(metrics, dict) else None
-        if not isinstance(sticky, dict):
-            sticky = {}
-        snip_out = {
-            "id": s.get("id"),
-            "index": i + 1,
-            "transcript": (
-                s.get("transcript") or s.get("transcription_text") or ""
-            ),
-            "audio_ref": _playable(s.get("audio_segment_path")),
-            "start_offset_ms": s.get("start_offset_ms"),
-            "duration_ms": s.get("duration_ms"),
-            "features": build_readout_features(metrics),
-            "stickiness": {
-                "composite": sticky.get("composite"),
-                "comment": sticky.get("comment"),
-            },
-            # "Say It Stronger" — the coach's correction surface for the
-            # wording lane. COACH VIEW ONLY (founder 2026-08-10: the
-            # manager engine is the sole gatekeeper — "no other exist"):
-            # on the user readout these LLM rewrite cards were an ungated
-            # feedback lane riding the payload, so user routes pass
-            # include_upgrade_cards=False and serve null. The lane still
-            # PRODUCES; the gate decides what the student sees.
-            "say_it_stronger": (
-                (s.get("say_it_stronger_final")
-                 if isinstance(s.get("say_it_stronger_final"), dict)
-                 else (s.get("say_it_stronger")
-                       if isinstance(s.get("say_it_stronger"), dict)
-                       else None))
-                if include_upgrade_cards else None
-            ),
-            # The user's corrected text for THIS moment (null = no edit);
-            # display-preferred on the FE, never shown to the coach as the
-            # original.
-            "user_edited_text": _edits_by_snippet.get(str(s.get("id"))),
-        }
-        # Piece provenance (pieces-canonical 2026-07-14) — which ≤200-char
-        # piece / deck slide this row IS. Rides both views (it's the user's
-        # own text structure, not a verdict); absent on legacy window rows.
-        _piece = metrics.get("piece") if isinstance(metrics, dict) else None
-        _is_piece = isinstance(_piece, dict)
-        if _is_piece:
-            snip_out["piece_index"] = _piece.get("index")
-            if _piece.get("slide_index") is not None:
-                snip_out["slide_index"] = _piece.get("slide_index")
-        # Spoken vs read (founder 2026-07-14) — the delivery this row is. The
-        # coach labels each snippet by it; not a verdict, so it rides both
-        # views (the user already knows which they did).
-        _rk = metrics.get("recording_kind") if isinstance(metrics, dict) else None
-        if _rk in ("spoken", "read"):
-            snip_out["recording_kind"] = _rk
-        # Stickiness #2 is COACH-ONLY until calibrated (AC-9) — surfaced only
-        # when include_slide_scores (the coach packet), never on the user readout.
-        if include_slide_scores:
-            # Coach editor: the auto draft beside the (possibly folded) final.
-            if isinstance(s.get("say_it_stronger"), dict):
-                snip_out["say_it_stronger_draft"] = s.get("say_it_stronger")
-            ss = metrics.get("slide_stickiness") if isinstance(metrics, dict) else None
-            if isinstance(ss, dict):
-                snip_out["slide_stickiness"] = ss
-            if metrics.get("overall_score") is not None:
-                snip_out["overall_score"] = metrics.get("overall_score")
-            if metrics.get("rank") is not None:
-                snip_out["rank"] = metrics.get("rank")
-            # The stress↔charisma potentiometer + outside-normal-range triage
-            # flag (founder 2026-07-14) — deterministic acoustic-only read,
-            # COACH-ONLY by fence (never on the user branch above).
-            _ar = metrics.get("acoustic_read") if isinstance(metrics, dict) else None
-            if isinstance(_ar, dict):
-                snip_out["acoustic_read"] = _ar
-            # ⛔ THE CONFIDENCE COMPOSITE DOES NOT GO HERE — not on this branch
-            # either. It was put on the coach packet during the 2026-08-13
-            # re-point so services/moment_suggestions.py could route the star
-            # lane off it, and test_voice_confidence's source-level fence
-            # caught it: showing the coach the machine's confidence read is
-            # exactly the anchoring BLIND COACH exists to stop, and this
-            # serializer is an allowlist precisely so a convenience field
-            # cannot slip onto a surface. That module reads the metrics blob
-            # from the DB itself instead.
-        out_snips.append(snip_out)
-
-    # Applied-suggestion state (founder 2026-07-15) — replay the session's
-    # Apply/revert tap log so the FE's Approve toggle survives reload: each
-    # snippet with a card gets ``applied_upgrade_indexes`` (the indexes the
-    # user has currently applied). The user's OWN actions echoed back —
-    # nothing derived, no fence concern. Best-effort: [] pre-migration.
-    try:
-        _fb_rows = db.get_suggestion_feedback_by_session(session_id)
-        if _fb_rows:
-            _card_sizes = {
-                str(so.get("id")): len(
-                    (so.get("say_it_stronger") or {}).get("upgrades") or [])
-                for so in out_snips
-                if isinstance(so.get("say_it_stronger"), dict)
-            }
-            _applied = replay_applied_upgrades(_fb_rows, _card_sizes)
-            for so in out_snips:
-                _ap = _applied.get(str(so.get("id")))
-                if _ap:
-                    so["applied_upgrade_indexes"] = _ap
-    except Exception as _ap_err:
-        logger.warning("readout: applied-state fold failed sid=%s: %s",
-                       session_id, _ap_err)
-
-    # Auto-comment (founder 2026-07-14) — the qualitative sentence in the
-    # comment slot, computed HERE at serve time from each piece's own metrics
-    # (never from the coach's ai_draft, so legacy coach drafts never leak to
-    # users). PIECES rows only. Two flavours by surface:
-    #   * USER readout      → observations + the LEARNED tone word (persisted
-    #                         metrics.user_tone_word) — the founder carve-out.
-    #   * COACH packet      → observations + the ACOUSTIC tone word only (the
-    #     (include_slide_scores)  deterministic lean) — the coach labels blind
-    #                         of any model direction guess.
-    # The coach's own edited note (post-publish coach.note) still wins on the
-    # FE; this only fills the slot before a coach note exists.
-    #
-    # DEFAULT-OFF (founder 2026-07-14): "no comment from the coach at all at
-    # this point [user side], just the suggestions" AND "no pre-filled comment
-    # [coach side]." So the machine comment is retired from BOTH surfaces
-    # unless COACH_PREFILL_ENABLED restores it. The coach potentiometer
-    # (acoustic_read, above) is unaffected — it is not a comment.
-    _piece_rows_present = any(so.get("piece_index") is not None for so in out_snips)
-    if _piece_rows_present and _coach_prefill_enabled():
-        try:
-            from services.auto_comment import (
-                build_auto_comment, acoustic_tone_word,
-            )
-            from services.say_it_stronger import aggregate_session_means
-            _means = aggregate_session_means(
-                [{"metrics": s.get("metrics")} for s in snippets])
-            _by_id = {str(s.get("id")): s for s in snippets}
-            for so in out_snips:
-                if so.get("piece_index") is None:
-                    continue
-                _sm = _by_id.get(str(so.get("id"))) or {}
-                _m = _sm.get("metrics") if isinstance(_sm.get("metrics"), dict) else {}
-                if include_slide_scores:
-                    _tw = acoustic_tone_word(_m)          # coach: acoustic only
-                else:
-                    _tw = _m.get("user_tone_word")        # user: learned
-                so["auto_comment"] = build_auto_comment(_m, _means, tone_word=_tw)
-        except Exception as _ac_err:
-            logger.warning("readout: auto_comment fold failed sid=%s: %s",
-                           session_id, _ac_err)
-
-    # COACH-CONFIRMED breakthrough markers (F2 — the "you turned your stress
-    # into charisma" badge on the user readout). A challenge snippet following a
-    # threat one, BOTH coach-labelled, within this take. Part of the coach
-    # insights layer, so gated on include_insights. Best-effort: false/null when
-    # the coach hasn't labelled (no shadow guesses surface here — coach only).
-    if include_insights:
-        try:
-            from services.challenge_threat import (
-                detect_breakthroughs, resolve_direction,
-            )
-            from services.best_presentation import _moment_note
-            coach_labels = {
-                str(r.get("snippet_id")): r.get("value")
-                for r in (db.get_training_labels(session_id) or [])
-            }
-            bt_ids = detect_breakthroughs([
-                {"id": s.get("id"), "start_offset_ms": s.get("start_offset_ms"),
-                 "direction": resolve_direction(
-                     coach_labels.get(str(s.get("id"))), None)}
-                for s in snippets
-            ])
-            notes = {str(s.get("id")): _moment_note(s) for s in snippets}
-            for so in out_snips:
-                is_bt = so.get("id") in bt_ids
-                so["breakthrough"] = is_bt
-                so["breakthrough_note"] = (
-                    (notes.get(str(so.get("id"))) or None) if is_bt else None
-                )
-        except Exception as _bt_err:
-            logger.warning(
-                "readout: breakthrough markers failed sid=%s: %s",
-                session_id, _bt_err,
-            )
-            for so in out_snips:
-                so.setdefault("breakthrough", False)
-                so.setdefault("breakthrough_note", None)
+    out_snips, _edits_by_chunk = prepare_readout_snippets(
+        db,
+        session_id,
+        snippets,
+        include_insights=include_insights,
+        include_slide_scores=include_slide_scores,
+        include_upgrade_cards=include_upgrade_cards,
+        playable=_playable,
+        feature_builder=build_readout_features,
+        coach_prefill_enabled=_coach_prefill_enabled,
+        log=logger,
+    )
 
     result: dict = {
         "snippets": out_snips,
