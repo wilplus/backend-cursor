@@ -51,6 +51,7 @@ from services.lab_recording_gate import (
     RecordingRejected,
     require_analyzable_recording,
 )
+from services.lab_session_identity import choose_guest_session_id
 
 from config import Config
 
@@ -426,35 +427,11 @@ def v2_lab_create_recording():
         # audio was stored, analysed and folded as that re-read. A spent
         # id is dropped and a fresh session minted — the response's
         # `session_id` is authoritative and the FE adopts it. ──
-        _sid_in = (form.get("guest_session_id") or "").strip()
-        if _sid_in:
-            _spent = False
-            try:
-                _prior = db.v2_get_session_by_id(_sid_in)
-                if _prior:
-                    # Any of these means the row already OWNS a recording
-                    # and its lane: reusing it would fold this audio into
-                    # that one.
-                    _spent = bool(
-                        _prior.get("recording_1_id")
-                        or _prior.get("recording_kind")
-                        or _prior.get("paired_session_id")
-                        or _prior.get("analysis_state")
-                        or _prior.get("results_published_at")
-                    )
-            except Exception as _reuse_err:
-                # Fail CLOSED: an unknown state must not risk folding a
-                # fresh take into a spent session.
-                logger.warning(
-                    "lab: session-reuse check failed sid=%s: %s (minting "
-                    "fresh)", _sid_in, _reuse_err)
-                _spent = True
-            if _spent:
-                logger.info(
-                    "lab: spent session %s not reused — minting fresh "
-                    "(lane guard)", _sid_in)
-                _sid_in = ""
-        guest_session_id = _sid_in or str(uuid.uuid4())
+        guest_session_id = choose_guest_session_id(
+            form.get("guest_session_id"),
+            database=db,
+            log=logger,
+        )
         recording_id = str(uuid.uuid4())
         ext = os.path.splitext(audio_file.filename or "")[1] or ".webm"
         parent_key = f"willab_lab/{guest_session_id}/recording_{uuid.uuid4().hex}{ext}"

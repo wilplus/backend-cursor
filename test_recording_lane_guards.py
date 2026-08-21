@@ -128,7 +128,8 @@ class SpentSessionGuardTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.SRC = inspect.getsource(v2.v2_lab_create_recording)
+        from services.lab_session_identity import choose_guest_session_id
+        cls.SRC = inspect.getsource(choose_guest_session_id)
 
     def _spent_markers(self):
         """The row fields that mark a session as already owning a
@@ -137,18 +138,16 @@ class SpentSessionGuardTests(unittest.TestCase):
                 "analysis_state", "results_published_at")
 
     def test_guard_consults_every_spent_marker(self):
-        for field in self._spent_markers():
-            self.assertIn(f'_prior.get("{field}")', self.SRC,
-                          f"spent-session guard ignores {field}")
+        from services.lab_session_identity import _SPENT_SESSION_FIELDS
+        self.assertEqual(_SPENT_SESSION_FIELDS, self._spent_markers())
 
     def test_guard_fails_closed_on_lookup_error(self):
         # An unknown state must mint fresh, never risk folding a take into
         # a spent session.
-        self.assertIn("_spent = True", self.SRC)
+        self.assertIn("spent = True", self.SRC)
 
     def test_fresh_id_is_still_honoured(self):
-        self.assertIn("guest_session_id = _sid_in or str(uuid.uuid4())",
-                      self.SRC)
+        self.assertIn("return session_id or make_id()", self.SRC)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
