@@ -43,6 +43,7 @@ from services.ideal_text_read import (
     resolve_historical_read,
     resolve_live_text,
     resolve_ideal_text_source,
+    resolve_suggestion_display,
 )
 from services.rate_limits import llm_limit
 from services.rehearsal_roots import rehearsal_root
@@ -457,35 +458,17 @@ def v2_explore_get_ideal_text(arc_id):
         # free-form edit won — that wins wholesale), then extract the
         # anchors from the folded text so they always match what's
         # served. The canonical row is never touched (L1). ──
-        _stars_on = _moment_suggestions_enabled()
-        _sugs = db.get_moment_suggestions_by_arc(arc_id) \
-            if _stars_on else {}
-        _applied = {}
-        if _stars_on and _sugs:
-            _pre = extract_key_moments(_text)
-            _applied = _moment_applied_map(
-                [m.get("take_session_id") for m in _pre])
-            if not _user_edited and _applied:
-                from services.ideal_decision_ledger import (
-                    frozen_approved_replacement, load_ledger,
-                )
-                _decision_rows = load_ledger(db, arc_id)
-                _fold_info = []
-                for m in _pre:
-                    _mid = str(m.get("snippet_id"))
-                    if _mid in _sugs and _applied.get(_mid):
-                        _s = _sugs[_mid]
-                        _fold_info.append({
-                            "id": m.get("snippet_id"),
-                            "take_session_id": m.get("take_session_id"),
-                            "applied": True,
-                            "suggestion": {
-                                "kind": _s.get("kind"),
-                                "replacement": frozen_approved_replacement(
-                                    _decision_rows, _mid, _s),
-                            },
-                        })
-                _text = _fold_applied_moments(_text, _fold_info)
+        _suggestion_display = resolve_suggestion_display(
+            arc_id,
+            _text,
+            _user_edited,
+            database=db,
+            suggestions_enabled=_moment_suggestions_enabled,
+            applied_lookup=_moment_applied_map,
+            fold_applied=_fold_applied_moments,
+        )
+        _stars_on = _suggestion_display.enabled
+        _text = _suggestion_display.text
 
         # Marker hygiene BEFORE the anchors are read (founder 2026-07-27):
         # a newline-straddling `{{orange:` is re-wrapped per line and any

@@ -6,6 +6,7 @@ from services.ideal_text_read import (
     resolve_historical_read,
     resolve_live_text,
     resolve_ideal_text_source,
+    resolve_suggestion_display,
 )
 
 
@@ -205,3 +206,103 @@ class LiveIdealTextTests(TestCase):
             resolve_live_text(
                 "arc-1", "user-1", source, database=database
             )
+
+
+class SuggestionDisplayTests(TestCase):
+    def test_disabled_lane_does_not_read_or_fold_suggestions(self):
+        database = Mock()
+        applied_lookup = Mock()
+        fold_applied = Mock()
+
+        result = resolve_suggestion_display(
+            "arc-1",
+            "original",
+            False,
+            database=database,
+            suggestions_enabled=lambda: False,
+            applied_lookup=applied_lookup,
+            fold_applied=fold_applied,
+        )
+
+        self.assertFalse(result.enabled)
+        self.assertEqual(result.text, "original")
+        database.get_moment_suggestions_by_arc.assert_not_called()
+        applied_lookup.assert_not_called()
+        fold_applied.assert_not_called()
+
+    @patch("services.ideal_text_block.extract_key_moments")
+    def test_owner_whole_document_edit_remains_a_complete_star_fence(
+        self,
+        extract_moments,
+    ):
+        database = Mock()
+        database.get_moment_suggestions_by_arc.return_value = {
+            "snippet-1": {"kind": "replace", "replacement": "new"},
+        }
+        extract_moments.return_value = [{
+            "snippet_id": "snippet-1",
+            "take_session_id": "session-1",
+        }]
+        fold_applied = Mock()
+
+        result = resolve_suggestion_display(
+            "arc-1",
+            "owner text",
+            True,
+            database=database,
+            suggestions_enabled=lambda: True,
+            applied_lookup=lambda _session_ids: {"snippet-1": True},
+            fold_applied=fold_applied,
+        )
+
+        self.assertTrue(result.enabled)
+        self.assertEqual(result.text, "owner text")
+        fold_applied.assert_not_called()
+
+    @patch(
+        "services.ideal_decision_ledger.frozen_approved_replacement",
+        return_value="frozen approved text",
+    )
+    @patch("services.ideal_decision_ledger.load_ledger")
+    @patch("services.ideal_text_block.extract_key_moments")
+    def test_applied_rewrite_folds_the_frozen_approved_version(
+        self,
+        extract_moments,
+        load_ledger,
+        frozen_replacement,
+    ):
+        database = Mock()
+        suggestion = {"kind": "replace", "replacement": "latest draft"}
+        database.get_moment_suggestions_by_arc.return_value = {
+            "snippet-1": suggestion,
+        }
+        extract_moments.return_value = [{
+            "snippet_id": "snippet-1",
+            "take_session_id": "session-1",
+        }]
+        load_ledger.return_value = [{"decision": "approved"}]
+        fold_applied = Mock(return_value="folded response")
+
+        result = resolve_suggestion_display(
+            "arc-1",
+            "original",
+            False,
+            database=database,
+            suggestions_enabled=lambda: True,
+            applied_lookup=lambda _session_ids: {"snippet-1": True},
+            fold_applied=fold_applied,
+        )
+
+        self.assertEqual(result.text, "folded response")
+        frozen_replacement.assert_called_once_with(
+            load_ledger.return_value, "snippet-1", suggestion
+        )
+        fold_applied.assert_called_once_with("original", [{
+            "id": "snippet-1",
+            "take_session_id": "session-1",
+            "applied": True,
+            "suggestion": {
+                "kind": "replace",
+                "replacement": "frozen approved text",
+            },
+        }])

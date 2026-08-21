@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 
 class IdealTextHistoryStore(Protocol):
@@ -50,6 +50,14 @@ class LiveTextRead:
     text: str
     user_edited: bool
     prior_edit: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class SuggestionDisplayRead:
+    """Suggestion feature state and the resulting serve-time text copy."""
+
+    enabled: bool
+    text: str
 
 
 def resolve_ideal_text_source(
@@ -167,3 +175,56 @@ def resolve_live_text(
         prior_edit = None
 
     return LiveTextRead(verified, text, user_edited, prior_edit)
+
+
+def resolve_suggestion_display(
+    arc_id: str,
+    text: str,
+    user_edited: bool,
+    *,
+    database: Any,
+    suggestions_enabled: Callable[[], bool],
+    applied_lookup: Callable[[list[Any]], Mapping[str, bool]],
+    fold_applied: Callable[[str, list[dict[str, Any]]], str],
+) -> SuggestionDisplayRead:
+    """Fold accepted suggestions into the response without mutating storage."""
+    enabled = suggestions_enabled()
+    suggestions = (
+        database.get_moment_suggestions_by_arc(arc_id) if enabled else {}
+    )
+    if not enabled or not suggestions:
+        return SuggestionDisplayRead(enabled, text)
+
+    from services.ideal_text_block import extract_key_moments
+
+    moments = extract_key_moments(text)
+    applied = applied_lookup([
+        moment.get("take_session_id") for moment in moments
+    ])
+    if user_edited or not applied:
+        return SuggestionDisplayRead(enabled, text)
+
+    from services.ideal_decision_ledger import (
+        frozen_approved_replacement,
+        load_ledger,
+    )
+
+    decision_rows = load_ledger(database, arc_id)
+    fold_info = []
+    for moment in moments:
+        moment_id = str(moment.get("snippet_id"))
+        if moment_id not in suggestions or not applied.get(moment_id):
+            continue
+        suggestion = suggestions[moment_id]
+        fold_info.append({
+            "id": moment.get("snippet_id"),
+            "take_session_id": moment.get("take_session_id"),
+            "applied": True,
+            "suggestion": {
+                "kind": suggestion.get("kind"),
+                "replacement": frozen_approved_replacement(
+                    decision_rows, moment_id, suggestion
+                ),
+            },
+        })
+    return SuggestionDisplayRead(enabled, fold_applied(text, fold_info))
