@@ -548,6 +548,169 @@ def _generate_delivery(database, arc_id, candidates, baseline, *,
     return starred
 
 
+@dataclass(frozen=True)
+class _AcousticCandidatePlan:
+    """One snippet's acoustic-lane decision, before any write."""
+
+    outcome: str
+    snippet_id: Optional[str] = None
+    transcript: str = ""
+    features: Any = None
+    kind: Optional[str] = None
+    trigger: Optional[str] = None
+
+    def unstarred(self) -> Optional[tuple[str, str, Any]]:
+        if self.outcome not in {
+            "no_conf_read", "decided", "decided_intent", "protected"
+        }:
+            return None
+        if self.snippet_id is None:
+            return None
+        return self.snippet_id, self.transcript, self.features or {}
+
+
+def _classify_acoustic_candidate(
+    snippet: dict[str, Any],
+    context: _GenerationContext,
+    stored: int,
+    session_id: str,
+) -> _AcousticCandidatePlan:
+    """Resolve acoustic routing without generating copy or writing rows."""
+    from services.ideal_decision_ledger import (
+        lane_class,
+        normalize_phrase,
+    )
+    from services.moment_confidence import (
+        UNCONFIDENT,
+        resolve_moment_confidence,
+        resolve_suggestion_kind,
+    )
+    from services.protected_phrases import phrase_recurs
+    from services.text_flags import has_profanity
+
+    snippet_id = snippet.get("id")
+    transcript = (snippet.get("transcript") or "").strip()
+    features = snippet.get("features") or {}
+    if not snippet_id or not transcript:
+        return _AcousticCandidatePlan("no_text")
+    snippet_id = str(snippet_id)
+
+    metrics = context.metrics_by_id.get(snippet_id)
+    confidence = resolve_moment_confidence(None, metrics)
+    stickiness = snippet.get("slide_stickiness")
+    if isinstance(stickiness, dict):
+        stickiness = stickiness.get("composite")
+    kind = resolve_suggestion_kind(
+        confidence,
+        transcript,
+        slide_stickiness=stickiness,
+        stickiness_max=context.sticky_max,
+    )
+    if kind is None:
+        return _AcousticCandidatePlan(
+            "no_conf_read", snippet_id, transcript, features)
+    if stored >= context.cap:
+        logger.info(
+            "moment_suggestion: acoustic cap %d hit sid=%s",
+            context.cap,
+            session_id,
+        )
+        return _AcousticCandidatePlan("capped")
+    if (kind, normalize_phrase(transcript)) in context.decided_keys:
+        return _AcousticCandidatePlan(
+            "decided", snippet_id, transcript, features)
+
+    piece = metrics.get("piece") if isinstance(metrics, dict) else None
+    slide_index = piece.get("slide_index") \
+        if isinstance(piece, dict) else None
+    if (
+        isinstance(slide_index, int)
+        and not isinstance(slide_index, bool)
+        and (slide_index, lane_class(kind)) in context.intent_keys
+    ):
+        return _AcousticCandidatePlan(
+            "decided_intent", snippet_id, transcript, features)
+
+    if (
+        kind == "replace"
+        and confidence is None
+        and not has_profanity(transcript)
+        and phrase_recurs(transcript, context.take_texts)
+    ):
+        return _AcousticCandidatePlan(
+            "protected", snippet_id, transcript, features)
+
+    trigger = (
+        "unconfident" if confidence == UNCONFIDENT
+        else "profanity" if has_profanity(transcript)
+        else "stickiness" if kind == "replace"
+        else "confident"
+    )
+    return _AcousticCandidatePlan(
+        "candidate", snippet_id, transcript, features, kind, trigger)
+
+
+def _persist_acoustic_candidate(
+    plan: _AcousticCandidatePlan,
+    context: _GenerationContext,
+    arc_id: str,
+    database: Any,
+) -> Optional[bool]:
+    """Generate and store one already-classified acoustic candidate."""
+    if plan.kind is None or plan.trigger is None or plan.snippet_id is None:
+        return False
+    if plan.trigger == "confident":
+        generated = {"why": CONFIDENT_VOICE_WHY, "replacement": None}
+    else:
+        generated = generate_moment_suggestion(
+            plan.kind,
+            plan.transcript,
+            audience=context.audience,
+            strategic_context=context.strategic_context,
+            context_document=context.context_document,
+            trigger=plan.trigger,
+            user_id=context.session.get("user_id"),
+        )
+    if not generated:
+        return None
+
+    cue_keys: list = []
+    emphasis_quote = None
+    if plan.kind == "emphasize":
+        piece_metrics = context.metrics_by_id.get(plan.snippet_id)
+        try:
+            from services.delivery_cues import accent_region, cue_keys_for_piece
+
+            cue_keys = cue_keys_for_piece(
+                piece_metrics, context.confidence_baseline, context.sex)
+            region = accent_region(
+                piece_metrics, context.confidence_baseline, context.sex)
+        except Exception as cue_error:
+            logger.warning(
+                "moment_suggestion: cues failed snip=%s: %s",
+                plan.snippet_id,
+                cue_error,
+            )
+            cue_keys, region = [], None
+        emphasis_quote = pick_emphasis_phrase(
+            plan.transcript,
+            region=region,
+            cue_keys=cue_keys,
+            user_id=context.session.get("user_id"),
+        )
+
+    return database.upsert_moment_suggestion(
+        plan.snippet_id,
+        arc_id,
+        plan.kind,
+        generated.get("replacement"),
+        generated.get("why"),
+        plan.trigger,
+        emphasis_quote=emphasis_quote,
+        cue_keys=(cue_keys or None),
+    )
+
+
 def generate_for_session(session_id: str, arc_id: Optional[str], *,
                          database=None) -> int:
     """Analysis-time hook (flag-gated at the caller): resolve + generate +
@@ -562,30 +725,14 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
     try:
         if database is None:
             from services.db import db as database
-        from services.ideal_decision_ledger import (
-            lane_class as _lane_class,
-            normalize_phrase as _norm_phrase,
-        )
-        from services.moment_confidence import (
-            UNCONFIDENT, resolve_moment_confidence, resolve_suggestion_kind,
-        )
-        from services.protected_phrases import phrase_recurs
 
         context = _load_generation_context(
             session_id, str(arc_id), database)
-        _cap = context.cap
-        _sticky_max = context.sticky_max
         readout = context.readout
         _metrics_by_id = context.metrics_by_id
         session = context.session
-        audience = context.audience
-        strategic_context = context.strategic_context
         _vc_baseline = context.confidence_baseline
         _vc_sex = context.sex
-        context_document = context.context_document
-        _decided_keys = context.decided_keys
-        _intent_keys = context.intent_keys
-        _take_texts = context.take_texts
 
         stored = 0
         # ── FUNNEL COUNTERS (2026-08-10) ──────────────────────────────
@@ -629,132 +776,34 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         for snip in (readout.get("snippets") or []):
             _seen += 1
             try:
-                snip_id = snip.get("id")
-                transcript = (snip.get("transcript") or "").strip()
-                if not snip_id or not transcript:
+                plan = _classify_acoustic_candidate(
+                    snip, context, stored, session_id)
+                unstarred = plan.unstarred()
+                if unstarred is not None:
+                    _unstarred.append(unstarred)
+                if plan.outcome == "no_text":
                     _no_text += 1
                     continue
-                # Panel is None at record time (see the docstring) — the
-                # blind raters have not seen this clip yet, so the machine
-                # read is the only source there is.
-                confidence = resolve_moment_confidence(
-                    None, _metrics_by_id.get(str(snip_id)))
-                _stick = snip.get("slide_stickiness")
-                if isinstance(_stick, dict):
-                    _stick = _stick.get("composite")
-                kind = resolve_suggestion_kind(
-                    confidence, transcript,
-                    slide_stickiness=_stick, stickiness_max=_sticky_max)
-                if kind is None:
-                    _no_conf_read += 1     # the only reachable reason
-                    _unstarred.append((str(snip_id), transcript,
-                                       snip.get("features") or {}))
+                if plan.outcome == "no_conf_read":
+                    _no_conf_read += 1
                     continue
-                if stored >= _cap:
+                if plan.outcome == "capped":
                     _capped += 1
-                    logger.info(
-                        "moment_suggestion: acoustic cap %d hit sid=%s",
-                        _cap, session_id)
-                    continue   # keep scanning: later snippets may be
-                    #            structural candidates (a different budget)
-                # DECISION LEDGER (founder 2026-07-20, rules 2/3): a phrase
-                # the student already decided on — approved (baked at
-                # assembly) or dismissed — is never re-offered; each
-                # version's stars are its delta only. The snippet still
-                # counts as unstarred for the delivery/structural lanes
-                # (those are behavioural prompts, not text edits).
-                if (kind, _norm_phrase(transcript)) in _decided_keys:
+                    continue
+                if plan.outcome == "decided":
                     _decided += 1
-                    _unstarred.append((str(snip_id), transcript,
-                                       snip.get("features") or {}))
                     continue
-                # §12.3 — THE INTENT KEY (founder 2026-08-14). The phrase
-                # gate above dies the moment the LLM rewords: take 2's
-                # snippet carries fresh words, the normalized phrase no
-                # longer matches, and a suggestion the student already
-                # declined comes back in new clothes (field report #4).
-                # Same slide + same class = same intent, blocked — the
-                # student un-blocks by reverting the decision, never the
-                # machine by paraphrasing.
-                _mtx_i = _metrics_by_id.get(str(snip_id))
-                _piece_i = (_mtx_i or {}).get("piece") \
-                    if isinstance(_mtx_i, dict) else None
-                _slide_i = _piece_i.get("slide_index") \
-                    if isinstance(_piece_i, dict) else None
-                if isinstance(_slide_i, int) \
-                        and not isinstance(_slide_i, bool) \
-                        and (_slide_i, _lane_class(kind)) in _intent_keys:
+                if plan.outcome == "decided_intent":
                     _decided_intent += 1
-                    _unstarred.append((str(snip_id), transcript,
-                                       snip.get("features") or {}))
                     continue
-                from services.text_flags import has_profanity
-                # Rule 4a: a STICKINESS replace (no confidence lean, no
-                # profanity) on wording the speaker uses in >= 2 takes is
-                # their voice — never forced. An unconfident read and
-                # profanity still replace (the harmful carve-out). The
-                # snippet stays eligible for the behavioural lanes.
-                if kind == "replace" and confidence is None \
-                        and not has_profanity(transcript) \
-                        and phrase_recurs(transcript, _take_texts):
-                    _unstarred.append((str(snip_id), transcript,
-                                       snip.get("features") or {}))
+                if plan.outcome == "protected":
                     continue
-                # THE PERSISTED TRIGGER VOCABULARY MOVED WITH THE CONSTRUCT
-                # (founder 2026-08-13): 'threat' → 'unconfident', 'charisma'
-                # → 'confident'. New rows only — historical rows keep the
-                # words they were written with and stay interpretable, per
-                # the standing rule that detector definitions are versioned,
-                # never overwritten in place. services/intervention_
-                # candidates.py reads both vocabularies for that reason.
-                trigger = ("unconfident" if confidence == UNCONFIDENT
-                           else "profanity" if has_profanity(transcript)
-                           else "stickiness" if kind == "replace"
-                           else "confident")
-                if trigger == "confident":
-                    # Confident Voice (§17 acoustic-confidence-v1): the
-                    # signed body, no LLM call — deterministic and free.
-                    gen = {"why": CONFIDENT_VOICE_WHY, "replacement": None}
-                else:
-                    gen = generate_moment_suggestion(
-                        kind, transcript, audience=audience,
-                        strategic_context=strategic_context,
-                        context_document=context_document, trigger=trigger,
-                        user_id=session.get("user_id"))
-                if not gen:
+                persisted = _persist_acoustic_candidate(
+                    plan, context, str(arc_id), database)
+                if persisted is None:
                     _no_gen += 1
                     continue
-                # THE ACCENT TARGET (founder 2026-08-15). Picked here, on
-                # the moment's own words AND on what the voice did with them,
-                # so the serve narrows to a phrase instead of falling back to
-                # the whole chunk — and narrows to the phrase the delivery
-                # actually landed on rather than to a plausible one. Costs
-                # nothing on a moment that is already accent-width, and a None
-                # simply leaves the serve's own narrowing to try.
-                _cue_keys: list = []
-                _emph_quote = None
-                if kind == "emphasize":
-                    _pm = _metrics_by_id.get(str(snip_id))
-                    try:
-                        from services.delivery_cues import (
-                            accent_region, cue_keys_for_piece,
-                        )
-                        _cue_keys = cue_keys_for_piece(
-                            _pm, _vc_baseline, _vc_sex)
-                        _region = accent_region(_pm, _vc_baseline, _vc_sex)
-                    except Exception as _cue_err:
-                        logger.warning(
-                            "moment_suggestion: cues failed snip=%s: %s",
-                            snip_id, _cue_err)
-                        _cue_keys, _region = [], None
-                    _emph_quote = pick_emphasis_phrase(
-                        transcript, region=_region, cue_keys=_cue_keys,
-                        user_id=session.get("user_id"))
-                if database.upsert_moment_suggestion(
-                        str(snip_id), str(arc_id), kind,
-                        gen.get("replacement"), gen.get("why"), trigger,
-                        emphasis_quote=_emph_quote,
-                        cue_keys=(_cue_keys or None)):
+                if persisted:
                     stored += 1
             except Exception as _snip_err:
                 _errored += 1
