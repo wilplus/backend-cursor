@@ -41,6 +41,7 @@ from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.ideal_text_read import (
     resolve_historical_read,
+    resolve_live_text,
     resolve_ideal_text_source,
 )
 from services.rate_limits import llm_limit
@@ -426,22 +427,20 @@ def v2_explore_get_ideal_text(arc_id):
         )
         if _historical is not None:
             return jsonify(_historical.payload), _historical.status
-        _vv = _r.get("verified_version")
-        _vtext = (_r.get("verified_text") or "").strip()
-        _verified = bool(_version is not None
-                         and _vv == _version and _vtext)
-        _base_text = _vtext if _verified else _machine
         # The student's in-place edit WINS display while it was made
         # against the CURRENT version (BE-2). A new take supersedes it —
         # the edit is retained (coach signal) but the fresh machine text
         # shows. `status` still reflects the coach's verification of the
         # version, independent of the student's own tweaks on top.
-        _edit = db.get_user_ideal_edit(arc_id, request.user_id)
-        _user_edited = bool(
-            _edit and _version is not None
-            and _edit.get("version") == _version
-            and (_edit.get("text") or "").strip())
-        _text = _edit["text"] if _user_edited else _base_text
+        _live = resolve_live_text(
+            arc_id,
+            request.user_id,
+            _source,
+            database=db,
+        )
+        _verified = _live.verified
+        _user_edited = _live.user_edited
+        _text = _live.text
         # ── SUPERSEDED-EDIT RE-OFFER (founder 2026-07-28): when a newer
         # version has superseded the student's edit, serve the retained
         # copy as `prior_edit` so the FE can offer one-click "re-apply
@@ -450,17 +449,7 @@ def v2_explore_get_ideal_text(arc_id):
         # additions/moves never bake forward) — this only exposes the
         # already-retained row to its owner. Best-effort: absent on any
         # hiccup, never breaks the GET. Owner-keyed by the read above.
-        _prior_edit = None
-        try:
-            if not _user_edited and _edit and _version is not None:
-                _pe_text = (_edit.get("text") or "").strip()
-                _pe_ver = _edit.get("version")
-                if _pe_text and isinstance(_pe_ver, int) \
-                        and not isinstance(_pe_ver, bool) \
-                        and _pe_ver != _version:
-                    _prior_edit = {"text": _pe_text, "version": _pe_ver}
-        except Exception:
-            _prior_edit = None
+        _prior_edit = _live.prior_edit
         from services.ideal_text_block import extract_key_moments
 
         # ── Star suggestions (2026-07-18, flag-gated). Fold APPLIED

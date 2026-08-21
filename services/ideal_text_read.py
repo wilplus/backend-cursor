@@ -15,6 +15,16 @@ class IdealTextHistoryStore(Protocol):
     ) -> Mapping[str, Any] | None: ...
 
 
+class IdealTextEditStore(Protocol):
+    """The owner-scoped edit capability required by the live read."""
+
+    def get_user_ideal_edit(
+        self,
+        arc_id: str,
+        user_id: str,
+    ) -> Mapping[str, Any] | None: ...
+
+
 @dataclass(frozen=True)
 class IdealTextSource:
     """Canonical machine/version fields derived from the coach-owned row."""
@@ -30,6 +40,16 @@ class HistoricalRead:
 
     payload: dict[str, Any]
     status: int
+
+
+@dataclass(frozen=True)
+class LiveTextRead:
+    """The exact live text selected before suggestions and parts compose."""
+
+    verified: bool
+    text: str
+    user_edited: bool
+    prior_edit: dict[str, Any] | None
 
 
 def resolve_ideal_text_source(
@@ -100,3 +120,50 @@ def resolve_historical_read(
         "text": sanitize_markers(strip_moment_markers(snapshot_text)),
         "key_moments": key_moments,
     }, 200)
+
+
+def resolve_live_text(
+    arc_id: str,
+    user_id: str,
+    source: IdealTextSource,
+    *,
+    database: IdealTextEditStore,
+) -> LiveTextRead:
+    """Select coach, machine, or owner-edited copy using legacy rules."""
+    verified_version = source.row.get("verified_version")
+    verified_text = (source.row.get("verified_text") or "").strip()
+    verified = bool(
+        source.version is not None
+        and verified_version == source.version
+        and verified_text
+    )
+    base_text = verified_text if verified else source.machine_text
+    edit = database.get_user_ideal_edit(arc_id, user_id)
+    user_edited = bool(
+        edit
+        and source.version is not None
+        and edit.get("version") == source.version
+        and (edit.get("text") or "").strip()
+    )
+    if user_edited:
+        assert edit is not None
+        text = edit["text"]
+    else:
+        text = base_text
+
+    prior_edit = None
+    try:
+        if not user_edited and edit and source.version is not None:
+            prior_text = (edit.get("text") or "").strip()
+            prior_version = edit.get("version")
+            if (
+                prior_text
+                and isinstance(prior_version, int)
+                and not isinstance(prior_version, bool)
+                and prior_version != source.version
+            ):
+                prior_edit = {"text": prior_text, "version": prior_version}
+    except Exception:
+        prior_edit = None
+
+    return LiveTextRead(verified, text, user_edited, prior_edit)

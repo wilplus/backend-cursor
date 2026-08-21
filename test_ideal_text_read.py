@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 from services.ideal_text_read import (
     resolve_historical_read,
+    resolve_live_text,
     resolve_ideal_text_source,
 )
 
@@ -110,3 +111,97 @@ class HistoricalIdealTextTests(TestCase):
             "take_session_id": "session-1",
         }])
         self.assertNotIn("suggestion", result.payload["key_moments"][0])
+
+
+class LiveIdealTextTests(TestCase):
+    def test_matching_coach_verification_wins_over_machine_copy(self):
+        database = Mock()
+        database.get_user_ideal_edit.return_value = None
+        source = resolve_ideal_text_source({
+            "auto_text": "machine",
+            "version": 3,
+            "verified_version": 3,
+            "verified_text": " coach approved ",
+        })
+
+        result = resolve_live_text(
+            "arc-1", "user-1", source, database=database
+        )
+
+        self.assertTrue(result.verified)
+        self.assertEqual(result.text, "coach approved")
+        self.assertFalse(result.user_edited)
+
+    def test_current_owner_edit_wins_without_changing_verified_status(self):
+        database = Mock()
+        database.get_user_ideal_edit.return_value = {
+            "version": 3,
+            "text": "my current wording",
+        }
+        source = resolve_ideal_text_source({
+            "auto_text": "machine",
+            "version": 3,
+            "verified_version": 3,
+            "verified_text": "coach approved",
+        })
+
+        result = resolve_live_text(
+            "arc-1", "user-1", source, database=database
+        )
+
+        self.assertTrue(result.verified)
+        self.assertTrue(result.user_edited)
+        self.assertEqual(result.text, "my current wording")
+        self.assertIsNone(result.prior_edit)
+
+    def test_superseded_owner_edit_is_retained_for_legacy_reapply(self):
+        database = Mock()
+        database.get_user_ideal_edit.return_value = {
+            "version": 2,
+            "text": " my earlier wording ",
+        }
+        source = resolve_ideal_text_source({
+            "auto_text": "new machine copy",
+            "version": 3,
+        })
+
+        result = resolve_live_text(
+            "arc-1", "user-1", source, database=database
+        )
+
+        self.assertFalse(result.user_edited)
+        self.assertEqual(result.text, "new machine copy")
+        self.assertEqual(result.prior_edit, {
+            "text": "my earlier wording",
+            "version": 2,
+        })
+
+    def test_boolean_edit_version_is_not_mistaken_for_integer_history(self):
+        database = Mock()
+        database.get_user_ideal_edit.return_value = {
+            "version": True,
+            "text": "legacy wording",
+        }
+        source = resolve_ideal_text_source({
+            "auto_text": "machine",
+            "version": 2,
+        })
+
+        result = resolve_live_text(
+            "arc-1", "user-1", source, database=database
+        )
+
+        self.assertIsNone(result.prior_edit)
+
+    def test_owner_edit_read_failure_remains_a_hard_read_failure(self):
+        database = Mock()
+        database.get_user_ideal_edit.side_effect = RuntimeError("db down")
+        source = resolve_ideal_text_source({
+            "auto_text": "machine",
+            "version": 2,
+        })
+
+        with self.assertRaisesRegex(RuntimeError, "db down"):
+            resolve_live_text(
+                "arc-1", "user-1", source, database=database
+            )
