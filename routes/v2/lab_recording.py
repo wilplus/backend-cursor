@@ -51,13 +51,18 @@ from services.lab_recording_gate import (
     RecordingRejected,
     require_analyzable_recording,
 )
-from services.lab_session_identity import choose_guest_session_id
 from services.lab_arc_assignment import assign_recording_arc
 from services.lab_analysis_dispatch import (
     AnalysisInputs,
     CompletedAnalysis,
     PendingAnalysis,
     dispatch_recording_analysis,
+)
+from services.lab_recording_persistence import (
+    RecordingPersistenceError,
+    persist_recording_row,
+    persist_session_metadata,
+    store_recording_audio,
 )
 
 from config import Config
@@ -422,10 +427,6 @@ def v2_lab_create_recording():
         # Lab audio is the USER's voice — its own bucket, not the coach's
         # media bucket (P0 audit 2026-08-03). Inert until R2_LAB_AUDIO_*
         # is provisioned; see services/lab_audio_storage.py.
-        from services.lab_audio_storage import (
-            lab_audio_public_url, put_lab_audio_bytes,
-        )
-        deadline.check("store")
         # ── SESSION-REUSE GUARD (founder bug 2026-07-20: "after the
         # re-read, recording the spoken version analyses the re-read").
         # A session that ALREADY carries a recording is spent: reusing it
@@ -434,76 +435,39 @@ def v2_lab_create_recording():
         # audio was stored, analysed and folded as that re-read. A spent
         # id is dropped and a fresh session minted — the response's
         # `session_id` is authoritative and the FE adopts it. ──
-        guest_session_id = choose_guest_session_id(
-            form.get("guest_session_id"),
-            database=db,
-            log=logger,
-        )
-        recording_id = str(uuid.uuid4())
-        ext = os.path.splitext(audio_file.filename or "")[1] or ".webm"
-        parent_key = f"willab_lab/{guest_session_id}/recording_{uuid.uuid4().hex}{ext}"
-        content_type = (audio_file.mimetype or "audio/webm").strip() or "audio/webm"
-
         try:
-            bucket = put_lab_audio_bytes(parent_key, file_bytes, content_type)
-        except Exception as up_err:
-            logger.error("lab: parent upload failed: %s", up_err, exc_info=True)
+            stored_recording = store_recording_audio(
+                audio_file,
+                file_bytes,
+                requested_session_id=form.get("guest_session_id"),
+                upload_key=_upload_key,
+                database=db,
+                deadline=deadline,
+                log=logger,
+            )
+        except RecordingPersistenceError as persistence_error:
             return jsonify({
-                "code": "V2_ERROR", "error": "Failed to store recording",
+                "code": "V2_ERROR",
+                "error": persistence_error.message,
             }), 500
-        parent_url = lab_audio_public_url(parent_key) or f"s3://{bucket}/{parent_key}"
-
-        # Guest session (create only if it doesn't already exist).
-        if not db.v2_get_session_by_id(guest_session_id):
-            try:
-                db.v2_create_guest_session(guest_session_id)
-            except Exception as se:
-                logger.error("lab: guest session create failed: %s", se, exc_info=True)
-                return jsonify({
-                    "code": "V2_ERROR", "error": "Failed to create session",
-                }), 500
-        # Stamp the take's idempotency key so a lane-fallback retry finds
-        # this session instead of minting take N+1 (best-effort — a miss
-        # just means the retry cannot collapse).
-        if _upload_key:
-            db.v2_set_session_upload_key(guest_session_id, _upload_key)
+        guest_session_id = stored_recording.session_id
+        recording_id = stored_recording.recording_id
+        bucket = stored_recording.bucket
+        parent_key = stored_recording.storage_key
+        parent_url = stored_recording.audio_url
 
         # Recording-flow tags (founder 2026-07-20): the intake-context
         # validator returns ONLY its canonical keys, so the flow tags the
         # FE sends as flat multipart fields are folded in EXPLICITLY here
         # (nothing "rides through" on its own).
-        session_context.update(_recording_flow_tags(form))
-        # Drift-metric stream (F2 handoff §2): one internal log line per
-        # captured emotion — the rolling threat-share per user is computed
-        # OFF-SURFACE from these. Log-only; the bucket never persists.
-        if session_context.get("named_emotion"):
-            try:
-                from services.named_emotion import log_drift_signal
-                log_drift_signal(getattr(request, "user_id", None),
-                                 guest_session_id,
-                                 session_context["named_emotion"])
-            except Exception:
-                pass
-
-        # Persist session_context on the session row.
-        db.set_session_intake_context(guest_session_id, session_context)
-        # Mark as a willab Lab session so the history list + send-gate
-        # origin path can find it (best-effort; the recording_origin on
-        # the recording row is the send-gate's primary gate).
-        db.set_session_source(guest_session_id, "audit_upload")
-        # Paid Audits (A5): persist the gate's measured duration on the session
-        # so the length→audits read (audits_needed) needs no recording join.
-        # Best-effort — no-op if the column is missing pre-migration.
-        db.set_session_presentation_duration(
-            guest_session_id, gate.get("duration_sec"),
+        persist_session_metadata(
+            guest_session_id,
+            session_context,
+            flow_tags=_recording_flow_tags(form),
+            duration_seconds=gate.get("duration_sec"),
+            user_id=getattr(request, "user_id", None),
+            database=db,
         )
-        # Attribute the take to the user AT RECORD TIME when signed in (Prompt
-        # D): the explore arc + best-presentation/moments/progress are owned
-        # reads, so an authed user's takes must be theirs immediately — not only
-        # after the guest→signed claim flow. Guests stay user_id NULL (claimed
-        # later as before). Best-effort.
-        if getattr(request, "user_id", None):
-            db.set_session_user_id(guest_session_id, request.user_id)
 
         # Spoken vs read (founder 2026-07-14). 'read' = the re-read of the
         # suggestion-corrected text; it is a PAIRED VARIANT of its spoken take
@@ -558,68 +522,27 @@ def v2_lab_create_recording():
         # take (nervous/excited/calm/unsure). Split-sink / AC-9: stored
         # privately for the audit-stage correlation, NEVER scored or echoed.
         # Optional + best-effort: a missing/unknown value just stores nothing.
-        from services.feelings import normalize_feeling
-        _feeling = normalize_feeling(form.get("feeling"))
-        if _feeling:
-            db.insert_recording_feeling(
-                session_id=guest_session_id, feeling=_feeling,
+        try:
+            recording_row = persist_recording_row(
+                form=form,
+                session_id=guest_session_id,
+                recording_id=recording_id,
+                storage_key=parent_key,
+                audio_url=parent_url,
+                gate=gate,
                 user_id=getattr(request, "user_id", None),
-                recording_id=recording_id, arc_id=arc_id, take_index=take_index,
+                arc_id=arc_id,
+                take_index=take_index,
+                database=db,
+                log=logger,
             )
-
-        # Pre-take priming manipulation (founder 2026-07-13) — the framing panel
-        # the student saw before this live take (threat/challenge/balanced, one
-        # condition per batch position + the exact phrase). Same private
-        # correlation lane as the feeling: stored on the take's session row,
-        # surfaced to the COACH review only, NEVER echoed to the readout /
-        # instant view / student batch (AC-9 — it's a manipulation label, not
-        # user content). Unknown condition → stored null; absent on uploads.
-        # Best-effort + a SEPARATE write from the feeling, so a pre-migration
-        # hiccup here can never regress the feeling capture above.
-        from services.priming import (
-            normalize_priming_condition, normalize_priming_phrase,
-        )
-        _prime_cond = normalize_priming_condition(form.get("priming_condition"))
-        _prime_phrase = normalize_priming_phrase(form.get("priming_phrase"))
-        if _prime_cond or _prime_phrase:
-            db.set_session_priming(guest_session_id, _prime_cond, _prime_phrase)
-
-        # Recording row (recording_origin fallback for pre-migration envs).
-        # BE-1 / S2 — persist the gate's measured duration (was hardcoded 0 +
-        # discarded). This is the source for cumulative recording-progress.
-        _rec_duration = 0
-        try:
-            _rec_duration = int(round(float(gate.get("duration_sec") or 0)))
-        except (TypeError, ValueError):
-            _rec_duration = 0
-        # Speaker attribution at RECORD TIME (audit fix #2b): stamp the authed
-        # uploader on the recording + the snippets/candidate-pool it produces,
-        # instead of leaving them NULL until a guest-claim backfill (so per-
-        # speaker baselines don't depend on a v2_sessions join). Guests legit-
-        # imately stay NULL and are backfilled on claim — unchanged.
-        _uploader_id = getattr(request, "user_id", None)
-        rec_payload = {
-            "id": recording_id, "user_id": _uploader_id,
-            "session_v2_id": guest_session_id,
-            "storage_path": parent_key, "audio_url": parent_url,
-            "duration": _rec_duration,
-            "recording_origin": "willab_lab",
-        }
-        try:
-            db.create_recording(rec_payload)
-        except Exception as ce:
-            err_low = str(ce).lower()
-            if "recording_origin" in err_low or "pgrst204" in err_low:
-                db.create_recording({k: v for k, v in rec_payload.items() if k != "recording_origin"})
-            else:
-                logger.error("lab: create_recording failed: %s", ce, exc_info=True)
-                return jsonify({
-                    "code": "V2_ERROR", "error": "Failed to create recording",
-                }), 500
-        try:
-            db.v2_set_guest_session_recording(guest_session_id, recording_id)
-        except Exception as le:
-            logger.warning("lab: link recording failed (non-fatal): %s", le)
+        except RecordingPersistenceError as persistence_error:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": persistence_error.message,
+            }), 500
+        _rec_duration = recording_row.duration_seconds
+        _uploader_id = recording_row.uploader_id
 
         # ── 5. process → Readout payload ─────────────────────────────
         # The FULL analysis pipeline (transcribe → cut pieces → metrics →
