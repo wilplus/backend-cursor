@@ -38,6 +38,8 @@ class RecordingState:
     slide_coverage: tuple[dict, ...] = field(default_factory=tuple)
     overall_by_index: dict[int, float] = field(default_factory=dict)
     rank_by_index: dict[int, int] = field(default_factory=dict)
+    persisted_snippets: tuple[dict, ...] = field(default_factory=tuple)
+    stickiness_payload: tuple[dict, ...] = field(default_factory=tuple)
 
     @property
     def persisted_recording_kind(self) -> str:

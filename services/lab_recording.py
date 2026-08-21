@@ -38,6 +38,7 @@ from services.recording_feedback_scoring import (
     compute_overall_ranking as _compute_overall_ranking,
     score_recording_feedback,
 )
+from services.recording_persistence import persist_recording_snippets
 from services.recording_transcription import (
     WHISPER_MAX_BYTES as _WHISPER_MAX_BYTES,
     merge_slide_vocabulary as _merge_slide_vocab,
@@ -299,7 +300,6 @@ def process_lab_recording(
     _rec_kind = recording_kind if recording_kind in ("spoken", "read") \
         else "spoken"
     from services.audio_metrics import decode_audio_to_pcm
-    from services.slide_word_split import slice_words_for_window
     from services.db import db
 
     sig = decode_audio_to_pcm(audio_bytes)
@@ -345,145 +345,16 @@ def process_lab_recording(
     # returned state keeps the raw candidate snapshot separate from derived
     # coach/user reads, preserving validation-sample independence.
     state = analyze_canonical_pieces(state, log=logger)
-    _piece_list = [dict(piece) for piece in state.canonical_pieces]
-    prelim = [dict(piece) for piece in state.analyzed_pieces]
+    _piece_list = list(state.canonical_pieces)
     _llm_budget_idx = set(state.llm_budget_indices)
-    _cap_snapshot = [dict(metrics) for metrics in state.raw_metrics_snapshot]
 
-    # Capture corpus semantics: offered = every piece, notable = budget set.
-    candidates = prelim
-    notable = [prelim[index] for index in sorted(_llm_budget_idx)]
     # Stage 3 — independent text and slide analysis, joined deterministically.
     state = score_recording_feedback(state, log=logger)
-    sticky = list(state.stickiness)
-    _slide_per_snip = list(state.slide_scores)
-    _slide_coverage = list(state.slide_coverage)
 
-    _overall_by_i = dict(state.overall_by_index)
-    _rank_by_i = dict(state.rank_by_index)
-
-    # 3) Insert each snippet with stickiness PERSISTED into its metrics
-    #    blob (metrics["stickiness"]), so a later re-read rebuilds the
-    #    identical §3.3 readout (build_readout_from_session). The
-    #    feature mapper ignores the "stickiness" sub-key.
-    snippets_data: list = []
-    _rows_to_insert: list = []   # pieces mode: one bulk insert
-    _metrics_by_i: list = []
-    for i, p in enumerate(prelim):
-        st = sticky[i] if i < len(sticky) else {}
-        metrics_full = dict(p["metrics"])
-        metrics_full["recording_kind"] = _rec_kind
-        metrics_full["stickiness"] = {
-            "composite": st.get("composite"),
-            "comment": st.get("comment"),
-        }
-        # Stickiness #2 (UX Wave 4) — persisted alongside #1.
-        _ss = _slide_per_snip[i] if i < len(_slide_per_snip) else None
-        if isinstance(_ss, dict) and _ss.get("composite") is not None:
-            metrics_full["slide_stickiness"] = _ss
-        # overall_score / rank: ONLY for delivery-scored budget pieces.
-        # Non-budget pieces omit both → neutral
-        # downstream (see the _scored_i note above).
-        if i in _overall_by_i:
-            metrics_full["overall_score"] = round(_overall_by_i[i], 3)
-            metrics_full["rank"] = _rank_by_i.get(i)
-        if i == 0 and _slide_coverage:  # per-slide ledger parked once, on snip[0]
-            metrics_full["slide_coverage"] = _slide_coverage
-        # #6 — park this window's word-level timestamps so the take viewer can
-        # split the per-slide transcript at slide-click boundaries later.
-        snip_words = slice_words_for_window(
-            words_all, p["start_ms"], p["start_ms"] + p["dur_ms"],
-        ) if words_all else None
-        _metrics_by_i.append(metrics_full)
-        _rows_to_insert.append({
-            "session_id": session_id, "user_id": user_id,
-            "recording_id": recording_id,
-            "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
-            "audio_segment_path": parent_audio_url,
-            "metrics": metrics_full,
-            "transcript": p["transcript"] or None,
-            "words": snip_words or None,
-        })
-
-    # ONE bulk insert instead of ~N sequential REST round-trips — the
-    # live-loop cost fix for long takes (a 60-min take is ~270 pieces).
-    # Ids come back in insert order; the DB helper owns its per-row fallback.
-    _ids = db.create_charisma_snippets_bulk(_rows_to_insert)
-    for i, p in enumerate(prelim):
-        snippets_data.append({
-            "id": _ids[i] if i < len(_ids) else None, "index": p["idx"],
-            "transcript": p["transcript"], "audio_ref": parent_audio_url,
-            "start_offset_ms": p["start_ms"], "duration_ms": p["dur_ms"],
-            "metrics": _metrics_by_i[i],
-        })
-
-    stickiness_list = [
-        {
-            "snippet_id": snippets_data[i]["id"],
-            "composite": (sticky[i] if i < len(sticky) else {}).get("composite"),
-            "comment": (sticky[i] if i < len(sticky) else {}).get("comment"),
-        }
-        for i in range(len(snippets_data))
-    ]
-
-    # ── Candidate-pool capture (automation-audit fix #1: "offered vs chosen") ──
-    # Persist every canonical piece's raw feature vector plus whether it entered
-    # the LLM budget. That distinction is the training signal for improving the
-    # expensive-layer router without redefining the feedback moment itself.
-    #
-    # Training-bound / split-sink (AC-9: storing != surfacing) and FENCE-safe
-    # (snippet_salience.py): we store the raw `metrics` vector + the heuristic's
-    # PROVISIONAL surfaced/notable decision, NEVER the transient salience score.
-    # Best-effort: a failure here NEVER breaks the recording (live-loop fence).
-    try:
-        from services.candidate_capture import build_candidate_rows
-        _surfaced_info = {
-            p["start_ms"]: {
-                "rank": _rank_by_i.get(i),
-                "snippet_id": (snippets_data[i]["id"]
-                               if i < len(snippets_data) else None),
-            }
-            for i, p in enumerate(prelim)
-        }
-        # Use the RAW metrics snapshot taken BEFORE acoustic_read
-        # / user_tone_word were stamped, so the training corpus never carries
-        # a derived composite (the documented fence: candidate_windows stays
-        # RAW — validation-sample independence). The 'piece' provenance key is
-        # also stripped (it isn't an acoustic feature).
-        _cap_candidates = []
-        for i, c in enumerate(candidates):
-            _raw_m = dict(_cap_snapshot[i]) if i < len(_cap_snapshot) else {}
-            _raw_m.pop("piece", None)
-            _cap_candidates.append({
-                "start_ms": c["start_ms"], "dur_ms": c["dur_ms"],
-                "metrics": _raw_m, "transcript": c.get("transcript"),
-            })
-        _cap_rows = build_candidate_rows(
-            _cap_candidates,
-            notable_starts={n.get("start_ms") for n in notable},
-            surfaced_info=_surfaced_info,
-            session_id=session_id,
-            recording_id=recording_id,
-            user_id=user_id,
-            # Canonical corpus semantics: offered = every ≤200-char piece
-            # (all surfaced), notable = the LLM-budget set.
-            heuristic_version="pieces-200char-v1",
-        )
-        _n_cap = db.insert_candidate_windows(_cap_rows)
-        logger.info(
-            "process_lab_recording: candidate pool captured sid=%s windows=%d "
-            "surfaced=%d", session_id, _n_cap, len(prelim),
-        )
-    except Exception as _cap_err:
-        logger.warning(
-            "process_lab_recording: candidate-pool capture failed sid=%s "
-            "err=%s (non-fatal)", session_id, _cap_err,
-        )
-
-    logger.info(
-        "process_lab_recording: sid=%s snippets=%d transcribed=%s",
-        session_id, len(snippets_data), bool(segments),
-    )
+    # Stage 4 — persist exact canonical rows and the raw candidate corpus.
+    state = persist_recording_snippets(state, database=db, log=logger)
+    snippets_data = list(state.persisted_snippets)
+    stickiness_list = list(state.stickiness_payload)
 
     # Voice-metrics diagnostic (telemetry) — distinguish WHY acoustics are empty
     # so we can isolate device/PWA capture issues before re-engaging the native
