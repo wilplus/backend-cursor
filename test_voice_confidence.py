@@ -745,9 +745,12 @@ class TestTakeSexPrecedence(unittest.TestCase):
         """Source-level: process_lab_recording must not carry its own copy of
         the precedence. Two copies is how the corpus gets corrupted twice."""
         with open("services/lab_recording.py", encoding="utf-8") as fh:
-            source = fh.read()
-        self.assertIn("resolve_take_sex", source)
-        self.assertNotIn("speaker_is_account_holder", source)
+            pipeline_source = fh.read()
+        with open("services/recording_piece_analysis.py", encoding="utf-8") as fh:
+            stage_source = fh.read()
+        self.assertIn("analyze_canonical_pieces", pipeline_source)
+        self.assertIn("resolve_take_sex", stage_source)
+        self.assertNotIn("speaker_is_account_holder", stage_source)
 
 
 class TestSexReachesTheStampedBlob(unittest.TestCase):

@@ -161,14 +161,17 @@ class SourcePin(unittest.TestCase):
 
         with open("services/lab_recording.py", encoding="utf-8") as fh:
             pipeline = fh.read()
-        self.assertIn("resolve_take_sex", pipeline)
-        self.assertNotIn("speaker_is_account_holder", pipeline)
+        with open("services/recording_piece_analysis.py", encoding="utf-8") as fh:
+            pipeline_stage = fh.read()
+        self.assertIn("analyze_canonical_pieces", pipeline)
+        self.assertIn("resolve_take_sex", pipeline_stage)
+        self.assertNotIn("speaker_is_account_holder", pipeline_stage)
 
     def test_only_one_place_decides_whose_sex_applies(self):
         """The recorder and the backfill must agree by CONSTRUCTION."""
         import os
         copies = []
-        for path in ("services/lab_recording.py",
+        for path in ("services/recording_piece_analysis.py",
                      "scripts/backfill_voice_confidence.py"):
             if not os.path.exists(path):
                 continue

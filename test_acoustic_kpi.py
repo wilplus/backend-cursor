@@ -340,11 +340,14 @@ class WiringTests(unittest.TestCase):
         # change exists to stop.
         import inspect
         from services import lab_recording as lr
+        from services import recording_piece_analysis as rpa
 
-        src = inspect.getsource(lr.process_lab_recording)
-        self.assertIn("resolve_for_take", src)
-        self.assertNotIn("resolve_read_baseline_stats", src)
-        self.assertNotIn("resolve_read_baseline(", src)
+        pipeline_src = inspect.getsource(lr.process_lab_recording)
+        stage_src = inspect.getsource(rpa._attach_acoustic_enrichment)
+        self.assertIn("analyze_canonical_pieces", pipeline_src)
+        self.assertIn("resolve_for_take", stage_src)
+        self.assertNotIn("resolve_read_baseline_stats", stage_src)
+        self.assertNotIn("resolve_read_baseline(", stage_src)
 
 
 class BaselineFreshnessTests(unittest.TestCase):

@@ -29,6 +29,11 @@ import logging
 from typing import Optional
 
 from services.recording_state import RecordingState
+from services.recording_piece_analysis import (
+    PiecesCanonicalUnavailable,
+    analyze_canonical_pieces,
+    build_canonical_pieces as _build_canonical_pieces,
+)
 from services.recording_transcription import (
     WHISPER_MAX_BYTES as _WHISPER_MAX_BYTES,
     merge_slide_vocabulary as _merge_slide_vocab,
@@ -38,6 +43,8 @@ from services.recording_transcription import (
 __all__ = [
     "_WHISPER_MAX_BYTES",
     "_merge_slide_vocab",
+    "_build_canonical_pieces",
+    "PiecesCanonicalUnavailable",
     "process_lab_recording",
 ]
 
@@ -169,53 +176,6 @@ def build_readout_payload(
     }
 
 
-class PiecesCanonicalUnavailable(RuntimeError):
-    """The take cannot be represented by the canonical text/audio pieces.
-
-    There is deliberately no alternate segmentation algorithm. Raising keeps
-    the stored take retryable and makes loss of Whisper word timestamps
-    observable instead of silently changing what a feedback moment means.
-    """
-
-
-def _build_canonical_pieces(words_all: list, session_context: Optional[dict]) -> list:
-    """Build the one authoritative moment set from Whisper word timestamps.
-
-    Deck takes are cut at slide boundaries first; deckless takes use the same
-    sentence-aware ≤200-character cutter without slide provenance.
-    """
-    if not words_all:
-        raise PiecesCanonicalUnavailable(
-            "Canonical piece processing requires Whisper word-level timestamps"
-        )
-
-    from services.slide_word_split import (
-        chunk_slide_words_by_chars,
-        chunk_words_by_chars,
-    )
-
-    context = session_context or {}
-    slides = context.get("slides")
-    if slides:
-        pieces = chunk_slide_words_by_chars(
-            words_all,
-            context.get("slide_advances"),
-            slides,
-        )
-    else:
-        pieces = chunk_words_by_chars(words_all)
-
-    usable = [
-        piece for piece in (pieces or [])
-        if isinstance(piece, dict) and (piece.get("transcript") or "").strip()
-    ]
-    if not usable:
-        raise PiecesCanonicalUnavailable(
-            "Whisper word-level timestamps produced no canonical pieces"
-        )
-    return usable
-
-
 def _voice_metrics_diagnostic(
     snippets_data: list,
     segments: list,
@@ -307,20 +267,6 @@ def _coach_prefill_enabled() -> bool:
         in ("1", "true", "yes")
 
 
-def _piece_llm_budget() -> int:
-    """How many pieces per take get the LLM layers (stickiness comment,
-    say-it-stronger card, LLM coach-note draft). Every piece always gets
-    metrics + the acoustic read + a deterministic auto-comment; the budget
-    only caps the model calls so a 60-minute talk (~270 pieces) can't fire
-    hundreds of LLM requests. Default 16 covers a typical 3–5-min take
-    fully."""
-    import os
-    try:
-        return max(1, int(os.getenv("WILLAB_PIECE_LLM_BUDGET") or "16"))
-    except (TypeError, ValueError):
-        return 16
-
-
 class _SkipAnalytics(Exception):
     """Internal: skip an optional LLM block when its stage is unticked. Rides
     the block's existing best-effort try/except, so no new control flow is
@@ -384,8 +330,7 @@ def process_lab_recording(
 
     _rec_kind = recording_kind if recording_kind in ("spoken", "read") \
         else "spoken"
-    from services.audio_metrics import decode_audio_to_pcm, analyze_pcm_window
-    from services.snippet_salience import rank_candidates_by_salience
+    from services.audio_metrics import decode_audio_to_pcm
     from services.snippet_stickiness import score_snippets_stickiness
     from services.slide_word_split import slice_words_for_window
     from services.db import db
@@ -429,182 +374,18 @@ def process_lab_recording(
         for word in state.words_all
     ]
 
-    # ── PIECES-CANONICAL (founder 2026-07-14 — "the piece IS the moment") ──
-    # With word timestamps, the take is cut into ≤200-char TEXT pieces —
-    # slide tap-boundaries FIRST (a piece never crosses a slide), then the
-    # char cap within each slide; deckless is the flat ≤200-char cut. EVERY
-    # piece becomes a charisma_snippets row with its exact word-derived audio
-    # span + its own acoustic metrics: what the user reads = what the coach
-    # hears and labels = what the model learns from. No alternate segmentation
-    # path exists: missing timestamps fail above and leave the stored take
-    # retryable through the processing-job contract.
-    _piece_list = _build_canonical_pieces(words_all, session_context)
+    # Stage 2 — canonical piece construction and acoustic enrichment. The
+    # returned state keeps the raw candidate snapshot separate from derived
+    # coach/user reads, preserving validation-sample independence.
+    state = analyze_canonical_pieces(state, log=logger)
+    _piece_list = [dict(piece) for piece in state.canonical_pieces]
+    prelim = [dict(piece) for piece in state.analyzed_pieces]
+    _llm_budget_idx = set(state.llm_budget_indices)
+    _cap_snapshot = [dict(metrics) for metrics in state.raw_metrics_snapshot]
 
-    _llm_budget_idx: set = set()
-    if _piece_list:
-        # The LLM budget FIRST (needs only text length) — the most
-        # acoustically-activated pieces get the model layers; but we don't have
-        # metrics yet, so budget after a cheap first metrics pass below.
-        # Budget 0 when analytics are off: the salience ranking still runs
-        # (it is free and picks which pieces get the richer feature vector),
-        # but no piece reaches an LLM layer.
-        _budget_n = _piece_llm_budget() if _run_analytics else 0
-        # Pass 1: FULL metrics (incl. librosa) only for pieces we MIGHT budget;
-        # a piece under the 1s floor gets {}. We don't yet know the budget set,
-        # so pass 1 computes the cheap acoustic core for ALL pieces (librosa
-        # OFF — not needed for acoustic_read/salience/shadow), then pass 2 adds
-        # librosa to the budget winners. Halves the per-piece CPU on long takes.
-        prelim = []
-        for pc in _piece_list:
-            _p_start = int(pc.get("start_offset_ms") or 0)
-            _p_dur = int(pc.get("duration_ms") or 0)
-            _mtx = analyze_pcm_window(
-                sig, start_offset_ms=_p_start, duration_ms=_p_dur,
-                transcript=pc.get("transcript") or "", include_librosa=False,
-            ) or {}
-            _prov = {"index": pc.get("index")}
-            if pc.get("slide_index") is not None:
-                _prov["slide_index"] = pc.get("slide_index")
-            _mtx["piece"] = _prov
-            _mtx["recording_kind"] = _rec_kind
-            prelim.append({
-                "start_ms": _p_start, "dur_ms": _p_dur,
-                "metrics": _mtx, "transcript": pc.get("transcript") or "",
-            })
-        for idx, p in enumerate(prelim, start=1):
-            p["idx"] = idx
-
-        # Budget selection (salience over the cheap core metrics).
-        if len(prelim) > _budget_n:
-            _budget_objs = {id(p) for p in rank_candidates_by_salience(
-                prelim, top_n=_budget_n)}
-            _llm_budget_idx = {
-                i for i, p in enumerate(prelim) if id(p) in _budget_objs
-            }
-        else:
-            _llm_budget_idx = set(range(len(prelim)))
-
-        # Pass 2: librosa (MFCC/chroma) ONLY for the budget winners — they're
-        # the ones whose full vector feeds the richer downstream corpus.
-        for i in sorted(_llm_budget_idx):
-            p = prelim[i]
-            _lib = analyze_pcm_window(
-                sig, start_offset_ms=p["start_ms"], duration_ms=p["dur_ms"],
-                transcript=p["transcript"], include_librosa=True,
-            ) or {}
-            _piece_prov = p["metrics"].get("piece")
-            p["metrics"] = _lib
-            if _piece_prov is not None:
-                p["metrics"]["piece"] = _piece_prov
-
-        # ── Capture BEFORE the derived reads are stamped ──────────────────
-        # The candidate corpus must stay RAW (validation-sample independence):
-        # snapshot the raw metrics NOW, before acoustic_read/user_tone_word go
-        # on, so build_candidate_rows can never persist a derived composite.
-        _cap_snapshot = [dict(p["metrics"]) for p in prelim]
-
-        # Coach potentiometer + outside-normal-range triage flag per piece —
-        # deterministic acoustic-only, COACH-ONLY (metrics["acoustic_read"],
-        # never on the user readout — fence-tested). The LEARNED shadow model
-        # stays out of this needle by design (labels blind).
-        try:
-            from services.acoustic_baseline import resolve_for_take
-            from services.acoustic_read import attach_acoustic_read
-            # Reference priority: the speaker's own baseline → (for a re-read)
-            # its PARENT take's pieces → within-take/cold-start. Without the
-            # parent fallback a 1–2-piece re-read pegged the needle neutral.
-            #
-            # READ, DON'T REBUILD (founder 2026-08-12, "can we still do smth
-            # with the wait time?"). Rebuilding costs 1+N sequential
-            # round-trips — up to five sessions plus a get_snippets_by_session
-            # each — and it ran on EVERY upload. resolve_for_take serves the
-            # stored snapshot and rebuilds only every REFRESH_EVERY_TAKES, so
-            # the steady state is two queries where it was six. It also owns
-            # the persistence now, so the store and the refresh policy cannot
-            # drift apart across two call sites.
-            _ar_base, _ar_kind = resolve_for_take(
-                user_id, recording_kind=_rec_kind,
-                paired_session_id=paired_session_id,
-            )
-            attach_acoustic_read(
-                prelim, baseline=_ar_base, baseline_kind=_ar_kind,
-            )
-        except Exception as _ar_err:
-            logger.warning(
-                "process_lab_recording: acoustic read failed sid=%s: %s "
-                "(non-fatal)", session_id, _ar_err,
-            )
-
-        # Voice-confidence composite per piece (founder spec 2026-07-27, Jiang &
-        # Pell 2017) — metrics["voice_confidence"], the DELIVERY term of the L2
-        # ranking blend. Stamped AFTER _cap_snapshot on purpose: it is a derived
-        # composite and the candidate corpus stays RAW.
-        #
-        # Capture-first: computed + persisted here regardless of the ranking
-        # flag, so a validation sample can be drawn and anchored against blinded
-        # human ratings BEFORE it is allowed to move a pick. The flag
-        # (VOICE_CONFIDENCE_RANKING_ENABLED, default OFF) is read only at rank
-        # time, in voice_confidence.rank_term.
-        #
-        # NOT the coach needle: acoustic_read above is untouched and remains the
-        # coach's stress↔charisma potentiometer + triage flag. This one is
-        # ranking-internal and never reaches the coach packet or a user payload.
-        try:
-            from services.voice_confidence import (
-                attach_voice_confidence, enabled as _vc_enabled,
-                resolve_confidence_baseline, resolve_take_sex,
-            )
-            if _vc_enabled():
-                _vc_base, _vc_kind = resolve_confidence_baseline(
-                    user_id, [p.get("metrics") for p in prelim],
-                )
-                # Sex routes the cue WEIGHTS (one cue reverses direction) —
-                # resolved once per take, after the baseline because the
-                # acoustic fallback reads the speaker's baseline mean f0.
-                # Never surfaced; see services/voice_confidence.py.
-                #
-                # The account holder is NOT always the speaker (an import is
-                # someone else's voice under the coach's user_id) — that whole
-                # precedence lives in resolve_take_sex, which the backfill
-                # calls too so the two can never drift.
-                _vc_sex, _vc_sex_src = resolve_take_sex(
-                    user_id, session_context, _vc_base,
-                )
-                attach_voice_confidence(
-                    prelim, baseline=_vc_base, baseline_kind=_vc_kind,
-                    sex=_vc_sex, sex_source=_vc_sex_src,
-                )
-        except Exception as _vc_err:
-            logger.warning(
-                "process_lab_recording: voice confidence failed sid=%s: %s "
-                "(non-fatal)", session_id, _vc_err,
-            )
-
-        # The USER tone word (founder carve-out) — the LEARNED read colors the
-        # user's serve-time comment. Computed ONCE here (model cached), stored
-        # user-only; NEVER on the coach draft (blind coach). Best-effort.
-        try:
-            from services.auto_comment import learned_tone_word
-            for p in prelim:
-                _tw = learned_tone_word(p["metrics"])
-                if _tw:
-                    p["metrics"]["user_tone_word"] = _tw
-        except Exception as _tw_err:
-            logger.warning(
-                "process_lab_recording: user tone word failed sid=%s: %s "
-                "(non-fatal)", session_id, _tw_err,
-            )
-
-        # NOTE: the delivery–content "congruence" signal is NOT computed here.
-        # It is a delivery STAR generated in services.moment_suggestions
-        # (arousal_z low + a positive-content gate) and surfaced on the SD
-        # ideal-text key_moments — see services.delivery_alignment. The earlier
-        # per-piece readout note (metrics["delivery_alignment_note"]) was
-        # retired in favour of that star so it inherits the re-record mic.
-
-        # Capture corpus semantics: offered = every piece, notable = budget set.
-        candidates = prelim
-        notable = [prelim[i] for i in sorted(_llm_budget_idx)]
+    # Capture corpus semantics: offered = every piece, notable = budget set.
+    candidates = prelim
+    notable = [prelim[index] for index in sorted(_llm_budget_idx)]
     # 2 + 2b) THE TWO INDEPENDENT LLM UNITS, RUN AT THE SAME TIME
     # (founder 2026-08-12, after the first production timing line:
     # analysis=21548ms, of which these two were ~5.7s SEQUENTIAL —

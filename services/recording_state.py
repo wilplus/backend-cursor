@@ -29,3 +29,13 @@ class RecordingState:
     signal: Any = None
     segments: tuple[Any, ...] = field(default_factory=tuple)
     words_all: tuple[Any, ...] = field(default_factory=tuple)
+    canonical_pieces: tuple[dict, ...] = field(default_factory=tuple)
+    analyzed_pieces: tuple[dict, ...] = field(default_factory=tuple)
+    llm_budget_indices: frozenset[int] = field(default_factory=frozenset)
+    raw_metrics_snapshot: tuple[dict, ...] = field(default_factory=tuple)
+
+    @property
+    def persisted_recording_kind(self) -> str:
+        """The only recording-kind values stored on snippet metrics."""
+        return self.recording_kind if self.recording_kind in {"spoken", "read"} \
+            else "spoken"

@@ -207,11 +207,14 @@ class BackfillMatchesTheRecorderTests(unittest.TestCase):
             script = fh.read()
         with open("services/lab_recording.py", encoding="utf-8") as fh:
             recorder = fh.read()
+        with open("services/recording_piece_analysis.py", encoding="utf-8") as fh:
+            recorder_stage = fh.read()
         self.assertIn("resolve_take_sex", script)
-        self.assertIn("resolve_take_sex", recorder)
+        self.assertIn("analyze_canonical_pieces", recorder)
+        self.assertIn("resolve_take_sex", recorder_stage)
         # Neither may carry its own copy of the precedence.
         self.assertNotIn("speaker_is_account_holder", script)
-        self.assertNotIn("speaker_is_account_holder", recorder)
+        self.assertNotIn("speaker_is_account_holder", recorder_stage)
 
     def test_the_backfill_cannot_touch_training_imports(self):
         """#290's bug, reachable a second way. An import's speaker identity is
