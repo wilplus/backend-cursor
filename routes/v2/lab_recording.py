@@ -64,6 +64,7 @@ from services.lab_recording_persistence import (
     persist_session_metadata,
     store_recording_audio,
 )
+from services.lab_recording_response import build_completed_recording_response
 
 from config import Config
 
@@ -593,91 +594,22 @@ def v2_lab_create_recording():
         readout = dispatch.readout
         _sent_to_coach = dispatch.sent_to_coach
 
-        # Recording-progress toward the first audit (BE-4) — so the FE can
-        # refresh the "X:XX left to unlock" line IMMEDIATELY instead of showing
-        # a stale value until the next session load. This upload's session is a
-        # guest session (user_id=None) and is attributed to the user only on a
-        # later claim/merge, so it is NOT yet in the cumulative sum — we project
-        # it by ADDING this recording's duration on top. The authoritative value
-        # remains GET /user/recording-progress after the claim. Auth-only +
-        # best-effort: omitted for guests / on any hiccup.
-        recording_progress = None
-        _prog_user = getattr(request, "user_id", None)
-        if _prog_user:
-            try:
-                from services.user_audit import AUDIT_UNLOCK_SECONDS
-                _base = int(db.v2_get_cumulative_recorded_seconds(str(_prog_user)) or 0)
-                _projected = _base + int(_rec_duration or 0)
-                recording_progress = {
-                    "recorded_seconds": _projected,
-                    "threshold_seconds": AUDIT_UNLOCK_SECONDS,
-                    "unlocked": _projected >= AUDIT_UNLOCK_SECONDS,
-                }
-            except Exception as _pe:
-                logger.warning("lab: recording_progress projection failed sid=%s: %s",
-                               guest_session_id, _pe)
-
-        # #1 (2026-06-21) — re-derive the RESPONSE readout from the now-persisted
-        # session + snippets so the right-after-recording readout carries the
-        # SAME per-snippet `slide` (+ top-level `slides` / `presentation_ref`)
-        # the GET readout does — process_lab_recording's pure payload has no
-        # slide, so the FE had nothing to render above each snippet's text.
-        # build_readout_from_session maps each snippet to the slide on screen via
-        # the tap timeline. Best-effort: keep the slide-less payload on a hiccup.
-        # Free/paid scope: echo the same audit_paid the GET readout uses. The
-        # readout's own coach layer is unconditionally free (2026-07-06
-        # re-price) — nothing take-aware to compute here anymore.
-        _audit_paid = _arc_audit_paid(arc_id, getattr(request, "user_id", None))
-        try:
-            from services.lab_recording import build_readout_from_session
-            # USER surface — no ungated upgrade cards (founder 2026-08-10).
-            _full = build_readout_from_session(
-                guest_session_id, audit_paid=_audit_paid,
-                include_upgrade_cards=False,
-            )
-            if isinstance(_full, dict) and _full.get("snippets"):
-                readout = _full
-        except Exception as _rre:
-            # F1: the 201 readout falls back to the slide-less payload (no
-            # per-slide grouping in the immediate response). Observe it (the
-            # wire response is unchanged — still 201, just degraded).
-            from services.f1_observability import observe_f1_degrade
-            observe_f1_degrade("readout_rederive_failed", exc=_rre,
-                               session_id=guest_session_id)
-
-        # Paid Audits (A5): length → how many audits this presentation needs.
-        # MINUTES drive the count (founder D5), NOT slide count: one audit per
-        # 10 minutes, floor of one. duration_minutes is this take's measured
-        # length (from the min-content gate).
-        _dur_secs = int(_rec_duration or 0)
-        duration_minutes = round(_dur_secs / 60.0, 1)
-        audits_needed = max(1, -(-_dur_secs // 600))  # ceil(seconds / 600)
-
-        return jsonify({
-            "status": "ok",
-            "session_id": guest_session_id,
-            "recording_id": recording_id,
-            # Length → audits (A5). duration_minutes = this take's length.
-            "duration_minutes": duration_minutes,
-            "audits_needed": audits_needed,
-            # Self-describing + matches the re-read/history `state` field. With
-            # auto-send (founder 2026-07-06) an authed upload is ALREADY in the
-            # coach queue → review_pending; guests / a send hiccup stay
-            # readout_ready (the merge-path send picks them up).
-            "state": ("review_pending" if _sent_to_coach else "readout_ready"),
-            "session_context": session_context,
-            "readout": readout,
-            # Explore-session arc (Prompt A §3) — null for standalone takes.
-            "arc_id": arc_id,
-            "take_index": take_index,
-            "take_count": arc_take_count,
-            # Per-arc paid flag — an echo for the FE's paid-deliverable CTAs
-            # (ideal text / breakthroughs list / game / library). This upload
-            # response's own readout is unconditionally free (2026-07-06).
-            "audit_paid": _audit_paid,
-            # Fresh audit progress (BE-4) — null for guests; see note above.
-            "recording_progress": recording_progress,
-        }), 201
+        response_payload = build_completed_recording_response(
+            session_id=guest_session_id,
+            recording_id=recording_id,
+            session_context=session_context,
+            readout=readout,
+            sent_to_coach=_sent_to_coach,
+            arc_id=arc_id,
+            take_index=take_index,
+            take_count=arc_take_count,
+            duration_seconds=_rec_duration,
+            user_id=getattr(request, "user_id", None),
+            database=db,
+            audit_paid_for_arc=_arc_audit_paid,
+            log=logger,
+        )
+        return jsonify(response_payload), 201
 
     except DeadlineExceeded as de:
         # The budget ran out between stages. The audio IS stored and the
