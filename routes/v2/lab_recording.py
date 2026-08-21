@@ -52,6 +52,7 @@ from services.lab_recording_gate import (
     require_analyzable_recording,
 )
 from services.lab_session_identity import choose_guest_session_id
+from services.lab_arc_assignment import assign_recording_arc
 
 from config import Config
 
@@ -505,123 +506,22 @@ def v2_lab_create_recording():
         # Explore-session arc (Prompt A §3) — link the takes of the SAME talk
         # so they're comparable. Standalone recordings (no explore_session) →
         # arc_id stays None; this is fully opt-in.
-        from services.explore_arc import resolve_arc
-        arc_id, take_index = resolve_arc(
-            form.get("explore_session"),
-            form.get("arc_id"),
-            form.get("take_index"),
+        arc_assignment = assign_recording_arc(
+            form,
+            session_context=session_context,
+            recording_kind=_rec_kind,
+            paired_session_id=_paired_session_id,
+            explicit_arc_id=_explicit_arc,
+            project_intent=_project_intent,
+            user_id=getattr(request, "user_id", None),
+            session_id=guest_session_id,
+            database=db,
+            continue_deck_arc=_continue_deck_arc,
+            continue_topic_arc=_continue_topic_arc,
         )
-
-        # EXPLICIT PROJECT SELECTION (validated at step 2, above): the
-        # user PICKED this project, so the take appends strictly to it
-        # and BOTH continue-arc heuristics are skipped below.
-        if _explicit_arc:
-            arc_id = _explicit_arc
-            # The SERVER numbers the take (never the FE-sent index).
-            try:
-                from services.best_presentation import spoken_arc_sessions
-                take_index = len(spoken_arc_sessions(
-                    db.get_arc_sessions(arc_id) or [])) + 1
-            except Exception:
-                take_index = max(1, take_index or 1)
-
-        # A READ inherits its spoken take's arc + number and short-circuits all
-        # the continue-arc / take-counter logic below (it isn't a new take).
-        _read_paired = None
-        if _rec_kind == "read" and _paired_session_id:
-            _read_paired = db.v2_get_session_by_id(_paired_session_id) or {}
-            if _read_paired.get("arc_id"):
-                arc_id = _read_paired.get("arc_id")
-            if _read_paired.get("take_index"):
-                take_index = int(_read_paired["take_index"])
-
-        # Continue-one-arc (founder 2026-06-20): a re-recording of the SAME deck
-        # (same authed user) joins that deck's existing arc as the next take,
-        # instead of the freshly-minted one — ONE ever-growing arc per deck, so
-        # the best presentation keeps deepening across sittings. Extended
-        # 2026-07-06 (founder bug #4/#6): DECKLESS takes of the SAME TALK (same
-        # normalized topic) also continue one arc — the conversational practice
-        # flow is deckless, and fresh-arc-per-take split the training across
-        # arcs (counter said "1 of 3" while the bubble said "Take 3 of 3", and
-        # the coach saw one take per arc). Guests keep the fresh arc.
-        # `_explicit_arc` → the user chose the project: NO guessing (the
-        # deck-hash / topic-normalisation matching is skipped entirely).
-        # `_project_intent == "new"` is the other explicit boundary: this is a
-        # brand-new project, so the freshly minted UUID MUST survive. A topic,
-        # an uploaded deck, and the shared default deck are content only; none
-        # may reconnect this recording to an earlier arc. This is forward-only:
-        # clients that omit project_intent keep the legacy resolver and no
-        # historical rows are touched.
-        #
-        # ⚠️ 2026-08-15 — THE BRANCH IS CHOSEN ON `presentation_ref`, NOT ON
-        # `slides`. It used to read "has slides → it is a deck → match by deck
-        # hash", and that was true until 2026-08-11, when the DEFAULT DECK
-        # started shipping on every deckless take so word→slide bucketing
-        # would always be defined. The default deck is a CONSTANT: identical
-        # bytes for every deckless recording, forever. So its content hash is
-        # one fixed value shared by every deckless talk a user has ever given,
-        # `_continue_deck_arc` treated them all as re-takes of one deck, and a
-        # brand-new topic was appended to the most-developed unrelated arc —
-        # inheriting that arc's locked ideal text, so the "analysis" of the
-        # new take was the old take's text. Worse, `slides` being non-empty
-        # meant the TOPIC guard below — the one thing that would have kept the
-        # two talks apart — was never reached at all.
-        #
-        # "Same deck" means "same UPLOADED deck", and the thing that marks one
-        # is the PDF behind it: the FE sends `presentationRef: null` for the
-        # default deck on purpose ("never claim a PDF that isn't there"). So a
-        # take with a real ref keeps deck-hash continuation exactly as before,
-        # and a take standing on the scaffold continues by TOPIC, which is
-        # what actually identifies the talk when the deck is generic.
-        #
-        # Chosen over mirroring the deck's text here and comparing hashes: the
-        # copy is the founder's and lives in the frontend, so a BE mirror would
-        # go stale on the next word he changes and this bug would return
-        # silently. A missing PDF cannot drift.
-        if getattr(request, "user_id", None) and arc_id \
-                and _rec_kind != "read" and not _explicit_arc \
-                and _project_intent != "new":
-            _slides_for_arc = (session_context or {}).get("slides") or []
-            _deck_ref = (session_context or {}).get("presentation_ref")
-            if _slides_for_arc and _deck_ref:
-                arc_id, take_index = _continue_deck_arc(
-                    request.user_id, _slides_for_arc, arc_id, take_index,
-                )
-            else:
-                arc_id, take_index = _continue_topic_arc(
-                    request.user_id,
-                    (session_context or {}).get("topic"),
-                    arc_id, take_index,
-                )
-        arc_take_count = None
-        if _rec_kind == "read":
-            # The read rides its spoken take's number; link + tag, no counting.
-            if arc_id:
-                db.set_session_arc(guest_session_id, arc_id, take_index)
-            db.set_session_recording_kind(
-                guest_session_id, "read", _paired_session_id)
-            arc_take_count = take_index
-        elif arc_id:
-            # ONE take-count source of truth (founder bug #6): the server-side
-            # arc session count numbers this take — never the FE-sent index
-            # (which drifted and produced "Take 3 of 3" beside "1 of 3 takes").
-            # Review hardening: (a) a RETRY of an already-arc-linked session
-            # keeps its existing number (never double-counts itself); (b) the
-            # count EXCLUDES the current session; (c) a failed count read keeps
-            # the FE-sent index (fail CLOSED — never mislabel a real take-2/3
-            # as take-1, which would open the free-intro human layer).
-            _sess_row = db.v2_get_session_by_id(guest_session_id) or {}
-            if _sess_row.get("arc_id") and _sess_row.get("take_index"):
-                arc_id = _sess_row["arc_id"]
-                take_index = int(_sess_row["take_index"])
-            else:
-                _cnt = db.count_arc_sessions(
-                    arc_id, exclude_session_id=guest_session_id,
-                )
-                if _cnt is not None:
-                    take_index = _cnt + 1
-                db.set_session_arc(guest_session_id, arc_id, take_index)
-            arc_take_count = take_index
+        arc_id = arc_assignment.arc_id
+        take_index = arc_assignment.take_index
+        arc_take_count = arc_assignment.take_count
 
         # Persist the Take-1 brief against the immutable project id before the
         # worker is enqueued. The qualitative layer reads it from this table;

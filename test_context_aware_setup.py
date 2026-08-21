@@ -290,8 +290,9 @@ class ExplicitSelectionTests(unittest.TestCase):
     def test_server_numbers_the_take_not_the_client(self):
         # Source pin: the FE-sent take_index is never trusted on the
         # explicit path (two spoken takes exist → the next is 3).
-        src = inspect.getsource(v2.v2_lab_create_recording)
-        self.assertIn("take_index = len(spoken_arc_sessions(", src)
+        from services.lab_arc_assignment import _number_explicit_take
+        src = inspect.getsource(_number_explicit_take)
+        self.assertIn("return len(spoken_arc_sessions(", src)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

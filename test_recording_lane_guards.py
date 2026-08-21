@@ -175,9 +175,10 @@ class ReadNeverAssemblesTests(unittest.TestCase):
         # it inherits the parent's arc + take number and is tagged — it
         # just never assembles. (The ideal-text re-read that used to share
         # this lane is refused at the guard; see UnpairedReadTests.)
-        src = inspect.getsource(v2.v2_lab_create_recording)
-        self.assertIn('db.set_session_recording_kind(', src)
-        self.assertIn('arc_take_count = take_index', src)
+        from services.lab_arc_assignment import assign_recording_arc
+        src = inspect.getsource(assign_recording_arc)
+        self.assertIn('database.set_session_recording_kind(', src)
+        self.assertIn('return ArcAssignment(arc_id, take_index, take_index)', src)
 
     def test_the_ideal_text_reread_is_pinned_out_at_the_guard(self):
         # The retirement pinned at the source: a read with no target
