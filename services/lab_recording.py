@@ -28,6 +28,19 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from services.recording_state import RecordingState
+from services.recording_transcription import (
+    WHISPER_MAX_BYTES as _WHISPER_MAX_BYTES,
+    merge_slide_vocabulary as _merge_slide_vocab,
+    transcribe_recording,
+)
+
+__all__ = [
+    "_WHISPER_MAX_BYTES",
+    "_merge_slide_vocab",
+    "process_lab_recording",
+]
+
 
 logger = logging.getLogger(__name__)
 
@@ -154,11 +167,6 @@ def build_readout_payload(
             _has_voice_metrics(s.get("features")) for s in out_snippets
         ),
     }
-
-
-# OpenAI Whisper rejects uploads larger than 25MB; compress above this
-# threshold (a touch under 25MB for multipart/header headroom).
-_WHISPER_MAX_BYTES = 24 * 1024 * 1024
 
 
 class PiecesCanonicalUnavailable(RuntimeError):
@@ -313,33 +321,6 @@ def _piece_llm_budget() -> int:
         return 16
 
 
-def _merge_slide_vocab(session_context):
-    """Whisper prime = domain_vocabulary + slide titles (UX Wave 4 BE-S3).
-
-    Slide titles carry the proper nouns / key terms the speaker will say, so
-    priming Whisper on them sharpens transcription — the "same mechanism as
-    keywords, more precise." Case-insensitive dedup, capped so the prompt
-    stays small. Returns a list or None.
-    """
-    ctx = session_context or {}
-    terms = list(ctx.get("domain_vocabulary") or [])
-    for sl in (ctx.get("slides") or []):
-        if isinstance(sl, dict):
-            t = (sl.get("title") or "").strip()
-            if t:
-                terms.append(t)
-    seen, merged = set(), []
-    for term in terms:
-        k = (term or "").strip().lower()
-        if not k or k in seen:
-            continue
-        seen.add(k)
-        merged.append(term.strip())
-        if len(merged) >= 120:
-            break
-    return merged or None
-
-
 class _SkipAnalytics(Exception):
     """Internal: skip an optional LLM block when its stage is unticked. Rides
     the block's existing best-effort try/except, so no new control flow is
@@ -419,114 +400,34 @@ def process_lab_recording(
         )
         return {"snippets": [], "voice_metrics_available": False}
 
-    # Whisper the whole recording ONCE (best-effort), vocab-primed.
-    segments: list = []
-    words_all: list = []  # word-level timestamps (#6 per-slide sync)
-    try:
-        from io import BytesIO
-        from services.openai_service import OpenAIService
-        ois = OpenAIService()
-        if ois.client:
-            vocab = _merge_slide_vocab(session_context)
-            # OpenAI Whisper rejects uploads > 25MB. Long presentation
-            # recordings can exceed that, so compress oversized audio to a
-            # 16kHz mono mp3 just for transcription (the acoustic pipeline
-            # above still uses the full-quality original). Best-effort: fall
-            # back to the original bytes if the transcode fails.
-            whisper_bytes = audio_bytes
-            whisper_name = filename or "lab.webm"
-            if len(audio_bytes) > _WHISPER_MAX_BYTES:
-                from services.audio_metrics import compress_audio_for_whisper
-                compressed = compress_audio_for_whisper(audio_bytes)
-                if compressed and len(compressed) < len(audio_bytes):
-                    whisper_bytes = compressed
-                    whisper_name = "lab.mp3"
-                    logger.info(
-                        "process_lab_recording: compressed audio for whisper "
-                        "sid=%s %d→%d bytes", session_id,
-                        len(audio_bytes), len(compressed),
-                    )
-            # Language hint (fix 2026-07-29): the first non-English import —
-            # a Polish talk — produced zero pieces. Whisper follows its
-            # prompt's language, and ours is an English disfluency primer, so
-            # non-English audio needs the code passed explicitly. Absent =
-            # auto-detect, exactly as the live path has always behaved.
-            _lang = (session_context or {}).get("language") \
-                if isinstance(session_context, dict) else None
-            wres = ois.transcribe_audio(
-                BytesIO(whisper_bytes), whisper_name,
-                vocabulary=vocab,
-                language=(str(_lang).strip() or None) if _lang else None,
-                # Cost attribution (token-pricing Phase 0). recording_kind
-                # splits the ledger by spoken take vs re-read — they have very
-                # different durations and only spoken takes count as takes.
-                usage_surface=f"whisper_{recording_kind or 'spoken'}",
-                usage_user_id=user_id,
-                usage_session_id=session_id,
-            )
-            segments = (wres or {}).get("segments") or []
-            words_all = (wres or {}).get("words") or []
-
-            # Token pricing: charge the take AFTER transcription, at the band
-            # the audio actually landed in. Deliberately not a pre-flight gate —
-            # the audio is already accepted and analysed by this point, so a
-            # zero balance costs the user tokens, never the take (fence §6.1).
-            # The record-start band endpoint is the ADVISORY half of this; this
-            # is the settle. Idempotent per recording: a retried pipeline run
-            # re-uses recording_id and the ledger's unique index absorbs it.
-            try:
-                from services.token_account import charge
-                from services.token_prices import band_for_seconds
-                _act = ("reread" if (recording_kind or "spoken") == "read"
-                        else band_for_seconds((wres or {}).get("duration")))
-                charge(str(user_id), _act, ref_id=str(recording_id))
-            except Exception as _tok_err:
-                logger.warning("lab: token charge failed sid=%s err=%s",
-                               session_id, _tok_err)
-    except Exception as e:
-        logger.warning(
-            "process_lab_recording.voice_metrics_diag sid=%s "
-            "status=transcription_failed err=%s (acoustics still computed)",
-            session_id, e,
-        )
-        segments = []
-        words_all = []
-
-    # Punctuation restoration (founder BE-1a, 2026-07-15): Whisper's word
-    # timestamps arrive punctuation-less; the segments carry the punctuated
-    # text. Restore it ONCE here — every consumer downstream (piece cutting,
-    # per-slide transcripts, persisted snippet words, feedback full text,
-    # ideal-text assembly) inherits punctuated tokens. Deterministic
-    # two-pointer alignment (no LLM); spans untouched; best-effort — any
-    # hiccup keeps the raw words (degraded, never garbled).
-    if words_all and segments:
-        try:
-            from services.slide_word_split import restore_punctuation
-            words_all = restore_punctuation(words_all, segments)
-        except Exception as _punct_err:
-            logger.warning(
-                "process_lab_recording: punctuation restore failed sid=%s: "
-                "%s (raw words kept)", session_id, _punct_err,
-            )
-
-    # Run-on sentence boundaries (founder BE-1c, 2026-07-16): Whisper
-    # under-punctuates spoken run-ons; the speaker's own pauses carry the
-    # missing boundary, and the word timestamps already hold them. Promote
-    # qualifying pauses to full stops — punctuation + casing only, words +
-    # spans strictly untouched, so every downstream consumer stays verbatim-
-    # faithful. Deterministic; SENTENCE_BOUNDARY_SPLIT_ENABLED=0 kills it.
-    if words_all:
-        try:
-            from services.slide_word_split import (
-                runon_split_enabled, split_runon_sentences,
-            )
-            if runon_split_enabled():
-                words_all = split_runon_sentences(words_all)
-        except Exception as _runon_err:
-            logger.warning(
-                "process_lab_recording: run-on sentence split failed "
-                "sid=%s: %s (words kept as-is)", session_id, _runon_err,
-            )
+    # Stage 1 — transcription.  The frozen state makes the stage boundary
+    # explicit: transcription returns a new state and cannot silently change
+    # the recording context that later stages depend on.
+    state = RecordingState(
+        session_id=session_id,
+        user_id=user_id,
+        recording_id=recording_id,
+        audio_bytes=audio_bytes,
+        filename=filename,
+        session_context=session_context,
+        parent_audio_url=parent_audio_url,
+        recording_kind=recording_kind,
+        paired_session_id=paired_session_id,
+        run_analytics=_run_analytics,
+        signal=sig,
+    )
+    state = transcribe_recording(state, log=logger)
+    # Downstream code still operates on local lists during this incremental
+    # extraction.  Copy the immutable stage outputs so later normalization can
+    # never mutate the state object retained for subsequent domain stages.
+    segments = [
+        dict(segment) if isinstance(segment, dict) else segment
+        for segment in state.segments
+    ]
+    words_all = [
+        dict(word) if isinstance(word, dict) else word
+        for word in state.words_all
+    ]
 
     # ── PIECES-CANONICAL (founder 2026-07-14 — "the piece IS the moment") ──
     # With word timestamps, the take is cut into ≤200-char TEXT pieces —
