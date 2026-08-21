@@ -38,6 +38,11 @@ from routes.v2.common import (
     _pipeline_queue_enabled,
 )
 from services.db import db
+from services.lab_recording_intake import (
+    RecordingIntakeError,
+    parse_recording_lane,
+    parse_session_context,
+)
 
 from config import Config
 
@@ -364,50 +369,20 @@ def v2_lab_create_recording():
             }), _ctx_status
 
         # ── 2. session_context (inline; topic required) ─────────────
-        from services.intake_context import (
-            IntakeContextError, validate_intake_context_body,
-        )
+        from services.intake_context import IntakeContextError
         form = request.form or {}
-
-        # ── LANE GUARD (founder bugs 2026-07-20). A read is a PAIRED
-        # variant of a spoken take, never a take of its own. An unpaired
-        # read used to fall through as SPOKEN — it took a take number,
-        # triggered assembly and minted a version ("the re-read counted
-        # as a take"). Fail fast, before any storage or processing. ──
-        _kind_raw = (form.get("recording_kind") or "spoken").strip().lower()
-        if _kind_raw == "read":
-            _pair_raw = (form.get("paired_session_id") or "").strip()
-            if not _pair_raw or not _is_valid_uuid(_pair_raw):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": ("A re-read needs the spoken take it belongs "
-                              "to (paired_session_id)."),
-                }), 422
-            # ── IDEAL-TEXT RE-READ IS RETIRED (founder 2026-08-05).
-            # "Read out loud" — reading the settled ideal text back into
-            # the mic — brought no value to the coach or the user, so it
-            # is gone: one lane now, take after take.
-            #
-            # The read lane ITSELF survives, because it carries a second,
-            # unrelated feature: the DELIVERY-STAR snippet re-record
-            # (services/reRecordSnippet on the FE), which re-records one
-            # snippet with a star's feedback applied and rides the same
-            # recording_kind='read' wire. That feature was never in scope
-            # here, so the guard is narrow: a read WITHOUT a target
-            # snippet is the retired ideal-text re-read and is refused; a
-            # read WITH one is a star re-record and passes.
-            #
-            # Refusing rather than silently downgrading to spoken matters:
-            # the ideal-text version is now the SPOKEN TAKE COUNT, so a
-            # stale client's re-read landing as a take would bump the
-            # version and un-verify a text nobody re-recorded.
-            _psnip_raw = (form.get("paired_snippet_id") or "").strip()
-            if not _psnip_raw or not _is_valid_uuid(_psnip_raw):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": ("Reading your ideal text out loud has been "
-                              "retired. Record the next take instead."),
-                }), 422
+        try:
+            recording_lane = parse_recording_lane(
+                form,
+                is_valid_uuid=_is_valid_uuid,
+            )
+        except RecordingIntakeError as intake_error:
+            return jsonify({
+                "code": intake_error.code,
+                "error": intake_error.message,
+            }), intake_error.status
+        _rec_kind = recording_lane.recording_kind
+        _paired_session_id = recording_lane.paired_session_id
 
         # ── EXPLICIT PROJECT SELECTION (founder 2026-07-22): the user
         # PICKED this project from the list, so the server does not guess
@@ -460,56 +435,16 @@ def v2_lab_create_recording():
                 # No existence leak: unknown and foreign look identical.
                 return jsonify({"code": "NOT_FOUND",
                                 "error": "project not found"}), 404
-        target_raw = form.get("target_length_seconds")
         try:
-            target_len = int(target_raw) if target_raw not in (None, "") else None
-        except (TypeError, ValueError):
-            target_len = None
-        def _form_json(name):
-            raw = form.get(name)
-            if raw in (None, ""):
-                return None
-            try:
-                return json.loads(raw)
-            except (ValueError, TypeError):
-                return None
-
-        def _form_int(name):
-            """Optional integer multipart field. Unparseable → None (absent),
-            so a malformed value degrades to today's behaviour rather than
-            422-ing a recording that is otherwise fine."""
-            raw = form.get(name)
-            if raw in (None, ""):
-                return None
-            try:
-                return int(float(raw))
-            except (TypeError, ValueError):
-                return None
-        try:
-            session_context = validate_intake_context_body({
-                "topic": form.get("topic"),
-                "audience": form.get("audience"),
-                # ④ step 5 (2026-07-24): a short free-text note on the stakes /
-                # setting / what the speaker wants to nail. BACKGROUND context
-                # for the qualitative feedback — never the verbatim ideal text.
-                "strategic_context": form.get("strategic_context"),
-                "target_length_seconds": target_len,
-                "domain_vocabulary": _parse_lab_vocabulary(
-                    form.get("domain_vocabulary"),
-                ),
-                # Slide-deck context (UX Wave 4 §S) — JSON multipart fields,
-                # same pattern as domain_vocabulary.
-                "slides": _form_json("slides"),
-                "presentation_ref": form.get("presentation_ref") or None,
-                "slide_advances": _form_json("slide_advances"),
-                # F1 (2026-07-26): the FE-MEASURED offset between the UI clock
-                # that stamps slide taps and the recorder's first audio sample.
-                # Turns the two-clocks drift from a guess (pause-snap) into a
-                # known quantity. Optional — absent keeps today's behaviour.
-                "slide_clock_offset_ms": _form_int("slide_clock_offset_ms"),
-            }, require_topic=True)
-        except IntakeContextError as ve:
-            return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 422
+            session_context = parse_session_context(
+                form,
+                parse_vocabulary=_parse_lab_vocabulary,
+            )
+        except IntakeContextError as validation_error:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": str(validation_error),
+            }), 422
 
         # A project's Ideal Text, feedback, roots, and accepted flagships are
         # indexed against the slide structure captured by Take 1.  Once that
@@ -721,13 +656,6 @@ def v2_lab_create_recording():
         # suggestion-corrected text; it is a PAIRED VARIANT of its spoken take
         # (paired_session_id), NOT a take of its own — so it inherits the
         # spoken take's arc_id/take_index and never increments the counter.
-        _rec_kind = (form.get("recording_kind") or "spoken").strip().lower()
-        if _rec_kind not in ("spoken", "read"):
-            _rec_kind = "spoken"
-        _paired_session_id = (form.get("paired_session_id") or "").strip() or None
-        if _paired_session_id and not _is_valid_uuid(_paired_session_id):
-            _paired_session_id = None
-
         # Explore-session arc (Prompt A §3) — link the takes of the SAME talk
         # so they're comparable. Standalone recordings (no explore_session) →
         # arc_id stays None; this is fully opt-in.
