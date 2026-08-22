@@ -75,20 +75,6 @@ def _load_overlays(database, session_id: str) -> tuple:
     return corrections, edits
 
 
-def _breakthrough_ids(database, session_id: str) -> set:
-    """Coach-SURFACED pieces of this take — they stay key moments on the
-    document so the explanations lane (and the only paid surface) keeps
-    working in transcript mode (review finding). Best-effort."""
-    out = set()
-    try:
-        for d in (database.get_coach_snippet_drafts(session_id) or []):
-            if d.get("surfaced") and d.get("snippet_id") is not None:
-                out.add(str(d["snippet_id"]))
-    except Exception:
-        pass
-    return out
-
-
 def _slide_corrections(database, session_id: str) -> dict:
     """{snippet_id: slide_index} — the coach's own bucketing for this take.
 
@@ -261,7 +247,6 @@ def build_transcript_document(arc_id: Any, *, database=None,
         if not snips:
             return None
         corrections, edits = _load_overlays(database, sid)
-        breakthroughs = _breakthrough_ids(database, sid)
         slide_fixes = _slide_corrections(database, sid)
 
         # PASS 1 — every piece that has words, in spoken order, carrying the
@@ -329,7 +314,6 @@ def build_transcript_document(arc_id: Any, *, database=None,
                         "end": cursor,
                         "text": text,
                         "slide_index": run["slide"],
-                        "breakthrough": str(s.get("id")) in breakthroughs,
                         "start_offset_ms": s.get("start_offset_ms"),
                         "duration_ms": s.get("duration_ms"),
                     })
@@ -467,8 +451,8 @@ def relocate_pieces(text: Any, pieces: Any, *,
     around it. So the piece the student had just accepted a change on was
     the one that vanished, taking with it the slide index the FE zips 1:1
     to build the per-slide deck (a short list collapses the deck into one
-    untitled section — the 1:1 north star) and, when the piece was a
-    surfaced breakthrough, the coach's key moment on those words.
+    untitled section — the 1:1 north star) and any attached feedback on those
+    words.
 
     Two passes:
       1. MONOTONIC EXACT FIND, unchanged — each piece looked for after
@@ -495,7 +479,7 @@ def relocate_pieces(text: Any, pieces: Any, *,
     width-proportional positions derived from nothing. The result passes
     `verify_spans` — the text is re-read from the document — which is exactly
     what makes it dangerous: slide indexes attach to arbitrary paragraphs and
-    every anchor derived from a piece (key_moments, the coach's video chip)
+    every anchor derived from a piece
     points at words the coach never spoke about.
 
     So an unbounded run is dropped, with ONE exception that is not a guess: a

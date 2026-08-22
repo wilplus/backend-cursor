@@ -14,7 +14,6 @@ re-exports every moved name so ``routes.v2_routes.<name>`` keeps resolving.
   explore_ideal_text   the ideal-text surface
   admin                the admin console       coaching       chat/coaching
   publish              the internal publish    funnel         guest -> account
-  reflection           the Reflection Game
 
 Import order is load-bearing: app.py imports this module, and every domain
 module must be imported BEFORE the blueprint is registered on the app --
@@ -72,19 +71,17 @@ from routes.v2.arcs import (  # noqa: F401 — re-exported for import compat
     _presentation_group_key,
     _presentation_id_from_slides,
     _reassemble_after_decision,
+    _serialize_arc_voice_album,
     _spoken_takes_and_reads,
     _take_full_text,
     _take_key_moments,
     v2_arc_checkout,
-    v2_arc_game,
-    v2_arc_game_answer,
-    v2_arc_game_save,
     v2_arc_redeem,
     v2_arc_snippet_library,
     v2_arc_unlock,
     v2_explore_arc_best_presentation,
     v2_explore_arc_voice_album,
-    v2_explore_arc_breakthroughs,
+    v2_voice_album,
     v2_explore_arc_edit_slide,
     v2_explore_arc_feedback,
     v2_explore_arc_moments,
@@ -142,7 +139,6 @@ from routes.v2.user_account import (  # noqa: F401 — re-exported for import co
     _PROFILE_GOAL_MAX_LEN,
     _shape_consent_response,
     v2_user_consent,
-    v2_user_game_sessions,
     v2_user_get_audits,
     v2_user_get_profile,
     v2_user_get_sharing_consent,
@@ -194,7 +190,6 @@ from routes.v2.coach import (  # noqa: F401 — re-exported for import compat
     v2_coach_session_recut,
     v2_coach_session_video,
     v2_coach_slide_alignment,
-    v2_coach_snippet_breakthrough_video,
     v2_coach_student_audit,
     v2_coach_student_audit_send,
     v2_coach_student_detail,
@@ -230,10 +225,6 @@ from routes.v2.admin import (  # noqa: F401 — re-exported for import compat
     v2_admin_get_session,
     v2_admin_get_session_readout,
     v2_admin_health,
-    v2_admin_learning_models,
-    v2_admin_learning_status,
-    v2_admin_learning_trace,
-    v2_admin_learning_train,
     v2_admin_post_directives_queue,
     v2_admin_question_pool_create,
     v2_admin_question_pool_delete,
@@ -273,7 +264,6 @@ from routes.v2.coaching import (  # noqa: F401 — re-exported for import compat
 from routes.v2.publish import (  # noqa: F401 — re-exported for import compat
     _apply_willab_publish_contract,
     _assemble_insights_from_drafts,
-    _assemble_labels_from_store,
     v2_internal_publish_session_results,
     v2_internal_whisper_health,
 )
@@ -287,14 +277,6 @@ from routes.v2.funnel import (  # noqa: F401 — re-exported for import compat
     v2_public_funnel_afterwards_video,
     v2_public_shaky_voice_claim,
     v2_public_shaky_voice_upload,
-)
-from routes.v2.reflection import (  # noqa: F401 — re-exported for import compat
-    _reflection_audio_map,
-    v2_coach_reflection_queue,
-    v2_coach_reflection_verdict,
-    v2_library_confident_voices,
-    v2_reflection_get_clips,
-    v2_reflection_vote,
 )
 from routes.v2.lab_recording import (  # noqa: F401 — re-exported for import compat
     _parse_lab_vocabulary,
@@ -526,19 +508,6 @@ from routes.v2.user_sessions import (  # noqa: F401 — re-exported for import c
 #
 # Two admin/coach endpoints. The split-sink wall (§2) is the rule: the
 # USER re-read (/v2/user/sessions/<id>/readout) OMITS the private
-# direction label; the COACH readout below INCLUDES it (the coach
-# authors/corrects it). Identity is pseudonymized, never the real
-# user_id (§14 red-line 6) — list = low-identifiability; detail =
-# pseudonymized-not-anonymized (full transcript + goal, opaque identity).
-
-
-# ── willab Phase 4 / Prompt 1 — Learning subsystem (SHADOW) admin surface ──
-# The model trains on training_labels ⋈ the 11 features and predicts in SHADOW
-# only — it influences NOTHING (no selection, no direction pre-fill). These
-# endpoints are the human's window + manual "train now"; auto-retrain (B3) runs
-# off the label/publish hook. All @require_admin_or_coach.
-
-
 # ── FIX.3 — Dad jokes health probe (deploy verification) ────────────
 
 

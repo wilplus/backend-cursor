@@ -515,7 +515,6 @@ class CoveredRoutesTests(unittest.TestCase):
             "v2_coach_approve_ideal_text": "heavy_limit",
             "v2_coach_session_recut": "heavy_limit",
             "v2_coach_session_video": "heavy_limit",
-            "v2_coach_snippet_breakthrough_video": "heavy_limit",
         },
         "routes/v2/user_chat.py": {
             "v2_user_chat_first_question": "llm_limit",
@@ -530,7 +529,6 @@ class CoveredRoutesTests(unittest.TestCase):
             "v2_onboarding_opener_start": "llm_limit",
         },
         "routes/v2/admin.py": {
-            "v2_admin_learning_train": "heavy_limit",
             "v2_admin_regenerate_next_session_icebreaker": "regenerate_limit",
             "v2_admin_suggest_directives_queue": "llm_limit",
         },

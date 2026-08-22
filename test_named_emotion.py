@@ -1,21 +1,17 @@
 """Named emotion on the take (F2 handoff §2, 2026-08-03).
 
 The pre-recording emotion-naming answer rides the upload as a closed-
-vocabulary KEY, lands on intake_context, and is coach-visible (the
-user's own self-report — founder-decided). The threat/challenge BUCKET
-mapping is INTERNAL ONLY (CONSTRUCT fence): a log line for the drift
-metric, never a wire field.
+vocabulary KEY, lands on intake_context, and is coach-visible as the
+user's own self-report. It is never converted into a psychological bucket.
 
 Run: python3 -m unittest test_named_emotion
 """
 from __future__ import annotations
 
-import inspect
 import unittest
 
 from services.named_emotion import (
     EMOTION_KEYS,
-    log_drift_signal,
     normalize_named_emotion,
 )
 
@@ -36,19 +32,8 @@ class VocabularyTests(unittest.TestCase):
             "unsure",
         })
 
-    def test_unsure_is_captured_and_buckets_neutral_never_threat(self):
-        # Founder sign-off 2026-08-04. The FE's "Not sure" chip has always
-        # sent this key; before it was in the vocabulary those takes
-        # recorded NO emotion, so the drift metric under-sampled the least
-        # settled users. It must never be folded into `doubtful`: a
-        # non-answer about the question is not a threat-flavoured report
-        # about oneself, and booking it as one would bias the very metric
-        # this capture exists to produce.
+    def test_unsure_is_captured_verbatim(self):
         self.assertEqual(normalize_named_emotion("unsure"), "unsure")
-        with self.assertLogs("services.named_emotion", level="INFO") as cm:
-            log_drift_signal("u1", "s1", "unsure")
-        self.assertIn("bucket=neutral", cm.output[0])
-        self.assertNotIn("bucket=threat", cm.output[0])
 
     def test_normalize_accepts_keys_case_and_padding_tolerant(self):
         self.assertEqual(normalize_named_emotion("  Nervous "), "nervous")
@@ -59,15 +44,6 @@ class VocabularyTests(unittest.TestCase):
         self.assertIsNone(normalize_named_emotion(""))
         self.assertIsNone(normalize_named_emotion(None))
         self.assertIsNone(normalize_named_emotion(7))
-
-    def test_drift_log_carries_the_internal_bucket(self):
-        with self.assertLogs("services.named_emotion", level="INFO") as cm:
-            log_drift_signal("u1", "s1", "nervous")
-        self.assertIn("bucket=threat", cm.output[0])
-        with self.assertLogs("services.named_emotion", level="INFO") as cm:
-            log_drift_signal("u1", "s1", "determined")
-        self.assertIn("bucket=challenge", cm.output[0])
-
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class CaptureTests(unittest.TestCase):
@@ -82,24 +58,6 @@ class CaptureTests(unittest.TestCase):
 
     def test_absent_field_adds_nothing(self):
         self.assertNotIn("named_emotion", v2._recording_flow_tags({}))
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class FencePinTests(unittest.TestCase):
-
-    def test_coach_payload_serves_the_key(self):
-        src = inspect.getsource(v2.v2_coach_get_session)
-        self.assertIn('"named_emotion"', src)
-
-    def test_bucket_mapping_never_reaches_the_route_layer(self):
-        # CONSTRUCT fence: routes may import the normalizer and the log
-        # helper — never the bucket map. The word "bucket" appearing near
-        # named_emotion serialization would be the leak.
-        import routes.v2_routes as routes_mod
-        src = inspect.getsource(routes_mod)
-        self.assertNotIn("_BUCKETS", src)
-        self.assertNotIn("bucket_of", src)
-
 
 if __name__ == "__main__":
     unittest.main()

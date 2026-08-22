@@ -33,7 +33,6 @@ from services.rate_limits import heavy_limit, llm_limit, whisper_limit
 from services.upload_guard import (
     DeadlineExceeded, UploadTooLarge, deadline_for, read_capped,
 )
-from utils.errors import safe_error
 from routes.v2.common import (
     _COACH_PSEUDONYM_SALT,
     _LAB_MAX_AUDIO_MB,
@@ -51,7 +50,7 @@ config = Config()
 # willab COACH SURFACE — canonical /v2/coach/* namespace (FE §F / PR #73).
 #
 # The FE coach overlay + queue speak this namespace + vocabulary: friendly
-# `pseudonym`, per-snippet `coach_state` (both lanes folded), `direction_label`,
+# `pseudonym`, per-snippet `coach_state`,
 # state ∈ {pending,in_progress,done}. These routes are the alignment layer over
 # the same handlers/db methods — no new logic, just the FE-facing shape. The
 # namespace reversal (supersedes the earlier "re-gate /admin/*") is recorded in
@@ -93,10 +92,10 @@ def _coach_pseudonym(user_id):
 
 
 def _coach_state_map(session_id, rater_id=None):
-    """Per-snippet coach_state, folding the lanes → the resume read.
-    direction_label <- training_labels (PRIVATE, retired); note/tag/surfaced
-    <- coach_snippet_drafts (USER). THIS is what makes note/tag/surfaced
-    round-trip on reopen (not just the label — the bug this layer fixes).
+    """Per-snippet coach_state for the resume read.
+
+    Draft authoring and the authenticated coach's own blind confidence rating
+    are kept separate, then folded into one response object for the editor.
 
     RATING RESUME (2026-08-07). `rater_id` folds in THIS coach's own ternary
     rating so a rated snippet does not read as unanswered after a reload —
@@ -110,11 +109,6 @@ def _coach_state_map(session_id, rater_id=None):
     ratings at all, which is the safe default for any caller that has not
     thought about whose answer it is showing.
     """
-    labels = {}
-    for lab in (db.get_training_labels(session_id) or []):
-        sid = lab.get("snippet_id")
-        if sid is not None:
-            labels[str(sid)] = lab.get("value")
     drafts = {}
     for d in (db.get_coach_snippet_drafts(session_id) or []):
         sid = d.get("snippet_id")
@@ -123,15 +117,13 @@ def _coach_state_map(session_id, rater_id=None):
     ratings = (db.get_own_state_ratings_for_session(session_id, rater_id)
                if rater_id else {})
     out = {}
-    for sid in set(labels) | set(drafts) | set(ratings):
+    for sid in set(drafts) | set(ratings):
         d = drafts.get(sid) or {}
         r = ratings.get(sid) or {}
         out[sid] = {
-            "direction_label": labels.get(sid),
             "note": (d.get("note") or ""),
             "tag": d.get("tag"),
             "surfaced": bool(d.get("surfaced")),
-            "breakthrough_video_ref": d.get("breakthrough_video_ref"),
             "transcript_corrected": d.get("transcript_corrected"),
             # This coach's own ternary answer, or None/False when they have
             # not answered yet. `unrateable` is separate from `value` here for
@@ -146,8 +138,8 @@ def _coach_state_map(session_id, rater_id=None):
 def _coach_state_for(session_id, snippet_id):
     """One snippet's coach_state (default-empty when nothing authored yet)."""
     return _coach_state_map(session_id).get(str(snippet_id), {
-        "direction_label": None, "note": "", "tag": None, "surfaced": False,
-        "breakthrough_video_ref": None, "transcript_corrected": None,
+        "note": "", "tag": None, "surfaced": False,
+        "transcript_corrected": None,
         "rating_value": None, "rating_unrateable": False,
     })
 
@@ -675,18 +667,11 @@ def v2_coach_get_session(session_id):
     """② Coach review session payload (FE PR #73 → /v2/coach/sessions/<id>).
 
     Identity-stripped (S.4): pseudonym + domain only — NO user_id / name /
-    email. Per-snippet coach_state folds BOTH lanes so the coach's note / tag /
-    surfaced / direction ALL resume on reopen (the round-trip the old
-    label-only readout dropped).
+    email. Per-snippet coach_state folds the coach's note / tag / surfaced
+    authoring so it all resumes on reopen.
 
-    Moment order (founder 2026-07-24, T1 · 1.2): the take's moments are
-    returned MOST-SIGNIFICANT-FIRST (key → close-to-key → least distinctive)
-    via the deterministic, coach-only ``acoustic_read`` triage signal, so the
-    coach assesses the significant moments before the flat ones and neither a
-    hyper-positive (charisma) nor a hyper-negative (stress) extreme is buried.
-    See ``services.coach_moment_order``. Coach-only, never the shadow guess
-    (BLIND COACH), never the user readout (AC-9). Folded re-reads keep their
-    own order, appended after the take.
+    Moments remain in spoken order. Folded re-reads keep their own order and
+    are appended after the take.
     """
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -723,7 +708,7 @@ def v2_coach_get_session(session_id):
         def _shape_snip(snip, cstate_map, owning_sid, kind_default=None):
             _sid = str(snip.get("id"))
             _coach_state = dict(cstate_map.get(_sid, {
-                "direction_label": None, "note": "", "tag": None, "surfaced": False,
+                "note": "", "tag": None, "surfaced": False,
             }))
             return {
                 "id": snip.get("id"),
@@ -747,12 +732,6 @@ def v2_coach_get_session(session_id):
                 "slide_stickiness": snip.get("slide_stickiness"),
                 "overall_score": snip.get("overall_score"),
                 "rank": snip.get("rank"),
-                # Stress↔charisma potentiometer + outside-normal-range triage
-                # flag (founder 2026-07-14) — the coach's breakthrough-hunt
-                # signal (`outside_normal_range` = "potentially a key moment").
-                # Deterministic acoustic-only, COACH-ONLY (the user readout
-                # never carries it). Present on pieces rows.
-                "acoustic_read": snip.get("acoustic_read"),
                 # Spoken vs read (founder 2026-07-14) — which delivery this
                 # snippet is: the original spoken take or the re-read of the
                 # corrected text. The coach labels each by it; the FE renders
@@ -772,25 +751,12 @@ def v2_coach_get_session(session_id):
             _shape_snip(s, cstate, str(session_id))
             for s in (readout.get("snippets") or [])
         ]
-        # KEY MOMENTS FIRST (founder 2026-07-24, T1 · 1.2): order THIS take's
-        # moments most-significant-first (key → close-to-key → least
-        # distinctive) so the coach lands on the significant parts before the
-        # flat ones. Deterministic acoustic_read only (never the shadow guess —
-        # BLIND COACH); reorders the coach packet only (never the user readout
-        # — AC-9). The re-reads fold in AFTER, keeping their own order (their
-        # clock restarts at 0, so they are never cross-sorted with the take).
-        from services.coach_moment_order import (
-            order_coach_moments_by_significance,
-        )
-        snippets = order_coach_moments_by_significance(snippets)
-
         # Fold the paired mid-take RE-READS into this take's packet (founder
         # 2026-07-16: "re-reads are part of the take, revealed by clicking
         # next, never separate items"). Appended AFTER the parent's pieces —
         # NEVER sorted across sessions by start_offset_ms (the read's clock
         # restarts at 0). Best-effort: a fold hiccup degrades to the parent
         # take alone (LIVE LOOP).
-        _shadow_groups = [(str(session_id), list(snippets))]
         read_sessions = []
         try:
             read_sessions = [
@@ -820,22 +786,9 @@ def v2_coach_get_session(session_id):
             except Exception:
                 pass
             snippets.extend(_r_snips)
-            _shadow_groups.append((_rid, _r_snips))
         # One continuous "next" sequence across the merged packet.
         for _i, _s in enumerate(snippets):
             _s["index"] = _i
-
-        # Phase 4 / Prompt 1 (B3) — SHADOW direction predictions for this
-        # session's reviewed snippets. Fire-and-forget; logged to
-        # shadow_predictions, NEVER in this packet, influences nothing.
-        # Dispatched per OWNING session — a read's snippets must log under
-        # the read's own session id, never the spoken take's.
-        try:
-            from services.learning_serve import dispatch_shadow_predictions
-            for _own_sid, _grp in _shadow_groups:
-                dispatch_shadow_predictions(_own_sid, _grp)
-        except Exception as _shadow_err:
-            logger.warning("coach/get-session: shadow dispatch failed: %s", _shadow_err)
 
         ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
         insights = session.get("insights_payload") if isinstance(session.get("insights_payload"), dict) else {}
@@ -866,9 +819,8 @@ def v2_coach_get_session(session_id):
             "topic": (ctx or {}).get("topic") or "",
             # The user's pre-recording named emotion (F2 handoff §2) —
             # their own self-report, founder-decided coach-visible (not a
-            # machine guess; blind-coach untouched). The KEY only: its
-            # threat/challenge bucket is internal and never serialized
-            # (CONSTRUCT fence).
+            # machine guess; blind-coach untouched). No inferred
+            # psychological category is attached or serialized.
             "named_emotion": (ctx or {}).get("named_emotion"),
             "sent_at": session.get("guest_claimed_at") or session.get("created_at") or "",
             "state": _coach_session_state(session, cstate),
@@ -909,11 +861,6 @@ def v2_coach_get_session(session_id):
             # (split-sink/AC-9, never user-facing); the felt-state input the
             # coach factors into the audit's "Performance under feeling".
             "feelings": shape_coach_feelings(db.get_feelings_by_session(session_id)),
-            # Pre-take priming manipulation (founder 2026-07-13) — which framing
-            # this take was recorded under (threat/challenge/balanced). Coach-
-            # only, from the session row; never user-facing (AC-9 — a research
-            # manipulation label, not user content). Null on older/unprimed takes.
-            "priming_condition": session.get("priming_condition"),
         }), 200
     except Exception as e:
         logger.error("coach/get-session failed sid=%s err=%s", session_id, e, exc_info=True)
@@ -1084,54 +1031,10 @@ def _save_coach_snippet_lanes(session_id, snippet_id, body):
 
     Runs inside a request context (reads ``request.user_id``). Returns None
     on success, or a ``(flask_response, status)`` tuple to return directly.
-    Split-sink §2 unchanged: label → PRIVATE training_labels; note/tag/
-    surfaced/when/examples/transcript_corrected → USER coach_snippet_drafts.
+    Persists note/tag/surfaced/when/examples/transcript_corrected to the
+    user-facing coach draft. Blind confidence ratings use their own endpoint.
     """
-    from services.training_labels import (
-        VALID_VALUES, SCHEMA_VERSION, derive_override_flags,
-    )
     from services.insights_payload import VALID_TAGS
-
-    # ── PRIVATE lane — direction label (training_labels). ──
-    # `direction_label` (str | null). null CLEARS; a value upserts.
-    if "direction_label" in body:
-        value = body["direction_label"]
-        if value is None:
-            db.delete_training_label(session_id, snippet_id)
-        elif value in VALID_VALUES:
-            # Override signal (audit fix #2a): fresh label vs revision of a
-            # prior one, derived from the snippet's existing stored label.
-            # Coach labels BLIND → this is coach-vs-own-prior.
-            _prior_val = None
-            for _r in (db.get_training_labels(session_id) or []):
-                if str(_r.get("snippet_id")) == snippet_id:
-                    _prior_val = _r.get("value")
-                    break
-            _pre_filled, _overridden = derive_override_flags(_prior_val, value)
-            db.upsert_training_labels(session_id, str(request.user_id), [{
-                "snippet_id": snippet_id,
-                "schema_version": SCHEMA_VERSION,
-                "value": value,
-                "was_pre_filled": _pre_filled,
-                "was_overridden": _overridden,
-            }])
-            # Phase 4 / Prompt 1 (B3, SHADOW) — backfill the coach's actual
-            # label onto the shadow prediction + best-effort auto-retrain.
-            # The new model stays status=shadow and influences NOTHING.
-            try:
-                from services.learning_serve import maybe_auto_retrain
-                db.backfill_shadow_coach_actual(snippet_id, value)
-                maybe_auto_retrain()
-            except Exception as _learn_err:
-                logger.warning(
-                    "coach/save-snippet: shadow learn hook failed: %s",
-                    _learn_err,
-                )
-        else:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": f"direction_label: must be one of {', '.join(VALID_VALUES)} or null",
-            }), 422
 
     # ── USER lane — note / tag / surfaced / when / examples (drafts). ──
     draft_fields: dict = {}
@@ -1176,29 +1079,6 @@ def _save_coach_snippet_lanes(session_id, snippet_id, body):
                 if isinstance(ex, str) and ex.strip():
                     cleaned_ex.append(ex.strip()[:500])
             draft_fields["examples"] = cleaned_ex
-    # Breakthrough video — a public URL (str | null). null/empty CLEARS.
-    # The explanation text is the `note`; this stores only the video URL.
-    if "breakthrough_video_ref" in body:
-        bvr_raw = body.get("breakthrough_video_ref")
-        if bvr_raw is not None and not isinstance(bvr_raw, str):
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "breakthrough_video_ref: must be a string or null",
-            }), 422
-        bvr = (bvr_raw or "").strip()
-        if len(bvr) > 2048:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "breakthrough_video_ref: 2048 chars max",
-            }), 422
-        if bvr and not (
-            bvr.startswith("https://") or bvr.startswith("http://")
-        ):
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "breakthrough_video_ref: must be an http(s) URL",
-            }), 422
-        draft_fields["breakthrough_video_ref"] = bvr or None
     # Coach-corrected transcript (founder 2026-07-06) — a real coach-
     # authored artifact, distinct from `note`. Free tier the instant it's
     # saved + surfaced (no payment check anywhere in this path).
@@ -1477,35 +1357,26 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
 def v2_coach_save_snippet(session_id, snippet_id):
     """③ willab coach per-snippet immediate save (E1 / §B.3 / S.5).
 
-    FE contract (PR #73): body uses `direction_label` (not `label`); the
-    response echoes the persisted `coach_state` (both lanes folded), which the
-    FE writes back into its local state. Sending `direction_label: null` CLEARS
-    the label.
-
     Persists ONE snippet's coach authoring immediately, so reopening the
     overlay resumes where the coach left off (no all-in-memory-until-publish
     loss). Partial saves are first-class — send only the fields that changed.
 
     Body (any subset)::
-        { "label"?:   "threat"|"ambiguous"|"challenge"   // or {value, was_pre_filled, was_overridden}
-          "note"?:    "..."        // empty/whitespace -> cleared
+        { "note"?:    "..."        // empty/whitespace -> cleared
           "tag"?:     "strong"|"to_work_on"
           "surfaced"?: bool         // does this snippet reach the user?
           "transcript_corrected"?: "..."  // FREE tier the instant it's saved (2026-07-06)
           "when"?:    "...", "examples"?: ["..."] }       // optional PR-2 fields
 
-    TWO-LANE write, NO cross-derivation (split-sink §2 / S.1):
-      * label -> PRIVATE training_labels (direction-v1). Never user-facing.
-      * note/tag/surfaced/when/examples -> USER coach_snippet_drafts (assembled
-        into insights_payload at publish). The tag is NOT derived from the
-        label, nor vice-versa — separate request fields, separate stores.
+    note/tag/surfaced/when/examples are assembled into the user-facing payload
+    at publish. Blind confidence ratings use their own state-rating endpoint.
 
     Idempotent on (session_id, snippet_id). NO publish-floor validation here
     (drafts are partial; the floor is enforced at publish). Coach-facing only:
     the response echoes the coach's own input — no salience/control score, no
     real identity, never serialized to the user.
 
-    200 { status, session_id, snippet_id, saved: { label?, draft? } }
+    200 { coach_state }
     400 INVALID_INPUT · 404 SESSION_NOT_FOUND / SNIPPET_NOT_FOUND · 422 invalid value
     """
     if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
@@ -1579,23 +1450,18 @@ def v2_coach_session_recut(session_id):
                 "error": "Cannot re-cut a published session.",
             }), 409
         # Guard the PARTIALLY-REVIEWED case: re-cut mints new snippet ids, so
-        # any coach labels/drafts already on this session would be orphaned —
-        # and labels are private-lane training signal, not just UX. Refuse
-        # unless ?force=true (a deliberate "discard my N labels" choice the FE
-        # must confirm). On force we delete the now-orphaned rows so they don't
-        # pollute the training set with dead-snippet references.
+        # any coach drafts already on this session would be orphaned. Refuse
+        # unless ?force=true so the discard is explicit.
         _force = (request.args.get("force") or "").strip().lower() in ("1", "true", "yes")
-        _labels = db.get_training_labels(session_id) or []
         _drafts = db.get_coach_snippet_drafts(session_id) or []
-        if (_labels or _drafts) and not _force:
+        if _drafts and not _force:
             return jsonify({
-                "code": "RECUT_WOULD_DISCARD_LABELS",
+                "code": "RECUT_WOULD_DISCARD_COACH_WORK",
                 "error": (
                     "Re-cut mints new snippets and would discard the coach "
-                    "labels/notes already on this session. Re-send with "
+                    "notes already on this session. Re-send with "
                     "?force=true to re-cut and discard them."
                 ),
-                "labels": len(_labels),
                 "drafts": len(_drafts),
             }), 409
         recording_id = session.get("recording_1_id")
@@ -1621,15 +1487,12 @@ def v2_coach_session_recut(session_id):
             return jsonify({"code": "NO_AUDIO", "error": "Stored audio is empty."}), 422
 
         # Replace the existing auto-cut snippets, then re-run the segmenter.
-        # On a forced re-cut, also clear the now-orphaned coach labels/drafts
-        # (the coach explicitly chose to discard them) so dead-snippet rows
-        # don't linger in the private-lane training set.
-        if _force and (_labels or _drafts):
-            db.delete_training_labels_for_session(session_id)
+        # On a forced re-cut, also clear the now-orphaned coach drafts.
+        if _force and _drafts:
             db.delete_coach_snippet_drafts_for_session(session_id)
             logger.info(
-                "recut: force-discarded coach work sid=%s labels=%d drafts=%d",
-                session_id, len(_labels), len(_drafts),
+                "recut: force-discarded coach work sid=%s drafts=%d",
+                session_id, len(_drafts),
             )
         db.v2_delete_lab_snippets_for_recording(recording_id)
         from services.lab_recording import process_lab_recording
@@ -1780,195 +1643,6 @@ def v2_coach_session_video(session_id):
         logger.error("coach/session-video failed sid=%s err=%s", session_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to store coach video"}), 500
-
-
-@v2_bp.route(
-    "/coach/sessions/<session_id>/snippets/<snippet_id>/breakthrough-video",
-    methods=["POST"],
-)
-@heavy_limit
-@require_admin_or_coach
-def v2_coach_snippet_breakthrough_video(session_id, snippet_id):
-    """Per-snippet coach BREAKTHROUGH VIDEO upload (Phase 2 of #131; founder
-    2026-06-20 "upload a file in review").
-
-    A coach attaches one short explanatory video to a breakthrough snippet
-    during review. REUSES the coach video transport/storage (services/coach_
-    video_storage — same bucket/path as the session feedback video; no new
-    infra). Stores the file, persists the public URL on the snippet's DRAFT
-    (coach_snippet_drafts.breakthrough_video_ref); at publish the contract
-    folds it into insights_payload.snippet_notes and build_readout_from_session
-    surfaces it as the snippet's top-level breakthrough_video_ref (all wired in
-    #131). The explanation TEXT is the coach note itself — this stores only the
-    video. Re-upload overwrites (deterministic storage key).
-
-    Requires migrations/add_breakthrough_video_ref_to_coach_snippet_drafts.sql.
-
-    multipart/form-data: video_file (.mp4/.mov/.webm/.m4v).
-    200 { status, session_id, snippet_id, breakthrough_video_ref }
-    400 INVALID_INPUT · 404 SESSION/SNIPPET_NOT_FOUND · 413 · 415 · 502
-    """
-    # Local import on purpose: binds at CALL time, so tests that monkeypatch
-    # services.coach_video_storage attributes take effect.
-    from services.coach_video_storage import (
-        coach_media_public_url, put_coach_object_bytes,
-    )
-    import os
-
-    if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
-        return jsonify({
-            "code": "INVALID_INPUT",
-            "error": "session_id and snippet_id must be UUIDs",
-        }), 400
-    try:
-        session = db.v2_get_session_by_id(session_id)
-        if not session:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        # Snippet must belong to THIS session OR one of its folded mid-take
-        # re-reads (founder 2026-07-16) — the video persists under the
-        # snippet's OWNING session (the draft round-trips via the read's own
-        # session id in the merged packet).
-        _owner_sid = _snippet_owner_map(session_id).get(snippet_id)
-        if not _owner_sid:
-            return jsonify({
-                "code": "SNIPPET_NOT_FOUND", "error": "Snippet not in this session",
-            }), 404
-
-        max_video_mb = max(1, int(getattr(config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100)))
-        max_video_bytes = max_video_mb * 1024 * 1024
-        content_length = request.content_length or 0
-        if content_length and content_length > max_video_bytes:
-            return jsonify({
-                "code": "PAYLOAD_TOO_LARGE",
-                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
-            }), 413
-
-        video_file = request.files.get("video_file")
-        if video_file is None or not (video_file.filename or "").strip():
-            return jsonify({"code": "INVALID_INPUT", "error": "video_file is required"}), 400
-
-        safe_name = secure_filename(video_file.filename or "")
-        ext = os.path.splitext(safe_name)[1].lower()
-        if ext not in {".mp4", ".mov", ".webm", ".m4v"}:
-            return jsonify({
-                "code": "INVALID_VIDEO_FORMAT",
-                "error": "Supported formats: .mp4, .mov, .webm, .m4v",
-            }), 415
-
-        video_bytes = video_file.read() or b""
-        if not video_bytes:
-            return jsonify({"code": "INVALID_INPUT", "error": "video_file is empty"}), 400
-        if len(video_bytes) > max_video_bytes:
-            return jsonify({
-                "code": "PAYLOAD_TOO_LARGE",
-                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
-            }), 413
-
-        # Subsystem V — idempotency (retry dedupe): reuse the stored take.
-        _idem = (request.form.get("upload_idempotency_key") or "").strip() or None
-        if _idem:
-            _existing = db.get_coach_video_asset_by_idempotency_key(_idem)
-            if _existing and _existing.get("video_ref"):
-                db.upsert_coach_snippet_draft(
-                    _owner_sid, snippet_id,
-                    {"breakthrough_video_ref": _existing["video_ref"]},
-                    updated_by=str(request.user_id),
-                )
-                return jsonify({
-                    "status": "ok", "session_id": session_id, "snippet_id": snippet_id,
-                    "take_session_id": _owner_sid,
-                    "breakthrough_video_ref": _existing["video_ref"], "deduped": True,
-                    # Authoritative echo (founder 2026-07-17: the direction
-                    # chip un-marked after an upload) — the FE writes THIS
-                    # back instead of clobbering its local coach_state.
-                    "coach_state": _coach_state_for(_owner_sid, snippet_id),
-                }), 200
-
-        bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
-        # Subsystem V — NON-deterministic key so a re-record does NOT overwrite
-        # the prior take. User-facing ref is repointed to the newest below.
-        storage_key = f"coach-snippet-breakthrough/{_owner_sid}/{snippet_id}/{uuid.uuid4().hex}{ext}"
-        try:
-            put_coach_object_bytes(
-                bucket, storage_key, video_bytes,
-                video_file.content_type or "video/mp4",
-            )
-        except Exception as upload_err:
-            logger.error(
-                "breakthrough video upload failed sid=%s snip=%s err=%s",
-                session_id, snippet_id, upload_err,
-            )
-            return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to upload video to storage."}), 502
-
-        breakthrough_video_ref = coach_media_public_url(storage_key)
-        # Persist on the snippet draft (USER lane) — same field/path as the
-        # publish payload's breakthrough_video_ref. Best-effort: a None return
-        # means the column is missing (run the migration) — the file is stored
-        # and the URL is valid; a re-upload after the migration persists it.
-        saved = db.upsert_coach_snippet_draft(
-            _owner_sid, snippet_id,
-            {"breakthrough_video_ref": breakthrough_video_ref},
-            updated_by=str(request.user_id),
-        )
-        # Subsystem V — capture the take into the training corpus (best-effort;
-        # NEVER breaks the upload). The breakthrough comment IS the snippet note
-        # (read whatever exists at record time; may be NULL if not written yet).
-        try:
-            from services.coach_video_capture import capture_coach_video
-            _note_now = None
-            for _d in (db.get_coach_snippet_drafts(_owner_sid) or []):
-                if str(_d.get("snippet_id")) == snippet_id:
-                    _note_now = (_d.get("note") or None)
-                    break
-            capture_coach_video(
-                database=db, session_id=_owner_sid, content_type="breakthrough",
-                recorded_by=str(request.user_id), video_ref=breakthrough_video_ref,
-                comment_text=_note_now, snippet_id=snippet_id,
-                device=(request.form.get("device") or None),
-                source=(request.form.get("source") or None),
-                duration=request.form.get("duration"),
-                idempotency_key=_idem,
-                video_bytes=video_bytes, filename=safe_name,
-            )
-        except Exception as _cap_err:
-            logger.warning(
-                "breakthrough video corpus capture failed sid=%s snip=%s: %s (non-fatal)",
-                session_id, snippet_id, _cap_err,
-            )
-        if saved is None:
-            logger.warning(
-                "breakthrough video: draft persist returned None sid=%s snip=%s "
-                "(run add_breakthrough_video_ref_to_coach_snippet_drafts.sql?)",
-                session_id, snippet_id,
-            )
-        logger.info(
-            "breakthrough video stored sid=%s snip=%s key=%s",
-            session_id, snippet_id, storage_key,
-        )
-        return jsonify({
-            "status": "ok",
-            "session_id": session_id,
-            "snippet_id": snippet_id,
-            # The session the draft actually persists under (a folded re-read
-            # snippet routes to its own session, 2026-07-16).
-            "take_session_id": _owner_sid,
-            "breakthrough_video_ref": breakthrough_video_ref,
-            # Authoritative echo (founder 2026-07-17: the direction chip
-            # un-marked after an upload) — carries the persisted
-            # direction_label/note/tag/surfaced + the fresh video ref, so
-            # the FE restores the chips from truth instead of clobbering
-            # its local coach_state.
-            "coach_state": _coach_state_for(_owner_sid, snippet_id),
-        }), 200
-    except Exception as e:
-        logger.error(
-            "coach/snippet-breakthrough-video failed sid=%s snip=%s err=%s",
-            session_id, snippet_id, e, exc_info=True,
-        )
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to store breakthrough video",
-        }), 500
 
 
 @v2_bp.route("/coach/audits", methods=["POST"])
@@ -2384,11 +2058,9 @@ def v2_coach_save_feedback(session_id):
 
     Body (FE sends the same shape the old publish door took — save-at-once,
     no per-keystroke autosave):
-      snippets?: [{id, note?, tag?, surfaced?, direction?|direction_label?,
-                   transcript_corrected?, ...}]   → the two-lane store, via
+      snippets?: [{id, note?, tag?, surfaced?, transcript_corrected?, ...}]
+                  → the coach draft store, via
                   the SAME shared helper as every other door (no drift);
-      labels?:   [{snippet_id, value, ...}]       → private training_labels
-                  (harmless duplicate of snippets[].direction — idempotent);
       insights_payload? / overall_message? / notify_client?  → accepted and
                   IGNORED here (assembly happens at publish; persisting
                   insights_payload pre-publish would leak the coach layer to
@@ -2411,9 +2083,7 @@ def v2_coach_save_feedback(session_id):
         # the read's own session id, where all downstream readers look).
         _owners = {}
         _inline = body.get("snippets")
-        _labels = body.get("labels")
-        if (isinstance(_inline, list) and _inline) \
-                or (isinstance(_labels, list) and _labels):
+        if isinstance(_inline, list) and _inline:
             _owners = _snippet_owner_map(session_id)
 
         # ── Persist the inline authoring (same doors-can't-drift helper). ──
@@ -2434,39 +2104,12 @@ def v2_coach_save_feedback(session_id):
                     }), 404
                 _fields = dict(_entry)
                 _fields.pop("id", None)
-                if "direction" in _fields and "direction_label" not in _fields:
-                    _fields["direction_label"] = _fields.pop("direction")
                 _lane_err = _save_coach_snippet_lanes(
                     _owners[_snip_id], _snip_id, _fields,
                 )
                 if _lane_err is not None:
                     return _lane_err
                 _n_saved += 1
-
-        # ── labels[] (old publish-body shape) — private lane, idempotent. ──
-        if isinstance(_labels, list) and _labels:
-            try:
-                from services.training_labels import validate_publish_labels
-                clean = validate_publish_labels(
-                    _labels, set(_owners), require_all=False)
-                # Group by owning session — a label on a folded read snippet
-                # must store under the read's session id (that's where the
-                # key-moment selection and the learning export read them).
-                _by_owner = {}
-                for _lab in clean:
-                    _own = _owners.get(str(_lab.get("snippet_id"))) \
-                        or str(session_id)
-                    _by_owner.setdefault(_own, []).append(_lab)
-                for _own, _own_labels in _by_owner.items():
-                    db.upsert_training_labels(
-                        _own, str(request.user_id), _own_labels)
-            except Exception as _lab_err:
-                # This is a DB/PostgREST exception, not a validation
-                # message: its text carries table + column names.
-                return safe_error(
-                    "INVALID_INPUT", 422,
-                    message="Those labels could not be saved.",
-                    exc=_lab_err, log="feedback: label upsert failed")
 
         if not db.set_session_feedback_saved(session_id):
             return jsonify({"code": "V2_ERROR",
@@ -2640,8 +2283,8 @@ def v2_coach_arc_review_state(arc_id):
 # BLIND COACH — these two endpoints deliberately show the coach the machine's
 # guess. That is safe here (a star is not a confidence label) and unsafe on the
 # labeling lane, so they are kept STRICTLY SEPARATE from the blind
-# confidence/direction labeling surface: different endpoints, and the payload
-# carries no acoustic_read, no direction, and no shadow prediction. A coach can
+# blind confidence-labeling surface: different endpoints, and the payload
+# carries no acoustic read or shadow prediction. A coach can
 # judge the ADVICE with full sight and must still label the VOICE blind.
 # Pinned by test_star_verdicts.py.
 @v2_bp.route("/coach/arc/<arc_id>/stars", methods=["GET"])

@@ -2,7 +2,7 @@
 
   /v2/explore/*        enter an arc, its moments/breakthroughs/progress,
                        per-take feedback, setup + context document
-  /v2/arc/*            checkout, redeem, unlock, unlock-moments, the game
+  /v2/arc/*            checkout, redeem, unlock, unlock-moments
                        + snippet-library stubs
 
 Plus the arc leaves the other domain modules depend on: deck identity and
@@ -30,7 +30,7 @@ from auth import optional_auth, require_auth
 from config import Config
 from routes.admin import is_admin, is_coach
 from routes.v2.blueprint import v2_bp
-from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
+from routes.v2.common import _resolve_snippet_audio_url
 from services.db import db
 from services.token_prices import price_of as _price_of
 
@@ -347,6 +347,73 @@ def _arc_owned_by_caller(arc_id):
     return owned, sessions
 
 
+def _serialize_arc_voice_album(arc_id, sessions):
+    """Build the score-free Album payload for one owned project."""
+    entries = db.list_voice_album(str(arc_id)) or []
+
+    def _deck_pos(entry):
+        slide_index = entry.get("slide_index") if isinstance(entry, dict) else None
+        positioned = isinstance(slide_index, int) and not isinstance(slide_index, bool)
+        return (
+            0 if positioned else 1,
+            slide_index if positioned else 0,
+            str(entry.get("entered_at") or "") if isinstance(entry, dict) else "",
+        )
+
+    entries = sorted(entries, key=_deck_pos)
+    take_index_by_sid = {
+        str(session.get("id")): session.get("take_index") for session in sessions
+    }
+    snips_by_sid: dict = {}
+    out = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        session_id = str(entry.get("take_session_id") or "")
+        if entry.get("source_kind") == "practice_attempt":
+            attempt_id = str(entry.get("practice_attempt_id") or "")
+            attempt = db.get_confident_voice_practice_attempt(attempt_id)
+            if not attempt:
+                continue
+            out.append({
+                "snippet_id": f"practice:{attempt_id}",
+                "take_session_id": entry.get("take_session_id"),
+                "take_index": take_index_by_sid.get(session_id),
+                "slide_index": entry.get("slide_index"),
+                "entered_at": entry.get("entered_at"),
+                "text": str(attempt.get("transcript") or "").strip(),
+                "audio_url": _resolve_feedback_audio(attempt.get("audio_ref")),
+                "start_offset_ms": 0,
+                "duration_ms": attempt.get("duration_ms"),
+            })
+            continue
+        snippet = None
+        if session_id:
+            if session_id not in snips_by_sid:
+                try:
+                    snips_by_sid[session_id] = {
+                        str(item.get("id")): item
+                        for item in (db.get_snippets_by_session(session_id) or [])
+                    }
+                except Exception:
+                    snips_by_sid[session_id] = {}
+            snippet = snips_by_sid[session_id].get(str(entry.get("snippet_id")))
+        source = snippet or {}
+        out.append({
+            "snippet_id": entry.get("snippet_id"),
+            "take_session_id": entry.get("take_session_id"),
+            "take_index": take_index_by_sid.get(session_id),
+            "slide_index": entry.get("slide_index"),
+            "entered_at": entry.get("entered_at"),
+            "text": (source.get("transcript")
+                     or source.get("transcription_text") or "").strip(),
+            "audio_url": (_resolve_snippet_audio_url(source) if snippet else None),
+            "start_offset_ms": source.get("start_offset_ms"),
+            "duration_ms": source.get("duration_ms"),
+        })
+    return out
+
+
 @v2_bp.route("/explore/arc/<arc_id>/voice-album", methods=["GET"])
 @require_auth
 def v2_explore_arc_voice_album(arc_id):
@@ -374,73 +441,7 @@ def v2_explore_arc_voice_album(arc_id):
         if not owned:
             return jsonify({"code": "NOT_FOUND",
                             "error": "arc not found"}), 404
-        entries = db.list_voice_album(str(arc_id)) or []
-
-        # The DB's entered_at base order is CAPTURE order — lock slide 7's
-        # moment before slide 2's and the album would read 7-then-2 forever.
-        # The album reads in DECK position; same-slide ties keep earn order.
-        def _deck_pos(e):
-            si = e.get("slide_index") if isinstance(e, dict) else None
-            positioned = isinstance(si, int) and not isinstance(si, bool)
-            return (0 if positioned else 1, si if positioned else 0,
-                    str(e.get("entered_at") or "") if isinstance(e, dict)
-                    else "")
-        entries = sorted(entries, key=_deck_pos)
-        take_index_by_sid = {str(s.get("id")): s.get("take_index")
-                             for s in sessions}
-        snips_by_sid: dict = {}
-        out = []
-        for e in entries:
-            if not isinstance(e, dict):
-                continue
-            sid = str(e.get("take_session_id") or "")
-            if e.get("source_kind") == "practice_attempt":
-                attempt_id = str(e.get("practice_attempt_id") or "")
-                attempt = db.get_confident_voice_practice_attempt(attempt_id)
-                if not attempt:
-                    continue
-                out.append({
-                    # Stable playback key for the existing Album client. It is
-                    # deliberately namespaced so it can never be mistaken for
-                    # the original snippet that prompted the exercise.
-                    "snippet_id": f"practice:{attempt_id}",
-                    "take_session_id": e.get("take_session_id"),
-                    "take_index": take_index_by_sid.get(sid),
-                    "slide_index": e.get("slide_index"),
-                    "entered_at": e.get("entered_at"),
-                    "text": str(attempt.get("transcript") or "").strip(),
-                    "audio_url": _resolve_feedback_audio(
-                        attempt.get("audio_ref")),
-                    "start_offset_ms": 0,
-                    "duration_ms": attempt.get("duration_ms"),
-                })
-                continue
-            snip = None
-            if sid:
-                if sid not in snips_by_sid:
-                    try:
-                        snips_by_sid[sid] = {
-                            str(s.get("id")): s
-                            for s in (db.get_snippets_by_session(sid)
-                                      or [])}
-                    except Exception:
-                        snips_by_sid[sid] = {}
-                snip = snips_by_sid[sid].get(str(e.get("snippet_id")))
-            _s = snip or {}
-            out.append({
-                "snippet_id": e.get("snippet_id"),
-                "take_session_id": e.get("take_session_id"),
-                "take_index": take_index_by_sid.get(sid),
-                "slide_index": e.get("slide_index"),
-                "entered_at": e.get("entered_at"),
-                # The student's own words, verbatim — never a paraphrase.
-                "text": (_s.get("transcript")
-                         or _s.get("transcription_text") or "").strip(),
-                "audio_url": (_resolve_snippet_audio_url(_s)
-                              if snip else None),
-                "start_offset_ms": _s.get("start_offset_ms"),
-                "duration_ms": _s.get("duration_ms"),
-            })
+        out = _serialize_arc_voice_album(arc_id, sessions)
         return jsonify({"arc_id": arc_id, "entries": out}), 200
     except Exception as e:
         logger.error("explore/arc voice-album failed arc=%s: %s", arc_id,
@@ -449,13 +450,36 @@ def v2_explore_arc_voice_album(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
 
 
+@v2_bp.route("/voice-album", methods=["GET"])
+@require_auth
+def v2_voice_album():
+    """The signed-in user's canonical cross-project Voice Album."""
+    try:
+        sessions = db.v2_list_user_lab_sessions(str(request.user_id)) or []
+        by_arc: dict = {}
+        for session in sessions:
+            arc_id = str(session.get("arc_id") or "")
+            if arc_id:
+                by_arc.setdefault(arc_id, []).append(session)
+        entries = []
+        for arc_id, arc_sessions in by_arc.items():
+            for entry in _serialize_arc_voice_album(arc_id, arc_sessions):
+                entries.append({"arc_id": arc_id, **entry})
+        entries.sort(key=lambda item: str(item.get("entered_at") or ""), reverse=True)
+        return jsonify({"entries": entries}), 200
+    except Exception as error:
+        logger.error("voice-album failed user=%s: %s", request.user_id, error,
+                     exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
 @require_auth
 def v2_explore_arc_best_presentation(arc_id):
     """Best-Presentation (willab Prompt D) — REPLACES the audit. After the arc's
-    3 takes, the user's strongest-rated delivery of each slide (challenge lifts
-    the rating, threat lowers it), lightly stitched into 'ideal presentation'
-    text, with coach-confirmed breakthrough markers.
+    3 takes, the user's strongest-supported delivery of each slide is lightly
+    stitched into 'ideal presentation' text, with coach-confirmed markers.
 
     SCORE-FREE (AC-9). Ownership: the arc must contain a session owned by the
     caller, else 404. Not-ready (<3 takes) still returns 200 with populated
@@ -496,44 +520,6 @@ def v2_explore_arc_best_presentation(arc_id):
         sentry_sdk.capture_exception(e)
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to build best presentation",
-        }), 500
-
-
-@v2_bp.route("/explore/arc/<arc_id>/breakthroughs", methods=["GET"])
-@require_auth
-def v2_explore_arc_breakthroughs(arc_id):
-    """ALL coach-confirmed breakthrough moments in this arc, newest → oldest
-    (founder #5 — the "explore my breakthrough moments" list behind the button
-    below the best presentation). Same gate as the best-presentation badge (a
-    threat→challenge turn on the coach's OWN labels, never a model guess), but
-    every breakthrough snippet across all takes, not just the per-slide winner.
-
-    SCORE-FREE (AC-9). Ownership: the arc must contain a session owned by the
-    caller, else 404. An empty list (no coach-confirmed breakthroughs yet) is a
-    200 with breakthroughs=[] — the FE shows an empty-state, not an error.
-
-    Response 200 {
-        arc_id, count,
-        breakthroughs: [ { snippet_id, session_id, take_index, created_at,
-                           slide_index, transcript, audio_ref,
-                           start_offset_ms, duration_ms, note } ]
-    }
-             404 NOT_FOUND · 500 V2_ERROR
-    """
-    try:
-        from services.best_presentation import build_arc_breakthroughs
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        # Single-deliverable (founder 2026-07-17): the breakthroughs list is
-        # free — no paywall.
-        return jsonify({"arc_id": arc_id, **build_arc_breakthroughs(arc_id)}), 200
-    except Exception as e:
-        logger.error("explore/arc breakthroughs failed arc=%s: %s", arc_id,
-                     e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to load breakthroughs",
         }), 500
 
 
@@ -852,14 +838,13 @@ def v2_unlock_moments(arc_id):
 def v2_get_moment_explanation(arc_id, moment_id):
     """ONE key moment's EXPLANATION (single deliverable, founder 2026-07-17;
     per-moment path = the FE contract pin, their 748c33d): the coach's note
-    text and/or video + playback span for the tapped moment. Gated by the
+    and playback span for the tapped moment. Gated by the
     5-credit moments unlock; the 402 carries the price so the unlock prompt
     renders from this response alone. AC-9: qualitative content only — no
-    scores, and the private direction label never serializes (it only
-    selects, same rule as the feedback page).
+    scores, and internal candidate-decision evidence never serializes.
 
-    Response is FLAT (the FE reads top-level `note` + `video_ref`):
-    200 { arc_id, id, note, video_ref, transcript, audio_ref,
+    Response is FLAT:
+    200 { arc_id, id, note, transcript, audio_ref,
           start_offset_ms, duration_ms, slide_index, recording_kind }
     402 { code: MOMENTS_LOCKED, price_credits } · 404 · 500
     """
@@ -886,13 +871,11 @@ def v2_get_moment_explanation(arc_id, moment_id):
                     sid, [str(r.get("id")) for r in read_rows if r.get("id")]):
                 if str(m.get("snippet_id")) != _want:
                     continue
-                # FLAT top-level note/video_ref (the FE reads exactly these);
-                # the playback fields ride along for the moment player.
+                # The playback fields ride along for the moment player.
                 return jsonify({
                     "arc_id": arc_id,
                     "id": m.get("snippet_id"),
                     "note": (m.get("comment_text") or None),
-                    "video_ref": (m.get("comment_video_ref") or None),
                     "take_session_id": m.get("take_session_id"),
                     "transcript": m.get("transcript"),
                     "audio_ref": m.get("audio_ref"),
@@ -923,7 +906,7 @@ def v2_get_moment_explanation(arc_id, moment_id):
 def _moment_suggestions_enabled() -> bool:
     """Star suggestions on the SD ideal text (founder 2026-07-18): grey
     suggestion stars (emphasize / replace) resolved coach-label-first, else
-    the deterministic potentiometer (NEVER the shadow model — blind coach);
+    the defined voice-confidence read (never an experiment model);
     orange verified stars carry the coach message. DEFAULT OFF."""
     return (os.getenv("MOMENT_SUGGESTIONS_ENABLED") or "0").strip().lower() \
         in ("1", "true", "yes")
@@ -959,22 +942,19 @@ def _take_full_text(session_id):
 
 
 def _take_key_moments(session_id, read_session_ids=None):
-    """A take's key moments: coach-SURFACED snippets that reached CONFIDENCE
-    QUORUM = YES (founder ruling 2026-08-14, SPEC §17 `conf-q-v1`), from the
+    """A take's key moments: coach-SURFACED snippets with an explicit latest
+    professional-coach CONFIDENCE YES, from the
     spoken take AND ALL its paired mid-take re-reads. Each: playback span +
     the coach's comment (text and/or video) + recording_kind + slide_index.
 
-    Both halves of the old rule are gone. It required a `challenge` OR
-    `threat` label from the retired construct — a corpus that froze when the
-    coach's control was deleted on 2026-08-07, so this returned EMPTY for
-    every session reviewed after that date, including the ones behind the
-    paid unlock. And it disagreed with the game, which counted `challenge`
-    alone: the same moment was a key moment here and a wrong answer there.
-    One construct now serves both.
+    The obsolete psychological-classification rule is gone. It depended on a
+    frozen corpus and could silently return no moments for newly reviewed
+    sessions. The professional confidence judgment is now the only product
+    decision used here.
 
-    SURFACED still gates: quorum says the voice was confident, the coach's
-    push says it is ready for the student. No scores (AC-9) — the quorum
-    verdict SELECTS and is never serialized."""
+    SURFACED still gates: the professional judgment selects the clip and the
+    coach's push says it is ready for the student. Blind peer quorum is never
+    read. No scores or verdict values are serialized."""
     _reads = read_session_ids or []
     if isinstance(_reads, str):
         _reads = [_reads]
@@ -1019,17 +999,6 @@ def _take_key_moments(session_id, read_session_ids=None):
                 "start_offset_ms": s.get("start_offset_ms"),
                 "duration_ms": s.get("duration_ms"),
                 "comment_text": (d.get("note") or "").strip() or None,
-                # Resolved for the SAME reason the audio above is, and it was
-                # the one ref still going out raw (founder 2026-08-11, deck
-                # slice 4 — the coach's video moves into the chunk modal, so
-                # a dead one is now dead in front of the student's own text).
-                # A coach video is minted as a PUBLIC URL on the coach bucket's
-                # base, and R2 only answers on that base once the bucket's dev
-                # URL is enabled or a custom domain is attached — the exact
-                # 403-on-every-play class the resolver exists for. Signing is
-                # bucket-authoritative and works regardless of public access.
-                "comment_video_ref": _resolve_feedback_audio(
-                    d.get("breakthrough_video_ref")),
             })
     return out
 
@@ -1045,10 +1014,7 @@ def _moments_entitled(arc_id) -> bool:
 
 
 def _moment_explanations_map(session_ids) -> dict:
-    """snippet_id → {"has_video": bool} for every coach EXPLANATION (a
-    surfaced draft carrying a note and/or video). Key presence = an
-    explanation exists (the ORANGE verified star); has_video drives the
-    blurred-video affordance. Batch per session; best-effort."""
+    """Metadata for every surfaced coach explanation. Batch and best-effort."""
     out: dict = {}
     for sid in {str(s) for s in (session_ids or []) if s}:
         try:
@@ -1056,10 +1022,8 @@ def _moment_explanations_map(session_ids) -> dict:
                 _snip = d.get("snippet_id")
                 if _snip is None or not d.get("surfaced"):
                     continue
-                if (d.get("note") or "").strip() \
-                        or d.get("breakthrough_video_ref"):
+                if (d.get("note") or "").strip():
                     out[str(_snip)] = {
-                        "has_video": bool(d.get("breakthrough_video_ref")),
                         # Ticket 6: a blog post the coach attached by hand.
                         # Carried as the raw slug here; resolved to
                         # {slug,title,url} by _moment_reference (which drops it
@@ -1436,11 +1400,10 @@ def v2_explore_get_context_document(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to load"}), 500
 
 
-# ── willab — game + snippet library (founder 2026-07-06: PAID, STUBBED) ─
+# ── willab — snippet library (founder 2026-07-06: STUBBED) ─────────────
 #
-# Neither feature exists yet — these are gated stubs so the FE can wire the
-# paywall now: unpaid → 402 (drives purchase intent pre-launch); PAID → an
-# honest 501 "not yet available" (never a fake unlock).
+# The feature does not exist yet — this is an honest 501 stub rather than a
+# fake unlock.
 
 
 def _charge_arc_deliverable(user_id, action, arc_id):
@@ -1452,7 +1415,7 @@ def _charge_arc_deliverable(user_id, action, arc_id):
     serve one on a low balance would withhold something already produced and
     paid for, which is exactly the failure fence §6.1 exists to prevent.
 
-    ref_id=arc_id makes it idempotent: re-opening the game or the insights for
+    ref_id=arc_id makes it idempotent: re-opening the insights for
     the same presentation charges once, ever. The ledger's partial unique index
     on (user_id, action, ref_id) is the real guard.
     """
@@ -1463,129 +1426,6 @@ def _charge_arc_deliverable(user_id, action, arc_id):
         logger.warning("token charge failed action=%s arc=%s err=%s",
                        action, arc_id, e)
         return None
-
-
-@v2_bp.route("/arc/<arc_id>/game", methods=["GET"])
-@require_auth
-def v2_arc_game(arc_id):
-    # NOTE: token charge is applied below, after the arc is confirmed to
-    # belong to the caller — see _charge_arc_deliverable.
-    """Engine 5 (founder 2026-07-11) — the key-moments game, replacing the
-    501 stub. Free (the $25 gate is retired, single-deliverable 2026-07-17).
-
-    Rounds mix the arc's coach-confirmed key moments with the user's OWN
-    coach-unmarked moments as decoys; truth is NEVER in this payload (the
-    FE learns it by answering). Deterministic order; ?snippet=<id> pins
-    that round first (deep links from the Key-moment button / PDF).
-
-    Response 200 { arc_id, rounds:[{round, snippet_id, transcript,
-                   audio_ref, start_offset_ms, duration_ms}] }
-             200 { arc_id, rounds: [], reason: "NO_KEY_MOMENTS_YET" }
-             402 · 404 · 500
-    """
-    try:
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        from services.game_engine import build_game_rounds
-        rounds = build_game_rounds(
-            db, arc_id, request.user_id,
-            first_snippet=(request.args.get("snippet") or None),
-        )
-        body = {"arc_id": arc_id, "rounds": rounds}
-        if not rounds:
-            # honest empty state — the coach hasn't confirmed key moments yet
-            body["reason"] = "NO_KEY_MOMENTS_YET"
-        else:
-            # Charge only when there is actually a game to play. An empty
-            # NO_KEY_MOMENTS_YET response is the user finding out the coach
-            # hasn't marked anything yet — billing them for that would charge
-            # for our latency.
-            _charge_arc_deliverable(request.user_id, "game", arc_id)
-        return jsonify(body), 200
-    except Exception as e:
-        logger.error("arc game failed arc=%s: %s", arc_id, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to load game"}), 500
-
-
-@v2_bp.route("/arc/<arc_id>/game/answers", methods=["POST"])
-@require_auth
-def v2_arc_game_answer(arc_id):
-    """One game answer → verdict + the "Here is why" content (Engine 5).
-
-    Persists the answer into snippet_peer_labels (source='game') as
-    SECOND-ORDER signal below coach truth (L2/L3 — never joined into the
-    coach corpus). The why paragraphs are qualitative-only (AC-9): the
-    moment's load-bearing words, this user's mined acoustic patterns
-    (Engine 4), and the moment's delivery technique; plus the coach's
-    breakthrough video when one is attached.
-
-    Body: { "round_id": uuid, "answer": bool }
-      (round_id IS the moment's snippet id, echoed from the game GET;
-       `snippet_id` / `answer_is_key` accepted as aliases.)
-    200 { correct, truth_is_key, why: [str], keywords: [str], video_ref }
-    400 · 402 · 404 · 500
-    """
-    try:
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        body = request.get_json(silent=True) or {}
-        snippet_id = body.get("round_id") or body.get("snippet_id")
-        if not isinstance(snippet_id, str) or not _is_valid_uuid(snippet_id):
-            return jsonify({
-                "code": "INVALID_INPUT", "error": "round_id must be a UUID",
-            }), 400
-        answer = body.get("answer")
-        if answer is None:
-            answer = body.get("answer_is_key")
-        # bool = the legacy wire; the ternary instrument is the contract
-        # now (founder 2026-08-10: "yes / no / idk" — idk rides as
-        # 'neutral', the same vocabulary every other label lane uses).
-        if not isinstance(answer, bool) and answer not in ("yes", "no",
-                                                           "neutral"):
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "answer must be a boolean or yes/no/neutral",
-            }), 400
-        from services.game_engine import answer_round
-        result = answer_round(
-            db, arc_id, request.user_id, snippet_id, answer,
-        )
-        if result is None:
-            return jsonify({
-                "code": "SNIPPET_NOT_FOUND",
-                "error": "That moment is not part of this training",
-            }), 404
-        return jsonify(result), 200
-    except Exception as e:
-        logger.error("arc game answer failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to judge answer"}), 500
-
-
-@v2_bp.route("/arc/<arc_id>/game/save", methods=["POST"])
-@require_auth
-def v2_arc_game_save(arc_id):
-    """"Save to daily practice" — bookmark this game under today's date
-    (Engine 5 / backlog 3.3). Idempotent per (user, arc, day).
-    200 { saved } · 402 · 404 · 500"""
-    try:
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        if not db.insert_game_save(str(request.user_id), str(arc_id)):
-            return jsonify({
-                "code": "V2_ERROR", "error": "Could not save the practice",
-            }), 500
-        return jsonify({"saved": True, "arc_id": arc_id}), 200
-    except Exception as e:
-        logger.error("arc game save failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
 
 
 @v2_bp.route("/arc/<arc_id>/snippet-library", methods=["GET"])

@@ -6,7 +6,7 @@ pieces for the coach — a tick that says this is training data, not a new
 project?" This is that lane.
 
 WHAT IT DOES. Each file runs the SAME pipeline a live take runs — transcribe,
-cut ≤200-char pieces, metrics, acoustic read, stars, the coach packet. Nothing
+cut ≤200-char pieces, neutral acoustic metrics, stars, the coach packet. Nothing
 about the analysis is special-cased: an imported take and a recorded take are
 indistinguishable downstream, which is the point (the corpus must match what
 the model will see in production).
@@ -18,7 +18,7 @@ WHAT IT DOESN'T DO — the "tick", implemented as TWO markers:
      in the codebase filters ``source='audit_upload'``:
        * the user's history / project list        → import never appears
        * v2_list_user_lab_sessions                → THE baseline reader behind
-         voice_confidence, delivery_stars and acoustic_read
+         voice_confidence and delivery_stars
        * the coach's live review queue            → untouched (LIVE LOOP)
      That baseline exclusion is not a nicety. Those baselines are
      SPEAKER-RELATIVE: importing fifty other people's talks under one user id

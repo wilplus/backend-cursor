@@ -19,11 +19,11 @@ _FAKE_BP = {
     "slides": [
         {"index": 0, "title": "Opening", "body": "the hook",
          "text": "We are raising two million dollars.", "take_index": 2,
-         "breakthrough": True, "snippet_id": "snip-abc",
+         "snippet_id": "snip-abc",
          "key_phrases": ["genuinely good", "firmly structured"]},
         {"index": 1, "title": "Market", "body": "the size",
          "text": "The market is forty billion.", "take_index": 1,
-         "breakthrough": False},
+        },
     ],
 }
 
@@ -53,7 +53,7 @@ class IdealTextReportTests(unittest.TestCase):
         self.assertEqual(s0["idealText"], "We are raising two million dollars.")
         self.assertEqual(s0["takeRoute"], "/audit/arc1/take/2")
         self.assertIsNone(s0["thumbnailUrl"])
-        self.assertTrue(s0["breakthrough"])
+        self.assertNotIn("breakthrough", s0)
 
     def test_take_route_uses_each_slides_winning_take(self):
         out = self._build()

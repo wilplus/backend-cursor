@@ -315,3 +315,5 @@
 0277	add_owner_voice_album_routing.sql
 0278	add_confidence_rereview_queue.sql
 0279	add_confident_voice_practice.sql
+0280	add_voice_album_introduction_marker.sql
+0281	retire_threat_challenge_framework.sql

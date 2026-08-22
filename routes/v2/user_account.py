@@ -744,19 +744,3 @@ def v2_user_get_audits():
         logger.error("user/audits GET failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to load audits"}), 500
-
-
-@v2_bp.route("/user/game-sessions", methods=["GET"])
-@require_auth
-def v2_user_game_sessions():
-    """The Game tab's archive — saved practice sessions by date, newest
-    first (Engine 5 / backlog 3.3). 200 { sessions: [{arc_id, saved_date,
-    created_at}] } · 500"""
-    try:
-        return jsonify({
-            "sessions": db.list_game_saves(str(request.user_id)),
-        }), 200
-    except Exception as e:
-        logger.error("user game-sessions failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to list"}), 500

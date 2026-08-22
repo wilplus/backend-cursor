@@ -5,7 +5,7 @@ it is about (~20–50 chars), never the whole ~300-char piece. The FE
 contract: `suggestion.quote` non-null → underline exactly that substring;
 null → star icon only, NO underline. (Structural stars already work this
 way; this module brings polish + profanity-replace up to the same
-standard. Emphasize / threat / stickiness replaces stay icon-only until a
+standard. Emphasize / stickiness replacements stay icon-only until a
 narrower deterministic signal exists — honest beats pretty.)
 
 Everything here is pure and deterministic — no LLM, no DB.

@@ -255,6 +255,11 @@ class DestructiveDetectionTests(unittest.TestCase):
             # Pre-flight confirmed zero rows held a value only in a column;
             # every figure is also in the `metrics` blob.
             "drop_dead_snippet_metric_columns.sql",
+            # Deliberate (founder Decision 37): the entire threat/challenge
+            # psychological framework is retired, including its live schema.
+            # This migration removes those obsolete columns and tables rather
+            # than leaving a degraded compatibility path.
+            "retire_threat_challenge_framework.sql",
         }, "The destructive set changed. If you added a migration that drops "
            "something, add it here deliberately — don't just update the literal.")
 

@@ -22,17 +22,8 @@ def _owner_response(database, arc_id: Any, snippet_id: Any) -> Optional[str]:
 def _latest_professional_value(database, snippet_id: Any) -> Optional[str]:
     rows = (database.get_confidence_labels_by_snippet_ids(
         [str(snippet_id)]) or {}).get(str(snippet_id), []) or []
-    professional = [
-        row for row in rows if isinstance(row, dict)
-        and not row.get("self_report")
-        and (row.get("lane") == "coach"
-             or (row.get("lane") is None and row.get("source") == "coach"))
-        and row.get("state_id") in (None, "confidence")
-        and not row.get("unrateable")
-        and row.get("value") in ("yes", "no")
-    ]
-    professional.sort(key=lambda row: row.get("updated_at") or "")
-    return professional[-1].get("value") if professional else None
+    from services.professional_confidence import latest_professional_value
+    return latest_professional_value(rows)
 
 
 def reconcile_confidence_review(

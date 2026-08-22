@@ -172,7 +172,6 @@ class PublishInlineSnippetsTests(unittest.TestCase):
                 "snippets": [{
                     "id": self.SNIP_ID, "note": "Great turn.",
                     "tag": "strong", "surfaced": True,
-                    "direction": "challenge",
                 }],
             })
         # The publish continues past the inline save (this session has no
@@ -181,10 +180,11 @@ class PublishInlineSnippetsTests(unittest.TestCase):
         args = m_lanes.call_args.args
         self.assertEqual(args[0], self.SESSION_ID)
         self.assertEqual(args[1], self.SNIP_ID)
-        # FE alias folded: direction → direction_label; id stripped.
+        # Canonical coach authoring survives and the transport id is stripped.
         self.assertNotIn("id", args[2])
-        self.assertEqual(args[2]["direction_label"], "challenge")
         self.assertEqual(args[2]["note"], "Great turn.")
+        self.assertEqual(args[2]["tag"], "strong")
+        self.assertTrue(args[2]["surfaced"])
 
     def test_inline_snippet_not_in_session_404s_before_contract(self):
         session = {"id": self.SESSION_ID, "user_id": "u1"}

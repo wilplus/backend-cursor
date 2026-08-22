@@ -75,26 +75,21 @@ def _snips(sid):
 class _FeedbackHarness(unittest.TestCase):
     """Shared harness for GET /explore/arc/<id>/feedback route tests.
 
-    ``confidence`` / ``surfaced`` / ``video_ref`` parameterize the blind panel
-    verdict and the coach's draft on EVERY snippet, so tests can steer what the
-    key-moments SELECT sees.
-
-    RE-POINTED 2026-08-14 (founder): the knob used to be ``label_value``, a
-    `training_labels` direction over challenge/threat. That construct is
-    retired and its coach control was deleted 2026-08-07, so the selector it
-    fed had been returning nothing on every real session since — this page's
-    key moments were empty in production while these tests passed. A key
-    moment is now confidence quorum = yes (`conf-q-v1`), so the fixture states
-    a panel verdict instead of a direction."""
+    ``confidence`` and ``surfaced`` parameterize the professional coach's
+    confidence judgment and attached draft. Peer labels are deliberately
+    separable so the tests can prove that their quorum never enters this
+    user-facing surface."""
 
     @staticmethod
-    def _panel(value):
-        """Two QUORUM-lane raters agreeing — a settled verdict. `None` = the
-        panel never rated it, which settles nothing."""
+    def _ratings(value, peer_only=False):
         if value is None:
             return []
-        return [{"rater_id": "coach1", "lane": "coach", "value": value},
-                {"rater_id": "peer1", "lane": "game_peer", "value": value}]
+        if peer_only:
+            return [
+                {"rater_id": "peer1", "lane": "game_peer", "value": value},
+                {"rater_id": "peer2", "lane": "game_peer", "value": value},
+            ]
+        return [{"rater_id": "coach1", "lane": "coach", "value": value}]
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -108,7 +103,7 @@ class _FeedbackHarness(unittest.TestCase):
             p.stop()
 
     def _call(self, entitled=False, caller="u1", confidence="yes",
-              surfaced=True, video_ref=None):
+              surfaced=True, peer_only=False):
         with self.app.test_request_context():
             request.user_id = caller
             with patch("services.arc_entitlement.is_arc_entitled",
@@ -123,11 +118,10 @@ class _FeedbackHarness(unittest.TestCase):
                                   "surfaced": surfaced,
                                   "note": "This is the turn.",
                                   "transcript_corrected": f"corrected {sid}",
-                                  "breakthrough_video_ref": video_ref,
                               }]), \
                  patch.object(v2.db, "get_confidence_labels_by_snippet_ids",
                               side_effect=lambda ids: {
-                                  str(i): self._panel(confidence)
+                                  str(i): self._ratings(confidence, peer_only)
                                   for i in ids}), \
                  patch.object(v2.db, "get_user_transcript_edits",
                               return_value=[]), \
@@ -167,89 +161,50 @@ class FeedbackRouteTests(_FeedbackHarness):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class CoachVideoOnAKeyMomentTests(_FeedbackHarness):
-    """BE-6 (founder fix-pack 2026-07-16), re-pointed 2026-08-14: a
-    coach-SURFACED key moment carries the coach's video on the feedback page
-    (same fields, same comment_video_ref lane, no badge). The panel verdict
-    only SELECTS — it is never serialized (AC-9 / blind coach).
+class KeyMomentContractTests(_FeedbackHarness):
+    """A surfaced moment carries exact playback and a written coach note.
 
-    This class used to be ThreatKeyMomentTests and turned on threat-vs-
-    challenge, a distinction that no longer exists: the two surfaces reading
-    that construct did not even agree on it (the game counted challenge only,
-    this page counted challenge OR threat, so one moment was a key moment here
-    and a wrong answer there). One construct now, so there is one rule."""
+    Per-item coach video was retired; a general Take-level video is the only
+    coach-video surface that may reach the user.
+    """
 
-    VIDEO = "https://x/coach-video.webm"
-
-    def test_key_moment_with_video_surfaces(self):
-        body, status = self._call(entitled=True, video_ref=self.VIDEO)
+    def test_key_moment_surfaces_without_a_per_item_video(self):
+        body, status = self._call(entitled=True)
         self.assertEqual(status, 200)
         takes = {t["take_index"]: t for t in body["takes"]}
         moments = takes[1]["key_moments"]
         self.assertTrue(moments)
         for m in moments:
-            self.assertEqual(m["comment_video_ref"], self.VIDEO)
             self.assertEqual(m["comment_text"], "This is the turn.")
+            self.assertNotIn("comment_video_ref", m)
         # the paired READ's key moment folds in too
         kinds = {m["recording_kind"] for m in moments}
         self.assertEqual(kinds, {"spoken", "read"})
 
-    def test_the_coach_video_goes_out_RESOLVED_not_raw(self):
-        """Deck slice 4 (founder 2026-08-11): the coach's video now plays
-        inside the chunk modal, over the student's own text — so a dead one
-        is dead in front of their words.
-
-        It was the last ref still served raw. A coach video is stored as a
-        PUBLIC url on the coach bucket's base, and R2 only answers on that
-        base once the bucket's dev URL is on or a custom domain is attached:
-        the healthy-looking row that 403s on every play — exactly the class
-        audio_ref_resolver was written for, and which the audio beside it
-        has been signed against since 2026-08-10."""
-        from unittest.mock import patch
-        seen = []
-
-        def _fake(ref, **kw):
-            seen.append(ref)
-            return f"signed::{ref}" if ref else ref
-
-        with patch("services.audio_ref_resolver.resolve_playable_ref", _fake):
-            body, status = self._call(entitled=True, video_ref=self.VIDEO)
-        self.assertEqual(status, 200)
-        takes = {t["take_index"]: t for t in body["takes"]}
-        for m in takes[1]["key_moments"]:
-            self.assertEqual(m["comment_video_ref"], f"signed::{self.VIDEO}")
-        # …and it went through the SAME resolver as the audio beside it.
-        self.assertIn(self.VIDEO, seen)
-
-    def test_a_moment_with_no_video_stays_none_never_a_signed_nothing(self):
-        body, _ = self._call(entitled=True, video_ref=None)
-        takes = {t["take_index"]: t for t in body["takes"]}
-        for m in takes[1]["key_moments"]:
-            self.assertIsNone(m["comment_video_ref"])
-
     def test_key_moment_without_surfaced_stays_hidden(self):
-        body, _ = self._call(entitled=True, surfaced=False,
-                             video_ref=self.VIDEO)
+        body, _ = self._call(entitled=True, surfaced=False)
         for t in body["takes"]:
             self.assertEqual(t.get("key_moments"), [])
-        # nothing leaks around the surfaced gate — not even the video ref
-        self.assertNotIn(self.VIDEO, json.dumps(body))
 
-    def test_only_a_settled_YES_is_a_key_moment(self):
-        # "no" and the ambiguous class are settled verdicts too — they are
-        # simply not this one. None = never rated.
+    def test_only_professional_yes_is_a_key_moment(self):
         for value in ("no", "neutral", None):
             body, _ = self._call(entitled=True, confidence=value,
-                                 video_ref=self.VIDEO)
+                                 surfaced=True)
             for t in body["takes"]:
                 self.assertEqual(t.get("key_moments"), [], value)
 
+    def test_peer_yes_quorum_cannot_create_a_key_moment(self):
+        body, _ = self._call(
+            entitled=True, confidence="yes", surfaced=True, peer_only=True)
+        for take in body["takes"]:
+            self.assertEqual(take.get("key_moments"), [])
+
     def test_the_verdict_is_never_serialized(self):
-        # the panel verdict SELECTS the moment but never ships (AC-9 / blind
-        # coach): no verdict field, no confidence value, no retired construct.
+        # The coach verdict selects the moment but never ships: no internal
+        # confidence value or research vocabulary reaches the user payload.
         for value in ("yes",):
             body, _ = self._call(entitled=True, confidence=value,
-                                 video_ref=self.VIDEO)
+                                 surfaced=True)
             raw = json.dumps(body)
             for banned in ("threat", "challenge", "confidence", "quorum"):
                 self.assertNotIn(banned, raw)
@@ -259,17 +214,7 @@ class CoachVideoOnAKeyMomentTests(_FeedbackHarness):
                     "snippet_id", "take_session_id", "slide_index",
                     "recording_kind", "transcript", "audio_ref",
                     "start_offset_ms", "duration_ms", "comment_text",
-                    "comment_video_ref",
                 })
-
-    def test_breakthrough_badge_remains_challenge_only(self):
-        # BE-6 widens the key-moments SELECT, not the badge: a threat mark
-        # is still never a breakthrough (services/challenge_threat.py).
-        from services.challenge_threat import detect_breakthroughs
-        self.assertEqual(detect_breakthroughs([
-            {"id": "t1", "direction": "threat"},
-            {"id": "c1", "direction": "challenge"},
-        ]), {"c1"})
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -367,16 +312,14 @@ class SavePublishTests(unittest.TestCase):
         self.app = Flask(__name__)
 
     def test_save_feedback_persists_body_then_stamps(self):
-        # The FE sends the OLD publish body at Save (snippets + labels +
-        # insights_payload) — snippets/labels must PERSIST (the coach's work
-        # is otherwise lost); insights_payload is ignored (publish-time only —
+        # The FE sends inline coach authoring plus publish-only assembly data.
+        # Coach authoring must persist; insights_payload is ignored (publish-time only —
         # persisting it early would leak the coach layer to the readout).
         sid = "11111111-1111-4111-8111-111111111111"
         snip = "22222222-2222-4222-8222-222222222222"
         body = {
             "snippets": [{"id": snip, "note": "Key turn.", "tag": "strong",
-                          "surfaced": True, "direction": "challenge"}],
-            "labels": [{"snippet_id": snip, "value": "challenge"}],
+                          "surfaced": True}],
             "insights_payload": {"overall_message": "ignored",
                                  "snippet_notes": []},
             "notify_client": False,
@@ -389,10 +332,6 @@ class SavePublishTests(unittest.TestCase):
                               return_value=[{"id": snip}]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes, \
-                 patch("services.training_labels.validate_publish_labels",
-                       side_effect=lambda raw, ids, require_all: raw), \
-                 patch.object(v2.db, "upsert_training_labels",
-                              return_value=1) as m_labels, \
                  patch.object(v2.db, "set_session_insights_payload") as m_ip, \
                  patch.object(v2.db, "set_session_feedback_saved",
                               return_value=True) as m_save:
@@ -401,13 +340,14 @@ class SavePublishTests(unittest.TestCase):
         out = resp.get_json()
         self.assertTrue(out["saved"])
         self.assertEqual(out["snippets_saved"], 1)
-        # the snippet went through the shared two-lane helper (direction alias
-        # folded, id stripped)
+        # The snippet went through the shared coach-authoring helper, with its
+        # transport id stripped before persistence.
         args = m_lanes.call_args.args
         self.assertEqual(args[1], snip)
-        self.assertEqual(args[2]["direction_label"], "challenge")
+        self.assertEqual(args[2]["note"], "Key turn.")
+        self.assertEqual(args[2]["tag"], "strong")
+        self.assertTrue(args[2]["surfaced"])
         self.assertNotIn("id", args[2])
-        m_labels.assert_called_once()
         m_ip.assert_not_called()      # insights NEVER persisted at Save
         m_save.assert_called_once_with(sid)
 

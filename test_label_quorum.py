@@ -137,21 +137,6 @@ class TestRule2OwnerIsNotAPeer(unittest.TestCase):
         self.assertEqual(res["value"], "yes")
         self.assertTrue(res["gold_eligible"])
 
-    def test_own_recordings_are_served_first(self):
-        # Rule 2's serving half lives in the game queue's ONE ordering law
-        # (founder 2026-08-14: own voice → consented app users → YouTube
-        # corpus — game_engine._source_class, superseding the own-first
-        # rank this module briefly carried).
-        from services.game_engine import _source_class
-        own = _source_class({"user_id": "u1"}, "u1")
-        peer = _source_class({"user_id": "u2"}, "u1")
-        corpus = _source_class(
-            {"user_id": "x", "source": "training_import"}, "u1")
-        self.assertEqual(own, 0)
-        self.assertLess(own, peer)
-        self.assertLess(peer, corpus)
-
-
 class TestRule3Singleton(unittest.TestCase):
     """One rating is weak supervision — never gold, never evaluation."""
 

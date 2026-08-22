@@ -114,7 +114,7 @@ def coach_reviews_for(tier: Optional[str]) -> int:
 # ── Action prices ────────────────────────────────────────────────────
 #
 # Machine prices are measured cost × 7 (plan §2). The unlock-style actions
-# (moment_explanation, game, insights) have NO marginal cost at all — their
+# (moment_explanation, insights) have NO marginal cost at all — their
 # content is generated during the take — so ×7 cannot apply and they are
 # value-priced.
 #
@@ -138,7 +138,6 @@ PRICES: dict[str, int] = {
     "reread":             1_500,   # paired re-read; never counts as a take
     # Deliverables (zero marginal cost — value-priced)
     "moment_explanation": 2_500,
-    "game":               1_500,
     "insights":           1_000,
     # Conversation
     "chat":                 150,
@@ -156,7 +155,7 @@ PRICES: dict[str, int] = {
 }
 
 PER_ARC_ACTIONS: tuple[str, ...] = (
-    "insights", "game", "moment_explanation",
+    "insights", "moment_explanation",
 )
 """Actions charged ONCE PER ARC (``ref_id=arc_id``), so every re-open is free.
 
@@ -182,10 +181,10 @@ fails if one is missing here."""
 # already paid.
 #
 # THE RATE comes from this product's own price list, not from a guess. An arc
-# unlock cost ARC_UNLOCK_CREDITS = 25 credits, and the same four deliverables
+# unlock cost ARC_UNLOCK_CREDITS = 25 credits, and its historical deliverables
 # priced in tokens come to 40,000:
 #
-#     insights 1,000 + game 1,500 + moment_explanation 2,500
+#     insights 1,000 + retired deliverable 1,500 + moment_explanation 2,500
 #                    + coach_review 35,000  =  40,000  ÷ 25  =  1,600
 #
 # The 400/credit figure originally written into PRICING-TOKENS-PLAN §4 was ~4×

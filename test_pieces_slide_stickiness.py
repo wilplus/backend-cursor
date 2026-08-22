@@ -388,12 +388,6 @@ class PipelineWiringTests(unittest.TestCase):
                                      1: ["customers churn early"]}), \
                  patch("services.slide_alignment._entail_batch",
                        side_effect=entail), \
-                 patch("services.acoustic_read.attach_acoustic_read",
-                       return_value=None), \
-                 patch("services.acoustic_read.build_user_baseline",
-                       return_value=None), \
-                 patch("services.auto_comment.learned_tone_word",
-                       return_value=None), \
                  patch("services.say_it_stronger.dispatch_say_it_stronger",
                        return_value=None):
                 from services.lab_recording import process_lab_recording

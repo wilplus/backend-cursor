@@ -88,7 +88,6 @@ class _DB:
 
 ROWS = [
     {"user_id": "u1", "ref_id": "arc1", "action": "insights"},
-    {"user_id": "u1", "ref_id": "arc1", "action": "game"},
     {"user_id": "u1", "ref_id": "arc2", "action": "insights"},
     {"user_id": "OTHER", "ref_id": "arc9", "action": "insights"},
 ]
@@ -106,7 +105,7 @@ class ChargedLookupTests(unittest.TestCase):
         from services.token_account import charged_actions_for_ref
         db = _DB(ROWS)
         self.assertEqual(charged_actions_for_ref("u1", "arc1", database=db),
-                         {"insights", "game"})
+                         {"insights"})
         self.assertEqual(charged_actions_for_ref("u1", "arc2", database=db),
                          {"insights"})
 
@@ -171,7 +170,7 @@ class PerArcRegistryTests(unittest.TestCase):
         self.assertEqual(missing, set(),
                          f"arc-keyed charges missing from PER_ARC_ACTIONS: {missing}")
         self.assertIn("insights", found, "sanity: the grep found nothing at all")
-        self.assertIn("game", found)
+        self.assertNotIn("game", found)
 
 
 if __name__ == "__main__":

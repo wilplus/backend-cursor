@@ -51,8 +51,8 @@ narrowing normally succeeds; the drop is the floor under it, not the
 common path.
 
 AC-9/CONSTRUCT: `source`/`device` are the closed vocabularies already in
-use; the internal trigger vocabulary (threat/charisma/…) never rides a
-user payload — 'polish' is the one trigger the FE may distinguish.
+use; internal classifier vocabulary never rides a user payload — 'polish'
+is the one trigger the FE may distinguish.
 """
 from __future__ import annotations
 

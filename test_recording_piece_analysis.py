@@ -34,9 +34,8 @@ class CanonicalPieceAnalysisTests(unittest.TestCase):
         with self.assertRaises(PiecesCanonicalUnavailable):
             build_canonical_pieces([], {})
 
-    @patch("services.recording_piece_analysis._attach_user_tone")
     @patch("services.recording_piece_analysis._attach_voice_confidence")
-    @patch("services.recording_piece_analysis._attach_acoustic_enrichment")
+    @patch("services.recording_piece_analysis._refresh_acoustic_baseline")
     @patch("services.recording_piece_analysis._upgrade_budget_metrics")
     @patch("services.recording_piece_analysis._budget_indices", return_value={0})
     @patch("services.recording_piece_analysis._core_metrics")
@@ -47,9 +46,8 @@ class CanonicalPieceAnalysisTests(unittest.TestCase):
         core_metrics,
         _budget,
         _upgrade,
-        acoustic,
+        baseline,
         _confidence,
-        _tone,
     ):
         piece = {
             "index": 0,
@@ -67,10 +65,6 @@ class CanonicalPieceAnalysisTests(unittest.TestCase):
         build_pieces.return_value = [piece]
         core_metrics.return_value = [analyzed]
 
-        def attach_derived(_state, rows, *, log):
-            rows[0]["metrics"]["acoustic_read"] = {"score": 0.8}
-
-        acoustic.side_effect = attach_derived
         original = _state()
 
         result = analyze_canonical_pieces(original)
@@ -78,15 +72,12 @@ class CanonicalPieceAnalysisTests(unittest.TestCase):
         self.assertIsNot(result, original)
         self.assertEqual(original.analyzed_pieces, ())
         self.assertNotIn("acoustic_read", result.raw_metrics_snapshot[0])
-        self.assertEqual(
-            result.analyzed_pieces[0]["metrics"]["acoustic_read"],
-            {"score": 0.8},
-        )
+        self.assertNotIn("acoustic_read", result.analyzed_pieces[0]["metrics"])
+        baseline.assert_called_once()
         self.assertEqual(result.llm_budget_indices, frozenset({0}))
 
-    @patch("services.recording_piece_analysis._attach_user_tone")
     @patch("services.recording_piece_analysis._attach_voice_confidence")
-    @patch("services.recording_piece_analysis._attach_acoustic_enrichment")
+    @patch("services.recording_piece_analysis._refresh_acoustic_baseline")
     @patch("services.recording_piece_analysis._upgrade_budget_metrics")
     @patch("services.recording_piece_analysis._budget_indices", return_value=set())
     @patch("services.recording_piece_analysis._core_metrics", return_value=[])
@@ -102,7 +93,6 @@ class CanonicalPieceAnalysisTests(unittest.TestCase):
         _upgrade,
         _acoustic,
         _confidence,
-        _tone,
     ):
         analyze_canonical_pieces(_state(run_analytics=False))
         budget_indices.assert_called_once_with([], 0)

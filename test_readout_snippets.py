@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from services.readout_snippets import (
     prepare_readout_snippets,
@@ -86,7 +86,7 @@ class ReadoutSnippetPreparationTests(unittest.TestCase):
         self.assertEqual(row["slide_stickiness"], {"composite": 0.7})
         self.assertEqual(row["overall_score"], 0.8)
         self.assertEqual(row["rank"], 1)
-        self.assertEqual(row["acoustic_read"], {"potentiometer": 0.4})
+        self.assertNotIn("acoustic_read", row)
         self.assertEqual(
             row["say_it_stronger_draft"]["upgrades"][0]["text"],
             "draft",
@@ -125,24 +125,6 @@ class ReadoutSnippetPreparationTests(unittest.TestCase):
 
         self.assertIsNone(rows[0]["say_it_stronger"])
         self.assertNotIn("applied_upgrade_indexes", rows[0])
-
-    def test_breakthroughs_use_only_the_coach_label(self):
-        database = _database()
-        database.get_training_labels.return_value = [
-            {"snippet_id": "snip-1", "value": "challenge"},
-        ]
-        with patch(
-            "services.challenge_threat.detect_breakthroughs",
-            return_value={"snip-1"},
-        ), patch(
-            "services.best_presentation._moment_note",
-            return_value="coach note",
-        ):
-            rows, _ = _prepare(database, insights=True)
-
-        self.assertTrue(rows[0]["breakthrough"])
-        self.assertEqual(rows[0]["breakthrough_note"], "coach note")
-
 
 class AppliedUpgradeReplayTests(unittest.TestCase):
 

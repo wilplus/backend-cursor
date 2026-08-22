@@ -1,8 +1,7 @@
 """willab — coach-video corpus capture (Subsystem V). CAPTURE ONLY; model deferred.
 
-Turns the coach's breakthrough + take-summary feedback videos into a training
-corpus (``coach_video_assets``) that can later feed avatar-lipsync OR real-you
-photoreal generation. No model is built here.
+Captures take-level coach feedback videos in ``coach_video_assets``. No model
+is built here.
 
 THE ONE RULE: TAG, DON'T GATE. Every recorded video is stored; ``quality_rate``
 is a training-time FILTER label, never a store-or-discard decision. Nothing here
@@ -10,7 +9,7 @@ drops a clip.
 
 FENCES: private/training-bound (AC-9 split-sink) — ``coach_video_assets`` is
 RLS-locked, never read by any user surface (the user keeps seeing
-``breakthrough_video_ref`` / ``coach_video_ref``). Best-effort (live-loop) —
+``coach_video_ref``). Best-effort (live-loop) —
 nothing here may break or slow the video upload; every function swallows errors.
 """
 from __future__ import annotations
@@ -23,7 +22,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-CONTENT_TYPES = ("take_summary", "breakthrough")
+CONTENT_TYPES = ("take_summary",)
 
 # Founder self-records are provenance-permissive by default. Legal consent is the
 # SEPARATE off-app coach agreement — this field is provenance, not the mechanism.

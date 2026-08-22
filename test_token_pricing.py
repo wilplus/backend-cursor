@@ -542,9 +542,9 @@ class ChargeTests(unittest.TestCase):
 
     def test_reopening_a_paid_arc_does_not_double_charge(self):
         db = FakeDB(account_row(balance=12_000))
-        a = self.ta.charge("u1", "game", ref_id="arc1", database=db)
-        b = self.ta.charge("u1", "game", ref_id="arc1", database=db)
-        self.assertEqual(a.charged, 1_500)
+        a = self.ta.charge("u1", "insights", ref_id="arc1", database=db)
+        b = self.ta.charge("u1", "insights", ref_id="arc1", database=db)
+        self.assertEqual(a.charged, 1_000)
         self.assertEqual(b.charged, 0)
         self.assertTrue(b.ok)
         self.assertEqual(b.reason, "already_charged")

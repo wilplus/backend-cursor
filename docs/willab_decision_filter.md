@@ -8,23 +8,43 @@
 
 ## THE GOAL (the only thing this filter protects)
 
-**F1 — THE MVP, THE CRITICAL PATH (fully deterministic/code).** voice → PERFECT transcript, segmented EXACTLY 1:1 per slide (every word bucketed to the slide on screen when it was spoken) → across takes, RANK + SELECT the best version of each slide → assembled into the user's best speech. Automatic; an optional learning layer may improve it but **never gates it**.
-- **Two load-bearing pieces:** **(a)** perfect per-slide transcription, **(b)** best-text-per-slide ranking. **Everything else is scaffolding.**
+**F1 — THE MVP, THE CRITICAL PATH.** voice → durable Recording Attempt →
+perfect transcript segmented exactly 1:1 per slide → project-specific Ideal Text
+after Take 1 → evidence-backed Manager Feedback after every Take. Ideal Text is
+the sole canonical presentation document. Later Takes propose improvements but
+never rebuild or silently overwrite it.
+- **Three load-bearing pieces:** **(a)** perfect per-slide transcription,
+  **(b)** coherent initial Ideal Text with stable Paragraph identity, and
+  **(c)** Manager arbitration that surfaces at most three defensible Feedback
+  items. The record → process → Ideal Text → next-Take loop never waits for a
+  coach.
 
-**F2 — the overlay, SECOND priority.** identify the voice moments where the speaker sounds ASSURED — the `confidence` construct (`conf-q-v1`, SPEC §17): *how assured the speaker sounds in their DELIVERY of a moment; a property of the voice, not of the content*. Rated blind on the ternary instrument, aggregated across raters, and a moment enters the album at multi-rater QUORUM (§9.1). Starts MANUAL (human raters), shadow-learns, gets less manual over time = the COACH-CLONE. F1 and F2 are **intertwined by design** — the confidence signal feeds the F1 ranking blend.
+**F2 — the asynchronous learning and confidence overlay, SECOND priority.**
+Machine Feedback and coach review retain one auditable lineage. Confident Voice
+asks one qualitative question about how assured the delivery sounds. Voice Album
+admission requires Machine Yes + User Yes + Coach Yes about the exact same
+recording. Owner answers are routing signals, never blind training labels.
 
 > **⚠️ 2026-08-13 — the charisma construct is RETIRED (founder re-lock).** F2 read "stress → charisma (internally threat → challenge = breakthrough)" until this date. That construct had no written operational definition, so nothing could say what a rater was being asked — the exact defect SPEC §1.4 exists to prevent — and §17 names charisma explicitly as something `confidence` must NOT be folded together with. It was not just wording: it was ROUTING LIVE FEEDBACK (`_W_D`/`_W_B` inside `power_score`, and the replace/emphasize/no-star decision in the star lane), so retiring it was a code change, not a docs change. The coach's challenge/threat rows in `training_labels` are a CORPUS, not a construct claim, and are versioned rather than rewritten (SPEC §3.2).
 
-**LOCKED CHOICES** (contradicting one = REJECT unless the founder re-locks the north star in the same breath):
-- **L1** — "best version of a slide" = **SELECT the best ACTUAL take, VERBATIM + a LIGHT AI continuity polish.** Chosen, NOT AI-authored/rewritten/generated.
-- **L2** — **Ranking is BLENDED:** content quality (activation + slide coverage) PLUS the CONFIDENCE signal lifting rank (existing `power_score`), entering **exactly once** — panel-sourced or machine-sourced, never summed (SPEC §7.2/D8). Not content-only; not confidence-only.
-- **L3** — **The clone learns the WHOLE coach review** (album-quorum moments + strong / to-work-on notes + the full Insights layer), not just moment detection.
+**LOCKED CHOICES** (founder re-locked 2026-08-22; complete contract:
+[`CANONICAL_PRODUCT_CONTRACT.md`](CANONICAL_PRODUCT_CONTRACT.md)):
+- **L1 — One canonical document.** Ideal Text is persistent and user-controlled.
+  Take 1 creates it; later Takes never replace it with a transcript or best-of
+  assembly. Best Presentation as a separate product artifact is retired.
+- **L2 — Manager-gated Feedback.** Detectors create Candidates; only Manager-
+  approved Candidates surface. The budget is at most three, evidence-first,
+  Confident Voice first when defensible, and unused family capacity is
+  reassigned rather than manufactured.
+- **L3 — Provenance walls.** Machine prediction, owner routing, blind peer
+  rating, coach judgment, and detector verdict remain separate. Voice Album
+  membership requires Machine Yes + User Yes + Coach Yes on the exact recording.
 
 **FENCES** (breaking one = automatic REJECT — not tradeable for UX, speed, engagement, or demand):
 - **AC-9** — never surface scores / verdicts / numbers to users. The read is qualitative.
 - **CONSTRUCT** — every measured state traces to a **written operational definition** (SPEC §1.4/§17) and asks exactly ONE thing; a state with no entry cannot ship. It surfaces qualitatively ONLY — never a score, ratio, or classifier output. (Bans the surfaced number, not internal use. "Charisma" failed the definition half and was retired 2026-08-13.)
 - **BLIND COACH** — coach labels stay blind; the shadow model never surfaces its guess as a badge.
-- **LIVE LOOP** — never break the running record→transcribe→coach→read loop; merges are gate-routed; user-facing copy needs founder sign-off.
+- **LIVE LOOP** — never break record→process→Ideal Text→next Take; coach review is asynchronous; merges are gate-routed; user-facing copy needs founder sign-off.
 - **NORTH-STAR LOCK** — the goal changes ONLY by explicit founder decision. Silent drift is the enemy you exist to stop.
 
 ---
@@ -36,31 +56,31 @@
 **STEP 2 — FENCE CHECK (hard stop, FIRST — before any F1 classification).** Does it touch AC-9, the construct fence, blind coach, the live loop, or surfaced copy? Any violation → **REJECT**. *First on purpose: a fence breach that also sounds like an F1 improvement ("surface a confidence score so users see progress") must die here before it can masquerade as ADVANCE.*
 
 **STEP 3 — LOCKED-CHOICE CHECK (second hard gate, separate from fences).** Any YES → **REJECT**:
-1. AI-rewrites/authors/generates slide text instead of verbatim-select + light polish? → breaks **L1**.
-2. Ranks on content-only OR confidence-only, removes `power_score` from the blend, or SUMS the panel and machine confidence terms instead of choosing one? → breaks **L2**.
-3. Narrows the clone to moment-detection-only, dropping strong / to-work-on / Insights? → breaks **L3**.
+1. Rebuilds or silently changes Ideal Text from a later transcript, best-of assembly, machine proposal, or coach action? → breaks **L1**.
+2. Surfaces a raw Candidate, bypasses Manager arbitration, exceeds the budget, or manufactures Feedback? → breaks **L2**.
+3. Mixes owner routing, peer rating, coach judgment, machine prediction, or detector verdict provenance; or reuses one recording's signal for another? → breaks **L3**.
 
-*Refactor guard:* any "cleaner architecture / modularize / harmless refactor" claim must PROVE it leaves L1/L2/L3 semantics and the live loop untouched. "Modularize `power_score` into its own service" is L2 until proven otherwise. **No behavior change ⇒ no priority** (it does not become critical-path by being tidy).
+*Refactor guard:* a cleaner-architecture claim must prove it leaves L1/L2/L3 and the live loop untouched. **No behavior change ⇒ no priority.**
 
 **STEP 4 — CLASSIFY (pick exactly ONE tier):**
-- **F1-CORE** — directly changes (a) per-slide transcription accuracy/segmentation/timing (slide-click, two-clocks, word-bucketing) or (b) best-text-per-slide ranking/selection (verbatim-select, light polish, blended `power_score`).
-- **F1-SURFACE** — perf/scale/correctness **hardening of an existing load-bearing F1 surface** (assembly/compose, the record→take pipeline, the assembled-speech read path). Justified **even when it "unblocks nothing,"** PROVIDED it touches an actual F1 surface — not Lounge/chat/onboarding. *This is the lane all naive filters miss; it is narrow by design.*
+- **F1-CORE** — changes per-slide transcription accuracy, initial Ideal Text coherence/Paragraph identity, or Manager evidence selection and arbitration.
+- **F1-SURFACE** — hardens record→Take, Ideal Text read/edit/protect, Feedback decisions, or root-roadmap delivery.
 - **F1-SUPPORT** — required for a load-bearing piece to ship/run, naming a **specific, currently-in-flight F1 task** it unblocks. Rhetorical line-of-sight is NOT enough (see R11).
-- **F2** — coach-review capture, shadow learning, the coach-clone (whole review + Insights).
+- **F2** — coach-review lineage, provenance-safe learning, Confident Voice, and exact-recording Voice Album admission.
 - **SCAFFOLDING** — Lounge, cadence, PWA, audits, chat, onboarding, profile, infra, cosmetics.
 - **DRIFT** — introduces or serves a NEW goal/surface/construct no F1/F2 piece needs (engagement, retention, a new score, a coach-only feature), or reframes the product away from F1+F2.
 
 If you cannot place it in F1-CORE/SURFACE/SUPPORT/F2 by a **concrete mechanism**, it is SCAFFOLDING or DRIFT — default to the stricter.
 
 **STEP 5 — RATIONALIZATION SCAN.** Name any R# in play (appendix) and apply its counter-move. A decision standing only on a rationalization → **REJECT/PARK**. The two laundering moves to hunt hardest:
-- **"More usage → more takes → better ranking"** (streaks/leaderboard/retention dressed as F1-support) → engagement is **never** a goal and **never** an F1 unblock (**R3**). DRIFT.
+- **“More usage → more Takes → better learning”** is engagement dressed as F1-support and remains DRIFT.
 - **"Foundation / it unblocks F1 later / it's a platform"** → demand the named, near-term, in-flight F1/F2 task. None ⇒ scaffolding dressed as critical path (**R11**). PARK.
 
 **STEP 6 — CRITICAL-PATH & CONTENTION TEST.**
 - **F1-CORE** → PASS, top priority; **wins all ties** by default.
 - **F1-SURFACE** → PASS as justified-scaffolding (behind open F1-CORE work).
 - **F1-SUPPORT** → PASS only if the in-flight F1 task is named; else demote to SCAFFOLDING.
-- **F2** → PASS if it captures more of the whole coach review OR reduces manual coach load via the shadow loop, AND does not delay an open F1-CORE item. Yields to F1-CORE under contention.
+- **F2** → PASS if it improves coach-review lineage, provenance-safe learning, or exact-recording Album admission without delaying F1-CORE.
 - **SCAFFOLDING** → PASS only as the named unblocker of an in-flight F1/F2 task; else PARK/DEFER.
 - **DRIFT** → REJECT.
 - **DRIFT vs DEFER rule (deterministic):** off-goal AND serves a non-F1 goal (engagement, a new construct, a coach-only surface) = **REJECT-DRIFT**. Off-goal but **neutral** and legitimately serves F1/F2 someday with nothing it unblocks in flight = **DEFER**.
@@ -74,8 +94,8 @@ WHY:      <one line — the mechanism by which it does/doesn't move F1 (or F2); 
 REDIRECT: <if not a clean ADVANCE-F1: name the nearest F1-advancing action. Default targets, in order:
            (1) tighten word→slide bucketing at the two-clocks boundary
            (2) improve transcription fidelity on hard/accented audio
-           (3) sharpen the blended best-slide ranking (delivery + power_score)
-           (4) reduce manual coach load in the F2 shadow loop
+           (3) improve initial Ideal Text coherence without silent later changes
+           (4) sharpen Manager evidence selection or reduce manual coach load
            For a locked/fence breach: the compliant version that keeps the lock/fence,
            or "founder north-star change required.">
 ```
@@ -83,7 +103,7 @@ REDIRECT: <if not a clean ADVANCE-F1: name the nearest F1-advancing action. Defa
 **One-line PR / thread stamp (for auditability):**
 `FILTER: [ADVANCE-F1|F1-SURFACE|ADVANCE-F2|SCAFFOLD|DEFER|REJECT] — cat {F1-core|F1-surface|F1-support|F2|scaffold|drift} — fences {clear|BREAKS:x} — locks {clear|BREAKS:Lx} — redirect: {…}`
 
-**Rule of thumb:** when in doubt, the answer is "make per-slide transcription or best-per-slide ranking better." If the proposal isn't that and can't name the in-flight F1/F2 task it unblocks, it does not win. The north star changes only when the **founder** says so — not when a decision sounds reasonable.
+**Rule of thumb:** improve per-slide transcription, initial Ideal Text coherence, or Manager Feedback quality. If a proposal does none of those and cannot name the in-flight F1/F2 task it unblocks, it does not win.
 
 ---
 
@@ -93,13 +113,13 @@ REDIRECT: <if not a clean ADVANCE-F1: name the nearest F1-advancing action. Defa
 |---|----------|---------|----------|---------|
 | **A** | Fix `recordStartRef` two-clocks offset | **ADVANCE-F1** | F1-CORE | improves word→slide bucketing = piece (a) |
 | **B** | Streaks + leaderboard for retention | **REJECT** | DRIFT | engagement goal (R3); leaderboard also flirts AC-9; "more takes→better ranking" laundering rejected |
-| **C** | Full GPT rewrite of best version | **REJECT** | — | breaks **L1** (R7); AI-authors the slide |
+| **C** | Later Take silently rewrites Ideal Text | **REJECT** | — | breaks **L1**; later Takes may propose but never overwrite |
 | **D** | 0–100 confidence score for users | **REJECT** | — | breaks **AC-9 + CONSTRUCT** (R6); caught at STEP 2 before it can pose as F1 signal |
-| **E** | Cache best-presentation compose at 11+ presentations | **JUSTIFIED-SCAFFOLDING** | F1-SURFACE | perf-hardens the assembled-speech read path (a real F1 surface); unblocks-nothing is OK in this lane; R11 does NOT shoot it down because it touches an F1 surface |
-| **F** | Split ranking from the confidence signal for "cleaner architecture" | **REJECT** | — | breaks **L2** (R2/R8); refactor guard: "modularize power_score" is L2 until proven otherwise |
+| **E** | Cache the canonical Ideal Text read path at scale | **JUSTIFIED-SCAFFOLDING** | F1-SURFACE | performance-hardens a real F1 surface |
+| **F** | Surface raw detector candidates “for speed” | **REJECT** | — | bypasses Manager and breaks **L2** |
 | **G** | Richer Lounge bot persona, more jokes | **REJECT** | DRIFT/SCAFFOLDING | no nameable in-flight F1/F2 link; "hardens engagement" ≠ F1 surface (R1) |
 | **H** | Whisper accuracy on accented speech / vocab priming | **ADVANCE-F1** | F1-CORE | raises transcription fidelity = piece (a) |
-| **I** | Shadow auto-publishes album badges, no human panel | **REJECT** | — | breaks **BLIND COACH + CONSTRUCT** (R9); also narrows toward detection-only (L3) |
+| **I** | Use owner Yes as blind model ground truth | **REJECT** | — | mixes provenance and breaks **L3** |
 | **J** | CSV export of transcripts | **DEFER** | SCAFFOLDING | legitimate, neutral, off critical path, nothing it unblocks is in flight |
 
 *Self-check: B and G die as DRIFT/REJECT (non-F1 goal); J merely DEFERs (neutral). E passes via the F1-SURFACE lane while G/B do not. D and I die at the FENCE step before any F1 framing can rescue them.*
@@ -110,18 +130,18 @@ REDIRECT: <if not a clean ADVANCE-F1: name the nearest F1-advancing action. Defa
 
 | # | Rationalization | Counter-move |
 |---|---|---|
-| R1 | "It improves UX / better experience." | UX is scaffolding. Does it raise transcript accuracy or ranking quality? No ⇒ no critical-path priority. Park. |
+| R1 | “It improves UX.” | UX alone is scaffolding. Does it raise transcript accuracy, Ideal Text correctness, or Feedback quality? No ⇒ no critical-path priority. |
 | R2 | "Cleaner / better architecture / nice refactor." | Cleanliness isn't a goal. Justified only if it unblocks F1/F2 or removes a live-loop risk. Prove it doesn't touch L1/L2/L3 or the loop. No behavior change ⇒ no priority. |
 | R3 | "Boosts engagement / retention / time-in-app." | Engagement is the classic drift vector and is **never** an F1 unblock. Value is a better speech, not more sessions. DRIFT. |
 | R4 | "The coach asked for it." | The coach is a labeler inside F2, not the founder. Route to "does it reduce manual coach load via the shadow loop?" New coach-only surface w/ no shadow path = drift. Only the FOUNDER moves the north star. |
 | R5 | "Quick / low-effort / while we're in here." | Cheap off-goal is still off-goal; "while we're in here" is how fences erode. Quick + on-path ⇒ do it; quick + off-path ⇒ still waits. |
 | R6 | "Users want a score / number / rating." | AC-9 + CONSTRUCT. Surfacing any score/ratio/confidence-number = REJECT regardless of demand. Redirect to a qualitative read. |
-| R7 | "Let the AI just write/improve the slide text." | Breaks L1. REJECT. Redirect: improve SELECTION/RANKING of real takes, or tighten light-polish without crossing into rewriting. |
-| R8 | "Rank purely on content (or purely on confidence) — simpler." | Breaks L2 (blended). Keep both terms; if one is noisy, improve it, don't drop it. |
+| R7 | “Let each Take regenerate the Ideal Text.” | Breaks L1. Generate a proposal and require explicit user acceptance. |
+| R8 | “Show every strong detector output.” | Breaks L2. Route Candidates through Manager arbitration and its evidence budget. |
 | R9 | "Ship the shadow guess as a badge — it's accurate enough." | Breaks BLIND COACH + CONSTRUCT. Shadow learns silently; coach labels stay blind. Redirect: measure shadow-vs-coach agreement OFF-SURFACE. |
-| R10 | "Just scope the clone to moment detection for now." | Breaks L3. Stage the BUILD, but keep the whole-review + Insights target. |
+| R10 | “Owner agreement is good enough training data.” | Breaks L3. Owner answers remain routing signals, separate from blind and coach labels. |
 | R11 | "It unblocks F1/F2 later / it's a foundation / a platform." | The favorite laundering move. Demand the **named, near-term, in-flight** F1/F2 task and the line of sight. None ⇒ tier-3 scaffolding dressed as critical path. Park. |
-| R12 | "The learning layer will fix transcription/ranking." | F1 is deterministic and must be bulletproof WITHOUT the layer. Optional layer may improve, never gate. Fix the deterministic pipe first. |
+| R12 | “The learning layer will fix the live pipeline.” | F1 must work without the learning layer. Fix transcription, Ideal Text, or Manager arbitration first. |
 | R13 | "Just a tiny copy tweak / user-facing change." | User-facing copy needs founder sign-off (LIVE LOOP). Small ≠ exempt. Route to sign-off; never auto-ship surfaced copy. |
 | R14 | "It's urgent / there's a deadline / a demo." | Urgency justifies sequencing, never fence-breaking or north-star change. Redirect to the fastest ON-goal thing that meets the deadline. |
 

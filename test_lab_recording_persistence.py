@@ -75,17 +75,15 @@ class SessionMetadataTests(unittest.TestCase):
     def test_context_tags_duration_and_owner_are_persisted(self):
         database = Mock()
         context = {"topic": "Talk"}
-        with patch("services.named_emotion.log_drift_signal") as drift:
-            persist_session_metadata(
-                "session-1",
-                context,
-                flow_tags={"named_emotion": "excited"},
-                duration_seconds=15.2,
-                user_id="user-1",
-                database=database,
-            )
+        persist_session_metadata(
+            "session-1",
+            context,
+            flow_tags={"named_emotion": "excited"},
+            duration_seconds=15.2,
+            user_id="user-1",
+            database=database,
+        )
         self.assertEqual(context["named_emotion"], "excited")
-        drift.assert_called_once_with("user-1", "session-1", "excited")
         database.set_session_intake_context.assert_called_once_with(
             "session-1",
             context,
@@ -100,7 +98,7 @@ class RecordingRowTests(unittest.TestCase):
 
     def _persist(self, database):
         return persist_recording_row(
-            form={"feeling": "nervous", "priming_condition": "challenge"},
+            form={"feeling": "nervous"},
             session_id="session-1",
             recording_id="recording-1",
             storage_key="key.webm",
@@ -121,7 +119,6 @@ class RecordingRowTests(unittest.TestCase):
         self.assertEqual(payload["recording_origin"], "willab_lab")
         self.assertEqual(payload["duration"], 13)
         database.insert_recording_feeling.assert_called_once()
-        database.set_session_priming.assert_called_once()
         database.v2_set_guest_session_recording.assert_called_once_with(
             "session-1",
             "recording-1",

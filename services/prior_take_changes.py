@@ -103,15 +103,9 @@ def _candidate(snip: Any) -> dict:
     if isinstance(stick, dict):
         stick = stick.get("composite")
     return {
-        # `direction` is deliberately absent: the coach label lives in
-        # training_labels, never on a snippet row — reading a field that
-        # does not exist would silently rank delivery-only while looking
-        # blended (review finding). Cross-take comparison is therefore
-        # explicitly delivery+coverage, and says so.
         "activation": metrics.get("overall_score"),
         "slide_stickiness": stick,
         "tag": None,
-        "breakthrough": False,
         # MACHINE lane, and the KEY MUST MATCH _score's kwarg below. The
         # 2026-08-13 re-point renamed the consumer and left this producer as
         # "voice_confidence", so the term was computed and dropped on the
@@ -141,7 +135,6 @@ def _score(cand: dict) -> Optional[float]:
             activation=cand.get("activation"),
             slide_stickiness=cand.get("slide_stickiness"),
             tag=cand.get("tag"),
-            panel_confidence=cand.get("panel_confidence"),
             machine_confidence=cand.get("machine_confidence"),
         )
     except Exception:

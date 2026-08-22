@@ -48,7 +48,7 @@ class DecorateKeyMomentsTests(TestCase):
                 "take_session_id": "session-1",
             }],
             suggestions_enabled=False,
-            explanations={"snippet-1": {"has_video": True}},
+            explanations={"snippet-1": {"has_message": True}},
             playback={"snippet-1": {
                 "snippet_audio_ref": "clip.mp3",
                 "start_offset_ms": 100,
@@ -80,7 +80,7 @@ class DecorateKeyMomentsTests(TestCase):
             [{"snippet_id": 42, "take_session_id": "session-1"}],
             suggestions_enabled=True,
             explanations={"42": {
-                "has_video": True,
+                "has_message": True,
                 "reference_post_slug": " voice-confidence ",
             }},
             playback={},
@@ -91,7 +91,6 @@ class DecorateKeyMomentsTests(TestCase):
         self.assertEqual(result[0]["star"], "verified")
         self.assertEqual(result[0]["coach"], {
             "has_message": True,
-            "has_video": True,
             "reference": reference,
         })
         self.assertNotIn("suggestion", result[0])
@@ -101,7 +100,7 @@ class DecorateKeyMomentsTests(TestCase):
             [{"snippet_id": "snippet-1"}],
             suggestions_enabled=True,
             explanations={"snippet-1": {
-                "has_video": False,
+                "has_message": True,
                 "reference_post_slug": "unpublished",
             }},
             playback={},

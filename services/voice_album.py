@@ -40,30 +40,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 def _professional_coach_yes(rows: Any) -> bool:
-    """True only for a released professional coach's explicit Yes.
-
-    Provenance is structural: peer lanes, bootstrap rows, unrateable labels,
-    and self-reports are never upgraded into a coach judgment by agreement.
-    """
-    for row in rows or []:
-        if not isinstance(row, dict):
-            continue
-        lane = row.get("lane")
-        # Rows written before the provenance migration have no lane but retain
-        # ``source=coach``. That is still an explicit professional judgment;
-        # bootstrap and peer/game rows remain excluded.
-        professional = lane == "coach" or (
-            lane is None and row.get("source") == "coach"
-        )
-        if not professional or row.get("self_report") is True:
-            continue
-        if row.get("state_id") not in (None, "confidence"):
-            continue
-        if row.get("unrateable") is True:
-            continue
-        if str(row.get("value") or "").strip().lower() == "yes":
-            return True
-    return False
+    """True only when the latest professional judgment is explicit Yes."""
+    from services.professional_confidence import latest_professional_value
+    return latest_professional_value(rows) == "yes"
 
 
 def _owner_agreements(database, arc_id: Any) -> dict:
@@ -105,9 +84,9 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
 
         # COACH — explicit professional coach YES, on PUBLISHED sessions only.
         #
-        # The publish gate is unchanged and load-bearing: a quorum can settle
-        # while the coach is still working, and BLIND COACH means none of it
-        # exists for the student until the review is released.
+        # The publish gate is unchanged and load-bearing: a professional coach
+        # can save a draft judgment while still working, and none of it exists
+        # for the student until the review is released.
         coach_ok: dict = {}   # snippet_id -> take_session_id
         for sess in (database.get_arc_sessions(arc_id) or []):
             if not sess.get("results_published_at"):

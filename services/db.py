@@ -12561,37 +12561,6 @@ class DatabaseService:
                            "arc=%s: %s", arc_id, e)
             return False
 
-    def set_session_priming(
-        self, session_id: str,
-        condition: Optional[str], phrase: Optional[str],
-    ) -> bool:
-        """Persist the pre-take priming manipulation (founder 2026-07-13) on the
-        take's session row — the framing the student saw before this live take.
-        PRIVATE research-correlation signal (see services/priming.py); the route
-        pre-validates the condition enum. Best-effort: missing column (migration
-        pending) → False, non-fatal (the take is still recorded). A separate
-        write from the feeling capture, so a pre-migration failure here can
-        never regress feeling."""
-        if not session_id or not (condition or phrase):
-            return False
-        try:
-            self.client.table("v2_sessions").update({
-                "priming_condition": condition,
-                "priming_phrase": phrase,
-            }).eq("id", session_id).execute()
-            return True
-        except Exception as e:
-            if "priming_condition" in str(e).lower() or \
-                    "priming_phrase" in str(e).lower():
-                logger.warning(
-                    "set_session_priming: column missing (run "
-                    "migrations/add_session_priming.sql) sid=%s", session_id,
-                )
-                return False
-            logger.warning("set_session_priming failed sid=%s: %s",
-                           session_id, e)
-            return False
-
     def deduct_credits_strict(
         self, user_id: Optional[str], amount: int,
     ) -> Optional[int]:
@@ -13696,10 +13665,8 @@ class DatabaseService:
             return None
 
     # ── Confidence labels (founder 2026-07-28) ─────────────────────────
-    # The corpus for the app's core function. SEPARATE from training_labels
-    # (challenge/threat is a different construct feeding a different model)
-    # and keyed per RATER so the future agreement aggregator has something to
-    # aggregate. See services/confidence_labels.py + add_confidence_labels.sql.
+    # The corpus for the app's core function, keyed per RATER so agreement can
+    # be measured without contaminating the product decision path.
 
     def upsert_confidence_label(
         self, *, snippet_id: str, row: dict, rater_id: Optional[str] = None,
@@ -14752,298 +14719,11 @@ class DatabaseService:
             )
             return []
 
-    # ── willab beta — training labels (design §14, PRIVATE lane) ────
-
-    def upsert_training_labels(
-        self,
-        session_id: str,
-        labeled_by: Optional[str],
-        rows: list[dict],
-    ) -> int:
-        """Persist the per-snippet direction labels captured at publish.
-
-        Idempotent on (session_id, snippet_id) — re-publish updates the
-        current label. Stamps session_id + labeled_by + labeled_at on
-        each row (the validator supplied snippet_id/value/flags/
-        schema_version). Returns rows written; 0 on missing table.
-
-        PRIVATE lane (split-sink §2): written here, never read into any
-        user-facing path.
-        """
-        if not session_id or not rows:
-            return 0
-        from datetime import datetime, timezone
-        now_iso = datetime.now(timezone.utc).isoformat()
-        payload = [
-            {
-                "session_id": session_id,
-                "snippet_id": r["snippet_id"],
-                "schema_version": r.get("schema_version", "direction-v1"),
-                "value": r["value"],
-                "labeled_by": labeled_by,
-                "labeled_at": now_iso,
-                "was_pre_filled": bool(r.get("was_pre_filled", False)),
-                "was_overridden": bool(r.get("was_overridden", False)),
-                "updated_at": now_iso,
-            }
-            for r in rows
-        ]
-        try:
-            res = (
-                self.client.table("training_labels")
-                .upsert(payload, on_conflict="session_id,snippet_id")
-                .execute()
-            )
-            return len(res.data or [])
-        except Exception as e:
-            err_low = str(e).lower()
-            if (
-                "training_labels" in err_low
-                and ("does not exist" in err_low or "pgrst" in err_low)
-            ):
-                logger.warning(
-                    "upsert_training_labels: table missing (run "
-                    "migrations/add_training_labels_table.sql) sid=%s",
-                    session_id,
-                )
-                return 0
-            logger.error(
-                "upsert_training_labels failed sid=%s err=%s", session_id, e,
-            )
-            return 0
-
-    def get_training_labels(self, session_id: str) -> list[dict]:
-        """Read the per-snippet direction labels for a session.
-
-        PRIVATE training lane (split-sink §2/§14): exposed ONLY to the
-        coach-authoring readout (`GET /v2/admin/sessions/<id>/readout`),
-        NEVER folded into a user-facing path. Returns [] if none / table
-        missing (cold start has no labels → coach labels from scratch).
-        """
-        if not session_id:
-            return []
-        try:
-            res = (
-                self.client.table("training_labels")
-                .select(
-                    "snippet_id, schema_version, value, was_pre_filled, "
-                    "was_overridden, labeled_by, labeled_at"
-                )
-                .eq("session_id", session_id)
-                .execute()
-            )
-            return res.data or []
-        except Exception as e:
-            err_low = str(e).lower()
-            if "training_labels" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                return []
-            logger.warning(
-                "get_training_labels failed sid=%s err=%s", session_id, e,
-            )
-            return []
-
-    def get_training_labels_by_sessions(self, session_ids) -> dict:
-        """Batch read of per-snippet direction labels for MANY sessions in ONE
-        query per 100 ids (kills the N+1 in build_best_presentation /
-        build_arc_breakthroughs over a long arc). Returns
-        {session_id: [labels]}. Same PRIVATE training lane as
-        get_training_labels. {} on missing table / empty input / error."""
-        ids = [str(s) for s in (session_ids or []) if s]
-        if not ids:
-            return {}
-        out: dict = {}
-        try:
-            for i in range(0, len(ids), 100):
-                chunk = ids[i:i + 100]
-                res = (
-                    self.client.table("training_labels")
-                    .select(
-                        "session_id, snippet_id, schema_version, value, "
-                        "was_pre_filled, was_overridden, labeled_by, labeled_at"
-                    )
-                    .in_("session_id", chunk)
-                    .execute()
-                )
-                for r in (res.data or []):
-                    out.setdefault(str(r.get("session_id")), []).append(r)
-            return out
-        except Exception as e:
-            err_low = str(e).lower()
-            if "training_labels" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                return {}
-            logger.warning(
-                "get_training_labels_by_sessions failed (%d ids): %s",
-                len(ids), e,
-            )
-            return {}
-
-    def get_all_training_labels(self, *, limit: int = 50000) -> list[dict]:
-        """Read ALL direction labels across sessions — the corpus the shadow
-        learner trains on (Phase 4 / Prompt 1, B1 export). PRIVATE training
-        lane; service-role only. Returns [] on missing table (cold start)."""
-        try:
-            res = (
-                self.client.table("training_labels")
-                .select(
-                    "session_id, snippet_id, schema_version, value, "
-                    "was_pre_filled, was_overridden, selection_source, "
-                    "heuristic_version, labeled_at"
-                )
-                .limit(limit)
-                .execute()
-            )
-            return res.data or []
-        except Exception as e:
-            err_low = str(e).lower()
-            if "training_labels" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                return []
-            # selection_source / heuristic_version missing (migration unrun) →
-            # retry without them so export still works pre-migration.
-            if "selection_source" in err_low or "heuristic_version" in err_low:
-                try:
-                    res = (
-                        self.client.table("training_labels")
-                        .select(
-                            "session_id, snippet_id, schema_version, value, "
-                            "was_pre_filled, was_overridden, labeled_at"
-                        )
-                        .limit(limit)
-                        .execute()
-                    )
-                    return res.data or []
-                except Exception:
-                    return []
-            logger.warning("get_all_training_labels failed err=%s", e)
-            return []
-
-    def get_snippet_metrics_by_ids(self, snippet_ids: list[str]) -> dict:
-        """{snippet_id: metrics} for the given charisma snippets — the 11-feature
-        side of the export join. Best-effort; missing rows just absent."""
-        out: dict = {}
-        ids = [s for s in (snippet_ids or []) if s]
-        if not ids:
-            return out
-        try:
-            # chunk to keep the IN() list sane
-            for i in range(0, len(ids), 200):
-                chunk = ids[i:i + 200]
-                res = (
-                    self.client.table(SNIPPETS_TABLE)
-                    .select("id, metrics")
-                    .in_("id", chunk)
-                    .execute()
-                )
-                for row in (res.data or []):
-                    out[str(row.get("id"))] = row.get("metrics") or {}
-        except Exception as e:
-            logger.warning("get_snippet_metrics_by_ids failed err=%s", e)
-        return out
-
-    def get_snippet_data_origin_by_ids(self, snippet_ids: list[str]) -> dict:
-        """{snippet_id: data_origin} for the given charisma snippets (Subsystem-S
-        wall — lets the export hard-exclude synthetic from the truth corpus).
-        Best-effort: a missing column (pre-migration) returns {} so EVERYTHING is
-        treated as real — safe, since no synthetic data exists pre-migration."""
-        out: dict = {}
-        ids = [s for s in (snippet_ids or []) if s]
-        if not ids:
-            return out
-        try:
-            for i in range(0, len(ids), 200):
-                chunk = ids[i:i + 200]
-                res = (
-                    self.client.table(SNIPPETS_TABLE)
-                    .select("id, data_origin")
-                    .in_("id", chunk)
-                    .execute()
-                )
-                for row in (res.data or []):
-                    out[str(row.get("id"))] = row.get("data_origin")
-        except Exception as e:
-            err_low = str(e).lower()
-            if "data_origin" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                logger.warning(
-                    "get_snippet_data_origin_by_ids: column missing (run "
-                    "migrations/add_synthetic_provenance_walls.sql) — treating "
-                    "all as real",
-                )
-                return {}
-            logger.warning("get_snippet_data_origin_by_ids failed err=%s", e)
-        return out
-
-    def insert_game_save(self, user_id: str, arc_id: str) -> bool:
-        """Save a game session under TODAY's date (Engine 5 daily practice).
-        Idempotent per (user, arc, date) — a re-save the same day no-ops.
-        Best-effort; missing table (run migrations/add_game_saves.sql) →
-        False."""
-        if not user_id or not arc_id:
-            return False
-        from datetime import datetime, timezone
-        row = {
-            "user_id": str(user_id), "arc_id": str(arc_id),
-            "saved_date": datetime.now(timezone.utc).date().isoformat(),
-        }
-        try:
-            self.client.table("game_saves").upsert(
-                row, on_conflict="user_id,arc_id,saved_date",
-            ).execute()
-            return True
-        except Exception as e:
-            err_low = str(e).lower()
-            if "game_saves" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                logger.warning(
-                    "insert_game_save: table missing (run "
-                    "migrations/add_game_saves.sql)",
-                )
-                return False
-            logger.warning("insert_game_save failed user=%s arc=%s: %s",
-                           user_id, arc_id, e)
-            return False
-
-    def list_game_saves(self, user_id: str) -> list:
-        """The user's saved game sessions, newest first (the Game tab's
-        key-moments archive). [] on missing table / none / error."""
-        if not user_id:
-            return []
-        try:
-            res = (
-                self.client.table("game_saves")
-                .select("id, arc_id, saved_date, created_at")
-                .eq("user_id", str(user_id))
-                .order("saved_date", desc=True)
-                .execute()
-            )
-            # saved_at alias = the DATE it was filed under (the FE reads
-            # saved_at first; created_at is the row timestamp fallback).
-            out = []
-            for r in (res.data or []):
-                if isinstance(r, dict):
-                    out.append({**r, "saved_at": r.get("saved_date")})
-            return out
-        except Exception as e:
-            err_low = str(e).lower()
-            if "game_saves" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                return []
-            logger.warning("list_game_saves failed user=%s: %s", user_id, e)
-            return []
-
     # ── Coach star verdicts (founder 2026-07-27) ───────────────────────
     # The DECISION-layer correction corpus for the voice-text analytics: did
     # this star deserve to fire, and as this kind? Separate from
-    # training_labels (the blind confidence-labeling lane) by fence — see
-    # services/star_verdicts.py. Never surfaced to a student (AC-9).
+    # confidence-labeling by fence — see services/star_verdicts.py. Never
+    # surfaced to a student (AC-9).
 
     def upsert_star_verdict(
         self, *, snippet_id: str, row: dict, session_id: Optional[str] = None,
@@ -15268,224 +14948,10 @@ class DatabaseService:
                            session_id, e)
             return []
 
-    def count_training_labels(self) -> int:
-        """Total direction labels across all sessions — corpus size for the
-        learning status + the auto-retrain threshold. 0 on missing table."""
-        try:
-            res = (
-                self.client.table("training_labels")
-                .select("snippet_id", count="exact")
-                .limit(1)
-                .execute()
-            )
-            return int(getattr(res, "count", None) or 0)
-        except Exception as e:
-            if "training_labels" in str(e).lower():
-                return 0
-            logger.warning("count_training_labels failed err=%s", e)
-            return 0
-
-    # ── willab Phase 4 / Prompt 1 — shadow model registry ────────────────
-    def insert_model_version(
-        self, *, version: str, status: str = "shadow",
-        schema_version: Optional[str] = None, corpus_size: Optional[int] = None,
-        metrics: Optional[dict] = None, artifact_ref: Optional[str] = None,
-    ) -> bool:
-        """Register a trained (SHADOW) model. Best-effort; missing-table-safe."""
-        try:
-            self.client.table("model_versions").insert({
-                "version": version,
-                "status": status,
-                "schema_version": schema_version,
-                "corpus_size": corpus_size,
-                "metrics": metrics,
-                "artifact_ref": artifact_ref,
-            }).execute()
-            return True
-        except Exception as e:
-            if "model_versions" in str(e).lower():
-                logger.warning(
-                    "insert_model_version: table missing (run "
-                    "migrations/add_learning_subsystem.sql)",
-                )
-                return False
-            logger.warning("insert_model_version failed v=%s err=%s", version, e)
-            return False
-
-    def get_latest_model_version(self) -> Optional[dict]:
-        """Newest registered model (any status), or None. Missing-table-safe."""
-        try:
-            res = (
-                self.client.table("model_versions")
-                .select("version, created_at, status, schema_version, "
-                        "corpus_size, metrics, artifact_ref")
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            rows = res.data or []
-            return rows[0] if rows else None
-        except Exception as e:
-            if "model_versions" in str(e).lower():
-                return None
-            logger.warning("get_latest_model_version failed err=%s", e)
-            return None
-
-    def list_model_versions(self, *, limit: int = 50) -> list[dict]:
-        """All registered models, newest first. [] on missing table."""
-        try:
-            res = (
-                self.client.table("model_versions")
-                .select("version, created_at, status, schema_version, "
-                        "corpus_size, metrics")
-                .order("created_at", desc=True)
-                .limit(limit)
-                .execute()
-            )
-            return res.data or []
-        except Exception as e:
-            if "model_versions" in str(e).lower():
-                return []
-            logger.warning("list_model_versions failed err=%s", e)
-            return []
-
-    # ── willab Phase 4 / Prompt 1 — shadow prediction log (B3) ───────────
-    def upsert_shadow_prediction(
-        self, *, session_id: str, snippet_id: str, model_version: str,
-        predicted_label: str, confidence: Optional[float] = None,
-    ) -> bool:
-        """Log one SHADOW prediction, deduped on (snippet_id, model_version).
-        Never user/coach-facing. Best-effort; missing-table-safe."""
-        try:
-            existing = (
-                self.client.table("shadow_predictions")
-                .select("id")
-                .eq("snippet_id", snippet_id)
-                .eq("model_version", model_version)
-                .limit(1)
-                .execute()
-            )
-            if existing.data:
-                return False
-            self.client.table("shadow_predictions").insert({
-                "session_id": session_id,
-                "snippet_id": snippet_id,
-                "model_version": model_version,
-                "predicted_label": predicted_label,
-                "confidence": confidence,
-            }).execute()
-            return True
-        except Exception as e:
-            if "shadow_predictions" in str(e).lower():
-                return False
-            logger.warning("upsert_shadow_prediction failed snip=%s: %s", snippet_id, e)
-            return False
-
-    def backfill_shadow_coach_actual(self, snippet_id: str, coach_actual_label: str) -> bool:
-        """When the coach labels a snippet, fill coach_actual_label on its shadow
-        rows (predicted-vs-actual closes the agreement loop). Best-effort."""
-        try:
-            (
-                self.client.table("shadow_predictions")
-                .update({"coach_actual_label": coach_actual_label})
-                .eq("snippet_id", snippet_id)
-                .is_("coach_actual_label", "null")
-                .execute()
-            )
-            return True
-        except Exception as e:
-            if "shadow_predictions" in str(e).lower():
-                return False
-            logger.warning("backfill_shadow_coach_actual failed snip=%s: %s", snippet_id, e)
-            return False
-
-    def get_shadow_agreement(self) -> Optional[dict]:
-        """{agreement_overall, by_class, sample_n} of predicted vs coach_actual.
-        None when no labeled predictions yet. In-distribution (heuristic-selected,
-        range-restricted) — the dashboard must label it as such."""
-        try:
-            res = (
-                self.client.table("shadow_predictions")
-                .select("predicted_label, coach_actual_label")
-                .not_.is_("coach_actual_label", "null")
-                .limit(5000)
-                .execute()
-            )
-            rows = res.data or []
-            if not rows:
-                return None
-            n = len(rows)
-            agree = sum(1 for r in rows if r.get("predicted_label") == r.get("coach_actual_label"))
-            by_class: dict = {}
-            for r in rows:
-                actual = r.get("coach_actual_label")
-                hit, tot = by_class.get(actual, (0, 0))
-                by_class[actual] = (hit + (1 if r.get("predicted_label") == actual else 0), tot + 1)
-            return {
-                "agreement_overall": round(agree / n, 4),
-                "by_class": {k: round(h / t, 4) for k, (h, t) in by_class.items() if t},
-                "sample_n": n,
-                "note": "in-distribution (heuristic-selected); not a held-out estimate",
-            }
-        except Exception as e:
-            if "shadow_predictions" in str(e).lower():
-                return None
-            logger.warning("get_shadow_agreement failed: %s", e)
-            return None
-
-    def delete_training_label(self, session_id: str, snippet_id: str) -> bool:
-        """Clear one snippet's direction label (the coach unset it — the FE
-        sends direction_label: null). Best-effort; missing table → False."""
-        if not session_id or not snippet_id:
-            return False
-        try:
-            (
-                self.client.table("training_labels")
-                .delete()
-                .eq("session_id", session_id)
-                .eq("snippet_id", snippet_id)
-                .execute()
-            )
-            return True
-        except Exception as e:
-            err_low = str(e).lower()
-            if "training_labels" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                return False
-            logger.warning(
-                "delete_training_label failed sid=%s snip=%s err=%s",
-                session_id, snippet_id, e,
-            )
-            return False
-
-    def delete_training_labels_for_session(self, session_id: str) -> int:
-        """Delete ALL training labels for a session. Used by force re-cut
-        (UX Wave 3 BE-6) — re-cut mints new snippet ids, so the old labels
-        would be orphaned; on an explicit force we delete them rather than
-        leave dead-snippet rows polluting the private-lane training signal.
-        Returns the delete count; best-effort."""
-        if not session_id:
-            return 0
-        try:
-            res = (
-                self.client.table("training_labels")
-                .delete()
-                .eq("session_id", session_id)
-                .execute()
-            )
-            return len(res.data or [])
-        except Exception as e:
-            logger.warning(
-                "delete_training_labels_for_session failed sid=%s err=%s",
-                session_id, e,
-            )
-            return 0
-
     def delete_coach_snippet_drafts_for_session(self, session_id: str) -> int:
         """Delete ALL coach snippet drafts (note/tag/surfaced/when/examples)
-        for a session. Companion to delete_training_labels_for_session for
-        force re-cut. Returns the delete count; best-effort."""
+        for a session during force re-cut. Returns the delete count;
+        best-effort."""
         if not session_id:
             return 0
         try:
@@ -15779,20 +15245,17 @@ class DatabaseService:
                 "updated_by": updated_by,
                 "updated_at": now_iso,
             }
-            # breakthrough_video_ref / transcript_corrected are NOT re-asserted
-            # from base — each is only written when the coach actually sets it
-            # (merge loop below). A normal note/tag save never references either
-            # column, and ON CONFLICT preserves whatever was already there —
-            # keeps coach saves working even before their migrations run.
-            # reference_post_slug (ticket 6, 2026-07-26) joins the same
+            # transcript_corrected is only written when the coach actually sets
+            # it. A normal note/tag save never references the column, and ON
+            # CONFLICT preserves whatever was already there. reference_post_slug
+            # joins the same
             # write-only-when-set group: a blog post the COACH manually attaches
             # to this verified moment. Never re-asserted from base, so a normal
             # note/tag save leaves it alone and coach saves keep working before
             # its migration runs.
             for k in (
                 "note", "tag", "surfaced", "when_context", "examples",
-                "breakthrough_video_ref", "transcript_corrected",
-                "reference_post_slug",
+                "transcript_corrected", "reference_post_slug",
             ):
                 if k in fields:
                     row[k] = fields[k]
@@ -15825,10 +15288,6 @@ class DatabaseService:
         if not session_id:
             return []
         try:
-            # select(*) (not an explicit column list) so a not-yet-migrated
-            # breakthrough_video_ref column never makes this read fail and wipe
-            # the drafts (which would break resume + publish assembly). Consumers
-            # read named keys via .get(), so extra columns are harmless.
             res = (
                 self.client.table("coach_snippet_drafts")
                 .select("*")
@@ -16335,6 +15794,52 @@ class DatabaseService:
                 user_id, len(rows), e,
             )
             return []
+
+    def has_voice_album_introduction(self, user_id: str) -> bool:
+        """Whether this user has already received Voice Album onboarding."""
+        if not user_id:
+            return False
+        try:
+            res = (
+                self.client.table("user_settings")
+                .select("voice_album_introduced_at")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            return bool(
+                res.data
+                and res.data[0].get("voice_album_introduced_at")
+            )
+        except Exception as e:
+            logger.warning(
+                "has_voice_album_introduction failed user=%s: %s",
+                user_id, e,
+            )
+            return False
+
+    def mark_voice_album_introduced(self, user_id: str) -> bool:
+        """Persist the one-time, user-scoped Voice Album introduction."""
+        if not user_id:
+            return False
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            (
+                self.client.table("user_settings")
+                .upsert({
+                    "user_id": user_id,
+                    "voice_album_introduced_at": now,
+                    "updated_at": now,
+                }, on_conflict="user_id")
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "mark_voice_album_introduced failed user=%s: %s",
+                user_id, e,
+            )
+            return False
 
     def get_lounge_message_by_client_id(
         self, user_id: str, client_id: str,
@@ -17445,174 +16950,6 @@ class DatabaseService:
             return (res.data or [None])[0]
         except Exception:
             return None
-
-    # ── Reflection Game (F2 handoff §1, 2026-08-03) ───────────────────
-    def get_shadow_challenge_snippet_ids(self, snippet_ids) -> set:
-        """Snippet ids the SHADOW model flagged 'challenge' — the game's
-        clip source. Internal only: never serialize this membership."""
-        ids = [str(x) for x in (snippet_ids or []) if x]
-        if not ids:
-            return set()
-        try:
-            res = (self.client.table("shadow_predictions")
-                   .select("snippet_id")
-                   .in_("snippet_id", ids)
-                   .eq("predicted_label", "challenge").execute())
-            return {str(r.get("snippet_id")) for r in (res.data or [])
-                    if r.get("snippet_id")}
-        except Exception as e:
-            logger.warning("get_shadow_challenge_snippet_ids failed: %s", e)
-            return set()
-
-    def list_reflection_clips(self, user_id: Optional[str]) -> list:
-        """Every clip of one user, oldest first — the stable all-time
-        order the 1-in-4 decoy cadence is positioned against."""
-        if not user_id:
-            return []
-        try:
-            res = (self.client.table("reflection_clips").select("*")
-                   .eq("user_id", str(user_id))
-                   .order("created_at", desc=False).execute())
-            return res.data or []
-        except Exception as e:
-            _e = str(e).lower()
-            if "reflection_clips" in _e and ("does not exist" in _e
-                                             or "pgrst" in _e):
-                logger.warning(
-                    "list_reflection_clips: table missing (run "
-                    "migrations/add_reflection_clips.sql)")
-                return []
-            logger.warning("list_reflection_clips failed user=%s: %s",
-                           user_id, e)
-            return []
-
-    def insert_reflection_clip(self, user_id: str, fields: dict) -> bool:
-        if not user_id or not isinstance(fields, dict) \
-                or not fields.get("snippet_id"):
-            return False
-        try:
-            self.client.table("reflection_clips").insert({
-                "user_id": str(user_id), **fields,
-            }).execute()
-            return True
-        except Exception as e:
-            _e = str(e).lower()
-            if "duplicate" in _e or "unique" in _e:
-                return False    # snippet already clipped — idempotent
-            if "reflection_clips" in _e and ("does not exist" in _e
-                                             or "pgrst" in _e):
-                logger.warning(
-                    "insert_reflection_clip: table missing (run "
-                    "migrations/add_reflection_clips.sql)")
-                return False
-            logger.warning("insert_reflection_clip failed user=%s: %s",
-                           user_id, e)
-            return False
-
-    def mark_reflection_clips_served(self, clip_ids) -> bool:
-        ids = [str(x) for x in (clip_ids or []) if x]
-        if not ids:
-            return True
-        try:
-            (self.client.table("reflection_clips")
-             .update({"served_at": datetime.now(timezone.utc).isoformat()})
-             .in_("id", ids).is_("served_at", "null").execute())
-            return True
-        except Exception as e:
-            logger.warning("mark_reflection_clips_served failed: %s", e)
-            return False
-
-    def count_reflection_clips_served_today(
-            self, user_id: Optional[str]) -> int:
-        """Clips FIRST served since UTC midnight — the cadence counter."""
-        if not user_id:
-            return 0
-        try:
-            day_start = datetime.now(timezone.utc).replace(
-                hour=0, minute=0, second=0, microsecond=0).isoformat()
-            res = (self.client.table("reflection_clips").select("id")
-                   .eq("user_id", str(user_id))
-                   .gte("served_at", day_start).execute())
-            return len(res.data or [])
-        except Exception:
-            return 0
-
-    def get_reflection_clip(self, clip_id: Optional[str]) -> Optional[dict]:
-        if not clip_id:
-            return None
-        try:
-            res = (self.client.table("reflection_clips").select("*")
-                   .eq("id", str(clip_id)).limit(1).execute())
-            return (res.data or [None])[0]
-        except Exception:
-            return None
-
-    def set_reflection_vote(self, clip_id: str, user_id: str,
-                            vote: str) -> Optional[dict]:
-        """Store the user's vote (owner-scoped; a re-vote overwrites).
-        Returns the updated row, or None when the clip isn't theirs."""
-        if not clip_id or not user_id or vote not in ("best", "not_this"):
-            return None
-        try:
-            res = (self.client.table("reflection_clips")
-                   .update({"user_vote": vote,
-                            "voted_at": datetime.now(
-                                timezone.utc).isoformat()})
-                   .eq("id", str(clip_id)).eq("user_id", str(user_id))
-                   .execute())
-            return (res.data or [None])[0]
-        except Exception as e:
-            logger.warning("set_reflection_vote failed clip=%s: %s",
-                           clip_id, e)
-            return None
-
-    def list_reflection_clips_for_coach(self, limit: int = 20) -> list:
-        """Voted, verdict-pending clips, oldest vote first. The caller
-        (route) shapes the BLIND payload — audio + transcript only."""
-        try:
-            res = (self.client.table("reflection_clips").select("*")
-                   .not_.is_("user_vote", "null")
-                   .is_("coach_verdict", "null")
-                   .order("voted_at", desc=False)
-                   .limit(max(1, int(limit))).execute())
-            return res.data or []
-        except Exception as e:
-            logger.warning("list_reflection_clips_for_coach failed: %s", e)
-            return []
-
-    def set_reflection_verdict(self, clip_id: str,
-                               verdict: str) -> Optional[dict]:
-        if not clip_id or verdict not in ("confident", "not_confident"):
-            return None
-        try:
-            res = (self.client.table("reflection_clips")
-                   .update({"coach_verdict": verdict,
-                            "verified_at": datetime.now(
-                                timezone.utc).isoformat()})
-                   .eq("id", str(clip_id)).execute())
-            return (res.data or [None])[0]
-        except Exception as e:
-            logger.warning("set_reflection_verdict failed clip=%s: %s",
-                           clip_id, e)
-            return None
-
-    def list_confident_voices(self, user_id: Optional[str]) -> list:
-        """The user's cross-project Confident Voices library: coach-
-        verified moments only (decoys eligible — a coach-verified decoy
-        is a confident moment), newest verdict first. A list is a list:
-        no aggregates ride anywhere near this (AC-9)."""
-        if not user_id:
-            return []
-        try:
-            res = (self.client.table("reflection_clips").select("*")
-                   .eq("user_id", str(user_id))
-                   .eq("coach_verdict", "confident")
-                   .order("verified_at", desc=True).execute())
-            return res.data or []
-        except Exception as e:
-            logger.warning("list_confident_voices failed user=%s: %s",
-                           user_id, e)
-            return []
 
     # ── Confident Voice micro-practice ────────────────────────────────
     # These tables are intentionally isolated from presentation text,

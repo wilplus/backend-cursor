@@ -1,10 +1,4 @@
-"""Coach-adjusted power_score (willab Phase 4, 2026-06-15).
-
-Pure function, no DB. The coach tag is the DOMINANT term (the human gate);
-activation + slide_stickiness order within a tag; untagged smooths to acoustic.
-
-Run: python3 -m unittest test_power_phrase_ranking
-"""
+"""The live phrase ranker accepts product evidence only."""
 from __future__ import annotations
 
 import unittest
@@ -81,14 +75,13 @@ class TheCharismaTermIsGoneTests(unittest.TestCase):
 
 
 class ConfidenceTermTests(unittest.TestCase):
-    """SPEC §7.2 — confidence enters EXACTLY ONCE (D8), panel or machine."""
+    """Machine confidence is the only automatic live delivery term."""
 
     def test_no_confidence_is_byte_for_byte_unchanged(self):
-        # The live /strengths path passes none of it → identical to before.
         self.assertEqual(
             power_score(activation=0.5, slide_stickiness=0.3, tag="strong"),
             power_score(activation=0.5, slide_stickiness=0.3, tag="strong",
-                        panel_confidence=None, machine_confidence=None),
+                        machine_confidence=None),
         )
 
     def test_an_assured_delivery_outranks_an_unsure_one(self):
@@ -102,32 +95,17 @@ class ConfidenceTermTests(unittest.TestCase):
             power_score(activation=0.5),
         )
 
-    def test_the_panel_is_used_INSTEAD_of_the_machine_never_as_well(self):
-        """D8's whole content. Summing them would double-count one property
-        of one clip — and it would do it silently, since both terms are
-        legitimate on their own."""
-        from services.power_phrase_ranking import (
-            SOURCE_PANEL, confidence_term,
-        )
-        term, source = confidence_term({"value": 1.0, "quality": 1.0}, 0.9)
-        self.assertEqual(source, SOURCE_PANEL)
-        panel_only, _ = confidence_term({"value": 1.0, "quality": 1.0}, None)
-        self.assertEqual(term, panel_only)
+    def test_confidence_source_is_machine_or_none(self):
+        from services.power_phrase_ranking import confidence_term
+        self.assertEqual(confidence_term(0.5), (0.5, "machine"))
+        self.assertEqual(confidence_term(None), (0.0, "none"))
 
-    def test_a_thin_panel_moves_ranking_less_than_a_deep_one(self):
-        from services.state_ratings import quality
-        thin = power_score(panel_confidence={
-            "value": 1.0, "quality": quality(2, 1.0)})
-        deep = power_score(panel_confidence={
-            "value": 1.0, "quality": quality(10, 1.0)})
-        self.assertGreater(deep, thin)
-
-    def test_the_panel_outweighs_the_machine_at_equal_lean(self):
-        # A real aggregated human judgment should move the pick further than
-        # an estimate standing in for one.
-        panel = power_score(panel_confidence={"value": 1.0, "quality": 1.0})
-        machine = power_score(machine_confidence=1.0)
-        self.assertGreater(panel, machine)
+    def test_peer_panel_input_is_rejected_loudly(self):
+        with self.assertRaises(TypeError):
+            power_score(panel_confidence={"value": 1.0, "quality": 1.0})
+        with self.assertRaises(TypeError):
+            from services.power_phrase_ranking import confidence_term
+            confidence_term({"value": 1.0}, 0.9)
 
 
 class OrderingOfAuthorityTests(unittest.TestCase):
@@ -152,24 +130,23 @@ class OrderingOfAuthorityTests(unittest.TestCase):
         """The whole ordering invariant, in one comparison. to_work_on is a
         REAL pick (no default ever produced it), so it still costs 2.0 — and
         since content/panel/machine are all available to BOTH phrases, no
-        combination of them closes the gap. True at any weight."""
+        machine confidence is available to BOTH phrases, so it cannot close
+        the relative gap. True at any weight."""
         best_case_for_the_vetoed = power_score(
             tag="to_work_on", activation=1.0, slide_stickiness=1.0,
-            panel_confidence={"value": 1.0, "quality": 1.0})
+            machine_confidence=1.0)
         same_phrase_untagged = power_score(
             activation=1.0, slide_stickiness=1.0,
-            panel_confidence={"value": 1.0, "quality": 1.0})
+            machine_confidence=1.0)
         self.assertLess(best_case_for_the_vetoed, same_phrase_untagged)
 
     def test_the_veto_outweighs_any_single_confidence_read(self):
         """Delivery informs the pick; it never overturns a human's explicit
-        negative. A perfect panel (1.5) and a perfect machine read (1.0) are
-        each strictly smaller than the 2.0 the veto removes."""
+        negative. A perfect machine read is strictly smaller than the 2.0 the
+        veto removes."""
         veto = power_score(tag=None) - power_score(tag="to_work_on")
-        for conf in ({"panel_confidence": {"value": 1.0, "quality": 1.0}},
-                     {"machine_confidence": 1.0}):
-            lift = power_score(**conf) - power_score()
-            self.assertGreater(veto, lift)
+        lift = power_score(machine_confidence=1.0) - power_score()
+        self.assertGreater(veto, lift)
 
     def test_the_quorum_bonus_is_GONE_not_ignored(self):
         """Founder verdict, 2026-08-13 evening: `_W_B` deleted outright — a
@@ -187,16 +164,16 @@ class OrderingOfAuthorityTests(unittest.TestCase):
         veto = power_score(tag=None) - power_score(tag="to_work_on")
         all_automatic_maxed = power_score(
             activation=1.0, slide_stickiness=1.0,
-            panel_confidence={"value": 1.0, "quality": 1.0}) - power_score()
-        # 2.0 removed vs 1.0 + 0.6 + 1.5 available — but the point is that the
+            machine_confidence=1.0) - power_score()
+        # 2.0 removed vs 1.0 + 0.6 + 1.0 available — but the point is that the
         # untagged phrase can claim all of it too, so the comparison below is
         # the one that decides ordering.
         self.assertGreater(
             power_score(activation=1.0, slide_stickiness=1.0,
-                        panel_confidence={"value": 1.0, "quality": 1.0}),
+                        machine_confidence=1.0),
             power_score(tag="to_work_on", activation=1.0,
                         slide_stickiness=1.0,
-                        panel_confidence={"value": 1.0, "quality": 1.0}))
+                        machine_confidence=1.0))
         self.assertEqual(veto, 2.0)
         self.assertGreater(all_automatic_maxed, 0.0)
 

@@ -38,9 +38,6 @@ _MAX_OVERALL_LEN = 4000
 _MAX_WHEN_LEN = 1000
 _MAX_EXAMPLE_LEN = 500
 _MAX_EXAMPLES = 10
-# Per-snippet coach breakthrough video — a public URL (no new text field; the
-# breakthrough explanation is the note itself). Optional; empty → None.
-_MAX_VIDEO_REF_LEN = 2048
 # Coach-corrected transcript (founder 2026-07-06) — a real coach-authored
 # artifact, distinct from `note` (commentary) and the immutable raw
 # transcript. Optional; empty → None.
@@ -140,8 +137,8 @@ def validate_insights_payload(body: Any) -> dict:
         # stored at all — and losing the note would cost the clone corpus (L3)
         # far more than an inert tag costs. It is inert now: as of this date
         # nothing reads tag == "strong" as evidence of anything. power_score
-        # dropped it from the coach term, the Voice Album reads the confidence
-        # quorum instead, and the Lounge bot no longer calls it the coach's
+        # dropped it from the coach term, the Voice Album reads an explicit
+        # professional-coach confidence judgment instead, and the Lounge bot no longer calls it the coach's
         # "best". Treat this value as "note exists", because that is all it has
         # ever meant. Making it honestly nullable is a migration on a live
         # table and is deliberately NOT bundled here.
@@ -199,32 +196,6 @@ def validate_insights_payload(body: Any) -> dict:
                     )
                 examples_val.append(e)
 
-        # Breakthrough video — optional public URL (str), empty → None. The
-        # FE renders it next to the breakthrough badge; the explanation text is
-        # the `note` above (no separate breakthrough-explanation field).
-        bvr_raw = n.get("breakthrough_video_ref")
-        breakthrough_video_ref: Optional[str] = None
-        if bvr_raw is not None:
-            if not isinstance(bvr_raw, str):
-                raise InsightsPayloadError(
-                    f"snippet_notes[{i}].breakthrough_video_ref: must be a string"
-                )
-            bvr = bvr_raw.strip()
-            if bvr:
-                if len(bvr) > _MAX_VIDEO_REF_LEN:
-                    raise InsightsPayloadError(
-                        f"snippet_notes[{i}].breakthrough_video_ref: must be "
-                        f"{_MAX_VIDEO_REF_LEN} characters or fewer"
-                    )
-                # Must be an http(s) URL — it lands in the learner's <video>
-                # src; reject javascript:/data:/garbage even from a coach.
-                if not (bvr.startswith("https://") or bvr.startswith("http://")):
-                    raise InsightsPayloadError(
-                        f"snippet_notes[{i}].breakthrough_video_ref: must be "
-                        "an http(s) URL"
-                    )
-                breakthrough_video_ref = bvr
-
         # Coach-corrected transcript (founder 2026-07-06) — optional str,
         # empty → None.
         tx_raw = n.get("transcript_corrected")
@@ -249,7 +220,6 @@ def validate_insights_payload(body: Any) -> dict:
             "tag": tag,
             "when": when_val,
             "examples": examples_val,
-            "breakthrough_video_ref": breakthrough_video_ref,
             "transcript_corrected": transcript_corrected,
         })
 

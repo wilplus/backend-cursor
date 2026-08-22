@@ -49,27 +49,23 @@ class ConfidenceResolutionTests(unittest.TestCase):
     deciding, on every take with no human in the loop, whether a moment got a
     replace star, an emphasize star, or silence."""
 
-    def _resolve(self, panel, score):
+    def _resolve(self, score):
         from services.moment_confidence import resolve_moment_confidence
         metrics = ({"voice_confidence": {"score": score,
                                          "version": "voice-confidence-v2"}}
                    if score is not None else None)
-        return resolve_moment_confidence(panel, metrics)
+        return resolve_moment_confidence(metrics)
 
-    def test_the_panel_overrides_the_machine_including_when_it_says_neither(self):
-        self.assertEqual(self._resolve({"value": 1.0}, -0.9), "confident")
-        self.assertEqual(self._resolve({"value": -1.0}, 0.9), "unconfident")
-        # 0.0 = people looked and landed in the middle. `neutral` is a
-        # judgment about the moment (§17), not an absence of one, so it must
-        # not fall through to an estimate standing in for the humans who
-        # actually answered.
-        self.assertIsNone(self._resolve({"value": 0.0}, 0.9))
+    def test_peer_panel_input_is_not_part_of_the_product_api(self):
+        from services.moment_confidence import resolve_moment_confidence
+        with self.assertRaises(TypeError):
+            resolve_moment_confidence({"value": 1.0}, {"voice_confidence": {}})
 
-    def test_the_machine_covers_the_unlabelled_majority(self):
-        self.assertEqual(self._resolve(None, 0.5), "confident")
-        self.assertEqual(self._resolve(None, -0.5), "unconfident")
-        self.assertIsNone(self._resolve(None, 0.0))   # the dead zone
-        self.assertIsNone(self._resolve(None, None))  # never stamped
+    def test_the_machine_routes_live_suggestions(self):
+        self.assertEqual(self._resolve(0.5), "confident")
+        self.assertEqual(self._resolve(-0.5), "unconfident")
+        self.assertIsNone(self._resolve(0.0))   # the dead zone
+        self.assertIsNone(self._resolve(None))  # never stamped
 
     def test_the_machine_read_is_NOT_gated_on_the_ranking_flag(self):
         """SPEC §7.3 scopes VOICE_CONFIDENCE_RANKING_ENABLED to RANKING. This
@@ -79,7 +75,7 @@ class ConfidenceResolutionTests(unittest.TestCase):
         import os
         from unittest.mock import patch
         with patch.dict(os.environ, {"VOICE_CONFIDENCE_RANKING_ENABLED": "0"}):
-            self.assertEqual(self._resolve(None, 0.5), "confident")
+            self.assertEqual(self._resolve(0.5), "confident")
 
     def test_blind_coach_shadow_model_banned(self):
         # The docstring may NAME the ban; the IMPORT is what's banned.
@@ -147,7 +143,7 @@ class AssemblyAnchorTests(unittest.TestCase):
         import services.ideal_text_block as mod
         bp = {"ready": True, "slides": [{
             "text": "a strong line", "snippet_id": SNIP, "session_id": SESS,
-            "breakthrough": False, "key_phrases": [],
+            "key_phrases": [],
         }]}
         with patch.object(mod, "assemble_ideal_text_block",
                           wraps=mod.assemble_ideal_text_block):
@@ -752,12 +748,11 @@ class StudentGetStarTests(unittest.TestCase):
 
     def test_verified_star_beats_suggestion(self):
         drafts = [{"snippet_id": SNIP, "surfaced": True,
-                   "note": "Coach note",
-                   "breakthrough_video_ref": "https://x/v.mp4"}]
+                   "note": "Coach note"}]
         body, _ = self._get(sugs=self._sug(), drafts=drafts)
         m = body["key_moments"][0]
         self.assertEqual(m["star"], "verified")
-        self.assertTrue(m["coach"]["has_video"])
+        self.assertEqual(m["coach"], {"has_message": True})
         self.assertNotIn("suggestion", m)
         # content itself is NOT here (paid moments GET serves it)
         self.assertNotIn("Coach note", json.dumps(body))
@@ -903,7 +898,7 @@ class LedgerBakeAssemblyTests(unittest.TestCase):
         bp = {"ready": True, "slides": [{
             "text": edited, "verbatim": verbatim, "polished": polished,
             "snippet_id": SNIP, "session_id": SESS,
-            "breakthrough": False, "key_phrases": [],
+            "key_phrases": [],
         }]}
         with patch("services.best_presentation.build_best_presentation",
                    return_value=bp), \
@@ -1363,7 +1358,7 @@ class PolishRecurrenceProtectionTests(unittest.TestCase):
             "text": "we are going to win this",
             "verbatim": "we gonna win this", "polished": True,
             "snippet_id": SNIP, "session_id": SESS,
-            "breakthrough": False, "key_phrases": [],
+            "key_phrases": [],
         }]}
         db = self._Db(take_texts)
         with patch("services.best_presentation.build_best_presentation",
@@ -1406,7 +1401,7 @@ class VersionSnapshotWriteTests(unittest.TestCase):
         def get_moment_suggestions_by_arc(self, arc_id):
             return {SNIP: {"snippet_id": SNIP, "kind": "replace",
                            "replacement_text": "calmer", "why": "why",
-                           "trigger": "threat"}}
+                           "trigger": "clarity"}}
 
         def persist_auto_ideal_text(self, arc_id, text, *, take_count=None,
                                     document=None):
@@ -1422,12 +1417,12 @@ class VersionSnapshotWriteTests(unittest.TestCase):
             self.snapshots.append((arc_id, version, text, moments))
             return True
 
-    def test_snapshot_written_with_sanitized_moments(self):
+    def test_snapshot_written_with_clean_text_and_sanitized_moments(self):
         import services.ideal_text_block as mod
         bp = {"ready": True, "slides": [{
             "text": "a strong line", "verbatim": "a strong line",
             "polished": False, "snippet_id": SNIP, "session_id": SESS,
-            "breakthrough": True, "key_phrases": [],
+            "key_phrases": [],
         }]}
         db = self._Db()
         with patch("services.best_presentation.build_best_presentation",
@@ -1439,7 +1434,10 @@ class VersionSnapshotWriteTests(unittest.TestCase):
         self.assertTrue(ok)
         arc, version, text, moments = db.snapshots[0]
         self.assertEqual((arc, version), (ARC, 4))
-        self.assertIn(f"[[moment:{SNIP}|{SESS}]]", text)  # anchors kept
+        # L1: Ideal Text is the clean canonical document. Feedback evidence
+        # stays in the separate moments metadata and never pollutes its text.
+        self.assertEqual(text, "a strong line")
+        self.assertNotIn("[[moment:", text)
         self.assertEqual(moments[0]["snippet_id"], SNIP)
         self.assertIsNone(moments[0]["trigger"])          # clamped at write
         self.assertEqual(moments[0]["replacement"], "calmer")
@@ -1451,7 +1449,7 @@ class VersionSnapshotWriteTests(unittest.TestCase):
         bp = {"ready": True, "slides": [{
             "text": "a strong line", "verbatim": "a strong line",
             "polished": False, "snippet_id": SNIP, "session_id": SESS,
-            "breakthrough": False, "key_phrases": [],
+            "key_phrases": [],
         }]}
         with patch("services.best_presentation.build_best_presentation",
                    return_value=bp), \

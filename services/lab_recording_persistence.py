@@ -109,20 +109,8 @@ def persist_session_metadata(
     user_id: str | None,
     database: Any,
 ) -> None:
-    """Persist context, origin, duration, owner, and private drift signal."""
+    """Persist context, origin, duration, and owner."""
     session_context.update(flow_tags)
-    if session_context.get("named_emotion"):
-        try:
-            from services.named_emotion import log_drift_signal
-
-            log_drift_signal(
-                user_id,
-                session_id,
-                session_context["named_emotion"],
-            )
-        except Exception:
-            pass
-
     database.set_session_intake_context(session_id, session_context)
     database.set_session_source(session_id, "audit_upload")
     database.set_session_presentation_duration(session_id, duration_seconds)
@@ -146,10 +134,6 @@ def persist_recording_row(
 ) -> RecordingRow:
     """Persist private signals and the recording row with schema fallback."""
     from services.feelings import normalize_feeling
-    from services.priming import (
-        normalize_priming_condition,
-        normalize_priming_phrase,
-    )
 
     feeling = normalize_feeling(form.get("feeling"))
     if feeling:
@@ -160,17 +144,6 @@ def persist_recording_row(
             recording_id=recording_id,
             arc_id=arc_id,
             take_index=take_index,
-        )
-
-    priming_condition = normalize_priming_condition(
-        form.get("priming_condition")
-    )
-    priming_phrase = normalize_priming_phrase(form.get("priming_phrase"))
-    if priming_condition or priming_phrase:
-        database.set_session_priming(
-            session_id,
-            priming_condition,
-            priming_phrase,
         )
 
     try:

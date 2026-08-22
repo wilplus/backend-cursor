@@ -47,15 +47,12 @@ class BaselineTests(unittest.TestCase):
         pool = [{"f0_sd": float(i)} for i in range(3)]
         self.assertIsNone(ab.stats_from_metrics(pool, min_samples=8))
 
-    def test_the_persisted_and_the_transient_baseline_are_ONE_measurement(self):
-        # acoustic_read._baseline_from_metrics used to own this arithmetic and
-        # now delegates. If the two ever diverge, a stored baseline and the
-        # needle measured against it stop being comparable — and nothing about
-        # either number would look wrong.
-        from services.acoustic_read import _baseline_from_metrics
+    def test_the_baseline_tuple_and_persisted_stats_are_one_measurement(self):
+        # The persisted form keeps evidence counts while the scoring form uses
+        # (mean, sd) tuples. Both must be projections of the same calculation.
         pool = [{"f0_sd": float(i), "pause_regularity": float(i % 3)}
                 for i in range(12)]
-        tup = _baseline_from_metrics(pool, 8)
+        tup = ab.as_baseline(ab.stats_from_metrics(pool, 8))
         rich = ab.as_baseline(ab.stats_from_metrics(pool, 8))
         self.assertEqual(tup, rich)
 
@@ -343,11 +340,10 @@ class WiringTests(unittest.TestCase):
         from services import recording_piece_analysis as rpa
 
         pipeline_src = inspect.getsource(lr.process_lab_recording)
-        stage_src = inspect.getsource(rpa._attach_acoustic_enrichment)
+        stage_src = inspect.getsource(rpa._refresh_acoustic_baseline)
         self.assertIn("analyze_canonical_pieces", pipeline_src)
         self.assertIn("resolve_for_take", stage_src)
-        self.assertNotIn("resolve_read_baseline_stats", stage_src)
-        self.assertNotIn("resolve_read_baseline(", stage_src)
+        self.assertNotIn("acoustic_read", stage_src)
 
 
 class BaselineFreshnessTests(unittest.TestCase):
@@ -421,8 +417,7 @@ class BaselineFreshnessTests(unittest.TestCase):
         # The staleness check and the rebuild must agree about how far back
         # "recent" goes, or the cache could be judged fresh against five
         # sessions and rebuilt from a different five.
-        from services.acoustic_read import _BASELINE_MAX_SESSIONS
-        self.assertEqual(ab._max_sessions(), _BASELINE_MAX_SESSIONS)
+        self.assertEqual(ab._max_sessions(), ab._BASELINE_MAX_SESSIONS)
 
     def test_a_stored_baseline_is_reused_without_touching_the_snippets(self):
         # The point of the whole change: the expensive call is

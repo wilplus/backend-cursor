@@ -99,22 +99,11 @@ def _confidence_review_status_map(arc_id, moments):
     except Exception:
         labels = {}
 
+    from services.professional_confidence import latest_professional_value
     result = {}
     for snippet_id in snippet_ids:
         owner = owner_by_snippet.get(snippet_id)
-        professional = [
-            row for row in (labels.get(snippet_id) or [])
-            if isinstance(row, dict)
-            and not row.get("self_report")
-            and (row.get("lane") == "coach"
-                 or (row.get("lane") is None
-                     and row.get("source") == "coach"))
-            and row.get("state_id") in (None, "confidence")
-            and not row.get("unrateable")
-            and row.get("value") in ("yes", "no")
-        ]
-        professional.sort(key=lambda row: row.get("updated_at") or "")
-        coach = professional[-1].get("value") if professional else None
+        coach = latest_professional_value(labels.get(snippet_id))
 
         # A No is a resolved project decision: it never styles the text.  The
         # later Voice Album disagreement exercise is intentionally separate.

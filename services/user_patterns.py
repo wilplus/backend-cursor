@@ -1,9 +1,8 @@
 """Engine 4 — per-user acoustic patterns (founder 2026-07-11). Deterministic
 v1, pure code, no LLM.
 
-Mines the user's coach-labeled moments — POSITIVE (challenge-labeled /
-strong-tagged) **and** NEGATIVE (threat-labeled / to_work_on-tagged, founder:
-"the good ones and also the bad ones") — against their NEUTRAL moments, and
+Mines the user's professional-coach confidence judgments — POSITIVE (Yes)
+and NEGATIVE (No) — against their NEUTRAL moments, and
 emits qualitative pattern statements through fixed templates, e.g. "a
 longer-than-usual pause tends to come right before your strongest moments".
 
@@ -13,7 +12,7 @@ BLIND COACH — only coach labels/tags define the classes; shadow guesses are
 never read here. Honest silence: thin data (< _MIN_CLASS_N moments in a
 class, or no meaningful delta) → no statement at all.
 
-Primary consumer: the game engine's "Here is why" section (Engine 5).
+Primary consumer: internal qualitative pattern analysis.
 """
 from __future__ import annotations
 
@@ -110,34 +109,24 @@ def _feature_value(metrics: Any, aliases: tuple) -> Optional[float]:
 
 
 def classify_moment(verdict: Any) -> str:
-    """positive | negative | neutral — from the SETTLED confidence verdict.
+    """positive | negative | neutral — from the professional coach verdict.
 
     `verdict` is one value out of `key_moments.confidence_verdicts`: "yes",
-    "no", "ambiguous", or None/absent when the panel has not settled. Only a
-    settled panel classifies; everything else is neutral, which here means "we
-    have nothing to say", not "average".
+    "no", or None/absent. Only an explicit professional judgment classifies;
+    everything else is neutral, which here means "we have nothing to say",
+    not "average".
 
-    RE-POINTED 2026-08-14 (founder). It used to take `(coach_label, coach_tag)`
-    and read `challenge`/`strong` → positive, `threat`/`to_work_on` → negative.
-    THREE of those four inputs were unusable. challenge/threat is the retired
-    charisma construct and its coach control was deleted 2026-08-07, so it has
-    been frozen ever since; `strong` was never chosen by anyone (the FE
-    defaulted it whenever a note was typed), so "positive" fired on the coach
-    having WRITTEN something. Patterns mined from that were reporting what the
-    coach commented on, dressed as what the speaker does well. The confidence
-    quorum is the one thing a coach actually judges, and it is defined (§17
-    `conf-q-v1`) and multi-rater (label ledger rule 3).
-
-    Blind-coach fence unchanged: `resolve()` counts human QUORUM_LANES only, so
-    a shadow guess still cannot classify anything here. Pure."""
+    Earlier local classifications were unusable: one source was frozen and a
+    default tag could make "positive" mean only that the coach had written
+    something. This reader accepts only the explicit professional-coach
+    confidence judgment. Blind peers remain internal training/evaluation data.
+    Pure."""
     v = verdict.strip().lower() if isinstance(verdict, str) else ""
     if v == "yes":
         return "positive"
     if v == "no":
         return "negative"
-    # "ambiguous" lands here on purpose: a panel that settled on "we cannot
-    # tell" is a real finding about the moment, and the honest thing to mine
-    # from it is nothing.
+    # Any non-professional or unsupported value produces no product claim.
     return "neutral"
 
 

@@ -99,11 +99,6 @@ def _attach_coach_fields(output: dict, snippet: dict, metrics: dict) -> None:
     for key in ("overall_score", "rank"):
         if metrics.get(key) is not None:
             output[key] = metrics.get(key)
-    acoustic_read = metrics.get("acoustic_read")
-    if isinstance(acoustic_read, dict):
-        output["acoustic_read"] = acoustic_read
-
-
 def _serialize_snippets(
     snippets: list,
     *,
@@ -194,7 +189,7 @@ def _fold_auto_comments(
     if not has_piece_rows or not coach_prefill_enabled():
         return
     try:
-        from services.auto_comment import acoustic_tone_word, build_auto_comment
+        from services.auto_comment import build_auto_comment
         from services.say_it_stronger import aggregate_session_means
 
         means = aggregate_session_means(
@@ -207,15 +202,9 @@ def _fold_auto_comments(
             snippet = snippets_by_id.get(str(output.get("id"))) or {}
             raw_metrics = snippet.get("metrics")
             metrics = raw_metrics if isinstance(raw_metrics, dict) else {}
-            tone_word = (
-                acoustic_tone_word(metrics)
-                if include_slide_scores
-                else metrics.get("user_tone_word")
-            )
             output["auto_comment"] = build_auto_comment(
                 metrics,
                 means,
-                tone_word=tone_word,
             )
     except Exception as error:
         log.warning(
@@ -223,58 +212,6 @@ def _fold_auto_comments(
             session_id,
             error,
         )
-
-
-def _fold_breakthrough_markers(
-    database: Any,
-    session_id: str,
-    snippets: list,
-    output_rows: list,
-    *,
-    log: logging.Logger,
-) -> None:
-    try:
-        from services.best_presentation import _moment_note
-        from services.challenge_threat import detect_breakthroughs, resolve_direction
-
-        coach_labels = {
-            str(row.get("snippet_id")): row.get("value")
-            for row in (database.get_training_labels(session_id) or [])
-        }
-        breakthrough_ids = detect_breakthroughs(
-            [
-                {
-                    "id": snippet.get("id"),
-                    "start_offset_ms": snippet.get("start_offset_ms"),
-                    "direction": resolve_direction(
-                        coach_labels.get(str(snippet.get("id"))),
-                        None,
-                    ),
-                }
-                for snippet in snippets
-            ]
-        )
-        notes = {
-            str(snippet.get("id")): _moment_note(snippet)
-            for snippet in snippets
-        }
-        for output in output_rows:
-            is_breakthrough = output.get("id") in breakthrough_ids
-            output["breakthrough"] = is_breakthrough
-            output["breakthrough_note"] = (
-                notes.get(str(output.get("id"))) or None
-                if is_breakthrough
-                else None
-            )
-    except Exception as error:
-        log.warning(
-            "readout: breakthrough markers failed sid=%s: %s",
-            session_id,
-            error,
-        )
-        for output in output_rows:
-            output.setdefault("breakthrough", False)
-            output.setdefault("breakthrough_note", None)
 
 
 def prepare_readout_snippets(
@@ -314,12 +251,4 @@ def prepare_readout_snippets(
         session_id=session_id,
         log=log,
     )
-    if include_insights:
-        _fold_breakthrough_markers(
-            database,
-            session_id,
-            snippets,
-            output_rows,
-            log=log,
-        )
     return output_rows, edits_by_chunk

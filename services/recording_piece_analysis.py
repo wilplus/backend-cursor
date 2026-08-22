@@ -134,35 +134,6 @@ def _upgrade_budget_metrics(
             piece["metrics"]["piece"] = provenance
 
 
-def _attach_acoustic_enrichment(
-    state: RecordingState,
-    analyzed: list[dict],
-    *,
-    log: logging.Logger,
-) -> None:
-    try:
-        from services.acoustic_baseline import resolve_for_take
-        from services.acoustic_read import attach_acoustic_read
-
-        baseline, baseline_kind = resolve_for_take(
-            state.user_id,
-            recording_kind=state.persisted_recording_kind,
-            paired_session_id=state.paired_session_id,
-        )
-        attach_acoustic_read(
-            analyzed,
-            baseline=baseline,
-            baseline_kind=baseline_kind,
-        )
-    except Exception as error:
-        log.warning(
-            "process_lab_recording: acoustic read failed sid=%s: %s "
-            "(non-fatal)",
-            state.session_id,
-            error,
-        )
-
-
 def _attach_voice_confidence(
     state: RecordingState,
     analyzed: list[dict],
@@ -204,22 +175,23 @@ def _attach_voice_confidence(
         )
 
 
-def _attach_user_tone(
+def _refresh_acoustic_baseline(
     state: RecordingState,
-    analyzed: list[dict],
     *,
     log: logging.Logger,
 ) -> None:
+    """Refresh the neutral speaker reference without stamping a state read."""
     try:
-        from services.auto_comment import learned_tone_word
+        from services.acoustic_baseline import resolve_for_take
 
-        for piece in analyzed:
-            tone_word = learned_tone_word(piece["metrics"])
-            if tone_word:
-                piece["metrics"]["user_tone_word"] = tone_word
+        resolve_for_take(
+            state.user_id,
+            recording_kind=state.persisted_recording_kind,
+            paired_session_id=state.paired_session_id,
+        )
     except Exception as error:
         log.warning(
-            "process_lab_recording: user tone word failed sid=%s: %s "
+            "process_lab_recording: acoustic baseline refresh failed sid=%s: %s "
             "(non-fatal)",
             state.session_id,
             error,
@@ -242,12 +214,11 @@ def analyze_canonical_pieces(
     _upgrade_budget_metrics(state, analyzed, budget_indices)
 
     # Validation-sample independence: snapshot raw metrics before any derived
-    # acoustic/confidence/user read is stamped onto the canonical pieces.
+    # confidence read is stamped onto the canonical pieces.
     raw_snapshot = [dict(piece["metrics"]) for piece in analyzed]
 
-    _attach_acoustic_enrichment(state, analyzed, log=log)
+    _refresh_acoustic_baseline(state, log=log)
     _attach_voice_confidence(state, analyzed, log=log)
-    _attach_user_tone(state, analyzed, log=log)
 
     return replace(
         state,

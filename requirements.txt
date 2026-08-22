@@ -41,12 +41,6 @@ python-docx==1.1.2
 # delivery module — test_life_panel.py::NoNudgesTests fences everything else);
 # missing package or missing VAPID keys degrade to "nothing sent".
 pywebpush==2.0.3
-# Shadow direction classifier (willab Phase 4 / Prompt 1): interpretable
-# logistic regression on the 11 acoustic features, served in-process. joblib
-# serializes the fitted pipeline → object storage. SHADOW-only; influences
-# nothing. Lazy-imported in services/learning_train.py.
-scikit-learn==1.5.2
-joblib==1.4.2
 # Durable recording-pipeline queue (async-queue work 2026-08-03): Redis is
 # the DELIVERY rail only — job state of record is Postgres
 # (migrations/add_processing_jobs.sql). Both are lazy-imported

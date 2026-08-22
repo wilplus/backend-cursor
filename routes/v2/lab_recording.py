@@ -188,9 +188,8 @@ def _recording_flow_tags(form) -> dict:
                          handoff §2, 2026-08-03) — a KEY from the closed
                          vocabulary in services/named_emotion.py; unknown
                          words are dropped (never block a recording). The
-                         key is the user's own self-report and rides to
-                         the coach; its threat/challenge BUCKET is
-                         internal-only (CONSTRUCT — log line, never wire).
+                         key is the user's own self-report and may be shown to
+                         the coach. No inferred psychological state is added.
     """
     tags: dict = {}
     # read_target / ideal_version RETIRED (founder 2026-08-05): they only
@@ -248,11 +247,6 @@ def v2_lab_create_recording():
       target_length_seconds (optional, int)
       domain_vocabulary     (optional, JSON array or comma-separated)
       feeling               (optional) pre-take felt state (U10)
-      priming_condition     (optional) pre-take framing manipulation —
-                            threat|challenge|balanced (live takes only;
-                            unknown → stored null). PRIVATE research signal,
-                            coach-only, never user-facing.
-      priming_phrase        (optional) the exact framing phrase shown (verbatim)
       guest_session_id      (optional) reuse an existing guest session;
                             else a fresh one is minted + returned
       recording_kind        (optional) spoken (default) | read — a read is a

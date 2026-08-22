@@ -70,6 +70,15 @@ class SelectBestPerSlideTests(unittest.TestCase):
         best = bp.select_best_per_slide(cands)
         self.assertEqual(best[0]["snippet_id"], "plain")
 
+    def test_peer_panel_cannot_change_selection(self):
+        cands = [
+            _cand(0, "measured", 0.2, activation=0.9),
+            _cand(0, "peer-favourite", 0.2, activation=0.2),
+        ]
+        cands[1]["panel_confidence"] = {"value": 1.0, "quality": 1.0}
+        best = bp.select_best_per_slide(cands)
+        self.assertEqual(best[0]["snippet_id"], "measured")
+
     def test_prefers_complete_sentence_over_higher_scored_fragment(self):
         # #4: a complete line beats a higher-scored truncated fragment.
         cands = [
@@ -144,26 +153,12 @@ class ComposeTests(unittest.TestCase):
         bp._render_composition = lambda picks, slides: {}
         picks = {0: _cand(0, "c", 0.8)}
         out = bp.compose_presentation(picks, [{"title": "S1"}])
-        # RANKING internals must never leak (AC-9). snippet_id is NOT one —
-        # it's an opaque reference the FE deep-links the PDF's "Key moment"
-        # to /game?snippet=<id> (P8), same class as take_index / audio_ref.
+        # Ranking internals and retired framework markers must never leak.
         for k in ("_score", "activation", "slide_stickiness", "direction"):
             self.assertNotIn(k, out[0])
-        self.assertIn("breakthrough", out[0])  # the marker is allowed
-        self.assertEqual(out[0]["snippet_id"], "c")  # the sanctioned deep-link id
-
-    def test_breakthrough_note_only_when_breakthrough(self):
-        bp._render_composition = lambda picks, slides: {}
-        picks = {
-            0: {**_cand(0, "bt", 0.8), "breakthrough": True,
-                "note": "Comfortable pace, natural rise and fall."},
-            1: {**_cand(1, "plain", 0.8), "note": "Some note."},
-        }
-        out = bp.compose_presentation(picks, [{"title": "S1"}, {"title": "S2"}])
-        # the breakthrough slide carries the "why"; the plain one does not
-        self.assertEqual(out[0]["breakthrough_note"],
-                         "Comfortable pace, natural rise and fall.")
-        self.assertIsNone(out[1]["breakthrough_note"])
+        self.assertNotIn("breakthrough", out[0])
+        self.assertNotIn("breakthrough_note", out[0])
+        self.assertEqual(out[0]["snippet_id"], "c")
 
 
 class ProgressTests(unittest.TestCase):
@@ -272,19 +267,6 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(slide0["start_offset_ms"], 0)
         self.assertEqual(slide0["duration_ms"], 1800)
 
-    def test_the_breakthrough_badge_still_follows_the_coachs_own_mark(self):
-        """The re-point took the coach's label OUT OF RANKING; it did not take
-        the badge away from them. `c1` carries the coach's `challenge` mark, so
-        `c1` is the breakthrough — whether or not it wins its slide."""
-        out = bp.build_best_presentation(
-            "arc1", database=self._db(), coach_view=True,
-        )
-        by_id = {s.get("snippet_id"): s for s in out["slides"]}
-        self.assertNotIn("c1", by_id)          # it did not win the slide…
-        # …and the winning slide is not badged, because its snippet was the
-        # one the coach marked `threat`.
-        self.assertFalse(out["slides"][0]["breakthrough"])
-
     def test_coach_reviewed_false_pre_publish(self):
         # Auto-composed from the takes before any coach review → draft.
         out = bp.build_best_presentation("arc1", database=self._db())
@@ -295,35 +277,6 @@ class BuildTests(unittest.TestCase):
         db._sessions[0]["results_published_at"] = "2026-06-21T00:00:00Z"
         out = bp.build_best_presentation("arc1", database=db)
         self.assertTrue(out["coach_reviewed"])
-
-    def test_no_coach_labels_no_breakthrough_badge(self):
-        # Coach-confirmed only: with NO coach labels, there's no breakthrough
-        # badge even though the moments would form a threat→challenge sequence
-        # if a model had guessed. Selection falls back to acoustics (the louder
-        # 'nervous open', overall 0.9, wins).
-        sessions = [{
-            "id": "s1", "take_index": 1,
-            "intake_context": {
-                "slides": [{"title": "S1", "body": "p"}],
-                "slide_advances": [{"index": 0, "t_ms": 0}],
-            },
-        }]
-        snips = {"s1": [
-            {"id": "t1", "start_offset_ms": 0, "duration_ms": 1800,
-             "transcript": "nervous open",
-             "storage_path": "s3://t1", "metrics": {"overall_score": 0.9}},
-            {"id": "c1", "start_offset_ms": 2000, "duration_ms": 1500,
-             "transcript": "strong close",
-             "storage_path": "s3://c1", "metrics": {"overall_score": 0.4}},
-        ]}
-        out = bp.build_best_presentation(
-            "arc1", database=_FakeDB(sessions, snips, {}),  # no labels
-            coach_view=True,  # composition-logic test — see module docstring
-        )
-        slide0 = out["slides"][0]
-        self.assertFalse(slide0["breakthrough"])
-        self.assertIsNone(slide0["breakthrough_note"])
-        self.assertEqual(slide0["text"], "nervous open")  # acoustic fallback
 
     def test_saved_edit_overrides_composed_text(self):
         # A pencil-edit for slide 0 overrides the composed text + flags edited.
@@ -507,133 +460,6 @@ class CoachFinalizedGateTests(unittest.TestCase):
         self.assertNotIn("edited", out["slides"][0])  # user-edit key not set
 
 
-class ArcBreakthroughsTests(unittest.TestCase):
-    """build_arc_breakthroughs (#5) — every coach-confirmed breakthrough in the
-    arc with playback data, newest → oldest. Same gate as the badge."""
-
-    def _db(self, labels):
-        # take 1: t1(threat)→c1(challenge); take 2: t2(threat)→c2(challenge).
-        sessions = [
-            {"id": "s1", "take_index": 1, "created_at": "2026-06-05T00:00:00Z",
-             "intake_context": {"slides": [{"title": "S1", "body": "p"}],
-                                "slide_advances": [{"index": 0, "t_ms": 0}]}},
-            {"id": "s2", "take_index": 2, "created_at": "2026-06-12T00:00:00Z",
-             "intake_context": {"slides": [{"title": "S1", "body": "p"}],
-                                "slide_advances": [{"index": 0, "t_ms": 0}]}},
-        ]
-        snips = {
-            "s1": [
-                {"id": "t1", "start_offset_ms": 0, "duration_ms": 1800,
-                 "transcript": "nervous open take1", "storage_path": "s3://t1",
-                 "metrics": {"overall_score": 0.9}},
-                {"id": "c1", "start_offset_ms": 2000, "duration_ms": 1500,
-                 "transcript": "strong close take1", "storage_path": "s3://c1",
-                 "metrics": {"overall_score": 0.4}},
-            ],
-            "s2": [
-                {"id": "t2", "start_offset_ms": 0, "duration_ms": 1700,
-                 "transcript": "nervous open take2", "storage_path": "s3://t2",
-                 "metrics": {"overall_score": 0.8}},
-                {"id": "c2", "start_offset_ms": 2000, "duration_ms": 1600,
-                 "transcript": "strong close take2", "storage_path": "s3://c2",
-                 "metrics": {"overall_score": 0.5}},
-            ],
-        }
-        return _FakeDB(sessions, snips, labels)
-
-    def test_collects_coach_confirmed_breakthroughs_newest_first(self):
-        labels = {
-            "s1": [{"snippet_id": "t1", "value": "threat"},
-                   {"snippet_id": "c1", "value": "challenge"}],
-            "s2": [{"snippet_id": "t2", "value": "threat"},
-                   {"snippet_id": "c2", "value": "challenge"}],
-        }
-        out = bp.build_arc_breakthroughs("arc1", database=self._db(labels))
-        self.assertEqual(out["count"], 2)
-        # newest take first (s2 created later than s1)
-        self.assertEqual([b["snippet_id"] for b in out["breakthroughs"]],
-                         ["c2", "c1"])
-        top = out["breakthroughs"][0]
-        # playback data rides through for the FE list
-        self.assertEqual(top["audio_ref"], "s3://c2")
-        self.assertEqual(top["start_offset_ms"], 2000)
-        self.assertEqual(top["duration_ms"], 1600)
-        self.assertEqual(top["session_id"], "s2")
-        self.assertEqual(top["slide_index"], 0)
-
-    def test_only_breakthroughs_no_threat_or_plain(self):
-        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
-                         {"snippet_id": "c1", "value": "challenge"}]}
-        out = bp.build_arc_breakthroughs("arc1", database=self._db(labels))
-        ids = [b["snippet_id"] for b in out["breakthroughs"]]
-        self.assertEqual(ids, ["c1"])          # the threat t1 is NOT included
-        self.assertNotIn("t1", ids)
-
-    def test_no_coach_labels_empty(self):
-        out = bp.build_arc_breakthroughs("arc1", database=self._db({}))
-        self.assertEqual(out, {"breakthroughs": [], "count": 0})
-
-    def test_ac9_no_scores_leak(self):
-        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
-                         {"snippet_id": "c1", "value": "challenge"}]}
-        out = bp.build_arc_breakthroughs("arc1", database=self._db(labels))
-        b = out["breakthroughs"][0]
-        for k in ("_score", "activation", "direction", "coach_direction",
-                  "metrics", "slide_stickiness"):
-            self.assertNotIn(k, b)
-
-    def test_empty_arc(self):
-        out = bp.build_arc_breakthroughs("arc1", database=_FakeDB([], {}, {}))
-        self.assertEqual(out, {"breakthroughs": [], "count": 0})
-
-    def test_coach_note_and_video_ride_through(self):
-        """The FE mapper contract (HANDOFF-BE-2026-07-28 §1): `note` IS the
-        coach's key-moment note, `comment` is the system's explanation, and
-        the FE renders exactly one (coach overrides system). `video_ref` is
-        named to match the game so the FE reuses its player."""
-        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
-                         {"snippet_id": "c1", "value": "challenge"}]}
-        db = self._db(labels)
-        db.get_coach_snippet_drafts = lambda sid: ([
-            {"snippet_id": "c1", "note": "This is where you took the room.",
-             "breakthrough_video_ref": "r2://coach/bt-c1.mp4"},
-            {"snippet_id": "t1", "note": "never surfaced (not a breakthrough)"},
-        ] if sid == "s1" else [])
-        out = bp.build_arc_breakthroughs("arc1", database=db)
-        b = out["breakthroughs"][0]
-        self.assertEqual(b["note"], "This is where you took the room.")
-        self.assertEqual(b["video_ref"], "r2://coach/bt-c1.mp4")
-        # The system explanation rides SEPARATELY — never in the coach slot.
-        self.assertIn("comment", b)
-        self.assertNotEqual(b["comment"], b["note"])
-
-    def test_machine_text_never_wears_the_coach_slot(self):
-        """No coach note → `note` is NULL, and the system's explanation sits
-        in `comment`. Before 2026-07-28 `note` carried the machine text; the
-        shipped FE renders `note` as the coach's words, so machine prose
-        there would misattribute machine voice as the human coach."""
-        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
-                         {"snippet_id": "c1", "value": "challenge"}]}
-        out = bp.build_arc_breakthroughs("arc1", database=self._db(labels))
-        b = out["breakthroughs"][0]
-        self.assertIsNone(b["note"])
-        self.assertIsNone(b["video_ref"])
-        # the system explanation exists for the fallback slot (metrics on the
-        # fake rows carry no observation buckets, so "" is legal — the key
-        # must exist either way)
-        self.assertIn("comment", b)
-
-    def test_drafts_read_failure_is_non_fatal(self):
-        labels = {"s1": [{"snippet_id": "t1", "value": "threat"},
-                         {"snippet_id": "c1", "value": "challenge"}]}
-        db = self._db(labels)
-
-        def _boom(_sid):
-            raise RuntimeError("drafts table down")
-        db.get_coach_snippet_drafts = _boom
-        out = bp.build_arc_breakthroughs("arc1", database=db)
-        self.assertEqual(out["count"], 1)
-        self.assertIsNone(out["breakthroughs"][0]["note"])
 
 
 class _CachingFakeDB(_FakeDB):
@@ -791,19 +617,11 @@ class BatchedArcReadsTests(unittest.TestCase):
         # CoachFinalizedGateTests).
         out = bp.build_best_presentation("arc1", database=db, coach_view=True)
         self.assertEqual(db.batch_snippet_calls, 1)   # ONE snippets query
-        self.assertEqual(db.batch_label_calls, 1)     # ONE labels query
+        self.assertEqual(db.batch_label_calls, 0)     # retired lane untouched
         self.assertEqual(db.singular_snippet_calls, 0)  # no per-take N+1
         self.assertEqual(db.singular_label_calls, 0)
         # behavior intact — slide 0 still composes the best line
         self.assertEqual(out["slides"][0]["text"], "one")
-
-    def test_build_arc_breakthroughs_uses_one_query_each(self):
-        db = self._db()
-        bp.build_arc_breakthroughs("arc1", database=db)
-        self.assertEqual(db.batch_snippet_calls, 1)
-        self.assertEqual(db.batch_label_calls, 1)
-        self.assertEqual(db.singular_snippet_calls, 0)
-        self.assertEqual(db.singular_label_calls, 0)
 
     def test_matches_per_session_fallback_result(self):
         # the batched result equals the legacy per-session path (parity).

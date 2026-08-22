@@ -162,9 +162,7 @@ class Config:
     AUDIO_BUCKET_NAME = "audio_recordings"
     SIGNED_URL_EXPIRY_SECONDS = 3600
     COACH_FEEDBACK_VIDEO_BUCKET = (os.getenv("COACH_FEEDBACK_VIDEO_BUCKET") or "coach_feedback_videos").strip() or "coach_feedback_videos"
-    # Upload size cap (MB) for coach feedback videos — the per-take summary
-    # video (POST /v2/coach/sessions/<sid>/video) and the key-moment video
-    # (POST .../snippets/<snip_id>/breakthrough-video) both read this.
+    # Upload size cap (MB) for the per-take coach summary video.
     # Env-tunable so the cap can move without a deploy; a malformed value
     # falls back to 100 (never crash import — live loop).
     COACH_FEEDBACK_VIDEO_MAX_MB = _env_int("COACH_FEEDBACK_VIDEO_MAX_MB", 100)
@@ -601,13 +599,6 @@ class Config:
     # dies at the next deploy; the other two configured the in-request trainer
     # and its artifact bucket. Nothing loads a stress model any more: clip
     # selection runs on heuristic suspicion scoring, permanently.
-    # Graduated-autonomy floor for the shadow DIRECTION fallback (readiness rig
-    # #3). 0.0 (default) = OFF: the shadow label is used whenever present, as
-    # before. >0 = use the shadow fallback ONLY when its confidence >= this
-    # floor; low-confidence snippets route to the human (no machine direction
-    # term). Flip on (e.g. 0.8) only once the holdout agreement says it's ready.
-    DIRECTION_SHADOW_MIN_CONFIDENCE = float(os.getenv("DIRECTION_SHADOW_MIN_CONFIDENCE") or "0")
-
     # Coach name and photo in assignment email (for artur@willonski.com / default admin)
     COACH_NAME = os.getenv("COACH_NAME", "Artur")
     COACH_IMAGE_URL = (os.getenv("COACH_IMAGE_URL") or "").strip() or None  # Optional; if set, used as coach avatar in email.

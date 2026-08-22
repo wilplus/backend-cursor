@@ -1,8 +1,7 @@
 """willab coach session read — GET /v2/coach/sessions/<id> (FE PR #73).
 
-The headline regression: the read folds BOTH coach lanes into per-snippet
-`coach_state`, so note/tag/surfaced/direction ALL resume on reopen — not just
-the label (the round-trip bug the alignment layer fixes).
+The headline regression: canonical coach-authored note/tag/surfaced state
+resumes on reopen without reviving the retired psychological construct lane.
 
 Also guards the §S.4 identity strip (pseudonym + domain only; NO user_id /
 name / email) and the §B.4 friendly pseudonym.
@@ -39,8 +38,7 @@ class CoachSessionReadTests(unittest.TestCase):
             "results_published_at": None, "status": "pending_admin_review",
             "insights_payload": None, "coach_video_ref": None,
         })
-        # prior coach work: snippet "a" labeled + noted + tagged + surfaced; "b" blank
-        self._patch_db("get_training_labels", lambda sid: [{"snippet_id": "a", "value": "challenge"}])
+        # Prior coach work: snippet "a" noted + tagged + surfaced; "b" blank.
         self._patch_db("get_coach_snippet_drafts", lambda sid: [
             {"snippet_id": "a", "note": "strong open", "tag": "strong", "surfaced": True},
         ])
@@ -74,24 +72,24 @@ class CoachSessionReadTests(unittest.TestCase):
             resp, status = v2.v2_coach_get_session.__wrapped__(sid)
             return status, resp.get_json()
 
-    def test_resume_folds_both_lanes(self):
+    def test_resume_folds_coach_authoring(self):
         status, data = self._get()
         self.assertEqual(status, 200)
         snips = {s["id"]: s for s in data["snippets"]}
-        # snippet "a": direction AND note/tag/surfaced all round-trip (the fix)
+        # Snippet "a": canonical note/tag/surfaced state round-trips.
         cs = snips["a"]["coach_state"]
-        self.assertEqual(cs["direction_label"], "challenge")
         self.assertEqual(cs["note"], "strong open")
         self.assertEqual(cs["tag"], "strong")
         self.assertTrue(cs["surfaced"])
+        self.assertNotIn("direction_label", cs)
         # snippet "b": nothing authored → empty coach_state, and NOT shown by
         # default (founder 2026-07-14 — opt-IN surface: the coach narrows to
         # the moments they mark as key/breakthrough; all snippets start hidden).
         cb = snips["b"]["coach_state"]
-        self.assertIsNone(cb["direction_label"])
         self.assertEqual(cb["note"], "")
         self.assertIsNone(cb["tag"])
         self.assertFalse(cb["surfaced"])
+        self.assertNotIn("direction_label", cb)
 
     def test_identity_stripped(self):
         status, data = self._get()
@@ -137,15 +135,13 @@ class CoachSessionReadTests(unittest.TestCase):
                   "duration_ms", "stickiness", "coach_state",
                   "features"):  # C1/§B.1 — coach packet carries the 11-vector
             self.assertIn(k, s)
-        for k in ("direction_label", "note", "tag", "surfaced"):
+        for k in ("note", "tag", "surfaced"):
             self.assertIn(k, s["coach_state"])
+        self.assertNotIn("direction_label", s["coach_state"])
 
-    def test_moments_ordered_by_significance(self):
-        # Founder 2026-07-24 (T1 · 1.2): the panel returns the take's moments
-        # most-significant-first. Here the LATER moment is the atypical key one
-        # (outside_normal_range) and the earlier one is flat — so significance
-        # ordering must flip them (chronological would keep flat first) and
-        # re-index 0..n-1 in the new order.
+    def test_moments_preserve_source_order_without_legacy_acoustic_ranking(self):
+        # The neutral acoustic baseline does not reorder the coach packet.
+        # Source chronology is preserved and indices remain continuous.
         lab.build_readout_from_session = lambda sid, **kw: {"snippets": [
             {"id": "flat", "index": 0, "transcript": "t", "audio_ref": "p/f.wav",
              "start_offset_ms": 0, "duration_ms": 3000,
@@ -156,7 +152,7 @@ class CoachSessionReadTests(unittest.TestCase):
         ]}
         status, data = self._get()
         self.assertEqual(status, 200)
-        self.assertEqual([s["id"] for s in data["snippets"]], ["key", "flat"])
+        self.assertEqual([s["id"] for s in data["snippets"]], ["flat", "key"])
         self.assertEqual([s["index"] for s in data["snippets"]], [0, 1])
 
 

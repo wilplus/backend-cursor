@@ -95,7 +95,7 @@ FENCES.
     vocabulary, and it is never surfaced as a number, ratio, or badge.
   * BLIND COACH — NOT learned and NOT on the coach packet. Fixed
     literature-tilted weights, so it cannot anchor a labeling coach to a
-    model's opinion (same reasoning as services/acoustic_read.py).
+    model's opinion.
   * LIVE LOOP — pure + best-effort. Every entry point returns None/no-op rather
     than raising; a missing baseline means SILENCE, never a fabricated 0.0.
 
@@ -248,9 +248,9 @@ _DEAD_ZONE = 0.25
 # (solidly atypical for this speaker) lands ~0.85.
 _SQUASH_SCALE = 1.0
 
-# Baseline resolution floors — identical to services/delivery_stars.py and
-# services/acoustic_read.py so all three speak about "the speaker's own norm"
-# on the same terms.
+# Baseline resolution floors — aligned with services/acoustic_baseline.py and
+# services/delivery_stars.py so both speak about the speaker's own norm on the
+# same terms.
 _BASELINE_MAX_SESSIONS = 5
 _BASELINE_MIN_SAMPLES = 8
 _MIN_PIECES_WITHIN_TAKE = 6

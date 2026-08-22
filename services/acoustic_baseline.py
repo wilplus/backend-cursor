@@ -3,13 +3,8 @@
 "The True KPI: Acoustic Moving Average — VERDICT: MEASURE AGAINST THE USER'S
 BASELINE."
 
-WHAT CHANGED, AND WHAT DID NOT. The baseline itself is not new:
-``acoustic_read.build_user_baseline`` has computed ``{feature: (mean, sd)}``
-over the speaker's own historical pieces since 2026-07-14, and
-``lab_recording`` already calls it on every upload. What it has never done is
-KEEP the result — the dict is used to z-score one take's pieces and then
-dropped. A moving average cannot exist until the thing it is an average
-against outlives one request.
+The baseline is a neutral, speaker-relative reference over acoustic features.
+It does not classify a psychological state and never reaches user-facing copy.
 
 So this module persists what is already computed, at the call site that
 already computes it. **No new queries on the upload path.** The existing 1+N
@@ -56,6 +51,11 @@ BASELINE_VERSION = "acoustic-baseline-v1"
 BASELINE_FEATURES: tuple = ("f0_sd", "pause_regularity", "dynamic_db",
                             "voiced_ratio")
 
+# How many recent sessions feed a rebuild, and the minimum evidence per feature.
+_BASELINE_MAX_SESSIONS = 5
+_BASELINE_MIN_SAMPLES = 8
+_BASELINE_MIN_SAMPLES_PARENT = 6
+
 # How many takes a stored baseline serves before it is rebuilt. Not "never":
 # a reference that stops tracking the speaker does not merely age, it INVERTS
 # the measurement — the KPI's whole job is to notice improvement, and a frozen
@@ -80,8 +80,7 @@ def weights_fingerprint() -> str:
 def stats_from_metrics(metric_dicts: Any, min_samples: int) -> Optional[dict]:
     """``{feature: {"mean", "sd", "n"}}`` over a pool of piece-metric dicts.
 
-    The same arithmetic as ``acoustic_read._baseline_from_metrics``, keeping
-    the sample count it discards. ``n`` matters per feature: a feature backed
+    ``n`` matters per feature: a feature backed
     by 8 pieces and one backed by 80 are not the same claim, and the tuple
     shape could not say so.
 
@@ -112,9 +111,9 @@ def stats_from_metrics(metric_dicts: Any, min_samples: int) -> Optional[dict]:
 def as_baseline(features: Any) -> Optional[dict]:
     """``{feature: {"mean","sd","n"}}`` → ``{feature: (mean, sd)}``.
 
-    The shape every existing consumer (``score_control_direction``,
-    ``attach_acoustic_read``) already speaks, so a stored baseline drops into
-    the current code with no call-site change. None when nothing is usable.
+    The shape the neutral acoustic comparison consumers speak, so a stored
+    baseline drops into the current code with no call-site change. None when
+    nothing is usable.
     Pure.
     """
     if not isinstance(features, dict):
@@ -215,6 +214,68 @@ def _newer_than(iso: Any, sessions: Any) -> int:
     return n
 
 
+def _session_piece_metrics(session_id: Any, *, database=None) -> list:
+    """Stored piece metrics for one session. Best-effort and read-only."""
+    if not session_id:
+        return []
+    try:
+        if database is None:
+            from services.db import db as database
+        return [
+            row.get("metrics")
+            for row in (database.get_snippets_by_session(str(session_id)) or [])
+            if isinstance(row.get("metrics"), dict)
+        ]
+    except Exception as error:
+        logger.warning(
+            "acoustic_baseline: session metrics failed sid=%s: %s",
+            session_id,
+            error,
+        )
+        return []
+
+
+def _build_user_stats(user_id: Any, *, database=None) -> tuple:
+    """Return ``(stats, session_count)`` for the speaker's recent takes."""
+    if not user_id:
+        return None, 0
+    try:
+        if database is None:
+            from services.db import db as database
+        sessions = database.v2_list_user_lab_sessions(
+            str(user_id), limit=_BASELINE_MAX_SESSIONS,
+        ) or []
+        pool: list = []
+        for session in sessions:
+            pool.extend(
+                _session_piece_metrics(session.get("id"), database=database)
+            )
+        return stats_from_metrics(pool, _BASELINE_MIN_SAMPLES), len(sessions)
+    except Exception as error:
+        logger.warning(
+            "acoustic_baseline: rebuild failed user=%s: %s",
+            user_id,
+            error,
+        )
+        return None, 0
+
+
+def _resolve_stats(user_id: Any, *, recording_kind: str,
+                   paired_session_id: Any, database=None) -> tuple:
+    """Resolve neutral baseline stats without inferring a delivery state."""
+    stats, count = _build_user_stats(user_id, database=database)
+    if stats:
+        return stats, "user", count
+    if recording_kind == "read" and paired_session_id:
+        parent = stats_from_metrics(
+            _session_piece_metrics(paired_session_id, database=database),
+            _BASELINE_MIN_SAMPLES_PARENT,
+        )
+        if parent:
+            return parent, "parent_take", 1
+    return None, None, 0
+
+
 def resolve_for_take(user_id: Any, *, recording_kind: str = "spoken",
                      paired_session_id: Any = None, database=None) -> tuple:
     """``(baseline | None, kind | None)`` — the reference for THIS take, read
@@ -241,8 +302,6 @@ def resolve_for_take(user_id: Any, *, recording_kind: str = "spoken",
     to the existing resolver unchanged: the fast path requires a stored row,
     and there is nothing to store yet.
     """
-    from services.acoustic_read import resolve_read_baseline_stats
-
     if database is None:
         from services.db import db as database
     try:
@@ -264,14 +323,13 @@ def resolve_for_take(user_id: Any, *, recording_kind: str = "spoken",
         logger.warning("acoustic_baseline: cached read failed user=%s: %s",
                        user_id, e)
 
-    stats, kind, n_sessions = resolve_read_baseline_stats(
+    stats, kind, n_sessions = _resolve_stats(
         user_id, recording_kind=recording_kind,
         paired_session_id=paired_session_id, database=database)
     if kind == "user":
         # Only the SPEAKER'S OWN baseline is stored. A parent-take reference is
-        # a within-session comparison for the coach's needle, not a claim about
-        # where this speaker normally sits, and storing it as one would corrupt
-        # the series it feeds.
+        # a within-session comparison, not a claim about where this speaker
+        # normally sits; storing it as one would corrupt the series it feeds.
         logger.info("acoustic baseline rebuilt stored=%s features=%d "
                     "sessions=%d",
                     snapshot(user_id, stats,
@@ -284,7 +342,6 @@ def _max_sessions() -> int:
     """The session window the baseline is built over — read from the module
     that owns it, so the freshness check and the rebuild can never disagree
     about how far back "recent" goes."""
-    from services.acoustic_read import _BASELINE_MAX_SESSIONS
     return _BASELINE_MAX_SESSIONS
 
 

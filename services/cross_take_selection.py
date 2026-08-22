@@ -107,9 +107,8 @@ def _rank_inputs(snippet: dict) -> dict:
         "slide_stickiness": stick,
         "rank": metrics.get("rank"),
         # Delivery term (L2) — None when the flag is off / piece unstamped.
-        # MACHINE lane only: this reader has one snippet row and no panel
-        # rows, so it never has the human aggregate to prefer (SPEC D8 —
-        # confidence enters once, and the panel is the caller's job to fetch).
+        # Blind peer ratings are internal-only and intentionally unavailable
+        # to this product ranking.
         "machine_confidence": confidence,
     }
 

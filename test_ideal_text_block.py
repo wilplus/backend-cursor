@@ -40,27 +40,29 @@ def _bp(ready=True, slides=None):
         "ready": ready,
         "slides": slides if slides is not None else [
             {"index": 0, "text": "We open with the mission and the team.",
-             "key_phrases": ["the mission"], "breakthrough": False,
+             "key_phrases": ["the mission"],
              "snippet_id": "s0", "session_id": "t0"},
             {"index": 1, "text": "This quarter we tripled throughput.",
-             "key_phrases": [], "breakthrough": True,
+             "key_phrases": [],
              "snippet_id": SNIP, "session_id": SESS},
             {"index": 2, "text": "", "key_phrases": [],
-             "breakthrough": False, "snippet_id": None, "session_id": None},
+             "snippet_id": None, "session_id": None},
         ],
     }
 
 
 class AssembleTests(unittest.TestCase):
 
-    def _run(self, bp):
+    def _run(self, bp, *, extra_anchor_ids=None):
         from services import ideal_text_block as mod
         with patch("services.best_presentation.build_best_presentation",
                    return_value=bp):
-            return mod.assemble_ideal_text_block("arc1")
+            return mod.assemble_ideal_text_block(
+                "arc1", extra_anchor_ids=extra_anchor_ids
+            )
 
-    def test_bolds_openings_and_anchors_breakthroughs(self):
-        out = self._run(_bp())
+    def test_bolds_openings_and_anchors_manager_suggestions(self):
+        out = self._run(_bp(), extra_anchor_ids={SNIP})
         self.assertTrue(out["ready"])
         text = out["text"]
         self.assertIn("**the mission**", text)                # bold opening
@@ -80,7 +82,7 @@ class AssembleTests(unittest.TestCase):
 
     def test_no_anchor_without_ids(self):
         bp = _bp(slides=[{"index": 0, "text": "Great line.",
-                          "key_phrases": [], "breakthrough": True,
+                          "key_phrases": [],
                           "snippet_id": None, "session_id": None}])
         out = self._run(bp)
         self.assertNotIn("[[moment:", out["text"])

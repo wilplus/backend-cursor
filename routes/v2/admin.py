@@ -20,13 +20,13 @@ from datetime import datetime, timezone
 from typing import Any
 from werkzeug.utils import secure_filename
 
-from routes.admin import require_admin, require_admin_or_coach
+from routes.admin import require_admin
 from routes.v2.common import (
     _COACH_PSEUDONYM_SALT,
     _is_valid_uuid,
     _resolve_snippet_audio_url,
 )
-from services.rate_limits import heavy_limit, llm_limit, regenerate_limit
+from services.rate_limits import llm_limit, regenerate_limit
 from config import Config
 from routes.v2.blueprint import v2_bp
 from services.db import db
@@ -1912,125 +1912,10 @@ def v2_admin_review_queue():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch review queue"}), 500
 
 
-@v2_bp.route("/admin/learning/train", methods=["POST"])
-@heavy_limit
-@require_admin_or_coach
-def v2_admin_learning_train():
-    """Manual 'train now'. export → fit logistic → eval → store artifact +
-    model_versions row (status=shadow). Small corpus → warnings, never junk.
-    200 {version, metrics, corpus_size, warnings}."""
-    try:
-        from services.learning_train import train_and_register
-        result = train_and_register()
-        return jsonify(result), 200
-    except Exception as e:
-        logger.error("admin/learning/train failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Training failed"}), 500
-
-
-@v2_bp.route("/admin/learning/status", methods=["GET"])
-@require_admin_or_coach
-def v2_admin_learning_status():
-    """Corpus + latest-model snapshot. shadow agreement is wired in B3 (the
-    shadow hook); null until predictions exist. SHADOW — influences nothing."""
-    try:
-        from services.learning_export import export_snippet_labels_dataset
-        _rows, summary = export_snippet_labels_dataset()
-        latest = db.get_latest_model_version()
-        latest_out = None
-        if latest:
-            latest_out = {
-                "version": latest.get("version"),
-                "trained_at": latest.get("created_at"),
-                "status": latest.get("status"),
-                "metrics": latest.get("metrics"),
-                "corpus_size": latest.get("corpus_size"),
-            }
-        total = summary.get("total") or 0
-        recommendation = (
-            "collect more labels (provisional)" if total < 50
-            else "corpus sufficient — train when ready"
-        )
-        return jsonify({
-            "corpus": {
-                "total": total,
-                "by_class": summary.get("by_class") or {},
-                "dropped_no_features": summary.get("dropped_no_features") or 0,
-            },
-            "latest_model": latest_out,
-            "shadow": db.get_shadow_agreement(),  # predicted-vs-coach agreement
-            "recommendation": recommendation,
-            "mode": "shadow — influences nothing",
-        }), 200
-    except Exception as e:
-        logger.error("admin/learning/status failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch status"}), 500
-
-
-@v2_bp.route("/admin/learning/models", methods=["GET"])
-@require_admin_or_coach
-def v2_admin_learning_models():
-    """Model history, newest first."""
-    try:
-        rows = db.list_model_versions()
-        return jsonify([
-            {
-                "version": r.get("version"),
-                "trained_at": r.get("created_at"),
-                "status": r.get("status"),
-                "metrics": r.get("metrics"),
-                "corpus_size": r.get("corpus_size"),
-            }
-            for r in rows
-        ]), 200
-    except Exception as e:
-        logger.error("admin/learning/models failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch models"}), 500
-
-
-@v2_bp.route("/admin/learning/trace", methods=["GET"])
-@require_admin
-def v2_admin_learning_trace():
-    """Backlog item 11 — the developer learning-trace: one payload describing
-    the three learning lanes (shadow direction / annotation writer / acoustic
-    baseline): corpora, model history, coefficients, agreement, decision
-    points, known gaps. Aggregation lives in services/learning_trace.py.
-
-    ADMIN-ONLY on purpose (not @require_admin_or_coach like the other
-    /admin/learning/* endpoints): the payload exposes machine guesses vs
-    coach labels — BLIND COACH forbids a coach seeing that. Developer
-    observability only; never any user/coach-visible score surface (AC-9).
-    Sections degrade to null + errors[] individually — this never 500s for
-    one broken corpus."""
-    try:
-        from services.learning_trace import build_learning_trace
-        return jsonify(build_learning_trace()), 200
-    except Exception as e:
-        logger.error("admin/learning/trace failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to build learning trace"}), 500
-
-
 @v2_bp.route("/admin/sessions/<session_id>/readout", methods=["GET"])
 @require_admin
 def v2_admin_get_session_readout(session_id):
-    """② Coach authoring Readout — the user §3.3 Readout PLUS the PRIVATE
-    direction-label lane per snippet (split-sink §2: the user re-read
-    omits labels; the coach authors/corrects them here). Pseudonymized,
-    not anonymized: full transcript + goal, identity as
-    pseudonymous_user_id (never the real id).
-
-    Response 200:
-      { session_id, pseudonymous_user_id, state, session_context,
-        readout: { snippets: [ {…§3.3…, label?: {schema_version, value,
-                    was_pre_filled, was_overridden}} ], insights_payload? } }
-
-    Cold start (no classifier): snippet.label absent → coach labels from
-    scratch. Steady state: pre-filled value present → accept/override.
-    """
+    """Coach authoring readout, pseudonymized and free of model verdicts."""
     if not _is_valid_uuid(session_id):
         return jsonify({
             "code": "INVALID_INPUT", "error": "session_id must be a valid UUID",
@@ -2044,23 +1929,6 @@ def v2_admin_get_session_readout(session_id):
 
         from services.lab_recording import build_readout_from_session
         readout = build_readout_from_session(session_id)
-
-        # Fold the PRIVATE direction-label lane per snippet (coach-only —
-        # NEVER in the user re-read; this is the authoring half).
-        labels_by_id = {}
-        for lab in db.get_training_labels(session_id):
-            sid = lab.get("snippet_id")
-            if sid is not None:
-                labels_by_id[str(sid)] = {
-                    "schema_version": lab.get("schema_version"),
-                    "value": lab.get("value"),
-                    "was_pre_filled": lab.get("was_pre_filled"),
-                    "was_overridden": lab.get("was_overridden"),
-                }
-        for snip in (readout.get("snippets") or []):
-            lab = labels_by_id.get(str(snip.get("id")))
-            if lab:
-                snip["label"] = lab
 
         published = bool(session.get("results_published_at"))
         if published:

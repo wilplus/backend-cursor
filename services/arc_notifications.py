@@ -159,11 +159,10 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
     the read route and its /game "Voice album" tab both exist now, so a
     student could reach it only by knowing it was there.
 
-    Fired from the publish hook, and only when `refresh_voice_album` actually
-    inserted something: the album is the one place all three signals agreed,
-    so "there is a moment in it" is the whole news. Idempotent per ARC, not
-    per publish — a later take adding a second moment must not re-announce the
-    album, which would turn a landmark into a nag.
+    Fired after reconciliation: the album is the one place all three signals
+    agreed, so "there is a moment in it" is the whole news. It is introduced
+    once per USER, never once per Project. A durable user marker prevents a
+    later Project or cleared Lounge thread from restarting onboarding.
 
     AC-9: says a moment landed and where to hear it. Never how many, never how
     good, never a score.
@@ -174,8 +173,6 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
     # its first qualified clip before the guided journey ends; in that case it
     # stays quiet until Take 3 is complete. Conversely, a coach may qualify the
     # first clip days later, so every reconciliation may call this helper.
-    # The existing per-project client key remains the frequency policy until
-    # product decides between once-per-user and once-per-project.
     try:
         entries = db.list_voice_album(str(arc_id)) or []
         sessions = db.get_arc_sessions(str(arc_id)) or []
@@ -187,13 +184,15 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
         ]
         if not entries or len(completed) < 3:
             return False
+        if db.has_voice_album_introduction(str(user_id)):
+            return False
     except Exception as e:
         logger.warning("voice_album intro eligibility failed arc=%s: %s",
                        arc_id, e)
         return False
-    return _insert(
+    inserted = _insert(
         db, str(user_id),
-        client_key=f"willab-voicealbum:{arc_id}",
+        client_key=f"willab-voicealbum-user:{user_id}",
         kind="text",
         body=(
             "Your Voice Album is ready.\n\n"
@@ -209,6 +208,9 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
             "actions": ["find_voice_album"],
         },
     )
+    if inserted:
+        db.mark_voice_album_introduced(str(user_id))
+    return inserted
 
 
 def fire_confidence_not_confirmed(

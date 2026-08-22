@@ -1,7 +1,7 @@
 """Star-suggestion generation (founder 2026-07-18).
 
 After a take's analysis, each notable snippet (resolved by
-services.moment_confidence: panel label → machine read; replace triggers:
+services.moment_confidence from the stored machine read; replace triggers:
 an unconfident read / profanity / very low slide stickiness) gets ONE
 generated suggestion the grey star opens:
 
@@ -596,7 +596,7 @@ def _classify_acoustic_candidate(
     snippet_id = str(snippet_id)
 
     metrics = context.metrics_by_id.get(snippet_id)
-    confidence = resolve_moment_confidence(None, metrics)
+    confidence = resolve_moment_confidence(metrics)
     stickiness = snippet.get("slide_stickiness")
     if isinstance(stickiness, dict):
         stickiness = stickiness.get("composite")
@@ -741,11 +741,10 @@ def _resolve_delivery_baseline_and_capture_arousal(
 def generate_for_session(session_id: str, arc_id: Optional[str], *,
                          database=None) -> int:
     """Analysis-time hook (flag-gated at the caller): resolve + generate +
-    persist suggestions for one take's snippets. NO HUMAN LABEL EXISTS AT
-    RECORD TIME — neither a coach tag nor a blind panel rating, both of which
-    arrive later — so resolution here is machine-read/profanity/stickiness and
-    the panel argument is None by construction, not by oversight. A later
-    coach-verified star supersedes at serve. Capped per take
+    persist suggestions for one take's snippets. Live resolution is strictly
+    machine-read/profanity/stickiness. Blind peer ratings, whenever collected
+    later, stay in the internal corpus and cannot alter this suggestion. A
+    later coach-verified star supersedes at serve. Capped per take
     (MOMENT_SUGGESTIONS_MAX_PER_TAKE). Returns the number stored."""
     if not session_id or not arc_id:
         return 0

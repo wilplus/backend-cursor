@@ -676,7 +676,6 @@ class MomentExplanationGetTests(unittest.TestCase):
                                   "audio_ref": "https://x/a.webm",
                                   "start_offset_ms": 0, "duration_ms": 900,
                                   "comment_text": "This is the turn.",
-                                  "comment_video_ref": "https://x/v.mp4",
                               }]):
                 out = v2.v2_get_moment_explanation.__wrapped__(ARC, moment_id)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
@@ -688,13 +687,13 @@ class MomentExplanationGetTests(unittest.TestCase):
         self.assertEqual(body["code"], "MOMENTS_LOCKED")
         self.assertEqual(body["price_tokens"], 2_500)
 
-    def test_entitled_serves_flat_note_and_video_ref(self):
+    def test_entitled_serves_flat_written_note(self):
         body, status = self._get(entitled=True)
         self.assertEqual(status, 200)
-        # FLAT top-level note/video_ref — the ONLY fields the FE reads.
+        # FLAT top-level note — the per-item coach-video lane is retired.
         self.assertEqual(body["id"], "sn1")
         self.assertEqual(body["note"], "This is the turn.")
-        self.assertEqual(body["video_ref"], "https://x/v.mp4")
+        self.assertNotIn("video_ref", body)
         self.assertNotIn("moment", body)        # not nested
         raw = json.dumps(body)
         self.assertNotIn("direction", raw)     # the label never serializes

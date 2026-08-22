@@ -105,7 +105,6 @@ def decorate_key_moments(
             entry["star"] = "verified"
             entry["coach"] = {
                 "has_message": True,
-                "has_video": bool(explanations[moment_id].get("has_video")),
             }
             explanation = explanations[moment_id]
             slug = (

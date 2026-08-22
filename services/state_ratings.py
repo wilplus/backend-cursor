@@ -346,8 +346,8 @@ def aggregate(rows: Any, *, lanes: tuple = PANEL_LANES) -> Optional[dict]:
 # flow can produce, and was deleted the same evening by founder verdict along
 # with the bonus itself — the Voice Album is an entry decision (acoustic
 # moment → user agrees → coach agrees), never a ranking term. `aggregate` and
-# `quality` below are unaffected: they feed the panel CONFIDENCE term, which
-# is the blend's one delivery input (L2).
+# `quality` remain available exclusively for internal corpus evaluation and
+# training; no live product selector reads them.
 
 
 def corpus_summary(rows: Any) -> dict:

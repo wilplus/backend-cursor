@@ -654,7 +654,7 @@ class AssemblyFlagTests(unittest.TestCase):
         bp = {"ready": True, "slides": [{
             "text": "just the best line", "verbatim": "just the best line",
             "polished": False, "snippet_id": S1, "session_id": T1,
-            "breakthrough": False, "key_phrases": []}]}
+            "key_phrases": []}]}
         with patch("services.best_presentation.build_best_presentation",
                    return_value=bp), \
              patch.dict("os.environ",
@@ -735,10 +735,8 @@ class OverlapTests(unittest.TestCase):
                          ["b", "a"])
 
 
-class KeyMomentPreservationTests(unittest.TestCase):
-    """Transcript mode must NOT dark the explanations lane — a
-    coach-surfaced piece stays a key moment (review finding: the only
-    paid surface became unreachable)."""
+class RetiredMomentIsolationTests(unittest.TestCase):
+    """A surfaced coach draft does not create a fourth feedback family."""
 
     class _Db(DocumentBuildTests._Db):
         def list_ideal_decisions(self, arc_id):
@@ -747,16 +745,14 @@ class KeyMomentPreservationTests(unittest.TestCase):
         def get_coach_snippet_drafts(self, sid):
             return [{"snippet_id": S2, "surfaced": True}]
 
-    def test_surfaced_piece_survives_as_a_key_moment(self):
+    def test_surfaced_piece_does_not_implicitly_become_feedback(self):
         from services.ideal_text_block import assemble_transcript_document
         snips = [{"id": S1, "start_offset_ms": 0, "language": "en",
                   "transcript": "we started small"},
                  {"id": S2, "start_offset_ms": 10, "language": "en",
                   "transcript": "and this is the line that lands"}]
         out = assemble_transcript_document(ARC, database=self._Db(snips))
-        self.assertEqual([m["snippet_id"] for m in out["key_moments"]],
-                         [S2])
-        self.assertIn(out["key_moments"][0]["anchor"], out["text"])
+        self.assertEqual(out["key_moments"], [])
 
 
 class ApprovedChangeBakesTests(unittest.TestCase):
@@ -805,8 +801,7 @@ class RelocateAfterBakeTests(unittest.TestCase):
       · its slide index — the FE zips pieces 1:1 against the document's
         paragraphs to build the per-slide deck, so a short list collapses
         the whole deck into one untitled section (the 1:1 north star);
-      · its coach key moment, when the piece was a surfaced breakthrough —
-        the note the founder requires to survive "even on a locked screen".
+      · its slide identity and exact paragraph provenance.
 
     A piece is a REGION of the document, not a string that must still
     exist verbatim. These tests pin that."""
@@ -847,7 +842,7 @@ class RelocateAfterBakeTests(unittest.TestCase):
         self.assertTrue(verify_spans({"text": out["text"], "pieces": pieces}))
         self.assertEqual(pieces[0]["text"], "We started tiny")
 
-    def test_an_approved_emphasis_does_not_cost_the_coach_key_moment(self):
+    def test_an_approved_emphasis_does_not_create_a_legacy_coach_moment(self):
         from services.ideal_decision_ledger import normalize_phrase
         from services.ideal_text_block import assemble_transcript_document
         rows = [{"kind": "emphasize",
@@ -859,23 +854,16 @@ class RelocateAfterBakeTests(unittest.TestCase):
         self.assertIn("{{orange:", out["text"])  # the bake really landed
         pieces = out["document"]["pieces"]
         self.assertEqual([p["snippet_id"] for p in pieces], [S1, S2])
-        # The founder's rule: the coach's moment survives the fold, and its
-        # anchor still indexes the SERVED text (that is the FE's join).
-        self.assertEqual([m["snippet_id"] for m in out["key_moments"]], [S2])
-        self.assertIn(out["key_moments"][0]["anchor"], out["text"])
+        # A surfaced coach draft is not a fourth feedback family and does not
+        # implicitly create a document anchor.
+        self.assertEqual(out["key_moments"], [])
         # …AND the piece it rode in on is genuinely coarse — this test is
         # what caught me trying to make coach moments decline a coarse
         # anchor (2026-08-12), so pin the precondition or the guard is
         # vacuous the next time someone "tightens" it.
         self.assertEqual(pieces[1]["anchor_grain"], "paragraph")
 
-    def test_the_coach_moment_is_the_ONE_lane_that_rides_a_coarse_anchor(self):
-        # The asymmetry, asserted on ONE document so both halves are visible
-        # at once: the SAME coarse piece keeps its coach moment and loses its
-        # emphasis. A moment is per-SNIPPET — one slide's spoken chunk — and
-        # the relocation is 1:1, so a paragraph-wide anchor still points at
-        # the chunk the coach marked. A bold means "these exact words", and
-        # at this grain that would accent the entire chunk.
+    def test_coarse_relocation_does_not_invent_feedback_or_exact_styling(self):
         from services.ideal_decision_ledger import normalize_phrase
         from services.ideal_text_block import assemble_transcript_document
         rows = [{"kind": "emphasize",
@@ -886,9 +874,8 @@ class RelocateAfterBakeTests(unittest.TestCase):
             ARC, database=self._Db(self._snips(), rows, surfaced=[S2]))
         coarse = out["document"]["pieces"][1]
         self.assertEqual(coarse["anchor_grain"], "paragraph")
-        # Half one — the moment rode it.
-        self.assertEqual([m["snippet_id"] for m in out["key_moments"]], [S2])
-        # Half two — a bold on the very same piece declines.
+        self.assertEqual(out["key_moments"], [])
+        # A bold on the coarse piece declines because it requires exact words.
         self.assertEqual(
             build_tracked_changes(out["text"], [coarse],
                                   {S2: {"kind": "emphasize", "why": "y"}}),

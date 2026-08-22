@@ -6,6 +6,7 @@ Run: python3 -m unittest test_arc_notifications
 from __future__ import annotations
 
 import unittest
+import uuid
 
 from services.arc_notifications import (
     fire_human_check_note, maybe_fire_best_presentation_ready,
@@ -157,6 +158,7 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
     class _Db:
         def __init__(self):
             self.rows = []
+            self.voice_album_introduced = False
 
         def list_voice_album(self, arc_id):
             return [{"snippet_id": "clip-1"}]
@@ -174,6 +176,13 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
                 self.rows.append({**m, "_user": user_id})
             return list(messages)
 
+        def has_voice_album_introduction(self, user_id):
+            return self.voice_album_introduced
+
+        def mark_voice_album_introduced(self, user_id):
+            self.voice_album_introduced = True
+            return True
+
     def test_it_fires_and_points_at_the_album(self):
         from services.arc_notifications import fire_voice_album_ready
         db = self._Db()
@@ -185,14 +194,28 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
         self.assertEqual(
             db.rows[0]["metadata"]["actions"], ["find_voice_album"])
 
-    def test_idempotent_per_ARC_not_per_publish(self):
-        # A later take adding a SECOND moment must not re-announce the album —
-        # that turns a landmark into a nag.
+    def test_idempotent_once_per_user_across_projects(self):
+        # A second qualifying Project must not restart Album onboarding.
         from services.arc_notifications import fire_voice_album_ready
         db = self._Db()
         fire_voice_album_ready(db, "u1", "arc-1")
-        fire_voice_album_ready(db, "u1", "arc-1")
+        self.assertFalse(fire_voice_album_ready(db, "u1", "arc-2"))
         self.assertEqual(len(db.rows), 1)
+
+    def test_user_scoped_key_is_not_project_scoped(self):
+        from services.arc_notifications import fire_voice_album_ready
+        db = self._Db()
+        self.assertTrue(fire_voice_album_ready(db, "u1", "arc-1"))
+        expected = str(uuid.uuid5(
+            uuid.NAMESPACE_URL, "willab-voicealbum-user:u1"))
+        self.assertEqual(db.rows[0]["client_id"], expected)
+
+    def test_existing_user_marker_blocks_reintroduction(self):
+        from services.arc_notifications import fire_voice_album_ready
+        db = self._Db()
+        db.voice_album_introduced = True
+        self.assertFalse(fire_voice_album_ready(db, "u1", "arc-2"))
+        self.assertEqual(db.rows, [])
 
     def test_ac9_it_never_counts_or_grades(self):
         from services.arc_notifications import fire_voice_album_ready

@@ -257,40 +257,17 @@ def assemble_transcript_document(arc_id: str, *, database=None) -> dict:
                 # paragraph_fallback: a baked change rewrites the very
                 # words it lands on, so the piece it touched is the one
                 # that vanishes. Anchoring it to its paragraph keeps the
-                # piece — and its slide index and its coach moment —
-                # instead of losing all three to a successful accept.
+                # piece and its slide index instead of losing both to a
+                # successful accept.
                 pieces = relocate_pieces(text, pieces,
                                          paragraph_fallback=True)
     except Exception as _le:
         logger.warning("living_transcript: bake failed arc=%s: %s",
                        arc_id, _le)
 
-    # Coach-surfaced pieces stay KEY MOMENTS on the document: the
-    # explanations lane (and the only paid surface) must not go dark in
-    # transcript mode (review finding).
-    # A COACH MOMENT SURVIVES A COARSE ANCHOR — deliberately, and against my
-    # first instinct (2026-08-12). Dropping paragraph-grain moments looked
-    # like the careful move ("don't put the coach's name on words they never
-    # marked"), and `test_an_approved_emphasis_does_not_cost_the_coach_key_
-    # moment` proved it wrong: it is the same drop the founder already ruled
-    # out — the note must survive "even on a locked screen".
-    #
-    # The reason it is safe is the UNIT. The coach marks a SNIPPET — one
-    # slide's spoken chunk — not a phrase inside it, and the fallback is
-    # 1:1, so piece i is paragraph i is that slide. Widening the anchor to
-    # the paragraph therefore still points at the chunk the coach marked; it
-    # loses precision INSIDE a chunk the moment never claimed. That is the
-    # opposite of a replace/bold, whose whole meaning is "these exact words"
-    # and which does decline at this grain (services/tracked_changes.py).
-    key_moments = [{
-        "snippet_id": p["snippet_id"],
-        "take_session_id": p.get("take_session_id"),
-        "anchor": p.get("text") or "",
-    } for p in pieces if p.get("breakthrough")]
-
     return {
         "text": text[:_MAX_BLOCK_CHARS],
-        "key_moments": key_moments,
+        "key_moments": [],
         "polish": [],
         "ready": True,
         "document": {
@@ -308,9 +285,8 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
     collapsed into one marker-carrying block.
 
     Per pick: the pick's key_phrases get **bolded** where they occur in its
-    text (first occurrence each); a pick that is a coach-confirmed
-    breakthrough is wrapped whole in a [[moment:…]] anchor (snippet_id +
-    take session_id → the feedback-page deep link).
+    text (first occurrence each). A Manager-approved suggestion may be wrapped
+    in a [[moment:…]] anchor so its feedback control attaches to exact text.
 
     Returns {"text": str, "key_moments": [{"snippet_id", "take_session_id"}],
     "ready": bool} — ready=False (empty text) below 3 takes. Pure given db.
@@ -377,12 +353,11 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
                 kp = (kp or "").strip()
                 if kp and kp in text and f"**{kp}**" not in text:
                     text = text.replace(kp, f"**{kp}**", 1)
-        # Key-moment anchor — a coach-confirmed breakthrough pick wraps
-        # whole; so does a star-suggestion pick (extra_anchor_ids, founder
+        # Key-moment anchor — a star-suggestion pick (extra_anchor_ids, founder
         # 2026-07-18 — the grey star needs an in-text anchor to attach to);
         # so does a polished pick (the polish star folds verbatim→edited).
         _extra = extra_anchor_ids or set()
-        if (s.get("breakthrough") or _is_polish
+        if (_is_polish
                 or (snip_id and str(snip_id) in _extra)) \
                 and snip_id and take_sid:
             text = (f"[[moment:{snip_id}|{take_sid}]]{text}[[/moment]]")
@@ -556,8 +531,8 @@ def sanitize_suggestions_snapshot(sugs: Any) -> list:
     SNAPSHOT (founder 2026-07-20) — mirrors the serve shapes exactly, so
     AC-9/CONSTRUCT hold in STORAGE: structure/delivery keep only their
     device vocabulary; text suggestions keep replacement/why with the
-    trigger clamped to 'polish'|None (the raw threat/charisma vocabulary
-    never lands in a row a user payload is built from). Pure."""
+    trigger clamped to 'polish'|None (internal classifier vocabulary never
+    lands in a row a user payload is built from). Pure."""
     out = []
     for sid, s in (sugs or {}).items():
         if not isinstance(s, dict):

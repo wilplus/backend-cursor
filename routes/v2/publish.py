@@ -115,31 +115,12 @@ def _assemble_insights_from_drafts(session_id, overall_message):
             "tag": d.get("tag"),
             "when": d.get("when_context"),
             "examples": d.get("examples") or [],
-            "breakthrough_video_ref": d.get("breakthrough_video_ref"),
             # Free tier (founder 2026-07-06): a real coach-authored correction
             # of the transcript, distinct from the immutable raw Whisper text.
             # None until the coach saves one.
             "transcript_corrected": d.get("transcript_corrected"),
         })
     return {"overall_message": overall_message, "snippet_notes": notes}
-
-
-def _assemble_labels_from_store(session_id):
-    """Build the PRIVATE-lane labels list from training_labels persisted at
-    per-snippet save time (post-§F.4 simplified publish). Re-validated +
-    re-persisted idempotently by the contract."""
-    out: list = []
-    for lab in (db.get_training_labels(session_id) or []):
-        sid = lab.get("snippet_id")
-        if sid is None:
-            continue
-        out.append({
-            "snippet_id": str(sid),
-            "value": lab.get("value"),
-            "was_pre_filled": bool(lab.get("was_pre_filled", False)),
-            "was_overridden": bool(lab.get("was_overridden", False)),
-        })
-    return out
 
 
 def publish_one_session(session_id, actor_user_id):
@@ -251,8 +232,8 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
     """
     # Opt-in: a willab publish carries insights_payload (legacy/body mode —
     # today's FE) OR notify_client (the post-§F.4 simplified publish, which
-    # sends just {overall_message, notify_client}; we ASSEMBLE both lanes from
-    # the persisted per-snippet drafts + training_labels). Legacy charisma
+    # sends just {overall_message, notify_client}; we assemble the user lane
+    # from persisted per-snippet drafts). Legacy requests
     # publishes carry neither → undisturbed.
     body_mode = "insights_payload" in body
     assemble_mode = (not body_mode) and ("notify_client" in body)
@@ -262,18 +243,12 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
     from services.insights_payload import (
         InsightsPayloadError, validate_insights_payload,
     )
-    from services.training_labels import (
-        TrainingLabelError, validate_publish_labels,
-    )
-
     if body_mode:
         raw_insights = body.get("insights_payload")
-        raw_labels = body.get("labels")
     else:
         raw_insights = _assemble_insights_from_drafts(
             session_id, body.get("overall_message"),
         )
-        raw_labels = _assemble_labels_from_store(session_id)
 
     # ── Validate BOTH lanes BEFORE any persistence/side effect. ──
     try:
@@ -281,24 +256,6 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
     except InsightsPayloadError as ie:
         return jsonify({
             "code": "PUBLISH_CONTRACT_VIOLATION", "error": str(ie),
-        }), 422
-
-    # §3.10/S.5: the publish floor is the LIBRARY floor (≥1 surfaced note+tag,
-    # enforced above), NOT label coverage. Labels are captured for training but
-    # are NEVER mandatory to publish → require_all=False. NB: this shared helper
-    # guards the (sole surviving) /internal publish door.
-    try:
-        _snips = db.get_snippets_by_session(session_id) or []
-    except Exception:
-        _snips = []
-    required_ids = {str(s.get("id")) for s in _snips if s.get("id")}
-    try:
-        clean_labels = validate_publish_labels(
-            raw_labels, required_ids, require_all=False,
-        )
-    except TrainingLabelError as le:
-        return jsonify({
-            "code": "PUBLISH_CONTRACT_VIOLATION", "error": str(le),
         }), 422
 
     # Coach video (B.3): fold the session's coach_video_ref into the published
@@ -312,18 +269,14 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
     except Exception:
         pass
 
-    # ── Persist both lanes (split-sink §2: separate stores). ──
     if not db.set_session_insights_payload(session_id, clean_insights):
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to persist insights payload",
         }), 500
-    labels_written = db.upsert_training_labels(
-        session_id, str(actor_user_id), clean_labels,
-    )
     logger.info(
-        "publish_contract.willab session=%s notes=%d overall=%s labels=%d",
+        "publish_contract.willab session=%s notes=%d overall=%s",
         session_id, len(clean_insights["snippet_notes"]),
-        bool(clean_insights["overall_message"]), labels_written,
+        bool(clean_insights["overall_message"]),
     )
 
     # Arc lifecycle (founder #1, 2026-07-06): a publish may complete the
@@ -345,27 +298,19 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
         )
 
     # Subsystem V — freeze the FINAL delivered comment onto each current coach
-    # video take (write-once; the comment→video training pair as delivered).
-    # take_summary ← overall_message; breakthrough ← that snippet's note. Best-
-    # effort: never affects the publish.
+    # take-level video (write-once; the comment→video pair as delivered).
+    # Best-effort: never affects the publish.
     try:
         _cur_assets = db.get_current_coach_video_assets_for_session(session_id)
         if _cur_assets:
-            _note_by_snip = {
-                str(n.get("snippet_id")): n.get("note")
-                for n in (clean_insights.get("snippet_notes") or [])
-                if isinstance(n, dict) and n.get("snippet_id")
-            }
             _overall = (clean_insights.get("overall_message") or "").strip() or None
             for _a in _cur_assets:
                 if _a.get("comment_text_at_publish"):
                     continue  # already frozen
-                if _a.get("content_type") == "take_summary":
-                    _final = _overall
-                else:
-                    _final = _note_by_snip.get(str(_a.get("snippet_id")))
-                if _final:
-                    db.set_coach_video_comment_at_publish(_a.get("id"), _final)
+                if _a.get("content_type") == "take_summary" and _overall:
+                    db.set_coach_video_comment_at_publish(
+                        _a.get("id"), _overall,
+                    )
     except Exception as _cv_err:
         logger.warning(
             "publish_contract.coach_video_snapshot_failed session=%s err=%s "
@@ -500,9 +445,9 @@ def v2_internal_publish_session_results():
 
         # Save-at-publish (founder 2026-07-13): the FE no longer autosaves
         # per keystroke — it may send the coach's full per-snippet authoring
-        # inline as ``snippets: [{id, note?, tag?, surfaced?, direction?|
-        # direction_label?, ...}]``. Persist each through the SAME two-lane
-        # helper as /coach/sessions/<id>/snippets/<id> (validators/caps/
+        # inline as ``snippets: [{id, note?, tag?, surfaced?, ...}]``. Persist
+        # each through the same helper as /coach/sessions/<id>/snippets/<id>
+        # (validators/caps/
         # stores shared — the doors cannot drift), BEFORE the contract runs
         # so assemble-mode reads the fresh drafts. Optional + backward-
         # compatible: absent → today's behavior (pre-saved coach_state).
@@ -528,9 +473,6 @@ def v2_internal_publish_session_results():
                     }), 404
                 _fields = dict(_entry)
                 _fields.pop("id", None)
-                # FE alias: `direction` → the store's `direction_label`.
-                if "direction" in _fields and "direction_label" not in _fields:
-                    _fields["direction_label"] = _fields.pop("direction")
                 _lane_err = _save_coach_snippet_lanes(
                     session_id, _snip_id, _fields,
                 )

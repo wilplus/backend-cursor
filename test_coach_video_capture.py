@@ -87,8 +87,8 @@ class CaptureOrchestrationTests(unittest.TestCase):
     def test_re_record_supersedes_prior(self):
         db = _FakeDB(prior={"id": "old-asset"})
         capture_coach_video(
-            database=db, session_id="s1", content_type="breakthrough",
-            snippet_id="snip1", recorded_by="c1", video_ref="u2", video_bytes=None,
+            database=db, session_id="s1", content_type="take_summary",
+            recorded_by="c1", video_ref="u2", video_bytes=None,
         )
         # the (kept new, superseded old) preference pair is labeled
         self.assertEqual(db.superseded, ("old-asset", "new-asset-1"))

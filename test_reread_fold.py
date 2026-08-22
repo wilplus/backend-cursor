@@ -9,7 +9,7 @@ of the take — revealed by clicking next like normal snippets, with a small
     sorted across sessions — the read's clock restarts at 0), stamped with
     take_session_id + recording_kind, one continuous index;
   * coach writes on a folded read snippet route to the READ's own session
-    (snippet save, save-feedback snippets[] AND labels[]);
+    (snippet save and save-feedback snippets[]);
   * the queue + student drill-down hide read rows and mark the parent
     (has_reread), and the queue row carries the opaque user_id drill key
     (BE-4);
@@ -116,7 +116,6 @@ class CoachGetFoldTests(unittest.TestCase):
                  "duration_ms": 900},
             ], "slide_coverage": []},
         }
-        dispatched = []
         with self.app.test_request_context():
             request.user_id = "coach1"
             with patch.object(v2.db, "v2_get_session_by_id",
@@ -124,22 +123,17 @@ class CoachGetFoldTests(unittest.TestCase):
                  patch.object(v2.db, "stamp_review_opened") as m_open, \
                  patch.object(v2.db, "get_read_sessions_for",
                               return_value=read_sessions), \
-                 patch.object(v2.db, "get_training_labels",
-                              return_value=[]), \
                  patch.object(v2.db, "get_coach_snippet_drafts",
                               return_value=[]), \
                  patch.object(v2.db, "get_feelings_by_session",
                               return_value=[]), \
                  patch("services.lab_recording.build_readout_from_session",
-                       side_effect=lambda sid, **kw: readouts[sid]), \
-                 patch("services.learning_serve.dispatch_shadow_predictions",
-                       side_effect=lambda sid, snips: dispatched.append(
-                           (sid, [s["id"] for s in snips]))):
+                       side_effect=lambda sid, **kw: readouts[sid]):
                 resp, status = v2.v2_coach_get_session.__wrapped__(SPOKEN)
-        return resp.get_json(), status, dispatched, m_open
+        return resp.get_json(), status, m_open
 
     def test_read_snippets_appended_stamped_and_reindexed(self):
-        body, status, dispatched, m_open = self._get(
+        body, status, m_open = self._get(
             [{"id": READ, "created_at": "2026-07-16T11:00:00Z"}])
         self.assertEqual(status, 200)
         snips = body["snippets"]
@@ -151,9 +145,6 @@ class CoachGetFoldTests(unittest.TestCase):
         self.assertEqual(snips[2]["recording_kind"], "read")
         self.assertTrue(body["has_reread"])
         self.assertEqual(body["read_session_ids"], [READ])
-        # shadow predictions log under each OWNING session
-        self.assertEqual(dispatched,
-                         [(SPOKEN, [PSNIP1, PSNIP2]), (READ, [RSNIP])])
         opened = {c.args[0] for c in m_open.call_args_list}
         self.assertEqual(opened, {SPOKEN, READ})
 
@@ -161,7 +152,7 @@ class CoachGetFoldTests(unittest.TestCase):
         # Founder 2026-07-20: an ideal-text re-read carries read_target +
         # ideal_version in its intake_context → the coach UI labels it
         # "Re-read of ideal text vN". Per-take re-reads carry nulls.
-        body, status, _, _ = self._get([
+        body, status, _ = self._get([
             {"id": READ, "created_at": "2026-07-16T11:00:00Z",
              "intake_context": {"read_target": "ideal_text",
                                 "ideal_version": 3}},
@@ -175,7 +166,7 @@ class CoachGetFoldTests(unittest.TestCase):
         }])
 
     def test_reads_array_null_tags_on_per_take_reread(self):
-        body, _, _, _ = self._get(
+        body, _, _ = self._get(
             [{"id": READ, "created_at": "2026-07-16T11:00:00Z"}])
         self.assertEqual(body["reads"], [{
             "session_id": READ,
@@ -185,13 +176,12 @@ class CoachGetFoldTests(unittest.TestCase):
         }])
 
     def test_no_reads_packet_unchanged(self):
-        body, status, dispatched, _ = self._get([])
+        body, status, _ = self._get([])
         self.assertEqual(status, 200)
         self.assertEqual(len(body["snippets"]), 2)
         self.assertFalse(body["has_reread"])
         self.assertEqual(body["read_session_ids"], [])
         self.assertEqual(body["reads"], [])
-        self.assertEqual(dispatched, [(SPOKEN, [PSNIP1, PSNIP2])])
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -216,8 +206,6 @@ class SnippetWriteRoutingTests(unittest.TestCase):
                                   str(sid), [])), \
                  patch.object(v2.db, "get_read_sessions_for",
                               return_value=[{"id": READ}]), \
-                 patch.object(v2.db, "get_training_labels",
-                              return_value=[]), \
                  patch.object(v2.db, "get_coach_snippet_drafts",
                               return_value=[]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes",
@@ -249,15 +237,11 @@ class SaveFeedbackRoutingTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
 
-    def test_snippets_and_labels_route_to_their_owning_session(self):
+    def test_snippets_route_to_their_owning_session(self):
         body = {
             "snippets": [
                 {"id": PSNIP1, "note": "spoken note", "surfaced": True},
                 {"id": RSNIP, "note": "read note", "surfaced": True},
-            ],
-            "labels": [
-                {"snippet_id": PSNIP1, "value": "challenge"},
-                {"snippet_id": RSNIP, "value": "threat"},
             ],
         }
         snips = {SPOKEN: [{"id": PSNIP1}], READ: [{"id": RSNIP}]}
@@ -272,10 +256,6 @@ class SaveFeedbackRoutingTests(unittest.TestCase):
                               return_value=[{"id": READ}]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes, \
-                 patch("services.training_labels.validate_publish_labels",
-                       side_effect=lambda raw, ids, require_all: raw), \
-                 patch.object(v2.db, "upsert_training_labels",
-                              return_value=1) as m_labels, \
                  patch.object(v2.db, "set_session_feedback_saved",
                               return_value=True) as m_save:
                 resp, status = v2.v2_coach_save_feedback.__wrapped__(SPOKEN)
@@ -285,11 +265,6 @@ class SaveFeedbackRoutingTests(unittest.TestCase):
         lane_targets = [(c.args[0], c.args[1])
                         for c in m_lanes.call_args_list]
         self.assertEqual(lane_targets, [(SPOKEN, PSNIP1), (READ, RSNIP)])
-        # labels grouped + upserted per owner
-        label_targets = {c.args[0]: [r["snippet_id"] for r in c.args[2]]
-                         for c in m_labels.call_args_list}
-        self.assertEqual(label_targets,
-                         {SPOKEN: [PSNIP1], READ: [RSNIP]})
         # saved=reviewed stamps the PARENT take only
         m_save.assert_called_once_with(SPOKEN)
 
@@ -322,8 +297,6 @@ class QueueRowShapeTests(unittest.TestCase):
             with patch.object(v2.db, "list_review_queue",
                               return_value=[row]), \
                  patch.object(v2.db, "get_snippets_by_session",
-                              return_value=[]), \
-                 patch.object(v2.db, "get_training_labels",
                               return_value=[]), \
                  patch.object(v2.db, "get_coach_snippet_drafts",
                               return_value=[]):
