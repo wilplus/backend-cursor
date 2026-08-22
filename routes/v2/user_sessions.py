@@ -555,6 +555,82 @@ def v2_user_get_library():
         }), 500
 
 
+def _accrue_slide_fragment(
+    per_text, per_audio, slide_count, slide_index, text,
+    start_ms, end_ms, audio_ref,
+):
+    """Add one verbatim fragment and expand its slide-level audio span."""
+    if not isinstance(slide_index, int) \
+            or slide_index < 0 or slide_index >= slide_count:
+        return
+    if text:
+        per_text[slide_index].append(text)
+    audio = per_audio.setdefault(slide_index, {
+        "audio_ref": audio_ref,
+        "start_offset_ms": start_ms,
+        "end_ms": start_ms if start_ms is not None else None,
+    })
+    if audio.get("audio_ref") is None:
+        audio["audio_ref"] = audio_ref
+    if start_ms is not None and (
+        audio.get("start_offset_ms") is None
+        or start_ms < audio["start_offset_ms"]
+    ):
+        audio["start_offset_ms"] = start_ms
+    if end_ms is not None:
+        audio["end_ms"] = max(audio.get("end_ms") or 0, end_ms)
+
+
+def _dominant_arc_id(takes):
+    """Choose the most-developed Project, breaking ties newest-first."""
+    counts = {}
+    for take in takes:
+        arc_id = take.get("arc_id")
+        if arc_id:
+            counts[arc_id] = counts.get(arc_id, 0) + 1
+    if not counts:
+        return None
+    max_count = max(counts.values())
+    return next((take["arc_id"] for take in takes
+                 if take.get("arc_id")
+                 and counts[take["arc_id"]] == max_count), None)
+
+
+def _best_lines_for_slides(takes, slides):
+    """Pick the highest-power accepted line for each slide across Takes."""
+    best_lines = []
+    for index, raw_slide in enumerate(slides):
+        slide = raw_slide if isinstance(raw_slide, dict) else {}
+        best = None
+        best_power = None
+        for take in takes:
+            take_slides = take["slides"]
+            snippets = take_slides[index]["strong_snippets"] \
+                if index < len(take_slides) else []
+            if not snippets:
+                continue
+            top = snippets[0]
+            power = top.get("power_score")
+            if best is None or (
+                power is not None
+                and (best_power is None or power > best_power)
+            ):
+                best_power = power
+                best = top
+        if best:
+            best_lines.append({
+                "slide_index": index,
+                "title": slide.get("title") or "",
+                "transcript": best.get("transcript") or "",
+                "note": best.get("note") or "",
+                "audio_ref": best.get("audio_ref"),
+                "features": best.get("features"),
+                "rank": best.get("rank"),
+                "power_score": best.get("power_score"),
+            })
+    return best_lines
+
+
 @v2_bp.route("/user/strengths", methods=["GET"])
 @require_auth
 def v2_user_get_strengths():
@@ -791,27 +867,6 @@ def v2_user_get_strengths():
             per_text: dict = {i: [] for i in range(len(slides))}
             per_audio: dict = {}
 
-            def _accrue(si, txt, start_ms, end_ms, audio_ref):
-                """Add a text fragment + its audio span to slide ``si``."""
-                if not isinstance(si, int) or si < 0 or si >= len(slides):
-                    return
-                if txt:
-                    per_text[si].append(txt)
-                a = per_audio.setdefault(si, {
-                    "audio_ref": audio_ref,
-                    "start_offset_ms": start_ms,
-                    "end_ms": start_ms if start_ms is not None else None,
-                })
-                if a.get("audio_ref") is None:
-                    a["audio_ref"] = audio_ref
-                if start_ms is not None and (
-                    a.get("start_offset_ms") is None
-                    or start_ms < a["start_offset_ms"]
-                ):
-                    a["start_offset_ms"] = start_ms
-                if end_ms is not None:
-                    a["end_ms"] = max(a.get("end_ms") or 0, end_ms)
-
             from services.audio_ref_resolver import resolve_playable_ref
             # THE COACH'S CORRECTION WINS (founder 2026-08-11). A human who
             # says "this was on slide N" outranks the tap timeline — that is
@@ -833,8 +888,10 @@ def v2_user_get_strengths():
                         s.get("transcript") or s.get("transcription_text") or ""
                     ).strip()
                     _end = (off + dur) if (off is not None and dur is not None) else None
-                    _accrue(_fix, _txt, off, _end,
-                            resolve_playable_ref(s.get("audio_segment_path")))
+                    _accrue_slide_fragment(
+                        per_text, per_audio, len(slides), _fix, _txt, off, _end,
+                        resolve_playable_ref(s.get("audio_segment_path")),
+                    )
                     continue
                 # Same parent URL on every row — the resolver passes a
                 # healthy public URL through and signs an s3:// fallback.
@@ -849,7 +906,8 @@ def v2_user_get_strengths():
                 if frags:
                     for f in frags:
                         st = f.get("start_offset_ms")
-                        _accrue(
+                        _accrue_slide_fragment(
+                            per_text, per_audio, len(slides),
                             f["slide_index"], f.get("transcript"), st,
                             (st or 0) + (f.get("duration_ms") or 0),
                             audio_ref,
@@ -866,7 +924,10 @@ def v2_user_get_strengths():
                     s.get("transcript") or s.get("transcription_text") or ""
                 ).strip()
                 end_ms = (off + dur) if (off is not None and dur is not None) else None
-                _accrue(si, txt, off, end_ms, audio_ref)
+                _accrue_slide_fragment(
+                    per_text, per_audio, len(slides), si, txt, off, end_ms,
+                    audio_ref,
+                )
             for sg in slide_groups:
                 i = sg["index"]
                 sg["transcript"] = " ".join(per_text.get(i) or [])
@@ -920,52 +981,13 @@ def v2_user_get_strengths():
             # disagree with the overlay's per-arc count: "open" → "need 2 more").
             # Single-arc decks are unaffected (one arc holds all takes). Tie →
             # newest, since `takes` is newest-first.
-            _arc_counts: dict = {}
-            for _t in takes:
-                _aid = _t.get("arc_id")
-                if _aid:
-                    _arc_counts[_aid] = _arc_counts.get(_aid, 0) + 1
-            if _arc_counts:
-                _max_n = max(_arc_counts.values())
-                _arc_id = next(
-                    (t["arc_id"] for t in takes
-                     if t.get("arc_id") and _arc_counts[t["arc_id"]] == _max_n),
-                    None,
-                )
-            else:
-                _arc_id = None
+            _arc_id = _dominant_arc_id(takes)
 
             # best_lines: per slide_index, the single snippet with the HIGHEST
             # coach-adjusted power_score across all takes (the power phrase for
             # that slide). Each take's strong_snippets[0] is already the best
             # for that take (power-sorted).
-            best_lines = []
-            for i in range(len(latest_slides)):
-                sl = latest_slides[i] if isinstance(latest_slides[i], dict) else {}
-                best = None
-                best_ps = None
-                for t in takes:
-                    snips = t["slides"][i]["strong_snippets"] if i < len(t["slides"]) else []
-                    if not snips:
-                        continue
-                    top = snips[0]  # already power_score-sorted (best first)
-                    ps = top.get("power_score")
-                    if best is None or (
-                        ps is not None and (best_ps is None or ps > best_ps)
-                    ):
-                        best_ps = ps
-                        best = top
-                if best:
-                    best_lines.append({
-                        "slide_index": i,
-                        "title": sl.get("title") or "",
-                        "transcript": best.get("transcript") or "",
-                        "note": best.get("note") or "",
-                        "audio_ref": best.get("audio_ref"),
-                        "features": best.get("features"),
-                        "rank": best.get("rank"),
-                        "power_score": best.get("power_score"),
-                    })
+            best_lines = _best_lines_for_slides(takes, latest_slides)
 
             presentations.append({
                 "presentation_id": pid,
