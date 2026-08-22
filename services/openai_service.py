@@ -156,6 +156,64 @@ def _build_coach_insight_fallback(
     sentence3 = "Let's see what your human coach Artur will say in the next video."
     return f"{sentence1} {sentence2} {sentence3}"
 
+
+def _build_recording_progress_context(previous_recordings: list) -> dict | None:
+    """Reduce recording history to the metrics used by the report prompt.
+
+    This preserves the historical ordering and trend thresholds. It owns no
+    database or model calls, so report orchestration can remain linear.
+    """
+    if not previous_recordings:
+        return None
+
+    previous_scores = []
+    previous_filler_counts = []
+    previous_wpm = []
+    for prev_rec in previous_recordings:
+        perf_score = prev_rec.get("performance_scores")
+        if perf_score and isinstance(perf_score, list):
+            previous_scores.append(float(perf_score[0].get("final_kpi", 0)))
+        elif perf_score and isinstance(perf_score, dict):
+            previous_scores.append(float(perf_score.get("final_kpi", 0)))
+
+        filler_data = prev_rec.get("filler_words_count", {})
+        prev_filler = filler_data.get("total", 0) \
+            if isinstance(filler_data, dict) else (filler_data or 0)
+        if prev_filler:
+            previous_filler_counts.append(prev_filler)
+
+        recorded_wpm = prev_rec.get("words_per_minute")
+        if recorded_wpm:
+            previous_wpm.append(float(recorded_wpm))
+
+    trend_improving = False
+    trend_stable = False
+    trend_declining = False
+    if len(previous_scores) >= 2:
+        recent_count = min(3, len(previous_scores))
+        older_count = min(3, len(previous_scores) - recent_count)
+        if older_count > 0:
+            recent_avg = sum(previous_scores[:recent_count]) / recent_count
+            older_scores = previous_scores[recent_count:recent_count + older_count]
+            older_avg = sum(older_scores) / older_count
+            if recent_avg > older_avg + 0.05:
+                trend_improving = True
+            elif abs(recent_avg - older_avg) < 0.05:
+                trend_stable = True
+            else:
+                trend_declining = True
+
+    return {
+        "total_previous_recordings": len(previous_recordings),
+        "trend_improving": trend_improving,
+        "trend_stable": trend_stable,
+        "trend_declining": trend_declining,
+        "previous_scores": previous_scores,
+        "previous_filler_counts": previous_filler_counts,
+        "previous_wpm": previous_wpm,
+    }
+
+
 class OpenAIService:
     def __init__(self):
         if config.OPENAI_API_KEY:
@@ -522,62 +580,8 @@ Respond with ONLY valid JSON in this exact format:
         if user_id and recording_id:
             from services.db import db
             previous_recordings = db.get_user_recording_history(user_id, exclude_recording_id=recording_id, limit=10)
-            
-            if previous_recordings:
-                # Calculate progress metrics
-                previous_scores = []
-                previous_filler_counts = []
-                previous_wpm = []
-                
-                for prev_rec in previous_recordings:
-                    # Get performance score
-                    perf_score = prev_rec.get("performance_scores")
-                    if perf_score and isinstance(perf_score, list) and len(perf_score) > 0:
-                        previous_scores.append(float(perf_score[0].get("final_kpi", 0)))
-                    elif perf_score and isinstance(perf_score, dict):
-                        previous_scores.append(float(perf_score.get("final_kpi", 0)))
-                    
-                    # Get filler count
-                    filler_data = prev_rec.get("filler_words_count", {})
-                    if isinstance(filler_data, dict):
-                        prev_filler = filler_data.get("total", 0)
-                    else:
-                        prev_filler = filler_data if filler_data else 0
-                    if prev_filler:
-                        previous_filler_counts.append(prev_filler)
-                    
-                    # Get WPM
-                    prev_wpm = prev_rec.get("words_per_minute")
-                    if prev_wpm:
-                        previous_wpm.append(float(prev_wpm))
-                
-                # Calculate trends
-                trend_improving = False
-                trend_stable = False
-                trend_declining = False
-                
-                if len(previous_scores) >= 2:
-                    recent_count = min(3, len(previous_scores))
-                    older_count = min(3, len(previous_scores) - recent_count)
-                    if older_count > 0:
-                        recent_avg = sum(previous_scores[:recent_count]) / recent_count
-                        older_avg = sum(previous_scores[recent_count:recent_count + older_count]) / older_count
-                        if recent_avg > older_avg + 0.05:
-                            trend_improving = True
-                        elif abs(recent_avg - older_avg) < 0.05:
-                            trend_stable = True
-                        else:
-                            trend_declining = True
-                
-                progress_context = {
-                    "total_previous_recordings": len(previous_recordings),
-                    "trend_improving": trend_improving,
-                    "trend_stable": trend_stable,
-                    "trend_declining": trend_declining,
-                    "previous_scores": previous_scores,
-                    "previous_filler_counts": previous_filler_counts,
-                    "previous_wpm": previous_wpm
-                }
+            progress_context = _build_recording_progress_context(
+                previous_recordings)
         
         # Build context
         pre_answers_text = "\n".join([
