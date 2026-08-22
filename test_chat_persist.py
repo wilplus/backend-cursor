@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import unittest
 import uuid
+from io import BytesIO
+from types import SimpleNamespace
 
 try:
     from routes import v2_routes as v2
+    from routes.v2.coaching import _parse_chat_request
     _RT_ERR = None
 except Exception as e:  # pragma: no cover
     v2 = None
@@ -111,6 +114,58 @@ class PersistChatTurnTests(unittest.TestCase):
         self.assertIsNone(
             v2._persist_chat_turn("u1", "q", "a", user_client_id=str(uuid.uuid4()))
         )
+
+
+@unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
+class ParseChatRequestTests(unittest.TestCase):
+    def test_json_transport_normalizes_optional_fields(self):
+        req = SimpleNamespace(
+            content_type="application/json",
+            get_json=lambda silent: {
+                "question": "hello",
+                "history": "not-a-list",
+                "persist": True,
+                "client_id": 123,
+                "client_created_at": "2026-08-22T10:00:00Z",
+                "presentation_context": {"project_id": "p1"},
+            },
+        )
+
+        parsed = _parse_chat_request(req)
+
+        self.assertEqual(parsed["question"], "hello")
+        self.assertIsNone(parsed["history"])
+        self.assertTrue(parsed["persist_thread"])
+        self.assertIsNone(parsed["user_client_id"])
+        self.assertEqual(parsed["user_created_at"], "2026-08-22T10:00:00Z")
+        self.assertEqual(parsed["presentation_context"], {"project_id": "p1"})
+
+    def test_multipart_transport_preserves_audio_and_context(self):
+        req = SimpleNamespace(
+            content_type="multipart/form-data; boundary=test",
+            form={
+                "question": "  rehearse this  ",
+                "history": '[{"role":"user","content":"hi"}]',
+                "persist": "yes",
+                "client_id": "client-1",
+                "client_created_at": "created-at",
+                "presentation_context": '{"take_count":1}',
+                "transcript_source": "server_whisper",
+                "audio_duration_sec": "2.5",
+            },
+            files={"audio_file": BytesIO(b"voice")},
+            user_id="u1",
+        )
+
+        parsed = _parse_chat_request(req)
+
+        self.assertEqual(parsed["question"], "rehearse this")
+        self.assertEqual(len(parsed["history"]), 1)
+        self.assertEqual(parsed["presentation_context"], {"take_count": 1})
+        self.assertEqual(parsed["audio_bytes"], b"voice")
+        self.assertEqual(parsed["transcript_source"], "server_whisper")
+        self.assertEqual(parsed["audio_duration_sec"], 2.5)
+        self.assertTrue(parsed["persist_thread"])
 
 
 if __name__ == "__main__":

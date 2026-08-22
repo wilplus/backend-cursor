@@ -1258,6 +1258,115 @@ def _persist_chat_turn(
         return None
 
 
+def _parse_chat_request(req) -> dict:
+    """Normalize JSON and multipart chat requests into one transport shape.
+
+    Invalid optional metadata degrades to its neutral value exactly as before;
+    validation of the required question remains the route's responsibility.
+    """
+    is_multipart = "multipart/form-data" in (req.content_type or "").lower()
+    parsed = {
+        "question": None,
+        "history": None,
+        "audio_bytes": None,
+        "transcript_source": "web_speech",
+        "audio_duration_sec": 0.0,
+        "presentation_context": {},
+        "persist_thread": False,
+        "user_client_id": None,
+        "user_created_at": None,
+    }
+    if not is_multipart:
+        body = req.get_json(silent=True) or {}
+        parsed["question"] = body.get("question")
+        history = body.get("history")
+        parsed["history"] = history if isinstance(history, list) else None
+        parsed["persist_thread"] = bool(body.get("persist"))
+        client_id = body.get("client_id")
+        parsed["user_client_id"] = client_id \
+            if isinstance(client_id, str) else None
+        created_at = body.get("client_created_at")
+        parsed["user_created_at"] = created_at \
+            if isinstance(created_at, str) else None
+        context = body.get("presentation_context")
+        parsed["presentation_context"] = context \
+            if isinstance(context, dict) else {}
+        return parsed
+
+    parsed["question"] = (req.form.get("question") or "").strip()
+    history_raw = req.form.get("history")
+    if history_raw:
+        try:
+            history = json.loads(history_raw)
+            parsed["history"] = history if isinstance(history, list) else None
+        except Exception:
+            pass
+
+    presentation_raw = req.form.get("presentation_context")
+    if presentation_raw:
+        try:
+            context = json.loads(presentation_raw)
+            parsed["presentation_context"] = context \
+                if isinstance(context, dict) else {}
+        except Exception:
+            pass
+
+    parsed["persist_thread"] = (
+        (req.form.get("persist") or "").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+    parsed["user_client_id"] = req.form.get("client_id") or None
+    parsed["user_created_at"] = req.form.get("client_created_at") or None
+
+    audio_file = req.files.get("audio_file")
+    if audio_file is None:
+        return parsed
+    try:
+        parsed["audio_bytes"] = audio_file.read()
+    except Exception as read_err:
+        logger.warning(
+            "chat/query: audio read failed user=%s err=%s — continuing text-only",
+            getattr(req, "user_id", None), read_err,
+        )
+    source = (req.form.get("transcript_source") or "").strip().lower()
+    if source in ("web_speech", "server_whisper"):
+        parsed["transcript_source"] = source
+    try:
+        parsed["audio_duration_sec"] = float(
+            req.form.get("audio_duration_sec") or "0")
+    except (TypeError, ValueError):
+        pass
+    return parsed
+
+
+def _finalize_chat_response(
+    resp, *, user_id, question, persist_thread, user_client_id,
+    user_created_at, intent=None,
+):
+    """Persist/charge one completed Chat turn and create its HTTP response."""
+    if persist_thread and user_id:
+        bot_cid = _persist_chat_turn(
+            user_id, question, resp.get("answer"),
+            suggested_action=resp.get("suggested_action"),
+            suggested_actions=resp.get("suggested_actions"),
+            bubbles=resp.get("bubbles"), intent=intent,
+            user_client_id=user_client_id,
+            user_created_at=user_created_at,
+        )
+        resp["persisted"] = bool(bot_cid)
+        if bot_cid:
+            resp["persisted_client_id"] = bot_cid
+    # Charge after answering, never before. Chat is repeatable, so it has no
+    # idempotency ref; billing failure must never replace the answer.
+    if user_id:
+        try:
+            from services.token_account import charge as _charge
+            _charge(str(user_id), "chat")
+        except Exception:
+            pass
+    return jsonify(resp), 200
+
+
 @v2_bp.route("/chat/query", methods=["POST"])
 @llm_limit
 @optional_auth
@@ -1344,95 +1453,16 @@ def v2_chat_query():
     and response shape — no regression.
     """
     try:
-        # ── Body parsing — branch on content-type so existing JSON
-        # callers keep working unchanged (compatibility contract C1
-        # from BE-3 prompt). Multipart adds the audio side without
-        # touching the JSON code path.
-        content_type = (request.content_type or "").lower()
-        is_multipart = "multipart/form-data" in content_type
-
-        audio_bytes: bytes | None = None
-        transcript_source = "web_speech"
-        audio_duration_sec: float = 0.0
-        presentation_context: dict = {}
-
-        # #2 — BE-owned thread persistence (signed-in only; FE opt-in). The FE
-        # sends persist=true plus the user message's client_id/client_created_at
-        # so this turn (user + bot) is written to lounge_messages server-side and
-        # survives reload + relogin on any device — instead of the race-prone
-        # best-effort FE append that was dropping bubbles + chips.
-        persist_thread = False
-        user_client_id: str | None = None
-        user_created_at: str | None = None
-
-        if is_multipart:
-            question = (request.form.get("question") or "").strip()
-            history_raw = request.form.get("history")
-            history: list | None = None
-            if history_raw:
-                try:
-                    import json as _json
-                    parsed = _json.loads(history_raw)
-                    if isinstance(parsed, list):
-                        history = parsed
-                except Exception:
-                    # Same leniency as the JSON path — bad history
-                    # never breaks the answer.
-                    history = None
-
-            presentation_context_raw = request.form.get("presentation_context")
-            if presentation_context_raw:
-                try:
-                    import json as _json
-                    _pc = _json.loads(presentation_context_raw)
-                    if isinstance(_pc, dict):
-                        presentation_context = _pc
-                except Exception:
-                    presentation_context = {}
-
-            persist_thread = (request.form.get("persist") or "").strip().lower() in (
-                "1", "true", "yes", "on",
-            )
-            user_client_id = request.form.get("client_id") or None
-            user_created_at = request.form.get("client_created_at") or None
-
-            audio_file = request.files.get("audio_file")
-            if audio_file is not None:
-                try:
-                    audio_bytes = audio_file.read()
-                except Exception as read_err:
-                    logger.warning(
-                        "chat/query: audio read failed user=%s err=%s "
-                        "— continuing text-only",
-                        request.user_id, read_err,
-                    )
-                    audio_bytes = None
-
-                ts_raw = (
-                    request.form.get("transcript_source") or ""
-                ).strip().lower()
-                if ts_raw in ("web_speech", "server_whisper"):
-                    transcript_source = ts_raw
-
-                try:
-                    audio_duration_sec = float(
-                        request.form.get("audio_duration_sec") or "0"
-                    )
-                except (TypeError, ValueError):
-                    audio_duration_sec = 0.0
-        else:
-            body = request.get_json(silent=True) or {}
-            question = body.get("question")
-            history = body.get("history")
-            if history is not None and not isinstance(history, list):
-                history = None
-            persist_thread = bool(body.get("persist"))
-            _cid = body.get("client_id")
-            user_client_id = _cid if isinstance(_cid, str) else None
-            _cca = body.get("client_created_at")
-            user_created_at = _cca if isinstance(_cca, str) else None
-            _pc = body.get("presentation_context")
-            presentation_context = _pc if isinstance(_pc, dict) else {}
+        transport = _parse_chat_request(request)
+        question = transport["question"]
+        history = transport["history"]
+        audio_bytes = transport["audio_bytes"]
+        transcript_source = transport["transcript_source"]
+        audio_duration_sec = transport["audio_duration_sec"]
+        presentation_context = transport["presentation_context"]
+        persist_thread = transport["persist_thread"]
+        user_client_id = transport["user_client_id"]
+        user_created_at = transport["user_created_at"]
 
         if not isinstance(question, str) or not question.strip():
             return jsonify({
@@ -1447,31 +1477,12 @@ def v2_chat_query():
             (trainings / strong_sides / best-presentation) reconstructs on
             rehydrate — exactly what was vanishing on relogin. Best-effort: a
             persist failure never fails the chat response."""
-            if persist_thread and request.user_id:
-                bot_cid = _persist_chat_turn(
-                    request.user_id, question, resp.get("answer"),
-                    suggested_action=resp.get("suggested_action"),
-                    suggested_actions=resp.get("suggested_actions"),
-                    bubbles=resp.get("bubbles"), intent=intent,
-                    user_client_id=user_client_id,
-                    user_created_at=user_created_at,
-                )
-                resp["persisted"] = bool(bot_cid)
-                if bot_cid:
-                    resp["persisted_client_id"] = bot_cid
-            # Token pricing: charge the turn AFTER answering, never before.
-            # No ref_id — chat is legitimately repeatable, so it must not hit
-            # the ledger's once-per-ref index. The FE deliberately does NOT
-            # surface a per-message price (150 tokens is noise beside a 35,000
-            # coach review, and a per-keystroke meter turns a conversation into
-            # a taxi ride) — it still charges, it just isn't shown.
-            if request.user_id:
-                try:
-                    from services.token_account import charge as _charge
-                    _charge(str(request.user_id), "chat")
-                except Exception:
-                    pass
-            return jsonify(resp), 200
+            return _finalize_chat_response(
+                resp, user_id=request.user_id, question=question,
+                persist_thread=persist_thread,
+                user_client_id=user_client_id,
+                user_created_at=user_created_at, intent=intent,
+            )
 
         # ── Life Panel hashtag router (founder 2026-07-26) — the FIRST
         # intercept, and the feature's ONLY contact point with this file.
