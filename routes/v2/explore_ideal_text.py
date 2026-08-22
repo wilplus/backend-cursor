@@ -1481,6 +1481,42 @@ def _record_arms(result, session_id, user_id) -> None:
                        session_id, e)
 
 
+def _with_evidence_coordinates(rows, *, arc_id, served_text, pieces):
+    """Ground feedback rows in the exact Project/Take/slide/paragraph span.
+
+    Rows without provable coordinates are withheld. This is a pure boundary:
+    it does not query storage or decide which feedback deserves to surface.
+    """
+    from services.intervention_spend import paragraph_index_at
+
+    grounded = []
+    for row in rows or []:
+        span = row.get("span") if isinstance(row, dict) else None
+        if not isinstance(span, dict):
+            continue
+        start, end = span.get("start"), span.get("end")
+        if not isinstance(start, int) or not isinstance(end, int) or end <= start:
+            continue
+        piece = next((p for p in pieces
+                      if isinstance(p.get("start"), int)
+                      and isinstance(p.get("end"), int)
+                      and p["start"] <= start and end <= p["end"]), None)
+        take_id = row.get("take_session_id") or (piece or {}).get(
+            "take_session_id")
+        slide_index = (piece or {}).get("slide_index")
+        if not take_id or not isinstance(slide_index, int) or slide_index < 0:
+            continue
+        row["evidence"] = {
+            "project_id": str(arc_id),
+            "take_session_id": str(take_id),
+            "slide_index": slide_index,
+            "paragraph_index": paragraph_index_at(served_text, start),
+            "span": {"start": start, "end": end},
+        }
+        grounded.append(row)
+    return grounded
+
+
 def _tracked_changes_block(arc_id, served_text, user_id="",
                            take_session_id="") -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
@@ -1778,41 +1814,11 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # optional UI convenience. Verbal feedback stops at text evidence;
         # only Confident Voice carries playback. A row whose project/take/
         # slide/paragraph cannot be proven is withheld rather than guessed.
-        from services.intervention_spend import paragraph_index_at
-
-        def _with_evidence(rows):
-            grounded = []
-            for row in rows or []:
-                span = row.get("span") if isinstance(row, dict) else None
-                if not isinstance(span, dict):
-                    continue
-                start, end = span.get("start"), span.get("end")
-                if not isinstance(start, int) or not isinstance(end, int) \
-                        or end <= start:
-                    continue
-                piece = next((p for p in _pieces
-                              if isinstance(p.get("start"), int)
-                              and isinstance(p.get("end"), int)
-                              and p["start"] <= start and end <= p["end"]),
-                             None)
-                take_id = row.get("take_session_id") \
-                    or (piece or {}).get("take_session_id")
-                slide_index = (piece or {}).get("slide_index")
-                if not take_id or not isinstance(slide_index, int) \
-                        or slide_index < 0:
-                    continue
-                row["evidence"] = {
-                    "project_id": str(arc_id),
-                    "take_session_id": str(take_id),
-                    "slide_index": slide_index,
-                    "paragraph_index": paragraph_index_at(served_text, start),
-                    "span": {"start": start, "end": end},
-                }
-                grounded.append(row)
-            return grounded
-
-        changes = _with_evidence(changes)
-        _styles = _with_evidence(_styles)
+        evidence_args = {
+            "arc_id": arc_id, "served_text": served_text, "pieces": _pieces,
+        }
+        changes = _with_evidence_coordinates(changes, **evidence_args)
+        _styles = _with_evidence_coordinates(_styles, **evidence_args)
         # OPTIONAL CONFIDENT VOICE MICRO-PRACTICE.  This runs only after the
         # Feedback Manager has selected the take's final ≤3 interactions, so
         # the exercise cannot become a fourth card or bypass the manager's
