@@ -41,6 +41,166 @@ def _sis_annotation_text(card: Any) -> Optional[str]:
         return None
 
 
+def _session_preview_row(
+    session: dict, session_fields: tuple,
+    recordings_by_id: dict, sniper_metrics_by_session: dict,
+) -> dict:
+    """Normalize one admin-session preview from already-batched data."""
+    rec = {key: value for key, value in session.items()
+           if key in session_fields}
+    recording_id = session.get("recording_1_id")
+    rec["recording_id"] = recording_id
+    rec["recording_preview"] = None
+    rec["report_preview"] = None
+
+    if recording_id and recording_id in recordings_by_id:
+        row = recordings_by_id[recording_id]
+        raw_duration_ms = row.get("duration_ms")
+        if raw_duration_ms is None and row.get("duration") is not None:
+            try:
+                raw_duration_ms = int(float(row.get("duration")) * 1000.0)
+            except (TypeError, ValueError):
+                raw_duration_ms = None
+        rec["recording_preview"] = {
+            "performance_score_v2": row.get("performance_score_v2"),
+            "transcription_preview": (row.get("transcription_text") or "")[:300],
+            "words_per_minute": row.get("words_per_minute"),
+            "filler_words_count": row.get("filler_words_count"),
+            "performance_metrics_v2": row.get("performance_metrics_v2"),
+            "duration_ms": raw_duration_ms,
+        }
+
+    rec["sniper_metrics"] = sniper_metrics_by_session.get(session["id"])
+    recording_wpm = (rec.get("recording_preview") or {}).get(
+        "words_per_minute")
+    sniper_wpm = None
+    if isinstance(rec.get("sniper_metrics"), dict):
+        sniper_wpm = rec["sniper_metrics"].get("wpm")
+    merged_wpm = None
+    if sniper_wpm is not None:
+        try:
+            merged_wpm = round(float(sniper_wpm), 1)
+        except (TypeError, ValueError):
+            pass
+    if merged_wpm is None and recording_wpm is not None:
+        try:
+            merged_wpm = round(float(recording_wpm), 1)
+        except (TypeError, ValueError):
+            pass
+    rec["words_per_minute"] = merged_wpm
+    if isinstance(rec.get("sniper_metrics"), dict) \
+            and rec["sniper_metrics"].get("wpm") is None \
+            and merged_wpm is not None:
+        rec["sniper_metrics"] = {**rec["sniper_metrics"], "wpm": merged_wpm}
+
+    rec["wpm"] = merged_wpm
+    filler_obj = (rec.get("recording_preview") or {}).get(
+        "filler_words_count")
+    if isinstance(filler_obj, dict):
+        filler_total = filler_obj.get("total")
+    elif isinstance(filler_obj, (int, float)):
+        filler_total = filler_obj
+    else:
+        filler_total = None
+    rec["filler_words_count"] = filler_total
+
+    rec["duration_seconds"] = None
+    duration_ms = (rec.get("recording_preview") or {}).get("duration_ms")
+    if duration_ms is not None:
+        try:
+            rec["duration_seconds"] = round(float(duration_ms) / 1000.0, 1)
+        except (TypeError, ValueError):
+            pass
+
+    sniper = rec.get("sniper_metrics") \
+        if isinstance(rec.get("sniper_metrics"), dict) else {}
+    rec["pause_ms"] = sniper.get("pause_ms")
+    rec["dynamic_db"] = sniper.get("dynamic_db")
+    rec["pitch_center_st"] = sniper.get("pitch_center_st")
+    rec["energy_ratio"] = sniper.get("energy_ratio")
+    student_rating = sniper.get("student_rating_1_10")
+    if student_rating is None and session.get("student_self_rating") is not None:
+        try:
+            student_rating = int(session["student_self_rating"])
+        except (TypeError, ValueError):
+            student_rating = sniper.get("student_rating_1_10")
+    rec["student_rating_1_10"] = student_rating
+    rec["self_rating"] = student_rating
+    submitted_at = session.get("self_rating_submitted_at")
+    rec["self_rating_skipped"] = bool(submitted_at) and student_rating is None
+    if student_rating is not None:
+        try:
+            rec["self_rating_label"] = str(int(student_rating))
+        except (TypeError, ValueError):
+            rec["self_rating_label"] = str(student_rating)
+    elif rec["self_rating_skipped"]:
+        rec["self_rating_label"] = "Skipped"
+    else:
+        rec["self_rating_label"] = None
+    return rec
+
+
+def _sessions_with_schema_fallback(
+    database, user_id: str, limit: int, all_columns: list,
+) -> tuple[list, tuple]:
+    """Query session rows while learning columns absent on older schemas."""
+    result = None
+    columns = [column for column in all_columns
+               if column not in database._v2_sessions_missing_columns]
+    session_fields = tuple(columns)
+    for _ in range(max(1, len(all_columns))):
+        if not columns:
+            raise Exception(
+                "v2_get_sessions_with_previews: no selectable "
+                "v2_sessions columns available")
+        session_fields = tuple(columns)
+        try:
+            result = (
+                database.client.table("v2_sessions")
+                .select(", ".join(columns))
+                .eq("user_id", user_id)
+                .order("completed_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            break
+        except Exception as error:
+            message = str(error).lower()
+            missing_error = (
+                "42703" in message or "does not exist" in message
+                or "undefined_column" in message
+            )
+            if not missing_error:
+                raise
+            missing = [column for column in all_columns
+                       if f"v2_sessions.{column}" in message
+                       or f"column {column}" in message]
+            if not missing:
+                match = re.search(
+                    r"column\s+v2_sessions\.([a-z0-9_]+)\s+does not exist",
+                    message,
+                )
+                if match:
+                    missing = [match.group(1)]
+            if not missing:
+                raise
+            newly_missing = [column for column in missing
+                             if column not in database._v2_sessions_missing_columns]
+            database._v2_sessions_missing_columns.update(missing)
+            if newly_missing:
+                logger.warning(
+                    "v2_get_sessions_with_previews: columns missing %s, "
+                    "retrying without them: %s", newly_missing, error,
+                )
+            columns = [column for column in all_columns
+                       if column not in database._v2_sessions_missing_columns]
+    if result is None:
+        raise Exception(
+            "v2_get_sessions_with_previews: failed to query sessions after "
+            "schema fallback retries")
+    return result.data or [], session_fields
+
+
 # Codes that genuinely mean "the object is not there", and nothing else.
 #
 #   42P01 undefined_table        42703 undefined_column
@@ -3433,56 +3593,9 @@ class DatabaseService:
             "session_task_id",
             "session_task_text",
         ]
-        result = None
-        session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]
-        session_fields = tuple(session_columns)
-        max_attempts = max(1, len(all_session_columns))
-        for _ in range(max_attempts):
-            if not session_columns:
-                raise Exception("v2_get_sessions_with_previews: no selectable v2_sessions columns available")
-            select_columns = ", ".join(session_columns)
-            session_fields = tuple(session_columns)
-            try:
-                result = (
-                    self.client.table("v2_sessions")
-                    .select(select_columns)
-                    .eq("user_id", user_id)
-                    .order("completed_at", desc=True)
-                    .limit(limit)
-                    .execute()
-                )
-                break
-            except Exception as e:
-                msg = str(e).lower()
-                if not ("42703" in msg or "does not exist" in msg or "undefined_column" in msg):
-                    raise
-
-                missing_cols = []
-                for col in all_session_columns:
-                    if f"v2_sessions.{col}" in msg or f"column {col}" in msg:
-                        missing_cols.append(col)
-
-                if not missing_cols:
-                    # Try to parse: "column v2_sessions.<name> does not exist"
-                    m = re.search(r"column\s+v2_sessions\.([a-z0-9_]+)\s+does not exist", msg)
-                    if m:
-                        missing_cols = [m.group(1)]
-
-                if not missing_cols:
-                    raise
-
-                new_missing = [c for c in missing_cols if c not in self._v2_sessions_missing_columns]
-                self._v2_sessions_missing_columns.update(missing_cols)
-                if new_missing:
-                    logger.warning(
-                        "v2_get_sessions_with_previews: columns missing %s, retrying without them: %s",
-                        new_missing,
-                        e,
-                    )
-                session_columns = [c for c in all_session_columns if c not in self._v2_sessions_missing_columns]
-        if result is None:
-            raise Exception("v2_get_sessions_with_previews: failed to query sessions after schema fallback retries")
-        sessions = result.data or []
+        sessions, session_fields = _sessions_with_schema_fallback(
+            self, user_id, limit, all_session_columns,
+        )
         session_ids = [s["id"] for s in sessions]
 
         # Batch: context_long for report fallback
@@ -3550,93 +3663,10 @@ class DatabaseService:
 
         out = []
         for s in sessions:
-            rec = {k: v for k, v in s.items() if k in session_fields}
-            rec["recording_id"] = s.get("recording_1_id")
-            rec["recording_preview"] = None
-            rec["report_preview"] = None
-
-            recording_id = s.get("recording_1_id")
-            if recording_id and recording_id in recordings_by_id:
-                row = recordings_by_id[recording_id]
-                raw_duration_ms = row.get("duration_ms")
-                if raw_duration_ms is None and row.get("duration") is not None:
-                    try:
-                        raw_duration_ms = int(float(row.get("duration")) * 1000.0)
-                    except (TypeError, ValueError):
-                        raw_duration_ms = None
-                rec["recording_preview"] = {
-                    "performance_score_v2": row.get("performance_score_v2"),
-                    "transcription_preview": (row.get("transcription_text") or "")[:300],
-                    "words_per_minute": row.get("words_per_minute"),
-                    "filler_words_count": row.get("filler_words_count"),
-                    "performance_metrics_v2": row.get("performance_metrics_v2"),
-                    "duration_ms": raw_duration_ms,
-                }
-
-            rec["sniper_metrics"] = sniper_metrics_by_session.get(s["id"])
-
-            # Single field for admin tables: prefer Sniper wpm when set, else Whisper/recording job WPM.
-            _rwpm = (rec.get("recording_preview") or {}).get("words_per_minute")
-            _swpm = None
-            if rec.get("sniper_metrics") and isinstance(rec["sniper_metrics"], dict):
-                _swpm = rec["sniper_metrics"].get("wpm")
-            _merged_wpm = None
-            if _swpm is not None:
-                try:
-                    _merged_wpm = round(float(_swpm), 1)
-                except (TypeError, ValueError):
-                    pass
-            if _merged_wpm is None and _rwpm is not None:
-                try:
-                    _merged_wpm = round(float(_rwpm), 1)
-                except (TypeError, ValueError):
-                    pass
-            rec["words_per_minute"] = _merged_wpm
-            if isinstance(rec.get("sniper_metrics"), dict) and rec["sniper_metrics"].get("wpm") is None and _merged_wpm is not None:
-                rec["sniper_metrics"] = {**rec["sniper_metrics"], "wpm": _merged_wpm}
-
-            # Backward-compat aliases for older admin panels that read flat keys.
-            rec["wpm"] = rec.get("words_per_minute")
-            filler_total = None
-            filler_obj = (rec.get("recording_preview") or {}).get("filler_words_count")
-            if isinstance(filler_obj, dict):
-                filler_total = filler_obj.get("total")
-            elif isinstance(filler_obj, (int, float)):
-                filler_total = filler_obj
-            rec["filler_words_count"] = filler_total
-            rec["duration_seconds"] = None
-            duration_ms_val = (rec.get("recording_preview") or {}).get("duration_ms")
-            if duration_ms_val is not None:
-                try:
-                    rec["duration_seconds"] = round(float(duration_ms_val) / 1000.0, 1)
-                except (TypeError, ValueError):
-                    rec["duration_seconds"] = None
-            sm = rec.get("sniper_metrics") if isinstance(rec.get("sniper_metrics"), dict) else {}
-            rec["pause_ms"] = sm.get("pause_ms")
-            rec["dynamic_db"] = sm.get("dynamic_db")
-            rec["pitch_center_st"] = sm.get("pitch_center_st")
-            rec["energy_ratio"] = sm.get("energy_ratio")
-            _sr = sm.get("student_rating_1_10")
-            if _sr is None and s.get("student_self_rating") is not None:
-                try:
-                    _sr = int(s["student_self_rating"])
-                except (TypeError, ValueError):
-                    _sr = sm.get("student_rating_1_10")
-            rec["student_rating_1_10"] = _sr
-            rec["self_rating"] = _sr
-            # Skip does not write student_rating_1_10; self_rating_submitted_at is still set on v2_sessions.
-            _sub_at = s.get("self_rating_submitted_at")
-            rec["self_rating_skipped"] = bool(_sub_at) and _sr is None
-            # Single string for tables that only show one cell (optional for admin UI).
-            if _sr is not None:
-                try:
-                    rec["self_rating_label"] = str(int(_sr))
-                except (TypeError, ValueError):
-                    rec["self_rating_label"] = str(_sr)
-            elif rec["self_rating_skipped"]:
-                rec["self_rating_label"] = "Skipped"
-            else:
-                rec["self_rating_label"] = None
+            rec = _session_preview_row(
+                s, session_fields, recordings_by_id,
+                sniper_metrics_by_session,
+            )
 
             report_text = None
             if s.get("report_id"):
