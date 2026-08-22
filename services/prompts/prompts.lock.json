@@ -259,7 +259,7 @@
     "legacy_openai.final_report": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "197e6598856739c05f80069a921a9098626bc3fc873cd6dc745b68084b01bb06"
+      "sha256": "007c1fef83e26bc5f7012ba98e6b099d7aa0a3e6a329f562730500ae983c7a21"
     },
     "legacy_openai.final_task": {
       "kind": "source_ref",

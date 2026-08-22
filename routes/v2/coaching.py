@@ -1265,7 +1265,7 @@ def _parse_chat_request(req) -> dict:
     validation of the required question remains the route's responsibility.
     """
     is_multipart = "multipart/form-data" in (req.content_type or "").lower()
-    parsed = {
+    parsed: dict[str, Any] = {
         "question": None,
         "history": None,
         "audio_bytes": None,
