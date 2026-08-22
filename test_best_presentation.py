@@ -180,11 +180,10 @@ class ProgressTests(unittest.TestCase):
 
 
 class _FakeDB:
-    def __init__(self, sessions, snippets_by_session, labels_by_session,
-                 edits=None, coach_edits=None):
+    def __init__(self, sessions, snippets_by_session, edits=None,
+                 coach_edits=None):
         self._sessions = sessions
         self._snips = snippets_by_session
-        self._labels = labels_by_session
         self._edits = edits or {}
         self._coach_edits = coach_edits or {}
 
@@ -193,9 +192,6 @@ class _FakeDB:
 
     def get_snippets_by_session(self, sid):
         return list(self._snips.get(sid, []))
-
-    def get_training_labels(self, sid):
-        return list(self._labels.get(sid, []))
 
     def get_best_presentation_edits(self, arc_id):
         return dict(self._edits)
@@ -213,7 +209,7 @@ class BuildTests(unittest.TestCase):
         bp._render_composition = self._orig
 
     def _db(self):
-        # One take, advances map every offset → slide 0. threat then challenge.
+        # One take; advances map every offset to slide 0.
         sessions = [{
             "id": "s1", "take_index": 1,
             "intake_context": {
@@ -229,26 +225,10 @@ class BuildTests(unittest.TestCase):
              "transcript": "strong close",
              "storage_path": "s3://c1", "metrics": {"overall_score": 0.4}},
         ]}
-        labels = {"s1": [
-            {"snippet_id": "t1", "value": "threat"},
-            {"snippet_id": "c1", "value": "challenge"},
-        ]}
-        return _FakeDB(sessions, snips, labels)
+        return _FakeDB(sessions, snips)
 
-    def test_build_ranks_on_the_measured_terms_not_the_coach_label(self):
-        """THE BEHAVIOUR CHANGE OF THE 2026-08-13 RE-POINT, pinned.
-
-        This fixture is the old blend's showcase: 'nervous open' has the far
-        better content score (0.9 vs 0.4) and lost anyway, because a coach
-        `challenge` mark on 'strong close' was worth +1.0 direction AND the
-        +2.5 breakthrough bonus — 3.5 points of override on a 1.6-point scale.
-        One subjective label outranked every measurement in the blend.
-
-        SPEC §7.2 retired the direction term and re-pointed the bonus onto the
-        album quorum, so the labels no longer touch ranking at all and the
-        higher-activation line wins on its merits. THE BADGE IS UNAFFECTED —
-        it is still the coach's own mark, on the snippet they marked (see the
-        next test). Ranking and badging were one thing; now they are two.
+    def test_build_ranks_on_measured_terms(self):
+        """Composition selects from measured content without private labels.
 
         coach_view=True: this verifies COMPOSITION/SELECTION logic, the
         surface where the auto-assembled draft is actually visible (founder
@@ -313,7 +293,7 @@ class BuildTests(unittest.TestCase):
             "s2": [{"id": "b", "start_offset_ms": 0, "transcript": "y",
                     "storage_path": "s3://b", "metrics": {"overall_score": 0.5}}],
         }
-        out = bp.build_best_presentation("arc1", database=_FakeDB(sessions, snips, {}))
+        out = bp.build_best_presentation("arc1", database=_FakeDB(sessions, snips))
         self.assertEqual(out["presentation_ref"], "https://deck.pdf")
 
     def test_payload_carries_presentation_ref_and_slide_body(self):
@@ -328,12 +308,12 @@ class BuildTests(unittest.TestCase):
         }]
         snips = {"s1": [{"id": "a", "start_offset_ms": 0, "transcript": "line",
                          "storage_path": "s3://a", "metrics": {"overall_score": 0.5}}]}
-        out = bp.build_best_presentation("arc1", database=_FakeDB(sessions, snips, {}))
+        out = bp.build_best_presentation("arc1", database=_FakeDB(sessions, snips))
         self.assertEqual(out["presentation_ref"], "https://deck.pdf")
         self.assertEqual(out["slides"][0]["body"], "the body")
 
     def test_build_empty_arc(self):
-        empty = _FakeDB([], {}, {})
+        empty = _FakeDB([], {})
         out = bp.build_best_presentation("arc1", database=empty)
         self.assertFalse(out["ready"])
         self.assertEqual(out["progress"]["takes_done"], 0)
@@ -374,7 +354,7 @@ class CoachFinalizedGateTests(unittest.TestCase):
              "transcript": "auto line two", "storage_path": "s3://b",
              "metrics": {"overall_score": 0.5}},
         ]}
-        return _FakeDB(sessions, snips, {}, edits=user_edits,
+        return _FakeDB(sessions, snips, edits=user_edits,
                        coach_edits=coach_edits)
 
     def test_no_coach_edits_not_finalized_student_sees_nothing(self):
@@ -559,32 +539,19 @@ class _BatchingFakeDB(_FakeDB):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         self.singular_snippet_calls = 0
-        self.singular_label_calls = 0
         self.batch_snippet_calls = 0
-        self.batch_label_calls = 0
 
     def get_snippets_by_session(self, sid):
         self.singular_snippet_calls += 1
         return super().get_snippets_by_session(sid)
-
-    def get_training_labels(self, sid):
-        self.singular_label_calls += 1
-        return super().get_training_labels(sid)
 
     def get_snippets_by_sessions(self, ids, *, include_words=False):
         self.batch_snippet_calls += 1
         return {str(s): super(_BatchingFakeDB, self).get_snippets_by_session(s)
                 for s in ids}
 
-    def get_training_labels_by_sessions(self, ids):
-        self.batch_label_calls += 1
-        return {str(s): (super(_BatchingFakeDB, self).get_training_labels(s) or [])
-                for s in ids}
-
-
 class BatchedArcReadsTests(unittest.TestCase):
-    """build_best_presentation / build_arc_breakthroughs read the whole arc in
-    ONE snippets + ONE labels query (no per-take N+1)."""
+    """build_best_presentation reads the whole arc in one snippets query."""
 
     def setUp(self):
         self._orig = bp._render_composition
@@ -608,7 +575,7 @@ class BatchedArcReadsTests(unittest.TestCase):
             "s2": [{"id": "b", "start_offset_ms": 0, "transcript": "two",
                     "storage_path": "s3://b", "metrics": {"overall_score": 0.5}}],
         }
-        return _BatchingFakeDB(sessions, snips, {})
+        return _BatchingFakeDB(sessions, snips)
 
     def test_build_best_presentation_uses_one_query_each(self):
         db = self._db()
@@ -617,9 +584,7 @@ class BatchedArcReadsTests(unittest.TestCase):
         # CoachFinalizedGateTests).
         out = bp.build_best_presentation("arc1", database=db, coach_view=True)
         self.assertEqual(db.batch_snippet_calls, 1)   # ONE snippets query
-        self.assertEqual(db.batch_label_calls, 0)     # retired lane untouched
         self.assertEqual(db.singular_snippet_calls, 0)  # no per-take N+1
-        self.assertEqual(db.singular_label_calls, 0)
         # behavior intact — slide 0 still composes the best line
         self.assertEqual(out["slides"][0]["text"], "one")
 
@@ -632,7 +597,7 @@ class BatchedArcReadsTests(unittest.TestCase):
         )
         legacy = bp.build_best_presentation(
             "arc1", database=_FakeDB(
-                self._db()._sessions, self._db()._snips, {}),
+                self._db()._sessions, self._db()._snips),
             coach_view=True,
         )
         self.assertEqual([s["text"] for s in batched["slides"]],
@@ -711,8 +676,7 @@ class CorrectedVerbatimTests(unittest.TestCase):
              "transcript": "strong close",
              "storage_path": "s3://c1", "metrics": {"overall_score": 0.9}},
         ]}
-        labels = {"s1": [{"snippet_id": "c1", "value": "challenge"}]}
-        db = _FakeDB(sessions, snips, labels)
+        db = _FakeDB(sessions, snips)
         if corrected is not None:
             db.get_coach_snippet_drafts = lambda sid: [
                 {"snippet_id": "c1", "transcript_corrected": corrected},
@@ -800,9 +764,7 @@ class DecklessBuildTests(unittest.TestCase):
              "transcript": "Later strong close.",
              "storage_path": "s3://c2", "metrics": {"overall_score": 0.8}},
         ]}
-        labels = {"s1": [{"snippet_id": "c1", "value": "challenge"},
-                         {"snippet_id": "c2", "value": "challenge"}]}
-        return _FakeDB(sessions, snips, labels, coach_edits=coach_edits)
+        return _FakeDB(sessions, snips, coach_edits=coach_edits)
 
     def test_sections_compose_in_speech_order(self):
         out = bp.build_best_presentation(
@@ -855,8 +817,7 @@ class CoachKeyPhrasesTests(unittest.TestCase):
              "transcript": "strong close", "say_it_stronger": sis,
              "storage_path": "s3://c1", "metrics": {"overall_score": 0.9}},
         ]}
-        labels = {"s1": [{"snippet_id": "c1", "value": "challenge"}]}
-        db = _FakeDB(sessions, snips, labels, coach_edits=coach_edits)
+        db = _FakeDB(sessions, snips, coach_edits=coach_edits)
         if coach_kp is not None:
             db.get_coach_best_presentation_key_phrases = lambda arc: dict(coach_kp)
         return db

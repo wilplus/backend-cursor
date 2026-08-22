@@ -252,10 +252,6 @@ class _PoolAuditDB:
     def get_snippets_by_session(self, sid):
         return list(self.snips.get(sid, []))
 
-    def get_training_labels(self, sid):
-        return [{"snippet_id": s["id"], "value": "challenge"}
-                for s in self.snips.get(sid, [])]
-
     def get_best_presentation_edits(self, arc_id):
         return {}
 

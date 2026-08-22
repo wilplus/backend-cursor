@@ -1,7 +1,7 @@
 """The internal publish path: /v2/internal/*.
 
-The willab publish contract that turns coach drafts + labels into the
-student-facing insights payload, and the whisper-health probe. Called by
+The willab publish contract that turns coach drafts into the student-facing
+insights payload, and the whisper-health probe. Called by
 the internal webhook tier, never by a browser.
 
 Moved verbatim out of ``routes/v2_routes.py`` (god-file split, phase 5);
@@ -203,10 +203,10 @@ def publish_one_session(session_id, actor_user_id):
 def _apply_willab_publish_contract(session_id, body, actor_user_id):
     """Shared willab publish-contract gate (handoff §3.9 / §3.10).
 
-    OPT-IN: acts only when ``body`` carries an ``insights_payload`` (a
-    willab publish). Absent → returns None (legacy charisma publish,
-    undisturbed). When present, validates BOTH split-sink lanes BEFORE
-    any persistence / side effect, persists both stores (§2), then fires
+    OPT-IN: acts only when ``body`` carries an ``insights_payload`` or the
+    assemble-mode ``notify_client`` flag. Absent → returns None for older
+    callers. When present, validates the user-facing insights BEFORE any
+    persistence / side effect, persists that store, then fires
     the best-effort user nudge (Lounge "insights ready" card) + the
     idempotent willab credit charge.
 
@@ -250,7 +250,7 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
             session_id, body.get("overall_message"),
         )
 
-    # ── Validate BOTH lanes BEFORE any persistence/side effect. ──
+    # Validate the user-facing lane before any persistence or side effect.
     try:
         clean_insights = validate_insights_payload(raw_insights)
     except InsightsPayloadError as ie:

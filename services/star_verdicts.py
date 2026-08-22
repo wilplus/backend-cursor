@@ -20,9 +20,9 @@ FENCES.
     shows the coach the machine's guess and asks them to judge it. That is safe
     here (a star is not a confidence label) and unsafe anywhere near the
     labeling lane, so: a separate endpoint from the blind labeling surface, and
-    this corpus is NEVER joined into training_labels. The module is banned from
-    importing training_labels / learning_serve / challenge_threat at all
-    (pinned by test), so a future edit cannot quietly cross the wall.
+    this corpus is NEVER joined into the user-facing feedback or confidence
+    lanes. The module is pinned by tests so a future edit cannot quietly cross
+    that wall.
   * AC-9 — a verdict is coach->machine only. Nothing here is ever surfaced back
     to the student.
   * L1 — a verdict never mutates text. It judges a star; the student's copy is

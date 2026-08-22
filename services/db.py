@@ -1747,9 +1747,9 @@ class DatabaseService:
         happen to share a recording_id. The filter is what keeps four
         producers' rows in one table from deleting each other.
 
-        Coach authoring lives in the separate training_labels /
-        coach_snippet_drafts tables; those rows are left as-is (orphaned by
-        snippet_id, invisible to the new cut). Returns the delete count."""
+        Coach authoring lives in coach_snippet_drafts; those rows are left
+        as-is (orphaned by snippet_id, invisible to the new cut). Returns the
+        delete count."""
         if not recording_id:
             return 0
         try:
@@ -14844,8 +14844,8 @@ class DatabaseService:
         weight: float = 1.0, shown_origin: Optional[str] = None,
     ) -> bool:
         """Record a SECOND-ORDER (non-coach) peer/self-verification label
-        (Subsystem-S multi-rater lane). Separate from training_labels (the
-        coach-truth corpus) — a future model blends this BELOW coach truth.
+        (Subsystem-S multi-rater lane). This is internal training/evaluation
+        evidence only and cannot enter the user's coaching loop.
         Best-effort, append-only, missing-table-safe; NEVER raises."""
         if not snippet_id:
             return False
@@ -14887,9 +14887,9 @@ class DatabaseService:
     ) -> bool:
         """Record one Apply / ✓-prefer tap on a suggestion row (founder
         2026-07-14) — a SECOND-ORDER preference signal strictly below coach
-        truth (mirrors insert_snippet_peer_label). Never joined into
-        training_labels; never surfaced back as a score (AC-9 — capture
-        only). Best-effort, append-only, missing-table-safe; NEVER raises."""
+        truth (mirrors insert_snippet_peer_label). Never surfaced back as a
+        score (AC-9 — capture only). Best-effort, append-only,
+        missing-table-safe; NEVER raises."""
         if not snippet_id or not target or not action:
             return False
         row: dict = {

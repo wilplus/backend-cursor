@@ -31,9 +31,6 @@ class _FakeDB:
     def get_snippets_by_session(self, sid):
         return list(self._snips.get(sid, []))
 
-    def get_training_labels(self, sid):
-        return []
-
     def get_coach_best_presentation_edits(self, arc_id):
         return dict(self._coach_edits)
 

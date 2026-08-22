@@ -38,7 +38,6 @@ def _database() -> MagicMock:
     database = MagicMock()
     database.get_user_transcript_edits.return_value = []
     database.get_suggestion_feedback_by_session.return_value = []
-    database.get_training_labels.return_value = []
     return database
 
 

@@ -1,17 +1,15 @@
-"""willab coach publish rewire (3c) — assemble-from-drafts + relaxed label
-floor + library floor + coach-video fold + back-compat.
+"""willab coach publish contract — assemble-from-drafts + library floor +
+coach-video fold + back-compat.
 
 Exercises the SHARED _apply_willab_publish_contract directly with stubbed db
 methods (the real validators run). Covers:
-  * assemble mode (post-§F.4): {overall_message, notify_client} -> insights_
-    payload built from persisted drafts; labels from training_labels.
-  * relaxed gate: labels NEVER block publish (S.5) — require_all=False.
+  * assemble mode: {overall_message, notify_client} -> insights_payload built
+    from persisted user-facing drafts.
+  * private training annotations never gate or enter the publish payload.
   * LIBRARY floor still enforced: no surfaced note -> 422.
   * coach video_ref folded into the published insights (B.3).
   * body mode (today's FE) unchanged: payload comes from the body, not drafts.
   * legacy publish (no insights_payload / no notify_client) -> untouched.
-
-Plus the validate_publish_labels require_all unit.
 
 Run: python3 -m unittest test_coach_publish
 """
@@ -22,9 +20,6 @@ import unittest
 try:
     from flask import Flask
     from routes import v2_routes as v2
-    from services.training_labels import (
-        validate_publish_labels, TrainingLabelError,
-    )
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover - env/bootstrap guard
     Flask = None
@@ -44,7 +39,6 @@ class PublishContractTests(unittest.TestCase):
         self.captured = {}
         self.originals = {}
         self.drafts = []
-        self.labels = []
         self.snippets = [{"id": SNIP1}]
         self.session_row = {
             "id": SID, "user_id": "u1", "coach_video_ref": None,
@@ -53,11 +47,9 @@ class PublishContractTests(unittest.TestCase):
         }
 
         self._patch_db("get_coach_snippet_drafts", lambda sid: self.drafts)
-        self._patch_db("get_training_labels", lambda sid: self.labels)
         self._patch_db("get_snippets_by_session", lambda sid: self.snippets)
         self._patch_db("v2_get_session_by_id", lambda sid: dict(self.session_row))
         self._patch_db("set_session_insights_payload", self._capture_insights)
-        self._patch_db("upsert_training_labels", self._capture_labels)
         self._patch_db("insert_lounge_messages", self._capture_lounge)
         self._patch_db("v2_charge_lab_credits_once", lambda *a, **k: None)
         self._patch_db("v2_charge_feedback_credits_once", lambda *a, **k: None)
@@ -75,10 +67,6 @@ class PublishContractTests(unittest.TestCase):
         self.captured["insights"] = payload
         return True
 
-    def _capture_labels(self, session_id, actor, rows):
-        self.captured["labels"] = rows
-        return len(rows)
-
     def _capture_lounge(self, user_id, messages):
         self.captured["lounge"] = messages
         return [{"id": "srv", **m} for m in messages]
@@ -93,7 +81,6 @@ class PublishContractTests(unittest.TestCase):
             "snippet_id": SNIP1, "surfaced": True, "note": "great pause",
             "tag": "strong", "when_context": None, "examples": [],
         }]
-        self.labels = [{"snippet_id": SNIP1, "value": "challenge"}]
         err = self._run({"notify_client": True, "overall_message": "well done"})
         self.assertIsNone(err)                                   # success
         ins = self.captured["insights"]
@@ -125,11 +112,10 @@ class PublishContractTests(unittest.TestCase):
         notes = self.captured["insights"]["snippet_notes"]
         self.assertEqual([n["snippet_id"] for n in notes], [SNIP1])  # unsurfaced dropped
 
-    # ── relaxed label gate (S.5) ──
-    def test_labels_not_required_to_publish(self):
-        # Floor met (1 surfaced note) but 2 snippets, 0 labels — old gate would 422.
+    def test_one_surfaced_note_can_publish_without_private_annotations(self):
+        # The user-facing library floor is met; private training data is not
+        # part of this contract and cannot block delivery.
         self.drafts = [{"snippet_id": SNIP1, "surfaced": True, "note": "x", "tag": "strong"}]
-        self.labels = []
         self.snippets = [{"id": SNIP1}, {"id": SNIP2}]
         err = self._run({"notify_client": True})
         self.assertIsNone(err)                                   # publishes anyway
@@ -160,7 +146,6 @@ class PublishContractTests(unittest.TestCase):
                 "overall_message": "from body",
                 "snippet_notes": [{"snippet_id": SNIP1, "note": "body note", "tag": "strong"}],
             },
-            "labels": [{"snippet_id": SNIP1, "value": "threat"}],
         }
         err = self._run(body)
         self.assertIsNone(err)
@@ -173,28 +158,6 @@ class PublishContractTests(unittest.TestCase):
         err = self._run({"final_human_comment": "legacy"})  # no insights_payload, no notify_client
         self.assertIsNone(err)
         self.assertNotIn("insights", self.captured)         # opt-out: nothing happened
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class RequireAllFlagTests(unittest.TestCase):
-    def test_require_all_true_missing_raises(self):
-        with self.assertRaises(TrainingLabelError):
-            validate_publish_labels(
-                [{"snippet_id": "a", "value": "threat"}], {"a", "b"}, require_all=True,
-            )
-
-    def test_require_all_false_missing_ok(self):
-        cleaned = validate_publish_labels(
-            [{"snippet_id": "a", "value": "threat"}], {"a", "b"}, require_all=False,
-        )
-        self.assertEqual(len(cleaned), 1)
-
-    def test_require_all_false_still_rejects_bad_value(self):
-        with self.assertRaises(TrainingLabelError):
-            validate_publish_labels(
-                [{"snippet_id": "a", "value": "nope"}], {"a"}, require_all=False,
-            )
-
 
 if __name__ == "__main__":
     unittest.main()
