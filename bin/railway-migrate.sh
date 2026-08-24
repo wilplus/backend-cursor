@@ -49,7 +49,13 @@ MIGRATION_ACTOR="${MIGRATION_ACTOR:-railway-deploy}"
 export MIGRATION_ACTOR
 
 set +e
-python3 scripts/migrate.py apply
+# ONE-TIME RELEASE 2026-08-24: migration 0281 is the founder-approved,
+# reviewed retirement of the threat/challenge experiment. Production reports
+# 0281 and the additive 0282 as its only pending migrations. Permit that
+# reviewed destructive boundary for this release; the next commit restores
+# the default fail-closed invocation before any further migration can enter
+# the manifest.
+python3 scripts/migrate.py apply --allow-destructive
 STATUS=$?
 set -e
 
