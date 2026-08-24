@@ -300,10 +300,3 @@ COMMENT ON COLUMN public.v2_sessions.coach_overall_message IS
     'Optional take-level coach summary. Paragraph feedback is stored only as exact-evidence FeedbackItems.';
 COMMENT ON COLUMN public.v2_sessions.review_requested_at IS
     'Canonical time at which this Take entered asynchronous coach review.';
-
--- Retired persistence. The runtime no longer reads or writes either shape:
--- FeedbackItems carry exact evidence, while positive audio moments belong
--- exclusively to Voice Album.
-ALTER TABLE IF EXISTS public.v2_sessions
-    DROP COLUMN IF EXISTS insights_payload;
-DROP TABLE IF EXISTS public.strong_sides_library;
