@@ -213,6 +213,69 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
     return inserted
 
 
+def fire_material_coach_correction(
+    db, user_id: Any, revision_id: Any, item: Any,
+) -> bool:
+    """Deliver one exact-linked material correction without mutating text.
+
+    The visible body is the coach-authored final explanation.  Navigation and
+    comparison data stay structured so the user can accept or reject the
+    proposal at the exact paragraph later.
+    """
+    if not user_id or not revision_id or not isinstance(item, dict):
+        return False
+    evidence = item.get("evidence")
+    if not isinstance(evidence, dict):
+        return False
+    message = str(item.get("message") or "").strip()
+    if not message:
+        return False
+    item_id = str(item.get("id") or "").strip()
+    if not item_id:
+        return False
+    return _insert(
+        db,
+        str(user_id),
+        client_key=f"willab-coach-correction:{revision_id}:{item_id}",
+        kind="text",
+        body=message,
+        metadata={
+            "note": "material_coach_correction",
+            "review_revision_id": str(revision_id),
+            "feedback_item_id": item_id,
+            "project_id": evidence.get("project_id"),
+            "take_id": evidence.get("take_id"),
+            "slide_index": evidence.get("slide_index"),
+            "paragraph_index": evidence.get("paragraph_index"),
+            "evidence_span": evidence.get("evidence_span"),
+            "replacement_text": item.get("replacement_text"),
+            "actions": ["open_coach_correction"],
+        },
+    )
+
+
+def fire_coach_video_shared(
+    db, user_id: Any, revision_id: Any, project_id: Any, take_id: Any,
+) -> bool:
+    """Announce a coach video only when the coach explicitly shared it."""
+    if not user_id or not revision_id or not take_id:
+        return False
+    return _insert(
+        db,
+        str(user_id),
+        client_key=f"willab-coach-video:{revision_id}",
+        kind="text",
+        body="Your coach left you a note.",
+        metadata={
+            "note": "coach_video_shared",
+            "review_revision_id": str(revision_id),
+            "arc_id": str(project_id) if project_id else None,
+            "take_session_id": str(take_id),
+            "actions": ["open_coach_video"],
+        },
+    )
+
+
 def fire_confidence_not_confirmed(
     db, user_id: Any, arc_id: Any, session_id: Any, snippet_id: Any,
     coach_note: Any = None,

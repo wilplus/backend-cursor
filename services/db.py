@@ -1558,12 +1558,143 @@ class DatabaseService:
             self.client.table("v2_sessions")
             .update({
                 "status": "pending_admin_review",
+                "coach_review_status": "queued",
                 "review_requested_at": datetime.now(timezone.utc).isoformat(),
             })
             .eq("id", session_id)
             .execute()
         )
         return result.data[0] if result.data else None
+
+    def claim_coach_review(
+        self, session_id: str, actor_user_id: str, *, actor_is_admin: bool = False,
+    ) -> Optional[dict]:
+        """Atomically assign an owner-bound review to its first coach."""
+        result = self.client.rpc("claim_coach_review_v1", {
+            "p_session_id": str(session_id),
+            "p_actor_user_id": str(actor_user_id),
+            "p_actor_is_admin": bool(actor_is_admin),
+        }).execute()
+        data = result.data
+        if isinstance(data, list):
+            return data[0] if data else None
+        return data if isinstance(data, dict) else None
+
+    def publish_coach_review_revision(self, **payload) -> Optional[dict]:
+        """Publish one immutable review revision and its outbox atomically."""
+        result = self.client.rpc("publish_coach_review_revision_v1", {
+            "p_revision_id": payload["revision_id"],
+            "p_session_id": payload["session_id"],
+            "p_owner_user_id": payload["owner_user_id"],
+            "p_project_id": payload["project_id"],
+            "p_actor_user_id": payload["actor_user_id"],
+            "p_actor_is_admin": bool(payload.get("actor_is_admin")),
+            "p_admin_override_reason": payload.get("admin_override_reason"),
+            "p_idempotency_key": payload["idempotency_key"],
+            "p_payload_hash": payload["payload_hash"],
+            "p_feedback_items": payload["feedback_items"],
+            "p_overall_message": payload.get("overall_message"),
+            "p_share_video": bool(payload.get("share_video")),
+            "p_delivery_payload": payload.get("delivery_payload") or {},
+        }).execute()
+        data = result.data
+        if isinstance(data, list):
+            return data[0] if data else None
+        return data if isinstance(data, dict) else None
+
+    def publish_coach_review_revisions(self, reviews: list[dict]) -> list[dict]:
+        """Atomically publish a complete set of immutable review snapshots."""
+        result = self.client.rpc("publish_coach_review_batch_v1", {
+            "p_reviews": reviews,
+        }).execute()
+        data = result.data
+        if isinstance(data, list):
+            return [row for row in data if isinstance(row, dict)]
+        return []
+
+    def refund_coach_review_credit(
+        self, user_id: str, session_id: str,
+    ) -> Optional[dict]:
+        result = self.client.rpc("refund_coach_review_credit_v1", {
+            "p_user_id": str(user_id),
+            "p_session_id": str(session_id),
+        }).execute()
+        data = result.data
+        if isinstance(data, list):
+            return data[0] if data else None
+        return data if isinstance(data, dict) else None
+
+    def get_coach_review_delivery(self, revision_id: str) -> Optional[dict]:
+        result = (
+            self.client.table("coach_review_delivery_outbox")
+            .select("*,coach_review_revisions(*)")
+            .eq("revision_id", str(revision_id))
+            .limit(1)
+            .execute()
+        )
+        return (result.data or [None])[0]
+
+    def start_coach_review_delivery(self, outbox_id: str) -> bool:
+        result = (
+            self.client.table("coach_review_delivery_outbox")
+            .update({
+                "status": "running",
+                "attempts": self._coach_delivery_attempt_count(outbox_id) + 1,
+                "last_error": None,
+            })
+            .eq("id", str(outbox_id))
+            .in_("status", ["pending", "failed"])
+            .execute()
+        )
+        return bool(result.data)
+
+    def _coach_delivery_attempt_count(self, outbox_id: str) -> int:
+        result = (
+            self.client.table("coach_review_delivery_outbox")
+            .select("attempts")
+            .eq("id", str(outbox_id))
+            .limit(1)
+            .execute()
+        )
+        row = (result.data or [{}])[0]
+        return int(row.get("attempts") or 0)
+
+    def finish_coach_review_delivery(
+        self, outbox_id: str, *, error: Optional[str] = None,
+        retry_after_seconds: int = 0,
+    ) -> bool:
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        patch = {
+            "status": "failed" if error else "done",
+            "last_error": str(error)[:2000] if error else None,
+            "completed_at": None if error else now.isoformat(),
+            "available_at": (
+                now + timedelta(seconds=max(0, retry_after_seconds))
+            ).isoformat(),
+        }
+        result = (
+            self.client.table("coach_review_delivery_outbox")
+            .update(patch)
+            .eq("id", str(outbox_id))
+            .execute()
+        )
+        return bool(result.data)
+
+    def list_pending_coach_review_deliveries(self, limit: int = 100) -> list:
+        from datetime import datetime, timezone
+
+        result = (
+            self.client.table("coach_review_delivery_outbox")
+            .select("revision_id")
+            .in_("status", ["pending", "failed"])
+            .lte("available_at", datetime.now(timezone.utc).isoformat())
+            .order("available_at")
+            .limit(max(1, min(int(limit), 500)))
+            .execute()
+        )
+        return result.data or []
 
     def v2_get_session_by_id(self, session_id: str):
         """Get v2 session by id only (no user filter). For debugging 404: check if session exists and which user_id owns it."""

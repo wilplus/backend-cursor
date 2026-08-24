@@ -258,8 +258,7 @@ from routes.v2.coaching import (  # noqa: F401 — re-exported for import compat
     v2_onboarding_opener_next,
     v2_onboarding_opener_start,
 )
-from routes.v2.publish import (  # noqa: F401 — re-exported for import compat
-    _apply_willab_publish_contract,
+from routes.v2.canonical_publish import (  # noqa: F401 — route registration
     v2_internal_publish_session_results,
     v2_internal_whisper_health,
 )

@@ -25,6 +25,17 @@ logger = logging.getLogger(__name__)
 # Statuses that mean the session is already in or past the coach queue —
 # sending again is a no-op.
 _ALREADY_SENT_STATUSES = {"pending_admin_review", "completed"}
+_ALREADY_REVIEW_STATES = {"queued", "in_review", "published", "revised"}
+
+
+def _reserve_review_credit(user_id: str, session_id: str):
+    from services.token_account import charge
+
+    result = charge(user_id, "coach_feedback", ref_id=session_id)
+    unsafe_success = result.reason in {
+        "account_unavailable", "write_failed", "cas_contention",
+    }
+    return result if result.ok and not unsafe_success else None
 
 
 def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
@@ -51,10 +62,35 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
     if not session:
         return {"ok": False, "already_sent": False, "status": None}
 
+    # A guest may use the complete immediate machine-feedback journey, but
+    # professional review belongs only to a verified account.  Never infer or
+    # claim an owner here.
+    if str(session.get("user_id") or "") != str(user_id):
+        return {
+            "ok": False,
+            "already_sent": False,
+            "status": session.get("coach_review_status") or session.get("status"),
+            "reason": "owner_required",
+        }
+
     current = session.get("status")
-    if current in _ALREADY_SENT_STATUSES or session.get("results_published_at"):
+    review_state = session.get("coach_review_status")
+    if (current in _ALREADY_SENT_STATUSES
+            or review_state in _ALREADY_REVIEW_STATES
+            or session.get("results_published_at")):
         # Already in/through the coach queue — idempotent no-op.
         return {"ok": True, "already_sent": True, "status": current}
+
+    # Reserve the human-review allowance before accepting work.  Idempotency
+    # is per Take, so retries never double-consume a slot.
+    credit = _reserve_review_credit(str(user_id), str(session_id))
+    if credit is None:
+        return {
+            "ok": False,
+            "already_sent": False,
+            "status": current,
+            "reason": "review_credit_unavailable",
+        }
 
     # Flip into the coach review queue (the success signal).
     try:
@@ -62,10 +98,19 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
         ok = bool(flipped)
     except Exception as e:
         logger.error("lab_send: status flip failed sid=%s err=%s", session_id, e)
-        return {"ok": False, "already_sent": False, "status": current}
+        ok = False
 
     if not ok:
-        return {"ok": False, "already_sent": False, "status": current}
+        try:
+            db.refund_coach_review_credit(str(user_id), str(session_id))
+        except Exception as refund_error:
+            logger.error(
+                "lab_send: queue failed and refund deferred sid=%s err=%s",
+                session_id,
+                refund_error,
+            )
+        return {"ok": False, "already_sent": False, "status": current,
+                "reason": "queue_write_failed"}
 
     # Best-effort admin notification — a nudge, not part of send-success.
     # Founder 2026-07-16 (BE-3a): a mid-take RE-READ is part of its parent
@@ -95,4 +140,6 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
             )
 
     logger.info("lab_send: sent to coach sid=%s user=%s", session_id, user_id)
-    return {"ok": True, "already_sent": False, "status": "pending_admin_review"}
+    return {"ok": True, "already_sent": False,
+            "status": "pending_admin_review",
+            "coach_review_status": "queued"}

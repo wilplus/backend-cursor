@@ -136,86 +136,64 @@ class UserTrainingsTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class PublishInlineSnippetsTests(unittest.TestCase):
-    """POST /v2/internal/publish-session-results with inline snippets[] —
-    save-at-publish (the FE no longer autosaves per keystroke)."""
+class CanonicalPublishRouteTests(unittest.TestCase):
+    """The internal door accepts only a complete final review snapshot."""
 
-    SESSION_ID = "11111111-1111-1111-1111-111111111111"
-    SNIP_ID = "22222222-2222-2222-2222-222222222222"
+    SESSION_ID = "11111111-1111-4111-8111-111111111111"
 
     def setUp(self):
         self.app = Flask(__name__)
 
     def _call(self, body):
         with self.app.test_request_context(json=body):
-            request.user_id = "coach1"
+            request.user_id = "44444444-4444-4444-8444-444444444444"
             out = v2.v2_internal_publish_session_results.__wrapped__()
-            resp, status = out if isinstance(out, tuple) else (out, 200)
-            return resp.get_json(), status
+            response, status = out if isinstance(out, tuple) else (out, 200)
+            return response.get_json(), status
 
-    def test_inline_snippets_persist_through_shared_lanes(self):
-        session = {"id": self.SESSION_ID, "user_id": None}
-        with patch.object(v2.db, "v2_get_session_by_id",
-                          return_value=session), \
-             patch.object(v2.db, "get_snippets_by_session",
-                          return_value=[{"id": self.SNIP_ID}]), \
-             patch("routes.v2.publish._save_coach_snippet_lanes",
-                          return_value=None) as m_lanes, \
-             patch("routes.v2.publish._apply_willab_publish_contract",
-                          return_value=None), \
-             patch.object(v2.db, "record_snippet_publish_annotations",
-                          return_value=0), \
-             patch.object(v2.db, "v2_update_session_status_unscoped"):
+    def test_missing_complete_feedback_snapshot_is_rejected(self):
+        body, status = self._call({
+            "session_id": self.SESSION_ID,
+            "idempotency_key": "attempt-1",
+        })
+        self.assertEqual(status, 400)
+        self.assertEqual(body["code"], "INVALID_INPUT")
+
+    def test_empty_feedback_is_a_valid_complete_snapshot(self):
+        from types import SimpleNamespace
+
+        result = SimpleNamespace(
+            revision_id="22222222-2222-4222-8222-222222222222",
+            revision_number=1,
+            published_at="2026-08-24T10:00:00Z",
+            replayed=False,
+        )
+        with patch("routes.v2.canonical_publish.publish_reviews",
+                   return_value=[result]) as publish, \
+             patch("routes.v2.canonical_publish.is_admin",
+                   return_value=False), \
+             patch("routes.v2.canonical_publish.enqueue_review_delivery",
+                   return_value=True):
             body, status = self._call({
                 "session_id": self.SESSION_ID,
-                "notify_client": False,
-                "snippets": [{
-                    "id": self.SNIP_ID, "note": "Great turn.",
-                    "tag": "strong", "surfaced": True,
-                }],
+                "idempotency_key": "attempt-1",
+                "feedback_items": [],
+                "overall_message": None,
+                "share_video": False,
             })
-        # The publish continues past the inline save (this session has no
-        # user → 400 NO_USER downstream — fine, the save already ran).
-        m_lanes.assert_called_once()
-        args = m_lanes.call_args.args
-        self.assertEqual(args[0], self.SESSION_ID)
-        self.assertEqual(args[1], self.SNIP_ID)
-        # Canonical coach authoring survives and the transport id is stripped.
-        self.assertNotIn("id", args[2])
-        self.assertEqual(args[2]["note"], "Great turn.")
-        self.assertEqual(args[2]["tag"], "strong")
-        self.assertTrue(args[2]["surfaced"])
+        self.assertEqual(status, 200)
+        self.assertEqual(body["revision_number"], 1)
+        self.assertEqual(body["delivery_status"], "queued")
+        publish.assert_called_once()
 
-    def test_inline_snippet_not_in_session_404s_before_contract(self):
-        session = {"id": self.SESSION_ID, "user_id": "u1"}
-        with patch.object(v2.db, "v2_get_session_by_id",
-                          return_value=session), \
-             patch.object(v2.db, "get_snippets_by_session",
-                          return_value=[{"id": self.SNIP_ID}]), \
-             patch("routes.v2.publish._apply_willab_publish_contract") as m_contract:
-            body, status = self._call({
-                "session_id": self.SESSION_ID,
-                "notify_client": False,
-                "snippets": [{"id": "not-a-known-snippet", "note": "x"}],
-            })
-        self.assertEqual(status, 404)
-        self.assertEqual(body["code"], "SNIPPET_NOT_FOUND")
-        m_contract.assert_not_called()
-
-    def test_absent_snippets_key_is_backward_compatible(self):
-        session = {"id": self.SESSION_ID, "user_id": None}
-        with patch.object(v2.db, "v2_get_session_by_id",
-                          return_value=session), \
-             patch("routes.v2.publish._save_coach_snippet_lanes") as m_lanes, \
-             patch("routes.v2.publish._apply_willab_publish_contract",
-                          return_value=None), \
-             patch.object(v2.db, "record_snippet_publish_annotations",
-                          return_value=0), \
-             patch.object(v2.db, "v2_update_session_status_unscoped"):
-            body, status = self._call({
-                "session_id": self.SESSION_ID, "notify_client": False,
-            })
-        m_lanes.assert_not_called()
+    def test_legacy_inline_drafts_cannot_replace_final_snapshot(self):
+        body, status = self._call({
+            "session_id": self.SESSION_ID,
+            "idempotency_key": "attempt-1",
+            "snippets": [{"id": "old", "note": "draft"}],
+        })
+        self.assertEqual(status, 400)
+        self.assertEqual(body["code"], "INVALID_INPUT")
 
 
 if __name__ == "__main__":

@@ -236,9 +236,8 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
         # still be able to introduce it once the journey is complete.
         import inspect
 
-        from routes.v2 import publish
-        src = inspect.getsource(publish)
-        self.assertNotIn("if _landed and", src)
+        from services import coach_publish_delivery
+        src = inspect.getsource(coach_publish_delivery._deliver)
         self.assertIn("fire_voice_album_ready", src)
 
     def test_it_waits_for_take_three(self):
@@ -250,45 +249,3 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
         ]
         self.assertFalse(fire_voice_album_ready(db, "u1", "arc-1"))
         self.assertEqual(db.rows, [])
-
-
-class ResultsEmailDeepLinkTests(unittest.TestCase):
-    """THE CTA LANDS ON THE REVIEWED TEXT (founder 2026-08-15: "does the link
-    from the email lead to this particular ideal text that holds these
-    reviews? if not make it a deep link").
-
-    It led to bare /chat — for the one email whose entire subject is "your
-    coach reviewed this talk", leaving the student to find the right bubble in
-    a thread."""
-
-    def test_the_journey_url_carries_the_arc(self):
-        import inspect
-
-        from services import post_session_results_email as pe
-        src = inspect.getsource(pe.send_publish_results_email)
-        self.assertIn("idealArc=", src)
-
-    def test_it_falls_back_to_plain_chat_without_an_arc(self):
-        # A take with no arc is a real state, and a link to nothing is worse
-        # than a link to the thread that holds the card.
-        import inspect
-
-        from services import post_session_results_email as pe
-        src = inspect.getsource(pe.send_publish_results_email)
-        self.assertIn('else f"{_base}/chat"', src)
-
-    def test_the_arc_is_url_escaped(self):
-        import inspect
-
-        from services import post_session_results_email as pe
-        src = inspect.getsource(pe.send_publish_results_email)
-        self.assertIn("_url_quote(_arc", src)
-
-    def test_the_route_echoes_the_SAME_url_it_emailed(self):
-        # results_url is returned to the caller; if the two disagreed we would
-        # have two different answers to "where did we send them".
-        import inspect
-
-        from routes.v2 import publish
-        src = inspect.getsource(publish)
-        self.assertIn("idealArc={_q(_arc_for_link", src)

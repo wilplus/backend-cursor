@@ -441,99 +441,72 @@ class DocumentProvenanceTests(unittest.TestCase):
         self.assertIsNone(calls["document"])
 
 
-class PublishAnalysisRestoredTests(unittest.TestCase):
-    """POST /v2/coach/arc/<id>/publish-analysis — RESTORED 2026-08-14.
-
-    THE DEFECT THIS PINS: this route was a 410 tombstone (publish → verify,
-    2026-07-17) while the coach panel's "Publish the full analysis" button
-    still POSTed to it. So the button was a dead end even with every gate
-    satisfied — and the only code that sets `results_published_at` lived
-    behind an /internal route the frontend has no BFF path to. Nothing a
-    coach could click published anything.
-    """
-
-    def _post(self, sessions, publish_results):
-        from flask import Flask
-        app = Flask(__name__)
-        with app.test_request_context():
-            from flask import request as _rq
-            _rq.user_id = "coach-1"
-            with patch.object(v2.db, "get_arc_sessions",
-                              return_value=sessions), \
-                 patch("routes.v2.publish.publish_one_session",
-                       side_effect=publish_results):
-                out = v2.v2_coach_publish_analysis.__wrapped__("arc-1")
-            resp, status = out if isinstance(out, tuple) else (out, 200)
-            return resp.get_json(), status
+class PublishAnalysisAtomicTests(unittest.TestCase):
+    """The coach button publishes one all-or-nothing revision batch."""
 
     _SPOKEN = [
         {"id": "s1", "take_index": 1, "recording_kind": "spoken"},
         {"id": "s2", "take_index": 2, "recording_kind": "spoken"},
     ]
 
-    def test_it_is_no_longer_a_410_tombstone(self):
-        body, status = self._post(
-            self._SPOKEN,
-            lambda sid, actor: {"session_id": sid, "published": True,
-                                "reason": None},
-        )
-        self.assertNotEqual(status, 410)
+    def _post(self, sessions, reviews, *, publish_status=200):
+        from flask import Flask, jsonify
+
+        app = Flask(__name__)
+        published = [{"session_id": row["session_id"],
+                      "published_at": "2026-08-24T10:00:00Z"}
+                     for row in reviews]
+        with app.test_request_context(json={"reviews": reviews}):
+            from flask import request as _rq
+
+            _rq.user_id = "coach-1"
+            response = (
+                jsonify({"takes": published}) if publish_status == 200
+                else jsonify({"code": "PUBLISH_FAILED", "error": "invalid"})
+            )
+            with patch.object(v2.db, "get_arc_sessions",
+                              return_value=sessions), \
+                 patch("routes.v2.canonical_publish.publish_complete_reviews",
+                       return_value=(response, publish_status)) as publish:
+                out = v2.v2_coach_publish_analysis.__wrapped__("arc-1")
+            result, status = out if isinstance(out, tuple) else (out, 200)
+            return result.get_json(), status, publish
+
+    def test_complete_saved_takes_are_forwarded_as_one_batch(self):
+        reviews = [{"session_id": "s1"}, {"session_id": "s2"}]
+        body, status, publish = self._post(self._SPOKEN, reviews)
         self.assertEqual(status, 200)
         self.assertEqual(body["takes_published"], 2)
+        self.assertEqual(publish.call_count, 1)
+        self.assertEqual(publish.call_args.args[0], reviews)
 
-    def test_a_take_with_no_note_is_SKIPPED_not_a_failure(self):
-        # Partial publish (founder 2026-08-14): the reviewed take delivers,
-        # the empty one stays visibly "to review" rather than blocking it.
-        def _pub(sid, actor):
-            if sid == "s2":
-                return {"session_id": sid, "published": False,
-                        "reason": "PUBLISH_CONTRACT_VIOLATION"}
-            return {"session_id": sid, "published": True, "reason": None}
-
-        body, status = self._post(self._SPOKEN, _pub)
-        self.assertEqual(status, 200)
-        self.assertEqual(body["takes_published"], 1)
-        self.assertEqual(body["takes_skipped"], 1)
-
-    def test_one_successful_take_publish_is_enough(self):
-        """Arc publish succeeds when at least one eligible take publishes."""
-        def _pub(sid, actor):
-            return {"session_id": sid, "published": sid == "s1",
-                    "reason": None if sid == "s1" else "PUBLISH_CONTRACT_VIOLATION"}
-
-        body, status = self._post(self._SPOKEN, _pub)
+    def test_empty_feedback_take_is_not_dropped_from_batch(self):
+        reviews = [{"session_id": "s1", "feedback_items": []}]
+        body, status, _ = self._post(self._SPOKEN, reviews)
         self.assertEqual(status, 200)
         self.assertEqual(body["takes_published"], 1)
 
-    def test_all_take_publish_failures_return_actionable_409(self):
-        body, status = self._post(
-            self._SPOKEN,
-            lambda sid, actor: {"session_id": sid, "published": False,
-                                "reason": "PUBLISH_CONTRACT_VIOLATION"},
+    def test_out_of_project_take_is_rejected_before_transaction(self):
+        body, status, publish = self._post(
+            self._SPOKEN, [{"session_id": "other"}],
         )
-        self.assertEqual(status, 409)
-        self.assertEqual(body["code"], "NOTHING_TO_PUBLISH")
-        self.assertIn("no take could be published", body["error"].lower())
+        self.assertEqual(status, 422)
+        self.assertEqual(body["code"], "TAKE_SCOPE_MISMATCH")
+        publish.assert_not_called()
 
-    def test_an_already_published_take_is_never_re_published(self):
-        sessions = [
-            {"id": "s1", "take_index": 1, "recording_kind": "spoken",
-             "results_published_at": "2026-08-01T00:00:00Z"},
-            {"id": "s2", "take_index": 2, "recording_kind": "spoken"},
-        ]
-        calls = []
-
-        def _pub(sid, actor):
-            calls.append(sid)
-            return {"session_id": sid, "published": True, "reason": None}
-
-        body, status = self._post(sessions, _pub)
-        self.assertEqual(status, 200)
-        self.assertEqual(calls, ["s2"], "a delivered take must not re-publish")
-        self.assertEqual(body["takes_published"], 2)
+    def test_batch_error_is_returned_without_partial_success(self):
+        body, status, _ = self._post(
+            self._SPOKEN,
+            [{"session_id": "s1"}, {"session_id": "s2"}],
+            publish_status=422,
+        )
+        self.assertEqual(status, 422)
+        self.assertEqual(body["code"], "PUBLISH_FAILED")
 
     def test_an_arc_with_no_takes_409s(self):
-        body, status = self._post([{"id": "r1", "recording_kind": "read"}],
-                                  lambda sid, actor: None)
+        body, status, publish = self._post(
+            [{"id": "r1", "recording_kind": "read"}], [],
+        )
         self.assertEqual(status, 409)
         self.assertEqual(body["code"], "NOTHING_TO_PUBLISH")
+        publish.assert_not_called()

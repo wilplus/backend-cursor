@@ -60,6 +60,95 @@ def _owner_agreements(database, arc_id: Any) -> dict:
     return out
 
 
+def reconcile_voice_album_clip(
+    arc_id: Any, clip_id: Any, *, take_session_id: Any = None, database=None,
+) -> bool:
+    """Reconcile only the clip explicitly judged in this revision.
+
+    Missing evidence is a no-op.  An existing entry is removed only after an
+    explicit professional No on this exact clip; incomplete reads can never
+    withdraw a user's saved moment.
+    """
+    if not arc_id or not clip_id:
+        return False
+    try:
+        if database is None:
+            from services.db import db as database
+        arc = str(arc_id)
+        target = str(clip_id)
+
+        attempt = database.get_confident_voice_practice_attempt(target)
+        if attempt:
+            practice = database.get_confident_voice_practice(
+                str(attempt.get("practice_id") or ""))
+            if not practice or str(practice.get("project_id") or "") != arc:
+                return False
+            coach = attempt.get("coach_confidence_decision")
+            if coach == "no":
+                return bool(database.delete_voice_album_practice_entry(
+                    arc_id=arc, practice_attempt_id=target,
+                ))
+            aligned = (
+                coach == "yes"
+                and attempt.get("machine_confidence_decision") == "yes"
+                and attempt.get("user_answer") == "yes"
+                and str(practice.get("selected_attempt_id") or "") == target
+            )
+            if not aligned:
+                return False
+            return bool(database.insert_voice_album_practice_entry(
+                arc_id=arc,
+                practice_attempt_id=target,
+                take_session_id=str(practice.get("take_session_id") or "") or None,
+                slide_index=practice.get("slide_index"),
+            ))
+
+        user_row = _owner_agreements(database, arc).get(target)
+        suggestion = (
+            database.get_moment_suggestions_by_arc(arc) or {}
+        ).get(target)
+        labels = database.get_confidence_labels_by_snippet_ids([target]) or {}
+        coach_value = None
+        from services.professional_confidence import latest_professional_value
+        coach_value = latest_professional_value(labels.get(target))
+        session = database.v2_get_session_by_id(str(take_session_id or "")) or {}
+        session_matches = bool(
+            session.get("results_published_at")
+            and str(session.get("project_id") or session.get("arc_id") or "") == arc
+        )
+        if coach_value == "no" and session_matches:
+            return bool(database.delete_voice_album_entry(
+                arc_id=arc, snippet_id=target,
+            ))
+        aligned = bool(
+            coach_value == "yes"
+            and user_row
+            and isinstance(suggestion, dict)
+            and suggestion.get("kind") == "emphasize"
+            and session_matches
+        )
+        if not aligned or not isinstance(user_row, dict):
+            return False
+        slide = user_row.get("slide_index")
+        return bool(database.insert_voice_album_entry(
+            arc_id=arc,
+            snippet_id=target,
+            take_session_id=str(take_session_id or "") or None,
+            slide_index=(
+                slide if isinstance(slide, int) and not isinstance(slide, bool)
+                else None
+            ),
+        ))
+    except Exception as error:
+        logger.warning(
+            "voice_album: exact clip reconciliation failed arc=%s clip=%s: %s",
+            arc_id,
+            clip_id,
+            error,
+        )
+        return False
+
+
 def refresh_voice_album(arc_id: Any, *, database=None) -> int:
     """Reconcile the album against the three signals: insert every newly
     aligned moment, REMOVE every entry that no longer aligns (the mirror

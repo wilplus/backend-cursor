@@ -38,6 +38,12 @@ class CoachSessionReadTests(unittest.TestCase):
             "results_published_at": None, "status": "pending_admin_review",
             "coach_overall_message": None, "coach_video_ref": None,
         })
+        self._patch_db(
+            "claim_coach_review",
+            lambda session_id, actor_user_id, **kwargs: {
+                "assigned_to": actor_user_id, "claimed": True,
+            },
+        )
         # Prior coach work: snippet "a" noted + tagged + surfaced; "b" blank.
         self._patch_db("get_coach_snippet_drafts", lambda sid: [
             {"snippet_id": "a", "note": "strong open", "tag": "strong", "surfaced": True},

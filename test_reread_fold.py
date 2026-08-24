@@ -120,6 +120,9 @@ class CoachGetFoldTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(v2.db, "v2_get_session_by_id",
                               return_value=_session_row()), \
+                 patch.object(v2.db, "claim_coach_review",
+                              return_value={"assigned_to": "coach1",
+                                            "claimed": True}), \
                  patch.object(v2.db, "stamp_review_opened") as m_open, \
                  patch.object(v2.db, "get_read_sessions_for",
                               return_value=read_sessions), \
@@ -146,7 +149,9 @@ class CoachGetFoldTests(unittest.TestCase):
         self.assertTrue(body["has_reread"])
         self.assertEqual(body["read_session_ids"], [READ])
         opened = {c.args[0] for c in m_open.call_args_list}
-        self.assertEqual(opened, {SPOKEN, READ})
+        # The parent is stamped atomically by claim_coach_review; only folded
+        # read sessions still need the legacy per-row stamp here.
+        self.assertEqual(opened, {READ})
 
     def test_reads_array_carries_ideal_text_tags(self):
         # Founder 2026-07-20: an ideal-text re-read carries read_target +

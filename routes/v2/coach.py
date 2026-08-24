@@ -23,7 +23,7 @@ from flask import jsonify, request
 from werkzeug.utils import secure_filename
 
 from config import Config
-from routes.admin import require_admin_or_coach
+from routes.admin import is_admin, require_admin_or_coach
 from routes.v2.arcs import _spoken_takes_and_reads
 from routes.v2.blueprint import v2_bp
 from services.rate_limits import heavy_limit, llm_limit, whisper_limit
@@ -679,14 +679,36 @@ def v2_coach_get_session(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
 
-        # Readiness rig #3 — first-touch coach-time baseline: stamp when the
-        # coach first OPENS this session for review (set-once). Best-effort;
-        # never affects the review payload.
+        # First open atomically owns the review.  Admins may inspect another
+        # coach's assignment, but publishing then requires an audited override.
         try:
-            db.stamp_review_opened(session_id)
-        except Exception as _ro_err:
-            logger.warning("coach/get-session: review_opened stamp failed sid=%s: %s",
-                           session_id, _ro_err)
+            db.claim_coach_review(
+                session_id,
+                str(request.user_id),
+                actor_is_admin=is_admin(str(request.user_id)),
+            )
+            session = db.v2_get_session_by_id(session_id) or session
+        except Exception as assignment_error:
+            low = str(assignment_error).lower()
+            if "unclaimed guest" in low:
+                return jsonify({
+                    "code": "UNCLAIMED_GUEST",
+                    "error": "This take must be claimed before coach review.",
+                }), 409
+            if "another coach" in low:
+                return jsonify({
+                    "code": "REVIEW_ASSIGNED_TO_ANOTHER_COACH",
+                    "error": "This review is assigned to another coach.",
+                }), 409
+            logger.error(
+                "coach/get-session: review assignment failed sid=%s: %s",
+                session_id,
+                assignment_error,
+            )
+            return jsonify({
+                "code": "REVIEW_ASSIGNMENT_FAILED",
+                "error": "Could not open this review safely.",
+            }), 503
 
         from services.lab_recording import build_readout_from_session
         # include_slide_scores=True → coach gets Stickiness #2 (per-snippet
@@ -2183,10 +2205,37 @@ def v2_coach_arc_review_state(arc_id):
         pending = []
         for s in spoken:
             sid = str(s.get("id"))
+            publish_payload = None
             if s.get("results_published_at"):
                 _rs = "delivered"
             elif s.get("coach_feedback_saved_at"):
                 _rs = "reviewed"
+                try:
+                    from services.feedback_repository import (
+                        FeedbackRepository,
+                        serialize_feedback_item,
+                    )
+
+                    publish_payload = {
+                        "session_id": sid,
+                        "overall_message": (
+                            str(s.get("coach_overall_message") or "").strip()
+                            or None
+                        ),
+                        "feedback_items": [
+                            serialize_feedback_item(item)
+                            for item in FeedbackRepository(db).surfaced_items(sid)
+                        ],
+                        # Video remains private unless the coach explicitly
+                        # chooses Share with user in the final payload.
+                        "share_video": False,
+                    }
+                except Exception as payload_error:
+                    logger.warning(
+                        "coach review-state payload invalid sid=%s: %s",
+                        sid,
+                        payload_error,
+                    )
             else:
                 _rs = "to_review"
                 pending.append(sid)
@@ -2195,6 +2244,7 @@ def v2_coach_arc_review_state(arc_id):
                 "take_index": s.get("take_index"),
                 "review_state": _rs,
                 "has_reread": bool(reads.get(sid)),
+                "publish_payload": publish_payload,
             })
 
         from services.best_presentation import TAKES_TARGET
@@ -3443,28 +3493,7 @@ def v2_coach_put_star_text(snippet_id):
 @v2_bp.route("/coach/arc/<arc_id>/publish-analysis", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_publish_analysis(arc_id):
-    """PUBLISH the arc's reviewed takes — RESTORED 2026-08-14 (founder).
-
-    ⚠️ THIS WAS A 410 TOMBSTONE, AND THE FE'S PUBLISH BUTTON POINTED AT IT.
-    When publish was replaced by verify (2026-07-17) this route was retired,
-    but `publishArc()` in the coach panel was never re-pointed — so
-    "Publish the full analysis" POSTed here and got GONE, every time, even
-    with every gate satisfied. Meanwhile the only code that sets
-    `results_published_at` sat behind /v2/internal/publish-session-results,
-    which the frontend has no BFF route to. Net effect: nothing a coach
-    could click published anything. 46 sessions were recorded in August and
-    none was delivered.
-
-    Every reviewed take is published independently. A take with zero valid
-    FeedbackItems is a successful "no changes needed" result; it is neither
-    skipped nor blocked merely to manufacture a note.
-
-    Idempotent per take: a take already delivered is reported as such and
-    never re-charged (the contract's ref_id=session_id guard).
-
-    200 {arc_id, takes_published, takes_skipped, delivered_at, takes: [...]}
-    404 NOT_FOUND · 409 NOTHING_TO_PUBLISH · 500 V2_ERROR
-    """
+    """Publish complete saved take snapshots as one atomic revision batch."""
     try:
         sessions = db.get_arc_sessions(arc_id)
         if not sessions:
@@ -3474,33 +3503,46 @@ def v2_coach_publish_analysis(arc_id):
             return jsonify({"code": "NOTHING_TO_PUBLISH",
                             "error": "No recordings to publish yet."}), 409
 
-        from routes.v2.publish import publish_one_session
-        results = []
-        for s in spoken:
-            sid = str(s.get("id"))
-            if s.get("results_published_at"):
-                results.append({"session_id": sid, "published": True,
-                                "reason": "already_published"})
-                continue
-            results.append(publish_one_session(sid, str(request.user_id)))
-
-        published = [r for r in results if r.get("published")]
-        skipped = [r for r in results if not r.get("published")]
-        if not published:
+        spoken_ids = {str(row.get("id")) for row in spoken if row.get("id")}
+        body = request.get_json(silent=True) or {}
+        reviews = body.get("reviews")
+        if not isinstance(reviews, list) or not reviews:
             return jsonify({
-                "code": "NOTHING_TO_PUBLISH",
-                "error": "No take could be published.",
-                "takes": results,
-            }), 409
+                "code": "INVALID_INPUT",
+                "error": "reviews must contain at least one complete saved take",
+            }), 400
+        for payload in reviews:
+            if not isinstance(payload, dict):
+                return jsonify({
+                    "code": "INVALID_INPUT",
+                    "error": "reviews entries must be objects",
+                }), 400
+            if str(payload.get("session_id") or "") not in spoken_ids:
+                return jsonify({
+                    "code": "TAKE_SCOPE_MISMATCH",
+                    "error": "Every published take must belong to this project",
+                }), 422
 
-        logger.info("coach publish arc=%s published=%d skipped=%d",
-                    arc_id, len(published), len(skipped))
+        from routes.v2.canonical_publish import publish_complete_reviews
+
+        response, status = publish_complete_reviews(
+            reviews,
+            actor_user_id=str(request.user_id),
+            admin_override_reason=body.get("admin_override_reason"),
+        )
+        if status != 200:
+            return response, status
+        published = response.get_json().get("takes") or []
+        delivered_at = max(
+            (str(row.get("published_at") or "") for row in published),
+            default="",
+        ) or datetime.now(timezone.utc).isoformat()
         return jsonify({
             "arc_id": arc_id,
             "takes_published": len(published),
-            "takes_skipped": len(skipped),
-            "delivered_at": datetime.now(timezone.utc).isoformat(),
-            "takes": results,
+            "takes_skipped": len(spoken_ids) - len(published),
+            "delivered_at": delivered_at,
+            "takes": published,
         }), 200
     except Exception as e:
         logger.error("publish-analysis failed arc=%s: %s", arc_id, e,
