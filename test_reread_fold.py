@@ -128,6 +128,15 @@ class CoachGetFoldTests(unittest.TestCase):
                               return_value=read_sessions), \
                  patch.object(v2.db, "get_coach_snippet_drafts",
                               return_value=[]), \
+                 patch.object(
+                     v2.db, "get_own_state_ratings_for_session",
+                     side_effect=lambda sid, _rater: {
+                         SPOKEN: {
+                             PSNIP1: {"value": "yes"},
+                             PSNIP2: {"value": "neutral"},
+                         },
+                         READ: {RSNIP: {"value": "no"}},
+                     }.get(str(sid), {})), \
                  patch.object(v2.db, "get_feelings_by_session",
                               return_value=[]), \
                  patch("services.lab_recording.build_readout_from_session",

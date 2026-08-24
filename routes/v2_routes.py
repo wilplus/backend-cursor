@@ -169,6 +169,7 @@ from routes.v2.coach import (  # noqa: F401 — re-exported for import compat
     v2_coach_arc_stars,
     v2_coach_archive_training_import,
     v2_coach_audit_data,
+    v2_coach_confidence_comparison,
     v2_coach_confidence_queue,
     v2_coach_create_audit,
     v2_coach_get_ideal_text,

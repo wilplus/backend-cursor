@@ -48,6 +48,16 @@ class CoachSessionReadTests(unittest.TestCase):
         self._patch_db("get_coach_snippet_drafts", lambda sid: [
             {"snippet_id": "a", "note": "strong open", "tag": "strong", "surfaced": True},
         ])
+        # These legacy shape/resume tests exercise the contextual second pass.
+        # Commit the fixture coach's blind answers first so the new hard gate
+        # legitimately unlocks the context they assert below.
+        self._patch_db(
+            "get_own_state_ratings_for_session",
+            lambda sid, rater_id: {
+                "a": {"value": "yes", "unrateable": False},
+                "b": {"value": "neutral", "unrateable": False},
+            },
+        )
         # Phase 4 / Prompt 2 — AI-Commentator draft pre-fill for snippet "a".
         self._patch_db("get_ai_draft_coach_notes_by_session",
                        lambda sid: {"a": "🎤 Warm open — your pace lands well."})
@@ -160,6 +170,27 @@ class CoachSessionReadTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual([s["id"] for s in data["snippets"]], ["flat", "key"])
         self.assertEqual([s["index"] for s in data["snippets"]], [0, 1])
+
+    def test_context_is_redacted_until_every_blind_label_is_committed(self):
+        setattr(
+            v2.db,
+            "get_own_state_ratings_for_session",
+            lambda sid, rater_id: {
+                "a": {"value": "yes", "unrateable": False},
+            },
+        )
+        status, data = self._get()
+        self.assertEqual(status, 200)
+        self.assertFalse(data["context_unlocked"])
+        self.assertEqual(data["blind_label"], {
+            "labelled": 1, "total": 2, "complete": False,
+        })
+        self.assertEqual(data["domain"], "")
+        self.assertEqual(data["slides"], [])
+        self.assertIsNone(data["presentation_ref"])
+        self.assertNotIn("stickiness", data["snippets"][0])
+        self.assertNotIn("features", data["snippets"][0])
+        self.assertEqual(data["snippets"][0]["coach_state"]["note"], "")
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

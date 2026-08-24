@@ -135,6 +135,22 @@ def _coach_state_map(session_id, rater_id=None):
     return out
 
 
+def _confidence_queue_selection(session_id, session, snippets):
+    """One source of truth for the blind queue and its post-label audit."""
+    from services.confidence_labels import stratified_label_queue
+
+    ctx = session.get("intake_context") if isinstance(
+        session.get("intake_context"), dict) else {}
+    stored = ctx.get("label_queue")
+    if isinstance(stored, list) and stored:
+        wanted = {str(value) for value in stored}
+        return [
+            snippet for snippet in snippets
+            if str(snippet.get("id")) in wanted
+        ]
+    return stratified_label_queue(snippets, seed=str(session_id))
+
+
 def _coach_state_for(session_id, snippet_id):
     """One snippet's coach_state (default-empty when nothing authored yet)."""
     return _coach_state_map(session_id).get(str(snippet_id), {
@@ -792,7 +808,8 @@ def v2_coach_get_session(session_id):
             try:
                 _r_readout = build_readout_from_session(
                     _rid, include_slide_scores=True)
-                _r_cstate = _coach_state_map(_rid)
+                _r_cstate = _coach_state_map(
+                    _rid, rater_id=getattr(request, "user_id", None))
                 _r_snips = [
                     _shape_snip(s, _r_cstate, _rid, "read")
                     for s in (_r_readout.get("snippets") or [])
@@ -811,12 +828,27 @@ def v2_coach_get_session(session_id):
         for _i, _s in enumerate(snippets):
             _s["index"] = _i
 
+        # BLIND-FIRST.  The contextual editor unlocks only after THIS coach
+        # has committed a rating (or explicit technical abstention) for every
+        # evidence piece in the packet.  Until then the server returns an
+        # allowlisted audio+transcript packet, so a frontend regression cannot
+        # reveal the slide, analytics, or user-facing draft before the label.
+        from services.coach_blind_gate import (
+            blind_label_progress, redact_contextual_snippets,
+        )
+        _blind_progress = blind_label_progress(snippets)
+        _context_unlocked = bool(_blind_progress["complete"])
+        _served_snippets = (
+            snippets if _context_unlocked
+            else redact_contextual_snippets(snippets)
+        )
+
         ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
         from services.feelings import shape_coach_feelings
         # "Ideal text ready to review" (founder 2026-07-15) — a persisted,
         # unapproved machine draft exists for this session's arc.
         _arc_ideal_ready = False
-        if session.get("arc_id"):
+        if _context_unlocked and session.get("arc_id"):
             try:
                 _it_row = db.get_coach_arc_ideal_text(session.get("arc_id"))
                 _arc_ideal_ready = bool(
@@ -835,29 +867,36 @@ def v2_coach_get_session(session_id):
         return jsonify({
             "session_id": session_id,
             "pseudonym": _coach_pseudonym(session.get("user_id")),
-            "domain": (ctx or {}).get("domain") or "",
-            "topic": (ctx or {}).get("topic") or "",
+            "domain": ((ctx or {}).get("domain") or "")
+            if _context_unlocked else "",
+            "topic": ((ctx or {}).get("topic") or "")
+            if _context_unlocked else "",
             # The user's pre-recording named emotion (F2 handoff §2) —
             # their own self-report, founder-decided coach-visible (not a
             # machine guess; blind-coach untouched). No inferred
             # psychological category is attached or serialized.
-            "named_emotion": (ctx or {}).get("named_emotion"),
+            "named_emotion": ((ctx or {}).get("named_emotion")
+                              if _context_unlocked else None),
             "sent_at": session.get("review_requested_at") or session.get("created_at") or "",
             "state": _coach_session_state(session, cstate),
             "review_state": _review_state,
             "arc_id": session.get("arc_id"),
-            "arc_ideal_ready": _arc_ideal_ready,
+            "arc_ideal_ready": _arc_ideal_ready if _context_unlocked else False,
+            "context_unlocked": _context_unlocked,
+            "blind_label": _blind_progress,
             # Folded mid-take re-reads (founder 2026-07-16): their snippets
             # ride in snippets[] after the parent's, each stamped with its
             # owning take_session_id + recording_kind='read'.
-            "has_reread": bool(read_sessions),
-            "read_session_ids": [str(r.get("id")) for r in read_sessions],
+            "has_reread": bool(read_sessions) if _context_unlocked else False,
+            "read_session_ids": (
+                [str(r.get("id")) for r in read_sessions]
+                if _context_unlocked else []),
             # Per-read tags (founder 2026-07-20): an ideal-text re-read
             # carries read_target='ideal_text' + ideal_version in its
             # session_context → the coach UI labels it "Re-read of ideal
             # text vN". Additive beside read_session_ids; per-take re-reads
             # simply carry nulls. Coach-only surface.
-            "reads": [{
+            "reads": ([{
                 "session_id": str(r.get("id")),
                 "created_at": r.get("created_at"),
                 "read_target": (r.get("intake_context") or {}).get(
@@ -866,21 +905,29 @@ def v2_coach_get_session(session_id):
                 "ideal_version": (r.get("intake_context") or {}).get(
                     "ideal_version") if isinstance(
                     r.get("intake_context"), dict) else None,
-            } for r in read_sessions],
-            "overall_message": session.get("coach_overall_message") or "",
-            "video_ref": (session.get("coach_video_ref") or None),
+            } for r in read_sessions] if _context_unlocked else []),
+            "overall_message": (
+                session.get("coach_overall_message") or ""
+                if _context_unlocked else ""),
+            "video_ref": ((session.get("coach_video_ref") or None)
+                          if _context_unlocked else None),
             # Slide-deck context (UX Wave 4 BE-S6a) — coach sees the deck while
             # reviewing; per-snippet slide mapping is Phase 2.
-            "slides": (ctx or {}).get("slides") or [],
-            "presentation_ref": (ctx or {}).get("presentation_ref") or None,
+            "slides": ((ctx or {}).get("slides") or [])
+            if _context_unlocked else [],
+            "presentation_ref": ((ctx or {}).get("presentation_ref") or None)
+            if _context_unlocked else None,
             # Per-slide coverage ledger (Stickiness #2 (i)) — coach audit.
-            "slide_coverage": readout.get("slide_coverage") or [],
-            "snippets": snippets,
+            "slide_coverage": (readout.get("slide_coverage") or [])
+            if _context_unlocked else [],
+            "snippets": _served_snippets,
             # U10 — the pre-recording feeling(s) the student named (nervous/
             # excited/calm/unsure), shown at the END of the snippets. Coach-only
             # (split-sink/AC-9, never user-facing); the felt-state input the
             # coach factors into the audit's "Performance under feeling".
-            "feelings": shape_coach_feelings(db.get_feelings_by_session(session_id)),
+            "feelings": (
+                shape_coach_feelings(db.get_feelings_by_session(session_id))
+                if _context_unlocked else []),
         }), 200
     except Exception as e:
         logger.error("coach/get-session failed sid=%s err=%s", session_id, e, exc_info=True)
@@ -3015,18 +3062,9 @@ def v2_coach_confidence_queue(session_id):
         if not sess:
             return jsonify({"code": "NOT_FOUND",
                             "error": "session not found"}), 404
-        from services.confidence_labels import (
-            queue_payload, stratified_label_queue,
-        )
+        from services.confidence_labels import queue_payload
         snippets = db.get_snippets_by_session(str(session_id)) or []
-        ctx = sess.get("intake_context") if isinstance(
-            sess.get("intake_context"), dict) else {}
-        stored = ctx.get("label_queue")
-        if isinstance(stored, list) and stored:
-            wanted = {str(s) for s in stored}
-            picked = [s for s in snippets if str(s.get("id")) in wanted]
-        else:
-            picked = stratified_label_queue(snippets, seed=str(session_id))
+        picked = _confidence_queue_selection(session_id, sess, snippets)
 
         rows = queue_payload(picked)
         pending_rereviews = {
@@ -3076,6 +3114,53 @@ def v2_coach_confidence_queue(session_id):
         logger.warning("confidence queue failed sid=%s: %s", session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not load the queue"}), 500
+
+
+@v2_bp.route(
+    "/coach/sessions/<session_id>/confidence-comparison",
+    methods=["GET"],
+)
+@require_admin_or_coach
+def v2_coach_confidence_comparison(session_id):
+    """Founder-only, post-label machine × own-coach comparison.
+
+    It is a separate endpoint from the blind queue and emits only rows this
+    caller has already labelled.  The stored machine proposal is a historical
+    routing snapshot, never a quorum vote.
+    """
+    from services.founder_confidence_comparison import (
+        build_founder_comparison, is_founder_comparison_email,
+    )
+
+    token_payload = getattr(request, "token_payload", None) or {}
+    if not is_founder_comparison_email(token_payload.get("email")):
+        return jsonify({"code": "FORBIDDEN", "error": "Not available"}), 403
+    try:
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess or sess.get("source") != "training_import":
+            return jsonify({"code": "NOT_FOUND", "error": "Not found"}), 404
+        snippets = db.get_snippets_by_session(str(session_id)) or []
+        picked = _confidence_queue_selection(session_id, sess, snippets)
+        snippet_ids = [str(row.get("id")) for row in picked if row.get("id")]
+        labels = db.get_confidence_labels_by_snippet_ids(snippet_ids) or {}
+        comparison = build_founder_comparison(
+            picked,
+            labels,
+            rater_id=getattr(request, "user_id", None),
+        )
+        return jsonify({
+            "session_id": str(session_id),
+            **comparison,
+            "note": "Machine is a proposal, not a quorum vote.",
+        }), 200
+    except Exception as error:
+        logger.warning(
+            "confidence comparison failed sid=%s: %s", session_id, error,
+        )
+        return jsonify({
+            "code": "SERVER_ERROR",
+            "error": "could not load the comparison",
+        }), 500
 
 
 @v2_bp.route("/coach/arcs/<arc_id>/ab-pairs", methods=["GET"])
