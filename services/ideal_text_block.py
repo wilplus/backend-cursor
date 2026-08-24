@@ -400,6 +400,14 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
     try:
         if database is None:
             from services.db import db as database
+        get_existing = getattr(database, "get_coach_arc_ideal_text", None)
+        existing = get_existing(arc_id) if callable(get_existing) else None
+        existing = existing or {}
+        if str(existing.get("auto_text") or existing.get("text") or "").strip():
+            # Take 1 creates the canonical Ideal Text. Later takes produce
+            # feedback proposals; they never refresh, rebuild or version-bump
+            # the document behind the user's back.
+            return True
         from services.best_presentation import (
             TAKES_TARGET, spoken_arc_sessions,
         )

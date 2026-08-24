@@ -39,15 +39,20 @@ class ParentAudioStorageTests(unittest.TestCase):
             result = store_recording_audio(
                 _audio_file(),
                 b"audio",
-                requested_session_id=None,
                 upload_key="upload-1",
+                owner_principal_id="owner-1",
+                user_id="user-1",
                 database=database,
                 deadline=deadline,
                 log=Mock(),
             )
         deadline.check.assert_called_once_with("store")
         self.assertEqual(result.audio_url, "https://audio")
-        database.v2_create_guest_session.assert_called_once_with(result.session_id)
+        database.v2_create_recording_session.assert_called_once_with(
+            result.session_id,
+            owner_principal_id="owner-1",
+            user_id="user-1",
+        )
         database.v2_set_session_upload_key.assert_called_once_with(
             result.session_id,
             "upload-1",
@@ -61,8 +66,9 @@ class ParentAudioStorageTests(unittest.TestCase):
             store_recording_audio(
                 _audio_file(),
                 b"audio",
-                requested_session_id=None,
-                upload_key=None,
+                upload_key="upload-1",
+                owner_principal_id="owner-1",
+                user_id=None,
                 database=Mock(),
                 deadline=Mock(),
                 log=Mock(),
@@ -119,7 +125,7 @@ class RecordingRowTests(unittest.TestCase):
         self.assertEqual(payload["recording_origin"], "willab_lab")
         self.assertEqual(payload["duration"], 13)
         database.insert_recording_feeling.assert_called_once()
-        database.v2_set_guest_session_recording.assert_called_once_with(
+        database.v2_set_session_recording.assert_called_once_with(
             "session-1",
             "recording-1",
         )

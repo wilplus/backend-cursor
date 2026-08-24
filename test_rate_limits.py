@@ -227,46 +227,6 @@ class KeyingTests(_Base):
         self.assertEqual(r.status_code, 200)
 
 
-class GuestFunnelTests(_Base):
-    """The anonymous funnel keeps its two hourly caps and its 429 copy —
-    only the storage moved out of the in-process dict."""
-
-    ENV = {"RATE_LIMIT_ENABLED": "1",
-           "GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR": "2",
-           "GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR": "3"}
-
-    def _funnel_app(self):
-        def build(app, r):
-            @app.route("/upload", methods=["POST"])
-            @r.guest_funnel_limit
-            def upload():
-                return jsonify(ok=True), 201
-        return self._app(build)
-
-    def test_per_ip_cap_comes_from_config(self):
-        c = self._funnel_app().test_client()
-        head = {"X-Forwarded-For": "5.5.5.5"}
-        self.assertEqual([c.post("/upload", headers=head).status_code
-                          for _ in range(3)], [201, 201, 429])
-
-    def test_global_cap_survives_ip_rotation(self):
-        """The botnet case: the per-IP cap alone would never trip."""
-        c = self._funnel_app().test_client()
-        codes = [c.post("/upload",
-                        headers={"X-Forwarded-For": f"7.7.7.{i}"}).status_code
-                 for i in range(5)]
-        self.assertEqual(codes[:3], [201, 201, 201])
-        self.assertEqual(codes[3:], [429, 429])
-
-    def test_keeps_the_existing_429_copy(self):
-        c = self._funnel_app().test_client()
-        head = {"X-Forwarded-For": "5.5.5.5"}
-        for _ in range(3):
-            r = c.post("/upload", headers=head)
-        self.assertEqual(r.get_json()["code"], "RATE_LIMITED")
-        self.assertEqual(r.get_json()["error"], self.rl.GUEST_FUNNEL_MESSAGE)
-
-
 class RegenerateTests(_Base):
     """The icebreaker double-click guard: one per session per minute,
     overridable with force=true."""
@@ -410,12 +370,11 @@ class WrappedTransparencyTests(_Base):
                 self.assertEqual(view.__wrapped__(), "HANDLER")
 
     def test_wrapped_survives_stacked_limit_decorators(self):
-        """The guest funnel applies two, and regenerate stacks under llm."""
+        """Regenerate remains transparent when stacked under llm."""
         handler, authed = self._auth_stack()
-        for factory in (self.rl.guest_funnel_limit,
-                        lambda f: self.rl.llm_limit(self.rl.regenerate_limit(f))):
-            with self.subTest(factory=factory):
-                self.assertEqual(factory(authed).__wrapped__(), "HANDLER")
+        def factory(f):
+            return self.rl.llm_limit(self.rl.regenerate_limit(f))
+        self.assertEqual(factory(authed).__wrapped__(), "HANDLER")
 
     def test_undecorated_handler_keeps_pointing_at_itself(self):
         """No inner decorator to skip — __wrapped__ is the handler."""
@@ -472,7 +431,7 @@ class RealRouteTransparencyTests(unittest.TestCase):
             mod = _life_mod if path == "routes/life_routes.py" else _v2_mod
             for name in expected:
                 capped[name] = mod
-        self.assertGreater(len(capped), 30, "route list went stale")
+        self.assertGreaterEqual(len(capped), 30, "route list went stale")
         for name, mod in capped.items():
             with self.subTest(route=name):
                 view = getattr(mod, name, None)
@@ -532,9 +491,6 @@ class CoveredRoutesTests(unittest.TestCase):
             "v2_admin_regenerate_next_session_icebreaker": "regenerate_limit",
             "v2_admin_suggest_directives_queue": "llm_limit",
         },
-        "routes/v2/funnel.py": {
-            "v2_public_shaky_voice_upload": "guest_funnel_limit",
-        },
         "routes/v2/explore_ideal_text.py": {
             "v2_explore_save_ideal_text": "llm_limit",
             "v2_explore_decide_block": "llm_limit",
@@ -580,7 +536,7 @@ class CoveredRoutesTests(unittest.TestCase):
         root = os.path.dirname(os.path.abspath(__file__))
         with open(os.path.join(root, "routes/v2_routes.py")) as fh:
             source = fh.read()
-        for ghost in ("_guest_funnel_rate_limit", "_icebreaker_regen_last",
+        for ghost in ("_icebreaker_regen_last",
                       "_ICEBREAKER_REGEN_RATE_LIMIT_SEC"):
             with self.subTest(ghost=ghost):
                 self.assertNotIn(f"{ghost} =", source)
@@ -611,15 +567,6 @@ class ConfigTests(_Base):
             self.assertEqual(self.rl.llm_limit_value(), "7 per second")
         with patch.dict(os.environ, {"RATE_LIMIT_LLM": "  "}):
             self.assertEqual(self.rl.llm_limit_value(), self.rl.DEFAULT_LLM_LIMIT)
-
-    def test_guest_funnel_values_track_their_config_vars(self):
-        with patch.dict(os.environ, {"GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR": "9",
-                                     "GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR": "77"}):
-            self.assertEqual(self.rl.guest_funnel_ip_limit_value(), "9 per hour")
-            self.assertEqual(self.rl.guest_funnel_global_limit_value(), "77 per hour")
-        with patch.dict(os.environ, {"GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR": "junk"}):
-            self.assertEqual(self.rl.guest_funnel_ip_limit_value(), "5 per hour")
-
 
 class LiveLoopTests(_Base):
     """CLAUDE.md's hard fence: the limiter must never be the reason a
@@ -671,7 +618,6 @@ class LiveLoopTests(_Base):
             self.assertIs(self.rl.llm_limit(view), view)
             self.assertIs(self.rl.whisper_limit(view), view)
             self.assertIs(self.rl.heavy_limit(view), view)
-            self.assertIs(self.rl.guest_funnel_limit(view), view)
             self.assertIs(self.rl.regenerate_limit(view), view)
         self.assertIsNone(null.init_app(Flask("null-probe")))
 

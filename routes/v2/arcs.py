@@ -5,16 +5,16 @@
   /v2/arc/*            checkout, redeem, unlock, unlock-moments
                        + snippet-library stubs
 
-Plus the arc leaves the other domain modules depend on: deck identity and
-arc continuation (the Lab upload path), entitlement, and the moment maps the
-ideal-text read folds in.
+Plus the historical presentation grouping used by deletion/read surfaces,
+entitlement, and the moment maps the Ideal Text read folds in. New Takes use
+only immutable canonical Project IDs; this module never assigns them.
 
 Moved verbatim out of ``routes/v2_routes.py`` (phases 1-2 for the helpers,
 phase 4 for the routes); bodies are byte-identical. Routes register on the
 SAME ``v2_bp`` object, so endpoint names and the URL map are unchanged.
 
-Imported by routes/v2/explore_ideal_text.py, lab_recording.py, coach.py and
-user_sessions.py -- so this module must never import from them.
+Imported by routes/v2/explore_ideal_text.py, coach.py and user_sessions.py --
+so this module must never import from them.
 
 Re-exported from ``routes.v2_routes`` for import compatibility.
 """
@@ -32,6 +32,9 @@ from routes.admin import is_admin, is_coach
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _resolve_snippet_audio_url
 from services.db import db
+from services.create_take import session_owned_by_principal
+from services.project_ownership import GUEST_OWNER_HEADER
+from services.project_repository import ProjectRepository
 from services.token_prices import price_of as _price_of
 
 logger = logging.getLogger(__name__)
@@ -107,102 +110,6 @@ def _presentation_group_key(ctx) -> str:
     norm = " ".join(topic.strip().lower().split())
     # Namespaced so a topic key can never collide with a deck hash.
     return "t:" + hashlib.sha1(norm.encode("utf-8")).hexdigest()[:14]
-
-
-def _continue_deck_arc(user_id, slides, fresh_arc_id, fresh_take_index):
-    """Continue-one-arc (single-deliverable, founder 2026-07-17): every take of
-    the SAME deck (same user) joins that deck's most-developed arc — takes
-    append forever (the old 3-take batch cap is retired).
-
-    Matches by the stable deck-hash across the user's lab sessions and continues
-    the deck's MOST-developed arc (consistent with the /strengths group arc,
-    #132). Returns (arc_id, take_index). Falls back to the freshly-minted arc
-    for a NEW deck / deckless / guest / a full batch / any error — never raises
-    into the record path. The current session is skipped because its arc_id
-    isn't set yet.
-    """
-    if not user_id or not slides:
-        return fresh_arc_id, fresh_take_index
-    try:
-        pid = _presentation_id_from_slides(slides)
-        if not pid:
-            return fresh_arc_id, fresh_take_index
-        counts: dict = {}
-        for s in (db.v2_list_user_lab_sessions(user_id) or []):
-            ctx = s.get("intake_context") if isinstance(
-                s.get("intake_context"), dict) else {}
-            s_slides = (ctx or {}).get("slides") or []
-            aid = s.get("arc_id")
-            if not s_slides or not aid:
-                continue
-            if _presentation_id_from_slides(s_slides) == pid:
-                counts[aid] = counts.get(aid, 0) + 1
-        # Batch cap (founder re-lock 2026-07-11): only arcs with an OPEN
-        # batch are joinable — the most-developed open one wins (so take 5
-        # fills batch 2 instead of minting a third arc). All full → the
-        # fresh arc starts the next batch, counter back to take 1.
-        # SINGLE DELIVERABLE (founder re-shape 2026-07-17, cap lock
-        # overturned): takes append to the presentation FOREVER — one deck =
-        # one presentation; only a new deck/topic mints a new one.
-        open_arcs = dict(counts)
-        if not open_arcs:
-            return fresh_arc_id, fresh_take_index
-        best_arc = max(open_arcs.items(), key=lambda kv: kv[1])[0]
-        return best_arc, open_arcs[best_arc] + 1
-    except Exception as e:
-        logger.warning("continue_deck_arc failed user=%s: %s", user_id, e)
-        return fresh_arc_id, fresh_take_index
-
-
-def _continue_topic_arc(user_id, topic, fresh_arc_id, fresh_take_index):
-    """Continue-one-arc for DECKLESS takes (founder bug #4/#6, 2026-07-06):
-    the conversational practice flow has no deck, so the deck-hash continue
-    never matched and every take minted a FRESH arc — splitting one training
-    across arcs (wrong counter, cadence mismatch, coach saw one take per arc).
-
-    Same doctrine as _continue_deck_arc, keyed on the NORMALIZED TOPIC (the
-    "same talk"): re-recording the same-titled talk joins its most-developed
-    existing arc — takes append forever (the old 3-take batch cap is retired).
-    New topic / guest / no topic / any error → the fresh arc.
-    Never raises into the record path."""
-    if not user_id or not isinstance(topic, str) or not topic.strip():
-        return fresh_arc_id, fresh_take_index
-    try:
-        norm = " ".join(topic.strip().lower().split())
-        counts: dict = {}
-        for s in (db.v2_list_user_lab_sessions(user_id) or []):
-            ctx = s.get("intake_context") if isinstance(
-                s.get("intake_context"), dict) else {}
-            s_topic = (ctx or {}).get("topic")
-            aid = s.get("arc_id")
-            if not aid or not isinstance(s_topic, str):
-                continue
-            # NO-REAL-DECK candidates only: a scaffold take must not join a
-            # take's arc that was recorded against an UPLOADED deck, whose
-            # slides are different words entirely.
-            #
-            # ⚠️ 2026-08-15 — this tested `ctx.get("slides")` until today, back
-            # when "has slides" and "has a deck" were the same statement. The
-            # DEFAULT DECK (2026-08-11) gives every deckless take slides, so
-            # that test started skipping EVERY candidate: topic continuation
-            # matched nothing, and re-recording the same talk minted a fresh
-            # arc each time — the exact split this function was written to fix
-            # (founder bug #4/#6). The uploaded deck is marked by its PDF, so
-            # the ref is what to test. Same rule as the record path's branch.
-            if (ctx or {}).get("presentation_ref"):
-                continue
-            if " ".join(s_topic.strip().lower().split()) == norm:
-                counts[aid] = counts.get(aid, 0) + 1
-        # Batch cap — same open-batch rule as _continue_deck_arc; lifted
-        # entirely under the single deliverable (takes append forever).
-        open_arcs = dict(counts)
-        if not open_arcs:
-            return fresh_arc_id, fresh_take_index
-        best_arc = max(open_arcs.items(), key=lambda kv: kv[1])[0]
-        return best_arc, open_arcs[best_arc] + 1
-    except Exception as e:
-        logger.warning("continue_topic_arc failed user=%s: %s", user_id, e)
-        return fresh_arc_id, fresh_take_index
 
 
 def _arc_audit_paid(arc_id, user_id):
@@ -575,11 +482,9 @@ def v2_explore_arc_progress(arc_id):
     already loaded), mirroring services/best_presentation.py's definition —
     the ideal-text payload stays the authoritative gate.
 
-    GUEST-capable since 2026-07-16 (the signed-out-first flow polls this from
-    the instant readout — it was 401-ing): a FULLY-UNCLAIMED arc (every
-    session user_id NULL) is readable to the bare arc id — the same
-    capability-by-uuid rule as the guest readout; any claimed session in the
-    arc → owner-only (404 to any other/no caller, no existence leak).
+    GUEST-capable: the matching signed Guest ID may read the Project's progress
+    before signup. A bare Project UUID is never authorization; account-owned
+    Projects remain owner-only with the same 404 no-existence-leak behavior.
 
     Response 200 { arc_id, takes_done, takes_target, takes_remaining, ready,
                    coach_finalized }
@@ -591,10 +496,19 @@ def v2_explore_arc_progress(arc_id):
         if not sessions:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         _caller = getattr(request, "user_id", None)
-        _owners = {str(s.get("user_id")) for s in sessions if s.get("user_id")}
-        _owned = bool(_caller) and str(_caller) in _owners
-        _guest_ok = not _owners  # fully-unclaimed arc → capability by uuid
-        if not (_owned or _guest_ok):
+        _first = sessions[0]
+        if not session_owned_by_principal(
+            _first,
+            repository=ProjectRepository(db),
+            user_id=_caller,
+            guest_token=request.headers.get(GUEST_OWNER_HEADER),
+        ):
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        _principal_id = str(_first.get("owner_principal_id") or "")
+        if _principal_id and any(
+            str(s.get("owner_principal_id") or "") != _principal_id
+            for s in sessions
+        ):
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         # Canonical deck size = the most-complete deck across takes (same
         # rule as compose); deckless arcs (no deck) are never "finalized".
@@ -913,16 +827,12 @@ def _moment_suggestions_enabled() -> bool:
 
 
 def _take_full_text(session_id):
-    """A take's feedback text: pieces in speech order, per piece the coach
-    correction > the user's approved edit > the raw transcript (locked
-    assumption A1). Plain text, no playback, no scores."""
+    """A take's text without silently applying a coach proposal.
+
+    The user's accepted edit wins; otherwise the original transcript remains.
+    Coach rewrites are separate FeedbackItems until the user accepts them.
+    """
     snips = db.get_snippets_by_session(session_id) or []
-    corrections = {}
-    for d in (db.get_coach_snippet_drafts(session_id) or []):
-        _sid = str(d.get("snippet_id"))
-        _tx = (d.get("transcript_corrected") or "").strip()
-        if _sid and _tx:
-            corrections[_sid] = _tx
     edits = {}
     try:
         for e in (db.get_user_transcript_edits(session_id) or []):
@@ -933,8 +843,8 @@ def _take_full_text(session_id):
     parts = []
     for s in sorted(snips, key=lambda x: (x.get("start_offset_ms") or 0)):
         _sid = str(s.get("id"))
-        txt = (corrections.get(_sid) or edits.get(_sid)
-               or s.get("transcript") or s.get("transcription_text") or "")
+        txt = (edits.get(_sid) or s.get("transcript")
+               or s.get("transcription_text") or "")
         txt = txt.strip()
         if txt:
             parts.append(txt)

@@ -336,7 +336,7 @@ def prepare_training_import(
     if duration_sec:
         session_context["duration_sec"] = round(duration_sec, 1)
     try:
-        database.v2_create_guest_session(session_id)
+        database.v2_create_internal_session(session_id)
         database.set_session_intake_context(session_id, session_context)
         # THE MARKER IS NOT OPTIONAL — fail loudly if it doesn't land.
         #
@@ -423,7 +423,7 @@ def prepare_training_import(
             logger.error("training_import: create_recording failed: %s", ce)
             return {"ok": False, "reason": "recording_failed", "detail": str(ce)}
     try:
-        database.v2_set_guest_session_recording(session_id, recording_id)
+        database.v2_set_session_recording(session_id, recording_id)
     except Exception as le:
         logger.warning("training_import: link recording failed: %s", le)
 

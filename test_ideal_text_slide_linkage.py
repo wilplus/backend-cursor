@@ -178,139 +178,14 @@ class SlideLinkageTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class MasterDocumentProvenanceTests(unittest.TestCase):
-    """Under the master flag the skeleton blocks own slide_index — a
-    single-block document attaches it; the block's real status rides."""
+class MasterDocumentRetirementTests(unittest.TestCase):
+    """A stale environment flag cannot revive the retired experiment."""
 
-    def setUp(self):
-        self.app = Flask(__name__)
+    def test_master_document_flag_is_permanently_disabled(self):
+        from services.master_document import master_document_enabled
 
-    def _get(self, *, blocks, text):
-        sessions = [_sess("t1", 1, presentation_ref=DECK)]
-        row = _row(auto_text=text)
-        with self.app.test_request_context():
-            request.user_id = "u1"
-            with patch.dict(os.environ,
-                            {"LIVING_TRANSCRIPT_ENABLED": "1",
-                             "MASTER_DOCUMENT_ENABLED": "1"}), \
-                 patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
-                              return_value=(True, sessions)), \
-                 patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
-                 patch("routes.v2.explore_ideal_text._moment_explanations_map",
-                              return_value={}), \
-                 patch("routes.v2.explore_ideal_text._ideal_save_state",
-                              return_value={}), \
-                 patch("routes.v2.explore_ideal_text._tracked_changes_block",
-                              return_value={}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
-                              return_value=row), \
-                 patch.object(v2.db, "get_user_ideal_edit",
-                              return_value=None), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
-                              return_value=None), \
-                 patch.object(v2.db, "list_ideal_text_blocks",
-                              return_value=blocks, create=True):
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
-            resp, status = out if isinstance(out, tuple) else (out, 200)
-            return resp.get_json(), status
-
-    def test_single_block_attaches_the_blocks_slide(self):
-        blocks = [{"block_key": 0, "active": True, "status": "settled",
-                   "slide_index": 4,
-                   "incumbent_take_session_id": "t1",
-                   "incumbent_take_index": 1,
-                   "incumbent_pieces": [{"snippet_id": "sn1",
-                                         "text": "The words."}],
-                   "challenger_take_index": None}]
-        body, status = self._get(blocks=blocks, text="The words.")
-        self.assertEqual(status, 200)
-        pieces = body["pieces"]
-        self.assertEqual(len(pieces), 1)
-        self.assertEqual(pieces[0]["slide_index"], 4)
-        self.assertEqual(pieces[0]["snippet_id"], "sn1")
-        self.assertEqual(pieces[0]["status"], "settled")
-        # The keyed pill→picker join (FE picker handoff 2026-08-03).
-        self.assertEqual(pieces[0]["block_key"], 0)
-
-    def test_pending_upgrade_status_rides_honestly(self):
-        blocks = [{"block_key": 0, "active": True,
-                   "status": "pending_upgrade", "slide_index": 0,
-                   "incumbent_take_session_id": "t1",
-                   "incumbent_take_index": 1,
-                   "incumbent_pieces": [{"snippet_id": "sn1",
-                                         "text": "The words."}],
-                   "challenger_take_index": 2}]
-        body, _ = self._get(blocks=blocks, text="The words.")
-        self.assertEqual(body["pieces"][0]["status"], "pending_upgrade")
-        self.assertEqual(body["pieces"][0]["challenger"], 2)
-
-    def test_multi_block_single_paragraph_degrades_to_null(self):
-        # A LEGACY/stale persisted text: two blocks but one served
-        # paragraph (the pre-§11.1 space-join wall). The mirror emits one
-        # row per would-be paragraph (2), the wall has 1 — counts
-        # disagree, every index degrades to null rather than guessing.
-        # Self-heals on the next take, when the capped assembly persists.
-        blocks = [
-            {"block_key": 0, "active": True, "status": "settled",
-             "slide_index": 0, "incumbent_take_session_id": "t1",
-             "incumbent_take_index": 1,
-             "incumbent_pieces": [{"snippet_id": "sn1", "text": "One."}],
-             "challenger_take_index": None},
-            {"block_key": 10, "active": True, "status": "settled",
-             "slide_index": 1, "incumbent_take_session_id": "t1",
-             "incumbent_take_index": 1,
-             "incumbent_pieces": [{"snippet_id": "sn2", "text": "Two."}],
-             "challenger_take_index": None},
-        ]
-        body, _ = self._get(blocks=blocks, text="One. Two.")
-        self.assertEqual(len(body["pieces"]), 1)
-        self.assertIsNone(body["pieces"][0]["slide_index"])
-
-    def test_two_blocks_two_paragraphs_both_attach(self):
-        # The §11.1 world: block boundary = paragraph boundary, so the
-        # capped assembly's text aligns 1:1 and both slides attach.
-        blocks = [
-            {"block_key": 0, "active": True, "status": "settled",
-             "slide_index": 0, "incumbent_take_session_id": "t1",
-             "incumbent_take_index": 1,
-             "incumbent_pieces": [{"snippet_id": "sn1", "text": "One."}],
-             "challenger_take_index": None},
-            {"block_key": 10, "active": True, "status": "settled",
-             "slide_index": 1, "incumbent_take_session_id": "t1",
-             "incumbent_take_index": 1,
-             "incumbent_pieces": [{"snippet_id": "sn2", "text": "Two."}],
-             "challenger_take_index": None},
-        ]
-        body, _ = self._get(blocks=blocks, text="One.\n\nTwo.")
-        self.assertEqual([p["slide_index"] for p in body["pieces"]],
-                         [0, 1])
-        self.assertEqual([p["block_key"] for p in body["pieces"]],
-                         [0, 10])
-
-    def test_a_capped_block_serves_one_row_per_paragraph_same_slide(self):
-        # SPEC §11.1: a long block packs into SEVERAL served paragraphs.
-        # The provenance mirror runs the same packer over the same rows,
-        # so the counts align and every sibling paragraph carries the
-        # block's slide and key. (3 × ~90-char pieces pack [2, 1] under
-        # the 200 cap — the served text just has to agree on the count.)
-        long_piece = "x" * 90
-        blocks = [
-            {"block_key": 7, "active": True, "status": "settled",
-             "slide_index": 4, "incumbent_take_session_id": "t1",
-             "incumbent_take_index": 1,
-             "incumbent_pieces": [
-                 {"snippet_id": f"sn{i}", "text": long_piece}
-                 for i in range(3)],
-             "challenger_take_index": None},
-        ]
-        body, _ = self._get(blocks=blocks,
-                            text="first served paragraph\n\nsecond one")
-        self.assertEqual([p["slide_index"] for p in body["pieces"]],
-                         [4, 4])
-        self.assertEqual([p["block_key"] for p in body["pieces"]],
-                         [7, 7])
-        self.assertEqual([p["snippet_id"] for p in body["pieces"]],
-                         ["sn0", "sn2"])
+        with patch.dict(os.environ, {"MASTER_DOCUMENT_ENABLED": "1"}):
+            self.assertFalse(master_document_enabled())
 
 
 @unittest.skipIf(Flask is None, f"flask/app import failed: {_IMPORT_ERROR}")

@@ -2,7 +2,7 @@
 
 Mirrors the proven afterwards-video handler: store via coach_video_storage,
 persist coach_video_ref on the session (the publish contract folds it into
-insights_payload — covered in test_coach_publish). Storage + db are stubbed;
+canonical feedback publishing — covered in test_coach_publish). Storage + db are stubbed;
 the view is invoked via __wrapped__ (auth covered by test_coach_auth).
 
 Run: python3 -m unittest test_coach_video

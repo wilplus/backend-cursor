@@ -464,14 +464,13 @@ def build_readout_from_session(
     + the persisted stickiness sub-key), in chronological order
     (start_offset_ms ASC — the honest "what happened" order).
 
-    Post-publish (include_insights), folds the coach layer UNCONDITIONALLY —
-    founder re-price 2026-07-06 RETIRES the per-take/free-intro teaser scoping
-    (there is no more take-level or first-arc-ever branching here):
-      - top-level ``insights_payload`` (overall_message + snippet_notes)
-      - per-snippet ``coach`` {note, tag, transcript_corrected, when, examples}
-        matched by snippet_id (null/[] when the note omits them)
-    This is FREE for every take of every arc the instant the coach saves +
-    surfaces it — no payment check. Only FOUR surfaces stay paid: the coach-
+    Post-publish (include_insights), exposes one canonical coach layer:
+      - top-level ``feedback_items`` with exact project/take/slide/paragraph
+        evidence;
+      - top-level ``coach_review`` for the optional take-level summary/video.
+    Drafts never leak before publish and an empty feedback-items list is a
+    successful "no changes needed" result. This is FREE for every take of
+    every arc — no payment check. Only FOUR surfaces stay paid: the coach-
     corrected ideal text (services/best_presentation.py coach_finalized),
     the cross-take breakthroughs LIST, the game, and the snippet library —
     none of which this function serves.
@@ -488,7 +487,8 @@ def build_readout_from_session(
     nothing to surface.
 
     Owner-scoping is the caller's job (the route). Returns
-    {"snippets": [...], "insights_payload"?: {...}, "slide_transcripts"?: [...]}.
+    {"snippets": [...], "feedback_items"?: [...], "coach_review"?: {...},
+     "slide_transcripts"?: [...]}.
     """
     from services.db import db
 
@@ -553,30 +553,19 @@ def build_readout_from_session(
             session = db.v2_get_session_by_id(session_id) or {}
         except Exception:
             session = {}
-        ip = session.get("insights_payload")
-        if isinstance(ip, dict):
-            notes_by_id = {
-                n["snippet_id"]: n
-                for n in (ip.get("snippet_notes") or [])
-                if isinstance(n, dict) and n.get("snippet_id")
+        if session.get("results_published_at"):
+            from services.feedback_repository import (
+                FeedbackRepository,
+                serialize_feedback_item,
+            )
+            items = FeedbackRepository(db).surfaced_items(
+                str(session_id), published_only=True,
+            )
+            result["feedback_items"] = [
+                serialize_feedback_item(item) for item in items
+            ]
+            result["coach_review"] = {
+                "overall_message": session.get("coach_overall_message"),
+                "video_ref": session.get("coach_video_ref"),
             }
-            # UNCONDITIONAL fold — free for every take of every arc the instant
-            # the coach saves + surfaces it (no payment check at all).
-            result["insights_payload"] = ip
-            for snip in out_snips:
-                cn = notes_by_id.get(snip["id"])
-                if cn:
-                    snip["coach"] = {
-                        "note": cn.get("note"),
-                        "tag": cn.get("tag"),
-                        # A real coach-authored artifact (founder 2026-07-06),
-                        # distinct from the immutable raw transcript above.
-                        # None until the coach saves one.
-                        "transcript_corrected": cn.get("transcript_corrected"),
-                        # PR-2 — optional coach fields; None/[] when the
-                        # note omits them (FE hides when absent). Older
-                        # published payloads predate these keys → absent.
-                        "when": cn.get("when"),
-                        "examples": cn.get("examples") or [],
-                    }
     return result

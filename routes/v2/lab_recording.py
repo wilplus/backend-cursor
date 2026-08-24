@@ -15,12 +15,14 @@ import json
 import logging
 import os
 import uuid
+from dataclasses import dataclass
+from typing import Any, Mapping
 
 import sentry_sdk
 from flask import jsonify, request
 
 from auth import optional_auth
-from routes.v2.arcs import _arc_audit_paid, _continue_deck_arc, _continue_topic_arc
+from routes.v2.arcs import _arc_audit_paid
 from routes.v2.blueprint import v2_bp
 from services.rate_limits import heavy_limit, whisper_limit
 # Module scope on purpose: `except DeadlineExceeded` in the upload routes
@@ -42,16 +44,19 @@ from services.lab_recording_intake import (
     parse_session_context,
 )
 from services.lab_audio_intake import read_recording_upload
-from services.lab_project_identity import (
-    ensure_presentation_unchanged,
-    find_duplicate_upload,
-    validate_project_selection,
+from services.create_take import (
+    CreateTakeError,
+    TakeCoordinates,
+    TakeProjectContext,
+    attach_recording_to_project,
+    ensure_project_presentation_unchanged,
+    session_owned_by_principal,
+    resolve_take_project,
 )
 from services.lab_recording_gate import (
     RecordingRejected,
     require_analyzable_recording,
 )
-from services.lab_arc_assignment import assign_recording_arc
 from services.lab_analysis_dispatch import (
     AnalysisInputs,
     CompletedAnalysis,
@@ -65,6 +70,8 @@ from services.lab_recording_persistence import (
     store_recording_audio,
 )
 from services.lab_recording_response import build_completed_recording_response
+from services.project_ownership import GUEST_OWNER_HEADER
+from services.project_repository import ProjectRepository
 
 from config import Config
 
@@ -209,416 +216,301 @@ def _recording_flow_tags(form) -> dict:
     return tags
 
 
-# ── willab beta — Lab upload handler (design §4, contract §3.3) ──────
-#
-# The convergence: multipart audio + inline session_context → min-content
-# gate → store → Whisper → segment → features → per-snippet stickiness →
-# §3.3 Readout payload, synchronously (FE confirmed multipart-sync).
-#
-# AUTH-MODEL ASSUMPTIONS (flagged for FE — easy to change, the route is
-# thin):
-#   (a) PUBLIC / guest-allowed — the willab pre-send flow is unsigned
-#       (account is created only at Send, §13), so the Lab records as a
-#       guest. Mirrors the existing /v2/public/interview/* funnel:
-#       guest_session_id keyed, user_id=NULL, claimed at send via
-#       v2_claim_guest_session.
-#   (b) session_context arrives INLINE in the multipart (topic + optional
-#       audience/target_length_seconds/domain_vocabulary), because an
-#       unsigned user's session_context isn't on the server (the
-#       @require_auth /intake-context PUT is the signed-user variant).
-# If FE wants optional-auth (use the real user_id when a JWT is present)
-# or a separate guest session_context step, say so — small change.
+@dataclass(frozen=True)
+class PreparedLabUpload:
+    form: Mapping[str, Any]
+    project: TakeProjectContext
+    audio_file: Any
+    audio_bytes: bytes
+    context_document: dict | None
+    deadline: Any
+    recording_kind: str
+    paired_take_id: str | None
+    session_context: dict[str, Any]
+    gate: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PersistedLabTake:
+    session_id: str
+    recording_id: str
+    bucket: str
+    storage_key: str
+    audio_url: str
+    duration_seconds: int
+    uploader_id: str | None
+    coordinates: TakeCoordinates
+
+
+def _intake_error(error: Exception) -> RecordingIntakeError:
+    return RecordingIntakeError("INVALID_INPUT", str(error), 422)
+
+
+def _seed_domain_vocabulary(
+    session_context: dict[str, Any],
+    user_id: str | None,
+) -> None:
+    if not user_id:
+        return
+    try:
+        from services.domains import resolve_whisper_vocab
+        domain = (db.get_user_profile(user_id) or {}).get("domain")
+        session_context["domain_vocabulary"] = resolve_whisper_vocab(
+            session_context.get("domain_vocabulary"), domain,
+        )
+    except Exception as error:
+        logger.warning("lab: domain-vocab autoseed failed: %s", error)
+
+
+def _prepare_lab_upload(
+    form: Mapping[str, Any],
+    project: TakeProjectContext,
+    user_id: str | None,
+) -> PreparedLabUpload:
+    recording_upload = read_recording_upload(
+        request.files,
+        content_length=request.content_length,
+        max_audio_mb=_LAB_MAX_AUDIO_MB,
+        context_max_mb=getattr(config, "CONTEXT_DOC_MAX_MB", 25),
+        video_extensions=_VIDEO_UPLOAD_EXTS,
+    )
+    lane = parse_recording_lane(form, is_valid_uuid=_is_valid_uuid)
+    try:
+        session_context = parse_session_context(
+            form, parse_vocabulary=_parse_lab_vocabulary,
+        )
+    except Exception as error:
+        from services.intake_context import IntakeContextError
+        if isinstance(error, IntakeContextError):
+            raise _intake_error(error) from error
+        raise
+    ensure_project_presentation_unchanged(
+        project, session_context, database=db,
+    )
+    _seed_domain_vocabulary(session_context, user_id)
+    gate = require_analyzable_recording(
+        recording_upload.audio_bytes,
+        database=db,
+        project_id=project.project_id,
+        owner_principal_id=project.principal.id,
+        user_id=user_id,
+        log=logger,
+    )
+    return PreparedLabUpload(
+        form=form,
+        project=project,
+        audio_file=recording_upload.audio_file,
+        audio_bytes=recording_upload.audio_bytes,
+        context_document=recording_upload.context_document,
+        deadline=recording_upload.deadline,
+        recording_kind=lane.recording_kind,
+        paired_take_id=lane.paired_session_id,
+        session_context=session_context,
+        gate=gate,
+    )
+
+
+def _persist_context_document(upload: PreparedLabUpload) -> None:
+    document = upload.context_document
+    if not document:
+        return
+    stored = db.upsert_arc_context_document(
+        upload.project.project_id,
+        document["text"],
+        document["pages"],
+        document["chars"],
+        filename=document.get("filename"),
+        truncated=document["truncated"],
+    )
+    if not stored:
+        logger.warning(
+            "lab: context document was not persisted project=%s",
+            upload.project.project_id,
+        )
+
+
+def _persist_lab_take(
+    upload: PreparedLabUpload,
+    user_id: str | None,
+) -> PersistedLabTake:
+    stored = store_recording_audio(
+        upload.audio_file,
+        upload.audio_bytes,
+        upload_key=upload.project.idempotency_key,
+        owner_principal_id=upload.project.principal.id,
+        user_id=user_id,
+        database=db,
+        deadline=upload.deadline,
+        log=logger,
+    )
+    persist_session_metadata(
+        stored.session_id,
+        upload.session_context,
+        flow_tags=_recording_flow_tags(upload.form),
+        duration_seconds=upload.gate.get("duration_sec"),
+        user_id=user_id,
+        database=db,
+    )
+    coordinates = attach_recording_to_project(
+        upload.project,
+        recording_id=stored.session_id,
+        recording_kind=upload.recording_kind,
+        paired_take_id=upload.paired_take_id,
+        database=db,
+    )
+    _persist_context_document(upload)
+    recording_row = persist_recording_row(
+        form=upload.form,
+        session_id=stored.session_id,
+        recording_id=stored.recording_id,
+        storage_key=stored.storage_key,
+        audio_url=stored.audio_url,
+        gate=upload.gate,
+        user_id=user_id,
+        arc_id=coordinates.project_id,
+        take_index=coordinates.take_index,
+        database=db,
+        log=logger,
+    )
+    return PersistedLabTake(
+        session_id=stored.session_id,
+        recording_id=stored.recording_id,
+        bucket=stored.bucket,
+        storage_key=stored.storage_key,
+        audio_url=stored.audio_url,
+        duration_seconds=recording_row.duration_seconds,
+        uploader_id=recording_row.uploader_id,
+        coordinates=coordinates,
+    )
+
+
+def _analysis_response(
+    upload: PreparedLabUpload,
+    take: PersistedLabTake,
+    user_id: str | None,
+) -> tuple[dict, int]:
+    upload.deadline.check("analyze")
+    spark_enabled = str(upload.form.get("spark") or "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+    dispatch = dispatch_recording_analysis(
+        AnalysisInputs(
+            session_id=take.session_id,
+            user_id=take.uploader_id,
+            recording_id=take.recording_id,
+            audio_bytes=upload.audio_bytes,
+            filename=upload.audio_file.filename or "lab.webm",
+            session_context=upload.session_context,
+            parent_audio_url=take.audio_url,
+            recording_kind=upload.recording_kind,
+            paired_session_id=upload.paired_take_id,
+            arc_id=take.coordinates.project_id,
+            take_index=take.coordinates.take_index,
+            arc_take_count=take.coordinates.take_count,
+            spark_enabled=spark_enabled,
+            bucket=take.bucket,
+            storage_key=take.storage_key,
+            duration_seconds=take.duration_seconds,
+        ),
+        database=db,
+        queue_enabled=_pipeline_queue_enabled,
+        async_enabled=_async_analysis_enabled,
+        audit_paid_for_arc=_arc_audit_paid,
+        log=logger,
+    )
+    if isinstance(dispatch, PendingAnalysis):
+        payload = dict(dispatch.payload)
+        payload["project_id"] = take.coordinates.project_id
+        return payload, 202
+    if not isinstance(dispatch, CompletedAnalysis):
+        raise RuntimeError("analysis dispatch returned an invalid result")
+    payload = build_completed_recording_response(
+        session_id=take.session_id,
+        recording_id=take.recording_id,
+        session_context=upload.session_context,
+        readout=dispatch.readout,
+        sent_to_coach=dispatch.sent_to_coach,
+        arc_id=take.coordinates.project_id,
+        take_index=take.coordinates.take_index,
+        take_count=take.coordinates.take_count,
+        duration_seconds=take.duration_seconds,
+        user_id=user_id,
+        database=db,
+        audit_paid_for_arc=_arc_audit_paid,
+        log=logger,
+    )
+    payload["project_id"] = take.coordinates.project_id
+    return payload, 201
+
+
+def _duplicate_take_response(context: TakeProjectContext) -> dict[str, Any]:
+    duplicate = context.duplicate_take or {}
+    return {
+        "duplicate": True,
+        "session_id": duplicate.get("id"),
+        "project_id": context.project_id,
+        "arc_id": context.project_id,
+        "take_index": duplicate.get("take_index"),
+        "take_count": duplicate.get("take_index"),
+    }
+
+
+def _owned_recording_session(session_id: str) -> dict | None:
+    """Return a Take only when the request proves its canonical owner."""
+    session = db.v2_get_session_by_id(session_id)
+    if not session_owned_by_principal(
+        session,
+        repository=ProjectRepository(db),
+        user_id=getattr(request, "user_id", None),
+        guest_token=request.headers.get(GUEST_OWNER_HEADER),
+    ):
+        return None
+    return session
 
 
 @v2_bp.route("/lab/recordings", methods=["POST"])
 @whisper_limit
 @optional_auth
 def v2_lab_create_recording():
-    """willab Lab upload — multipart, synchronous, guest-allowed (§3.3).
-
-    Multipart form fields:
-      audio_file            (required) the recording
-      topic                 (required) session_context topic
-      audience              (optional)
-      strategic_context     (optional) short free-text note on the stakes /
-                            setting / what the speaker wants to nail (④ step
-                            5) — BACKGROUND for the qualitative feedback, never
-                            the verbatim ideal text
-      target_length_seconds (optional, int)
-      domain_vocabulary     (optional, JSON array or comma-separated)
-      feeling               (optional) pre-take felt state (U10)
-      guest_session_id      (optional) reuse an existing guest session;
-                            else a fresh one is minted + returned
-      recording_kind        (optional) spoken (default) | read — a read is a
-                            paired variant, never a take of its own
-      paired_session_id     (required for read) the spoken take this read
-                            folds under; an unpaired read is invisible
-      paired_snippet_id     (REQUIRED for read since 2026-08-05, UUID) the
-                            delivery-star snippet this re-record targets.
-                            The only surviving reason to post a read: the
-                            ideal-text re-read is retired and a read
-                            without this is refused 422.
-      continue_arc_id       (optional, UUID) the project the user PICKED —
-                            the take appends strictly to it, the
-                            continue-arc heuristics are skipped, and the
-                            server numbers the take. Owner-only (404)
-      project_intent        (optional) new | continue. New clients send this
-                            explicit identity boundary: new MUST carry no arc
-                            id and always mints one; continue MUST carry the
-                            selected continue_arc_id. Legacy omission retains
-                            the prior heuristic behaviour.
-
-    Flow (invariant order):
-      1. read audio
-      2. validate session_context (topic required, §3.2/§5.10)
-      3. MIN-CONTENT GATE before any processing (§5.5) → 422 re-record
-      4. store parent audio + guest session + recording + session_context
-      5. process → §3.3 Readout payload (sync)
-
-    Responses:
-      201 { session_id, recording_id, session_context, readout:{snippets[]} }
-      400 INVALID_INPUT / AUDIO_FILE_REQUIRED — bad multipart
-      413 FILE_TOO_LARGE
-      422 INVALID_INPUT (topic) | RECORDING_REJECTED (gate: too_short/
-          no_speech — FE shows re-record)
-      500 V2_ERROR
-    """
+    """Create one strictly owned, project-scoped Take and analyze it."""
+    session_id = None
     try:
-        # ── 1. audio ────────────────────────────────────────────────
-        try:
-            recording_upload = read_recording_upload(
-                request.files,
-                content_length=request.content_length,
-                max_audio_mb=_LAB_MAX_AUDIO_MB,
-                context_max_mb=getattr(config, "CONTEXT_DOC_MAX_MB", 25),
-                video_extensions=_VIDEO_UPLOAD_EXTS,
-            )
-        except RecordingIntakeError as intake_error:
-            return jsonify({
-                "code": intake_error.code,
-                "error": intake_error.message,
-            }), intake_error.status
-        audio_file = recording_upload.audio_file
-        file_bytes = recording_upload.audio_bytes
-        _context_document = recording_upload.context_document
-        deadline = recording_upload.deadline
-
-        # ── 2. session_context (inline; topic required) ─────────────
-        from services.intake_context import IntakeContextError
         form = request.form or {}
-        try:
-            recording_lane = parse_recording_lane(
-                form,
-                is_valid_uuid=_is_valid_uuid,
-            )
-        except RecordingIntakeError as intake_error:
-            return jsonify({
-                "code": intake_error.code,
-                "error": intake_error.message,
-            }), intake_error.status
-        _rec_kind = recording_lane.recording_kind
-        _paired_session_id = recording_lane.paired_session_id
-
-        # ── EXPLICIT PROJECT SELECTION (founder 2026-07-22): the user
-        # PICKED this project from the list, so the server does not guess
-        # anything — the take appends strictly to that arc and BOTH
-        # continue-arc heuristics are skipped (see step 5). Distinct from
-        # the carried `arc_id` (takes 2/3 of one sitting), which keeps
-        # today's behavior so the continue-one-arc-per-deck lock
-        # (2026-06-20) is untouched.
-        #
-        # Validated HERE, before any storage: a take must never be stored
-        # against a project the caller does not own (same fail-fast rule
-        # as the read guard above). ──
-        try:
-            project_selection = validate_project_selection(
-                form,
-                user_id=getattr(request, "user_id", None),
-                database=db,
-                is_valid_uuid=_is_valid_uuid,
-                log=logger,
-            )
-        except RecordingIntakeError as intake_error:
-            return jsonify({
-                "code": intake_error.code,
-                "error": intake_error.message,
-            }), intake_error.status
-        _explicit_arc = project_selection.explicit_arc_id
-        _project_intent = project_selection.intent
-
-        try:
-            session_context = parse_session_context(
-                form,
-                parse_vocabulary=_parse_lab_vocabulary,
-            )
-        except IntakeContextError as validation_error:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": str(validation_error),
-            }), 422
-
-        # A project's Ideal Text, feedback, roots, and accepted flagships are
-        # indexed against the slide structure captured by Take 1.  Once that
-        # take exists, a continued-project upload must keep the exact deck.
-        # New-project requests carry no continue_arc_id and bypass this guard.
-        try:
-            ensure_presentation_unchanged(project_selection, session_context)
-        except RecordingIntakeError as intake_error:
-            return jsonify({
-                "code": intake_error.code,
-                "error": intake_error.message,
-            }), intake_error.status
-
-        # Collapse a retry by the captured-take key. Project display names are
-        # intentionally irrelevant: two same-named projects are valid and are
-        # kept independent by authenticated owner + immutable arc UUID.
-        _upload_key, duplicate_upload = find_duplicate_upload(
+        user_id = getattr(request, "user_id", None)
+        project = resolve_take_project(
             form,
-            database=db,
-            context_document=_context_document,
-            log=logger,
-        )
-        if duplicate_upload:
-            return jsonify({
-                "duplicate": True,
-                "session_id": duplicate_upload.get("id"),
-                "arc_id": duplicate_upload.get("arc_id"),
-                "take_index": duplicate_upload.get("take_index"),
-            }), 200
-
-        # Whisper-prime fallback: the FE dropped the keywords input, so
-        # domain_vocabulary now arrives empty. Auto-seed it from the user's
-        # DOMAIN so domain jargon still primes Whisper (transcription-only —
-        # feeds nothing else; an explicit list would still win). Authed only:
-        # guests have no profile domain → stays empty (slide titles still
-        # prime). Best-effort.
-        if getattr(request, "user_id", None):
-            try:
-                from services.domains import resolve_whisper_vocab
-                _dom = (db.get_user_profile(request.user_id) or {}).get("domain")
-                session_context["domain_vocabulary"] = resolve_whisper_vocab(
-                    session_context.get("domain_vocabulary"), _dom,
-                )
-            except Exception as _ve:
-                logger.warning("lab: domain-vocab autoseed failed: %s", _ve)
-
-        # ── 3. MIN-CONTENT GATE before processing (§5.5) ────────────
-        try:
-            gate = require_analyzable_recording(
-                file_bytes,
-                database=db,
-                form=form,
-                user_id=getattr(request, "user_id", None),
-                log=logger,
-            )
-        except RecordingRejected as rejected:
-            return jsonify({
-                "code": "RECORDING_REJECTED",
-                "error": "No speech detected — try recording again.",
-                "gate": rejected.gate,
-            }), 422
-
-        # ── 4. store + session + recording ──────────────────────────
-        # Lab audio is the USER's voice — its own bucket, not the coach's
-        # media bucket (P0 audit 2026-08-03). Inert until R2_LAB_AUDIO_*
-        # is provisioned; see services/lab_audio_storage.py.
-        # ── SESSION-REUSE GUARD (founder bug 2026-07-20: "after the
-        # re-read, recording the spoken version analyses the re-read").
-        # A session that ALREADY carries a recording is spent: reusing it
-        # made the new take inherit the previous one's lane (its
-        # recording_kind='read' + paired_session_id), so the fresh spoken
-        # audio was stored, analysed and folded as that re-read. A spent
-        # id is dropped and a fresh session minted — the response's
-        # `session_id` is authoritative and the FE adopts it. ──
-        try:
-            stored_recording = store_recording_audio(
-                audio_file,
-                file_bytes,
-                requested_session_id=form.get("guest_session_id"),
-                upload_key=_upload_key,
-                database=db,
-                deadline=deadline,
-                log=logger,
-            )
-        except RecordingPersistenceError as persistence_error:
-            return jsonify({
-                "code": "V2_ERROR",
-                "error": persistence_error.message,
-            }), 500
-        guest_session_id = stored_recording.session_id
-        recording_id = stored_recording.recording_id
-        bucket = stored_recording.bucket
-        parent_key = stored_recording.storage_key
-        parent_url = stored_recording.audio_url
-
-        # Recording-flow tags (founder 2026-07-20): the intake-context
-        # validator returns ONLY its canonical keys, so the flow tags the
-        # FE sends as flat multipart fields are folded in EXPLICITLY here
-        # (nothing "rides through" on its own).
-        persist_session_metadata(
-            guest_session_id,
-            session_context,
-            flow_tags=_recording_flow_tags(form),
-            duration_seconds=gate.get("duration_sec"),
-            user_id=getattr(request, "user_id", None),
+            user_id=user_id,
+            guest_token=request.headers.get(GUEST_OWNER_HEADER),
             database=db,
         )
-
-        # Spoken vs read (founder 2026-07-14). 'read' = the re-read of the
-        # suggestion-corrected text; it is a PAIRED VARIANT of its spoken take
-        # (paired_session_id), NOT a take of its own — so it inherits the
-        # spoken take's arc_id/take_index and never increments the counter.
-        # Explore-session arc (Prompt A §3) — link the takes of the SAME talk
-        # so they're comparable. Standalone recordings (no explore_session) →
-        # arc_id stays None; this is fully opt-in.
-        arc_assignment = assign_recording_arc(
-            form,
-            session_context=session_context,
-            recording_kind=_rec_kind,
-            paired_session_id=_paired_session_id,
-            explicit_arc_id=_explicit_arc,
-            project_intent=_project_intent,
-            user_id=getattr(request, "user_id", None),
-            session_id=guest_session_id,
-            database=db,
-            continue_deck_arc=_continue_deck_arc,
-            continue_topic_arc=_continue_topic_arc,
-        )
-        arc_id = arc_assignment.arc_id
-        take_index = arc_assignment.take_index
-        arc_take_count = arc_assignment.take_count
-
-        # Persist the Take-1 brief against the immutable project id before the
-        # worker is enqueued. The qualitative layer reads it from this table;
-        # it never becomes speaker text and never participates in project
-        # identity. This is best-effort like the existing arc upload endpoint:
-        # an optional document can sharpen feedback but cannot lose a take.
-        if _context_document and arc_id:
-            _stored_context = db.upsert_arc_context_document(
-                arc_id,
-                _context_document["text"],
-                _context_document["pages"],
-                _context_document["chars"],
-                filename=_context_document.get("filename"),
-                truncated=_context_document["truncated"],
-            )
-            if not _stored_context:
-                logger.warning(
-                    "lab: context document was not persisted arc=%s", arc_id,
-                )
-
-        # Founder re-lock 2026-07-06: recording/analysis/send are NEVER
-        # payment-gated — every take of every arc records, analyzes, and reaches
-        # the coach free. (The old take-3 402 here aborted unpaid takes before
-        # they persisted — the "coach only received take 1" bug.) Payment gates
-        # only the coach-HUMAN-feedback VIEW + the best-presentation deliverable.
-
-        # Pre-recording feeling (U10) — the user named their state before this
-        # take (nervous/excited/calm/unsure). Split-sink / AC-9: stored
-        # privately for the audit-stage correlation, NEVER scored or echoed.
-        # Optional + best-effort: a missing/unknown value just stores nothing.
-        try:
-            recording_row = persist_recording_row(
-                form=form,
-                session_id=guest_session_id,
-                recording_id=recording_id,
-                storage_key=parent_key,
-                audio_url=parent_url,
-                gate=gate,
-                user_id=getattr(request, "user_id", None),
-                arc_id=arc_id,
-                take_index=take_index,
-                database=db,
-                log=logger,
-            )
-        except RecordingPersistenceError as persistence_error:
-            return jsonify({
-                "code": "V2_ERROR",
-                "error": persistence_error.message,
-            }), 500
-        _rec_duration = recording_row.duration_seconds
-        _uploader_id = recording_row.uploader_id
-
-        # ── 5. process → Readout payload ─────────────────────────────
-        # The FULL analysis pipeline (transcribe → cut pieces → metrics →
-        # persist → cadence → auto-send → arc cards) as ONE worker so it can
-        # run either synchronously (legacy) or in a background daemon (async
-        # mode, founder 2026-07-15: closing the tab / locking the phone must
-        # never kill the analysis). Everything request-scoped is captured
-        # HERE — the daemon must never touch flask.request.
-        # Last boundary before the expensive stretch (transcribe → cut →
-        # metrics → persist). If the budget is already spent, fail clean
-        # here instead of starting work we can't finish.
-        deadline.check("analyze")
-        _cad_user = getattr(request, "user_id", None)
-        _worker_filename = audio_file.filename or "lab.webm"
-        _worker_spark = str(form.get("spark") or "").strip().lower() in (
-            "1", "true", "yes", "on",
-        )
-
-        dispatch = dispatch_recording_analysis(
-            AnalysisInputs(
-                session_id=guest_session_id,
-                user_id=_uploader_id,
-                recording_id=recording_id,
-                audio_bytes=file_bytes,
-                filename=_worker_filename,
-                session_context=session_context,
-                parent_audio_url=parent_url,
-                recording_kind=_rec_kind,
-                paired_session_id=_paired_session_id,
-                arc_id=arc_id,
-                take_index=take_index,
-                arc_take_count=arc_take_count,
-                spark_enabled=_worker_spark,
-                bucket=bucket,
-                storage_key=parent_key,
-                duration_seconds=_rec_duration,
-            ),
-            database=db,
-            queue_enabled=_pipeline_queue_enabled,
-            async_enabled=_async_analysis_enabled,
-            audit_paid_for_arc=_arc_audit_paid,
-            log=logger,
-        )
-        if isinstance(dispatch, PendingAnalysis):
-            return jsonify(dispatch.payload), 202
-        if not isinstance(dispatch, CompletedAnalysis):
-            raise RuntimeError("analysis dispatch returned an invalid result")
-        readout = dispatch.readout
-        _sent_to_coach = dispatch.sent_to_coach
-
-        response_payload = build_completed_recording_response(
-            session_id=guest_session_id,
-            recording_id=recording_id,
-            session_context=session_context,
-            readout=readout,
-            sent_to_coach=_sent_to_coach,
-            arc_id=arc_id,
-            take_index=take_index,
-            take_count=arc_take_count,
-            duration_seconds=_rec_duration,
-            user_id=getattr(request, "user_id", None),
-            database=db,
-            audit_paid_for_arc=_arc_audit_paid,
-            log=logger,
-        )
-        return jsonify(response_payload), 201
-
-    except DeadlineExceeded as de:
-        # The budget ran out between stages. The audio IS stored and the
-        # session row exists, so this is recoverable: the FE re-polls the
-        # readout rather than asking for a re-record.
-        logger.warning("lab/recordings POST deadline: %s", de)
+        if project.duplicate_take:
+            return jsonify(_duplicate_take_response(project)), 200
+        upload = _prepare_lab_upload(form, project, user_id)
+        persisted = _persist_lab_take(upload, user_id)
+        session_id = persisted.session_id
+        payload, status = _analysis_response(upload, persisted, user_id)
+        return jsonify(payload), status
+    except (CreateTakeError, RecordingIntakeError) as error:
+        return jsonify({"code": error.code, "error": error.message}), error.status
+    except RecordingRejected as error:
+        return jsonify({
+            "code": "RECORDING_REJECTED",
+            "error": "No speech detected — try recording again.",
+            "gate": error.gate,
+        }), 422
+    except RecordingPersistenceError as error:
+        return jsonify({"code": "V2_ERROR", "error": error.message}), 500
+    except DeadlineExceeded as error:
+        logger.warning("lab/recordings POST deadline: %s", error)
         return jsonify({
             "code": "PROCESSING_TIMEOUT",
             "error": "That recording is taking longer than expected — "
                      "it's still processing, check back shortly.",
-            "session_id": locals().get("guest_session_id"),
+            "session_id": session_id,
         }), 504
-    except Exception as e:
-        logger.error("lab/recordings POST failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
+    except Exception as error:
+        logger.error("lab/recordings POST failed: %s", error, exc_info=True)
+        sentry_sdk.capture_exception(error)
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to process recording",
         }), 500
@@ -627,45 +519,17 @@ def v2_lab_create_recording():
 @v2_bp.route("/lab/recordings/<session_id>/readout", methods=["GET"])
 @optional_auth
 def v2_guest_get_recording_readout(session_id):
-    """Re-read a GUEST recording's readout — the unauth twin of
-    /user/sessions/<id>/readout (bug fix 2026-07-13).
-
-    Why it exists: a signed-out user records, gets the inline 201 readout,
-    but the Say-It-Stronger cards generate a few seconds LATER (async
-    daemon), and re-opening the recording (the "Your Recording" chat
-    bubble) previously hit the @require_auth re-read → 401 → the FE's
-    "We couldn't load these insights" screen. This endpoint lets the FE
-    (a) POLL until the synonym cards populate and (b) re-open the
-    recording, both without auth.
-
-    Ownership model = the guest funnel's: the unguessable session UUID is
-    the capability. HARD RULE — only an UNCLAIMED session (user_id IS
-    NULL) is served without auth; once a session is CLAIMED by a user,
-    only that owner may read it (else 404, no existence leak). So this can
-    never surface a signed-in user's readout to a bare id.
-
-    Response mirrors the authed readout: 200 { session_id, state, readout }
-             · 400 bad uuid · 404 not found / claimed-by-another · 500
-    """
+    """Read one Take after verifying its authenticated or Guest ID owner."""
     if not _is_valid_uuid(session_id):
         return jsonify({
             "code": "INVALID_INPUT", "error": "session_id must be a valid UUID",
         }), 400
     try:
-        session = db.v2_get_session_by_id(session_id)
+        session = _owned_recording_session(session_id)
         if not session:
             return jsonify({
                 "code": "SESSION_NOT_FOUND", "error": "Recording not found",
             }), 404
-        owner = session.get("user_id")
-        caller = getattr(request, "user_id", None)
-        # Claimed session → owner-only (they should use the authed route,
-        # but honor it here for the owner too). Unclaimed → open to the id.
-        if owner and str(owner) != str(caller or ""):
-            return jsonify({
-                "code": "SESSION_NOT_FOUND", "error": "Recording not found",
-            }), 404
-
         # Async analysis (founder 2026-07-15) — job state first; the FE polls
         # this route (guests included) until analysis_state ready|failed.
         _an_state = session.get("analysis_state")
@@ -728,14 +592,13 @@ def v2_retry_recording_processing(session_id):
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "session_id must be a valid UUID"}), 400
-    session = db.v2_get_session_by_id(session_id)
-    caller = getattr(request, "user_id", None)
-    owner = (session or {}).get("user_id")
-    if not session or (owner and str(owner) != str(caller or "")):
+    session = _owned_recording_session(session_id)
+    if not session:
         return jsonify({"code": "SESSION_NOT_FOUND",
                         "error": "Recording not found"}), 404
     from services.pipeline_jobs import retry_failed_session_job
-    job = retry_failed_session_job(session_id, str(owner or caller or ""))
+    job = retry_failed_session_job(
+        session_id, str(session.get("user_id") or "guest"))
     if not job:
         return jsonify({"code": "RETRY_UNAVAILABLE",
                         "error": "Processing could not be restarted"}), 409

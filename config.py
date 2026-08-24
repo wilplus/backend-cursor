@@ -635,26 +635,10 @@ class Config:
     # (never abort session completion).
     DIAGNOSE_SESSION_STATE_ENABLED = (os.getenv("DIAGNOSE_SESSION_STATE_ENABLED") or "false").strip().lower() == "true"
 
-    # Curiosity Gate (anonymous-first acquisition funnel). When true, exposes
-    # POST /v2/public/shaky-voice/{upload,claim}. Anonymous uploads only store
-    # bytes + a v2_sessions row; the paid Whisper / OpenAI pipeline does NOT
-    # run until the user signs in and claims the session.
-    GUEST_FUNNEL_ENABLED = (os.getenv("GUEST_FUNNEL_ENABLED") or "false").strip().lower() == "true"
-    # Per-IP cap (uploads/hour). Cheap insurance against scripted abuse.
-    GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR = int(os.getenv("GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR", "5"))
     # willab Prompt D — the audit is REPLACED by the Best-Presentation. Default
     # OFF retires the audit chat surface (the "audit" suggested_action button);
     # the endpoints/tables stay DORMANT (recoverable — flip ON to restore).
     AUDIT_SURFACE_ENABLED = (os.getenv("AUDIT_SURFACE_ENABLED") or "false").strip().lower() == "true"
-    # Global cap across all IPs (uploads/hour). Stops a botnet from saturating.
-    GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR = int(os.getenv("GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR", "200"))
-    # Hard size cap on the anonymous upload (smaller than admin's 25 MB —
-    # the funnel is 15 seconds of speech, not a TED talk).
-    GUEST_FUNNEL_MAX_AUDIO_SIZE_MB = int(os.getenv("GUEST_FUNNEL_MAX_AUDIO_SIZE_MB", "5"))
-    # TTL for unclaimed guest sessions before the daily cleanup job purges them.
-    GUEST_FUNNEL_TTL_HOURS = int(os.getenv("GUEST_FUNNEL_TTL_HOURS", "24"))
-    # Max file size for afterwards funnel video upload
-    FUNNEL_AFTERWARDS_VIDEO_MAX_MB = int(os.getenv("FUNNEL_AFTERWARDS_VIDEO_MAX_MB", "100"))
 
     @property
     def is_production(self):

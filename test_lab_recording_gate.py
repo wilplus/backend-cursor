@@ -22,7 +22,8 @@ class RecordingGateTests(unittest.TestCase):
             result = require_analyzable_recording(
                 b"audio",
                 database=database,
-                form={},
+                project_id="project-1",
+                owner_principal_id="owner-1",
                 user_id="user-1",
                 log=Mock(),
             )
@@ -38,11 +39,6 @@ class RecordingGateTests(unittest.TestCase):
             "thresholds": {"min_voiced_sec": 0.5},
         }
         database = Mock()
-        form = {
-            "guest_session_id": "guest-1",
-            "arc_id": "arc-1",
-            "take_index": "2",
-        }
         with patch(
             "services.min_content_gate.evaluate_min_content_bytes",
             return_value=gate,
@@ -50,7 +46,8 @@ class RecordingGateTests(unittest.TestCase):
             require_analyzable_recording(
                 b"audio",
                 database=database,
-                form=form,
+                project_id="project-1",
+                owner_principal_id="owner-1",
                 user_id="user-1",
                 log=Mock(),
             )
@@ -62,9 +59,8 @@ class RecordingGateTests(unittest.TestCase):
             voiced_sec=0.0,
             thresholds={"min_voiced_sec": 0.5},
             user_id="user-1",
-            guest_session_id="guest-1",
-            arc_id="arc-1",
-            take_index="2",
+            owner_principal_id="owner-1",
+            project_id="project-1",
         )
 
     def test_metrics_write_failure_never_changes_the_user_rejection(self):
@@ -79,7 +75,8 @@ class RecordingGateTests(unittest.TestCase):
             require_analyzable_recording(
                 b"audio",
                 database=database,
-                form={},
+                project_id="project-1",
+                owner_principal_id="owner-1",
                 user_id=None,
                 log=log,
             )

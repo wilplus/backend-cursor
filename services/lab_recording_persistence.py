@@ -6,9 +6,6 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from services.lab_session_identity import choose_guest_session_id
-
-
 @dataclass(frozen=True)
 class RecordingPersistenceError(Exception):
     """A stable user-facing failure at a required persistence boundary."""
@@ -39,8 +36,9 @@ def store_recording_audio(
     audio_file: Any,
     audio_bytes: bytes,
     *,
-    requested_session_id: str | None,
-    upload_key: str | None,
+    upload_key: str,
+    owner_principal_id: str,
+    user_id: str | None,
     database: Any,
     deadline: Any,
     log: Any,
@@ -52,11 +50,10 @@ def store_recording_audio(
     )
 
     deadline.check("store")
-    session_id = choose_guest_session_id(
-        requested_session_id,
-        database=database,
-        log=log,
-    )
+    # Every accepted upload gets a fresh immutable Take id. Retry collapse is
+    # handled before storage by the project-scoped idempotency contract; a
+    # browser-provided session id can therefore never redirect this write.
+    session_id = str(uuid.uuid4())
     recording_id = str(uuid.uuid4())
     extension = os.path.splitext(
         getattr(audio_file, "filename", None) or ""
@@ -78,18 +75,20 @@ def store_recording_audio(
         or f"s3://{bucket}/{storage_key}"
     )
 
-    if not database.v2_get_session_by_id(session_id):
-        try:
-            database.v2_create_guest_session(session_id)
-        except Exception as exc:
-            log.error(
-                "lab: guest session create failed: %s",
-                exc,
-                exc_info=True,
-            )
-            raise RecordingPersistenceError("Failed to create session") from exc
-    if upload_key:
-        database.v2_set_session_upload_key(session_id, upload_key)
+    try:
+        database.v2_create_recording_session(
+            session_id,
+            owner_principal_id=owner_principal_id,
+            user_id=user_id,
+        )
+    except Exception as exc:
+        log.error(
+            "lab: take row create failed: %s",
+            exc,
+            exc_info=True,
+        )
+        raise RecordingPersistenceError("Failed to create session") from exc
+    database.v2_set_session_upload_key(session_id, upload_key)
 
     return StoredRecording(
         session_id=session_id,
@@ -179,7 +178,7 @@ def persist_recording_row(
                 "Failed to create recording"
             ) from exc
     try:
-        database.v2_set_guest_session_recording(session_id, recording_id)
+        database.v2_set_session_recording(session_id, recording_id)
     except Exception as exc:
         log.warning("lab: link recording failed (non-fatal): %s", exc)
     return RecordingRow(duration, user_id)

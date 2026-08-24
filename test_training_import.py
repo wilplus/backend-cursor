@@ -410,7 +410,7 @@ class IdempotencyTests(unittest.TestCase):
         self.assertTrue(out["duplicate"])
         self.assertEqual(out["session_id"], "sess-orig")
         self.assertEqual(out["queue_count"], 2)
-        db.v2_create_guest_session.assert_not_called()
+        db.v2_create_internal_session.assert_not_called()
         db.create_recording.assert_not_called()
 
     def test_key_is_stored_so_the_retry_can_find_it(self):

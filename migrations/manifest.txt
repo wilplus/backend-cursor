@@ -317,3 +317,4 @@
 0279	add_confident_voice_practice.sql
 0280	add_voice_album_introduction_marker.sql
 0281	retire_threat_challenge_framework.sql
+0282	add_canonical_project_ownership.sql

@@ -52,23 +52,13 @@ class PresentationDeleteTests(unittest.TestCase):
             "s4": {"created_at": "2026-04-01T00:00:00Z",
                    "intake_context": {"slides": []}},
         }
-        self._lib = [
-            {"session_id": sid, "tag": "strong", "note": "n", "snippet_ref": {}}
-            for sid in ("s1", "s2", "s3", "s4")
-        ]
-        self.deleted_lib: list = []
         self.deleted_sessions: list = []
-        self._patch_db("get_strong_sides_library", lambda uid, **kw: list(self._lib))
         self._patch_db("v2_get_session_by_id", lambda sid: dict(self._sessions.get(sid, {}), id=sid))
         # 4.4 fix: the presentation DELETE now resolves its target set from
         # the user's lab sessions (complete set), not the library grouping.
         self._patch_db("v2_list_user_lab_sessions", lambda uid, **kw: [
             dict(meta, id=sid) for sid, meta in self._sessions.items()
         ])
-        self._patch_db(
-            "delete_strong_sides_library_for_session",
-            lambda uid, sid: self.deleted_lib.append((uid, sid)) or 1,
-        )
         self._patch_db(
             "v2_delete_session",
             lambda sid, uid: self.deleted_sessions.append((sid, uid)) or True,
@@ -109,7 +99,6 @@ class PresentationDeleteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(resp.get_json()["deleted_sessions"], 2)
         self.assertEqual({s for s, _ in self.deleted_sessions}, {"s1", "s2"})
-        self.assertEqual({s for _, s in self.deleted_lib}, {"s1", "s2"})
 
     def test_delete_unknown_presentation_404(self):
         with self.app.test_request_context():

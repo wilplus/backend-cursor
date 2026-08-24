@@ -330,8 +330,7 @@ def v2_coach_audit_data(user_id):
     number of takes (returns null headlines below it, never a one-take claim).
 
     Coach-facing assembly (the coach reviews + curates before it reaches the
-    user — the audit is the human-gated deliverable). Compose with
-    GET /v2/user/strengths for the per-slide "best line" sections.
+    user — the audit is the human-gated deliverable).
 
     200 { user_id, performance_under_feeling, stress_as_fuel, takes:[...] }
     """
@@ -379,7 +378,7 @@ def v2_coach_audit_data(user_id):
 @require_admin_or_coach
 def v2_coach_student_audit(user_id):
     """willab user_audit — coach panel DOWNLOAD (UX Wave 3 BE-3 / S5).
-    Assembled from existing insights + strong_sides_library (no generator).
+    Assembled from delivered exact-evidence FeedbackItems (no generator).
     `unlocked` reflects the S2 threshold; the coach decides whether to surface
     'send' on a still-locked audit.
     """
@@ -557,7 +556,7 @@ def v2_coach_annotation_upload():
         # annotation_mode marker; user_id stays NULL (see above); NO arc.
         _label = (request.form.get("label") or "").strip()[:200] or None
         if not db.v2_get_session_by_id(session_id):
-            db.v2_create_guest_session(session_id)
+            db.v2_create_internal_session(session_id)
         db.set_session_source(session_id, "audit_upload")
         db.set_session_intake_context(session_id, {
             "topic": _label or "Annotation",
@@ -565,7 +564,7 @@ def v2_coach_annotation_upload():
             "uploaded_by_coach": str(coach_id) if coach_id else None,
         })
         try:
-            db.v2_set_guest_session_recording(session_id, recording_id)
+            db.v2_set_session_recording(session_id, recording_id)
         except Exception as _le:
             logger.warning("annotation upload: link recording failed "
                            "sid=%s: %s (non-fatal)", session_id, _le)
@@ -646,7 +645,7 @@ def v2_coach_queue():
                 "annotation_mode": bool((ctx or {}).get("annotation_mode")),
                 "n_snippets": len(db.get_snippets_by_session(sid) or []),
                 "state": _coach_session_state(r, cstate),
-                "sent_at": r.get("guest_claimed_at") or r.get("created_at") or "",
+                "sent_at": r.get("review_requested_at") or r.get("created_at") or "",
                 # Grouping labels (additive; None on pre-arc rows).
                 "arc_id": r.get("arc_id"),
                 "take_index": r.get("take_index"),
@@ -791,7 +790,6 @@ def v2_coach_get_session(session_id):
             _s["index"] = _i
 
         ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
-        insights = session.get("insights_payload") if isinstance(session.get("insights_payload"), dict) else {}
         from services.feelings import shape_coach_feelings
         # "Ideal text ready to review" (founder 2026-07-15) — a persisted,
         # unapproved machine draft exists for this session's arc.
@@ -822,7 +820,7 @@ def v2_coach_get_session(session_id):
             # machine guess; blind-coach untouched). No inferred
             # psychological category is attached or serialized.
             "named_emotion": (ctx or {}).get("named_emotion"),
-            "sent_at": session.get("guest_claimed_at") or session.get("created_at") or "",
+            "sent_at": session.get("review_requested_at") or session.get("created_at") or "",
             "state": _coach_session_state(session, cstate),
             "review_state": _review_state,
             "arc_id": session.get("arc_id"),
@@ -847,7 +845,7 @@ def v2_coach_get_session(session_id):
                     "ideal_version") if isinstance(
                     r.get("intake_context"), dict) else None,
             } for r in read_sessions],
-            "overall_message": (insights or {}).get("overall_message") or "",
+            "overall_message": session.get("coach_overall_message") or "",
             "video_ref": (session.get("coach_video_ref") or None),
             # Slide-deck context (UX Wave 4 BE-S6a) — coach sees the deck while
             # reviewing; per-snippet slide mapping is Phase 2.
@@ -1034,7 +1032,7 @@ def _save_coach_snippet_lanes(session_id, snippet_id, body):
     Persists note/tag/surfaced/when/examples/transcript_corrected to the
     user-facing coach draft. Blind confidence ratings use their own endpoint.
     """
-    from services.insights_payload import VALID_TAGS
+    from services.feedback_repository import LEGACY_COACH_TAGS
 
     # ── USER lane — note / tag / surfaced / when / examples (drafts). ──
     draft_fields: dict = {}
@@ -1048,10 +1046,13 @@ def _save_coach_snippet_lanes(session_id, snippet_id, body):
         draft_fields["note"] = note or None
     if "tag" in body:
         tag = body.get("tag")
-        if tag is not None and tag not in VALID_TAGS:
+        if tag is not None and tag not in LEGACY_COACH_TAGS:
             return jsonify({
                 "code": "INVALID_INPUT",
-                "error": f"tag: must be one of {', '.join(VALID_TAGS)}",
+                "error": (
+                    "tag: must be one of "
+                    f"{', '.join(LEGACY_COACH_TAGS)}"
+                ),
             }), 422
         draft_fields["tag"] = tag
     if "surfaced" in body:
@@ -1534,9 +1535,9 @@ def v2_coach_session_video(session_id):
     REUSES the existing coach video transport/storage (services/coach_video_
     storage — same bucket + R2/Supabase path the funnel afterwards-video +
     feedback videos use; no new infra/bucket/transcoding). Stores the file,
-    persists coach_video_ref on the session; the publish contract folds it into
-    insights_payload so it ships to the user with the insights. Re-upload
-    overwrites (deterministic storage key).
+    persists coach_video_ref on the session; the canonical readout exposes it
+    in the separate take-level coach_review object. Re-upload overwrites
+    (deterministic storage key).
 
     multipart/form-data: video_file (.mp4/.mov/.webm/.m4v).
     200 { status, session_id, video_ref } · 400/404/413/415/502
@@ -2061,10 +2062,9 @@ def v2_coach_save_feedback(session_id):
       snippets?: [{id, note?, tag?, surfaced?, transcript_corrected?, ...}]
                   → the coach draft store, via
                   the SAME shared helper as every other door (no drift);
-      insights_payload? / overall_message? / notify_client?  → accepted and
-                  IGNORED here (assembly happens at publish; persisting
-                  insights_payload pre-publish would leak the coach layer to
-                  the user readout, which folds it whenever present).
+      overall_message? → persisted as the separate take-level coach summary.
+                  Exact-evidence paragraph feedback remains in the canonical
+                  draft repository until publish.
 
     200 {saved:true, snippets_saved} · 400 · 404 · 422 · 500"""
     if not _is_valid_uuid(session_id):
@@ -2076,6 +2076,32 @@ def v2_coach_save_feedback(session_id):
             return jsonify({"code": "SESSION_NOT_FOUND",
                             "error": "Session not found"}), 404
         body = request.get_json(silent=True) or {}
+
+        if "insights_payload" in body:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "insights_payload is retired",
+            }), 422
+
+        if "overall_message" in body:
+            from services.feedback_repository import (
+                FeedbackContractError,
+                normalize_coach_overall_message,
+            )
+            try:
+                overall_message = normalize_coach_overall_message(
+                    body.get("overall_message"))
+            except FeedbackContractError as error:
+                return jsonify({
+                    "code": "INVALID_INPUT", "error": str(error),
+                }), 422
+            if not db.set_session_coach_overall_message(
+                session_id, overall_message,
+            ):
+                return jsonify({
+                    "code": "V2_ERROR",
+                    "error": "Could not save coach review summary",
+                }), 500
 
         # Founder 2026-07-16: the coach saves the MERGED packet (the take +
         # its folded mid-take re-reads) under the spoken take's path — every
@@ -3429,12 +3455,9 @@ def v2_coach_publish_analysis(arc_id):
     could click published anything. 46 sessions were recorded in August and
     none was delivered.
 
-    PARTIAL PUBLISH IS THE POINT (founder 2026-08-14). Every take carrying
-    at least one surfaced, noted snippet is published; takes with nothing on
-    them are SKIPPED and stay visibly "to review" rather than being
-    published empty or blocking their siblings. The old all-or-nothing gate
-    meant an interrupted review delivered exactly as much as no review at
-    all, which is how a whole month produced nothing.
+    Every reviewed take is published independently. A take with zero valid
+    FeedbackItems is a successful "no changes needed" result; it is neither
+    skipped nor blocked merely to manufacture a note.
 
     Idempotent per take: a take already delivered is reported as such and
     never re-charged (the contract's ref_id=session_id guard).
@@ -3464,11 +3487,9 @@ def v2_coach_publish_analysis(arc_id):
         published = [r for r in results if r.get("published")]
         skipped = [r for r in results if not r.get("published")]
         if not published:
-            # Nothing carried a note anywhere in the arc. Publishing would
-            # deliver an empty envelope, so this is the ONE remaining gate.
             return jsonify({
                 "code": "NOTHING_TO_PUBLISH",
-                "error": "Add a note to at least one moment first.",
+                "error": "No take could be published.",
                 "takes": results,
             }), 409
 

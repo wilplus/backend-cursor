@@ -2,9 +2,8 @@
 2026-07-14): the Apply / ✓-prefer taps on the instant view's suggestion rows.
 
 Route-level tests (test_arc_unlock.py harness: patch db.* on the v2 module,
-call the unwrapped handler in a test_request_context). Guest capability
-mirrors the guest readout: unclaimed session writable by bare id; claimed →
-owner-only 404 (no existence leak).
+call the unwrapped handler in a test_request_context). Guest writes require
+the same signed Guest ID as the readout; a bare session UUID fails closed.
 
 Run: python3 -m unittest test_suggestion_feedback
 """
@@ -16,6 +15,10 @@ from unittest.mock import patch
 try:
     from flask import Flask, request
     from routes import v2_routes as v2
+    from services.project_ownership import (
+        GUEST_OWNER_HEADER,
+        issue_guest_owner,
+    )
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
@@ -33,8 +36,9 @@ class SuggestionFeedbackTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
 
-    def _call(self, body, caller=None, snippet_id=SNIP):
-        with self.app.test_request_context(json=body):
+    def _call(self, body, caller=None, snippet_id=SNIP, guest_token=None):
+        headers = {GUEST_OWNER_HEADER: guest_token} if guest_token else None
+        with self.app.test_request_context(json=body, headers=headers):
             request.user_id = caller
             out = v2.v2_user_suggestion_feedback.__wrapped__(snippet_id)
             resp, status = out if isinstance(out, tuple) else (out, 200)
@@ -65,8 +69,19 @@ class SuggestionFeedbackTests(unittest.TestCase):
         self.assertEqual(kw["user_id"], "u1")
 
     def test_guest_on_unclaimed_session_saves(self):
+        issued = issue_guest_owner()
         with patch.object(v2.db, "v2_get_session_by_id",
-                          return_value={"id": SESS, "user_id": None}), \
+                          return_value={
+                              "id": SESS,
+                              "user_id": None,
+                              "owner_principal_id": issued.principal_id,
+                          }), \
+             patch.object(v2.db, "get_owner_principal",
+                          return_value={
+                              "id": issued.principal_id,
+                              "user_id": None,
+                              "guest_secret_hash": issued.secret_hash,
+                          }), \
              patch.object(v2.db, "get_snippet_by_id",
                           return_value={"id": SNIP, "session_id": SESS}), \
              patch.object(v2.db, "insert_user_suggestion_feedback",
@@ -74,9 +89,24 @@ class SuggestionFeedbackTests(unittest.TestCase):
             body, status = self._call(
                 self._ok_body(target="comment", action="preferred",
                               upgrade_index=None),
-                caller=None)
+                caller=None,
+                guest_token=issued.token)
         self.assertEqual(status, 200)
         self.assertIsNone(m_ins.call_args.kwargs["user_id"])
+
+    def test_guest_bare_session_id_is_not_authorization(self):
+        with patch.object(v2.db, "v2_get_session_by_id",
+                          return_value={
+                              "id": SESS,
+                              "user_id": None,
+                              "owner_principal_id": (
+                                  "33333333-3333-4333-8333-333333333333"
+                              ),
+                          }), \
+             patch.object(v2.db, "insert_user_suggestion_feedback") as m_ins:
+            _, status = self._call(self._ok_body(), caller=None)
+        self.assertEqual(status, 404)
+        m_ins.assert_not_called()
 
     def test_claimed_session_hidden_from_other_caller(self):
         with patch.object(v2.db, "v2_get_session_by_id",

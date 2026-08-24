@@ -18,7 +18,6 @@ from flask import jsonify, request
 import hashlib
 from datetime import datetime, timezone
 from typing import Any
-from werkzeug.utils import secure_filename
 
 from routes.admin import require_admin
 from routes.v2.common import (
@@ -344,87 +343,6 @@ def _obscure_email(email: str) -> str | None:
         return None
     head = local[0]
     return f"{head}**@{domain}"
-
-
-@v2_bp.route("/admin/funnel/afterwards-video", methods=["POST"])
-@require_admin
-def v2_admin_funnel_afterwards_video_upload():
-    """Admin endpoint to upload and configure the afterwards video for Curiosity Gate funnel.
-
-    Accepts multipart form with video_file field, uploads to storage, and stores the URL
-    in the funnel_config table.
-    """
-    # Local import on purpose: binds at CALL time, so tests that monkeypatch
-    # services.coach_video_storage attributes take effect.
-    from services.coach_video_storage import coach_media_public_url, put_coach_object_bytes
-    from datetime import datetime
-    import os
-
-    try:
-        max_video_mb = max(1, int(getattr(config, "FUNNEL_AFTERWARDS_VIDEO_MAX_MB", 100)))
-        max_video_bytes = max_video_mb * 1024 * 1024
-        content_length = request.content_length or 0
-        if content_length and content_length > max_video_bytes:
-            return jsonify({
-                "code": "PAYLOAD_TOO_LARGE",
-                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
-            }), 413
-
-        video_file = request.files.get("video_file")
-        if video_file is None or not (video_file.filename or "").strip():
-            return jsonify({"code": "INVALID_INPUT", "error": "video_file is required"}), 400
-
-        safe_name = secure_filename(video_file.filename or "")
-        ext = os.path.splitext(safe_name)[1].lower()
-        if ext not in {".mp4", ".mov", ".webm", ".m4v"}:
-            return jsonify({
-                "code": "INVALID_VIDEO_FORMAT",
-                "error": "Supported formats: .mp4, .mov, .webm, .m4v",
-            }), 415
-
-        video_bytes = video_file.read() or b""
-        if not video_bytes:
-            return jsonify({"code": "INVALID_INPUT", "error": "video_file is empty"}), 400
-
-        if len(video_bytes) > max_video_bytes:
-            return jsonify({
-                "code": "PAYLOAD_TOO_LARGE",
-                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
-            }), 413
-
-        # Generate storage path with timestamp
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        storage_key = f"funnel/afterwards-video/{timestamp}{ext}"
-        bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
-
-        # Upload to storage (R2 or Supabase)
-        try:
-            put_coach_object_bytes(bucket, storage_key, video_bytes, video_file.content_type or "video/mp4")
-        except Exception as upload_err:
-            logger.error("funnel afterwards-video upload failed: %s", upload_err)
-            return jsonify({
-                "code": "UPLOAD_FAILED",
-                "error": "Failed to upload video to storage.",
-            }), 502
-
-        # Generate public URL
-        video_url = coach_media_public_url(storage_key)
-
-        # Store URL in funnel_config
-        db.set_funnel_config("afterwards_video_url", video_url)
-
-        logger.info("funnel: uploaded afterwards-video storage_key=%s url=%s", storage_key, video_url)
-
-        return jsonify({
-            "status": "ok",
-            "video_url": video_url,
-            "storage_key": storage_key,
-        }), 200
-
-    except Exception as e:
-        logger.error("funnel: afterwards-video admin upload failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Upload failed"}), 500
 
 
 @v2_bp.route(
@@ -1903,7 +1821,7 @@ def v2_admin_review_queue():
                 "session_id": r.get("id"),
                 "topic": (ctx or {}).get("topic"),
                 "pseudonymous_user_id": _pseudonymous_user_id(r.get("user_id")),
-                "sent_at": r.get("guest_claimed_at") or r.get("created_at"),
+                "sent_at": r.get("review_requested_at") or r.get("created_at"),
             })
         return jsonify(out), 200
     except Exception as e:

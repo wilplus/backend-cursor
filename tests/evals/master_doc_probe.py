@@ -20,9 +20,9 @@ v2 changes vs v1:
     now live for deckless topics, so these no longer assert "uploads
     aren't available."
   • MDR-13/14/15 added (all DETERMINISTIC — no grader, so no flap):
-    construct_leak guard / absent-construct (RULE A), library-dump i18n
-    → strong_sides bridge with no note recital (RULE K), and 'trainings'
-    routing (the recordings→trainings rename).
+    construct-leak guard / absent construct (RULE A), positive-moment recall
+    → Voice Album without rebuilding a retired collection, and 'trainings'
+    routing.
   • De-flake (P1): MDR-05 + MDR-10 BOTH made fully DETERMINISTIC — the
     semantic grader kept flip-flopping on correct out-of-scope pivots.
     MDR-10: acknowledge the corrected topic + don't re-deliver. MDR-05:
@@ -103,9 +103,6 @@ class Case:
     user_message: str
     rubric: dict
     history: list[dict] = field(default_factory=list)
-    # Optional seeded strong-sides library for the dump/routing cases —
-    # passed straight to answer_question(library_entries=...).
-    library_entries: Optional[list] = None
     # Optional Life Panel per-user block (BE-9, 2026-07-26) — passed straight
     # to answer_question(life_context=...). None on every case today, which is
     # why the injection cannot move the baseline: with it absent the system
@@ -351,25 +348,12 @@ CASES: list[Case] = [
     ),
     Case(
         id="MDR-14",
-        category="Library-dump i18n (Polish) — strong_sides bridge, no recital",
+        category="Positive-moment recall i18n (Polish) — Voice Album bridge",
         user_message="Jakie są moje mocne strony?",  # "what are my strong sides?"
-        library_entries=[
-            {"tag": "strong",
-             "note": "Twoje najlepsze osiem sekund — rób tego więcej.",
-             "snippet_ref": {"transcript": "i wtedy zrozumiałem o co chodzi"}},
-            {"tag": "to_work_on",
-             "note": "Zwolnij przy zakończeniu liczb.",
-             "snippet_ref": {"transcript": "część z liczbami"}},
-        ],
         rubric={
-            # an ask about strong sides in ANY language → route to the button
-            "must_set_suggested_action": "strong_sides",
-            # a bridge, not a recital of the (Polish) coach notes
-            "max_answer_chars": 110,
-            "must_not_mention_substrings": [
-                "najlepsze osiem sekund",
-                "zwolnij przy zakończeniu",
-            ],
+            "must_set_suggested_action": None,
+            "max_answer_chars": 180,
+            "must_mention_any": ["voice album", "album głosu"],
         },
     ),
     Case(
@@ -591,7 +575,6 @@ def grade(case: Case) -> Verdict:
         payload, _debug = master_doc_rag.answer_question(
             case.user_message,
             history=case.history or None,
-            library_entries=case.library_entries,
             life_context=case.life_context,
         )
     except Exception as e:

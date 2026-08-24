@@ -4,9 +4,7 @@ Why this exists
 ---------------
 Every authenticated Whisper/LLM endpoint used to be uncapped: one retry
 loop in a client could run the OpenAI bill up without anything on the
-backend saying no. The only limiter was an in-process dict on the guest
-funnel — per-worker, so the real cap was ``workers x stated cap``, and it
-reset on every restart/redeploy.
+backend saying no.
 
 This module is the one place that answers "how many of these may you
 do?". It is backed by the SAME Redis the pipeline queue already needs
@@ -107,17 +105,6 @@ def _limit_string(name: str, default: str) -> str:
     return (os.getenv(name) or "").strip() or default
 
 
-def _int_env(name: str, default: int) -> int:
-    """Positive integer env var; unset/blank/malformed falls back."""
-    raw = (os.getenv(name) or "").strip()
-    if not raw:
-        return default
-    try:
-        return max(1, int(raw))
-    except ValueError:
-        return default
-
-
 # ── defaults ─────────────────────────────────────────────────────────────
 # Sized against the threat (a client loop doing 10+ req/s), not against
 # tidiness. Raise them in env before you raise them here.
@@ -128,8 +115,7 @@ DEFAULT_HEAVY_LIMIT = "10 per minute;100 per hour"
 
 #: The generic 429 line is NOT defined here — ``utils.errors._STATUS_COPY``
 #: already owns it ("Too many requests — slow down and try again."), and two
-#: copies of one sentence drift. Only a limit with its own ``error_message``
-#: (the guest funnel) overrides it; see ``breach_message``.
+#: copies of one sentence drift.
 
 STORAGE_OPTIONS = {
     # Fail fast, exactly like services/job_queue.py. A blackholed broker
@@ -149,16 +135,6 @@ def llm_limit_value() -> str:
 
 def heavy_limit_value() -> str:
     return _limit_string("RATE_LIMIT_HEAVY", DEFAULT_HEAVY_LIMIT)
-
-
-def guest_funnel_ip_limit_value() -> str:
-    """Preserves GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR (default 5)."""
-    return f"{_int_env('GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR', 5)} per hour"
-
-
-def guest_funnel_global_limit_value() -> str:
-    """Preserves GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR (default 200)."""
-    return f"{_int_env('GUEST_FUNNEL_RATE_LIMIT_GLOBAL_PER_HOUR', 200)} per hour"
 
 
 # ── keys ─────────────────────────────────────────────────────────────────
@@ -198,15 +174,6 @@ def identity_key() -> str:
     """The default bucket: one per signed-in user, else one per IP."""
     sub = _bearer_subject()
     return f"u:{sub}" if sub else f"ip:{client_ip()}"
-
-
-def ip_key() -> str:
-    return f"ip:{client_ip()}"
-
-
-def global_key() -> str:
-    """One shared bucket for everyone — the anti-botnet cap."""
-    return "global"
 
 
 def view_arg_key(name: str) -> Callable[[], str]:
@@ -305,8 +272,8 @@ def register_429(app) -> None:
     HTTPException into ``{code, error, ref}``. This one wins for 429 —
     Flask resolves the code-keyed handler before the class-keyed
     HTTPException one, whenever each was registered — because the generic
-    net would drop the two things a throttled caller actually needs: how
-    long to wait, and the guest funnel's own copy.
+    net would drop the thing a throttled caller actually needs: how long
+    to wait.
 
     The envelope stays utils.errors' so the FE has ONE error shape; the
     generic 429 line comes from their status table rather than being
@@ -364,9 +331,8 @@ def init_app(app) -> None:
         # Namespaced so limiter keys never collide with the RQ queue's keys
         # in the shared Redis.
         app.config.setdefault("RATELIMIT_KEY_PREFIX", "willab-rl")
-        # moving-window preserves the guest funnel's documented "sliding
-        # 1-hour window" and denies the burst-at-window-edge that
-        # fixed-window allows (2x the cap across a boundary).
+        # Moving-window denies the burst-at-window-edge that fixed-window
+        # allows (2x the cap across a boundary).
         app.config.setdefault(
             "RATELIMIT_STRATEGY",
             (os.getenv("RATE_LIMIT_STRATEGY") or "moving-window").strip(),
@@ -484,27 +450,6 @@ def regenerate_limit(fn):
                       exempt_when=_forced)(fn), fn)
 
 
-GUEST_FUNNEL_MESSAGE = ("Too many trial uploads — please wait a few minutes "
-                        "and try again.")
-
-
-def guest_funnel_limit(fn):
-    """The anonymous funnel's per-IP AND global hourly caps.
-
-    Replaces the in-process dict that used to live in routes/v2_routes.py:
-    same two caps, same config vars, same 429 copy — but the counters are
-    now shared across workers instead of multiplied by them.
-    """
-    outer = _transparent(
-        limiter.limit(guest_funnel_global_limit_value, key_func=global_key,
-                      scope="guest_funnel_global",
-                      error_message=GUEST_FUNNEL_MESSAGE)(fn), fn)
-    return _transparent(
-        limiter.limit(guest_funnel_ip_limit_value, key_func=ip_key,
-                      scope="guest_funnel_ip",
-                      error_message=GUEST_FUNNEL_MESSAGE)(outer), outer)
-
-
 # ── 429 payload ──────────────────────────────────────────────────────────
 
 def retry_after_seconds() -> int:
@@ -520,9 +465,7 @@ def retry_after_seconds() -> int:
 
 
 def breach_message(exc) -> Optional[str]:
-    """The 429 text when a limit carries its OWN copy (the guest funnel
-    does), else ``None`` so ``utils.errors`` supplies the generic line from
-    its status table — one source of truth for that sentence, not two.
+    """Return a route-specific 429 message, or the shared generic copy.
 
     Never the raw limit expression — flask-limiter puts "5 per 1 hour" in
     ``description``, and that is an internal detail, not copy.

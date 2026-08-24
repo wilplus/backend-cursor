@@ -1548,6 +1548,23 @@ class DatabaseService:
         )
         return result.data[0] if result.data else None
 
+    def v2_mark_session_pending_review(
+        self, session_id: str,
+    ) -> Optional[dict]:
+        """Atomically enter the coach queue and stamp its canonical ordering time."""
+        from datetime import datetime, timezone
+
+        result = (
+            self.client.table("v2_sessions")
+            .update({
+                "status": "pending_admin_review",
+                "review_requested_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("id", session_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
     def v2_get_session_by_id(self, session_id: str):
         """Get v2 session by id only (no user filter). For debugging 404: check if session exists and which user_id owns it."""
         return self.v2_get_session(session_id, None)
@@ -2729,10 +2746,6 @@ class DatabaseService:
         result = self.client.table("v2_sessions").insert({"user_id": user_id, "status": "task"}).execute()
         return result.data[0] if result.data else None
 
-    # ------------------------------------------------------------------
-    # Curiosity Gate funnel (anonymous-first acquisition)
-    # ------------------------------------------------------------------
-
     def v2_find_session_by_upload_key(self, key: Optional[str]
                                       ) -> Optional[dict]:
         """The retry-collapse lookup (founder 2026-08-10, the double
@@ -2771,109 +2784,238 @@ class DatabaseService:
                            session_id, e)
             return False
 
-    def v2_create_guest_session(
+    def v2_create_recording_session(
         self,
-        guest_session_id: str,
+        session_id: str,
         *,
+        owner_principal_id: Optional[str],
+        user_id: Optional[str],
         recording_id: Optional[str] = None,
     ) -> Optional[dict]:
-        """Create an unclaimed funnel session (user_id=NULL) for the Curiosity Gate.
-
-        The row is keyed by `guest_session_id` (UUID handed to the browser via
-        an httpOnly cookie). On claim, user_id is bound — see v2_claim_guest_session.
-
-        IMPORTANT ordering: the recordings table has FK
-        `recordings.session_v2_id REFERENCES v2_sessions(id)`, so this row must
-        be created BEFORE the recording row. recording_id is therefore optional
-        on insert and is set later via v2_set_guest_session_recording().
-        """
+        """Create a canonical Take row with a verified owner from its first write."""
+        if not owner_principal_id:
+            raise ValueError("owner_principal_id is required")
         payload = {
-            "id": guest_session_id,
-            "user_id": None,
-            "status": "guest_pending_claim",
-            "session_task_text": "Curiosity Gate: 15-second voice trial.",
+            "id": session_id,
+            "user_id": user_id,
+            "owner_principal_id": owner_principal_id,
+            "status": "processing",
         }
         if recording_id:
             payload["recording_1_id"] = recording_id
         result = self.client.table("v2_sessions").insert(payload).execute()
         return result.data[0] if result.data else None
 
-    def v2_set_guest_session_recording(self, guest_session_id: str, recording_id: str) -> Optional[dict]:
-        """Set v2_sessions.recording_1_id on an unclaimed funnel row.
+    def v2_create_internal_session(self, session_id: str) -> Optional[dict]:
+        """Create an intentionally ownerless internal training/annotation row."""
+        result = self.client.table("v2_sessions").insert({
+            "id": session_id,
+            "user_id": None,
+            "status": "processing",
+        }).execute()
+        return result.data[0] if result.data else None
 
-        Filtered to user_id IS NULL because at this point the row has not been
-        claimed; v2_update_session expects a real user_id and would refuse.
-        """
+    # ── Canonical owner / project compatibility repository ─────────────
+
+    def get_owner_principal(self, principal_id: str) -> Optional[dict]:
+        try:
+            result = (self.client.table("owner_principals")
+                      .select("*").eq("id", str(principal_id))
+                      .limit(1).execute())
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning("get_owner_principal failed id=%s: %s",
+                           principal_id, e)
+            return None
+
+    def get_owner_principal_for_user(self, user_id: str) -> Optional[dict]:
+        try:
+            result = (self.client.table("owner_principals")
+                      .select("*").eq("user_id", str(user_id))
+                      .limit(1).execute())
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning("get_owner_principal_for_user failed user=%s: %s",
+                           user_id, e)
+            return None
+
+    def create_user_owner_principal(self, user_id: str) -> Optional[dict]:
+        try:
+            result = (self.client.table("owner_principals")
+                      .upsert({"user_id": str(user_id),
+                               "guest_secret_hash": None},
+                              on_conflict="user_id").execute())
+            return result.data[0] if result.data else \
+                self.get_owner_principal_for_user(user_id)
+        except Exception as e:
+            logger.warning("create_user_owner_principal failed user=%s: %s",
+                           user_id, e)
+            return None
+
+    def create_guest_owner_principal(
+        self, principal_id: str, secret_hash: str,
+    ) -> Optional[dict]:
+        try:
+            result = self.client.table("owner_principals").insert({
+                "id": str(principal_id),
+                "user_id": None,
+                "guest_secret_hash": str(secret_hash),
+            }).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning("create_guest_owner_principal failed id=%s: %s",
+                           principal_id, e)
+            return None
+
+    def claim_guest_owner_principal(
+        self, principal_id: str, secret_hash: str, user_id: str,
+    ) -> Optional[dict]:
+        try:
+            result = self.client.rpc("claim_guest_owner", {
+                "p_owner_principal_id": str(principal_id),
+                "p_guest_secret_hash": str(secret_hash),
+                "p_user_id": str(user_id),
+            }).execute()
+            if isinstance(result.data, list):
+                return result.data[0] if result.data else None
+            return result.data if isinstance(result.data, dict) else None
+        except Exception as e:
+            logger.warning("claim_guest_owner_principal failed id=%s: %s",
+                           principal_id, e)
+            return None
+
+    def create_project(self, payload: dict) -> Optional[dict]:
+        try:
+            result = self.client.table("projects").insert(payload).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning("create_project failed id=%s: %s",
+                           payload.get("id"), e)
+            return None
+
+    def get_project_for_owner(
+        self, project_id: str, owner_principal_id: str,
+    ) -> Optional[dict]:
+        try:
+            result = (self.client.table("projects").select("*")
+                      .eq("id", str(project_id))
+                      .eq("owner_principal_id", str(owner_principal_id))
+                      .limit(1).execute())
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.warning("get_project_for_owner failed project=%s: %s",
+                           project_id, e)
+            return None
+
+    def next_project_take_index(self, project_id: str) -> int:
+        try:
+            result = (self.client.table("v2_sessions")
+                      .select("take_index,analysis_state")
+                      .eq("project_id", str(project_id)).execute())
+            # A failed take retains its ordinal. Only a genuinely new upload
+            # reserves the next index; retries reuse the existing take id.
+            indexes = [int(row.get("take_index")) for row in (result.data or [])
+                       if isinstance(row.get("take_index"), int)]
+            return max(indexes, default=0) + 1
+        except Exception as e:
+            logger.warning("next_project_take_index failed project=%s: %s",
+                           project_id, e)
+            raise
+
+    def bind_take_to_project(
+        self,
+        take_id: str,
+        project_id: str,
+        owner_principal_id: str,
+    ) -> Optional[int]:
+        try:
+            result = self.client.rpc("bind_project_take", {
+                "p_take_id": str(take_id),
+                "p_project_id": str(project_id),
+                "p_owner_principal_id": str(owner_principal_id),
+            }).execute()
+            value = result.data
+            if isinstance(value, list):
+                value = value[0] if value else None
+            return int(value) if value is not None else None
+        except Exception as e:
+            logger.warning("bind_take_to_project failed take=%s: %s", take_id, e)
+            return None
+
+    def bind_recording_variant_to_project(
+        self,
+        variant_id: str,
+        project_id: str,
+        owner_principal_id: str,
+        paired_take_id: str,
+    ) -> Optional[int]:
+        try:
+            result = self.client.rpc("bind_project_recording_variant", {
+                "p_variant_id": str(variant_id),
+                "p_project_id": str(project_id),
+                "p_owner_principal_id": str(owner_principal_id),
+                "p_paired_take_id": str(paired_take_id),
+            }).execute()
+            value = result.data
+            if isinstance(value, list):
+                value = value[0] if value else None
+            return int(value) if value is not None else None
+        except Exception as e:
+            logger.warning(
+                "bind_recording_variant_to_project failed variant=%s: %s",
+                variant_id,
+                e,
+            )
+            return None
+
+    def get_project_take_by_upload_key(
+        self, project_id: str, upload_key: str,
+    ) -> Optional[dict]:
+        """Project-scoped retry collapse; never leaks another owner's take."""
+        if not project_id or not upload_key:
+            return None
+        try:
+            result = (self.client.table("v2_sessions").select("*")
+                      .eq("project_id", str(project_id))
+                      .eq("upload_idempotency_key", str(upload_key))
+                      .limit(1).execute())
+            return result.data[0] if result.data else None
+        except Exception as error:
+            logger.warning(
+                "get_project_take_by_upload_key failed project=%s: %s",
+                project_id, error,
+            )
+            return None
+
+    def get_project_take_for_owner(
+        self, project_id: str, take_id: str, owner_principal_id: str,
+    ) -> Optional[dict]:
+        """Load one Take only when both canonical ownership coordinates match."""
+        try:
+            result = (self.client.table("v2_sessions").select("*")
+                      .eq("id", str(take_id))
+                      .eq("project_id", str(project_id))
+                      .eq("owner_principal_id", str(owner_principal_id))
+                      .limit(1).execute())
+            return result.data[0] if result.data else None
+        except Exception as error:
+            logger.warning(
+                "get_project_take_for_owner failed project=%s take=%s: %s",
+                project_id, take_id, error,
+            )
+            return None
+
+    def v2_set_session_recording(
+        self, session_id: str, recording_id: str,
+    ) -> Optional[dict]:
+        """Link a recording to its already-owned Take row."""
         result = (
             self.client.table("v2_sessions")
             .update({"recording_1_id": recording_id})
-            .eq("id", guest_session_id)
-            .is_("user_id", "null")
+            .eq("id", session_id)
             .execute()
         )
         return result.data[0] if result.data else None
-
-    def v2_claim_guest_session(self, guest_session_id: str, user_id: str) -> Optional[dict]:
-        """Bind an unclaimed funnel session to an authenticated user.
-
-        Atomic: the UPDATE is conditional on user_id IS NULL, so two concurrent
-        claims (e.g., a double-clicked magic link) cannot both succeed. The
-        loser receives None and the caller resolves it as "already claimed".
-
-        Side effect: also writes user_id back to the recordings row so the
-        analysis pipeline (which queries recordings by user_id) can find it.
-
-        Returns the updated v2_sessions row on success, or None if the
-        session was not found OR was already claimed.
-        """
-        from datetime import datetime, timezone
-        now_iso = datetime.now(timezone.utc).isoformat()
-        update = {
-            "user_id": user_id,
-            "guest_claimed_at": now_iso,
-            "status": "completing_from_recording_1",
-            "recording_1_processing_status": "pending",
-            # Stamp self_rating so recording_1_job auto-completes after analysis;
-            # the funnel UX does not include a self-rating step.
-            "self_rating_submitted_at": now_iso,
-        }
-        result = (
-            self.client.table("v2_sessions")
-            .update(update)
-            .eq("id", guest_session_id)
-            .is_("user_id", "null")
-            .execute()
-        )
-        if not result.data:
-            return None
-        row = result.data[0]
-        rec_id = row.get("recording_1_id")
-        if rec_id:
-            try:
-                self.client.table("recordings").update({"user_id": user_id}).eq("id", rec_id).execute()
-            except Exception:
-                # Don't unwind the claim if the recordings update fails;
-                # the pipeline can still find the recording via session_v2_id.
-                pass
-        return row
-
-    def v2_delete_expired_guest_sessions(self, ttl_hours: int = 24) -> int:
-        """Daily cleanup: purge unclaimed funnel rows older than `ttl_hours`.
-
-        Returns the number of rows deleted. Audio blobs in storage are
-        unaffected (storage TTL is governed separately to avoid cascading
-        failures from a transient storage outage).
-        """
-        from datetime import datetime, timedelta, timezone
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=ttl_hours)).isoformat()
-        result = (
-            self.client.table("v2_sessions")
-            .delete()
-            .is_("user_id", "null")
-            .lt("created_at", cutoff)
-            .execute()
-        )
-        return len(result.data or [])
 
     # Context fields: context_short (session summary), context_long (report text), coach_notes (speaker_profile). See docs/CONTEXT-FIELDS.md.
 
@@ -3419,7 +3561,7 @@ class DatabaseService:
         try:
             res = (
                 self.client.table("v2_sessions")
-                .select("user_id, created_at, guest_claimed_at")
+                .select("user_id, created_at, review_requested_at")
                 .eq("source", "audit_upload")
                 .order("created_at", desc=True)
                 .limit(2000)
@@ -3430,7 +3572,7 @@ class DatabaseService:
                 uid = r.get("user_id")
                 if not uid:
                     continue  # unclaimed guest rows have no user — skip
-                ts = r.get("guest_claimed_at") or r.get("created_at") or ""
+                ts = r.get("review_requested_at") or r.get("created_at") or ""
                 key = str(uid)
                 entry = seen.get(key)
                 if entry is None:
@@ -3463,8 +3605,8 @@ class DatabaseService:
             res = (
                 self.client.table("v2_sessions")
                 .select("id, recording_1_id, intake_context, status, "
-                        "created_at, guest_claimed_at, results_published_at, "
-                        "insights_payload, arc_id, take_index, "
+                        "created_at, review_requested_at, results_published_at, "
+                        "coach_overall_message, project_id, arc_id, take_index, "
                         "slide_transcripts, coach_feedback_saved_at, "
                         "recording_kind, paired_session_id")
                 .eq("user_id", user_id)
@@ -3489,8 +3631,8 @@ class DatabaseService:
                     res = (
                         self.client.table("v2_sessions")
                         .select("id, recording_1_id, intake_context, status, "
-                                "created_at, guest_claimed_at, "
-                                "results_published_at, insights_payload")
+                                "created_at, review_requested_at, "
+                                "results_published_at, coach_overall_message")
                         .eq("user_id", user_id)
                         .eq("source", "audit_upload")
                         .order("created_at", desc=True)
@@ -5278,37 +5420,6 @@ class DatabaseService:
             logger.warning("v2_list_all_auth_user_ids: %s", e)
             return []
 
-    def get_funnel_config(self, key: str) -> dict | None:
-        """Get a funnel configuration value by key."""
-        try:
-            result = (
-                self.client.table("funnel_config")
-                .select("id, key, value, updated_at")
-                .eq("key", key)
-                .execute()
-            )
-            if result.data and len(result.data) > 0:
-                return result.data[0]
-            return None
-        except Exception as e:
-            logger.warning(f"get_funnel_config failed: {e}")
-            return None
-
-    def set_funnel_config(self, key: str, value: str | None) -> dict:
-        """Set or update a funnel configuration value by key (upsert)."""
-        try:
-            result = (
-                self.client.table("funnel_config")
-                .upsert({"key": key, "value": value})
-                .execute()
-            )
-            if result.data and len(result.data) > 0:
-                return result.data[0]
-            return {"key": key, "value": value}
-        except Exception as e:
-            logger.error(f"set_funnel_config failed: {e}")
-            return {"key": key, "value": value}
-
     def create_charisma_snippet(
         self,
         session_id: str,
@@ -5324,8 +5435,7 @@ class DatabaseService:
         """Create a new charisma snippet record (unlabeled by default).
 
         Args:
-            user_id: Real user UUID, or None for anonymous interview turns
-                     (updated via update_snippets_user_id on claim).
+            user_id: Real user UUID, or None for internal annotation data.
             metrics: Optional JSONB dict of pre-computed acoustic metrics
                      (wpm, pause_ms, dynamic_db, emphasis_per_min, energy_ratio,
                       pitch_center_st, pitch_frame_count, voiced_duration_sec).
@@ -5533,7 +5643,7 @@ class DatabaseService:
     def insert_rejected_take(
         self, *, reason: str | None,
         duration_sec=None, voiced_sec=None, thresholds=None,
-        user_id=None, guest_session_id=None, arc_id=None, take_index=None,
+        user_id=None, owner_principal_id=None, project_id=None,
     ) -> bool:
         """Log a gate-rejected take's METRICS (automation-audit fix #2c —
         survivorship: gate-failed takes were dropped before any storage, so we
@@ -5543,15 +5653,10 @@ class DatabaseService:
         row: dict = {"reason": reason}
         if user_id:
             row["user_id"] = user_id
-        if guest_session_id:
-            row["guest_session_id"] = str(guest_session_id)
-        if arc_id:
-            row["arc_id"] = str(arc_id)
-        if take_index is not None:
-            try:
-                row["take_index"] = int(take_index)
-            except (TypeError, ValueError):
-                pass
+        if owner_principal_id:
+            row["owner_principal_id"] = str(owner_principal_id)
+        if project_id:
+            row["project_id"] = str(project_id)
         for k, v in (("duration_sec", duration_sec), ("voiced_sec", voiced_sec)):
             if v is not None:
                 try:
@@ -15032,12 +15137,12 @@ class DatabaseService:
         take's packet, never as its own row.
         """
         _full_cols = (
-            "id, user_id, intake_context, guest_claimed_at, "
+            "id, user_id, intake_context, review_requested_at, "
             "created_at, results_published_at, "
             "recording_kind, paired_session_id, arc_id, take_index"
         )
         _base_cols = (
-            "id, user_id, intake_context, guest_claimed_at, "
+            "id, user_id, intake_context, review_requested_at, "
             "created_at, results_published_at"
         )
         try:
@@ -15047,7 +15152,7 @@ class DatabaseService:
                     .select(_full_cols)
                     .eq("status", "pending_admin_review")
                     .eq("source", "audit_upload")
-                    .order("guest_claimed_at", desc=True)
+                    .order("review_requested_at", desc=True)
                     .limit(limit)
                     .execute()
                 )
@@ -15065,7 +15170,7 @@ class DatabaseService:
                     .select(_base_cols)
                     .eq("status", "pending_admin_review")
                     .eq("source", "audit_upload")
-                    .order("guest_claimed_at", desc=True)
+                    .order("review_requested_at", desc=True)
                     .limit(limit)
                     .execute()
                 )
@@ -15082,146 +15187,40 @@ class DatabaseService:
                 return []
             logger.warning("list_review_queue failed err=%s", e)
             return []
+    # ── Canonical take-level coach review summary ────────────────────────
 
-    # ── willab beta — strong-sides library (design §7, contract §3.11) ─
-
-    def upsert_strong_sides_library(self, rows: list[dict]) -> int:
-        """Idempotent batch upsert of library rows on (user_id,
-        snippet_id). Returns the number of rows written. Best-effort:
-        missing table (migration pending) → 0.
-
-        Rows: {user_id, session_id, snippet_id, note, tag, snippet_ref}.
-        """
-        if not rows:
-            return 0
-        try:
-            res = (
-                self.client.table("strong_sides_library")
-                .upsert(rows, on_conflict="user_id,snippet_id")
-                .execute()
-            )
-            return len(res.data or [])
-        except Exception as e:
-            err_low = str(e).lower()
-            if (
-                "strong_sides_library" in err_low
-                and ("does not exist" in err_low or "pgrst" in err_low)
-            ):
-                logger.warning(
-                    "upsert_strong_sides_library: table missing (run "
-                    "migrations/add_strong_sides_library_table.sql)",
-                )
-                return 0
-            logger.error("upsert_strong_sides_library failed err=%s", e)
-            return 0
-
-    def get_strong_sides_library(
-        self,
-        user_id: str,
-        *,
-        tag: Optional[str] = None,
-        limit: int = 200,
-    ) -> list[dict]:
-        """Read a user's library (newest first), optionally filtered by
-        tag. Used by the Lounge bot (retrieval) + the FE library view.
-        Empty list on missing table / DB hiccup.
-        """
-        if not user_id:
-            return []
-        try:
-            query = (
-                self.client.table("strong_sides_library")
-                .select("id, session_id, snippet_id, note, tag, "
-                        "snippet_ref, created_at")
-                .eq("user_id", user_id)
-            )
-            if tag is not None:
-                query = query.eq("tag", tag)
-            res = (
-                query.order("created_at", desc=True)
-                .limit(limit)
-                .execute()
-            )
-            return res.data or []
-        except Exception as e:
-            err_low = str(e).lower()
-            if (
-                "strong_sides_library" in err_low
-                and ("does not exist" in err_low or "pgrst" in err_low)
-            ):
-                return []
-            logger.warning(
-                "get_strong_sides_library failed user=%s err=%s",
-                user_id, e,
-            )
-            return []
-
-    def delete_strong_sides_library_for_session(
-        self, user_id: str, session_id: str
-    ) -> int:
-        """Delete all strong_sides_library rows for (user_id, session_id).
-        Owner-scoped. Best-effort; returns rows deleted (0 on miss / missing
-        table). Used by the user-facing presentation/take delete."""
-        if not user_id or not session_id:
-            return 0
-        try:
-            res = (
-                self.client.table("strong_sides_library")
-                .delete()
-                .eq("user_id", user_id)
-                .eq("session_id", session_id)
-                .execute()
-            )
-            return len(res.data or [])
-        except Exception as e:
-            err_low = str(e).lower()
-            if "strong_sides_library" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                return 0
-            logger.warning(
-                "delete_strong_sides_library_for_session failed "
-                "user=%s session=%s err=%s", user_id, session_id, e,
-            )
-            return 0
-
-    # ── willab beta — insights_payload (design §6b/§14, contract §3.9) ─
-
-    def set_session_insights_payload(
+    def set_session_coach_overall_message(
         self,
         session_id: str,
-        payload: Optional[dict],
+        message: Optional[str],
     ) -> bool:
-        """Persist the coach user-facing lane on v2_sessions.insights_
-        payload (JSONB). Called from the publish endpoint after the
-        publish-contract validation (library floor) passes.
+        """Persist the optional take-level coach summary.
 
-        USER lane only (split-sink §2) — never the private labels.
-        Returns True on success; False (logged) on missing column
-        (migration pending) or DB failure so the route can decide
-        whether to hard-fail the publish.
+        Exact-evidence paragraph feedback lives in ``coach_snippet_drafts``
+        through ``FeedbackRepository``.  This scalar is intentionally
+        separate so it cannot become a second feedback-item schema.
         """
         if not session_id:
             return False
         try:
             (
                 self.client.table("v2_sessions")
-                .update({"insights_payload": payload})
+                .update({"coach_overall_message": message})
                 .eq("id", session_id)
                 .execute()
             )
             return True
         except Exception as e:
             err_low = str(e).lower()
-            if "insights_payload" in err_low or "pgrst204" in err_low:
+            if "coach_overall_message" in err_low or "pgrst204" in err_low:
                 logger.warning(
-                    "set_session_insights_payload: column missing (run "
-                    "migrations/add_insights_payload_to_v2_sessions.sql) "
+                    "set_session_coach_overall_message: column missing (run "
+                    "migrations/add_canonical_project_ownership.sql) "
                     "sid=%s", session_id,
                 )
                 return False
             logger.error(
-                "set_session_insights_payload failed sid=%s err=%s",
+                "set_session_coach_overall_message failed sid=%s err=%s",
                 session_id, e,
             )
             return False
@@ -15242,9 +15241,9 @@ class DatabaseService:
         preserved (read-modify-write, so partial per-field saves accumulate —
         coach edits note now, tag later). E1 immediate-persist + resume.
 
-        USER lane (split-sink §2): this is a DRAFT — the published artifact is
-        assembled into v2_sessions.insights_payload at publish. Never the
-        private label lane. Best-effort: missing table → None.
+        USER lane (split-sink §2): this is a DRAFT. Publish validates and stamps
+        canonical exact-evidence fields on this row. Never the private label
+        lane. Best-effort: missing table → None.
         """
         if not session_id or not snippet_id:
             return None
@@ -15286,6 +15285,7 @@ class DatabaseService:
             for k in (
                 "note", "tag", "surfaced", "when_context", "examples",
                 "transcript_corrected", "reference_post_slug",
+                "feedback_family", "review_state", "evidence_locator",
             ):
                 if k in fields:
                     row[k] = fields[k]
@@ -15341,9 +15341,11 @@ class DatabaseService:
         session_id: str,
         video_ref: Optional[str],
     ) -> bool:
-        """Persist the coach feedback video URL on the session (B.3). Folded
-        into insights_payload at publish so it ships to the user. Best-effort:
-        missing column (migration pending) → False."""
+        """Persist the coach feedback video URL on the session (B.3).
+
+        The canonical readout exposes it in the separate take-level
+        ``coach_review`` object. Missing column → False.
+        """
         if not session_id:
             return False
         try:

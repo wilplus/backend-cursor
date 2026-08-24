@@ -119,26 +119,24 @@ class EagerAssemblyTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertNotIn("persisted", calls)
 
-    def test_coach_owned_row_still_refreshes_machine_copy(self):
-        # Instant lane (2026-07-17): a coach edit no longer stops the eager
-        # assembly — the frozen MACHINE copy (auto_text) keeps refreshing so
-        # the free instant surface improves on re-record. The never-clobber
-        # of the coach's WORKING text moved into persist_auto_ideal_text
-        # (pinned in test_instant_ideal_text.py).
+    def test_coach_owned_row_is_not_refreshed_on_rerecord(self):
+        # Canonical Ideal Text is created once for the project. Later takes
+        # create exact-evidence feedback proposals and never rebuild either
+        # the coach's working text or its frozen machine source.
         ok, calls = self._run(
             [_spoken(1), _spoken(2), _spoken(3)],
             existing_row={"text": "coach edit", "updated_by": "coach1",
                           "approved_at": None})
         self.assertTrue(ok)
-        self.assertEqual(calls["persisted"], "assembled block")
+        self.assertNotIn("persisted", calls)
 
-    def test_machine_row_refreshed_on_rerecord(self):
+    def test_machine_row_is_not_refreshed_on_rerecord(self):
         ok, calls = self._run(
             [_spoken(1), _spoken(2), _spoken(3)],
             existing_row={"text": "old machine draft", "updated_by": None,
                           "approved_at": None})
         self.assertTrue(ok)
-        self.assertEqual(calls["persisted"], "assembled block")
+        self.assertNotIn("persisted", calls)
 
     def test_not_ready_assembly_never_persists(self):
         ok, calls = self._run(
@@ -252,25 +250,58 @@ class ReviewStateTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class GuestProgressTests(unittest.TestCase):
-    """GET /explore/arc/<id>/progress — guest-capable for fully-unclaimed
-    arcs (2026-07-16: the signed-out instant readout polls it; was 401)."""
+    """GET /explore/arc/<id>/progress — guest-capable with a signed Guest ID."""
 
-    def _call(self, sessions, caller=None):
+    def _call(self, sessions, caller=None, guest=None):
         app = Flask(__name__)
-        with app.test_request_context():
+        headers = ({"X-Willab-Guest-Owner": guest.token} if guest else None)
+        with app.test_request_context(headers=headers):
             request.user_id = caller
             with patch.object(v2.db, "get_arc_sessions",
                               return_value=sessions), \
                  patch.object(v2.db, "get_coach_best_presentation_edits",
-                              return_value={}):
+                              return_value={}), \
+                 patch.object(
+                     v2.db,
+                     "get_owner_principal",
+                     return_value=(
+                         {
+                             "id": guest.principal_id,
+                             "user_id": None,
+                             "guest_secret_hash": guest.secret_hash,
+                         }
+                         if guest else None
+                     ),
+                 ):
                 resp, status = v2.v2_explore_arc_progress.__wrapped__(ARC)
                 return resp.get_json(), status
 
     def test_guest_reads_fully_unclaimed_arc(self):
-        unclaimed = [dict(_spoken(i), user_id=None) for i in (1, 2)]
-        body, status = self._call(unclaimed, caller=None)
+        from services.project_ownership import issue_guest_owner
+
+        guest = issue_guest_owner()
+        unclaimed = [
+            dict(
+                _spoken(i),
+                user_id=None,
+                owner_principal_id=guest.principal_id,
+            )
+            for i in (1, 2)
+        ]
+        body, status = self._call(unclaimed, caller=None, guest=guest)
         self.assertEqual(status, 200)
         self.assertEqual(body["takes_done"], 2)
+
+    def test_bare_project_id_is_not_guest_authorization(self):
+        unclaimed = [
+            dict(
+                _spoken(1),
+                user_id=None,
+                owner_principal_id="33333333-3333-4333-8333-333333333333",
+            )
+        ]
+        _, status = self._call(unclaimed, caller=None)
+        self.assertEqual(status, 404)
 
     def test_claimed_arc_hidden_from_guest_and_stranger(self):
         claimed = [_spoken(1)]  # user_id u1
@@ -464,9 +495,8 @@ class PublishAnalysisRestoredTests(unittest.TestCase):
         self.assertEqual(body["takes_published"], 1)
         self.assertEqual(body["takes_skipped"], 1)
 
-    def test_one_note_anywhere_is_enough(self):
-        """The founder's ruling, as a test: a single piece of feedback on a
-        single take publishes the arc."""
+    def test_one_successful_take_publish_is_enough(self):
+        """Arc publish succeeds when at least one eligible take publishes."""
         def _pub(sid, actor):
             return {"session_id": sid, "published": sid == "s1",
                     "reason": None if sid == "s1" else "PUBLISH_CONTRACT_VIOLATION"}
@@ -475,7 +505,7 @@ class PublishAnalysisRestoredTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body["takes_published"], 1)
 
-    def test_nothing_reviewed_anywhere_409s_with_actionable_copy(self):
+    def test_all_take_publish_failures_return_actionable_409(self):
         body, status = self._post(
             self._SPOKEN,
             lambda sid, actor: {"session_id": sid, "published": False,
@@ -483,7 +513,7 @@ class PublishAnalysisRestoredTests(unittest.TestCase):
         )
         self.assertEqual(status, 409)
         self.assertEqual(body["code"], "NOTHING_TO_PUBLISH")
-        self.assertIn("note", body["error"].lower())
+        self.assertIn("no take could be published", body["error"].lower())
 
     def test_an_already_published_take_is_never_re_published(self):
         sessions = [

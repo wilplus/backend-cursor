@@ -41,33 +41,43 @@ def tearDownModule():
 
 
 class UserAuditAssemblyTests(unittest.TestCase):
-    """BE-3 / S5 — assembled from existing insights + library; unlock gate."""
+    """BE-3 / S5 — assembled from canonical feedback; unlock gate."""
 
-    def _configure(self, *, recorded, sessions, library):
+    def _configure(self, *, recorded, sessions):
         from services.db import db
         db.v2_get_cumulative_recorded_seconds.return_value = recorded
         db.v2_list_user_lab_sessions.return_value = sessions
-        db.get_strong_sides_library.return_value = library
+        by_id = {str(row.get("id")): row for row in sessions}
+        db.v2_get_session_by_id.side_effect = lambda sid: by_id.get(str(sid))
+        db.get_coach_snippet_drafts.side_effect = lambda sid: (
+            (by_id.get(str(sid)) or {}).get("_feedback_drafts") or []
+        )
 
     def test_assembles_published_only_and_unlock(self):
         self._configure(
             recorded=700,
             sessions=[
                 {"id": "s1", "results_published_at": "2026-06-01T00:00:00Z",
+                 "project_id": "p1", "coach_overall_message": "strong open",
                  "intake_context": {"topic": "demo day"}, "created_at": "2026-06-01",
-                 "insights_payload": {"overall_message": "strong open", "snippet_notes": [
-                     {"note": "great hook", "tag": "strong", "when": "opening",
-                      "examples": ["that line"]}]}},
+                 "_feedback_drafts": [{
+                     "snippet_id": "piece-1", "surfaced": True,
+                     "note": "great hook", "feedback_family": "great_formulation",
+                     "review_state": "reviewed", "when_context": "opening",
+                     "examples": ["that line"],
+                     "evidence_locator": {
+                         "project_id": "p1", "take_id": "s1",
+                         "slide_index": 0, "paragraph_index": 0,
+                         "piece_id": "piece-1",
+                         "evidence_span": {"start": 0, "end": 10,
+                                           "text": "great hook"},
+                         "audio_interval": None,
+                     },
+                 }]},
                 # unpublished → excluded (no coach insights yet)
                 {"id": "s2", "results_published_at": None,
                  "intake_context": {"topic": "draft"}, "created_at": "2026-06-02",
-                 "insights_payload": {}},
-            ],
-            library=[
-                {"note": "keep this", "tag": "strong",
-                 "snippet_ref": {"transcript": "hello world"}, "session_id": "s1"},
-                {"note": "watch this", "tag": "to_work_on",
-                 "snippet_ref": {}, "session_id": "s1"},
+                 "coach_overall_message": None},
             ],
         )
         from services.user_audit import assemble_user_audit
@@ -78,21 +88,22 @@ class UserAuditAssemblyTests(unittest.TestCase):
         self.assertEqual(len(a["sessions"]), 1)               # only the published one
         self.assertEqual(a["sessions"][0]["topic"], "demo day")
         self.assertEqual(a["sessions"][0]["notes"][0]["note"], "great hook")
-        tags = {s["tag"] for s in a["strong_sides"]}
-        self.assertEqual(tags, {"strong", "to_work_on"})
+        self.assertEqual(a["sessions"][0]["overall_message"], "strong open")
 
     def test_locked_under_threshold(self):
-        self._configure(recorded=120, sessions=[], library=[])
+        self._configure(recorded=120, sessions=[])
         from services.user_audit import assemble_user_audit
         a = assemble_user_audit("u1")
         self.assertFalse(a["unlocked"])
         self.assertEqual(a["sessions"], [])
-        self.assertEqual(a["strong_sides"], [])
 
     def test_html_render_is_safe_and_branded(self):
         from services.user_audit import render_user_audit_html
         html = render_user_audit_html({
-            "strong_sides": [{"tag": "strong", "note": "<b>x</b>", "transcript": "hi"}],
+            "sessions": [{
+                "topic": "Demo",
+                "notes": [{"tag": "great_formulation", "note": "<b>x</b>"}],
+            }],
         })
         self.assertIn("WillpowerLab", html)
         self.assertIn("&lt;b&gt;", html)   # escaped, not raw HTML injection
@@ -118,7 +129,7 @@ class SuggestedActionContractTests(unittest.TestCase):
         self.assertIn("suggested_action", props)
         self.assertIn("suggested_action", _RESPONSE_SCHEMA["schema"]["required"])
         enum = props["suggested_action"]["enum"]
-        self.assertIn("strong_sides", enum)
+        self.assertNotIn("strong_sides", enum)
         self.assertIn("trainings", enum)
         # record_again removed — record-intent points to the always-present
         # "Start official recording" button (no per-turn button).

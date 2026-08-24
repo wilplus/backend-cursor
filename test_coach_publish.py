@@ -1,21 +1,19 @@
-"""willab coach publish contract — assemble-from-drafts + library floor +
-coach-video fold + back-compat.
+"""Canonical exact-evidence coach publish contract.
 
 Exercises the SHARED _apply_willab_publish_contract directly with stubbed db
 methods (the real validators run). Covers:
-  * assemble mode: {overall_message, notify_client} -> insights_payload built
-    from persisted user-facing drafts.
-  * private training annotations never gate or enter the publish payload.
-  * LIBRARY floor still enforced: no surfaced note -> 422.
-  * coach video_ref folded into the published insights (B.3).
-  * body mode (today's FE) unchanged: payload comes from the body, not drafts.
-  * legacy publish (no insights_payload / no notify_client) -> untouched.
+  * surfaced drafts become exact-evidence FeedbackItems;
+  * an empty set is a valid "no changes needed" result;
+  * the take-level summary is persisted separately;
+  * legacy insights_payload input is rejected;
+  * delivery side effects remain intact.
 
 Run: python3 -m unittest test_coach_publish
 """
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 try:
     from flask import Flask
@@ -42,6 +40,7 @@ class PublishContractTests(unittest.TestCase):
         self.snippets = [{"id": SNIP1}]
         self.session_row = {
             "id": SID, "user_id": "u1", "coach_video_ref": None,
+            "project_id": "project-1", "coach_overall_message": None,
             "take_index": 2,
             "intake_context": {"topic": "Q3 pitch"},
         }
@@ -49,7 +48,11 @@ class PublishContractTests(unittest.TestCase):
         self._patch_db("get_coach_snippet_drafts", lambda sid: self.drafts)
         self._patch_db("get_snippets_by_session", lambda sid: self.snippets)
         self._patch_db("v2_get_session_by_id", lambda sid: dict(self.session_row))
-        self._patch_db("set_session_insights_payload", self._capture_insights)
+        self._patch_db("get_snippet_by_id", self._get_snippet)
+        self._patch_db("upsert_coach_snippet_draft", self._capture_item)
+        self._patch_db(
+            "set_session_coach_overall_message", self._capture_summary,
+        )
         self._patch_db("insert_lounge_messages", self._capture_lounge)
         self._patch_db("v2_charge_lab_credits_once", lambda *a, **k: None)
         self._patch_db("v2_charge_feedback_credits_once", lambda *a, **k: None)
@@ -63,8 +66,25 @@ class PublishContractTests(unittest.TestCase):
         self.originals[f"db:{attr}"] = (v2.db, attr, getattr(v2.db, attr, None))
         setattr(v2.db, attr, fn)
 
-    def _capture_insights(self, session_id, payload):
-        self.captured["insights"] = payload
+    def _get_snippet(self, snippet_id):
+        return {
+            "id": snippet_id,
+            "session_id": SID,
+            "start_offset_ms": 100,
+            "duration_ms": 900,
+        }
+
+    def _capture_item(self, session_id, snippet_id, fields, updated_by=None):
+        self.captured.setdefault("items", []).append({
+            "session_id": session_id,
+            "snippet_id": snippet_id,
+            "fields": fields,
+            "updated_by": updated_by,
+        })
+        return fields
+
+    def _capture_summary(self, session_id, message):
+        self.captured["summary"] = message
         return True
 
     def _capture_lounge(self, user_id, messages):
@@ -72,22 +92,34 @@ class PublishContractTests(unittest.TestCase):
         return [{"id": "srv", **m} for m in messages]
 
     def _run(self, body):
-        with self.app.test_request_context():
+        document = {
+            "pieces": [{
+                "snippet_id": SNIP1, "slide_index": 0,
+                "start": 0, "end": 12, "text": "Clear words.",
+            }],
+            "paragraphs": [{"start": 0, "end": 12}],
+        }
+        with self.app.test_request_context(), patch(
+            "services.transcript_document.build_transcript_document",
+            return_value=document,
+        ):
             return v2._apply_willab_publish_contract(SID, body, "coach-1")
 
-    # ── assemble mode (post-§F.4) ──
-    def test_assemble_builds_insights_from_drafts(self):
+    def test_publishes_exact_evidence_feedback_and_summary(self):
         self.drafts = [{
             "snippet_id": SNIP1, "surfaced": True, "note": "great pause",
             "tag": "strong", "when_context": None, "examples": [],
         }]
         err = self._run({"notify_client": True, "overall_message": "well done"})
-        self.assertIsNone(err)                                   # success
-        ins = self.captured["insights"]
-        self.assertEqual(ins["overall_message"], "well done")
-        self.assertEqual(len(ins["snippet_notes"]), 1)
-        self.assertEqual(ins["snippet_notes"][0]["note"], "great pause")
-        self.assertEqual(ins["snippet_notes"][0]["tag"], "strong")
+        self.assertIsNone(err)
+        self.assertEqual(self.captured["summary"], "well done")
+        item = self.captured["items"][0]
+        self.assertEqual(item["snippet_id"], SNIP1)
+        self.assertEqual(item["fields"]["feedback_family"], "great_formulation")
+        evidence = item["fields"]["evidence_locator"]
+        self.assertEqual(evidence["project_id"], "project-1")
+        self.assertEqual(evidence["take_id"], SID)
+        self.assertEqual(evidence["piece_id"], SNIP1)
 
     def test_insight_card_carries_topic_and_take_index(self):
         # F4 — the "insights ready" card metadata carries topic + take_index so
@@ -102,45 +134,39 @@ class PublishContractTests(unittest.TestCase):
         self.assertEqual(meta["take_index"], 2)
         self.assertEqual(meta["session_id"], SID)
 
-    def test_unsurfaced_draft_excluded_from_insights(self):
+    def test_unsurfaced_draft_is_not_published(self):
         self.drafts = [
             {"snippet_id": SNIP1, "surfaced": True, "note": "shown", "tag": "strong"},
             {"snippet_id": SNIP2, "surfaced": False, "note": "hidden", "tag": "to_work_on"},
         ]
         err = self._run({"notify_client": True})
         self.assertIsNone(err)
-        notes = self.captured["insights"]["snippet_notes"]
-        self.assertEqual([n["snippet_id"] for n in notes], [SNIP1])  # unsurfaced dropped
+        self.assertEqual(
+            [item["snippet_id"] for item in self.captured["items"]],
+            [SNIP1],
+        )
 
-    def test_one_surfaced_note_can_publish_without_private_annotations(self):
-        # The user-facing library floor is met; private training data is not
-        # part of this contract and cannot block delivery.
+    def test_private_annotations_do_not_gate_feedback(self):
         self.drafts = [{"snippet_id": SNIP1, "surfaced": True, "note": "x", "tag": "strong"}]
         self.snippets = [{"id": SNIP1}, {"id": SNIP2}]
         err = self._run({"notify_client": True})
-        self.assertIsNone(err)                                   # publishes anyway
+        self.assertIsNone(err)
 
-    # ── library floor STILL enforced ──
-    def test_no_surfaced_note_rejected_422(self):
-        self.drafts = []  # nothing surfaced -> library floor fails
-        err = self._run({"notify_client": True})
-        self.assertIsNotNone(err)
-        resp, status = err
-        self.assertEqual(status, 422)
-        self.assertEqual(resp.get_json()["code"], "PUBLISH_CONTRACT_VIOLATION")
-        self.assertNotIn("insights", self.captured)              # nothing persisted
-
-    # ── coach video fold (B.3) ──
-    def test_coach_video_ref_folded(self):
-        self.drafts = [{"snippet_id": SNIP1, "surfaced": True, "note": "x", "tag": "strong"}]
-        self.session_row = {"id": SID, "user_id": "u1", "coach_video_ref": "https://cdn/v.mp4"}
+    def test_empty_feedback_is_valid_no_changes_needed(self):
+        self.drafts = []
         err = self._run({"notify_client": True})
         self.assertIsNone(err)
-        self.assertEqual(self.captured["insights"].get("video_ref"), "https://cdn/v.mp4")
+        self.assertNotIn("items", self.captured)
+        self.assertIn("lounge", self.captured)
 
-    # ── body mode (today's FE) unchanged ──
-    def test_body_mode_uses_body_not_drafts(self):
-        self.drafts = [{"snippet_id": SNIP2, "surfaced": True, "note": "DRAFT", "tag": "to_work_on"}]
+    def test_coach_video_remains_on_the_take(self):
+        self.drafts = [{"snippet_id": SNIP1, "surfaced": True, "note": "x", "tag": "strong"}]
+        self.session_row["coach_video_ref"] = "https://cdn/v.mp4"
+        err = self._run({"notify_client": True})
+        self.assertIsNone(err)
+        self.assertEqual(self.session_row["coach_video_ref"], "https://cdn/v.mp4")
+
+    def test_legacy_insights_payload_is_rejected(self):
         body = {
             "insights_payload": {
                 "overall_message": "from body",
@@ -148,16 +174,10 @@ class PublishContractTests(unittest.TestCase):
             },
         }
         err = self._run(body)
-        self.assertIsNone(err)
-        ins = self.captured["insights"]
-        self.assertEqual(ins["overall_message"], "from body")
-        self.assertEqual(ins["snippet_notes"][0]["note"], "body note")  # body wins; drafts ignored
-
-    # ── legacy publish untouched ──
-    def test_legacy_publish_returns_none_no_persist(self):
-        err = self._run({"final_human_comment": "legacy"})  # no insights_payload, no notify_client
-        self.assertIsNone(err)
-        self.assertNotIn("insights", self.captured)         # opt-out: nothing happened
+        self.assertIsNotNone(err)
+        response, status = err
+        self.assertEqual(status, 422)
+        self.assertEqual(response.get_json()["code"], "INVALID_INPUT")
 
 if __name__ == "__main__":
     unittest.main()

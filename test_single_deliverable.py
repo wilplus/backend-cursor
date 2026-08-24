@@ -752,32 +752,6 @@ class LegacyRetirementTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class BatchCapLiftTests(unittest.TestCase):
-    """Takes append to the arc forever — the old 3-take batch cap is retired."""
-
-    def _continue(self):
-        sessions = [
-            {"arc_id": "arc-full", "intake_context": {
-                "slides": [{"title": "One", "body": "b"}]}}
-            for _ in range(3)                     # what used to be a full batch
-        ]
-        # Patch where _continue_deck_arc RESOLVES the hash (routes.v2.arcs),
-        # not the routes.v2_routes re-export — patching the re-export is a
-        # no-op for the caller and the stub would silently not apply.
-        with patch("routes.v2.arcs._presentation_id_from_slides",
-                   return_value="deck-hash"), \
-             patch.object(v2.db, "v2_list_user_lab_sessions",
-                          return_value=sessions):
-            return v2._continue_deck_arc(
-                "u1", [{"title": "One", "body": "b"}], "fresh-arc", 1)
-
-    def test_takes_join_the_full_arc_forever(self):
-        arc, take = self._continue()
-        self.assertEqual(arc, "arc-full")
-        self.assertEqual(take, 4)                 # take 4 of the SAME arc
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class IdealBubbleTests(unittest.TestCase):
     def _fire(self, fn_name, version, returns):
         from services import arc_notifications as an

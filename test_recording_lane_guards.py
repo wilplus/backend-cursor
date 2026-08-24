@@ -22,6 +22,7 @@ from __future__ import annotations
 import inspect
 import io
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 try:
@@ -58,7 +59,15 @@ class UnpairedReadTests(unittest.TestCase):
                 method="POST", data=data,
                 content_type="multipart/form-data"):
             # Any storage/DB touch would mean the guard ran too late.
-            with patch.object(v2.db, "v2_get_session_by_id") as m_sess, \
+            project = SimpleNamespace(
+                project_id="project-1", idempotency_key="upload-1",
+                duplicate_take=None, principal=SimpleNamespace(id="owner-1"),
+            )
+            with patch("routes.v2.lab_recording.resolve_take_project",
+                       return_value=project), \
+                 patch("routes.v2.lab_recording."
+                       "ensure_project_presentation_unchanged"), \
+                 patch.object(v2.db, "v2_get_session_by_id") as m_sess, \
                  patch("services.coach_video_storage.put_coach_object_bytes") \
                     as m_put:
                 out = v2.v2_lab_create_recording.__wrapped__()
@@ -121,33 +130,15 @@ class UnpairedReadTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class SpentSessionGuardTests(unittest.TestCase):
-    """A2 — the id in the form is only reused when the session is FRESH."""
+class ImmutableTakeIdentityTests(unittest.TestCase):
+    """A fresh Take id is minted server-side; browser session ids are inert."""
 
-    SRC = None
-
-    @classmethod
-    def setUpClass(cls):
-        from services.lab_session_identity import choose_guest_session_id
-        cls.SRC = inspect.getsource(choose_guest_session_id)
-
-    def _spent_markers(self):
-        """The row fields that mark a session as already owning a
-        recording — each must be consulted by the guard."""
-        return ("recording_1_id", "recording_kind", "paired_session_id",
-                "analysis_state", "results_published_at")
-
-    def test_guard_consults_every_spent_marker(self):
-        from services.lab_session_identity import _SPENT_SESSION_FIELDS
-        self.assertEqual(_SPENT_SESSION_FIELDS, self._spent_markers())
-
-    def test_guard_fails_closed_on_lookup_error(self):
-        # An unknown state must mint fresh, never risk folding a take into
-        # a spent session.
-        self.assertIn("spent = True", self.SRC)
-
-    def test_fresh_id_is_still_honoured(self):
-        self.assertIn("return session_id or make_id()", self.SRC)
+    def test_storage_always_mints_and_never_accepts_guest_session_id(self):
+        from services.lab_recording_persistence import store_recording_audio
+        source = inspect.getsource(store_recording_audio)
+        self.assertIn("session_id = str(uuid.uuid4())", source)
+        self.assertNotIn("requested_session_id", source)
+        self.assertNotIn("guest_session_id", source)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -167,23 +158,25 @@ class ReadNeverAssemblesTests(unittest.TestCase):
         wsrc = inspect.getsource(analysis_worker.run_full_analysis)
         self.assertIn('if arc_id and recording_kind == "spoken":', wsrc)
         self.assertNotIn("_single_deliverable_enabled", wsrc)
-        src = inspect.getsource(v2.v2_lab_create_recording)
-        self.assertIn("recording_kind=_rec_kind", src)
+        from routes.v2 import lab_recording
+        src = inspect.getsource(lab_recording._analysis_response)
+        self.assertIn("recording_kind=upload.recording_kind", src)
 
     def test_read_still_links_and_tags_without_counting(self):
         # The read lane survives for the DELIVERY-STAR snippet re-record:
         # it inherits the parent's arc + take number and is tagged — it
         # just never assembles. (The ideal-text re-read that used to share
         # this lane is refused at the guard; see UnpairedReadTests.)
-        from services.lab_arc_assignment import assign_recording_arc
-        src = inspect.getsource(assign_recording_arc)
-        self.assertIn('database.set_session_recording_kind(', src)
-        self.assertIn('return ArcAssignment(arc_id, take_index, take_index)', src)
+        from services.create_take import attach_recording_to_project
+        src = inspect.getsource(attach_recording_to_project)
+        self.assertIn("bind_variant(", src)
+        self.assertIn('recording_kind == "read"', src)
 
     def test_the_ideal_text_reread_is_pinned_out_at_the_guard(self):
         # The retirement pinned at the source: a read with no target
         # snippet is refused before any storage.
-        src = inspect.getsource(v2.v2_lab_create_recording)
+        from services.lab_recording_intake import parse_recording_lane
+        src = inspect.getsource(parse_recording_lane)
         self.assertIn('paired_snippet_id', src)
         self.assertIn('retired', src)
 
@@ -311,26 +304,6 @@ class RankingPoolExclusionAuditTests(unittest.TestCase):
             self.assertEqual(row["incumbent_take_session_id"], "t1")
             for p in row["incumbent_pieces"]:
                 self.assertNotEqual(p["snippet_id"], "rd1")
-
-    def test_challenger_and_variant_lanes_sit_behind_the_spoken_gate(self):
-        # Source pins. (1) process_new_take — block upgrade offers, the
-        # challenger generator — is called INSIDE the worker's
-        # spoken-only block, so a read can never generate an offer.
-        from services import analysis_worker
-        wsrc = inspect.getsource(analysis_worker.run_full_analysis)
-        gate = wsrc.index('if arc_id and recording_kind == "spoken":')
-        self.assertIn("process_new_take(", wsrc)
-        self.assertGreater(wsrc.index("process_new_take("), gate)
-        # (2) The variant pool (#314) captures take material only from
-        # inside process_new_take — it inherits the same gate rather
-        # than reading arc sessions itself.
-        from services import master_document
-        msrc = inspect.getsource(master_document.process_new_take)
-        self.assertIn("capture_take_variants", msrc)
-        from services import ideal_text_variants
-        vsrc = inspect.getsource(ideal_text_variants)
-        self.assertNotIn("get_arc_sessions", vsrc)
-
 
 if __name__ == "__main__":
     unittest.main()

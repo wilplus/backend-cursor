@@ -39,8 +39,8 @@ VALID_ROLES = ("user", "bot", "system")
 # migration fails CI).
 # "best_presentation_ready" = the durable "your best presentation is ready"
 # card — fired ONLY when the arc has >=3 takes AND is coach-reviewed AND paid.
-# "transcript_ready" = its unpaid/unreviewed counterpart (transcript text +
-# strong sides). Both bot-only, server-inserted; the FE never sends them.
+# "transcript_ready" = its unpaid/unreviewed transcript counterpart. Both are
+# bot-only and server-inserted; the frontend never sends them.
 # "feedback" (grey ×3) + "ideal_text" (purple ×1) = the delivery-layer
 # bubbles (founder 2026-07-15), inserted server-side by the coach's
 # "Save and Publish full analysis"; the FE opens the feedback page /

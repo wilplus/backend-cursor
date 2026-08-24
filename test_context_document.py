@@ -117,12 +117,15 @@ class InlineTakeOneUploadTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "INVALID_INPUT")
 
     def test_route_persists_brief_before_queueing_analysis(self):
-        source = inspect.getsource(v2.v2_lab_create_recording)
-        self.assertIn("read_recording_upload(", source)
-        persist_at = source.rfind("db.upsert_arc_context_document(")
-        enqueue_at = source.index("dispatch_recording_analysis(")
-        self.assertGreater(persist_at, 0)
-        self.assertLess(persist_at, enqueue_at)
+        route = inspect.getsource(v2.v2_lab_create_recording)
+        prepare_at = route.index("_prepare_lab_upload(")
+        persist_at = route.index("_persist_lab_take(")
+        analyze_at = route.index("_analysis_response(")
+        self.assertLess(prepare_at, persist_at)
+        self.assertLess(persist_at, analyze_at)
+        from routes.v2 import lab_recording
+        persist = inspect.getsource(lab_recording._persist_lab_take)
+        self.assertIn("_persist_context_document(upload)", persist)
 
 
 class PdfPathTests(unittest.TestCase):

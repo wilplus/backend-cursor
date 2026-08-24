@@ -36,7 +36,7 @@ class CoachSessionReadTests(unittest.TestCase):
             "id": sid, "user_id": "user-xyz-secret",
             "intake_context": {"domain": "public_speaking", "topic": "demo day"},
             "results_published_at": None, "status": "pending_admin_review",
-            "insights_payload": None, "coach_video_ref": None,
+            "coach_overall_message": None, "coach_video_ref": None,
         })
         # Prior coach work: snippet "a" noted + tagged + surfaced; "b" blank.
         self._patch_db("get_coach_snippet_drafts", lambda sid: [
@@ -108,7 +108,7 @@ class CoachSessionReadTests(unittest.TestCase):
     def test_state_done_when_published(self):
         setattr(v2.db, "v2_get_session_by_id", lambda sid: {
             "id": sid, "user_id": "u", "results_published_at": "2026-06-06T00:00:00Z",
-            "intake_context": {}, "insights_payload": None, "coach_video_ref": None,
+            "intake_context": {}, "coach_overall_message": None, "coach_video_ref": None,
         })
         status, data = self._get()
         self.assertEqual(data["state"], "done")

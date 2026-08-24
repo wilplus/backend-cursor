@@ -174,7 +174,7 @@
     "interview.llm_question": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "b601749d9f0b6315abc968bfeeda6baf7db535f8e46254436eb8aaeed2b9f3f3"
+      "sha256": "49a5d2fc142706d6e481b9e76b8cd4167b692c55c01dfbc3899c0bb52a07dc15"
     },
     "interview.longitudinal_block": {
       "kind": "source_ref",
@@ -346,21 +346,6 @@
       "module": "pending",
       "sha256": "3e282149557e70b3ae8af006d4cc65f9a36fb49afdd6359ceb6f5084a1210f1a"
     },
-    "master_doc_rag.anchor_metrics": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "04214348978f325089776711e929cbaef048e9b4bb5b22f67e15f176e35dc7b6"
-    },
-    "master_doc_rag.librarian_guardrail": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "de008a1f4f3aa72a7bf4afa6cb96ad5e382853d3cd293d5b39659c71c1361917"
-    },
-    "master_doc_rag.library_block": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "3c8292db07832616705040cedb6794126fa37a781a38ed4d016985a86db849f0"
-    },
     "master_doc_rag.life_block": {
       "kind": "source_ref",
       "module": "pending",
@@ -374,32 +359,27 @@
     "master_doc_rag.master_document": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "4152633eb0587c9c823e1882ef786be11795a8db4751866dc1db831abb51b423"
+      "sha256": "c5d2964b6ed59921135e430e67b4f22791c150a776cc1f97ac00b7adf81272fb"
     },
     "master_doc_rag.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "48a3409e1b7222da31ac672930214bd6f5e140a66a72f6a31d5b8fef8efd45a0"
-    },
-    "master_doc_rag.two_anchors": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "df2d91443a4f879a8ca3d9c374ce27ae0376bb150d7ded95fbcb91864fc249b5"
+      "sha256": "227eb382cf722e26865ebf8163c4f21e3dcd05b0953e8015ddbaece10bc2a641"
     },
     "master_doc_rag_lane.base": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "c363cb8ddc66c762bc7436c14fe0275ac82f932b7b3a3a48191c30dc83b47ed7"
+      "sha256": "6ae958f0e9ce0378471603396d0b7915846cf6c4ce80b6dcb121dd2957c3b544"
     },
     "master_doc_rag_lane.bodies": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "0c53ae5152fa17bb4d20620d8a6c0997a9289ae91283cbce66937b57bd19fb60"
+      "sha256": "59710ee207436482c5eb313ad2ec34272f7c96bb92f955fa7eb8043c8e697fb7"
     },
     "master_doc_rag_lane.builder": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "c32e8eb3649c34ebfe8bc764567bc623086dcdf3d479b55f216c6983c8eeb0da"
+      "sha256": "f8d02a6be72f2b5becd6a25c625b43c128941ceff47db18acdfb50b65a7186b4"
     },
     "master_doc_rag_router.classifier": {
       "kind": "source_ref",

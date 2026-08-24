@@ -141,8 +141,9 @@ class FeedbackRouteTests(_FeedbackHarness):
         takes = {t["take_index"]: t for t in body["takes"]}
         for ti in (1, 2, 3):
             self.assertFalse(takes[ti].get("locked", False))
-        # full text prefers the coach correction (A1)
-        self.assertEqual(takes[2]["full_text"], "corrected s2")
+        # A coach rewrite stays a proposal; it never silently replaces the
+        # user's accepted/raw text in the take document.
+        self.assertEqual(takes[2]["full_text"], "raw words of s2")
         # take 1's key moments include the paired READ's moment
         kinds = {m["recording_kind"] for m in takes[1]["key_moments"]}
         self.assertIn("spoken", kinds)
@@ -312,16 +313,14 @@ class SavePublishTests(unittest.TestCase):
         self.app = Flask(__name__)
 
     def test_save_feedback_persists_body_then_stamps(self):
-        # The FE sends inline coach authoring plus publish-only assembly data.
-        # Coach authoring must persist; insights_payload is ignored (publish-time only —
-        # persisting it early would leak the coach layer to the readout).
+        # The FE sends inline exact-evidence drafts plus the separate take-level
+        # coach summary.
         sid = "11111111-1111-4111-8111-111111111111"
         snip = "22222222-2222-4222-8222-222222222222"
         body = {
             "snippets": [{"id": snip, "note": "Key turn.", "tag": "strong",
                           "surfaced": True}],
-            "insights_payload": {"overall_message": "ignored",
-                                 "snippet_notes": []},
+            "overall_message": "Overall note.",
             "notify_client": False,
         }
         with self.app.test_request_context(json=body):
@@ -332,7 +331,8 @@ class SavePublishTests(unittest.TestCase):
                               return_value=[{"id": snip}]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes, \
-                 patch.object(v2.db, "set_session_insights_payload") as m_ip, \
+                 patch.object(v2.db, "set_session_coach_overall_message",
+                              return_value=True) as m_summary, \
                  patch.object(v2.db, "set_session_feedback_saved",
                               return_value=True) as m_save:
                 resp, status = v2.v2_coach_save_feedback.__wrapped__(sid)
@@ -348,7 +348,7 @@ class SavePublishTests(unittest.TestCase):
         self.assertEqual(args[2]["tag"], "strong")
         self.assertTrue(args[2]["surfaced"])
         self.assertNotIn("id", args[2])
-        m_ip.assert_not_called()      # insights NEVER persisted at Save
+        m_summary.assert_called_once_with(sid, "Overall note.")
         m_save.assert_called_once_with(sid)
 
     def test_save_feedback_no_body_still_stamps(self):
@@ -396,11 +396,28 @@ class AsyncReadoutStateTests(unittest.TestCase):
         self.app = Flask(__name__)
 
     def _guest(self, session):
+        from services.project_ownership import (
+            GUEST_OWNER_HEADER,
+            issue_guest_owner,
+        )
+
         sid = "33333333-3333-4333-8333-333333333333"
-        with self.app.test_request_context():
+        guest = issue_guest_owner()
+        with self.app.test_request_context(
+            headers={GUEST_OWNER_HEADER: guest.token},
+        ):
             request.user_id = None
             with patch.object(v2.db, "v2_get_session_by_id",
-                              return_value=dict(session, id=sid)):
+                              return_value=dict(
+                                  session, id=sid,
+                                  owner_principal_id=guest.principal_id,
+                              )), \
+                 patch.object(v2.db, "get_owner_principal",
+                              return_value={
+                                  "id": guest.principal_id,
+                                  "user_id": None,
+                                  "guest_secret_hash": guest.secret_hash,
+                              }):
                 resp, status = \
                     v2.v2_guest_get_recording_readout.__wrapped__(sid)
                 return resp.get_json(), status

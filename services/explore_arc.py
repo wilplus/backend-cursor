@@ -14,49 +14,6 @@ import uuid
 from typing import Any, Optional
 
 
-PROJECT_INTENTS = frozenset({"new", "continue"})
-
-
-def validate_project_intent(
-    project_intent: Any,
-    arc_id: Any,
-    continue_arc_id: Any,
-) -> tuple[Optional[str], Optional[str]]:
-    """Validate the explicit project-identity contract on a recording.
-
-    Older clients omit ``project_intent`` and retain the legacy resolver.  New
-    clients must say exactly what the user did:
-
-      * ``new`` carries no project id; :func:`resolve_arc` mints one.
-      * ``continue`` carries the user-selected ``continue_arc_id``.
-
-    Presentation bytes, slide text, topic text, and their hashes are content;
-    none of them are accepted as project identity by this contract.
-    """
-    raw = project_intent.strip().lower() \
-        if isinstance(project_intent, str) else ""
-    if not raw:
-        return None, None
-    if raw not in PROJECT_INTENTS:
-        return None, "project_intent must be 'new' or 'continue'"
-
-    carried = arc_id.strip() if isinstance(arc_id, str) else (arc_id or None)
-    selected = (continue_arc_id.strip()
-                if isinstance(continue_arc_id, str)
-                else (continue_arc_id or None))
-
-    if raw == "new":
-        if carried or selected:
-            return None, "A new project cannot carry an existing project id"
-        return raw, None
-
-    if not selected:
-        return None, "A continued project requires continue_arc_id"
-    if carried and str(carried) != str(selected):
-        return None, "arc_id and continue_arc_id must identify the same project"
-    return raw, None
-
-
 def resolve_arc(
     explore_session: Any,
     arc_id: Any,

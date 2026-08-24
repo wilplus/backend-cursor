@@ -13,7 +13,7 @@ arc + kind) and fires from every trigger without duplication:
     coach_finalized), checkout (payment lands), and the coach's own edit save
     — whichever completes the condition last.
   • transcript_ready — the unpaid/unfinalized >=3-takes counterpart: the user
-    gets the transcript-text affordance + strong sides, NOT the best-pres
+    gets the transcript-text affordance, NOT the best-pres
     buttons (founder #1: never present the best presentation before the coach
     has actually corrected it AND it's paid).
   • human_check note — after take 1: the automatic overview was shown and the
@@ -83,7 +83,7 @@ def maybe_fire_best_presentation_ready(db, arc_id: Any) -> Optional[str]:
     """Fire the right >=3-takes card for the arc's CURRENT state:
 
       coach_finalized AND paid  → best_presentation_ready (the real buttons)
-      otherwise                 → transcript_ready (transcript + strong sides)
+      otherwise                 → transcript_ready (transcript)
 
     coach_finalized is the REAL signal (services.best_presentation — has the
     coach corrected EVERY slide?), not a proxy. Idempotent per (arc, kind);

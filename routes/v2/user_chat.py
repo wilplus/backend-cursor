@@ -367,344 +367,57 @@ def _build_longitudinal_context_block(
 
 
 def _generate_llm_question(
-    turn_number: int,
-    tone: str,
-    previous_turns: list | None = None,
-    user_id: str | None = None,
-    *,
-    contextual_init: dict | None = None,
-    timeout_seconds: float | None = None,
-    baseline_objective: str | None = None,
-    conversation_summary: str | None = None,
+    *, contextual_init: dict, user_id: str | None = None,
 ) -> str | None:
-    """Call GPT-4o-mini to generate the next interview question.
+    """Generate one question anchored to an exact feedback item.
 
-    Falls back to the hardcoded bank on failure.
-    Returns the question text, or None on error (caller uses fallback).
-
-    timeout_seconds — Phase 13. When set, the OpenAI call is bounded
-    by this wall-clock budget. Used by the smart-EBCP-bypass path so
-    a stalled LLM doesn't keep a returning user staring at a blank
-    chat; the caller catches None and substitutes the scripted EBCP
-    turn 1 as a safety net.
-
-    baseline_objective — Directed-freestyle pivot. When the caller
-    supplies a per-turn objective string (turns 1-4 for users with
-    baseline_established=False), it's spliced into the system prompt
-    as a [CURRENT_TURN_OBJECTIVE] block so the LLM has a concrete
-    psychological target for THIS turn (icebreaker, empathy,
-    pressure, quick reflex) rather than freelancing across the four
-    onboarding turns. Returning users get None and the prompt
-    falls back to standard alternation.
-
-    conversation_summary — Phase A2.1 rolling digest. When passed,
-    replaces the quadratic-cost full-history replay: the prompt
-    gets the digest as a context block + only the last 2 raw
-    turns in chat history. NULL on the very first turn (cold-
-    start) or when the async summary writer hasn't caught up; the
-    prompt builder degrades to using all of previous_turns in
-    that case so we never serve a turn with NO context.
+    Generic interviews, baseline probing, retention loops and unanchored
+    profile questions are retired. The caller must supply the recording
+    evidence and professional explanation that make this coaching question
+    relevant.
     """
+    del user_id  # reserved for tenant-scoped observability, never prompt input
     try:
         from services.openai_service import OpenAIService
 
+        intent = str(contextual_init.get("intent") or "").strip().lower()
+        transcript = str(contextual_init.get("transcript") or "").strip()
+        explanation = str(
+            contextual_init.get("admin_comment") or "").strip()
+        if intent not in _CONTEXTUAL_INTENTS or not explanation:
+            return None
+
+        evidence = (
+            f"The exact words were: {transcript!r}."
+            if transcript
+            else "The exact transcript is unavailable; use only the explanation."
+        )
+        focus = (
+            "what made this delivery feel confident and repeatable"
+            if intent == "charisma"
+            else "what would make this specific moment feel calmer and clearer"
+        )
+        prompt = (
+            "You are a presentation coach. Ask one concise, supportive question "
+            "about one specific recorded feedback item. Do not diagnose the "
+            "speaker, infer hidden traits, or start a general interview. "
+            f"{evidence} The professional explanation was: {explanation!r}. "
+            f"Help the speaker explore {focus}. Return only the question."
+        )
         service = OpenAIService()
         if not service.client:
             return None
-
-        # Special: contextual "retention loop" init question (single deepening question)
-        if contextual_init and int(turn_number or 1) == 1:
-            intent = (contextual_init.get("intent") or "").strip().lower()
-            transcript = (contextual_init.get("transcript") or "").strip()
-            admin_comment = (contextual_init.get("admin_comment") or "").strip()
-            source_snippet_id = contextual_init.get("source_snippet_id")
-            # Transcript is OPTIONAL — the publish gate only demands
-            # admin_comment, so we mirror that here. When transcript
-            # is empty the base prompt below substitutes a neutral
-            # "the user just recorded a moment" phrasing so the LLM
-            # still has a coherent setup.
-            if intent in _CONTEXTUAL_INTENTS and admin_comment:
-                # ── Few-shot retrieval ──────────────────────────────
-                # Pull the top-scoring past exchanges with the SAME intent
-                # so the model is anchored on wording that historically
-                # produced specific, emotionally-rich answers. Falls
-                # silent when there aren't enough labeled outcomes yet
-                # (no examples block in the prompt, model generates
-                # purely from the current snippet's context).
-                few_shot_block = _build_few_shot_block(
-                    intent=intent,
-                    exclude_snippet_id=source_snippet_id,
-                    # Phase 1 tenant scoping flows through the caller's
-                    # user_id so retrieval can JOIN through
-                    # user_settings.company_id. When None (background
-                    # script, internal caller), the legacy path runs.
-                    viewer_user_id=user_id,
-                )
-
-                # ── Phase 15 longitudinal context ───────────────────
-                # When enabled, splice in learner-profile + mirror +
-                # prior attempts on THIS snippet so the LLM stops
-                # producing the same opener on every click. Gated by
-                # LONGITUDINAL_FIRST_QUESTION_ENABLED so deploy is a
-                # no-op until the operator flips it; falls silent if
-                # the user has no signal yet (cold-start unaffected).
-                longitudinal_block: str | None = None
-                try:
-                    from config import Config
-                    if Config().LONGITUDINAL_FIRST_QUESTION_ENABLED:
-                        longitudinal_block = _build_longitudinal_context_block(
-                            snippet_id=source_snippet_id,
-                            user_id=user_id,
-                        )
-                except Exception as long_err:
-                    logger.warning(
-                        "first-question: longitudinal block failed: %s",
-                        long_err,
-                    )
-
-                # ── Phase 16 baseline insight ───────────────────────
-                # Pre-baked digest of the user's EBCP turns 1-4. Read
-                # from the cache only — we don't compute here because
-                # this is the contextual /chat path, not the
-                # interview funnel where compute happens at turn 5.
-                # Gated by BASELINE_SUMMARY_ENABLED.
-                baseline_block: str | None = None
-                try:
-                    from config import Config
-                    if Config().BASELINE_SUMMARY_ENABLED and user_id:
-                        summary = db.get_user_baseline_summary(user_id)
-                        if summary:
-                            from services.baseline_summary import (
-                                format_baseline_for_prompt,
-                            )
-                            baseline_block = format_baseline_for_prompt(summary)
-                except Exception as bs_err:
-                    logger.warning(
-                        "first-question: baseline block failed: %s",
-                        bs_err,
-                    )
-
-                # When transcript is missing (Whisper miss / extracted
-                # highlight without a captured slice), fall back to a
-                # neutral framing that grounds the LLM in the coach
-                # insight alone. The "What did the user say" line is
-                # built once so both branches share the substitution.
-                if transcript:
-                    moment_line = f"In that recording, they said: '{transcript}'."
-                else:
-                    moment_line = (
-                        "We don't have a transcript of the exact words, "
-                        "but the coach flagged this moment specifically."
-                    )
-
-                if intent == "charisma":
-                    base = (
-                        "You are a coaching assistant. "
-                        "The user clicked 'Understand your charisma' on a past recording. "
-                        f"{moment_line} "
-                        f"The human coach commented: '{admin_comment}'. "
-                        "Respond with two parts: (1) a brief warm acknowledgment of this specific moment, "
-                        "then (2) ONE deepening question to help them deconstruct WHY they felt so confident "
-                        "and how they can replicate it. "
-                        "FORMATTING RULE: Separate the acknowledgment from the question using the exact "
-                        "delimiter `|||`. "
-                        "Example: `That moment you described is exactly where charisma lives! ||| "
-                        "What were you thinking about right before you said that?` "
-                        "Return ONLY these two parts separated by `|||`, nothing else."
-                    )
-                else:
-                    base = (
-                        "You are a coaching assistant. "
-                        "The user clicked 'Release your stress'. "
-                        f"{moment_line} "
-                        f"The human coach commented: '{admin_comment}'. "
-                        "Respond with two parts: (1) a brief empathetic acknowledgment of this moment, "
-                        "then (2) ONE deepening question to help them identify the root cause of that "
-                        "specific stress spike. "
-                        "FORMATTING RULE: Separate the acknowledgment from the question using the exact "
-                        "delimiter `|||`. "
-                        "Example: `That sounds like a genuinely pressured moment. ||| "
-                        "What was the thing you most feared would go wrong right then?` "
-                        "Return ONLY these two parts separated by `|||`, nothing else."
-                    )
-
-                # Few-shot examples first (anchors wording), then
-                # Phase 16 baseline insight (who this user is from
-                # their EBCP run), then Phase 15 longitudinal context
-                # (recent attempts on this snippet + recurring
-                # entities), then the base task description.
-                #
-                # Order matters: the LLM should read who-this-user-is
-                # BEFORE the imperative task block. Baseline (stable
-                # identity) comes before longitudinal (recent state)
-                # so the model anchors on identity and adapts on
-                # recent — not the other way around.
-                prompt_parts: list[str] = []
-                if few_shot_block:
-                    prompt_parts.append(few_shot_block)
-                if baseline_block:
-                    prompt_parts.append(baseline_block)
-                if longitudinal_block:
-                    prompt_parts.append(longitudinal_block)
-                prompt_parts.append(base)
-                system_prompt = "\n\n".join(prompt_parts)
-
-                # Phase 15 / 16 — bump temperature when ANY user-
-                # specific context is in play (longitudinal block OR
-                # the Phase 16 baseline insight) so even identical
-                # raw inputs produce verbal variety. Falls back to
-                # the legacy 0.7 when both blocks are empty
-                # (preserves cold-start behaviour byte-for-byte).
-                ctx_temperature = (
-                    0.85
-                    if (longitudinal_block or baseline_block)
-                    else 0.7
-                )
-
-                response = service.client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "system", "content": system_prompt}],
-                    max_tokens=180,
-                    temperature=ctx_temperature,
-                )
-                question = response.choices[0].message.content.strip()
-                if question.startswith('"') and question.endswith('"'):
-                    question = question[1:-1]
-                return question if question else None
-
-        # Build system prompt with optional user-specific injection
-        system_prompt = _INTERVIEW_SYSTEM_PROMPT
-        if user_id:
-            system_prompt = _augment_interview_prompt_with_profile(
-                system_prompt, user_id,
-            )
-            # Phase 16 — splice in the pre-baked baseline digest so
-            # the LLM doesn't redo extraction + generation in one
-            # call. Flag-gated; falls through silently when the
-            # summary hasn't been computed yet (cold-start users or
-            # admin resets that haven't graduated again).
-            try:
-                from config import Config
-                if Config().BASELINE_SUMMARY_ENABLED:
-                    summary = db.get_user_baseline_summary(user_id)
-                    if summary:
-                        from services.baseline_summary import (
-                            format_baseline_for_prompt,
-                        )
-                        baseline_block = format_baseline_for_prompt(summary)
-                        if baseline_block:
-                            system_prompt = (
-                                f"{system_prompt}\n\n{baseline_block}"
-                            )
-            except Exception as bs_err:
-                logger.warning(
-                    "interview: baseline_summary inject failed "
-                    "user=%s err=%s", user_id, bs_err,
-                )
-
-        # ── Phase A2.1 — rolling conversation summary ───────────────
-        # Splice order (pitfall #7 in the learning-loop spec —
-        # augmentation order is load-bearing, later blocks get more
-        # model attention):
-        #
-        #   1. base interview prompt
-        #   2. profile / [LEARNER PROFILE] (existing)
-        #   3. baseline_summary (Phase 16, stable identity)
-        #   4. conversation_summary (THIS BLOCK — per-session digest)
-        #   5. baseline_objective ([CURRENT_TURN_OBJECTIVE], per-turn
-        #      directive — stays last so it anchors the generate step)
-        #
-        # The summary goes BETWEEN baseline (stable user identity) and
-        # baseline_objective (per-turn imperative) because it's
-        # per-session ephemera that's more recent than baseline but
-        # less imperative than the current-turn directive. Keeping
-        # baseline_objective last preserves its anchoring effect.
-        if conversation_summary:
-            try:
-                from services.conversation_summary import (
-                    format_summary_for_prompt,
-                )
-                summary_block = format_summary_for_prompt(conversation_summary)
-                if summary_block:
-                    system_prompt = (
-                        f"{system_prompt}\n\n{summary_block}"
-                    )
-            except Exception as sum_err:
-                logger.warning(
-                    "interview: conversation_summary splice failed "
-                    "(continuing without): %s", sum_err,
-                )
-
-        # Directed-freestyle objective for the 4 onboarding turns.
-        # When the caller passes a baseline_objective, the LLM gets
-        # a hard psychological target for THIS turn instead of free-
-        # styling across the onboarding phase. Goes AFTER the
-        # profile/baseline/summary blocks so identity context is
-        # read first, then the per-turn directive is the last
-        # instruction the model sees before "generate" — anchoring
-        # effect on the response.
-        if baseline_objective:
-            system_prompt = (
-                f"{system_prompt}\n\n[CURRENT_TURN_OBJECTIVE]\n"
-                f"{baseline_objective.strip()}\n\n"
-                "Build a one-question scenario that delivers the "
-                "objective above. Stay in the interview-coach voice. "
-                "Do NOT explain the objective to the user — just ask "
-                "the question."
-            )
-
-        # Build conversation history for context.
-        # Phase A2.1: when a conversation_summary is in play, the
-        # digest covers the older turns and we only need the LAST 2
-        # raw turns for short-range fidelity (the model gets
-        # "what was JUST said" verbatim, longer-range memory from
-        # the summary block above). When no summary exists yet
-        # (cold-start), fall back to replaying ALL previous_turns
-        # so the first few turns don't lose context.
-        messages = [{"role": "system", "content": system_prompt}]
-
-        if previous_turns:
-            turns_to_render = (
-                previous_turns[-2:]
-                if conversation_summary
-                else previous_turns
-            )
-            for turn in turns_to_render:
-                messages.append({"role": "assistant", "content": turn.get("question", "")})
-                if turn.get("transcript"):
-                    messages.append({"role": "user", "content": turn["transcript"]})
-
-        # Request next question
-        messages.append({
-            "role": "user",
-            "content": f"Generate the next question. This is turn {turn_number}. Required tone: {tone}.",
-        })
-
-        # Phase 13 — optional per-call timeout for the bypass-EBCP
-        # path. The OpenAI Python SDK accepts a ``timeout`` kwarg on
-        # the request that maps to httpx; if it isn't honoured for
-        # some reason the outer try/except still catches the slow
-        # call and falls back to the scripted EBCP turn 1.
-        create_kwargs = {
-            "model": "gpt-4o-mini",
-            "messages": messages,
-            "max_tokens": 150,
-            "temperature": 0.8,
-        }
-        if timeout_seconds is not None:
-            create_kwargs["timeout"] = float(timeout_seconds)
-        response = service.client.chat.completions.create(**create_kwargs)
-
-        question = response.choices[0].message.content.strip()
-        # Strip quotes if the LLM wrapped it
-        if question.startswith('"') and question.endswith('"'):
-            question = question[1:-1]
-        return question if question else None
-
-    except Exception as e:
-        logger.warning("_generate_llm_question failed (will use fallback): %s", e)
+        response = service.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": prompt}],
+            max_tokens=100,
+            temperature=0.7,
+        )
+        question = str(response.choices[0].message.content or "").strip()
+        return question.strip('"') or None
+    except Exception as error:
+        logger.warning("contextual coaching question failed: %s", error)
         return None
-
 
 def _augment_interview_prompt_with_profile(
     base_prompt: str,
@@ -878,6 +591,63 @@ def _build_master_score_block(user_id: str) -> str | None:
     return "\n".join(lines)
 
 
+def _feedback_transcript(snippet: dict) -> str:
+    """Read the exact text evidence through the legacy schema adapter."""
+    for key in (
+        "transcript", "transcription_text", "transcript_text",
+        "transcript_excerpt",
+    ):
+        value = str(snippet.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _contextual_question_response(
+    *, user_id: str, source_id: str, intent: str,
+) -> tuple[dict, int]:
+    if not _is_valid_uuid(source_id):
+        return {"code": "INVALID_INPUT", "error": "Invalid feedback item"}, 400
+    if intent not in _CONTEXTUAL_INTENTS:
+        return {"code": "INVALID_INPUT", "error": "Unsupported intent"}, 400
+
+    snippet = db.v2_get_charisma_snippet_for_user(source_id, user_id)
+    if not snippet:
+        return {"code": "NOT_FOUND", "error": "Feedback item not found"}, 404
+
+    stored = str(snippet.get("follow_up_question") or "").strip()
+    if stored:
+        return {
+            "status": "ok", "question": stored,
+            "source": "stored_feedback_follow_up",
+        }, 200
+
+    explanation = str(snippet.get("admin_comment") or "").strip()
+    if not explanation:
+        return {
+            "code": "FEEDBACK_CONTEXT_UNAVAILABLE",
+            "error": "The feedback explanation is not available yet",
+        }, 422
+
+    question = _generate_llm_question(
+        contextual_init={
+            "intent": intent,
+            "transcript": _feedback_transcript(snippet),
+            "admin_comment": explanation,
+            "source_snippet_id": source_id,
+        },
+        user_id=user_id,
+    )
+    skill = _get_skill(intent)
+    question = question or (skill.contextual_first_question if skill else None)
+    if not question:
+        return {
+            "code": "QUESTION_GENERATION_FAILED",
+            "error": "Failed to prepare a contextual question",
+        }, 503
+    return {"status": "ok", "question": question, "source": "generated"}, 200
+
+
 @v2_bp.route("/user/chat/first-question", methods=["POST"])
 @llm_limit
 @require_auth
@@ -904,6 +674,11 @@ def v2_user_chat_first_question():
             or ""
         ).strip() or None
         intent = (request.args.get("intent") or "").strip().lower() or None
+        if not (source_snippet_id and intent):
+            return jsonify({
+                "code": "FEEDBACK_CONTEXT_REQUIRED",
+                "error": "sourceSnippetId and intent must be provided together",
+            }), 400
 
         # ── Admin overrides (priority order) ────────────────────────
         # 1) coaching_directives_queue — new user-level 5-step arc.
@@ -916,24 +691,6 @@ def v2_user_chat_first_question():
         # Week-1 cleanup. The directives-queue is the single admin
         # override path now. Old data in user_settings.queued_
         # override_question persists in the DB but is ignored.
-        directive = db.pop_next_directive(user_id)
-        if directive:
-            logger.info(
-                "first_question.directives_queue_hit user=%s pos=%s "
-                "intent=%s",
-                user_id, directive.get("position"),
-                directive.get("intent_tag"),
-            )
-            return jsonify({
-                "status": "ok",
-                "question": directive.get("question"),
-                "source": "directives_queue",
-                "directive": {
-                    "position": directive.get("position"),
-                    "intent_tag": directive.get("intent_tag"),
-                },
-            }), 200
-
         # ── 2) Task 10 — next-session icebreaker (soft-queue read).
         # Cold-start path only: if a sourceSnippet/intent is provided
         # the user came in via the snippet-deep-dive CTA, not a fresh
@@ -944,115 +701,12 @@ def v2_user_chat_first_question():
         #
         # Priority slot: AFTER directives_queue (admin always wins),
         # BEFORE contextual_init / dynamic LLM.
-        if not (source_snippet_id or intent):
-            icebreaker_payload = db.pop_pending_icebreaker_for_user(
-                user_id,
-            )
-            if icebreaker_payload:
-                logger.info(
-                    "first_question.icebreaker_hit user=%s "
-                    "source_sid=%s",
-                    user_id,
-                    icebreaker_payload.get("source_session_id"),
-                )
-                return jsonify({
-                    "status": "ok",
-                    "question": icebreaker_payload.get("question"),
-                    "source": "prev_session_icebreaker",
-                    "icebreaker": {
-                        "source_session_id": icebreaker_payload.get(
-                            "source_session_id",
-                        ),
-                    },
-                }), 200
-
-        contextual_init = None
-        if source_snippet_id or intent:
-            if not (source_snippet_id and intent):
-                return jsonify({"code": "INVALID_INPUT", "error": "sourceSnippetId and intent must be provided together"}), 400
-            if not _is_valid_uuid(source_snippet_id):
-                return jsonify({"code": "INVALID_INPUT", "error": "sourceSnippetId must be a valid UUID"}), 400
-            if intent not in _CONTEXTUAL_INTENTS:
-                return jsonify({"code": "INVALID_INPUT", "error": "intent must be 'charisma' or 'stress'"}), 400
-
-            snippet = db.v2_get_charisma_snippet_for_user(source_snippet_id, user_id)
-            if not snippet:
-                return jsonify({"code": "NOT_FOUND", "error": "Snippet not found"}), 404
-
-            # ── Infinite Retention Trigger: use stored follow_up_question first ──
-            # The admin pre-generated (and may have hand-edited) this question when
-            # labeling the snippet. Serving it directly avoids latency at click time
-            # and ensures the admin's wording is used verbatim.
-            stored_follow_up = (snippet.get("follow_up_question") or "").strip()
-            if stored_follow_up:
-                return jsonify({
-                    "status": "ok",
-                    "question": stored_follow_up,
-                    "source": "stored_follow_up",
-                }), 200
-
-            # No pre-stored question → fall back to dynamic LLM generation.
-            #
-            # Gate alignment fix: the publish gate
-            # (v2_get_results_snippets_for_session) requires only
-            # admin_comment NOT NULL — transcript is optional there.
-            # If we hard-fail here on missing transcript we break the
-            # CTA on snippets that the admin legitimately published
-            # (e.g. when Whisper missed a 5s slice). Soften: require
-            # only admin_comment. The LLM still has the coach insight
-            # to anchor on; transcript is forwarded as empty and the
-            # base prompt handles that case.
-            transcript = (
-                (snippet.get("transcript") or "")
-                or (snippet.get("transcription_text") or "")
-                or (snippet.get("transcript_text") or "")
-                or (snippet.get("transcript_excerpt") or "")
-            ).strip()
-            admin_comment = (snippet.get("admin_comment") or "").strip()
-            if not admin_comment:
-                return jsonify({
-                    "code": "SNIPPET_CONTEXT_UNAVAILABLE",
-                    "error": "Snippet admin_comment is not available yet",
-                }), 422
-            if not transcript:
-                logger.info(
-                    "first-question: snippet has no transcript, proceeding "
-                    "with admin_comment only snippet=%s user=%s",
-                    source_snippet_id, user_id,
-                )
-
-            contextual_init = {
-                "intent": intent,
-                "transcript": transcript,
-                "admin_comment": admin_comment,
-                # Forwarded so the few-shot retrieval doesn't echo this
-                # exact snippet back as one of its own examples.
-                "source_snippet_id": source_snippet_id,
-            }
-
-        # Generate the first question dynamically
-        tone = "charisma" if (intent != "stress") else "stress"
-        question = _generate_llm_question(
-            turn_number=1,
-            tone=tone,
-            previous_turns=None,
+        payload, status = _contextual_question_response(
             user_id=user_id,
-            contextual_init=contextual_init,
+            source_id=source_snippet_id,
+            intent=intent,
         )
-        if not question:
-            # Phase 7 — first-question fallback lives on the Skill
-            # object so it stays consistent with the rest of that
-            # skill's tone. Defaults to stress's question when the
-            # intent doesn't resolve.
-            fallback_skill = _get_skill(intent) or _get_skill("stress")
-            if fallback_skill is not None:
-                question = fallback_skill.contextual_first_question
-
-        return jsonify({
-            "status": "ok",
-            "question": question,
-            "source": "llm_generated",
-        }), 200
+        return jsonify(payload), status
 
     except Exception as e:
         logger.error("user/chat/first-question failed: %s", e, exc_info=True)

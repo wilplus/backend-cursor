@@ -15,7 +15,7 @@ student's inbox each get their own clean conversation:
   - ``student_thread_headers`` — COACH-bound mail about one student
     (homework-complete pings). Root: willab-student-{user_id}@…
   - ``user_thread_headers`` — USER-bound mail from the coach/platform
-    (publish-results, audit-ready, strong-sides audit).
+    (publish-results, audit-ready, coaching audit).
     Root: willab-user-{user_id}@…
 
 Both return ``{}`` for a falsy user_id (guest sessions) — callers pass

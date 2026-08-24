@@ -80,11 +80,32 @@ class AssembleTests(unittest.TestCase):
         self.assertEqual(out["text"], "")
         self.assertEqual(out["key_moments"], [])
 
+
+class CanonicalPersistenceTests(unittest.TestCase):
+
+    def test_later_take_never_rebuilds_existing_ideal_text(self):
+        from services.ideal_text_block import maybe_assemble_ideal_text
+
+        database = MagicMock()
+        database.get_coach_arc_ideal_text.return_value = {
+            "auto_text": "The Take 1 Ideal Text",
+            "version": 1,
+        }
+
+        self.assertTrue(maybe_assemble_ideal_text(
+            "arc1", database=database, require_target=False,
+        ))
+        database.persist_auto_ideal_text.assert_not_called()
+
     def test_no_anchor_without_ids(self):
+        from services import ideal_text_block as mod
+
         bp = _bp(slides=[{"index": 0, "text": "Great line.",
                           "key_phrases": [],
                           "snippet_id": None, "session_id": None}])
-        out = self._run(bp)
+        with patch("services.best_presentation.build_best_presentation",
+                   return_value=bp):
+            out = mod.assemble_ideal_text_block("arc1")
         self.assertNotIn("[[moment:", out["text"])
         self.assertEqual(out["key_moments"], [])
 

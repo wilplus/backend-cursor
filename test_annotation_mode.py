@@ -5,8 +5,7 @@ with NO ideal-text assembly, to bank annotations toward the 1,000 goal.
 
 Pinned here:
   * reuses the shipped cutter (process_lab_recording) — no new chunker;
-  * NO assembly runs on this path (maybe_assemble / process_new_take are
-    never called);
+  * NO assembly runs on this path (maybe_assemble is never called);
   * the session enters the SAME coach queue (source='audit_upload' →
     send_lab_recording_to_coach), tagged annotation_mode so the FE
     labels it;
@@ -74,7 +73,7 @@ class AnnotationUploadTests(unittest.TestCase):
                  patch.object(v2.db, "create_recording", side_effect=_rec), \
                  patch.object(v2.db, "v2_get_session_by_id",
                               return_value=None), \
-                 patch.object(v2.db, "v2_create_guest_session",
+                 patch.object(v2.db, "v2_create_internal_session",
                               return_value={"id": "x"}), \
                  patch.object(v2.db, "set_session_user_id") as m_uid, \
                  patch.object(v2.db, "set_session_source",
@@ -82,7 +81,7 @@ class AnnotationUploadTests(unittest.TestCase):
                  patch.object(v2.db, "set_session_intake_context",
                               side_effect=lambda sid, ctx: calls.update(
                                   intake=ctx) or True), \
-                 patch.object(v2.db, "v2_set_guest_session_recording",
+                 patch.object(v2.db, "v2_set_session_recording",
                               return_value={"id": "x"}), \
                  patch("services.lab_recording.process_lab_recording",
                        side_effect=_proc), \

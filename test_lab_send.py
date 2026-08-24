@@ -1,7 +1,7 @@
 """Unit tests for services.lab_send (willab send-gate §3.4-3.7).
 
 Covers the idempotent send primitive (status flip = success signal,
-already-sent no-op, best-effort notify) + the willab-origin gate.
+already-sent no-op, best-effort notify).
 DB + notify mocked.
 
 Run: python3 -m unittest test_lab_send
@@ -38,24 +38,13 @@ def tearDownModule():
         sys.modules.pop("services.db", None)
 
 
-class IsLabRecordingTests(unittest.TestCase):
-
-    def test_origin_gate(self):
-        from services.lab_send import is_lab_recording
-        self.assertTrue(is_lab_recording({"recording_origin": "willab_lab"}))
-        self.assertFalse(is_lab_recording({"recording_origin": "guest_funnel"}))
-        self.assertFalse(is_lab_recording({"recording_origin": None}))
-        self.assertFalse(is_lab_recording({}))
-        self.assertFalse(is_lab_recording(None))
-
-
 class SendTests(unittest.TestCase):
 
     def _send(self, session, *, flip_ok=True):
         from services import lab_send as mod
         from services.db import db
         with patch.object(db, "v2_get_session_by_id", return_value=session), \
-             patch.object(db, "v2_update_session_status_unscoped",
+             patch.object(db, "v2_mark_session_pending_review",
                           return_value=({"id": "s"} if flip_ok else None)), \
              patch.object(db, "get_snippets_by_session", return_value=[{"id": "a"}]), \
              patch("services.session_publish._send_admin_notification",
@@ -108,7 +97,7 @@ class SendTests(unittest.TestCase):
         from services.db import db
         with patch.object(db, "v2_get_session_by_id",
                           return_value={"id": "s", "status": "readout_ready"}), \
-             patch.object(db, "v2_update_session_status_unscoped",
+             patch.object(db, "v2_mark_session_pending_review",
                           return_value={"id": "s"}), \
              patch.object(db, "get_snippets_by_session", return_value=[]), \
              patch("services.session_publish._send_admin_notification",

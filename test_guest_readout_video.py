@@ -3,8 +3,8 @@
 BE-1: GET /v2/lab/recordings/<id>/readout — the unauth twin of the authed
       re-read, so a signed-out user can poll for the async Say-It-Stronger
       cards and re-open their recording without hitting the 401 → "couldn't
-      load these insights" screen. Only UNCLAIMED sessions are open to a
-      bare id; a claimed session is owner-only (no leak).
+      load these insights" screen. The signed Guest ID is required; a bare
+      session UUID is never authorization.
 BE-2: /v2/lab/recordings rejects a VIDEO upload with 415 AUDIO_ONLY — while
       the mic's own audio/webm (.webm) still passes.
 
@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import io
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 try:
     from flask import Flask, request
     from routes import v2_routes as v2
+    from services.project_ownership import GUEST_OWNER_HEADER, issue_guest_owner
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
@@ -34,7 +36,7 @@ _SID = "11111111-1111-4111-8111-111111111111"
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class GuestReadoutTests(unittest.TestCase):
-    """BE-1 — the guest readout re-read endpoint."""
+    """BE-1 — the canonically-owned readout re-read endpoint."""
 
     _READOUT = {"snippets": [{"id": "s1", "transcript": "hi",
                               "say_it_stronger": {"already_strong": False,
@@ -42,11 +44,21 @@ class GuestReadoutTests(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
+        self._guest = issue_guest_owner()
         self._session = {"id": _SID, "user_id": None,
+                         "owner_principal_id": self._guest.principal_id,
                          "status": "readout_ready"}
         self._p = [
             patch.object(v2.db, "v2_get_session_by_id",
                          lambda sid: self._session),
+            patch.object(v2.db, "get_owner_principal",
+                         lambda principal_id: {
+                             "id": self._guest.principal_id,
+                             "user_id": None,
+                             "guest_secret_hash": self._guest.secret_hash,
+                         } if principal_id == self._guest.principal_id else None),
+            patch.object(v2.db, "get_owner_principal_for_user",
+                         lambda user_id: {"id": "owner-1", "user_id": user_id}),
             patch("services.lab_recording.build_readout_from_session",
                   lambda sid, **kw: dict(self._READOUT)),
         ]
@@ -57,28 +69,38 @@ class GuestReadoutTests(unittest.TestCase):
         for p_ in self._p:
             p_.stop()
 
-    def _call(self, session_id=_SID, user_id=None):
-        with self.app.test_request_context():
+    def _call(self, session_id=_SID, user_id=None, include_guest=True):
+        headers = ({GUEST_OWNER_HEADER: self._guest.token}
+                   if include_guest and user_id is None else None)
+        with self.app.test_request_context(headers=headers):
             if user_id is not None:
                 request.user_id = user_id
             resp, status = v2.v2_guest_get_recording_readout.__wrapped__(session_id)
             return resp.get_json(), status
 
-    def test_unclaimed_session_served_without_auth(self):
+    def test_guest_owned_session_served_with_verified_guest_principal(self):
         body, status = self._call()
         self.assertEqual(status, 200)
         self.assertEqual(body["session_id"], _SID)
         # the async synonym cards ride through so the FE can poll for them
         self.assertIn("say_it_stronger", body["readout"]["snippets"][0])
 
+    def test_bare_session_id_is_not_authorization(self):
+        body, status = self._call(include_guest=False)
+        self.assertEqual(status, 404)
+        self.assertEqual(body["code"], "SESSION_NOT_FOUND")
+
     def test_claimed_by_other_404s_without_leak(self):
-        self._session = {"id": _SID, "user_id": "owner-x"}
+        self._session = {"id": _SID, "user_id": "owner-x",
+                         "owner_principal_id": "owner-x"}
         body, status = self._call(user_id=None)          # anonymous caller
         self.assertEqual(status, 404)
         self.assertEqual(body["code"], "SESSION_NOT_FOUND")
 
     def test_claimed_owner_can_read(self):
-        self._session = {"id": _SID, "user_id": "u1", "status": "readout_ready"}
+        self._session = {"id": _SID, "user_id": "u1",
+                         "owner_principal_id": "owner-1",
+                         "status": "readout_ready"}
         body, status = self._call(user_id="u1")
         self.assertEqual(status, 200)
 
@@ -93,6 +115,7 @@ class GuestReadoutTests(unittest.TestCase):
 
     def test_state_reflects_lifecycle(self):
         self._session = {"id": _SID, "user_id": None,
+                         "owner_principal_id": self._guest.principal_id,
                          "status": "pending_admin_review"}
         body, _ = self._call()
         self.assertEqual(body["state"], "review_pending")
@@ -115,7 +138,13 @@ class VideoRejectTests(unittest.TestCase):
         with self.app.test_request_context(
                 method="POST", data=data,
                 content_type="multipart/form-data"):
-            resp, status = v2.v2_lab_create_recording.__wrapped__()
+            project = SimpleNamespace(
+                project_id="project-1", idempotency_key="upload-1",
+                duplicate_take=None, principal=SimpleNamespace(id="owner-1"),
+            )
+            with patch("routes.v2.lab_recording.resolve_take_project",
+                       return_value=project):
+                resp, status = v2.v2_lab_create_recording.__wrapped__()
             return resp.get_json(), status
 
     def setUp(self):

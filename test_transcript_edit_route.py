@@ -15,6 +15,10 @@ from unittest.mock import patch
 try:
     from flask import Flask, request
     from routes import v2_routes as v2
+    from services.project_ownership import (
+        GUEST_OWNER_HEADER,
+        issue_guest_owner,
+    )
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
@@ -66,8 +70,9 @@ class TranscriptEditRouteTests(unittest.TestCase):
         for p in self._patches:
             p.stop()
 
-    def _call(self, body, session_id=_SID, user_id="u1"):
-        with self.app.test_request_context(json=body):
+    def _call(self, body, session_id=_SID, user_id="u1", guest_token=None):
+        headers = {GUEST_OWNER_HEADER: guest_token} if guest_token else None
+        with self.app.test_request_context(json=body, headers=headers):
             request.user_id = user_id
             resp, status = v2.v2_user_put_transcript_edit.__wrapped__(session_id)
             return resp.get_json(), status
@@ -81,14 +86,40 @@ class TranscriptEditRouteTests(unittest.TestCase):
         self.assertIsNone(self._saved[0]["chunk_index"])
 
     def test_guest_on_unclaimed_session_saves(self):
-        # Round-4 signed-out-first (2026-07-16): the instant view's Approve
-        # writes through here BEFORE signup. Unclaimed session + no caller →
-        # capability by session id (mirrors the guest readout).
-        self._session = {"id": _SID, "user_id": None}
-        body, status = self._call({"snippet_id": _SNIP, "text": "fixed"},
-                                  user_id=None)
+        issued = issue_guest_owner()
+        self._session = {
+            "id": _SID,
+            "user_id": None,
+            "owner_principal_id": issued.principal_id,
+        }
+        with patch.object(
+            v2.db,
+            "get_owner_principal",
+            return_value={
+                "id": issued.principal_id,
+                "user_id": None,
+                "guest_secret_hash": issued.secret_hash,
+            },
+        ):
+            body, status = self._call(
+                {"snippet_id": _SNIP, "text": "fixed"},
+                user_id=None,
+                guest_token=issued.token,
+            )
         self.assertEqual(status, 200)
         self.assertTrue(body["saved"])
+
+    def test_guest_bare_session_id_is_not_authorization(self):
+        self._session = {
+            "id": _SID,
+            "user_id": None,
+            "owner_principal_id": "33333333-3333-4333-8333-333333333333",
+        }
+        _, status = self._call(
+            {"snippet_id": _SNIP, "text": "fixed"}, user_id=None,
+        )
+        self.assertEqual(status, 404)
+        self.assertEqual(self._saved, [])
 
     def test_claimed_session_hidden_from_guest_and_stranger(self):
         # user_id "u1" on the session (the setUp default): a guest or another

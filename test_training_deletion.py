@@ -2,7 +2,7 @@
 "deleting a training doesn't remove it" bug.
 
 Root cause: the DELETE endpoints resolved their target set from the
-strong-sides LIBRARY grouping, so (a) a deck with no coach-published
+historical deck-hash grouping, so (a) a deck with no coach-published
 'strong' rows 404'd, and (b) takes without library rows survived a
 "delete ALL takes" and kept resurfacing in session-backed lists.
 Fixed: presentation delete resolves the COMPLETE session set from the

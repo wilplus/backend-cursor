@@ -7,7 +7,7 @@ from __future__ import annotations
 import unittest
 import uuid
 
-from services.explore_arc import resolve_arc, validate_project_intent
+from services.explore_arc import resolve_arc
 
 
 class ResolveArcTests(unittest.TestCase):
@@ -44,44 +44,6 @@ class ResolveArcTests(unittest.TestCase):
         a, _ = resolve_arc(True, None, None)
         b, _ = resolve_arc(True, None, None)
         self.assertNotEqual(a, b)
-
-
-class ProjectIntentTests(unittest.TestCase):
-    def test_new_requires_a_clean_identity_slate(self):
-        self.assertEqual(validate_project_intent("new", None, None),
-                         ("new", None))
-        aid = str(uuid.uuid4())
-        for arc_id, selected in ((aid, None), (None, aid), (aid, aid)):
-            intent, error = validate_project_intent(
-                "new", arc_id, selected)
-            self.assertIsNone(intent)
-            self.assertIn("cannot carry", error)
-
-    def test_continue_requires_one_matching_selected_project(self):
-        aid = str(uuid.uuid4())
-        self.assertEqual(validate_project_intent("continue", aid, aid),
-                         ("continue", None))
-        self.assertEqual(validate_project_intent("continue", None, aid),
-                         ("continue", None))
-
-        intent, error = validate_project_intent("continue", None, None)
-        self.assertIsNone(intent)
-        self.assertIn("requires continue_arc_id", error)
-
-        intent, error = validate_project_intent(
-            "continue", aid, str(uuid.uuid4()))
-        self.assertIsNone(intent)
-        self.assertIn("same project", error)
-
-    def test_legacy_omission_remains_backward_compatible(self):
-        self.assertEqual(validate_project_intent(
-            None, str(uuid.uuid4()), None), (None, None))
-
-    def test_unknown_intent_is_rejected(self):
-        intent, error = validate_project_intent("guess", None, None)
-        self.assertIsNone(intent)
-        self.assertIn("new", error)
-
 
 if __name__ == "__main__":
     unittest.main()

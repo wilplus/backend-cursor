@@ -639,8 +639,8 @@ def v2_explore_get_ideal_text(arc_id):
             # PER-PROJECT by construction (spoken takes of THIS arc;
             # reads excluded) — never a global tally, and it grows on
             # every recorded take (unlike `version`, which bumps only
-            # when the text actually changes). continue_arc_id is what
-            # keeps a new take appending here so this count climbs.
+            # when the text actually changes). Canonical project ownership
+            # keeps every new take appending to this exact Project.
             "take_count": len(_spoken_rows),
             # IMMEDIATE next-take affordance (founder 2026-07-24, T1 ·
             # 1.2): the FE can offer "record another take" as soon as

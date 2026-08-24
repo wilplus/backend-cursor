@@ -291,18 +291,18 @@ class AuditReadyEmailTests(unittest.TestCase):
 
 
 class UserAuditSendTests(unittest.TestCase):
-    """BE-3c — strong-sides audit send helper (threaded)."""
+    """BE-3c — take-feedback audit send helper (threaded)."""
 
     def test_stable_subject_and_headers(self):
         from services import user_audit as mod
-        audit = {"strong_sides": [], "sessions": []}
+        audit = {"sessions": []}
         with patch("services.email_service.send_email_resend",
                    return_value={"status": "sent", "sent": True}) as mock_send:
             res = mod.send_user_audit_email("u-7", to_email="student@x.com", audit=audit)
         self.assertEqual(res["status"], "sent")
         kwargs = mock_send.call_args.kwargs
         self.assertEqual(
-            kwargs["subject"], "Your WillpowerLab audit — your strong sides so far",
+            kwargs["subject"], "Your WillpowerLab coaching audit",
         )
         ref = "<willab-user-u-7@willpowerlab.com>"
         self.assertEqual(kwargs["headers"]["References"], ref)

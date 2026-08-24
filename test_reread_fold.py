@@ -46,7 +46,7 @@ def _session_row(sid=SPOKEN, **over):
     row = {"id": sid, "user_id": "u1", "arc_id": None,
            "intake_context": {"topic": "Demo", "domain": "sales"},
            "status": "pending_admin_review",
-           "guest_claimed_at": "2026-07-16T10:00:00Z",
+           "review_requested_at": "2026-07-16T10:00:00Z",
            "results_published_at": None,
            "coach_feedback_saved_at": None}
     row.update(over)
@@ -380,7 +380,7 @@ class LabSendEmailGateTests(unittest.TestCase):
         from services.lab_send import send_lab_recording_to_coach
         with patch.object(v2.db, "v2_get_session_by_id",
                           return_value=session_row), \
-             patch.object(v2.db, "v2_update_session_status_unscoped",
+             patch.object(v2.db, "v2_mark_session_pending_review",
                           return_value=True), \
              patch.object(v2.db, "get_snippets_by_session",
                           return_value=[]), \

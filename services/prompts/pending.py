@@ -46,12 +46,8 @@ REGISTER = {
     # ── master_doc_rag — the Lounge chat mega-prompt (probe-guarded) ──
     "master_doc_rag.master_document": SourceRef(_MDR, "MASTER_DOCUMENT"),
     "master_doc_rag.system": SourceRef(_MDR, "_SYSTEM_PROMPT"),
-    "master_doc_rag.librarian_guardrail": SourceRef(_MDR, "_LIBRARIAN_GUARDRAIL"),
     "master_doc_rag.life_guardrail": SourceRef(_MDR, "_LIFE_GUARDRAIL"),
-    "master_doc_rag.library_block": SourceRef(_MDR, "_render_library_block"),
     "master_doc_rag.life_block": SourceRef(_MDR, "_render_life_block"),
-    "master_doc_rag.anchor_metrics": SourceRef(_MDR, "_fmt_anchor_metrics"),
-    "master_doc_rag.two_anchors": SourceRef(_MDR, "_render_two_anchors"),
     "master_doc_rag_router.classifier": SourceRef(_MDR, "_CLASSIFIER_SYSTEM"),
     "master_doc_rag_lane.base": SourceRef(_MDR, "_LANE_BASE"),
     "master_doc_rag_lane.bodies": SourceRef(_MDR, "_LANE_BODIES"),

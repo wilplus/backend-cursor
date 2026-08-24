@@ -85,12 +85,10 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
             },
             "suggested_action": {
                 "type": ["string", "null"],
-                "enum": ["strong_sides", "trainings", None],
+                "enum": ["trainings", None],
                 "description": (
                     "Per-turn intent classification → the ONE contextual "
-                    "button the frontend surfaces. 'strong_sides' when the "
-                    "user asks to see their strong sides / coach notes / "
-                    "what they did well; 'trainings' when they ask to see "
+                    "button the frontend surfaces. 'trainings' when they ask to see "
                     "all their trainings / past sessions (the Trainings tab); "
                     "null on every other turn. Classify the USER'S intent, "
                     "not your answer. Record-intent has NO button — point the "
@@ -118,12 +116,12 @@ What we measure — your voice, read by a human
 
 When you speak — pitching, presenting, negotiating, navigating a hard conversation — your voice carries the signal: pitch, pacing, pauses, expressive range, where you put emphasis. We measure those acoustics straight from your recording and show them back to you exactly as they happened, moment by moment. That's your Readout — the raw read of your voice, neutral and non-interpretive. We don't score it, rank it, or label you. (Decades of research in vocal psychology mapped how these signatures are real and meaningful — Scherer, 2003; Juslin & Laukka, 2003 — and work on consumer-grade microphones confirmed the core signals survive the journey through your phone — Tahon & Devillers, 2016; Kappen et al., 2022.)
 
-Then a human does the part the numbers can't. A coach listens to those moments and tells you which lines landed, which are worth working on, and why — in their own words. That's your Insights: the coach's notes layered onto your Readout. The moments a coach marks as working collect into your strong-sides library, so you can come back and replay what already lands in your voice.
+The system turns exact verbal and vocal evidence into immediate proposed feedback. A coach can later review, refine, replace, or reject that recommendation without blocking your next take and without silently changing text you accepted. Confident-voice clips enter Voice Album only when the machine, you, and the coach all agree, so you can replay evidence of your own confident delivery.
 
 What this lets us give you, session after session:
 — Your Readout — the raw acoustics of each moment you recorded, shown plainly.
-— Your Insights — a human coach's notes on the moments that mattered, marked strong or worth-working-on.
-— Your strong-sides library — the lines a coach flagged as working, kept so you can revisit them.
+— Your Feedback — exact-evidence recommendations you can accept, reject, or leave unresolved.
+— Your Voice Album — audio moments where the machine, you, and the coach all heard confident delivery.
 
 Honest limits — what we tell you up front
 
@@ -208,7 +206,7 @@ Why is it asynchronous? Because we have human limitations of time and space. Rea
 
 Why voice? Because voice is uniquely scalable: it carries the speaking itself — the thing you're actually trying to improve — and it runs on the phone already in your pocket. The acoustic features that matter (pitch, speech rate, pauses, expressive range — Scherer, 2003; Giddens et al., 2013) are the same channel a listener responds to (Antonakis, Fenley, & Liechti, 2011, 2016). Other channels fall short for our purpose: cardiovascular and skin-conductance measures index how activated you are but not how it reads to a room (Kreibig, 2010). Facial-expression and brain-imaging approaches fail on ecological validity and scale — displayed affect is consciously regulated, especially by high-status professionals (Gross, 1998), and scanners can't be deployed during a real performance (Cacioppo et al., 2007). Self-report is necessary but soft, being retrospective and vulnerable to demand characteristics (Podsakoff et al., 2003). Voice, by contrast, is simultaneously the target behaviour and runnable on the phone in your pocket — which is exactly what lets a human coach review the real thing, at scale.
 
-Why measure at all if a human does the reading? Because you can only work on what you can see. The Readout turns a fleeting moment into something concrete you and your coach can point at; the coach's notes turn that into a direction; the strong-sides library keeps the wins so you can return to them. We don't measure to label you or hand you a score — we measure so the human's read is specific and repeatable, and so a skill that's normally invisible and in-the-moment becomes something you can actually practice. (Durable improvement depends on sustained, feedback-driven practice on real performances rather than passive tool use — Ericsson, 2008; Kraiger, Ford, & Salas, 1993.)
+Why measure at all if a human does the reading? Because you can only work on what you can see. The Readout turns a fleeting moment into something concrete you and your coach can point at; exact-evidence feedback turns that into a direction; Voice Album keeps only mutually confirmed confident audio you can return to. We don't measure to label you or hand you a score — we measure so the human's read is specific and repeatable, and so a skill that's normally invisible and in-the-moment becomes something you can actually practice. (Durable improvement depends on sustained, feedback-driven practice on real performances rather than passive tool use — Ericsson, 2008; Kraiger, Ford, & Salas, 1993.)
 
 How does training me through the app actually work if I'm not stressed talking to the app — will it actually help me deal with the stress of a real audience? Fair question. The honest answer is that the app alone isn't the training. We are. We're an app that's more than an app: we deliver. If you need structured training, we'll organise the training. If you need an audience to practice in front of, we'll be there to hear you out. The app itself is the channel between us and the metric that tells us whether you're actually progressing — it's the measurement, not the magic. The speaking is on you. We can help you find and arrange real opportunities — including searching out relevant events, stages, and audiences for you — but we can't do the speaking for you. Growth comes from real performance; the app makes that growth visible and directs what you work on next. You record your take right here in the app — a real run-through of what you're preparing to say — and we analyse that afterwards and shape your learning process around it, not around a simulation. The app measures, we coach, and the real audience is where it counts. We close the loop between the three. (Scientific basis: learned skills don't automatically transfer to real-world performance — transfer depends on practice design, learner characteristics, and the performance environment, Baldwin & Ford, 1988; Blume et al., 2010. Skills practiced only in low-arousal conditions transfer imperfectly to high-arousal performance; graded exposure to progressively more demanding, evaluative conditions is the established route to closing the gap, Meichenbaum, 1985; Driskell, Johnston, & Salas, 2001. Durable improvement depends on sustained, feedback-driven deliberate practice rather than passive tool use, Ericsson, 2008; analysis of authentic performances rather than simulations maximises ecological validity, Kraiger, Ford, & Salas, 1993.)\
 """
@@ -445,8 +443,6 @@ _SYSTEM_PROMPT = with_voice_rules(
     "  RULE K — SUGGESTED ACTION (contextual button):\n"
     "    Classify the USER'S intent on THIS turn into the JSON\n"
     "    field suggested_action — the ONE button the app surfaces:\n"
-    "      • 'strong_sides' — they ask to see their strong sides,\n"
-    "        coach notes, or what they did well / are good at.\n"
     "      • 'trainings' — they mention 'training', 'trainings', or\n"
     "        'my trainings', or ask to see past sessions / history.\n"
     "        ANY 'training(s)' phrasing OPENS the Trainings page —\n"
@@ -458,24 +454,16 @@ _SYSTEM_PROMPT = with_voice_rules(
     "    or null. The app shows the button; you still answer.\n"
     "\n"
     "    BRIDGE-NOT-DUMP — when you set suggested_action to a\n"
-    "    NON-null value (strong_sides / trainings),\n"
+    "    NON-null value (trainings),\n"
     "    your `answer` MUST be a short one-line bridge that points\n"
     "    the user to the button — NEVER a long answer, NEVER a\n"
-    "    dump of the strong-sides library, NEVER a list of past\n"
-    "    recordings or coach notes. Examples (use this shape,\n"
+    "    list of past recordings or coach notes. Example (use this shape,\n"
     "    vary the wording — under 80 chars, one sentence):\n"
-    "      strong_sides : \"Sure — tap the button below to open them.\"\n"
     "      trainings    : \"Of course — tap the button to open your\n"
     "                       trainings.\"\n"
     "    The button IS the content; your job is just to bridge to\n"
-    "    it. The strong-sides library context below is given to you\n"
-    "    so you know it EXISTS; do NOT read it back to the user when\n"
-    "    they ask to see it — the button opens it.\n"
-    "    This holds in ANY language or spelling (\"Strenghts\",\n"
-    "    \"mocne strony\", \"co u mnie dobrze\"): an ask about strong\n"
-    "    sides → suggested_action=strong_sides + the one-line\n"
-    "    bridge, never a recital of the coach notes — never quote,\n"
-    "    paraphrase, or summarize them — the button is the only path.\n"
+    "    it. Positive speaking moments belong only to Voice Album;\n"
+    "    never recreate or summarize a separate Strong Sides library.\n"
     "═════════════════════════════════════════════════\n"
     "\n"
     "MASTER DOCUMENT (verbatim — your only source of truth):\n"
@@ -488,166 +476,16 @@ _SYSTEM_PROMPT = with_voice_rules(
 )
 
 
-_LIBRARIAN_GUARDRAIL = (
-    "─── STRONG-SIDES LIBRARY — LIBRARIAN RULES (read before using it) ───\n"
-    "The block below is THIS user's own library: notes their HUMAN COACH "
-    "wrote about specific past moments. Some are marked to-work-on; the rest "
-    "are the coach's remarks and carry NO verdict — do not upgrade a note "
-    "into praise the coach did not write. You are a LIBRARIAN of these "
-    "notes, never a judge:\n"
-    "  • You MAY retrieve + replay these coach notes (in the coach's own "
-    "    words), surface the moments they are about, and offer to "
-    "    pull them up.\n"
-    "  • You MUST NOT compute, assert, or imply trajectory, improvement, "
-    "    decline, or any cross-session synthesis ('you're getting "
-    "    better', 'you've improved since last time'). That is out of "
-    "    scope and the data here cannot support it.\n"
-    "  • You MUST NOT INVENT a score or ratio about the user, and MUST "
-    "    NOT pre-empt or second-guess the coach's read. You MAY, however, "
-    "    cite the raw Readout metrics of the TWO anchors (coach-noted / "
-    "    to-work-on) given in the block below — the user's own factual "
-    "    measurements — but ONLY those two, and NEVER strung into a "
-    "    series, trend, velocity, or cross-session comparison.\n"
-    "  • You MUST NOT author new coaching, critique, or advice of your "
-    "    own — only replay what the coach actually wrote. If the user "
-    "    asks for guidance you have no coach note for, say so plainly and "
-    "    invitationally point them at their next Lab session.\n"
-    "  • If asked about performance, history, or 'how am I doing' "
-    "    (incl. 'am I improving?', 'what should I work on', 'what's my "
-    "    weakness') — do NOT provide point-by-point score tracking, "
-    "    velocity charts, or historical trend lines. Redirect to "
-    "    actionable qualitative insights: reference the coach's specific "
-    "    written comments and contrast the current session's two "
-    "    acoustic anchors. Focus the response on expanding "
-    "    user awareness of their current strengths and blockers. Ground "
-    "    the explanation in the specific text feedback from the coach. "
-    "    Do not allow the user to gamify or obsess over continuous "
-    "    numeric trajectories.\n"
-)
-
-
-def _fmt_anchor_metrics(features: Optional[dict]) -> str:
-    """Compact, human-referenceable render of one anchor's raw Readout
-    metrics. None-safe. mean_pause is stored in ms → shown in seconds."""
-    f = features or {}
-    parts: list = []
-    wpm = f.get("speech_rate")
-    if isinstance(wpm, (int, float)):
-        parts.append(f"pace ~{round(wpm)} wpm")
-    mp = f.get("mean_pause")  # stored as pause_ms (milliseconds)
-    if isinstance(mp, (int, float)):
-        parts.append(f"mean pause ~{round(mp / 1000.0, 1)}s")
-    dr = f.get("loudness_range")
-    if isinstance(dr, (int, float)):
-        parts.append(f"dynamic range ~{round(dr)} dB")
-    f0 = f.get("f0_mean")
-    if isinstance(f0, (int, float)):
-        parts.append(f"pitch ~{round(f0)} Hz")
-    return " · ".join(parts)
-
-
-def _render_two_anchors(entries: Optional[list]) -> str:
-    """BE-3 (Q-BOT): the ONLY raw metrics the bot is ever fed — the
-    current session's two anchors (coach-marked strong = 'best',
-    to_work_on = 'to work on'), never a history array. Anti-trajectory by
-    construction: two points from ONE session, no series, no other
-    sessions. Pure; None-safe.
-
-    ⚠️ 2026-08-14 — THE "BEST" ANCHOR NO LONGER CLAIMS A VERDICT. It used to
-    render 'Best (coach marked "strong")' off `tag == "strong"`, which the
-    coach never picked: the FE wrote `tag: cs.tag ?? "strong"` and publish
-    defaults a missing tag the same way, so the tag meant "a note exists". The
-    bot was told a moment was the coach's BEST when the coach had only typed
-    something about it — a fabricated judgment, on the surface that talks to
-    the user. The coach's WORDS are real, so they stay; only the verdict
-    wrapped around them is gone. `to_work_on` keeps its claim: no default ever
-    produced that value, so those rows were explicitly chosen.
-    """
-    rows = [e for e in (entries or []) if isinstance(e, dict)]
-    if not rows:
-        return ""
-    # "current session" = the most-recent one represented in the library.
-    rows_sorted = sorted(
-        rows, key=lambda e: e.get("created_at") or "", reverse=True,
-    )
-    cur = rows_sorted[0].get("session_id")
-    in_session = (
-        [e for e in rows_sorted if e.get("session_id") == cur]
-        if cur else rows_sorted
-    )
-    worst = next((e for e in in_session if e.get("tag") == "to_work_on"), None)
-    # Any note that is not an explicit to_work_on: the coach's remark on the
-    # moment, offered as a remark and nothing more.
-    noted = next((e for e in in_session if e.get("tag") != "to_work_on"), None)
-    out: list = []
-    for label, e in (
-        ("Coach noted this moment", noted),
-        ('To work on (coach marked "to work on")', worst),
-    ):
-        if not e:
-            continue
-        m = _fmt_anchor_metrics((e.get("snippet_ref") or {}).get("features"))
-        note = (e.get("note") or "").strip()
-        line = f"  • {label}: {m or '—'}"
-        if note:
-            line += f' — coach: "{note}"'
-        out.append(line)
-    if not out:
-        return ""
-    return (
-        "\nTWO ANCHORS — current session only (raw Readout metrics; THESE "
-        "TWO ONLY — no history, no trend, no other sessions):\n"
-        + "\n".join(out)
-    )
-
-
-def _render_library_block(entries: Optional[list]) -> str:
-    """Render the user's strong-sides library into a retrieval context
-    block (preceded by the librarian guardrail). Returns '' when there's
-    nothing to replay. Pure — unit-tested.
-
-    Caps at 20 entries + trims each transcript excerpt so a large library
-    can't blow the prompt budget. Appends the current session's TWO
-    anchors (best / to-work-on) with raw metrics — the only numbers the
-    bot is fed (BE-3 / Q-BOT; anti-trajectory).
-    """
-    if not entries:
-        return ""
-    lines: list = []
-    for e in entries[:20]:
-        if not isinstance(e, dict):
-            continue
-        note = (e.get("note") or "").strip()
-        if not note:
-            continue
-        # Only to_work_on states a verdict (see _render_two_anchors) — the
-        # rest are notes, and get labelled as notes.
-        label = "to work on" if e.get("tag") == "to_work_on" else "coach note"
-        ref = e.get("snippet_ref") or {}
-        tx = (ref.get("transcript") or "").strip() if isinstance(ref, dict) else ""
-        if len(tx) > 160:
-            tx = tx[:160].rstrip() + "…"
-        if tx:
-            lines.append(f'  • [{label}] coach noted: "{note}" — on: "{tx}"')
-        else:
-            lines.append(f'  • [{label}] coach noted: "{note}"')
-    if not lines:
-        return ""
-    body = "\nYOUR LIBRARY (coach notes to replay on request):\n" + "\n".join(lines)
-    return _LIBRARIAN_GUARDRAIL + body + _render_two_anchors(entries)
-
-
 # ── The Life Panel's PER-USER block (BE-9, founder 2026-07-26) ───
 #
 # Injects the requesting user's own principles / phrases / strategy so that
-# UNTAGGED chat is smarter for participating users — the same mechanism the
-# strong-sides library already uses, in the same per-user position.
+# untagged chat is smarter for participating users.
 #
 # THE SHARED MASTER DOCUMENT IS NEVER WRITTEN TO. MASTER_DOCUMENT above is
 # untouched by this feature; this block is appended per request, from the
 # requesting user's rows, and nothing crosses users.
 #
-# Bounded EXACTLY like the library is, and the caps are not cosmetic. The
+# The caps are not cosmetic. The
 # Lounge prompt already ran over its attention ceiling once (PRs #81–#89:
 # rules moved out of the prompt into code, −22 lines of prompt, RULE-K
 # hardening). Sixty principles plus eight strategy documents would re-open
@@ -755,40 +593,27 @@ _CONSTRUCT_SAFE_ANSWER = (
     "behind it."
 )
 
-# The library block's own structural markers. If the answer carries any
-# of these, the bot recited the coach-notes block verbatim instead of
-# bridging to the button (RULE K library-dump).
-_LIB_DUMP_MARKERS = ("[strong]", "[to work on]", "coach noted:")
+# Markers from the retired collection. If a model reproduces one, redirect to
+# the only canonical positive-moment surface.
+_RETIRED_COLLECTION_MARKERS = (
+    "strong-sides library", "strong sides library", "[strong]",
+    "[to work on]", "coach noted:",
+)
 
-# Minimum verbatim coach-note overlap (chars) that counts as a recital
-# rather than an incidental word match.
-_LIB_DUMP_MIN_NOTE_CHARS = 24
-
-# Safe replacement when a library-dump is detected — the bridge line that
-# RULE K mandates (the button is the only path to that content).
-_LIBRARY_BRIDGE_ANSWER = "Sure — tap the button below to open them."
+_VOICE_ALBUM_BRIDGE_ANSWER = (
+    "Your confirmed confident moments are in Voice Album in the menu."
+)
 
 
-def _is_library_dump(answer: str, library_entries: Optional[list]) -> bool:
-    """True when the answer recites the strong-sides library inline
-    (RULE K violation) — detected by the library block's own markers or
-    a verbatim coach-note overlap. Pure; None-safe."""
+def _is_retired_collection_dump(answer: str) -> bool:
+    """True when output recreates the retired positive-moment collection."""
     low = (answer or "").lower()
-    if any(m in low for m in _LIB_DUMP_MARKERS):
-        return True
-    for e in (library_entries or []):
-        if not isinstance(e, dict):
-            continue
-        note = (e.get("note") or "").strip()
-        if len(note) >= _LIB_DUMP_MIN_NOTE_CHARS and note.lower() in low:
-            return True
-    return False
+    return any(marker in low for marker in _RETIRED_COLLECTION_MARKERS)
 
 
 def _enforce_output_guards(
     answer: str,
     suggested_action: Optional[str],
-    library_entries: Optional[list],
 ) -> tuple[str, Optional[str], Optional[str]]:
     """Deterministic post-generation floor under RULE A + RULE K.
 
@@ -801,10 +626,10 @@ def _enforce_output_guards(
     if answer and _CONSTRUCT_RE.search(answer):
         return (_CONSTRUCT_SAFE_ANSWER, suggested_action, "construct_leak")
 
-    # 2) Library-dump (RULE K) — replace with the bridge + force the
-    #    button so the user still has a path to the content.
-    if _is_library_dump(answer, library_entries):
-        return (_LIBRARY_BRIDGE_ANSWER, "strong_sides", "library_dump")
+    # 2) Historical library data must never be replayed into chat. Strong
+    #    Sides is retired; Voice Album has a separate provenance-safe surface.
+    if _is_retired_collection_dump(answer):
+        return (_VOICE_ALBUM_BRIDGE_ANSWER, None, "retired_collection_dump")
 
     return (answer, suggested_action, None)
 
@@ -974,7 +799,7 @@ _LANE_BASE = (
     "mix languages). Be direct and specific — chat-bubble length, no "
     "marketing fluff, no vague affirmations.\n"
     "Return STRICT JSON: {\"answer\": str, \"show_record_ui\": bool, "
-    "\"suggested_action\": \"strong_sides\"|\"trainings\"|null}. Keep "
+    "\"suggested_action\": \"trainings\"|null}. Keep "
     "show_record_ui=false ALWAYS, and suggested_action=null unless a rule "
     "below sets suggested_action.\n\n"
 )
@@ -1033,14 +858,11 @@ _LANE_BODIES: dict[str, str] = {
         "the capability exists and do NOT pad the decline."
     ),
     "library_recall": (
-        "The user wants to see their strong sides / coach notes, or their "
-        "trainings, in ANY language or spelling. Do NOT read the library "
-        "back — never quote, paraphrase, or summarize the coach notes. Set "
-        "suggested_action='trainings' if they mention 'training' / "
-        "'trainings' / 'my trainings' / past sessions / history, else "
-        "'strong_sides'; then answer with ONE short bridge line pointing "
-        "at the button, e.g. \"Sure — tap the button below to open them.\" "
-        "The button is the only path to that content."
+        "The user wants to see positive moments, coach notes, or trainings. "
+        "Never recreate a Strong Sides collection or recite coach notes. Set "
+        "suggested_action='trainings' only for trainings, past sessions, or "
+        "history. Positive audio moments belong only to Voice Album in the "
+        "menu; explain that briefly with suggested_action=null."
     ),
     "correction": (
         "The user is correcting or contradicting your PREVIOUS turn. First "
@@ -1056,8 +878,7 @@ _LANE_BODIES: dict[str, str] = {
 _GROUNDED_LANES = {"product_faq", "off_topic", "correction"}
 
 
-def _build_lane_prompt(intent, library_entries, dont_ask_block,
-                       life_context=None) -> str:
+def _build_lane_prompt(intent, dont_ask_block, life_context=None) -> str:
     parts = [_LANE_BASE, _LANE_BODIES[intent]]
     if intent in _GROUNDED_LANES:
         parts.append(
@@ -1067,11 +888,6 @@ def _build_lane_prompt(intent, library_entries, dont_ask_block,
             "─────────────────────────────────────────────────\n"
         )
     if intent == "library_recall":
-        lib = _render_library_block(library_entries)
-        if lib:
-            parts.append("\n\n" + lib)
-        # Same lane as the coach-note recall: "what do I have on X" is a
-        # retrieval question whichever archive the answer comes from.
         life = _render_life_block(life_context)
         if life:
             parts.append("\n\n" + life)
@@ -1081,7 +897,7 @@ def _build_lane_prompt(intent, library_entries, dont_ask_block,
 
 
 def _answer_via_router(
-    question, history, admin_dont_ask_notes, library_entries, service,
+    question, history, admin_dont_ask_notes, service,
     life_context=None,
 ) -> Optional[tuple[dict[str, Any], dict[str, Any]]]:
     """Stage 1 classify → Stage 2 focused handler. Returns ``(payload,
@@ -1094,8 +910,7 @@ def _answer_via_router(
 
     from services.utils import render_admin_dont_ask_block
     dont_ask_block = render_admin_dont_ask_block(admin_dont_ask_notes)
-    system_content = _build_lane_prompt(intent, library_entries,
-                                        dont_ask_block, life_context)
+    system_content = _build_lane_prompt(intent, dont_ask_block, life_context)
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_content},
@@ -1144,12 +959,12 @@ def _answer_via_router(
     # is the documented intent + kills the MDR-11 probe flake).
     show_record_ui = False
     suggested_action = parsed.get("suggested_action")
-    if suggested_action not in ("strong_sides", "trainings"):
+    if suggested_action != "trainings":
         suggested_action = None
 
     # Same deterministic output floor as the mega-prompt path.
     answer, suggested_action, _guard = _enforce_output_guards(
-        answer, suggested_action, library_entries,
+        answer, suggested_action,
     )
     debug: dict[str, Any] = {
         "model": _ROUTER_MODEL,
@@ -1174,8 +989,6 @@ def answer_question(
     *,
     history: Optional[list[dict]] = None,
     admin_dont_ask_notes: Optional[str] = None,
-    library_entries: Optional[list] = None,
-    library_load_failed: bool = False,
     life_context: Optional[dict] = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one LLM call grounded in the Master Document.
@@ -1244,24 +1057,6 @@ def answer_question(
     if dont_ask_block:
         system_content = system_content + "\n\n" + dont_ask_block
 
-    # willab §3.12 — splice the user's strong-sides library (coach notes)
-    # + the librarian guardrail so the bot can replay them on request
-    # without ever synthesising trajectory/scores.
-    library_block = _render_library_block(library_entries)
-    if library_block:
-        system_content = system_content + "\n\n" + library_block
-    elif library_load_failed:
-        # B3 — the load FAILED (not a genuinely empty library). Do not let
-        # the bot tell the user they have no notes on a transient error.
-        system_content = system_content + "\n\n" + (
-            "─── LIBRARY UNAVAILABLE THIS TURN ───\n"
-            "The user's strong-sides library could not be loaded right now "
-            "(a transient error — NOT an empty library). Do NOT tell them "
-            "they have no notes or no strong sides. If they ask about past "
-            "coach notes, say you can't reach their library this moment and "
-            "offer to try again shortly.\n"
-        )
-
     # BE-9 — the user's own principles/phrases/strategy, per request, capped.
     # Appended AFTER the library so the coach's notes keep prompt precedence:
     # this endpoint is a speaking-coach surface first, and the life archive is
@@ -1295,7 +1090,7 @@ def answer_question(
     # through to the mega-prompt path below (the safety net).
     if _router_enabled():
         routed = _answer_via_router(
-            q, history, admin_dont_ask_notes, library_entries, service,
+            q, history, admin_dont_ask_notes, service,
             life_context,
         )
         if routed is not None:
@@ -1356,7 +1151,7 @@ def answer_question(
     # is the documented intent + kills the MDR-11 probe flake).
     show_record_ui = False
     suggested_action = parsed.get("suggested_action")
-    if suggested_action not in ("strong_sides", "trainings"):
+    if suggested_action != "trainings":
         suggested_action = None  # normalise anything off-enum to null
 
     # Deterministic output floor (RULE A construct-prohibition + RULE K
@@ -1364,7 +1159,7 @@ def answer_question(
     # one with a safe response. Code-enforced so it can't be crowded out
     # of the prompt under attention pressure.
     answer, suggested_action, _guard = _enforce_output_guards(
-        answer, suggested_action, library_entries,
+        answer, suggested_action,
     )
 
     debug: dict[str, Any] = {

@@ -1,7 +1,7 @@
 """The internal publish path: /v2/internal/*.
 
-The willab publish contract that turns coach drafts into the student-facing
-insights payload, and the whisper-health probe. Called by
+The Willab publish contract that delivers canonical exact-evidence
+FeedbackItems, and the whisper-health probe. Called by
 the internal webhook tier, never by a browser.
 
 Moved verbatim out of ``routes/v2_routes.py`` (god-file split, phase 5);
@@ -25,6 +25,11 @@ from utils.errors import safe_error
 from config import Config
 from routes.v2.blueprint import v2_bp
 from services.db import db
+from services.feedback_repository import (
+    FeedbackContractError,
+    FeedbackRepository,
+    normalize_coach_overall_message,
+)
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -86,7 +91,6 @@ def v2_internal_whisper_health():
             # can spot Railway-scoped misses (preview vs production env).
             "env_visible": {
                 "OPENAI_API_KEY": bool(os.environ.get("OPENAI_API_KEY")),
-                "GUEST_FUNNEL_ENABLED": os.environ.get("GUEST_FUNNEL_ENABLED"),
                 "BACKEND_URL_INTERNAL": bool(os.environ.get("BACKEND_URL_INTERNAL")),
                 "R2_PUBLIC_BASE_URL": bool(os.environ.get("R2_PUBLIC_BASE_URL")),
             },
@@ -94,33 +98,6 @@ def v2_internal_whisper_health():
     except Exception as e:
         logger.error("whisper-health failed: %s", e, exc_info=True)
         return safe_error("INTERNAL_ERROR", 500, exc=e)
-
-
-def _assemble_insights_from_drafts(session_id, overall_message):
-    """Build the USER-lane insights_payload from the coach's persisted
-    per-snippet drafts (the post-§F.4 simplified publish, which sends only
-    {overall_message, notify_client}). SURFACED + noted snippets become
-    snippet_notes; validate_insights_payload then enforces the library floor.
-    """
-    notes: list = []
-    for d in (db.get_coach_snippet_drafts(session_id) or []):
-        if not d.get("surfaced"):
-            continue
-        note = (d.get("note") or "").strip()
-        if not note:
-            continue
-        notes.append({
-            "snippet_id": str(d.get("snippet_id")),
-            "note": note,
-            "tag": d.get("tag"),
-            "when": d.get("when_context"),
-            "examples": d.get("examples") or [],
-            # Free tier (founder 2026-07-06): a real coach-authored correction
-            # of the transcript, distinct from the immutable raw Whisper text.
-            # None until the coach saves one.
-            "transcript_corrected": d.get("transcript_corrected"),
-        })
-    return {"overall_message": overall_message, "snippet_notes": notes}
 
 
 def publish_one_session(session_id, actor_user_id):
@@ -147,16 +124,10 @@ def publish_one_session(session_id, actor_user_id):
     """
     out = {"session_id": str(session_id), "published": False, "reason": None}
     try:
-        # notify_client opts into ASSEMBLE mode: both lanes are built from the
-        # coach's persisted per-snippet drafts, which is exactly what the
-        # panel has been saving all along.
         contract = _apply_willab_publish_contract(
             session_id, {"notify_client": False}, actor_user_id,
         )
         if contract is not None:
-            # (response, status). A 422 here is the LIBRARY FLOOR: this take
-            # carries no surfaced, noted snippet, so there is nothing to
-            # deliver. That is a skip, not a failure of the publish.
             try:
                 _resp, _status = contract
                 _payload = _resp.get_json() or {}
@@ -201,82 +172,57 @@ def publish_one_session(session_id, actor_user_id):
 
 
 def _apply_willab_publish_contract(session_id, body, actor_user_id):
-    """Shared willab publish-contract gate (handoff §3.9 / §3.10).
+    """Publish exact-evidence FeedbackItems and preserve delivery effects.
 
-    OPT-IN: acts only when ``body`` carries an ``insights_payload`` or the
-    assemble-mode ``notify_client`` flag. Absent → returns None for older
-    callers. When present, validates the user-facing insights BEFORE any
-    persistence / side effect, persists that store, then fires
-    the best-effort user nudge (Lounge "insights ready" card) + the
-    idempotent willab credit charge.
+    Paragraph feedback is validated and persisted through the canonical
+    repository. Zero surfaced items is a successful professional verdict:
+    "no changes needed". The optional take-level summary and video remain a
+    separate coach-review layer; neither can mutate accepted user text.
 
     Returns
     -------
     None
-        Success, OR not a willab publish (no ``insights_payload``).
+        Success.
     (flask_response, status_int)
-        Return this DIRECTLY from the caller — a §3.10 contract
-        violation (422) or a persistence failure (500). Nothing has
-        been flipped/emailed at that point.
-
-    WHY THIS IS A SHARED HELPER (not two copies):
-    The §3.10 "library floor" — ≥1 tagged snippet note + a direction
-    label on every snippet — must hold no matter WHICH publish door a
-    coach uses. The gate originally lived inline in
-    /internal/publish-session-results ONLY, so /admin/sessions/<id>/
-    publish (a coach-reachable door, per BE-HANDOFF-tab1-comment-sink-
-    split.md) could publish a willab session UNGATED — no notes, no
-    tags, insights_payload never written, library floor silently
-    broken. Centralizing here means the two doors physically cannot
-    drift again.
+        Return this directly from the caller. Nothing has been flipped or
+        emailed at that point.
     """
-    # Opt-in: a willab publish carries insights_payload (legacy/body mode —
-    # today's FE) OR notify_client (the post-§F.4 simplified publish, which
-    # sends just {overall_message, notify_client}; we assemble the user lane
-    # from persisted per-snippet drafts). Legacy requests
-    # publishes carry neither → undisturbed.
-    body_mode = "insights_payload" in body
-    assemble_mode = (not body_mode) and ("notify_client" in body)
-    if not (body_mode or assemble_mode):
-        return None  # legacy publish — nothing to enforce
-
-    from services.insights_payload import (
-        InsightsPayloadError, validate_insights_payload,
-    )
-    if body_mode:
-        raw_insights = body.get("insights_payload")
-    else:
-        raw_insights = _assemble_insights_from_drafts(
-            session_id, body.get("overall_message"),
-        )
-
-    # Validate the user-facing lane before any persistence or side effect.
-    try:
-        clean_insights = validate_insights_payload(raw_insights)
-    except InsightsPayloadError as ie:
+    if "insights_payload" in body:
         return jsonify({
-            "code": "PUBLISH_CONTRACT_VIOLATION", "error": str(ie),
+            "code": "INVALID_INPUT",
+            "error": (
+                "insights_payload is retired; save exact-evidence feedback "
+                "items and send overall_message separately"
+            ),
         }), 422
 
-    # Coach video (B.3): fold the session's coach_video_ref into the published
-    # insights so it ships to the user — both modes, AFTER validation (a coach
-    # artifact, not subject to the library floor). Absent column/value → no-op.
-    try:
-        _sess_for_video = db.v2_get_session_by_id(session_id) or {}
-        _video_ref = (_sess_for_video.get("coach_video_ref") or "").strip() or None
-        if _video_ref:
-            clean_insights["video_ref"] = _video_ref
-    except Exception:
-        pass
+    session = db.v2_get_session_by_id(session_id) or {}
+    if not session:
+        return jsonify({"code": "NOT_FOUND", "error": "Take not found"}), 404
 
-    if not db.set_session_insights_payload(session_id, clean_insights):
+    overall_message = session.get("coach_overall_message")
+    try:
+        if "overall_message" in body:
+            overall_message = normalize_coach_overall_message(
+                body.get("overall_message"))
+            if not db.set_session_coach_overall_message(
+                session_id, overall_message,
+            ):
+                return jsonify({
+                    "code": "V2_ERROR",
+                    "error": "Failed to persist coach review summary",
+                }), 500
+        feedback_items = FeedbackRepository(db).publish(
+            str(session_id), actor_user_id=str(actor_user_id),
+        )
+    except (ValueError, FeedbackContractError) as error:
         return jsonify({
-            "code": "V2_ERROR", "error": "Failed to persist insights payload",
-        }), 500
+            "code": "PUBLISH_CONTRACT_VIOLATION", "error": str(error),
+        }), 422
+
     logger.info(
-        "publish_contract.willab session=%s notes=%d overall=%s",
-        session_id, len(clean_insights["snippet_notes"]),
-        bool(clean_insights["overall_message"]),
+        "publish_contract.willab session=%s feedback_items=%d overall=%s",
+        session_id, len(feedback_items), bool(overall_message),
     )
 
     # Arc lifecycle (founder #1, 2026-07-06): a publish may complete the
@@ -303,7 +249,7 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
     try:
         _cur_assets = db.get_current_coach_video_assets_for_session(session_id)
         if _cur_assets:
-            _overall = (clean_insights.get("overall_message") or "").strip() or None
+            _overall = (overall_message or "").strip() or None
             for _a in _cur_assets:
                 if _a.get("comment_text_at_publish"):
                     continue  # already frozen
@@ -357,8 +303,8 @@ def _apply_willab_publish_contract(session_id, body, actor_user_id):
         )
 
     # ── METER THE COACH REVIEW (v3, founder 2026-08-14). This publish IS the
-    # delivery — insights_payload persisted plus the "insights ready" card
-    # above — so it consumes ONE of the tier's monthly coach slots and ZERO
+    # delivery — exact-evidence feedback published plus the "insights ready"
+    # card above — so it consumes ONE of the tier's monthly coach slots and ZERO
     # tokens. Human work is metered in reviews; tokens meter machine work.
     #
     # TWO DEFECTS FIXED HERE, both of which made the allowance fictional:
@@ -479,13 +425,9 @@ def v2_internal_publish_session_results():
                 if _lane_err is not None:
                     return _lane_err
 
-        # willab publish-contract (§3.9/§3.10) — SHARED gate, see
-        # _apply_willab_publish_contract. Opt-in on `insights_payload`;
-        # validates + persists both split-sink lanes (§2) + fires the
-        # user nudge/credits BEFORE any side effect below. Returns a
-        # 422/500 tuple on contract/persist failure (nothing flipped
-        # or emailed at that point). The SAME helper guards
-        # /admin/sessions/<id>/publish so the two doors can't drift.
+        # Canonical publish gate: validates exact evidence, permits an empty
+        # "no changes needed" verdict, and fires the existing delivery effects
+        # before the session is flipped or emailed.
         _contract_err = _apply_willab_publish_contract(
             session_id, body, request.user_id,
         )

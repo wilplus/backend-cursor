@@ -295,24 +295,6 @@ def run_full_analysis(
                 # verification. The per-VERSION ready bubble fires
                 # idempotently (a no-op reassembly re-fires the
                 # same version key → deduped).
-                # MASTER DOCUMENT (founder 2026-07-22, flag-gated):
-                # judge this take against the persistent master
-                # BEFORE assembly — take 1 builds the skeleton,
-                # later takes write approve-gated block upgrade
-                # offers. Best-effort; the master never moves
-                # without an accept.
-                try:
-                    from services.master_document import (
-                        master_document_enabled, process_new_take,
-                    )
-                    if master_document_enabled():
-                        process_new_take(arc_id, session_id,
-                                         db)
-                except Exception as _md_err:
-                    logger.warning(
-                        "lab: master-document take processing "
-                        "failed sid=%s: %s (non-fatal)",
-                        session_id, _md_err)
                 _emit(progress, "speaking_anchors", 90,
                       "Preparing your speaking anchors…")
                 tl.mark("speaking_anchors")

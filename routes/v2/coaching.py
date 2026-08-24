@@ -1428,7 +1428,7 @@ def v2_chat_query():
     Why @optional_auth: the willab Lounge is an unsigned-home
     (design §3) — the Lounge bot / librarian must answer without a
     session. Signed-in requests carry request.user_id (so the
-    strong-sides library + admin notes layer in); anonymous requests
+    private admin notes layer in); anonymous requests
     get request.user_id=None and the general bot (no per-user reads/
     writes, no DSP attribution). NEVER 401s — signed-out chat works.
 
@@ -1474,7 +1474,7 @@ def v2_chat_query():
             """Persist this turn server-side (founder #2) when the FE opted in
             and the caller is signed in, then return the 200. The bot row carries
             suggested_action + bubbles in its metadata so the contextual chip
-            (trainings / strong_sides / best-presentation) reconstructs on
+            (trainings / Ideal Text) reconstructs on
             rehydrate — exactly what was vanishing on relogin. Best-effort: a
             persist failure never fails the chat response."""
             return _finalize_chat_response(
@@ -1642,11 +1642,9 @@ def v2_chat_query():
         # Pull admin's private notes for this user → don't-ask block
         # in the FAQ chat system prompt. @require_auth guarantees a
         # user_id; best-effort on the DB read.
-        # Per-user layers (admin don't-ask notes + the strong-sides
-        # library) apply only when signed in. Anonymous (unsigned-home,
-        # §3) gets the general bot — no per-user reads. Both best-effort.
+        # Private admin notes apply only when signed in. Anonymous
+        # (unsigned-home, §3) gets the general bot — no per-user reads.
         admin_dont_ask_notes: str | None = None
-        library_entries: list | None = None
         if request.user_id:
             try:
                 _settings = db.get_user_settings(request.user_id) or {}
@@ -1658,35 +1656,6 @@ def v2_chat_query():
                     "chat/query: private_admin_notes load failed "
                     "user=%s: %s", request.user_id, e,
                 )
-
-            # willab §3.12 — the user's strong-sides library (coach
-            # notes) for the Lounge bot to retrieve/replay. The librarian
-            # guardrail (no trajectory/scores) lives in answer_question.
-            #
-            # B3 — distinguish a GENUINE empty library ([]) from a transient
-            # LOAD FAILURE (None). Both used to collapse to None via
-            # `or None`, so a failed load read as "no notes" for a user who
-            # actually has them — inconsistent turn-to-turn. Retry once, and
-            # log every outcome so the real failure rate is measurable.
-            #   library_entries == []   → genuinely no notes (bot may say so)
-            #   library_entries is None → load FAILED after retry (NOT empty)
-            for _attempt in (1, 2):
-                try:
-                    library_entries = db.get_strong_sides_library(
-                        request.user_id
-                    ) or []
-                    logger.info(
-                        "chat/query: library loaded user=%s entries=%d "
-                        "(attempt %d)", request.user_id,
-                        len(library_entries), _attempt,
-                    )
-                    break
-                except Exception as e:
-                    logger.warning(
-                        "chat/query: library load failed user=%s "
-                        "(attempt %d): %s", request.user_id, _attempt, e,
-                    )
-                    library_entries = None
 
         # BE-9 — the Life Panel's per-user block, for participating users only.
         # Retrieved at request time from the requesting user's OWN rows, capped
@@ -1715,9 +1684,6 @@ def v2_chat_query():
             question.strip(),
             history=history,
             admin_dont_ask_notes=admin_dont_ask_notes,
-            library_entries=library_entries,
-            # B3 — None (after retry) means the load FAILED, not empty.
-            library_load_failed=bool(request.user_id and library_entries is None),
             life_context=life_context,
         )
 
@@ -1763,7 +1729,7 @@ def v2_chat_query():
         # ("audit" is set by the audit intercept above, not the librarian, but
         # is a valid enum value so the FE contract stays consistent.)
         _sa = payload.get("suggested_action")
-        if _sa not in ("strong_sides", "trainings", "audit"):
+        if _sa not in ("trainings", "audit"):
             _sa = None
         _answer = payload.get("answer", "")
         return _finalize({

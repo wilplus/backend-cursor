@@ -48,8 +48,9 @@ Notable:
 
 ## `POST /v2/chat/query` — not the problem
 
-**3 DB round-trips**, 1 loop, no LLM call on the traversed path
-(`get_user_settings`, `get_strong_sides_library`, `insert_lounge_messages`).
+The historical measurement in this section predates retirement of the Strong
+Sides collection. The active handler no longer loads that collection; rerun the
+request trace before using the old round-trip count for capacity decisions.
 
 Structurally this is already cheap. If chat *feels* slow, the cost is very
 unlikely to be in this handler — look at the FE (bundle, waterfall, whether the

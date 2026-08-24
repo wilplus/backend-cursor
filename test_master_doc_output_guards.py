@@ -48,9 +48,9 @@ class ConstructLeakGuardTests(unittest.TestCase):
     """RULE A / B1 / AC-9 — the retired scoring construct must never
     survive in the output, even if the prompt rule were crowded out."""
 
-    def _guard(self, answer, suggested_action=None, library=None):
+    def _guard(self, answer, suggested_action=None):
         from services.master_doc_rag import _enforce_output_guards
-        return _enforce_output_guards(answer, suggested_action, library)
+        return _enforce_output_guards(answer, suggested_action)
 
     def test_threat_challenge_ratio_is_replaced(self):
         a, _sa, fired = self._guard(
@@ -109,82 +109,44 @@ class ConstructLeakGuardTests(unittest.TestCase):
         self.assertIsNone(sa)
 
 
-class LibraryDumpGuardTests(unittest.TestCase):
-    """RULE K — the bot must bridge to the button, never recite the
-    coach-notes library inline."""
+class RetiredCollectionGuardTests(unittest.TestCase):
+    """The bot must not recreate the retired Strong Sides collection."""
 
-    def _guard(self, answer, suggested_action=None, library=None):
+    def _guard(self, answer, suggested_action=None):
         from services.master_doc_rag import _enforce_output_guards
-        return _enforce_output_guards(answer, suggested_action, library)
+        return _enforce_output_guards(answer, suggested_action)
 
     def test_marker_strong_triggers_bridge(self):
         a, sa, fired = self._guard(
             'Here they are: [strong] coach noted: "great open".'
         )
-        self.assertEqual(fired, "library_dump")
-        self.assertEqual(sa, "strong_sides")
-        self.assertEqual(a, "Sure — tap the button below to open them.")
+        self.assertEqual(fired, "retired_collection_dump")
+        self.assertIsNone(sa)
+        self.assertEqual(
+            a, "Your confirmed confident moments are in Voice Album in the menu.",
+        )
 
     def test_marker_coach_noted_triggers_bridge(self):
         _a, _sa, fired = self._guard('coach noted: "watch the drop-off"')
-        self.assertEqual(fired, "library_dump")
+        self.assertEqual(fired, "retired_collection_dump")
 
-    def test_verbatim_note_overlap_triggers_bridge(self):
-        library = [{
-            "tag": "strong",
-            "note": "Strongest eight seconds — do more of this.",
-            "snippet_ref": {},
-        }]
-        a, sa, fired = self._guard(
-            "You did well! Strongest eight seconds — do more of this.",
-            library=library,
-        )
-        self.assertEqual(fired, "library_dump")
-        self.assertEqual(sa, "strong_sides")
-        self.assertEqual(a, "Sure — tap the button below to open them.")
-
-    def test_short_note_overlap_does_not_false_positive(self):
-        # A sub-threshold note fragment shared incidentally must NOT trip.
-        library = [{"tag": "strong", "note": "nice", "snippet_ref": {}}]
-        msg = "That's a nice question — here's what the product does."
-        a, _sa, fired = self._guard(msg, library=library)
-        self.assertIsNone(fired)
-        self.assertEqual(a, msg)
-
-    def test_bridge_answer_with_library_present_passes_through(self):
-        # The compliant bridge answer must NOT be flagged as a dump even
-        # when the library is loaded for this turn.
-        library = [{
-            "tag": "strong",
-            "note": "Strongest eight seconds — do more of this.",
-            "snippet_ref": {},
-        }]
-        msg = "Sure — tap the button below to open them."
-        a, sa, fired = self._guard(
-            msg, suggested_action="strong_sides", library=library,
-        )
-        self.assertIsNone(fired)
-        self.assertEqual(a, msg)
-        self.assertEqual(sa, "strong_sides")
-
-    def test_no_library_benign_answer_passes(self):
+    def test_benign_answer_passes(self):
         msg = "I can't see any coach notes for you yet — record a take?"
-        a, _sa, fired = self._guard(msg, library=None)
+        a, _sa, fired = self._guard(msg)
         self.assertIsNone(fired)
         self.assertEqual(a, msg)
 
 
 class GuardPrecedenceTests(unittest.TestCase):
-    def _guard(self, answer, suggested_action=None, library=None):
+    def _guard(self, answer, suggested_action=None):
         from services.master_doc_rag import _enforce_output_guards
-        return _enforce_output_guards(answer, suggested_action, library)
+        return _enforce_output_guards(answer, suggested_action)
 
     def test_construct_leak_takes_precedence_over_dump(self):
         # An answer that both leaks the construct AND dumps the library
         # is replaced by the construct-safe answer (the stronger guard).
-        library = [{"tag": "strong", "note": "x" * 30, "snippet_ref": {}}]
         a, _sa, fired = self._guard(
-            'coach noted: "your KPI is 0.9"', library=library,
+            'coach noted: "your KPI is 0.9"',
         )
         self.assertEqual(fired, "construct_leak")
         self.assertIn("Readout", a)
@@ -280,21 +242,17 @@ class RouterScaffoldTests(unittest.TestCase):
 
     def test_grounded_lane_splices_master_doc(self):
         from services.master_doc_rag import _build_lane_prompt
-        grounded = _build_lane_prompt("product_faq", None, "")
+        grounded = _build_lane_prompt("product_faq", "")
         self.assertIn("MASTER DOCUMENT", grounded)
         # an action lane stays focused — no full document
-        action = _build_lane_prompt("record_intent", None, "")
+        action = _build_lane_prompt("record_intent", "")
         self.assertNotIn("MASTER DOCUMENT", action)
 
-    def test_library_recall_lane_includes_library(self):
+    def test_positive_moment_recall_routes_to_voice_album_without_collection(self):
         from services.master_doc_rag import _build_lane_prompt
-        out = _build_lane_prompt(
-            "library_recall",
-            [{"tag": "strong", "note": "great open", "snippet_ref": {}}],
-            "",
-        )
-        # the librarian guardrail rides along with the library block
-        self.assertIn("LIBRARIAN", out)
+        out = _build_lane_prompt("library_recall", "")
+        self.assertIn("Voice Album", out)
+        self.assertNotIn("LIBRARIAN", out)
 
     def test_record_lane_points_to_official_recording(self):
         from services.master_doc_rag import _LANE_BODIES

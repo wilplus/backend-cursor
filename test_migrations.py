@@ -260,6 +260,11 @@ class DestructiveDetectionTests(unittest.TestCase):
             # This migration removes those obsolete columns and tables rather
             # than leaving a degraded compatibility path.
             "retire_threat_challenge_framework.sql",
+            # Defines (but does not execute during migration) the atomic guest
+            # ownership claim. The DELETE is inside the RPC and removes only
+            # the now-empty guest principal after its complete entity graph is
+            # transferred to an already-existing permanent owner principal.
+            "add_canonical_project_ownership.sql",
         }, "The destructive set changed. If you added a migration that drops "
            "something, add it here deliberately — don't just update the literal.")
 

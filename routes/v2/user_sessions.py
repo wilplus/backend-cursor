@@ -1,6 +1,5 @@
-"""The signed-in user's takes & readouts surface: session results/status,
-intake context, the strong-sides library, strengths (per-presentation
-groups), take/session/presentation deletes, readout re-reads, transcript
+"""The signed-in user's takes and readouts surface: session results/status,
+intake context, take/session/project deletes, readout re-reads, transcript
 edits, suggestion feedback and the trainings list.
 
 Moved verbatim out of ``routes/v2_routes.py`` (god-file split, phase 3);
@@ -27,6 +26,9 @@ from routes.v2.arcs import (
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
 from services.db import db
+from services.create_take import session_owned_by_principal
+from services.project_ownership import GUEST_OWNER_HEADER
+from services.project_repository import ProjectRepository
 from services.snippet_values import resolve_all
 
 logger = logging.getLogger(__name__)
@@ -467,577 +469,22 @@ def v2_user_put_session_intake_context(session_id):
             "code": "V2_ERROR",
             "error": "Failed to update intake context",
         }), 500
-
-
-# ── willab beta — strong-sides library read (design §7, contract §3.11) ─
-
-
-@v2_bp.route("/user/library", methods=["GET"])
-@require_auth
-def v2_user_get_library():
-    """The user's strong-sides library — coach-tagged snippets ingested
-    on insights-read. Backs the Lounge bot's retrieval + a future FE
-    library view.
-
-    Query: tag (optional) = 'strong' | 'to_work_on' filter.
-
-    Response 200:
-      { "entries": [ {id, session_id, snippet_id, note, tag,
-                      snippet_ref, created_at} ],   // newest first
-        "count": int }
-
-    Librarian-not-judge (§7): pure replay of human-authored coach notes;
-    no trajectory/improvement is computed here or anywhere downstream.
-    """
-    try:
-        tag = (request.args.get("tag") or "").strip() or None
-        if tag is not None and tag not in ("strong", "to_work_on"):
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "tag must be 'strong' or 'to_work_on'",
-            }), 400
-        entries = db.get_strong_sides_library(request.user_id, tag=tag) or []
-
-        # Enrich each entry with deck context so the FE can group strong-sides
-        # by training (FE PR #152): per-entry slide (the slide on screen when
-        # this moment was spoken), rank (Stickiness #2), session_topic, and
-        # presentation_ref. Additive — existing consumers (Lounge librarian
-        # bot's _render_library_block) ignore the new fields. Fetches each
-        # session + its snippets ONCE (cached) so the cost is O(unique sessions)
-        # regardless of library size.
-        from services.slide_alignment import slide_for_snippet
-        _session_cache: dict = {}
-        _rank_cache: dict = {}
-
-        def _load(sid):
-            if sid in _session_cache:
-                return _session_cache[sid], _rank_cache[sid]
-            session = db.v2_get_session_by_id(sid) or {}
-            ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
-            _session_cache[sid] = ctx if isinstance(ctx, dict) else {}
-            # rank lookup — one fetch per session, snippet_id → metrics.rank.
-            ranks: dict = {}
-            try:
-                for s in (db.get_snippets_by_session(sid) or []):
-                    m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
-                    if isinstance(m, dict):
-                        ranks[str(s.get("id"))] = m.get("rank")
-            except Exception:
-                pass
-            _rank_cache[sid] = ranks
-            return _session_cache[sid], _rank_cache[sid]
-
-        for e in entries:
-            sid = e.get("session_id")
-            if not sid:
-                e.setdefault("slide", None)
-                e.setdefault("rank", None)
-                e.setdefault("session_topic", "")
-                e.setdefault("presentation_ref", None)
-                continue
-            ctx, ranks = _load(sid)
-            slides = ctx.get("slides") or []
-            advances = ctx.get("slide_advances") or []
-            ref = e.get("snippet_ref") if isinstance(e.get("snippet_ref"), dict) else {}
-            # Reuse the same mapping as the readout — timeline-exact, text-
-            # overlap fallback when no advances. None when no deck.
-            e["slide"] = slide_for_snippet(ref, advances, slides) if slides else None
-            e["rank"] = ranks.get(str(e.get("snippet_id")))
-            e["session_topic"] = ctx.get("topic") or ""
-            e["presentation_ref"] = ctx.get("presentation_ref")
-
-        return jsonify({"entries": entries, "count": len(entries)}), 200
-    except Exception as e:
-        logger.error("user/library GET failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to fetch library",
-        }), 500
-
-
-def _accrue_slide_fragment(
-    per_text, per_audio, slide_count, slide_index, text,
-    start_ms, end_ms, audio_ref,
-):
-    """Add one verbatim fragment and expand its slide-level audio span."""
-    if not isinstance(slide_index, int) \
-            or slide_index < 0 or slide_index >= slide_count:
-        return
-    if text:
-        per_text[slide_index].append(text)
-    audio = per_audio.setdefault(slide_index, {
-        "audio_ref": audio_ref,
-        "start_offset_ms": start_ms,
-        "end_ms": start_ms if start_ms is not None else None,
-    })
-    if audio.get("audio_ref") is None:
-        audio["audio_ref"] = audio_ref
-    if start_ms is not None and (
-        audio.get("start_offset_ms") is None
-        or start_ms < audio["start_offset_ms"]
-    ):
-        audio["start_offset_ms"] = start_ms
-    if end_ms is not None:
-        audio["end_ms"] = max(audio.get("end_ms") or 0, end_ms)
-
-
-def _dominant_arc_id(takes):
-    """Choose the most-developed Project, breaking ties newest-first."""
-    counts = {}
-    for take in takes:
-        arc_id = take.get("arc_id")
-        if arc_id:
-            counts[arc_id] = counts.get(arc_id, 0) + 1
-    if not counts:
-        return None
-    max_count = max(counts.values())
-    return next((take["arc_id"] for take in takes
-                 if take.get("arc_id")
-                 and counts[take["arc_id"]] == max_count), None)
-
-
-def _best_lines_for_slides(takes, slides):
-    """Pick the highest-power accepted line for each slide across Takes."""
-    best_lines = []
-    for index, raw_slide in enumerate(slides):
-        slide = raw_slide if isinstance(raw_slide, dict) else {}
-        best = None
-        best_power = None
-        for take in takes:
-            take_slides = take["slides"]
-            snippets = take_slides[index]["strong_snippets"] \
-                if index < len(take_slides) else []
-            if not snippets:
-                continue
-            top = snippets[0]
-            power = top.get("power_score")
-            if best is None or (
-                power is not None
-                and (best_power is None or power > best_power)
-            ):
-                best_power = power
-                best = top
-        if best:
-            best_lines.append({
-                "slide_index": index,
-                "title": slide.get("title") or "",
-                "transcript": best.get("transcript") or "",
-                "note": best.get("note") or "",
-                "audio_ref": best.get("audio_ref"),
-                "features": best.get("features"),
-                "rank": best.get("rank"),
-                "power_score": best.get("power_score"),
-            })
-    return best_lines
-
-
-@v2_bp.route("/user/strengths", methods=["GET"])
-@require_auth
-def v2_user_get_strengths():
-    """Strong-sides view grouped by PRESENTATION (the deck), not by session.
-
-    Shape (FE handoff):
-      {
-        general:       [{transcript, note, audio_ref, features, start_offset_ms,
-                          duration_ms, rank, session_id, created_at}],
-        presentations: [{
-          presentation_id,                 # stable hash of slides text
-          presentation_ref,                # served PDF url (latest take)
-          topic,                           # from intake_context (latest take)
-          slides:     [{index, title, body}],    # the deck (latest take)
-          best_lines: [{slide_index, title, transcript, note, audio_ref,
-                        features, rank}],       # single best take per slide
-          takes:      [{                          # newest take first
-            session_id, take_number, created_at,
-            slides: [{index, title, body, strong_snippets: [
-              {transcript, note, audio_ref, features, rank, start_offset_ms,
-               duration_ms}
-            ]}]
-          }]
-        }]
-      }
-
-    presentation_id = SHA1 of canonical slides text → stable across re-uploads
-    (URL changes; content doesn't). take_number = chronological order of that
-    deck's recordings (1 = first take, 2 = second, …). best_lines = per slide,
-    the single snippet with the lowest rank across ALL takes of that deck.
-    features = the per-snippet acoustic vector already baked into each library
-    row's snippet_ref (build_readout_features at ingest).
-    """
-    try:
-        from services.slide_alignment import (
-            slide_index_for_offset, _best_match_index,
-        )
-        from services.slide_word_split import split_words_by_slides
-        from services.power_phrase_ranking import power_score
-        uid = str(request.user_id)
-        library = db.get_strong_sides_library(uid, tag="strong") or []
-
-        # Bucket library rows by session (the coach's STRONG lines).
-        by_session: dict = {}
-        for row in library:
-            sid = row.get("session_id")
-            if not sid:
-                continue
-            by_session.setdefault(sid, []).append(row)
-
-        # PRE-COACH inclusion (founder 2026-06-18): a presentation appears on
-        # Trainings the moment it's recorded — not only after the coach
-        # publishes. Seed by_session with EVERY lab session (empty rows = no
-        # strong lines yet; they layer in on publish). Use the list rows as the
-        # session source so we don't re-fetch each one.
-        lab_rows = db.v2_list_user_lab_sessions(uid) or []
-        sess_rows = {str(s.get("id")): s for s in lab_rows if s.get("id")}
-        for sid in sess_rows:
-            by_session.setdefault(sid, [])
-
-        # Part B — kill the N+1: resolve every session row once, decide which
-        # need snippets (coach-tagged OR deck sessions), then read ALL their
-        # snippets in ONE batched query. `words` are excluded (the take viewer
-        # reads the precomputed slide_transcripts, #A), slashing the payload.
-        _sessions_by_sid: dict = {}
-        _need_snippets: list = []
-        for sid in by_session:
-            session = sess_rows.get(sid) or db.v2_get_session_by_id(sid) or {}
-            _sessions_by_sid[sid] = session
-            _ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
-            if by_session[sid] or (_ctx.get("slides") or []):
-                _need_snippets.append(sid)
-        _snips_by_sid = db.get_snippets_by_sessions(_need_snippets) or {}
-
-        # Load session metadata + rank lookups per session.
-        sess_meta: dict = {}
-        for sid in by_session:
-            session = _sessions_by_sid.get(sid) or {}
-            ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
-            slides = ctx.get("slides") or []
-            ranks: dict = {}
-            sigs: dict = {}  # coach-adjusted power_score inputs per snippet
-            all_snippets: list = []
-            # Snippets for coach-tagged sessions (ranks / power_score) AND DECK
-            # sessions (the per-slide verbatim transcript). Un-coached DECKLESS
-            # sessions skip it. Prefer the batched result; fall back to a single
-            # read only when the batch had nothing for this sid.
-            if by_session[sid] or slides:
-                all_snippets = _snips_by_sid.get(sid)
-                if all_snippets is None:
-                    try:
-                        all_snippets = db.get_snippets_by_session(sid) or []
-                    except Exception:
-                        all_snippets = []
-                for s in all_snippets:
-                    m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
-                    sid_s = str(s.get("id"))
-                    ranks[sid_s] = m.get("rank") if isinstance(m, dict) else None
-                    _ss = m.get("slide_stickiness") if isinstance(m, dict) else None
-                    sigs[sid_s] = {
-                        "overall_score": m.get("overall_score") if isinstance(m, dict) else None,
-                        "slide_stickiness": (_ss or {}).get("composite") if isinstance(_ss, dict) else None,
-                    }
-            sess_meta[sid] = {
-                "ctx": ctx,
-                "ranks": ranks,
-                "sigs": sigs,
-                "slides": slides,
-                "all_snippets": all_snippets,
-                # #A — the COMPLETE per-slide 1:1 transcript precomputed at
-                # record time (preferred over the per-snippet split below).
-                "slide_transcripts": session.get("slide_transcripts"),
-                "created_at": session.get("created_at") or "",
-                "arc_id": session.get("arc_id"),
-                # The TALK's identity, not the deck's bytes — a generic
-                # scaffold deck is shared by every deckless talk, so it groups
-                # by topic instead (see _presentation_group_key, 2026-08-15).
-                "presentation_id": _presentation_group_key(ctx),
-            }
-
-        # Split: no-deck sessions → general; deck sessions → grouped by pid.
-        general: list = []
-        pres_sessions: dict = {}  # pid → [sid, …]
-        for sid, rows in by_session.items():
-            meta = sess_meta[sid]
-            if not meta["slides"]:
-                for row in rows:
-                    ref = row.get("snippet_ref") if isinstance(row.get("snippet_ref"), dict) else {}
-                    general.append({
-                        "transcript": ref.get("transcript") or "",
-                        "note": row.get("note") or "",
-                        "audio_ref": ref.get("audio_ref"),
-                        "features": ref.get("features"),
-                        "start_offset_ms": ref.get("start_offset_ms"),
-                        "duration_ms": ref.get("duration_ms"),
-                        "rank": meta["ranks"].get(str(row.get("snippet_id"))),
-                        "session_id": sid,
-                        "created_at": row.get("created_at"),
-                    })
-            else:
-                pres_sessions.setdefault(meta["presentation_id"], []).append(sid)
-        # Newest moment first inside `general`.
-        general.sort(key=lambda g: g.get("created_at") or "", reverse=True)
-
-        def _build_take(sid):
-            """One take = one recording session of a given deck."""
-            meta = sess_meta[sid]
-            ctx = meta["ctx"]
-            advances = ctx.get("slide_advances") or []
-            slides = meta["slides"]
-            ranks = meta["ranks"]
-            sigs = meta["sigs"]
-            slide_groups = [
-                {
-                    "index": i,
-                    "title": (sl.get("title") or "") if isinstance(sl, dict) else "",
-                    "body": (sl.get("body") or "") if isinstance(sl, dict) else "",
-                    "strong_snippets": [],
-                }
-                for i, sl in enumerate(slides)
-            ]
-            for row in by_session[sid]:
-                ref = row.get("snippet_ref") if isinstance(row.get("snippet_ref"), dict) else {}
-                off = ref.get("start_offset_ms")
-                idx = slide_index_for_offset(off, advances)
-                if idx is None:
-                    idx = _best_match_index(ref.get("transcript"), slides)
-                if not isinstance(idx, int) or idx < 0 or idx >= len(slides):
-                    continue
-                sid_s = str(row.get("snippet_id"))
-                _sig = sigs.get(sid_s, {})
-                # Coach-adjusted power_score: these are all coach-tagged
-                # 'strong' (the human gate), ordered by activation + slide
-                # coverage. tag='strong' is uniform here, so it sets the floor;
-                # activation + slide_stickiness do the ordering within.
-                ps = power_score(
-                    activation=_sig.get("overall_score"),
-                    slide_stickiness=_sig.get("slide_stickiness"),
-                    tag="strong",
-                    rank=ranks.get(sid_s),
-                )
-                slide_groups[idx]["strong_snippets"].append({
-                    "transcript": ref.get("transcript") or "",
-                    "note": row.get("note") or "",
-                    "audio_ref": ref.get("audio_ref"),
-                    "features": ref.get("features"),
-                    "start_offset_ms": off,
-                    "duration_ms": ref.get("duration_ms"),
-                    "rank": ranks.get(sid_s),
-                    "power_score": ps,
-                })
-            # Order each slide's strong snippets by the coach-adjusted
-            # power_score DESC (higher = better power phrase); None ranks fall
-            # out via a 0-activation floor.
-            for sg in slide_groups:
-                sg["strong_snippets"].sort(
-                    key=lambda s: -(s.get("power_score") or 0.0)
-                )
-            # #A (2026-06-22) — PREFER the precomputed COMPLETE per-slide 1:1
-            # transcript (built at record time from the WHOLE-recording word
-            # list). It catches the quiet slides the salient-snippet split
-            # dropped ("first slide not caught / shifted"). Falls back to the #6
-            # per-snippet split (then legacy) for recordings made before this.
-            precomputed = meta.get("slide_transcripts")
-            pre_by_idx = {
-                t["index"]: t for t in precomputed
-                if isinstance(t, dict) and isinstance(t.get("index"), int)
-            } if isinstance(precomputed, list) and precomputed else {}
-            if pre_by_idx:
-                # Resolved, not raw: a writer missing its public-URL env
-                # leaves s3:// here and the slide player renders dead
-                # (founder 2026-08-10 — "the master thing not working").
-                from services.audio_ref_resolver import resolve_playable_ref
-                parent_audio = resolve_playable_ref(next(
-                    (s.get("audio_segment_path")
-                     for s in (meta.get("all_snippets") or [])
-                     if s.get("audio_segment_path")),
-                    None,
-                ))
-                for sg in slide_groups:
-                    pt = pre_by_idx.get(sg["index"]) or {}
-                    sg["transcript"] = pt.get("transcript") or ""
-                    sg["start_offset_ms"] = pt.get("start_offset_ms")
-                    sg["duration_ms"] = pt.get("duration_ms")
-                    sg["audio_ref"] = parent_audio
-                return slide_groups
-
-            # #6 (2026-06-21) — the FULL verbatim transcript per slide for THIS
-            # take (not just the coach standout), so the Trainings take viewer
-            # shows what was actually said on each slide instead of "No standout
-            # moment yet". All the take's snippets (start_offset ASC → time
-            # order), bucketed by slide via the tap timeline, joined verbatim; +
-            # the slide's audio span so the FE can play that slide back.
-            per_text: dict = {i: [] for i in range(len(slides))}
-            per_audio: dict = {}
-
-            from services.audio_ref_resolver import resolve_playable_ref
-            # THE COACH'S CORRECTION WINS (founder 2026-08-11). A human who
-            # says "this was on slide N" outranks the tap timeline — that is
-            # the whole point of the label, and a coach who corrects a take
-            # and watches nothing move stops correcting.
-            #
-            # WHOLE-SNIPPET, deliberately: the correction is made at snippet
-            # grain, so it replaces the word split for that snippet rather
-            # than trying to be cleverer than the human. The FE only offers
-            # the affordance on snippets the split did NOT divide, so a
-            # correction can never flatten a boundary the pipeline got right.
-            _slide_fixes = db.get_snippet_slide_corrections(sid) or {}
-            for s in (meta.get("all_snippets") or []):
-                off = s.get("start_offset_ms")
-                dur = s.get("duration_ms")
-                _fix = _slide_fixes.get(str(s.get("id")))
-                if isinstance(_fix, int):
-                    _txt = (
-                        s.get("transcript") or s.get("transcription_text") or ""
-                    ).strip()
-                    _end = (off + dur) if (off is not None and dur is not None) else None
-                    _accrue_slide_fragment(
-                        per_text, per_audio, len(slides), _fix, _txt, off, _end,
-                        resolve_playable_ref(s.get("audio_segment_path")),
-                    )
-                    continue
-                # Same parent URL on every row — the resolver passes a
-                # healthy public URL through and signs an s3:// fallback.
-                audio_ref = resolve_playable_ref(
-                    s.get("audio_segment_path"))
-                # #6 — PRECISE split: bucket each WORD to the slide on screen at
-                # its timestamp, so words spoken after a mid-snippet slide click
-                # move to the NEW slide. Returns [] (→ legacy whole-snippet
-                # bucketing) when the snippet has no word timestamps or there's
-                # no usable click timeline.
-                frags = split_words_by_slides(s.get("words"), advances, slides)
-                if frags:
-                    for f in frags:
-                        st = f.get("start_offset_ms")
-                        _accrue_slide_fragment(
-                            per_text, per_audio, len(slides),
-                            f["slide_index"], f.get("transcript"), st,
-                            (st or 0) + (f.get("duration_ms") or 0),
-                            audio_ref,
-                        )
-                    continue
-                # Fallback (no words / no timeline): whole snippet → start slide.
-                si = slide_index_for_offset(off, advances)
-                if si is None:
-                    si = _best_match_index(
-                        s.get("transcript") or s.get("transcription_text"),
-                        slides,
-                    )
-                txt = (
-                    s.get("transcript") or s.get("transcription_text") or ""
-                ).strip()
-                end_ms = (off + dur) if (off is not None and dur is not None) else None
-                _accrue_slide_fragment(
-                    per_text, per_audio, len(slides), si, txt, off, end_ms,
-                    audio_ref,
-                )
-            for sg in slide_groups:
-                i = sg["index"]
-                sg["transcript"] = " ".join(per_text.get(i) or [])
-                _a = per_audio.get(i) or {}
-                sg["audio_ref"] = _a.get("audio_ref")
-                sg["start_offset_ms"] = _a.get("start_offset_ms")
-                sg["duration_ms"] = (
-                    (_a["end_ms"] - _a["start_offset_ms"])
-                    if _a.get("end_ms") is not None
-                    and _a.get("start_offset_ms") is not None
-                    else None
-                )
-            return slide_groups
-
-        # Build presentations.
-        presentations: list = []
-        for pid, sids in pres_sessions.items():
-            # take_number assignment — chronological (1 = first take).
-            sids_asc = sorted(sids, key=lambda s: (sess_meta[s]["created_at"], s))
-            take_number = {sid: i + 1 for i, sid in enumerate(sids_asc)}
-            # Response order: newest take first.
-            sids_desc = sorted(sids, key=lambda s: (sess_meta[s]["created_at"], s), reverse=True)
-            latest_meta = sess_meta[sids_desc[0]]
-            latest_slides = latest_meta["slides"]
-
-            takes = []
-            for sid in sids_desc:
-                takes.append({
-                    "session_id": sid,
-                    "take_number": take_number[sid],
-                    "created_at": sess_meta[sid]["created_at"],
-                    # the deck PDF for this take (library renders slides from it).
-                    "presentation_ref": sess_meta[sid]["ctx"].get("presentation_ref"),
-                    # the explore arc this take belongs to (→ best-presentation).
-                    "arc_id": sess_meta[sid].get("arc_id"),
-                    "slides": _build_take(sid),
-                })
-
-            # Group-level ref: the FIRST NON-NULL across takes (a re-take may
-            # have dropped the ref) so the library always gets a URL.
-            _pres_ref = next(
-                (t["presentation_ref"] for t in takes if t["presentation_ref"]),
-                None,
-            )
-            # Group-level arc: the best-presentation reads ONE arc, but a deck
-            # re-recorded as a SEPARATE arc spreads its takes across multiple
-            # arc_ids (always-on mints a fresh arc per recording session). Pick
-            # the arc with the MOST takes — the most-developed sequence, most
-            # likely to be ready — NOT just the newest take's arc, which may be
-            # a stray 1-take re-record (that would make the FE's group take-count
-            # disagree with the overlay's per-arc count: "open" → "need 2 more").
-            # Single-arc decks are unaffected (one arc holds all takes). Tie →
-            # newest, since `takes` is newest-first.
-            _arc_id = _dominant_arc_id(takes)
-
-            # best_lines: per slide_index, the single snippet with the HIGHEST
-            # coach-adjusted power_score across all takes (the power phrase for
-            # that slide). Each take's strong_snippets[0] is already the best
-            # for that take (power-sorted).
-            best_lines = _best_lines_for_slides(takes, latest_slides)
-
-            presentations.append({
-                "presentation_id": pid,
-                "presentation_ref": _pres_ref,
-                "arc_id": _arc_id,
-                "topic": latest_meta["ctx"].get("topic") or "",
-                "slides": [
-                    {
-                        "index": i,
-                        "title": (s.get("title") or "") if isinstance(s, dict) else "",
-                        "body": (s.get("body") or "") if isinstance(s, dict) else "",
-                    }
-                    for i, s in enumerate(latest_slides)
-                ],
-                "best_lines": best_lines,
-                "takes": takes,
-            })
-
-        # Presentations: newest most-recent-take first.
-        presentations.sort(
-            key=lambda p: p["takes"][0]["created_at"] if p["takes"] else "",
-            reverse=True,
-        )
-        return jsonify({"general": general, "presentations": presentations}), 200
-    except Exception as e:
-        logger.error("user/strengths GET failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch strengths"}), 500
-
-
 def _user_presentation_groups(user_id: str) -> dict:
-    """{presentation_id: [session_id ordered take 1..N]} for this user.
+    """Compatibility grouping for historical project deletion.
 
-    MIRRORS the /user/strengths grouping so take_number lines up with what
-    the FE shows: only the user's library (strong-tagged) sessions that have
-    a deck, grouped by the stable slide-text hash, each group ordered by
-    (created_at, session_id) ascending (take 1 = oldest)."""
-    library = db.get_strong_sides_library(user_id, tag="strong") or []
-    seen: dict = {}
-    for row in library:
-        sid = row.get("session_id")
-        if sid:
-            seen.setdefault(sid, True)
+    New code uses immutable project IDs. Historical sessions that predate the
+    canonical project table remain groupable by their deck hash until their
+    owner migrates or deletes them.
+    """
     groups: dict = {}
-    for sid in seen:
-        session = db.v2_get_session_by_id(sid) or {}
+    for session in (db.v2_list_user_lab_sessions(user_id) or []):
+        sid = str(session.get("id") or "")
+        if not sid:
+            continue
         ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
         slides = (ctx or {}).get("slides") or []
         if not slides:
-            continue  # deckless moments live in `general`, not a presentation
+            continue
         pid = _presentation_group_key(ctx)
         if not pid:
             continue
@@ -1049,13 +496,7 @@ def _user_presentation_groups(user_id: str) -> dict:
 
 
 def _hard_delete_session_for_user(user_id: str, session_id: str) -> None:
-    """Durable delete of one take: drop its library rows (so it leaves
-    /user/strengths now) AND the underlying session (so the readout-read
-    re-ingest can't resurrect it). Owner-scoped; best-effort per step."""
-    try:
-        db.delete_strong_sides_library_for_session(user_id, session_id)
-    except Exception as e:
-        logger.warning("presentation delete: library purge failed sid=%s err=%s", session_id, e)
+    """Durably delete one historical take through the owner-scoped adapter."""
     try:
         db.v2_delete_session(session_id, user_id)
     except Exception as e:
@@ -1064,12 +505,9 @@ def _hard_delete_session_for_user(user_id: str, session_id: str) -> None:
 
 def _user_presentation_sessions_all(user_id: str, presentation_id: str) -> list:
     """EVERY lab session of this user whose deck hashes to presentation_id —
-    the COMPLETE delete set (backlog 4.4). The library grouping
-    (_user_presentation_groups) under-counts on purpose for take NUMBERING
-    (it mirrors what /user/strengths shows), but a DELETE built on it left
-    survivors: takes without coach-published 'strong' library rows were
-    invisible to it, so a "deleted" training kept resurfacing in any
-    session-backed list — the reported bug. Chronological (created_at, id)."""
+    the COMPLETE historical delete set. It is derived from owner-scoped
+    sessions rather than any retired feedback collection, so a deleted
+    training cannot resurface. Chronological (created_at, id)."""
     pid = (presentation_id or "").strip()
     if not pid:
         return []
@@ -1090,9 +528,8 @@ def _user_presentation_sessions_all(user_id: str, presentation_id: str) -> list:
 def v2_user_delete_presentation(presentation_id):
     """Delete a whole presentation (deck) and ALL its takes — owner-scoped,
     HARD delete (the recordings are gone everywhere, incl. coach history).
-    Deletes the COMPLETE session set for the deck (not just the
-    library-visible takes — backlog 4.4 fix; see
-    _user_presentation_sessions_all).
+    Deletes the complete owner-scoped session set for the deck (see
+    ``_user_presentation_sessions_all``).
     200 {deleted_sessions} · 404 if the user has no such presentation."""
     try:
         uid = str(request.user_id)
@@ -1122,8 +559,8 @@ def v2_user_delete_presentation(presentation_id):
 @require_auth
 def v2_user_delete_take(presentation_id, take_number):
     """Delete a single take (one recording session) of a presentation —
-    owner-scoped HARD delete. take_number is 1-based, chronological (matches
-    /user/strengths). 200 · 400 bad take_number · 404 unknown presentation/take."""
+    owner-scoped HARD delete. take_number is 1-based and chronological.
+    200 · 400 bad take_number · 404 unknown presentation/take."""
     try:
         uid = str(request.user_id)
         try:
@@ -1200,8 +637,8 @@ def v2_user_get_session_readout(session_id):
     Serves parked-restore (the report loads identically an hour later)
     and history-detail (tap a past report). Re-derived from PERSISTED
     snippets (features + the persisted stickiness), so it matches the
-    upload-time payload byte-for-byte. Post-publish it also carries the
-    coach layer (insights_payload + per-snippet coach note/tag).
+    upload-time payload byte-for-byte. Post-publish it also carries canonical
+    exact-evidence FeedbackItems and a separate take-level coach-review layer.
 
     Owner-scoped: non-owner → 404 (no existence leak).
 
@@ -1214,10 +651,10 @@ def v2_user_get_session_readout(session_id):
               slide: { index, title, body },     # slide on screen when spoken
                                                  # (tap timeline) — GROUP BY slide.index
               breakthrough: bool, breakthrough_note,   # coach-confirmed (F2)
-              coach: { note, tag, when?, examples? },   # post-publish only
           } ],
           "slides"?: [...], "presentation_ref"?: str,   # the deck (render once/group)
-          "insights_payload"?: {...},
+          "feedback_items": [...],
+          "coach_review": { "overall_message"?, "video_ref"? },
         } }
 
     The per-snippet `slide` (slide_alignment.slide_for_snippet) plus top-level
@@ -1276,25 +713,6 @@ def v2_user_get_session_readout(session_id):
         published = bool(session.get("results_published_at"))
         if published:
             state = "insights_ready"
-            # willab §7 — ingest this published session's coach-tagged
-            # snippets into the user's strong-sides library ON READ. This
-            # is the SOLE ingest trigger (the library grows per delivered
-            # session the user actually opens); idempotent upsert,
-            # self-guarding, never raises. Read back by the Lounge
-            # librarian bot (master_doc_rag.answer_question).
-            try:
-                from services.strong_sides_library import ingest_session_library
-                n = ingest_session_library(session_id, str(request.user_id))
-                if n:
-                    logger.info(
-                        "library: ingested %d strong-sides rows on read "
-                        "sid=%s user=%s", n, session_id, request.user_id,
-                    )
-            except Exception as _lib_err:
-                logger.warning(
-                    "library: ingest-on-read failed sid=%s err=%s "
-                    "(non-fatal)", session_id, _lib_err,
-                )
         elif session.get("status") == "pending_admin_review":
             state = "review_pending"
         else:
@@ -1335,12 +753,9 @@ def v2_user_put_transcript_edit(session_id):
     reviewing the ORIGINAL transcript; readout reads carry the edit as
     ``user_edited_text`` beside (never instead of) ``transcript``.
 
-    GUEST-capable since 2026-07-16 (the round-4 signed-out-first flow: the
-    instant view's Approve taps write through here BEFORE signup — they were
-    silently 401-ing for guests). Same capability rule as the guest readout:
-    an UNCLAIMED session (user_id NULL) is writable to the bare session id; a
-    claimed session is owner-only — 404 to any other/no caller (no existence
-    leak). Edits ride the session, so a later claim keeps them.
+    GUEST-capable: the matching signed Guest ID has the same authority as an
+    authenticated owner. A bare session UUID is never authorization. Edits
+    ride the Take, so the atomic post-signup claim preserves them.
 
     Body: { "text": str (required, ≤2000 chars),
             "snippet_id": uuid XOR "chunk_index": int≥0 }
@@ -1358,9 +773,13 @@ def v2_user_put_transcript_edit(session_id):
             return jsonify({
                 "code": "SESSION_NOT_FOUND", "error": "Session not found",
             }), 404
-        _owner = session.get("user_id")
         _caller = getattr(request, "user_id", None)
-        if _owner and str(_owner) != str(_caller or ""):
+        if not session_owned_by_principal(
+            session,
+            repository=ProjectRepository(db),
+            user_id=_caller,
+            guest_token=request.headers.get(GUEST_OWNER_HEADER),
+        ):
             return jsonify({
                 "code": "SESSION_NOT_FOUND", "error": "Session not found",
             }), 404
@@ -1493,10 +912,9 @@ def v2_user_suggestion_feedback(snippet_id):
     preference signal (below coach truth); capture only, never echoed back
     as any score (AC-9).
 
-    Guest-allowed with the SAME capability rule as the guest readout: an
-    UNCLAIMED session (user_id NULL) is writable to a bare session id; a
-    claimed session is owner-only (404 to any other/no caller — no existence
-    leak).
+    Guest-allowed under the same canonical ownership rule as the guest
+    readout: the request must present either the authenticated owner or the
+    matching signed Guest ID. A bare session UUID is never authorization.
 
     Body: { "session_id": uuid (required),
             "target": "upgrade"|"rewrite_your_voice"|"rewrite_polished"|
@@ -1539,11 +957,13 @@ def v2_user_suggestion_feedback(snippet_id):
         session = db.v2_get_session_by_id(session_id)
         if not session:
             return jsonify({"code": "NOT_FOUND", "error": "Not found"}), 404
-        owner = session.get("user_id")
         caller = getattr(request, "user_id", None)
-        # Claimed → owner-only; unclaimed → bare-capability (guest). Same
-        # no-existence-leak rule as the guest readout.
-        if owner and str(owner) != str(caller or ""):
+        if not session_owned_by_principal(
+            session,
+            repository=ProjectRepository(db),
+            user_id=caller,
+            guest_token=request.headers.get(GUEST_OWNER_HEADER),
+        ):
             return jsonify({"code": "NOT_FOUND", "error": "Not found"}), 404
 
         snip = db.get_snippet_by_id(snippet_id)
@@ -1806,10 +1226,8 @@ def _build_user_session_status(user_id):
 @require_auth
 def v2_user_list_trainings():
     """The training tab, grouped BY ARC (founder 2026-07-13) — one card per
-    3-take training, DECKLESS included (the deck-hash grouping in
-    /user/strengths dropped deckless takes into the flat general bucket, so
-    they never appeared as a training). Replaces /user/strengths as the
-    training-tab source on the FE.
+    3-take training, including deckless projects. This is the canonical
+    training-tab source on the frontend.
 
     Per training: the takes (all recordings, take order), `batch_verified`
     (the coach's explicit arc publish landed), and `ideal_ready` (the

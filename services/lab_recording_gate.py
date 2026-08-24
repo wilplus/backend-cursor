@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -16,7 +16,8 @@ def require_analyzable_recording(
     audio_bytes: bytes,
     *,
     database: Any,
-    form: Mapping[str, Any],
+    project_id: str,
+    owner_principal_id: str,
     user_id: str | None,
     log: Any,
 ) -> dict[str, Any]:
@@ -35,10 +36,9 @@ def require_analyzable_recording(
             duration_sec=gate.get("duration_sec"),
             voiced_sec=gate.get("voiced_sec"),
             thresholds=gate.get("thresholds"),
+            project_id=project_id,
+            owner_principal_id=owner_principal_id,
             user_id=user_id,
-            guest_session_id=(form.get("guest_session_id") or None),
-            arc_id=(form.get("arc_id") or None),
-            take_index=form.get("take_index"),
         )
     except Exception as exc:
         log.warning(

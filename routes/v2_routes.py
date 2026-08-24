@@ -13,7 +13,7 @@ re-exports every moved name so ``routes.v2_routes.<name>`` keeps resolving.
   user_account         profile + consent       lounge         the Lounge thread
   explore_ideal_text   the ideal-text surface
   admin                the admin console       coaching       chat/coaching
-  publish              the internal publish    funnel         guest -> account
+  publish              the internal publish    projects       ownership + Takes
 
 Import order is load-bearing: app.py imports this module, and every domain
 module must be imported BEFORE the blueprint is registered on the app --
@@ -58,8 +58,6 @@ from routes.v2.arcs import (  # noqa: F401 — re-exported for import compat
     _arc_audit_paid,
     _arc_owned_by_caller,
     _charge_arc_deliverable,
-    _continue_deck_arc,
-    _continue_topic_arc,
     _fold_applied_moments,
     _moment_applied_map,
     _moment_explanations_map,
@@ -219,7 +217,6 @@ from routes.v2.admin import (  # noqa: F401 — re-exported for import compat
     v2_admin_dad_jokes_health,
     v2_admin_delete_directives_queue,
     v2_admin_delete_user_file,
-    v2_admin_funnel_afterwards_video_upload,
     v2_admin_get_directives_queue,
     v2_admin_get_next_session_icebreaker,
     v2_admin_get_session,
@@ -263,21 +260,10 @@ from routes.v2.coaching import (  # noqa: F401 — re-exported for import compat
 )
 from routes.v2.publish import (  # noqa: F401 — re-exported for import compat
     _apply_willab_publish_contract,
-    _assemble_insights_from_drafts,
     v2_internal_publish_session_results,
     v2_internal_whisper_health,
 )
-from routes.v2.funnel import (  # noqa: F401 — re-exported for import compat
-    _IMPORT_ALLOWED_EXTENSIONS,
-    _POST_SIGNUP_CONFIRMATION,
-    _admin_import_validate_audio_file,
-    _merge_anonymous_session_into_user,
-    v2_auth_merge_session,
-    v2_auth_signup,
-    v2_public_funnel_afterwards_video,
-    v2_public_shaky_voice_claim,
-    v2_public_shaky_voice_upload,
-)
+from routes.v2.auth_alias import v2_auth_signup  # noqa: F401
 from routes.v2.lab_recording import (  # noqa: F401 — re-exported for import compat
     _parse_lab_vocabulary,
     _recording_flow_tags,
@@ -285,6 +271,12 @@ from routes.v2.lab_recording import (  # noqa: F401 — re-exported for import c
     v2_guest_get_recording_readout,
     v2_lab_create_recording,
     v2_lab_presentation_extract,
+)
+from routes.v2.projects import (  # noqa: F401 — route registration
+    _POST_SIGNUP_CONFIRMATION,
+    v2_claim_guest_project_owner,
+    v2_create_project,
+    v2_send_project_take_to_coach,
 )
 from routes.v2.user_sessions import (  # noqa: F401 — re-exported for import compat
     _SUGGESTION_ACTIONS,
@@ -301,11 +293,9 @@ from routes.v2.user_sessions import (  # noqa: F401 — re-exported for import c
     v2_user_delete_presentation,
     v2_user_delete_session,
     v2_user_delete_take,
-    v2_user_get_library,
     v2_user_get_results,
     v2_user_get_session_intake_context,
     v2_user_get_session_readout,
-    v2_user_get_strengths,
     v2_user_list_readouts,
     v2_user_list_trainings,
     v2_user_put_session_intake_context,
@@ -314,14 +304,6 @@ from routes.v2.user_sessions import (  # noqa: F401 — re-exported for import c
     v2_user_snippet_confidence_review,
     v2_user_suggestion_feedback,
 )
-
-
-# The guest funnel's two hourly caps (per-IP + global) now live in
-# services/rate_limits.py::guest_funnel_limit, decorated onto the upload
-# route below. Same caps, same config vars, same 429 copy — but counted in
-# the shared Redis instead of an in-process dict, so the real cap is the
-# stated cap rather than `stated x gunicorn workers`, and it survives a
-# restart.
 
 
 ############################################################################

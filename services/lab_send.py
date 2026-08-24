@@ -8,20 +8,15 @@ review surface already reads, §3.8 reuse) + a best-effort admin
 notification. No re-processing.
 
 Idempotent (contract §3.4/§3.6): a session already in/through the queue
-is a no-op — covers double-tap, double OAuth callback, and the merge
-function's own idempotent re-claim. "Confirm only on send success"
+is a no-op — covers double-tap and duplicate client delivery. "Confirm only on send success"
 means the status flip is the success signal; the email is a nudge.
 
-This is the internal primitive called by the willab branch of
-_merge_anonymous_session_into_user (which claims the guest session
-first). Per the FE wiring (PendingSessionClaim → /v2/auth/merge-session
-for both signed + unsigned), there is NO separate send endpoint — the
-merge call is the single send trigger.
+This is the internal primitive used by the analysis worker and the canonical
+Project/Take send endpoint. Ownership is verified before this function runs.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 
 logger = logging.getLogger(__name__)
@@ -40,8 +35,8 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
 
     ``ok`` is the send-success signal (the status flip landed). The
     admin email is best-effort and never gates ``ok``. Never raises —
-    the caller (merge branch) must not unwind a committed claim on a
-    send hiccup; the recording stays claimed and a retry re-sends.
+    the caller must not unwind durable ownership on a send hiccup; a retry
+    re-sends the exact Project Take.
     """
     if not session_id or not user_id:
         return {"ok": False, "already_sent": False, "status": None}
@@ -63,9 +58,7 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
 
     # Flip into the coach review queue (the success signal).
     try:
-        flipped = db.v2_update_session_status_unscoped(
-            session_id, "pending_admin_review",
-        )
+        flipped = db.v2_mark_session_pending_review(session_id)
         ok = bool(flipped)
     except Exception as e:
         logger.error("lab_send: status flip failed sid=%s err=%s", session_id, e)
@@ -103,12 +96,3 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
 
     logger.info("lab_send: sent to coach sid=%s user=%s", session_id, user_id)
     return {"ok": True, "already_sent": False, "status": "pending_admin_review"}
-
-
-def is_lab_recording(recording_row: Any) -> bool:
-    """True iff the recording was produced by the willab Lab handler.
-    The gate that keeps the merge willab-branch off legacy sessions."""
-    return (
-        isinstance(recording_row, dict)
-        and recording_row.get("recording_origin") == "willab_lab"
-    )
