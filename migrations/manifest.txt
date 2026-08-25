@@ -322,3 +322,4 @@
 0284	add_product_discoveries.sql
 0285	add_ceo_foundation.sql
 0286	add_ceo_work_items.sql
+0287	add_ceo_overview_editing.sql
