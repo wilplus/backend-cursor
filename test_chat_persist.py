@@ -80,6 +80,38 @@ class PersistChatTurnTests(unittest.TestCase):
         _, msgs = self.captured[0]
         self.assertEqual(msgs[-1]["metadata"]["suggested_actions"], actions)
 
+    def test_structured_product_action_rides_in_bot_metadata(self):
+        action = {
+            "action": "open_product",
+            "product": "life_panel",
+            "intent": "start_setup",
+            "source": "voice_album_completion",
+            "context_transfer": "none",
+            "schema_version": 1,
+        }
+        v2._persist_chat_turn(
+            "u1", "what next?", "Your next step is ready.",
+            product_action=action, user_client_id=str(uuid.uuid4()),
+        )
+        _, msgs = self.captured[0]
+        self.assertEqual(msgs[-1]["metadata"]["product_action"], action)
+
+    def test_invalid_product_action_is_not_persisted(self):
+        v2._persist_chat_turn(
+            "u1", "what next?", "Your next step is ready.",
+            product_action={
+                "action": "open_product",
+                "product": "life_panel",
+                "intent": "start_setup",
+                "source": "voice_album_completion",
+                "context_transfer": "chat",
+                "schema_version": 1,
+            },
+            user_client_id=str(uuid.uuid4()),
+        )
+        _, msgs = self.captured[0]
+        self.assertNotIn("product_action", msgs[-1]["metadata"])
+
     def test_deterministic_ids_idempotent(self):
         # same user id → same user+bot client_ids (re-post is a DB no-op).
         cid = str(uuid.uuid4())

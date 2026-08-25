@@ -188,8 +188,14 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
         body = db.rows[0]["body"].lower()
         self.assertIn("voice album", body)
         self.assertEqual(db.rows[0]["metadata"]["arc_id"], "arc-1")
-        self.assertEqual(
-            db.rows[0]["metadata"]["actions"], ["find_voice_album"])
+        self.assertEqual(db.rows[0]["metadata"]["product_action"], {
+            "action": "open_product",
+            "product": "voice_album",
+            "intent": "open_album",
+            "source": "voice_album_introduction",
+            "context_transfer": "none",
+            "schema_version": 1,
+        })
 
     def test_idempotent_once_per_user_across_projects(self):
         # A second qualifying Project must not restart Album onboarding.

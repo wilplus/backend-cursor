@@ -1183,8 +1183,8 @@ def v2_chat_session_state():
 
 def _persist_chat_turn(
     user_id, question, answer, *, suggested_action=None,
-    suggested_actions=None, bubbles=None, intent=None, user_client_id=None,
-    user_created_at=None,
+    suggested_actions=None, bubbles=None, product_action=None, intent=None,
+    user_client_id=None, user_created_at=None,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
     never disappear). Writes the user message + the bot reply to lounge_messages
@@ -1195,9 +1195,9 @@ def _persist_chat_turn(
     is a no-op (UNIQUE(user_id, client_id)). The user-turn id prefers the FE's
     own client_id (so it de-dupes with the FE's optimistic local copy + preserves
     merge ordering); the bot-turn id derives from it → exactly one bot row per
-    user turn. The bot row carries suggested_action/suggested_actions + bubbles
-    in metadata so the FE reconstructs contextual choices on rehydrate. Mirrors
-    the existing
+    user turn. The bot row carries suggested_action/suggested_actions, bubbles,
+    and any validated structured product destination in metadata so the FE
+    reconstructs contextual choices on rehydrate. Mirrors the existing
     server-insert pattern (publish 'insights ready' card, session cadence).
 
     Returns the bot row's client_id (so the FE can de-dupe its optimistic
@@ -1244,6 +1244,11 @@ def _persist_chat_turn(
         meta["suggested_actions"] = suggested_actions
     if bubbles:
         meta["bubbles"] = bubbles
+    if product_action is not None:
+        from services.product_discovery import parse_product_action
+        parsed_action = parse_product_action({"product_action": product_action})
+        if parsed_action is not None:
+            meta["product_action"] = parsed_action
     rows.append({
         "client_id": b_id, "role": "bot", "kind": "text",
         "body": a, "metadata": meta, "client_created_at": now_iso,
@@ -1349,7 +1354,8 @@ def _finalize_chat_response(
             user_id, question, resp.get("answer"),
             suggested_action=resp.get("suggested_action"),
             suggested_actions=resp.get("suggested_actions"),
-            bubbles=resp.get("bubbles"), intent=intent,
+            bubbles=resp.get("bubbles"),
+            product_action=resp.get("product_action"), intent=intent,
             user_client_id=user_client_id,
             user_created_at=user_created_at,
         )

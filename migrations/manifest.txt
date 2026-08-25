@@ -319,3 +319,4 @@
 0281	retire_threat_challenge_framework.sql
 0282	add_canonical_project_ownership.sql
 0283	add_atomic_coach_review_publishing.sql
+0284	add_product_discoveries.sql

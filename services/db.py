@@ -16004,6 +16004,25 @@ class DatabaseService:
             )
             return False
 
+    def list_user_product_discoveries(self, user_id: str) -> list[dict]:
+        """Durable products introduced to this authenticated user."""
+        if not user_id:
+            return []
+        try:
+            res = (
+                self.client.table("user_product_discoveries")
+                .select("product,intent,source,schema_version,discovered_at")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            logger.warning(
+                "list_user_product_discoveries failed user=%s: %s",
+                user_id, e,
+            )
+            return []
+
     def get_lounge_message_by_client_id(
         self, user_id: str, client_id: str,
     ) -> Optional[Dict[str, Any]]:

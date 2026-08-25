@@ -1,6 +1,7 @@
 """The Lounge thread persistence routes (BE contract 3.15).
 
   GET/POST/DELETE /v2/user/lounge/messages
+  GET             /v2/user/product-discoveries
 
 Moved verbatim out of ``routes/v2_routes.py`` (god-file split, phase 3);
 bodies are byte-identical. Routes register on the SAME ``v2_bp`` object, so
@@ -29,6 +30,16 @@ logger = logging.getLogger(__name__)
 #
 # Validation + page shaping live in services/lounge_messages.py; the
 # queries in services/db.py. These handlers are thin auth + wiring.
+
+
+@v2_bp.route("/user/product-discoveries", methods=["GET"])
+@require_auth
+def v2_user_product_discoveries_get():
+    """Products introduced by durable, structured Lounge actions."""
+    from services.product_discovery import shape_product_discoveries
+
+    rows = db.list_user_product_discoveries(request.user_id)
+    return jsonify(shape_product_discoveries(rows)), 200
 
 
 @v2_bp.route("/user/lounge/messages", methods=["GET"])

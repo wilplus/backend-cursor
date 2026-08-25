@@ -190,6 +190,8 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
         logger.warning("voice_album intro eligibility failed arc=%s: %s",
                        arc_id, e)
         return False
+    from services.product_discovery import build_open_product_action
+
     inserted = _insert(
         db, str(user_id),
         client_key=f"willab-voicealbum-user:{user_id}",
@@ -205,7 +207,11 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
             "arc_id": str(arc_id),
             "note": "voice_album_ready",
             "voice_album_ready": True,
-            "actions": ["find_voice_album"],
+            "product_action": build_open_product_action(
+                "voice_album",
+                intent="open_album",
+                source="voice_album_introduction",
+            ),
         },
     )
     if inserted:
