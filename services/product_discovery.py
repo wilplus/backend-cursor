@@ -61,9 +61,11 @@ def parse_product_action(metadata: Any) -> Optional[dict[str, Any]]:
 
 def shape_product_discoveries(rows: Any) -> dict[str, list[str]]:
     """Shape owner-scoped database rows into the stable API response."""
-    products = {
-        row.get("product")
-        for row in (rows if isinstance(rows, list) else [])
-        if isinstance(row, dict) and row.get("product") in SUPPORTED_PRODUCT_IDS
-    }
+    products: set[str] = set()
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        product = row.get("product")
+        if isinstance(product, str) and product in SUPPORTED_PRODUCT_IDS:
+            products.add(product)
     return {"products": sorted(products)}
