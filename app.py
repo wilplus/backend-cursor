@@ -164,6 +164,13 @@ app.register_blueprint(admin_pipeline_bp)
 # instead of legacy credits.
 from routes.v2.admin_tokens import admin_tokens_bp
 app.register_blueprint(admin_tokens_bp)
+# CEO is the founder's observational Product/Research abstract. It uses the
+# same JWT-backed admin gate as the other admin surfaces and owns only ceo_*
+# records; it is not connected to runtime commands or deployment jobs.
+from routes.v2.ceo import ceo_bp
+app.register_blueprint(ceo_bp)
+from routes.v2.ceo_work_items import ceo_work_items_bp
+app.register_blueprint(ceo_work_items_bp)
 
 # Rate limiting (services/rate_limits.py). The @rate_limits.*_limit
 # decorators on the paid routes registered themselves while the blueprints

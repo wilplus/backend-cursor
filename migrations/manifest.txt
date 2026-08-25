@@ -320,3 +320,5 @@
 0282	add_canonical_project_ownership.sql
 0283	add_atomic_coach_review_publishing.sql
 0284	add_product_discoveries.sql
+0285	add_ceo_foundation.sql
+0286	add_ceo_work_items.sql

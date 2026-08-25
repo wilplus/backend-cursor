@@ -99,14 +99,30 @@ class FakeSupabaseClient:
     recorded .calls accumulate where tests can find them (.tables).
     """
 
-    def __init__(self, table_rows: Union[Dict[str, Any], None] = None):
+    def __init__(
+        self,
+        table_rows: Union[Dict[str, Any], None] = None,
+        *,
+        rpc_rows: Union[Dict[str, Any], None] = None,
+    ):
         self._table_rows = dict(table_rows or {})
+        self._rpc_rows = dict(rpc_rows or {})
         self.tables: Dict[str, FakeQuery] = {}
+        self.rpcs: Dict[str, FakeQuery] = {}
 
     def table(self, name: str) -> FakeQuery:
         if name not in self.tables:
             self.tables[name] = FakeQuery(self._table_rows.get(name, []))
         return self.tables[name]
+
+    def rpc(self, name: str, params: Any = None) -> FakeQuery:
+        """Chainable RPC fake with the same recorded-call visibility as tables."""
+        if name not in self.rpcs:
+            self.rpcs[name] = FakeQuery(self._rpc_rows.get(name, []))
+        query = self.rpcs[name]
+        query.calls.append(("rpc", (name, params), {}))
+        query.payload = params
+        return query
 
 
 @contextlib.contextmanager
