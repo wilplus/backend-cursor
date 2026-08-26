@@ -39,6 +39,17 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_MACHINE_CONFIDENT_TRIGGERS = {"confident", "charisma"}
+
+
+def _machine_confident(row: Any) -> bool:
+    """A neutral confidence-review nomination is not a machine Yes."""
+    return bool(
+        isinstance(row, dict)
+        and row.get("kind") == "emphasize"
+        and row.get("trigger") in _MACHINE_CONFIDENT_TRIGGERS
+    )
+
 def _professional_coach_yes(rows: Any) -> bool:
     """True only when the latest professional judgment is explicit Yes."""
     from services.professional_confidence import latest_professional_value
@@ -53,9 +64,21 @@ def _owner_agreements(database, arc_id: Any) -> dict:
     Only an explicit yes satisfies the album entry rule.
     """
     out: dict = {}
+    # New immutable exact-clip self-reports are the authoritative USER leg.
+    # Machine, user and coach provenance remain separate tables. The legacy
+    # routing mirror below keeps older clips readable during migration.
+    try:
+        for row in database.list_confident_voice_self_reports(
+                str(arc_id)) or []:
+            if (isinstance(row, dict) and row.get("response") == "yes"
+                    and row.get("snippet_id")):
+                out[str(row["snippet_id"])] = row
+    except Exception:
+        pass
     for row in database.list_owner_voice_album_routes(str(arc_id)) or []:
         if (isinstance(row, dict) and row.get("response") == "yes"
-                and row.get("snippet_id")):
+                and row.get("snippet_id")
+                and str(row["snippet_id"]) not in out):
             out[str(row["snippet_id"])] = row
     return out
 
@@ -123,8 +146,7 @@ def reconcile_voice_album_clip(
         aligned = bool(
             coach_value == "yes"
             and user_row
-            and isinstance(suggestion, dict)
-            and suggestion.get("kind") == "emphasize"
+            and _machine_confident(suggestion)
             and session_matches
         )
         if not aligned or not isinstance(user_row, dict):
@@ -168,7 +190,7 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
             sid for sid, row in
             (database.get_moment_suggestions_by_arc(str(arc_id)) or {}
              ).items()
-            if isinstance(row, dict) and row.get("kind") == "emphasize"
+            if _machine_confident(row)
         }
 
         # COACH — explicit professional coach YES, on PUBLISHED sessions only.

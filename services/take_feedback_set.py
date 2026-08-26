@@ -11,6 +11,9 @@ from typing import Any, Iterable, Optional
 
 MAX_FEEDBACK_PER_TAKE = 3
 CONFIDENT_VOICE_FAMILY = "confident_voice"
+REQUIRED_FAMILIES = {
+    "confident_voice", "rewrite_clarity", "great_formulation",
+}
 
 
 def feedback_identity(change: Any) -> Optional[dict]:
@@ -90,6 +93,15 @@ def has_confident_voice(keys: Any) -> bool:
     )
 
 
+def has_required_families(keys: Any) -> bool:
+    sanitized = sanitize_selected_keys(keys)
+    return (
+        len(sanitized) == MAX_FEEDBACK_PER_TAKE
+        and {str(key.get("feedback_family")) for key in sanitized}
+        == REQUIRED_FAMILIES
+    )
+
+
 def filter_to_selected(changes: Iterable[Any], keys: Any) -> list[dict]:
     """Keep current payload rows whose immutable membership key was claimed."""
     allowed = {
@@ -134,7 +146,7 @@ def load_feedback_set(
             != str(take_session_id)):
         return None
     keys = sanitize_selected_keys(row.get("selected_keys"))
-    if not keys or not has_confident_voice(keys):
+    if not has_required_families(keys):
         return None
     return {**row, "selected_keys": keys}
 
@@ -151,12 +163,11 @@ def claim_feedback_set(
 ) -> Optional[dict]:
     """Claim the final set once; return the database winner on a race.
 
-    The required Confident Voice family is checked before persistence.  A
-    detector/generation fault therefore cannot freeze a rewrite-only set that
-    permanently violates the Take contract.
+    All three required families are checked before persistence. A detector or
+    generation fault therefore cannot freeze a partial set as success.
     """
     keys = selected_keys(changes)
-    if not keys or not has_confident_voice(keys):
+    if not has_required_families(keys):
         return None
     row = database.claim_ideal_text_feedback_set(
         str(arc_id),
@@ -169,6 +180,6 @@ def claim_feedback_set(
     if not isinstance(row, dict):
         return None
     claimed = sanitize_selected_keys(row.get("selected_keys"))
-    if not claimed or not has_confident_voice(claimed):
+    if not has_required_families(claimed):
         return None
     return {**row, "selected_keys": claimed}

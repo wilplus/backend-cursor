@@ -351,35 +351,52 @@ def feedback_family_of(change: Any) -> Optional[str]:
         return "confident_voice" if c.get("snippet_audio_ref") else None
     if c.get("kind") == "replace":
         return "rewrite_clarity" if c.get("proposed_text") else None
-    if c.get("kind") == "bold" or c.get("source") == "structural":
+    # Praise is a claim of quality, not every emphasis proposal. Ordinary
+    # `bold` rows suggest styling and must not be relabelled as praise merely
+    # because they use the same visual. Structural exact-quote observations
+    # and measured impeccable delivery are the evidence-backed praise lanes.
+    if (c.get("source") == "structural"
+            or c.get("device") in ("impeccable", "tentative_formulation")):
         return "great_formulation"
     return None
 
 
 def enforce_mvp_feedback_mix(changes: Any, *, remaining: int = 3) -> list:
-    """At most one defensible item per family and three across the take.
+    """One globally highest-ranked item per required family.
 
-    Selection is deterministic. Family order protects the intended mix;
-    document order is restored for rendering. No family is manufactured when
-    it has no valid candidate.
+    The complete family pool is ranked; document order is only the final
+    rendering order. A missing lane fails closed so the caller never claims a
+    partial set as a successful Take.
     """
     try:
         room = max(0, min(3, int(remaining)))
     except (TypeError, ValueError):
         room = 3
-    first: dict[str, dict] = {}
+    eligible: list[dict] = []
     for row in (changes or []):
         if not isinstance(row, dict) or _span(row) is None:
             continue
         family = feedback_family_of(row)
-        if family and family not in first:
+        if family:
             row["feedback_family"] = family
-            first[family] = row
-    kept = [first[f] for f in FEEDBACK_FAMILIES if f in first][:room]
-    kept.sort(key=lambda c: (
+            eligible.append(row)
+    from services.take_feedback_manager import rank_family_pool
+    if room == len(FEEDBACK_FAMILIES):
+        return rank_family_pool(eligible)
+    # A previously frozen set shrinks as responses land. At that point only
+    # the still-unanswered families remain in the candidate pool; rank one per
+    # remaining family and never refill from outside the frozen identities.
+    pools: dict[str, list[dict]] = {}
+    for row in eligible:
+        pools.setdefault(str(row.get("feedback_family")), []).append(row)
+    if len(pools) != room:
+        return []
+    kept = [sorted(rows, key=lambda c: (
+        -len(c.get("cue_keys") or []),
         (c.get("span") or {}).get("start", 0),
-        (c.get("span") or {}).get("end", 0),
-    ))
+        str(c.get("id") or ""),
+    ))[0] for rows in pools.values()]
+    kept.sort(key=lambda c: (c.get("span") or {}).get("start", 0))
     return kept
 
 # Founder copy, verbatim (SPEC-lockin-loop-and-coach-panel §2). LIVE LOOP:
@@ -647,6 +664,12 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
             kept.append({**c, "pending_better_version": True,
                          "pending_copy": PENDING_BETTER_VERSION_COPY})
             continue
+        # Praise is an observation with Useful / Not useful / Not sure. It is
+        # never an implicit paint command, so a locked paragraph may receive
+        # it without entering the legacy style lane.
+        if c.get("feedback_family") == "great_formulation":
+            kept.append(c)
+            continue
         # R1, THIRD generation (founder 2026-08-11, the deck respec): a
         # locked part takes the STYLE LANE — bold/colour proposals that
         # touch presentation, never the words ("this next suggestion is
@@ -828,6 +851,9 @@ def filter_by_window(changes: Any) -> list:
         if layer_of_kind(c.get("kind")) != ACCENTUATION:
             kept.append(c)
             continue
+        if c.get("feedback_family") == "great_formulation":
+            kept.append(c)
+            continue
         if is_confident_voice(c):
             kept.append(c)
             continue
@@ -958,9 +984,9 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # the shared family/≤3 decision; legacy callers retain the historical
         # independent style allowance.
         style_rows = [c for c in rows if c.get("style_lane")]
-        rows = suppress_outside_focus(
-            [c for c in rows if not c.get("style_lane")],
-            parts, focus_part_id)
+        _content_rows = [c for c in rows if not c.get("style_lane")]
+        rows = (_content_rows if mvp_feedback_contract else
+                suppress_outside_focus(_content_rows, parts, focus_part_id))
         funnel["after_focus"] = len(rows)
         # The style lane keeps the §F.4 accent window (an accent past the
         # intonation ceiling would paint sentences on accept, lock or no
@@ -997,16 +1023,39 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
             # candidate before those gates let them erase the reserved slot.
             # Combining both lanes here also makes "3" mean three for the
             # WHOLE Take, not three budgeted rows plus three style rows.
+            _remaining = (3 - max(0, int(decided_count or 0))
+                          - max(0, int(style_decided_count or 0)))
             _mixed = enforce_mvp_feedback_mix(
                 [*rows, *style_rows],
-                remaining=(3 - max(0, int(decided_count or 0))
-                           - max(0, int(style_decided_count or 0))),
+                remaining=_remaining,
             )
             rows = [c for c in _mixed if not c.get("style_lane")]
             style_rows = [c for c in _mixed if c.get("style_lane")]
             _style = {"style_changes": style_rows} if style_rows else {}
             funnel["after_feedback_contract"] = len(_mixed)
             funnel["style_lane"] = len(style_rows)
+            # The Take contract is itself the manager decision. Running the
+            # historical experiment/withhold arbiter afterwards could remove
+            # one of the three required lanes, turning a valid Take into a
+            # random partial set. The frozen selection therefore returns
+            # directly; its complete candidate pool and evidence are recorded
+            # separately in the immutable exposure ledger.
+            _mixed_public = [c for c in _mixed if not c.get("style_lane")]
+            if len(_mixed) != max(0, min(3, _remaining)):
+                logger.error(
+                    "required feedback families unavailable session=%s families=%s",
+                    session_id,
+                    [c.get("feedback_family") for c in _mixed],
+                )
+                return {"changes": [], "result": None, "controls": False,
+                        "funnel": funnel}
+            return {
+                "changes": _mixed_public,
+                "style_changes": [c for c in _mixed if c.get("style_lane")],
+                "result": None,
+                "controls": False,
+                "funnel": funnel,
+            }
         if not rows:
             logger.info("intervention funnel session=%s %s (empty after "
                         "admissibility/feedback contract)", session_id, funnel)

@@ -1,6 +1,6 @@
 # Willab canonical product contract
 
-Status: founder-locked on 2026-08-22.
+Status: founder-locked on 2026-08-26.
 
 This document is the product source of truth for the frontend and backend.
 Historical prompts, handoffs, schemas, routes, names, and tests are evidence of
@@ -30,7 +30,8 @@ with this contract, this contract wins.
 8. Take 1 creates the initial project-specific Ideal Text. Later Takes never
    replace it with the latest transcript or reconstruct it from best fragments.
 9. Later Takes produce evidence, feedback, and proposals. Ideal Text changes
-   only through direct user editing or an explicitly accepted proposal.
+   only through direct user editing, an explicitly accepted proposal, or a
+   prior **Keep evolving** choice for that Paragraph.
 10. The document hierarchy is Project -> ordered Slides -> ordered Paragraphs
     -> exact text spans.
 11. Paragraph is the canonical unit for identity, editing, protection,
@@ -42,65 +43,70 @@ with this contract, this contract wins.
 
 ## 3. Decisions, protection, anchors, and roots
 
-13. Accepting a proposal and protecting a Paragraph are separate user actions.
-14. Protection blocks machine rewrite, restructure, add, and cut proposals.
+13. Resolving Feedback and committing a Paragraph are separate user actions.
+    After this Take's Feedback for a Paragraph is resolved, the user explicitly
+    chooses **Lock for next Take** or **Keep evolving**.
+14. A lock is a hard version commit. It preserves the Paragraph's exact words
+    through later Takes until the user explicitly edits or unlocks it. Keep
+    evolving is explicit permission for a later Take's Manager-selected
+    working version to replace that Paragraph; it is not an implicit unlock.
+15. Protection blocks machine rewrite, restructure, add, and cut proposals.
     Vocal feedback may still reference protected text. A coach may raise a
     material correction as an explicit proposal. Nobody silently changes
     protected text.
-15. Feedback, accepted anchors, and root phrases are separate layers.
-16. Orange styling exclusively marks exact text the user explicitly accepted
-    as a speaking anchor.
-17. Every Paragraph has one root phrase. Without an accepted anchor it is a
-    neutral 3-5-word fallback. An accepted anchor replaces that fallback.
-18. Confident Voice and Great Formulation may create an anchor through a
-    separate acceptance action. Rewrite for Clarity changes text but does not
-    create an anchor. Protection remains separate.
-19. A rewrite overlapping an accepted anchor requires warning and
-    confirmation. Applying it removes the anchor and returns the Paragraph to
-    a neutral root. Undo restores the complete prior text, anchor, root, and
-    decision state.
+16. Every edit, lock, unlock, keep-evolving choice, and root-phrase choice
+    appends an immutable Paragraph revision with timestamp and provenance.
+17. Feedback, version commits, and root phrases are separate layers.
+18. Immediately after a lock, the app asks whether to make a proposed exact
+    phrase orange, choose different exact words from that Paragraph, or skip.
+    Orange styling is never inferred from praise or a confidence response.
+19. A rewrite overlapping an accepted orange root requires warning and
+    confirmation. Applying it removes the root styling. Editing or unlocking
+    also clears stale root metadata. Undo restores the complete prior text,
+    root, and decision state.
 20. Presentation Mode and export render slide image, one root per Paragraph,
     and normal-sized Ideal Text. They never duplicate a flagship phrase as a
     separate third text layer.
 
 ## 4. Feedback and Manager arbitration
 
-21. The only user-facing feedback families are Confident Voice, Great
-    Formulation, and Rewrite for Clarity. Moment, star, intervention, lane,
-    device, candidate, and suggestion kind are internal terms.
+21. The only user-facing feedback families are Confident Voice, Actionable
+    Improvement, and Evidence-backed Praise. Moment, star, intervention, lane,
+    device, candidate, suggestion kind, and model score are internal terms.
 22. Detectors create internal Candidates. The Manager evaluates evidence,
     relevance, quality, collisions, and budget. Only Manager-approved
     Candidates become user-facing Feedback.
 23. Machine Feedback appears immediately after processing. Coach review is
     asynchronous and never blocks the next Take.
-24. A Take surfaces at most three Feedback items. Confident Voice occupies the
-    first position when any defensible candidate exists. When all families
-    have evidence, prefer one of each. An unsupported family yields its slot
-    to the strongest supported family, so repeated families are allowed.
-    Fewer than three is valid; feedback is never manufactured.
-25. Strong, data-backed feedback ranks before uncertain feedback. A defensible
-    lower-confidence item may fill unused capacity with calibrated Possible
-    language. Exaggerated praise is forbidden.
-26. After the first Confident Voice position, useful cross-slide coverage is
-    preferred unless a same-slide candidate is materially stronger or more
-    important.
-27. Rewrite for Clarity is reserved for wording that materially harms
-    comprehension, structure, meaning, or the intended call to action. Cosmetic
-    polish does not consume this family.
+24. Every valid Take surfaces exactly three Feedback items, in this contract:
+    (1) the highest-ranked Confident Voice candidate; (2) the highest-ranked
+    actionable verbal/structure improvement; and (3) the highest-ranked
+    evidence-backed praise. Families never borrow or surrender slots.
+25. Each family ranks its complete candidate pool and selects its best
+    available item, not the first match. Weak evidence is allowed with
+    tentative language. Feedback never invents words, praise, or certainty.
+    Missing or unusable audio/transcription may fail the whole set; ordinary
+    weak evidence may not.
+26. The three-item set is frozen for the Take. Responding to one item never
+    causes a previously hidden replacement to appear.
+27. Actionable Improvement covers a verbal correction, stronger formulation,
+    or material structure improvement. Praise must quote or otherwise identify
+    real textual evidence; modest praise is valid when it is the best honest
+    candidate.
 28. Every surfaced Feedback item references exact Project, Take, Slide,
     Paragraph, and evidence span. Confident Voice additionally requires a
-    playable audio interval. Great Formulation and Rewrite for Clarity do not.
+    playable audio interval. Actionable Improvement and Praise do not.
 
 ## 5. Confidence, learning provenance, and Voice Album
 
-29. A user's Confident Voice Yes/No answer is separate from anchor acceptance.
-    Yes permits a later Use as anchor choice. No blocks project styling and
-    receives a neutral acknowledgement. Either answer may offer optional
-    micro-practice when acoustically relevant.
-30. Owner confidence answers are routing and personalization signals. They may
-    provide the owner leg of Voice Album eligibility, but never become blind
-    peer labels, coach labels, model-training ground truth, or
-    model-correctness votes.
+29. Confident Voice offers primary responses Yes — Confident, In-between, and
+    No — Not confident, plus secondary Not sure and Audio unclear. The response
+    is an immutable self-report tied to the exact clip and Take.
+30. No blocks orange styling and Voice Album admission for that exact clip and
+    suppresses that exact clip from resurfacing. It does not penalize the
+    Paragraph, the user's voice, or materially stronger audio in a future Take.
+    Yes permits later styling consideration but never applies styling itself.
+    Owner answers remain self-reports, not model-training ground truth.
 31. Machine prediction, blind human rating, anchored owner route, nonblind
     model review, coach judgment, and detector verdict are separate provenance
     types and are never stored under one semantic label.
@@ -109,7 +115,12 @@ with this contract, this contract wins.
     recording. Signals cannot be transferred between recordings.
 33. Saving a practice attempt never admits it directly. The coach judges the
     selected practice attempt itself.
-34. User Yes / Coach Yes admits silently. User No / Coach Yes may later become
+34. The coach must not see the user label, machine prediction, or other ratings
+    before submitting an immutable independent judgment. After submission they
+    are revealed for comparison and training analysis. The original coach
+    judgment is never editable; reconsideration is a separately timestamped,
+    provenance-bearing revision. User Yes / Coach Yes admits silently. User
+    No / Coach Yes may later become
     a separate Album disagreement exercise and never enables project styling.
     User Yes / Coach No requires coach re-review and may produce a calm
     explanation after confirmed No. User No / Coach No is silent. Coach review
@@ -125,6 +136,19 @@ with this contract, this contract wins.
 
 ## 6. Coach review and learning lineage
 
+35a. Confident Voice, Actionable Improvement, and Praise responses use
+    separate schemas and remain separate datasets. Shown is not positive, skip
+    is not rejection, and a user response is not a gold label.
+35b. Actionable Improvement offers Apply suggestion, Edit myself, and Keep
+    wording. Praise offers Useful, Not useful, and Not sure. Praise responses
+    never style text.
+35c. Every surfaced set writes an immutable exposure ledger containing the
+    complete candidate set, evidence and internal scores, selected candidate,
+    model and prompt version, user action, and later coach-judgment provenance.
+35d. Evidence-backed verbal corrections and praise wording/explanations may
+    create surface-specific DPO pairs. Praise selection/ranking is not trained
+    until the exposure ledger is complete. The three families are never merged
+    into one undifferentiated training set.
 36. Every Machine Feedback item retains a review lineage. The coach may confirm
     it, refine its explanation, reject it, or materially correct it. The
     original machine output remains in history.

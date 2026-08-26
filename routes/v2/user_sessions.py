@@ -1510,6 +1510,102 @@ def v2_put_confidence_agree(snippet_id):
         }), 500
 
 
+@v2_bp.route("/user/takes/<take_session_id>/feedback-response",
+             methods=["POST"])
+@require_auth
+def v2_post_take_feedback_response(take_session_id):
+    """Append one immutable owner response to a frozen feedback item.
+
+    The response is a self-report with its own provenance. It never overwrites
+    a coach judgment, never becomes a gold label, and can only name an item in
+    this exact Take's already-claimed three-item set.
+    """
+    if not _is_valid_uuid(take_session_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "take_session_id must be a valid UUID"}), 400
+    try:
+        session = db.v2_get_session_by_id(str(take_session_id)) or {}
+        if (not session
+                or str(session.get("user_id") or "") != str(request.user_id)
+                or not session.get("arc_id")):
+            return jsonify({"code": "NOT_FOUND", "error": "Take not found"}), 404
+        arc_id = str(session["arc_id"])
+        feedback_set = db.get_ideal_text_feedback_set(
+            arc_id, str(take_session_id)) or {}
+        from services.take_feedback_responses import validate_feedback_response
+        row, err = validate_feedback_response(
+            request.get_json(silent=True) or {},
+            feedback_set.get("selected_keys"),
+        )
+        if err:
+            return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+        saved = db.insert_take_feedback_self_report(
+            arc_id=arc_id,
+            take_session_id=str(take_session_id),
+            owner_user_id=str(request.user_id),
+            **row,
+        )
+        if saved is None:
+            # A different first response already exists or persistence failed.
+            return jsonify({
+                "code": "RESPONSE_ALREADY_FINAL",
+                "error": "This response is already final.",
+            }), 409
+
+        # The budget/spend row records that the item was explicitly resolved;
+        # shown and skipped still mean nothing. Its key includes the frozen
+        # feedback identity, so three families sharing one snippet cannot
+        # overwrite each other.
+        from services.intervention_spend import spend
+        spend(
+            db,
+            arc_id,
+            db.get_arc_sessions(arc_id) or [],
+            change_key=f"feedback:{row['feedback_family']}:{row['feedback_id']}",
+            decision=("approved" if row["response"] in (
+                "yes", "apply_suggestion", "useful") else "disregarded"),
+            lane=f"feedback:{row['feedback_family']}",
+            intervention_type=(
+                "NOTICE" if row["feedback_family"] == "confident_voice"
+                else "REWRITE" if row["feedback_family"] == "rewrite_clarity"
+                else "EMPHASISE"
+            ),
+        )
+
+        if row["feedback_family"] == "confident_voice" and row.get("snippet_id"):
+            routing = (
+                "yes" if row["response"] == "yes"
+                else "no" if row["response"] == "no"
+                else "unrateable" if row["response"] == "audio_unclear"
+                else "neutral"
+            )
+            snip = db.get_snippet_by_id(row["snippet_id"]) or {}
+            piece = ((snip.get("metrics") or {}).get("piece")
+                     if isinstance(snip.get("metrics"), dict) else {})
+            db.upsert_owner_voice_album_route(
+                snippet_id=row["snippet_id"],
+                owner_user_id=str(request.user_id),
+                arc_id=arc_id,
+                response=routing,
+                slide_index=(piece.get("slide_index")
+                             if isinstance(piece, dict) else None),
+            )
+            from services.voice_album import refresh_voice_album
+            refresh_voice_album(arc_id, database=db)
+        return jsonify({
+            "saved": True,
+            "feedback_id": row["feedback_id"],
+            "feedback_family": row["feedback_family"],
+            "response": row["response"],
+        }), 200
+    except Exception as e:
+        logger.error("take feedback response failed take=%s: %s",
+                     take_session_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the response"}), 500
+
+
 def _practice_user_payload(practice, attempts=None):
     """Owner-safe practice shape. Raw metrics/comparison scores stay private."""
     from services.confident_voice_practice import (

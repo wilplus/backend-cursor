@@ -10993,11 +10993,13 @@ class DatabaseService:
                 or not isinstance(take_index, int) or take_index < 1
                 or review_version != take_index
                 or not isinstance(selected_keys, list)
-                or not 1 <= len(selected_keys) <= 3
-                or not any(
-                    isinstance(key, dict)
-                    and key.get("feedback_family") == "confident_voice"
-                    for key in selected_keys)):
+                or len(selected_keys) != 3
+                or {
+                    str(key.get("feedback_family"))
+                    for key in selected_keys if isinstance(key, dict)
+                } != {
+                    "confident_voice", "rewrite_clarity", "great_formulation",
+                }):
             return None
         result = self.client.rpc("claim_ideal_text_feedback_set_v1", {
             "p_arc_id": str(arc_id),
@@ -11024,6 +11026,127 @@ class DatabaseService:
                 arc_id, take_session_id, row)
             return None
         return row
+
+    def insert_take_feedback_exposure(
+        self, *, arc_id: str, take_session_id: str, review_version: int,
+        policy_version: str, candidate_set: list, selected_keys: list,
+        model_version: Optional[str] = None,
+        prompt_version: Optional[str] = None,
+    ) -> bool:
+        """Insert the complete ranking exposure once; never update history."""
+        if (not arc_id or not take_session_id or not policy_version
+                or not isinstance(candidate_set, list)
+                or not isinstance(selected_keys, list)
+                or len(selected_keys) != 3):
+            return False
+        try:
+            self.client.table("take_feedback_exposure").upsert({
+                "arc_id": str(arc_id),
+                "take_session_id": str(take_session_id),
+                "review_version": int(review_version),
+                "policy_version": str(policy_version),
+                "model_version": model_version,
+                "prompt_version": prompt_version,
+                "candidate_set": candidate_set,
+                "selected_keys": selected_keys,
+            }, on_conflict="arc_id,take_session_id",
+                ignore_duplicates=True).execute()
+            return True
+        except Exception as e:
+            logger.warning("take feedback exposure insert failed: %s", e)
+            return False
+
+    def insert_take_feedback_self_report(
+        self, *, arc_id: str, take_session_id: str, owner_user_id: str,
+        feedback_id: str, feedback_family: str, response: str,
+        snippet_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """First response wins. Same-value retries return the immutable row."""
+        if not all((arc_id, take_session_id, owner_user_id, feedback_id,
+                    feedback_family, response)):
+            return None
+        query = (self.client.table("take_feedback_self_report")
+                 .select("*")
+                 .eq("take_session_id", str(take_session_id))
+                 .eq("owner_user_id", str(owner_user_id))
+                 .eq("feedback_id", str(feedback_id))
+                 .limit(1))
+        try:
+            existing = query.execute().data or []
+            if existing:
+                row = existing[0]
+                return row if row.get("response") == response else None
+            payload = {
+                "arc_id": str(arc_id),
+                "take_session_id": str(take_session_id),
+                "owner_user_id": str(owner_user_id),
+                "feedback_id": str(feedback_id),
+                "feedback_family": str(feedback_family),
+                "response": str(response),
+                "snippet_id": str(snippet_id) if snippet_id else None,
+            }
+            rows = (self.client.table("take_feedback_self_report")
+                    .insert(payload).execute().data) or []
+            return rows[0] if rows else payload
+        except Exception as e:
+            # A concurrent identical retry may have won the unique key.
+            try:
+                existing = query.execute().data or []
+                if existing and existing[0].get("response") == response:
+                    return existing[0]
+            except Exception:
+                pass
+            logger.warning("take feedback self-report insert failed: %s", e)
+            return None
+
+    def list_take_feedback_self_reports(
+        self, take_session_id: str, owner_user_id: Optional[str] = None,
+    ) -> list:
+        if not take_session_id:
+            return []
+        try:
+            query = (self.client.table("take_feedback_self_report")
+                     .select("*")
+                     .eq("take_session_id", str(take_session_id)))
+            if owner_user_id:
+                query = query.eq("owner_user_id", str(owner_user_id))
+            return query.order("created_at").execute().data or []
+        except Exception as e:
+            if "take_feedback_self_report" not in str(e).lower():
+                logger.warning("take feedback self-report read failed: %s", e)
+            return []
+
+    def list_take_feedback_self_reports_by_snippet(
+        self, snippet_id: str,
+    ) -> list:
+        """Exact-clip self-reports, separate from every coach-label table."""
+        if not snippet_id:
+            return []
+        try:
+            return (self.client.table("take_feedback_self_report")
+                    .select("*")
+                    .eq("snippet_id", str(snippet_id))
+                    .order("created_at")
+                    .execute().data) or []
+        except Exception as e:
+            if "take_feedback_self_report" not in str(e).lower():
+                logger.warning("clip self-report read failed: %s", e)
+            return []
+
+    def list_confident_voice_self_reports(self, arc_id: str) -> list:
+        if not arc_id:
+            return []
+        try:
+            return (self.client.table("take_feedback_self_report")
+                    .select("*")
+                    .eq("arc_id", str(arc_id))
+                    .eq("feedback_family", "confident_voice")
+                    .order("created_at")
+                    .execute().data) or []
+        except Exception as e:
+            if "take_feedback_self_report" not in str(e).lower():
+                logger.warning("confident self-report read failed: %s", e)
+            return []
 
     def verify_ideal_text(self, arc_id: str, coach_id: Optional[str]) -> Optional[str]:
         """Coach VERIFY (single deliverable, founder 2026-07-17): snapshot the
@@ -11273,7 +11396,8 @@ class DatabaseService:
         try:
             res = (
                 self.client.table("ideal_text_part")
-                .select("id, ord, text, locked_at" if with_lock
+                .select("id, ord, text, locked_at, iteration, root_phrase, "
+                        "root_start, root_end, root_selected_at" if with_lock
                         else "id, ord, text")
                 .eq("arc_id", str(arc_id))
                 .eq("user_id", str(user_id))
@@ -11301,6 +11425,7 @@ class DatabaseService:
 
     def set_ideal_text_part_lock(
         self, arc_id: str, user_id: str, part_id: str, locked: bool,
+        *, revision_action: Optional[str] = None,
     ) -> bool:
         """Lock or unlock ONE part (SPEC §4, R5). True on success.
 
@@ -11321,6 +11446,32 @@ class DatabaseService:
                               if locked else None),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
+            if not locked:
+                update.update({
+                    "root_phrase": None,
+                    "root_start": None,
+                    "root_end": None,
+                    "root_selected_at": None,
+                })
+            part_text = ""
+            # Every immutable revision must carry the exact paragraph body,
+            # including unlock / keep-evolving decisions. Read it once for
+            # both branches; an empty audit body would make the version graph
+            # impossible to reconstruct.
+            try:
+                cur = (
+                    self.client.table("ideal_text_part")
+                    .select("iteration,text")
+                    .eq("id", str(part_id))
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .limit(1)
+                    .execute()
+                )
+                row0 = (cur.data or [{}])[0] or {}
+                part_text = str(row0.get("text") or "")
+            except Exception:
+                row0 = {}
             if locked:
                 # The MATURITY counter (slice 2, founder 2026-08-11): +1 on
                 # every lock-in, never on unlock. Read-then-write — this is
@@ -11328,16 +11479,6 @@ class DatabaseService:
                 # best-effort: pre-migration the lock still lands, the
                 # counter simply holds at nothing.
                 try:
-                    cur = (
-                        self.client.table("ideal_text_part")
-                        .select("iteration")
-                        .eq("id", str(part_id))
-                        .eq("arc_id", str(arc_id))
-                        .eq("user_id", str(user_id))
-                        .limit(1)
-                        .execute()
-                    )
-                    row0 = (cur.data or [{}])[0] or {}
                     update["iteration"] = int(row0.get("iteration") or 0) + 1
                 except Exception:
                     pass
@@ -11367,7 +11508,20 @@ class DatabaseService:
             # complaint to make about it, so without this a lock on a part that
             # does not belong to this document returns 200 and does nothing —
             # and the FE would draw a locked paragraph that is not locked.
-            return bool(res.data)
+            saved = bool(res.data)
+            if saved:
+                if not part_text:
+                    part_text = str((res.data[0] or {}).get("text") or "") \
+                        if res.data else ""
+                self.append_ideal_text_part_revision(
+                    arc_id=arc_id, user_id=user_id, part_id=part_id,
+                    action=(revision_action
+                            if revision_action in ("lock", "unlock",
+                                                   "keep_evolving")
+                            else "lock" if locked else "unlock"),
+                    text=part_text,
+                )
+            return saved
         except Exception as e:
             _e = str(e).lower()
             if ("ideal_text_part" in _e or "locked_at" in _e) and (
@@ -11380,8 +11534,76 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    def set_ideal_text_part_root(
+        self, *, arc_id: str, user_id: str, part_id: str,
+        phrase: Optional[str], start: Optional[int], end: Optional[int],
+    ) -> bool:
+        """Set/skip the exact orange root on one currently locked part."""
+        if not arc_id or not user_id or not part_id:
+            return False
+        try:
+            rows = (self.client.table("ideal_text_part")
+                    .select("id,text,locked_at")
+                    .eq("id", str(part_id))
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .limit(1).execute().data) or []
+            if not rows or not rows[0].get("locked_at"):
+                return False
+            text = str(rows[0].get("text") or "")
+            now = datetime.now(timezone.utc).isoformat()
+            payload = {
+                "root_phrase": phrase,
+                "root_start": start,
+                "root_end": end,
+                "root_selected_at": now if phrase is not None else None,
+                "updated_at": now,
+            }
+            result = (self.client.table("ideal_text_part")
+                      .update(payload)
+                      .eq("id", str(part_id))
+                      .eq("arc_id", str(arc_id))
+                      .eq("user_id", str(user_id))
+                      .execute())
+            if not result.data:
+                return False
+            self.append_ideal_text_part_revision(
+                arc_id=arc_id, user_id=user_id, part_id=part_id,
+                action="root_set" if phrase is not None else "root_skipped",
+                text=text, root_phrase=phrase,
+            )
+            return True
+        except Exception as e:
+            logger.warning("set ideal text part root failed: %s", e)
+            return False
+
+    def append_ideal_text_part_revision(
+        self, *, arc_id: str, user_id: str, part_id: str, action: str,
+        text: str, root_phrase: Optional[str] = None,
+        take_session_id: Optional[str] = None,
+        review_version: Optional[int] = None,
+    ) -> bool:
+        try:
+            self.client.table("ideal_text_part_revision").insert({
+                "arc_id": str(arc_id),
+                "user_id": str(user_id),
+                "part_id": str(part_id),
+                "action": str(action),
+                "text": str(text or ""),
+                "root_phrase": root_phrase,
+                "take_session_id": take_session_id,
+                "review_version": review_version,
+            }).execute()
+            return True
+        except Exception as e:
+            # Audit persistence is important but cannot make a successful
+            # live lock appear failed after the state already landed.
+            logger.warning("part revision append failed: %s", e)
+            return False
+
     def replace_ideal_text_parts(
         self, arc_id: str, user_id: str, parts: list,
+        revision_action: Optional[str] = None,
     ) -> bool:
         """Replace a document's parts wholesale. True on success.
 
@@ -11418,14 +11640,18 @@ class DatabaseService:
             #
             # Read before the delete: afterwards there is nothing to read.
             prev_iter: dict = {}
+            prev_meta: dict = {}
             try:
                 _res = (self.client.table("ideal_text_part")
-                        .select("id, iteration")
+                        .select("id, text, locked_at, iteration, root_phrase, "
+                                "root_start, root_end, root_selected_at")
                         .eq("arc_id", str(arc_id))
                         .eq("user_id", str(user_id))
                         .execute())
                 prev_iter = {str(r.get("id")): int(r.get("iteration") or 0)
                              for r in (_res.data or []) if isinstance(r, dict)}
+                prev_meta = {str(r.get("id")): r for r in (_res.data or [])
+                             if isinstance(r, dict)}
             except Exception as _it_err:
                 # A pre-0265 database has no such column. Degrade to "no
                 # maturity counters", never to a failed document write.
@@ -11446,8 +11672,8 @@ class DatabaseService:
                     "user_id": str(user_id),
                     "ord": int(p["ord"]),
                     "text": str(p["text"]),
-                    # The lock rides the replace so auto-lock and compose can
-                    # persist in ONE write. Absent/None = open; a caller that
+                    # The lock rides the replace so explicit paragraph commits
+                    # survive document edits. Absent/None = open; a caller that
                     # wants to preserve an existing lock passes the original
                     # timestamp through (never re-stamped — a decision made
                     # before a lock and one after mean different things, §6).
@@ -11457,10 +11683,52 @@ class DatabaseService:
                     "iteration": (p.get("iteration")
                                   if isinstance(p.get("iteration"), int)
                                   else prev_iter.get(str(p["id"]), 0)),
+                    # Orange is metadata on the exact locked words. Preserve
+                    # it only while this part's text is byte-identical; an edit
+                    # or refreshed open paragraph clears it and must ask anew.
+                    "root_phrase": (
+                        (prev_meta.get(str(p["id"])) or {}).get("root_phrase")
+                        if (prev_meta.get(str(p["id"])) or {}).get("text")
+                        == str(p["text"]) else None
+                    ),
+                    "root_start": (
+                        (prev_meta.get(str(p["id"])) or {}).get("root_start")
+                        if (prev_meta.get(str(p["id"])) or {}).get("text")
+                        == str(p["text"]) else None
+                    ),
+                    "root_end": (
+                        (prev_meta.get(str(p["id"])) or {}).get("root_end")
+                        if (prev_meta.get(str(p["id"])) or {}).get("text")
+                        == str(p["text"]) else None
+                    ),
+                    "root_selected_at": (
+                        (prev_meta.get(str(p["id"])) or {}).get(
+                            "root_selected_at")
+                        if (prev_meta.get(str(p["id"])) or {}).get("text")
+                        == str(p["text"]) else None
+                    ),
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 for p in parts
             ]).execute()
+            if revision_action:
+                for p in parts:
+                    _previous = prev_meta.get(str(p["id"])) or {}
+                    _text_changed = _previous.get("text") != str(p["text"])
+                    _lock_changed = bool(_previous.get("locked_at")) != bool(
+                        p.get("locked_at"))
+                    if not _previous or _text_changed or _lock_changed:
+                        self.append_ideal_text_part_revision(
+                            arc_id=arc_id,
+                            user_id=user_id,
+                            part_id=str(p["id"]),
+                            action=revision_action,
+                            text=str(p["text"]),
+                            root_phrase=(
+                                _previous.get("root_phrase")
+                                if not _text_changed else None
+                            ),
+                        )
             return True
         except Exception as e:
             _e = str(e).lower()

@@ -409,10 +409,8 @@ class TestR1TheLayerFilter(unittest.TestCase):
         interventions" — parked. Un-parked 2026-08-12 in the lock-flow
         review.
 
-        Bold is the whole styling class: it is what a colour or an emphasis
-        offer arrives as. On a LOCKED part it comes back TAGGED, which is
-        what routes it outside the ≤3 budget and into the chunk's modal
-        instead of onto the page."""
+        Bold is the legacy styling class. On a LOCKED part it remains tagged
+        so already-created rows stay reversible inside the chunk modal."""
         parts = self._parts(True)
         out = ic.filter_by_layer([self._change(parts, 0, "bold")], parts)
         self.assertEqual(len(out), 1)
@@ -642,9 +640,8 @@ class TestComposeLocked(unittest.TestCase):
         self.assertIn("MY TYPED WORDS.", out["text"])
 
     def test_an_unlocked_part_the_machine_dropped_goes(self):
-        # Unlocked = the student never committed it; the machine's document
-        # wins there. Under auto-lock, typed implies locked, so an unlocked
-        # stored part is machine text from a previous serve.
+        # Unlocked = the student explicitly kept it evolving; the next
+        # machine-selected working version wins there.
         rows = self._rows(("Stale machine para.", False), ("KEPT.", True))
         out = compose_locked("KEPT.", rows)
         self.assertNotIn("Stale machine para.", out["text"])
@@ -773,9 +770,8 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
                            "locked_at": None}])
 
     def test_a_locked_flag_stamps_the_part(self):
-        # AUTO-LOCK ("typed = committed"): the client marks the parts the
-        # edit touched; the PUT stamps locked_at directly — no R3 409, so
-        # pending offers are HELD rather than blocking the student's typing.
+        # Explicit true preserves/creates a commit; editing itself never adds
+        # this flag.
         a, b = _id(), _id()
         _b, status, m = self._put({
             "text": "one\n\ntwo", "version": 3,
@@ -798,13 +794,22 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
         self.assertEqual(m.call_args[0][2][0]["locked_at"],
                          "2026-08-01T00:00:00Z")
 
-    def test_the_PUT_never_unlocks(self):
-        # Removing a lock is the R5-gated endpoint's job alone. A stale
-        # client sending locked:false must not silently unlock a paragraph.
+    def test_explicit_false_reopens_the_paragraph(self):
+        # Current clients carry the complete version state. A changed locked
+        # Paragraph becomes a working copy until the user commits it again.
         a = _id()
         _b, _s, m = self._put(
             {"text": "one", "version": 3,
              "parts": [{"id": a, "text": "one", "locked": False}]},
+            existing=[{"id": a, "ord": 0, "text": "one",
+                       "locked_at": "2026-08-01T00:00:00Z"}])
+        self.assertIsNone(m.call_args[0][2][0]["locked_at"])
+
+    def test_omitted_lock_preserves_an_older_clients_commit(self):
+        a = _id()
+        _b, _s, m = self._put(
+            {"text": "one", "version": 3,
+             "parts": [{"id": a, "text": "one"}]},
             existing=[{"id": a, "ord": 0, "text": "one",
                        "locked_at": "2026-08-01T00:00:00Z"}])
         self.assertEqual(m.call_args[0][2][0]["locked_at"],

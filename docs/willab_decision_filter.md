@@ -15,9 +15,11 @@ the sole canonical presentation document. Later Takes propose improvements but
 never rebuild or silently overwrite it.
 - **Three load-bearing pieces:** **(a)** perfect per-slide transcription,
   **(b)** coherent initial Ideal Text with stable Paragraph identity, and
-  **(c)** Manager arbitration that surfaces at most three defensible Feedback
-  items. The record → process → Ideal Text → next-Take loop never waits for a
-  coach.
+  **(c)** Manager arbitration that returns exactly three evidence-ranked
+  Feedback items for every valid Take: one Confident Voice candidate, one
+  actionable verbal/structure improvement, and one evidence-backed praise
+  item. Weak evidence uses tentative language; it is never invented. The
+  record → process → Ideal Text → next-Take loop never waits for a coach.
 
 **F2 — the asynchronous learning and confidence overlay, SECOND priority.**
 Machine Feedback and coach review retain one auditable lineage. Confident Voice
@@ -27,15 +29,17 @@ recording. Owner answers are routing signals, never blind training labels.
 
 > **⚠️ 2026-08-13 — the charisma construct is RETIRED (founder re-lock).** F2 read "stress → charisma (internally threat → challenge = breakthrough)" until this date. That construct had no written operational definition, so nothing could say what a rater was being asked — the exact defect SPEC §1.4 exists to prevent — and §17 names charisma explicitly as something `confidence` must NOT be folded together with. It was not just wording: it was ROUTING LIVE FEEDBACK (`_W_D`/`_W_B` inside `power_score`, and the replace/emphasize/no-star decision in the star lane), so retiring it was a code change, not a docs change. The coach's challenge/threat rows in `training_labels` are a CORPUS, not a construct claim, and are versioned rather than rewritten (SPEC §3.2).
 
-**LOCKED CHOICES** (founder re-locked 2026-08-22; complete contract:
+**LOCKED CHOICES** (founder re-locked 2026-08-26; complete contract:
 [`CANONICAL_PRODUCT_CONTRACT.md`](CANONICAL_PRODUCT_CONTRACT.md)):
 - **L1 — One canonical document.** Ideal Text is persistent and user-controlled.
   Take 1 creates it; later Takes never replace it with a transcript or best-of
   assembly. Best Presentation as a separate product artifact is retired.
 - **L2 — Manager-gated Feedback.** Detectors create Candidates; only Manager-
-  approved Candidates surface. The budget is at most three, evidence-first,
-  Confident Voice first when defensible, and unused family capacity is
-  reassigned rather than manufactured.
+  approved Candidates surface. Every valid Take has exactly three items: the
+  best Confident Voice candidate, the best actionable verbal/structure
+  improvement, and the best evidence-backed praise. Each lane selects its best
+  available evidence even when weak, using tentative language and never
+  inventing words, praise, or certainty.
 - **L3 — Provenance walls.** Machine prediction, owner routing, blind peer
   rating, coach judgment, and detector verdict remain separate. Voice Album
   membership requires Machine Yes + User Yes + Coach Yes on the exact recording.
