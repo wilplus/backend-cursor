@@ -118,6 +118,25 @@ def test_generated_content_drops_unknown_citations_and_normalizes_rows():
     assert content["citations"][0]["source_id"] == SOURCE_ID
 
 
+def test_generated_ml_content_is_positioned_in_the_grid_contract():
+    content = intelligence._generated_content("ml", {
+        "content": {
+            "nodes": [
+                {"id": "data", "label": "Data", "detail": "Audio"},
+                {"id": "model", "label": "Model", "detail": "Training"},
+            ],
+            "edges": [{"from": "data", "to": "model", "label": "feeds"}],
+            "risks": [],
+            "next_steps": [],
+        },
+        "citations": [{"source_id": SOURCE_ID, "claim": "Evidence."}],
+    }, {SOURCE_ID})
+
+    assert len(content["rows"]) == 1
+    assert len(content["columns"]) == 2
+    assert content["nodes"][1]["column_id"] == content["columns"][1]["id"]
+
+
 def test_generated_content_requires_at_least_one_real_evidence_citation():
     with pytest.raises(intelligence.CeoIntelligenceError, match="citations"):
         intelligence._generated_content("architecture", {

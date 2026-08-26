@@ -429,6 +429,58 @@ def _legacy_architecture_grid(value: Any) -> tuple[list[dict], list[dict]]:
     ]
 
 
+def _ml_layout_axis(label: str, value: Any) -> list[dict]:
+    axis = _identified_rows(label, value, fields=(), maximum_rows=20)
+    if not axis:
+        return [{"id": str(uuid4())}]
+    ids = [item["id"] for item in axis]
+    if len(set(ids)) != len(ids):
+        raise CeoValidationError(f"ML {label} ids must be unique")
+    return axis
+
+
+def _legacy_ml_grid(nodes: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
+    layout_rows = [{"id": str(uuid4())}]
+    columns = [{"id": str(uuid4())} for _node in nodes]
+    if not columns:
+        columns = [{"id": str(uuid4())}]
+    positioned = [
+        {
+            **node,
+            "row_id": layout_rows[0]["id"],
+            "column_id": columns[index]["id"],
+        }
+        for index, node in enumerate(nodes)
+    ]
+    return layout_rows, columns, positioned
+
+
+def _ml_grid(content: dict) -> tuple[list[dict], list[dict], list[dict]]:
+    nodes = _identified_rows(
+        "nodes", content.get("nodes"), fields=("label", "detail", "row_id", "column_id"),
+        maximum_rows=400,
+    )
+    if "rows" not in content and "columns" not in content:
+        legacy_nodes = [
+            {key: value for key, value in node.items() if key not in ("row_id", "column_id")}
+            for node in nodes
+        ]
+        return _legacy_ml_grid(legacy_nodes)
+    layout_rows = _ml_layout_axis("rows", content.get("rows"))
+    columns = _ml_layout_axis("columns", content.get("columns"))
+    row_ids = {row["id"] for row in layout_rows}
+    column_ids = {column["id"] for column in columns}
+    occupied: set[tuple[str, str]] = set()
+    for node in nodes:
+        if node["row_id"] not in row_ids or node["column_id"] not in column_ids:
+            raise CeoValidationError("each ML node must reference a saved row and column")
+        cell = (node["row_id"], node["column_id"])
+        if cell in occupied:
+            raise CeoValidationError("each ML layout cell may contain one node")
+        occupied.add(cell)
+    return layout_rows, columns, nodes
+
+
 def normalize_artifact_content(lens: str, content: Any) -> dict:
     """Validate one artifact revision against its bounded lens contract."""
     if not isinstance(content, dict):
@@ -455,9 +507,7 @@ def normalize_artifact_content(lens: str, content: Any) -> dict:
             ),
         }
     if lens == "ml":
-        nodes = _identified_rows(
-            "nodes", content.get("nodes"), fields=("label", "detail")
-        )
+        layout_rows, columns, nodes = _ml_grid(content)
         node_ids = {row["id"] for row in nodes}
         edges = _identified_rows(
             "edges",
@@ -470,6 +520,8 @@ def normalize_artifact_content(lens: str, content: Any) -> dict:
             if edge["from"] not in node_ids or edge["to"] not in node_ids:
                 raise CeoValidationError("each ML edge must reference saved nodes")
         return {
+            "rows": layout_rows,
+            "columns": columns,
             "nodes": nodes,
             "edges": edges,
             "risks": _identified_rows(
