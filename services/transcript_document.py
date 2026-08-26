@@ -308,6 +308,13 @@ def build_transcript_document(arc_id: Any, *, database=None,
                     out.append(text)
                     pieces.append({
                         "snippet_id": str(s.get("id")),
+                        # Canonical evidence provenance. These fields stay in
+                        # the server-side document and let the feedback
+                        # dual-write bind the exact audio interval without a
+                        # second, potentially drifting snippet read.
+                        "recording_id": s.get("recording_id"),
+                        "audio_ref": s.get("audio_ref"),
+                        "language": s.get("language"),
                         "take_session_id": sid,
                         "take_index": take_index,
                         "start": start,

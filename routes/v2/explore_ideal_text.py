@@ -2049,6 +2049,46 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                 changes, _feedback_set["selected_keys"])
             _response_rows = db.list_take_feedback_self_reports(
                 _arm_sid, str(user_id))
+            # DECISION BACKFILL-ON-READ. A compatibility response may have
+            # landed during the brief backend-first window before migration
+            # 0294 existed. Because that legacy response is first-write-final,
+            # the user cannot safely be asked to tap it again. Rebuilding the
+            # typed canonical decision from its explicit family/response is
+            # deterministic and idempotent; ambiguous editor-open actions
+            # intentionally remain unresolved.
+            try:
+                from services.feedback_data_contract import (
+                    canonical_feedback_decision,
+                )
+
+                _decision_session = db.v2_get_session_by_id(_arm_sid) or {}
+                if _decision_session.get("project_id"):
+                    for _response_row in _response_rows:
+                        if not isinstance(_response_row, dict):
+                            continue
+                        _canonical_decision = canonical_feedback_decision(
+                            take_id=_arm_sid,
+                            rater_id=str(user_id),
+                            feedback_id=str(
+                                _response_row.get("feedback_id") or ""),
+                            feedback_family=str(
+                                _response_row.get("feedback_family") or ""),
+                            response=str(
+                                _response_row.get("response") or ""),
+                        )
+                        if _canonical_decision is not None:
+                            db.record_canonical_feedback_decision(
+                                project_id=str(
+                                    _decision_session["project_id"]),
+                                take_id=_arm_sid,
+                                rater_id=str(user_id),
+                                decision=_canonical_decision,
+                            )
+            except Exception as _decision_backfill_error:
+                logger.warning(
+                    "canonical decision backfill failed arc=%s take=%s: %s",
+                    arc_id, _arm_sid, _decision_backfill_error,
+                )
             _responded_ids = {
                 str(row.get("feedback_id")) for row in _response_rows
                 if isinstance(row, dict) and row.get("feedback_id")
@@ -2242,6 +2282,124 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                         changes, _feedback_set["selected_keys"])
                     _styles = filter_to_selected(
                         _styles, _feedback_set["selected_keys"])
+        # CANONICAL DUAL-WRITE / BACKFILL-ON-READ. This deliberately runs for
+        # both a newly claimed compatibility set and an already frozen set.
+        # During a backend-first rollout the canonical migration may be
+        # briefly unavailable on the first GET; limiting this write to the
+        # claim branch would then leave a permanent provenance hole because
+        # the compatibility set is insert-once. The canonical RPC is itself
+        # idempotent, so every later read safely ensures parity without
+        # changing membership or user-visible behavior.
+        if _feedback_set is not None and _take_contract_on and _arm_sid:
+            try:
+                from services.feedback_data_contract import (
+                    build_feedback_exposure_bundle,
+                )
+                from services.take_feedback_manager import POLICY_VERSION
+
+                _canonical_session = locals().get("_session")
+                if not isinstance(_canonical_session, dict):
+                    _canonical_session = db.v2_get_session_by_id(
+                        _arm_sid) or {}
+                _selected_ids = {
+                    str(key.get("id") or "")
+                    for key in _feedback_set["selected_keys"]
+                }
+                for _snapshot_row in _feedback_exposure:
+                    _snapshot_row["selected"] = (
+                        str(_snapshot_row.get("id") or "")
+                        in _selected_ids
+                    )
+                _canonical_doc = locals().get("_review_doc")
+                if not isinstance(_canonical_doc, dict):
+                    _canonical_doc = build_transcript_document(
+                        arc_id, database=db, session_id=_arm_sid)
+                _canonical_bundle = build_feedback_exposure_bundle(
+                    session=_canonical_session,
+                    transcript_document=_canonical_doc,
+                    served_text=served_text,
+                    candidates=_feedback_exposure,
+                    selected_keys=_feedback_set["selected_keys"],
+                    manager_rules_version=POLICY_VERSION,
+                )
+                if _canonical_bundle is None:
+                    logger.warning(
+                        "canonical feedback bundle unavailable "
+                        "arc=%s take=%s", arc_id, _arm_sid,
+                    )
+                else:
+                    _canonical_result = db.record_canonical_feedback_exposure(
+                        _canonical_bundle)
+                    if _canonical_result is None:
+                        logger.warning(
+                            "canonical feedback dual-write missing "
+                            "arc=%s take=%s", arc_id, _arm_sid,
+                        )
+                    else:
+                        # Selection and exposure are separate durable stages:
+                        # the first proves which three won, the second proves
+                        # the complete selected/unselected ledger committed.
+                        from services.processing_stages import (
+                            recorder_for_take,
+                        )
+                        _feedback_stage_recorder = recorder_for_take(
+                            database=db,
+                            session=_canonical_session,
+                            input_provenance={
+                                "candidate_set_id": _canonical_bundle[
+                                    "candidate_set_id"],
+                                "input_hash": _canonical_bundle["input_hash"],
+                            },
+                        )
+                        if _feedback_stage_recorder is not None:
+                            _feedback_stage_recorder.record(
+                                "manager_selection", "succeeded",
+                                output=_feedback_set["selected_keys"],
+                            )
+                            _feedback_stage_recorder.record(
+                                "exposure", "succeeded",
+                                output={
+                                    "candidate_set_id": _canonical_result.get(
+                                        "candidate_set_id"),
+                                    "candidate_count": len(
+                                        _canonical_bundle["candidates"]),
+                                    "selected_count": 3,
+                                },
+                            )
+                        # If this GET just repaired a missing canonical
+                        # exposure, replay any already-final compatibility
+                        # responses now as well; one reopen reaches parity.
+                        from services.feedback_data_contract import (
+                            canonical_feedback_decision,
+                        )
+                        for _response_row in locals().get(
+                                "_response_rows", []) or []:
+                            if not isinstance(_response_row, dict):
+                                continue
+                            _canonical_decision = canonical_feedback_decision(
+                                take_id=_arm_sid,
+                                rater_id=str(user_id),
+                                feedback_id=str(
+                                    _response_row.get("feedback_id") or ""),
+                                feedback_family=str(
+                                    _response_row.get("feedback_family") or ""),
+                                response=str(
+                                    _response_row.get("response") or ""),
+                            )
+                            if _canonical_decision is not None:
+                                db.record_canonical_feedback_decision(
+                                    project_id=str(
+                                        _canonical_session["project_id"]),
+                                    take_id=_arm_sid,
+                                    rater_id=str(user_id),
+                                    decision=_canonical_decision,
+                                )
+            except Exception as _canonical_feedback_error:
+                logger.warning(
+                    "canonical feedback dual-write failed arc=%s "
+                    "take=%s: %s", arc_id, _arm_sid,
+                    _canonical_feedback_error,
+                )
         _style = {"style_changes": _styles} if _styles else {}
         # THE EXPERIMENT'S RECORD — after the span check on purpose: a row
         # stamped surfaced=True for a serve the guard then zeroed would claim
@@ -2398,6 +2556,63 @@ def v2_explore_set_part_lock(arc_id, part_id):
                                  if _reason == "keep_evolving" else None)):
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
+        # Canonical paragraph versioning is an immutable decision chain. The
+        # legacy part row remains the live read during parity; the canonical
+        # write binds the explicit action to this exact paragraph body and the
+        # latest spoken Take. A missing exposure snapshot is observable and
+        # retriable, never a reason to undo the user's successful lock.
+        try:
+            from services.feedback_data_contract import (
+                canonical_paragraph_decision,
+                content_hash,
+            )
+            from services.intervention_spend import latest_spoken_take_sid
+
+            _decision_take_id = latest_spoken_take_sid(_lock_sessions)
+            _decision_session = (
+                db.v2_get_session_by_id(_decision_take_id) or {}
+                if _decision_take_id else {}
+            )
+            _updated_parts = db.get_ideal_text_parts(
+                arc_id, user_id, with_lock=True) or []
+            _updated_part = next((
+                row for row in _updated_parts
+                if str(row.get("id") or "") == str(part_id).lower()
+            ), {})
+            _decision_value = (
+                "lock_for_next_take" if locked
+                else "keep_evolving" if _reason == "keep_evolving"
+                else "reopen_for_edit"
+            )
+            _legacy_revision = db.get_latest_ideal_text_part_revision(
+                arc_id=arc_id, user_id=user_id, part_id=str(part_id)) or {}
+            _revision_coordinate = content_hash({
+                "part_id": str(part_id).lower(),
+                "value": _decision_value,
+                "legacy_revision_id": _legacy_revision.get("id"),
+                "legacy_revision_action": _legacy_revision.get("action"),
+                "iteration": _updated_part.get("iteration"),
+                "locked_at": _updated_part.get("locked_at"),
+                "text": target.get("text"),
+            })
+            _canonical_part_decision = canonical_paragraph_decision(
+                take_id=str(_decision_take_id or ""),
+                project_id=str(_decision_session.get("project_id") or ""),
+                rater_id=user_id,
+                source_ideal_part_id=str(part_id).lower(),
+                exact_text=str(target.get("text") or ""),
+                value=_decision_value,
+                revision_coordinate=_revision_coordinate,
+            )
+            if _canonical_part_decision is not None:
+                db.record_canonical_paragraph_decision(
+                    _canonical_part_decision)
+        except Exception as _canonical_part_error:
+            logger.warning(
+                "canonical paragraph decision dual-write failed "
+                "arc=%s part=%s: %s", arc_id, part_id,
+                _canonical_part_error,
+            )
         _proposal = None
         if locked:
             from services.rooting_phrase import propose_rooting_phrase
@@ -2462,6 +2677,66 @@ def v2_explore_set_part_root(arc_id, part_id):
                 end=(valid or {}).get("end")):
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save the rooting phrase"}), 500
+        try:
+            from services.feedback_data_contract import (
+                canonical_root_phrase,
+                canonical_root_phrase_skip,
+                content_hash,
+            )
+            from services.intervention_spend import latest_spoken_take_sid
+
+            _root_take_id = latest_spoken_take_sid(_sessions)
+            _root_session = (
+                db.v2_get_session_by_id(_root_take_id) or {}
+                if _root_take_id else {}
+            )
+            _root_parts = db.get_ideal_text_parts(
+                arc_id, user_id, with_lock=True) or []
+            _root_part = next((
+                row for row in _root_parts
+                if str(row.get("id") or "") == str(part_id).lower()
+            ), {})
+            _root_revision = db.get_latest_ideal_text_part_revision(
+                arc_id=arc_id, user_id=user_id, part_id=str(part_id)) or {}
+            _root_coordinate = content_hash({
+                "part_id": str(part_id).lower(),
+                "legacy_revision_id": _root_revision.get("id"),
+                "legacy_revision_action": _root_revision.get("action"),
+                "root_selected_at": _root_part.get("root_selected_at"),
+                "phrase": (valid or {}).get("text"),
+                "start": (valid or {}).get("start"),
+                "end": (valid or {}).get("end"),
+                "action": "select" if valid is not None else "skip",
+            })
+            if valid is not None:
+                _canonical_root = canonical_root_phrase(
+                    take_id=str(_root_take_id or ""),
+                    project_id=str(_root_session.get("project_id") or ""),
+                    rater_id=user_id,
+                    source_ideal_part_id=str(part_id).lower(),
+                    exact_text=valid["text"],
+                    start=valid["start"],
+                    end=valid["end"],
+                    revision_coordinate=_root_coordinate,
+                )
+                if _canonical_root is not None:
+                    db.record_canonical_root_phrase(_canonical_root)
+            else:
+                _canonical_skip = canonical_root_phrase_skip(
+                    take_id=str(_root_take_id or ""),
+                    project_id=str(_root_session.get("project_id") or ""),
+                    rater_id=user_id,
+                    source_ideal_part_id=str(part_id).lower(),
+                    revision_coordinate=_root_coordinate,
+                )
+                if _canonical_skip is not None:
+                    db.record_canonical_root_phrase_skip(_canonical_skip)
+        except Exception as _canonical_root_error:
+            logger.warning(
+                "canonical root phrase dual-write failed "
+                "arc=%s part=%s: %s", arc_id, part_id,
+                _canonical_root_error,
+            )
         return jsonify({
             "saved": True,
             "part_id": str(part_id),

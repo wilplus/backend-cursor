@@ -34,6 +34,7 @@ stage labels and plumbing errors only.
 """
 from __future__ import annotations
 
+from contextlib import nullcontext
 import logging
 import os
 import threading
@@ -379,6 +380,33 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
     if int(job.get("attempts") or 1) > 1:
         _cleanup_before_rerun(payload)
 
+    # Canonical stage provenance is additive during parity. It binds every
+    # attempt to database-resolved owner/project/take UUIDs; a legacy or guest
+    # row that has not completed canonical ownership binding simply keeps the
+    # existing job behavior and is visible to the parity audit as missing.
+    from services.processing_stages import recorder_for_take
+
+    _stage_session_getter = getattr(db, "v2_get_session_by_id", None)
+    _stage_session = (
+        _stage_session_getter(str(payload.get("session_id") or "")) or {}
+        if callable(_stage_session_getter) else {}
+    )
+    _stage_recorder = recorder_for_take(
+        database=db,
+        session=_stage_session,
+        attempt_count=int(job.get("attempts") or 1),
+        processing_job_id=job_id,
+        input_provenance={
+            "kind": job.get("kind"),
+            "session_id": payload.get("session_id"),
+            "recording_id": payload.get("recording_id"),
+            "storage_provider": payload.get("storage_provider"),
+            "storage_key": payload.get("storage_key"),
+            "recording_kind": payload.get("recording_kind"),
+            "take_index": payload.get("take_index"),
+        },
+    )
+
     db.update_processing_job(job_id, {
         "stage": "processing_recording", "percent": 5,
         "message": "Loading your recording…",
@@ -389,26 +417,32 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
     # Supabase and hunts every bucket for an object the web service put in
     # R2. Without this the symptom is "not found — tried: a, b, c", which
     # reads like a missing file rather than a missing credential.
-    wrote = str(payload.get("storage_provider") or "").strip()
-    reads = _storage_provider()
-    if wrote and wrote != "unknown" and reads != wrote:
-        raise ConfigMismatchError(
-            f"storage mismatch: the upload wrote to {wrote!r} but this "
-            f"worker resolves storage to {reads!r}. Set the R2 credentials "
-            f"(R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) on "
-            f"the worker service so it reads where the web service writes."
-        )
-
-    # The payload records the bucket the upload actually landed in; the
-    # helper tries that first and falls back across the others, so a job
-    # enqueued either side of the lab-bucket split still finds its audio
-    # (P0 audit 2026-08-03).
-    audio_bytes = get_lab_audio_bytes(
-        str(payload.get("storage_key") or ""),
-        bucket_hint=str(payload.get("bucket") or "") or None,
+    _upload_scope = (
+        _stage_recorder.stage("upload")
+        if _stage_recorder is not None else nullcontext()
     )
-    if not audio_bytes:
-        raise RuntimeError("audio object empty or missing in storage")
+    with _upload_scope:
+        wrote = str(payload.get("storage_provider") or "").strip()
+        reads = _storage_provider()
+        if wrote and wrote != "unknown" and reads != wrote:
+            raise ConfigMismatchError(
+                f"storage mismatch: the upload wrote to {wrote!r} but this "
+                f"worker resolves storage to {reads!r}. Set the R2 "
+                f"credentials (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, "
+                f"R2_SECRET_ACCESS_KEY) on the worker service so it reads "
+                f"where the web service writes."
+            )
+
+        # The payload records the bucket the upload actually landed in; the
+        # helper tries that first and falls back across the others, so a job
+        # enqueued either side of the lab-bucket split still finds its audio
+        # (P0 audit 2026-08-03).
+        audio_bytes = get_lab_audio_bytes(
+            str(payload.get("storage_key") or ""),
+            bucket_hint=str(payload.get("bucket") or "") or None,
+        )
+        if not audio_bytes:
+            raise RuntimeError("audio object empty or missing in storage")
 
     def _progress(stage: str, percent: int, message: Optional[str]) -> None:
         db.update_processing_job(job_id, {
@@ -431,6 +465,7 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
         arc_take_count=payload.get("arc_take_count"),
         spark_enabled=bool(payload.get("spark_enabled")),
         progress=_progress,
+        stage_recorder=_stage_recorder,
     )
     # Small mechanical summary only — the readout itself is served by the
     # existing GETs, and job rows never carry scores/verdicts (AC-9).

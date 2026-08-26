@@ -25,8 +25,9 @@ only process_lab_recording does the I/O.
 """
 from __future__ import annotations
 
+from contextlib import nullcontext
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from services.recording_state import RecordingState
 from services.recording_piece_analysis import (
@@ -265,6 +266,7 @@ def process_lab_recording(
     recording_kind: str = "spoken",
     paired_session_id: Optional[str] = None,
     stages: Optional[set] = None,
+    stage_recorder: Optional[Any] = None,
 ) -> dict:
     """Run the full pipeline → §3.3 Readout payload.
 
@@ -339,7 +341,12 @@ def process_lab_recording(
         run_analytics=_run_analytics,
         signal=sig,
     )
-    state = transcribe_recording(state, log=logger)
+    _transcription_scope = (
+        stage_recorder.stage("transcription")
+        if stage_recorder is not None else nullcontext()
+    )
+    with _transcription_scope:
+        state = transcribe_recording(state, log=logger)
     # Downstream code still operates on local lists during this incremental
     # extraction.  Copy the immutable stage outputs so later normalization can
     # never mutate the state object retained for subsequent domain stages.
@@ -355,11 +362,17 @@ def process_lab_recording(
     # Stage 2 — canonical piece construction and acoustic enrichment. The
     # returned state keeps the raw candidate snapshot separate from derived
     # coach/user reads, preserving validation-sample independence.
-    state = analyze_canonical_pieces(state, log=logger)
+    state = analyze_canonical_pieces(
+        state, log=logger, stage_recorder=stage_recorder)
     _llm_budget_idx = set(state.llm_budget_indices)
 
     # Stage 3 — independent text and slide analysis, joined deterministically.
-    state = score_recording_feedback(state, log=logger)
+    _candidate_scope = (
+        stage_recorder.stage("candidate_generation")
+        if stage_recorder is not None else nullcontext()
+    )
+    with _candidate_scope:
+        state = score_recording_feedback(state, log=logger)
 
     # Stage 4 — persist exact canonical rows and the raw candidate corpus.
     state = persist_recording_snippets(state, database=db, log=logger)

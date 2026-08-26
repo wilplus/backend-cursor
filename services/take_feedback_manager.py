@@ -102,8 +102,34 @@ def exposure_snapshot(changes: Iterable[Any]) -> list[dict]:
             "id": str(raw.get("id") or ""),
             "feedback_family": family,
             "snippet_id": str(raw.get("snippet_id") or "") or None,
+            "take_session_id": (
+                str(raw.get("take_session_id"))
+                if raw.get("take_session_id") else None
+            ),
             "span": dict(raw.get("span") or {}),
+            # Exact generated/source material is retained only in the
+            # internal exposure ledger. It is needed to reproduce ranking
+            # and to build surface-specific preference pairs later; none of
+            # these fields ride the student payload.
+            "quote": raw.get("quote"),
+            "proposed_text": raw.get("proposed_text"),
+            "why_key": raw.get("why_key"),
+            "device": raw.get("device"),
+            "tentative": bool(raw.get("tentative")),
+            "cue_keys": list(raw.get("cue_keys") or []),
+            "detector_version": raw.get("detector_version"),
+            "rule_version": raw.get("rule_version"),
+            "model_version": raw.get("model_version"),
+            "prompt_version": raw.get("prompt_version"),
+            **({"machine_prediction": dict(raw["machine_prediction"])}
+               if isinstance(raw.get("machine_prediction"), dict) else {}),
+            **({
+                "acoustic_feature_snapshot": dict(
+                    raw["acoustic_feature_snapshot"]),
+            } if isinstance(raw.get("acoustic_feature_snapshot"), dict)
+               else {}),
             "evidence": dict(raw.get("_manager_evidence") or {}),
+            "_manager_evidence": dict(raw.get("_manager_evidence") or {}),
             "rank_key": list(_rank(raw)[:-3]),
             "selected": False,
         })

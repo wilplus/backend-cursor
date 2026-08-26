@@ -11056,6 +11056,378 @@ class DatabaseService:
             logger.warning("take feedback exposure insert failed: %s", e)
             return False
 
+    def record_canonical_feedback_exposure(self, bundle: dict) -> Optional[dict]:
+        """Atomically dual-write one complete canonical candidate ledger.
+
+        Compatibility tables remain the product read model during parity, so
+        this method is deliberately best-effort. The SQL RPC itself is strict
+        and all-or-nothing: it either records transcript/evidence/candidates/
+        exposures together or writes none of them.
+        """
+        if not isinstance(bundle, dict):
+            return None
+        required = (
+            "owner_principal_id", "project_id", "take_id", "candidates",
+            "selected_keys", "versions", "input_hash", "idempotency_key",
+        )
+        if any(not bundle.get(key) for key in required):
+            return None
+        try:
+            result = self.client.rpc("record_feedback_exposure_v1", {
+                "p_owner_principal_id": str(bundle["owner_principal_id"]),
+                "p_project_id": str(bundle["project_id"]),
+                "p_take_id": str(bundle["take_id"]),
+                "p_bundle": bundle,
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.warning(
+                "canonical feedback exposure dual-write failed take=%s: %s",
+                bundle.get("take_id"), error,
+            )
+            return None
+
+    def record_canonical_feedback_decision(
+        self, *, project_id: str, take_id: str, rater_id: str,
+        decision: dict,
+    ) -> Optional[dict]:
+        """Write one typed owner decision against a selected exposure."""
+        if not all((project_id, take_id, rater_id)) or not isinstance(
+                decision, dict):
+            return None
+        try:
+            result = self.client.rpc("record_feedback_human_decision_v1", {
+                "p_project_id": str(project_id),
+                "p_take_id": str(take_id),
+                "p_rater_id": str(rater_id),
+                "p_feedback_id": str(decision["feedback_id"]),
+                "p_feedback_family": str(decision["feedback_family"]),
+                "p_value": str(decision["value"]),
+                "p_taxonomy_version": str(decision["taxonomy_version"]),
+                "p_idempotency_key": str(decision["idempotency_key"]),
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.warning(
+                "canonical feedback decision dual-write failed take=%s "
+                "feedback=%s: %s",
+                take_id, decision.get("feedback_id"), error,
+            )
+            return None
+
+    def record_canonical_paragraph_decision(
+        self, decision: dict,
+    ) -> Optional[dict]:
+        """Append an exact paragraph lock/evolve/reopen decision."""
+        if not isinstance(decision, dict):
+            return None
+        try:
+            result = self.client.rpc("record_paragraph_decision_v1", {
+                "p_project_id": str(decision["project_id"]),
+                "p_take_id": str(decision["take_id"]),
+                "p_rater_id": str(decision["rater_id"]),
+                "p_source_ideal_part_id": str(
+                    decision["source_ideal_part_id"]),
+                "p_exact_text": str(decision["exact_text"]),
+                "p_value": str(decision["value"]),
+                "p_taxonomy_version": str(decision["taxonomy_version"]),
+                "p_evidence_id": str(decision["evidence_id"]),
+                "p_evidence_hash": str(decision["evidence_hash"]),
+                "p_input_hash": str(decision["input_hash"]),
+                "p_idempotency_key": str(decision["idempotency_key"]),
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as paragraph_error:
+            logger.warning(
+                "canonical paragraph decision dual-write failed "
+                "take=%s part=%s: %s",
+                decision.get("take_id"),
+                decision.get("source_ideal_part_id"), paragraph_error,
+            )
+            return None
+
+    def record_canonical_root_phrase(self, root: dict) -> Optional[dict]:
+        """Append one exact orange phrase backed by the current lock."""
+        if not isinstance(root, dict):
+            return None
+        try:
+            result = self.client.rpc("record_root_phrase_v1", {
+                "p_project_id": str(root["project_id"]),
+                "p_take_id": str(root["take_id"]),
+                "p_rater_id": str(root["rater_id"]),
+                "p_source_ideal_part_id": str(
+                    root["source_ideal_part_id"]),
+                "p_exact_text": str(root["exact_text"]),
+                "p_start_char": int(root["start"]),
+                "p_end_char": int(root["end"]),
+                "p_idempotency_key": str(root["idempotency_key"]),
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as root_error:
+            logger.warning(
+                "canonical root phrase dual-write failed take=%s part=%s: %s",
+                root.get("take_id"), root.get("source_ideal_part_id"),
+                root_error,
+            )
+            return None
+
+    def record_canonical_root_phrase_skip(
+        self, skip: dict,
+    ) -> Optional[dict]:
+        """Append an explicit no-orange decision for one locked paragraph."""
+        if not isinstance(skip, dict):
+            return None
+        try:
+            result = self.client.rpc("record_root_phrase_skip_v1", {
+                "p_project_id": str(skip["project_id"]),
+                "p_take_id": str(skip["take_id"]),
+                "p_rater_id": str(skip["rater_id"]),
+                "p_source_ideal_part_id": str(
+                    skip["source_ideal_part_id"]),
+                "p_taxonomy_version": str(skip["taxonomy_version"]),
+                "p_idempotency_key": str(skip["idempotency_key"]),
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as skip_error:
+            logger.warning(
+                "canonical root phrase skip dual-write failed "
+                "take=%s part=%s: %s",
+                skip.get("take_id"), skip.get("source_ideal_part_id"),
+                skip_error,
+            )
+            return None
+
+    def get_canonical_confidence_evidence(
+        self, *, take_id: str, snippet_id: str,
+    ) -> Optional[dict]:
+        """Resolve the exact canonical clip without reading any judgment."""
+        if not take_id or not snippet_id:
+            return None
+        try:
+            rows = (self.client.table("evidence_spans")
+                    .select("id,audio_ref,start_ms,end_ms,technical_metadata")
+                    .eq("take_id", str(take_id))
+                    .eq("legacy_piece_id", str(snippet_id))
+                    .eq("task_type", "confidence_classification")
+                    .order("created_at", desc=True)
+                    .limit(1).execute().data) or []
+            if not rows:
+                return None
+            row = rows[0]
+            return {
+                "evidence_span_id": row.get("id"),
+                "audio_ref": row.get("audio_ref"),
+                "start_ms": row.get("start_ms"),
+                "end_ms": row.get("end_ms"),
+                "technical_metadata": row.get("technical_metadata") or {},
+            }
+        except Exception as error:
+            logger.warning(
+                "canonical confidence evidence read failed take=%s "
+                "snippet=%s: %s", take_id, snippet_id, error,
+            )
+            return None
+
+    def record_canonical_coach_confidence_judgment(
+        self, *, evidence_span_id: str, coach_id: str, value: str,
+        taxonomy_version: str, blind_packet_hash: str,
+        idempotency_key: str,
+    ) -> Optional[dict]:
+        """Append one blind coach judgment or a provenance-safe revision."""
+        if not all((evidence_span_id, coach_id, value, taxonomy_version,
+                    blind_packet_hash, idempotency_key)):
+            return None
+        try:
+            result = self.client.rpc(
+                "record_confidence_coach_judgment_v1", {
+                    "p_evidence_span_id": str(evidence_span_id),
+                    "p_coach_id": str(coach_id),
+                    "p_value": str(value),
+                    "p_taxonomy_version": str(taxonomy_version),
+                    "p_blind_packet_hash": str(blind_packet_hash),
+                    "p_idempotency_key": str(idempotency_key),
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.warning(
+                "canonical coach confidence dual-write failed evidence=%s: %s",
+                evidence_span_id, error,
+            )
+            return None
+
+    def assign_canonical_coach_confidence_evidence(
+        self, *, take_id: str, evidence_span_id: str, coach_id: str,
+        blind_packet_hash: str, assignment_reason: str,
+        idempotency_key: str,
+    ) -> Optional[dict]:
+        """Freeze the exact blind packet before accepting a coach label."""
+        if not all((take_id, evidence_span_id, coach_id, blind_packet_hash,
+                    assignment_reason, idempotency_key)):
+            return None
+        try:
+            result = self.client.rpc(
+                "assign_confidence_coach_evidence_v1", {
+                    "p_take_id": str(take_id),
+                    "p_evidence_span_id": str(evidence_span_id),
+                    "p_coach_id": str(coach_id),
+                    "p_blind_packet_hash": str(blind_packet_hash),
+                    "p_assignment_reason": str(assignment_reason),
+                    "p_idempotency_key": str(idempotency_key),
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as assignment_error:
+            logger.warning(
+                "canonical coach evidence assignment failed "
+                "take=%s evidence=%s: %s",
+                take_id, evidence_span_id, assignment_error,
+            )
+            return None
+
+    def list_blind_coach_evidence(
+        self, *, take_id: str, coach_id: str,
+    ) -> list[dict]:
+        """Database-enforced pre-judgment allowlist."""
+        if not take_id or not coach_id:
+            return []
+        try:
+            result = self.client.rpc("blind_coach_evidence_v1", {
+                "p_take_id": str(take_id),
+                "p_coach_id": str(coach_id),
+            }).execute()
+            return [row for row in (result.data or []) if isinstance(row, dict)]
+        except Exception as error:
+            logger.warning("blind canonical evidence read failed: %s", error)
+            return []
+
+    def get_coach_evidence_comparison(
+        self, *, evidence_span_id: str, coach_id: str,
+    ) -> Optional[dict]:
+        """Post-judgment comparison; SQL returns nothing before commitment."""
+        if not evidence_span_id or not coach_id:
+            return None
+        try:
+            rows = self.client.rpc("coach_evidence_comparison_v1", {
+                "p_evidence_span_id": str(evidence_span_id),
+                "p_coach_id": str(coach_id),
+            }).execute().data or []
+            return rows[0] if rows and isinstance(rows[0], dict) else None
+        except Exception as error:
+            logger.warning("canonical coach comparison read failed: %s", error)
+            return None
+
+    def create_dataset_release(self, manifest: dict) -> Optional[dict]:
+        """Atomically persist one pre-built immutable dataset manifest.
+
+        This is intentionally not exposed by a user/coach route. A dedicated
+        internal release workflow supplies the fully reviewed manifest; live
+        product tables are never queried as an ad-hoc training dataset.
+        """
+        if not isinstance(manifest, dict) or not manifest.get(
+                "manifest_checksum"):
+            return None
+        try:
+            result = self.client.rpc("create_dataset_release_v1", {
+                "p_manifest": manifest,
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.warning(
+                "dataset release create failed release=%s: %s",
+                manifest.get("release_identifier"), error,
+            )
+            return None
+
+    def record_canonical_processing_stage(
+        self, *, processing_job_id: Optional[str], owner_principal_id: str,
+        project_id: str, take_id: str, stage: str, status: str,
+        attempt_count: int, input_hash: str,
+        idempotency_key: str, output_hash: Optional[str] = None,
+        error: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """Create or advance one idempotent canonical stage attempt.
+
+        The compatibility processing job remains the product polling model.
+        This ledger is provenance only and is best-effort until parity gates
+        promote it, while the SQL function strictly validates ownership,
+        monotonic transitions and terminal immutability.
+        """
+        if (not all((owner_principal_id, project_id, take_id, stage, status,
+                    input_hash, idempotency_key))
+                or isinstance(attempt_count, bool) or attempt_count < 1):
+            return None
+        try:
+            result = self.client.rpc("record_processing_stage_run_v1", {
+                "p_processing_job_id": (
+                    str(processing_job_id) if processing_job_id else None
+                ),
+                "p_owner_principal_id": str(owner_principal_id),
+                "p_project_id": str(project_id),
+                "p_take_id": str(take_id),
+                "p_stage": str(stage),
+                "p_status": str(status),
+                "p_attempt_count": int(attempt_count),
+                "p_input_hash": str(input_hash),
+                "p_output_hash": str(output_hash) if output_hash else None,
+                "p_idempotency_key": str(idempotency_key),
+                "p_error": error if isinstance(error, dict) else None,
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as stage_error:
+            logger.warning(
+                "canonical processing stage dual-write failed "
+                "take=%s stage=%s status=%s: %s",
+                take_id, stage, status, stage_error,
+            )
+            return None
+
+    def get_canonical_feedback_parity(
+        self, take_id: str,
+    ) -> Optional[dict]:
+        """Internal observation-only compatibility/canonical parity report."""
+        if not take_id:
+            return None
+        try:
+            result = self.client.rpc("feedback_data_parity_v1", {
+                "p_take_id": str(take_id),
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as parity_error:
+            logger.warning(
+                "canonical feedback parity read failed take=%s: %s",
+                take_id, parity_error,
+            )
+            return None
+
     def insert_take_feedback_self_report(
         self, *, arc_id: str, take_session_id: str, owner_user_id: str,
         feedback_id: str, feedback_family: str, response: str,
@@ -11600,6 +11972,28 @@ class DatabaseService:
             # live lock appear failed after the state already landed.
             logger.warning("part revision append failed: %s", e)
             return False
+
+    def get_latest_ideal_text_part_revision(
+        self, *, arc_id: str, user_id: str, part_id: str,
+    ) -> Optional[dict]:
+        """Latest immutable compatibility revision for dual-write identity."""
+        if not all((arc_id, user_id, part_id)):
+            return None
+        try:
+            rows = (self.client.table("ideal_text_part_revision")
+                    .select("id,action,created_at")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .eq("part_id", str(part_id))
+                    .order("id", desc=True)
+                    .limit(1).execute().data) or []
+            return rows[0] if rows and isinstance(rows[0], dict) else None
+        except Exception as revision_error:
+            logger.warning(
+                "latest part revision read failed arc=%s part=%s: %s",
+                arc_id, part_id, revision_error,
+            )
+            return None
 
     def replace_ideal_text_parts(
         self, arc_id: str, user_id: str, parts: list,
