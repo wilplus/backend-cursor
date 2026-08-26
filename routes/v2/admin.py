@@ -29,6 +29,7 @@ from services.rate_limits import llm_limit, regenerate_limit
 from config import Config
 from routes.v2.blueprint import v2_bp
 from services.db import db
+from services import admin_user_directory
 from services.snippet_values import resolve_all
 from services.snippet_tables import SNIPPETS_TABLE
 
@@ -42,6 +43,47 @@ config = Config()
 def v2_admin_health():
     """Debug: verify admin routes are reachable. Returns 200 if token is valid and admin."""
     return jsonify({"status": "ok", "message": "Admin API reachable"}), 200
+
+
+@v2_bp.route("/admin/users", methods=["GET"])
+@require_admin
+def v2_admin_users():
+    """List a bounded page of accounts for the admin-only user directory."""
+    try:
+        try:
+            limit = int(request.args.get("limit", "50"))
+            offset = int(request.args.get("offset", "0"))
+        except (TypeError, ValueError):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "limit and offset must be integers",
+            }), 400
+
+        if limit < 1 or offset < 0:
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "limit must be positive and offset cannot be negative",
+            }), 400
+
+        result = admin_user_directory.list_users(
+            limit=limit,
+            offset=offset,
+            search=request.args.get("search", ""),
+        )
+        return jsonify(result), 200
+    except admin_user_directory.AdminUserDirectoryError as exc:
+        logger.warning("admin/users GET unavailable: %s", exc)
+        return jsonify({
+            "code": "SERVICE_UNAVAILABLE",
+            "error": "User directory is temporarily unavailable",
+        }), 503
+    except Exception as exc:
+        logger.error("admin/users GET failed: %s", exc, exc_info=True)
+        sentry_sdk.capture_exception(exc)
+        return jsonify({
+            "code": "V2_ERROR",
+            "error": "Failed to load users",
+        }), 500
 
 
 # How many coaching-attempt annotations an admin needs before

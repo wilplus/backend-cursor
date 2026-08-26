@@ -3409,6 +3409,9 @@ class DatabaseService:
                     "user_id": uid,
                     "email": u.get("email") or (u.get("user_metadata") or {}).get("email"),
                     "name": (str(raw_name).strip() if raw_name is not None and str(raw_name).strip() else None),
+                    "created_at": u.get("created_at"),
+                    "last_sign_in_at": u.get("last_sign_in_at"),
+                    "email_confirmed_at": u.get("email_confirmed_at"),
                 })
             return out
         except Exception:
