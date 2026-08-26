@@ -447,22 +447,24 @@ def test_ml_capability_v2_consolidates_rows_and_separates_datasets():
     assert "latest_content->'citations'" in sql
 
 
-def test_ml_learning_urgency_v3_preserves_global_order_across_features():
+def test_ml_learning_table_v3_splits_confident_voice_from_shadowing():
     sql = (
         Path(__file__).parents[1]
         / "migrations"
-        / "update_ceo_ml_learning_urgency_v3.sql"
+        / "update_ceo_ml_learning_table_v3.sql"
     ).read_text()
 
-    assert "'Learning capability'" in sql
-    assert "'1. Confident Voice Classifier'" in sql
-    assert "'2. Verbal-Correction Generator'" in sql
-    assert "'7. Ideal Text Generator'" in sql
-    assert "'Blind, Provenance-Separated Labels'" in sql
-    assert "'Authoritative User and Coach Revisions'" in sql
-    assert "learning-implementation-urgency-rule" in sql
-    assert "not product importance" in sql
-    assert "founder_seed_ceo_ml_learning_urgency_v3" in sql
+    assert "'App component'" in sql
+    assert "'What it will learn'" in sql
+    assert "'Training signal'" in sql
+    assert "'Likely model'" in sql
+    assert "'Confident Voice detection/selection'" in sql
+    assert "'Praise wording'" in sql
+    assert "'Coach comment drafting'" in sql
+    assert "'Separate user, blind coach and blind peer labels'" in sql
+    assert "'Dedicated Ideal Text SFT/DPO model'" in sql
+    assert "founder_seed_ceo_ml_learning_table_v3" in sql
     assert "COALESCE(MAX(revision.version), 0) + 1" in sql
     assert "latest_content->'risks'" in sql
+    assert "latest_content->'next_steps'" in sql
     assert "latest_content->'citations'" in sql
