@@ -158,7 +158,7 @@ def test_bootstrap_attaches_reevaluation_status_to_comments():
     }]
 
 
-def test_architecture_content_is_normalized_to_fixed_contract():
+def test_legacy_architecture_content_is_normalized_to_grid_contract():
     normalized = ceo.normalize_artifact_content("architecture", {
         "flows": [{
             "input": "Voice sample",
@@ -171,11 +171,46 @@ def test_architecture_content_is_normalized_to_fixed_contract():
         "invented_section": [{"text": "ignored"}],
     })
 
-    assert set(normalized) == {"flows", "risks", "next_steps", "citations"}
-    assert set(normalized["flows"][0]) == {
-        "id", "input", "measurement", "output",
-    }
+    assert set(normalized) == {"columns", "rows", "risks", "next_steps", "citations"}
+    assert normalized["columns"] == [
+        {"id": "input", "label": "Input"},
+        {"id": "measurement", "label": "Measurement"},
+        {"id": "output", "label": "Output"},
+    ]
+    assert normalized["rows"][0]["cells"] == [
+        {"column_id": "input", "value": "Voice sample"},
+        {"column_id": "measurement", "value": "F0 variance"},
+        {"column_id": "output", "value": "Practice intervention"},
+    ]
     assert normalized["risks"][0]["text"] == "Sparse baseline"
+
+
+def test_architecture_grid_fills_missing_cells_in_column_order():
+    normalized = ceo.normalize_artifact_content("architecture", {
+        "columns": [
+            {"id": "signal", "label": "Signal"},
+            {"id": "owner", "label": "Owner"},
+        ],
+        "rows": [{
+            "id": "row-1",
+            "cells": [{"column_id": "owner", "value": "ML"}],
+        }],
+    })
+
+    assert normalized["rows"][0]["cells"] == [
+        {"column_id": "signal", "value": ""},
+        {"column_id": "owner", "value": "ML"},
+    ]
+
+
+def test_architecture_cells_must_reference_a_saved_column():
+    with pytest.raises(ceo.CeoValidationError, match="reference a saved column"):
+        ceo.normalize_artifact_content("architecture", {
+            "columns": [{"id": "signal", "label": "Signal"}],
+            "rows": [{
+                "cells": [{"column_id": "missing", "value": "Unknown"}],
+            }],
+        })
 
 
 def test_ml_edges_must_reference_nodes_in_the_same_revision():

@@ -335,15 +335,113 @@ def _identified_rows(
     return rows
 
 
+def _default_architecture_columns() -> list[dict]:
+    return [
+        {"id": "input", "label": "Input"},
+        {"id": "measurement", "label": "Measurement"},
+        {"id": "output", "label": "Output"},
+    ]
+
+
+def _architecture_columns(value: Any) -> list[dict]:
+    if value is None or value == []:
+        return _default_architecture_columns()
+    columns = _identified_rows(
+        "columns", value, fields=("label",), maximum_rows=20, maximum_text=120
+    )
+    seen: set[str] = set()
+    for index, column in enumerate(columns):
+        if not column["label"]:
+            raise CeoValidationError(f"columns[{index}].label is required")
+        if column["id"] in seen:
+            raise CeoValidationError("Architecture column ids must be unique")
+        seen.add(column["id"])
+    return columns
+
+
+def _architecture_rows(value: Any, columns: list[dict]) -> list[dict]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise CeoValidationError("rows must be a list")
+    if len(value) > 100:
+        raise CeoValidationError("rows has too many rows")
+    column_ids = {column["id"] for column in columns}
+    normalized: list[dict] = []
+    for row_index, raw_row in enumerate(value):
+        if not isinstance(raw_row, dict):
+            raise CeoValidationError(f"rows[{row_index}] must be an object")
+        raw_cells = raw_row.get("cells")
+        if not isinstance(raw_cells, list):
+            raise CeoValidationError(f"rows[{row_index}].cells must be a list")
+        if len(raw_cells) > 20:
+            raise CeoValidationError(f"rows[{row_index}].cells has too many cells")
+        values: dict[str, str] = {}
+        for cell_index, raw_cell in enumerate(raw_cells):
+            if not isinstance(raw_cell, dict):
+                raise CeoValidationError(
+                    f"rows[{row_index}].cells[{cell_index}] must be an object"
+                )
+            column_id = _text(
+                f"rows[{row_index}].cells[{cell_index}].column_id",
+                raw_cell.get("column_id"), maximum=80, required=True,
+            )
+            if column_id not in column_ids:
+                raise CeoValidationError(
+                    "each Architecture cell must reference a saved column"
+                )
+            if column_id in values:
+                raise CeoValidationError(
+                    "each Architecture row may contain one cell per column"
+                )
+            values[column_id] = _text(
+                f"rows[{row_index}].cells[{cell_index}].value",
+                raw_cell.get("value"), maximum=4000,
+            )
+        normalized.append({
+            "id": _text(
+                f"rows[{row_index}].id", raw_row.get("id") or uuid4(),
+                maximum=80, required=True,
+            ),
+            "cells": [
+                {"column_id": column["id"], "value": values.get(column["id"], "")}
+                for column in columns
+            ],
+        })
+    return normalized
+
+
+def _legacy_architecture_grid(value: Any) -> tuple[list[dict], list[dict]]:
+    columns = _default_architecture_columns()
+    flows = _identified_rows(
+        "flows", value, fields=("input", "measurement", "output")
+    )
+    return columns, [
+        {
+            "id": flow["id"],
+            "cells": [
+                {"column_id": "input", "value": flow["input"]},
+                {"column_id": "measurement", "value": flow["measurement"]},
+                {"column_id": "output", "value": flow["output"]},
+            ],
+        }
+        for flow in flows
+    ]
+
+
 def normalize_artifact_content(lens: str, content: Any) -> dict:
-    """Validate one manual artifact revision against the fixed lens contract."""
+    """Validate one artifact revision against its bounded lens contract."""
     if not isinstance(content, dict):
         raise CeoValidationError("content must be an object")
     if lens == "architecture":
+        if "columns" not in content and "rows" not in content and "flows" in content:
+            columns, architecture_rows = _legacy_architecture_grid(content.get("flows"))
+        else:
+            columns = _architecture_columns(content.get("columns"))
+            architecture_rows = _architecture_rows(content.get("rows"), columns)
         return {
-            "flows": _identified_rows(
-                "flows", content.get("flows"), fields=("input", "measurement", "output")
-            ),
+            "columns": columns,
+            "rows": architecture_rows,
             "risks": _identified_rows(
                 "risks", content.get("risks"), fields=("text",)
             ),

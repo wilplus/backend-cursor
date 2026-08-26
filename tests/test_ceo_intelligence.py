@@ -34,6 +34,32 @@ def _pilot_rows() -> dict:
     }
 
 
+def _architecture_content(*, with_row: bool = False) -> dict:
+    rows = []
+    if with_row:
+        rows = [{
+            "id": "recording-flow",
+            "cells": [
+                {"column_id": "input", "value": "Recording"},
+                {
+                    "column_id": "measurement",
+                    "value": "Qualitative voice evidence",
+                },
+                {"column_id": "output", "value": "Practice guidance"},
+            ],
+        }]
+    return {
+        "columns": [
+            {"id": "input", "label": "Input"},
+            {"id": "measurement", "label": "Measurement"},
+            {"id": "output", "label": "Output"},
+        ],
+        "rows": rows,
+        "risks": [],
+        "next_steps": [],
+    }
+
+
 def test_manual_source_is_immutable_snapshot_for_pilot_only():
     client = FakeSupabaseClient(
         _pilot_rows(),
@@ -76,23 +102,18 @@ def test_analysis_request_is_durable_and_dispatched_only_when_new(monkeypatch):
 
 
 def test_generated_content_drops_unknown_citations_and_normalizes_rows():
+    generated = _architecture_content(with_row=True)
+    generated["risks"] = [{"text": "Sparse evidence"}]
+    generated["next_steps"] = [{"text": "Validate the pipeline"}]
     content = intelligence._generated_content("architecture", {
-        "content": {
-            "flows": [{
-                "input": "Recording",
-                "measurement": "Qualitative voice evidence",
-                "output": "Practice guidance",
-            }],
-            "risks": [{"text": "Sparse evidence"}],
-            "next_steps": [{"text": "Validate the pipeline"}],
-        },
+        "content": generated,
         "citations": [
             {"source_id": SOURCE_ID, "claim": "The source describes the pipeline."},
             {"source_id": "not-evidence", "claim": "Invented citation"},
         ],
     }, {SOURCE_ID})
 
-    assert content["flows"][0]["input"] == "Recording"
+    assert content["rows"][0]["cells"][0]["value"] == "Recording"
     assert len(content["citations"]) == 1
     assert content["citations"][0]["source_id"] == SOURCE_ID
 
@@ -100,7 +121,7 @@ def test_generated_content_drops_unknown_citations_and_normalizes_rows():
 def test_generated_content_requires_at_least_one_real_evidence_citation():
     with pytest.raises(intelligence.CeoIntelligenceError, match="citations"):
         intelligence._generated_content("architecture", {
-            "content": {"flows": [], "risks": [], "next_steps": []},
+            "content": _architecture_content(),
             "citations": [{"source_id": "invented", "claim": "Unsupported"}],
         }, {SOURCE_ID})
 
@@ -132,7 +153,7 @@ def test_worker_creates_preview_with_usage_and_evidence(monkeypatch):
     )
     result = SimpleNamespace(
         parsed={
-            "content": {"flows": [], "risks": [], "next_steps": []},
+            "content": _architecture_content(),
             "citations": [{"source_id": SOURCE_ID, "claim": "The source exists."}],
         },
         model="gpt-test",
@@ -180,7 +201,7 @@ def test_bootstrap_exposes_preview_metadata_without_source_bodies():
         "ceo_artifact_revisions": [{
             "id": REVISION_ID,
             "status": "preview",
-            "content": {"flows": []},
+            "content": _architecture_content(),
         }],
         "ceo_source_snapshots": [{
             "id": SOURCE_ID,

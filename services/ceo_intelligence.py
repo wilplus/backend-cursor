@@ -634,23 +634,45 @@ def _schema(lens: str) -> dict:
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "flows": {
+                "columns": {
                     "type": "array",
                     "items": {
                         "type": "object",
                         "additionalProperties": False,
                         "properties": {
-                            "input": {"type": "string"},
-                            "measurement": {"type": "string"},
-                            "output": {"type": "string"},
+                            "id": {"type": "string"},
+                            "label": {"type": "string"},
                         },
-                        "required": ["input", "measurement", "output"],
+                        "required": ["id", "label"],
+                    },
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "id": {"type": "string"},
+                            "cells": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "column_id": {"type": "string"},
+                                        "value": {"type": "string"},
+                                    },
+                                    "required": ["column_id", "value"],
+                                },
+                            },
+                        },
+                        "required": ["id", "cells"],
                     },
                 },
                 "risks": {"type": "array", "items": text_row},
                 "next_steps": {"type": "array", "items": text_row},
             },
-            "required": ["flows", "risks", "next_steps"],
+            "required": ["columns", "rows", "risks", "next_steps"],
         }
     else:
         content = {
@@ -721,6 +743,8 @@ def _prompt(run: dict, evidence: Iterable[Evidence]) -> str:
         f"Feature: Confident Voice Practice\nLens: {run.get('lens')}\n"
         f"Reason for this evaluation: {run.get('reason') or 'source sync'}\n"
         "Build a concise proposal from the evidence below. Cite only exact SOURCE UUIDs.\n"
+        "For Architecture, use stable short column IDs and make every cell column_id "
+        "match one declared column exactly.\n"
         + "".join(blocks)
     )
 
