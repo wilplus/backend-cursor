@@ -250,13 +250,14 @@ def run_full_analysis(
                     session_id, _bpe,
                 )
 
-        # INITIAL IDEAL TEXT (L1 + founder confirmation gate, 2026-08-26).
+        # IDEAL TEXT + TAKE REVIEW (L1 + confirmation gate, 2026-08-26).
         # Take 1 creates the one canonical document. Its generation is NOT
         # best-effort: the worker may return successfully only after a fresh
         # database read proves non-empty persisted text. Take 2+ still creates
-        # feedback moments, but never calls the assembler at all; therefore a
-        # missing Take 1 document can never be silently backfilled by a later
-        # transcript.
+        # feedback moments, but never calls the assembler; after the acoustic
+        # fold below, one atomic finalizer advances only the REVIEW identity.
+        # A missing Take 1 document can therefore never be silently backfilled
+        # by a later transcript, while every real Take still earns 2.0/3.0.
         #
         # Force-alignment on reads is RETIRED with the read-out-loud lane
         # (founder 2026-08-05). It had ground truth to align against — the
@@ -412,22 +413,35 @@ def run_full_analysis(
                     "lab: swap offer failed sid=%s: %s (non-fatal)",
                     session_id, _sw_err,
                 )
-    # SESSION TERMINAL RESULT — deliberately OUTSIDE the pipeline timeline.
-    # Reaching here means every stage above returned successfully. Take 1 has
-    # its document-version ready card; Take 2+ keeps that document by L1 and
-    # therefore needs its own per-session terminal identity instead. Best-
-    # effort here is safe because the browser writes the same idempotent row
-    # when it observes the completed job.
+    # LATER-TAKE TERMINAL BOUNDARY — deliberately after every analysis/KPI/
+    # swap stage. Reaching here does NOT by itself mean success: Take 2+ must
+    # atomically establish its exact review version and historical snapshot.
+    # The operation preserves the canonical/user-edited words; it changes the
+    # review identity only. A fresh database read inside the service proves the
+    # state before the normal 2.0/3.0 card is emitted.
     if (user_id and arc_id and recording_kind == "spoken"
             and isinstance(take_index, int) and not isinstance(take_index, bool)
             and take_index > 1):
+        from services.take_review import finalize_later_take_review
+        _review = finalize_later_take_review(
+            db,
+            arc_id=str(arc_id),
+            owner_user_id=str(user_id),
+            take_session_id=str(session_id),
+            take_index=take_index,
+        )
         try:
-            from services.arc_notifications import fire_take_processed
-            fire_take_processed(
-                db, user_id, arc_id, session_id, take_index)
+            from services.arc_notifications import fire_ideal_version_ready
+            _announced = fire_ideal_version_ready(
+                db, user_id, arc_id, _review["version"])
+            if not _announced:
+                logger.error(
+                    "lab: review version card was not persisted sid=%s "
+                    "arc=%s version=%s",
+                    session_id, arc_id, _review["version"])
         except Exception as _take_result_err:
             logger.warning(
-                "lab: take result failed sid=%s: %s (non-fatal)",
+                "lab: review version card failed sid=%s: %s (non-fatal)",
                 session_id, _take_result_err,
             )
     return readout_local, sent_local

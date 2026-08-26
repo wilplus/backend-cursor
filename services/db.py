@@ -10915,6 +10915,116 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    def finalize_ideal_text_take(
+        self,
+        arc_id: str,
+        owner_user_id: str,
+        take_session_id: str,
+        take_index: int,
+        moments: Any,
+    ) -> Optional[dict]:
+        """Atomically advance a later Take's review version.
+
+        The SQL boundary preserves the canonical/owner-edited body, carries a
+        current owner edit to the new review identity, and appends the matching
+        historical snapshot in one transaction.  There is deliberately no
+        direct-update fallback: reporting a successful Take between those
+        writes is the lifecycle bug this RPC removes.
+        """
+        if (not arc_id or not owner_user_id or not take_session_id
+                or isinstance(take_index, bool)
+                or not isinstance(take_index, int) or take_index < 2):
+            return None
+        result = self.client.rpc("finalize_ideal_text_take_v1", {
+            "p_arc_id": str(arc_id),
+            "p_owner_user_id": str(owner_user_id),
+            "p_take_session_id": str(take_session_id),
+            "p_take_index": take_index,
+            "p_moments": moments if isinstance(moments, list) else [],
+        }).execute()
+        data = result.data
+        if isinstance(data, list):
+            return data[0] if data and isinstance(data[0], dict) else None
+        return data if isinstance(data, dict) else None
+
+    def get_ideal_text_feedback_set(
+        self, arc_id: Optional[str], take_session_id: Optional[str],
+    ) -> Optional[dict]:
+        """The immutable Manager selection for one Take, if already claimed."""
+        if not arc_id or not take_session_id:
+            return None
+        try:
+            res = (
+                self.client.table("ideal_text_feedback_sets")
+                .select("arc_id,take_session_id,take_index,review_version,"
+                        "selected_keys,created_at")
+                .eq("arc_id", str(arc_id))
+                .eq("take_session_id", str(take_session_id))
+                .limit(1)
+                .execute()
+            )
+            rows = res.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            low = str(e).lower()
+            if "ideal_text_feedback_sets" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                logger.warning(
+                    "get_ideal_text_feedback_set: table missing (run "
+                    "migrations/add_take_review_lifecycle.sql)")
+                return None
+            logger.warning(
+                "get_ideal_text_feedback_set failed arc=%s take=%s: %s",
+                arc_id, take_session_id, e)
+            return None
+
+    def claim_ideal_text_feedback_set(
+        self,
+        arc_id: str,
+        owner_user_id: str,
+        take_session_id: str,
+        take_index: int,
+        review_version: int,
+        selected_keys: list,
+    ) -> Optional[dict]:
+        """Insert-once Manager selection; a racing caller receives the winner."""
+        if (not arc_id or not owner_user_id or not take_session_id
+                or isinstance(take_index, bool)
+                or not isinstance(take_index, int) or take_index < 1
+                or review_version != take_index
+                or not isinstance(selected_keys, list)
+                or not 1 <= len(selected_keys) <= 3
+                or not any(
+                    isinstance(key, dict)
+                    and key.get("feedback_family") == "confident_voice"
+                    for key in selected_keys)):
+            return None
+        result = self.client.rpc("claim_ideal_text_feedback_set_v1", {
+            "p_arc_id": str(arc_id),
+            "p_owner_user_id": str(owner_user_id),
+            "p_take_session_id": str(take_session_id),
+            "p_take_index": take_index,
+            "p_review_version": review_version,
+            "p_selected_keys": selected_keys,
+        }).execute()
+        data = result.data
+        row = (data[0] if isinstance(data, list) and data
+               and isinstance(data[0], dict)
+               else data if isinstance(data, dict) else None)
+        if not isinstance(row, dict):
+            return None
+        if (str(row.get("arc_id") or "") != str(arc_id)
+                or str(row.get("take_session_id") or "")
+                != str(take_session_id)
+                or row.get("take_index") != take_index
+                or row.get("review_version") != review_version):
+            logger.error(
+                "claim_ideal_text_feedback_set returned conflicting "
+                "provenance arc=%s take=%s row=%s",
+                arc_id, take_session_id, row)
+            return None
+        return row
+
     def verify_ideal_text(self, arc_id: str, coach_id: Optional[str]) -> Optional[str]:
         """Coach VERIFY (single deliverable, founder 2026-07-17): snapshot the
         current best text as the VERIFIED copy of the CURRENT version — the

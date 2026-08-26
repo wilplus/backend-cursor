@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
+from unittest.mock import patch
 
 from services import manager_engine as me
 
@@ -417,6 +418,20 @@ class TestScienceControls(unittest.TestCase):
         out = me.arbitrate([_c()], user, session_id="s1", controls=False)
         self.assertEqual(out["control_held"], [])
         self.assertEqual(out["withheld"], [])
+
+    def test_protected_dimension_bypasses_control_and_withhold(self):
+        user = me.UserState(user_id="u1",
+                            state_by_dimension={"required": me.APPRENTICE})
+        with patch.object(me, "in_control", return_value=True), \
+             patch.object(me, "is_withheld", return_value=True):
+            out = me.arbitrate(
+                [_c("required")], user, session_id="s1",
+                protected_dimensions={"required"},
+            )
+        self.assertEqual([c.dimension for c in out["selected"]], ["required"])
+        self.assertEqual(out["control_held"], [])
+        self.assertEqual(out["withheld"], [])
+        self.assertEqual(out["protected"], ["required"])
 
     def test_no_user_id_means_no_arm(self):
         """Fail OPEN on the controls: an anonymous or unattributed candidate

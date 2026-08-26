@@ -444,55 +444,6 @@ def fire_ideal_version_ready(db, user_id: Any, arc_id: Any,
     )
 
 
-def fire_take_processed(db, user_id: Any, arc_id: Any,
-                        take_session_id: Any, take_index: Any) -> bool:
-    """One terminal result for one LATER take, keyed by session identity.
-
-    Ideal-text ready bubbles are correctly keyed by document VERSION. Under
-    the locked L1 model, however, Take 2+ never changes that version; using it
-    as the processing-result identity deduped the only completion message and
-    left the Lounge spinner to disappear silently. A processing result is a
-    SESSION fact, so its UUID is both the event identity and Lounge client_id.
-
-    The frontend uses the same UUID as its reconnect fallback. The database's
-    (user_id, client_id) upsert therefore converges backend completion, an open
-    tab, a resumed tab, and retries onto exactly one durable card."""
-    if not user_id or not arc_id:
-        return False
-    if (isinstance(take_index, bool) or not isinstance(take_index, int)
-            or take_index <= 1):
-        return False
-    try:
-        session_id = str(uuid.UUID(str(take_session_id)))
-    except (ValueError, AttributeError, TypeError):
-        return False
-    try:
-        persisted = db.insert_lounge_messages(str(user_id), [{
-            "client_id": session_id,
-            "role": "bot",
-            "kind": "ideal_text",
-            "body": "Take processed. Your Ideal Text was kept unchanged.",
-            "metadata": {
-                "variant": "take_processed",
-                "arc_id": str(arc_id),
-                "take_session_id": session_id,
-                "take_index": take_index,
-            },
-            "client_created_at": datetime.now(timezone.utc).isoformat(),
-        }])
-        if not persisted:
-            logger.error(
-                "arc_notifications: take result dropped arc=%s sid=%s",
-                arc_id, session_id)
-            return False
-        return True
-    except Exception as e:
-        logger.warning(
-            "arc_notifications: take result failed arc=%s sid=%s: %s",
-            arc_id, session_id, e)
-        return False
-
-
 def fire_ideal_text_unconfirmed(db, user_id: Any, arc_id: Any,
                                 take_session_id: Any,
                                 take_index: Any) -> bool:

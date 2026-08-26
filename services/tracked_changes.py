@@ -217,7 +217,8 @@ def _kind_and_source(sug: dict) -> tuple:
         # rides the payload. Both vocabularies on purpose: historical rows
         # keep the words they were written with (charisma-era rows stay
         # interpretable; the construct is retired, the rows are corpus).
-        if sug.get("trigger") in ("confident", "charisma"):
+        if sug.get("trigger") in (
+                "confident", "confidence_review", "charisma"):
             return ("bold", "confident_voice")
         return ("bold", "wording")
     if k == "replace":
@@ -388,7 +389,7 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
         # nobody offered.
         if kind == "replace" and source in ("polish", "wording"):
             entry["why_key"] = "clarity"      # composition — changes words
-        elif kind == "bold":
+        elif kind == "bold" and source != "confident_voice":
             entry["why_key"] = "emphasis"     # accentuation — styles words
         if kind == "replace":
             _repl = (sug.get("replacement_text") or "").strip()
@@ -398,6 +399,16 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
             entry["why"] = sug.get("why")
         elif kind == "bold":
             entry["why"] = sug.get("why")
+            if source == "confident_voice":
+                # Acoustic evidence belongs on the Confident Voice row too.
+                # Keep only the closed cue vocabulary; the FE owns all copy.
+                _cues = sug.get("cue_keys")
+                if isinstance(_cues, (list, tuple)):
+                    from services.delivery_cues import CUE_KEYS as _KNOWN
+                    _cues = [c for c in _cues
+                             if isinstance(c, str) and c in _KNOWN]
+                    if _cues:
+                        entry["cue_keys"] = _cues
         else:   # advice — the FE renders copy from the device
             entry["device"] = sug.get("trigger")
             entry["why"] = None

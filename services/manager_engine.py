@@ -522,6 +522,10 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
 
     rows: list[dict] = []
     seen: set[str] = set()
+    # Product-contract rows are outside the experiment by construction. They
+    # were neither eligible for gamma control nor intervention withholding,
+    # so stamping them TREATED would fabricate an assignment that never ran.
+    protected = {str(d) for d in (result.get("protected") or [])}
 
     # DEDUP HERE TOO. Two same-lane winners in one serve (routine — the
     # budget is 3 and the lanes are few) would produce two rows with the
@@ -531,6 +535,8 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     # zero rows. First winner carries the lane's row, same rule as the
     # other three loops.
     for c in result.get("selected") or ():
+        if c.dimension in protected:
+            continue
         if c.dimension in seen:
             continue
         seen.add(c.dimension)
@@ -543,6 +549,8 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     # important arm to record: it is the only evidence the condition occurred
     # at all. `would_have_surfaced` is True by construction — it won.
     for dimension in result.get("withheld") or ():
+        if dimension in protected:
+            continue
         if dimension in seen:
             continue
         seen.add(dimension)
@@ -552,6 +560,8 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     # removed from the pool BEFORE ranking, so whether it would have won is
     # genuinely unknown; writing False would assert something never tested.
     for dimension in result.get("control_held") or ():
+        if dimension in protected:
+            continue
         if dimension in seen:
             continue
         seen.add(dimension)
@@ -561,12 +571,16 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     # `would_have_surfaced` is False and that is exact: it lost the slot on
     # the policy the experiment is testing, which is the outcome to record.
     for dimension in result.get("budget_lost") or ():
+        if dimension in protected:
+            continue
         if dimension in seen:
             continue
         seen.add(dimension)
         rows.append(row(dimension, ARM_NOT_SELECTED, would=False))
 
     for dimension, _why in result.get("rejected") or ():
+        if dimension in protected:
+            continue
         if dimension in seen:
             continue
         seen.add(dimension)
@@ -584,7 +598,8 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
               budget_spent: int = 0,
               budget_limit: Optional[int] = None,
               group_of: Optional[Callable[[Candidate], Any]] = None,
-              spent_by_group: Optional[Mapping[Any, int]] = None) -> dict:
+              spent_by_group: Optional[Mapping[Any, int]] = None,
+              protected_dimensions: Optional[Iterable[str]] = None) -> dict:
     """H.7 — the whole policy, in the order the appendix specifies.
 
     Returns the selected findings AND the counterfactual: what would have
@@ -606,6 +621,7 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     the caller and the count simply arrives lower.
     """
     everything = list(candidates)
+    protected = {str(d) for d in (protected_dimensions or []) if str(d)}
     rejected: list[tuple[Candidate, str]] = []
 
     # 0 · gamma_control — the PERMANENT holdout, removed from the POOL.
@@ -619,7 +635,8 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     if controls:
         pool = []
         for c in everything:
-            if in_control(user.user_id, c.dimension):
+            if c.dimension not in protected \
+                    and in_control(user.user_id, c.dimension):
                 control_held.append(c)
                 rejected.append((c, "gamma_control"))
             else:
@@ -711,14 +728,17 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
         if swap is not None:
             drop: Optional[Candidate]
             if group_of is None:
-                drop = counterfactual[-1]
+                drop = next((c for c in reversed(counterfactual)
+                             if c.dimension not in protected), None)
             else:
                 # WITHIN THE SWAP'S OWN GROUP, so the trade cannot push a
                 # slide to three. The lowest-ranked selected member of that
                 # group gives up the slot; if the group somehow holds none,
                 # there is no slot to trade and exploration sits this one out.
                 g = group_of(swap)
-                mine = [c for c in counterfactual if group_of(c) == g]
+                mine = [c for c in counterfactual
+                        if group_of(c) == g
+                        and c.dimension not in protected]
                 drop = mine[-1] if mine else None
             if drop is not None:
                 selected = [c for c in selected if c.ref != drop.ref]
@@ -736,7 +756,8 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     if controls and session_id:
         shown = []
         for c in selected:
-            if is_withheld(user.user_id, c.dimension, session_id):
+            if c.dimension not in protected \
+                    and is_withheld(user.user_id, c.dimension, session_id):
                 withheld.append(c)
             else:
                 shown.append(c)
@@ -755,6 +776,7 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
         # are not observations.
         "control_held": [c.dimension for c in control_held],
         "withheld": [c.dimension for c in withheld],
+        "protected": sorted(protected),
         # RANKED, UNCOLLIDED, AND BEATEN ONLY BY THE BUDGET. These had no arm
         # row at all: arm_rows walks selected / withheld / control / rejected,
         # and a budget loser is in none of those — so "one row per CONSIDERED
