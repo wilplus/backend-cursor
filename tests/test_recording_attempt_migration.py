@@ -25,7 +25,8 @@ def test_migration_is_additive_and_manifested_as_0297():
     assert not re.search(r"\bTRUNCATE\b", SQL, re.I)
     assert not re.search(r"\bDELETE\s+FROM\b", SQL, re.I)
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-1] == "0297\tadd_recording_attempt_take_boundary.sql"
+    entries = dict(line.split("\t", 1) for line in manifest if "\t" in line)
+    assert entries["0297"] == "add_recording_attempt_take_boundary.sql"
 
 
 def test_attempt_take_and_transition_tables_are_service_role_only():
