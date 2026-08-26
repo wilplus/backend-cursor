@@ -44,7 +44,9 @@ RSNIP = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 
 def _session_row(sid=SPOKEN, **over):
     row = {"id": sid, "user_id": "u1", "arc_id": None,
-           "intake_context": {"topic": "Demo", "domain": "sales"},
+           "intake_context": {
+               "topic": "Demo", "domain": "sales", "language": "en",
+           },
            "status": "pending_admin_review",
            "review_requested_at": "2026-07-16T10:00:00Z",
            "results_published_at": None,
@@ -120,6 +122,8 @@ class CoachGetFoldTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(v2.db, "v2_get_session_by_id",
                               return_value=_session_row()), \
+                 patch.object(v2.db, "get_user_proficient_languages",
+                              return_value=["en"]), \
                  patch.object(v2.db, "claim_coach_review",
                               return_value={"assigned_to": "coach1",
                                             "claimed": True}), \
@@ -310,6 +314,8 @@ class QueueRowShapeTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(v2.db, "list_review_queue",
                               return_value=[row]), \
+                 patch.object(v2.db, "get_user_proficient_languages",
+                              return_value=["en"]), \
                  patch.object(v2.db, "get_snippets_by_session",
                               return_value=[]), \
                  patch.object(v2.db, "get_coach_snippet_drafts",

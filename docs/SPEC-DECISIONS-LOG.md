@@ -314,3 +314,76 @@ Today every session in an arc belongs to the arc owner, so the game is 100% self
 own-first ordering is a no-op that becomes load-bearing the day a round can carry someone else's
 clip. `routing_priority` / `rating_queue` are the ordering that queue will read; the queue
 itself, its consent surface and its FE are a separate build.
+
+---
+
+## K · Confidence evidence, evaluation and rollout — current contract (founder 2026-08-25)
+
+This section supersedes J wherever the older binary/neutral instrument or IDK settlement rule
+conflicts with it. Historical rows keep their question version and remain interpretable; they are
+not rewritten into the new meaning.
+
+**K1 · Five distinct answers, one visual hierarchy.** The current instrument is
+`conf-q-v2`: `yes`, `in_between`, and `no` are perceptual judgments; `not_sure` is rater
+uncertainty; `audio_unclear` is a technical failure. The UI gives the first three equal primary
+weight and renders the last two as secondary utilities. None is coerced into another.
+
+**K2 · Audio first, answer first.** Blind raters hear the audio without transcript, machine
+prediction, score, explanation, or contextual recommendation. The transcript may be released
+only after the rating is committed. Model selection provenance remains server-side.
+
+**K3 · Strict language eligibility.** A rater must have the clip language in their verified
+proficient-language profile. Unknown/mismatched language fails closed; it is never relaxed to
+fill a queue.
+
+**K4 · Two-human perceptual quorum.** Exactly matching `yes`, `in_between`, or `no` answers
+from two independent eligible humans settle ground truth. A disagreement or `not_sure` routes a
+third. Three perceptual/uncertain answers without a matching perceptual pair become `UNRESOLVED`
+and enter neither training nor evaluation.
+
+**K5 · Technical failures are separate.** One `audio_unclear` routes the clip to a different
+eligible rater (`AUDIO_RETRY`). Two independent `audio_unclear` reports quarantine the artifact
+(`AUDIO_QUARANTINED`). Neither is a confidence label.
+
+**K6 · Coach and peer may form one panel.** An authenticated blind language-matched coach and
+an authenticated blind language-matched peer are equally valid independent panel members. The
+owner remains a self-report and never counts toward quorum. The machine remains a router and
+never votes.
+
+**K7 · No same-rater retries masquerading as independence.** After one technical failure, only
+a fresh eligible rater may answer. A rater may update an ordinary perceptual answer before the
+item closes, but cannot supply two independent votes.
+
+**K8 · Lane follows the verified act, not clip source.** A panel-grade blind coach answer is
+`coach` whether the audio came from a rehearsal or imported corpus. `bootstrap` is reserved for
+seeded/historical rows whose blindness, identity, or language conditions cannot be verified.
+
+**K9 · Mixed queue selection, with auditable inclusion probability.** The blind queue combines
+model-boundary active learning, balanced predicted regions, and genuine random exploration.
+Each selected clip stores the policy version, selection reason, and sampling probability. These
+never appear before the judgment. The random slice is the unbiased window; model-selected clips
+alone cannot estimate production performance.
+
+**K10 · Speaker-disjoint dataset releases.** Every clip from one speaker belongs to exactly one
+of train, validation, or test. The grouping key is an immutable speaker/owner identity, with a
+conservatively normalized imported-speaker label as the final allowed fallback; project,
+session, filename, and audio are never identity guesses. Unknown speakers fail closed. A
+versioned split manifest freezes test speakers; extensions may add new speakers only to train or
+validation. Language, device, source, sex (when declared), and acoustic-region balance are
+reported, never used to leak speakers across partitions.
+
+**K11 · Pre-registered multi-metric release gate.** Before test results are opened, a sealed
+plan names the model version, frozen dataset release, declared baseline, sample floors,
+macro-F1 threshold, per-class recall floors, calibration ceiling, and supported slice gates.
+Sparse slices report `insufficient_evidence`, never “passed.” A release fails on any global
+failure or adequately sampled slice regression. Thresholds have no code defaults and cannot be
+chosen after reading the frozen test result.
+
+**K12 · Controlled rollout; no self-promotion.** A model has only three states: `off`,
+`shadow`, and `limited`. Shadow predictions are internal and have no product effect. Limited
+mode requires the exact passing evaluation report and may nominate only a high-probability
+`yes` for a deterministic versioned cohort. The nomination must still pass Manager arbitration;
+it cannot style text, create feedback, change a coach verdict, or admit a clip to the Voice
+Album. Uncertain outputs abstain. A kill switch restores the deterministic route immediately.
+There is no full-rollout flag and no automatic online retraining/promotion; every new model
+version needs a new sealed evaluation and an explicit rollout decision.

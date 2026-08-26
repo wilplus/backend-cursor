@@ -137,18 +137,82 @@ def _coach_state_map(session_id, rater_id=None):
 
 def _confidence_queue_selection(session_id, session, snippets):
     """One source of truth for the blind queue and its post-label audit."""
-    from services.confidence_labels import stratified_label_queue
+    from services.confidence_labels import (
+        mixed_label_queue, selection_records, stored_selection_records,
+    )
 
     ctx = session.get("intake_context") if isinstance(
         session.get("intake_context"), dict) else {}
-    stored = ctx.get("label_queue")
-    if isinstance(stored, list) and stored:
-        wanted = {str(value) for value in stored}
-        return [
-            snippet for snippet in snippets
-            if str(snippet.get("id")) in wanted
-        ]
-    return stratified_label_queue(snippets, seed=str(session_id))
+    stored = stored_selection_records(ctx)
+    if stored:
+        by_id = {
+            str(snippet.get("id")): snippet
+            for snippet in snippets
+            if isinstance(snippet, dict) and snippet.get("id")
+        }
+        # Persisted cohort order is part of the blind assignment. A set here
+        # would quietly restore database order and could make position a tell.
+        return [by_id[record["snippet_id"]] for record in stored
+                if record["snippet_id"] in by_id]
+
+    selected = mixed_label_queue(snippets, seed=str(session_id))
+    records = selection_records(selected)
+    if records:
+        # Freeze the cohort and its selection provenance on first build.
+        db.set_session_intake_context(
+            str(session_id), {**ctx, "label_queue_selection": records})
+    return selected
+
+
+def _stored_confidence_queue_count(context):
+    """Canonical count for v2 cohorts and legacy ID-only sessions."""
+    from services.confidence_labels import stored_selection_records
+    return len(stored_selection_records(context))
+
+
+def _session_recording(session):
+    """Best-effort recording metadata used only for declared language."""
+    recording_id = session.get("recording_1_id") if isinstance(session, dict) else None
+    return db.get_recording(str(recording_id)) if recording_id else None
+
+
+def _rater_language_outcome(session, snippets=None, proficient=None):
+    """Resolve queue eligibility for the current authenticated rater.
+
+    Language is a routing dimension only. Unknown and mismatched clips are
+    withheld; they are never converted to ``not_sure`` or ``audio_unclear``.
+    """
+    from services.rater_languages import evaluate_rater_access, session_language
+
+    rater_id = str(getattr(request, "user_id", "") or "")
+    if proficient is None:
+        proficient = db.get_user_proficient_languages(rater_id)
+    language = session_language(
+        session,
+        recording=_session_recording(session),
+        snippets=snippets or [],
+    )
+    return evaluate_rater_access(proficient, language), language
+
+
+def _rater_language_error(outcome):
+    """HTTP workflow response for a non-routable blind-label request."""
+    if outcome == "profile_required":
+        return jsonify({
+            "code": "RATER_LANGUAGES_REQUIRED",
+            "error": "Choose the languages you understand before rating clips.",
+        }), 428
+    if outcome == "language_unknown":
+        return jsonify({
+            "code": "CLIP_LANGUAGE_UNKNOWN",
+            "error": "This clip has no verified language and cannot be routed.",
+        }), 409
+    if outcome == "mismatch":
+        return jsonify({
+            "code": "RATER_LANGUAGE_MISMATCH",
+            "error": "This clip is not in one of your selected languages.",
+        }), 409
+    return None
 
 
 def _coach_state_for(session_id, snippet_id):
@@ -642,10 +706,25 @@ def v2_coach_queue():
     fields). Read rows are folded into their parent take (never listed);
     has_reread marks the parent."""
     try:
+        # An unset profile is a setup state, not an empty queue: make the
+        # distinction explicit so the UI can ask once rather than silently
+        # suggesting that no work exists.
+        proficient = db.get_user_proficient_languages(
+            str(getattr(request, "user_id", "") or ""))
+        if not proficient:
+            return _rater_language_error("profile_required")
+
         rows = db.list_review_queue() or []
         out = []
         for r in rows:
             sid = r.get("id")
+            snippets = db.get_snippets_by_session(sid) or []
+            outcome, _language = _rater_language_outcome(
+                r, snippets, proficient=proficient)
+            if outcome != "matched":
+                # Unknown and mismatched sessions remain stored and can be
+                # routed to another eligible coach. They are not ratings.
+                continue
             ctx = r.get("intake_context") if isinstance(r.get("intake_context"), dict) else {}
             cstate = _coach_state_map(sid)
             out.append({
@@ -659,7 +738,7 @@ def v2_coach_queue():
                 # Annotation-mode uploads (T4) ride the SAME queue + UI,
                 # labeled so the coach can tell them from student takes.
                 "annotation_mode": bool((ctx or {}).get("annotation_mode")),
-                "n_snippets": len(db.get_snippets_by_session(sid) or []),
+                "n_snippets": len(snippets),
                 "state": _coach_session_state(r, cstate),
                 "sent_at": r.get("review_requested_at") or r.get("created_at") or "",
                 # Grouping labels (additive; None on pre-arc rows).
@@ -694,6 +773,13 @@ def v2_coach_get_session(session_id):
         session = db.v2_get_session_by_id(session_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+
+        snippets_for_language = db.get_snippets_by_session(session_id) or []
+        language_outcome, _language = _rater_language_outcome(
+            session, snippets_for_language)
+        language_error = _rater_language_error(language_outcome)
+        if language_error is not None:
+            return language_error
 
         # First open atomically owns the review.  Admins may inspect another
         # coach's assignment, but publishing then requires an audited override.
@@ -832,7 +918,9 @@ def v2_coach_get_session(session_id):
         # has committed a rating (or explicit technical abstention) for every
         # evidence piece in the packet.  Until then the server returns an
         # allowlisted audio+transcript packet, so a frontend regression cannot
-        # reveal the slide, analytics, or user-facing draft before the label.
+        # reveal words, slide, analytics, or user-facing draft before the
+        # label.  Each row's transcript is released only after THIS coach has
+        # committed that row's audio-only answer.
         from services.coach_blind_gate import (
             blind_label_progress, redact_contextual_snippets,
         )
@@ -2709,8 +2797,9 @@ def v2_coach_training_import():
                                   irrelevant to training.
                     A normal user's upload is never offered this and always
                     runs everything (POST /v2/lab/recordings, untouched).
-      queue_per_band (optional, int) how many pieces per confidence band to
-                    queue for labelling (default 5 → up to ~15-20 queued)
+      queue_per_band (optional, legacy int) review-budget unit. The mixed
+                    policy targets three times this value (default 5 → 15),
+                    divided across boundary, balance, and random exploration.
 
     ONE FILE PER REQUEST, on purpose: a batch endpoint would either block for
     minutes or need a job queue, and per-file requests give the FE real
@@ -2869,7 +2958,7 @@ def v2_coach_training_import_status(session_id):
             "speaker_label": ctx.get("speaker_label"),
             "language": ctx.get("language"),
             "snippet_count": len(snippets),
-            "queue_count": len(ctx.get("label_queue") or []),
+            "queue_count": _stored_confidence_queue_count(ctx),
             # Present on every poll, not just the terminal one: it is what
             # separates "never decoded" from "decoded but nothing
             # transcribed", and the FE renders it on the empty-import state.
@@ -2913,14 +3002,26 @@ def v2_coach_list_training_imports():
           duration_sec, archived_at}], count }
     """
     try:
+        proficient = db.get_user_proficient_languages(
+            str(getattr(request, "user_id", "") or ""))
+        if not proficient:
+            return _rater_language_error("profile_required")
+
         rows = db.list_training_import_sessions(
             user_id=(request.args.get("user_id") or None)) or []
         include_archived = (request.args.get("include_archived") or "") in (
             "1", "true", "yes")
-        labelled = db.count_labelled_snippets_by_session_ids(
-            [r.get("id") for r in rows])
-        out = []
+        routed = []
         for r in rows:
+            snippets = db.get_snippets_by_session(str(r.get("id"))) or []
+            outcome, _language = _rater_language_outcome(
+                r, snippets, proficient=proficient)
+            if outcome == "matched":
+                routed.append(r)
+        labelled = db.count_labelled_snippets_by_session_ids(
+            [r.get("id") for r in routed])
+        out = []
+        for r in routed:
             ctx = r.get("intake_context") if isinstance(
                 r.get("intake_context"), dict) else {}
             if ctx.get("archived_at") and not include_archived:
@@ -2934,7 +3035,7 @@ def v2_coach_list_training_imports():
                 # NULL analysis_state reads as 'ready': pre-async rows were
                 # only ever persisted after a completed synchronous analysis.
                 "status": r.get("analysis_state") or "ready",
-                "queue_count": len(ctx.get("label_queue") or []),
+                "queue_count": _stored_confidence_queue_count(ctx),
                 # DISTINCT labelled pieces, fresh from the database — the
                 # honest half of the FE's badge, batched above.
                 "labelled_count": labelled.get(str(r.get("id")), 0),
@@ -3044,14 +3145,15 @@ def v2_coach_restore_training_import(session_id):
 def v2_coach_confidence_queue(session_id):
     """The pieces queued for confidence labelling on one take, blind.
 
-    The queue was chosen at import time by sampling ACROSS the confidence
-    spectrum — some the composite reads as confident, some middling, some
-    doubtful — so the corpus has the negative examples a binary recogniser
-    needs. The bands are used to select and then discarded: this payload
+    The queue mixes model-boundary candidates, balanced predicted regions,
+    and a random exploration slice. Selection reason and probability are
+    persisted for audit but discarded from this payload, which
     carries the moment (words + audio) and NOTHING that could hint at an
-    answer (BLIND COACH — no voice_confidence, no acoustic_read, no tone
-    word). Falls back to a fresh stratified pick when the session carries no
-    stored queue (any take, not just an import).
+    answer (BLIND COACH — audio only before the answer; no transcript,
+    voice_confidence, acoustic_read, or tone word). The exact transcript is
+    returned for a row only after this coach has committed its label. If no
+    cohort exists, one mixed-policy cohort is built and persisted exactly once
+    (any take, not just an import).
 
     200 { session_id, queue: [{snippet_id, transcript, audio_ref,
           start_offset_ms, duration_ms, label}], count, labelled }
@@ -3064,6 +3166,10 @@ def v2_coach_confidence_queue(session_id):
                             "error": "session not found"}), 404
         from services.confidence_labels import queue_payload
         snippets = db.get_snippets_by_session(str(session_id)) or []
+        language_outcome, _language = _rater_language_outcome(sess, snippets)
+        language_error = _rater_language_error(language_outcome)
+        if language_error is not None:
+            return language_error
         picked = _confidence_queue_selection(session_id, sess, snippets)
 
         rows = queue_payload(picked)
@@ -3084,12 +3190,43 @@ def v2_coach_confidence_queue(session_id):
         _resolve_audio_refs(rows)
         labels = db.get_confidence_labels_by_snippet_ids(
             [r["snippet_id"] for r in rows]) or {}
+        from services.coach_blind_gate import reveal_transcript_after_commit
+        from services.label_quorum import (
+            rater_submission_access, routing_priority,
+        )
         labelled = 0
+        visible_rows = []
         for r in rows:
             r["re_review"] = str(r["snippet_id"]) in pending_rereviews
-            mine = [lbl for lbl in labels.get(str(r["snippet_id"]), [])
+            snippet_labels = labels.get(str(r["snippet_id"]), [])
+            mine = [lbl for lbl in snippet_labels
                     if str(lbl.get("rater_id") or "")
                     == str(getattr(request, "user_id", "") or "")]
+            access = rater_submission_access(
+                snippet_labels, getattr(request, "user_id", None))
+            rereview_allowed = bool(
+                r["re_review"]
+                and access["outcome"] not in (
+                    "fresh_rater_required", "audio_quarantined",
+                )
+            )
+            # A fresh rater sees only work the canonical ledger still needs.
+            # This is what makes one unclear-audio report wait, while two
+            # independent reports quarantine the artifact. A rater's own
+            # saved row remains visible for honest resume/history, but an
+            # unclear-audio answer is read-only for that same person.
+            if not mine and not access["allowed"] and not rereview_allowed:
+                continue
+            r["rating_locked"] = bool(
+                not access["allowed"] and not rereview_allowed)
+            r["rating_lock_reason"] = (
+                access["outcome"] if r["rating_locked"] else None)
+            machine_value = next((
+                label.get("machine_value") for label in snippet_labels
+                if label.get("machine_value") in ("yes", "in_between", "no")
+            ), None)
+            r["_queue_priority"] = routing_priority(
+                access["resolution"], machine_value)
             if mine:
                 labelled += 1
                 # `note` rides the label (FE §5): without it, a saved note
@@ -3108,8 +3245,24 @@ def v2_coach_confidence_queue(session_id):
                               "note": mine[0].get("note")}
             else:
                 r["label"] = None
-        return jsonify({"session_id": session_id, "queue": rows,
-                        "count": len(rows), "labelled": labelled}), 200
+            # The browser never receives the words before THIS rater's blind
+            # answer is safely stored. A visual-only hide would still expose
+            # them through the network payload and corrupt the instrument.
+            r["transcript"] = reveal_transcript_after_commit(
+                r.get("transcript"), committed=bool(mine))
+            visible_rows.append(r)
+        # Human disagreement and audio retries move ahead of ordinary unseen
+        # rows. The priority is stripped before serialization: routing logic
+        # must not become an answer hint on the blind screen.
+        visible_rows.sort(key=lambda row: (
+            0 if row.get("re_review") else 1,
+            -int(row.get("_queue_priority") or 0),
+        ))
+        for row in visible_rows:
+            row.pop("_queue_priority", None)
+        return jsonify({"session_id": session_id, "queue": visible_rows,
+                        "count": len(visible_rows),
+                        "labelled": labelled}), 200
     except Exception as e:
         logger.warning("confidence queue failed sid=%s: %s", session_id, e)
         return jsonify({"code": "SERVER_ERROR",
@@ -3383,21 +3536,16 @@ def v2_coach_put_snippet_slide(snippet_id):
 def v2_coach_put_confidence_label(snippet_id):
     """The coach's confidence call on ONE snippet — THE core training signal.
 
-    TERNARY body (SPEC.md v3 §3.2, current):
+    Five-state body (SPEC.md v3 §3.2, current):
 
         { state_id: "confidence",
-          value: "yes" | "no" | "neutral",   # XOR unrateable
-          unrateable?: bool,
+          value: "yes" | "in_between" | "no" |
+                 "not_sure" | "audio_unclear",
           note?: str, latency_ms?: int }
 
-      value       yes / no / NEUTRAL. The middle is not a hedge — a recogniser
-                  that has never seen the middle has never seen the boundary
-                  it exists to find, and every agreement number computed
-                  without it is measured on the easy cases only.
-      unrateable  a SEPARATE control, not a fourth value. `neutral` judges the
-                  MOMENT; `unrateable` judges the rater's ability to judge it,
-                  usually because of the audio. Folding them books unclear
-                  audio as a real middling rating.
+      value       yes / in_between / no are perceptual judgments. not_sure is
+                  rater uncertainty. audio_unclear is a technical failure.
+                  The three meanings remain separate in storage.
 
     LEGACY body { confident: bool, intensity?: 1..5, note?: str } is still
     accepted and translated (true->yes, false->no), so the current FE keeps
@@ -3407,14 +3555,17 @@ def v2_coach_put_confidence_label(snippet_id):
     side of the validation gate. A legacy body cannot express `neutral`; that
     is the whole reason the instrument changed.
 
-    Re-labelling REPLACES this rater's row (the corpus wants their current
-    view); other raters' rows are untouched, so multi-rater agreement stays
-    possible.
+    Re-labelling normally REPLACES this rater's row (the corpus wants their
+    current view); other raters' rows are untouched, so multi-rater agreement
+    stays possible. A technical ``audio_unclear`` answer is the exception:
+    that artifact must go to a different eligible human and the first rater
+    cannot turn a second listen into a falsely independent answer.
 
-    LANE is derived, never sent by the client (SPEC §6.2). A coach rating an
-    import is BOOTSTRAP, not coach — one rater on a model-proposed candidate
-    from a corpus the founder assembled is not panel-grade however expert the
-    rater, and that distinction is impossible to reconstruct afterwards.
+    LANE is derived, never sent by the client. It follows the verified rating
+    act, not the clip source: this authenticated, blind, language-matched
+    coach route writes ``coach`` for both rehearsal and imported-corpus clips.
+    ``bootstrap`` is reserved for seeded/historical evidence whose rating
+    conditions cannot be proven panel-grade.
 
     AC-9: nothing here is ever serialized toward a student.
 
@@ -3456,7 +3607,16 @@ def v2_coach_put_confidence_label(snippet_id):
                             "error": "snippet not found"}), 404
         session_id = snip.get("session_id")
         sess = db.v2_get_session_by_id(str(session_id)) if session_id else None
-        lane = resolve_lane((sess or {}).get("source"), is_coach=True)
+        if not sess:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "session not found"}), 404
+        language_outcome, _language = _rater_language_outcome(sess, [snip])
+        language_error = _rater_language_error(language_outcome)
+        if language_error is not None:
+            return language_error
+        # Provenance, not clip source, defines the lane. Authentication,
+        # blindness, and language matching have all been enforced above.
+        lane = resolve_lane(is_coach=True, panel_grade=True)
 
         # RULE 2 (founder 2026-08-11) — the owner is not a peer, and that is
         # about WHOSE CLIP it is, not which surface rated it. A coach rating a
@@ -3465,7 +3625,29 @@ def v2_coach_put_confidence_label(snippet_id):
         rater_id = getattr(request, "user_id", None)
         self_report = bool(
             rater_id and sess and str(sess.get("user_id")) == str(rater_id))
-        from services.label_quorum import machine_proposal
+        from services.label_quorum import (
+            machine_proposal, rater_submission_access,
+        )
+        existing_by_snippet = db.get_confidence_labels_by_snippet_ids(
+            [snippet_id]) or {}
+        existing_labels = existing_by_snippet.get(str(snippet_id), [])
+        access = rater_submission_access(existing_labels, rater_id)
+        if not access["allowed"]:
+            if access["outcome"] == "fresh_rater_required":
+                return jsonify({
+                    "code": "FRESH_RATER_REQUIRED",
+                    "error": "This clip is waiting for another eligible rater.",
+                }), 409
+            if access["outcome"] == "audio_quarantined":
+                return jsonify({
+                    "code": "AUDIO_QUARANTINED",
+                    "error": "Independent raters reported that this audio cannot be judged.",
+                }), 409
+            if not is_rereview:
+                return jsonify({
+                    "code": "RATING_CLOSED",
+                    "error": "This clip no longer needs another blind rating.",
+                }), 409
         saved = db.upsert_state_rating(
             snippet_id=snippet_id, row=row,
             rater_id=rater_id,
@@ -3502,6 +3684,10 @@ def v2_coach_put_confidence_label(snippet_id):
             "confident": (True if value == "yes"
                           else False if value == "no" else None),
             "intensity": legacy_intensity,
+            # Exact words are released only by this successful write. Blind
+            # queue reads redact them until the same rater has a saved row.
+            "transcript": (snip.get("transcript")
+                           or snip.get("transcript_excerpt") or ""),
         }), 200
     except Exception as e:
         logger.warning("confidence rating failed snip=%s: %s", snippet_id, e)

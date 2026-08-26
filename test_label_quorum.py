@@ -16,18 +16,16 @@ is easy to reach by accident. What each test class defends:
   RULE 3  A singleton in the gold set is one opinion presented as truth; a
           singleton in the EVAL set is worse — the score is then measured
           against a coin flip and looks like a finding.
-  RULE 4  Dropping "I don't know" throws away the only class that can teach a
-          detector to admit uncertainty, and silently reports the remaining
-          agreement as if the abstainers had never looked. Founder ruling
-          2026-08-14: IDK is the ternary 'neutral' — a valid perceptual
-          "ambiguous to judge" — while an unrateable row is a TECHNICAL
-          abstention and no response at all.
+  RULE 4  "Not sure" is retained as rater uncertainty and routes a third
+          person, but can never settle confidence ground truth. Audio unclear
+          is a technical non-response and no confidence vote at all.
 
 Pure, no DB. Run: python3 -m unittest test_label_quorum
 """
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from services import label_quorum as lq
 
@@ -80,7 +78,7 @@ class TestRule1MachineIsARouter(unittest.TestCase):
             return {"metrics": {"voice_confidence": {"band": band}}}
         self.assertEqual(lq.machine_proposal(snip("confident")), "yes")
         self.assertEqual(lq.machine_proposal(snip("close_to_confident")), "yes")
-        self.assertEqual(lq.machine_proposal(snip("neutral")), "neutral")
+        self.assertEqual(lq.machine_proposal(snip("neutral")), "in_between")
         self.assertEqual(lq.machine_proposal(snip("unconfident")), "no")
         self.assertEqual(lq.machine_proposal(snip("doubtful")), "no")
 
@@ -137,6 +135,28 @@ class TestRule2OwnerIsNotAPeer(unittest.TestCase):
         self.assertEqual(res["value"], "yes")
         self.assertTrue(res["gold_eligible"])
 
+    def test_blind_coach_and_blind_peer_share_one_human_quorum(self):
+        # Provenance remains distinct on the rows, but both are independent
+        # blind human judgments and therefore belong to the same panel.
+        res = lq.resolve([
+            _row("in_between", lane="coach", rater="coach-a"),
+            _row("in_between", lane="game_peer", rater="peer-b"),
+        ])
+        self.assertEqual(res["status"], lq.QUORUM)
+        self.assertEqual(res["value"], "in_between")
+        self.assertEqual(res["n_responses"], 2)
+        self.assertEqual(res["n_lane_excluded"], 0)
+
+    def test_contextual_and_import_lanes_cannot_join_the_blind_panel(self):
+        res = lq.resolve([
+            _row("yes", lane="game_peer", rater="peer-a"),
+            _row("yes", lane="bootstrap", rater="import-b"),
+            _row("yes", lane="contextual_coach", rater="coach-c"),
+        ])
+        self.assertEqual(res["status"], lq.SINGLETON)
+        self.assertEqual(res["n_responses"], 1)
+        self.assertEqual(res["n_lane_excluded"], 2)
+
 class TestRule3Singleton(unittest.TestCase):
     """One rating is weak supervision — never gold, never evaluation."""
 
@@ -178,7 +198,7 @@ class TestRule3Singleton(unittest.TestCase):
         # An IDK ('neutral' — "ambiguous to judge", founder 2026-08-14) has
         # not disagreed with anything; it is the DEFINITE mismatch that
         # carries the active-learning information.
-        res = lq.resolve([_row("neutral")])
+        res = lq.resolve([_row("not_sure")])
         self.assertEqual(res["status"], lq.SINGLETON)
         self.assertFalse(lq.machine_disagrees(res, "yes"))
 
@@ -187,15 +207,15 @@ class TestRule3Singleton(unittest.TestCase):
         # lone human 'yes' against it routes as an ordinary singleton, not
         # as rule 3's model-miss-or-rater-miss alarm.
         res = lq.resolve([_row("yes")])
-        self.assertFalse(lq.machine_disagrees(res, "neutral"))
-        self.assertEqual(lq.routing_priority(res, "neutral"), lq.P_SINGLETON)
+        self.assertFalse(lq.machine_disagrees(res, "in_between"))
+        self.assertEqual(lq.routing_priority(res, "in_between"), lq.P_SINGLETON)
 
 
-class TestRule4IdkIsAResponse(unittest.TestCase):
-    """IDK is counted like any other answer — both founder cases."""
+class TestRule4NotSureRoutesButNeverSettles(unittest.TestCase):
+    """IDK is auditable routing evidence, never a confidence label."""
 
     def test_case_b_one_definite_plus_one_idk_needs_a_third(self):
-        res = lq.resolve([_row("yes"), _row("neutral", rater="b")])
+        res = lq.resolve([_row("yes"), _row("not_sure", rater="b")])
         self.assertEqual(res["status"], lq.NEEDS_THIRD)
         self.assertFalse(res["settled"])
         self.assertIsNone(res["value"])
@@ -203,64 +223,104 @@ class TestRule4IdkIsAResponse(unittest.TestCase):
         self.assertEqual(res["next_rater_ordinal"], 3)
         self.assertEqual(lq.routing_priority(res), lq.P_NEEDS_THIRD)
 
-    def test_case_c_two_idks_settle_as_perceptually_ambiguous(self):
-        res = lq.resolve([_row("neutral", rater="a"),
-                          _row("neutral", rater="b")])
-        self.assertEqual(res["status"], lq.PERCEPTUALLY_AMBIGUOUS)
-        self.assertEqual(res["value"], lq.AMBIGUOUS_LABEL)
-        self.assertTrue(res["settled"])
-        self.assertTrue(res["gold_eligible"])
-        self.assertTrue(res["eval_eligible"])
-        self.assertFalse(res["needs_rater"])
-        self.assertEqual(lq.routing_priority(res), lq.P_SETTLED)
+    def test_two_idks_also_require_a_third(self):
+        res = lq.resolve([_row("not_sure", rater="a"),
+                          _row("not_sure", rater="b")])
+        self.assertEqual(res["status"], lq.NEEDS_THIRD)
+        self.assertIsNone(res["value"])
+        self.assertFalse(res["settled"])
+        self.assertFalse(res["gold_eligible"])
+        self.assertTrue(res["needs_rater"])
+        self.assertEqual(res["next_rater_ordinal"], 3)
 
-    def test_the_ambiguous_label_is_not_a_rateable_value(self):
-        # It is a statement about the MOMENT. Letting it into the answer
-        # domain would make it storable as one rater's response.
-        self.assertNotIn(lq.AMBIGUOUS_LABEL, lq.VALUES)
+    def test_not_sure_never_becomes_the_settled_value(self):
+        res = lq.resolve([_row("not_sure", rater="a"),
+                          _row("not_sure", rater="b"),
+                          _row("not_sure", rater="c")])
+        self.assertEqual(res["status"], lq.UNRESOLVED)
+        self.assertIsNone(res["value"])
+        self.assertFalse(res["gold_eligible"])
 
     def test_idk_is_counted_not_dropped(self):
-        res = lq.resolve([_row("yes"), _row("neutral", rater="b")])
+        res = lq.resolve([_row("yes"), _row("not_sure", rater="b")])
         self.assertEqual(res["n_responses"], 2)
         self.assertEqual(res["n_idk"], 1)
         self.assertEqual(res["n_definite"], 1)
 
-    def test_neutral_is_the_idk_by_founder_ruling(self):
-        # Founder 2026-08-14: IDK strictly means "ambiguous to judge" — a
-        # valid perceptual rating — and 'neutral' (the game's third answer)
-        # IS that rating. Two of them settle the MOMENT as perceptually
-        # ambiguous; they are never a quorum on a middling value.
+    def test_not_sure_is_the_v2_idk(self):
         res = lq.resolve([_row("neutral", rater="a"),
                           _row("neutral", rater="b")])
-        self.assertEqual(res["status"], lq.PERCEPTUALLY_AMBIGUOUS)
-        self.assertEqual(res["value"], lq.AMBIGUOUS_LABEL)
+        self.assertEqual(res["status"], lq.NEEDS_THIRD)
         self.assertEqual(res["n_idk"], 2)
 
-    def test_unrateable_is_technical_and_never_counts(self):
+        current = lq.resolve([_row("not_sure", rater="a"),
+                              _row("not_sure", rater="b")])
+        self.assertEqual(current["status"], lq.NEEDS_THIRD)
+        self.assertEqual(current["n_idk"], 2)
+
+    def test_in_between_can_reach_its_own_quorum(self):
+        res = lq.resolve([_row("in_between", rater="a"),
+                          _row("in_between", rater="b")])
+        self.assertEqual(res["status"], lq.QUORUM)
+        self.assertEqual(res["value"], "in_between")
+
+    def test_one_unclear_audio_routes_once_to_a_fresh_rater(self):
         # The ruling's other half: an unrateable row is a failure of the
         # ARTIFACT ("I can't hear the clip"), not a reading of the voice.
-        # No response at all — two of them settle nothing ("two abstentions
-        # are not two labels", same as the game's eligibility gate).
-        res = lq.resolve([_row(None, unrateable=True, rater="a"),
-                          _row(None, unrateable=True, rater="b")])
-        self.assertEqual(res["status"], lq.UNRATED)
+        # It contributes no confidence answer, but it does trigger one retry.
+        res = lq.resolve([_row("audio_unclear", rater="a")])
+        self.assertEqual(res["status"], lq.AUDIO_RETRY)
         self.assertEqual(res["n_responses"], 0)
+        self.assertEqual(res["n_audio_unclear"], 1)
+        self.assertTrue(res["needs_rater"])
+        self.assertEqual(res["next_rater_ordinal"], 2)
+        self.assertFalse(res["gold_eligible"])
+
+    def test_two_independent_unclear_reports_quarantine_the_clip(self):
+        # The explicit v2 answer and legacy flag are the same technical
+        # signal. Two independent reports stop routing and keep the artifact
+        # out of all training/evaluation sets.
+        res = lq.resolve([_row("audio_unclear", rater="a"),
+                          _row(None, unrateable=True, rater="b")])
+        self.assertEqual(res["status"], lq.AUDIO_QUARANTINED)
+        self.assertEqual(res["n_responses"], 0)
+        self.assertEqual(res["n_audio_unclear"], 2)
+        self.assertFalse(res["needs_rater"])
+        self.assertIsNone(res["next_rater_ordinal"])
+        self.assertFalse(res["gold_eligible"])
+        self.assertFalse(res["eval_eligible"])
+        self.assertFalse(res["weak_supervision_only"])
+
+    def test_unclear_flag_voids_a_value_and_is_counted_only_once(self):
         # The flag voids even a definite value on the same row — the rater
         # said the audio itself was unjudgeable.
-        self.assertEqual(lq.resolve([_row("yes", unrateable=True)])["status"],
-                         lq.UNRATED)
+        res = lq.resolve([_row("audio_unclear", unrateable=True)])
+        self.assertEqual(res["status"], lq.AUDIO_RETRY)
+        self.assertEqual(res["n_audio_unclear"], 1)
+
+    def test_non_panel_and_self_report_unclear_do_not_quarantine(self):
+        res = lq.resolve([
+            _row("audio_unclear", rater="owner", self_report=True),
+            _row("audio_unclear", rater="import", lane="bootstrap"),
+        ])
+        self.assertEqual(res["status"], lq.UNRATED)
+        self.assertEqual(res["n_audio_unclear"], 0)
+        self.assertEqual(res["n_self_report"], 1)
+        self.assertEqual(res["n_lane_excluded"], 1)
 
     def test_idk_can_be_outvoted(self):
         res = lq.resolve([_row("yes", rater="a"), _row("yes", rater="b"),
-                          _row("neutral", rater="c")])
+                          _row("not_sure", rater="c")])
         self.assertEqual(res["status"], lq.QUORUM)
         self.assertEqual(res["value"], "yes")
 
-    def test_idk_can_win_the_mode(self):
+    def test_idk_majority_after_three_is_quarantined_not_gold(self):
         res = lq.resolve([_row("yes", rater="a"),
-                          _row("neutral", rater="b"),
-                          _row("neutral", rater="c")])
-        self.assertEqual(res["status"], lq.PERCEPTUALLY_AMBIGUOUS)
+                          _row("not_sure", rater="b"),
+                          _row("not_sure", rater="c")])
+        self.assertEqual(res["status"], lq.UNRESOLVED)
+        self.assertFalse(res["needs_rater"])
+        self.assertIsNone(res["next_rater_ordinal"])
 
 
 class TestTheOneRule(unittest.TestCase):
@@ -271,20 +331,24 @@ class TestTheOneRule(unittest.TestCase):
         cases = [
             ([], lq.UNRATED, None),
             ([_row("yes")], lq.SINGLETON, None),
-            ([_row("neutral")], lq.SINGLETON, None),
-            # A technical abstention is NOT a response (founder 2026-08-14):
-            ([_row(None, unrateable=True)], lq.UNRATED, None),
+            ([_row("not_sure")], lq.SINGLETON, None),
+            # A first technical report routes exactly one retry.
+            ([_row(None, unrateable=True)], lq.AUDIO_RETRY, None),
+            # A second independent report quarantines the artifact.
+            ([_row(None, unrateable=True, rater="a"),
+              _row("audio_unclear", rater="b")],
+             lq.AUDIO_QUARANTINED, None),
             ([_row("yes", rater="a"), _row("yes", rater="b")],
              lq.QUORUM, "yes"),
             ([_row("no", rater="a"), _row("no", rater="b")], lq.QUORUM, "no"),
-            ([_row("neutral", rater="a"), _row("neutral", rater="b")],
-             lq.PERCEPTUALLY_AMBIGUOUS, lq.AMBIGUOUS_LABEL),
-            ([_row("yes"), _row("neutral", rater="b")],
+            ([_row("not_sure", rater="a"), _row("not_sure", rater="b")],
+             lq.NEEDS_THIRD, None),
+            ([_row("yes"), _row("not_sure", rater="b")],
              lq.NEEDS_THIRD, None),
             ([_row("yes", rater="a"), _row("no", rater="b")],
              lq.NEEDS_THIRD, None),
             ([_row("yes", rater="a"), _row("no", rater="b"),
-              _row("neutral", rater="c")], lq.NEEDS_THIRD, None),
+              _row("not_sure", rater="c")], lq.UNRESOLVED, None),
         ]
         for rows, status, value in cases:
             with self.subTest(status=status, n=len(rows)):
@@ -305,10 +369,11 @@ class TestTheOneRule(unittest.TestCase):
         self.assertEqual(lq.QUORUM_N, 2)
 
     def test_settled_statuses_are_the_only_gold(self):
-        for status in (lq.UNRATED, lq.SINGLETON, lq.NEEDS_THIRD):
+        for status in (lq.UNRATED, lq.SINGLETON, lq.NEEDS_THIRD,
+                       lq.UNRESOLVED, lq.AUDIO_RETRY,
+                       lq.AUDIO_QUARANTINED):
             self.assertNotIn(status, lq.SETTLED_STATUSES)
-        self.assertEqual(lq.SETTLED_STATUSES,
-                         (lq.QUORUM, lq.PERCEPTUALLY_AMBIGUOUS))
+        self.assertEqual(lq.SETTLED_STATUSES, (lq.QUORUM,))
 
     def test_a_state_id_filter_does_not_blend_constructs(self):
         rows = [_row("yes", rater="a"),
@@ -332,18 +397,27 @@ class TestRatingQueue(unittest.TestCase):
                                        _row("yes", rater="b")])},
             {"snippet_id": "s-third",
              "resolution": lq.resolve([_row("yes"),
-                                       _row("neutral", rater="b")])},
+                                       _row("not_sure", rater="b")])},
             {"snippet_id": "s-agrees",
              "resolution": lq.resolve([_row("yes")]),
              "machine_value": "yes"},
             {"snippet_id": "s-disagrees",
              "resolution": lq.resolve([_row("no")]),
              "machine_value": "yes"},
+            {"snippet_id": "s-audio-retry",
+             "resolution": lq.resolve([_row("audio_unclear")])},
+            {"snippet_id": "s-audio-quarantined",
+             "resolution": lq.resolve([
+                 _row("audio_unclear", rater="a"),
+                 _row("audio_unclear", rater="b"),
+             ])},
         ]
         ordered = [it["snippet_id"] for it in lq.rating_queue(items)]
         self.assertEqual(
-            ordered, ["s-disagrees", "s-third", "s-agrees", "s-unrated"])
+            ordered, ["s-disagrees", "s-third", "s-audio-retry",
+                      "s-agrees", "s-unrated"])
         self.assertNotIn("s-settled", ordered)
+        self.assertNotIn("s-audio-quarantined", ordered)
 
     def test_ties_break_deterministically(self):
         items = [{"snippet_id": sid, "resolution": lq.resolve([])}
@@ -358,6 +432,43 @@ class TestRatingQueue(unittest.TestCase):
         self.assertEqual(lq.rating_queue(["x", None, {}]), [])
 
 
+class TestRaterSubmissionAccess(unittest.TestCase):
+    """Assignment remains fresh across an unclear-audio retry."""
+
+    def test_first_unclear_rater_cannot_retry_their_own_clip(self):
+        rows = [_row("audio_unclear", rater="rater-a")]
+        mine = lq.rater_submission_access(rows, "rater-a")
+        self.assertFalse(mine["allowed"])
+        self.assertEqual(mine["outcome"], "fresh_rater_required")
+
+        fresh = lq.rater_submission_access(rows, "rater-b")
+        self.assertTrue(fresh["allowed"])
+        self.assertEqual(fresh["outcome"], "new")
+        self.assertEqual(fresh["resolution"]["status"], lq.AUDIO_RETRY)
+
+    def test_two_unclear_reports_close_the_artifact_for_everyone(self):
+        rows = [
+            _row("audio_unclear", rater="rater-a"),
+            _row("audio_unclear", rater="rater-b"),
+        ]
+        for rater in ("rater-a", "rater-b", "rater-c"):
+            access = lq.rater_submission_access(rows, rater)
+            self.assertFalse(access["allowed"])
+            self.assertEqual(access["outcome"], "audio_quarantined")
+
+    def test_fresh_rater_cannot_add_a_vote_after_resolution(self):
+        rows = [_row("yes", rater="a"), _row("yes", rater="b")]
+        access = lq.rater_submission_access(rows, "c")
+        self.assertFalse(access["allowed"])
+        self.assertEqual(access["outcome"], "closed")
+
+    def test_existing_perceptual_rater_keeps_revision_policy(self):
+        rows = [_row("no", rater="a")]
+        access = lq.rater_submission_access(rows, "a")
+        self.assertTrue(access["allowed"])
+        self.assertEqual(access["outcome"], "update")
+
+
 class TestCorpusLedger(unittest.TestCase):
     """The dial: rows are not ground truth, settled snippets are."""
 
@@ -365,19 +476,25 @@ class TestCorpusLedger(unittest.TestCase):
         resolutions = [
             lq.resolve([_row("yes", rater="a"), _row("yes", rater="b")]),
             lq.resolve([_row("neutral", rater="a"),
-                        _row("neutral", rater="b")]),
+                        _row("neutral", rater="b"),
+                        _row("neutral", rater="c")]),
             lq.resolve([_row("yes")]),
             lq.resolve([_row("yes"), _row("no", rater="b")]),
             lq.resolve([_row("yes", self_report=True)]),
+            lq.resolve([_row("audio_unclear", rater="a")]),
+            lq.resolve([_row("audio_unclear", rater="a"),
+                        _row("audio_unclear", rater="b")]),
         ]
         led = lq.corpus_ledger(resolutions)
-        self.assertEqual(led["snippets"], 5)
-        self.assertEqual(led["gold"], 2)
-        self.assertEqual(led["ambiguous"], 1)
+        self.assertEqual(led["snippets"], 7)
+        self.assertEqual(led["gold"], 1)
+        self.assertEqual(led["unresolved"], 1)
         self.assertEqual(led["weak"], 1)
         self.assertEqual(led["blocked"], 1)
         self.assertEqual(led["self_reports_excluded"], 1)
-        self.assertEqual(led["gold_share"], 0.4)
+        self.assertEqual(led["audio_retry"], 1)
+        self.assertEqual(led["audio_quarantined"], 1)
+        self.assertEqual(led["gold_share"], 0.143)
         # Rule 1 reported, not asserted: non-zero here means the corpus is
         # circular and no agreement number computed off it can be trusted.
         self.assertEqual(led["machine_votes"], 0)
@@ -469,13 +586,6 @@ class TestTheWriter(unittest.TestCase):
             self.assertNotIn("machine_value", self._payload(
                 machine_value=silent))
 
-    def test_the_settled_ambiguous_label_can_never_be_one_raters_answer(self):
-        # 'ambiguous' is a statement about the MOMENT, derived from two
-        # abstentions. It must not be storable as a proposal or an answer.
-        self.assertNotIn("machine_value",
-                         self._payload(machine_value=lq.AMBIGUOUS_LABEL))
-
-
 class TestFences(unittest.TestCase):
     """AC-9 and BLIND COACH, at the module's edges."""
 
@@ -483,8 +593,9 @@ class TestFences(unittest.TestCase):
         # Every string this module produces is a machine-facing status. A
         # sentence here would be product copy shipped without founder
         # sign-off (LIVE LOOP) and a verdict shown to a user (AC-9).
-        for token in (lq.UNRATED, lq.SINGLETON, lq.NEEDS_THIRD, lq.QUORUM,
-                      lq.PERCEPTUALLY_AMBIGUOUS, lq.AMBIGUOUS_LABEL):
+        for token in (lq.UNRATED, lq.SINGLETON, lq.NEEDS_THIRD,
+                      lq.UNRESOLVED, lq.AUDIO_RETRY,
+                      lq.AUDIO_QUARANTINED, lq.QUORUM):
             self.assertRegex(token, r"^[a-z_]+$")
 
     def test_resolution_carries_no_machine_read(self):
@@ -493,6 +604,17 @@ class TestFences(unittest.TestCase):
         res = lq.resolve([_row("yes")])
         for banned in ("machine_value", "score", "band", "probe_score"):
             self.assertNotIn(banned, res)
+
+
+class TestSqlMirror(unittest.TestCase):
+    """The persisted ledger must expose the same technical-audio states."""
+
+    def test_v2_view_mirrors_retry_and_quarantine(self):
+        sql = (Path(__file__).parent / "migrations" /
+               "version_confidence_rating_instrument_v2.sql").read_text()
+        for token in ("audio_retry", "audio_quarantined",
+                      "n_audio_unclear", "value = 'audio_unclear'"):
+            self.assertIn(token, sql)
 
 
 if __name__ == "__main__":

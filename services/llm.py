@@ -123,8 +123,10 @@ def chat_complete(
         return None
 
     response_format = response_format_override or spec.response_format
+    from services.ml_surface_contracts import resolve_surface_model
+    model = resolve_surface_model(surface, spec.model)
     create_kwargs: dict[str, Any] = {
-        "model": spec.model,
+        "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -143,7 +145,7 @@ def chat_complete(
         logger.warning(
             "llm.chat surface=%s model=%s duration_ms=%d "
             "user=%s call_failed err=%s",
-            surface, spec.model, duration_ms, user_id or "-", e,
+            surface, model, duration_ms, user_id or "-", e,
         )
         return None
 
@@ -169,7 +171,7 @@ def chat_complete(
         from services.llm_usage import record_chat_usage
         record_chat_usage(
             surface=surface,
-            model=spec.model,
+            model=model,
             tokens_in=prompt_tokens,
             tokens_out=completion_tokens,
             user_id=user_id,
@@ -184,7 +186,7 @@ def chat_complete(
         logger.warning(
             "llm.chat surface=%s model=%s duration_ms=%d "
             "user=%s empty_response",
-            surface, spec.model, duration_ms, user_id or "-",
+            surface, model, duration_ms, user_id or "-",
         )
         return None
 
@@ -198,7 +200,7 @@ def chat_complete(
             logger.warning(
                 "llm.chat surface=%s model=%s duration_ms=%d "
                 "user=%s json_parse_failed raw_head=%r err=%s",
-                surface, spec.model, duration_ms, user_id or "-",
+                surface, model, duration_ms, user_id or "-",
                 raw[:200], e,
             )
             # Don't return None — caller might still want the raw
@@ -207,14 +209,14 @@ def chat_complete(
     logger.info(
         "llm.chat surface=%s model=%s duration_ms=%d "
         "user=%s prompt_tokens=%s completion_tokens=%s",
-        surface, spec.model, duration_ms, user_id or "-",
+        surface, model, duration_ms, user_id or "-",
         prompt_tokens, completion_tokens,
     )
 
     return LLMResult(
         text=raw,
         parsed=parsed,
-        model=spec.model,
+        model=model,
         duration_ms=duration_ms,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,

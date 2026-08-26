@@ -64,8 +64,10 @@ class ProfileRouteTests(unittest.TestCase):
             "previous_goal": None, "goal_changed_at": None,
         }
         self.db.get_user_speaker_sex.return_value = None
+        self.db.get_user_proficient_languages.return_value = ["en"]
         self.db.set_user_profile.return_value = True
         self.db.set_user_speaker_sex.return_value = True
+        self.db.set_user_proficient_languages.return_value = True
         # /v2/user/profile lives in routes.v2.user_account (god-file split) —
         # the whole-object db/is_coach rebinds must target THAT module's
         # namespace, not the routes.v2_routes re-exports.

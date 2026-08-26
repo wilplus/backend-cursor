@@ -365,6 +365,36 @@ class AsyncSplitTests(unittest.TestCase):
         self.assertEqual(db.set_session_analysis_state.call_args.args[1],
                          "ready")
 
+    def test_run_persists_mixed_queue_provenance_not_just_ids(self):
+        from services.training_import import (
+            prepare_training_import, run_training_import_analysis,
+        )
+        db = _db()
+        db.get_snippets_by_session.return_value = [
+            {
+                "id": f"p{i}",
+                "metrics": {"voice_confidence": {"score": (i - 10) / 10}},
+            }
+            for i in range(20)
+        ]
+        prepared = prepare_training_import(
+            audio_bytes=b"A", filename="t.mp3", user_id="u1", topic="T",
+            database=db)
+        out = run_training_import_analysis(
+            prepared=prepared, audio_bytes=b"A", filename="t.mp3",
+            database=db)
+        self.assertEqual(out["queue_count"], 15)
+        context = db.set_session_intake_context.call_args.args[1]
+        records = context["label_queue_selection"]
+        self.assertEqual(len(records), 15)
+        self.assertNotIn("label_queue", context)
+        self.assertEqual(
+            {record["reason"] for record in records},
+            {"model_boundary", "band_balance", "random_exploration"},
+        )
+        self.assertTrue(all("sampling_probability" in record
+                            for record in records))
+
     def test_analysis_failure_marks_failed_for_the_poll(self):
         """The FE polls analysis_state — a crashed thread must leave a
         'failed', not a session stuck on 'processing' forever."""
@@ -791,7 +821,10 @@ class IndexRowCarriesTheRunContext(unittest.TestCase):
     def test_the_route_maps_the_run_context_onto_each_row(self):
         with open("routes/v2/coach.py", encoding="utf-8") as fh:
             source = fh.read()
-        block = source.split("def v2_coach_list_training_imports")[1][:4000]
+        block = source.split("def v2_coach_list_training_imports", 1)[1]
+        block = block.split(
+            '@v2_bp.route("/coach/training-imports/<session_id>"', 1
+        )[0]
         for field in ('"language": ctx.get("language")',
                       '"speaker_sex": ctx.get("speaker_sex")',
                       '"duration_sec": ctx.get("duration_sec")'):

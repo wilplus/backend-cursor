@@ -46,6 +46,12 @@ _FIELD_SYSTEM_PROMPTS: dict[str, str] = {
         " optional replacement phrase in the speaker's register, and a short"
         " why. Output a single JSON object only, no prose around it."
     ),
+    "coach_note": _DEFAULT_SYSTEM + (
+        " Focus: a contextual presentation-coach note grounded in one spoken"
+        " moment. Encourage first, name one concrete delivery strength and"
+        " one useful refinement, use plain language, and match the language"
+        " of the speaker."
+    ),
     "ideal_text_sentence": _DEFAULT_SYSTEM + (
         " Focus: one sentence of the assembled ideal text, corrected the way"
         " the lead coach would phrase it. Output the corrected sentence only."
@@ -71,9 +77,6 @@ def _session_blurb(session: dict[str, Any] | None) -> str:
     st = session.get("status")
     if st:
         bits.append(f"Session status: {st}")
-    sc = session.get("score_for_display")
-    if sc is not None:
-        bits.append(f"Score (display): {sc}")
     return "\n".join(bits) if bits else ""
 
 
@@ -165,7 +168,7 @@ def fetch_sessions_map(client, session_ids: list[str]) -> dict[str, dict[str, An
         batch = ids[i : i + 50]
         res = (
             client.table("v2_sessions")
-            .select("id, context_short, status, score_for_display")
+            .select("id, user_id, project_id, context_short, status")
             .in_("id", batch)
             .execute()
         )

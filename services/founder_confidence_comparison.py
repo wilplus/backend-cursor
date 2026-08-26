@@ -11,7 +11,11 @@ from typing import Any
 
 
 FOUNDER_COMPARISON_EMAIL = "artur@willonski.com"
-_VALUES = ("yes", "no", "neutral")
+_LABEL_VALUES = (
+    "yes", "in_between", "no", "not_sure", "audio_unclear", "neutral",
+)
+_PERCEPTUAL_VALUES = ("yes", "in_between", "no")
+_MACHINE_VALUES = ("yes", "in_between", "no", "neutral")
 
 
 def is_founder_comparison_email(value: Any) -> bool:
@@ -27,7 +31,7 @@ def _latest_own_label(rows: Any, rater_id: Any) -> dict | None:
         if isinstance(row, dict)
         and str(row.get("rater_id") or "") == str(rater_id or "")
         and (
-            row.get("value") in _VALUES
+            row.get("value") in _LABEL_VALUES
             or row.get("unrateable") is True
         )
     ]
@@ -54,17 +58,18 @@ def build_founder_comparison(
         if label is None:
             continue
         coach_value = (
-            label.get("value") if label.get("value") in _VALUES else None
+            label.get("value")
+            if label.get("value") in _LABEL_VALUES else None
         )
         machine_value = (
             label.get("machine_value")
-            if label.get("machine_value") in _VALUES else None
+            if label.get("machine_value") in _MACHINE_VALUES else None
         )
         unrateable = label.get("unrateable") is True
         comparable = (
             not unrateable
-            and coach_value in _VALUES
-            and machine_value in _VALUES
+            and coach_value in _PERCEPTUAL_VALUES
+            and machine_value in _MACHINE_VALUES
         )
         rows.append({
             "snippet_id": snippet_id,

@@ -278,8 +278,7 @@ def generate_say_it_stronger(
     cleaned = _clean_payload(parsed, transcript)
     if cleaned is None:
         return None
-    from services.llm_config import SPEC_SAY_IT_STRONGER as _spec
-    cleaned["model"] = _spec.model
+    cleaned["model"] = result.model if result is not None else None
     cleaned["generated_at"] = datetime.now(timezone.utc).isoformat()
     return cleaned
 

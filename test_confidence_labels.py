@@ -95,7 +95,7 @@ class BandTests(unittest.TestCase):
         self.assertEqual(band_of(True), "unscored")
 
 
-class StratifiedQueueTests(unittest.TestCase):
+class MixedQueueTests(unittest.TestCase):
 
     def _pool(self):
         pool = []
@@ -107,53 +107,80 @@ class StratifiedQueueTests(unittest.TestCase):
             pool.append(_snip(f"d{i}", score=-0.6 - i * 0.01))  # doubtful
         return pool
 
-    def test_draws_from_every_band_not_just_the_confident_one(self):
-        """THE methodological assertion. A queue of only machine-confident
-        pieces teaches the model to confirm its own guesses — it never sees
-        what unconfident looks like, so it cannot learn the boundary."""
-        from services.confidence_labels import stratified_label_queue
-        picked = stratified_label_queue(self._pool(), per_band=3, seed="s")
+    def test_mixes_boundary_balance_and_random_exploration(self):
+        from services.confidence_labels import mixed_label_queue
+        picked = mixed_label_queue(self._pool(), target_size=15, seed="s")
+        reasons = {p["_selection"]["reason"] for p in picked}
+        self.assertEqual(reasons, {
+            "model_boundary", "band_balance", "random_exploration",
+        })
         ids = {p["id"] for p in picked}
         self.assertTrue(any(i.startswith("c") for i in ids), "no confident")
         self.assertTrue(any(i.startswith("n") for i in ids), "no neutral")
         self.assertTrue(any(i.startswith("d") for i in ids), "no doubtful")
-        self.assertEqual(len(picked), 9)   # 3 per band × 3 populated bands
+        self.assertEqual(len(picked), 15)
+
+    def test_random_slice_has_an_auditable_probability(self):
+        from services.confidence_labels import mixed_label_queue
+        picked = mixed_label_queue(self._pool(), target_size=12, seed="s")
+        exploration = [p for p in picked
+                       if p["_selection"]["reason"] == "random_exploration"]
+        self.assertTrue(exploration)
+        probabilities = {
+            p["_selection"]["sampling_probability"] for p in exploration
+        }
+        self.assertEqual(len(probabilities), 1)
+        probability = probabilities.pop()
+        self.assertGreater(probability, 0)
+        self.assertLessEqual(probability, 1)
 
     def test_unscored_pieces_participate(self):
         """Excluding them would bias the corpus toward pieces the composite
         happened to measure."""
-        from services.confidence_labels import stratified_label_queue
+        from services.confidence_labels import mixed_label_queue
         pool = self._pool() + [_snip("u1"), _snip("u2")]
         ids = {p["id"] for p in
-               stratified_label_queue(pool, per_band=2, seed="s")}
+               mixed_label_queue(pool, target_size=15, seed="s")}
         self.assertTrue(any(i.startswith("u") for i in ids))
 
     def test_deterministic(self):
-        from services.confidence_labels import stratified_label_queue
-        a = [p["id"] for p in
-             stratified_label_queue(self._pool(), per_band=3, seed="s1")]
-        b = [p["id"] for p in
-             stratified_label_queue(self._pool(), per_band=3, seed="s1")]
+        from services.confidence_labels import mixed_label_queue
+        a = mixed_label_queue(self._pool(), target_size=15, seed="s1")
+        b = mixed_label_queue(self._pool(), target_size=15, seed="s1")
         self.assertEqual(a, b)
 
-    def test_order_is_not_a_band_tell(self):
-        """Bands must not be contiguous in the returned order — position
-        would anchor the label exactly like a visible score would."""
-        from services.confidence_labels import stratified_label_queue
-        picked = stratified_label_queue(self._pool(), per_band=4, seed="s")
-        prefixes = [p["id"][0] for p in picked]
-        # A band-ordered list would be cccc nnnn dddd — assert we see at
-        # least one transition back to an earlier band.
-        transitions = sum(1 for i in range(1, len(prefixes))
-                          if prefixes[i] != prefixes[i - 1])
-        self.assertGreater(transitions, 2,
-                           f"looks band-ordered: {''.join(prefixes)}")
+    def test_order_does_not_reveal_selection_reason(self):
+        from services.confidence_labels import mixed_label_queue
+        picked = mixed_label_queue(self._pool(), target_size=15, seed="s")
+        reasons = [p["_selection"]["reason"] for p in picked]
+        transitions = sum(reasons[i] != reasons[i - 1]
+                          for i in range(1, len(reasons)))
+        self.assertGreater(transitions, 2, f"looks stratified: {reasons}")
+
+    def test_selection_records_are_persistable_and_legacy_is_explicit(self):
+        from services.confidence_labels import (
+            mixed_label_queue, selection_records, stored_selection_records,
+        )
+        records = selection_records(mixed_label_queue(
+            self._pool(), target_size=5, seed="s"))
+        self.assertEqual(len(records), 5)
+        self.assertTrue(all(record.get("policy_version") for record in records))
+        self.assertTrue(all(record.get("reason") for record in records))
+        self.assertTrue(all("sampling_probability" in record
+                            for record in records))
+        self.assertEqual(stored_selection_records({
+            "label_queue_selection": records,
+        }), records)
+        legacy = stored_selection_records({"label_queue": ["a", "b"]})
+        self.assertEqual([row["snippet_id"] for row in legacy], ["a", "b"])
+        self.assertTrue(all(row["reason"] == "legacy_unspecified"
+                            for row in legacy))
 
     def test_empty_and_junk(self):
-        from services.confidence_labels import stratified_label_queue
-        self.assertEqual(stratified_label_queue([]), [])
-        self.assertEqual(stratified_label_queue(None), [])
-        self.assertEqual(stratified_label_queue([None, 7, {}]), [])
+        from services.confidence_labels import mixed_label_queue
+        self.assertEqual(mixed_label_queue([]), [])
+        self.assertEqual(mixed_label_queue(None), [])
+        self.assertEqual(mixed_label_queue([None, 7, {}]), [])
 
 
 class BlindPayloadTests(unittest.TestCase):
@@ -164,12 +191,15 @@ class BlindPayloadTests(unittest.TestCase):
             "voice_confidence": {"score": 0.9, "band": "confident"},
             "acoustic_read": {"potentiometer": 0.8},
             "user_tone_word": "confident",
+        }, _selection={
+            "reason": "model_boundary", "sampling_probability": 1.0,
         })])
         self.assertEqual(len(rows), 1)
         row = rows[0]
         self.assertEqual(row["transcript"], "line s1")
         for banned in ("metrics", "voice_confidence", "acoustic_read",
-                       "band", "score", "user_tone_word"):
+                       "band", "score", "user_tone_word", "_selection",
+                       "selection_reason", "sampling_probability"):
             self.assertNotIn(banned, row)
 
     def test_audio_fallback_chain(self):

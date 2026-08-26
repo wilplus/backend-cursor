@@ -22,6 +22,11 @@ from services.ml_finetuning_export import (
     fetch_sessions_map,
     get_system_prompt_for_field,
 )
+from services.ml_surface_contracts import (
+    contract_for_surface,
+    fields_for_surface,
+    surface_for_annotation_field,
+)
 
 
 def parse_csv_set(raw: str | None) -> set[str] | None:
@@ -65,12 +70,17 @@ def _build_user_prompt(row: dict[str, Any], session: dict[str, Any] | None) -> s
 
 @dataclass
 class DpoFilterConfig:
+    surface: str
     min_preferred_chars: int = 20
     min_non_preferred_chars: int = 20
     max_similarity: float = 0.985
     require_reason_chip: bool = False
-    field_names: set[str] | None = None
     reason_chips: set[str] | None = None
+
+    def __post_init__(self) -> None:
+        # Normalize aliases once. Every row handled by this config must belong
+        # to this one surface; mixed-task preference files are forbidden.
+        self.surface = contract_for_surface(self.surface).id
 
 
 @dataclass
@@ -92,8 +102,8 @@ def row_to_dpo_example(
     cfg: DpoFilterConfig,
 ) -> tuple[Optional[dict[str, Any]], Optional[str]]:
     field = str(row.get("field_name") or "").strip()
-    if cfg.field_names is not None and field not in cfg.field_names:
-        return None, "field_filtered_out"
+    if surface_for_annotation_field(field) != cfg.surface:
+        return None, "surface_filtered_out"
 
     reason_chip = str(row.get("reason_chip") or "").strip()
     if cfg.reason_chips is not None and reason_chip not in cfg.reason_chips:
@@ -132,7 +142,12 @@ def row_to_dpo_example(
     return example, None
 
 
-def split_train_val(examples: list[dict[str, Any]], *, val_ratio: float, seed_key: str = "event_id") -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def split_train_val(
+    examples: list[dict[str, Any]],
+    *,
+    val_ratio: float,
+    seed_key: str = "_split_group",
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     r = max(0.0, min(0.5, float(val_ratio)))
     if r <= 0:
         return examples, []
@@ -140,13 +155,25 @@ def split_train_val(examples: list[dict[str, Any]], *, val_ratio: float, seed_ke
     train: list[dict[str, Any]] = []
     val: list[dict[str, Any]] = []
     for ex in examples:
-        # Deterministic split by event id fallback to full json hash.
-        eid = str(ex.get(seed_key) or "") or json.dumps(ex, sort_keys=True, ensure_ascii=True)
-        bucket = _stable_bucket(eid, 10000)
+        # The group is the owner, not the annotation event. Because projects
+        # have one immutable owner, this simultaneously prevents the same user
+        # and any of their projects from crossing train/validation.
+        group = str(ex.get(seed_key) or "").strip()
+        if not group:
+            raise ValueError(
+                "DPO example is missing its owner split group; refusing a "
+                "leaky event-level split"
+            )
+        bucket = _stable_bucket(group, 10000)
         if bucket < threshold:
             val.append(ex)
         else:
             train.append(ex)
+    train_groups = {str(ex[seed_key]) for ex in train}
+    val_groups = {str(ex[seed_key]) for ex in val}
+    overlap = train_groups & val_groups
+    if overlap:
+        raise AssertionError("DPO split leaked owner groups across partitions")
     return train, val
 
 
@@ -166,7 +193,7 @@ def build_dpo_examples(
         client,
         limit=limit,
         since_iso=since_iso,
-        field_names=None,  # field filtering handled in cfg for better skip stats
+        field_names=fields_for_surface(cfg.surface),
     )
     sessions: dict[str, dict[str, Any]] = {}
     if enrich_sessions:
@@ -182,7 +209,14 @@ def build_dpo_examples(
         if ex is None:
             stats.skip(reason or "skipped")
             continue
-        # keep source id for deterministic split/debug; strip when writing if needed
+        owner = str(row.get("user_id") or "").strip()
+        if not owner:
+            stats.skip("missing_owner_split_group")
+            continue
+        # Internal export metadata is removed before OpenAI upload. The owner
+        # id is needed only to make the split safe; it never enters JSONL.
+        ex["_surface"] = cfg.surface
+        ex["_split_group"] = f"user:{owner}"
         ex["event_id"] = str(row.get("id") or "")
         out.append(ex)
         stats.kept += 1

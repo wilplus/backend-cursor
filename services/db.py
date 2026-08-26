@@ -14079,10 +14079,10 @@ class DatabaseService:
             payload["model_version_at_time"] = str(model_version_at_time)
         if probe_score_at_time is not None:
             payload["probe_score_at_time"] = float(probe_score_at_time)
-        # Rule 1: a proposal outside the ternary domain is dropped rather than
+        # Rule 1: a proposal outside the perceptual domain is dropped rather than
         # coerced. The column's CHECK would reject it and take the whole
         # RATING down with it — the human answer is the thing worth saving.
-        if machine_value in ("yes", "no", "neutral"):
+        if machine_value in ("yes", "in_between", "no"):
             payload["machine_value"] = machine_value
         try:
             (self.client.table("confidence_labels")
@@ -15829,6 +15829,52 @@ class DatabaseService:
                 return False
             logger.error(
                 "set_user_speaker_sex failed user=%s err=%s", user_id, e,
+            )
+            return False
+
+    # ── blind-rater language eligibility ───────────────────────────
+
+    def get_user_proficient_languages(self, user_id: str) -> Optional[list]:
+        """Explicit languages this rater may receive; None = never set."""
+        if not user_id:
+            return None
+        try:
+            res = (
+                self.client.table("user_settings")
+                .select("profile_proficient_languages")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if not res.data:
+                return None
+            value = res.data[0].get("profile_proficient_languages")
+            return value if isinstance(value, list) and value else None
+        except Exception as e:
+            logger.warning(
+                "get_user_proficient_languages failed user=%s err=%s",
+                user_id, e,
+            )
+            return None
+
+    def set_user_proficient_languages(
+        self, user_id: str, languages: list[str],
+    ) -> bool:
+        """Partial profile upsert; never touches intake or acoustic fields."""
+        if not user_id or not languages:
+            return False
+        from datetime import datetime, timezone
+        try:
+            self.client.table("user_settings").upsert({
+                "user_id": user_id,
+                "profile_proficient_languages": languages,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+            return True
+        except Exception as e:
+            logger.error(
+                "set_user_proficient_languages failed user=%s err=%s",
+                user_id, e,
             )
             return False
 

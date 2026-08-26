@@ -100,9 +100,9 @@ and poisons those labels. This is the capture path only.
 
 Migration to run: `migrations/add_snippet_confidence_reviews.sql`.
 
-### Lane 2 — annotations → writer models (copilot SFT/DPO)
+### Lane 2 — annotations → surface-specific writer models (SFT/DPO)
 
-`publish/keep/verify capture → JSONL export → SFT/DPO export (CLI) → manual promote → serve`
+`publish/keep/verify capture → one-surface immutable release → candidate fine-tune → production-adapter golden eval → explicit promotion → same surface only`
 
 - Corpus: `admin_annotation_events` (AI draft vs coach final text pairs;
   schema in `migrations/add_admin_copilot_foundation.sql:104`).
@@ -111,9 +111,29 @@ Migration to run: `migrations/add_snippet_confidence_reviews.sql`.
 - Export ledger: `admin_annotation_export_runs`
   (`services/annotation_export.py`), fed by cron/webhook
   `routes/internal_webhooks.py` `/v2/internal/annotation-export`.
-- **Decision point (human promote):** `scripts/promote_openai_model.py` →
-  `runtime_config.openai_copilot_model`, read by
-  `services/openai_service.py:178`. No automation — PHASE-A0 A3.4.
+- Canonical trainable surfaces and their annotation fields live in
+  `services/ml_surface_contracts.py`. Mixed-task exports are rejected.
+  Contextual `coach_note` corrections belong to `coach_comment_draft`;
+  the older one-sentence `admin_comment`/`snippet_drafts` task is a distinct
+  prompt and is intentionally excluded until it has its own golden adapter.
+- `scripts/export_openai_preference_jsonl.py` requires `--surface` and emits
+  write-once train/validation JSONL plus a hash-bound release manifest. The
+  split groups by owner, so a user and every project they own stay wholly in
+  one partition; owner ids never enter the OpenAI files.
+- `scripts/run_openai_preference_finetune.py` accepts only files matching that
+  manifest. A successful job is a **candidate**, never a deployment.
+- `scripts/evaluate_dpo_candidate.py` injects the candidate in-process and
+  runs the real production adapter against that surface's golden dataset. It
+  writes a hash-bound pass/fail report and never touches runtime config.
+- **Decision point (human promote):** `scripts/promote_openai_model.py`
+  requires a fresh, passing report for the same model, release and surface.
+  It writes only `runtime_config.openai_surface_model_<surface>`.
+- `services/llm.py` resolves those slots only for the registered surface and
+  falls back to the pinned base spec otherwise. A Say It Stronger model can
+  therefore never become the Moment Suggestion or Ideal Text model.
+
+There is deliberately no auto-promotion flag and no generic copilot promotion
+key in this lane.
 
 ### ~~Lane 3 — acoustic stress baseline~~ — DELETED 2026-08-03
 

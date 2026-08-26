@@ -11,13 +11,12 @@ TWO PIECES, both pure:
     directly comparable to the published anchor AND the human side of the
     voice-confidence validation gate.
 
-  * ``stratified_label_queue`` — WHICH pieces to put in front of the coach.
-    Samples ACROSS the confidence spectrum (some the composite reads as
-    confident, some middling, some doubtful) rather than only the ones it
-    already likes. A corpus drawn only from machine-confident pieces teaches
-    the model to agree with itself: it never sees the boundary it is supposed
-    to learn, and every later "agreement" number is circular. The bands are
-    used to SELECT and are then discarded — never returned, never shown.
+  * ``mixed_label_queue`` — WHICH pieces to put in front of the coach. It
+    combines model-boundary examples, balanced predicted regions, and a
+    uniform exploration sample. A model-only queue observes behavior it
+    caused; the exploration slice is the unbiased evaluation window. Every
+    selection carries server-side reason/probability provenance, which is
+    persisted but never returned to the blind rater.
 
 BLIND COACH. The queue carries the moment and nothing else: no band, no
 score, no machine read of any kind. The composite decides who gets asked;
@@ -42,9 +41,12 @@ SOURCES = ("coach", "game", "peer")
 _CONFIDENT_MIN = 0.35
 _DOUBTFUL_MAX = -0.35
 
-# Per-band target when the caller doesn't say. Small on purpose: review
-# attention is the scarce resource, and a balanced 15 beats a lopsided 60.
-DEFAULT_PER_BAND = 5
+# Small on purpose: review attention is the scarce resource, and a mixed 15
+# beats a lopsided 60. Quotas are policy, not model output.
+DEFAULT_QUEUE_SIZE = 15
+EXPLORATION_SHARE = 0.20
+BOUNDARY_SHARE = 0.40
+SELECTION_POLICY_VERSION = "confidence-mixed-v1"
 
 
 def validate_confidence_label(payload: Any) -> tuple[Optional[dict], Optional[str]]:
@@ -116,40 +118,165 @@ def band_of(score: Any) -> str:
     return "neutral"
 
 
-def stratified_label_queue(snippets: Any, *,
-                           per_band: int = DEFAULT_PER_BAND,
-                           seed: str = "") -> list:
-    """Pick a spectrum-balanced set of pieces for the coach to label.
+def mixed_label_queue(snippets: Any, *,
+                      target_size: int = DEFAULT_QUEUE_SIZE,
+                      seed: str = "") -> list:
+    """Build one auditable mixed queue without exposing routing signals.
 
-    Returns the chosen snippet dicts in a DETERMINISTIC but band-shuffled
-    order: deterministic so re-opening a session shows the same queue (and a
-    re-import is replayable), band-shuffled so the coach can't infer the band
-    from position — an ordering tell would anchor the labels exactly like a
-    visible score.
+    The returned snippet copies carry a private ``_selection`` record:
 
-    Pieces with no confidence score ('unscored') still participate: they are
-    the honest unknowns, and excluding them would bias the corpus toward
-    pieces the composite happened to measure. Pure."""
-    rows = [s for s in (snippets or []) if isinstance(s, dict) and s.get("id")]
+    ``model_boundary``
+        Scored clips nearest the decision boundary (active learning).
+    ``band_balance``
+        Round-robin coverage of confident/middle/doubtful/unscored regions.
+    ``random_exploration``
+        Uniform hash sample from everything left. This is the only slice that
+        should be used as an unbiased evaluation estimate.
+
+    Selection and final order are deterministic from ``seed`` so retries and
+    reloads cannot silently change the cohort. With a random session UUID as
+    seed, hash ranking is a reproducible uniform draw. Selection metadata is
+    server-side only; :func:`queue_payload` is an allowlist and drops it.
+    """
+    rows_by_id: dict[str, dict] = {}
+    for snippet in (snippets or []):
+        if isinstance(snippet, dict) and snippet.get("id"):
+            rows_by_id.setdefault(str(snippet["id"]), snippet)
+    rows = list(rows_by_id.values())
     if not rows:
         return []
 
-    by_band: dict = {}
-    for s in rows:
-        by_band.setdefault(band_of(_confidence_of(s)), []).append(s)
+    try:
+        requested = int(target_size)
+    except (TypeError, ValueError):
+        requested = DEFAULT_QUEUE_SIZE
+    target = min(len(rows), max(0, requested))
+    if target == 0:
+        return []
 
-    def _key(s: dict) -> str:
+    def _key(s: dict, purpose: str = "pick") -> str:
         return hashlib.sha1(
-            f"{seed}:{s.get('id')}".encode("utf-8")).hexdigest()
+            f"{seed}:{purpose}:{s.get('id')}".encode("utf-8")
+        ).hexdigest()
 
-    picked: list = []
-    for band in ("confident", "neutral", "doubtful", "unscored"):
-        bucket = sorted(by_band.get(band, []), key=_key)
-        picked.extend(bucket[:max(0, per_band)])
+    exploration_n = max(1, round(target * EXPLORATION_SHARE))
+    boundary_n = min(target - exploration_n,
+                     max(1, round(target * BOUNDARY_SHARE)))
+    balance_n = max(0, target - exploration_n - boundary_n)
 
-    # Final shuffle across bands — deterministic, but band-blind to the eye.
-    picked.sort(key=_key)
-    return picked
+    chosen: list[tuple[dict, str, float]] = []
+    chosen_ids: set[str] = set()
+
+    # 1. Model-boundary candidates. Unscored clips are not faked as zero;
+    # they remain available to balanced/random selection.
+    scored = [
+        (row, score)
+        for row in rows
+        if (score := _confidence_of(row)) is not None
+    ]
+    scored.sort(key=lambda item: (
+        abs(item[1]), _key(item[0], "boundary-tie")))
+    for row, _score in scored[:boundary_n]:
+        chosen.append((row, "model_boundary", 1.0))
+        chosen_ids.add(str(row["id"]))
+
+    # 2. Round-robin model-region coverage from what remains.
+    buckets: dict[str, list] = {}
+    for row in rows:
+        if str(row["id"]) in chosen_ids:
+            continue
+        buckets.setdefault(band_of(_confidence_of(row)), []).append(row)
+    for bucket in buckets.values():
+        bucket.sort(key=lambda row: _key(row, "balance"))
+    band_order = ("confident", "neutral", "doubtful", "unscored")
+    while balance_n > 0 and any(buckets.get(band) for band in band_order):
+        for band in band_order:
+            if balance_n <= 0:
+                break
+            bucket = buckets.get(band) or []
+            if not bucket:
+                continue
+            row = bucket.pop(0)
+            chosen.append((row, "band_balance", 1.0))
+            chosen_ids.add(str(row["id"]))
+            balance_n -= 1
+
+    # 3. Uniform exploration fills its own quota and any deterministic quota
+    # that lacked enough candidates. Its inclusion probability is exact for
+    # this remaining pool and is persisted for audit/evaluation weighting.
+    remaining = [row for row in rows if str(row["id"]) not in chosen_ids]
+    remaining.sort(key=lambda row: _key(row, "exploration"))
+    random_n = min(target - len(chosen), len(remaining))
+    random_probability = (random_n / len(remaining)) if remaining else 0.0
+    for row in remaining[:random_n]:
+        chosen.append((row, "random_exploration", random_probability))
+
+    # Final ordering must not reveal the selection stratum to the rater.
+    chosen.sort(key=lambda item: _key(item[0], "blind-order"))
+    return [
+        {
+            **row,
+            "_selection": {
+                "policy_version": SELECTION_POLICY_VERSION,
+                "reason": reason,
+                "sampling_probability": round(float(probability), 6),
+            },
+        }
+        for row, reason, probability in chosen
+    ]
+
+
+def selection_records(selected: Any) -> list[dict]:
+    """Persistable queue provenance, separate from the blind payload."""
+    out: list[dict] = []
+    for row in (selected or []):
+        if not isinstance(row, dict) or not row.get("id"):
+            continue
+        meta = row.get("_selection")
+        if not isinstance(meta, dict):
+            continue
+        out.append({
+            "snippet_id": str(row["id"]),
+            "policy_version": meta.get("policy_version"),
+            "reason": meta.get("reason"),
+            "sampling_probability": meta.get("sampling_probability"),
+        })
+    return out
+
+
+def stored_selection_records(context: Any) -> list[dict]:
+    """Read the canonical persisted cohort with one legacy boundary adapter.
+
+    New sessions store ``label_queue_selection`` records. Historical sessions
+    stored only ``label_queue`` IDs; those remain reviewable but are marked
+    ``legacy_unspecified`` and carry no fabricated sampling probability.
+    """
+    ctx = context if isinstance(context, dict) else {}
+    canonical = ctx.get("label_queue_selection")
+    if isinstance(canonical, list):
+        out: list[dict] = []
+        for item in canonical:
+            if not isinstance(item, dict) or not item.get("snippet_id"):
+                continue
+            out.append({
+                "snippet_id": str(item["snippet_id"]),
+                "policy_version": item.get("policy_version"),
+                "reason": item.get("reason"),
+                "sampling_probability": item.get("sampling_probability"),
+            })
+        return out
+    legacy = ctx.get("label_queue")
+    if not isinstance(legacy, list):
+        return []
+    return [
+        {
+            "snippet_id": str(snippet_id),
+            "policy_version": None,
+            "reason": "legacy_unspecified",
+            "sampling_probability": None,
+        }
+        for snippet_id in legacy if snippet_id
+    ]
 
 
 def queue_payload(snippets: Any) -> list:
@@ -182,14 +309,16 @@ def corpus_summary(label_rows: Any) -> dict:
     'confident: true' will produce a model that says yes to everything, and
     this is where that shows up."""
     rows = [r for r in (label_rows or []) if isinstance(r, dict)]
-    # TERNARY FIRST (the shipped instrument: value in yes/no/neutral,
-    # unrateable separate), legacy `confident` as the fallback for rows
+    # V2 FIRST: three perceptual positions plus two explicit utility states.
+    # Legacy `neutral` (v1's IDK) and `unrateable` remain readable without
+    # being reinterpreted as the new perceptual middle.
     # written before the migration. Counting only the binary here was the
     # BE sibling of the FE's pickLabel bug: a stored neutral vanished
     # from every count and the balance read as cleaner than the corpus.
     def _answer(r):
         v = r.get("value")
-        if v in ("yes", "no", "neutral"):
+        if v in ("yes", "in_between", "no", "not_sure",
+                 "audio_unclear", "neutral"):
             return v
         if r.get("confident") is True:
             return "yes"
@@ -199,9 +328,13 @@ def corpus_summary(label_rows: Any) -> dict:
 
     yes = sum(1 for r in rows if _answer(r) == "yes")
     no = sum(1 for r in rows if _answer(r) == "no")
-    neutral = sum(1 for r in rows if _answer(r) == "neutral")
-    unrateable = sum(1 for r in rows if r.get("unrateable") is True)
-    answered = yes + no + neutral
+    in_between = sum(1 for r in rows if _answer(r) == "in_between")
+    not_sure = sum(1 for r in rows
+                   if _answer(r) in ("not_sure", "neutral"))
+    audio_unclear = sum(1 for r in rows
+                        if (_answer(r) == "audio_unclear"
+                            or r.get("unrateable") is True))
+    answered = yes + no + in_between
     by_intensity: dict = {}
     for r in rows:
         v = r.get("intensity")
@@ -212,10 +345,12 @@ def corpus_summary(label_rows: Any) -> dict:
         "total": len(rows),
         "confident_yes": yes,
         "confident_no": no,
-        "neutral": neutral,
+        "in_between": in_between,
+        "not_sure": not_sure,
         # Two abstentions are not two labels — unrateable rows carry no
         # answer and stay out of `balance` (same rule as aggregate()).
-        "unrateable": unrateable,
+        "audio_unclear": audio_unclear,
+        "unrateable": audio_unclear,
         "balance": (round(yes / answered, 3) if answered else None),
         "by_intensity": by_intensity,
         "mean_intensity": (

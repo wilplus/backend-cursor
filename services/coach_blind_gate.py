@@ -10,7 +10,11 @@ from __future__ import annotations
 from typing import Any
 
 
-_RATING_VALUES = ("yes", "no", "neutral")
+_RATING_VALUES = (
+    "yes", "in_between", "no", "not_sure", "audio_unclear",
+    # Historical v1 rows remain valid completed labels.
+    "neutral",
+)
 
 
 def has_committed_blind_label(coach_state: Any) -> bool:
@@ -38,6 +42,18 @@ def blind_label_progress(snippets: Any) -> dict:
     }
 
 
+def reveal_transcript_after_commit(transcript: Any, *, committed: bool) -> str:
+    """Return exact words only after this rater has saved a blind answer.
+
+    This is shared by the contextual coach packet and the imported-corpus
+    queue.  Keeping the rule server-side means an unlabeled transcript is not
+    merely hidden by CSS or recoverable from the browser's network payload.
+    """
+    if not committed:
+        return ""
+    return transcript if isinstance(transcript, str) else ""
+
+
 def redact_contextual_snippets(snippets: Any) -> list[dict]:
     """Allowlist the blind evidence packet while the pass is incomplete.
 
@@ -51,10 +67,12 @@ def redact_contextual_snippets(snippets: Any) -> list[dict]:
             continue
         state = row.get("coach_state")
         state = state if isinstance(state, dict) else {}
+        committed = has_committed_blind_label(state)
         out.append({
             "id": row.get("id"),
             "index": row.get("index"),
-            "transcript": row.get("transcript") or "",
+            "transcript": reveal_transcript_after_commit(
+                row.get("transcript"), committed=committed),
             "audio_ref": row.get("audio_ref"),
             "start_offset_ms": row.get("start_offset_ms"),
             "duration_ms": row.get("duration_ms"),

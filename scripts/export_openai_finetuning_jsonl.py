@@ -10,9 +10,8 @@ Security / privacy:
   - Run from a trusted machine with .env (SUPABASE_SERVICE_ROLE_KEY).
 
 Usage:
-  python3 scripts/export_openai_finetuning_jsonl.py -o training.jsonl
-  python3 scripts/export_openai_finetuning_jsonl.py -o training.jsonl --enrich-sessions --limit 2000
-  python3 scripts/export_openai_finetuning_jsonl.py -o training.jsonl --fields email_draft,task_draft,script_draft
+  python3 scripts/export_openai_finetuning_jsonl.py \
+    --surface say_it_stronger -o training.jsonl --enrich-sessions
 
 OpenAI fine-tuning: upload JSONL via API or dashboard. At inference, use the same API key and
 pass model=\"ft:...\" (not a different key).
@@ -37,19 +36,18 @@ from services.ml_finetuning_export import (  # noqa: E402
     fetch_events_for_export,
     fetch_sessions_map,
 )
+from services.ml_surface_contracts import (  # noqa: E402
+    contract_for_surface,
+    fields_for_surface,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export annotation events to OpenAI fine-tuning JSONL.")
+    parser.add_argument("--surface", required=True, help="Canonical correction surface")
     parser.add_argument("-o", "--output", required=True, help="Output .jsonl path")
     parser.add_argument("--limit", type=int, default=10_000, help="Max rows from DB (ordered by created_at)")
     parser.add_argument("--since", type=str, default=None, help="Only events with created_at > this ISO timestamp")
-    parser.add_argument(
-        "--fields",
-        type=str,
-        default=None,
-        help="Comma-separated field_name filter (e.g. email_draft,task_draft,script_draft)",
-    )
     parser.add_argument(
         "--enrich-sessions",
         action="store_true",
@@ -62,9 +60,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    field_filter = None
-    if args.fields:
-        field_filter = {f.strip() for f in args.fields.split(",") if f.strip()}
+    contract = contract_for_surface(args.surface)
+    field_filter = fields_for_surface(contract.id)
 
     rows = fetch_events_for_export(
         db.client,
@@ -101,7 +98,10 @@ def main() -> None:
             fh.write(example_to_jsonl_line(ex) + "\n")
             written += 1
 
-    print(f"Wrote {written} examples to {out_path} (skipped {skipped}, scanned {len(rows)})")
+    print(
+        f"Wrote {written} {contract.id} examples to {out_path} "
+        f"(skipped {skipped}, scanned {len(rows)})"
+    )
 
 
 if __name__ == "__main__":

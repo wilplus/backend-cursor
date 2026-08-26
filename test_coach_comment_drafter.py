@@ -42,8 +42,10 @@ class _FakeResp:
 class _FakeCompletions:
     def __init__(self, content):
         self._content = content
+        self.calls = []
 
     def create(self, **kwargs):
+        self.calls.append(kwargs)
         return _FakeResp(self._content)
 
 
@@ -198,6 +200,34 @@ class GenerateCoachNoteDraftTests(unittest.TestCase):
         _install_fake_openai()
         self.assertTrue(self._gen("real transcript here", slide=None,
                                   metrics=_FULL_METRICS, goal="pitch the raise"))
+
+    def test_surface_promoted_model_is_used(self):
+        from unittest.mock import patch
+
+        _install_fake_openai()
+        with patch(
+            "services.ml_surface_contracts.resolve_surface_model",
+            return_value="ft:coach-comment",
+        ):
+            self.assertTrue(self._gen("real transcript here"))
+
+        service_module = sys.modules["services.openai_service"]
+        # Install one shared client so the assertion can inspect the exact
+        # model identifier passed by production code.
+        client = _FakeClient(_CANNED)
+        service_module.OpenAIService = lambda: types.SimpleNamespace(client=client)
+        try:
+            with patch(
+                "services.ml_surface_contracts.resolve_surface_model",
+                return_value="ft:coach-comment",
+            ):
+                self.assertTrue(self._gen("real transcript here"))
+            self.assertEqual(
+                client.chat.completions.calls[-1]["model"],
+                "ft:coach-comment",
+            )
+        finally:
+            _install_fake_openai()
 
 
 class DispatchTests(unittest.TestCase):

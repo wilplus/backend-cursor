@@ -87,8 +87,10 @@ def generate_coach_note_draft(
     observations = metric_observations(metrics)
     try:
         from services.llm_schemas import COACH_NOTE_DRAFT_SCHEMA, response_format
+        from services.ml_surface_contracts import resolve_surface_model
+        model = resolve_surface_model("coach_comment_draft", _MODEL)
         resp = service.client.chat.completions.create(
-            model=_MODEL,
+            model=model,
             messages=[
                 {"role": "system", "content": _system_prompt()},
                 {"role": "user", "content": _user_prompt(
@@ -106,7 +108,7 @@ def generate_coach_note_draft(
         try:
             from services.llm_usage import record_response_usage
             record_response_usage(resp, surface="coach_comment_draft",
-                                  model=_MODEL,)
+                                  model=model,)
         except Exception:
             pass
         raw = (resp.choices[0].message.content or "").strip()

@@ -324,3 +324,5 @@
 0286	add_ceo_work_items.sql
 0287	add_ceo_overview_editing.sql
 0288	add_ceo_intelligence_sync.sql
+0289	version_confidence_rating_instrument_v2.sql
+0290	add_rater_proficient_languages.sql

@@ -34,10 +34,20 @@ class CoachSessionReadTests(unittest.TestCase):
         self.originals = {}
         self._patch_db("v2_get_session_by_id", lambda sid: {
             "id": sid, "user_id": "user-xyz-secret",
-            "intake_context": {"domain": "public_speaking", "topic": "demo day"},
+            "intake_context": {
+                "domain": "public_speaking", "topic": "demo day",
+                "language": "en",
+            },
             "results_published_at": None, "status": "pending_admin_review",
             "coach_overall_message": None, "coach_video_ref": None,
         })
+        self._patch_db(
+            "get_user_proficient_languages", lambda user_id: ["en"],
+        )
+        self._patch_db(
+            "get_recording",
+            lambda recording_id: {"transcription_language": "en"},
+        )
         self._patch_db(
             "claim_coach_review",
             lambda session_id, actor_user_id, **kwargs: {
@@ -124,7 +134,8 @@ class CoachSessionReadTests(unittest.TestCase):
     def test_state_done_when_published(self):
         setattr(v2.db, "v2_get_session_by_id", lambda sid: {
             "id": sid, "user_id": "u", "results_published_at": "2026-06-06T00:00:00Z",
-            "intake_context": {}, "coach_overall_message": None, "coach_video_ref": None,
+            "intake_context": {"language": "en"},
+            "coach_overall_message": None, "coach_video_ref": None,
         })
         status, data = self._get()
         self.assertEqual(data["state"], "done")
@@ -190,6 +201,11 @@ class CoachSessionReadTests(unittest.TestCase):
         self.assertIsNone(data["presentation_ref"])
         self.assertNotIn("stickiness", data["snippets"][0])
         self.assertNotIn("features", data["snippets"][0])
+        # Row a is already answered by this coach, so its words may be
+        # revealed. Row b is still blind and must be audio-only on the wire.
+        by_id = {row["id"]: row for row in data["snippets"]}
+        self.assertNotEqual(by_id["a"]["transcript"], "")
+        self.assertEqual(by_id["b"]["transcript"], "")
         self.assertEqual(data["snippets"][0]["coach_state"]["note"], "")
 
 

@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 """
-Start an OpenAI preference/DPO fine-tune job from JSONL files, optionally poll
-to completion and auto-promote the resulting model for copilot inference.
+Start an OpenAI preference/DPO fine-tune job from one immutable, surface-scoped
+dataset release. A successful job produces a candidate only; promotion is a
+separate, evaluation-gated human action.
 
 Requires:
   - OPENAI_API_KEY in env
-  - For --auto-promote: runtime_config table migration applied and SUPABASE service env configured
+  - A manifest produced by export_openai_preference_jsonl.py
 
 Examples:
   python3 scripts/run_openai_preference_finetune.py \
     --train-file exports/dpo-train.jsonl \
     --val-file exports/dpo-val.jsonl \
+    --manifest exports/dpo-release.json \
+    --surface say_it_stronger \
     --base-model gpt-4.1-mini-2025-04-14 \
     --suffix willab-dpo-v1 \
     --poll
-
-  python3 scripts/run_openai_preference_finetune.py \
-    --train-file exports/dpo-train.jsonl \
-    --poll --auto-promote --promote-key openai_copilot_model
 """
 
 from __future__ import annotations
@@ -34,7 +33,11 @@ import httpx
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config  # noqa: E402
-from services.db import db  # noqa: E402
+from services.ml_dpo_release import (  # noqa: E402
+    load_release_manifest,
+    verify_release_file,
+)
+from services.ml_surface_contracts import contract_for_surface  # noqa: E402
 
 
 def _headers(api_key: str) -> dict:
@@ -102,24 +105,12 @@ def _get_job(client: httpx.Client, api_key: str, job_id: str) -> dict:
     return r.json()
 
 
-def _auto_promote(model_id: str, key: str, actor: str) -> None:
-    res = db.upsert_runtime_config(
-        key=key,
-        value=model_id,
-        updated_by=actor,
-        metadata={"source": "run_openai_preference_finetune.py"},
-    )
-    if not res:
-        raise RuntimeError(
-            "Failed to promote model (runtime_config unavailable). "
-            "Run migrations/add_runtime_model_config.sql."
-        )
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run OpenAI preference/DPO fine-tune job.")
+    parser.add_argument("--surface", required=True, help="Canonical DPO surface")
     parser.add_argument("--train-file", required=True, help="Training JSONL path (preference format)")
-    parser.add_argument("--val-file", default=None, help="Optional validation JSONL path")
+    parser.add_argument("--val-file", required=True, help="Validation JSONL path")
+    parser.add_argument("--manifest", required=True, help="Immutable DPO release manifest")
     parser.add_argument(
         "--base-model",
         default=os.getenv("OPENAI_DPO_BASE_MODEL", "gpt-4.1-mini-2025-04-14"),
@@ -133,18 +124,9 @@ def main() -> None:
     )
     parser.add_argument("--poll", action="store_true", help="Poll job to terminal state")
     parser.add_argument("--poll-interval-sec", type=int, default=30, help="Polling interval")
-    parser.add_argument("--auto-promote", action="store_true", help="Write resulting model id into runtime_config")
-    parser.add_argument(
-        "--promote-key",
-        default="openai_copilot_model",
-        help="runtime_config key to update on success",
-    )
-    parser.add_argument(
-        "--promoted-by",
-        default="ops:run_openai_preference_finetune.py",
-        help="metadata updated_by value when promoting",
-    )
     args = parser.parse_args()
+
+    contract = contract_for_surface(args.surface)
 
     cfg = Config()
     api_key = (cfg.OPENAI_API_KEY or "").strip()
@@ -154,9 +136,20 @@ def main() -> None:
     train_path = Path(args.train_file)
     if not train_path.exists():
         raise SystemExit(f"Training file not found: {train_path}")
-    val_path = Path(args.val_file) if args.val_file else None
-    if val_path and not val_path.exists():
+    val_path = Path(args.val_file)
+    if not val_path.exists():
         raise SystemExit(f"Validation file not found: {val_path}")
+    manifest_path = Path(args.manifest)
+    if not manifest_path.exists():
+        raise SystemExit(f"Manifest not found: {manifest_path}")
+    try:
+        manifest = load_release_manifest(
+            manifest_path, expected_surface=contract.id,
+        )
+        verify_release_file(manifest, "train", train_path)
+        verify_release_file(manifest, "validation", val_path)
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Invalid immutable DPO release: {exc}")
 
     try:
         method_json = json.loads(args.method_json)
@@ -165,7 +158,7 @@ def main() -> None:
 
     with httpx.Client() as client:
         train_file_id = _upload_file(client, api_key, train_path)
-        val_file_id = _upload_file(client, api_key, val_path) if val_path else None
+        val_file_id = _upload_file(client, api_key, val_path)
         job = _create_job(
             client,
             api_key,
@@ -180,6 +173,8 @@ def main() -> None:
             json.dumps(
                 {
                     "status": "submitted",
+                    "surface": contract.id,
+                    "dataset_release_id": manifest["dataset_release_id"],
                     "job_id": job_id,
                     "base_model": args.base_model,
                     "training_file_id": train_file_id,
@@ -212,20 +207,15 @@ def main() -> None:
             )
             if status in terminal:
                 if status == "succeeded":
-                    if args.auto_promote:
-                        if not fine_tuned_model:
-                            raise SystemExit("Job succeeded but fine_tuned_model is missing.")
-                        _auto_promote(str(fine_tuned_model), args.promote_key, args.promoted_by)
-                        print(
-                            json.dumps(
-                                {
-                                    "status": "promoted",
-                                    "promote_key": args.promote_key,
-                                    "model_id": fine_tuned_model,
-                                },
-                                ensure_ascii=False,
-                            )
-                        )
+                    if not fine_tuned_model:
+                        raise SystemExit("Job succeeded but fine_tuned_model is missing.")
+                    print(json.dumps({
+                        "status": "candidate_ready",
+                        "surface": contract.id,
+                        "dataset_release_id": manifest["dataset_release_id"],
+                        "model_id": fine_tuned_model,
+                        "next": "run scripts/evaluate_dpo_candidate.py",
+                    }, ensure_ascii=False))
                     return
                 raise SystemExit(f"Fine-tune job ended with status={status}")
             time.sleep(interval)

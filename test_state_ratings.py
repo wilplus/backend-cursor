@@ -3,18 +3,16 @@
 services/state_ratings.py.
 
 WHAT THIS PINS DOWN:
-  * the INSTRUMENT — yes/no/neutral on one clip, and `unrateable` as a
-    SEPARATE control rather than a fourth value. Folding the two would book
-    unclear audio as a real middling rating and poison the one class that
-    defines the decision boundary;
+  * the INSTRUMENT — three perceptual positions plus explicit uncertainty and
+    technical-audio states, all stored without coercion;
   * STRICT TYPES — this is training data, so a truthy string is refused
     rather than coerced. A coerced value records a verdict no human gave and
     is indistinguishable from a real one afterwards;
   * the OPERATIONAL-DEFINITION GATE (§1.4) — a state with no written
     definition cannot be asked about, so validation refuses it;
-  * LANE derivation — a coach rating an IMPORT is `bootstrap`, not `coach`.
-    One rater on a model-proposed candidate is not panel-grade however expert
-    the rater, and the distinction cannot be reconstructed later;
+  * LANE derivation — verified rating provenance, never clip source, decides
+    whether a coach act is panel-grade. Seeded/historical rows remain
+    `bootstrap` and cannot be reconstructed as human-panel evidence later;
   * AGGREGATION — bootstrap is excluded from the panel by default;
     `unrateable` rows are counted but never aggregated;
   * QUALITY — sample size DOMINATES agreement, by decision. A five-rater
@@ -48,8 +46,11 @@ def _rating(value=None, lane="coach", unrateable=False, rater="r1"):
 
 
 class TestInstrument(unittest.TestCase):
-    def test_three_values_exactly(self):
-        self.assertEqual(set(VALUES), {"yes", "no", "neutral"})
+    def test_five_values_exactly(self):
+        self.assertEqual(
+            set(VALUES),
+            {"yes", "in_between", "no", "not_sure", "audio_unclear"},
+        )
 
     def test_accepts_each_value(self):
         for v in VALUES:
@@ -58,7 +59,11 @@ class TestInstrument(unittest.TestCase):
             self.assertEqual(row["value"], v)
             self.assertFalse(row["unrateable"])
 
-    def test_rejects_a_fourth_value(self):
+    def test_rejects_legacy_neutral_on_new_writes(self):
+        _, err = validate_rating({"state_id": "confidence", "value": "neutral"})
+        self.assertIsNotNone(err)
+
+    def test_rejects_an_unknown_value(self):
         _, err = validate_rating({"state_id": "confidence", "value": "idk"})
         self.assertIsNotNone(err)
 
@@ -112,18 +117,18 @@ class TestOperationalDefinitionGate(unittest.TestCase):
         self.assertIsNotNone(err)
         self.assertIn("operational definition", err)
 
-    def test_confidence_resolves_to_v1(self):
-        self.assertEqual(question_for_state("confidence"), "conf-q-v1")
+    def test_confidence_resolves_to_v2(self):
+        self.assertEqual(question_for_state("confidence"), "conf-q-v2")
 
     def test_question_version_is_stamped_on_the_row(self):
         """Unversioned rows cannot be split after a wording change, which
         would silently blend two constructs."""
         row, _ = validate_rating({"state_id": "confidence", "value": "yes"})
-        self.assertEqual(row["question_version"], "conf-q-v1")
+        self.assertEqual(row["question_version"], "conf-q-v2")
 
     def test_question_text_is_single_barrelled(self):
         """'confident AND authoritative' was two constructs in one question."""
-        text = describe_question("conf-q-v1")["text"]
+        text = describe_question("conf-q-v2")["text"]
         self.assertNotIn(" and ", text.lower())
 
     def test_retired_version_still_resolves(self):
@@ -138,24 +143,27 @@ class TestOperationalDefinitionGate(unittest.TestCase):
 
 
 class TestLaneDerivation(unittest.TestCase):
-    def test_coach_on_import_is_bootstrap(self):
+    def test_panel_grade_coach_on_imported_clip_is_coach(self):
         self.assertEqual(
-            resolve_lane("training_import", is_coach=True), "bootstrap")
+            resolve_lane(is_coach=True, panel_grade=True), "coach")
 
-    def test_coach_on_a_real_take_is_coach(self):
-        self.assertEqual(resolve_lane("audit_upload", is_coach=True), "coach")
+    def test_seeded_or_unverified_coach_evidence_is_bootstrap(self):
+        self.assertEqual(resolve_lane(is_coach=True), "bootstrap")
+        self.assertEqual(
+            resolve_lane(is_coach=True, panel_grade=False), "bootstrap")
 
     def test_owner_and_peer_split(self):
         self.assertEqual(
-            resolve_lane("audit_upload", is_coach=False, is_owner=True),
+            resolve_lane(is_coach=False, is_owner=True),
             "game_owner")
         self.assertEqual(
-            resolve_lane("audit_upload", is_coach=False), "game_peer")
+            resolve_lane(is_coach=False), "game_peer")
 
     def test_every_derived_lane_is_declared(self):
-        for src in ("training_import", "audit_upload", None):
-            for coach in (True, False):
-                self.assertIn(resolve_lane(src, is_coach=coach), LANES)
+        for coach in (True, False):
+            for panel_grade in (True, False):
+                self.assertIn(resolve_lane(
+                    is_coach=coach, panel_grade=panel_grade), LANES)
 
     def test_bootstrap_is_not_a_panel_lane(self):
         self.assertNotIn("bootstrap", PANEL_LANES)
@@ -211,10 +219,14 @@ class TestAggregation(unittest.TestCase):
         self.assertEqual(agg["n_raters"], 3)
         self.assertAlmostEqual(agg["agreement"], 2 / 3, places=3)
 
-    def test_neutral_is_a_real_class_at_zero(self):
-        agg = aggregate([_rating("neutral"), _rating("neutral")])
+    def test_in_between_is_a_real_class_at_zero(self):
+        agg = aggregate([_rating("in_between"), _rating("in_between")])
         self.assertEqual(agg["value"], 0.0)
-        self.assertEqual(agg["by_value"]["neutral"], 2)
+        self.assertEqual(agg["by_value"]["in_between"], 2)
+
+    def test_utility_states_do_not_fabricate_a_spectrum_position(self):
+        self.assertIsNone(aggregate([_rating("not_sure")]))
+        self.assertIsNone(aggregate([_rating("audio_unclear")]))
 
     def test_bootstrap_excluded_by_default(self):
         """One expert on a model-proposed candidate is not a panel."""
@@ -252,7 +264,7 @@ class TestCorpusSummary(unittest.TestCase):
         teach the boundary it exists to find."""
         s = corpus_summary([_rating("yes"), _rating("yes"), _rating("no")])
         self.assertEqual(s["classes_present"], 2)
-        self.assertEqual(s["by_value"]["neutral"], 0)
+        self.assertEqual(s["by_value"]["in_between"], 0)
 
     def test_balance_exposes_a_skewed_corpus(self):
         rows = [_rating("yes") for _ in range(9)] + [_rating("no")]
@@ -313,7 +325,7 @@ class AnchoredSelfCheckTests(unittest.TestCase):
         # rating was anchored (I1). Both by constants that already exist.
         from services.label_quorum import QUORUM_LANES
         from services.state_ratings import PANEL_LANES, resolve_lane
-        lane = resolve_lane("app", is_coach=False, is_owner=True)
+        lane = resolve_lane(is_coach=False, is_owner=True)
         self.assertEqual(lane, "game_owner")
         self.assertNotIn(lane, PANEL_LANES)
         self.assertNotIn(lane, QUORUM_LANES)

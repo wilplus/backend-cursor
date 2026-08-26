@@ -73,7 +73,7 @@ IMPORT_ORIGIN = "admin_import"
 # the confidence signal wanted, and the LLM layers are the whole cost.
 #
 #   confidence  (always on, not really a tick) transcript → pieces → acoustics
-#               → acoustic read → voice-confidence → the stratified label
+#               → acoustic read → voice-confidence → the mixed blind-label
 #               queue. This IS the corpus. Whisper is the only spend.
 #   analytics   the per-piece LLM layers — topic stickiness, say-it-stronger,
 #               the suggestion stars. Feeds the ADVICE model (Model 2), not
@@ -256,12 +256,13 @@ def prepare_training_import(
             existing = database.find_training_import_by_key(idem)
             if existing:
                 ctx = existing.get("intake_context") or {}
+                from services.confidence_labels import stored_selection_records
                 return {
                     "ok": True, "duplicate": True,
                     "session_id": existing.get("id"),
                     "arc_id": existing.get("arc_id"),
                     "stages": sorted(picked_stages),
-                    "queue_count": len(ctx.get("label_queue") or []),
+                    "queue_count": len(stored_selection_records(ctx)),
                     "filename": filename,
                 }
         except Exception as e:
@@ -484,20 +485,27 @@ def run_training_import_analysis(
         return {"ok": False, "reason": "analysis_failed", "detail": str(e),
                 "session_id": session_id, "arc_id": arc_id}
 
-    # 6. The label queue — spectrum-stratified, bands discarded. Persisted on
-    #    the session so re-opening shows the same queue and the coach can
-    #    resume a batch; the FE reads it back through the queue endpoint.
+    # 6. The label queue — mixed boundary/balance/random selection. Persisted
+    #    with auditable reason/probability metadata so the blind payload can
+    #    remain clean while later evaluation can identify its random slice.
     queue_ids: list = []
     try:
-        from services.confidence_labels import stratified_label_queue
-        picked = stratified_label_queue(
+        from services.confidence_labels import (
+            mixed_label_queue, selection_records,
+        )
+        picked = mixed_label_queue(
             database.get_snippets_by_session(session_id) or [],
-            per_band=queue_per_band, seed=session_id,
+            target_size=max(0, int(queue_per_band)) * 3,
+            seed=session_id,
         )
         queue_ids = [str(p.get("id")) for p in picked if p.get("id")]
-        if queue_ids:
+        records = selection_records(picked)
+        if records:
             database.set_session_intake_context(
-                session_id, {**session_context, "label_queue": queue_ids})
+                session_id, {
+                    **session_context,
+                    "label_queue_selection": records,
+                })
     except Exception as e:
         logger.warning("training_import: queue build failed for %s: %s "
                        "(non-fatal — every piece is still labellable)",

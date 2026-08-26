@@ -54,61 +54,39 @@ lone rating DISAGREES with the machine's proposal, that clip is the most
 informative unrated thing in the corpus: it is either a model miss or a rater
 miss, and one more peer says which. It routes first (active learning).
 
-RULE 4 · IDK IS A RESPONSE, NOT A NULL.  "I don't know" is counted like any
-other answer, which makes both founder cases fall out of one rule:
-
-      1 definite + 1 IDK  → nobody has agreed with anybody → 3rd rater
-      2 IDK               → SETTLED, "perceptually ambiguous"
-
-  The second is ground truth, not a gap: a detector that has been taught to
-  say "uncertain" where humans are uncertain beats one that fakes confidence
-  there, and this is the only place that class can come from (SPEC I10 —
-  "keep disagreement", low agreement is a finding).
-
-THE ONE RULE ALL FOUR CASES FALL OUT OF. Count every eligible response, IDK
-included; a snippet is settled when one response is STRICTLY modal with at
-least 2 votes:
+RULE 4 · IDK IS A ROUTING RESPONSE, NOT A CONFIDENCE LABEL. ``not_sure`` is
+stored and counted for audit, but it can never settle a clip. Two matching
+perceptual ratings settle; disagreement or IDK requests a third rater:
 
     ┌────────────────────────────────┬───────────────────────────────────┐
     │ eligible responses             │ status                            │
     ├────────────────────────────────┼───────────────────────────────────┤
     │ (none)                         │ unrated                           │
     │ exactly 1 (any)                │ singleton        — weak only      │
-    │ modal ≥2, unique, not IDK      │ quorum           — SETTLED        │
-    │ modal ≥2, unique, IDK          │ perceptually_ambiguous — SETTLED  │
-    │ ≥2 with no unique modal ≥2     │ needs_third                       │
+    │ 2 matching perceptual answers  │ quorum           — SETTLED        │
+    │ 2 responses, no quorum         │ needs_third                       │
+    │ 3+ responses, no quorum        │ unresolved       — quarantined    │
+    │ 1 unclear-audio report         │ audio_retry      — one fresh ear  │
+    │ 2 unclear-audio reports        │ audio_quarantined — no training   │
     └────────────────────────────────┴───────────────────────────────────┘
 
-  yes+IDK → 1/1, no modal ≥2 → needs_third (founder case B).
-  IDK+IDK → modal IDK ×2      → perceptually_ambiguous (founder case C).
-  yes+yes → modal yes ×2      → quorum.
+  yes+IDK and IDK+IDK both route to a third rater. yes+no does too.
+  yes+yes, in_between+in_between, or no+no settle immediately.
 
-  ASSUMPTION, flagged rather than buried — the founder specified case B for
-  "1 definite + 1 IDK" and did not say what TWO CONFLICTING definites do
-  (yes+no). This treats it the same way: two humans who disagree have not
-  reached a quorum either, so it routes to a third rater rather than booking a
-  coin-flip as ground truth. Change the founder's answer and only this table
-  moves.
+WHICH STORED RESPONSE IS "IDK" — in the v2 instrument it is the explicit
+``not_sure`` value. ``in_between`` is a real perceptual middle and may reach
+quorum in its own right. Historical v1 ``neutral`` rows retain their original
+IDK interpretation; versioning prevents old judgments being silently recast.
 
-WHICH STORED RESPONSE IS "IDK" — settled by FOUNDER RULING 2026-08-14:
-**``neutral`` IS the IDK.** It is the ternary's third value — the arc game's
-"yes / no / idk" (game_engine._normalise_answer, 2026-08-10) — and it is a
-VALID PERCEPTUAL RATING of the audio: "ambiguous to judge". Two of them is a
-genuine finding about the moment, which is exactly what rule 4's
-``perceptually_ambiguous`` class is for.
-
-``unrateable`` is the OTHER thing and stays other: a TECHNICAL abstention
+``audio_unclear``/``unrateable`` is the OTHER thing: a TECHNICAL abstention
 (the rater could not hear/judge the clip as an artifact — a failure of the
-audio, not a reading of the voice). It carries NO answer, is never counted
-as a response, and can never settle anything — the same treatment the
-game's twice-labelled gate has always given it ("two abstentions are not
-two labels"). This closes the wrinkle PR #389 flagged: the
-``perceptually_ambiguous`` class can only ever be built from real
-perceptual reads.
+audio, not a reading of the voice). It carries NO confidence answer and can
+never settle anything. One independent technical report routes the artifact
+once to a fresh eligible rater; two independent technical reports quarantine
+it from labeling, gold, evaluation, and training.
 
 FENCES. AC-9: nothing here is ever serialized toward a student — a status, a
-count and a settled label are all machine-facing, and "perceptually ambiguous"
-is a DB state, never a badge. BLIND COACH: the machine proposal is stored
+count and a settled label are all machine-facing. BLIND COACH: the machine proposal is stored
 beside the human answer and read only for routing; it is never served into a
 rating payload (I1), and ``saw_model_output`` stays false.
 
@@ -126,24 +104,21 @@ logger = logging.getLogger(__name__)
 
 # The ternary answers, mirrored from services.state_ratings (imported lazily
 # where needed — this module stays import-light and DB-free).
-VALUES = ("yes", "no", "neutral")
+VALUES = ("yes", "in_between", "no", "not_sure", "audio_unclear", "neutral")
+PERCEPTUAL_VALUES = ("yes", "in_between", "no")
 
-# The two DEFINITE verdicts — the ternary minus the IDK member.
+# Polar verdicts used by the high-priority machine-disagreement router.
 DEFINITE_VALUES = ("yes", "no")
 
-# Rule 4: the stored shape that means "I don't know". One-line mappings so a
-# founder decision moves them without touching the resolution rule — and one
-# did: founder ruling 2026-08-14, IDK is the ternary 'neutral' (a perceptual
-# "ambiguous to judge"), while an unrateable row is a TECHNICAL abstention
-# and is no response at all.
+# Rater uncertainty is recorded for routing/audit but cannot settle a label.
 IDK = "idk"
-IDK_VALUES = ("neutral",)
+IDK_VALUES = ("not_sure", "neutral")
+NON_RESPONSE_VALUES = ("audio_unclear",)
 NON_RESPONSE_FLAGS = ("unrateable",)
 
 # Rule 1 + Rule 2: who may hold a vote. HUMAN PANEL LANES ONLY.
-#   bootstrap  — one expert rating a MODEL-PROPOSED import. Not panel-grade
-#                however expert the rater (SPEC §6.2); counting it makes one
-#                opinion look like consensus.
+#   bootstrap  — seeded/historical evidence whose rater, blindness, or
+#                language match cannot be verified as panel-grade.
 #   game_owner — self-report by lane (rule 2); also caught by the flag.
 # There is deliberately no machine lane. Unknown lanes are excluded, never
 # defaulted in — a lane added later must be admitted here on purpose.
@@ -161,16 +136,13 @@ QUORUM_N = 2
 UNRATED = "unrated"
 SINGLETON = "singleton"
 NEEDS_THIRD = "needs_third"
+UNRESOLVED = "unresolved"
+AUDIO_RETRY = "audio_retry"
+AUDIO_QUARANTINED = "audio_quarantined"
 QUORUM = "quorum"
-PERCEPTUALLY_AMBIGUOUS = "perceptually_ambiguous"
 
-# The two settled states. Only these may enter the gold set or an evaluation.
-SETTLED_STATUSES = (QUORUM, PERCEPTUALLY_AMBIGUOUS)
-
-# The settled label written for two IDKs. NOT a member of VALUES: it is a
-# statement about the MOMENT (humans cannot separate it), and letting it into
-# the rating domain would make it storable as one rater's answer.
-AMBIGUOUS_LABEL = "ambiguous"
+# Only an exact perceptual quorum may enter gold/evaluation data.
+SETTLED_STATUSES = (QUORUM,)
 
 # ── routing priority (rule 3's active learning) ─────────────────────────────
 #
@@ -179,6 +151,7 @@ AMBIGUOUS_LABEL = "ambiguous"
 
 P_SINGLETON_DISAGREES = 100   # rule 3: "route it IMMEDIATELY for a 2nd peer"
 P_NEEDS_THIRD = 80            # rule 4 case B: quorum blocked on one rater
+P_AUDIO_RETRY = 60            # one technical failure: one fresh eligible ear
 P_SINGLETON = 40              # one rating, machine agrees or has no opinion
 P_UNRATED = 20                # never seen; the baseline queue
 P_SETTLED = 0                 # done — never routed again
@@ -203,10 +176,10 @@ def response_of(row: Any) -> Optional[str]:
     """The countable response on one row — a DEFINITE ternary value, ``IDK``,
     or None when the row carries no answer at all.
 
-    Rule 4 + founder ruling 2026-08-14: ``neutral`` maps to ``IDK`` (a valid
-    perceptual "ambiguous to judge" — it counts, and two of them settle).
-    An ``unrateable`` row is a TECHNICAL abstention — a failure of the audio,
-    not a reading of it — and is no response whatever its ``value`` says."""
+    ``not_sure`` and historical ``neutral`` map to ``IDK``: they count toward
+    routing and agreement diagnostics but never settle ground truth. An
+    ``unrateable`` row is a TECHNICAL abstention — a failure of the audio, not
+    a reading of it — and is no response whatever its ``value`` says."""
     if not isinstance(row, dict):
         return None
     for key in NON_RESPONSE_FLAGS:
@@ -215,11 +188,21 @@ def response_of(row: Any) -> Optional[str]:
     value = row.get("value")
     if not isinstance(value, str) or value not in VALUES:
         return None
+    if value in NON_RESPONSE_VALUES:
+        return None
     return IDK if value in IDK_VALUES else value
 
 
+def is_audio_unclear(row: Any) -> bool:
+    """True for the v2 technical answer or its legacy flag equivalent."""
+    return isinstance(row, dict) and (
+        row.get("value") == "audio_unclear"
+        or any(row.get(key) is True for key in NON_RESPONSE_FLAGS)
+    )
+
+
 def _eligible(rows: Any, *, state_id: Optional[str] = None) -> tuple:
-    """Split rows into (counted responses, excluded tallies).
+    """Split rows into perceptual/IDK responses and technical failures.
 
     Rule 1 is enforced here by construction: only ``QUORUM_LANES`` rows are
     counted, and no machine proposal is a row.
@@ -227,6 +210,7 @@ def _eligible(rows: Any, *, state_id: Optional[str] = None) -> tuple:
     counted: list[str] = []
     n_self_report = 0
     n_lane_excluded = 0
+    n_audio_unclear = 0
     # A non-list is not "no ratings", it is a CALLER BUG — but this runs on
     # the corpus read path, and taking a trace or an export down over one
     # malformed argument is worse than reporting an empty ledger. (A bare
@@ -238,17 +222,22 @@ def _eligible(rows: Any, *, state_id: Optional[str] = None) -> tuple:
             continue
         if state_id is not None and str(r.get("state_id") or "confidence") != str(state_id):
             continue
+        technical = is_audio_unclear(r)
         resp = response_of(r)
-        if resp is None:
-            continue                      # no answer on the row — not a vote
+        if resp is None and not technical:
+            continue
         if is_self_report(r):
-            n_self_report += 1            # rule 2: counted, never quorum
+            n_self_report += 1
             continue
         if (r.get("lane") or "") not in QUORUM_LANES:
-            n_lane_excluded += 1          # bootstrap / unknown lane
+            n_lane_excluded += 1
             continue
-        counted.append(resp)
-    return counted, n_self_report, n_lane_excluded
+        if technical:
+            n_audio_unclear += 1
+            continue
+        if resp is not None:
+            counted.append(resp)
+    return counted, n_self_report, n_lane_excluded, n_audio_unclear
 
 
 def resolve(rows: Any, *, state_id: Optional[str] = None) -> dict:
@@ -261,17 +250,16 @@ def resolve(rows: Any, *, state_id: Optional[str] = None) -> dict:
 
         {status, value, settled, gold_eligible, eval_eligible,
          weak_supervision_only, needs_rater, next_rater_ordinal,
-         n_responses, n_definite, n_idk, by_response, agreement,
+         n_responses, n_definite, n_idk, n_audio_unclear,
+         by_response, agreement,
          n_self_report, n_lane_excluded, machine_votes, responses}
 
-    ``value`` is the settled label — a DEFINITE value (yes/no) for
-    ``quorum`` (neutral counts as IDK before tallying, so a quorum can only
-    settle on a definite verdict), ``AMBIGUOUS_LABEL`` for
-    ``perceptually_ambiguous``, and None for every unsettled status (an
-    unsettled snippet HAS no label; returning the front-runner would be the
-    fabricated-ground-truth failure this whole module exists to prevent).
+    ``value`` is one of the three perceptual positions only after two
+    independent humans match. Every unsettled status returns None; exposing a
+    front-runner as truth would fabricate a label.
     """
-    counted, n_self_report, n_lane_excluded = _eligible(rows, state_id=state_id)
+    counted, n_self_report, n_lane_excluded, n_audio_unclear = _eligible(
+        rows, state_id=state_id)
 
     by_response: dict = {}
     for resp in counted:
@@ -280,19 +268,32 @@ def resolve(rows: Any, *, state_id: Optional[str] = None) -> dict:
     n_idk = by_response.get(IDK, 0)
 
     modal_n = max(by_response.values()) if by_response else 0
-    modal = [resp for resp, c in by_response.items() if c == modal_n]
+    perceptual = {
+        response: count for response, count in by_response.items()
+        if response in PERCEPTUAL_VALUES
+    }
+    perceptual_modal_n = max(perceptual.values()) if perceptual else 0
+    perceptual_modal = [
+        response for response, count in perceptual.items()
+        if count == perceptual_modal_n
+    ]
 
-    if n == 0:
+    if n_audio_unclear >= 2:
+        status, value = AUDIO_QUARANTINED, None
+    elif n == 0 and n_audio_unclear == 1:
+        status, value = AUDIO_RETRY, None
+    elif n == 0:
         status, value = UNRATED, None
     elif n == 1:
         status, value = SINGLETON, None
-    elif modal_n >= QUORUM_N and len(modal) == 1:
-        if modal[0] == IDK:
-            status, value = PERCEPTUALLY_AMBIGUOUS, AMBIGUOUS_LABEL
-        else:
-            status, value = QUORUM, modal[0]
-    else:
+    elif perceptual_modal_n >= QUORUM_N and len(perceptual_modal) == 1:
+        status, value = QUORUM, perceptual_modal[0]
+    elif n < 3:
         status, value = NEEDS_THIRD, None
+    else:
+        # Safe holding state: three valid responses without a perceptual
+        # quorum cannot be promoted to truth and do not route indefinitely.
+        status, value = UNRESOLVED, None
 
     settled = status in SETTLED_STATUSES
     return {
@@ -303,13 +304,18 @@ def resolve(rows: Any, *, state_id: Optional[str] = None) -> dict:
         "gold_eligible": settled,
         "eval_eligible": settled,
         "weak_supervision_only": status == SINGLETON,
-        "needs_rater": status in (UNRATED, SINGLETON, NEEDS_THIRD),
-        # Who the next rater would BE — 3rd on the founder's case B, and
-        # honestly the 4th when three raters still haven't converged.
-        "next_rater_ordinal": (n + 1) if not settled else None,
+        "needs_rater": status in (
+            UNRATED, SINGLETON, NEEDS_THIRD, AUDIO_RETRY,
+        ),
+        "next_rater_ordinal": (
+            n + n_audio_unclear + 1
+            if status in (UNRATED, SINGLETON, NEEDS_THIRD, AUDIO_RETRY)
+            else None
+        ),
         "n_responses": n,
         "n_definite": n - n_idk,
         "n_idk": n_idk,
+        "n_audio_unclear": n_audio_unclear,
         "by_response": by_response,
         # Modal share over ALL counted responses, IDK included (rule 4). 1.0
         # at n=1 is arithmetically true and not a claim — the SINGLETON status
@@ -349,7 +355,7 @@ def machine_proposal(snippet: Any) -> Optional[str]:
     if band in ("confident", "close_to_confident"):
         return "yes"
     if band == "neutral":
-        return "neutral"
+        return "in_between"
     if band in ("unconfident", "doubtful"):
         return "no"
     return None
@@ -385,7 +391,9 @@ def routing_priority(resolution: Any, machine_value: Any = None) -> int:
     if not isinstance(resolution, dict):
         return P_UNRATED
     status = resolution.get("status")
-    if status in SETTLED_STATUSES:
+    if status in SETTLED_STATUSES or status in (
+        UNRESOLVED, AUDIO_QUARANTINED,
+    ):
         return P_SETTLED
     if status == SINGLETON:
         return (P_SINGLETON_DISAGREES
@@ -393,6 +401,8 @@ def routing_priority(resolution: Any, machine_value: Any = None) -> int:
                 else P_SINGLETON)
     if status == NEEDS_THIRD:
         return P_NEEDS_THIRD
+    if status == AUDIO_RETRY:
+        return P_AUDIO_RETRY
     return P_UNRATED
 
 
@@ -422,6 +432,63 @@ def rating_queue(items: Any) -> list:
     return [{**t[2], "priority": t[0]} for t in out]
 
 
+def rater_submission_access(rows: Any, rater_id: Any) -> dict:
+    """Whether one authenticated human may submit on this snippet now.
+
+    This is the assignment-side companion to :func:`resolve`. A first
+    technical report must be retried by a *different* eligible human; a
+    settled, unresolved, or audio-quarantined artifact is closed to new
+    raters. Existing perceptual answers remain editable under the current
+    rater's ordinary revision policy, but an unclear-audio report cannot be
+    converted into a second listen by the same person.
+
+    Language eligibility is deliberately checked by the route before this
+    function. Mixing language into quorum state would turn a routing concern
+    into evidence about the clip.
+    """
+    rid = str(rater_id or "")
+    labels = [row for row in (rows if isinstance(rows, list) else [])
+              if isinstance(row, dict)]
+    mine = [row for row in labels
+            if rid and str(row.get("rater_id") or "") == rid]
+    resolution = resolve(labels)
+
+    if resolution.get("status") == AUDIO_QUARANTINED:
+        return {
+            "allowed": False,
+            "outcome": "audio_quarantined",
+            "has_own_rating": bool(mine),
+            "resolution": resolution,
+        }
+    if mine and any(is_audio_unclear(row) for row in mine):
+        return {
+            "allowed": False,
+            "outcome": "fresh_rater_required",
+            "has_own_rating": True,
+            "resolution": resolution,
+        }
+    if mine:
+        return {
+            "allowed": True,
+            "outcome": "update",
+            "has_own_rating": True,
+            "resolution": resolution,
+        }
+    if resolution.get("needs_rater"):
+        return {
+            "allowed": True,
+            "outcome": "new",
+            "has_own_rating": False,
+            "resolution": resolution,
+        }
+    return {
+        "allowed": False,
+        "outcome": "closed",
+        "has_own_rating": False,
+        "resolution": resolution,
+    }
+
+
 def corpus_ledger(resolutions: Any) -> dict:
     """Roll a bag of resolutions into the ledger dial — how much of the corpus
     is actually usable, by status.
@@ -446,7 +513,9 @@ def corpus_ledger(resolutions: Any) -> dict:
         "gold": gold,
         "weak": by_status.get(SINGLETON, 0),
         "blocked": by_status.get(NEEDS_THIRD, 0),
-        "ambiguous": by_status.get(PERCEPTUALLY_AMBIGUOUS, 0),
+        "unresolved": by_status.get(UNRESOLVED, 0),
+        "audio_retry": by_status.get(AUDIO_RETRY, 0),
+        "audio_quarantined": by_status.get(AUDIO_QUARANTINED, 0),
         "self_reports_excluded": n_self_report,
         "gold_share": round(gold / total, 3) if total else None,
         # Rule 1 as a reported number: if this is ever non-zero, a machine

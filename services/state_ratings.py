@@ -1,9 +1,10 @@
-"""State-generic ternary ratings (SPEC.md v3 §3.2, §6, §17 — slice 1).
+"""State-generic confidence ratings (SPEC.md v3 §3.2, §6, §17).
 
 WHAT THIS IS. The one instrument every measured cognitive state is rated with:
-a single clip, a single question, and three answers — ``yes`` / ``no`` /
-``neutral`` — plus a separate ``unrateable`` control that is not an answer.
-The question carries the state; the answer space never varies.
+a single clip, a single question, and five explicit responses. ``yes``,
+``in_between`` and ``no`` are perceptual positions; ``not_sure`` records
+rater uncertainty; ``audio_unclear`` records a technical failure of the
+artifact. The question carries the state; the answer space never varies.
 
 WHY THE ANSWER SPACE IS FIXED. A rater who is careful about confidence is
 probably careful about anything else you ask them, and that is only learnable
@@ -12,17 +13,16 @@ if the response format is shared. Per-state answer labels ("Clear Mastery" vs
 wording effect masquerading as a reliability difference — and destroy the one
 property that makes rater reliability transfer.
 
-WHY ``unrateable`` IS NOT A FOURTH VALUE. ``neutral`` is a judgment about the
-MOMENT: it reads as middling. ``unrateable`` is a judgment about the RATER's
-ability to make one, usually because the audio is unclear. Folding the second
-into the first books bad audio as a real middling rating and poisons the one
-class that defines the decision boundary. Kept separate, the ternary stays
-clean and abstention rate survives as a rater-quality signal.
+WHY FIVE VALUES. ``in_between`` is a judgment about the MOMENT: the voice
+lands between the confident and unconfident poles. ``not_sure`` is uncertainty
+in the RATER. ``audio_unclear`` is a failure of the ARTIFACT. Collapsing those
+three states would turn missing evidence into a perceptual middle and poison
+the class that defines the decision boundary.
 
-WHY ``neutral`` MATTERS MORE THAN IT LOOKS. It is not a hedge. A recogniser
-that has never seen the middle has never seen the boundary it exists to find,
-and every later agreement number computed without it is measured on the easy
-cases only.
+WHY VERSION 2. v1 overloaded ``neutral`` across the codebase: one consumer
+treated it as a middle and another as IDK. v2 removes that ambiguity without
+rewriting history. Old ``neutral`` rows remain attached to conf-q-v1 and keep
+their historical IDK interpretation.
 
 FENCES.
   * BLIND COACH / I1 — nothing in this module renders a model read. The rating
@@ -46,22 +46,26 @@ logger = logging.getLogger(__name__)
 
 # ── the instrument ──────────────────────────────────────────────────────────
 
-VALUES = ("yes", "no", "neutral")
+VALUES = ("yes", "in_between", "no", "not_sure", "audio_unclear")
+PERCEPTUAL_VALUES = ("yes", "in_between", "no")
+UTILITY_VALUES = ("not_sure", "audio_unclear")
+LEGACY_VALUES = ("neutral",)
 
 # +1 / 0 / -1. Signed so a mean over raters is directly the aggregate position,
 # and so the mapping matches power_score's other terms (SPEC §7.2).
-_VALUE_TERM = {"yes": 1.0, "neutral": 0.0, "no": -1.0}
+_VALUE_TERM = {"yes": 1.0, "in_between": 0.0, "no": -1.0}
 
-# SPEC §6.2. bootstrap is a lane, not a panel: one rater on a model-proposed
-# candidate. It is excluded from agreement statistics and from the gold set BY
-# QUERY, which is only possible because the lane is stamped on the row.
+# ``bootstrap`` is a provenance lane, not a source lane: seeded or historical
+# answers without a verified blind panel-grade act. It is excluded from
+# agreement statistics and the gold set BY QUERY. A live authenticated blind
+# coach remains ``coach`` even when the artifact came from an imported corpus.
 LANES = ("bootstrap", "coach", "game_peer", "game_owner")
 
 # The lanes whose rows may be aggregated into a panel label. TWO absences are
 # deliberate, and each is the whole point of the constant:
 #
-#   bootstrap  — one rater on a MODEL-PROPOSED candidate (§6.2). Counting it
-#                would make a single expert opinion look like consensus.
+#   bootstrap  — seeded/historical evidence without verified panel-grade
+#                provenance. Its author or viewing conditions may be unknown.
 #   game_owner — the owner is not a peer (founder 2026-08-11, rule 2): they are
 #                rating their OWN recording and know what they intended, so
 #                their answer is self-assessment, not an independent judgment.
@@ -74,7 +78,7 @@ LANES = ("bootstrap", "coach", "game_peer", "game_owner")
 # two humans — this supersedes SPEC §9.1's original model+coach+peer three-way.
 #
 # Identical to services.label_quorum.QUORUM_LANES, which is where the SETTLED
-# decision (quorum / needs_third / perceptually_ambiguous) is made; this
+# decision (quorum / needs_third / unresolved) is made; this
 # constant is the aggregation half of the same rule.
 PANEL_LANES = ("coach", "game_peer")
 
@@ -86,6 +90,23 @@ PANEL_LANES = ("coach", "game_peer")
 # `_RETIRED` versions stay listed so historical rows remain interpretable.
 
 QUESTIONS: dict[str, dict[str, str]] = {
+    "conf-q-v2": {
+        "state_id": "confidence",
+        "text": "Does the speaker sound confident here?",
+        "construct": (
+            "How assured the speaker sounds in their DELIVERY of this "
+            "moment. A property of the voice, not of the content."
+        ),
+        "not": (
+            "Not authority, correctness, likeability or charisma. "
+            "In-between is a perceptual middle; Not sure is rater "
+            "uncertainty; Audio unclear is a technical failure."
+        ),
+        "anchor": (
+            "Jiang & Pell 2017, Speech Communication 88:106-126 — listener "
+            "panel >83% agreement; means 4.52 / 3.24 / 2.05 on 1-5."
+        ),
+    },
     "conf-q-v1": {
         "state_id": "confidence",
         "text": "Does the speaker sound confident here?",
@@ -115,7 +136,7 @@ _RETIRED_QUESTIONS = {
     },
 }
 
-CURRENT_QUESTION_BY_STATE = {"confidence": "conf-q-v1"}
+CURRENT_QUESTION_BY_STATE = {"confidence": "conf-q-v2"}
 
 
 def question_for_state(state_id: Any) -> Optional[str]:
@@ -137,7 +158,7 @@ def describe_question(question_version: Any) -> Optional[dict]:
 def validate_rating(payload: Any, *,
                     saw_model_output: bool = False
                     ) -> tuple[Optional[dict], Optional[str]]:
-    """Validate one ternary rating -> ``(row, None)`` or ``(None, error)``.
+    """Validate one five-state rating -> ``(row, None)`` or ``(None, error)``.
 
     ``saw_model_output`` is set BY THE ROUTE, never from the payload, and
     defaults to blind. It says whether the surface that collected this rating
@@ -148,8 +169,8 @@ def validate_rating(payload: Any, *,
     Body::
 
         { state_id: str,
-          value: "yes"|"no"|"neutral",   # XOR unrateable
-          unrateable?: bool,
+          value: "yes"|"in_between"|"no"|"not_sure"|"audio_unclear",
+          unrateable?: bool,  # accepted only for historical clients
           note?: str,
           latency_ms?: int }
 
@@ -202,6 +223,9 @@ def validate_rating(payload: Any, *,
         "state_id": state_id,
         "question_id": state_id,
         "question_version": question_version,
+        # Old clients still send ``unrateable=true``. Preserve that historical
+        # wire contract without conflating it with the v2 value: every new UI
+        # writes ``audio_unclear`` explicitly, while old rows remain readable.
         "value": None if unrateable else value,
         "unrateable": unrateable,
         "note": (note.strip()[:1000] or None) if isinstance(note, str) else None,
@@ -227,19 +251,20 @@ def validate_rating(payload: Any, *,
     }, None
 
 
-def resolve_lane(session_source: Any, *, is_coach: bool,
-                 is_owner: bool = False) -> str:
-    """Which lane a rating belongs to (SPEC §6.2).
+def resolve_lane(*, is_coach: bool, is_owner: bool = False,
+                 panel_grade: bool = False) -> str:
+    """Derive a lane from the rating act's provenance, never clip source.
 
-    An import (``source='training_import'``) rated by the coach is BOOTSTRAP,
-    not coach: it is one rater on a model-proposed candidate from a corpus the
-    founder assembled, which is not panel-grade however expert the rater. The
-    distinction is invisible at write time and impossible to reconstruct
-    later, which is exactly why it is stamped now.
+    A coach act is panel-grade only when its route has verified the rater,
+    blindness, and language match. Imported corpus and presentation clips then
+    share the same ``coach`` lane. Seeded/historical evidence whose rating act
+    cannot prove those conditions is explicitly ``bootstrap``.
+
+    ``panel_grade`` defaults false so a future import script cannot promote a
+    seed into human quorum merely by forgetting to describe its provenance.
     """
     if is_coach:
-        return "bootstrap" if str(session_source or "") == "training_import" \
-            else "coach"
+        return "coach" if panel_grade else "bootstrap"
     return "game_owner" if is_owner else "game_peer"
 
 
@@ -286,9 +311,8 @@ def aggregate(rows: Any, *, lanes: tuple = PANEL_LANES) -> Optional[dict]:
     panel find this moment".
 
     ``lanes`` defaults to PANEL_LANES — **bootstrap and game_owner are both
-    excluded**. bootstrap is one rater on a model-proposed candidate, so
-    counting it as a panel member would make a single expert opinion look like
-    consensus; game_owner is the speaker judging their own recording (rule 2 —
+    excluded**. bootstrap lacks verified panel-grade provenance; game_owner
+    is the speaker judging their own recording (rule 2 —
     a self-report, never a peer). Pass ``lanes=LANES`` deliberately, and only
     for a corpus pull that wants everything.
 
@@ -296,9 +320,8 @@ def aggregate(rows: Any, *, lanes: tuple = PANEL_LANES) -> Optional[dict]:
     spectrum they carry no position, so including them in ``n_raters`` would
     inflate quality on the strength of people who explicitly declined to
     judge. They are returned separately because the abstention rate is itself
-    a signal — a moment most raters refuse is a fact about the moment, and in
-    label_quorum that same fact is a first-class response that can SETTLE a
-    snippet as perceptually ambiguous (rule 4).
+    a signal — a moment many raters cannot hear is a fact about the artifact,
+    but it never settles a confidence label in ``label_quorum``.
 
     ``agreement`` is the modal share. At n=1 it is trivially 1.0, which is
     fine and not misleading: ``quality`` discounts a single rater to 0.33
@@ -315,18 +338,18 @@ def aggregate(rows: Any, *, lanes: tuple = PANEL_LANES) -> Optional[dict]:
             continue
         if r.get("lane") not in allowed:
             continue
-        if r.get("unrateable"):
+        if r.get("unrateable") or r.get("value") == "audio_unclear":
             unrateable_n += 1
             continue
         v = r.get("value")
-        if isinstance(v, str) and v in VALUES:
+        if isinstance(v, str) and v in PERCEPTUAL_VALUES:
             answered.append(v)
 
     n = len(answered)
     if n == 0:
         return None
 
-    by_value = {v: answered.count(v) for v in VALUES}
+    by_value = {v: answered.count(v) for v in PERCEPTUAL_VALUES}
     modal_n = max(by_value.values())
     agreement = modal_n / n
     value = sum(_VALUE_TERM[v] for v in answered) / n
@@ -372,17 +395,19 @@ def corpus_summary(rows: Any) -> dict:
         v = r.get("value")
         if isinstance(v, str) and v in by_value:
             by_value[v] += 1
-    answered = sum(by_value.values())
+    answered = sum(by_value[v] for v in PERCEPTUAL_VALUES)
     return {
         "total": len(rows),
         "answered": answered,
         "unrateable": unrateable_n,
         "by_value": by_value,
         "by_lane": by_lane,
-        "balance": ({k: round(c / answered, 3) for k, c in by_value.items()}
+        "balance": ({k: round(by_value[k] / answered, 3)
+                     for k in PERCEPTUAL_VALUES}
                     if answered else None),
         "raters": len({r.get("rater_id") for r in rows if r.get("rater_id")}),
         # The gate a trainer should read before it trains: 3 classes, so
         # chance is 1/3 and a corpus missing a class cannot teach the boundary.
-        "classes_present": sum(1 for c in by_value.values() if c > 0),
+        "classes_present": sum(1 for k in PERCEPTUAL_VALUES
+                               if by_value[k] > 0),
     }

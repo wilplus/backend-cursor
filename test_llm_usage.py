@@ -302,6 +302,23 @@ class ChatCompleteHookTests(_WriterCase):
         self.assertIsNotNone(res)
         self.assertEqual(res.text, "still fine")
 
+    def test_surface_evaluation_override_reaches_inference_and_ledger(self):
+        from services.llm import chat_complete
+        from services.ml_surface_contracts import evaluation_model_override
+        with evaluation_model_override("say_it_stronger", "ft:candidate"):
+            with self._patch_openai("candidate output"):
+                res = chat_complete(
+                    spec=self._spec(), system="s", user="u",
+                    surface="say_it_stronger",
+                )
+                service = sys.modules[
+                    "services.openai_service"
+                ].OpenAIService.return_value
+                sent = service.client.chat.completions.create.call_args.kwargs
+        self.assertEqual(sent["model"], "ft:candidate")
+        self.assertEqual(res.model, "ft:candidate")
+        self.assertEqual(self.rows[0]["model"], "ft:candidate")
+
 
 class KillSwitchTests(_WriterCase):
     def test_flag_off_writes_nothing(self):

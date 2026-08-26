@@ -473,6 +473,7 @@ def v2_user_get_profile():
     Response 200:
       { "domain": "<enum>" | null, "goal": "<str>" | null,
         "sex": "female"|"male"|"prefer_not_to_say" | null,
+        "proficient_languages": ["en", "pl"] | null,
         "domain_vocabulary_default": [ ...seed for domain... ],
         "is_coach": bool }
 
@@ -501,6 +502,8 @@ def v2_user_get_profile():
             "domain": profile.get("domain"),
             "goal": profile.get("goal"),
             "sex": db.get_user_speaker_sex(request.user_id),
+            "proficient_languages": db.get_user_proficient_languages(
+                request.user_id),
             "domain_vocabulary_default": default_domain_vocabulary(
                 profile.get("domain"),
             ),
@@ -526,7 +529,8 @@ def v2_user_set_profile():
       { "domain": "public_speaking|sales|executive_presence|
                    customer_service|interview_prep" | null,
         "goal":   "free text" | null,
-        "sex":    "female|male|prefer_not_to_say" | null }
+        "sex":    "female|male|prefer_not_to_say" | null,
+        "proficient_languages": ["en", "pl"] }
 
     All optional so a partial intake (domain picked, goal skipped, or
     vice-versa) is accepted — the intake is two bounded turns, but the
@@ -608,6 +612,17 @@ def v2_user_set_profile():
                     ),
                 }), 422
 
+        languages_present = "proficient_languages" in body
+        languages: list[str] | None = None
+        if languages_present:
+            from services.rater_languages import validate_proficient_languages
+            languages, language_error = validate_proficient_languages(
+                body.get("proficient_languages"))
+            if language_error:
+                return jsonify({
+                    "code": "INVALID_INPUT", "error": language_error,
+                }), 422
+
         # {domain, goal} is a full set; only write it when the body actually
         # carries one of them, otherwise a sex-only post would null the intake.
         if "domain" in body or "goal" in body:
@@ -629,16 +644,29 @@ def v2_user_set_profile():
         else:
             sex = db.get_user_speaker_sex(request.user_id)
 
+        if languages_present:
+            if not db.set_user_proficient_languages(
+                request.user_id, languages or [],
+            ):
+                return jsonify({
+                    "code": "V2_ERROR", "error": "Failed to persist profile",
+                }), 500
+        else:
+            languages = db.get_user_proficient_languages(request.user_id)
+
         # The VALUE of sex is deliberately not logged — it buys nothing
         # operationally and it is the one field here nobody needs in a log.
         logger.info(
-            "user/profile.set user=%s domain=%s goal_len=%d sex_set=%s",
+            "user/profile.set user=%s domain=%s goal_len=%d sex_set=%s "
+            "rater_languages_set=%s",
             request.user_id, domain or "-", len(goal or ""), sex_present,
+            languages_present,
         )
         return jsonify({
             "domain": domain,
             "goal": goal,
             "sex": sex,
+            "proficient_languages": languages,
             "domain_vocabulary_default": default_domain_vocabulary(domain),
         }), 200
 

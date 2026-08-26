@@ -173,9 +173,12 @@ class QueueLabelTests(unittest.TestCase):
         rows = [
             {"id": "a", "user_id": "coach-1",
              "intake_context": {"topic": "Annotation",
+                                "language": "en",
                                 "annotation_mode": True}},
             {"id": "b", "user_id": "u2",
-             "intake_context": {"topic": "A student take"}},
+             "intake_context": {
+                 "topic": "A student take", "language": "en",
+             }},
         ]
         with app.test_request_context():
             request.user_id = "coach-1"
@@ -183,6 +186,8 @@ class QueueLabelTests(unittest.TestCase):
             # helpers from THAT module — patching the routes.v2_routes
             # re-export would leave the real helpers running.
             with patch.object(v2.db, "list_review_queue", return_value=rows), \
+                 patch.object(v2.db, "get_user_proficient_languages",
+                              return_value=["en"]), \
                  patch("routes.v2.coach._coach_state_map", return_value={}), \
                  patch("routes.v2.coach._coach_session_state",
                        return_value="to_review"), \
