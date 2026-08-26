@@ -45,6 +45,13 @@ class CompletedAnalysis:
     sent_to_coach: bool
 
 
+@dataclass(frozen=True)
+class FailedIdealTextAnalysis:
+    """Take 1 analysis persisted, but its canonical document was unconfirmed."""
+
+    payload: dict[str, Any]
+
+
 def _processing_payload(
     inputs: AnalysisInputs,
     *,
@@ -80,9 +87,36 @@ def dispatch_recording_analysis(
     async_enabled: Callable[[], bool],
     audit_paid_for_arc: Callable[[str | None, str | None], bool],
     log: Any,
-) -> PendingAnalysis | CompletedAnalysis:
+) -> PendingAnalysis | CompletedAnalysis | FailedIdealTextAnalysis:
     """Run the canonical worker through exactly one execution mode."""
     from services.analysis_worker import run_full_analysis
+    from services.ideal_text_confirmation import (
+        FAILED_IDEAL_TEXT_UNCONFIRMED,
+        IdealTextUnconfirmedError,
+        mark_ideal_text_unconfirmed,
+    )
+
+    def ideal_text_failure(exc: IdealTextUnconfirmedError) \
+            -> FailedIdealTextAnalysis:
+        mark_ideal_text_unconfirmed(
+            database,
+            session_id=inputs.session_id,
+            user_id=inputs.user_id,
+            arc_id=inputs.arc_id,
+            take_index=inputs.take_index,
+            error=exc,
+        )
+        return FailedIdealTextAnalysis({
+            "status": FAILED_IDEAL_TEXT_UNCONFIRMED,
+            "state": FAILED_IDEAL_TEXT_UNCONFIRMED,
+            "analysis_state": FAILED_IDEAL_TEXT_UNCONFIRMED,
+            "session_id": inputs.session_id,
+            "recording_id": inputs.recording_id,
+            "arc_id": inputs.arc_id,
+            "take_index": inputs.take_index,
+            "take_count": inputs.arc_take_count,
+            "readout": None,
+        })
 
     def run_pipeline():
         return run_full_analysis(
@@ -149,6 +183,14 @@ def dispatch_recording_analysis(
             try:
                 run_pipeline()
                 database.set_session_analysis_state(inputs.session_id, "ready")
+            except IdealTextUnconfirmedError as exc:
+                log.error(
+                    "lab: Take 1 Ideal Text unconfirmed sid=%s: %s",
+                    inputs.session_id,
+                    exc,
+                )
+                sentry_sdk.capture_exception(exc)
+                ideal_text_failure(exc)
             except Exception as exc:
                 log.error(
                     "lab: ASYNC analysis failed sid=%s: %s",
@@ -169,5 +211,9 @@ def dispatch_recording_analysis(
             audit_paid=audit_paid_for_arc(inputs.arc_id, inputs.user_id),
         ))
 
-    readout, sent_to_coach = run_pipeline()
-    return CompletedAnalysis(readout, sent_to_coach)
+    try:
+        readout, sent_to_coach = run_pipeline()
+        return CompletedAnalysis(readout, sent_to_coach)
+    except IdealTextUnconfirmedError as exc:
+        sentry_sdk.capture_exception(exc)
+        return ideal_text_failure(exc)

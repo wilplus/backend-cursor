@@ -221,7 +221,8 @@ def _living_transcript_enabled() -> bool:
         in ("1", "true", "yes")
 
 
-def assemble_transcript_document(arc_id: str, *, database=None) -> dict:
+def assemble_transcript_document(arc_id: str, *, database=None,
+                                 session_id: Optional[str] = None) -> dict:
     """The full-transcript document, ledger-baked — the flag-ON assembly
     path. Same return shape as assemble_ideal_text_block so every caller
     (persist, version bump, snapshot, serve) works unchanged.
@@ -236,7 +237,8 @@ def assemble_transcript_document(arc_id: str, *, database=None) -> dict:
         build_transcript_document, relocate_pieces,
     )
 
-    doc = build_transcript_document(arc_id, database=database)
+    doc = build_transcript_document(
+        arc_id, database=database, session_id=session_id)
     if not doc or not (doc.get("text") or "").strip():
         return {"text": "", "key_moments": [], "polish": [], "ready": False}
 
@@ -383,7 +385,8 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
 
 def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                               require_target: bool = True,
-                              include_suggestion_anchors: bool = False) -> bool:
+                              include_suggestion_anchors: bool = False,
+                              source_session_id: Optional[str] = None) -> bool:
     """EAGER assembly (founder 2026-07-15): called from the analysis pipeline
     when a SPOKEN take completes — the moment the arc's 3rd spoken take is in,
     assemble the draft and PERSIST it as the machine block, so the coach's
@@ -412,6 +415,21 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
             TAKES_TARGET, spoken_arc_sessions,
         )
         spoken = spoken_arc_sessions(database.get_arc_sessions(arc_id))
+        source_take_count = len(spoken)
+        if source_session_id:
+            # Artifact-only Take 1 retry: pin the source to THIS accepted
+            # recording. An arc-level "latest take" lookup could otherwise
+            # rebuild the initial document from Take 2 if a delayed retry were
+            # tapped after another session existed — a direct L1 violation.
+            source_row = database.v2_get_session_by_id(
+                str(source_session_id)) or {}
+            source_take_index = source_row.get("take_index")
+            if (str(source_row.get("arc_id") or "") != str(arc_id)
+                    or isinstance(source_take_index, bool)
+                    or source_take_index != 1
+                    or source_row.get("recording_kind") == "read"):
+                return False
+            source_take_count = 1
         # require_target=False (single deliverable, 2026-07-17): assemble
         # after EVERY take, take 1 included; the legacy lanes keep the
         # 3-take trigger.
@@ -435,7 +453,16 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         from services.master_document import (
             assemble_master_document, master_document_enabled,
         )
-        if _living_transcript_enabled() and master_document_enabled():
+        if source_session_id:
+            # Exact provenance beats environment-selected arc-level source on
+            # a retry. build_transcript_document's historical form reads only
+            # this session's already-persisted snippets/corrections.
+            auto = assemble_transcript_document(
+                arc_id,
+                database=database,
+                session_id=str(source_session_id),
+            )
+        elif _living_transcript_enabled() and master_document_enabled():
             # THE MASTER MODEL (founder 2026-07-22): one persistent
             # document per project; new takes only offer block upgrades.
             # No skeleton yet (flip-ON window / pre-migration) → the
@@ -459,7 +486,7 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         # so the number the badge shows and the number that gated assembly
         # can never disagree.
         ok = database.persist_auto_ideal_text(
-            arc_id, text, take_count=len(spoken),
+            arc_id, text, take_count=source_take_count,
             # The piece provenance for THIS text, written in the same upsert.
             # It is what services/part_acoustics.fold_session scores per part;
             # before 2026-08-13 it was never persisted at all, so the fold had
@@ -468,7 +495,7 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         if ok:
             logger.info(
                 "ideal_text: eager draft persisted arc=%s chars=%d v=%d",
-                arc_id, len(text), len(spoken))
+                arc_id, len(text), source_take_count)
         # Persist the polish diffs as approvable suggestions (founder
         # 2026-07-18) — kind='replace' + trigger='polish', replacement =
         # the light-edited version, so Approve folds verbatim→edited via the

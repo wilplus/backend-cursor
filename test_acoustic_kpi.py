@@ -313,8 +313,10 @@ class WiringTests(unittest.TestCase):
 
         src = inspect.getsource(aw.run_full_analysis)
         self.assertIn("fold_session", src)
-        self.assertLess(src.index("maybe_assemble_ideal_text"),
-                        src.index("fold_session"))
+        self.assertLess(
+            src.index("build_initial_ideal_text_from_stored_artifacts"),
+            src.index("fold_session"),
+        )
         # …and it is timed, like every other phase.
         self.assertIn('tl.mark("kpi")', src)
         self.assertLess(src.index('tl.mark("kpi")'), src.index("fold_session"))

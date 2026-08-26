@@ -131,12 +131,10 @@ class BestPresentationCardTests(unittest.TestCase):
 
 
 class NotesTests(unittest.TestCase):
-    def test_human_check_note_inserts(self):
+    def test_human_check_note_is_retired(self):
         db = _FakeDB()
-        self.assertTrue(fire_human_check_note(db, "u1", "a1"))
-        _, msg = db.inserted[0]
-        self.assertEqual(msg["kind"], "text")
-        self.assertEqual(msg["metadata"]["note"], "human_check")
+        self.assertFalse(fire_human_check_note(db, "u1", "a1"))
+        self.assertEqual(db.inserted, [])
 
 
 if __name__ == "__main__":

@@ -140,12 +140,11 @@ class FirePathTests(unittest.TestCase):
         self.assertFalse(sc.fire_post_take("u1", "arc1", 3, database=fake))
         self.assertEqual(len(fake.inserted), 0)
 
-    def test_fire_arc_start_beat0(self):
+    def test_fire_arc_start_is_retired(self):
         fake = _FakeDB()
         ok = sc.fire_arc_start("u1", "arc1", goal="land my keynote", database=fake)
-        self.assertTrue(ok)
-        _, _, msg = fake.inserted[0]
-        self.assertEqual(msg["metadata"]["beat"], 0)
+        self.assertFalse(ok)
+        self.assertEqual(fake.inserted, [])
 
     def test_no_user_or_arc_is_noop(self):
         fake = _FakeDB()

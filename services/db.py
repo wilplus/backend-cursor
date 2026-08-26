@@ -10652,12 +10652,18 @@ class DatabaseService:
         self, session_id: str, state: str, error: Optional[str] = None,
     ) -> bool:
         """Flip the async-analysis job state on the session row
-        (processing | ready | failed). Best-effort; missing column
-        (migration pending) → False (the sync path never reads it)."""
-        if not session_id or state not in ("processing", "ready", "failed"):
+        (processing | ready | failed | failed_ideal_text_unconfirmed).
+        Best-effort; missing column (migration pending) → False (the sync path
+        never reads it)."""
+        if not session_id or state not in (
+            "processing",
+            "ready",
+            "failed",
+            "failed_ideal_text_unconfirmed",
+        ):
             return False
         payload: dict = {"analysis_state": state}
-        if state == "failed":
+        if state in ("failed", "failed_ideal_text_unconfirmed"):
             payload["analysis_error"] = (str(error) if error else "unknown")[:500]
         try:
             self.client.table("v2_sessions").update(payload).eq(

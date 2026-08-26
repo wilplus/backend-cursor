@@ -43,6 +43,11 @@ import sentry_sdk
 
 from services import job_queue
 from services.db import db
+from services.ideal_text_confirmation import (
+    IdealTextUnconfirmedError,
+    build_initial_ideal_text_from_stored_artifacts,
+    mark_ideal_text_unconfirmed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +56,7 @@ logger = logging.getLogger(__name__)
 TASK_PATH = "services.pipeline_jobs.run_processing_job"
 
 KIND_SESSION_RECORDING = "session_recording"
+KIND_IDEAL_TEXT_RETRY = "ideal_text_retry"
 
 
 def _int_env(name: str, default: int) -> int:
@@ -167,12 +173,70 @@ def enqueue_session_recording_job(
     return row
 
 
+def enqueue_ideal_text_retry_job(
+    *,
+    session_id: str,
+    user_id: Optional[str],
+    arc_id: str,
+    take_index: int,
+) -> Optional[Dict[str, Any]]:
+    """Enqueue Take 1 document generation from stored analysis artifacts.
+
+    The deliberately tiny payload is the architectural boundary: it has no
+    bucket, storage key, recording id, filename, or audio bytes, so this job
+    cannot upload, download, or transcribe the take. Repeated taps collapse on
+    one active dedup key; a later tap after terminal failure creates one fresh
+    attempt without touching the original full-pipeline job.
+    """
+    if (
+        not session_id
+        or not arc_id
+        or isinstance(take_index, bool)
+        or take_index != 1
+        or not job_queue.queue_configured()
+    ):
+        return None
+    dedup_key = f"{KIND_IDEAL_TEXT_RETRY}:{session_id}"
+    payload = {
+        "session_id": str(session_id),
+        "user_id": str(user_id) if user_id else None,
+        "arc_id": str(arc_id),
+        "take_index": 1,
+    }
+    row = db.create_processing_job(
+        kind=KIND_IDEAL_TEXT_RETRY,
+        user_id=user_id,
+        session_id=str(session_id),
+        dedup_key=dedup_key,
+        payload=payload,
+        # A confirmation timeout is already the terminal boundary. Repeating
+        # the whole 120-second document attempt automatically would contradict
+        # the explicit user action this job represents.
+        max_attempts=1,
+    )
+    if row is None:
+        existing = db.get_active_processing_job_by_dedup(dedup_key)
+        if existing:
+            return existing
+        return None
+    job_id = str(row.get("id"))
+    if not job_queue.enqueue(TASK_PATH, job_id):
+        db.finish_processing_job(
+            job_id, "failed", error="enqueue failed (broker unreachable)",
+        )
+        return None
+    db.set_session_analysis_state(str(session_id), "processing")
+    return row
+
+
 def retry_failed_session_job(session_id: str, user_id: str = "") -> Optional[dict]:
     """Requeue the stored recording; never asks the user to record again."""
     if not session_id or not job_queue.queue_configured():
         return None
     job = db.get_latest_processing_job_by_session(str(session_id))
-    if not job or str(job.get("user_id") or "") != str(user_id):
+    if (not job
+            or str(job.get("kind") or "") != KIND_SESSION_RECORDING
+            or str(job.get("user_id") or "") != str(user_id)):
         return None
     status = str(job.get("status") or "")
     if status in ("pending", "processing"):
@@ -245,6 +309,32 @@ def _fail_terminal(job: Dict[str, Any], error: str) -> None:
         except Exception as e:
             logger.warning("pipeline_jobs: analysis_state failed-write "
                            "sid=%s: %s", sid, e)
+
+
+def _fail_ideal_text_unconfirmed(
+    job: Dict[str, Any], error: Exception,
+) -> None:
+    """One non-retriable Take 1 boundary; never re-run the full pipeline."""
+    job_id = str(job.get("id"))
+    db.finish_processing_job(job_id, "failed", error=str(error)[:500])
+    payload = dict(job.get("payload") or {})
+    mark_ideal_text_unconfirmed(
+        db,
+        session_id=payload.get("session_id") or job.get("session_id"),
+        user_id=payload.get("user_id") or job.get("user_id"),
+        arc_id=payload.get("arc_id"),
+        take_index=payload.get("take_index"),
+        error=error,
+    )
+
+
+def _fail_terminal_for_job(job: Dict[str, Any], error: Exception | str) -> None:
+    """Keep document-only retries inside their dedicated failure boundary."""
+    if str(job.get("kind") or "") == KIND_IDEAL_TEXT_RETRY:
+        exc = error if isinstance(error, Exception) else RuntimeError(str(error))
+        _fail_ideal_text_unconfirmed(job, exc)
+        return
+    _fail_terminal(job, str(error)[:500])
 
 
 def _retry_backoff_seconds(attempts: int) -> int:
@@ -344,14 +434,72 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
     )
     # Small mechanical summary only — the readout itself is served by the
     # existing GETs, and job rows never carry scores/verdicts (AC-9).
-    return {
+    result = {
         "snippet_count": len((readout or {}).get("snippets") or []),
         "sent_to_coach": bool(sent),
+    }
+    if (payload.get("recording_kind") == "spoken"
+            and payload.get("take_index") == 1
+            and not isinstance(payload.get("take_index"), bool)):
+        # run_full_analysis cannot reach this return until its database read
+        # confirmed the document. Stamp that proof into the durable job row as
+        # well, so inspection never has to infer Take 1 success from 100%.
+        result["ideal_text_confirmed"] = True
+    return result
+
+
+def _run_ideal_text_retry(job: Dict[str, Any]) -> Dict[str, Any]:
+    """Regenerate only Take 1's document from persisted transcript artifacts."""
+    job_id = str(job.get("id"))
+    payload = dict(job.get("payload") or {})
+    session_id = str(payload.get("session_id") or "")
+    arc_id = str(payload.get("arc_id") or "")
+    take_index = payload.get("take_index")
+    if (not session_id or not arc_id or isinstance(take_index, bool)
+            or take_index != 1):
+        raise ConfigMismatchError(
+            "ideal-text retry requires one Take 1 session and project"
+        )
+    db.update_processing_job(job_id, {
+        "stage": "ideal_text", "percent": 90,
+        "message": "Building your Ideal Text…",
+    })
+    row = build_initial_ideal_text_from_stored_artifacts(
+        db,
+        arc_id,
+        source_session_id=session_id,
+        include_suggestion_anchors=True,
+    )
+    user_id = payload.get("user_id") or job.get("user_id")
+    if user_id:
+        try:
+            from services.arc_notifications import fire_ideal_version_ready
+
+            fire_ideal_version_ready(
+                db,
+                user_id,
+                arc_id,
+                row.get("version") or 1,
+                spoken_take_count=1,
+            )
+        except Exception as notify_error:
+            # Database confirmation is the success gate. The ready card is an
+            # idempotent delivery side effect and must not turn a confirmed
+            # document back into a failed job.
+            logger.warning(
+                "pipeline_jobs: ideal retry notification failed sid=%s: %s",
+                session_id,
+                notify_error,
+            )
+    return {
+        "ideal_text_confirmed": True,
+        "version": row.get("version") or 1,
     }
 
 
 _KIND_RUNNERS = {
     KIND_SESSION_RECORDING: _run_session_recording,
+    KIND_IDEAL_TEXT_RETRY: _run_ideal_text_retry,
 }
 
 
@@ -370,7 +518,8 @@ def run_processing_job(job_id: str) -> None:
     if status == "processing" and _heartbeat_is_fresh(job):
         return  # another worker is live on it — let it finish
     if attempts >= max_attempts:
-        _fail_terminal(job, str(job.get("error") or "attempt cap reached"))
+        _fail_terminal_for_job(
+            job, str(job.get("error") or "attempt cap reached"))
         return
     runner = _KIND_RUNNERS.get(str(job.get("kind") or ""))
     if runner is None:
@@ -401,6 +550,17 @@ def run_processing_job(job_id: str) -> None:
             db.set_session_analysis_state(str(sid), "ready")
         logger.info("pipeline_jobs: job %s completed (attempt %d)",
                     jid, claimed.get("attempts"))
+    except IdealTextUnconfirmedError as ideal_err:
+        # Its own terminal outcome: transcription/analysis already persisted,
+        # and replaying those stages is expressly forbidden. The only retry is
+        # the user's idempotent ideal-text-only action.
+        sentry_sdk.capture_exception(ideal_err)
+        logger.error(
+            "pipeline_jobs: Take 1 Ideal Text unconfirmed job=%s: %s",
+            jid, ideal_err,
+        )
+        _fail_ideal_text_unconfirmed(claimed, ideal_err)
+        return
     except ConfigMismatchError as cfg_err:
         # No retry can fix an env var. Burning three attempts plus two
         # backoff waits (3+ minutes) on it only buries the cause under a
@@ -408,7 +568,7 @@ def run_processing_job(job_id: str) -> None:
         sentry_sdk.capture_exception(cfg_err)
         logger.error("pipeline_jobs: job %s misconfigured, not retrying: %s",
                      jid, cfg_err)
-        _fail_terminal(claimed, str(cfg_err)[:500])
+        _fail_terminal_for_job(claimed, cfg_err)
         return
     except Exception as err:
         sentry_sdk.capture_exception(err)
@@ -416,7 +576,7 @@ def run_processing_job(job_id: str) -> None:
         logger.error("pipeline_jobs: job %s attempt %d/%d failed: %s",
                      jid, used, max_attempts, err, exc_info=True)
         if used >= max_attempts:
-            _fail_terminal(claimed, str(err)[:500])
+            _fail_terminal_for_job(claimed, err)
             return
         db.release_processing_job_for_retry(jid, str(err)[:500])
         if not job_queue.enqueue(
@@ -442,8 +602,10 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
         attempts = int(job.get("attempts") or 0)
         max_attempts = int(job.get("max_attempts") or 3)
         if attempts >= max_attempts:
-            _fail_terminal(job, str(
-                job.get("error") or "worker lost; attempt cap reached"))
+            _fail_terminal_for_job(
+                job,
+                str(job.get("error") or "worker lost; attempt cap reached"),
+            )
             counts["failed"] += 1
             continue
         if str(job.get("status")) == "processing":

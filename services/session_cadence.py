@@ -382,21 +382,14 @@ def fire_arc_start(
     language: Optional[str] = None,
     database=None,
 ) -> bool:
-    """BEAT 0 — the pre-take-1 framing bubble (goal-woven). Idempotent.
-    Returns True iff a bubble was rendered + inserted."""
-    if not user_id or not arc_id:
-        return False
-    beat = BEATS[0]
-    body = _render_beat(
-        beat, take_index=1, take_count=TARGET_TAKES,
-        language=language, goal=goal,
-    )
-    if not body:
-        return False
-    return _insert_bubble(
-        _get_db(database), user_id, arc_id, 0, body,
-        take_index=1, take_count=TARGET_TAKES,
-    )
+    """Retired pre-take-1 framing hook.
+
+    Kept as a no-op for compatibility with deployed callers while the
+    founder-approved copy removal rolls through every service. Returning
+    before rendering guarantees no new beat-0 row (and no unnecessary LLM
+    call) can be created.
+    """
+    return False
 
 
 def fire_post_take(

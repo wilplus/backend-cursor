@@ -7,9 +7,11 @@ from unittest.mock import Mock, patch
 from services.lab_analysis_dispatch import (
     AnalysisInputs,
     CompletedAnalysis,
+    FailedIdealTextAnalysis,
     PendingAnalysis,
     dispatch_recording_analysis,
 )
+from services.ideal_text_confirmation import IdealTextUnconfirmedError
 
 
 def _inputs() -> AnalysisInputs:
@@ -134,6 +136,32 @@ class AnalysisDispatchTests(unittest.TestCase):
             CompletedAnalysis({"snippets": [{"id": "one"}]}, False),
         )
         self.assertEqual(worker.call_args.kwargs["recording_kind"], "spoken")
+
+    def test_synchronous_take_one_timeout_is_not_reported_as_success(self):
+        database = Mock()
+        database.set_session_analysis_state.return_value = True
+        inputs = AnalysisInputs(**{**_inputs().__dict__, "take_index": 1})
+        with patch(
+            "services.analysis_worker.run_full_analysis",
+            side_effect=IdealTextUnconfirmedError("arc-1"),
+        ), patch(
+            "services.arc_notifications.fire_ideal_text_unconfirmed"
+        ):
+            result = dispatch_recording_analysis(
+                inputs,
+                database=database,
+                queue_enabled=lambda: False,
+                async_enabled=lambda: False,
+                audit_paid_for_arc=lambda _a, _u: False,
+                log=Mock(),
+            )
+        self.assertIsInstance(result, FailedIdealTextAnalysis)
+        self.assertEqual(
+            result.payload["state"],
+            "failed_ideal_text_unconfirmed",
+        )
+        self.assertIsNone(result.payload["readout"])
+        self.assertNotIsInstance(result, CompletedAnalysis)
 
 
 if __name__ == "__main__":

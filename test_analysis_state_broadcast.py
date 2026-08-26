@@ -145,7 +145,12 @@ class DbFlipBroadcastTests(unittest.TestCase):
         return svc
 
     def test_every_state_broadcasts_once_after_the_write(self):
-        for state in ("processing", "ready", "failed"):
+        for state in (
+            "processing",
+            "ready",
+            "failed",
+            "failed_ideal_text_unconfirmed",
+        ):
             with mock.patch(
                 "services.realtime_notify.broadcast_analysis_state"
             ) as bc:
