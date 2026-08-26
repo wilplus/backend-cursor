@@ -2,6 +2,7 @@ import re
 
 from services.intervention_candidates import enforce_mvp_feedback_mix, select
 from services.take_feedback_manager import (
+    evidence_backed_rewrite_candidates,
     ensure_required_families,
     exposure_snapshot,
     rank_family_pool,
@@ -58,6 +59,58 @@ def test_fallbacks_are_three_lane_ready_and_do_not_invent_lexical_words():
                   if row.get("feedback_family") == "great_formulation")
     assert praise["tentative"] is True
     assert text[praise["span"]["start"]:praise["span"]["end"]] == praise["quote"]
+
+
+def test_structural_deletion_scar_competes_even_when_a_rewrite_already_exists():
+    text = (
+        "I need it to be modern, so I don't want. "
+        "A hair style that is from a previous century."
+    )
+    candidates = evidence_backed_rewrite_candidates(
+        text,
+        take_session_id="take-2",
+        snippet_id="snippet-2",
+    )
+    assert len(candidates) == 1
+    structural = candidates[0]
+    assert structural["quote"] == text
+    assert structural["proposed_text"] == (
+        "I need it to be modern, so I don't want a hair style that is from "
+        "a previous century."
+    )
+    assert structural["_manager_evidence"]["lexical_words_invented"] == 0
+
+    weaker = _row(
+        "model-rewrite",
+        "rewrite_clarity",
+        0,
+        proposed_text="Different punctuation.",
+        _manager_evidence={"specificity": 1},
+    )
+    cv = _row("cv", "confident_voice", 0)
+    praise = _row("praise", "great_formulation", len(text) - 4)
+    selected = rank_family_pool([weaker, *candidates, cv, praise])
+    rewrite = next(
+        row for row in selected
+        if row.get("feedback_family") == "rewrite_clarity"
+    )
+    assert rewrite["id"] == structural["id"]
+
+
+def test_structural_rewrite_detector_emits_all_matches_for_manager_ranking():
+    text = (
+        "I don't want. A script that sounds rehearsed. "
+        "I don't need. The extra introduction before my point."
+    )
+    rows = evidence_backed_rewrite_candidates(
+        text,
+        take_session_id="take-3",
+        snippet_id="snippet-3",
+    )
+    assert len(rows) == 2
+    assert [row["span"]["start"] for row in rows] == sorted(
+        row["span"]["start"] for row in rows
+    )
 
 
 def test_exposure_keeps_evidence_but_student_payload_strips_it():

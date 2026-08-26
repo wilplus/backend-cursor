@@ -14,6 +14,7 @@ from typing import Any, Iterable, Optional
 
 
 POLICY_VERSION = "take-feedback-manager-v2"
+STRUCTURAL_REWRITE_RULE_VERSION = "structural-rewrite-v1"
 FAMILIES = (
     "confident_voice",
     "rewrite_clarity",
@@ -23,6 +24,16 @@ _SENTENCE_RE = re.compile(r"[^\n.!?]+(?:[.!?]+|$)")
 _WORD_RE = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)*", re.UNICODE)
 _LEADING_FILLER_RE = re.compile(
     r"^(?:so|well|actually|basically|literally|you know)\b[, ]*",
+    re.IGNORECASE,
+)
+_STRANDED_NEGATED_PREDICATE_RE = re.compile(
+    r"\b(?:do(?:es|did)?\s+not|don['’]t|doesn['’]t|didn['’]t|"
+    r"can(?:not|['’]t)|won['’]t|wouldn['’]t|shouldn['’]t|couldn['’]t)\s+"
+    r"(?:want|need|prefer|choose|include|use|mean|like|have)\s*$",
+    re.IGNORECASE,
+)
+_OBJECT_PHRASE_START_RE = re.compile(
+    r"^(?:a|an|the|my|your|our|their|his|her|its)\b",
     re.IGNORECASE,
 )
 
@@ -190,6 +201,71 @@ def _actionable_rewrite(quote: str) -> Optional[str]:
     right = right[0].upper() + right[1:]
     proposed = f"{left.rstrip('.!?')}. {right}"
     return proposed if proposed != quote else None
+
+
+def evidence_backed_rewrite_candidates(
+    served_text: Any,
+    *,
+    take_session_id: Any,
+    snippet_id: Any,
+) -> list[dict]:
+    """Return every high-signal, word-preserving structural repair.
+
+    These are ordinary Manager candidates, not fallbacks. That distinction is
+    load-bearing: a model-created rewrite elsewhere in the Take must not hide
+    a more obvious broken boundary before ranking even begins. Each detector
+    operates only on exact slices of the served Ideal Text and may change
+    punctuation/case, never lexical content.
+
+    The first rule repairs the common deletion scar where a negated transitive
+    predicate is stranded at a full stop and its object phrase starts the next
+    sentence ("I don't want. A script ..."). It emits every match; the Manager
+    ranks the complete rewrite family instead of accepting the first fit.
+    """
+    text = served_text if isinstance(served_text, str) else ""
+    take = str(take_session_id or "")
+    sid = str(snippet_id or "")
+    sentences = _sentences(text)
+    if not text or not take or not sid or len(sentences) < 2:
+        return []
+
+    rows: list[dict] = []
+    for left, right in zip(sentences, sentences[1:]):
+        start, _, first = left
+        _, end, second = right
+        first_body = first.rstrip().rstrip(".!?").rstrip()
+        second_body = second.lstrip()
+        if not _STRANDED_NEGATED_PREDICATE_RE.search(first_body):
+            continue
+        if not _OBJECT_PHRASE_START_RE.match(second_body):
+            continue
+        lowered_second = second_body[0].lower() + second_body[1:]
+        quote = text[start:end]
+        proposed = f"{first_body} {lowered_second}"
+        if not quote or proposed == quote:
+            continue
+        rows.append({
+            "id": _stable_id("structural-rewrite", take, quote),
+            "snippet_id": sid,
+            "take_session_id": take,
+            "kind": "replace",
+            "source": "wording",
+            "span": {"start": start, "end": end},
+            "quote": quote,
+            "proposed_text": proposed,
+            "why_key": "clarity",
+            "feedback_family": "rewrite_clarity",
+            "tentative": False,
+            "rule_version": STRUCTURAL_REWRITE_RULE_VERSION,
+            "_manager_evidence": {
+                "fallback": False,
+                "detector": "stranded_negated_object_boundary",
+                "detector_rank": 5,
+                "specificity": 5,
+                "lexical_words_invented": 0,
+            },
+        })
+    return rows
 
 
 def ensure_required_families(

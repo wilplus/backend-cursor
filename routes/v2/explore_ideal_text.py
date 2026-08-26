@@ -2015,9 +2015,19 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                     if isinstance(p, dict) and p.get("snippet_id")
                 ), None)
             from services.take_feedback_manager import (
+                evidence_backed_rewrite_candidates,
                 ensure_required_families,
                 exposure_snapshot,
             )
+            # Structural deletion scars are a real candidate lane, not an
+            # emergency fallback. Add the complete exact-text pool before the
+            # Manager ranks it, so the presence of any weaker model rewrite
+            # cannot suppress an obvious word-preserving repair.
+            changes.extend(evidence_backed_rewrite_candidates(
+                served_text,
+                take_session_id=_arm_sid,
+                snippet_id=_candidate_sid,
+            ))
             changes = ensure_required_families(
                 served_text,
                 changes,
