@@ -429,21 +429,37 @@ def _legacy_architecture_grid(value: Any) -> tuple[list[dict], list[dict]]:
     ]
 
 
-def _ml_layout_axis(label: str, value: Any) -> list[dict]:
-    axis = _identified_rows(label, value, fields=(), maximum_rows=20)
+def _ml_layout_axis(
+    label: str,
+    value: Any,
+    *,
+    fields: tuple[str, ...] = (),
+) -> list[dict]:
+    axis = _identified_rows(label, value, fields=fields, maximum_rows=20)
     if not axis:
-        return [{"id": str(uuid4())}]
+        row = {"id": str(uuid4())}
+        if "label" in fields:
+            row["label"] = "Column 1"
+        return [row]
     ids = [item["id"] for item in axis]
     if len(set(ids)) != len(ids):
         raise CeoValidationError(f"ML {label} ids must be unique")
+    if "label" in fields:
+        for index, item in enumerate(axis):
+            # ML grids saved before column naming carried only ids. Keep those
+            # revisions editable while making every new save explicit.
+            item["label"] = item.get("label") or f"Column {index + 1}"
     return axis
 
 
 def _legacy_ml_grid(nodes: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
     layout_rows = [{"id": str(uuid4())}]
-    columns = [{"id": str(uuid4())} for _node in nodes]
+    columns = [
+        {"id": str(uuid4()), "label": f"Column {index + 1}"}
+        for index, _node in enumerate(nodes)
+    ]
     if not columns:
-        columns = [{"id": str(uuid4())}]
+        columns = [{"id": str(uuid4()), "label": "Column 1"}]
     positioned = [
         {
             **node,
@@ -467,7 +483,9 @@ def _ml_grid(content: dict) -> tuple[list[dict], list[dict], list[dict]]:
         ]
         return _legacy_ml_grid(legacy_nodes)
     layout_rows = _ml_layout_axis("rows", content.get("rows"))
-    columns = _ml_layout_axis("columns", content.get("columns"))
+    columns = _ml_layout_axis(
+        "columns", content.get("columns"), fields=("label",)
+    )
     row_ids = {row["id"] for row in layout_rows}
     column_ids = {column["id"] for column in columns}
     occupied: set[tuple[str, str]] = set()

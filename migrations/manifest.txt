@@ -327,3 +327,4 @@
 0289	version_confidence_rating_instrument_v2.sql
 0290	add_rater_proficient_languages.sql
 0291	add_take_review_lifecycle.sql
+0292	seed_ceo_ml_capability_tables.sql

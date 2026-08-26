@@ -224,6 +224,9 @@ def test_legacy_ml_nodes_are_positioned_in_one_pipeline_row():
 
     assert len(normalized["rows"]) == 1
     assert len(normalized["columns"]) == 2
+    assert [column["label"] for column in normalized["columns"]] == [
+        "Column 1", "Column 2",
+    ]
     assert normalized["nodes"][0]["row_id"] == normalized["rows"][0]["id"]
     assert normalized["nodes"][1]["column_id"] == normalized["columns"][1]["id"]
 
@@ -231,7 +234,10 @@ def test_legacy_ml_nodes_are_positioned_in_one_pipeline_row():
 def test_ml_grid_preserves_sparse_rows_and_columns():
     normalized = ceo.normalize_artifact_content("ml", {
         "rows": [{"id": "training"}, {"id": "research"}],
-        "columns": [{"id": "capture"}, {"id": "application"}],
+        "columns": [
+            {"id": "capture", "label": "Evidence / Input"},
+            {"id": "application", "label": "Learning destination"},
+        ],
         "nodes": [{
             "id": "training-capture",
             "row_id": "training",
@@ -243,7 +249,8 @@ def test_ml_grid_preserves_sparse_rows_and_columns():
 
     assert normalized["rows"] == [{"id": "training"}, {"id": "research"}]
     assert normalized["columns"] == [
-        {"id": "capture"}, {"id": "application"},
+        {"id": "capture", "label": "Evidence / Input"},
+        {"id": "application", "label": "Learning destination"},
     ]
     assert normalized["nodes"][0]["column_id"] == "capture"
 
@@ -252,7 +259,7 @@ def test_ml_nodes_must_reference_the_saved_layout():
     with pytest.raises(ceo.CeoValidationError, match="reference a saved row and column"):
         ceo.normalize_artifact_content("ml", {
             "rows": [{"id": "training"}],
-            "columns": [{"id": "capture"}],
+            "columns": [{"id": "capture", "label": "Evidence / Input"}],
             "nodes": [{
                 "id": "bad-node",
                 "row_id": "missing",
@@ -394,3 +401,27 @@ def test_overview_editing_migration_is_service_role_only_and_versioned():
     assert "CREATE OR REPLACE FUNCTION public.ceo_save_artifact_revision" in sql
     assert "v_version := v_version + 1" in sql
     assert "CREATE OR REPLACE FUNCTION public.ceo_comment_and_request_reevaluation" in sql
+
+
+def test_ml_capability_seed_is_versioned_idempotent_and_names_columns():
+    sql = (
+        Path(__file__).parents[1]
+        / "migrations"
+        / "seed_ceo_ml_capability_tables.sql"
+    ).read_text()
+
+    assert "'confident-voice-practice'" in sql
+    assert "'shadowing'" in sql
+    assert "'Capability'" in sql
+    assert "'Evidence / Input'" in sql
+    assert "'Current mechanism'" in sql
+    assert "'Human signal / safeguard'" in sql
+    assert "'Learning destination'" in sql
+    assert "'Confident Voice candidate detection'" in sql
+    assert "'Three-item feedback orchestration'" in sql
+    assert "COALESCE(MAX(revision.version), 0) + 1" in sql
+    assert "latest.content->'risks'" in sql
+    assert "latest.content->'next_steps'" in sql
+    assert "latest.content->'citations'" in sql
+    assert "founder_seed_ceo_ml_capability_tables_v1" in sql
+    assert "WHERE NOT EXISTS" in sql
