@@ -11056,6 +11056,134 @@ class DatabaseService:
             logger.warning("take feedback exposure insert failed: %s", e)
             return False
 
+    def register_recording_attempt(
+        self, *, attempt_id: str, owner_principal_id: str, project_id: str,
+        upload_idempotency_key: str, recording_id: str,
+        storage_bucket: str, storage_key: str, recording_kind: str,
+        input_hash: str,
+    ) -> Optional[dict]:
+        """Register durable audio as an Attempt, never as a completed Take."""
+        if not all((attempt_id, owner_principal_id, project_id,
+                    upload_idempotency_key, recording_id, storage_bucket,
+                    storage_key, recording_kind, input_hash)):
+            return None
+        try:
+            result = self.client.rpc("register_recording_attempt_v1", {
+                "p_attempt_id": str(attempt_id),
+                "p_owner_principal_id": str(owner_principal_id),
+                "p_project_id": str(project_id),
+                "p_upload_idempotency_key": str(upload_idempotency_key),
+                "p_recording_id": str(recording_id),
+                "p_storage_bucket": str(storage_bucket),
+                "p_storage_key": str(storage_key),
+                "p_recording_kind": str(recording_kind),
+                "p_input_hash": str(input_hash),
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.error(
+                "recording attempt registration failed attempt=%s: %s",
+                attempt_id, error,
+            )
+            return None
+
+    def get_recording_attempt(self, attempt_id: str) -> Optional[dict]:
+        """Read the canonical Attempt coordinates for parity-gated workers."""
+        if not attempt_id:
+            return None
+        try:
+            result = (
+                self.client.table("recording_attempts")
+                .select(
+                    "id, owner_principal_id, project_id, recording_kind, "
+                    "status, attempt_count"
+                )
+                .eq("id", str(attempt_id))
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as error:
+            logger.warning(
+                "recording attempt lookup failed attempt=%s: %s",
+                attempt_id, error,
+            )
+            return None
+
+    def record_processing_transition(
+        self, *, recording_attempt_id: str,
+        processing_job_id: Optional[str], to_status: str, stage: str,
+        attempt_count: int, input_hash: str, idempotency_key: str,
+        output_hash: Optional[str] = None,
+        error: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """Append one lifecycle transition and advance the Attempt read model."""
+        if (not all((recording_attempt_id, to_status, stage, input_hash,
+                    idempotency_key)) or isinstance(attempt_count, bool)
+                or attempt_count < 1):
+            return None
+        try:
+            result = self.client.rpc("record_processing_transition_v1", {
+                "p_recording_attempt_id": str(recording_attempt_id),
+                "p_processing_job_id": (
+                    str(processing_job_id) if processing_job_id else None
+                ),
+                "p_to_status": str(to_status),
+                "p_stage": str(stage),
+                "p_attempt_count": int(attempt_count),
+                "p_input_hash": str(input_hash),
+                "p_output_hash": str(output_hash) if output_hash else None,
+                "p_error": error if isinstance(error, dict) else None,
+                "p_idempotency_key": str(idempotency_key),
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as transition_error:
+            logger.error(
+                "processing transition failed attempt=%s status=%s: %s",
+                recording_attempt_id, to_status, transition_error,
+            )
+            return None
+
+    def promote_recording_attempt_to_take(
+        self, *, recording_attempt_id: str, completion_hash: str,
+        processing_job_id: Optional[str], attempt_count: int,
+        input_hash: str, output_hash: Optional[str], idempotency_key: str,
+    ) -> Optional[dict]:
+        """Atomically assign the next successful project Take ordinal."""
+        if (not all((recording_attempt_id, completion_hash, input_hash,
+                    idempotency_key)) or isinstance(attempt_count, bool)
+                or attempt_count < 1):
+            return None
+        try:
+            result = self.client.rpc(
+                "promote_recording_attempt_to_take_v1", {
+                    "p_recording_attempt_id": str(recording_attempt_id),
+                    "p_completion_hash": str(completion_hash),
+                    "p_processing_job_id": (
+                        str(processing_job_id) if processing_job_id else None
+                    ),
+                    "p_attempt_count": int(attempt_count),
+                    "p_input_hash": str(input_hash),
+                    "p_output_hash": str(output_hash) if output_hash else None,
+                    "p_idempotency_key": str(idempotency_key),
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as promotion_error:
+            logger.error(
+                "recording attempt promotion failed attempt=%s: %s",
+                recording_attempt_id, promotion_error,
+            )
+            return None
+
     def record_canonical_feedback_exposure(self, bundle: dict) -> Optional[dict]:
         """Atomically dual-write one complete canonical candidate ledger.
 

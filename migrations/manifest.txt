@@ -332,3 +332,4 @@
 0294	update_ceo_ml_capability_tables_v2.sql
 0295	update_ceo_ml_learning_table_v3.sql
 0296	add_canonical_feedback_data_contract.sql
+0297	add_recording_attempt_take_boundary.sql

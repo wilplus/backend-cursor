@@ -73,6 +73,7 @@ from services.lab_recording_persistence import (
 from services.lab_recording_response import build_completed_recording_response
 from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
+from services.take_lifecycle import TakeLifecycleError, register_attempt
 
 from config import Config
 
@@ -373,6 +374,27 @@ def _persist_lab_take(
         database=db,
         log=logger,
     )
+    try:
+        register_attempt(
+            database=db,
+            attempt_id=stored.session_id,
+            owner_principal_id=upload.project.principal.id,
+            project_id=coordinates.project_id,
+            upload_idempotency_key=upload.project.idempotency_key,
+            recording_id=stored.recording_id,
+            storage_bucket=stored.bucket,
+            storage_key=stored.storage_key,
+            recording_kind=upload.recording_kind,
+        )
+    except TakeLifecycleError as error:
+        logger.error(
+            "lab: canonical recording attempt failed sid=%s: %s",
+            stored.session_id,
+            error,
+        )
+        raise RecordingPersistenceError(
+            "Failed to register recording attempt"
+        ) from error
     return PersistedLabTake(
         session_id=stored.session_id,
         recording_id=stored.recording_id,

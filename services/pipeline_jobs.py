@@ -49,6 +49,11 @@ from services.ideal_text_confirmation import (
     build_initial_ideal_text_from_stored_artifacts,
     mark_ideal_text_unconfirmed,
 )
+from services.take_lifecycle import (
+    TakeLifecycleError,
+    complete_attempt,
+    transition_attempt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +63,71 @@ TASK_PATH = "services.pipeline_jobs.run_processing_job"
 
 KIND_SESSION_RECORDING = "session_recording"
 KIND_IDEAL_TEXT_RETRY = "ideal_text_retry"
+TAKE_LIFECYCLE_CONTRACT = "recording-attempt-v1"
+
+
+def _has_canonical_attempt(job: Dict[str, Any]) -> bool:
+    return (
+        dict(job.get("payload") or {}).get("lifecycle_contract_version")
+        == TAKE_LIFECYCLE_CONTRACT
+    )
+
+
+def _job_attempt_input(job: Dict[str, Any]) -> dict:
+    payload = dict(job.get("payload") or {})
+    return {
+        "job_id": job.get("id"),
+        "job_kind": job.get("kind"),
+        "job_created_at": job.get("created_at"),
+        "job_started_at": job.get("started_at"),
+        "attempt_count": int(job.get("attempts") or 1),
+        "session_id": payload.get("session_id") or job.get("session_id"),
+        "recording_id": payload.get("recording_id"),
+        "recording_kind": payload.get("recording_kind") or "spoken",
+        "project_id": payload.get("arc_id"),
+        "storage_provider": payload.get("storage_provider"),
+        "storage_key": payload.get("storage_key"),
+    }
+
+
+def _transition_job_attempt(
+    job: Dict[str, Any], to_status: str, stage: str,
+    *, error: Optional[BaseException] = None,
+) -> Optional[dict]:
+    """Advance a new canonical Attempt; preserve explicit legacy parity."""
+    if not _has_canonical_attempt(job):
+        return None
+    session_id = str(job.get("session_id") or "")
+    if not session_id:
+        raise TakeLifecycleError("canonical processing job has no session")
+    return transition_attempt(
+        database=db,
+        attempt_id=session_id,
+        to_status=to_status,
+        stage=stage,
+        attempt_count=max(1, int(job.get("attempts") or 1)),
+        processing_job_id=str(job.get("id") or "") or None,
+        input_provenance=_job_attempt_input(job),
+        error=error,
+    )
+
+
+def _complete_job_attempt(job: Dict[str, Any], result: Any) -> Optional[dict]:
+    if not _has_canonical_attempt(job):
+        return None
+    payload = dict(job.get("payload") or {})
+    session_id = str(job.get("session_id") or payload.get("session_id") or "")
+    if not session_id:
+        raise TakeLifecycleError("canonical processing job has no session")
+    return complete_attempt(
+        database=db,
+        attempt_id=session_id,
+        recording_kind=str(payload.get("recording_kind") or "spoken"),
+        result=result,
+        attempt_count=max(1, int(job.get("attempts") or 1)),
+        processing_job_id=str(job.get("id") or "") or None,
+        input_provenance=_job_attempt_input(job),
+    )
 
 
 def _int_env(name: str, default: int) -> int:
@@ -145,6 +215,7 @@ def enqueue_session_recording_job(
         "take_index": take_index,
         "arc_take_count": arc_take_count,
         "spark_enabled": bool(spark_enabled),
+        "lifecycle_contract_version": TAKE_LIFECYCLE_CONTRACT,
     }
     row = db.create_processing_job(
         kind=KIND_SESSION_RECORDING,
@@ -204,6 +275,10 @@ def enqueue_ideal_text_retry_job(
         "arc_id": str(arc_id),
         "take_index": 1,
     }
+    canonical_attempt = db.get_recording_attempt(str(session_id))
+    if (isinstance(canonical_attempt, dict)
+            and canonical_attempt.get("id")):
+        payload["lifecycle_contract_version"] = TAKE_LIFECYCLE_CONTRACT
     row = db.create_processing_job(
         kind=KIND_IDEAL_TEXT_RETRY,
         user_id=user_id,
@@ -247,8 +322,24 @@ def retry_failed_session_job(session_id: str, user_id: str = "") -> Optional[dic
     job_id = str(job.get("id") or "")
     if not job_id or not db.reset_processing_job_for_manual_retry(job_id):
         return None
+    reopened = {**job, "status": "pending", "attempts": 1}
+    try:
+        _transition_job_attempt(reopened, "processing", "manual_retry")
+    except TakeLifecycleError as error:
+        db.finish_processing_job(job_id, "failed", error=str(error)[:500])
+        return None
     if not job_queue.enqueue(TASK_PATH, job_id):
         db.finish_processing_job(job_id, "failed", error="enqueue failed")
+        try:
+            _transition_job_attempt(
+                reopened, "failed", "manual_retry_delivery",
+                error=RuntimeError("enqueue failed"),
+            )
+        except TakeLifecycleError:
+            logger.exception(
+                "pipeline_jobs: manual retry failure transition missing "
+                "sid=%s", session_id,
+            )
         return None
     db.set_session_analysis_state(str(session_id), "processing")
     return db.get_processing_job(job_id) or {**job, "status": "pending"}
@@ -302,6 +393,15 @@ def _fail_terminal(job: Dict[str, Any], error: str) -> None:
     session to analysis_state 'failed' so the FE stops polling and offers
     re-record — a session must NEVER stay in 'processing' forever."""
     job_id = str(job.get("id"))
+    try:
+        _transition_job_attempt(
+            job, "failed", "analysis", error=RuntimeError(error),
+        )
+    except TakeLifecycleError:
+        logger.exception(
+            "pipeline_jobs: terminal Attempt transition missing job=%s",
+            job_id,
+        )
     db.finish_processing_job(job_id, "failed", error=error)
     sid = job.get("session_id")
     if sid:
@@ -317,6 +417,18 @@ def _fail_ideal_text_unconfirmed(
 ) -> None:
     """One non-retriable Take 1 boundary; never re-run the full pipeline."""
     job_id = str(job.get("id"))
+    try:
+        _transition_job_attempt(
+            job,
+            "failed_ideal_text_unconfirmed",
+            "ideal_text_confirmation",
+            error=error,
+        )
+    except TakeLifecycleError:
+        logger.exception(
+            "pipeline_jobs: Ideal Text Attempt transition missing job=%s",
+            job_id,
+        )
     db.finish_processing_job(job_id, "failed", error=str(error)[:500])
     payload = dict(job.get("payload") or {})
     mark_ideal_text_unconfirmed(
@@ -566,6 +678,22 @@ def run_processing_job(job_id: str) -> None:
         return  # lost the claim race — exactly one runner proceeds
 
     jid = str(claimed.get("id"))
+    try:
+        _transition_job_attempt(
+            claimed,
+            "processing",
+            (
+                "ideal_text_retry"
+                if str(claimed.get("kind") or "") == KIND_IDEAL_TEXT_RETRY
+                else "worker"
+            ),
+        )
+    except TakeLifecycleError as lifecycle_error:
+        # Never let the compatibility read model claim success when the
+        # canonical Attempt history is missing or contradictory.
+        sentry_sdk.capture_exception(lifecycle_error)
+        _fail_terminal_for_job(claimed, lifecycle_error)
+        return
     # Belt-and-braces state stamp: the web route sets 'processing' after a
     # successful enqueue, but if it crashed in between, the FE poll contract
     # still gets the right state from here. Idempotent.
@@ -579,6 +707,7 @@ def run_processing_job(job_id: str) -> None:
     try:
         with _Heartbeat(jid):
             result = runner(claimed)
+        _complete_job_attempt(claimed, result)
         db.finish_processing_job(jid, "completed", result=result)
         sid = claimed.get("session_id")
         if sid:
@@ -612,6 +741,14 @@ def run_processing_job(job_id: str) -> None:
                      jid, used, max_attempts, err, exc_info=True)
         if used >= max_attempts:
             _fail_terminal_for_job(claimed, err)
+            return
+        try:
+            _transition_job_attempt(
+                claimed, "retryable", "analysis", error=err,
+            )
+        except TakeLifecycleError as lifecycle_error:
+            sentry_sdk.capture_exception(lifecycle_error)
+            _fail_terminal_for_job(claimed, lifecycle_error)
             return
         db.release_processing_job_for_retry(jid, str(err)[:500])
         if not job_queue.enqueue(

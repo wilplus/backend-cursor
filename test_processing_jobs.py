@@ -294,6 +294,66 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         # 'processing' stamped on claim, 'ready' on completion.
         self.assertEqual([s[1] for s in db.states], ["processing", "ready"])
 
+    def test_canonical_success_is_promoted_before_job_and_session_ready(self):
+        job = _job()
+        job["payload"]["lifecycle_contract_version"] = (
+            pj.TAKE_LIFECYCLE_CONTRACT
+        )
+        fake_db = _FakeDb(job=job)
+        order = []
+        original_finish = fake_db.finish_processing_job
+        original_state = fake_db.set_session_analysis_state
+
+        def finish(*args, **kwargs):
+            order.append("job_completed")
+            return original_finish(*args, **kwargs)
+
+        def state(*args, **kwargs):
+            if len(args) > 1 and args[1] == "ready":
+                order.append("session_ready")
+            return original_state(*args, **kwargs)
+
+        fake_db.finish_processing_job = finish
+        fake_db.set_session_analysis_state = state
+        with patch.object(pj, "db", fake_db), patch.object(
+            pj, "job_queue", _FakeQueue(),
+        ), patch.dict(
+            pj._KIND_RUNNERS,
+            {pj.KIND_SESSION_RECORDING: lambda _job: {"snippet_count": 1}},
+        ), patch.object(
+            pj, "_transition_job_attempt", return_value={}
+        ), patch.object(
+            pj, "_complete_job_attempt",
+            side_effect=lambda *_args, **_kwargs: order.append("take_promoted"),
+        ):
+            pj.run_processing_job(_JOB)
+
+        self.assertEqual(
+            order, ["take_promoted", "job_completed", "session_ready"])
+
+    def test_canonical_promotion_failure_never_marks_ready(self):
+        job = _job()
+        job["payload"]["lifecycle_contract_version"] = (
+            pj.TAKE_LIFECYCLE_CONTRACT
+        )
+        fake_db = _FakeDb(job=job)
+        with patch.object(pj, "db", fake_db), patch.object(
+            pj, "job_queue", _FakeQueue(),
+        ), patch.dict(
+            pj._KIND_RUNNERS,
+            {pj.KIND_SESSION_RECORDING: lambda _job: {"snippet_count": 1}},
+        ), patch.object(
+            pj, "_transition_job_attempt", return_value={}
+        ), patch.object(
+            pj, "_complete_job_attempt",
+            side_effect=pj.TakeLifecycleError("promotion missing"),
+        ):
+            pj.run_processing_job(_JOB)
+
+        self.assertNotIn("ready", [state[1] for state in fake_db.states])
+        self.assertTrue(all(row[1] != "completed" for row in fake_db.finishes))
+        self.assertEqual(fake_db.releases[-1][0], _JOB)
+
     def test_lost_claim_race_is_a_noop(self):
         db, _ = self._run(_FakeDb(job=_job(), claim_result=None))
         self.assertEqual(db.finishes, [])
@@ -466,6 +526,25 @@ class EnqueueSessionRecordingJobTests(unittest.TestCase):
         self.assertIs(row, created)
         path, args, delay = fake_q.enqueues[-1]
         self.assertEqual((path, args, delay), (pj.TASK_PATH, (_JOB,), 0))
+
+    def test_new_job_declares_the_canonical_attempt_contract(self):
+        fake_db = _FakeDb()
+        captured = {}
+
+        def create(**kwargs):
+            captured.update(kwargs)
+            return {"id": _JOB, "session_id": _SID}
+
+        fake_db.create_processing_job = create
+        with patch.object(pj, "db", fake_db), patch.object(
+            pj, "job_queue", _FakeQueue(),
+        ):
+            pj.enqueue_session_recording_job(**self._kwargs())
+
+        self.assertEqual(
+            captured["payload"]["lifecycle_contract_version"],
+            pj.TAKE_LIFECYCLE_CONTRACT,
+        )
 
 
 @unittest.skipIf(pj is None, f"import failed: {_IMPORT_ERR}")
