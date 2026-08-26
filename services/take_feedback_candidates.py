@@ -154,8 +154,12 @@ def current_take_confident_voice_candidate(
                 "why": _CONFIDENCE_REVIEW_WHY,
             },
         ))
-    candidates.sort(key=lambda item: (item[0], item[1]))
+    # Do not choose here by first fit. Every structurally placeable candidate
+    # is evaluated below; positive detector evidence, closed cue evidence and
+    # exact phrase anchoring all outrank document position.
+    candidates.sort(key=lambda item: item[1])
 
+    resolved: list[tuple[tuple, dict, dict]] = []
     for _positive_rank, _ordinal, piece, suggestion in candidates:
         slide = _int(piece.get("slide_index"))
         # Same-slide provenance is the hard boundary. A deckless canonical
@@ -208,7 +212,13 @@ def current_take_confident_voice_candidate(
             piece.get("take_session_id") or doc.get("take_session_id") or "")
         if not take_session_id:
             continue
-        change = {
+        manager_evidence: dict[str, Any] = {
+            "detector_rank": (2 if _positive_rank == 0 else
+                              1 if _positive_rank == 1 else 0),
+            "anchor_score": -int(_score),
+            "fallback": _positive_rank == 2,
+        }
+        change: dict[str, Any] = {
             # One snippet may also carry a wording candidate. Feedback item
             # identity must therefore name the family as well as the snippet;
             # the underlying snippet UUID remains separate for playback and
@@ -223,10 +233,12 @@ def current_take_confident_voice_candidate(
             "why_key": "confident_voice",
             "why": suggestion.get("why"),
             "anchor_role": anchor_role,
+            "_manager_evidence": manager_evidence,
         }
         cues = _cue_keys(suggestion)
         if cues:
             change["cue_keys"] = cues
+            manager_evidence["cue_count"] = len(cues)
         evidence_piece = {
             **region,
             "start": start,
@@ -236,5 +248,18 @@ def current_take_confident_voice_candidate(
             "take_session_id": take_session_id,
             "slide_index": slide,
         }
-        return change, evidence_piece
-    return None, None
+        resolved.append((
+            (
+                -int(manager_evidence["detector_rank"]),
+                -len(cues),
+                int(_score),
+                _ordinal,
+                sid,
+            ),
+            change,
+            evidence_piece,
+        ))
+    if not resolved:
+        return None, None
+    resolved.sort(key=lambda item: item[0])
+    return resolved[0][1], resolved[0][2]

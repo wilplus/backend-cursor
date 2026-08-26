@@ -559,7 +559,7 @@ def serve(rows: Any) -> Optional[list]:
     """
     if not rows:
         return None
-    ordered: list[tuple[int, str, str, bool, int]] = []
+    ordered: list[tuple[int, str, str, bool, int, Any, Any, Any]] = []
     for r in rows:
         if not isinstance(r, dict):
             continue
@@ -577,13 +577,31 @@ def serve(rows: Any) -> Optional[list]:
             _it = int(r.get("iteration") or 0)
         except Exception:
             _it = 0
-        ordered.append((ordv, pid, text, bool(r.get("locked_at")), _it))
+        ordered.append((
+            ordv, pid, text, bool(r.get("locked_at")), _it,
+            r.get("root_phrase"), r.get("root_start"), r.get("root_end"),
+        ))
     if not ordered:
         return None
     ordered.sort(key=lambda t: t[0])
-    out = [{"id": pid, "ord": ordv, "text": text, "locked": locked,
-            "iteration": iteration}
-           for ordv, pid, text, locked, iteration in ordered]
+    out = []
+    for ordv, pid, text, locked, iteration, root, start, end in ordered:
+        item = {
+            "id": pid, "ord": ordv, "text": text, "locked": locked,
+            "iteration": iteration,
+        }
+        # Optional metadata stays absent until selected. This preserves the
+        # old parts wire exactly for the overwhelming majority of paragraphs
+        # while still carrying one complete exact span when it exists.
+        if (isinstance(root, str) and root
+                and isinstance(start, int) and not isinstance(start, bool)
+                and isinstance(end, int) and not isinstance(end, bool)):
+            item.update({
+                "root_phrase": root,
+                "root_start": start,
+                "root_end": end,
+            })
+        out.append(item)
     # Re-index on the way out. A gap in `ord` (a partial write, a row deleted
     # by hand) would otherwise reach the client as a position it cannot use,
     # and the client's own list index is what it renders from.

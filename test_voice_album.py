@@ -68,7 +68,7 @@ def _all_three(published=True):
     return _Db(
         routes=[{"snippet_id": "sn1", "response": "yes",
                  "slide_index": 2}],
-        suggestions={"sn1": {"kind": "emphasize"}},
+        suggestions={"sn1": {"kind": "emphasize", "trigger": "confident"}},
         sessions=[{"id": "t1",
                    "results_published_at":
                        "2026-08-14T10:00:00Z" if published else None}],

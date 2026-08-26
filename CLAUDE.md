@@ -1,6 +1,6 @@
 # CLAUDE.md — willab backend
 
-## ⭐ The one goal (founder re-locked 2026-08-22)
+## ⭐ The one goal (founder re-locked 2026-08-26)
 
 **F1 — THE MVP, THE CRITICAL PATH.** voice → durable Recording Attempt →
 perfect transcript segmented exactly 1:1 per slide → project-specific Ideal Text
@@ -8,8 +8,11 @@ after Take 1 → evidence-backed Manager Feedback after every Take. Ideal Text i
 the sole canonical presentation document. Later Takes propose improvements but
 never rebuild or silently overwrite it. The load-bearing pieces are per-slide
 transcription, coherent initial Ideal Text with stable Paragraph identity, and
-Manager arbitration that surfaces at most three defensible Feedback items. The
-record → process → Ideal Text → next-Take loop never waits for a coach.
+Manager arbitration that returns exactly three evidence-ranked Feedback items
+for every valid Take: one Confident Voice candidate, one actionable verbal or
+structure improvement, and one evidence-backed praise item. Weak evidence uses
+tentative language; it is never invented. The record → process → Ideal Text →
+next-Take loop never waits for a coach.
 
 **F2 — the asynchronous learning and confidence overlay, SECOND priority.**
 Machine Feedback and coach review retain one auditable lineage. Confident Voice
@@ -24,7 +27,8 @@ recording. Owner answers are routing signals, never blind training labels.
 **L1** Ideal Text is the one persistent, user-controlled document; later Takes
 never rebuild or silently change it, and Best Presentation is retired.
 **L2** Detectors create Candidates and only Manager-approved Candidates surface,
-with an evidence-first budget of at most three.
+with exactly one best available item from each of the three locked families for
+every valid Take. Weak evidence uses tentative language; it is never invented.
 **L3** Machine prediction, owner routing, blind peer rating, coach judgment, and
 detector verdict remain separate; Album membership requires Machine Yes + User
 Yes + Coach Yes on the exact recording.

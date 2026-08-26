@@ -328,3 +328,4 @@
 0290	add_rater_proficient_languages.sql
 0291	add_take_review_lifecycle.sql
 0292	seed_ceo_ml_capability_tables.sql
+0293	add_feedback_manager_and_part_commits.sql

@@ -381,7 +381,7 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
     return out
 
 
-def _ideal_text_pieces(arc_id, served_text, presentation_ref):
+def _ideal_text_pieces(arc_id, served_text, presentation_ref, user_id=None):
     """The slide-linkage `pieces[]` of the SD student GET (FE handoff
     2026-08-03, FE PR #222): one entry per "\\n\\n"-paragraph of the
     SERVED text, each carrying the deck page its words were bucketed to.
@@ -411,10 +411,26 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref):
             served_text=served_text,
         )
         aligned = bool(prov) and len(prov) == len(paragraphs)
+        _part_roots: dict[int, dict] = {}
+        if user_id:
+            try:
+                from services.ideal_text_parts import agrees_with_text, serve
+                _served_parts = serve(db.get_ideal_text_parts(
+                    arc_id, str(user_id), with_lock=True)) or []
+                if (len(_served_parts) == len(paragraphs)
+                        and agrees_with_text(_served_parts, served_text)):
+                    _part_roots = {i: part for i, part in
+                                   enumerate(_served_parts)}
+            except Exception:
+                _part_roots = {}
         out = []
         for i, para in enumerate(paragraphs):
             src = prov[i] if aligned else {}
-            root = rehearsal_root(para)
+            _part = _part_roots.get(i) or {}
+            _metadata_root = _part.get("root_phrase")
+            root = ({"text": _metadata_root, "type": "flagship"}
+                    if isinstance(_metadata_root, str) and _metadata_root
+                    else rehearsal_root(para))
             si = src.get("slide_index")
             if isinstance(si, bool) or not isinstance(si, int) or si < 0:
                 si = None
@@ -783,7 +799,8 @@ def v2_explore_get_ideal_text(arc_id):
             # page (`slide_index`) its words were bucketed to when the
             # mapping is provable — null degrades the FE to its
             # exact-count zip, never a guessed attachment.
-            "pieces": _ideal_text_pieces(arc_id, _text, _pres_ref),
+            "pieces": _ideal_text_pieces(
+                arc_id, _text, _pres_ref, str(request.user_id)),
             # ── PARTS (SPEC-parts-locking-and-layers §3.1, Step 0): the
             # document as an ordered list with STABLE ids, so PR 3 has
             # something a lock can survive a reorder or a reword on.
@@ -1666,8 +1683,8 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
     THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder 2026-08-07). The
     three lanes below still PRODUCE candidates exactly as they did; none
     of them SERVES one. Everything they assemble goes through
-    `intervention_candidates.select`, which applies Appendix H's budget
-    (≤3 per take, across every lane together) and collision resolution.
+    `intervention_candidates.select`, which applies the frozen exact-three
+    family contract and collision resolution.
     Concatenating the lanes and serving the result — which is what this
     did — meant the budget the whole of Appendix H exists to enforce was
     not enforced anywhere, because `manager_engine` had no caller.
@@ -1693,7 +1710,10 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         from services.ideal_text_block import _living_transcript_enabled
         if not _living_transcript_enabled():
             return {}
-        from services.intervention_candidates import select as _select
+        from services.intervention_candidates import (
+            feedback_family_of,
+            select as _select,
+        )
         from services.tracked_changes import (
             build_tracked_changes, verify_changes,
         )
@@ -1956,8 +1976,8 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                            arc_id, _pt_err)
 
         # ── THE GATE. Every lane above has now PROPOSED; nothing has been
-        # served. The manager applies the flat ≤3 budget across all of them
-        # together, resolves collisions (which subsumes the old
+        # served. The manager builds the exact-three family set from all of
+        # them, resolves collisions (which subsumes the old
         # `drop_overlaps` sweep — see intervention_candidates.select) and
         # returns the survivors in document order. A lane that is not
         # declared there does not reach the user. ──
@@ -1971,6 +1991,42 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             # experiment while recording nothing. The caller passes the arc's
         # latest spoken take instead: the take this arbitration is about.
         _arm_sid = _review_sid
+        # Classify the COMPLETE pool before selection, then add only honest
+        # weak fallbacks for genuinely absent text lanes. Fallbacks are exact
+        # document slices; they invent neither lexical content nor certainty.
+        # This full pool, not merely the winners, is snapshotted for later
+        # ranking evaluation.
+        if _take_contract_on and _arm_sid:
+            for _candidate in changes:
+                if not isinstance(_candidate, dict):
+                    continue
+                _family = feedback_family_of(_candidate)
+                if _family:
+                    _candidate["feedback_family"] = _family
+            _candidate_sid = (
+                (_review_evidence_piece or {}).get("snippet_id")
+                if isinstance(_review_evidence_piece, dict) else None
+            )
+            if not _candidate_sid:
+                _current_doc = locals().get("_review_doc")
+                _candidate_sid = next((
+                    p.get("snippet_id")
+                    for p in ((_current_doc or {}).get("pieces") or [])
+                    if isinstance(p, dict) and p.get("snippet_id")
+                ), None)
+            from services.take_feedback_manager import (
+                ensure_required_families,
+                exposure_snapshot,
+            )
+            changes = ensure_required_families(
+                served_text,
+                changes,
+                take_session_id=_arm_sid,
+                snippet_id=_candidate_sid,
+            )
+            _feedback_exposure = exposure_snapshot(changes)
+        else:
+            _feedback_exposure = []
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete
         # Manager result is claimed in the database; every later GET may only
         # rebuild those identities. Playback URLs refresh and decided items
@@ -1979,7 +2035,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             claim_feedback_set,
             filter_candidates_to_selected,
             filter_to_selected,
-            has_confident_voice,
+            has_required_families,
             load_feedback_set,
             selected_keys,
         )
@@ -1987,15 +2043,26 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             load_feedback_set(db, str(arc_id), _arm_sid)
             if _take_contract_on and _arm_sid else None
         )
+        _feedback_response_count = 0
         if _feedback_set is not None:
             changes = filter_candidates_to_selected(
                 changes, _feedback_set["selected_keys"])
+            _response_rows = db.list_take_feedback_self_reports(
+                _arm_sid, str(user_id))
+            _responded_ids = {
+                str(row.get("feedback_id")) for row in _response_rows
+                if isinstance(row, dict) and row.get("feedback_id")
+            }
+            _feedback_response_count = len(_responded_ids)
+            if _responded_ids:
+                changes = [row for row in changes
+                           if str(row.get("id") or "") not in _responded_ids]
         # THE TAKE'S SPENT BUDGET (founder 2026-08-10: "each feedback needs
         # to be there; full and end to end and waiting; not that it appears
         # once the other is accepted"). Decided interventions keep their
         # slots: the count rides into the gate, which subtracts it from
-        # H.1's ≤3, so the set on screen is chosen once and only shrinks.
-        # A count miss reads 0 and degrades to the per-arbitration budget.
+        # the frozen three, so the set on screen is chosen once and only
+        # shrinks. A count miss reads 0 and degrades to per-read arbitration.
         from services.intervention_spend import (
             spent_by_paragraph, spent_count, style_spend,
         )
@@ -2012,7 +2079,15 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         from services.part_acoustics import current_focus
         _sel = _select(changes, user_id=user_id,
                        session_id=_arm_sid,
-                       decided_count=spent_count(db, arc_id, _arm_sid),
+                       # Under the immutable three-family contract, only an
+                       # explicit self-report consumes a frozen slot. The
+                       # legacy mutation endpoint may also write a spend row
+                       # for Apply/Keep; counting both would make one action
+                       # look like two resolved feedback items.
+                       decided_count=(
+                           _feedback_response_count if _take_contract_on
+                           else spent_count(db, arc_id, _arm_sid)
+                       ),
                        focus_part_id=current_focus(arc_id, user_id,
                                                    database=db),
                        # PER SLIDE, UP TO 1. The served
@@ -2025,20 +2100,22 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                            db, arc_id, _arm_sid, served_text),
                        # Historical style spend remains a separate ledger
                        # lane, but its count is subtracted before the current
-                       # whole-Take ≤3 selection. This preserves provenance
+                       # whole-Take exact-three selection. This preserves provenance
                        # without granting style an extra allowance.
-                       style_decided_count=_style_spent["count"],
+                       style_decided_count=(
+                           0 if _take_contract_on else _style_spent["count"]
+                       ),
                        style_spent_by_paragraph=_style_spent["by_paragraph"],
                        mvp_feedback_contract=_take_contract_on,
                        # R1 gen-3 — the layer filter runs inside the gate,
                        # BEFORE the budget: an open part takes everything;
                        # a locked part takes the STYLE LANE (bold only) plus
                        # a pending Confident Voice. Both still enter the same
-                       # whole-Take ≤3 selection after layer admissibility.
+                       # whole-Take exact-three selection after admissibility.
                        parts=_locked_parts(arc_id, user_id, served_text))
         changes = _sel["changes"]
         # Style has a distinct payload only because it has a distinct action;
-        # its membership was already selected inside the same whole-Take ≤3.
+        # its membership was already selected inside the same frozen Take set.
         # It is span-verified against the same served text.
         _styles = _sel.get("style_changes") or []
 
@@ -2061,7 +2138,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         changes = _with_evidence_coordinates(changes, **evidence_args)
         _styles = _with_evidence_coordinates(_styles, **evidence_args)
         # OPTIONAL CONFIDENT VOICE MICRO-PRACTICE.  This runs only after the
-        # Feedback Manager has selected the take's final ≤3 interactions, so
+        # Feedback Manager has selected the Take's final three interactions, so
         # the exercise cannot become a fourth card or bypass the manager's
         # feedback mix.  It annotates at most one already-selected Confident
         # Voice row; no new intervention is created.  Missing migration/config
@@ -2082,14 +2159,20 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # Additions ride OUTSIDE the budget and outside the span check — they
         # have no span. Absent when there are none, so the FE draws nothing
         # rather than an empty section. See master_document.block_additions for
-        # why they are not arbitrated: the ≤3 is a load limit on FEEDBACK, and
+        # why they are not arbitrated: the exact three are FEEDBACK, and
         # this is material the speaker already said going missing from their
         # own script.
         _add = {"additions": _additions} if _additions else {}
         if not verify_changes(served_text, changes):
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
-            return {"changes": [], **_add, **_style}
+            from services.take_feedback_manager import strip_internal_evidence
+            _styles = strip_internal_evidence(_styles)
+            return {
+                "changes": [],
+                **_add,
+                **({"style_changes": _styles} if _styles else {}),
+            }
 
         # Claim only the FINAL, coordinate-proven, span-verified rows. The set
         # spans both the budgeted and style lanes and is therefore capped at
@@ -2114,7 +2197,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             if (not isinstance(_take_index, int)
                     or isinstance(_take_index, bool)
                     or _version_int != _take_index
-                    or not has_confident_voice(_keys)):
+                    or not has_required_families(_keys)):
                 logger.error(
                     "feedback set not claimable arc=%s take=%s index=%s "
                     "version=%s families=%s",
@@ -2137,6 +2220,24 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                         arc_id, _arm_sid)
                     changes, _styles = [], []
                 else:
+                    from services.take_feedback_manager import POLICY_VERSION
+                    _selected_ids = {
+                        str(key.get("id") or "")
+                        for key in _feedback_set["selected_keys"]
+                    }
+                    for _snapshot_row in _feedback_exposure:
+                        _snapshot_row["selected"] = (
+                            str(_snapshot_row.get("id") or "")
+                            in _selected_ids
+                        )
+                    db.insert_take_feedback_exposure(
+                        arc_id=str(arc_id),
+                        take_session_id=_arm_sid,
+                        review_version=_version_int,
+                        policy_version=POLICY_VERSION,
+                        candidate_set=_feedback_exposure,
+                        selected_keys=_feedback_set["selected_keys"],
+                    )
                     changes = filter_to_selected(
                         changes, _feedback_set["selected_keys"])
                     _styles = filter_to_selected(
@@ -2150,6 +2251,10 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         if ((changes or _styles) and _sel.get("controls")
                 and _sel.get("result") is not None):
             _record_arms(_sel["result"], _arm_sid, user_id)
+        from services.take_feedback_manager import strip_internal_evidence
+        changes = strip_internal_evidence(changes)
+        _styles = strip_internal_evidence(_styles)
+        _style = {"style_changes": _styles} if _styles else {}
         return {"changes": changes, **_add, **_style}
     except Exception as e:
         logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
@@ -2280,17 +2385,96 @@ def v2_explore_set_part_lock(arc_id, part_id):
                 "pending": len(_pending),
             }), 409
 
-        if not db.set_ideal_text_part_lock(arc_id, user_id, str(part_id),
-                                           locked):
+        _reason = body.get("reason")
+        if _reason not in (None, "keep_evolving"):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "reason is not valid"}), 400
+        if _reason == "keep_evolving" and locked:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "keep_evolving requires unlocked"}), 400
+        if not db.set_ideal_text_part_lock(
+                arc_id, user_id, str(part_id), locked,
+                revision_action=("keep_evolving"
+                                 if _reason == "keep_evolving" else None)):
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
-        return jsonify({"locked": locked, "part_id": str(part_id)}), 200
+        _proposal = None
+        if locked:
+            from services.rooting_phrase import propose_rooting_phrase
+            _proposal = propose_rooting_phrase(target.get("text"))
+        return jsonify({
+            "locked": locked,
+            "part_id": str(part_id),
+            "root_phrase_proposal": _proposal,
+        }), 200
     except Exception as e:
         logger.error("part lock failed arc=%s part=%s: %s", arc_id, part_id, e,
                      exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR",
                         "error": "Failed to set the lock"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/root", methods=["PUT"])
+@require_auth
+def v2_explore_set_part_root(arc_id, part_id):
+    """Accept, replace, or skip the orange exact-span prompt after a lock."""
+    try:
+        owned, _sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        echo = body.get("text_echo")
+        if not isinstance(echo, str) or not echo.strip():
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "text_echo is required"}), 400
+        echo = echo.strip()
+        user_id = str(getattr(request, "user_id", "") or "")
+        parts = _locked_parts(arc_id, user_id, echo)
+        target = next((p for p in parts
+                       if p.get("id") == str(part_id).lower()), None)
+        if target is None:
+            return jsonify({"code": "STALE_DOCUMENT",
+                            "error": "document moved"}), 409
+        if not target.get("locked"):
+            return jsonify({"code": "PART_NOT_LOCKED",
+                            "error": "Lock this paragraph first."}), 409
+        phrase = body.get("phrase")
+        start, end = body.get("start"), body.get("end")
+        if phrase is None:
+            if start is not None or end is not None:
+                return jsonify({"code": "INVALID_INPUT",
+                                "error": "skip must not include a span"}), 400
+            valid = None
+        else:
+            from services.rooting_phrase import validate_rooting_phrase
+            valid = validate_rooting_phrase(
+                target.get("text"), phrase, start, end)
+            if valid is None:
+                return jsonify({
+                    "code": "INVALID_ROOT_PHRASE",
+                    "error": "Choose exact words from this locked paragraph.",
+                }), 400
+        if not db.set_ideal_text_part_root(
+                arc_id=arc_id, user_id=user_id, part_id=str(part_id),
+                phrase=(valid or {}).get("text"),
+                start=(valid or {}).get("start"),
+                end=(valid or {}).get("end")):
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Could not save the rooting phrase"}), 500
+        return jsonify({
+            "saved": True,
+            "part_id": str(part_id),
+            "root_phrase": (valid or {}).get("text"),
+            "root_start": (valid or {}).get("start"),
+            "root_end": (valid or {}).get("end"),
+        }), 200
+    except Exception as e:
+        logger.error("part root failed arc=%s part=%s: %s",
+                     arc_id, part_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the rooting phrase"}), 500
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/user-edit", methods=["PUT"])
@@ -2397,16 +2581,13 @@ def v2_explore_put_ideal_user_edit(arc_id):
         # parts write that fails does not fail the edit — the GET then omits
         # the key, the FE re-mints, and the next save stores them.
         #
-        # AUTO-LOCK (founder 2026-08-10, "typed = committed"): a part the
-        # client marked `locked` gets locked_at stamped. THE PUT ONLY ADDS
-        # LOCKS — an existing lock survives regardless of the client's flag,
-        # and existing timestamps are preserved (§6: a decision made before a
-        # lock and one after mean different things). Removing a lock is the
-        # R5-gated endpoint's job alone; a stale client save must never
-        # silently unlock a paragraph. This is also the R3 wrinkle resolved:
-        # auto-lock writes the column directly, so pending offers are HELD
-        # (R1 filters them, Save keeps them pending) rather than 409-ing the
-        # student's own typing.
+        # EXPLICIT VERSION STATE (founder 2026-08-26): editing and locking are
+        # separate. A current client sends `locked` on every Paragraph; false
+        # reopens the same identity after its words change, true preserves the
+        # original commit timestamp. Older clients omit the field, so omission
+        # preserves the stored lock instead of silently changing it. The whole
+        # write is version-gated above, preventing stale state from reopening a
+        # newer document.
         if _parts is not None:
             try:
                 _prev_lk = {
@@ -2416,14 +2597,20 @@ def v2_explore_put_ideal_user_edit(arc_id):
                     if isinstance(r, dict) and r.get("locked_at")}
             except Exception:
                 _prev_lk = {}
-            _rows = [
-                {**p, "locked_at": _prev_lk.get(p["id"]) or (
-                    datetime.now(timezone.utc).isoformat()
-                    if p.get("locked") else None)}
-                for p in _parts
-            ]
+            _rows = []
+            for p in _parts:
+                _previous_lock = _prev_lk.get(p["id"])
+                if "locked" not in p:
+                    _locked_at = _previous_lock
+                elif p.get("locked"):
+                    _locked_at = (_previous_lock
+                                  or datetime.now(timezone.utc).isoformat())
+                else:
+                    _locked_at = None
+                _rows.append({**p, "locked_at": _locked_at})
             if not db.replace_ideal_text_parts(
-                    arc_id, str(request.user_id), _rows):
+                    arc_id, str(request.user_id), _rows,
+                    revision_action="user_edit"):
                 logger.warning("ideal parts not stored arc=%s", arc_id)
         # RE-APPLY TELEMETRY (founder 2026-07-28): one log line per
         # successful one-click re-apply of a superseded edit — the

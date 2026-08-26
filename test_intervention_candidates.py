@@ -598,8 +598,8 @@ class TestMvpFeedbackContract(unittest.TestCase):
     def test_surfaces_at_most_one_of_each_approved_family(self):
         confident = _change(0, source="confident_voice", kind="bold")
         confident["snippet_audio_ref"] = "https://audio.example/clip.webm"
-        formulation = _change(1, source="wording", kind="bold")
-        duplicate_formulation = _change(2, source="wording", kind="bold")
+        formulation = _change(1, source="structural", kind="advice")
+        duplicate_formulation = _change(2, source="structural", kind="advice")
         rewrite = _change(3, source="wording", kind="replace")
         out = ic.select(
             [confident, formulation, duplicate_formulation, rewrite],
@@ -617,15 +617,15 @@ class TestMvpFeedbackContract(unittest.TestCase):
         self.assertEqual(out, [])
 
     def test_verbal_feedback_does_not_require_audio(self):
-        formulation = _change(0, source="wording", kind="bold")
+        formulation = _change(0, source="structural", kind="advice")
         rewrite = _change(1, source="wording", kind="replace")
         out = ic.select(
             [formulation, rewrite], mvp_feedback_contract=True
         )["changes"]
-        self.assertEqual(
-            {row["feedback_family"] for row in out},
-            {"great_formulation", "rewrite_clarity"},
-        )
+        # A partial set cannot become a durable success. Neither verbal lane
+        # requires audio, but the complete Take contract still requires its
+        # independent Confident Voice evaluation.
+        self.assertEqual(out, [])
 
     def test_confident_voice_reserved_slot_survives_single_point_focus(self):
         served = "focus words\n\nvoice words"
@@ -642,8 +642,11 @@ class TestMvpFeedbackContract(unittest.TestCase):
                             start=13, end=18)
         confident["quote"] = "voice"
         confident["snippet_audio_ref"] = "https://audio.example/clip.webm"
+        praise = _change(2, source="structural", kind="advice",
+                         start=0, end=5)
+        praise["quote"] = "focus"
         out = ic.select(
-            [rewrite, confident],
+            [rewrite, confident, praise],
             served_text=served,
             parts=parts,
             focus_part_id="focus",
@@ -651,7 +654,7 @@ class TestMvpFeedbackContract(unittest.TestCase):
         )["changes"]
         self.assertEqual(
             {row["feedback_family"] for row in out},
-            {"confident_voice", "rewrite_clarity"},
+            {"confident_voice", "rewrite_clarity", "great_formulation"},
         )
 
 
@@ -908,27 +911,24 @@ class TestTheFunnel(unittest.TestCase):
         cv["quote"] = "confident"
         cv["snippet_audio_ref"] = "signed://take-2-snippet"
         rewrite = _change(1, start=100, end=110)
+        praise = _change(2, source="structural", kind="advice",
+                         start=200, end=208)
         with patch.object(ic, "_controls_enabled", return_value=True), \
              patch.object(me, "in_control", return_value=True), \
              patch.object(me, "is_withheld", return_value=True):
             out = ic.select(
-                [cv, rewrite],
+                [cv, rewrite, praise],
                 user_id="u1",
                 session_id="take-2",
                 mvp_feedback_contract=True,
             )
-        self.assertEqual([row["id"] for row in out["changes"]], ["c0"])
         self.assertEqual(
-            out["result"]["protected"],
-            ["lane:feedback:confident_voice"],
+            {row["feedback_family"] for row in out["changes"]},
+            {"confident_voice", "rewrite_clarity", "great_formulation"},
         )
-        # Required product behavior is outside the experiment, so no fake
-        # TREATED arm is written for it.
-        arm_dimensions = {
-            row["dimension_id"] for row in me.arm_rows(
-                out["result"], session_id="take-2", user_id="u1")
-        }
-        self.assertNotIn("lane:feedback:confident_voice", arm_dimensions)
+        # Required product behavior bypasses experimental withholding. Its
+        # evidence is recorded in the immutable exposure ledger instead.
+        self.assertIsNone(out["result"])
 
     def test_an_EMPTY_INPUT_still_writes_a_funnel_line(self, ):
         """FOUNDER INCIDENT 2026-08-12. This branch used to return silently.

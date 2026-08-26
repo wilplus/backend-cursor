@@ -3676,6 +3676,18 @@ def v2_coach_put_confidence_label(snippet_id):
                 owner_user_id=sess.get("user_id"), coach_value=value,
                 coach_note=row.get("note"), coach_write=True,
                 is_rereview=is_rereview)
+        # BLINDNESS RELEASE. This read occurs only after the independent
+        # judgment above was durably written. Queue/read payloads never call
+        # it, so the coach cannot see the owner label or machine proposal
+        # before committing. The original judgment remains in label_revision;
+        # a later reconsideration is another revision, never a replacement.
+        _owner_reports = db.list_take_feedback_self_reports_by_snippet(
+            str(snippet_id))
+        _owner_report = next((
+            report for report in reversed(_owner_reports)
+            if isinstance(report, dict)
+            and report.get("feedback_family") == "confident_voice"
+        ), None)
         return jsonify({
             "saved": True, "snippet_id": snippet_id,
             "state_id": row["state_id"], "value": value,
@@ -3688,6 +3700,14 @@ def v2_coach_put_confidence_label(snippet_id):
             # queue reads redact them until the same rater has a saved row.
             "transcript": (snip.get("transcript")
                            or snip.get("transcript_excerpt") or ""),
+            "owner_self_report": (
+                {
+                    "value": _owner_report.get("response"),
+                    "created_at": _owner_report.get("created_at"),
+                    "provenance": "user_self_report",
+                } if _owner_report else None
+            ),
+            "machine_value": machine_proposal(snip),
         }), 200
     except Exception as e:
         logger.warning("confidence rating failed snip=%s: %s", snippet_id, e)
