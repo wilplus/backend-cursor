@@ -233,6 +233,7 @@ from routes.v2.admin import (  # noqa: F401 — re-exported for import compat
     v2_admin_suggest_directives_queue,
     v2_admin_update_next_session_icebreaker,
     v2_admin_update_snippet_coaching_rationale,
+    v2_admin_users,
     v2_public_unsubscribe,
 )
 from routes.v2.coaching import (  # noqa: F401 — re-exported for import compat
