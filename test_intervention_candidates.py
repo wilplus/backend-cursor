@@ -627,6 +627,33 @@ class TestMvpFeedbackContract(unittest.TestCase):
             {"great_formulation", "rewrite_clarity"},
         )
 
+    def test_confident_voice_reserved_slot_survives_single_point_focus(self):
+        served = "focus words\n\nvoice words"
+        parts = [
+            {"id": "focus", "ord": 0, "text": "focus words",
+             "locked_at": None},
+            {"id": "voice", "ord": 1, "text": "voice words",
+             "locked_at": None},
+        ]
+        rewrite = _change(0, source="wording", kind="replace",
+                          start=0, end=5)
+        rewrite["quote"] = "focus"
+        confident = _change(1, source="confident_voice", kind="bold",
+                            start=13, end=18)
+        confident["quote"] = "voice"
+        confident["snippet_audio_ref"] = "https://audio.example/clip.webm"
+        out = ic.select(
+            [rewrite, confident],
+            served_text=served,
+            parts=parts,
+            focus_part_id="focus",
+            mvp_feedback_contract=True,
+        )["changes"]
+        self.assertEqual(
+            {row["feedback_family"] for row in out},
+            {"confident_voice", "rewrite_clarity"},
+        )
+
 
 class TestNothingBypassesTheGate(unittest.TestCase):
     """The structural half. A lane added later must not be able to append to
@@ -874,6 +901,34 @@ class TestTheFunnel(unittest.TestCase):
         self.assertNotIn("style_changes", out)
         self.assertEqual(out["funnel"]["in"], 1)
         self.assertEqual(out["funnel"]["after_layer"], 0)
+
+    def test_required_confident_voice_is_not_randomly_held_out(self):
+        cv = _change(0, source="confident_voice", kind="bold",
+                     start=0, end=8)
+        cv["quote"] = "confident"
+        cv["snippet_audio_ref"] = "signed://take-2-snippet"
+        rewrite = _change(1, start=100, end=110)
+        with patch.object(ic, "_controls_enabled", return_value=True), \
+             patch.object(me, "in_control", return_value=True), \
+             patch.object(me, "is_withheld", return_value=True):
+            out = ic.select(
+                [cv, rewrite],
+                user_id="u1",
+                session_id="take-2",
+                mvp_feedback_contract=True,
+            )
+        self.assertEqual([row["id"] for row in out["changes"]], ["c0"])
+        self.assertEqual(
+            out["result"]["protected"],
+            ["lane:feedback:confident_voice"],
+        )
+        # Required product behavior is outside the experiment, so no fake
+        # TREATED arm is written for it.
+        arm_dimensions = {
+            row["dimension_id"] for row in me.arm_rows(
+                out["result"], session_id="take-2", user_id="u1")
+        }
+        self.assertNotIn("lane:feedback:confident_voice", arm_dimensions)
 
     def test_an_EMPTY_INPUT_still_writes_a_funnel_line(self, ):
         """FOUNDER INCIDENT 2026-08-12. This branch used to return silently.

@@ -799,6 +799,7 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # founder 2026-07-18: acoustic > delivery > structural; a snippet
         # only ever carries ONE star.
         _unstarred = []   # (snip_id, transcript, features_dict)
+
         for snip in (readout.get("snippets") or []):
             _seen += 1
             try:

@@ -111,6 +111,12 @@ def _collision_rank(change: Any) -> int:
     not the swap lane or a style row is a correction — the safe default,
     since the rule exists to stop praise and paint outranking a fix."""
     c = change if isinstance(change, dict) else {}
+    # The Take contract reserves one Confident Voice evaluation.  It is chosen
+    # only after every admissibility gate, and this precedence makes the slot
+    # real when its exact phrase overlaps a rewrite: the rewrite may move to a
+    # different family slot; the required evaluation may not disappear.
+    if c.get("feedback_family") == "confident_voice" or is_confident_voice(c):
+        return -1
     if c.get("source") == "acoustic_swap":
         return 1
     if c.get("style_lane") or c.get("kind") == "bold":
@@ -311,9 +317,11 @@ def user_state(candidates: Any) -> me.UserState:
 # CONSTRUCT fence: this family surfaces as a qualitative STAR badge, never a
 # number, under either string.
 CONFIDENT_VOICE_TRIGGER = "confident"
+CONFIDENCE_REVIEW_TRIGGER = "confidence_review"
 _LEGACY_CONFIDENT_VOICE_TRIGGER = "charisma"
 CONFIDENT_VOICE_TRIGGERS = (
-    CONFIDENT_VOICE_TRIGGER, _LEGACY_CONFIDENT_VOICE_TRIGGER,
+    CONFIDENT_VOICE_TRIGGER, CONFIDENCE_REVIEW_TRIGGER,
+    _LEGACY_CONFIDENT_VOICE_TRIGGER,
 )
 
 
@@ -532,11 +540,11 @@ def suppress_outside_focus(changes: Any, parts: Any,
     the reason a student sees nothing, which is why the None branch returns
     the input untouched rather than returning [].
 
-    NO CARVE-OUTS. Advice, rewrites and the Confident Voice prompt are all
-    "feedback everywhere else" when they land off the focus part, and the
-    ruling names no exception. The layer filter still runs beside this one —
-    a locked focus part takes composition and advice through R1 gen-4's
-    re-open, so focusing on a locked part does not silence it.
+    CONFIDENT VOICE IS THE ONE CARVE-OUT (founder 2026-08-26). The Take-level
+    contract now requires one owner-evaluated Confident Voice moment in every
+    final set. It is awareness/calibration, not another structural task, so it
+    does not compete with the one paragraph the coach asked the speaker to
+    work on. Advice and rewrites remain focused exactly as before.
 
     Runs BEFORE the budget for the same reason the layer filter does: a
     suppressed note that has already consumed a slot is a slot the student
@@ -553,6 +561,9 @@ def suppress_outside_focus(changes: Any, parts: Any,
         return rows
     kept: list = []
     for c in rows:
+        if is_confident_voice(c):
+            kept.append(c)
+            continue
         span = c.get("span") or {}
         part = part_at(spans, span.get("start"), span.get("end"))
         # A change that straddles two parts belongs to neither (part_at is
@@ -589,9 +600,9 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
     carries each one's reasoning):
 
       * a Confident Voice detection → tagged `pending_better_version`;
-      * a `bold` → tagged `style_lane`, routed OUTSIDE the ≤3 budget and
-        surfaced only inside the chunk's modal (gen-3, parked 2026-08-11,
-        un-parked 2026-08-12);
+      * a `bold` → tagged `style_lane` and surfaced only inside the chunk's
+        modal (gen-3, parked 2026-08-11, un-parked 2026-08-12). Under the
+        current Take contract it rejoins the shared ≤3 before selection;
       * composition and its advice → tagged `reopens_locked`; the chunk
         re-enters the review cycle (gen-4);
       * a change no layer classifies, or one straddling two parts → dropped.
@@ -640,9 +651,10 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
         # locked part takes the STYLE LANE — bold/colour proposals that
         # touch presentation, never the words ("this next suggestion is
         # less intrusive and needs to keep the text coherent"). Tagged,
-        # not merged: the caller routes tagged rows OUTSIDE the ≤3 budget
-        # (ruling 4: "Outside") and the FE surfaces them only inside the
-        # chunk's modal — locked text is never re-underlined on the page.
+        # not merged: the FE surfaces tagged rows only inside the chunk's
+        # modal, so locked text is never re-underlined on the page. The legacy
+        # lane split is retained for old internal callers; the current Take
+        # contract recombines it with every other family under one ≤3 ceiling.
         #
         # PARKED the same day ("for now we will dump the colours and styling
         # interventions"), UN-PARKED 2026-08-12 in the lock-flow review.
@@ -687,11 +699,11 @@ def filter_by_layer(changes: Any, parts: Any) -> list:
     return kept
 
 
-# THE STYLE LANE'S OWN BUDGET (founder 2026-08-12): "≤3 total style
-# suggestions per take, and a maximum of one per slide." Deliberately a
-# SEPARATE allowance — style
-# rides outside the ≤3 (ruling 4), so it needs its own ceiling or it has none
-# at all.
+# THE LEGACY STYLE-LANE BUDGET (founder 2026-08-12): "≤3 total style
+# suggestions per take, and a maximum of one per slide." It remains the safe
+# ceiling for callers that have not entered the durable Take contract. Live
+# Ideal Text review subsequently recombines this lane with all Feedback under
+# one shared ≤3 ceiling in `enforce_mvp_feedback_mix`.
 STYLE_BUDGET_CEILING = 3
 STYLE_PER_GROUP = 1
 
@@ -700,9 +712,9 @@ def cap_style_lane(changes: Any, *, group_of: Any = None,
                    spent_count: int = 0, spent_by_group: Any = None) -> list:
     """The style lane's one-per-slide, ≤3-per-take cap.
 
-    Un-parking the lane and then exempting it from single-point focus left it
-    with NO ceiling of any kind: outside the ≤3 and outside focus, a document
-    with twelve locked chunks could light twelve pills at once. The founder's
+    Un-parking the lane and then exempting it from single-point focus once left
+    it with no ceiling of any kind; a document with twelve locked chunks could
+    light twelve pills at once. The founder's
     call: "an uncapped style lane would light up the screen like a Christmas
     tree on a long document."
 
@@ -864,15 +876,6 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
     """
     try:
         rows = [c for c in (changes or []) if isinstance(c, dict)]
-        if mvp_feedback_contract:
-            # Resolved interactions keep their slots. The machine may surface
-            # fewer than three, but never replaces a decided item with a new
-            # one and never adds a fourth family to make the page look busy.
-            rows = enforce_mvp_feedback_mix(
-                rows,
-                remaining=(3 - max(0, int(decided_count or 0))
-                           - max(0, int(style_decided_count or 0))),
-            )
         # THE FUNNEL (founder 2026-08-11). Eight gates stand between a stored
         # suggestion and the screen and every one of them drops SILENTLY, so
         # "five rows in the table, one note on the page" was a night of
@@ -950,10 +953,10 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # that work for attention, and it is already held back by the
         # content-first rule above wherever it would.
         #
-        # So the two lanes SPLIT HERE, one line earlier than they used to,
-        # and never recombine. Everything below this point — focus, the
-        # window, the type caps, arbitration — is the budgeted lane's
-        # pipeline; the style lane runs its own three steps and is done.
+        # So the two lanes SPLIT HERE for their different admissibility rules.
+        # Under the current Take contract they recombine after those gates for
+        # the shared family/≤3 decision; legacy callers retain the historical
+        # independent style allowance.
         style_rows = [c for c in rows if c.get("style_lane")]
         rows = suppress_outside_focus(
             [c for c in rows if not c.get("style_lane")],
@@ -979,13 +982,6 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
             spent_by_group=style_spent_by_paragraph)
         _style = {"style_changes": style_rows} if style_rows else {}
         funnel["style_lane"] = len(style_rows)
-        if not rows:
-            # THE EMPTY SERVE is the case the funnel exists for: nothing on
-            # screen, and this is the only witness to which gate did it.
-            logger.info("intervention funnel session=%s %s (empty after the "
-                        "layer filter)", session_id, funnel)
-            return {"changes": [], "result": None, "controls": False,
-                    "funnel": funnel, **_style}
         # §F.4 — the emphasis WINDOW gate, same before-budget reasoning: an
         # accent-class offer whose quote exceeds the intonation-unit ceiling
         # would paint sentences on accept (the bake now refuses it), so a
@@ -995,7 +991,25 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # about PAINT, and composition paints a diff, not a wash.
         rows = filter_by_window(rows)
         funnel["after_window"] = len(rows)
+        if mvp_feedback_contract:
+            # Apply the Take-level family quota only AFTER layer, focus,
+            # window and style-lane admissibility. Selecting a Confident Voice
+            # candidate before those gates let them erase the reserved slot.
+            # Combining both lanes here also makes "3" mean three for the
+            # WHOLE Take, not three budgeted rows plus three style rows.
+            _mixed = enforce_mvp_feedback_mix(
+                [*rows, *style_rows],
+                remaining=(3 - max(0, int(decided_count or 0))
+                           - max(0, int(style_decided_count or 0))),
+            )
+            rows = [c for c in _mixed if not c.get("style_lane")]
+            style_rows = [c for c in _mixed if c.get("style_lane")]
+            _style = {"style_changes": style_rows} if style_rows else {}
+            funnel["after_feedback_contract"] = len(_mixed)
+            funnel["style_lane"] = len(style_rows)
         if not rows:
+            logger.info("intervention funnel session=%s %s (empty after "
+                        "admissibility/feedback contract)", session_id, funnel)
             return {"changes": [], "result": None, "controls": False,
                     "funnel": funnel, **_style}
         # Appendix C mix caps (founder GO 2026-08-10): cap the POOL per
@@ -1058,6 +1072,14 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
             roll=(me.exploration_roll(str(user_id or ""), _sid)
                   if controls else None),
             controls=controls,
+            # The explicit Take contract requires one current-Take Confident
+            # Voice evaluation. It remains Manager-ranked and budgeted, but it
+            # cannot be assigned to gamma control or the within-Take withhold
+            # arm; either would make a valid Take randomly unclaimable.
+            protected_dimensions=(
+                {LANE_PREFIX + "feedback:confident_voice"}
+                if mvp_feedback_contract else None
+            ),
             budget_spent=max(0, int(decided_count or 0)),
             budget_limit=(3 if mvp_feedback_contract else None),
             group_of=_grp, spent_by_group=_spent_g)

@@ -199,13 +199,15 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
 
     def test_later_take_result_fires_only_after_the_full_worker(self):
         src = inspect.getsource(aw.run_full_analysis)
-        result_at = src.index("fire_take_processed")
+        result_at = src.index("finalize_later_take_review")
         self.assertGreater(result_at, src.index("offer_for_take"))
         self.assertLess(result_at, src.rindex("return readout_local"))
         self.assertIn("take_index > 1", src[result_at - 500:result_at + 500])
+        self.assertGreater(src.index("fire_ideal_version_ready", result_at),
+                           result_at)
 
-    def test_later_take_notification_has_one_session_identity_and_exact_copy(self):
-        from services.arc_notifications import fire_take_processed
+    def test_later_take_uses_the_normal_version_card(self):
+        from services.arc_notifications import fire_ideal_version_ready
         captured = {}
 
         class _Db:
@@ -213,18 +215,18 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
                 captured["messages"] = messages
                 return messages
 
-        self.assertTrue(fire_take_processed(
-            _Db(), "user-1", "arc-1", _SID, 2))
+            def get_arc_sessions(self, arc_id):
+                return []
+
+        self.assertTrue(fire_ideal_version_ready(
+            _Db(), "user-1", "arc-1", 2))
         message = captured["messages"][0]
-        self.assertEqual(message["client_id"], _SID)
-        self.assertEqual(
-            message["body"],
-            "Take processed. Your Ideal Text was kept unchanged.")
+        self.assertEqual(message["body"], "Your ideal text is ready.")
         self.assertEqual(message["metadata"], {
-            "variant": "take_processed",
             "arc_id": "arc-1",
-            "take_session_id": _SID,
-            "take_index": 2,
+            "variant": "ready",
+            "version": 2,
+            "topic": None,
         })
 
     def test_take_one_unconfirmed_card_has_exact_copy_and_actions(self):

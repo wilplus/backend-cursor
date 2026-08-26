@@ -78,6 +78,35 @@ class _Client:
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class EvidenceCoordinateTests(unittest.TestCase):
+    def test_deckless_feedback_keeps_an_explicit_unlinked_route(self):
+        from routes.v2.explore_ideal_text import _with_evidence_coordinates
+
+        rows = [{
+            "id": "confident-voice:snippet-2",
+            "take_session_id": "take-2",
+            "span": {"start": 0, "end": 8},
+        }]
+        pieces = [{
+            "take_session_id": "take-2",
+            "slide_index": None,
+            "start": 0,
+            "end": 8,
+        }]
+
+        grounded = _with_evidence_coordinates(
+            rows,
+            arc_id="arc-1",
+            served_text="One talk",
+            pieces=pieces,
+        )
+
+        self.assertEqual(len(grounded), 1)
+        self.assertIsNone(grounded[0]["evidence"]["slide_index"])
+        self.assertEqual(grounded[0]["evidence"]["take_session_id"], "take-2")
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class VersionBumpTests(unittest.TestCase):
     """The version IS the spoken take count (founder 2026-08-05): take 1 →
     1.0, take 2 → 2.0, each one verified on its own.
@@ -311,6 +340,22 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
         for banned in ("potentiometer", "acoustic_read", "overall_score",
                        "slide_stickiness", "rank", "power_score"):
             self.assertNotIn(banned, raw)
+
+    def test_optional_feedback_or_delivery_failure_never_hides_text(self):
+        """Document availability is independent from every enrichment lane."""
+        with patch(
+            "routes.v2.explore_ideal_text._moment_playback_map",
+            side_effect=RuntimeError("media signer unavailable"),
+        ), patch.object(
+            v2.db,
+            "list_intervention_decision_history",
+            side_effect=RuntimeError("feedback ledger unavailable"),
+        ):
+            body, status = self._get(_row(version=2))
+        self.assertEqual(status, 200)
+        self.assertEqual(body["version"], 2)
+        self.assertEqual(body["text"], "machine text")
+        self.assertEqual(body["decision_history"], [])
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -783,42 +828,13 @@ class IdealBubbleTests(unittest.TestCase):
             ok, _ = self._fire("fire_ideal_version_ready", 2, [])
         self.assertFalse(ok)
 
-    def test_later_take_result_is_keyed_by_session_not_document_version(self):
-        from services.arc_notifications import fire_take_processed
-        session_id = "77777777-7777-4777-8777-777777777777"
-        captured = {}
+    def test_obsolete_unchanged_document_result_no_longer_exists(self):
+        # Every spoken Take now earns the normal versioned Ideal Text card.
+        # Keeping this function around, even unused, invites the old terminal
+        # bubble to be wired back in during a reconnect fix.
+        from services import arc_notifications
 
-        class _Db:
-            def insert_lounge_messages(self, uid, msgs):
-                captured["uid"] = uid
-                captured["msgs"] = msgs
-                return [{"id": "persisted"}]
-
-        self.assertTrue(
-            fire_take_processed(_Db(), "u1", ARC, session_id, 2))
-        row = captured["msgs"][0]
-        self.assertEqual(row["client_id"], session_id)
-        self.assertEqual(row["kind"], "ideal_text")
-        self.assertEqual(
-            row["body"],
-            "Take processed. Your Ideal Text was kept unchanged.")
-        self.assertEqual(row["metadata"], {
-            "variant": "take_processed",
-            "arc_id": ARC,
-            "take_session_id": session_id,
-            "take_index": 2,
-        })
-
-    def test_take_one_never_gets_the_unchanged_document_result(self):
-        from services.arc_notifications import fire_take_processed
-
-        class _Db:
-            def insert_lounge_messages(self, uid, msgs):
-                raise AssertionError("Take 1 must use its version-ready card")
-
-        self.assertFalse(fire_take_processed(
-            _Db(), "u1", ARC,
-            "77777777-7777-4777-8777-777777777777", 1))
+        self.assertFalse(hasattr(arc_notifications, "fire_take_processed"))
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

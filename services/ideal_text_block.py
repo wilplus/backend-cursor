@@ -274,6 +274,14 @@ def assemble_transcript_document(arc_id: str, *, database=None,
         "ready": True,
         "document": {
             "pieces": pieces,
+            # One row per served paragraph. Slide linkage consumes paragraph
+            # identity, not snippet identity; persisting only `pieces` forced
+            # the GET to rebuild this from the latest Take, which no longer
+            # describes a canonical Take-1 document after review 2.0.
+            "paragraphs": [
+                dict(p) for p in (doc.get("paragraphs") or [])
+                if isinstance(p, dict)
+            ],
             "take_session_id": doc.get("take_session_id"),
             "take_index": doc.get("take_index"),
         },

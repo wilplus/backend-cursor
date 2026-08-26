@@ -55,6 +55,20 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+def _ideal_optional_read(label, default, reader):
+    """Keep auxiliary state machines outside Ideal Text availability.
+
+    Coach delivery, feedback enrichment, pricing, and journey metadata are
+    valuable additions to the notebook; none owns the canonical document. A
+    fault in one is logged and omitted instead of turning safe text into a 500.
+    """
+    try:
+        return reader()
+    except Exception as exc:
+        logger.warning("ideal-text optional read failed %s: %s", label, exc)
+        return default
+
+
 def _completed_spoken_sessions(sessions):
     """Official takes whose processing completed successfully.
 
@@ -149,7 +163,7 @@ def _instant_ideal_enabled() -> bool:
         in ("1", "true", "yes")
 
 
-def _ideal_piece_provenance(arc_id, deckless_ok=True):
+def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
     """The machine assembly's per-piece slide identity, in served order —
     mirrors maybe_assemble_ideal_text's source choice WITHOUT re-running
     any composition on the student GET:
@@ -227,6 +241,81 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True):
         # No skeleton yet → the living-transcript document, exactly the
         # fallback the assembly itself makes.
     if _living_transcript_enabled():
+        # CANONICAL SOURCE FIRST. Take 1's document provenance is persisted in
+        # the same database write as its text. Later Takes advance the REVIEW
+        # version without replacing those words, so rebuilding provenance from
+        # the latest transcript describes a different document. That mismatch
+        # is what made the FE reject the whole Ideal Text after Take 2.
+        try:
+            _ideal_row = db.get_coach_arc_ideal_text(arc_id) or {}
+            _stored_doc = _ideal_row.get("document") or {}
+            _stored_paragraphs = _stored_doc.get("paragraphs") or []
+            _canonical_body = str(
+                _ideal_row.get("auto_text") or _ideal_row.get("text") or "")
+            try:
+                from services.ideal_text_block import (
+                    sanitize_markers, strip_moment_markers,
+                )
+                _canonical_body = sanitize_markers(
+                    strip_moment_markers(_canonical_body))
+            except Exception:
+                _canonical_body = _canonical_body.strip()
+            _same_body = (
+                not isinstance(served_text, str)
+                or not served_text
+                or served_text.strip() == _canonical_body.strip()
+            )
+            if _stored_paragraphs and _same_body:
+                return [{
+                    "slide_index": p.get("slide_index"),
+                    "snippet_id": p.get("snippet_id"),
+                    "take_session_id": p.get("take_session_id"),
+                    "take_index": p.get("take_index"),
+                    "status": "settled",
+                    "challenger": None,
+                } for p in _stored_paragraphs if isinstance(p, dict)]
+            # Compatibility for canonical rows persisted between the document
+            # column migration and this paragraph-grain fix. They have exact
+            # canonical snippet pieces but no paragraph list. Re-anchor those
+            # pieces to the currently served body, then derive one provenance
+            # row per actual paragraph. Every paragraph must be covered; a
+            # partial map falls through to the unlinked compatibility path.
+            _stored_pieces = _stored_doc.get("pieces") or []
+            if (_stored_pieces and _same_body
+                    and isinstance(served_text, str) and served_text):
+                from services.transcript_document import (
+                    paragraph_spans, relocate_pieces,
+                )
+                _located = relocate_pieces(
+                    served_text, _stored_pieces, paragraph_fallback=True)
+                _derived = []
+                for _lo, _hi in paragraph_spans(served_text):
+                    _piece = next((p for p in _located
+                                   if isinstance(p.get("start"), int)
+                                   and isinstance(p.get("end"), int)
+                                   and p["start"] < _hi
+                                   and p["end"] > _lo), None)
+                    if _piece is None:
+                        _derived = []
+                        break
+                    _derived.append({
+                        "slide_index": _piece.get("slide_index"),
+                        "snippet_id": _piece.get("snippet_id"),
+                        "take_session_id": _piece.get("take_session_id"),
+                        "take_index": _piece.get("take_index"),
+                        "status": "settled",
+                        "challenger": None,
+                    })
+                if _derived:
+                    return _derived
+        except Exception as _stored_doc_err:
+            logger.warning(
+                "stored ideal-text provenance failed arc=%s: %s",
+                arc_id, _stored_doc_err)
+        # Compatibility only: rows created before document provenance was
+        # added have no canonical map. The latest transcript remains the best
+        # available structural source, but the FE now treats any mismatch as
+        # optional metadata failure and still renders the text unlinked.
         from services.transcript_document import build_transcript_document
         doc = build_transcript_document(arc_id, database=db)
         # ONE ROW PER PARAGRAPH (founder 2026-08-11). The consumer aligns
@@ -317,7 +406,10 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref):
         # The deckless guard is passed DOWN rather than applied here, so it
         # lands on the one lane whose slide identity is not a deck page.
         prov = _ideal_piece_provenance(
-            arc_id, deckless_ok=bool(presentation_ref))
+            arc_id,
+            deckless_ok=bool(presentation_ref),
+            served_text=served_text,
+        )
         aligned = bool(prov) and len(prov) == len(paragraphs)
         out = []
         for i, para in enumerate(paragraphs):
@@ -448,15 +540,22 @@ def v2_explore_get_ideal_text(arc_id):
         # free-form edit won — that wins wholesale), then extract the
         # anchors from the folded text so they always match what's
         # served. The canonical row is never touched (L1). ──
-        _suggestion_display = resolve_suggestion_display(
-            arc_id,
-            _text,
-            _user_edited,
-            database=db,
-            suggestions_enabled=_moment_suggestions_enabled,
-            applied_lookup=_moment_applied_map,
-            fold_applied=_fold_applied_moments,
+        _suggestion_display = _ideal_optional_read(
+            "suggestion_display",
+            None,
+            lambda: resolve_suggestion_display(
+                arc_id,
+                _text,
+                _user_edited,
+                database=db,
+                suggestions_enabled=_moment_suggestions_enabled,
+                applied_lookup=_moment_applied_map,
+                fold_applied=_fold_applied_moments,
+            ),
         )
+        if _suggestion_display is None:
+            from services.ideal_text_read import SuggestionDisplayRead
+            _suggestion_display = SuggestionDisplayRead(False, _text)
         _stars_on = _suggestion_display.enabled
         _text = _suggestion_display.text
 
@@ -552,21 +651,28 @@ def v2_explore_get_ideal_text(arc_id):
                     "compose pin fallback ALSO failed arc=%s: %s — locks "
                     "will be invisible this read", arc_id, _pin_err)
                 _composed = None
-        _has_expl = _moment_explanations_map(
-            [m.get("take_session_id") for m in _moments])
-        _playback = _moment_playback_map(
-            [m.get("take_session_id") for m in _moments])
-        _review_status = _confidence_review_status_map(arc_id, _moments)
+        _moment_take_ids = [m.get("take_session_id") for m in _moments]
+        _has_expl = _ideal_optional_read(
+            "moment_explanations", {},
+            lambda: _moment_explanations_map(_moment_take_ids))
+        _playback = _ideal_optional_read(
+            "moment_playback", {},
+            lambda: _moment_playback_map(_moment_take_ids))
+        _review_status = _ideal_optional_read(
+            "confidence_review_status", {},
+            lambda: _confidence_review_status_map(arc_id, _moments))
         # Ticket 6: resolve every attached post ONCE per request, not once per
         # moment (see _moment_reference_map — the per-moment form is an N+1).
         # isinstance-guarded: this map's values are dicts in production, but
         # callers (and tests) legitimately hand back a truthy marker instead,
         # and a bare .get() there is an AttributeError that takes the whole
         # ideal-text response down with it.
-        _refs = _moment_reference_map([
-            v.get("reference_post_slug") if isinstance(v, dict) else None
-            for v in _has_expl.values()
-        ])
+        _refs = _ideal_optional_read(
+            "moment_references", {},
+            lambda: _moment_reference_map([
+                v.get("reference_post_slug") if isinstance(v, dict) else None
+                for v in _has_expl.values()
+            ]))
 
         _key_moments = decorate_key_moments(
             _moments,
@@ -577,7 +683,9 @@ def v2_explore_get_ideal_text(arc_id):
             references=_refs,
         )
 
-        _notes = db.get_user_arc_ideal_notes(arc_id, request.user_id)
+        _notes = _ideal_optional_read(
+            "owner_notes", None,
+            lambda: db.get_user_arc_ideal_notes(arc_id, request.user_id))
 
         # ── Crucial-bubble fields (founder 2026-07-20): title + latest
         # take, derived from the ownership read (_sessions), zero extra
@@ -603,8 +711,20 @@ def v2_explore_get_ideal_text(arc_id):
         # so the two can never disagree about whether a take can start.
         _can_record_take = _project.can_record_take
         from services.journey_messages import journey_seen
-        _journey_seen = journey_seen(
-            db, request.user_id, arc_id, len(_spoken_rows))
+        _journey_seen = _ideal_optional_read(
+            "journey_state", False,
+            lambda: journey_seen(
+                db, request.user_id, arc_id, len(_spoken_rows)))
+
+        _decision_history = _ideal_optional_read(
+            "decision_history", [],
+            lambda: db.list_intervention_decision_history(arc_id))
+        _moments_unlocked = _ideal_optional_read(
+            "moment_entitlement", False,
+            lambda: _moments_entitled(arc_id))
+        _moment_price = _ideal_optional_read(
+            "moment_price", 0,
+            lambda: _price_of("moment_explanation"))
 
         # ── SLIDE LINKAGE (FE handoff 2026-08-03, FE PR #222): the deck
         # url + per-paragraph slide identity, so the reading view can
@@ -696,7 +816,7 @@ def v2_explore_get_ideal_text(arc_id):
             **({"prior_edit": _prior_edit}
                if _prior_edit and _composed is None else {}),
             "key_moments": _key_moments,
-            "moments_unlocked": _moments_entitled(arc_id),
+            "moments_unlocked": _moments_unlocked,
             # Founder 2026-07-20: the 5-credit unlock buys COACH
             # explanations — the FE must show the unlock CTA ONLY when
             # at least one exists (unverified text → nothing behind the
@@ -722,18 +842,17 @@ def v2_explore_get_ideal_text(arc_id):
                 # The take this arbitration is about — NOT the doc-level id,
                 # which is None under the master flag (see _tracked_changes_
                 # block). It keys the withhold arm and every arm row.
-                _latest_take_sid or ""),
+                _latest_take_sid or "", review_version=_version),
             # ── PROPOSAL HISTORY (slice 2, founder 2026-08-11): the arc's
             # decided proposals, texts included, newest first — the deck
             # editor's "proposals from earlier iterations". Rows predating
             # the texts migration carry no text and are not listed. ──
-            "decision_history": db.list_intervention_decision_history(
-                arc_id),
+            "decision_history": _decision_history,
             # The moments-unlock price, top level (the FE reads it here
             # for the locked-moment prompt — the only paid item). TOKENS:
             # this used to serve `price_credits` from a retired currency's
             # constant while the charge itself was 2,500 tokens.
-            "price_tokens": _price_of("moment_explanation"),
+            "price_tokens": _moment_price,
             # The personal notebook copy — free with the text now.
             "notes_text": _notes, "notes": _notes, "user_notes": _notes,
         }), 200
@@ -1497,14 +1616,29 @@ def _with_evidence_coordinates(rows, *, arc_id, served_text, pieces):
         start, end = span.get("start"), span.get("end")
         if not isinstance(start, int) or not isinstance(end, int) or end <= start:
             continue
-        piece = next((p for p in pieces
-                      if isinstance(p.get("start"), int)
-                      and isinstance(p.get("end"), int)
-                      and p["start"] <= start and end <= p["end"]), None)
-        take_id = row.get("take_session_id") or (piece or {}).get(
-            "take_session_id")
+        matches = [p for p in pieces
+                   if isinstance(p, dict)
+                   and isinstance(p.get("start"), int)
+                   and isinstance(p.get("end"), int)
+                   and p["start"] <= start and end <= p["end"]]
+        row_take_id = row.get("take_session_id")
+        # A later-Take acoustic item can route through a canonical text span.
+        # Prefer the evidence piece carrying that exact Take id; falling back
+        # to the first containing canonical piece would stamp the right audio
+        # with the wrong slide whenever the spans overlap.
+        piece = next((p for p in matches
+                      if row_take_id
+                      and str(p.get("take_session_id") or "")
+                      == str(row_take_id)), None)
+        if piece is None:
+            piece = matches[0] if matches else None
+        take_id = row_take_id or (piece or {}).get("take_session_id")
         slide_index = (piece or {}).get("slide_index")
-        if not take_id or not isinstance(slide_index, int) or slide_index < 0:
+        if (not take_id
+                or (slide_index is not None
+                    and (isinstance(slide_index, bool)
+                         or not isinstance(slide_index, int)
+                         or slide_index < 0))):
             continue
         row["evidence"] = {
             "project_id": str(arc_id),
@@ -1518,7 +1652,7 @@ def _with_evidence_coordinates(rows, *, arc_id, served_text, pieces):
 
 
 def _tracked_changes_block(arc_id, served_text, user_id="",
-                           take_session_id="") -> dict:
+                           take_session_id="", review_version=None) -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
     ABSENT and the FE keeps rendering today's star layer.
@@ -1546,6 +1680,16 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
     `KEY_POINTS_ENABLED` no longer does anything and should be deleted
     from Railway."""
     try:
+        # Only a durable review identity activates the immutable Take
+        # contract. The student GET always supplies it. Keeping the legacy
+        # no-version mode is intentional for internal pre-review callers; it
+        # cannot claim a set whose Take/version provenance it does not know.
+        _take_contract_on = (
+            bool(take_session_id)
+            and isinstance(review_version, int)
+            and not isinstance(review_version, bool)
+            and review_version >= 1
+        )
         from services.ideal_text_block import _living_transcript_enabled
         if not _living_transcript_enabled():
             return {}
@@ -1592,6 +1736,23 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # anchor_grain='paragraph' so word-precise consumers decline.
         _pieces = relocate_pieces(served_text, doc.get("pieces") or [],
                                   paragraph_fallback=True)
+        # The canonical Take-1 provenance stays beside the canonical words.
+        # Later-Take feedback is evaluated against new audio, but its deck
+        # route must come from the document actually being served — never from
+        # whichever transcript happened to be latest when this GET ran.
+        _canonical_pieces = []
+        try:
+            _canonical_row = db.get_coach_arc_ideal_text(arc_id) or {}
+            _canonical_document = _canonical_row.get("document") or {}
+            _canonical_pieces = relocate_pieces(
+                served_text,
+                _canonical_document.get("pieces") or [],
+                paragraph_fallback=True,
+            )
+        except Exception as _canonical_err:
+            logger.warning(
+                "canonical feedback provenance failed arc=%s: %s",
+                arc_id, _canonical_err)
         _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
         from services.ideal_decision_ledger import load_ledger
         _ledger = load_ledger(db, arc_id)
@@ -1650,6 +1811,59 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         from services.tracked_changes import build_coach_revision_changes
         changes.extend(build_coach_revision_changes(
             served_text, _pieces, _sugs, _ledger, _released_verdicts))
+
+        # REQUIRED CURRENT-TAKE CONFIDENT VOICE (founder 2026-08-26).
+        # The canonical words may stay unchanged while Take 2/3 supplies a new
+        # delivery.  Build one acoustic evaluation from that exact Take and
+        # route it to the corresponding canonical slide.  Playback is the
+        # evidence; a span marked slide_route is navigation only and is never
+        # presented as words the user said.  Historical confident moments are
+        # excluded from this Take's immutable set.
+        _review_sid = str(take_session_id or doc.get("take_session_id") or "")
+        _review_evidence_piece = None
+        if _take_contract_on and _review_sid:
+            try:
+                from services.take_feedback_candidates import (
+                    current_take_confident_voice_candidate,
+                )
+                _answered_confidence = {
+                    str(row.get("snippet_id"))
+                    for row in (db.list_owner_voice_album_routes(
+                        str(arc_id)) or [])
+                    if isinstance(row, dict) and row.get("snippet_id")
+                }
+                _review_doc = build_transcript_document(
+                    arc_id, database=db, session_id=_review_sid)
+                _review_cv, _review_evidence_piece = \
+                    current_take_confident_voice_candidate(
+                        served_text,
+                        canonical_pieces=(_canonical_pieces or _pieces),
+                        take_document=_review_doc,
+                        suggestions=_user_sugs,
+                        excluded_snippet_ids=_answered_confidence,
+                    )
+                changes = [
+                    c for c in changes
+                    if not (isinstance(c, dict)
+                            and c.get("source") == "confident_voice"
+                            and str(c.get("take_session_id") or "")
+                            != _review_sid)
+                ]
+                if _review_cv is not None:
+                    # One suggestion row owns one identity. Replace any direct
+                    # relocation of the same snippet with the explicit
+                    # Take-scoped candidate, then put the reserved family at
+                    # the front of the Manager pool.
+                    changes = [
+                        c for c in changes
+                        if not (isinstance(c, dict)
+                                and c.get("source") == "confident_voice")
+                    ]
+                    changes.insert(0, _review_cv)
+            except Exception as _review_cv_err:
+                logger.warning(
+                    "current-Take Confident Voice failed arc=%s take=%s: %s",
+                    arc_id, _review_sid, _review_cv_err)
 
         # ── HEAR IT (founder 2026-08-15) ──────────────────────────────────
         # "in the justification of the positive feedback give them the
@@ -1752,11 +1966,30 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # findings #12/#16 hit on the applied map), which would make
         # `is_withheld` short-circuit to False — the withhold arm NEVER firing
         # — and every arm row carry an empty session_id, which the writer
-        # drops. Flipping the controls on that would produce exactly the
-        # failure the module warns about: a table that looks like a working
-        # experiment while recording nothing. The caller passes the arc's
+            # drops. Flipping the controls on that would produce exactly the
+            # failure the module warns about: a table that looks like a working
+            # experiment while recording nothing. The caller passes the arc's
         # latest spoken take instead: the take this arbitration is about.
-        _arm_sid = str(take_session_id or doc.get("take_session_id") or "")
+        _arm_sid = _review_sid
+        # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete
+        # Manager result is claimed in the database; every later GET may only
+        # rebuild those identities. Playback URLs refresh and decided items
+        # disappear, but accepting item one can never reveal item four.
+        from services.take_feedback_set import (
+            claim_feedback_set,
+            filter_candidates_to_selected,
+            filter_to_selected,
+            has_confident_voice,
+            load_feedback_set,
+            selected_keys,
+        )
+        _feedback_set = (
+            load_feedback_set(db, str(arc_id), _arm_sid)
+            if _take_contract_on and _arm_sid else None
+        )
+        if _feedback_set is not None:
+            changes = filter_candidates_to_selected(
+                changes, _feedback_set["selected_keys"])
         # THE TAKE'S SPENT BUDGET (founder 2026-08-10: "each feedback needs
         # to be there; full and end to end and waiting; not that it appears
         # once the other is accepted"). Decided interventions keep their
@@ -1790,32 +2023,40 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                        served_text=served_text,
                        spent_by_paragraph=spent_by_paragraph(
                            db, arc_id, _arm_sid, served_text),
-                       # THE STYLE CAP (founder 2026-08-12): "≤3 total style
-                       # suggestions per take, and a maximum of one per
-                       # slide." Its own allowance, since style rides
-                       # outside the ≤3 and outside focus and would
-                       # otherwise have no ceiling at all.
+                       # Historical style spend remains a separate ledger
+                       # lane, but its count is subtracted before the current
+                       # whole-Take ≤3 selection. This preserves provenance
+                       # without granting style an extra allowance.
                        style_decided_count=_style_spent["count"],
                        style_spent_by_paragraph=_style_spent["by_paragraph"],
-                       mvp_feedback_contract=True,
+                       mvp_feedback_contract=_take_contract_on,
                        # R1 gen-3 — the layer filter runs inside the gate,
                        # BEFORE the budget: an open part takes everything;
-                       # a locked part takes the STYLE LANE (bold only,
-                       # outside the ≤3 — founder 2026-08-11) plus a
-                       # pending Confident Voice, nothing else.
+                       # a locked part takes the STYLE LANE (bold only) plus
+                       # a pending Confident Voice. Both still enter the same
+                       # whole-Take ≤3 selection after layer admissibility.
                        parts=_locked_parts(arc_id, user_id, served_text))
         changes = _sel["changes"]
-        # THE STYLE LANE rides beside the budgeted list, span-verified
-        # against the same served text; a failed check drops the style
-        # rows alone (fail closed, but never at the budgeted lane's cost).
+        # Style has a distinct payload only because it has a distinct action;
+        # its membership was already selected inside the same whole-Take ≤3.
+        # It is span-verified against the same served text.
         _styles = _sel.get("style_changes") or []
 
         # Exact evidence coordinates are part of the feedback item, not an
         # optional UI convenience. Verbal feedback stops at text evidence;
         # only Confident Voice carries playback. A row whose project/take/
         # slide/paragraph cannot be proven is withheld rather than guessed.
+        _evidence_pieces = [
+            p for p in [
+                _review_evidence_piece,
+                *_canonical_pieces,
+                *_pieces,
+            ] if isinstance(p, dict)
+        ]
         evidence_args = {
-            "arc_id": arc_id, "served_text": served_text, "pieces": _pieces,
+            "arc_id": arc_id,
+            "served_text": served_text,
+            "pieces": _evidence_pieces,
         }
         changes = _with_evidence_coordinates(changes, **evidence_args)
         _styles = _with_evidence_coordinates(_styles, **evidence_args)
@@ -1849,12 +2090,65 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             logger.warning("tracked changes: span check failed arc=%s "
                            "(serving none)", arc_id)
             return {"changes": [], **_add, **_style}
+
+        # Claim only the FINAL, coordinate-proven, span-verified rows. The set
+        # spans both the budgeted and style lanes and is therefore capped at
+        # three for the whole Take. A set without Confident Voice is refused —
+        # the required evaluation cannot be silently replaced by a third
+        # rewrite. On a concurrent first open, the database returns the one
+        # winner and this response immediately conforms to it.
+        if _feedback_set is not None:
+            changes = filter_to_selected(
+                changes, _feedback_set["selected_keys"])
+            _styles = filter_to_selected(
+                _styles, _feedback_set["selected_keys"])
+        elif _take_contract_on and _arm_sid:
+            _session = db.v2_get_session_by_id(_arm_sid) or {}
+            _take_index = _session.get("take_index")
+            _version_int = (
+                review_version if isinstance(review_version, int)
+                and not isinstance(review_version, bool) else _take_index
+            )
+            _combined = [*changes, *_styles]
+            _keys = selected_keys(_combined)
+            if (not isinstance(_take_index, int)
+                    or isinstance(_take_index, bool)
+                    or _version_int != _take_index
+                    or not has_confident_voice(_keys)):
+                logger.error(
+                    "feedback set not claimable arc=%s take=%s index=%s "
+                    "version=%s families=%s",
+                    arc_id, _arm_sid, _take_index, _version_int,
+                    [key.get("feedback_family") for key in _keys])
+                changes, _styles = [], []
+            else:
+                _feedback_set = claim_feedback_set(
+                    db,
+                    arc_id=str(arc_id),
+                    owner_user_id=str(user_id),
+                    take_session_id=_arm_sid,
+                    take_index=_take_index,
+                    review_version=_version_int,
+                    changes=_combined,
+                )
+                if _feedback_set is None:
+                    logger.error(
+                        "feedback set claim failed arc=%s take=%s",
+                        arc_id, _arm_sid)
+                    changes, _styles = [], []
+                else:
+                    changes = filter_to_selected(
+                        changes, _feedback_set["selected_keys"])
+                    _styles = filter_to_selected(
+                        _styles, _feedback_set["selected_keys"])
+        _style = {"style_changes": _styles} if _styles else {}
         # THE EXPERIMENT'S RECORD — after the span check on purpose: a row
         # stamped surfaced=True for a serve the guard then zeroed would claim
         # notes the student never saw. Only when the arms actually ran: rows
         # written with the controls inert would stamp the policy (gamma,
         # withhold_rate) as if an assignment had happened when none did.
-        if _sel.get("controls") and _sel.get("result") is not None:
+        if ((changes or _styles) and _sel.get("controls")
+                and _sel.get("result") is not None):
             _record_arms(_sel["result"], _arm_sid, user_id)
         return {"changes": changes, **_add, **_style}
     except Exception as e:
@@ -1951,9 +2245,16 @@ def v2_explore_set_part_lock(arc_id, part_id):
             # changes where the student sees two and 409 a lock the screen
             # says is ready.
             from services.intervention_spend import latest_spoken_take_sid
+            _lock_review_version = (
+                (db.get_coach_arc_ideal_text(arc_id) or {}).get("version")
+            )
             _served = (_tracked_changes_block(
-                arc_id, echo, user_id,
-                latest_spoken_take_sid(_lock_sessions))
+                arc_id,
+                echo,
+                user_id,
+                latest_spoken_take_sid(_lock_sessions),
+                review_version=_lock_review_version,
+            )
                 .get("changes") or [])
             _lo, _hi, _ = next(
                 (s for s in part_spans(parts) if s[2]["id"] == target["id"]),
