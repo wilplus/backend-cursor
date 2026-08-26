@@ -29,6 +29,7 @@ import time
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from services.db import db
+from services.ideal_text_confirmation import IdealTextUnconfirmedError
 
 logger = logging.getLogger(__name__)
 
@@ -249,11 +250,13 @@ def run_full_analysis(
                     session_id, _bpe,
                 )
 
-        # EAGER ideal-text assembly (founder 2026-07-15): the moment the
-        # arc's 3rd SPOKEN take finishes analysis, assemble + persist the
-        # machine draft so the coach's panel opens instantly ("no loading
-        # or anything" fixed at the source). Idempotent; never clobbers a
-        # coach edit. Best-effort.
+        # INITIAL IDEAL TEXT (L1 + founder confirmation gate, 2026-08-26).
+        # Take 1 creates the one canonical document. Its generation is NOT
+        # best-effort: the worker may return successfully only after a fresh
+        # database read proves non-empty persisted text. Take 2+ still creates
+        # feedback moments, but never calls the assembler at all; therefore a
+        # missing Take 1 document can never be silently backfilled by a later
+        # transcript.
         #
         # Force-alignment on reads is RETIRED with the read-out-loud lane
         # (founder 2026-08-05). It had ground truth to align against — the
@@ -267,9 +270,15 @@ def run_full_analysis(
         # as a take. "Only a spoken take is a real take" is now enforced
         # here, not just in the counters.
         if arc_id and recording_kind == "spoken":
+            _initial_take = (
+                isinstance(take_index, int)
+                and not isinstance(take_index, bool)
+                and take_index == 1
+            )
+            _confirmed_row = None
             try:
-                from services.ideal_text_block import (
-                    maybe_assemble_ideal_text,
+                from services.ideal_text_confirmation import (
+                    build_initial_ideal_text_from_stored_artifacts,
                 )
                 # Star suggestions (2026-07-18): generate BEFORE the
                 # assembly so the fresh text's anchors include the
@@ -289,25 +298,27 @@ def run_full_analysis(
                             "lab: moment suggestions failed "
                             "sid=%s: %s (non-fatal)",
                             session_id, _ms_err)
-                # Single deliverable (2026-07-17): assemble after
-                # EVERY take (take 1 included) AND every re-read;
-                # a changed compose bumps the version, resetting
-                # verification. The per-VERSION ready bubble fires
-                # idempotently (a no-op reassembly re-fires the
-                # same version key → deduped).
                 _emit(progress, "speaking_anchors", 90,
                       "Preparing your speaking anchors…")
                 tl.mark("speaking_anchors")
-                _eager_ok = maybe_assemble_ideal_text(
-                    arc_id, require_target=False,
-                    include_suggestion_anchors=(
-                        _moment_suggestions_enabled()))
-                if _eager_ok and user_id:
+                if _initial_take:
+                    # The helper assembles solely from the transcript/snippet
+                    # artifacts already persisted above, then polls the source
+                    # row for at most 120 seconds. Its typed timeout escapes
+                    # this block and becomes the dedicated terminal state.
+                    _confirmed_row = \
+                        build_initial_ideal_text_from_stored_artifacts(
+                            db,
+                            arc_id,
+                            source_session_id=session_id,
+                            include_suggestion_anchors=(
+                                _moment_suggestions_enabled()),
+                        )
+                if _confirmed_row is not None and user_id:
                     from services.arc_notifications import (
                         fire_ideal_version_ready,
                     )
-                    _row = db.get_coach_arc_ideal_text(arc_id) or {}
-                    _new_v = _row.get("version") or 1
+                    _new_v = _confirmed_row.get("version") or 1
                     # Spoken take count → the takes-1-and-2 nudge
                     # line (bug token 3c; soft nudge, never a gate).
                     try:
@@ -339,9 +350,19 @@ def run_full_analysis(
                                 len(_pe.get("text") or ""))
                     except Exception:
                         pass
+            except IdealTextUnconfirmedError:
+                # This is the Take 1 success boundary, not optional telemetry.
+                # Queue/daemon/sync dispatchers translate it into the exact
+                # durable terminal state and card; never retry transcription.
+                raise
             except Exception as _ea_err:
+                if _initial_take and _confirmed_row is None:
+                    # Confirmation is the gate: any unexpected builder/read
+                    # fault is also forbidden from falling through to ready.
+                    raise IdealTextUnconfirmedError(str(arc_id)) from _ea_err
                 logger.warning(
-                    "lab: eager ideal-text failed sid=%s: %s (non-fatal)",
+                    "lab: post-take feedback stage failed sid=%s: %s "
+                    "(non-fatal)",
                     session_id, _ea_err,
                 )
 
@@ -391,4 +412,22 @@ def run_full_analysis(
                     "lab: swap offer failed sid=%s: %s (non-fatal)",
                     session_id, _sw_err,
                 )
+    # SESSION TERMINAL RESULT — deliberately OUTSIDE the pipeline timeline.
+    # Reaching here means every stage above returned successfully. Take 1 has
+    # its document-version ready card; Take 2+ keeps that document by L1 and
+    # therefore needs its own per-session terminal identity instead. Best-
+    # effort here is safe because the browser writes the same idempotent row
+    # when it observes the completed job.
+    if (user_id and arc_id and recording_kind == "spoken"
+            and isinstance(take_index, int) and not isinstance(take_index, bool)
+            and take_index > 1):
+        try:
+            from services.arc_notifications import fire_take_processed
+            fire_take_processed(
+                db, user_id, arc_id, session_id, take_index)
+        except Exception as _take_result_err:
+            logger.warning(
+                "lab: take result failed sid=%s: %s (non-fatal)",
+                session_id, _take_result_err,
+            )
     return readout_local, sent_local

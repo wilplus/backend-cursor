@@ -436,6 +436,18 @@ class AsyncReadoutStateTests(unittest.TestCase):
         self.assertEqual(body["state"], "failed")
         self.assertEqual(body["analysis_state"], "failed")
 
+    def test_ideal_text_unconfirmed_state_is_preserved_exactly(self):
+        body, status = self._guest({
+            "user_id": None,
+            "analysis_state": "failed_ideal_text_unconfirmed",
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            body["state"], "failed_ideal_text_unconfirmed")
+        self.assertEqual(
+            body["analysis_state"], "failed_ideal_text_unconfirmed")
+        self.assertIsNone(body["readout"])
+
     def test_terminal_serves_analysis_state_ready(self):
         # Past processing|failed the poll's terminal is analysis_state=ready —
         # the lifecycle `state` stays readout_ready/review_pending/… (the FE
@@ -467,6 +479,45 @@ class AsyncReadoutStateTests(unittest.TestCase):
                 os.environ.pop("ASYNC_ANALYSIS_ENABLED", None)
             else:
                 os.environ["ASYNC_ANALYSIS_ENABLED"] = old
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class IdealTextRetryRouteTests(unittest.TestCase):
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def test_enqueues_identity_only_take_one_job(self):
+        import routes.v2.lab_recording as route
+
+        sid = "77777777-7777-4777-8777-777777777777"
+        session = {
+            "id": sid,
+            "user_id": "11111111-1111-4111-8111-111111111111",
+            "arc_id": "arc-1",
+            "take_index": 1,
+            "recording_kind": "spoken",
+            "analysis_state": "failed_ideal_text_unconfirmed",
+        }
+        with self.app.test_request_context():
+            request.user_id = session["user_id"]
+            with patch.object(route, "_owned_recording_session",
+                              return_value=session), \
+                 patch.object(route.db, "get_coach_arc_ideal_text",
+                              return_value=None), \
+                 patch(
+                     "services.pipeline_jobs.enqueue_ideal_text_retry_job",
+                     return_value={"id": "job-1"},
+                 ) as enqueue:
+                resp, status = \
+                    route.v2_retry_recording_ideal_text.__wrapped__(sid)
+        self.assertEqual(status, 202)
+        self.assertEqual(resp.get_json()["state"], "processing")
+        enqueue.assert_called_once_with(
+            session_id=sid,
+            user_id=session["user_id"],
+            arc_id="arc-1",
+            take_index=1,
+        )
 
 
 if __name__ == "__main__":

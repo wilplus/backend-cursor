@@ -684,10 +684,10 @@ def v2_user_get_session_readout(session_id):
                 "state": "processing", "analysis_state": "processing",
                 "readout": None,
             }), 200
-        if _an_state == "failed":
+        if _an_state in ("failed", "failed_ideal_text_unconfirmed"):
             return jsonify({
                 "session_id": session_id, "published": False,
-                "state": "failed", "analysis_state": "failed",
+                "state": _an_state, "analysis_state": _an_state,
                 "readout": None,
             }), 200
 

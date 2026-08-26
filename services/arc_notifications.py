@@ -16,8 +16,8 @@ arc + kind) and fires from every trigger without duplication:
     gets the transcript-text affordance, NOT the best-pres
     buttons (founder #1: never present the best presentation before the coach
     has actually corrected it AND it's paid).
-  • human_check note — after take 1: the automatic overview was shown and the
-    exercise is undergoing a human check.
+  • human_check note — retired; the compatibility hook is a no-op so deployed
+    callers cannot create new copies while older app versions roll forward.
   • pay note — after take 2 is SENT on an UNPAID arc: 25 credits ($25) unlocks
     the coach-corrected ideal text + breakthroughs list + game + library.
     (Per-take coach commentary/transcript-correction is FREE unconditionally
@@ -25,8 +25,7 @@ arc + kind) and fires from every trigger without duplication:
     + a suggested_action so the FE taps straight into the unlock flow.
 
 All best-effort (never raise into the record/publish path); all copy is
-user-facing → FOUNDER SIGN-OFF; AC-9: a "human check" note is fine, no
-score/verdict ever.
+user-facing → FOUNDER SIGN-OFF; AC-9: no score/verdict ever.
 """
 from __future__ import annotations
 
@@ -132,21 +131,8 @@ def maybe_fire_best_presentation_ready(db, arc_id: Any) -> Optional[str]:
 
 
 def fire_human_check_note(db, user_id: Any, arc_id: Any) -> bool:
-    """After take 1: automatic overview shown; a human check is underway.
-    Idempotent per arc. Copy = founder sign-off; AC-9-safe (no verdict)."""
-    if not user_id or not arc_id:
-        return False
-    return _insert(
-        db, str(user_id),
-        client_key=f"willab-humancheck:{arc_id}",
-        kind="text",
-        # SHORTENED 2026-08-15 (founder). Two sentences to one, same two
-        # facts: the read they just saw was the machine's, and a human is
-        # looking too. AC-9 unchanged — it reports WHO is looking, never a
-        # verdict, and it still never promises when.
-        body="That was the automatic read — your coach is checking this take too.",
-        metadata={"arc_id": str(arc_id), "note": "human_check"},
-    )
+    """Retired human-check note hook, retained for caller compatibility."""
+    return False
 
 
 def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
@@ -456,6 +442,104 @@ def fire_ideal_version_ready(db, user_id: Any, arc_id: Any,
         body=body,
         variant="ready", version=version,
     )
+
+
+def fire_take_processed(db, user_id: Any, arc_id: Any,
+                        take_session_id: Any, take_index: Any) -> bool:
+    """One terminal result for one LATER take, keyed by session identity.
+
+    Ideal-text ready bubbles are correctly keyed by document VERSION. Under
+    the locked L1 model, however, Take 2+ never changes that version; using it
+    as the processing-result identity deduped the only completion message and
+    left the Lounge spinner to disappear silently. A processing result is a
+    SESSION fact, so its UUID is both the event identity and Lounge client_id.
+
+    The frontend uses the same UUID as its reconnect fallback. The database's
+    (user_id, client_id) upsert therefore converges backend completion, an open
+    tab, a resumed tab, and retries onto exactly one durable card."""
+    if not user_id or not arc_id:
+        return False
+    if (isinstance(take_index, bool) or not isinstance(take_index, int)
+            or take_index <= 1):
+        return False
+    try:
+        session_id = str(uuid.UUID(str(take_session_id)))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    try:
+        persisted = db.insert_lounge_messages(str(user_id), [{
+            "client_id": session_id,
+            "role": "bot",
+            "kind": "ideal_text",
+            "body": "Take processed. Your Ideal Text was kept unchanged.",
+            "metadata": {
+                "variant": "take_processed",
+                "arc_id": str(arc_id),
+                "take_session_id": session_id,
+                "take_index": take_index,
+            },
+            "client_created_at": datetime.now(timezone.utc).isoformat(),
+        }])
+        if not persisted:
+            logger.error(
+                "arc_notifications: take result dropped arc=%s sid=%s",
+                arc_id, session_id)
+            return False
+        return True
+    except Exception as e:
+        logger.warning(
+            "arc_notifications: take result failed arc=%s sid=%s: %s",
+            arc_id, session_id, e)
+        return False
+
+
+def fire_ideal_text_unconfirmed(db, user_id: Any, arc_id: Any,
+                                take_session_id: Any,
+                                take_index: Any) -> bool:
+    """Durable Take 1 terminal card, keyed by the recording session UUID.
+
+    The worker, a reconnecting browser, and every retry all converge on this
+    one Lounge row. Its actions remain structured metadata; the frontend owns
+    navigation and the artifact-only retry call.
+    """
+    if (not user_id or not arc_id or isinstance(take_index, bool)
+            or take_index != 1):
+        return False
+    try:
+        session_id = str(uuid.UUID(str(take_session_id)))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    try:
+        from services.ideal_text_confirmation import IDEAL_TEXT_UNCONFIRMED_BODY
+
+        persisted = db.insert_lounge_messages(str(user_id), [{
+            "client_id": session_id,
+            "role": "bot",
+            "kind": "ideal_text",
+            "body": IDEAL_TEXT_UNCONFIRMED_BODY,
+            "metadata": {
+                "variant": "ideal_text_unconfirmed",
+                "arc_id": str(arc_id),
+                "take_session_id": session_id,
+                "take_index": 1,
+                "actions": [
+                    "retry_ideal_text",
+                    "view_take_feedback",
+                ],
+            },
+            "client_created_at": datetime.now(timezone.utc).isoformat(),
+        }])
+        if not persisted:
+            logger.error(
+                "arc_notifications: ideal failure card dropped arc=%s sid=%s",
+                arc_id, session_id)
+            return False
+        return True
+    except Exception as e:
+        logger.warning(
+            "arc_notifications: ideal failure card failed arc=%s sid=%s: %s",
+            arc_id, session_id, e)
+        return False
 
 
 def fire_ideal_verified(db, user_id: Any, arc_id: Any, version: Any) -> bool:

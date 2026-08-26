@@ -329,6 +329,86 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         self.assertEqual(db.finishes[-1][1], "failed")
         self.assertIn("unknown job kind", db.finishes[-1][2])
 
+    def test_ideal_text_timeout_is_special_terminal_and_never_requeues(self):
+        from services.ideal_text_confirmation import IdealTextUnconfirmedError
+
+        def _unconfirmed(job):
+            raise IdealTextUnconfirmedError("arc-1")
+
+        fake_db = _FakeDb(job={
+            **_job(),
+            "payload": {
+                **_job()["payload"],
+                "user_id": "u1",
+                "arc_id": "arc-1",
+                "take_index": 1,
+            },
+        })
+        with patch.object(pj, "mark_ideal_text_unconfirmed") as mark:
+            db, q = self._run(fake_db, runner=_unconfirmed)
+        self.assertEqual(db.finishes[-1][1], "failed")
+        self.assertEqual(db.releases, [])
+        self.assertEqual(q.enqueues, [])
+        mark.assert_called_once()
+        self.assertEqual(mark.call_args.kwargs["session_id"], _SID)
+        self.assertEqual(mark.call_args.kwargs["take_index"], 1)
+
+    def test_ideal_text_retry_unexpected_failure_stays_in_special_boundary(self):
+        def _boom(job):
+            raise RuntimeError("document provider unavailable")
+
+        job = {
+            **_job(
+                kind=pj.KIND_IDEAL_TEXT_RETRY,
+                max_attempts=1,
+            ),
+            "payload": {
+                "session_id": _SID,
+                "user_id": "u1",
+                "arc_id": "arc-1",
+                "take_index": 1,
+            },
+        }
+        fake_db = _FakeDb(job=job)
+        fake_q = _FakeQueue()
+        with patch.object(pj, "db", fake_db), patch.object(
+            pj, "job_queue", fake_q,
+        ), patch.dict(
+            pj._KIND_RUNNERS,
+            {pj.KIND_IDEAL_TEXT_RETRY: _boom},
+        ), patch.object(pj, "mark_ideal_text_unconfirmed") as mark:
+            pj.run_processing_job(_JOB)
+        self.assertEqual(fake_db.finishes[-1][1], "failed")
+        self.assertEqual(fake_db.releases, [])
+        self.assertEqual(fake_q.enqueues, [])
+        mark.assert_called_once()
+        self.assertEqual(mark.call_args.kwargs["session_id"], _SID)
+        self.assertEqual(mark.call_args.kwargs["take_index"], 1)
+
+    def test_exhausted_ideal_text_retry_stays_in_special_boundary(self):
+        job = {
+            **_job(
+                kind=pj.KIND_IDEAL_TEXT_RETRY,
+                attempts=1,
+                max_attempts=1,
+            ),
+            "payload": {
+                "session_id": _SID,
+                "user_id": "u1",
+                "arc_id": "arc-1",
+                "take_index": 1,
+            },
+        }
+        fake_db = _FakeDb(job=job)
+        with patch.object(pj, "db", fake_db), patch.object(
+            pj, "mark_ideal_text_unconfirmed",
+        ) as mark:
+            pj.run_processing_job(_JOB)
+        self.assertEqual(fake_db.claims, [])
+        self.assertEqual(fake_db.finishes[-1][1], "failed")
+        mark.assert_called_once()
+        self.assertEqual(mark.call_args.kwargs["session_id"], _SID)
+
 
 @unittest.skipIf(pj is None, f"import failed: {_IMPORT_ERR}")
 class EnqueueSessionRecordingJobTests(unittest.TestCase):

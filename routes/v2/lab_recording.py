@@ -60,6 +60,7 @@ from services.lab_recording_gate import (
 from services.lab_analysis_dispatch import (
     AnalysisInputs,
     CompletedAnalysis,
+    FailedIdealTextAnalysis,
     PendingAnalysis,
     dispatch_recording_analysis,
 )
@@ -422,6 +423,13 @@ def _analysis_response(
         payload = dict(dispatch.payload)
         payload["project_id"] = take.coordinates.project_id
         return payload, 202
+    if isinstance(dispatch, FailedIdealTextAnalysis):
+        payload = dict(dispatch.payload)
+        payload["project_id"] = take.coordinates.project_id
+        # A terminal domain state, not an HTTP transport failure: the take and
+        # its feedback were persisted, while the body explicitly says the
+        # required document did not succeed.
+        return payload, 200
     if not isinstance(dispatch, CompletedAnalysis):
         raise RuntimeError("analysis dispatch returned an invalid result")
     payload = build_completed_recording_response(
@@ -550,10 +558,10 @@ def v2_guest_get_recording_readout(session_id):
                 "analysis_state": "processing", "readout": None,
                 "processing": _progress,
             }), 200
-        if _an_state == "failed":
+        if _an_state in ("failed", "failed_ideal_text_unconfirmed"):
             return jsonify({
-                "session_id": session_id, "state": "failed",
-                "analysis_state": "failed", "readout": None,
+                "session_id": session_id, "state": _an_state,
+                "analysis_state": _an_state, "readout": None,
             }), 200
 
         from services.lab_recording import build_readout_from_session
@@ -602,6 +610,84 @@ def v2_retry_recording_processing(session_id):
     if not job:
         return jsonify({"code": "RETRY_UNAVAILABLE",
                         "error": "Processing could not be restarted"}), 409
+    return jsonify({
+        "session_id": session_id,
+        "state": "processing",
+        "job_id": job.get("id"),
+    }), 202
+
+
+@v2_bp.route(
+    "/lab/recordings/<session_id>/retry-ideal-text", methods=["POST"])
+@optional_auth
+def v2_retry_recording_ideal_text(session_id):
+    """Retry only Take 1 document creation from stored analysis artifacts.
+
+    This endpoint cannot re-upload or re-transcribe: its durable job payload
+    contains session/project identity only and runs the Ideal Text assembler
+    directly against persisted snippets/transcript rows.
+    """
+    if not _is_valid_uuid(session_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "session_id must be a valid UUID"}), 400
+    session = _owned_recording_session(session_id)
+    if not session:
+        return jsonify({"code": "SESSION_NOT_FOUND",
+                        "error": "Recording not found"}), 404
+    arc_id = session.get("arc_id")
+    take_index = session.get("take_index")
+    if (not arc_id or isinstance(take_index, bool) or take_index != 1
+            or session.get("recording_kind") == "read"):
+        return jsonify({
+            "code": "IDEAL_TEXT_RETRY_UNAVAILABLE",
+            "error": "Ideal Text retry is available for Take 1 only",
+        }), 409
+
+    from services.ideal_text_confirmation import confirmed_ideal_text
+
+    confirmed = confirmed_ideal_text(
+        db.get_coach_arc_ideal_text(str(arc_id)))
+    if confirmed:
+        db.set_session_analysis_state(session_id, "ready")
+        if session.get("user_id"):
+            try:
+                from services.arc_notifications import fire_ideal_version_ready
+
+                fire_ideal_version_ready(
+                    db,
+                    session.get("user_id"),
+                    arc_id,
+                    confirmed.get("version") or 1,
+                    spoken_take_count=1,
+                )
+            except Exception:
+                pass
+        return jsonify({
+            "session_id": session_id,
+            "state": "ready",
+            "already_confirmed": True,
+        }), 200
+
+    state = session.get("analysis_state")
+    if state not in ("failed_ideal_text_unconfirmed", "processing"):
+        return jsonify({
+            "code": "IDEAL_TEXT_RETRY_UNAVAILABLE",
+            "error": "Ideal Text retry is not available for this take",
+        }), 409
+
+    from services.pipeline_jobs import enqueue_ideal_text_retry_job
+
+    job = enqueue_ideal_text_retry_job(
+        session_id=session_id,
+        user_id=session.get("user_id"),
+        arc_id=str(arc_id),
+        take_index=1,
+    )
+    if not job:
+        return jsonify({
+            "code": "IDEAL_TEXT_RETRY_UNAVAILABLE",
+            "error": "Ideal Text creation could not be restarted",
+        }), 503
     return jsonify({
         "session_id": session_id,
         "state": "processing",

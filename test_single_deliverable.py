@@ -783,6 +783,43 @@ class IdealBubbleTests(unittest.TestCase):
             ok, _ = self._fire("fire_ideal_version_ready", 2, [])
         self.assertFalse(ok)
 
+    def test_later_take_result_is_keyed_by_session_not_document_version(self):
+        from services.arc_notifications import fire_take_processed
+        session_id = "77777777-7777-4777-8777-777777777777"
+        captured = {}
+
+        class _Db:
+            def insert_lounge_messages(self, uid, msgs):
+                captured["uid"] = uid
+                captured["msgs"] = msgs
+                return [{"id": "persisted"}]
+
+        self.assertTrue(
+            fire_take_processed(_Db(), "u1", ARC, session_id, 2))
+        row = captured["msgs"][0]
+        self.assertEqual(row["client_id"], session_id)
+        self.assertEqual(row["kind"], "ideal_text")
+        self.assertEqual(
+            row["body"],
+            "Take processed. Your Ideal Text was kept unchanged.")
+        self.assertEqual(row["metadata"], {
+            "variant": "take_processed",
+            "arc_id": ARC,
+            "take_session_id": session_id,
+            "take_index": 2,
+        })
+
+    def test_take_one_never_gets_the_unchanged_document_result(self):
+        from services.arc_notifications import fire_take_processed
+
+        class _Db:
+            def insert_lounge_messages(self, uid, msgs):
+                raise AssertionError("Take 1 must use its version-ready card")
+
+        self.assertFalse(fire_take_processed(
+            _Db(), "u1", ARC,
+            "77777777-7777-4777-8777-777777777777", 1))
+
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class SeamSmoothingContractPinTests(unittest.TestCase):

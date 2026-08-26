@@ -10,7 +10,8 @@ class ManualProcessingRetryTests(unittest.TestCase):
     def test_requeues_the_existing_failed_job_and_preserves_its_payload(self):
         failed = {
             "id": "job-1", "session_id": "session-1", "user_id": "user-1",
-            "status": "failed", "payload": {"storage_key": "kept/audio.webm"},
+            "kind": "session_recording", "status": "failed",
+            "payload": {"storage_key": "kept/audio.webm"},
         }
         reopened = {**failed, "status": "pending", "attempts": 0}
         with patch.object(pipeline_jobs.job_queue, "queue_configured",

@@ -16,6 +16,7 @@ Run: python3 -m unittest test_analysis_worker
 """
 from __future__ import annotations
 
+import inspect
 import sys
 import types
 import unittest
@@ -143,6 +144,112 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
             blob = f"{stage} {message or ''}".lower()
             for word in banned:
                 self.assertNotIn(word, blob)
+
+    def test_take_one_cannot_return_without_database_confirmation(self):
+        from services.ideal_text_confirmation import IdealTextUnconfirmedError
+
+        captured = {}
+        with patch.dict(sys.modules, {
+            "services.lab_recording": self._fake_lab_module(captured),
+        }), patch(
+            "services.ideal_text_confirmation."
+            "build_initial_ideal_text_from_stored_artifacts",
+            side_effect=IdealTextUnconfirmedError("arc-1"),
+        ) as build:
+            with self.assertRaises(IdealTextUnconfirmedError):
+                aw.run_full_analysis(
+                    session_id=_SID,
+                    user_id=None,
+                    recording_id=_REC,
+                    audio_bytes=b"x",
+                    filename="lab.webm",
+                    session_context=None,
+                    parent_audio_url="https://a",
+                    recording_kind="spoken",
+                    arc_id="arc-1",
+                    take_index=1,
+                )
+        build.assert_called_once()
+        self.assertEqual(
+            build.call_args.kwargs["source_session_id"],
+            _SID,
+        )
+
+    def test_later_take_never_calls_initial_document_builder(self):
+        captured = {}
+        with patch.dict(sys.modules, {
+            "services.lab_recording": self._fake_lab_module(captured),
+        }), patch(
+            "services.ideal_text_confirmation."
+            "build_initial_ideal_text_from_stored_artifacts",
+        ) as build:
+            aw.run_full_analysis(
+                session_id=_SID,
+                user_id=None,
+                recording_id=_REC,
+                audio_bytes=b"x",
+                filename="lab.webm",
+                session_context=None,
+                parent_audio_url="https://a",
+                recording_kind="spoken",
+                arc_id="arc-1",
+                take_index=2,
+            )
+        build.assert_not_called()
+
+    def test_later_take_result_fires_only_after_the_full_worker(self):
+        src = inspect.getsource(aw.run_full_analysis)
+        result_at = src.index("fire_take_processed")
+        self.assertGreater(result_at, src.index("offer_for_take"))
+        self.assertLess(result_at, src.rindex("return readout_local"))
+        self.assertIn("take_index > 1", src[result_at - 500:result_at + 500])
+
+    def test_later_take_notification_has_one_session_identity_and_exact_copy(self):
+        from services.arc_notifications import fire_take_processed
+        captured = {}
+
+        class _Db:
+            def insert_lounge_messages(self, uid, messages):
+                captured["messages"] = messages
+                return messages
+
+        self.assertTrue(fire_take_processed(
+            _Db(), "user-1", "arc-1", _SID, 2))
+        message = captured["messages"][0]
+        self.assertEqual(message["client_id"], _SID)
+        self.assertEqual(
+            message["body"],
+            "Take processed. Your Ideal Text was kept unchanged.")
+        self.assertEqual(message["metadata"], {
+            "variant": "take_processed",
+            "arc_id": "arc-1",
+            "take_session_id": _SID,
+            "take_index": 2,
+        })
+
+    def test_take_one_unconfirmed_card_has_exact_copy_and_actions(self):
+        from services.arc_notifications import fire_ideal_text_unconfirmed
+        captured = {}
+
+        class _Db:
+            def insert_lounge_messages(self, uid, messages):
+                captured["messages"] = messages
+                return messages
+
+        self.assertTrue(fire_ideal_text_unconfirmed(
+            _Db(), "user-1", "arc-1", _SID, 1))
+        message = captured["messages"][0]
+        self.assertEqual(message["client_id"], _SID)
+        self.assertEqual(
+            message["body"],
+            "We processed your take, but couldn’t create your Ideal Text.")
+        self.assertEqual(message["metadata"], {
+            "variant": "ideal_text_unconfirmed",
+            "arc_id": "arc-1",
+            "take_session_id": _SID,
+            "take_index": 1,
+            "actions": ["retry_ideal_text", "view_take_feedback"],
+        })
 
 
 if __name__ == "__main__":
