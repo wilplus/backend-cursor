@@ -3243,6 +3243,75 @@ def v2_coach_confidence_queue(session_id):
                               "confident": mine[0].get("confident"),
                               "intensity": mine[0].get("intensity"),
                               "note": mine[0].get("note")}
+                # CANONICAL BACKFILL-ON-RESUME. A blind legacy judgment may
+                # have committed during the additive rollout before its
+                # canonical evidence/label RPC was available. At this point
+                # the same coach has already committed (``mine``), so copying
+                # that explicit value into the immutable canonical chain does
+                # not reveal or infer an answer. The key is stable and the
+                # packet hash covers only the pre-judgment allowlist.
+                try:
+                    from services.feedback_data_contract import (
+                        TAXONOMY_VERSION,
+                        blind_packet_hash,
+                        content_hash,
+                    )
+
+                    _legacy_value = mine[0].get("value")
+                    if _legacy_value in (
+                            "yes", "in_between", "no", "not_sure",
+                            "audio_unclear"):
+                        _canonical_evidence = (
+                            db.get_canonical_confidence_evidence(
+                                take_id=str(session_id),
+                                snippet_id=str(r["snippet_id"]),
+                            )
+                        )
+                        _packet_hash = blind_packet_hash(
+                            _canonical_evidence)
+                        if _canonical_evidence and _packet_hash:
+                            _legacy_identity = (
+                                mine[0].get("id")
+                                or mine[0].get("created_at")
+                                or content_hash(mine[0])
+                            )
+                            _legacy_key = (
+                                "coach-confidence-legacy:"
+                                f"{_legacy_identity}"
+                            )
+                            _coach_id = str(getattr(
+                                request, "user_id", "") or "")
+                            _assignment = (
+                                db.assign_canonical_coach_confidence_evidence(
+                                    take_id=str(session_id),
+                                    evidence_span_id=str(
+                                        _canonical_evidence[
+                                            "evidence_span_id"]),
+                                    coach_id=_coach_id,
+                                    blind_packet_hash=str(_packet_hash),
+                                    assignment_reason="legacy_blind_resume",
+                                    idempotency_key=(
+                                        "coach-assignment:" + _legacy_key),
+                                )
+                            )
+                            if _assignment is not None:
+                                db.record_canonical_coach_confidence_judgment(
+                                    evidence_span_id=str(
+                                        _canonical_evidence[
+                                            "evidence_span_id"]),
+                                    coach_id=_coach_id,
+                                    value=str(_legacy_value),
+                                    taxonomy_version=TAXONOMY_VERSION,
+                                    blind_packet_hash=str(_packet_hash),
+                                    idempotency_key=_legacy_key,
+                                )
+                except Exception as _canonical_backfill_error:
+                    logger.warning(
+                        "canonical coach label backfill failed "
+                        "take=%s snippet=%s: %s",
+                        session_id, r.get("snippet_id"),
+                        _canonical_backfill_error,
+                    )
             else:
                 r["label"] = None
             # The browser never receives the words before THIS rater's blind
@@ -3576,6 +3645,9 @@ def v2_coach_put_confidence_label(snippet_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
+    request_idempotency_key = (
+        body.get("idempotency_key") if isinstance(body, dict) else None
+    )
     is_rereview = body.get("re_review") is True
 
     from services.state_ratings import resolve_lane, validate_rating
@@ -3667,6 +3739,67 @@ def v2_coach_put_confidence_label(snippet_id):
                          "migrations/add_state_generic_ratings.sql)",
             }), 500
         value = row["value"]
+        # Append-only canonical shadow. The legacy current-answer row remains
+        # the live read during parity; this row preserves the original blind
+        # judgment and any later reconsideration as a superseding revision.
+        # The lookup reads evidence only—never owner/machine/peer answers.
+        try:
+            from services.feedback_data_contract import (
+                TAXONOMY_VERSION,
+                blind_packet_hash,
+                content_hash,
+            )
+
+            canonical_evidence = db.get_canonical_confidence_evidence(
+                take_id=str(session_id), snippet_id=str(snippet_id),
+            )
+            if canonical_evidence is not None:
+                packet_hash = blind_packet_hash(canonical_evidence)
+                supplied_key = request_idempotency_key
+                canonical_key = (
+                    supplied_key.strip()
+                    if isinstance(supplied_key, str) and supplied_key.strip()
+                    else "coach-confidence:" + content_hash({
+                        "request_id": str(uuid.uuid4()),
+                        "take_id": str(session_id),
+                        "snippet_id": str(snippet_id),
+                        "coach_id": str(rater_id),
+                        "value": value,
+                    })
+                )
+                canonical_assignment = (
+                    db.assign_canonical_coach_confidence_evidence(
+                        take_id=str(session_id),
+                        evidence_span_id=str(
+                            canonical_evidence["evidence_span_id"]),
+                        coach_id=str(rater_id),
+                        blind_packet_hash=str(packet_hash),
+                        assignment_reason="blind_confidence_queue",
+                        idempotency_key=(
+                            "coach-assignment:" + canonical_key),
+                    ) if packet_hash else None
+                )
+                canonical_label = (
+                    db.record_canonical_coach_confidence_judgment(
+                        evidence_span_id=str(
+                            canonical_evidence["evidence_span_id"]),
+                        coach_id=str(rater_id),
+                        value=value,
+                        taxonomy_version=TAXONOMY_VERSION,
+                        blind_packet_hash=str(packet_hash),
+                        idempotency_key=canonical_key,
+                    ) if canonical_assignment is not None else None
+                )
+                if canonical_label is None:
+                    logger.warning(
+                        "canonical coach label dual-write missing "
+                        "take=%s snippet=%s", session_id, snippet_id,
+                    )
+        except Exception as canonical_error:
+            logger.warning(
+                "canonical coach label dual-write failed take=%s "
+                "snippet=%s: %s", session_id, snippet_id, canonical_error,
+            )
         if lane == "coach" and not self_report and sess and sess.get("user_id"):
             from services.confidence_review_policy import (
                 reconcile_confidence_review,

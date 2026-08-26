@@ -10,7 +10,9 @@ It does not score text against slides, persist rows, or dispatch feedback.
 from __future__ import annotations
 
 from dataclasses import replace
+from contextlib import nullcontext
 import logging
+from typing import Any, Optional
 
 from services.recording_state import RecordingState
 
@@ -202,23 +204,34 @@ def analyze_canonical_pieces(
     state: RecordingState,
     *,
     log: logging.Logger = logger,
+    stage_recorder: Optional[Any] = None,
 ) -> RecordingState:
     """Return a new state containing canonical, acoustically enriched pieces."""
-    pieces = build_canonical_pieces(
-        list(state.words_all),
-        state.session_context,
+    alignment_scope = (
+        stage_recorder.stage("alignment")
+        if stage_recorder is not None else nullcontext()
     )
-    analyzed = _core_metrics(state, pieces)
-    budget = piece_llm_budget() if state.run_analytics else 0
-    budget_indices = _budget_indices(analyzed, budget)
-    _upgrade_budget_metrics(state, analyzed, budget_indices)
+    with alignment_scope:
+        pieces = build_canonical_pieces(
+            list(state.words_all),
+            state.session_context,
+        )
+    feature_scope = (
+        stage_recorder.stage("feature_extraction")
+        if stage_recorder is not None else nullcontext()
+    )
+    with feature_scope:
+        analyzed = _core_metrics(state, pieces)
+        budget = piece_llm_budget() if state.run_analytics else 0
+        budget_indices = _budget_indices(analyzed, budget)
+        _upgrade_budget_metrics(state, analyzed, budget_indices)
 
-    # Validation-sample independence: snapshot raw metrics before any derived
-    # confidence read is stamped onto the canonical pieces.
-    raw_snapshot = [dict(piece["metrics"]) for piece in analyzed]
+        # Validation-sample independence: snapshot raw metrics before any
+        # derived confidence read is stamped onto the canonical pieces.
+        raw_snapshot = [dict(piece["metrics"]) for piece in analyzed]
 
-    _refresh_acoustic_baseline(state, log=log)
-    _attach_voice_confidence(state, analyzed, log=log)
+        _refresh_acoustic_baseline(state, log=log)
+        _attach_voice_confidence(state, analyzed, log=log)
 
     return replace(
         state,

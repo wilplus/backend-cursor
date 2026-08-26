@@ -1552,6 +1552,66 @@ def v2_post_take_feedback_response(take_session_id):
                 "error": "This response is already final.",
             }), 409
 
+        # Typed canonical dual-write. In particular, `edit_myself` is not
+        # converted into a correction preference: opening an editor leaves
+        # the correction unresolved until the owner actually chooses the
+        # proposal or the original. Compatibility persistence above remains
+        # unchanged during the parity window.
+        try:
+            from services.feedback_data_contract import (
+                canonical_feedback_decision,
+            )
+
+            canonical_decision = canonical_feedback_decision(
+                take_id=str(take_session_id),
+                rater_id=str(request.user_id),
+                feedback_id=row["feedback_id"],
+                feedback_family=row["feedback_family"],
+                response=row["response"],
+            )
+            if canonical_decision is not None and session.get("project_id"):
+                canonical_saved = db.record_canonical_feedback_decision(
+                    project_id=str(session["project_id"]),
+                    take_id=str(take_session_id),
+                    rater_id=str(request.user_id),
+                    decision=canonical_decision,
+                )
+                if canonical_saved is None:
+                    logger.warning(
+                        "canonical feedback response missing take=%s item=%s",
+                        take_session_id, row["feedback_id"],
+                    )
+                else:
+                    from services.processing_stages import recorder_for_take
+
+                    response_rows = db.list_take_feedback_self_reports(
+                        str(take_session_id), str(request.user_id)) or []
+                    response_count = len({
+                        str(item.get("feedback_id"))
+                        for item in response_rows
+                        if isinstance(item, dict) and item.get("feedback_id")
+                    })
+                    decision_recorder = recorder_for_take(
+                        database=db,
+                        session=session,
+                        input_provenance={
+                            "selected_keys": feedback_set.get(
+                                "selected_keys") or [],
+                        },
+                    )
+                    if decision_recorder is not None:
+                        decision_recorder.record(
+                            "human_decisions",
+                            "succeeded" if response_count >= 3 else "running",
+                            output={"response_count": response_count},
+                        )
+        except Exception as canonical_error:
+            logger.warning(
+                "canonical feedback response dual-write failed take=%s "
+                "item=%s: %s", take_session_id, row["feedback_id"],
+                canonical_error,
+            )
+
         # The budget/spend row records that the item was explicitly resolved;
         # shown and skipped still mean nothing. Its key includes the frozen
         # feedback identity, so three families sharing one snippet cannot

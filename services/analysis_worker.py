@@ -131,6 +131,7 @@ def run_full_analysis(
     arc_take_count: Optional[int] = None,
     spark_enabled: bool = False,
     progress: ProgressFn = None,
+    stage_recorder: Optional[Any] = None,
 ) -> Tuple[Dict[str, Any], bool]:
     """Runs the full pipeline to completion. Returns (readout, sent_to_coach).
 
@@ -143,6 +144,10 @@ def run_full_analysis(
     with _Timeline(session_id) as tl:
         _emit(progress, "transcribing", 15, "Transcribing your take…")
         tl.mark("transcribing")
+        _stage_kwargs = (
+            {"stage_recorder": stage_recorder}
+            if stage_recorder is not None else {}
+        )
         readout_local = process_lab_recording(
             session_id=session_id,
             user_id=user_id,  # fix #2b: attribute at record time
@@ -155,6 +160,7 @@ def run_full_analysis(
             # A re-read z-scores against its PARENT take (2026-07-17) —
             # 1–2 pieces can't be their own reference.
             paired_session_id=paired_session_id,
+            **_stage_kwargs,
         )
         logger.info(
             "lab: recording processed sid=%s rec=%s snippets=%d",

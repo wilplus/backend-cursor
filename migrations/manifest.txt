@@ -331,3 +331,4 @@
 0293	add_feedback_manager_and_part_commits.sql
 0294	update_ceo_ml_capability_tables_v2.sql
 0295	update_ceo_ml_learning_table_v3.sql
+0296	add_canonical_feedback_data_contract.sql
