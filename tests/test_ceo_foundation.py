@@ -425,3 +425,23 @@ def test_ml_capability_seed_is_versioned_idempotent_and_names_columns():
     assert "latest.content->'citations'" in sql
     assert "founder_seed_ceo_ml_capability_tables_v1" in sql
     assert "WHERE NOT EXISTS" in sql
+
+
+def test_ml_capability_v2_consolidates_rows_and_separates_datasets():
+    sql = (
+        Path(__file__).parents[1]
+        / "migrations"
+        / "update_ceo_ml_capability_tables_v2.sql"
+    ).read_text()
+
+    assert "'Confident Voice Selection'" in sql
+    assert "'Confident Voice Comment'" in sql
+    assert "'Praise Comment Generation'" in sql
+    assert "'Coach Comment Drafting'" in sql
+    assert "'Speaker-Disjoint Confidence Classifier'" in sql
+    assert "'cv-confidence-data-rule'" in sql
+    assert "They do not train praise generation" in sql
+    assert "founder_seed_ceo_ml_capability_tables_v2" in sql
+    assert "COALESCE(MAX(revision.version), 0) + 1" in sql
+    assert "latest_content->'next_steps'" in sql
+    assert "latest_content->'citations'" in sql
