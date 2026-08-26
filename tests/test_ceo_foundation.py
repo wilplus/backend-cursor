@@ -213,6 +213,55 @@ def test_architecture_cells_must_reference_a_saved_column():
         })
 
 
+def test_legacy_ml_nodes_are_positioned_in_one_pipeline_row():
+    normalized = ceo.normalize_artifact_content("ml", {
+        "nodes": [
+            {"id": "data", "label": "Data"},
+            {"id": "model", "label": "Model"},
+        ],
+        "edges": [{"from": "data", "to": "model"}],
+    })
+
+    assert len(normalized["rows"]) == 1
+    assert len(normalized["columns"]) == 2
+    assert normalized["nodes"][0]["row_id"] == normalized["rows"][0]["id"]
+    assert normalized["nodes"][1]["column_id"] == normalized["columns"][1]["id"]
+
+
+def test_ml_grid_preserves_sparse_rows_and_columns():
+    normalized = ceo.normalize_artifact_content("ml", {
+        "rows": [{"id": "training"}, {"id": "research"}],
+        "columns": [{"id": "capture"}, {"id": "application"}],
+        "nodes": [{
+            "id": "training-capture",
+            "row_id": "training",
+            "column_id": "capture",
+            "label": "Audio",
+        }],
+        "edges": [],
+    })
+
+    assert normalized["rows"] == [{"id": "training"}, {"id": "research"}]
+    assert normalized["columns"] == [
+        {"id": "capture"}, {"id": "application"},
+    ]
+    assert normalized["nodes"][0]["column_id"] == "capture"
+
+
+def test_ml_nodes_must_reference_the_saved_layout():
+    with pytest.raises(ceo.CeoValidationError, match="reference a saved row and column"):
+        ceo.normalize_artifact_content("ml", {
+            "rows": [{"id": "training"}],
+            "columns": [{"id": "capture"}],
+            "nodes": [{
+                "id": "bad-node",
+                "row_id": "missing",
+                "column_id": "capture",
+            }],
+            "edges": [],
+        })
+
+
 def test_ml_edges_must_reference_nodes_in_the_same_revision():
     with pytest.raises(ceo.CeoValidationError, match="reference saved nodes"):
         ceo.normalize_artifact_content("ml", {
