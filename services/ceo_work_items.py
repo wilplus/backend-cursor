@@ -630,7 +630,29 @@ def complete_task(admin_user_id: str, project_key: Any, task_id: str) -> bool:
         "ceo_complete_task",
         {"p_task_id": task_id, "p_admin_user_id": admin_user_id},
     ).execute()
-    return bool(_rows(result.data))
+    completed = _one(result.data)
+    if completed is None:
+        return False
+    feature_id = str(completed.get("out_feature_id") or "")
+    if feature_id:
+        request = _one(
+            db.client.table("ceo_reevaluation_requests")
+            .select("id")
+            .eq("trigger_type", "task_completed")
+            .eq("trigger_id", task_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        from services.ceo_intelligence import enqueue_feature_after_task
+
+        enqueue_feature_after_task(
+            admin_user_id,
+            feature_id,
+            task_id,
+            str(request.get("id") or "") if request else None,
+        )
+    return True
 
 
 def set_task_status(project_key: Any, task_id: str, status: str) -> None:

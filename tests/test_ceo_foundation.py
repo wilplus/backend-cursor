@@ -171,7 +171,7 @@ def test_architecture_content_is_normalized_to_fixed_contract():
         "invented_section": [{"text": "ignored"}],
     })
 
-    assert set(normalized) == {"flows", "risks", "next_steps"}
+    assert set(normalized) == {"flows", "risks", "next_steps", "citations"}
     assert set(normalized["flows"][0]) == {
         "id", "input", "measurement", "output",
     }
@@ -280,7 +280,11 @@ def test_comment_atomically_queues_reevaluation_and_refreshes_bootstrap():
             {"comment": " Re-check the training boundary. "},
         )
 
-    assert result == {"comment_id": COMMENT_ID, "bootstrap": expected}
+    assert result == {
+        "comment_id": COMMENT_ID,
+        "analysis_run": None,
+        "bootstrap": expected,
+    }
     assert client.rpcs["ceo_comment_and_request_reevaluation"].payload == {
         "p_artifact_id": ARTIFACT_ID,
         "p_comment": "Re-check the training boundary.",

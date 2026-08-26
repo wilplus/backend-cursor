@@ -4,7 +4,7 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, request
 
 from routes.admin import require_admin
-from services import ceo
+from services import ceo, ceo_intelligence
 from utils.errors import safe_error
 
 
@@ -145,4 +145,74 @@ def ceo_comment_artifact(artifact_id: str):
             500,
             exc=exc,
             log=f"ceo: artifact comment failed admin={admin_user_id}",
+        )
+
+
+@ceo_bp.route(
+    "/v2/admin/ceo/features/<feature_id>/sources", methods=["POST"]
+)
+@require_admin
+def ceo_add_source(feature_id: str):
+    admin_user_id = str(getattr(request, "user_id", "") or "")
+    try:
+        return _no_store(
+            ceo_intelligence.add_manual_source(
+                admin_user_id, feature_id, request.get_json(silent=True)
+            ),
+            201,
+        )
+    except (ceo_intelligence.CeoIntelligenceError,
+            ceo_intelligence.CeoIntelligenceNotFound) as exc:
+        return _no_store({"code": "INVALID_CEO_SOURCE", "error": str(exc)}, 400)
+    except Exception as exc:
+        return safe_error(
+            "CEO_SOURCE_ERROR", 500, exc=exc,
+            log=f"ceo: source capture failed admin={admin_user_id}",
+        )
+
+
+@ceo_bp.route(
+    "/v2/admin/ceo/artifacts/<artifact_id>/analysis", methods=["POST"]
+)
+@require_admin
+def ceo_request_analysis(artifact_id: str):
+    admin_user_id = str(getattr(request, "user_id", "") or "")
+    try:
+        return _no_store(
+            ceo_intelligence.request_analysis(
+                admin_user_id, artifact_id, request.get_json(silent=True) or {}
+            ),
+            202,
+        )
+    except (ceo_intelligence.CeoIntelligenceError,
+            ceo_intelligence.CeoIntelligenceNotFound) as exc:
+        return _no_store({"code": "INVALID_CEO_ANALYSIS", "error": str(exc)}, 400)
+    except Exception as exc:
+        return safe_error(
+            "CEO_ANALYSIS_ERROR", 500, exc=exc,
+            log=f"ceo: analysis request failed admin={admin_user_id}",
+        )
+
+
+@ceo_bp.route(
+    "/v2/admin/ceo/analysis-runs/<run_id>/review", methods=["POST"]
+)
+@require_admin
+def ceo_review_analysis(run_id: str):
+    admin_user_id = str(getattr(request, "user_id", "") or "")
+    try:
+        result = ceo_intelligence.review_analysis(
+            admin_user_id, run_id, request.get_json(silent=True)
+        )
+        result["bootstrap"] = ceo.get_bootstrap(admin_user_id)
+        return _no_store(result)
+    except ceo_intelligence.CeoIntelligenceConflict as exc:
+        return _no_store({"code": "CEO_ANALYSIS_CONFLICT", "error": str(exc)}, 409)
+    except (ceo_intelligence.CeoIntelligenceError,
+            ceo_intelligence.CeoIntelligenceNotFound) as exc:
+        return _no_store({"code": "INVALID_CEO_ANALYSIS_REVIEW", "error": str(exc)}, 400)
+    except Exception as exc:
+        return safe_error(
+            "CEO_ANALYSIS_REVIEW_ERROR", 500, exc=exc,
+            log=f"ceo: analysis review failed admin={admin_user_id}",
         )

@@ -323,3 +323,4 @@
 0285	add_ceo_foundation.sql
 0286	add_ceo_work_items.sql
 0287	add_ceo_overview_editing.sql
+0288	add_ceo_intelligence_sync.sql

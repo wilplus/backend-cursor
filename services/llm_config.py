@@ -393,3 +393,16 @@ the founder's steer and the previous brief) into one image-model prompt and
 its public alt text. Marketing surface: never feeds an F1 assembly path (L1).
 The alt text is public copy, so services/journal_image.py construct-guards it
 before it can be promoted onto a post."""
+
+
+SPEC_CEO_INTELLIGENCE = LLMSpec(
+    model=STRONG_MODEL,
+    # Architecture synthesis should be stable and evidence-led, not creative.
+    temperature=0.1,
+    # One bounded Architecture table or ML graph plus risks, next steps, and
+    # citations. The source input carries detail; output stays compact.
+    max_tokens=3600,
+    response_format=None,  # strict schema lives beside ceo_intelligence
+)
+"""Admin-only CEO proposal generator. Output is always a preview revision;
+the model has no route to code, runtime data, deployment, or official status."""

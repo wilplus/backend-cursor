@@ -200,7 +200,7 @@ def get_bootstrap(admin_user_id: str) -> dict:
         .execute()
         .data
     )
-    return assemble_bootstrap(
+    payload = assemble_bootstrap(
         projects=projects,
         features=features,
         artifacts=artifacts,
@@ -210,6 +210,13 @@ def get_bootstrap(admin_user_id: str) -> dict:
         comments=comments,
         reevaluation_requests=reevaluation_requests,
     )
+    # Kept behind the CEO domain boundary: the intelligence module only reads
+    # CEO records and immutable source snapshots, and it never changes the
+    # official artifact returned above without an explicit admin approval.
+    from services.ceo_intelligence import bootstrap_data
+
+    payload.update(bootstrap_data())
+    return payload
 
 
 def _require_choice(label: str, value: Any, allowed: tuple[str, ...]) -> str:
@@ -343,6 +350,11 @@ def normalize_artifact_content(lens: str, content: Any) -> dict:
             "next_steps": _identified_rows(
                 "next_steps", content.get("next_steps"), fields=("text",)
             ),
+            "citations": _identified_rows(
+                "citations", content.get("citations"),
+                fields=("source_id", "claim"), maximum_rows=100,
+                maximum_text=2000,
+            ),
         }
     if lens == "ml":
         nodes = _identified_rows(
@@ -367,6 +379,11 @@ def normalize_artifact_content(lens: str, content: Any) -> dict:
             ),
             "next_steps": _identified_rows(
                 "next_steps", content.get("next_steps"), fields=("text",)
+            ),
+            "citations": _identified_rows(
+                "citations", content.get("citations"),
+                fields=("source_id", "claim"), maximum_rows=100,
+                maximum_text=2000,
             ),
         }
     if lens == "vision":
@@ -432,6 +449,7 @@ def save_artifact_revision(admin_user_id: str, artifact_id: Any, body: Any) -> d
         db.client.table("ceo_artifact_revisions")
         .select("version")
         .eq("artifact_id", clean_artifact_id)
+        .eq("status", "official")
         .order("version", desc=True)
         .limit(1)
         .execute()
@@ -470,7 +488,7 @@ def comment_and_request_reevaluation(
     if not isinstance(body, dict):
         raise CeoValidationError("a JSON object is required")
     clean_artifact_id = _require_uuid("artifact_id", artifact_id)
-    _artifact(clean_artifact_id)
+    artifact = _artifact(clean_artifact_id)
     text = _text("comment", body.get("comment"), maximum=10_000, required=True)
     result = (
         db.client.rpc("ceo_comment_and_request_reevaluation", {
@@ -484,7 +502,21 @@ def comment_and_request_reevaluation(
     rows = _as_rows(result)
     if not rows or not rows[0].get("out_comment_id"):
         raise RuntimeError("CEO reevaluation request returned no comment")
+    request_id = str(rows[0].get("out_request_id") or "") or None
+    queued = None
+    if request_id and artifact.get("lens") in ("architecture", "ml"):
+        from services.ceo_intelligence import enqueue_for_artifact
+
+        queued = enqueue_for_artifact(
+            admin_user_id=admin_user_id,
+            artifact_id=clean_artifact_id,
+            trigger_type="comment",
+            trigger_id=str(rows[0]["out_comment_id"]),
+            reevaluation_request_id=request_id,
+            reason=text,
+        )
     return {
         "comment_id": str(rows[0]["out_comment_id"]),
+        "analysis_run": queued,
         "bootstrap": get_bootstrap(admin_user_id),
     }
