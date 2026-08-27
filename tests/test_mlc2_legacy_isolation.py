@@ -48,3 +48,36 @@ def test_dependency_audit_names_every_guarded_legacy_object():
     missing = sorted(name for name in LEGACY_LEARNING_OBJECTS if name not in audit)
     assert missing == []
 
+
+def test_confidence_dark_contract_is_not_imported_by_live_product_code():
+    live_roots = (ROOT / "routes", ROOT / "services")
+    allowed = ROOT / "services" / "mlc2_confidence.py"
+    violations = []
+    for root in live_roots:
+        for module in root.rglob("*.py"):
+            if module == allowed:
+                continue
+            if "mlc2_confidence" in module.read_text():
+                violations.append(str(module.relative_to(ROOT)))
+    assert violations == []
+
+
+def test_confidence_audit_maps_every_guarded_runtime_dependency():
+    audit = (ROOT / "docs" / "MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md").read_text()
+    required = {
+        "moment_suggestions", "take_feedback_exposure",
+        "take_feedback_self_report", "confidence_labels",
+        "confidence_self_reports", "confidence_coach_labels",
+        "confidence_peer_labels", "owner_voice_album_routing",
+        "voice_album", "star_verdicts", "snippet_confidence_reviews",
+        "confident_voice_practice", "confidence_rereview_queue",
+        "training_labels", "MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED",
+    }
+    missing = sorted(token for token in required if token not in audit)
+    assert missing == []
+
+
+def test_confidence_cutover_is_hard_disabled_not_environment_controlled():
+    config = (ROOT / "config.py").read_text()
+    assert "MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED = False" in config
+    assert 'os.getenv("MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED")' not in config

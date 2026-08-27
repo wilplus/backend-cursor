@@ -338,3 +338,4 @@
 0300	extend_dataset_releases_to_seven_surfaces.sql
 0301	add_seven_surface_readiness_report.sql
 0302	add_mlc2_foundation.sql
+0303	add_mlc2_confidence_dark_contracts.sql

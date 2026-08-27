@@ -13,9 +13,12 @@ def _table(name: str) -> str:
     return SQL[start: next_table if next_table >= 0 else len(SQL)]
 
 
-def test_manifest_appends_mlc2_foundation_as_0302():
+def test_manifest_orders_mlc2_foundation_as_0302():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-1] == "0302\tadd_mlc2_foundation.sql"
+    foundation = "0302\tadd_mlc2_foundation.sql"
+    confidence = "0303\tadd_mlc2_confidence_dark_contracts.sql"
+    assert foundation in manifest
+    assert manifest.index(foundation) < manifest.index(confidence)
 
 
 def test_registry_is_table_authoritative_and_has_exactly_seven_surfaces():

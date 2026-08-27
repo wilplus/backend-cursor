@@ -125,6 +125,9 @@ class Config:
     MLC2_DATASET_RELEASES_ENABLED = False
     MLC2_TRAINING_ENABLED = False
     MLC2_PROMOTION_ENABLED = False
+    # Slice 3 ships only dark Confidence Classification contracts.  This is a
+    # code-level safety boundary, deliberately not an environment toggle.
+    MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED = False
     # Non-production recipient redirect. When set (and ENV != production),
     # services.email_service.send_email_resend sends EVERY message here
     # instead of the real recipient, subject-tagged with who it was for.

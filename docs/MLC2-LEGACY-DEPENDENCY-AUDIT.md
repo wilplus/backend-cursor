@@ -22,6 +22,9 @@ This inventory is deliberately conservative. File names identify known
 producer/reader areas; the per-surface audit must expand each row to functions,
 routes, jobs and UI callers before approval.
 
+The complete Confidence Classification expansion is checked in at
+`docs/MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md`.  It remains cutover-blocked.
+
 | Legacy dependency | Known producers | Known readers/routes/jobs/UI | Classification | Migration owner | Cutover status |
 |---|---|---|---|---|---|
 | `moment_suggestions` | `services/moment_suggestions.py`, `services/manager_engine.py`, `services/db.py` | `routes/v2/arcs.py`, `routes/v2/user_sessions.py`, Ideal Text/feedback services | mixed-purpose | Señor Engineer | blocked pending full correction+praise audit |
@@ -63,4 +66,3 @@ All new canonical learning modules use the `mlc2_` naming boundary. The
 isolation test scans those modules and fails if they reference a listed legacy
 table or exporter. Later dataset/release/training modules must use the same
 prefix and remain behind the separate authorization gates.
-
