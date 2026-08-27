@@ -13,7 +13,7 @@ Affected frontend/backend/database areas: Recording upload/poll/retry, Ideal Tex
 Risks: Cross-owner leakage, false exposure, inferred negative labels, blind-review leakage, duplicate Takes, contradictory terminal states, incomplete provenance, and unapproved eligibility.  
 Acceptance criteria: See `ED-1` below.  
 Rollback plan: Disable new dual-writes and CEO readiness routes, roll application code back, retain append-only audit records, and immediately roll back on ownership, blindness, locked-text or data-integrity violations.  
-Current status: `AWAITING_ACCEPTANCE`
+Current status: `READY_FOR_REVIEW`
 
 ## Product approval
 
@@ -139,3 +139,51 @@ Acceptance remains pending. Deployment approval remains pending. Migrations
 `0297` through `0301` will run automatically on backend production boot only
 after an approved gate-routed merge because `MIGRATE_ON_BOOT=1`; no manual
 migration command is intended.
+
+## Acceptance status
+
+Product acceptance:
+
+- Status: `PENDING`
+- Required phrase: `PRODUCT ACCEPTED — The implemented experience matches product decision PDF-1.`
+
+ML/data acceptance:
+
+- Status: `PENDING` (must follow Product acceptance)
+- Responsible owner: Codex (OpenAI), acting as ML Engineer and CEO adviser
+- Required contract: `MLC-1`
+
+Engineering acceptance:
+
+- Status: `VERIFIED`
+- Verified by: Señor Engineer
+- Date: 2026-08-27
+- Statement: `TECHNICALLY VERIFIED — The implementation is ready for controlled deployment.`
+
+## Manual acceptance checks
+
+1. Record a valid Take, open its three Feedback items and its Ideal Text, then
+   confirm CEO/Research shows production presentations only after each item is
+   visibly rendered.
+2. Close one prepared item before it paints; confirm no receipt and no negative
+   decision are created.
+3. Open a blind coach clip; confirm audio/timing is available but transcript,
+   owner answer, machine prediction and other ratings are absent until the
+   coach submits an immutable judgment.
+4. Retry one upload and one exposure ACK; confirm one Attempt/Take and one
+   receipt per render identity.
+5. Use two same-named projects owned by different users; confirm every
+   cross-owner read, ACK and mutation is rejected.
+6. Confirm the CEO view is aggregate-only and exposes no train, release or
+   promotion control.
+
+## Controlled-release proposal
+
+- Rollback target: backend `781a4b0`, frontend `2c5b96c6`.
+- Canary audience: founder account plus one designated coach account.
+- Canary monitoring: ownership/ACK rejection logs, processing terminal-state
+  contradictions, Take/Attempt parity, Ideal Text availability, blind packet
+  key audit, receipt-to-presentation coverage and migration boot logs.
+- Immediate rollback: ownership/privacy leak, blind-context leak, locked-text
+  regression, contradictory terminal state, duplicate canonical Take or
+  append-only integrity failure.
