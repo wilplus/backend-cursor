@@ -112,6 +112,19 @@ class Config:
         (os.getenv("DATA_FOUNDATION_CANARY_ENABLED") or "true")
         .strip().lower() in ("1", "true", "yes", "on")
     )
+    # MLC-2 / ED-2.4 is additive and dark until the separately reviewed
+    # per-surface cutovers.  This flag may enable foundation workers only; it
+    # never authorizes a dataset release, training run or model promotion.
+    MLC2_FOUNDATION_ENABLED = (
+        (os.getenv("MLC2_FOUNDATION_ENABLED") or "false")
+        .strip().lower() in ("1", "true", "yes", "on")
+    )
+    # Hard-disabled approval boundaries.  They intentionally are not env
+    # toggles: ED-2.4 requires new reviewed implementation and authorization
+    # before any of these capabilities exists.
+    MLC2_DATASET_RELEASES_ENABLED = False
+    MLC2_TRAINING_ENABLED = False
+    MLC2_PROMOTION_ENABLED = False
     # Non-production recipient redirect. When set (and ENV != production),
     # services.email_service.send_email_resend sends EVERY message here
     # instead of the real recipient, subject-tagged with who it was for.
