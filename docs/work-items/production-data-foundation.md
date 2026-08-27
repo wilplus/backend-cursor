@@ -13,7 +13,7 @@ Affected frontend/backend/database areas: Recording upload/poll/retry, Ideal Tex
 Risks: Cross-owner leakage, false exposure, inferred negative labels, blind-review leakage, duplicate Takes, contradictory terminal states, incomplete provenance, and unapproved eligibility.  
 Acceptance criteria: See `ED-1` below.  
 Rollback plan: Disable new dual-writes and CEO readiness routes, roll application code back, retain append-only audit records, and immediately roll back on ownership, blindness, locked-text or data-integrity violations.  
-Current status: `READY_TO_DEPLOY`
+Current status: `CANARY`
 
 ## Product approval
 
@@ -202,3 +202,24 @@ Engineering acceptance:
 - Immediate rollback: ownership/privacy leak, blind-context leak, locked-text
   regression, contradictory terminal state, duplicate canonical Take or
   append-only integrity failure.
+
+## Canary release record
+
+- Released: 2026-08-27
+- Approver: Artur Willoński
+- Audience: authenticated founder (`ADMIN_EMAIL`) plus the sole active
+  `coach_users` reviewer.
+- Backend: PR `#471`, squash `d449bafd742eadc70d739d7b8d2fccc6d9976080`.
+- Frontend: PR `#334`, squash `d5536bf476586c033a9d7ab055a6c1b3c2296c21`.
+- Deployment checks: GitHub backend and frontend tests green; every Railway
+  service reported success; backend health returned `200`; the new protected
+  exposure route returned the expected unauthenticated `401`; Vercel reported
+  success; the public CEO path redirected to
+  `https://dev.willpowerlab.com/admin/ceo` and that canonical path enforced
+  authentication.
+- Migrations: `0297` through `0301` were delivered to the production
+  `MIGRATE_ON_BOOT=1` release path; no manual migration command is required.
+  The first authenticated CEO readiness read is the canary's schema-level
+  confirmation because public health checks deliberately expose no DB detail.
+- Kill switch: `DATA_FOUNDATION_CANARY_ENABLED=false` disables new canonical
+  owner writes without deleting append-only audit records.
