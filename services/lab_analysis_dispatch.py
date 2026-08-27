@@ -30,6 +30,7 @@ class AnalysisInputs:
     bucket: str
     storage_key: str
     duration_seconds: int
+    canonical_attempt_registered: bool = False
 
 
 @dataclass(frozen=True)
@@ -107,11 +108,20 @@ def dispatch_recording_analysis(
         "storage_key": inputs.storage_key,
     }
 
+    def record_transition(**kwargs: Any) -> dict | None:
+        if not inputs.canonical_attempt_registered:
+            return None
+        return transition_attempt(database=database, **kwargs)
+
+    def record_completion(**kwargs: Any) -> dict | None:
+        if not inputs.canonical_attempt_registered:
+            return None
+        return complete_attempt(database=database, **kwargs)
+
     def ideal_text_failure(exc: IdealTextUnconfirmedError) \
             -> FailedIdealTextAnalysis:
         try:
-            transition_attempt(
-                database=database,
+            record_transition(
                 attempt_id=inputs.session_id,
                 to_status="failed_ideal_text_unconfirmed",
                 stage="ideal_text_confirmation",
@@ -188,8 +198,7 @@ def dispatch_recording_analysis(
             )
         if job_row:
             job_id = str(job_row.get("id"))
-            transition_attempt(
-                database=database,
+            record_transition(
                 attempt_id=inputs.session_id,
                 to_status="processing",
                 stage="queue",
@@ -210,8 +219,7 @@ def dispatch_recording_analysis(
         )
 
     if async_enabled():
-        transition_attempt(
-            database=database,
+        record_transition(
             attempt_id=inputs.session_id,
             to_status="processing",
             stage="daemon",
@@ -223,8 +231,7 @@ def dispatch_recording_analysis(
         def analysis_daemon():
             try:
                 result = run_pipeline()
-                complete_attempt(
-                    database=database,
+                record_completion(
                     attempt_id=inputs.session_id,
                     recording_kind=inputs.recording_kind,
                     result=result,
@@ -248,8 +255,7 @@ def dispatch_recording_analysis(
                 )
                 sentry_sdk.capture_exception(exc)
                 try:
-                    transition_attempt(
-                        database=database,
+                    record_transition(
                         attempt_id=inputs.session_id,
                         to_status="failed",
                         stage="analysis",
@@ -270,8 +276,7 @@ def dispatch_recording_analysis(
             audit_paid=audit_paid_for_arc(inputs.arc_id, inputs.user_id),
         ))
 
-    transition_attempt(
-        database=database,
+    record_transition(
         attempt_id=inputs.session_id,
         to_status="processing",
         stage="sync",
@@ -280,8 +285,7 @@ def dispatch_recording_analysis(
     )
     try:
         readout, sent_to_coach = run_pipeline()
-        complete_attempt(
-            database=database,
+        record_completion(
             attempt_id=inputs.session_id,
             recording_kind=inputs.recording_kind,
             result={"readout": readout, "sent_to_coach": sent_to_coach},
@@ -293,8 +297,7 @@ def dispatch_recording_analysis(
         return ideal_text_failure(exc)
     except Exception as exc:
         try:
-            transition_attempt(
-                database=database,
+            record_transition(
                 attempt_id=inputs.session_id,
                 to_status="failed",
                 stage="analysis",

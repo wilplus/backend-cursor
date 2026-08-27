@@ -3403,6 +3403,7 @@ def v2_coach_confidence_queue(session_id):
                                 "taxonomy_version": TAXONOMY_VERSION,
                                 "blind_packet_hash": str(packet_hash),
                             },
+                            delivery_mode="canary",
                         )
                     ]
                 except Exception as exposure_error:

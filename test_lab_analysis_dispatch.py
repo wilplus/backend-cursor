@@ -32,6 +32,7 @@ def _inputs() -> AnalysisInputs:
         bucket="audio-bucket",
         storage_key="take/key.webm",
         duration_seconds=601,
+        canonical_attempt_registered=True,
     )
 
 
@@ -48,6 +49,28 @@ def _database() -> Mock:
 
 
 class AnalysisDispatchTests(unittest.TestCase):
+
+    def test_non_canary_analysis_never_writes_canonical_lifecycle(self):
+        database = _database()
+        inputs = AnalysisInputs(**{
+            **_inputs().__dict__,
+            "canonical_attempt_registered": False,
+        })
+        with patch(
+            "services.analysis_worker.run_full_analysis",
+            return_value=({"snippets": []}, False),
+        ):
+            result = dispatch_recording_analysis(
+                inputs,
+                database=database,
+                queue_enabled=lambda: False,
+                async_enabled=lambda: False,
+                audit_paid_for_arc=lambda _a, _u: False,
+                log=Mock(),
+            )
+        self.assertIsInstance(result, CompletedAnalysis)
+        database.record_processing_transition.assert_not_called()
+        database.promote_recording_attempt_to_take.assert_not_called()
 
     def test_durable_queue_returns_job_polling_payload(self):
         database = _database()

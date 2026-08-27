@@ -797,6 +797,7 @@ def v2_explore_get_ideal_text(arc_id):
                             _composed.get("parts")
                             if isinstance(_composed, dict) else None
                         ),
+                        delivery_mode="canary",
                     )
             except Exception as _exposure_error:
                 logger.warning(
@@ -2400,6 +2401,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                                     database=db,
                                     bundle=_canonical_bundle,
                                     actor_id=str(user_id),
+                                    delivery_mode="canary",
                                 )
                             )
                         except Exception as _presentation_error:

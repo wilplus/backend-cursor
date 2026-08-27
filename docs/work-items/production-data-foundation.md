@@ -119,6 +119,12 @@ Implemented on branch `codex/ml-data-foundation-20260827`:
 - Immutable dataset-release vocabulary widened to all seven surfaces with
   stable owner/speaker splits and document-level Ideal Text Take anchoring.
 - Aggregate-only seven-row readiness report and read-only Research/CEO view.
+- Identity-enforced canary boundary: only the authenticated `ADMIN_EMAIL`
+  owner creates canonical RecordingAttempt/Take rows; all downstream learning
+  writes require that canonical Take, the sole active coach remains protected
+  by `coach_users`, and presentation provenance is stamped `canary`.
+- `DATA_FOUNDATION_CANARY_ENABLED=false` is the non-destructive kill switch;
+  ordinary accounts always retain the established compatibility path.
 - Schema, flow, threat model, legacy paths and blockers documented in
   `docs/PRODUCTION-DATA-FOUNDATION.md`.
 
@@ -135,6 +141,9 @@ Verification on 2026-08-27:
   passed; BFF single-idiom guard passed.
 - Targeted exposure, ownership, retry, blindness, release and readiness tests
   passed before the full gates.
+- Post-approval canary enforcement re-verification: 53 focused tests passed;
+  full `scripts/local_ci.sh --no-setup` GREEN with migration verification,
+  Ruff `0.15.8`, Mypy `2.3.0`, 4,768 tests passed, 9 skipped and 127 subtests.
 
 Product and ML/data acceptance and controlled-deployment approval are complete.
 Migrations

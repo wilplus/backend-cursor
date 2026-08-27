@@ -242,6 +242,17 @@ class PersistedLabTake:
     duration_seconds: int
     uploader_id: str | None
     coordinates: TakeCoordinates
+    canonical_attempt_registered: bool
+
+
+def _is_data_foundation_canary_owner(user_id: str | None) -> bool:
+    """Return true only for the authenticated founder during canary."""
+    if not user_id or not config.DATA_FOUNDATION_CANARY_ENABLED:
+        return False
+    payload = getattr(request, "token_payload", None)
+    email = str((payload or {}).get("email") or "").strip().lower()
+    founder_email = str(config.ADMIN_EMAIL or "").strip().lower()
+    return bool(email and founder_email and email == founder_email)
 
 
 def _intake_error(error: Exception) -> RecordingIntakeError:
@@ -374,27 +385,29 @@ def _persist_lab_take(
         database=db,
         log=logger,
     )
-    try:
-        register_attempt(
-            database=db,
-            attempt_id=stored.session_id,
-            owner_principal_id=upload.project.principal.id,
-            project_id=coordinates.project_id,
-            upload_idempotency_key=upload.project.idempotency_key,
-            recording_id=stored.recording_id,
-            storage_bucket=stored.bucket,
-            storage_key=stored.storage_key,
-            recording_kind=upload.recording_kind,
-        )
-    except TakeLifecycleError as error:
-        logger.error(
-            "lab: canonical recording attempt failed sid=%s: %s",
-            stored.session_id,
-            error,
-        )
-        raise RecordingPersistenceError(
-            "Failed to register recording attempt"
-        ) from error
+    canonical_attempt_registered = _is_data_foundation_canary_owner(user_id)
+    if canonical_attempt_registered:
+        try:
+            register_attempt(
+                database=db,
+                attempt_id=stored.session_id,
+                owner_principal_id=upload.project.principal.id,
+                project_id=coordinates.project_id,
+                upload_idempotency_key=upload.project.idempotency_key,
+                recording_id=stored.recording_id,
+                storage_bucket=stored.bucket,
+                storage_key=stored.storage_key,
+                recording_kind=upload.recording_kind,
+            )
+        except TakeLifecycleError as error:
+            logger.error(
+                "lab: canonical recording attempt failed sid=%s: %s",
+                stored.session_id,
+                error,
+            )
+            raise RecordingPersistenceError(
+                "Failed to register recording attempt"
+            ) from error
     return PersistedLabTake(
         session_id=stored.session_id,
         recording_id=stored.recording_id,
@@ -404,6 +417,7 @@ def _persist_lab_take(
         duration_seconds=recording_row.duration_seconds,
         uploader_id=recording_row.uploader_id,
         coordinates=coordinates,
+        canonical_attempt_registered=canonical_attempt_registered,
     )
 
 
@@ -434,6 +448,9 @@ def _analysis_response(
             bucket=take.bucket,
             storage_key=take.storage_key,
             duration_seconds=take.duration_seconds,
+            canonical_attempt_registered=(
+                take.canonical_attempt_registered
+            ),
         ),
         database=db,
         queue_enabled=_pipeline_queue_enabled,
