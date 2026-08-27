@@ -51,6 +51,7 @@ from services.ideal_text_confirmation import (
 )
 from services.take_lifecycle import (
     TakeLifecycleError,
+    confidence_source_manifest,
     complete_attempt,
     transition_attempt,
 )
@@ -119,14 +120,23 @@ def _complete_job_attempt(job: Dict[str, Any], result: Any) -> Optional[dict]:
     session_id = str(job.get("session_id") or payload.get("session_id") or "")
     if not session_id:
         raise TakeLifecycleError("canonical processing job has no session")
+    result_payload = dict(result) if isinstance(result, dict) else result
+    confidence_manifest = None
+    if isinstance(result_payload, dict):
+        confidence_manifest = result_payload.pop(
+            "_confidence_producer_manifest", None
+        )
+        if isinstance(result, dict):
+            result.pop("_confidence_producer_manifest", None)
     return complete_attempt(
         database=db,
         attempt_id=session_id,
         recording_kind=str(payload.get("recording_kind") or "spoken"),
-        result=result,
+        result=result_payload,
         attempt_count=max(1, int(job.get("attempts") or 1)),
         processing_job_id=str(job.get("id") or "") or None,
         input_provenance=_job_attempt_input(job),
+        confidence_producer_manifest=confidence_manifest,
     )
 
 
@@ -581,10 +591,18 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
     )
     # Small mechanical summary only — the readout itself is served by the
     # existing GETs, and job rows never carry scores/verdicts (AC-9).
-    result = {
+    result: Dict[str, Any] = {
         "snippet_count": len((readout or {}).get("snippets") or []),
         "sent_to_coach": bool(sent),
     }
+    _confidence_manifest = confidence_source_manifest(
+        audio_bytes=audio_bytes,
+        bucket=str(payload.get("bucket") or ""),
+        object_key=str(payload.get("storage_key") or ""),
+        filename=str(payload.get("filename") or "lab.webm"),
+    )
+    if _confidence_manifest is not None:
+        result["_confidence_producer_manifest"] = _confidence_manifest
     if (payload.get("recording_kind") == "spoken"
             and payload.get("take_index") == 1
             and not isinstance(payload.get("take_index"), bool)):

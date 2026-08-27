@@ -7,7 +7,11 @@ from typing import Any, Callable
 
 import sentry_sdk
 
-from services.take_lifecycle import complete_attempt, transition_attempt
+from services.take_lifecycle import (
+    complete_attempt,
+    confidence_source_manifest,
+    transition_attempt,
+)
 
 
 @dataclass(frozen=True)
@@ -107,6 +111,15 @@ def dispatch_recording_analysis(
         "storage_bucket": inputs.bucket,
         "storage_key": inputs.storage_key,
     }
+    producer_manifest = (
+        confidence_source_manifest(
+            audio_bytes=inputs.audio_bytes,
+            bucket=inputs.bucket,
+            object_key=inputs.storage_key,
+            filename=inputs.filename,
+        )
+        if inputs.canonical_attempt_registered else None
+    )
 
     def record_transition(**kwargs: Any) -> dict | None:
         if not inputs.canonical_attempt_registered:
@@ -236,6 +249,7 @@ def dispatch_recording_analysis(
                     recording_kind=inputs.recording_kind,
                     result=result,
                     input_provenance=lifecycle_input,
+                    confidence_producer_manifest=producer_manifest,
                 )
                 database.set_session_analysis_state(inputs.session_id, "ready")
             except IdealTextUnconfirmedError as exc:
@@ -290,6 +304,7 @@ def dispatch_recording_analysis(
             recording_kind=inputs.recording_kind,
             result={"readout": readout, "sent_to_coach": sent_to_coach},
             input_provenance=lifecycle_input,
+            confidence_producer_manifest=producer_manifest,
         )
         return CompletedAnalysis(readout, sent_to_coach)
     except IdealTextUnconfirmedError as exc:

@@ -11,9 +11,13 @@ SURFACES = {
 }
 
 
-def test_0301_is_latest_and_reports_all_seven_surfaces():
+def test_0301_is_ordered_before_the_mlc2_foundation_and_reports_all_seven_surfaces():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-1] == "0301\tadd_seven_surface_readiness_report.sql"
+    readiness = "0301\tadd_seven_surface_readiness_report.sql"
+    foundation = "0302\tadd_mlc2_foundation.sql"
+    assert readiness in manifest
+    assert foundation in manifest
+    assert manifest.index(readiness) < manifest.index(foundation)
     for surface in SURFACES:
         assert f"('{surface}'" in SQL
 
