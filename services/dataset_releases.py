@@ -24,6 +24,8 @@ LEARNING_SURFACES = {
     "praise_selection",
     "correction_generation",
     "correction_selection",
+    "coach_comment_generation",
+    "ideal_text_generation",
 }
 PROVENANCE_KEYS = {
     "machine", "user_self_report", "blind_coach", "blind_peer",
@@ -81,12 +83,14 @@ def _validated_item(raw: Any, *, learning_surface: str) -> dict:
     provenance = raw.get("label_provenance")
     payload = raw.get("item_payload")
     eligibility = str(raw.get("eligibility_decision") or "")
-    if not owner_id or not evidence_id:
+    if not owner_id or (not evidence_id and surface != "ideal_text_generation"):
         raise DatasetReleaseError("dataset item needs owner and evidence IDs")
     if surface != learning_surface:
         raise DatasetReleaseError("one release may contain one learning surface")
     if not isinstance(payload, dict) or not isinstance(provenance, dict):
         raise DatasetReleaseError("dataset item payload/provenance must be objects")
+    if surface == "ideal_text_generation" and not payload.get("take_id"):
+        raise DatasetReleaseError("ideal text dataset item needs a Take ID")
     if not provenance or not set(provenance).issubset(PROVENANCE_KEYS):
         raise DatasetReleaseError("label provenance is missing or collapsed")
     if "label" in provenance or "feedback_quality" in payload:
@@ -96,7 +100,7 @@ def _validated_item(raw: Any, *, learning_surface: str) -> dict:
     split, assignment_hash = speaker_split(owner_id)
     checksum_payload = {
         "owner_principal_id": owner_id,
-        "evidence_span_id": evidence_id,
+        "evidence_span_id": evidence_id or None,
         "learning_surface": surface,
         "item_payload": payload,
         "label_provenance": provenance,

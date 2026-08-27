@@ -101,6 +101,17 @@ class Config:
     RESEND_API_KEY = _secret("RESEND_API_KEY")
     RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "artur@willonski.com")
+
+    # Controlled rollout for the canonical production-data foundation.
+    # During CANARY only the authenticated founder account (ADMIN_EMAIL)
+    # creates canonical RecordingAttempt/Take rows.  Every downstream
+    # learning write is FK-gated by that canonical Take, so ordinary users
+    # remain on the established compatibility path.  Set false for the
+    # documented kill switch; no migration rollback is required.
+    DATA_FOUNDATION_CANARY_ENABLED = (
+        (os.getenv("DATA_FOUNDATION_CANARY_ENABLED") or "true")
+        .strip().lower() in ("1", "true", "yes", "on")
+    )
     # Non-production recipient redirect. When set (and ENV != production),
     # services.email_service.send_email_resend sends EVERY message here
     # instead of the real recipient, subject-tagged with who it was for.

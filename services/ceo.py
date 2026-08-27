@@ -216,6 +216,19 @@ def get_bootstrap(admin_user_id: str) -> dict:
     from services.ceo_intelligence import bootstrap_data
 
     payload.update(bootstrap_data())
+    # Aggregate-only and observational: no transcript, audio, identity,
+    # decision mutation, training trigger or model-promotion control crosses
+    # this CEO boundary. Missing migration is reported honestly as unavailable.
+    payload["learning_readiness"] = (
+        db.get_seven_surface_readiness()
+        or {
+            "contract_version": "readiness-v1",
+            "read_only": True,
+            "surfaces": [],
+            "unavailable": True,
+            "blockers": ["readiness_query_unavailable"],
+        }
+    )
     return payload
 
 

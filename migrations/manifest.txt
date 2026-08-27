@@ -332,3 +332,8 @@
 0294	update_ceo_ml_capability_tables_v2.sql
 0295	update_ceo_ml_learning_table_v3.sql
 0296	add_canonical_feedback_data_contract.sql
+0297	add_recording_attempt_take_boundary.sql
+0298	add_owner_claim_audit.sql
+0299	add_learning_surface_exposure_receipts.sql
+0300	extend_dataset_releases_to_seven_surfaces.sql
+0301	add_seven_surface_readiness_report.sql

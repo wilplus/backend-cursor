@@ -40,9 +40,10 @@ def test_migration_is_additive_and_manifested_last():
     assert not re.search(r"\bTRUNCATE\b", SQL, re.I)
     assert not re.search(r"\bDELETE\s+FROM\b", SQL, re.I)
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    version, filename = manifest[-1].split("\t", 1)
-    assert version.isdigit()
-    assert filename == "add_canonical_feedback_data_contract.sql"
+    entries = dict(
+        line.split("\t", 1) for line in manifest if "\t" in line
+    )
+    assert entries["0296"] == "add_canonical_feedback_data_contract.sql"
 
 
 def test_every_canonical_table_has_rls_and_service_role_only_grant():

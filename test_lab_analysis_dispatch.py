@@ -32,13 +32,48 @@ def _inputs() -> AnalysisInputs:
         bucket="audio-bucket",
         storage_key="take/key.webm",
         duration_seconds=601,
+        canonical_attempt_registered=True,
     )
+
+
+def _database() -> Mock:
+    database = Mock()
+    database.record_processing_transition.return_value = {
+        "transition_id": "transition-1",
+    }
+    database.promote_recording_attempt_to_take.return_value = {
+        "take_id": "session-1",
+        "take_index": 1,
+    }
+    return database
 
 
 class AnalysisDispatchTests(unittest.TestCase):
 
+    def test_non_canary_analysis_never_writes_canonical_lifecycle(self):
+        database = _database()
+        inputs = AnalysisInputs(**{
+            **_inputs().__dict__,
+            "canonical_attempt_registered": False,
+        })
+        with patch(
+            "services.analysis_worker.run_full_analysis",
+            return_value=({"snippets": []}, False),
+        ):
+            result = dispatch_recording_analysis(
+                inputs,
+                database=database,
+                queue_enabled=lambda: False,
+                async_enabled=lambda: False,
+                audit_paid_for_arc=lambda _a, _u: False,
+                log=Mock(),
+            )
+        self.assertIsInstance(result, CompletedAnalysis)
+        database.record_processing_transition.assert_not_called()
+        database.promote_recording_attempt_to_take.assert_not_called()
+
     def test_durable_queue_returns_job_polling_payload(self):
-        database = Mock()
+        database = _database()
         worker = Mock()
         with patch(
             "services.pipeline_jobs.enqueue_session_recording_job",
@@ -67,7 +102,7 @@ class AnalysisDispatchTests(unittest.TestCase):
         )
 
     def test_queue_failure_preserves_the_sync_fallback(self):
-        database = Mock()
+        database = _database()
         log = Mock()
         with patch(
             "services.pipeline_jobs.enqueue_session_recording_job",
@@ -89,7 +124,7 @@ class AnalysisDispatchTests(unittest.TestCase):
         self.assertGreaterEqual(log.warning.call_count, 2)
 
     def test_daemon_returns_immediately_and_updates_state_when_run(self):
-        database = Mock()
+        database = _database()
         thread = Mock()
         with patch(
             "services.lab_analysis_dispatch.threading.Thread",
@@ -125,7 +160,7 @@ class AnalysisDispatchTests(unittest.TestCase):
         ) as worker:
             result = dispatch_recording_analysis(
                 _inputs(),
-                database=Mock(),
+                database=_database(),
                 queue_enabled=lambda: False,
                 async_enabled=lambda: False,
                 audit_paid_for_arc=lambda _a, _u: False,
@@ -138,7 +173,7 @@ class AnalysisDispatchTests(unittest.TestCase):
         self.assertEqual(worker.call_args.kwargs["recording_kind"], "spoken")
 
     def test_synchronous_take_one_timeout_is_not_reported_as_success(self):
-        database = Mock()
+        database = _database()
         database.set_session_analysis_state.return_value = True
         inputs = AnalysisInputs(**{**_inputs().__dict__, "take_index": 1})
         with patch(

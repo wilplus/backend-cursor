@@ -95,3 +95,45 @@ def test_release_keeps_machine_user_and_coach_provenance_separate():
         "machine", "user_self_report", "blind_coach",
     }
     assert "gold_label" not in provenance
+
+
+@pytest.mark.parametrize("surface", [
+    "confidence_classification",
+    "correction_generation",
+    "coach_comment_generation",
+    "praise_generation",
+    "praise_selection",
+    "correction_selection",
+])
+def test_every_span_level_surface_requires_exact_evidence(surface):
+    item = _item(OWNER_A, "", surface=surface)
+    with pytest.raises(DatasetReleaseError, match="owner and evidence"):
+        build_dataset_release_manifest(
+            release_identifier=f"{surface}-r1",
+            learning_surface=surface,
+            source_cutoff_at=datetime(2026, 8, 26, tzinfo=timezone.utc),
+            items=[item], exclusions=[], inclusion_rules={},
+            exclusion_rules={}, taxonomy_versions={}, feature_versions={},
+            extraction_code_commit="abc123",
+            consent_retention_status={"policy": "v1"},
+            created_by="90000000-0000-0000-0000-000000000001",
+        )
+
+
+def test_ideal_text_release_is_take_anchored_without_fake_span_evidence():
+    item = _item(OWNER_A, "", surface="ideal_text_generation")
+    item["item_payload"] = {
+        "take_id": "30000000-0000-0000-0000-000000000001",
+        "document_hash": "a" * 64,
+    }
+    manifest = build_dataset_release_manifest(
+        release_identifier="ideal-text-r1",
+        learning_surface="ideal_text_generation",
+        source_cutoff_at=datetime(2026, 8, 26, tzinfo=timezone.utc),
+        items=[item], exclusions=[], inclusion_rules={}, exclusion_rules={},
+        taxonomy_versions={}, feature_versions={},
+        extraction_code_commit="abc123",
+        consent_retention_status={"policy": "v1"},
+        created_by="90000000-0000-0000-0000-000000000001",
+    )
+    assert manifest["items"][0]["evidence_span_id"] is None
