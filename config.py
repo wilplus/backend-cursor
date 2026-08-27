@@ -125,8 +125,10 @@ class Config:
     MLC2_DATASET_RELEASES_ENABLED = False
     MLC2_TRAINING_ENABLED = False
     MLC2_PROMOTION_ENABLED = False
-    # Slice 3 ships only dark Confidence Classification contracts.  This is a
-    # code-level safety boundary, deliberately not an environment toggle.
+    # Slice 4 integrates the dark Confidence Classification producer branch,
+    # but does not activate it.  This one code-level switch controls both the
+    # atomic producer promotion and suppression of the old learning shadow;
+    # it is deliberately not an environment toggle.
     MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED = False
     # Non-production recipient redirect. When set (and ENV != production),
     # services.email_service.send_email_resend sends EVERY message here

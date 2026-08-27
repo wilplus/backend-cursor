@@ -51,15 +51,34 @@ def test_dependency_audit_names_every_guarded_legacy_object():
 
 def test_confidence_dark_contract_is_not_imported_by_live_product_code():
     live_roots = (ROOT / "routes", ROOT / "services")
-    allowed = ROOT / "services" / "mlc2_confidence.py"
+    allowed = {
+        ROOT / "services" / "mlc2_confidence.py",
+        ROOT / "services" / "mlc2_confidence_producer.py",
+        ROOT / "services" / "mlc2_confidence_blind.py",
+        # Slice 4's only application bridge.  The same hard code flag selects
+        # either the old promotion/shadow path or the atomic producer path.
+        ROOT / "services" / "take_lifecycle.py",
+        # RPC adapter only; it schedules nothing and makes no decision.
+        ROOT / "services" / "db.py",
+    }
     violations = []
     for root in live_roots:
         for module in root.rglob("*.py"):
-            if module == allowed:
+            if module in allowed:
                 continue
             if "mlc2_confidence" in module.read_text():
                 violations.append(str(module.relative_to(ROOT)))
     assert violations == []
+
+
+def test_slice4_live_bridge_is_guarded_by_the_one_hard_disabled_flag():
+    lifecycle = (ROOT / "services" / "take_lifecycle.py").read_text()
+    route = (ROOT / "routes" / "v2" / "explore_ideal_text.py").read_text()
+    assert "Config.MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED is True" in lifecycle
+    assert "promote_recording_attempt_with_confidence_outbox" in lifecycle
+    assert "and not confidence_canonical_writes_enabled()" in route
+    config = (ROOT / "config.py").read_text()
+    assert "MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED = False" in config
 
 
 def test_confidence_audit_maps_every_guarded_runtime_dependency():

@@ -19,7 +19,12 @@ def _function(name: str) -> str:
 
 def test_manifest_appends_confidence_dark_contracts_as_0303():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-1] == "0303\tadd_mlc2_confidence_dark_contracts.sql"
+    assert "0303\tadd_mlc2_confidence_dark_contracts.sql" in manifest
+    assert manifest.index(
+        "0303\tadd_mlc2_confidence_dark_contracts.sql"
+    ) < manifest.index(
+        "0304\tadd_mlc2_confidence_producer_dark_integration.sql"
+    )
 
 
 def test_classification_and_selection_are_typed_runs_on_one_surface():

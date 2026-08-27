@@ -1,6 +1,6 @@
 # MLC-2 Confidence Classification Dependency Audit
 
-Status: `SLICE 3 AUDIT COMPLETE — DARK CONTRACTS ONLY — CUTOVER BLOCKED`
+Status: `SLICE 4 DARK PRODUCER INTEGRATED — FLAG OFF — CUTOVER BLOCKED`
 
 Owner: Señor Engineer
 
@@ -106,6 +106,35 @@ model/version hints.
   learning writer deactivates.  Rollback may disable the canonical producer but
   may not reactivate legacy training writes; queued outbox events remain
   retryable.
+
+## Slice 4 dark integration
+
+Migration `0304` and the application bridge make the future boundary
+executable without changing current production behavior:
+
+- Successful Take promotion and the `confidence_take_ready` outbox event use
+  one PostgreSQL transaction. Invalid identity, consent or immutable R2 source
+  metadata rolls back both. Worker failure after commit leaves the Take intact
+  and the event visible and retryable.
+- `claim_mlc2_confidence_outbox_v1` can lease only Confidence Classification
+  producer events; it cannot consume another surface's work.
+- `services.mlc2_confidence_producer` validates the event envelope and exposes
+  a dependency-injected worker seam. It is not registered with RQ, the analysis
+  worker or a sweeper.
+- `ml_confidence_blind_packets` freezes an exact selected clip and the
+  five-state rating instrument. The server constructs the allowlisted packet;
+  transcript, prediction, score, rank, model, threshold, policy, probability,
+  RNG and every prior human answer are absent.
+- A blind judgment requires an authenticated client-rendered exposure. Reveal
+  requires the immutable judgment itself, not merely a UI event.
+- The same hard code flag chooses the atomic producer promotion and suppresses
+  the old ED-1 all-family learning shadow. Legacy `moment_suggestions` remains
+  a product read/write model; it is not a canonical or dataset source.
+
+The flag remains literal `False`. No environment value can activate it. The
+SQL rehearsal invokes the dark RPCs directly inside a disposable transaction;
+that proves the cutover contract without activating a producer in any app
+process.
 
 ## Tests required before Slice 3 acceptance
 

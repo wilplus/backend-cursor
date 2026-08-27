@@ -11184,6 +11184,49 @@ class DatabaseService:
             )
             return None
 
+    def promote_recording_attempt_with_confidence_outbox(
+        self, *, recording_attempt_id: str, completion_hash: str,
+        processing_job_id: Optional[str], attempt_count: int,
+        input_hash: str, output_hash: Optional[str], idempotency_key: str,
+        source_manifest: dict,
+    ) -> Optional[dict]:
+        """Atomically promote one Take and enqueue its MLC-2 source event.
+
+        This RPC is unreachable while the code-level confidence cutover flag
+        is false.  Product state and its outbox event commit or roll back
+        together; a worker failure later never reverses the successful Take.
+        """
+        if (not all((recording_attempt_id, completion_hash, input_hash,
+                     idempotency_key)) or isinstance(attempt_count, bool)
+                or attempt_count < 1 or not isinstance(source_manifest, dict)):
+            return None
+        try:
+            result = self.client.rpc(
+                "promote_recording_attempt_with_mlc2_confidence_v1", {
+                    "p_recording_attempt_id": str(recording_attempt_id),
+                    "p_completion_hash": str(completion_hash),
+                    "p_processing_job_id": (
+                        str(processing_job_id) if processing_job_id else None
+                    ),
+                    "p_attempt_count": int(attempt_count),
+                    "p_input_hash": str(input_hash),
+                    "p_output_hash": (
+                        str(output_hash) if output_hash else None
+                    ),
+                    "p_idempotency_key": str(idempotency_key),
+                    "p_source_manifest": source_manifest,
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as promotion_error:
+            logger.error(
+                "recording attempt confidence promotion failed attempt=%s: %s",
+                recording_attempt_id, promotion_error,
+            )
+            return None
+
     def record_canonical_feedback_exposure(self, bundle: dict) -> Optional[dict]:
         """Atomically dual-write one complete canonical candidate ledger.
 
