@@ -38,6 +38,10 @@ dataset creation, training, promotion, merge, push or deployment.
 
 `Config.MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED = False`.
 
+Historical note: Slice 6 supersedes this Boolean with the reviewed tri-state
+cutover contract documented in `mlc2-confidence-slice-6-readiness.md`. The
+effective state remains dark; this Slice 4 record is not an activation guide.
+
 The dark worker has no RQ registration or sweeper import. The migration seeds
 no consent approval, dataset release, training run, model assignment, cutover
 event or promotion record.

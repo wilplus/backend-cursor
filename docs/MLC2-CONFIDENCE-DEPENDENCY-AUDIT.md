@@ -93,8 +93,10 @@ model/version hints.
 
 ## Cutover gates (all currently closed)
 
-- `Config.MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED` is hard-coded `False`; it is
-  not an environment-controlled flag.
+- `Config.MLC2_CONFIDENCE_CUTOVER_MODE` is hard-coded `dark`; it is not an
+  environment-controlled flag. Slice 6 adds the reviewed
+  `dark` / `founder_canary` / `killed` state machine so rollback cannot
+  resurrect a retired learning writer.
 - No route, product service, worker or UI imports `services.mlc2_confidence`.
 - No learning provenance is dual-written to an old and new learning store.
 - The old product-state writers remain unchanged.
@@ -127,14 +129,15 @@ executable without changing current production behavior:
   RNG and every prior human answer are absent.
 - A blind judgment requires an authenticated client-rendered exposure. Reveal
   requires the immutable judgment itself, not merely a UI event.
-- The same hard code flag chooses the atomic producer promotion and suppresses
-  the old ED-1 all-family learning shadow. Legacy `moment_suggestions` remains
-  a product read/write model; it is not a canonical or dataset source.
+- The same hard-coded mode chooses the atomic producer promotion and the prior
+  ED-1 all-family learning shadow: `dark` permits only the pre-cutover shadow,
+  `founder_canary` permits only the canonical founder producer, and `killed`
+  permits neither. Legacy `moment_suggestions` remains a product read/write
+  model; it is not a canonical or dataset source.
 
-The flag remains literal `False`. No environment value can activate it. The
-SQL rehearsal invokes the dark RPCs directly inside a disposable transaction;
-that proves the cutover contract without activating a producer in any app
-process.
+The mode remains literal `dark`. No environment value can activate it. The SQL
+rehearsal invokes the dark RPCs directly inside a disposable transaction; that
+proves the cutover contract without activating a producer in any app process.
 
 ## Tests required before Slice 3 acceptance
 

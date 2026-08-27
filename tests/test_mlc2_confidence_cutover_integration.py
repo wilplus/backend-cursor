@@ -5,6 +5,7 @@ import pytest
 from services.take_lifecycle import (
     TakeLifecycleError,
     confidence_source_manifest,
+    confidence_prior_learning_writes_enabled,
     promote_attempt,
 )
 
@@ -15,7 +16,7 @@ def test_disabled_flag_builds_nothing_and_uses_existing_promotion():
         "take_id": "take-1"
     }
     with patch(
-        "config.Config.MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED", False
+        "config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", "dark"
     ):
         assert confidence_source_manifest(
             audio_bytes=b"audio", bucket="bucket", object_key="key",
@@ -39,7 +40,7 @@ def test_rehearsed_enabled_branch_uses_only_atomic_producer_rpc():
         "audio": {"object_store": "cloudflare_r2"},
     }
     with patch(
-        "config.Config.MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED", True
+        "config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", "founder_canary"
     ):
         result = promote_attempt(
             database=database, attempt_id="attempt-1", result={"ok": True},
@@ -53,7 +54,7 @@ def test_rehearsed_enabled_branch_uses_only_atomic_producer_rpc():
 def test_rehearsed_enabled_branch_fails_before_promotion_without_source():
     database = Mock()
     with patch(
-        "config.Config.MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED", True
+        "config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", "founder_canary"
     ), pytest.raises(TakeLifecycleError, match="source manifest"):
         promote_attempt(
             database=database, attempt_id="attempt-1", result={"ok": True}
@@ -67,11 +68,37 @@ def test_legacy_feedback_shadow_is_disabled_by_the_same_flag():
         __import__("pathlib").Path(__file__).resolve().parents[1]
         / "routes" / "v2" / "explore_ideal_text.py"
     ).read_text()
-    condition = (
-        "and not confidence_canonical_writes_enabled()"
-    )
+    condition = "and confidence_prior_learning_writes_enabled()"
     assert condition in source
     assert source.index(condition) < source.index(
         "db.record_canonical_feedback_exposure(",
         source.index(condition),
     )
+
+
+@pytest.mark.parametrize(
+    "mode,canonical_enabled,prior_enabled",
+    [
+        ("dark", False, True),
+        ("founder_canary", True, False),
+        ("killed", False, False),
+        ("invalid", False, False),
+    ],
+)
+def test_one_mode_atomically_selects_both_writer_boundaries(
+    mode, canonical_enabled, prior_enabled,
+):
+    from services.take_lifecycle import confidence_canonical_writes_enabled
+
+    with patch("config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", mode):
+        assert confidence_canonical_writes_enabled() is canonical_enabled
+        assert confidence_prior_learning_writes_enabled() is prior_enabled
+
+
+def test_kill_switch_does_not_reactivate_prior_learning_writes():
+    with patch(
+        "config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", "founder_canary"
+    ):
+        assert confidence_prior_learning_writes_enabled() is False
+    with patch("config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", "killed"):
+        assert confidence_prior_learning_writes_enabled() is False

@@ -125,11 +125,28 @@ class Config:
     MLC2_DATASET_RELEASES_ENABLED = False
     MLC2_TRAINING_ENABLED = False
     MLC2_PROMOTION_ENABLED = False
-    # Slice 4 integrates the dark Confidence Classification producer branch,
-    # but does not activate it.  This one code-level switch controls both the
-    # atomic producer promotion and suppression of the old learning shadow;
-    # it is deliberately not an environment toggle.
-    MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED = False
+    # Slice 6 readiness replaces the ambiguous bool with an irreversible
+    # three-state contract.  ``dark`` is the deployed/pre-cutover behavior;
+    # ``founder_canary`` is a separately-authorized future code change;
+    # ``killed`` disables both canonical and retired learning writes so an
+    # incident rollback can never resurrect the old supervision path.
+    # Deliberately not environment-controlled: activation requires review,
+    # code change and deployment rather than an unreviewed dashboard toggle.
+    MLC2_CONFIDENCE_CUTOVER_MODE = "dark"
+    MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL = "artur@willonski.com"
+    # Exact canonical acquisition principal for the founder.  Missing or
+    # malformed configuration fails readiness and prevents canonical Attempt
+    # registration; email alone is not sufficient provenance.
+    MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID = (
+        os.getenv("MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID") or ""
+    ).strip()
+    # Monitoring may be deployed while the producer remains dark.  Readiness
+    # requires this plus Sentry configuration before activation can be
+    # proposed; neither setting activates a producer.
+    MLC2_CONFIDENCE_MONITORING_ENABLED = (
+        (os.getenv("MLC2_CONFIDENCE_MONITORING_ENABLED") or "false")
+        .strip().lower() in ("1", "true", "yes", "on")
+    )
     # Non-production recipient redirect. When set (and ENV != production),
     # services.email_service.send_email_resend sends EVERY message here
     # instead of the real recipient, subject-tagged with who it was for.

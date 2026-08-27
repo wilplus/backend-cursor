@@ -2345,10 +2345,12 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # the compatibility set is insert-once. The canonical RPC is itself
         # idempotent, so every later read safely ensures parity without
         # changing membership or user-visible behavior.
-        from services.take_lifecycle import confidence_canonical_writes_enabled
+        from services.take_lifecycle import (
+            confidence_prior_learning_writes_enabled,
+        )
 
         if (_feedback_set is not None and _take_contract_on and _arm_sid
-                and not confidence_canonical_writes_enabled()):
+                and confidence_prior_learning_writes_enabled()):
             try:
                 from services.feedback_data_contract import (
                     build_feedback_exposure_bundle,

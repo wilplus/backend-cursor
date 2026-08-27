@@ -172,11 +172,23 @@ reports:
 Logs and dashboards must use IDs and error codes, never transcripts, audio or
 blind payload contents.
 
+The Confidence founder-canary adds
+`get_mlc2_confidence_canary_readiness_v1()`, also aggregate-only and
+service-role-only. It validates Product/legal consent configuration, exact
+founder-principal scope, non-founder isolation, outbox and lineage invariants,
+blindness integrity, and hard-disabled downstream capabilities. The operator
+check is independent of product routes and cannot activate a producer.
+
 ## Rollback
 
 Application rollback disables future foundation producers. It does not delete
 append-only rows. Queued outbox events remain durable and retryable. Rollback
 must never re-enable a legacy training write.
+
+For Confidence, one code-reviewed tri-state chooses both writer boundaries:
+`dark` means canonical off/prior learning on; `founder_canary` means canonical
+on/prior learning off; `killed` means both off. An invalid state fails as
+`killed`. Once canary cutover occurs, rollback is to `killed`, never to `dark`.
 
 Because migration `0302` is additive, database objects remain inert until the
 next approved version. Removing them is not an incident rollback strategy.

@@ -27,7 +27,7 @@ def _table(name: str) -> str:
 
 def test_manifest_appends_slice4_as_0304():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-1] == (
+    assert manifest[-2] == (
         "0304\tadd_mlc2_confidence_producer_dark_integration.sql"
     )
 

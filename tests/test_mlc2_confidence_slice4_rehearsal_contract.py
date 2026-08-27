@@ -10,7 +10,7 @@ def test_slice4_rehearsal_rolls_back_and_keeps_app_flag_untouched():
     assert "\\set ON_ERROR_STOP on" in SQL
     assert "BEGIN;" in SQL
     assert SQL.rstrip().endswith("ROLLBACK;")
-    assert "Config.MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED" not in SQL
+    assert "Config.MLC2_CONFIDENCE_CUTOVER_MODE" not in SQL
     prerequisite = (ROOT / "tests" / "integration" /
                     "mlc2_slice4_rehearsal_prerequisites.sql").read_text()
     assert "recording_attempts" in prerequisite

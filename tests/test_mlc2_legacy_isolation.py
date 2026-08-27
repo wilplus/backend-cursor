@@ -55,8 +55,11 @@ def test_confidence_dark_contract_is_not_imported_by_live_product_code():
         ROOT / "services" / "mlc2_confidence.py",
         ROOT / "services" / "mlc2_confidence_producer.py",
         ROOT / "services" / "mlc2_confidence_blind.py",
-        # Slice 4's only application bridge.  The same hard code flag selects
-        # either the old promotion/shadow path or the atomic producer path.
+        # Aggregate-only evaluator imported by the operator readiness script;
+        # no product route imports it and it cannot write runtime state.
+        ROOT / "services" / "mlc2_confidence_readiness.py",
+        # Slice 4's only application bridge. Slice 6's atomic mode selects
+        # the pre-cutover, founder-canary or fully-killed writer state.
         ROOT / "services" / "take_lifecycle.py",
         # RPC adapter only; it schedules nothing and makes no decision.
         ROOT / "services" / "db.py",
@@ -74,11 +77,12 @@ def test_confidence_dark_contract_is_not_imported_by_live_product_code():
 def test_slice4_live_bridge_is_guarded_by_the_one_hard_disabled_flag():
     lifecycle = (ROOT / "services" / "take_lifecycle.py").read_text()
     route = (ROOT / "routes" / "v2" / "explore_ideal_text.py").read_text()
-    assert "Config.MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED is True" in lifecycle
+    assert "configured_confidence_cutover().canonical_writes_enabled" \
+        in lifecycle
     assert "promote_recording_attempt_with_confidence_outbox" in lifecycle
-    assert "and not confidence_canonical_writes_enabled()" in route
+    assert "and confidence_prior_learning_writes_enabled()" in route
     config = (ROOT / "config.py").read_text()
-    assert "MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED = False" in config
+    assert 'MLC2_CONFIDENCE_CUTOVER_MODE = "dark"' in config
 
 
 def test_confidence_audit_maps_every_guarded_runtime_dependency():
@@ -90,7 +94,7 @@ def test_confidence_audit_maps_every_guarded_runtime_dependency():
         "confidence_peer_labels", "owner_voice_album_routing",
         "voice_album", "star_verdicts", "snippet_confidence_reviews",
         "confident_voice_practice", "confidence_rereview_queue",
-        "training_labels", "MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED",
+        "training_labels", "MLC2_CONFIDENCE_CUTOVER_MODE",
     }
     missing = sorted(token for token in required if token not in audit)
     assert missing == []
@@ -98,5 +102,5 @@ def test_confidence_audit_maps_every_guarded_runtime_dependency():
 
 def test_confidence_cutover_is_hard_disabled_not_environment_controlled():
     config = (ROOT / "config.py").read_text()
-    assert "MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED = False" in config
-    assert 'os.getenv("MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED")' not in config
+    assert 'MLC2_CONFIDENCE_CUTOVER_MODE = "dark"' in config
+    assert 'os.getenv("MLC2_CONFIDENCE_CUTOVER_MODE")' not in config

@@ -21,9 +21,20 @@ def confidence_canonical_writes_enabled() -> bool:
     It is a code constant, not an environment toggle.  Slice 4 integrates
     both branches while keeping the canonical branch unreachable.
     """
-    from config import Config
+    from services.mlc2_confidence_cutover import configured_confidence_cutover
 
-    return Config.MLC2_CONFIDENCE_CANONICAL_WRITES_ENABLED is True
+    return configured_confidence_cutover().canonical_writes_enabled
+
+
+def confidence_prior_learning_writes_enabled() -> bool:
+    """Whether the pre-cutover supervision write may still run.
+
+    ``killed`` deliberately returns false here and for canonical writes.  That
+    is the rollback invariant ED-2.4 requires and a boolean cannot represent.
+    """
+    from services.mlc2_confidence_cutover import configured_confidence_cutover
+
+    return configured_confidence_cutover().prior_learning_writes_enabled
 
 
 def confidence_source_manifest(

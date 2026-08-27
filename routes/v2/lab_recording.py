@@ -245,14 +245,31 @@ class PersistedLabTake:
     canonical_attempt_registered: bool
 
 
-def _is_data_foundation_canary_owner(user_id: str | None) -> bool:
+def _is_data_foundation_canary_owner(
+    user_id: str | None,
+    owner_principal_id: str | None = None,
+) -> bool:
     """Return true only for the authenticated founder during canary."""
     if not user_id or not config.DATA_FOUNDATION_CANARY_ENABLED:
         return False
     payload = getattr(request, "token_payload", None)
     email = str((payload or {}).get("email") or "").strip().lower()
     founder_email = str(config.ADMIN_EMAIL or "").strip().lower()
-    return bool(email and founder_email and email == founder_email)
+    approved_email = str(
+        config.MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL or ""
+    ).strip().lower()
+    expected_principal = str(
+        config.MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID or ""
+    ).strip().lower()
+    supplied_principal = str(owner_principal_id or "").strip().lower()
+    return bool(
+        email
+        and founder_email
+        and approved_email
+        and email == founder_email == approved_email
+        and expected_principal
+        and supplied_principal == expected_principal
+    )
 
 
 def _intake_error(error: Exception) -> RecordingIntakeError:
@@ -385,7 +402,9 @@ def _persist_lab_take(
         database=db,
         log=logger,
     )
-    canonical_attempt_registered = _is_data_foundation_canary_owner(user_id)
+    canonical_attempt_registered = _is_data_foundation_canary_owner(
+        user_id, upload.project.principal.id,
+    )
     if canonical_attempt_registered:
         try:
             register_attempt(
