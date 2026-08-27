@@ -19,7 +19,8 @@ def _function(name: str) -> str:
 
 def test_claim_audit_is_manifested_and_never_deletes_the_guest_origin():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-1] == "0298\tadd_owner_claim_audit.sql"
+    entries = dict(line.split("\t", 1) for line in manifest if "\t" in line)
+    assert entries["0298"] == "add_owner_claim_audit.sql"
     claim = _function("claim_guest_owner")
     assert "INSERT INTO public.owner_claim_events" in claim
     assert "DELETE FROM public.owner_principals" not in claim

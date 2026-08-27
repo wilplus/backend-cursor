@@ -279,6 +279,9 @@ from routes.v2.projects import (  # noqa: F401 — route registration
     v2_create_project,
     v2_send_project_take_to_coach,
 )
+from routes.v2.learning_exposures import (  # noqa: F401 — route registration
+    v2_ack_learning_exposure,
+)
 from routes.v2.user_sessions import (  # noqa: F401 — re-exported for import compat
     _SUGGESTION_ACTIONS,
     _SUGGESTION_TARGETS,

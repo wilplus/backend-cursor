@@ -763,6 +763,47 @@ def v2_explore_get_ideal_text(arc_id):
         # blank the later slides.
         _slide_titles = _project.slide_titles
 
+        # DATA FOUNDATION — preparing this actor-specific document packet is
+        # NOT an exposure.  The client receives a one-time handle and creates
+        # the receipt only after the Ideal Text itself has visibly painted.
+        # Older/non-canonical rows degrade by omitting the handle; they never
+        # counterfeit exposure data and never make the document unreadable.
+        _ideal_text_exposure = None
+        _latest_take_row = next((
+            session for session in reversed(_spoken_rows)
+            if str(session.get("id") or "") == str(_latest_take_sid or "")
+        ), None)
+        if isinstance(_latest_take_row, dict):
+            try:
+                from services.learning_exposures import (
+                    prepare_ideal_text_presentation,
+                )
+                _owner_principal_id = str(
+                    _latest_take_row.get("owner_principal_id") or "")
+                _project_id = str(
+                    _latest_take_row.get("project_id") or arc_id or "")
+                if _owner_principal_id and _project_id:
+                    _ideal_text_exposure = prepare_ideal_text_presentation(
+                        database=db,
+                        owner_principal_id=_owner_principal_id,
+                        project_id=_project_id,
+                        take_id=str(_latest_take_sid),
+                        actor_id=str(request.user_id),
+                        text=_text,
+                        version=_version,
+                        take_count=len(_spoken_rows),
+                        title=_title,
+                        parts=(
+                            _composed.get("parts")
+                            if isinstance(_composed, dict) else None
+                        ),
+                    )
+            except Exception as _exposure_error:
+                logger.warning(
+                    "ideal-text presentation not prepared arc=%s take=%s: %s",
+                    arc_id, _latest_take_sid, _exposure_error,
+                )
+
         return jsonify({
             "arc_id": arc_id,
             "version": _version,
@@ -785,6 +826,8 @@ def v2_explore_get_ideal_text(arc_id):
             "can_record_take": _can_record_take,
             "journey_next_steps_seen": _journey_seen,
             "text": _text,
+            **({"learning_exposure": _ideal_text_exposure}
+               if _ideal_text_exposure else {}),
             # The arc's served deck PDF (FE handoff 2026-08-03) — null on
             # a deckless arc; the FE treats anything but a non-empty
             # string as absent.
@@ -2037,6 +2080,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             _feedback_exposure = exposure_snapshot(changes)
         else:
             _feedback_exposure = []
+        _learning_presentations: dict[str, list[dict]] = {}
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete
         # Manager result is claimed in the database; every later GET may only
         # rebuild those identities. Playback URLs refresh and decided items
@@ -2346,6 +2390,27 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                             "arc=%s take=%s", arc_id, _arm_sid,
                         )
                     else:
+                        try:
+                            from services.learning_exposures import (
+                                prepare_feedback_presentations,
+                            )
+
+                            _learning_presentations = (
+                                prepare_feedback_presentations(
+                                    database=db,
+                                    bundle=_canonical_bundle,
+                                    actor_id=str(user_id),
+                                )
+                            )
+                        except Exception as _presentation_error:
+                            # The feedback remains a valid product result, but
+                            # it is not silently counted as exposed learning
+                            # data. Readiness reports the missing ACK coverage.
+                            logger.warning(
+                                "learning presentation preparation failed "
+                                "arc=%s take=%s: %s",
+                                arc_id, _arm_sid, _presentation_error,
+                            )
                         # Selection and exposure are separate durable stages:
                         # the first proves which three won, the second proves
                         # the complete selected/unselected ledger committed.
@@ -2422,6 +2487,11 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         from services.take_feedback_manager import strip_internal_evidence
         changes = strip_internal_evidence(changes)
         _styles = strip_internal_evidence(_styles)
+        for _visible_row in [*changes, *_styles]:
+            _visible_key = str(_visible_row.get("id") or "")
+            _packets = _learning_presentations.get(_visible_key) or []
+            if _packets:
+                _visible_row["learning_exposures"] = _packets
         _style = {"style_changes": _styles} if _styles else {}
         return {"changes": changes, **_add, **_style}
     except Exception as e:

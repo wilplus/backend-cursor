@@ -11218,6 +11218,114 @@ class DatabaseService:
             )
             return None
 
+    def create_learning_surface_presentation(
+        self, presentation: dict,
+    ) -> Optional[dict]:
+        """Freeze an actor-specific packet; this is not an exposure receipt."""
+        if not isinstance(presentation, dict):
+            return None
+        required = (
+            "owner_principal_id", "project_id", "take_id",
+            "learning_surface", "actor_role", "actor_id",
+            "complete_candidate_set", "selected_candidate",
+            "visible_payload", "versions", "content_hash",
+            "delivery_mode", "idempotency_key",
+        )
+        if any(presentation.get(key) in (None, "") for key in required):
+            return None
+        try:
+            result = self.client.rpc(
+                "create_learning_surface_presentation_v1", {
+                    "p_owner_principal_id": str(
+                        presentation["owner_principal_id"]),
+                    "p_project_id": str(presentation["project_id"]),
+                    "p_take_id": str(presentation["take_id"]),
+                    "p_evidence_span_id": presentation.get(
+                        "evidence_span_id"),
+                    "p_candidate_set_id": presentation.get(
+                        "candidate_set_id"),
+                    "p_generation_run_id": presentation.get(
+                        "generation_run_id"),
+                    "p_learning_surface": str(
+                        presentation["learning_surface"]),
+                    "p_actor_role": str(presentation["actor_role"]),
+                    "p_actor_id": str(presentation["actor_id"]),
+                    "p_complete_candidate_set": presentation[
+                        "complete_candidate_set"],
+                    "p_selected_candidate": presentation[
+                        "selected_candidate"],
+                    "p_visible_payload": presentation["visible_payload"],
+                    "p_versions": presentation["versions"],
+                    "p_content_hash": str(presentation["content_hash"]),
+                    "p_delivery_mode": str(presentation["delivery_mode"]),
+                    "p_idempotency_key": str(
+                        presentation["idempotency_key"]),
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.warning(
+                "learning presentation write failed take=%s surface=%s: %s",
+                presentation.get("take_id"),
+                presentation.get("learning_surface"), error,
+            )
+            return None
+
+    def acknowledge_learning_surface_exposure(
+        self, acknowledgement: dict,
+    ) -> Optional[dict]:
+        """Record a true post-render receipt for one exact actor."""
+        if not isinstance(acknowledgement, dict):
+            return None
+
+        required = (
+            "presentation_id", "acknowledgement_token", "actor_role",
+            "actor_id", "render_instance_id", "idempotency_key",
+        )
+        if any(not acknowledgement.get(key) for key in required):
+            return None
+        try:
+            result = self.client.rpc(
+                "ack_learning_surface_exposure_v1", {
+                    "p_presentation_id": str(
+                        acknowledgement["presentation_id"]),
+                    "p_acknowledgement_token": str(
+                        acknowledgement["acknowledgement_token"]),
+                    "p_actor_role": str(acknowledgement["actor_role"]),
+                    "p_actor_id": str(acknowledgement["actor_id"]),
+                    "p_render_instance_id": str(
+                        acknowledgement["render_instance_id"]),
+                    "p_client_rendered_at": acknowledgement.get(
+                        "client_rendered_at"),
+                    "p_idempotency_key": str(
+                        acknowledgement["idempotency_key"]),
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.warning(
+                "learning exposure acknowledgement failed presentation=%s: %s",
+                acknowledgement.get("presentation_id"), error,
+            )
+            return None
+
+    def get_seven_surface_readiness(self) -> Optional[dict]:
+        """Read aggregate ML readiness; no row-level product data is returned."""
+        try:
+            result = self.client.rpc(
+                "get_seven_surface_readiness_v1", {}).execute()
+            data = result.data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.warning("seven-surface readiness unavailable: %s", error)
+            return None
+
     def record_canonical_feedback_decision(
         self, *, project_id: str, take_id: str, rater_id: str,
         decision: dict,

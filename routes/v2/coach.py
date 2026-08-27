@@ -3329,6 +3329,87 @@ def v2_coach_confidence_queue(session_id):
         ))
         for row in visible_rows:
             row.pop("_queue_priority", None)
+        # Canonical blind presentations. Assignment and packet preparation are
+        # idempotent and remain distinct from exposure: only the browser ACK
+        # after a row paints creates the receipt. No transcript, prediction or
+        # prior label enters this pre-judgment packet.
+        _coach_id = str(getattr(request, "user_id", "") or "")
+        _owner_id = str(sess.get("owner_principal_id") or "")
+        _project_id = str(sess.get("project_id") or "")
+        _blind_candidates = [{
+            "candidate_key": str(row.get("snippet_id") or ""),
+            "audio_ref": row.get("audio_ref"),
+            "start_offset_ms": row.get("start_offset_ms"),
+            "duration_ms": row.get("duration_ms"),
+        } for row in visible_rows]
+        if _coach_id and _owner_id and _project_id:
+            from services.feedback_data_contract import (
+                TAXONOMY_VERSION, blind_packet_hash,
+            )
+            from services.learning_exposures import (
+                prepare_blind_confidence_presentation,
+            )
+            for row in visible_rows:
+                # A previously answered row is history/resume, not a new blind
+                # exposure. Its transcript may now be revealed, so never use
+                # it to mint another pre-judgment packet.
+                if row.get("label") is not None:
+                    continue
+                try:
+                    evidence = db.get_canonical_confidence_evidence(
+                        take_id=str(session_id),
+                        snippet_id=str(row.get("snippet_id") or ""),
+                    )
+                    packet_hash = blind_packet_hash(evidence)
+                    if not evidence or not packet_hash:
+                        continue
+                    assignment_key = (
+                        "coach-assignment:visible-queue:"
+                        f"{session_id}:{row['snippet_id']}:{_coach_id}"
+                    )
+                    assignment = db.assign_canonical_coach_confidence_evidence(
+                        take_id=str(session_id),
+                        evidence_span_id=str(evidence["evidence_span_id"]),
+                        coach_id=_coach_id,
+                        blind_packet_hash=str(packet_hash),
+                        assignment_reason="blind_confidence_visible_queue",
+                        idempotency_key=assignment_key,
+                    )
+                    if assignment is None:
+                        continue
+                    visible_payload = {
+                        "snippet_id": str(row["snippet_id"]),
+                        "audio_ref": row.get("audio_ref"),
+                        "start_offset_ms": row.get("start_offset_ms"),
+                        "duration_ms": row.get("duration_ms"),
+                        "re_review": bool(row.get("re_review")),
+                    }
+                    row["learning_exposures"] = [
+                        prepare_blind_confidence_presentation(
+                            database=db,
+                            owner_principal_id=_owner_id,
+                            project_id=_project_id,
+                            take_id=str(session_id),
+                            evidence_span_id=str(
+                                evidence["evidence_span_id"]),
+                            actor_role="coach",
+                            actor_id=_coach_id,
+                            complete_candidate_set=_blind_candidates,
+                            selected_candidate=visible_payload,
+                            visible_payload=visible_payload,
+                            versions={
+                                "surface_schema":
+                                    "blind-confidence-exposure-v1",
+                                "taxonomy_version": TAXONOMY_VERSION,
+                                "blind_packet_hash": str(packet_hash),
+                            },
+                        )
+                    ]
+                except Exception as exposure_error:
+                    logger.warning(
+                        "blind presentation not prepared take=%s snippet=%s: %s",
+                        session_id, row.get("snippet_id"), exposure_error,
+                    )
         return jsonify({"session_id": session_id, "queue": visible_rows,
                         "count": len(visible_rows),
                         "labelled": labelled}), 200

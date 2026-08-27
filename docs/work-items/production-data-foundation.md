@@ -13,7 +13,7 @@ Affected frontend/backend/database areas: Recording upload/poll/retry, Ideal Tex
 Risks: Cross-owner leakage, false exposure, inferred negative labels, blind-review leakage, duplicate Takes, contradictory terminal states, incomplete provenance, and unapproved eligibility.  
 Acceptance criteria: See `ED-1` below.  
 Rollback plan: Disable new dual-writes and CEO readiness routes, roll application code back, retain append-only audit records, and immediately roll back on ownership, blindness, locked-text or data-integrity violations.  
-Current status: `IN_PROGRESS`
+Current status: `AWAITING_ACCEPTANCE`
 
 ## Product approval
 
@@ -103,3 +103,39 @@ ML approval statement:
 Engineering approval statement:
 
 > ENGINEERING APPROVED — The design is secure, maintainable, testable and operationally safe. Engineering design version: ED-1.
+
+## Implementation evidence
+
+Implemented on branch `codex/ml-data-foundation-20260827`:
+
+- Canonical RecordingAttempt → successful Take boundary with durable terminal
+  transition history and Take 1 Ideal Text confirmation gate.
+- Immutable guest-claim provenance and exact ownership-coordinate transfer.
+- Seven isolated presentation surfaces with post-render exposure receipts;
+  server preparation, preloading, close, skip and timeout do not count.
+- Shared browser render-ACK boundary used by Feedback, Ideal Text and blind
+  confidence review; shadow/evaluation packets never render.
+- Immutable dataset-release vocabulary widened to all seven surfaces with
+  stable owner/speaker splits and document-level Ideal Text Take anchoring.
+- Aggregate-only seven-row readiness report and read-only Research/CEO view.
+- Schema, flow, threat model, legacy paths and blockers documented in
+  `docs/PRODUCTION-DATA-FOUNDATION.md`.
+
+Decision-filter record:
+
+`FILTER: ADVANCE-F2 — cat F2 — fences clear — locks clear — redirect: sharpen Manager evidence selection after acceptance.`
+
+Verification on 2026-08-27:
+
+- Backend `scripts/local_ci.sh`: GREEN — manifest and migration runner, Ruff
+  `0.15.8`, Mypy `2.3.0`, 4,765 tests passed, 9 skipped, 127 subtests passed.
+- Frontend with workflow Node `22.23.2`: 1,468 Vitest tests passed; Next lint
+  passed with four pre-existing warnings in unrelated files; `tsc --noEmit`
+  passed; BFF single-idiom guard passed.
+- Targeted exposure, ownership, retry, blindness, release and readiness tests
+  passed before the full gates.
+
+Acceptance remains pending. Deployment approval remains pending. Migrations
+`0297` through `0301` will run automatically on backend production boot only
+after an approved gate-routed merge because `MIGRATE_ON_BOOT=1`; no manual
+migration command is intended.
