@@ -13,7 +13,7 @@ Affected frontend/backend/database areas: Recording upload/poll/retry, Ideal Tex
 Risks: Cross-owner leakage, false exposure, inferred negative labels, blind-review leakage, duplicate Takes, contradictory terminal states, incomplete provenance, and unapproved eligibility.  
 Acceptance criteria: See `ED-1` below.  
 Rollback plan: Disable new dual-writes and CEO readiness routes, roll application code back, retain append-only audit records, and immediately roll back on ownership, blindness, locked-text or data-integrity violations.  
-Current status: `DATA_ACCEPTED`
+Current status: `READY_TO_DEPLOY`
 
 ## Product approval
 
@@ -38,9 +38,10 @@ Current status: `DATA_ACCEPTED`
 
 ## Deployment approval
 
-- Status: `PENDING`
-- Approved by:
-- Date:
+- Status: `APPROVED`
+- Approved by: Artur Willoński
+- Date: 2026-08-27
+- Statement: `DEPLOYMENT APPROVED — Release PDF-1/MLC-1/ED-1 to the founder account and one designated coach account canary. Approved by Artur Willoński.`
 
 ## MLC-1 — canonical ML/data contract
 
@@ -135,8 +136,8 @@ Verification on 2026-08-27:
 - Targeted exposure, ownership, retry, blindness, release and readiness tests
   passed before the full gates.
 
-Product and ML/data acceptance are complete. Deployment approval remains
-pending. Migrations
+Product and ML/data acceptance and controlled-deployment approval are complete.
+Migrations
 `0297` through `0301` will run automatically on backend production boot only
 after an approved gate-routed merge because `MIGRATE_ON_BOOT=1`; no manual
 migration command is intended.
