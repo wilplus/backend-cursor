@@ -13,7 +13,7 @@ Affected frontend/backend/database areas: Recording upload/poll/retry, Ideal Tex
 Risks: Cross-owner leakage, false exposure, inferred negative labels, blind-review leakage, duplicate Takes, contradictory terminal states, incomplete provenance, and unapproved eligibility.  
 Acceptance criteria: See `ED-1` below.  
 Rollback plan: Disable new dual-writes and CEO readiness routes, roll application code back, retain append-only audit records, and immediately roll back on ownership, blindness, locked-text or data-integrity violations.  
-Current status: `READY_FOR_REVIEW`
+Current status: `DATA_ACCEPTED`
 
 ## Product approval
 
@@ -135,7 +135,8 @@ Verification on 2026-08-27:
 - Targeted exposure, ownership, retry, blindness, release and readiness tests
   passed before the full gates.
 
-Acceptance remains pending. Deployment approval remains pending. Migrations
+Product and ML/data acceptance are complete. Deployment approval remains
+pending. Migrations
 `0297` through `0301` will run automatically on backend production boot only
 after an approved gate-routed merge because `MIGRATE_ON_BOOT=1`; no manual
 migration command is intended.
@@ -144,14 +145,18 @@ migration command is intended.
 
 Product acceptance:
 
-- Status: `PENDING`
-- Required phrase: `PRODUCT ACCEPTED — The implemented experience matches product decision PDF-1.`
+- Status: `APPROVED`
+- Accepted by: Artur Willoński
+- Date: 2026-08-27
+- Statement: `PRODUCT ACCEPTED — The implemented experience matches product decision PDF-1.`
 
 ML/data acceptance:
 
-- Status: `PENDING` (must follow Product acceptance)
-- Responsible owner: Codex (OpenAI), acting as ML Engineer and CEO adviser
-- Required contract: `MLC-1`
+- Status: `APPROVED`
+- Accepted by: Codex (OpenAI), acting as ML Engineer and CEO adviser
+- Date: 2026-08-27
+- Contract: `MLC-1`
+- Statement: `DATA ACCEPTED — The implementation produces interpretable and provenance-safe records matching ML contract MLC-1.`
 
 Engineering acceptance:
 
