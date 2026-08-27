@@ -758,7 +758,6 @@ CREATE TABLE IF NOT EXISTS public.ml_judgments (
     ) REFERENCES public.ml_rendered_exposures(
         id, actor_principal_id
     ) ON DELETE RESTRICT
-    )
 );
 
 CREATE TABLE IF NOT EXISTS public.ml_product_actions (

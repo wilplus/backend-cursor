@@ -4,7 +4,7 @@ Owner: Artur Willoński
 Engineering design: `ED-2.4`  
 Learning contract: `MLC-2`, `data_epoch=1`  
 Branch: `codex/mlc2-foundation`  
-Status: `IMPLEMENTED — AWAITING REVIEW AND MIGRATION REHEARSAL`
+Status: `IMPLEMENTED — MIGRATION REHEARSAL PASSED; AWAITING REVIEWS`
 
 ## Authorization boundary
 
@@ -52,10 +52,26 @@ Final local gate:
 - Migration runner: 66 tests passed.
 - Ruff `0.15.8`: pass.
 - Mypy `2.3.0`: pass across 319 source files.
-- Unit tier: 4,795 passed, 9 skipped, 127 subtests passed.
+- Unit tier: 4,798 passed, 9 skipped, 127 subtests passed.
 - New focused MLC-2 tests: 27 passed.
 - `git diff --check`: pass.
 - Live/model evals: not applicable to this dark foundation; not run.
+
+Isolated PostgreSQL 16 rehearsal (2026-08-27):
+
+- Production adoption shape reproduced: prerequisite schema only, migrations
+  `0001..0301` baselined, migration `0302` applied normally.
+- The first real apply found and rolled back an extra closing parenthesis in
+  `ml_judgments`; the migration was corrected before any deployment.
+- Corrected `0302` applied and then reapplied directly without error.
+- All 29 MLC-2 tables have RLS enabled.
+- `anon` and `authenticated` have no MLC-2 table privileges;
+  `service_role` has table `SELECT` only and reviewed RPC execution.
+- Speaker registration/splitting, consent grant/snapshot, outbox
+  claim/finalize/retry, authenticated render acknowledgement and blind
+  submit-before-reveal all passed through
+  `tests/integration/mlc2_foundation_rehearsal.sql`.
+- Rehearsal fixtures are wrapped in a transaction and rolled back.
 
 ## Required before merge
 
@@ -63,17 +79,10 @@ Because `MIGRATE_ON_BOOT=1` makes a merge equivalent to applying migration
 `0302` in production, the following remain mandatory:
 
 1. Independent engineering review of migration `0302` and its RPC grants.
-2. Apply/reapply migration rehearsal against an isolated PostgreSQL/Supabase
-   schema matching production.
-3. Verify all 28 MLC-2 tables have RLS enabled and no anon/authenticated
-   policy or function access.
-4. Exercise speaker registration, consent grant/withdrawal, snapshot,
-   outbox claim/finalize/retry, render ACK and blind reveal RPCs in the
-   rehearsal database.
-5. Verify the actual Product/legal approval artifact before inserting an
+2. Verify the actual Product/legal approval artifact before inserting an
    active consent policy.
-6. ML/data acceptance of the implemented foundation.
-7. Separate merge/deployment approval.
+3. ML/data acceptance of the implemented foundation.
+4. Separate merge/deployment approval.
 
 ## Rollback
 
@@ -91,5 +100,4 @@ cutover can be rolled back because none occurred.
 - No surface-specific typed producer is active.
 - No canonical dataset/release/training module exists or is enabled.
 
-> FOUNDATION IMPLEMENTED — MLC-2/ED-2.4 Slice 1 awaits Engineering and ML/data review plus an isolated migration rehearsal. No deployment or cutover has occurred.
-
+> FOUNDATION REHEARSED — MLC-2/ED-2.4 Slice 1 awaits Engineering and ML/data review. No deployment or cutover has occurred.
