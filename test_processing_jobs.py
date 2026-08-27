@@ -294,11 +294,27 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         # 'processing' stamped on claim, 'ready' on completion.
         self.assertEqual([s[1] for s in db.states], ["processing", "ready"])
 
+    def test_pre_hotfix_noncanary_job_reaches_the_runner(self):
+        job = _job()
+        job["payload"]["lifecycle_contract_version"] = (
+            pj.TAKE_LIFECYCLE_CONTRACT
+        )
+        fake_db = _FakeDb(job=job)
+        fake_db.get_recording_attempt = lambda _sid: None
+
+        db, _ = self._run(fake_db)
+
+        self.assertEqual(db.finishes[-1][1], "completed")
+        self.assertEqual([state[1] for state in db.states], [
+            "processing", "ready",
+        ])
+
     def test_canonical_success_is_promoted_before_job_and_session_ready(self):
         job = _job()
         job["payload"]["lifecycle_contract_version"] = (
             pj.TAKE_LIFECYCLE_CONTRACT
         )
+        job["payload"]["canonical_attempt_registered"] = True
         fake_db = _FakeDb(job=job)
         order = []
         original_finish = fake_db.finish_processing_job
@@ -336,6 +352,7 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         job["payload"]["lifecycle_contract_version"] = (
             pj.TAKE_LIFECYCLE_CONTRACT
         )
+        job["payload"]["canonical_attempt_registered"] = True
         fake_db = _FakeDb(job=job)
         with patch.object(pj, "db", fake_db), patch.object(
             pj, "job_queue", _FakeQueue(),
@@ -527,7 +544,7 @@ class EnqueueSessionRecordingJobTests(unittest.TestCase):
         path, args, delay = fake_q.enqueues[-1]
         self.assertEqual((path, args, delay), (pj.TASK_PATH, (_JOB,), 0))
 
-    def test_new_job_declares_the_canonical_attempt_contract(self):
+    def test_legacy_job_does_not_claim_a_canonical_attempt(self):
         fake_db = _FakeDb()
         captured = {}
 
@@ -541,10 +558,56 @@ class EnqueueSessionRecordingJobTests(unittest.TestCase):
         ):
             pj.enqueue_session_recording_job(**self._kwargs())
 
+        self.assertNotIn(
+            "lifecycle_contract_version", captured["payload"],
+        )
+        self.assertNotIn(
+            "canonical_attempt_registered", captured["payload"],
+        )
+
+    def test_registered_job_declares_the_canonical_attempt_contract(self):
+        fake_db = _FakeDb()
+        captured = {}
+
+        def create(**kwargs):
+            captured.update(kwargs)
+            return {"id": _JOB, "session_id": _SID}
+
+        fake_db.create_processing_job = create
+        with patch.object(pj, "db", fake_db), patch.object(
+            pj, "job_queue", _FakeQueue(),
+        ):
+            pj.enqueue_session_recording_job(
+                **self._kwargs(), canonical_attempt_registered=True,
+            )
+
         self.assertEqual(
             captured["payload"]["lifecycle_contract_version"],
             pj.TAKE_LIFECYCLE_CONTRACT,
         )
+        self.assertIs(
+            captured["payload"]["canonical_attempt_registered"], True,
+        )
+
+    def test_pre_hotfix_job_without_attempt_uses_legacy_path(self):
+        fake_db = _FakeDb()
+        fake_db.get_recording_attempt = lambda _sid: None
+        job = _job()
+        job["payload"]["lifecycle_contract_version"] = (
+            pj.TAKE_LIFECYCLE_CONTRACT
+        )
+        with patch.object(pj, "db", fake_db):
+            self.assertFalse(pj._has_canonical_attempt(job))
+
+    def test_pre_hotfix_job_with_real_attempt_stays_canonical(self):
+        fake_db = _FakeDb()
+        fake_db.get_recording_attempt = lambda _sid: {"id": _SID}
+        job = _job()
+        job["payload"]["lifecycle_contract_version"] = (
+            pj.TAKE_LIFECYCLE_CONTRACT
+        )
+        with patch.object(pj, "db", fake_db):
+            self.assertTrue(pj._has_canonical_attempt(job))
 
 
 @unittest.skipIf(pj is None, f"import failed: {_IMPORT_ERR}")

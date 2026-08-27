@@ -95,11 +95,39 @@ class AnalysisDispatchTests(unittest.TestCase):
         self.assertEqual(result.payload["job_status_url"], "/v2/jobs/job-1/status")
         self.assertEqual(result.payload["audits_needed"], 2)
         enqueue.assert_called_once()
+        self.assertIs(
+            enqueue.call_args.kwargs["canonical_attempt_registered"], True,
+        )
         worker.assert_not_called()
         database.set_session_analysis_state.assert_called_once_with(
             "session-1",
             "processing",
         )
+
+    def test_non_canary_queue_job_does_not_claim_attempt_contract(self):
+        database = _database()
+        inputs = AnalysisInputs(**{
+            **_inputs().__dict__,
+            "canonical_attempt_registered": False,
+        })
+        with patch(
+            "services.pipeline_jobs.enqueue_session_recording_job",
+            return_value={"id": "job-legacy"},
+        ) as enqueue:
+            result = dispatch_recording_analysis(
+                inputs,
+                database=database,
+                queue_enabled=lambda: True,
+                async_enabled=lambda: False,
+                audit_paid_for_arc=lambda _a, _u: False,
+                log=Mock(),
+            )
+
+        self.assertIsInstance(result, PendingAnalysis)
+        self.assertIs(
+            enqueue.call_args.kwargs["canonical_attempt_registered"], False,
+        )
+        database.record_processing_transition.assert_not_called()
 
     def test_queue_failure_preserves_the_sync_fallback(self):
         database = _database()

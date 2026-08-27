@@ -68,10 +68,26 @@ TAKE_LIFECYCLE_CONTRACT = "recording-attempt-v1"
 
 
 def _has_canonical_attempt(job: Dict[str, Any]) -> bool:
-    return (
-        dict(job.get("payload") or {}).get("lifecycle_contract_version")
-        == TAKE_LIFECYCLE_CONTRACT
-    )
+    payload = dict(job.get("payload") or {})
+    if payload.get("lifecycle_contract_version") != TAKE_LIFECYCLE_CONTRACT:
+        return False
+    marker = payload.get("canonical_attempt_registered")
+    if marker is True:
+        return True
+    if marker is False:
+        return False
+
+    # Production repair for jobs created before the producer began carrying
+    # the registration proof.  That producer stamped every queued job with the
+    # lifecycle version even though only the canary owner received an Attempt
+    # row.  Resolve those already-durable jobs against the database: a real
+    # canary Attempt remains strict; a job with no Attempt resumes the legacy
+    # product path.  New jobs never enter this compatibility branch.
+    getter = getattr(db, "get_recording_attempt", None)
+    session_id = str(job.get("session_id") or payload.get("session_id") or "")
+    if not session_id or not callable(getter):
+        return False
+    return bool(getter(session_id))
 
 
 def _job_attempt_input(job: Dict[str, Any]) -> dict:
@@ -193,6 +209,7 @@ def enqueue_session_recording_job(
     take_index: Optional[int],
     arc_take_count: Optional[int],
     spark_enabled: bool,
+    canonical_attempt_registered: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Create the durable job row + hand it to the broker.
 
@@ -225,8 +242,12 @@ def enqueue_session_recording_job(
         "take_index": take_index,
         "arc_take_count": arc_take_count,
         "spark_enabled": bool(spark_enabled),
-        "lifecycle_contract_version": TAKE_LIFECYCLE_CONTRACT,
     }
+    if canonical_attempt_registered:
+        payload.update({
+            "lifecycle_contract_version": TAKE_LIFECYCLE_CONTRACT,
+            "canonical_attempt_registered": True,
+        })
     row = db.create_processing_job(
         kind=KIND_SESSION_RECORDING,
         user_id=user_id,

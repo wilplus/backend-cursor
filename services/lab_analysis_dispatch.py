@@ -202,6 +202,9 @@ def dispatch_recording_analysis(
                 take_index=inputs.take_index,
                 arc_take_count=inputs.arc_take_count,
                 spark_enabled=inputs.spark_enabled,
+                canonical_attempt_registered=(
+                    inputs.canonical_attempt_registered
+                ),
             )
         except Exception as exc:
             log.warning(
