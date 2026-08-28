@@ -143,3 +143,36 @@ def score_recording_feedback(
         overall_by_index=overall,
         rank_by_index=ranks,
     )
+
+
+def join_recording_feedback(
+    enriched: RecordingState,
+    scored: RecordingState,
+) -> RecordingState:
+    """Join parallel stage outputs only when their shared identity matches.
+
+    The acoustic branch owns canonical/analyzed metrics. The scoring branch
+    owns text/slide scores and ranking. A mismatch means the branches did not
+    derive from the same immutable prepared state and must fail before any row
+    is persisted.
+    """
+    shared_coordinates = (
+        "session_id",
+        "recording_id",
+        "canonical_pieces",
+        "llm_budget_indices",
+    )
+    if any(
+        getattr(enriched, field) != getattr(scored, field)
+        for field in shared_coordinates
+    ):
+        raise ValueError("recording analysis branches do not share identity")
+
+    return replace(
+        enriched,
+        stickiness=scored.stickiness,
+        slide_scores=scored.slide_scores,
+        slide_coverage=scored.slide_coverage,
+        overall_by_index=dict(scored.overall_by_index),
+        rank_by_index=dict(scored.rank_by_index),
+    )

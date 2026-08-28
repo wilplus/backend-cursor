@@ -748,7 +748,7 @@ class TestTakeSexPrecedence(unittest.TestCase):
             pipeline_source = fh.read()
         with open("services/recording_piece_analysis.py", encoding="utf-8") as fh:
             stage_source = fh.read()
-        self.assertIn("analyze_canonical_pieces", pipeline_source)
+        self.assertIn("enrich_canonical_pieces", pipeline_source)
         self.assertIn("resolve_take_sex", stage_source)
         self.assertNotIn("speaker_is_account_holder", stage_source)
 

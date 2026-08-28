@@ -210,7 +210,7 @@ class BackfillMatchesTheRecorderTests(unittest.TestCase):
         with open("services/recording_piece_analysis.py", encoding="utf-8") as fh:
             recorder_stage = fh.read()
         self.assertIn("resolve_take_sex", script)
-        self.assertIn("analyze_canonical_pieces", recorder)
+        self.assertIn("enrich_canonical_pieces", recorder)
         self.assertIn("resolve_take_sex", recorder_stage)
         # Neither may carry its own copy of the precedence.
         self.assertNotIn("speaker_is_account_holder", script)
