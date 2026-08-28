@@ -8,6 +8,11 @@ Learning contract: `MLC-2`, `data_epoch=1`
 
 Status: `IMPLEMENTED LOCALLY — DARK DEPLOYMENT AUTHORIZED`
 
+Founder-canary activation was subsequently deferred. The authoritative future
+activation procedure is
+[`mlc2-confidence-founder-canary-activation-runbook.md`](mlc2-confidence-founder-canary-activation-runbook.md).
+This link is documentation only and grants no runtime authorization.
+
 Decision filter: `ADVANCE-F2`. This slice closes approved identity, consent,
 provenance and monitoring gates. It changes no Construct fence, L1–L3 label or
 live learning loop.
