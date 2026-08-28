@@ -183,8 +183,13 @@ def _storage_provider() -> str:
 
 
 def stale_minutes() -> int:
-    """How long a silent heartbeat means 'the worker is dead'."""
-    return max(2, _int_env("PIPELINE_JOB_STALE_MINUTES", 15))
+    """How long a silent heartbeat means 'the worker is dead'.
+
+    Heartbeats arrive every 60 seconds by default, so two minutes preserves
+    one full missed-heartbeat margin while preventing a rollout interruption
+    from leaving the processing screen frozen for a quarter of an hour.
+    """
+    return max(2, _int_env("PIPELINE_JOB_STALE_MINUTES", 2))
 
 
 def heartbeat_interval_seconds() -> int:
@@ -895,7 +900,10 @@ SWEEP_LOOP_PATH = "services.pipeline_jobs.run_sweep_loop"
 
 
 def sweep_interval_seconds() -> int:
-    return max(60, _int_env("PIPELINE_SWEEP_INTERVAL_SECONDS", 300))
+    # Recovery is intentionally cheap (two bounded indexed reads).  Running
+    # it once a minute keeps the two-minute stale boundary meaningful; a
+    # five-minute loop made the real worst case twenty minutes.
+    return max(60, _int_env("PIPELINE_SWEEP_INTERVAL_SECONDS", 60))
 
 
 # The chain's lease runs for this many intervals. >1 so a single slow or

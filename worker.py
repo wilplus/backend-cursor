@@ -317,12 +317,7 @@ def _run_worker_pool(slots: int) -> int:
     stopping = {"flag": False}
 
     def _stop(signum, _frame):
-        stopping["flag"] = True
-        logger.info("received signal %s — stopping %d slot(s)",
-                    signum, len(procs))
-        for p in procs.values():
-            if p.is_alive():
-                p.terminate()
+        _request_pool_stop(stopping, procs, signum)
 
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
@@ -345,9 +340,34 @@ def _run_worker_pool(slots: int) -> int:
                                     name=f"pipeline-slot-{slot}", daemon=False)
                 fresh.start()
                 procs[slot] = fresh
+    # Railway sends the deployment signal to the whole process group.  Each
+    # RQ slot therefore already received its first SIGTERM and is performing
+    # a *warm* shutdown.  Sending p.terminate() from the pool handler as well
+    # used to be a second SIGTERM: RQ correctly interpreted it as a cold
+    # shutdown and SIGKILLed the active recording horse.  Give the slots one
+    # drain window before intervening.  The delayed fallback still handles a
+    # platform that signals PID 1 only, without turning an ordinary rollout
+    # into an immediate recording interruption.
     for p in procs.values():
         p.join(timeout=30)
+    for p in procs.values():
+        if p.is_alive():
+            logger.warning("slot pid=%s did not receive the deployment "
+                           "signal — terminating after drain window", p.pid)
+            p.terminate()
+            p.join(timeout=5)
     return 0
+
+
+def _request_pool_stop(stopping: dict, procs: Dict[int, Any], signum: int) -> None:
+    """Record a pool shutdown without double-signalling its RQ children.
+
+    This tiny seam is deliberately testable: a regression here strands the
+    product at the initial processing percentage during every deployment.
+    """
+    stopping["flag"] = True
+    logger.info("received signal %s — draining %d slot(s)",
+                signum, len(procs))
 
 
 if __name__ == "__main__":

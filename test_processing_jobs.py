@@ -17,6 +17,7 @@ Run: python3 -m unittest test_processing_jobs
 """
 from __future__ import annotations
 
+import os
 import sys
 import types
 import unittest
@@ -612,6 +613,13 @@ class EnqueueSessionRecordingJobTests(unittest.TestCase):
 
 @unittest.skipIf(pj is None, f"import failed: {_IMPORT_ERR}")
 class SweeperTests(unittest.TestCase):
+
+    def test_recovery_defaults_match_the_heartbeat_contract(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PIPELINE_JOB_STALE_MINUTES", None)
+            os.environ.pop("PIPELINE_SWEEP_INTERVAL_SECONDS", None)
+            self.assertEqual(pj.stale_minutes(), 2)
+            self.assertEqual(pj.sweep_interval_seconds(), 60)
 
     def test_orphaned_processing_row_released_and_requeued(self):
         fake_db = _FakeDb()

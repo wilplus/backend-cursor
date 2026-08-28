@@ -76,6 +76,23 @@ class TestForkSafety(unittest.TestCase):
         source = (ROOT / "worker.py").read_text()
         self.assertIn('get_context("fork")', source)
 
+    def test_pool_shutdown_does_not_double_signal_rq_slots(self):
+        """The platform already signals the process group.  A second signal
+        from the pool parent turns RQ's warm drain into a cold horse kill."""
+        import worker
+
+        class Slot:
+            terminate_calls = 0
+
+            def terminate(self):
+                self.terminate_calls += 1
+
+        slot = Slot()
+        stopping = {"flag": False}
+        worker._request_pool_stop(stopping, {0: slot}, 15)
+        self.assertTrue(stopping["flag"])
+        self.assertEqual(slot.terminate_calls, 0)
+
 
 class TestSweepChainIsSingleton(unittest.TestCase):
 
