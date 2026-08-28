@@ -341,3 +341,4 @@
 0303	add_mlc2_confidence_dark_contracts.sql
 0304	add_mlc2_confidence_producer_dark_integration.sql
 0305	add_mlc2_confidence_canary_readiness.sql
+0306	add_mlc2_consent_configuration.sql

@@ -27,9 +27,10 @@ def _table(name: str) -> str:
 
 def test_manifest_appends_slice4_as_0304():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-2] == (
-        "0304\tadd_mlc2_confidence_producer_dark_integration.sql"
-    )
+    slice4 = "0304\tadd_mlc2_confidence_producer_dark_integration.sql"
+    slice6a = "0306\tadd_mlc2_consent_configuration.sql"
+    assert slice4 in manifest
+    assert manifest.index(slice4) < manifest.index(slice6a)
 
 
 def test_take_promotion_and_outbox_are_one_atomic_rpc():

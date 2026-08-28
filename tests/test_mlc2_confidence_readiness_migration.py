@@ -21,7 +21,10 @@ def _function(name: str) -> str:
 
 def test_manifest_appends_slice6_readiness_as_0305():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-1] == "0305\tadd_mlc2_confidence_canary_readiness.sql"
+    readiness = "0305\tadd_mlc2_confidence_canary_readiness.sql"
+    consent = "0306\tadd_mlc2_consent_configuration.sql"
+    assert readiness in manifest
+    assert manifest.index(readiness) < manifest.index(consent)
 
 
 def test_readiness_rpc_checks_consent_founder_scope_and_lineage():

@@ -2983,6 +2983,86 @@ class DatabaseService:
                            user_id, e)
             return None
 
+    @staticmethod
+    def _rpc_row(data: Any) -> Optional[dict]:
+        """Normalize PostgREST composite/JSON RPC responses to one mapping."""
+        if isinstance(data, dict):
+            return data
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return data[0]
+        return None
+
+    def get_mlc2_principal_consent_status(
+        self, acquisition_principal_id: str,
+    ) -> Optional[dict]:
+        result = self.client.rpc(
+            "get_mlc2_principal_consent_status_v1",
+            {"p_acquisition_principal_id": str(acquisition_principal_id)},
+        ).execute()
+        return self._rpc_row(result.data)
+
+    def accept_mlc2_founder_consent(
+        self,
+        *,
+        acquisition_principal_id: str,
+        identity_hash: str,
+        identity_version: str,
+        binding_kind: str,
+        binding_proof_hash: str,
+        bound_by: str,
+        consent_policy_version: str,
+        jurisdiction: str,
+        terms_version: str,
+        privacy_policy_version: str,
+        source_route: str,
+        client_version: str,
+        affirmative_action: dict,
+        occurred_at: str,
+        article_9_applies: bool,
+        idempotency_key: str,
+    ) -> Optional[dict]:
+        result = self.client.rpc("accept_mlc2_founder_consent_v1", {
+            "p_acquisition_principal_id": str(acquisition_principal_id),
+            "p_identity_hash": str(identity_hash),
+            "p_identity_version": str(identity_version),
+            "p_binding_kind": str(binding_kind),
+            "p_binding_proof_hash": str(binding_proof_hash),
+            "p_bound_by": str(bound_by),
+            "p_consent_policy_version": str(consent_policy_version),
+            "p_jurisdiction": str(jurisdiction),
+            "p_terms_version": str(terms_version),
+            "p_privacy_policy_version": str(privacy_policy_version),
+            "p_source_route": str(source_route),
+            "p_client_version": str(client_version),
+            "p_affirmative_action": dict(affirmative_action),
+            "p_occurred_at": str(occurred_at),
+            "p_article_9_applies": bool(article_9_applies),
+            "p_idempotency_key": str(idempotency_key),
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def record_mlc2_consent_withdrawal(
+        self,
+        *,
+        acquisition_principal_id: str,
+        grant_event_id: str,
+        source_route: str,
+        client_version: str,
+        affirmative_action: dict,
+        occurred_at: str,
+        idempotency_key: str,
+    ) -> Optional[dict]:
+        result = self.client.rpc("record_mlc2_consent_withdrawal_v1", {
+            "p_acquisition_principal_id": str(acquisition_principal_id),
+            "p_grant_event_id": str(grant_event_id),
+            "p_source_route": str(source_route),
+            "p_client_version": str(client_version),
+            "p_affirmative_action": dict(affirmative_action),
+            "p_occurred_at": str(occurred_at),
+            "p_idempotency_key": str(idempotency_key),
+        }).execute()
+        return self._rpc_row(result.data)
+
     def create_guest_owner_principal(
         self, principal_id: str, secret_hash: str,
     ) -> Optional[dict]:

@@ -162,7 +162,7 @@ class Config:
     # frontend prompts a re-accept). Hardcoded default mirrors the
     # migration's user_consents.terms_version default; override via
     # env once docs change so behavior shifts without a redeploy.
-    CURRENT_TERMS_VERSION = os.getenv("CURRENT_TERMS_VERSION", "1.0")
+    CURRENT_TERMS_VERSION = os.getenv("CURRENT_TERMS_VERSION", "1.2")
 
     # Sentry
     SENTRY_DSN = os.getenv("SENTRY_DSN")

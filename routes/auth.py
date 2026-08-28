@@ -14,7 +14,7 @@ config = Config()
 # The version string must match the "Last updated" date in the published
 # Terms of Service / Privacy Policy. Bump this when documents change so
 # returning users are asked to re-accept the updated terms.
-CURRENT_TERMS_VERSION = "1.0"
+CURRENT_TERMS_VERSION = "1.2"
 
 
 @auth_bp.route("/signup", methods=["POST"])

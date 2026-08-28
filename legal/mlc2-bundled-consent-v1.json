@@ -1,0 +1,23 @@
+{
+  "schema_version": "mlc2-product-legal-approval-v1",
+  "approval_reference": "WILLAB-MLC2-CONSENT-2026-08-28",
+  "consent_policy_version": "mlc2-bundled-consent-v1",
+  "terms_version": "1.2",
+  "privacy_policy_version": "1.2",
+  "approving_authority": "Artur Willoński — founder, recording the approved counsel determination",
+  "approved_at": "2026-08-28T00:00:00Z",
+  "active_from": "2026-08-28T00:00:00Z",
+  "jurisdictions": ["PL", "EU", "EEA"],
+  "article_6_basis": "6(1)(a)",
+  "article_9_treatment": "9(2)(a)_when_special_category",
+  "required_for_service": true,
+  "bundled_ui": true,
+  "onboarding_copy": "WillpowerLab learns with every practice session\n\nWillpowerLab uses your practice data for two connected purposes:\n\n1. Personalized coaching\nWe process your recordings, transcripts, delivery signals, edits and feedback to generate and improve your own coaching experience.\n\n2. Improving WillpowerLab’s shared models\nWe may use the same information to evaluate, train and improve models used by WillpowerLab for you and other users. Your data may be included in datasets together with data from other users.\n\nUsing WillpowerLab requires participation in both forms of learning. If you do not agree, you cannot use the recording and coaching service.\n\nYou can later withdraw through your account settings or request account deletion. Withdrawing ends access to recording and coaching features. We will stop including your data in new training and process existing data according to our deletion and retention policy.\n\nI understand and agree to the processing of my practice data for personalized coaching and improvement of WillpowerLab’s shared models.",
+  "approved_copy_sha256": "db6f6725ea41724212c9d15817781f105001e1094eebe77c29e8a019b7ef91b0",
+  "primary_action": "Agree and continue",
+  "secondary_action": "Do not agree",
+  "checkbox_preselected": false,
+  "purposes": ["personalized_coaching", "pooled_model_improvement"],
+  "r2_object_key": "mlc2/legal/mlc2-bundled-consent-v1.json",
+  "activation_note": "Product/legal approval was supplied by the founder in the ED-2.4 review. This artifact configures policy only and never creates consent for a user."
+}

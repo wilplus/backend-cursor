@@ -132,6 +132,16 @@ def test_readiness_monitor_is_aggregate_only_and_not_a_product_route():
     assert "get_mlc2_confidence_canary_readiness_v1" not in route_sources
 
 
+def test_railway_monitor_is_recurring_read_only_and_alerting():
+    cron = (
+        ROOT / "bin" / "railway-mlc2-confidence-readiness-cron.sh"
+    ).read_text()
+    assert "*/5 * * * *" in cron
+    assert "check_mlc2_confidence_canary_readiness.py --json --alert" in cron
+    assert "MLC2_CONFIDENCE_MONITORING_ENABLED=true" in cron
+    assert "founder_canary" not in cron
+
+
 def test_normal_feedback_selection_precedes_and_does_not_depend_on_writer_gate():
     route = (ROOT / "routes" / "v2" / "explore_ideal_text.py").read_text()
     claim = route.index("_feedback_set = claim_feedback_set(")

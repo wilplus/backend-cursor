@@ -146,6 +146,9 @@ from routes.v2.user_account import (  # noqa: F401 — re-exported for import co
     v2_user_recording_progress,
     v2_user_set_profile,
 )
+from routes.v2.mlc2_consent import (  # noqa: F401 — re-exported for import compat
+    v2_user_mlc2_consent,
+)
 from routes.v2.lounge import (  # noqa: F401 — re-exported for import compat
     v2_user_lounge_messages_delete,
     v2_user_lounge_messages_get,
