@@ -343,7 +343,7 @@ class WiringTests(unittest.TestCase):
 
         pipeline_src = inspect.getsource(lr.process_lab_recording)
         stage_src = inspect.getsource(rpa._refresh_acoustic_baseline)
-        self.assertIn("analyze_canonical_pieces", pipeline_src)
+        self.assertIn("enrich_canonical_pieces", pipeline_src)
         self.assertIn("resolve_for_take", stage_src)
         self.assertNotIn("acoustic_read", stage_src)
 

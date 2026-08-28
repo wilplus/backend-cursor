@@ -5,7 +5,10 @@ import logging
 import unittest
 from unittest.mock import patch
 
-from services.recording_feedback_scoring import score_recording_feedback
+from services.recording_feedback_scoring import (
+    join_recording_feedback,
+    score_recording_feedback,
+)
 from services.recording_state import RecordingState
 
 
@@ -75,6 +78,43 @@ class FeedbackScoringStageTests(unittest.TestCase):
         self.assertEqual(result.stickiness, ({},))
         self.assertEqual(result.slide_scores, ())
         self.assertEqual(result.overall_by_index, {0: 0.0})
+
+    def test_join_keeps_enriched_metrics_and_scoring_outputs(self):
+        prepared = _state()
+        enriched = RecordingState(**{
+            **prepared.__dict__,
+            "analyzed_pieces": ({
+                **prepared.analyzed_pieces[0],
+                "metrics": {
+                    **prepared.analyzed_pieces[0]["metrics"],
+                    "rich": True,
+                },
+            },),
+            "raw_metrics_snapshot": ({"rich": True},),
+        })
+        scored = RecordingState(**{
+            **prepared.__dict__,
+            "stickiness": ({"composite": 0.8},),
+            "slide_scores": ({"composite": 0.4},),
+            "overall_by_index": {0: 0.6},
+            "rank_by_index": {0: 1},
+        })
+
+        joined = join_recording_feedback(enriched, scored)
+
+        self.assertTrue(joined.analyzed_pieces[0]["metrics"]["rich"])
+        self.assertEqual(joined.stickiness, ({"composite": 0.8},))
+        self.assertEqual(joined.rank_by_index, {0: 1})
+
+    def test_join_rejects_outputs_from_different_recordings(self):
+        enriched = _state()
+        scored = RecordingState(**{
+            **_state().__dict__,
+            "recording_id": "different-recording",
+        })
+
+        with self.assertRaisesRegex(ValueError, "do not share identity"):
+            join_recording_feedback(enriched, scored)
 
 
 if __name__ == "__main__":

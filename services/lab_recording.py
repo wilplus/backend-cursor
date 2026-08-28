@@ -25,18 +25,21 @@ only process_lab_recording does the I/O.
 """
 from __future__ import annotations
 
-from contextlib import nullcontext
+from dataclasses import replace
 import logging
 from typing import Any, Optional
 
 from services.recording_state import RecordingState
 from services.recording_piece_analysis import (
     PiecesCanonicalUnavailable,
-    analyze_canonical_pieces,
+    analyze_canonical_pieces as analyze_canonical_pieces,
     build_canonical_pieces as _build_canonical_pieces,
+    enrich_canonical_pieces,
+    prepare_canonical_pieces,
 )
 from services.recording_feedback_scoring import (
     compute_overall_ranking as _compute_overall_ranking,
+    join_recording_feedback,
     score_recording_feedback,
 )
 from services.recording_persistence import persist_recording_snippets
@@ -60,6 +63,7 @@ __all__ = [
     "_merge_slide_vocab",
     "_build_canonical_pieces",
     "_compute_overall_ranking",
+    "analyze_canonical_pieces",
     "PiecesCanonicalUnavailable",
     "process_lab_recording",
     "replay_applied_upgrades",
@@ -312,23 +316,14 @@ def process_lab_recording(
 
     _rec_kind = recording_kind if recording_kind in ("spoken", "read") \
         else "spoken"
-    from services.audio_metrics import decode_audio_to_pcm
     from services.db import db
-
-    sig = decode_audio_to_pcm(audio_bytes)
-    if sig is None:
-        # Diagnostic (telemetry to isolate device/PWA capture issues): the audio
-        # blob couldn't be decoded — empty / truncated / unsupported codec.
-        logger.warning(
-            "process_lab_recording.voice_metrics_diag sid=%s status=decode_failed "
-            "bytes=%d", session_id, len(audio_bytes or b""),
-        )
-        return {"snippets": [], "voice_metrics_available": False}
 
     # Stage 1 — transcription.  The frozen state makes the stage boundary
     # explicit: transcription returns a new state and cannot silently change
-    # the recording context that later stages depend on.
-    state = RecordingState(
+    # the recording context that later stages depend on. Audio decoding and
+    # remote transcription consume the same immutable upload and neither
+    # consumes the other's output, so they form the first ready-stage wave.
+    initial_state = RecordingState(
         session_id=session_id,
         user_id=user_id,
         recording_id=recording_id,
@@ -339,14 +334,33 @@ def process_lab_recording(
         recording_kind=recording_kind,
         paired_session_id=paired_session_id,
         run_analytics=_run_analytics,
-        signal=sig,
     )
-    _transcription_scope = (
-        stage_recorder.stage("transcription")
-        if stage_recorder is not None else nullcontext()
+    from services.audio_metrics import decode_audio_to_pcm
+    from services.pipeline_stage_execution import ReadyStage, run_ready_stages
+
+    first_wave = run_ready_stages(
+        ReadyStage(
+            "audio_decode",
+            lambda: decode_audio_to_pcm(audio_bytes),
+        ),
+        ReadyStage(
+            "transcription",
+            lambda: transcribe_recording(initial_state, log=logger),
+            canonical_stage="transcription",
+        ),
+        stage_recorder=stage_recorder,
+        log=logger,
     )
-    with _transcription_scope:
-        state = transcribe_recording(state, log=logger)
+    sig = first_wave["audio_decode"]
+    if sig is None:
+        # Diagnostic (telemetry to isolate device/PWA capture issues): the audio
+        # blob couldn't be decoded — empty / truncated / unsupported codec.
+        logger.warning(
+            "process_lab_recording.voice_metrics_diag sid=%s status=decode_failed "
+            "bytes=%d", session_id, len(audio_bytes or b""),
+        )
+        return {"snippets": [], "voice_metrics_available": False}
+    state = replace(first_wave["transcription"], signal=sig)
     # Downstream code still operates on local lists during this incremental
     # extraction.  Copy the immutable stage outputs so later normalization can
     # never mutate the state object retained for subsequent domain stages.
@@ -359,20 +373,34 @@ def process_lab_recording(
         for word in state.words_all
     ]
 
-    # Stage 2 — canonical piece construction and acoustic enrichment. The
-    # returned state keeps the raw candidate snapshot separate from derived
-    # coach/user reads, preserving validation-sample independence.
-    state = analyze_canonical_pieces(
-        state, log=logger, stage_recorder=stage_recorder)
-    _llm_budget_idx = set(state.llm_budget_indices)
-
-    # Stage 3 — independent text and slide analysis, joined deterministically.
-    _candidate_scope = (
-        stage_recorder.stage("candidate_generation")
-        if stage_recorder is not None else nullcontext()
+    # Stage 2 — exact pieces and cheap metrics establish the shared immutable
+    # prerequisite for the next two branches. Rich acoustic enrichment and
+    # text/slide scoring do not consume one another, so they run as one ready
+    # wave and rejoin only after their recording coordinates are proven equal.
+    state = prepare_canonical_pieces(
+        state,
+        log=logger,
+        stage_recorder=stage_recorder,
     )
-    with _candidate_scope:
-        state = score_recording_feedback(state, log=logger)
+    analysis_wave = run_ready_stages(
+        ReadyStage(
+            "acoustic_enrichment",
+            lambda: enrich_canonical_pieces(state, log=logger),
+            canonical_stage="feature_extraction",
+        ),
+        ReadyStage(
+            "feedback_scoring",
+            lambda: score_recording_feedback(state, log=logger),
+            canonical_stage="candidate_generation",
+        ),
+        stage_recorder=stage_recorder,
+        log=logger,
+    )
+    state = join_recording_feedback(
+        analysis_wave["acoustic_enrichment"],
+        analysis_wave["feedback_scoring"],
+    )
+    _llm_budget_idx = set(state.llm_budget_indices)
 
     # Stage 4 — persist exact canonical rows and the raw candidate corpus.
     state = persist_recording_snippets(state, database=db, log=logger)

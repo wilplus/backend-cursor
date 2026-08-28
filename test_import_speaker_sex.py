@@ -163,7 +163,7 @@ class SourcePin(unittest.TestCase):
             pipeline = fh.read()
         with open("services/recording_piece_analysis.py", encoding="utf-8") as fh:
             pipeline_stage = fh.read()
-        self.assertIn("analyze_canonical_pieces", pipeline)
+        self.assertIn("enrich_canonical_pieces", pipeline)
         self.assertIn("resolve_take_sex", pipeline_stage)
         self.assertNotIn("speaker_is_account_holder", pipeline_stage)
 

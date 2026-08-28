@@ -206,7 +206,31 @@ def analyze_canonical_pieces(
     log: logging.Logger = logger,
     stage_recorder: Optional[Any] = None,
 ) -> RecordingState:
-    """Return a new state containing canonical, acoustically enriched pieces."""
+    """Compatibility composition of preparation and acoustic enrichment."""
+    prepared = prepare_canonical_pieces(
+        state,
+        log=log,
+        stage_recorder=stage_recorder,
+    )
+    return enrich_canonical_pieces(
+        prepared,
+        log=log,
+        stage_recorder=stage_recorder,
+    )
+
+
+def prepare_canonical_pieces(
+    state: RecordingState,
+    *,
+    log: logging.Logger = logger,
+    stage_recorder: Optional[Any] = None,
+) -> RecordingState:
+    """Build exact pieces and the cheap metrics needed to select the budget.
+
+    The returned frozen state is the shared prerequisite for two independent
+    consumers: rich acoustic enrichment and text/slide candidate scoring.
+    Neither consumer may mutate it.
+    """
     alignment_scope = (
         stage_recorder.stage("alignment")
         if stage_recorder is not None else nullcontext()
@@ -216,15 +240,42 @@ def analyze_canonical_pieces(
             list(state.words_all),
             state.session_context,
         )
+    analyzed = _core_metrics(state, pieces)
+    budget = piece_llm_budget() if state.run_analytics else 0
+    budget_indices = _budget_indices(analyzed, budget)
+
+    return replace(
+        state,
+        canonical_pieces=tuple(pieces),
+        analyzed_pieces=tuple(analyzed),
+        llm_budget_indices=frozenset(budget_indices),
+    )
+
+
+def enrich_canonical_pieces(
+    state: RecordingState,
+    *,
+    log: logging.Logger = logger,
+    stage_recorder: Optional[Any] = None,
+) -> RecordingState:
+    """Add rich acoustics without mutating the prepared shared state."""
     feature_scope = (
         stage_recorder.stage("feature_extraction")
         if stage_recorder is not None else nullcontext()
     )
     with feature_scope:
-        analyzed = _core_metrics(state, pieces)
-        budget = piece_llm_budget() if state.run_analytics else 0
-        budget_indices = _budget_indices(analyzed, budget)
-        _upgrade_budget_metrics(state, analyzed, budget_indices)
+        analyzed = [
+            {
+                **piece,
+                "metrics": dict(piece.get("metrics") or {}),
+            }
+            for piece in state.analyzed_pieces
+        ]
+        _upgrade_budget_metrics(
+            state,
+            analyzed,
+            set(state.llm_budget_indices),
+        )
 
         # Validation-sample independence: snapshot raw metrics before any
         # derived confidence read is stamped onto the canonical pieces.
@@ -235,8 +286,6 @@ def analyze_canonical_pieces(
 
     return replace(
         state,
-        canonical_pieces=tuple(pieces),
         analyzed_pieces=tuple(analyzed),
-        llm_budget_indices=frozenset(budget_indices),
         raw_metrics_snapshot=tuple(raw_snapshot),
     )
