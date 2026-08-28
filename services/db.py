@@ -11136,6 +11136,46 @@ class DatabaseService:
             logger.warning("take feedback exposure insert failed: %s", e)
             return False
 
+    def record_take_feedback_policy_v3_shadow(
+        self, *, arc_id: str, take_session_id: str, recording_id: str,
+        acquisition_principal_id: str, owner_user_id: str, take_index: int,
+        policy_version: str, frame: dict, frame_hash: str,
+    ) -> Optional[dict]:
+        """Persist one immutable, non-rendered v3 comparison frame."""
+        if (not all((arc_id, take_session_id, recording_id,
+                     acquisition_principal_id,
+                     owner_user_id, policy_version, frame_hash))
+                or isinstance(take_index, bool)
+                or not isinstance(take_index, int) or take_index < 1
+                or not isinstance(frame, dict)
+                or frame.get("serves_user_feedback") is not False
+                or frame.get("dataset_eligible") is not False):
+            return None
+        try:
+            result = self.client.rpc(
+                "record_take_feedback_policy_v3_shadow_v2",
+                {
+                    "p_arc_id": str(arc_id),
+                    "p_take_session_id": str(take_session_id),
+                    "p_recording_id": str(recording_id),
+                    "p_acquisition_principal_id": str(
+                        acquisition_principal_id
+                    ),
+                    "p_owner_user_id": str(owner_user_id),
+                    "p_take_index": take_index,
+                    "p_policy_version": str(policy_version),
+                    "p_frame": frame,
+                    "p_frame_hash": str(frame_hash),
+                },
+            ).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.warning("take feedback v3 dark frame failed: %s", error)
+            return None
+
     def register_recording_attempt(
         self, *, attempt_id: str, owner_principal_id: str, project_id: str,
         upload_idempotency_key: str, recording_id: str,
@@ -11792,42 +11832,33 @@ class DatabaseService:
         feedback_id: str, feedback_family: str, response: str,
         snippet_id: Optional[str] = None,
     ) -> Optional[dict]:
-        """First response wins. Same-value retries return the immutable row."""
+        """Validate frozen membership and append in one database transaction.
+
+        Returns ``{outcome,row,selected_keys}``; same-value retries are replayed
+        idempotently. There is deliberately no read/insert fallback because it
+        would recreate the first-click race this boundary removes.
+        """
         if not all((arc_id, take_session_id, owner_user_id, feedback_id,
                     feedback_family, response)):
             return None
-        query = (self.client.table("take_feedback_self_report")
-                 .select("*")
-                 .eq("take_session_id", str(take_session_id))
-                 .eq("owner_user_id", str(owner_user_id))
-                 .eq("feedback_id", str(feedback_id))
-                 .limit(1))
         try:
-            existing = query.execute().data or []
-            if existing:
-                row = existing[0]
-                return row if row.get("response") == response else None
-            payload = {
-                "arc_id": str(arc_id),
-                "take_session_id": str(take_session_id),
-                "owner_user_id": str(owner_user_id),
-                "feedback_id": str(feedback_id),
-                "feedback_family": str(feedback_family),
-                "response": str(response),
-                "snippet_id": str(snippet_id) if snippet_id else None,
-            }
-            rows = (self.client.table("take_feedback_self_report")
-                    .insert(payload).execute().data) or []
-            return rows[0] if rows else payload
+            result = self.client.rpc("record_take_feedback_response_v1", {
+                "p_arc_id": str(arc_id),
+                "p_take_session_id": str(take_session_id),
+                "p_owner_user_id": str(owner_user_id),
+                "p_feedback_id": str(feedback_id),
+                "p_feedback_family": str(feedback_family),
+                "p_response": str(response),
+                "p_supplied_snippet_id": (
+                    str(snippet_id) if snippet_id else None
+                ),
+            }).execute()
+            data = result.data
+            if isinstance(data, list):
+                return data[0] if data and isinstance(data[0], dict) else None
+            return data if isinstance(data, dict) else None
         except Exception as e:
-            # A concurrent identical retry may have won the unique key.
-            try:
-                existing = query.execute().data or []
-                if existing and existing[0].get("response") == response:
-                    return existing[0]
-            except Exception:
-                pass
-            logger.warning("take feedback self-report insert failed: %s", e)
+            logger.warning("atomic take feedback self-report failed: %s", e)
             return None
 
     def list_take_feedback_self_reports(

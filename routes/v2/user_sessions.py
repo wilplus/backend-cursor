@@ -1530,27 +1530,50 @@ def v2_post_take_feedback_response(take_session_id):
                 or not session.get("arc_id")):
             return jsonify({"code": "NOT_FOUND", "error": "Take not found"}), 404
         arc_id = str(session["arc_id"])
-        feedback_set = db.get_ideal_text_feedback_set(
-            arc_id, str(take_session_id)) or {}
-        from services.take_feedback_responses import validate_feedback_response
-        row, err = validate_feedback_response(
-            request.get_json(silent=True) or {},
-            feedback_set.get("selected_keys"),
-        )
+        from services.take_feedback_responses import parse_feedback_response
+        row, err = parse_feedback_response(request.get_json(silent=True) or {})
         if err:
             return jsonify({"code": "INVALID_INPUT", "error": err}), 400
-        saved = db.insert_take_feedback_self_report(
+        result = db.insert_take_feedback_self_report(
             arc_id=arc_id,
             take_session_id=str(take_session_id),
             owner_user_id=str(request.user_id),
             **row,
         )
-        if saved is None:
-            # A different first response already exists or persistence failed.
+        if result is None:
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Could not save this response.",
+            }), 500
+        outcome = str(result.get("outcome") or "")
+        if outcome == "not_member":
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "feedback item is not in this Take's frozen set",
+            }), 400
+        if outcome == "provenance_mismatch":
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "snippet provenance does not match the feedback item",
+            }), 400
+        if outcome == "conflict":
             return jsonify({
                 "code": "RESPONSE_ALREADY_FINAL",
                 "error": "This response is already final.",
             }), 409
+        saved = result.get("row")
+        if outcome not in ("saved", "replayed") or not isinstance(saved, dict):
+            return jsonify({
+                "code": "V2_ERROR",
+                "error": "Could not save this response.",
+            }), 500
+        # Downstream product and canonical writes use the database-derived
+        # snippet provenance, never the request echo.
+        row = {
+            **row,
+            "snippet_id": saved.get("snippet_id"),
+        }
+        feedback_set = {"selected_keys": result.get("selected_keys") or []}
 
         # Typed canonical dual-write. In particular, `edit_myself` is not
         # converted into a correction preference: opening an editor leaves

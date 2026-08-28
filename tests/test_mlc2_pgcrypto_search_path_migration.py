@@ -6,9 +6,12 @@ MIGRATION = ROOT / "migrations" / "fix_mlc2_pgcrypto_search_path.sql"
 SQL = MIGRATION.read_text()
 
 
-def test_manifest_appends_supabase_pgcrypto_fix_as_0307():
+def test_manifest_keeps_supabase_pgcrypto_fix_at_0307():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-1] == "0307\tfix_mlc2_pgcrypto_search_path.sql"
+    # 0307 must keep its immutable version and ordering even after later
+    # forward migrations are appended.
+    entries = dict(line.split("\t", 1) for line in manifest if "\t" in line)
+    assert entries["0307"] == "fix_mlc2_pgcrypto_search_path.sql"
 
 
 def test_every_digest_using_mlc2_function_gets_trusted_extension_path():

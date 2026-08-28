@@ -343,3 +343,5 @@
 0305	add_mlc2_confidence_canary_readiness.sql
 0306	add_mlc2_consent_configuration.sql
 0307	fix_mlc2_pgcrypto_search_path.sql
+0308	add_atomic_take_feedback_response.sql
+0309	add_take_feedback_policy_v3_shadow.sql

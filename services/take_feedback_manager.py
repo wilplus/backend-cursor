@@ -14,7 +14,9 @@ from typing import Any, Iterable, Optional
 
 
 POLICY_VERSION = "take-feedback-manager-v2"
+EVIDENCE_SCHEMA_VERSION = "take-feedback-manager-evidence-v1"
 STRUCTURAL_REWRITE_RULE_VERSION = "structural-rewrite-v1"
+FALLBACK_GENERATOR_RULE_VERSION = "take-feedback-fallback-generator-v1"
 FAMILIES = (
     "confident_voice",
     "rewrite_clarity",
@@ -314,6 +316,7 @@ def ensure_required_families(
                 "why_key": "clarity_tentative",
                 "feedback_family": "rewrite_clarity",
                 "tentative": True,
+                "rule_version": FALLBACK_GENERATOR_RULE_VERSION,
                 "_manager_evidence": {
                     "fallback": True,
                     "specificity": min(3, len(_WORD_RE.findall(quote)) // 6),
@@ -340,6 +343,7 @@ def ensure_required_families(
             "device": "tentative_formulation",
             "feedback_family": "great_formulation",
             "tentative": True,
+            "rule_version": FALLBACK_GENERATOR_RULE_VERSION,
             "_manager_evidence": {
                 "fallback": True,
                 "specificity": 1,

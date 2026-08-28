@@ -48,7 +48,6 @@ from services.ideal_text_read import (
     resolve_suggestion_display,
 )
 from services.rate_limits import llm_limit
-from services.rehearsal_roots import rehearsal_root
 from services.token_prices import price_of as _price_of
 
 logger = logging.getLogger(__name__)
@@ -428,9 +427,12 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref, user_id=None):
             src = prov[i] if aligned else {}
             _part = _part_roots.get(i) or {}
             _metadata_root = _part.get("root_phrase")
+            # The API serves only explicit, locked orange roots. A generated
+            # first-words fallback is not a user decision and must not become
+            # a prompt in the next Take or in Presentation Mode.
             root = ({"text": _metadata_root, "type": "flagship"}
                     if isinstance(_metadata_root, str) and _metadata_root
-                    else rehearsal_root(para))
+                    else {"text": None, "type": None})
             si = src.get("slide_index")
             if isinstance(si, bool) or not isinstance(si, int) or si < 0:
                 si = None
@@ -2081,6 +2083,60 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             _feedback_exposure = exposure_snapshot(changes)
         else:
             _feedback_exposure = []
+
+        # TAKE FEEDBACK V3 SHADOW. This is a real, founder-scoped comparison
+        # write over the complete current-Take inventory, but it is not the
+        # serving path and cannot create a rendered exposure. Default OFF;
+        # ML/data reviews these frames before any user-visible activation.
+        try:
+            from services.take_feedback_policy_v3 import (
+                POLICY_VERSION as V3_POLICY_VERSION,
+                build_shadow_frame,
+                dark_enabled,
+            )
+
+            _v3_session = (
+                db.v2_get_session_by_id(_arm_sid) or {}
+                if _arm_sid else {}
+            )
+            _v3_principal_id = _v3_session.get("owner_principal_id")
+            if _arm_sid and dark_enabled(_v3_principal_id):
+                _v3_take_index = _v3_session.get("take_index")
+                _v3_doc = locals().get("_review_doc")
+                if not isinstance(_v3_doc, dict):
+                    _v3_doc = build_transcript_document(
+                        arc_id, database=db, session_id=_arm_sid)
+                _v3_frame = build_shadow_frame(
+                    take_document=_v3_doc,
+                    snippets=db.get_snippets_by_session(_arm_sid) or [],
+                    suggestions=_user_sugs,
+                    feedback_candidates=changes,
+                    take_index=_v3_take_index,
+                    expected_recording_id=_v3_session.get("recording_1_id"),
+                )
+                if _v3_frame is not None:
+                    _v3_saved = db.record_take_feedback_policy_v3_shadow(
+                        arc_id=str(arc_id),
+                        take_session_id=_arm_sid,
+                        recording_id=str(_v3_frame["recording_id"]),
+                        acquisition_principal_id=str(_v3_principal_id),
+                        owner_user_id=str(user_id),
+                        take_index=int(_v3_frame["take_index"]),
+                        policy_version=V3_POLICY_VERSION,
+                        frame=_v3_frame,
+                        frame_hash=_v3_frame["frame_hash"],
+                    )
+                    if not _v3_saved or _v3_saved.get("outcome") != "stored":
+                        logger.warning(
+                            "take feedback v3 dark frame not stored "
+                            "arc=%s take=%s", arc_id, _arm_sid,
+                        )
+        except Exception as _v3_error:
+            # Shadow evaluation can never darken the current feedback product.
+            logger.warning(
+                "take feedback v3 dark evaluation failed arc=%s take=%s: %s",
+                arc_id, _arm_sid, _v3_error,
+            )
         _learning_presentations: dict[str, list[dict]] = {}
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete
         # Manager result is claimed in the database; every later GET may only

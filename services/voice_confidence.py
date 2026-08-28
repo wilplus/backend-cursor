@@ -125,7 +125,8 @@ logger = logging.getLogger(__name__)
 # v1 = the sex-blind weights shipped in PR #280. v2 = the same seven cues,
 # routed by speaker sex (cue 1 REVERSES). Bumped so a validation sample can
 # never silently mix scores produced under the two weightings.
-_VERSION = "voice-confidence-v2"
+VERSION = "voice-confidence-v2"
+_VERSION = VERSION
 
 # The routing key. Not a demographic field — it selects a weight vector.
 SEX_FEMALE = "female"

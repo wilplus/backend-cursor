@@ -1,4 +1,7 @@
-from services.take_feedback_responses import validate_feedback_response
+from services.take_feedback_responses import (
+    parse_feedback_response,
+    validate_feedback_response,
+)
 
 
 KEYS = [
@@ -33,6 +36,22 @@ def test_rejects_unexposed_identity_and_mismatched_clip_provenance():
         "feedback_family": "rewrite_clarity",
         "response": "keep_wording",
     }, KEYS)[0] is None
+
+
+def test_typed_parse_does_not_make_a_stale_membership_decision():
+    row, err = parse_feedback_response({
+        "feedback_id": "cv",
+        "feedback_family": "confident_voice",
+        "response": "yes",
+        "snippet_id": "s1",
+    })
+    assert err is None
+    assert row == {
+        "feedback_id": "cv",
+        "feedback_family": "confident_voice",
+        "response": "yes",
+        "snippet_id": "s1",
+    }
     assert validate_feedback_response({
         "feedback_id": "cv",
         "feedback_family": "confident_voice",
