@@ -19,9 +19,9 @@ def _function(name: str) -> str:
     return match.group(1)
 
 
-def test_manifest_appends_slice6a_as_0306():
+def test_manifest_contains_slice6a_as_0306():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    assert manifest[-1] == "0306\tadd_mlc2_consent_configuration.sql"
+    assert "0306\tadd_mlc2_consent_configuration.sql" in manifest
 
 
 def test_configuration_rpc_verifies_copy_and_is_service_only():

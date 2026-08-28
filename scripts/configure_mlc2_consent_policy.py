@@ -100,7 +100,10 @@ def main(argv: list[str] | None = None) -> int:
         "--artifact",
         default=str(ROOT / "legal" / "mlc2-bundled-consent-v1.json"),
     )
-    parser.add_argument("--bucket", default=Config.R2_BUCKET_NAME)
+    parser.add_argument(
+        "--bucket",
+        default=(Config.R2_BUCKET_NAME or Config.COACH_FEEDBACK_VIDEO_BUCKET),
+    )
     args = parser.parse_args(argv)
     if not str(args.bucket or "").strip():
         raise RuntimeError("R2_BUCKET_NAME (or --bucket) is required")

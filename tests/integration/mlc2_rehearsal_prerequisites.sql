@@ -6,7 +6,10 @@
 -- the rehearsal because their already-deployed prerequisite objects are
 -- represented here.
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- Supabase installs pgcrypto in `extensions`, not `public`. Rehearse that
+-- production coordinate so SECURITY DEFINER function resolution is real.
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 DO $$
 BEGIN

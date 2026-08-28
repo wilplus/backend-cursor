@@ -31,7 +31,7 @@ $$;
 
 SELECT public.configure_mlc2_consent_policy_v1(
     'SLICE6A-REHEARSAL-ONLY',
-    encode(digest(convert_to('Slice 6A approved copy', 'UTF8'), 'sha256'), 'hex'),
+    'bd79dae940c83a6bdc1be05deb9c9c8b35e0c7ebff2119c9fc0074d7b27c412c',
     'Slice 6A approved copy', 'slice6a-consent-v1', '1.2', '1.2',
     'isolated-test', '2026-08-28T00:00:00Z', ARRAY['PL', 'EU'],
     '9(2)(a)_when_special_category', 'mlc2/legal/slice6a.json',
@@ -41,7 +41,7 @@ SELECT public.configure_mlc2_consent_policy_v1(
 -- Configuration is idempotent only for byte-for-byte identical evidence.
 SELECT public.configure_mlc2_consent_policy_v1(
     'SLICE6A-REHEARSAL-ONLY',
-    encode(digest(convert_to('Slice 6A approved copy', 'UTF8'), 'sha256'), 'hex'),
+    'bd79dae940c83a6bdc1be05deb9c9c8b35e0c7ebff2119c9fc0074d7b27c412c',
     'Slice 6A approved copy', 'slice6a-consent-v1', '1.2', '1.2',
     'isolated-test', '2026-08-28T00:00:00Z', ARRAY['PL', 'EU'],
     '9(2)(a)_when_special_category', 'mlc2/legal/slice6a.json',
@@ -72,10 +72,8 @@ SELECT public.accept_mlc2_founder_consent_v1(
     '/v2/user/mlc2-consent',
     'slice6a-rehearsal-client', jsonb_build_object(
         'accepted', true,
-        'copy_sha256', encode(
-            digest(convert_to('Slice 6A approved copy', 'UTF8'), 'sha256'),
-            'hex'
-        ),
+        'copy_sha256',
+        'bd79dae940c83a6bdc1be05deb9c9c8b35e0c7ebff2119c9fc0074d7b27c412c',
         'purposes', jsonb_build_array(
             'personalized_coaching', 'pooled_model_improvement'
         ),

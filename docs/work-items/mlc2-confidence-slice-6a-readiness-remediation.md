@@ -32,6 +32,9 @@ R2 object key/checksum.
 
 Migration `0306` adds service-role-only configuration and exact-principal
 status RPCs. It creates no approval row, policy, principal binding or consent.
+Migration `0307` is a data-free production compatibility correction: it makes
+the six MLC-2 SHA-256 RPCs resolve `pgcrypto` from Supabase's trusted
+`extensions` schema. It activates no writer and changes no product state.
 `scripts/configure_mlc2_consent_policy.py` verifies the checked-in artifact,
 uploads or byte-verifies the immutable R2 object, reads it back, verifies its
 SHA-256, and then registers the approval and one active policy. It never calls
@@ -72,7 +75,7 @@ environment variable and remains hard-coded `dark`.
 
 ## Controlled deployment order
 
-1. Merge and deploy backend source; allow migration `0306` to apply.
+1. Merge and deploy backend source; allow migrations `0306–0307` to apply.
 2. Run `scripts/configure_mlc2_consent_policy.py` once in the backend service.
    Verify the R2 read-back checksum and policy result.
 3. Deploy frontend source and verify ordinary accounts are unchanged.
@@ -91,10 +94,11 @@ remain disabled.
 ## Verification evidence
 
 - Complete backend local CI: migration manifest, migration runner, Ruff, Mypy
-  and unit tier green (`4898 passed`, `9 skipped`, `127 subtests passed`).
+  and unit tier green (`4904 passed`, `9 skipped`, `127 subtests passed`).
 - Frontend test suite, TypeScript check and production build green on Node 22.
-- Disposable PostgreSQL rehearsal applied migrations `0302–0306`, reapplied
-  `0306`, rejected an invalid copy hash, proved byte-identical policy
+- Disposable PostgreSQL rehearsal installed `pgcrypto` in the Supabase
+  `extensions` schema, applied migrations `0302–0307`, reapplied `0307`,
+  rejected an invalid copy hash, proved byte-identical policy
   idempotency, verified exact-principal pre-grant/grant/withdrawal status,
   verified purge creation and denied browser-role RPC execution. All fixtures
   rolled back.

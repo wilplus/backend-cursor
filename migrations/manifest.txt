@@ -342,3 +342,4 @@
 0304	add_mlc2_confidence_producer_dark_integration.sql
 0305	add_mlc2_confidence_canary_readiness.sql
 0306	add_mlc2_consent_configuration.sql
+0307	fix_mlc2_pgcrypto_search_path.sql
