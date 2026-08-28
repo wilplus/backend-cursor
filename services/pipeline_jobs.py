@@ -185,11 +185,12 @@ def _storage_provider() -> str:
 def stale_minutes() -> int:
     """How long a silent heartbeat means 'the worker is dead'.
 
-    Heartbeats arrive every 60 seconds by default, so two minutes preserves
-    one full missed-heartbeat margin while preventing a rollout interruption
-    from leaving the processing screen frozen for a quarter of an hour.
+    Heartbeats arrive every 60 seconds by default.  Five minutes preserves a
+    safe margin for CPU-heavy audio work that can temporarily starve the
+    heartbeat thread, while the one-minute sweep still cuts the old
+    15-to-20-minute recovery gap to at most six minutes.
     """
-    return max(2, _int_env("PIPELINE_JOB_STALE_MINUTES", 2))
+    return max(2, _int_env("PIPELINE_JOB_STALE_MINUTES", 5))
 
 
 def heartbeat_interval_seconds() -> int:

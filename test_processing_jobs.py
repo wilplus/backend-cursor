@@ -618,7 +618,7 @@ class SweeperTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PIPELINE_JOB_STALE_MINUTES", None)
             os.environ.pop("PIPELINE_SWEEP_INTERVAL_SECONDS", None)
-            self.assertEqual(pj.stale_minutes(), 2)
+            self.assertEqual(pj.stale_minutes(), 5)
             self.assertEqual(pj.sweep_interval_seconds(), 60)
 
     def test_orphaned_processing_row_released_and_requeued(self):
