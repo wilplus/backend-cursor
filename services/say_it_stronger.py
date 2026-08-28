@@ -314,19 +314,53 @@ def _generate_all(session_id, snippets, context=None, means=None) -> None:
     from services.db import db
     if not isinstance(means, dict):
         means = aggregate_session_means(snippets)
-    written = 0
+
+    # Each card is an independent model call.  Running them sequentially made
+    # a five-card take wait for the SUM of five provider round trips (18.4s in
+    # the 2026-08-28 production trace), even though no card reads another
+    # card's output.  Use the shared bounded/order-preserving concurrency
+    # contract already used by recording feedback scoring.  Generation may
+    # overlap; database writes remain below, in snippet order, so observable
+    # ordering and persistence semantics stay deterministic.
+    jobs: list[tuple[dict, str, str]] = []
     for snip in (snippets or []):
+        sid = snip.get("id")
+        transcript = (snip.get("transcript") or "").strip()
+        if sid and transcript:
+            jobs.append((snip, str(sid), transcript))
+
+    def _generate(job: tuple[dict, str, str]):
+        snip, sid, transcript = job
+
+        def _run():
+            try:
+                return generate_say_it_stronger(
+                    transcript,
+                    (
+                        snip.get("metrics")
+                        if isinstance(snip.get("metrics"), dict)
+                        else None
+                    ),
+                    means,
+                    context,
+                )
+            except Exception as error:
+                logger.warning(
+                    "say_it_stronger: generate failed sid=%s snip=%s: %s",
+                    session_id,
+                    sid,
+                    error,
+                )
+                return None
+
+        return _run
+
+    from services.parallel import run_in_parallel
+
+    payloads = run_in_parallel(*[_generate(job) for job in jobs])
+    written = 0
+    for (snip, sid, _transcript), payload in zip(jobs, payloads):
         try:
-            sid = snip.get("id")
-            transcript = (snip.get("transcript") or "").strip()
-            if not sid or not transcript:
-                continue
-            payload = generate_say_it_stronger(
-                transcript,
-                snip.get("metrics") if isinstance(snip.get("metrics"), dict) else None,
-                means,
-                context,
-            )
             if payload and db.set_charisma_snippet_say_it_stronger(sid, payload):
                 written += 1
         except Exception as e:

@@ -8,9 +8,10 @@ Run: python3 -m unittest test_say_it_stronger
 from __future__ import annotations
 
 import sys
+import threading
 import types
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 # services.db pulls in supabase — stub in setUpModule, restore after
 # (willab test-stub-isolation convention).
@@ -360,11 +361,50 @@ class DispatchTests(unittest.TestCase):
                    "rewrite_your_voice": "x", "rewrite_polished": "x",
                    "why": None, "version": 1}
         db.set_charisma_snippet_say_it_stronger = MagicMock(return_value=True)
+
+        def _generate(transcript, *_args, **_kwargs):
+            if transcript == "a":
+                return payload
+            raise RuntimeError("llm down")
+
         with patch.object(mod, "generate_say_it_stronger",
-                          side_effect=[payload, RuntimeError("llm down")]):
-            mod._generate_all("s1", [_snip("a"), _snip("b")])
+                          side_effect=_generate):
+            mod._generate_all(
+                "s1",
+                [_snip("a", transcript="a"), _snip("b", transcript="b")],
+            )
         db.set_charisma_snippet_say_it_stronger.assert_called_once_with(
             "a", payload)
+
+    def test_generate_all_overlaps_independent_calls_and_writes_in_order(self):
+        from services import say_it_stronger as mod
+        from services.db import db
+
+        rendezvous = threading.Barrier(2)
+
+        def _generate(transcript, *_args, **_kwargs):
+            # This barrier can pass only when both model calls overlap. The
+            # former sequential loop would time out here.
+            rendezvous.wait(timeout=2)
+            return {"transcript": transcript}
+
+        writer = MagicMock(return_value=True)
+        with patch.object(mod, "generate_say_it_stronger",
+                          side_effect=_generate), \
+                patch.object(db, "set_charisma_snippet_say_it_stronger",
+                             writer):
+            mod._generate_all(
+                "s1",
+                [_snip("a", transcript="a"), _snip("b", transcript="b")],
+            )
+
+        self.assertEqual(
+            writer.call_args_list,
+            [
+                call("a", {"transcript": "a"}),
+                call("b", {"transcript": "b"}),
+            ],
+        )
 
 
 class L1FenceTests(unittest.TestCase):
