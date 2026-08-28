@@ -650,15 +650,13 @@ def _classify_acoustic_candidate(
         "candidate", snippet_id, transcript, features, kind, trigger)
 
 
-def _persist_acoustic_candidate(
+def _generate_acoustic_candidate(
     plan: _AcousticCandidatePlan,
     context: _GenerationContext,
-    arc_id: str,
-    database: Any,
-) -> Optional[bool]:
-    """Generate and store one already-classified acoustic candidate."""
+) -> Optional[dict[str, Any]]:
+    """Generate one candidate without touching shared persistence state."""
     if plan.kind is None or plan.trigger is None or plan.snippet_id is None:
-        return False
+        return None
     if plan.trigger == "confident":
         generated = {"why": CONFIDENT_VOICE_WHY, "replacement": None}
     else:
@@ -699,16 +697,34 @@ def _persist_acoustic_candidate(
             user_id=context.session.get("user_id"),
         )
 
-    return database.upsert_moment_suggestion(
+    return {
+        "replacement": generated.get("replacement"),
+        "why": generated.get("why"),
+        "emphasis_quote": emphasis_quote,
+        "cue_keys": cue_keys or None,
+    }
+
+
+def _persist_generated_acoustic_candidate(
+    plan: _AcousticCandidatePlan,
+    generated: dict[str, Any],
+    arc_id: str,
+    database: Any,
+) -> bool:
+    """Persist one generated candidate; callers retain document ordering."""
+    if plan.kind is None or plan.trigger is None or plan.snippet_id is None:
+        return False
+
+    return bool(database.upsert_moment_suggestion(
         plan.snippet_id,
         arc_id,
         plan.kind,
         generated.get("replacement"),
         generated.get("why"),
         plan.trigger,
-        emphasis_quote=emphasis_quote,
-        cue_keys=(cue_keys or None),
-    )
+        emphasis_quote=generated.get("emphasis_quote"),
+        cue_keys=generated.get("cue_keys"),
+    ))
 
 
 def _resolve_delivery_baseline_and_capture_arousal(
@@ -800,44 +816,89 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         # only ever carries ONE star.
         _unstarred = []   # (snip_id, transcript, features_dict)
 
-        for snip in (readout.get("snippets") or []):
-            _seen += 1
-            try:
-                plan = _classify_acoustic_candidate(
-                    snip, context, stored, session_id)
-                unstarred = plan.unstarred()
-                if unstarred is not None:
-                    _unstarred.append(unstarred)
-                if plan.outcome == "no_text":
-                    _no_text += 1
+        # Acoustic candidates are independent model calls, but the cap and
+        # write order are product policy. Generate in waves no larger than the
+        # remaining cap, then persist in document order. This is the same
+        # bounded/order-preserving contract used by the structural lane: no
+        # candidate is added or removed, failed generations still open a slot
+        # for the next candidate, and shared database state stays single-
+        # threaded.
+        from services.parallel import run_in_parallel
+
+        snippets = list(readout.get("snippets") or [])
+        cursor = 0
+        while cursor < len(snippets):
+            wave: list[tuple[dict[str, Any], _AcousticCandidatePlan]] = []
+            wave_limit = max(1, context.cap - stored)
+            while cursor < len(snippets) and len(wave) < wave_limit:
+                snip = snippets[cursor]
+                cursor += 1
+                _seen += 1
+                try:
+                    plan = _classify_acoustic_candidate(
+                        snip, context, stored, session_id)
+                    unstarred = plan.unstarred()
+                    if unstarred is not None:
+                        _unstarred.append(unstarred)
+                    if plan.outcome == "no_text":
+                        _no_text += 1
+                        continue
+                    if plan.outcome == "no_conf_read":
+                        _no_conf_read += 1
+                        continue
+                    if plan.outcome == "capped":
+                        _capped += 1
+                        continue
+                    if plan.outcome == "decided":
+                        _decided += 1
+                        continue
+                    if plan.outcome == "decided_intent":
+                        _decided_intent += 1
+                        continue
+                    if plan.outcome == "protected":
+                        continue
+                    wave.append((snip, plan))
+                except Exception as snippet_error:
+                    _errored += 1
+                    logger.warning(
+                        "moment_suggestion: snippet failed sid=%s snip=%s: %s",
+                        session_id, snip.get("id"), snippet_error)
+
+            def _generate(plan: _AcousticCandidatePlan):
+                def _run():
+                    try:
+                        return (
+                            _generate_acoustic_candidate(plan, context),
+                            None,
+                        )
+                    except Exception as generation_error:
+                        return None, generation_error
+
+                return _run
+
+            generated_wave = run_in_parallel(
+                *[_generate(plan) for _snip, plan in wave]
+            )
+            for (snip, plan), (generated, generation_error) in zip(
+                    wave, generated_wave):
+                if generation_error is not None:
+                    _errored += 1
+                    logger.warning(
+                        "moment_suggestion: snippet failed sid=%s snip=%s: %s",
+                        session_id, snip.get("id"), generation_error)
                     continue
-                if plan.outcome == "no_conf_read":
-                    _no_conf_read += 1
-                    continue
-                if plan.outcome == "capped":
-                    _capped += 1
-                    continue
-                if plan.outcome == "decided":
-                    _decided += 1
-                    continue
-                if plan.outcome == "decided_intent":
-                    _decided_intent += 1
-                    continue
-                if plan.outcome == "protected":
-                    continue
-                persisted = _persist_acoustic_candidate(
-                    plan, context, str(arc_id), database)
-                if persisted is None:
+                if generated is None:
                     _no_gen += 1
                     continue
-                if persisted:
-                    stored += 1
-            except Exception as _snip_err:
-                _errored += 1
-                logger.warning(
-                    "moment_suggestion: snippet failed sid=%s snip=%s: %s",
-                    session_id, snip.get("id"), _snip_err)
-                continue
+                try:
+                    if _persist_generated_acoustic_candidate(
+                            plan, generated, str(arc_id), database):
+                        stored += 1
+                except Exception as persistence_error:
+                    _errored += 1
+                    logger.warning(
+                        "moment_suggestion: snippet failed sid=%s snip=%s: %s",
+                        session_id, snip.get("id"), persistence_error)
 
         # ── Delivery stars, SECOND (founder decisions 2026-07-18):
         # deterministic vs the speaker's own reference — cross-take baseline

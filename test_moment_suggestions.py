@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -1034,6 +1035,42 @@ class ConfidentVoiceDeterministicTests(unittest.TestCase):
             ms.generate_for_session("sess-1", ARC, database=db)
         self.assertEqual(stored, [("s1", "emphasize", None,
                                    ms.CONFIDENT_VOICE_WHY, "confident")])
+
+    def test_acoustic_generation_overlaps_but_persists_in_document_order(self):
+        from services import moment_suggestions as ms
+
+        db = LedgerGenerationFilterTests._Db([])
+        db.confident_snippets = ("s1", "s2")
+        readout = {"snippets": [
+            {"id": "s1", "transcript": "first phrase"},
+            {"id": "s2", "transcript": "second phrase"},
+        ]}
+        rendezvous = threading.Barrier(2)
+
+        def _generate(plan, _context):
+            # The former sequential loop cannot pass this barrier. Both
+            # independent candidates must be in flight at the same time.
+            rendezvous.wait(timeout=2)
+            return {
+                "replacement": None,
+                "why": plan.transcript,
+                "emphasis_quote": None,
+                "cue_keys": None,
+            }
+
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value=readout), \
+                patch.object(ms, "_generate_acoustic_candidate",
+                             side_effect=_generate):
+            ms.generate_for_session("sess-1", ARC, database=db)
+
+        self.assertEqual(
+            db.upserts,
+            [
+                ("s1", "emphasize", "confident"),
+                ("s2", "emphasize", "confident"),
+            ],
+        )
 
     def test_a_WIDE_confident_moment_buys_exactly_one_call_for_its_target(self):
         # Founder 2026-08-15. The card's BODY stays deterministic and signed
