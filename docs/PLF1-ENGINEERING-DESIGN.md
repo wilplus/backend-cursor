@@ -1,4 +1,4 @@
-# ED-PLF-1.2 — Staged authorization and continuously learning service design
+# ED-PLF-1.3 — Staged authorization and continuously learning service design
 
 **Product contract:** `PLF staged rollout` (`core_service` → `learning_live`)
 **Status:** ENGINEERING DESIGN READY FOR REVIEW · NO IMPLEMENTATION STARTED  
@@ -22,7 +22,10 @@ It defines the dependency cutover, schema, APIs, user/guest flow, provider
 boundary, termination/deletion workflow, rollout, rollback, monitoring, and
 tests.
 
-ED-PLF-1.2 supersedes ED-PLF-1.1. It adds the conditional
+ED-PLF-1.3 supersedes ED-PLF-1.2. It preserves the staged contract and adds
+historical-purpose compatibility, general policy-cutover carryovers, an exact
+`power_score` classification gate, and the universal operational-purpose
+invariant. It retains the conditional
 `learning_live` phase, one-action re-acceptance for existing users, one-action
 onboarding for new users, and explicit coverage of eligible historical and
 future recordings. This is a design revision, not a policy activation.
@@ -104,7 +107,7 @@ or merely using a legal/data-rights surface never creates acceptance.
 
 ### 3.1 Competing acceptance sources
 
-| Producer/reader | Current responsibility | Classification | ED-PLF-1.2 treatment |
+| Producer/reader | Current responsibility | Classification | ED-PLF-1.3 treatment |
 | --- | --- | --- | --- |
 | Frontend `WelcomeConsent` and `useWillabFlow` | Local first-run button and `localStorage` flag | Product gate with no authoritative server receipt | Replace with a server-backed “Agree and continue” action; local state remains presentation-only |
 | `GET/PUT /v2/user/consent` + `user_consents` | Authenticated Terms ledger plus mic/share/email preferences | Mixed-purpose legacy product state | Preserve historical rows; stop using it for recording authority; keep unrelated preferences |
@@ -121,7 +124,7 @@ Phase 1 or Phase 2 acceptance.
 
 ### 3.2 Identity and acquisition
 
-| Dependency | Current behavior | ED-PLF-1.2 treatment |
+| Dependency | Current behavior | ED-PLF-1.3 treatment |
 | --- | --- | --- |
 | `owner_principals` | Durable account or signed guest owner | Reuse unchanged as the identity root |
 | `X-Willab-Guest-Owner` | Signed guest capability | Reuse for guest authorization status and acceptance |
@@ -147,7 +150,7 @@ When a guest principal is claimed into an account:
 
 ### 3.3 Recording and processing producers
 
-| Path | Current gate | ED-PLF-1.2 requirement |
+| Path | Current gate | ED-PLF-1.3 requirement |
 | --- | --- | --- |
 | `POST /v2/lab/recordings` | Optional auth plus account/guest ownership | Require current PLF authority before reading/uploading accepted voice data |
 | `POST /v2/lab/recordings/:id/retry-processing` | Ownership only | Recheck current authority before retry/provider work |
@@ -243,6 +246,24 @@ PLF deletion.
     never extended merely because a future learning phase is contemplated.
 25. No founder, coach, administrator, migration, worker, or script bypass
     exists.
+26. A purpose may be registered before implementation, but an active policy
+    cannot mark it required or authorize its processing until the real
+    capability is operational, reviewed, monitored, and connected to
+    retention, deletion and data-rights controls.
+27. Phase 1 recordings require a positive, applicable, immutable GDPR Article
+    6(4) further-processing assessment before Phase 2 historical coverage can
+    finalize or release eligibility can become true. Phase 2 Terms alone never
+    imply compatibility.
+28. Every material policy-version activation—not only a phase change—must
+    atomically freeze and reconcile exact non-terminal accepted product jobs,
+    create narrow completion carryovers, and activate the new policy.
+29. L1, L2 and L3 remain unchanged. `power_score` remains the internal blended
+    L2 ranker and is never surfaced as a score, number, band or verdict under
+    AC-9.
+30. No phase or material policy may activate until an immutable Product/legal
+    and technical classification covers the exact deployed `power_score`
+    pipeline and configuration. A founder label does not establish its legal
+    conclusion.
 
 ## 5. Target architecture
 
@@ -260,6 +281,7 @@ owner principal -> explicit acceptance event -> current phase authority
                         +---- provider permit ----> feedback
 
 Phase 2 existing-user acceptance
+  -> applicable Article 6(4) assessment/resolution
   -> historical coverage cutoff
   -> complete historical inventory
        ├─ verified eligible candidate
@@ -274,7 +296,12 @@ core_service + armed(dataset, training) + approvals
        ├─ learning_live
        ├─ dataset enabled
        ├─ training enabled
-       └─ frozen Phase 1 in-flight completion inventory
+       └─ frozen prior-policy in-flight completion inventory
+
+every material policy activation
+  -> validate operational purposes + exact power_score classification
+  -> freeze cutoff + reconcile old-policy product jobs
+  -> create narrow carryovers + activate new policy atomically
 
 refusal/missing receipt -> new service blocked; content/legal access retained
 termination/deletion -> frozen purge targets -> DB/R2/provider/queues/ML lineage
@@ -331,6 +358,33 @@ Optional emotion-state inference is **not** silently added to these purposes.
 If Product/legal later permits it, it requires its own purpose, approved copy
 and user control.
 
+#### `processing_purpose_capability_versions`
+
+The purpose registry is vocabulary, not proof that a feature exists. Each
+purpose version therefore has a separately reviewed operational record:
+
+- purpose and capability version
+- state: `registry_only`, `operational`, `suspended`, `retired`
+- implementation/deployment hash and owner
+- processing entry points and provider/storage dependencies
+- monitoring/alert contract reference
+- retention schedule, deletion resolver and data-rights handler references
+- Product, Product/legal, Engineering, security and processor review evidence
+- activated/retired timestamps and immutable evidence hash
+
+An active policy-purpose row must reference an exact `operational` capability
+version. Policy activation verifies every reference transactionally. A
+registry-only, suspended, retired, missing or mismatched capability can appear
+in documentation and future design but cannot be `required_for_service`,
+authorize collection/provider work, extend retention, or support historical
+reuse.
+
+`personalized_exercise_recommendation` remains `registry_only` until its real
+feature and controls exist. `exercise_adequacy_classification` remains an
+MLC-3 provenance identifier, not a processing purpose. Neither can justify
+current collection, required acceptance or future reuse before activation.
+This rule applies identically to every future purpose.
+
 #### `processing_authorization_policies`
 
 In-place generalization of `ml_consent_policies`:
@@ -347,6 +401,7 @@ In-place generalization of `ml_consent_policies`:
 - `jurisdiction_policy_version text not null`
 - `age_policy_version text not null`
 - `location_risk_policy_version text not null`
+- exact approved `power_score_classification_id`
 
 At most one policy may be active for the runtime phase. Activating a policy
 requires immutable approval evidence whose copy hash verifies. A
@@ -368,11 +423,32 @@ Append-only transitions provide the authoritative state machine:
 `current_processing_runtime_state_v1` resolves the latest valid transition.
 Missing, malformed, contradictory, or unknown state resolves to `killed`.
 No environment variable or frontend value can independently activate a phase.
-Recording acceptance and phase transition RPCs serialize on one dedicated
-runtime-guard row: acceptance takes the reviewed shared lock before resolving
-the phase; transition takes the exclusive lock before freezing carryovers and
-changing state. A Phase 1 job therefore cannot appear between the carryover
-inventory and the Phase 2 transition.
+Recording acceptance and every material policy-activation RPC serialize on one
+dedicated runtime-guard row: acceptance takes the reviewed shared lock before
+resolving the policy; activation takes the exclusive lock before freezing
+carryovers and changing policy/state. An accepted job therefore cannot appear
+between a carryover inventory and any material cutover.
+
+#### `processing_policy_activations`
+
+Every material policy version change has one append-only activation record:
+
+- `id uuid primary key`
+- exact prior/new policy versions and runtime phase(s)
+- server cutoff timestamp and material-change reason
+- applicable `power_score` classification artifact
+- exact operational-purpose capability versions
+- Product/legal, Engineering, security, ML/data and founder approval references
+- activation status, deployment version, idempotency key and immutable hash
+
+`activate_processing_policy_v1` obtains the exclusive runtime lock, validates
+the new policy and every classification/capability dependency, freezes and
+reconciles the carryover inventory, then appends the activation as one database
+transaction. For the Phase 1→2 change,
+`transition_to_learning_live_v1` wraps this contract and atomically appends the
+runtime transition plus dataset/training enable events. A same-phase material
+Terms, purpose, provider, retention, model-use or signal-classification change
+uses the same activation contract.
 
 #### `processing_operational_capability_events`
 
@@ -401,27 +477,34 @@ armed capabilities; in one database transaction it appends the
 check rolls back the entire transition. Evaluation and promotion remain
 separately disabled/armed/enabled later and are not implied by Phase 2.
 
-#### `processing_transition_carryovers`
+#### `processing_policy_cutover_carryovers`
 
-The same Phase 2 transition transaction freezes the exact non-terminal Phase 1
-product-feedback jobs that were already accepted before its server cutoff:
+Every material policy-activation transaction freezes the exact non-terminal
+product-feedback jobs accepted under its prior policy before the cutoff:
 
-- transition, processing-job, recording, attempt and authorization-snapshot IDs
-- acquisition principal and original `core_service` policy
+- policy activation, optional phase transition, processing-job, recording,
+  attempt and authorization-snapshot IDs
+- acquisition principal and exact prior phase/policy
 - accepted-before cutoff and frozen job state
 - allowlisted remaining product stages
 - state: `pending`, `running`, `completed`, `failed`, `cancelled`
 - terminal reason/time and immutable carryover hash
+
+`processing_policy_cutover_carryover_events` stores append-only claims,
+retries, stage completion, cancellation and terminal outcomes; validated RPCs
+derive the current state. Retry events reference the same durable product job
+and never create a second scope.
 
 A carryover is not a new acceptance. It permits only the already-promised
 recording→transcription→ranking→Ideal Text/feedback pipeline for that exact
 job. It cannot authorize another recording, a manual retry created after the
 cutoff, new coach delivery, dataset inclusion, training, evaluation or
 promotion. Termination, deletion, retention expiry or a safety quarantine
-still cancels it. Provider permits accept a current Phase 2 receipt **or** this
-narrow carryover. The transition cannot commit unless its carryover inventory
-reconciles with every non-terminal Phase 1 job, so no accepted recording is
-silently stranded.
+still cancels it. Provider permits accept a current active-policy receipt
+**or** this narrow carryover for the exact prior policy. Policy activation cannot commit
+unless its carryover inventory reconciles with every eligible non-terminal job,
+so no accepted recording is silently stranded. A job rejected before the old
+policy cutoff or created afterward is never carried over.
 
 #### `processing_authorization_policy_purposes`
 
@@ -434,6 +517,7 @@ One row per policy and purpose:
 - `article_9_basis_code text null`
 - `provider_processing_allowed boolean`
 - `authorization_control`: `required_service`, `separate_consent`
+- exact `purpose_capability_version` foreign key
 
 The row records the approved legal scope and control type only. It contains no
 `dataset_release_allowed`, `training_allowed`, `evaluation_allowed`, or
@@ -545,7 +629,60 @@ AI identification label. Emotion-recognition processing has no fallback to
 this general notice: it remains disabled until its own approved disclosure,
 authority and technical classification are configured.
 
-### 6.5 Recording authorization snapshots
+### 6.5 `power_score` technical and Product/legal classification
+
+#### `processing_signal_classifications`
+
+The active ranking signal requires one named immutable classification artifact
+whose `signal_id` is `power_score`:
+
+- artifact/version ID, status: `draft`, `approved`, `conflict`, `rejected`,
+  `expired`
+- exact repository commit, deployment version and configuration hash
+- hashes/versions for `power_phrase_ranking`, every upstream producer and its
+  feature schema, weights, thresholds, flags and baselines
+- complete inputs and acoustic measurements
+- functional purpose and prohibited purposes
+- output schema/range and every downstream consumer/use
+- `performs_biometric_identification boolean` with technical proof; approval
+  under the founder contract requires `false`
+- `performs_sex_or_gender_inference boolean` with technical proof; approval
+  under the founder contract requires `false`
+- separate findings for emotion, intention, mental-state, stress,
+  threat/challenge and health inference under the applicable definitions
+- GDPR and AI Act conclusions, jurisdiction scope and required controls
+- founder-intent statement kept separate from the legal conclusion
+- technical reviewer, Product/legal approving authority and timestamps
+- evidence object key, SHA-256 and immutable artifact hash
+
+The currently implemented blend must be documented exactly. At the time of
+this design audit, `power_score` combines the one-sided professional-coach
+veto, transcript/content activation, slide stickiness and—when enabled—the
+`voice-confidence-v2` machine term. The latter reads `f0_sd`, `dynamic_db`,
+`f0_mean`, `wpm`, pause ratio/duration, terminal f0 contour and intensity
+envelope relative to the speaker's baseline. Its code also contains declared-
+sex routing and acoustic fallback sex inference from baseline f0.
+
+This creates an explicit unresolved conflict with the founder requirement that
+the classified pipeline confirm no sex/gender inference. It may also affect the
+legal analysis of whether the “confident/doubtful” spectrum infers emotion,
+intention, mental state, stress or challenge. Engineering does not decide
+those questions by renaming the signal. The retired challenge/threat inputs
+must remain absent from the live blend and the artifact must prove that no
+legacy caller reintroduces them.
+
+No policy or phase activates unless the artifact is `approved`, applies to the
+exact deployed code/configuration and contains no unresolved required finding.
+Any code, feature, weight, flag, baseline or downstream-use change expires the
+match and fails closed pending a new artifact. This gate does not remove or
+alter `power_score`, L1, L2 or L3.
+
+AC-9 remains absolute: the numeric score, inputs, bands, cue values, model
+judgments and classification artifact are never serialized to a user-facing
+payload. Users receive only the resulting product selection and separately
+approved qualitative feedback.
+
+### 6.6 Recording authorization snapshots
 
 #### `processing_authorization_snapshots`
 
@@ -556,7 +693,9 @@ In-place generalization of `ml_consent_snapshots`:
 - recording attempt, project and eventual Take
 - age receipt/state
 - residence event and latest required location assessment
-- exact required-service purpose-state object
+- exact required-service purpose-state object and operational-capability
+  versions
+- exact active `power_score` classification artifact/hash
 - `pooled_learning_eligible_at_acquisition` (always false in `core_service`;
   true in `learning_live` only when the exact Phase 2 receipt applies)
 - `captured_at`
@@ -569,7 +708,51 @@ historical snapshot proves acquisition conditions but never overrides a later
 refusal, policy retirement, service termination, retention expiry or deletion
 when current authority is rechecked.
 
-### 6.6 Historical recording coverage
+### 6.7 Historical further-processing compatibility
+
+#### `processing_further_use_assessments`
+
+One immutable GDPR Article 6(4) assessment covers an exact historical-reuse
+scope:
+
+- `id uuid primary key`
+- original Phase 1 policy and purpose versions
+- proposed Phase 2 policy and `pooled_model_improvement` purpose version
+- applicable jurisdiction set and assessment-policy version
+- typed compatibility factors and written rationale
+- outcome: `compatible`, `incompatible`,
+  `separate_authorization_required`
+- approving authority, approval reference and approved timestamp
+- evidence object key, SHA-256 and immutable assessment hash
+- effective/retired timestamps and optional `supersedes_id`
+
+The factors preserve the exact Product/legal analysis; Engineering neither
+scores them nor derives the outcome. The assessment is applicable only when
+the original/proposed purposes, policies, jurisdictions, implementation scope
+and evidence hashes match the recording and planned release.
+
+`compatible` is a positive assessment. Missing, stale, mismatched,
+`incompatible` or unresolved assessments are negative for historical reuse.
+`separate_authorization_required` is not permission by itself and never adds a
+checkbox automatically.
+
+#### `processing_further_use_authority_resolutions`
+
+If Product/legal separately approves a mechanism for an assessment whose
+outcome is `separate_authorization_required`, an immutable resolution links:
+
+- the assessment and exact historical recording/principal scope
+- the independently approved mechanism and legal artifact
+- its exact authorization event/evidence, where applicable
+- approving authority, timestamp and evidence hash
+- status: `satisfied`, `revoked`, `expired`
+
+Only `compatible`, or `separate_authorization_required` plus a current
+`satisfied` resolution, is a positive applicable result. Engineering cannot
+invent the mechanism, reinterpret Phase 2 Terms, or present another control
+without separate approval.
+
+### 6.8 Historical recording coverage
 
 Phase 2 acceptance may cover eligible recordings already stored, but an
 acceptance event alone does not make any historical object eligible. Coverage
@@ -579,6 +762,7 @@ requires a complete, immutable inventory.
 
 - `id uuid primary key`
 - exact Phase 2 acceptance event, policy and Product/legal approval
+- exact applicable further-processing assessment scope/hash
 - acquisition-principal graph root and immutable graph version
 - `coverage_cutoff_at` captured by the acceptance transaction
 - state: `inventorying`, `finalized`, `failed`, `superseded`
@@ -593,6 +777,8 @@ One row for every recording discovered at or before the cutoff:
 
 - coverage set, recording, attempt, Take and exact audio-object IDs
 - original acquisition principal and original authorization snapshot
+- applicable further-processing assessment and, where required, authority-
+  resolution ID
 - ownership-resolution evidence and principal-graph version
 - stored hash plus independently recomputed object SHA-256
 - original collection, current retention, expiry, deletion, quarantine and
@@ -605,17 +791,22 @@ Required exclusion reasons include `unresolved_owner`, `missing_audio_object`,
 `missing_original_snapshot`, `hash_unverified`, `hash_mismatch`,
 `retention_expired`, `deletion_pending`, `quarantined`,
 `legal_hold_blocks_training`, `unknown_or_third_party_provenance`,
-`orphaned_recording`, and `not_lawfully_retained`.
+`orphaned_recording`, `not_lawfully_retained`,
+`further_processing_assessment_missing`,
+`further_processing_assessment_inapplicable`,
+`further_processing_incompatible`, and
+`separate_authorization_required`.
 
 The Phase 2 acceptance transaction records the cutoff and commits quickly.
 An asynchronous worker then enumerates the complete principal graph. Every
 discovered recording becomes either a candidate or a typed exclusion. The set
 is finalized atomically only when counts reconcile and its deterministic hash
-verifies. Until then every historical item is learning-ineligible. Recordings
+verifies, and every candidate has a positive applicable further-processing
+result. Until then every historical item is learning-ineligible. Recordings
 created after the cutoff use their Phase 2 acquisition snapshots, preventing
 gaps and double inclusion.
 
-### 6.7 Release-time learning eligibility
+### 6.9 Release-time learning eligibility
 
 #### `ml_release_eligibility_decisions`
 
@@ -627,8 +818,11 @@ eligibility evaluation attempt:
 - exact `acquisition_principal_id` and canonical `speaker_id`;
 - original service acquisition snapshot;
 - current Phase 2 service acceptance and active policy;
+- exact operational `pooled_model_improvement` capability version;
 - historical coverage set/item when the recording predates the acceptance
   cutoff, or a Phase 2 acquisition snapshot for future recordings;
+- positive applicable Article 6(4) assessment/result for every historical
+  recording;
 - retention, deletion and purge state observed at evaluation;
 - stored audio hash and independently recomputed audio-object SHA-256;
 - applicable MLC-2 or MLC-3 contract/epoch/schema versions;
@@ -639,14 +833,16 @@ The release builder recomputes this decision immediately before including an
 item. It does not read eligibility from a policy-purpose boolean, an
 acquisition snapshot, an inventory disposition or a prior decision. Phase 1
 recordings are always excluded unless a finalized Phase 2 historical-coverage
-item proves every required condition. A dataset retry recomputes eligibility.
+item and positive applicable further-processing result prove every required
+condition. Phase 2 Terms alone never supply that result. A dataset retry
+recomputes eligibility.
 Training creation/retry, evaluation and promotion independently revalidate
 the current Phase 2 acceptance, release validity and operational capability.
 Refusal, policy retirement, termination, expiry, deletion or quarantine makes
 future use ineligible immediately. An immutable published release is
 invalidated and replaced through reviewed lineage rather than silently edited.
 
-### 6.8 Exact audio-object lineage
+### 6.10 Exact audio-object lineage
 
 #### `recording_audio_objects`
 
@@ -680,7 +876,7 @@ R2 and PostgreSQL cannot commit in one distributed transaction. Therefore:
 
 The route never dispatches processing until step 3 succeeds.
 
-### 6.9 Provider operations and permits
+### 6.11 Provider operations and permits
 
 #### `processing_provider_operations`
 
@@ -704,9 +900,12 @@ Append-only lifecycle: `authorized`, `queued`, `started`, `completed`,
 `issue_processing_provider_permit_v1` revalidates:
 
 - exact ownership and acquisition principal;
-- active current-phase service acceptance for product feedback, or an exact
-  non-terminal transition carryover for the original allowlisted product job;
+- active current-policy service acceptance for product feedback, or an exact
+  non-terminal policy-cutover carryover for the original allowlisted product
+  job;
 - purpose-specific current authority;
+- exact operational purpose capability and approved `power_score`
+  classification/configuration match;
 - `learning_live`, current Phase 2 acceptance, fresh release eligibility and
   the corresponding default-off capability for any dataset, training,
   evaluation or promotion provider operation;
@@ -722,7 +921,7 @@ dependency test. Carryover permits are tagged `product_completion_only` and
 are structurally rejected by coach, dataset, training, evaluation and promotion
 callers.
 
-### 6.10 Refusal, termination, deletion, and purge
+### 6.12 Refusal, termination, deletion, and purge
 
 An explicit refusal of the current Phase 2 policy—or simply not accepting it—
 is not termination or deletion. It blocks new recording, coaching and learning
@@ -789,10 +988,17 @@ The purge resolver registry is an explicit allowlist. An unknown table,
 provider, bucket, release link or artifact type changes the request to
 `review_required`; it never reports success.
 
-### 6.11 Security, immutability and RLS
+### 6.13 Security, immutability and RLS
 
 - Partial unique indexes enforce one active policy per phase and one finalized
   coverage set per acceptance/cutoff.
+- Purpose capabilities are unique by `(purpose_id, capability_version)`;
+  signal classifications by `(signal_id, artifact_version)` and exact code/
+  configuration hash; policy carryovers by `(policy_activation_id,
+  processing_job_id)`.
+- Further-use assessment lookup is indexed by original/proposed policy,
+  jurisdiction scope hash, outcome and effective/retired times; evidence and
+  assessment hashes are unique immutable verifiers, not mutable decisions.
 - Authorization status uses `(acquisition_principal_id, rollout_phase,
   occurred_at desc)`; historical inventory uses `(coverage_set_id,
   recording_id)` unique plus state/reason indexes; release checks use
@@ -801,8 +1007,11 @@ provider, bucket, release link or artifact type changes the request to
   content hashes are deliberately non-unique.
 - Foreign keys prohibit cross-principal recording/snapshot/coverage lineage;
   deferred constraints are allowed only inside the reviewed atomic RPC.
-- Canonical approval, authorization, snapshot, notice receipt, object
-  coordinates and purge event rows are append-only.
+- Canonical approval, purpose-capability version, signal classification,
+  further-use assessment/resolution, policy activation, authorization,
+  snapshot, notice receipt, object coordinates and purge event rows are
+  append-only. Carryover lifecycle changes append events through RPCs; their
+  identity/scope is immutable.
 - Browser roles receive no direct table write access.
 - Service role receives read access where possible; mutations use reviewed
   `SECURITY DEFINER` RPCs with fixed `search_path` and explicit grants.
@@ -826,7 +1035,8 @@ One reusable backend service owns:
 - historical-coverage cutoff creation and inventory status;
 - separately approved purpose grant/withdrawal only where the Product/legal
   artifact requires it;
-- current-purpose checks;
+- current-purpose and exact operational-capability checks;
+- exact applicable `power_score` classification resolution;
 - residence/location assessment resolution;
 - recording snapshot creation;
 - provider-permit issuance; and
@@ -849,15 +1059,34 @@ Public decisions:
 - `PLF_LEARNING_NOT_AUTHORIZED` — current phase/receipt or release evidence
   does not authorize this learning operation
 - `PLF_PROVIDER_NOT_AUTHORIZED` — 503, fail closed
+- `PLF_PURPOSE_NOT_OPERATIONAL` — 503, registry entry cannot authorize work
+- `PLF_SIGNAL_CLASSIFICATION_REQUIRED` — 503, exact `power_score` pipeline is
+  missing, mismatched, expired or unresolved
+- `PLF_HISTORICAL_REUSE_NOT_APPROVED` — typed historical exclusion, never a
+  fallback to Phase 2 Terms
 
-### 7.2 `DataPurgeOrchestrator`
+### 7.2 `PolicyActivationService`
+
+The only service allowed to activate a material policy version:
+
+- resolves materiality and takes the exclusive runtime lock;
+- validates Product/legal evidence, every required purpose capability and the
+  exact `power_score` classification;
+- freezes the server cutoff and reconciles all eligible non-terminal jobs;
+- creates narrow policy-cutover carryovers; and
+- activates the policy, plus any reviewed phase/capability events, in one
+  transaction.
+
+It cannot alter the ranking algorithm, legal conclusions or user receipts.
+
+### 7.3 `DataPurgeOrchestrator`
 
 One durable worker owns cancellation, inventory, deletion, invalidation and
 completion. It uses leases, idempotent target actions, exponential retry and a
 dead-letter/review state. A web request only creates the termination/purge
 request; it never attempts a long synchronous purge.
 
-### 7.3 `AuthorizedProviderAdapter`
+### 7.4 `AuthorizedProviderAdapter`
 
 All in-scope transcription and generation calls use a provider-neutral adapter
 that requires a `ProviderProcessingPermit`. A direct OpenAI client is an
@@ -872,16 +1101,17 @@ implementation error for a PLF user-data origin.
 | `POST /v2/processing-authorization/accept-service` | Account or signed guest | Atomic service acceptance, required-purpose rows, age/residence receipts, initial location assessment and speaker binding when resolvable | One explicit button; Phase 1 is future-only/core, Phase 2 is existing-and-future and captures a cutoff |
 | `POST /v2/processing-authorization/refuse-current-policy` | Account or signed guest | Immutable explicit refusal | Blocks new service without termination or purge; omission remains no response, not refusal |
 | `POST /v2/processing-authorization/terminate-service` | Account or signed guest | Atomic service termination and purge request | Immediately blocks all new recording/processing |
-| historical coverage inventory job | Reviewed service | Complete item inventory and atomic finalized set | Every pre-cutoff recording is candidate or typed exclusion; no dataset side effect |
-| `transition_to_learning_live_v1` reviewed RPC | Deployment service with exact approvals | Phase transition, dataset/training enable events and complete carryover inventory in one transaction | Fails closed unless the bounded pipeline is operational and both capabilities are armed |
+| historical coverage inventory job | Reviewed service | Complete item inventory and atomic finalized set | Every pre-cutoff recording is candidate or typed exclusion; candidates require positive applicable further-use result; no dataset side effect |
+| `activate_processing_policy_v1` reviewed RPC | Deployment service with exact approvals | Policy activation plus complete prior-policy carryover inventory in one transaction | Used for every material policy version change; fails if purpose capabilities or signal classification do not match |
+| `transition_to_learning_live_v1` reviewed RPC | Deployment service with exact approvals | Wraps policy activation, phase transition and dataset/training enable events in one transaction | Fails closed unless the bounded pipeline is operational and both capabilities are armed |
 | `POST /v2/ai-notices/:version/rendered` | Account or signed guest | Render receipt | Authenticated post-paint acknowledgement |
 | `POST /v2/lab/recordings` | Account or signed guest | Audio object, attempt, snapshot and job/outbox in one DB transaction after R2 upload | Rejects before provider work without current authority |
 | `POST .../retry-processing` | Exact owner | Provider operation only after revalidation | Termination blocks retry |
 | `POST .../retry-ideal-text` | Exact owner | Provider operation only after revalidation | No re-upload/re-transcription unless authorized operation needs it |
 | `POST .../send-to-coach` | Exact owner | Coach-delivery event | Requires `coach_review` purpose |
-| queue worker claim | Service | Provider permit and operation events | Rechecks current authority or exact transition carryover before download and each provider stage |
+| queue worker claim | Service | Provider permit and operation events | Rechecks current authority or exact policy-cutover carryover before download and each provider stage |
 | coach queue claim/read | Coach | Existing blind assignment events | Cancelled/terminated items cannot be newly opened |
-| future dataset builder | Offline reviewed service | Release/exclusion records plus `ml_release_eligibility_decisions` | Recomputes acquisition, current Phase 2 authority, historical/future coverage, principal/speaker, retention/deletion, audio hash and surface-contract eligibility; remains disabled |
+| future dataset builder | Offline reviewed service | Release/exclusion records plus `ml_release_eligibility_decisions` | Recomputes acquisition, current Phase 2 authority, historical/future coverage, Article 6(4)/separate-authority result, principal/speaker, retention/deletion, audio hash and surface-contract eligibility; remains disabled |
 
 No endpoint accepts an arbitrary principal ID from the browser as authority.
 
@@ -913,9 +1143,18 @@ On transition to Phase 2, every existing user must re-accept once before a new
 recording or new coaching. The screen prominently states—outside the full
 Terms—that eligible recordings already stored and future recordings may be
 used for Willab's bounded pooled speech-coaching models. The server action
-captures the historical cutoff and starts the inventory. Before acceptance,
+captures the historical cutoff and starts the inventory only against an
+applicable further-processing assessment. Before acceptance,
 historical recordings remain excluded from shared datasets/training. Before
 inventory finalization, they remain excluded even after acceptance.
+
+If the applicable Article 6(4) outcome is missing, incompatible or unresolved,
+the affected stored recording receives a typed exclusion. Phase 2 acceptance
+does not override that result and the product does not invent a second
+checkbox. Product/legal may later approve a separate mechanism; until its
+immutable resolution is satisfied, the recording stays excluded. Recordings
+created after acceptance use their Phase 2 snapshots and do not use the
+historical-compatibility route.
 
 If the user does not accept, existing projects and completed content remain
 viewable and exportable, and deletion plus Terms/Privacy/data-rights surfaces
@@ -958,14 +1197,15 @@ confirmation:
 - the user is not told deletion completed until every required target has a
   recorded terminal outcome.
 
-### 9.7 Recording already processing during the Phase 2 transition
+### 9.7 Recording already processing during a material policy cutover
 
-The user is not asked to repeat a recording that Phase 1 already accepted.
-The frozen carryover lets that exact job finish its normal feedback pipeline,
-even if the user has not yet accepted Phase 2. It does not unlock another Take,
-new coaching or any learning use. The next new recording/coaching request shows
-the Phase 2 acceptance screen. If the user terminates or deletes the account,
-the carryover is cancelled like every other product job.
+The user is not asked to repeat a recording that the prior policy already
+accepted. The frozen carryover lets that exact job finish its normal feedback
+pipeline even if the user has not yet accepted the new policy. It does not
+unlock another Take, a new manual retry, new coaching or any learning use. The
+next new recording/coaching request shows the current-policy acceptance screen.
+If the user terminates or deletes the account—or retention expires or the item
+is quarantined—the carryover is cancelled like every other product job.
 
 ## 10. Coach flow
 
@@ -985,10 +1225,11 @@ The current PLF phase changes queue eligibility only:
 - a generic “item no longer available” response prevents identity/status
   leakage.
 
-The `personalized_exercise_recommendation` product purpose may be represented
-by an approved policy, but exercise matching remains MLC-3 work and is not implemented by
-this design. The technical `exercise_adequacy_classification` surface appears
-only in MLC-3 provenance.
+`personalized_exercise_recommendation` is registry-only and cannot appear in an
+active policy until exercise matching and all operational controls exist.
+Exercise matching remains MLC-3 work and is not implemented by this design.
+The technical `exercise_adequacy_classification` surface appears only in MLC-3
+provenance.
 
 ## 11. Service termination and deletion traversal
 
@@ -1029,17 +1270,17 @@ rehearsed against a production-like backup, and separately reviewed.
 
 | Slice | Dark deliverable | Gate before activation |
 | --- | --- | --- |
-| A | Phase-neutral registry, approvals, events, runtime transitions, RLS/RPCs | Engineering + Product/legal schema review |
-| B | Account/guest status, one-action acceptance/refusal/termination APIs and dark UI | Exact-copy Product/legal + Engineering review |
+| A | Phase-neutral registry, purpose-capability versions, further-use assessments/resolutions, `power_score` classifications, policy activations/carryovers, events and RLS/RPCs | Engineering + Product/legal + ML/data schema review |
+| B | Account/guest status, one-action acceptance/refusal/termination APIs and dark UI; registry-only purposes remain unavailable | Exact-copy Product/legal + Engineering review |
 | C | Audio-object SHA-256, atomic recording boundary and orphan sweeper | Engineering + ML/data lineage review |
 | D | Provider permits and complete provider dependency refactor | Security/Engineering + processor review |
 | E | Historical-coverage sets/items and inventory-only worker | ML/data + Product/legal eligibility review |
 | F | Purge inventory and synthetic deletion execution | Product/legal + Engineering deletion acceptance |
-| G | Phase 1 readiness monitor and founder rehearsal | Product/legal + Security + Engineering |
-| H | Separately authorized `core_service` production transition | Explicit deployment authorization |
-| I | Bounded dataset/training infrastructure, carryover inventory, end-to-end production rehearsal and separately approved `armed` dataset/training capabilities while Phase 1 still blocks execution | MLC-2/MLC-3 + Product/legal + security + processor + production reviews |
-| J | Phase 2 exact policy, re-acceptance UI and historical inventory rehearsal | Product/legal + ML/data + Engineering acceptance |
-| K | Atomic `learning_live` transition, dataset/training unlock and frozen Phase 1 carryover inventory | Explicit founder deployment authorization; all-or-nothing transaction |
+| G | Phase 1 readiness monitor, exact implemented `power_score` classification and founder rehearsal | Product/legal + Security + Engineering; classification conflict must be resolved |
+| H | Separately authorized `core_service` policy activation with generic cutover-carryover reconciliation | Explicit deployment authorization |
+| I | Bounded dataset/training infrastructure, general cutover inventory, end-to-end production rehearsal and separately approved `armed` dataset/training capabilities while Phase 1 still blocks execution | MLC-2/MLC-3 + Product/legal + security + processor + production reviews |
+| J | Phase 2 exact policy, Article 6(4) assessment/resolution, re-acceptance UI and historical inventory rehearsal | Product/legal + ML/data + Engineering acceptance |
+| K | Atomic `learning_live` transition, dataset/training unlock and frozen prior-policy carryover inventory | Explicit founder deployment authorization; all-or-nothing transaction |
 | L | Evaluation and promotion capabilities | Each capability separately reviewed and authorized; no implied activation |
 
 No migration seeds a policy, creates a user receipt, reinterprets historical
@@ -1064,11 +1305,18 @@ learning-provenance dual write. Product state needed by the live app may remain
 in mixed legacy tables until migrated, but those tables cannot authorize a
 dataset, training run or provider operation.
 
+Every material policy activation first verifies that each required purpose is
+operational and that the exact deployed `power_score` classification is
+approved and hash-matched. It then freezes the cutoff, reconciles all eligible
+non-terminal prior-policy product jobs, creates their carryovers and activates
+the new policy in the same transaction. This applies within a phase as well as
+between phases.
+
 `learning_live` cannot exist while dataset release or training remains merely
 disabled/armed. Those two capabilities are pre-approved and armed under Phase
 1, then enabled by the same PostgreSQL transaction that changes the phase.
 Evaluation and promotion remain later independent gates. The same transition
-freezes all non-terminal Phase 1 jobs into carryovers before new Phase 2
+also satisfies the universal policy-cutover contract before new Phase 2
 acceptance is required.
 
 ### Data treatment at cutover
@@ -1082,6 +1330,8 @@ acceptance is required.
 - Phase 1 recordings remain pooled-ineligible.
 - Phase 2 existing-user acceptance creates a cutoff and inventory; it does
   not immediately make stored recordings eligible.
+- Historical items remain excluded without a positive applicable Article 6(4)
+  result or a separately approved and satisfied authority resolution.
 - Deleted, expired, orphaned, quarantined, legally blocked and unknown-
   provenance recordings remain typed exclusions.
 
@@ -1094,7 +1344,8 @@ rollback is only to `killed`, never to legacy authority:
 1. append a reviewed transition to `killed`;
 2. stop new recording, coach delivery and provider work;
 3. keep receipts, objects, snapshots, coverage sets and queued events
-   immutable;
+   immutable, including further-use assessments, signal classifications,
+   policy activations and carryovers;
 4. keep cancellation/purge and transactional-outbox retries operational;
 5. repair forward or deploy the last compatible phase-aware build; and
 6. reactivate a service phase only through a new reviewed transition.
@@ -1112,6 +1363,13 @@ Aggregate-only readiness and production metrics include:
 - unknown/contradictory state (must be zero and resolves killed);
 - passive/page-render acceptance attempts (must be zero);
 - approval-copy/evidence hash verification failures;
+- active policy-purpose rows whose capability is not exact and operational
+  (must be zero), including any registry-only exercise purpose;
+- active policy without an approved hash-matched `power_score` classification
+  (must be zero and resolves killed);
+- `power_score`, confidence values/bands, cue values or classification fields
+  observed on user-facing payloads (must be zero under AC-9);
+- signal-classification code/config drift and expired/conflict artifacts;
 - Phase 1 snapshots or release decisions marked pooled-eligible (must be zero);
 - `learning_live` without dataset and training both enabled by the same
   transition transaction (must be zero);
@@ -1119,10 +1377,13 @@ Aggregate-only readiness and production metrics include:
 - dataset-builder/training-worker heartbeat, queue age and last successful
   bounded cycle against the approved cadence while `learning_live`;
 - Phase 2 recording/coaching attempts without the current receipt;
-- non-terminal pre-transition Phase 1 jobs missing a carryover row (zero);
+- non-terminal pre-cutover prior-policy jobs missing a carryover row for any
+  material policy activation (zero);
 - carryover permits used by a different job or non-product operation (zero);
 - historical coverage sets by state/age and count mismatches;
 - historical items treated eligible before atomic finalization (must be zero);
+- historical candidates/releases without a positive applicable further-use
+  result (must be zero), grouped by typed assessment exclusion;
 - coverage cutoff gaps or double-inventoried recordings (must be zero);
 - new recordings without snapshots or verified audio-object hashes (zero);
 - provider operations without valid permits or after termination (zero);
@@ -1138,6 +1399,20 @@ Alerts use opaque IDs, phase/policy versions, counts and reason codes—never
 audio, transcripts, blind packets or legal evidence contents.
 
 ## 15. Test and verification matrix
+
+### Schema and policy constraints
+
+- purpose capabilities, signal classifications, further-use assessments/
+  resolutions, policy activations and carryover scopes are immutable;
+- only validated RPCs append lifecycle events or resolve current state;
+- active policy-purpose FKs require exact operational capability versions;
+- policy activation rejects missing/mismatched classification, purpose,
+  approval, monitoring, retention, deletion or rights references;
+- historical coverage finalization rejects a candidate without a positive
+  applicable further-use result;
+- content/evidence hashes verify bytes but never substitute for legal or human
+  decisions;
+- browser, coach, admin and ordinary service paths have no direct write bypass.
 
 ### Acceptance, state and identity
 
@@ -1160,7 +1435,8 @@ audio, transcripts, blind packets or legal evidence contents.
 - one action permits recording, transcription, coaching and individual profile;
 - it creates no pooled-learning authority or eligibility;
 - every Phase 1 release candidate is excluded unless later covered by a valid
-  finalized Phase 2 historical item;
+  finalized Phase 2 historical item with a positive applicable further-use
+  result;
 - dataset/training/evaluation/promotion capabilities remain false;
 - the recording→transcription→ranking→feedback loop is unchanged and does not
   wait for training.
@@ -1179,14 +1455,43 @@ audio, transcripts, blind packets or legal evidence contents.
   exclusion; post-cutoff recordings use Phase 2 snapshots;
 - no historical item is eligible before re-acceptance and atomic inventory
   finalization;
+- every historical candidate resolves the exact original/proposed purposes,
+  policies and jurisdiction to an immutable Article 6(4) assessment;
+- missing, stale, mismatched, unresolved and incompatible assessments create
+  typed exclusions and cannot be overridden by Phase 2 Terms;
+- `separate_authorization_required` remains excluded until an independently
+  approved mechanism has a current satisfied resolution; no UI control is
+  synthesized automatically;
 - only lawfully collected/retained, exact-owner, hash-verified, non-deleted,
   non-expired, non-quarantined and legally available items may become
   candidates;
 - orphaned, unknown/third-party provenance and unverifiable objects stay
   excluded;
+- future recordings acquired under Phase 2 use their acquisition snapshots and
+  never masquerade as historical compatibility candidates;
 - a changed policy requires a new exact receipt.
 
-### Atomic activation and in-flight completion
+### Operational-purpose and `power_score` gates
+
+- a purpose may be registered as `registry_only` without affecting users;
+- policy activation fails if any required purpose is not exact and
+  `operational`, or lacks monitoring, retention, deletion or rights handlers;
+- `personalized_exercise_recommendation` cannot enter an active policy before
+  its feature exists; `exercise_adequacy_classification` is rejected as a
+  policy purpose;
+- the exact deployed code/configuration/feature manifest hashes to the approved
+  `power_score` classification artifact;
+- missing, draft, conflict, rejected, expired or mismatched classification
+  blocks every phase/policy activation;
+- validation detects the current acoustic sex-routing implementation and does
+  not permit a false “no sex/gender inference” confirmation;
+- retired challenge/threat inputs cannot reach the current ranker and any
+  reintroduced runtime path expires classification;
+- L1/L2/L3 regression fixtures and `power_score` ordering remain unchanged;
+- user payload schemas and serialized responses contain no `power_score`,
+  numeric confidence, band, cue value or classification conclusion.
+
+### Atomic policy activation and in-flight completion
 
 - dataset release and training can be approved/armed under Phase 1 but cannot
   execute there;
@@ -1194,24 +1499,32 @@ audio, transcripts, blind packets or legal evidence contents.
   approvals/configuration verify;
 - phase change plus dataset/training enablement is one all-or-nothing database
   transaction;
+- every same-phase material policy change uses the same locked activation and
+  carryover contract;
 - a simulated failure at each append leaves the phase and capabilities
   unchanged;
-- every non-terminal Phase 1 job at the cutoff receives exactly one carryover;
-- concurrent recording acceptance either commits as Phase 1 before the locked
-  cutoff and enters the inventory, or resolves Phase 2 afterward; it cannot
-  fall between them;
+- every eligible non-terminal prior-policy job at the cutoff receives exactly
+  one carryover and reconciliation counts/hash match;
+- concurrent recording acceptance either commits under the prior policy before
+  the locked cutoff and enters the inventory, or resolves the new policy
+  afterward; it cannot fall between them;
 - the exact carryover finishes only its already-accepted product-feedback
-  stages without a Phase 2 receipt;
+  stages without a new-policy receipt;
 - carryover cannot authorize a new recording, post-cutoff manual retry, coach
   delivery, dataset, training, evaluation or promotion;
-- termination/deletion/quarantine cancels carryover immediately;
-- terminal Phase 1 jobs and jobs accepted after the cutoff receive no carryover;
+- termination, deletion, retention expiry or quarantine cancels carryover
+  immediately, including when racing a provider-stage claim;
+- retrying a failed carryover is limited to the original durable job's existing
+  retry semantics; no user/manual retry creates another carryover;
+- terminal prior-policy jobs and jobs accepted after the cutoff receive no
+  carryover;
 - Phase 2 acceptance and feedback remain independent of training-run duration.
 
 ### Learning-boundary races
 
 - release creation/retry independently recomputes current Phase 2 authority,
-  principal/speaker lineage, coverage, retention/deletion and object hash;
+  principal/speaker lineage, coverage, applicable further-use result,
+  retention/deletion and object hash;
 - training creation/retry rechecks current authority and release validity;
 - evaluation and promotion recheck independently;
 - refusal, policy retirement or termination racing any worker fails closed;
@@ -1270,12 +1583,18 @@ Before each cutover, Engineering must provide:
 2. product-state, learning-only, mixed-purpose or unknown table classification;
 3. provider-caller classification with no unresolved `mixed` or `unknown` row;
 4. bucket/key, hash and deletion-adapter inventory;
-5. historical inventory reconciliation and exclusion-reason report;
-6. migration preview and before/after counts for every allowlisted table;
-7. proof passive and legacy paths cannot authorize new work;
-8. proof release/training code cannot read legacy authority;
-9. rollback/kill-switch and alert-path rehearsal; and
-10. Product/legal, Engineering, ML/data, security and processor evidence
+5. purpose registry-to-operational-capability matrix with retention, deletion,
+   rights and monitoring links;
+6. exact `power_score` input/producer/config/downstream manifest and approved
+   classification hash;
+7. Article 6(4) assessment/resolution applicability report plus historical
+   inventory reconciliation and typed exclusions;
+8. every material policy-cutover reconciliation/carryover report;
+9. migration preview and before/after counts for every allowlisted table;
+10. proof passive and legacy paths cannot authorize new work;
+11. proof release/training code cannot read legacy authority;
+12. rollback/kill-switch and alert-path rehearsal; and
+13. Product/legal, Engineering, ML/data, security and processor evidence
     required for that slice.
 
 Unknown dependencies fail closed. Each mixed-purpose dependency has a named
@@ -1283,27 +1602,32 @@ migration owner and must pass ML/data review before its learning path changes.
 
 ## 17. Remaining externally owned approvals
 
-Phase 1 activation requires:
+Before either phase can activate:
 
-1. a new Product/legal artifact expressly superseding PLF-1.1 for Phase 1,
-   including exact Terms/Privacy/AI-notice copy and hashes and approval of the
-   individual-learning-profile purpose;
-2. exact lawful-basis and any Article 9 code per purpose;
-3. jurisdiction/18+ policy and risk-trigger handling;
-4. processor inventory, DPAs/transfers and deletion/retention capabilities;
-5. approved retention schedule and legal/security/billing exceptions;
-6. DPIA/security review and AI Act classification/disclosure decision;
-7. updated GDPR Article 30 record of processing activities covering purposes,
+1. a new Product/legal artifact expressly superseding PLF-1.1 for Phase 1 and
+   defining Phase 2, with exact Terms/Privacy/AI-notice copy and hashes;
+2. exact lawful-basis and any Article 9 code for every active purpose;
+3. a reviewed purpose-capability matrix proving each active required purpose
+   is operational and connected to monitoring, retention, deletion and
+   data-rights controls;
+4. the exact `power_score` technical manifest and Product/legal classification,
+   including resolution of the present acoustic sex-routing and confidence-
+   spectrum questions, or a separate founder north-star decision;
+5. jurisdiction/18+ policy and risk-trigger handling;
+6. processor inventory, DPAs/transfers and deletion/retention capabilities;
+7. approved retention schedule and legal/security/billing exceptions;
+8. DPIA/security review and applicable AI/emotion/biometric classification and
+   disclosure decision;
+9. updated GDPR Article 30 record of processing activities covering purposes,
    data categories, recipients/transfers, retention and security measures;
-8. complete data-subject-rights operating procedure, including access, export,
-   correction, objection/restriction where applicable and deletion handling;
-9. tested security-incident and GDPR personal-data-breach procedure;
-10. documented AI Act provider/deployer role determination and resulting
-    obligations;
-11. documented Article 50(2) machine-readable output-marking applicability and
+10. complete data-subject-rights operating procedure, including access,
+    export, correction, objection/restriction where applicable and deletion;
+11. tested security-incident and GDPR personal-data-breach procedure;
+12. documented AI Act provider/deployer role determination and obligations;
+13. documented Article 50(2) machine-readable output-marking applicability and
     implementation decision; and
-12. Product, Product/legal, Engineering, security and production deployment
-   approval.
+14. Product, Product/legal, Engineering, ML/data, security and production
+    approval for the exact phase/policy activation.
 
 Phase 2 additionally requires:
 
@@ -1312,50 +1636,76 @@ Phase 2 additionally requires:
 2. exact prominent existing-and-future-recordings copy and a written
    contractual-necessity opinion establishing objective necessity rather than
    relying on Terms wording alone;
-3. completed lineage, historical inventory, release, training, evaluation,
+3. an immutable, jurisdiction-applicable Article 6(4) assessment for Phase 1
+   historical reuse and separately approved mechanisms/resolutions wherever
+   compatibility is not positive;
+4. completed lineage, historical inventory, release, training, evaluation,
    promotion, deletion and model-quarantine controls;
-4. approved MLC-2/MLC-3 label/release/evaluation contracts;
-5. processor/security assessment for every new transfer and training system;
-6. re-acceptance, refusal and rollback rehearsal; and
-7. separate Product/legal, ML/data, Engineering, security and founder
+5. approved MLC-2/MLC-3 label/release/evaluation contracts;
+6. processor/security assessment for every new transfer and training system;
+7. re-acceptance, refusal, general policy-cutover carryover and rollback
+   rehearsal; and
+8. separate Product/legal, ML/data, Engineering, security and founder
    activation approvals.
 
 Dataset creation, training, evaluation and promotion each remain separately
 unauthorized until their own operational review. Engineering must not guess
 any external artifact or legal code.
 
-## 18. Revision summary and decision filter
+## 18. Unresolved conflict requiring an external decision
 
-ED-PLF-1.2 changes ED-PLF-1.1 by:
+Founder intent classifies `power_score` as internal speaking-delivery/ranking,
+not emotion, intention, health, identity, sex or gender inference. The current
+source audit cannot yet support the required “no sex/gender inference” finding:
+`voice-confidence-v2`, which can feed `power_score`, contains declared-sex
+weight routing and default-on acoustic fallback sex inference from baseline
+f0. It also emits a “confident/doubtful” spectrum that Product/legal must
+classify under the applicable GDPR and AI Act definitions.
 
-- replacing the optional pooled-learning checkbox model with honest Phase 1
-  core service and conditional Phase 2 continuously learning service;
-- requiring a new Product/legal artifact to supersede PLF-1.1 for Phase 1 as
-  well as a separate exact Phase 2 artifact;
-- requiring one explicit current-policy action in either phase;
-- requiring existing-user Phase 2 re-acceptance with prominent coverage of
-  eligible stored and future recordings;
-- introducing complete immutable historical coverage sets and typed exclusions;
-- separating refusal/no response from termination and deletion;
-- making runtime phase transitions authoritative and defaulting unknown to
-  killed;
-- keeping dataset, training, evaluation and promotion as independent default-
-  off capabilities, while atomically enabling pre-armed dataset/training with
-  the Phase 2 transition;
-- allowing only a frozen inventory of already-accepted Phase 1 product jobs to
-  finish without granting them learning eligibility;
-- making account-deletion triggers independently attributable and prohibiting
-  acoustic speaker binding; and
-- requiring rollback to killed, never legacy authorization.
+The retired challenge/threat inputs are absent from the current
+`power_score` API and must remain absent. The repository still contains
+historical challenge/threat corpus vocabulary and retired artifacts; the exact
+classification must prove they are non-executing for the deployed pipeline or
+classify any surviving operation. An active challenge/threat inference path is
+an additional explicit emotion/intention conflict, not a compatibility alias.
+
+No code or L1/L2/L3 rule changes in this design. The conflicts must be resolved
+by an exact Product/legal classification of the deployed pipeline or by a
+separate founder north-star decision about the conflicting upstream behavior.
+Until then, policy/phase activation fails closed. Engineering must neither
+remove the term nor approve the legal conclusion itself.
+
+## 19. ED-PLF-1.2 → ED-PLF-1.3 summary and decision filter
+
+ED-PLF-1.3 preserves every ED-PLF-1.2 correction and adds:
+
+- immutable Article 6(4) assessments and separately approved authority
+  resolutions before any Phase 1 historical recording can qualify for Phase 2;
+- typed exclusion when compatibility is negative, unresolved or inapplicable,
+  without inferring permission or inventing a checkbox;
+- one general atomic carryover contract for every material policy-version
+  change, not only the Phase 1→2 transition;
+- a hash-bound technical/Product-legal classification for the exact deployed
+  `power_score` pipeline, with AC-9 and L1/L2/L3 preserved;
+- explicit recording of the current sex-routing/confidence-spectrum conflict;
+- a universal operational-purpose gate, keeping personalized exercises
+  registry-only and exercise adequacy in MLC-3 provenance until implemented;
+- corresponding migration, monitoring, race, cancellation, reconciliation,
+  release and regression controls.
+
+It also preserves: PLF-1.1 as historical only; atomic Phase 2 dataset/training
+activation; independent account-deletion attribution; provenance-only speaker
+binding; RoPA, data-rights and breach procedures; AI provider/deployer and
+Article 50(2) reviews; and rollback to killed rather than legacy authority.
 
 ```yaml
 VERDICT: JUSTIFIED-SCAFFOLDING
 CATEGORY: F1-SUPPORT
-WHY: The design separates a truthful core-service phase from an atomically operational learning-live phase, preserves already-promised feedback across the switch, and prevents passive, retroactive or unverifiable learning eligibility.
-REDIRECT: Obtain the superseding phase-specific Product/legal artifacts, then implement only after the required reviews; learning_live must atomically unlock the already-armed bounded learning loop.
+WHY: These controls make the authorization architecture safe for the live F1 processing loop and prevent unsupported historical reuse.
+REDIRECT: Complete Product/legal review, then request separate authorization for implementation. No production activation is authorized.
 ```
 
-> ENGINEERING DESIGN READY — ED-PLF-1.2 awaits Product/legal, Engineering,
+> ENGINEERING DESIGN READY — ED-PLF-1.3 awaits Product/legal, Engineering,
 > ML/data, security, processor and production review. No implementation,
 > migration, data deletion, deployment, dataset creation, training, evaluation,
 > promotion or runtime activation has started.
