@@ -11,10 +11,13 @@ Decision-filter stamp:
 
 ## 1. Scope and non-authorization boundary
 
-This document is a standalone implementation design for the locked staged
+This document is a standalone implementation design for the proposed staged
 rollout. [`PRODUCT-LEGAL-FLOW-PLF-1.1.md`](./PRODUCT-LEGAL-FLOW-PLF-1.1.md)
-governs Phase 1. Phase 2 requires a new exact Product/legal artifact before it
-can become active.
+is retained as historical design evidence but governs neither phase: its
+optional pooled-learning control conflicts with this staged contract and it
+does not approve the individual-learning-profile purpose. A new exact
+Product/legal artifact must supersede PLF-1.1 for Phase 1 and define Phase 2
+before either phase can become active.
 It defines the dependency cutover, schema, APIs, user/guest flow, provider
 boundary, termination/deletion workflow, rollout, rollback, monitoring, and
 tests.
@@ -59,7 +62,8 @@ approved Phase 1 policy                 approved Phase 2 policy
 one Agree and continue                  one current Agree and continue
 core + individual profile               bounded pooled learning required
 pooled eligibility always false         historical + future scope permitted
-dataset/training gates off               separate gates still required
+dataset/training gates off               dataset/training atomically live
+                                          evaluation/promotion remain gated
 ```
 
 In either service phase, an accepted recording follows one product path:
@@ -124,6 +128,12 @@ Phase 1 or Phase 2 acceptance.
 | `/v2/projects` | Creates an owner principal if needed | Reuse; project/deck setup may occur before recording authority |
 | `/v2/projects/claim` | Claims or aliases a guest graph into an account | Preserve immutable acquisition origin; never copy an acceptance event |
 | `ml_speakers` / `ml_speaker_principals` | Canonical speaker identity for learning splits | Reuse; do not add a parallel `canonical_subject_id` graph |
+
+Canonical speaker binding is derived solely from authenticated account/signed-
+guest ownership and immutable claim provenance. It never uses acoustic 1:1
+verification, 1:N identification, cross-recording voice matching, embeddings
+for identity, or a claimed similarity between voices. An unresolved provenance
+graph remains unresolved and learning-ineligible; audio cannot resolve it.
 
 When a guest principal is claimed into an account:
 
@@ -215,19 +225,23 @@ PLF deletion.
     separate records.
 16. Audio SHA-256 verifies exact bytes; it is not globally unique identity and
     is never treated as a speaker identifier or voiceprint.
-17. A provider call carrying PLF user data cannot occur without a typed permit.
-18. Refusal or missing current acceptance blocks new service but does not
+17. Canonical speaker identity is bound only through account/guest provenance;
+    acoustic verification, identification and voice matching are prohibited.
+18. A provider call carrying PLF user data cannot occur without a typed permit.
+19. Refusal or missing current acceptance blocks new service but does not
     delete existing content or create a purge request.
-19. Termination blocks new processing immediately and starts cancellation and
+20. Termination blocks new processing immediately and starts cancellation and
     purge; deletion is a separately attributable request where applicable.
-20. Release eligibility is recomputed from source evidence; it is never
+21. Release eligibility is recomputed from source evidence; it is never
     inherited from a policy-purpose field or acquisition snapshot.
-21. Dataset creation, training, evaluation, and promotion remain independently
-    default-off and require separate authorization even in `learning_live`.
-22. Feedback never waits for a training run.
-23. Phase 1 retention follows only the approved core-service schedule; it is
+22. Dataset creation, training, evaluation, and promotion use independent
+    default-off controls. Dataset/training require separate prior approval and
+    are enabled atomically with `learning_live`; evaluation/promotion remain
+    independently gated afterward.
+23. Feedback never waits for a training run.
+24. Phase 1 retention follows only the approved core-service schedule; it is
     never extended merely because a future learning phase is contemplated.
-24. No founder, coach, administrator, migration, worker, or script bypass
+25. No founder, coach, administrator, migration, worker, or script bypass
     exists.
 
 ## 5. Target architecture
@@ -254,6 +268,13 @@ Phase 2 existing-user acceptance
 
 canonical events -> surface eligibility -> dataset release
   -> training/calibration -> evaluation -> promotion -> assigned serving model
+
+core_service + armed(dataset, training) + approvals
+  -> one atomic transition
+       ├─ learning_live
+       ├─ dataset enabled
+       ├─ training enabled
+       └─ frozen Phase 1 in-flight completion inventory
 
 refusal/missing receipt -> new service blocked; content/legal access retained
 termination/deletion -> frozen purge targets -> DB/R2/provider/queues/ML lineage
@@ -347,13 +368,18 @@ Append-only transitions provide the authoritative state machine:
 `current_processing_runtime_state_v1` resolves the latest valid transition.
 Missing, malformed, contradictory, or unknown state resolves to `killed`.
 No environment variable or frontend value can independently activate a phase.
+Recording acceptance and phase transition RPCs serialize on one dedicated
+runtime-guard row: acceptance takes the reviewed shared lock before resolving
+the phase; transition takes the exclusive lock before freezing carryovers and
+changing state. A Phase 1 job therefore cannot appear between the carryover
+inventory and the Phase 2 transition.
 
 #### `processing_operational_capability_events`
 
 Operational learning gates are a separate append-only state machine:
 
 - `capability`: `dataset_release`, `training`, `evaluation`, `promotion`
-- `state`: `disabled`, `enabled`, `killed`
+- `state`: `disabled`, `armed`, `enabled`, `killed`
 - exact surface scope and environment
 - activation and retirement timestamps
 - Product/legal, ML/data, Engineering, security and founder approval references
@@ -361,9 +387,41 @@ Operational learning gates are a separate append-only state machine:
 - immutable event hash
 
 The latest valid event resolves each capability; missing, malformed or unknown
-state is `disabled`. A policy row cannot enable a capability. Phase 1 rejects
-all four even if a bad capability event says enabled. Phase 2 merely makes
-separate activation possible; it never implies it.
+state is `disabled`. A policy row cannot enable a capability. `armed` means the
+implementation, approvals and production configuration are ready but the
+operation is still forbidden. Phase 1 rejects all four even if a malformed or
+incorrect event says enabled.
+
+Dataset release and training must be separately approved and `armed` while the
+runtime remains `core_service`. The reviewed
+`transition_to_learning_live_v1` RPC verifies the exact Phase 2 policy, all
+transition approvals, an operational bounded learning pipeline, and both
+armed capabilities; in one database transaction it appends the
+`learning_live` transition and the two `enabled` capability events. Any failed
+check rolls back the entire transition. Evaluation and promotion remain
+separately disabled/armed/enabled later and are not implied by Phase 2.
+
+#### `processing_transition_carryovers`
+
+The same Phase 2 transition transaction freezes the exact non-terminal Phase 1
+product-feedback jobs that were already accepted before its server cutoff:
+
+- transition, processing-job, recording, attempt and authorization-snapshot IDs
+- acquisition principal and original `core_service` policy
+- accepted-before cutoff and frozen job state
+- allowlisted remaining product stages
+- state: `pending`, `running`, `completed`, `failed`, `cancelled`
+- terminal reason/time and immutable carryover hash
+
+A carryover is not a new acceptance. It permits only the already-promised
+recording→transcription→ranking→Ideal Text/feedback pipeline for that exact
+job. It cannot authorize another recording, a manual retry created after the
+cutoff, new coach delivery, dataset inclusion, training, evaluation or
+promotion. Termination, deletion, retention expiry or a safety quarantine
+still cancels it. Provider permits accept a current Phase 2 receipt **or** this
+narrow carryover. The transition cannot commit unless its carryover inventory
+reconciles with every non-terminal Phase 1 job, so no accepted recording is
+silently stranded.
 
 #### `processing_authorization_policy_purposes`
 
@@ -380,8 +438,9 @@ One row per policy and purpose:
 The row records the approved legal scope and control type only. It contains no
 `dataset_release_allowed`, `training_allowed`, `evaluation_allowed`, or
 `promotion_allowed` booleans. Eligibility and operational activation are
-independent decisions. Dataset creation, training, evaluation, and promotion
-remain hard-disabled under this design regardless of policy wording.
+independent decisions. This design revision activates none of them; later
+runtime activation can occur only through the capability contract and staged
+approval sequence, never through policy wording.
 
 ### 6.2 Immutable service acceptance, refusal, and termination
 
@@ -645,7 +704,8 @@ Append-only lifecycle: `authorized`, `queued`, `started`, `completed`,
 `issue_processing_provider_permit_v1` revalidates:
 
 - exact ownership and acquisition principal;
-- active current-phase service acceptance for product feedback;
+- active current-phase service acceptance for product feedback, or an exact
+  non-terminal transition carryover for the original allowlisted product job;
 - purpose-specific current authority;
 - `learning_live`, current Phase 2 acceptance, fresh release eligibility and
   the corresponding default-off capability for any dataset, training,
@@ -658,7 +718,9 @@ Append-only lifecycle: `authorized`, `queued`, `started`, `completed`,
 It creates an operation plus an `authorized` event. In-scope provider adapters
 require that operation ID and reject missing, stale or mismatched permits.
 Raw OpenAI client access is forbidden from PLF user-data modules by a static
-dependency test.
+dependency test. Carryover permits are tagged `product_completion_only` and
+are structurally rejected by coach, dataset, training, evaluation and promotion
+callers.
 
 ### 6.10 Refusal, termination, deletion, and purge
 
@@ -676,11 +738,28 @@ contract.
 Generalize `ml_purge_requests`/`ml_purge_events` in place so product and ML
 deletion share one orchestrator.
 
+#### `data_purge_triggers`
+
+One append-only attributable trigger normalizes the originating action:
+
+- `id uuid primary key`
+- `trigger_kind`: `service_termination`, `account_deletion`,
+  `third_party_audio_report`, `retention_expiry`, `lawful_deletion_order`
+- exact principal and actor
+- typed source table/event ID and source-event hash
+- linked service-termination event when one exists
+- occurred/received times and idempotency key
+
+Account deletion is independently representable. Its transaction appends the
+account-deletion domain event and purge trigger; if service is active, it also
+appends a distinct linked service-termination event. Neither event impersonates
+the other, and both retain their own timestamp and provenance.
+
 #### `data_purge_requests`
 
 - exact acquisition principal
 - canonical speaker when resolved; nullable only before resolution
-- triggering termination event
+- `purge_trigger_id uuid not null` referencing the attributable trigger above
 - reason: `contract_termination`, `account_deletion`, `third_party_audio`,
   `retention_expiry`, `lawful_deletion`
 - requested time/actor
@@ -794,12 +873,13 @@ implementation error for a PLF user-data origin.
 | `POST /v2/processing-authorization/refuse-current-policy` | Account or signed guest | Immutable explicit refusal | Blocks new service without termination or purge; omission remains no response, not refusal |
 | `POST /v2/processing-authorization/terminate-service` | Account or signed guest | Atomic service termination and purge request | Immediately blocks all new recording/processing |
 | historical coverage inventory job | Reviewed service | Complete item inventory and atomic finalized set | Every pre-cutoff recording is candidate or typed exclusion; no dataset side effect |
+| `transition_to_learning_live_v1` reviewed RPC | Deployment service with exact approvals | Phase transition, dataset/training enable events and complete carryover inventory in one transaction | Fails closed unless the bounded pipeline is operational and both capabilities are armed |
 | `POST /v2/ai-notices/:version/rendered` | Account or signed guest | Render receipt | Authenticated post-paint acknowledgement |
 | `POST /v2/lab/recordings` | Account or signed guest | Audio object, attempt, snapshot and job/outbox in one DB transaction after R2 upload | Rejects before provider work without current authority |
 | `POST .../retry-processing` | Exact owner | Provider operation only after revalidation | Termination blocks retry |
 | `POST .../retry-ideal-text` | Exact owner | Provider operation only after revalidation | No re-upload/re-transcription unless authorized operation needs it |
 | `POST .../send-to-coach` | Exact owner | Coach-delivery event | Requires `coach_review` purpose |
-| queue worker claim | Service | Provider permit and operation events | Rechecks current authority before download and each provider stage |
+| queue worker claim | Service | Provider permit and operation events | Rechecks current authority or exact transition carryover before download and each provider stage |
 | coach queue claim/read | Coach | Existing blind assignment events | Cancelled/terminated items cannot be newly opened |
 | future dataset builder | Offline reviewed service | Release/exclusion records plus `ml_release_eligibility_decisions` | Recomputes acquisition, current Phase 2 authority, historical/future coverage, principal/speaker, retention/deletion, audio hash and surface-contract eligibility; remains disabled |
 
@@ -878,6 +958,15 @@ confirmation:
 - the user is not told deletion completed until every required target has a
   recorded terminal outcome.
 
+### 9.7 Recording already processing during the Phase 2 transition
+
+The user is not asked to repeat a recording that Phase 1 already accepted.
+The frozen carryover lets that exact job finish its normal feedback pipeline,
+even if the user has not yet accepted Phase 2. It does not unlock another Take,
+new coaching or any learning use. The next new recording/coaching request shows
+the Phase 2 acceptance screen. If the user terminates or deletes the account,
+the carryover is cancelled like every other product job.
+
 ## 10. Coach flow
 
 The blind-review sequence does not change:
@@ -948,10 +1037,10 @@ rehearsed against a production-like backup, and separately reviewed.
 | F | Purge inventory and synthetic deletion execution | Product/legal + Engineering deletion acceptance |
 | G | Phase 1 readiness monitor and founder rehearsal | Product/legal + Security + Engineering |
 | H | Separately authorized `core_service` production transition | Explicit deployment authorization |
-| I | Bounded dataset/training/evaluation/promotion infrastructure and rehearsals, still default-off | MLC-2/MLC-3 + security + processor + production reviews |
+| I | Bounded dataset/training infrastructure, carryover inventory, end-to-end production rehearsal and separately approved `armed` dataset/training capabilities while Phase 1 still blocks execution | MLC-2/MLC-3 + Product/legal + security + processor + production reviews |
 | J | Phase 2 exact policy, re-acceptance UI and historical inventory rehearsal | Product/legal + ML/data + Engineering acceptance |
-| K | Separately authorized `learning_live` production transition | Explicit founder deployment authorization |
-| L | Dataset, training, evaluation and promotion capabilities | Each capability separately authorized; no bundled activation |
+| K | Atomic `learning_live` transition, dataset/training unlock and frozen Phase 1 carryover inventory | Explicit founder deployment authorization; all-or-nothing transaction |
+| L | Evaluation and promotion capabilities | Each capability separately reviewed and authorized; no implied activation |
 
 No migration seeds a policy, creates a user receipt, reinterprets historical
 data, enables a learning capability or changes the live route.
@@ -974,6 +1063,13 @@ legacy authorization writes become non-authoritative/read-only. There is no
 learning-provenance dual write. Product state needed by the live app may remain
 in mixed legacy tables until migrated, but those tables cannot authorize a
 dataset, training run or provider operation.
+
+`learning_live` cannot exist while dataset release or training remains merely
+disabled/armed. Those two capabilities are pre-approved and armed under Phase
+1, then enabled by the same PostgreSQL transaction that changes the phase.
+Evaluation and promotion remain later independent gates. The same transition
+freezes all non-terminal Phase 1 jobs into carryovers before new Phase 2
+acceptance is required.
 
 ### Data treatment at cutover
 
@@ -1017,7 +1113,14 @@ Aggregate-only readiness and production metrics include:
 - passive/page-render acceptance attempts (must be zero);
 - approval-copy/evidence hash verification failures;
 - Phase 1 snapshots or release decisions marked pooled-eligible (must be zero);
+- `learning_live` without dataset and training both enabled by the same
+  transition transaction (must be zero);
+- dataset/training execution while merely `armed` or while in Phase 1 (zero);
+- dataset-builder/training-worker heartbeat, queue age and last successful
+  bounded cycle against the approved cadence while `learning_live`;
 - Phase 2 recording/coaching attempts without the current receipt;
+- non-terminal pre-transition Phase 1 jobs missing a carryover row (zero);
+- carryover permits used by a different job or non-product operation (zero);
 - historical coverage sets by state/age and count mismatches;
 - historical items treated eligible before atomic finalization (must be zero);
 - coverage cutoff gaps or double-inventoried recordings (must be zero);
@@ -1045,6 +1148,10 @@ audio, transcripts, blind packets or legal evidence contents.
 - account and signed guest contracts behave identically;
 - guest claim preserves original acquisition provenance and never copies a
   receipt;
+- speaker binding is reproduced solely from account/guest ownership and claim
+  events; acoustic features, embeddings and similarity APIs are never read;
+- static dependency tests reject acoustic/embedding imports from the identity-
+  binding path;
 - unknown/missing/contradictory runtime state is killed;
 - no browser/admin/founder/coach/script direct-write bypass exists.
 
@@ -1079,6 +1186,28 @@ audio, transcripts, blind packets or legal evidence contents.
   excluded;
 - a changed policy requires a new exact receipt.
 
+### Atomic activation and in-flight completion
+
+- dataset release and training can be approved/armed under Phase 1 but cannot
+  execute there;
+- `learning_live` transition fails unless both are armed and all exact
+  approvals/configuration verify;
+- phase change plus dataset/training enablement is one all-or-nothing database
+  transaction;
+- a simulated failure at each append leaves the phase and capabilities
+  unchanged;
+- every non-terminal Phase 1 job at the cutoff receives exactly one carryover;
+- concurrent recording acceptance either commits as Phase 1 before the locked
+  cutoff and enters the inventory, or resolves Phase 2 afterward; it cannot
+  fall between them;
+- the exact carryover finishes only its already-accepted product-feedback
+  stages without a Phase 2 receipt;
+- carryover cannot authorize a new recording, post-cutoff manual retry, coach
+  delivery, dataset, training, evaluation or promotion;
+- termination/deletion/quarantine cancels carryover immediately;
+- terminal Phase 1 jobs and jobs accepted after the cutoff receive no carryover;
+- Phase 2 acceptance and feedback remain independent of training-run duration.
+
 ### Learning-boundary races
 
 - release creation/retry independently recomputes current Phase 2 authority,
@@ -1089,7 +1218,8 @@ audio, transcripts, blind packets or legal evidence contents.
 - prior snapshots/inventory/eligibility decisions cannot override current
   authority;
 - stored hashes are not trusted labels; release construction recomputes bytes;
-- each default-off capability blocks its operation even in `learning_live`;
+- each capability blocks its operation unless its exact state is `enabled`;
+  `learning_live` alone is never sufficient;
 - feedback delivery never waits for a dataset or training run.
 
 ### Recording, provider and coach boundaries
@@ -1113,7 +1243,8 @@ audio, transcripts, blind packets or legal evidence contents.
   authority;
 - refusal/no response is distinct from termination and deletion;
 - termination immediately blocks new work and atomically creates purge work;
-- deletion is separately attributable;
+- account deletion has its own immutable domain event and purge trigger; when
+  it also terminates service the two events remain distinctly linked;
 - complete target inventory, shared-object reference checks, provider outcomes,
   release invalidation and model quarantine are proven;
 - unknown dependency yields `review_required`, never success.
@@ -1154,20 +1285,33 @@ migration owner and must pass ML/data review before its learning path changes.
 
 Phase 1 activation requires:
 
-1. exact Phase 1 Terms/Privacy/AI-notice copy and hashes;
+1. a new Product/legal artifact expressly superseding PLF-1.1 for Phase 1,
+   including exact Terms/Privacy/AI-notice copy and hashes and approval of the
+   individual-learning-profile purpose;
 2. exact lawful-basis and any Article 9 code per purpose;
 3. jurisdiction/18+ policy and risk-trigger handling;
 4. processor inventory, DPAs/transfers and deletion/retention capabilities;
 5. approved retention schedule and legal/security/billing exceptions;
-6. DPIA/security review and AI Act classification/disclosure decision; and
-7. Product, Product/legal, Engineering, security and production deployment
+6. DPIA/security review and AI Act classification/disclosure decision;
+7. updated GDPR Article 30 record of processing activities covering purposes,
+   data categories, recipients/transfers, retention and security measures;
+8. complete data-subject-rights operating procedure, including access, export,
+   correction, objection/restriction where applicable and deletion handling;
+9. tested security-incident and GDPR personal-data-breach procedure;
+10. documented AI Act provider/deployer role determination and resulting
+    obligations;
+11. documented Article 50(2) machine-readable output-marking applicability and
+    implementation decision; and
+12. Product, Product/legal, Engineering, security and production deployment
    approval.
 
 Phase 2 additionally requires:
 
 1. a real, bounded, operating pooled-learning pipeline with documented benefit,
    cadence, scope and non-generic purpose;
-2. exact prominent existing-and-future-recordings copy and legal opinion;
+2. exact prominent existing-and-future-recordings copy and a written
+   contractual-necessity opinion establishing objective necessity rather than
+   relying on Terms wording alone;
 3. completed lineage, historical inventory, release, training, evaluation,
    promotion, deletion and model-quarantine controls;
 4. approved MLC-2/MLC-3 label/release/evaluation contracts;
@@ -1186,6 +1330,8 @@ ED-PLF-1.2 changes ED-PLF-1.1 by:
 
 - replacing the optional pooled-learning checkbox model with honest Phase 1
   core service and conditional Phase 2 continuously learning service;
+- requiring a new Product/legal artifact to supersede PLF-1.1 for Phase 1 as
+  well as a separate exact Phase 2 artifact;
 - requiring one explicit current-policy action in either phase;
 - requiring existing-user Phase 2 re-acceptance with prominent coverage of
   eligible stored and future recordings;
@@ -1194,14 +1340,19 @@ ED-PLF-1.2 changes ED-PLF-1.1 by:
 - making runtime phase transitions authoritative and defaulting unknown to
   killed;
 - keeping dataset, training, evaluation and promotion as independent default-
-  off capabilities; and
+  off capabilities, while atomically enabling pre-armed dataset/training with
+  the Phase 2 transition;
+- allowing only a frozen inventory of already-accepted Phase 1 product jobs to
+  finish without granting them learning eligibility;
+- making account-deletion triggers independently attributable and prohibiting
+  acoustic speaker binding; and
 - requiring rollback to killed, never legacy authorization.
 
 ```yaml
 VERDICT: JUSTIFIED-SCAFFOLDING
 CATEGORY: F1-SUPPORT
-WHY: The design separates a truthful core-service phase from a conditional learning-live phase and prevents passive, retroactive or unverifiable learning eligibility.
-REDIRECT: Implement only after the phase-specific approvals; activate learning_live only when the bounded learning loop and all lineage, deletion, processor, legal, ML/data, security and production gates are real.
+WHY: The design separates a truthful core-service phase from an atomically operational learning-live phase, preserves already-promised feedback across the switch, and prevents passive, retroactive or unverifiable learning eligibility.
+REDIRECT: Obtain the superseding phase-specific Product/legal artifacts, then implement only after the required reviews; learning_live must atomically unlock the already-armed bounded learning loop.
 ```
 
 > ENGINEERING DESIGN READY — ED-PLF-1.2 awaits Product/legal, Engineering,
