@@ -33,6 +33,14 @@ def test_power_score_has_no_retired_direction_inputs():
     assert "_W_B" not in source
 
 
+def test_active_coaching_document_has_no_retired_construct_copy():
+    from services.master_doc_rag import MASTER_DOCUMENT
+
+    active_copy = MASTER_DOCUMENT.lower()
+    assert "threat" not in active_copy
+    assert "breakthrough" not in active_copy
+
+
 def test_universal_voice_confidence_has_no_demographic_runtime_contract():
     source = (ROOT / "services" / "voice_confidence.py").read_text()
     tree = ast.parse(source)
