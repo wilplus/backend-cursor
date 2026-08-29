@@ -1,6 +1,6 @@
 # Product/legal onboarding and processing flow — PLF-1
 
-**Status:** PRODUCT LOCKED · IMPLEMENTATION NOT YET AUTHORIZED  
+**Status:** SUPERSEDED BY [`PLF-1.1`](./PRODUCT-LEGAL-FLOW-PLF-1.1.md)
 **Decision date:** 2026-08-29  
 **Owner:** Artur Willoński
 
@@ -126,6 +126,10 @@ Before this flow is activated in production, the release evidence must include:
 No checklist or UI wording is represented as guaranteeing immunity from
 regulatory action. Compliance depends on the actual deployed and operated
 system.
+
+The mandatory pooled-improvement provisions in this historical version are no
+longer authoritative. PLF-1.1 separates required service processing from
+optional pooled model improvement and permits purpose-specific withdrawal.
 
 ## Supersession boundary
 

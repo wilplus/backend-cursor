@@ -1,6 +1,6 @@
 # Decisions log — settled in review, not yet folded into SPEC.md
 
-**Last updated:** 2026-08-14.
+**Last updated:** 2026-08-29.
 
 **Purpose:** everything agreed after SPEC.md v3 was committed. This file exists so a long
 review session survives itself. Entries here are **binding** and get folded into the numbered
@@ -16,6 +16,15 @@ PLF-1 supersedes earlier conversational assumptions about per-recording
 sole-speaker confirmation, full-date-of-birth collection, per-recording
 country checks, and waiting for training before feedback. It does not activate
 or authorize implementation, deployment, datasets, training, or promotion.
+
+### PLF-1.1 amendment
+
+[`PRODUCT-LEGAL-FLOW-PLF-1.1.md`](./PRODUCT-LEGAL-FLOW-PLF-1.1.md) supersedes
+PLF-1. Required service processing and optional pooled model improvement now
+have independent authorization states and affirmative actions. A user may
+withdraw pooled-improvement authorization while continuing recording and
+coaching. Dataset eligibility is recomputed at release time and is never
+inherited from an acquisition snapshot or policy flag.
 
 ---
 
