@@ -176,8 +176,9 @@ class ConfigMismatchError(RuntimeError):
 def _storage_provider() -> str:
     """'r2' or 'supabase' — whichever THIS process's env resolves to."""
     try:
-        from services.coach_video_storage import coach_videos_use_r2
-        return "r2" if coach_videos_use_r2() else "supabase"
+        from services.lab_audio_storage import storage_provider
+
+        return storage_provider()
     except Exception:
         return "unknown"
 
@@ -199,6 +200,24 @@ def heartbeat_interval_seconds() -> int:
 
 # ── enqueue (web process) ────────────────────────────────────────────────
 
+def _sync_phase1_job(
+    job: Dict[str, Any], status: str, *, error: Exception | str | None = None,
+) -> None:
+    """Mirror a runtime job transition into the canonical Phase-1 boundary."""
+    payload = dict(job.get("payload") or {})
+    if not payload.get("phase1_boundary_registered"):
+        return
+    from services.processing_authorization import ProcessingAuthorizationService
+
+    ProcessingAuthorizationService(db).sync_processing_job(
+        attempt_id=str(payload.get("session_id") or job.get("session_id") or ""),
+        runtime_job_id=str(job.get("id") or "") or None,
+        status=status,
+        attempts=int(job.get("attempts") or 0),
+        error_code=(type(error).__name__ if isinstance(error, Exception)
+                    else str(error)[:160] if error else None),
+    )
+
 def enqueue_session_recording_job(
     *,
     session_id: str,
@@ -216,6 +235,7 @@ def enqueue_session_recording_job(
     arc_take_count: Optional[int],
     spark_enabled: bool,
     canonical_attempt_registered: bool = False,
+    phase1_boundary_registered: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Create the durable job row + hand it to the broker.
 
@@ -254,6 +274,8 @@ def enqueue_session_recording_job(
             "lifecycle_contract_version": TAKE_LIFECYCLE_CONTRACT,
             "canonical_attempt_registered": True,
         })
+    if phase1_boundary_registered:
+        payload["phase1_boundary_registered"] = True
     row = db.create_processing_job(
         kind=KIND_SESSION_RECORDING,
         user_id=user_id,
@@ -272,6 +294,13 @@ def enqueue_session_recording_job(
             return existing
         return None
     job_id = str(row.get("id"))
+    try:
+        _sync_phase1_job(row, "pending")
+    except Exception as error:
+        db.finish_processing_job(
+            job_id, "failed", error=f"Phase-1 job sync failed: {error}",
+        )
+        return None
     if not job_queue.enqueue(TASK_PATH, job_id):
         # Row without delivery would strand the session once the route
         # 202s — fail it NOW so the route falls back to sync instead.
@@ -361,6 +390,13 @@ def retry_failed_session_job(session_id: str, user_id: str = "") -> Optional[dic
         return None
     reopened = {**job, "status": "pending", "attempts": 1}
     try:
+        _sync_phase1_job(reopened, "pending")
+    except Exception:
+        db.finish_processing_job(
+            job_id, "failed", error="Phase-1 retry authorization failed",
+        )
+        return None
+    try:
         _transition_job_attempt(reopened, "processing", "manual_retry")
     except TakeLifecycleError as error:
         db.finish_processing_job(job_id, "failed", error=str(error)[:500])
@@ -440,6 +476,13 @@ def _fail_terminal(job: Dict[str, Any], error: str) -> None:
             job_id,
         )
     db.finish_processing_job(job_id, "failed", error=error)
+    try:
+        _sync_phase1_job(job, "failed", error=error)
+    except Exception as sync_error:
+        logger.error(
+            "pipeline_jobs: Phase-1 terminal sync failed job=%s: %s",
+            job_id, sync_error,
+        )
     sid = job.get("session_id")
     if sid:
         try:
@@ -522,7 +565,10 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
     """Execute one attempt of the full analysis for a claimed job.
     Raises on failure — the caller decides retry vs terminal."""
     from services.analysis_worker import run_full_analysis
-    from services.lab_audio_storage import get_lab_audio_bytes
+    from services.authorized_provider import (
+        AuthorizedProviderAdapter,
+        ProviderCoordinates,
+    )
 
     job_id = str(job.get("id"))
     payload = dict(job.get("payload") or {})
@@ -582,13 +628,29 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
                 f"where the web service writes."
             )
 
-        # The payload records the bucket the upload actually landed in; the
-        # helper tries that first and falls back across the others, so a job
-        # enqueued either side of the lab-bucket split still finds its audio
-        # (P0 audit 2026-08-03).
-        audio_bytes = get_lab_audio_bytes(
-            str(payload.get("storage_key") or ""),
-            bucket_hint=str(payload.get("bucket") or "") or None,
+        from services.processing_authorization import ProcessingAuthorizationService
+        authorization = ProcessingAuthorizationService(db)
+        principal_id = authorization.resolve_acquisition_principal(
+            str(_stage_session.get("owner_principal_id") or ""),
+            user_id=str(_stage_session.get("user_id") or "") or None,
+            recording_id=str(payload.get("recording_id") or "") or None,
+        )
+        adapter = AuthorizedProviderAdapter(
+            db,
+            ProviderCoordinates(
+                acquisition_principal_id=principal_id,
+                take_id=str(payload.get("session_id") or ""),
+                recording_id=str(payload.get("recording_id") or ""),
+            ),
+            authorization=authorization,
+        )
+        # The adapter issues a typed permit immediately before storage access.
+        # Its underlying storage helper still handles the lab-bucket cutover.
+        audio_bytes = adapter.download_audio(
+            storage_provider=str(payload.get("storage_provider") or ""),
+            bucket=str(payload.get("bucket") or ""),
+            object_key=str(payload.get("storage_key") or ""),
+            idempotency_key=f"audio-download:{job_id}:{job.get('attempts') or 1}",
         )
         if not audio_bytes:
             raise RuntimeError("audio object empty or missing in storage")
@@ -656,12 +718,45 @@ def _run_ideal_text_retry(job: Dict[str, Any]) -> Dict[str, Any]:
         "stage": "ideal_text", "percent": 90,
         "message": "Building your Ideal Text…",
     })
-    row = build_initial_ideal_text_from_stored_artifacts(
-        db,
-        arc_id,
-        source_session_id=session_id,
-        include_suggestion_anchors=True,
+    from services.authorized_provider import (
+        AuthorizedProviderAdapter,
+        ProviderCoordinates,
+        protected_provider_scope,
     )
+    from services.processing_authorization import ProcessingAuthorizationService
+
+    session = db.v2_get_session_by_id(session_id) or {}
+    recording_id = str(
+        payload.get("recording_id") or session.get("recording_id") or ""
+    )
+    authorization = ProcessingAuthorizationService(db)
+    principal_id = authorization.resolve_acquisition_principal(
+        str(session.get("owner_principal_id") or ""),
+        user_id=str(session.get("user_id") or "") or None,
+        recording_id=recording_id,
+    )
+    if authorization.enforced and (not principal_id or not recording_id):
+        from services.processing_authorization import ProcessingAuthorizationError
+        raise ProcessingAuthorizationError(
+            "PROCESSING_PRINCIPAL_UNRESOLVED",
+            "The stored Take authority could not be resolved.",
+            403,
+        )
+    adapter = AuthorizedProviderAdapter(
+        db,
+        ProviderCoordinates(principal_id, session_id, recording_id),
+        authorization=authorization,
+    )
+    with protected_provider_scope(
+        adapter,
+        idempotency_prefix=f"ideal-text-retry:{job_id}:{job.get('attempts') or 1}",
+    ):
+        row = build_initial_ideal_text_from_stored_artifacts(
+            db,
+            arc_id,
+            source_session_id=session_id,
+            include_suggestion_anchors=True,
+        )
     user_id = payload.get("user_id") or job.get("user_id")
     if user_id:
         try:
@@ -704,7 +799,21 @@ def run_processing_job(job_id: str) -> None:
         return
     status = str(job.get("status") or "")
     if status in ("completed", "failed"):
-        return  # duplicate delivery of a finished job — no-op
+        # A previous delivery may have committed the operational job before a
+        # transient failure reached the canonical Phase-1 ledger.  Terminal
+        # re-delivery is therefore a reconciliation opportunity, not a pure
+        # no-op.  The canonical RPC is idempotent and refuses contradictions.
+        try:
+            _sync_phase1_job(
+                job, status, error=(job.get("error") if status == "failed" else None),
+            )
+        except Exception as sync_error:
+            sentry_sdk.capture_exception(sync_error)
+            logger.error(
+                "pipeline_jobs: terminal Phase-1 reconciliation failed "
+                "job=%s status=%s: %s", job_id, status, sync_error,
+            )
+        return
     attempts = int(job.get("attempts") or 0)
     max_attempts = int(job.get("max_attempts") or 3)
     if status == "processing" and _heartbeat_is_fresh(job):
@@ -723,6 +832,17 @@ def run_processing_job(job_id: str) -> None:
         return  # lost the claim race — exactly one runner proceeds
 
     jid = str(claimed.get("id"))
+    try:
+        _sync_phase1_job(claimed, "processing")
+    except Exception as sync_error:
+        db.finish_processing_job(
+            jid, "failed", error=f"Phase-1 job sync failed: {sync_error}",
+        )
+        if claimed.get("session_id"):
+            db.set_session_analysis_state(
+                str(claimed["session_id"]), "failed", str(sync_error),
+            )
+        return
     try:
         _transition_job_attempt(
             claimed,
@@ -754,6 +874,22 @@ def run_processing_job(job_id: str) -> None:
             result = runner(claimed)
         _complete_job_attempt(claimed, result)
         db.finish_processing_job(jid, "completed", result=result)
+        try:
+            _sync_phase1_job(claimed, "completed")
+        except Exception as sync_error:
+            # Product work is already durable and must not be run again solely
+            # because ledger synchronization had a transient failure.  Queue
+            # the terminal row: the early-return path above reconciles it.
+            sentry_sdk.capture_exception(sync_error)
+            logger.error(
+                "pipeline_jobs: completed Phase-1 sync deferred job=%s: %s",
+                jid, sync_error,
+            )
+            if not job_queue.enqueue(TASK_PATH, jid, delay_seconds=5):
+                logger.error(
+                    "pipeline_jobs: completed Phase-1 reconciliation enqueue "
+                    "failed job=%s", jid,
+                )
         sid = claimed.get("session_id")
         if sid:
             db.set_session_analysis_state(str(sid), "ready")
@@ -796,6 +932,7 @@ def run_processing_job(job_id: str) -> None:
             _fail_terminal_for_job(claimed, lifecycle_error)
             return
         db.release_processing_job_for_retry(jid, str(err)[:500])
+        _sync_phase1_job(claimed, "pending", error=err)
         if not job_queue.enqueue(
             TASK_PATH, jid, delay_seconds=_retry_backoff_seconds(used),
         ):
@@ -828,6 +965,9 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
         if str(job.get("status")) == "processing":
             db.release_processing_job_for_retry(
                 jid, "worker lost (stale heartbeat) — requeued")
+            _sync_phase1_job(
+                job, "pending", error="worker_lost_stale_heartbeat",
+            )
         if job_queue.enqueue(TASK_PATH, jid):
             counts["requeued"] += 1
             logger.info("pipeline_jobs: sweeper requeued job %s "
@@ -842,6 +982,23 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
     except Exception as e:
         logger.warning("pipeline_jobs: orphan sweep failed: %s", e)
         counts["orphans_failed"] = 0
+    try:
+        from services.orphan_audio_cleanup import sweep_phase1_orphan_audio
+
+        object_counts = sweep_phase1_orphan_audio(
+            database=db, limit=min(max_rows, 25),
+        )
+        counts.update({
+            f"orphan_objects_{key}": value
+            for key, value in object_counts.items()
+        })
+    except Exception as e:
+        # Migration/config may intentionally be absent while the Phase-1
+        # boundary is off. Job recovery must remain independent.
+        logger.warning("pipeline_jobs: Phase-1 object sweep unavailable: %s", e)
+        counts["orphan_objects_claimed"] = 0
+        counts["orphan_objects_deleted"] = 0
+        counts["orphan_objects_failed"] = 0
     try:
         from services.coach_publish_delivery import sweep_pending_deliveries
 

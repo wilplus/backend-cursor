@@ -156,6 +156,13 @@ def v2_send_project_take_to_coach(project_id: str, take_id: str):
 
     result = send_lab_recording_to_coach(take_id, user_id)
     if not result.get("ok"):
+        if result.get("reason") == "processing_authorization_required":
+            return jsonify({
+                "code": result.get("code") or "PROCESSING_AUTHORIZATION_REQUIRED",
+                "error": "Current processing authorization is required before coach review.",
+                "project_id": project_id,
+                "take_id": take_id,
+            }), 403
         return jsonify({
             "code": "SEND_FAILED",
             "error": "Your take is safe, but it could not be sent for review. Please retry.",

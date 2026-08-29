@@ -114,24 +114,6 @@ from routes.v2.explore_ideal_text import (  # noqa: F401 — re-exported for imp
     v2_explore_select_block_variant,
     v2_explore_set_part_lock,
 )
-from routes.v2.user_chat import (  # noqa: F401 — re-exported for import compat
-    _CONTEXTUAL_INTENTS,
-    _INTERVIEW_QUESTIONS_FALLBACK,
-    _INTERVIEW_SYSTEM_PROMPT,
-    _SELF_RATING_RE,
-    _SELF_RATING_TEXT_MAX,
-    _SELF_RATING_WORD_MAP,
-    _augment_interview_prompt_with_profile,
-    _best_self_rating,
-    _build_few_shot_block,
-    _build_longitudinal_context_block,
-    _build_master_score_block,
-    _first_self_rating,
-    _generate_llm_question,
-    _parse_self_rating_from_text,
-    v2_user_chat_first_question,
-    v2_user_coaching_self_rating,
-)
 from routes.v2.user_account import (  # noqa: F401 — re-exported for import compat
     _CONSENT_FIELDS_FE,
     _PROFILE_GOAL_MAX_LEN,
@@ -148,6 +130,15 @@ from routes.v2.user_account import (  # noqa: F401 — re-exported for import co
 )
 from routes.v2.mlc2_consent import (  # noqa: F401 — re-exported for import compat
     v2_user_mlc2_consent,
+)
+from routes.v2.processing_authorization import (  # noqa: F401
+    v2_processing_ai_rendered,
+    v2_processing_authorization,
+    v2_processing_data_export,
+    v2_processing_data_rights,
+    v2_processing_deletion_status,
+    v2_processing_principal,
+    v2_processing_terminate,
 )
 from routes.v2.lounge import (  # noqa: F401 — re-exported for import compat
     v2_user_lounge_messages_delete,
@@ -240,26 +231,9 @@ from routes.v2.admin import (  # noqa: F401 — re-exported for import compat
     v2_public_unsubscribe,
 )
 from routes.v2.coaching import (  # noqa: F401 — re-exported for import compat
-    _COACHING_INTRO_STATIC_FALLBACK,
-    _FINALIZE_SIGNUP_CTA_COPY,
-    _INTERVIEW_FINALIZE_VALID_REASONS,
-    _augment_coaching_system_prompt,
-    _build_user_raw_snippet_list,
-    _coach_intent_for_snippet,
-    _format_duration,
-    _generate_snippet_follow_up_question,
     _persist_chat_turn,
-    _snippet_to_journey_card,
-    _sort_raw_snippets_by_intensity,
-    _system_prompt_for_intent,
     v2_chat_query,
     v2_chat_session_state,
-    v2_chat_snippet_followup,
-    v2_coaching_get,
-    v2_coaching_intro_bubble,
-    v2_coaching_start,
-    v2_coaching_state_machine_turn,
-    v2_coaching_turn,
     v2_onboarding_opener_next,
     v2_onboarding_opener_start,
 )

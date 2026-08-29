@@ -406,7 +406,7 @@ def v2_explore_arc_best_presentation(arc_id):
         progress: { takes_done, takes_target, takes_remaining, ready },
         slides: [ { index, title, body, text, audio_ref,
                     start_offset_ms, duration_ms, take_index,
-                    breakthrough, breakthrough_note, coach_edited, edited } ]
+                    coach_edited, edited } ]
     }
              404 NOT_FOUND · 500 V2_ERROR
     """

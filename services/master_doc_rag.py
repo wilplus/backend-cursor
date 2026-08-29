@@ -746,7 +746,7 @@ _CLASSIFIER_SCHEMA: dict[str, Any] = {
 }
 
 
-def _classify_intent(question, history, service) -> tuple[Optional[str], float]:
+def _classify_intent(question, history, service=None) -> tuple[Optional[str], float]:
     """Stage 1 — tiny cheap classifier (gpt-4o-mini, temp 0). Returns
     ``(intent, confidence)`` or ``(None, 0.0)`` on any failure so the
     caller falls back to the mega-prompt."""
@@ -761,32 +761,28 @@ def _classify_intent(question, history, service) -> tuple[Optional[str], float]:
                 msgs.append({"role": role, "content": content})
     msgs.append({"role": "user", "content": question})
     try:
-        resp = service.client.chat.completions.create(
-            model=_ROUTER_MODEL,
-            messages=msgs,
-            temperature=0.0,
-            max_tokens=40,
-            response_format={
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_MASTER_DOC_ROUTER
+        resp = chat_complete(
+            spec=SPEC_MASTER_DOC_ROUTER,
+            system=_CLASSIFIER_SYSTEM,
+            user=question,
+            surface="master_doc_rag_router",
+            messages_override=msgs,
+            response_format_override={
                 "type": "json_schema", "json_schema": _CLASSIFIER_SCHEMA,
             },
         )
-        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
-        # after the call returns and BEFORE any parsing — we have already
-        # paid for this response, so a downstream parse failure must not
-        # lose the cost row. This service bypasses services/llm.py, so
-        # without this hook it is invisible to the ledger.
-        try:
-            from services.llm_usage import record_response_usage
-            record_response_usage(resp, surface="master_doc_rag_router",
-                                  model=_ROUTER_MODEL,)
-        except Exception:
-            pass
-        parsed = json.loads((resp.choices[0].message.content or "").strip())
+        if resp is None:
+            return None, 0.0
+        parsed = json.loads(resp.text)
         intent = parsed.get("intent")
         conf = float(parsed.get("confidence") or 0.0)
         if intent in _INTENTS:
             return intent, conf
     except Exception as e:
+        from services.processing_authorization import rethrow_processing_authorization
+        rethrow_processing_authorization(e)
         logger.warning("router: classify failed: %s", e)
     return None, 0.0
 
@@ -924,28 +920,24 @@ def _answer_via_router(
     messages.append({"role": "user", "content": question})
 
     try:
-        resp = service.client.chat.completions.create(
-            model=_ROUTER_MODEL,
-            messages=messages,
-            temperature=0.4,
-            max_tokens=_MAX_TOKENS,
-            response_format={
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_MASTER_DOC_RAG
+        resp = chat_complete(
+            spec=SPEC_MASTER_DOC_RAG,
+            system=system_content,
+            user=question,
+            surface="master_doc_rag_lane",
+            messages_override=messages,
+            response_format_override={
                 "type": "json_schema", "json_schema": _RESPONSE_SCHEMA,
             },
         )
-        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
-        # after the call returns and BEFORE any parsing — we have already
-        # paid for this response, so a downstream parse failure must not
-        # lose the cost row. This service bypasses services/llm.py, so
-        # without this hook it is invisible to the ledger.
-        try:
-            from services.llm_usage import record_response_usage
-            record_response_usage(resp, surface="master_doc_rag_lane",
-                                  model=_ROUTER_MODEL,)
-        except Exception:
-            pass
-        parsed = json.loads((resp.choices[0].message.content or "").strip())
+        if resp is None:
+            return None
+        parsed = json.loads(resp.text)
     except Exception as e:
+        from services.processing_authorization import rethrow_processing_authorization
+        rethrow_processing_authorization(e)
         logger.warning("router: lane '%s' failed: %s — falling back", intent, e)
         return None
 
@@ -1076,14 +1068,7 @@ def answer_question(
                 messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": q})
 
-    try:
-        from services.openai_service import OpenAIService
-        service = OpenAIService()
-    except Exception as e:
-        logger.warning("master_doc_rag: openai import failed: %s", e)
-        return (_fallback_payload(), {"error": "llm_unavailable"})
-    if not service.client:
-        return (_fallback_payload(), {"error": "llm_unavailable"})
+    service = None
 
     # PARALLEL two-stage router (flag-gated, default OFF). On success it
     # returns the payload; None means low confidence / failure → fall
@@ -1097,29 +1082,25 @@ def answer_question(
             return routed
 
     try:
-        response = service.client.chat.completions.create(
-            model=_MODEL,
-            messages=messages,
-            temperature=0.4,
-            max_tokens=_MAX_TOKENS,
-            response_format={
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_MASTER_DOC_RAG
+        response = chat_complete(
+            spec=SPEC_MASTER_DOC_RAG,
+            system=system_content,
+            user=q,
+            surface="master_doc_rag",
+            messages_override=messages,
+            response_format_override={
                 "type": "json_schema",
                 "json_schema": _RESPONSE_SCHEMA,
             },
         )
-        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
-        # after the call returns and BEFORE any parsing — we have already
-        # paid for this response, so a downstream parse failure must not
-        # lose the cost row. This service bypasses services/llm.py, so
-        # without this hook it is invisible to the ledger.
-        try:
-            from services.llm_usage import record_response_usage
-            record_response_usage(response, surface="master_doc_rag",
-                                  model=_MODEL,)
-        except Exception:
-            pass
-        raw = (response.choices[0].message.content or "").strip()
+        if response is None:
+            return (_fallback_payload(), {"error": "llm_unavailable"})
+        raw = response.text
     except Exception as e:
+        from services.processing_authorization import rethrow_processing_authorization
+        rethrow_processing_authorization(e)
         logger.warning("master_doc_rag: llm call failed: %s", e)
         return (
             _fallback_payload(),

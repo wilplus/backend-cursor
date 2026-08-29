@@ -25,9 +25,9 @@ does not:
     silent retries hide cost)
   • cache responses (nothing in our flow benefits from a cache)
 
-It's intentionally small. When a caller needs something this wrapper
-doesn't expose, they can still go direct via
-``services.openai_service.OpenAIService().client``.
+User-data callers must enter an ``AuthorizedProviderAdapter`` scope before
+calling this wrapper. Direct provider clients are reserved for the low-level
+adapter itself and non-user operational probes.
 """
 from __future__ import annotations
 
@@ -71,6 +71,7 @@ def chat_complete(
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
     arc_id: Optional[str] = None,
+    messages_override: Optional[list[dict[str, str]]] = None,
 ) -> Optional[LLMResult]:
     """Run one ``chat.completions.create`` against the spec.
 
@@ -106,17 +107,36 @@ def chat_complete(
         ``None`` on any failure (client unavailable, network error,
         empty response, malformed JSON when JSON was expected).
     """
+    authorization = None
+    provider_permit_id = None
+    try:
+        from services.authorized_provider import authorize_protected_generation
+        authorization, provider_permit_id = authorize_protected_generation(surface)
+    except Exception:
+        # A protected call must fail closed.  In particular, an authority
+        # failure may never be converted into the wrapper's usual optional
+        # ``None`` fallback.
+        raise
+
     # Lazy import — keep this module importable even when openai_service
     # isn't (test contexts, scripts).
     try:
         from services.openai_service import OpenAIService
         service = OpenAIService()
     except Exception as e:
+        if authorization is not None:
+            authorization.record_provider_event(
+                provider_permit_id, "failed", error_code=type(e).__name__,
+            )
         logger.warning(
             "llm.chat surface=%s init_failed err=%s", surface, e,
         )
         return None
     if not service.client:
+        if authorization is not None:
+            authorization.record_provider_event(
+                provider_permit_id, "failed", error_code="PROVIDER_UNAVAILABLE",
+            )
         logger.warning(
             "llm.chat surface=%s client_unavailable", surface,
         )
@@ -127,7 +147,7 @@ def chat_complete(
     model = resolve_surface_model(surface, spec.model)
     create_kwargs: dict[str, Any] = {
         "model": model,
-        "messages": [
+        "messages": messages_override or [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
@@ -136,6 +156,8 @@ def chat_complete(
     }
     if response_format is not None:
         create_kwargs["response_format"] = response_format
+    if spec.timeout_seconds is not None:
+        create_kwargs["timeout"] = spec.timeout_seconds
 
     t0 = time.perf_counter()
     try:
@@ -147,6 +169,10 @@ def chat_complete(
             "user=%s call_failed err=%s",
             surface, model, duration_ms, user_id or "-", e,
         )
+        if authorization is not None:
+            authorization.record_provider_event(
+                provider_permit_id, "failed", error_code=type(e).__name__,
+            )
         return None
 
     duration_ms = int((time.perf_counter() - t0) * 1000)
@@ -159,6 +185,14 @@ def chat_complete(
         getattr(usage, "completion_tokens", None) if usage else None
     )
     total_tokens = getattr(usage, "total_tokens", None) if usage else None
+
+    if authorization is not None:
+        authorization.record_provider_event(
+            provider_permit_id,
+            "completed",
+            provider_operation_ref=str(getattr(response, "id", "") or "") or None,
+            metadata={"surface": surface, "model": model},
+        )
 
     # Cost ledger (token-pricing Phase 0). THE hook that covers every surface
     # routed through this wrapper — ~15 of them, including the whole per-take

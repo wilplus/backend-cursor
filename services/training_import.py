@@ -210,7 +210,6 @@ def prepare_training_import(
     stages: Any = None,
     idempotency_key: Optional[str] = None,
     language: Optional[str] = None,
-    speaker_sex: Optional[str] = None,
 ) -> dict:
     """Everything BEFORE the expensive analysis: gate, store the audio, write
     the session + recording rows, mark the session 'processing'.
@@ -233,6 +232,17 @@ def prepare_training_import(
 
     Returns the prepared context for run_training_import_analysis, or an
     ``{"ok": False, "reason": ...}`` the caller can surface. Never raises."""
+    # Phase 2 is intentionally dark.  This legacy route used to create a
+    # corpus directly and therefore bypassed the immutable release boundary.
+    # It stays callable only as an explicit, fail-closed compatibility tombstone.
+    return {
+        "ok": False,
+        "reason": "phase2_training_disabled",
+        "detail": "Legacy training imports are unavailable under Phase 1.",
+    }
+
+    # Unreachable legacy implementation retained temporarily for the checked-
+    # in dependency audit; it is not an executable training path.
     if database is None:
         from services.db import db as database
 
@@ -320,17 +330,6 @@ def prepare_training_import(
         session_context["import_key"] = idem
     if language and str(language).strip():
         session_context["language"] = str(language).strip().lower()
-    # ⚠️ THE IMPORTED VOICE IS NOT THE ACCOUNT HOLDER'S. The take is filed
-    # under the importing coach's user_id, but the person speaking is someone
-    # else — so the confidence composite must NOT read this account's
-    # declared sex to pick its cue weights (cue 1 reverses by sex, so a
-    # mismatch inverts the strongest cue, silently). This flag makes the
-    # pipeline drop to the acoustic route; `speaker_sex`, when the importer
-    # knows it, beats that. See services/lab_recording.py at the
-    # resolve_speaker_sex call.
-    session_context["speaker_is_account_holder"] = False
-    if speaker_sex and str(speaker_sex).strip():
-        session_context["speaker_sex"] = str(speaker_sex).strip().lower()
     # Parked so the STATUS poll can report it without re-reading the audio —
     # duration is what separates "never decoded" from "decoded but nothing
     # transcribed" on a zero-piece import (FE §6).

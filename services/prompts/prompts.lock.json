@@ -14,7 +14,7 @@
     "baseline_summary.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "9b93b811bf580644ee41f1de4850c4976b0cc2572bd171680e7ff87fa6c5d62f"
+      "sha256": "ef74839a10884d2aa7f2c7265e176ec93ca19721b4346ada900c07f2dfc9a165"
     },
     "baseline_summary.user": {
       "kind": "source_ref",
@@ -190,11 +190,6 @@
       "kind": "source_ref",
       "module": "pending",
       "sha256": "a821afa1417971bb8141d90448f1667a1a21a640e459cedafd410ad07b5ba973"
-    },
-    "interview.snippet_followup": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "4169c56cbe95d5ef080f52c4d91b45e6936b8772172296bb1e5fa3e8d6d77203"
     },
     "interview.system": {
       "kind": "source_ref",
@@ -499,7 +494,7 @@
     "stickiness_topics.builder": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "ab4b6b7be02cfca6a9943ab218115842dac5f1f1e2105d472afc9c7fd66531ca"
+      "sha256": "694511433f4158a4c73c8e069a27a938460838fe4bb49d49eb75cb95dd82cb88"
     },
     "stickiness_topics.user": {
       "kind": "source_ref",

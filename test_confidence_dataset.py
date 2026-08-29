@@ -117,7 +117,7 @@ class ManifestTests(unittest.TestCase):
         for partition in dataset.PARTITIONS:
             dimensions = audit["partitions"][partition]["by_dimension"]
             self.assertEqual(set(dimensions), {
-                "language", "device", "source", "sex", "acoustic_region",
+                "language", "device", "source", "acoustic_region",
             })
 
     def test_audit_detects_speaker_leakage_in_external_partitions(self):

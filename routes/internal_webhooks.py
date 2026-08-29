@@ -23,7 +23,7 @@ import httpx
 from flask import Blueprint, jsonify, request
 
 from config import Config
-from services.annotation_export import result_to_dict, run_annotation_export
+from routes.phase2_guard import phase2_learning_disabled
 from services.db import db
 from services.stripe_checkout_credits import apply_paid_checkout_session_credits
 from utils.errors import safe_error, scrub
@@ -162,6 +162,7 @@ def stripe_checkout_webhook():
 
 
 @internal_webhooks_bp.route("/v2/internal/annotation-export", methods=["POST"])
+@phase2_learning_disabled
 def internal_annotation_export():
     """Cron-friendly export of admin_annotation_events → JSONL (+ optional Supabase Storage).
 
@@ -197,6 +198,8 @@ def internal_annotation_export():
         ), 400
 
     try:
+        from services.annotation_export import result_to_dict, run_annotation_export
+
         result = run_annotation_export(
             limit=limit,
             output_dir=None if dry_run else output_dir,
@@ -218,6 +221,7 @@ def internal_annotation_export():
 
 
 @internal_webhooks_bp.route("/v2/internal/copilot-video/retrain", methods=["POST"])
+@phase2_learning_disabled
 def internal_copilot_video_retrain():
     """
     Trigger scheduled speech/video retraining from uploaded override videos.

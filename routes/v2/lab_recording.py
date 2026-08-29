@@ -74,6 +74,10 @@ from services.lab_recording_response import build_completed_recording_response
 from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
 from services.take_lifecycle import TakeLifecycleError, register_attempt
+from services.processing_authorization import (
+    ProcessingAuthorizationError,
+    ProcessingAuthorizationService,
+)
 
 from config import Config
 
@@ -243,6 +247,7 @@ class PersistedLabTake:
     uploader_id: str | None
     coordinates: TakeCoordinates
     canonical_attempt_registered: bool
+    phase1_boundary_registered: bool
 
 
 def _is_data_foundation_canary_owner(
@@ -363,16 +368,52 @@ def _persist_lab_take(
     upload: PreparedLabUpload,
     user_id: str | None,
 ) -> PersistedLabTake:
+    authorization = ProcessingAuthorizationService(db)
+    acquisition_principal_id = authorization.resolve_acquisition_principal(
+        upload.project.principal.id,
+        user_id=str(user_id) if user_id else None,
+    )
     stored = store_recording_audio(
         upload.audio_file,
         upload.audio_bytes,
         upload_key=upload.project.idempotency_key,
         owner_principal_id=upload.project.principal.id,
+        acquisition_principal_id=acquisition_principal_id,
         user_id=user_id,
         database=db,
         deadline=upload.deadline,
         log=logger,
     )
+    phase1_boundary_registered = False
+    try:
+        boundary = authorization.finalize_recording(
+            attempt_id=stored.session_id,
+            acquisition_principal_id=acquisition_principal_id,
+            project_id=upload.project.project_id,
+            recording_id=stored.recording_id,
+            upload_idempotency_key=upload.project.idempotency_key,
+            storage_provider=stored.storage_provider,
+            bucket=stored.bucket,
+            object_key=stored.storage_key,
+            byte_size=len(upload.audio_bytes),
+            content_type=stored.content_type,
+            exact_bytes_sha256=stored.exact_bytes_sha256,
+            verification_method=stored.verification_method,
+        )
+        phase1_boundary_registered = boundary is not None
+    except Exception:
+        try:
+            authorization.queue_orphan(
+                acquisition_principal_id=acquisition_principal_id,
+                storage_provider=stored.storage_provider,
+                bucket=stored.bucket,
+                object_key=stored.storage_key,
+                exact_bytes_sha256=stored.exact_bytes_sha256,
+                reason_code="PHASE1_BOUNDARY_FAILED",
+            )
+        except Exception:
+            pass
+        raise
     persist_session_metadata(
         stored.session_id,
         upload.session_context,
@@ -437,6 +478,7 @@ def _persist_lab_take(
         uploader_id=recording_row.uploader_id,
         coordinates=coordinates,
         canonical_attempt_registered=canonical_attempt_registered,
+        phase1_boundary_registered=phase1_boundary_registered,
     )
 
 
@@ -470,6 +512,7 @@ def _analysis_response(
             canonical_attempt_registered=(
                 take.canonical_attempt_registered
             ),
+            phase1_boundary_registered=take.phase1_boundary_registered,
         ),
         database=db,
         queue_enabled=_pipeline_queue_enabled,
@@ -534,6 +577,27 @@ def _owned_recording_session(session_id: str) -> dict | None:
     return session
 
 
+def _require_session_processing_authority(session: dict, operation: str) -> None:
+    service = ProcessingAuthorizationService(db)
+    if not service.enforced:
+        return
+    principal_id = str(session.get("owner_principal_id") or "")
+    if not principal_id and session.get("user_id"):
+        principal = ProjectRepository(db).owner_for_user(str(session["user_id"]))
+        principal_id = principal.id
+    if not principal_id:
+        raise ProcessingAuthorizationError(
+            "PROCESSING_PRINCIPAL_UNRESOLVED",
+            "The recording owner could not be resolved.", 403,
+        )
+    acquisition_principal_id = service.resolve_acquisition_principal(
+        principal_id,
+        user_id=str(session.get("user_id") or "") or None,
+        recording_id=str(session.get("recording_id") or "") or None,
+    )
+    service.require_current(acquisition_principal_id, operation=operation)
+
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
 @whisper_limit
 @optional_auth
@@ -549,6 +613,14 @@ def v2_lab_create_recording():
             guest_token=request.headers.get(GUEST_OWNER_HEADER),
             database=db,
         )
+        service = ProcessingAuthorizationService(db)
+        service.require_current(
+            service.resolve_acquisition_principal(
+                project.principal.id,
+                user_id=str(user_id) if user_id else None,
+            ),
+            operation="recording",
+        )
         if project.duplicate_take:
             return jsonify(_duplicate_take_response(project)), 200
         upload = _prepare_lab_upload(form, project, user_id)
@@ -557,6 +629,8 @@ def v2_lab_create_recording():
         payload, status = _analysis_response(upload, persisted, user_id)
         return jsonify(payload), status
     except (CreateTakeError, RecordingIntakeError) as error:
+        return jsonify({"code": error.code, "error": error.message}), error.status
+    except ProcessingAuthorizationError as error:
         return jsonify({"code": error.code, "error": error.message}), error.status
     except RecordingRejected as error:
         return jsonify({
@@ -662,6 +736,10 @@ def v2_retry_recording_processing(session_id):
     if not session:
         return jsonify({"code": "SESSION_NOT_FOUND",
                         "error": "Recording not found"}), 404
+    try:
+        _require_session_processing_authority(session, "manual_processing_retry")
+    except ProcessingAuthorizationError as error:
+        return jsonify({"code": error.code, "error": error.message}), error.status
     from services.pipeline_jobs import retry_failed_session_job
     job = retry_failed_session_job(
         session_id, str(session.get("user_id") or "guest"))
@@ -692,6 +770,10 @@ def v2_retry_recording_ideal_text(session_id):
     if not session:
         return jsonify({"code": "SESSION_NOT_FOUND",
                         "error": "Recording not found"}), 404
+    try:
+        _require_session_processing_authority(session, "ideal_text_retry")
+    except ProcessingAuthorizationError as error:
+        return jsonify({"code": error.code, "error": error.message}), error.status
     arc_id = session.get("arc_id")
     take_index = session.get("take_index")
     if (not arc_id or isinstance(take_index, bool) or take_index != 1

@@ -53,25 +53,22 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from services.voice_confidence import (
-    cues_for,
+    confidence_cues,
     normalize_features,
 )
 
 # ── THE CUE VOCABULARY ────────────────────────────────────────────────────
 #
 # Keyed by (cue, direction the speaker actually went). The direction matters
-# and cannot be dropped: `pitch_range` REVERSES by sex in the weight tables —
-# a wide range reads confident in women and a settled one in men — so a single
-# key per cue would have the product telling half its speakers the opposite of
-# what they did. The sign here is the sign the weight table applied, so the
-# two can never disagree.
+# because a cue may describe positive or negative movement relative to the
+# same speaker's baseline. The sign is taken from the one universal contract,
+# so qualitative evidence and the composite cannot disagree.
 #
 # Only the CONFIDENT direction has keys. This vocabulary exists to say what
 # went right; the to-work-on lane is services/delivery_stars.py and it has its
 # own device names.
 _CUE_KEYS: dict[tuple[str, float], str] = {
     ("pitch_range", +1.0): "wide_range",       # their pitch moved, not flat
-    ("pitch_range", -1.0): "even_pitch",       # steady, no wobble
     ("loudness_range", +1.0): "full_volume",   # they let the volume move
     ("pausing", -1.0): "no_hesitation",        # fewer/shorter pauses than usual
     ("mean_pitch", -1.0): "settled_pitch",     # sat lower than their norm
@@ -101,8 +98,7 @@ OPENING = "opening"
 CLOSING = "closing"
 
 
-def _contributions(piece_metrics: Any, baseline: Any,
-                   sex: Optional[str] = None) -> list:
+def _contributions(piece_metrics: Any, baseline: Any) -> list:
     """[(cue_name, signed_z, feature_sign), …] for the measurable cues, in the
     weight table's own order.
 
@@ -116,7 +112,7 @@ def _contributions(piece_metrics: Any, baseline: Any,
     if not feats:
         return []
     out: list = []
-    for name, members, _weight in cues_for(sex):
+    for name, members, _weight in confidence_cues():
         zs, sign_used = [], None
         for feature, sign in members:
             v = feats.get(feature)
@@ -133,8 +129,7 @@ def _contributions(piece_metrics: Any, baseline: Any,
     return out
 
 
-def cue_keys_for_piece(piece_metrics: Any, baseline: Any,
-                       sex: Optional[str] = None) -> list:
+def cue_keys_for_piece(piece_metrics: Any, baseline: Any) -> list:
     """The cues that carried THIS moment, strongest first — at most three,
     as keys.
 
@@ -145,15 +140,14 @@ def cue_keys_for_piece(piece_metrics: Any, baseline: Any,
     delivery, a cue set that is simply unremarkable). Pure."""
     scored = [
         (z, _CUE_KEYS[(name, sign)])
-        for (name, z, sign) in _contributions(piece_metrics, baseline, sex)
+        for (name, z, sign) in _contributions(piece_metrics, baseline)
         if z >= _MIN_CUE_Z and (name, sign) in _CUE_KEYS
     ]
     scored.sort(key=lambda t: -t[0])
     return [key for _z, key in scored[:_MAX_CUES]]
 
 
-def accent_region(piece_metrics: Any, baseline: Any,
-                  sex: Optional[str] = None) -> Optional[str]:
+def accent_region(piece_metrics: Any, baseline: Any) -> Optional[str]:
     """WHERE in the moment the delivery landed — "opening", "closing", or None.
 
     THE ONE WITHIN-MOMENT SIGNAL WE ACTUALLY HAVE. Six of the seven cues are
@@ -180,8 +174,7 @@ def accent_region(piece_metrics: Any, baseline: Any,
     localisation needs windowed analysis of the clip, which we do not compute.
     Pure."""
     by_name = {name: (z, sign)
-               for (name, z, sign) in _contributions(piece_metrics, baseline,
-                                                     sex)}
+               for (name, z, sign) in _contributions(piece_metrics, baseline)}
     front = by_name.get("energy_frontload")
     term = by_name.get("terminal_contour")
     z_front = front[0] if front and front[0] >= _MIN_CUE_Z else 0.0
@@ -195,8 +188,7 @@ def accent_region(piece_metrics: Any, baseline: Any,
     return OPENING if z_front > z_term else CLOSING
 
 
-def is_impeccable(piece_metrics: Any, baseline: Any,
-                  sex: Optional[str] = None, *,
+def is_impeccable(piece_metrics: Any, baseline: Any, *,
                   confidence_score: Any = None) -> bool:
     """Was this moment delivered so well that the honest note is PRAISE?
 
@@ -216,7 +208,7 @@ def is_impeccable(piece_metrics: Any, baseline: Any,
     `confidence_score` is the stamped voice-confidence value when the caller
     has it (they usually do — it rides in the metrics blob). Absent, the
     cue count alone decides, which is stricter, not looser. Pure."""
-    keys = cue_keys_for_piece(piece_metrics, baseline, sex)
+    keys = cue_keys_for_piece(piece_metrics, baseline)
     if len(keys) < 2:
         return False
     if confidence_score is None:

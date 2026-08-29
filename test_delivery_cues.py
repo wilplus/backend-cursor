@@ -48,7 +48,7 @@ class VocabularyTests(unittest.TestCase):
 
     def test_the_vocabulary_is_closed_and_stable(self):
         self.assertEqual(CUE_KEYS, (
-            "even_pitch", "full_volume", "kept_moving", "landed_ending",
+            "full_volume", "kept_moving", "landed_ending",
             "no_hesitation", "opened_strong", "settled_pitch", "wide_range",
         ))
 
@@ -56,14 +56,14 @@ class VocabularyTests(unittest.TestCase):
 class CueReadingTests(unittest.TestCase):
     def test_it_names_the_cues_that_actually_carried_the_moment(self):
         keys = cue_keys_for_piece(
-            piece(f0_sd=+2.0, dynamic_db=+1.5, wpm=+0.1), BASE, "female")
+            piece(f0_sd=+2.0, dynamic_db=+1.5, wpm=+0.1), BASE)
         self.assertIn("wide_range", keys)
         self.assertIn("full_volume", keys)
         self.assertNotIn("kept_moving", keys)   # +0.1 is noise, not a cue
 
     def test_strongest_first(self):
         keys = cue_keys_for_piece(
-            piece(dynamic_db=+1.0, f0_sd=+3.0), BASE, "female")
+            piece(dynamic_db=+1.0, f0_sd=+3.0), BASE)
         self.assertEqual(keys[0], "wide_range")
 
     def test_at_most_three_cues(self):
@@ -72,29 +72,22 @@ class CueReadingTests(unittest.TestCase):
         keys = cue_keys_for_piece(
             piece(f0_sd=+2.0, dynamic_db=+2.0, wpm=+2.0, f0_mean=-2.0,
                   pause_ratio=-2.0, pause_ms=-2.0, f0_mid_end_delta=+2.0,
-                  intensity_envelope=-2.0), BASE, "female")
+                  intensity_envelope=-2.0), BASE)
         self.assertEqual(len(keys), 3)
 
     def test_a_cue_pointing_the_WRONG_way_is_never_named(self):
-        # A narrow range in a woman is not a confidence cue, and praising it
-        # would tell her the opposite of what she did.
-        keys = cue_keys_for_piece(piece(f0_sd=-3.0), BASE, "female")
+        keys = cue_keys_for_piece(piece(f0_sd=-3.0), BASE)
         self.assertNotIn("wide_range", keys)
-        self.assertNotIn("even_pitch", keys)
 
-    def test_THE_SEX_REVERSAL_reaches_the_words(self):
-        # voice_confidence flips cue 1's SIGN by sex. One key per cue would
-        # have told half the speakers the opposite of what they did.
+    def test_every_speaker_uses_the_same_pitch_range_direction(self):
         wide = piece(f0_sd=+3.0)
         narrow = piece(f0_sd=-3.0)
-        self.assertIn("wide_range", cue_keys_for_piece(wide, BASE, "female"))
-        self.assertIn("even_pitch", cue_keys_for_piece(narrow, BASE, "male"))
-        self.assertNotIn("even_pitch", cue_keys_for_piece(narrow, BASE,
-                                                          "female"))
+        self.assertIn("wide_range", cue_keys_for_piece(wide, BASE))
+        self.assertNotIn("wide_range", cue_keys_for_piece(narrow, BASE))
 
     def test_pausing_reads_as_the_absence_of_hesitation(self):
         keys = cue_keys_for_piece(
-            piece(pause_ratio=-2.0, pause_ms=-2.0), BASE, "female")
+            piece(pause_ratio=-2.0, pause_ms=-2.0), BASE)
         self.assertEqual(keys, ["no_hesitation"])
 
     def test_no_baseline_no_cues(self):
@@ -165,27 +158,27 @@ class ImpeccableTests(unittest.TestCase):
     STRONG = dict(f0_sd=+2.0, dynamic_db=+2.0, pause_ratio=-2.0)
 
     def test_two_cues_and_a_confident_read(self):
-        self.assertTrue(is_impeccable(piece(**self.STRONG), BASE, "female",
-                                      confidence_score=0.8))
+        self.assertTrue(is_impeccable(
+            piece(**self.STRONG), BASE, confidence_score=0.8))
 
     def test_ONE_cue_is_a_coincidence_not_a_finding(self):
-        self.assertFalse(is_impeccable(piece(f0_sd=+3.0), BASE, "female",
-                                       confidence_score=0.9))
+        self.assertFalse(is_impeccable(
+            piece(f0_sd=+3.0), BASE, confidence_score=0.9))
 
     def test_a_BORDERLINE_read_is_not_impeccable(self):
         # Squeaking past the neutral dead zone (0.25) is not "impeccable",
         # and saying so devalues every later praise line.
-        self.assertFalse(is_impeccable(piece(**self.STRONG), BASE, "female",
-                                       confidence_score=0.3))
+        self.assertFalse(is_impeccable(
+            piece(**self.STRONG), BASE, confidence_score=0.3))
 
     def test_an_absent_score_falls_back_to_the_cues_alone(self):
-        self.assertTrue(is_impeccable(piece(**self.STRONG), BASE, "female"))
-        self.assertFalse(is_impeccable(piece(f0_sd=+3.0), BASE, "female"))
+        self.assertTrue(is_impeccable(piece(**self.STRONG), BASE))
+        self.assertFalse(is_impeccable(piece(f0_sd=+3.0), BASE))
 
     def test_a_junk_score_is_not_a_pass(self):
         for bad in ("high", [], {}):
-            self.assertFalse(is_impeccable(piece(**self.STRONG), BASE,
-                                           "female", confidence_score=bad))
+            self.assertFalse(is_impeccable(
+                piece(**self.STRONG), BASE, confidence_score=bad))
 
     def test_no_baseline_no_praise(self):
         self.assertFalse(is_impeccable(piece(**self.STRONG), None))
@@ -202,17 +195,15 @@ class OneDefinitionTests(unittest.TestCase):
         from services import delivery_cues as dc
         src = inspect.getsource(dc)
         self.assertIn("from services.voice_confidence import", src)
-        self.assertIn("cues_for", src)
+        self.assertIn("confidence_cues", src)
         # No weight TABLE of its own — those live in one place, deliberately.
-        self.assertNotIn("_CUES_FEMALE", src)
-        self.assertNotIn("_CUES_MALE", src)
+        self.assertNotIn("speaker_sex", src)
         for weight in ("0.18", "0.20", "0.24", "0.13", "0.09"):
             self.assertNotIn(weight, src, f"weight {weight} restated here")
 
     def test_no_number_can_leave_this_module(self):
         # AC-9: everything crossing the boundary is a key or a region word.
-        keys = cue_keys_for_piece(piece(f0_sd=+3.0, dynamic_db=+2.0), BASE,
-                                  "female")
+        keys = cue_keys_for_piece(piece(f0_sd=+3.0, dynamic_db=+2.0), BASE)
         self.assertTrue(all(isinstance(k, str) for k in keys))
         self.assertIn(accent_region(piece(intensity_envelope=-3.0), BASE),
                       (OPENING, CLOSING, None))

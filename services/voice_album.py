@@ -39,7 +39,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_MACHINE_CONFIDENT_TRIGGERS = {"confident", "charisma"}
+_MACHINE_CONFIDENT_TRIGGERS = {"confident"}
 
 
 def _machine_confident(row: Any) -> bool:

@@ -147,8 +147,7 @@ class PraiseShortCircuitsTheComplaintTests(unittest.TestCase):
         # delivery detector's own axes that it would have said "emphasis".
         rows = self._run({"f0_sd": 12.0, "dynamic_db": 12.0,
                           "pause_ratio": 8.0, "pause_ms": 8.0,
-                          "voice_confidence": {"score": 0.85}},
-                         sex="female")
+                          "voice_confidence": {"score": 0.85}})
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][2], "impeccable")
         self.assertIn("wide_range", rows[0][3])
@@ -157,8 +156,7 @@ class PraiseShortCircuitsTheComplaintTests(unittest.TestCase):
         # The praise gate must not swallow the to-work-on lane: this one is
         # genuinely flat and should still hear about it.
         rows = self._run({"f0_sd": 7.0, "dynamic_db": 7.0,
-                          "voice_confidence": {"score": 0.0}},
-                         sex="female")
+                          "voice_confidence": {"score": 0.0}})
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][2], "emphasis")
         self.assertIsNone(rows[0][3])
@@ -166,21 +164,19 @@ class PraiseShortCircuitsTheComplaintTests(unittest.TestCase):
     def test_a_BORDERLINE_read_is_not_praised(self):
         rows = self._run({"f0_sd": 12.0, "dynamic_db": 12.0,
                           "pause_ratio": 8.0, "pause_ms": 8.0,
-                          "voice_confidence": {"score": 0.3}},
-                         sex="female")
+                          "voice_confidence": {"score": 0.3}})
         self.assertNotEqual(rows[0][2] if rows else None, "impeccable")
 
     def test_no_confidence_baseline_no_praise(self):
         rows = self._run({"f0_sd": 12.0, "dynamic_db": 12.0,
                           "voice_confidence": {"score": 0.9}},
-                         sex="female", cue_baseline=None)
+                         cue_baseline=None)
         self.assertNotEqual(rows[0][2] if rows else None, "impeccable")
 
     def test_the_raw_metrics_win_over_the_readout_spelling(self):
         # Cue and baseline must be measured off one source; metrics_by_id is
         # the blob the confidence baseline was built from.
         rows = self._run({"f0_sd": 7.0},   # readout copy says flat …
-                         sex="female",
                          metrics_by_id={"s1": {
                              "f0_sd": 12.0, "dynamic_db": 12.0,
                              "pause_ratio": 8.0, "pause_ms": 8.0,

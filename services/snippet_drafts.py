@@ -112,14 +112,11 @@ def _call_llm_draft(
     snippet pipeline".
     """
     try:
-        from services.openai_service import OpenAIService
-        service = OpenAIService()
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_SNIPPET_DRAFT
     except Exception as e:
         logger.warning("snippet_drafts: openai import failed: %s", e)
         return None
-    if not service.client:
-        return None
-
     try:
         from services.llm_schemas import (
             CHARISMA_DRAFT_SCHEMA,
@@ -133,29 +130,19 @@ def _call_llm_draft(
         return None
 
     try:
-        response = service.client.chat.completions.create(
-            model=_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=_MAX_TOKENS,
-            temperature=0.5,
-            response_format=response_format(schema),
+        response = chat_complete(
+            spec=SPEC_SNIPPET_DRAFT,
+            system=system_prompt,
+            user=user_prompt,
+            surface="snippet_drafts",
+            response_format_override=response_format(schema),
         )
-        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
-        # after the call returns and BEFORE any parsing — we have already
-        # paid for this response, so a downstream parse failure must not
-        # lose the cost row. This service bypasses services/llm.py, so
-        # without this hook it is invisible to the ledger.
-        try:
-            from services.llm_usage import record_response_usage
-            record_response_usage(response, surface="snippet_drafts",
-                                  model=_MODEL,)
-        except Exception:
-            pass
-        raw = (response.choices[0].message.content or "").strip()
+        if response is None:
+            return None
+        raw = response.text
     except Exception as e:
+        from services.processing_authorization import rethrow_processing_authorization
+        rethrow_processing_authorization(e)
         logger.warning("snippet_drafts: openai call failed: %s", e)
         return None
 

@@ -33,7 +33,7 @@ def _snippet(**over) -> dict:
             "voiced_ratio": 0.78,
             "audio_quality": {"reliable": True, "noise_dominant": False},
             "voice_confidence": {
-                "version": "voice-confidence-v2",
+                "version": "voice-confidence-universal-v3",
                 "score": 0.25,
             },
         },

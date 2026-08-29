@@ -58,7 +58,6 @@ class _GenerationContext:
     audience: Optional[str]
     strategic_context: Optional[str]
     confidence_baseline: Any
-    sex: Optional[str]
     context_document: Optional[str]
     decided_keys: set
     intent_keys: set
@@ -114,12 +113,8 @@ def _load_generation_context(
     strategic_context = context.get("strategic_context") or None
 
     confidence_baseline = None
-    sex = None
     try:
-        from services.voice_confidence import (
-            resolve_confidence_baseline,
-            resolve_take_sex,
-        )
+        from services.voice_confidence import resolve_confidence_baseline
 
         confidence_baseline, _ = resolve_confidence_baseline(
             session.get("user_id"),
@@ -129,8 +124,6 @@ def _load_generation_context(
                 if isinstance(metric, dict)
             ],
         )
-        sex, _ = resolve_take_sex(
-            session.get("user_id"), context, confidence_baseline)
     except Exception as baseline_error:
         logger.warning(
             "moment_suggestion: cue baseline failed sid=%s: %s",
@@ -166,7 +159,6 @@ def _load_generation_context(
         audience=audience,
         strategic_context=strategic_context,
         confidence_baseline=confidence_baseline,
-        sex=sex,
         context_document=context_document,
         decided_keys=decided_keys,
         intent_keys=decision_intent_keys,
@@ -471,7 +463,7 @@ def _delivery_stars_enabled() -> bool:
 
 
 def _generate_delivery(database, arc_id, candidates, baseline, *,
-                       cue_baseline=None, sex=None,
+                       cue_baseline=None,
                        metrics_by_id=None) -> list:
     """Measured delivery stars (founder 2026-07-18): deterministic, no LLM.
     ``candidates`` = [(snip_id, features_dict), ...] for the snippets with
@@ -524,9 +516,9 @@ def _generate_delivery(database, arc_id, candidates, baseline, *,
                 _score = _pm["voice_confidence"].get("score")
             _cues: list = []
             device = None
-            if is_impeccable(_pm, cue_baseline, sex, confidence_score=_score):
+            if is_impeccable(_pm, cue_baseline, confidence_score=_score):
                 device = "impeccable"
-                _cues = cue_keys_for_piece(_pm, cue_baseline, sex)
+                _cues = cue_keys_for_piece(_pm, cue_baseline)
             else:
                 device = detect_delivery_issue(feats, baseline,
                                                z_threshold=_z)
@@ -680,9 +672,9 @@ def _generate_acoustic_candidate(
             from services.delivery_cues import accent_region, cue_keys_for_piece
 
             cue_keys = cue_keys_for_piece(
-                piece_metrics, context.confidence_baseline, context.sex)
+                piece_metrics, context.confidence_baseline)
             region = accent_region(
-                piece_metrics, context.confidence_baseline, context.sex)
+                piece_metrics, context.confidence_baseline)
         except Exception as cue_error:
             logger.warning(
                 "moment_suggestion: cues failed snip=%s: %s",
@@ -774,7 +766,6 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         _metrics_by_id = context.metrics_by_id
         session = context.session
         _vc_baseline = context.confidence_baseline
-        _vc_sex = context.sex
 
         stored = 0
         # ── FUNNEL COUNTERS (2026-08-10) ──────────────────────────────
@@ -945,7 +936,7 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
             # The praise half reads the CONFIDENCE baseline, not the delivery
             # one: those are different feature sets with different floors, and
             # "impeccable" is a claim about the confidence cues.
-            cue_baseline=_vc_baseline, sex=_vc_sex,
+            cue_baseline=_vc_baseline,
             metrics_by_id=_metrics_by_id))
         stored += len(_deliv)
         # congruence IS a delivery star → fold it in so structural skips it too.

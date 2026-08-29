@@ -159,6 +159,15 @@ def _all_devices() -> tuple:
 
 
 _USER_SUPPRESS_VERDICTS = ("wrong_kind", "should_not_fire")
+_RETIRED_SIGNAL_TRIGGERS = {"challenge", "threat", "breakthrough"}
+
+
+def _uses_retired_signal(row: Any) -> bool:
+    return (
+        isinstance(row, dict)
+        and str(row.get("trigger") or "").strip().lower()
+        in _RETIRED_SIGNAL_TRIGGERS
+    )
 
 
 def released_user_verdicts(verdicts: Any, pieces: Any,
@@ -193,6 +202,7 @@ def filter_user_suggestions(suggestions: Any, verdicts: Any) -> dict:
         str(sid): row for sid, row in rows.items()
         if (judged.get(str(sid)) or {}).get("verdict")
         not in _USER_SUPPRESS_VERDICTS
+        and not _uses_retired_signal(row)
     }
 
 
@@ -226,7 +236,7 @@ def stars_with_verdicts(suggestions: Any, verdicts: Any,
     snips = snippets_by_id if isinstance(snippets_by_id, dict) else {}
     out: list = []
     for s in (suggestions or []):
-        if not isinstance(s, dict):
+        if not isinstance(s, dict) or _uses_retired_signal(s):
             continue
         sid = str(s.get("snippet_id") or "")
         if not sid:
@@ -374,6 +384,8 @@ def annotation_pair_for_star(suggestion: Any) -> Optional[tuple]:
     a coach-written final is a valid empty-draft pair (draft side None).
     Deterministic (sorted keys). Pure."""
     if not isinstance(suggestion, dict):
+        return None
+    if _uses_retired_signal(suggestion):
         return None
     kind = suggestion.get("kind")
     trigger = suggestion.get("trigger")

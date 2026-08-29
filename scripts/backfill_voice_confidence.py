@@ -2,9 +2,8 @@
 """Re-stamp historical pieces under the CURRENT voice-confidence weighting.
 
 WHY THIS EXISTS. services/voice_confidence.py stamps its composite at record
-time and nothing ever re-stamps it. So when the weighting changed (v1 sex-blind
--> v2 sex-routed, where cue 1 REVERSES direction for men), every piece already
-in the database kept a score computed under the retired weighting while new
+time and nothing ever re-stamps it. When the calculation version changes, every
+piece already in the database keeps the retired value while new
 pieces got the new one. Both land in [-1, 1] and both look plausible, and the
 delivery term swings 2.0 in power_score — twice the content term's range — so a
 mixed arc ranks last week's take against today's on an inconsistent basis and
@@ -22,18 +21,14 @@ WHAT IT COVERS — and what it deliberately does not.
     v2_list_user_lab_sessions returns, and they are the pieces that rank.
 
   * NOT training imports. An imported take is someone else's voice under the
-    importing coach's user_id, and which voice it was lives in the in-memory
-    ``session_context`` handed to process_lab_recording — it is never
-    persisted. So for a historical import there is no way to recover whether
-    the speaker was the account holder, and guessing would re-create the exact
-    bug #290 fixed: a woman's talk scored with a male coach's weights, cue 1
-    inverted, result still plausible. They keep their old stamps, which means
-    they do not rank — harmless, since imports are corpus, not user-facing
-    ranking. The script REPORTS the count so the gap is visible rather than
-    silent.
+    importing coach's user_id, and the canonical speaker identity was not
+    persisted by the historical import path. Those rows therefore cannot be
+    attributed safely for a speaker-relative recomputation. They keep their
+    retired stamps and do not rank; imports are corpus, not user-facing
+    ranking.
 
-BASELINE CHOICE. Resolution is identical to the record path — same
-resolve_confidence_baseline, same resolve_take_sex. That is deliberate even
+BASELINE CHOICE. Resolution is identical to the record path — the same
+resolve_confidence_baseline. That is deliberate even
 though a backfill could in principle do something cleverer: a piece re-stamped
 under different rules than a freshly recorded one would re-introduce the very
 comparability problem this script exists to remove. One consequence to know:
@@ -91,11 +86,9 @@ def backfill_user(database, user_id: str, *, apply: bool,
     """Re-stamp one speaker. Returns a Counter of outcomes.
 
     The speaker is the unit of work because the composite is speaker-relative:
-    baseline and sex are resolved ONCE and applied to every piece, which is
-    both correct and what makes a whole corpus internally consistent."""
+    one baseline is applied consistently to every piece."""
     from services.voice_confidence import (
         _VERSION, read_for_piece, resolve_confidence_baseline,
-        resolve_take_sex,
     )
     out: Counter = Counter()
 
@@ -113,12 +106,6 @@ def backfill_user(database, user_id: str, *, apply: bool,
         out["skipped_no_baseline"] = len(rows)
         return out
 
-    # session_context is None: these are normal takes by definition (the
-    # listing filters to source='audit_upload'), so the account IS the speaker.
-    sex, sex_source = resolve_take_sex(
-        user_id, None, baseline, database=database)
-    out[f"sex:{sex or 'unknown'}/{sex_source}"] = 1
-
     for snippet_id, metrics in rows:
         existing = metrics.get("voice_confidence")
         if isinstance(existing, dict):
@@ -129,7 +116,7 @@ def backfill_user(database, user_id: str, *, apply: bool,
         else:
             out["never_stamped"] += 1
 
-        read = read_for_piece(metrics, baseline, baseline_kind, sex, sex_source)
+        read = read_for_piece(metrics, baseline, baseline_kind)
         if read is None:
             out["unmeasurable"] += 1
             continue
@@ -173,7 +160,6 @@ def main() -> int:
     print(f"target version: {_VERSION}   users: {len(user_ids)}\n")
 
     total: Counter = Counter()
-    routes: Counter = Counter()
     touched_users = 0
     for i, uid in enumerate(user_ids, 1):
         try:
@@ -187,7 +173,7 @@ def main() -> int:
         if counts.get("pieces"):
             touched_users += 1
         for k, v in counts.items():
-            (routes if k.startswith("sex:") else total)[k] += v
+            total[k] += v
 
     print(f"users with pieces: {touched_users}")
     for k in ("sessions", "pieces", "already_current", "from_v1",
@@ -196,20 +182,15 @@ def main() -> int:
         if total.get(k):
             print(f"  {k:<20} {total[k]}")
 
-    if routes:
-        print("\nsex routes applied (speakers, not pieces):")
-        for k, v in sorted(routes.items()):
-            print(f"  {k[4:]:<22} {v}")
-
     if total.get("write_failed"):
         print("\nWARNING: some writes failed — those pieces keep their old "
               "stamp and stay out of the ranking. Re-run; this is idempotent.",
               file=sys.stderr)
 
-    print("\nTraining imports are NOT covered — an import's speaker identity "
-          "lives in a transient session_context and cannot be recovered, so "
-          "re-stamping one would risk applying the coach's weights to a "
-          "stranger's voice (#290). They keep their old stamps and do not "
+    print("\nTraining imports are NOT covered — the historical import path "
+          "did not persist canonical speaker attribution, so those rows "
+          "cannot be safely recomputed against a speaker baseline. They keep "
+          "their retired stamps and do not "
           "rank, which is harmless: imports are corpus, not user-facing "
           "ranking.")
     return 0

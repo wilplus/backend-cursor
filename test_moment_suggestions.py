@@ -53,7 +53,7 @@ class ConfidenceResolutionTests(unittest.TestCase):
     def _resolve(self, score):
         from services.moment_confidence import resolve_moment_confidence
         metrics = ({"voice_confidence": {"score": score,
-                                         "version": "voice-confidence-v2"}}
+                                         "version": "voice-confidence-universal-v3"}}
                    if score is not None else None)
         return resolve_moment_confidence(metrics)
 
@@ -977,7 +977,7 @@ class LedgerGenerationFilterTests(unittest.TestCase):
             # either branch (BLIND COACH: a rater must not see the machine's
             # read of a clip they judge blind).
             return [{"id": s, "metrics": {"voice_confidence": {
-                "score": 0.9, "version": "voice-confidence-v2"}}}
+                "score": 0.9, "version": "voice-confidence-universal-v3"}}}
                 for s in self.confident_snippets]
 
         confident_snippets: tuple = ()
@@ -1121,7 +1121,7 @@ class IntentKeyGenerationFilterTests(unittest.TestCase):
         def get_snippets_by_session(self, sid):
             return [{"id": s, "metrics": {
                 "voice_confidence": {"score": 0.9,
-                                     "version": "voice-confidence-v2"},
+                                     "version": "voice-confidence-universal-v3"},
                 "piece": {"slide_index": self.slide_by_snippet.get(s)},
             }} for s in self.confident_snippets]
 
@@ -1216,7 +1216,7 @@ class ContextDocumentReachesGenerationTests(unittest.TestCase):
             # all, and these tests exist to inspect the PROMPT — the
             # replace path is where a prompt still exists to inspect.
             return [{"id": "s1", "metrics": {"voice_confidence": {
-                "score": -0.9, "version": "voice-confidence-v2"}}}]
+                "score": -0.9, "version": "voice-confidence-universal-v3"}}}]
 
     def _run(self, db):
         from services import moment_suggestions as ms

@@ -38,7 +38,7 @@ def _frame(take_index=2):
         "duration_ms": piece["duration_ms"],
         "metrics": {
             "voice_confidence": {
-                "version": "voice-confidence-v2",
+                "version": "voice-confidence-universal-v3",
                 "score": piece["score"],
             },
         },
@@ -132,7 +132,7 @@ def test_shadow_is_not_delivery_exposure_or_dataset_input_and_hash_is_stable():
     serialized = str(first)
     assert "word0x0" not in serialized  # no transcript text in the shadow ledger
     versions = first["implementation_versions"]
-    assert versions["confidence_detector_version"] == "voice-confidence-v2"
+    assert versions["confidence_detector_version"] == "voice-confidence-universal-v3"
     assert versions["acoustic_feature_schema_version"]
     assert versions["manager_rules_version"]
     assert versions["manager_evidence_schema_version"]

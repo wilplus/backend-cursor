@@ -46,7 +46,9 @@ action (see docs/OPS-SECRETS-AND-STAGING.md).
 """
 from __future__ import annotations
 
+import hashlib
 import logging
+import posixpath
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -105,7 +107,20 @@ def target_bucket() -> str:
     Persist this alongside the object key (the pipeline job payload does)
     so a later read knows where to look first.
     """
-    return lab_audio_bucket() if lab_audio_segregated() else coach_bucket()
+    if lab_audio_segregated():
+        return lab_audio_bucket()
+    from services.coach_video_storage import (
+        coach_videos_use_r2, r2_bucket_name,
+    )
+
+    return r2_bucket_name() if coach_videos_use_r2() else coach_bucket()
+
+
+def storage_provider() -> str:
+    """Provider used by a write at this instant."""
+    from services.coach_video_storage import coach_videos_use_r2
+
+    return "r2" if coach_videos_use_r2() else "supabase"
 
 
 def _client():
@@ -165,7 +180,7 @@ def put_lab_audio_bytes(key: str, body: bytes, content_type: str) -> str:
     # Pre-cutover (or no R2): unchanged behaviour, unchanged destination.
     from services.coach_video_storage import put_coach_object_bytes
 
-    bucket = coach_bucket()
+    bucket = target_bucket()
     put_coach_object_bytes(bucket, key, body, content_type)
     return bucket
 
@@ -229,3 +244,81 @@ def get_lab_audio_bytes(key: str, *, bucket_hint: Optional[str] = None) -> bytes
 
     detail = ", ".join(f"{b}({why})" for b, why in tried) or "no buckets configured"
     raise FileNotFoundError(f"lab audio {key!r} not found — tried: {detail}")
+
+
+def get_exact_storage_object_bytes(
+    key: str, *, bucket: str, storage_provider: str,
+) -> bytes:
+    """Read exactly one provider/bucket/key without compatibility fallback."""
+    key = key.lstrip("/")
+    bucket = (bucket or "").strip()
+    if not key or not bucket:
+        raise ValueError("exact bucket and object key are required")
+    provider = (storage_provider or "").strip().lower()
+    if provider == "r2":
+        return _client().get_object(Bucket=bucket, Key=key)["Body"].read()
+    if provider == "supabase":
+        from services.db import db
+
+        return db.client.storage.from_(bucket).download(key)
+    raise ValueError("unsupported storage provider")
+
+
+def delete_verified_lab_audio_object(
+    key: str, *, bucket: str, storage_provider: str,
+    expected_sha256: str,
+) -> bool:
+    """Delete one exact object only after byte-hash verification.
+
+    No fallback bucket search is allowed here. A purge inventory identifies
+    one provider/bucket/key, and the expected SHA-256 must match the bytes at
+    those coordinates immediately before deletion. Authentication or network
+    errors fail closed and are never treated as proof of absence.
+    """
+    key = key.lstrip("/")
+    bucket = (bucket or "").strip()
+    expected_sha256 = (expected_sha256 or "").strip().lower()
+    if (not key or not bucket or len(expected_sha256) != 64
+            or any(ch not in "0123456789abcdef" for ch in expected_sha256)):
+        raise ValueError("exact object coordinates and SHA-256 are required")
+    provider = (storage_provider or "").strip().lower()
+    if provider == "r2":
+        client = _client()
+        before = get_exact_storage_object_bytes(
+            key, bucket=bucket, storage_provider=provider,
+        )
+        if hashlib.sha256(before).hexdigest() != expected_sha256:
+            raise ValueError("object checksum does not match purge inventory")
+        client.delete_object(Bucket=bucket, Key=key)
+        try:
+            client.head_object(Bucket=bucket, Key=key)
+        except Exception as error:
+            response = getattr(error, "response", {}) or {}
+            status = (response.get("ResponseMetadata") or {}).get(
+                "HTTPStatusCode"
+            )
+            code = str((response.get("Error") or {}).get("Code") or "")
+            if status == 404 and code in ("404", "NoSuchKey", "NotFound"):
+                return True
+            raise
+        return False
+    if provider == "supabase":
+        from services.db import db
+
+        storage = db.client.storage.from_(bucket)
+        before = get_exact_storage_object_bytes(
+            key, bucket=bucket, storage_provider=provider,
+        )
+        if hashlib.sha256(before).hexdigest() != expected_sha256:
+            raise ValueError("object checksum does not match purge inventory")
+        removed = storage.remove([key])
+        if removed is None:
+            raise RuntimeError("storage provider did not acknowledge deletion")
+        folder, name = posixpath.split(key)
+        listing = storage.list(folder, {"search": name, "limit": 100})
+        names = {
+            str(item.get("name") or "")
+            for item in (listing or []) if isinstance(item, dict)
+        }
+        return name not in names
+    raise ValueError("unsupported storage provider")

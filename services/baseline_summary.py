@@ -84,14 +84,11 @@ def compute_baseline_summary(
         return None
 
     try:
-        from services.openai_service import OpenAIService
-        service = OpenAIService()
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_BASELINE_SUMMARY
     except Exception as e:
         logger.warning("baseline_summary: openai import failed: %s", e)
         return None
-    if not service.client:
-        return None
-
     try:
         from services.llm_schemas import (
             BASELINE_SUMMARY_SCHEMA,
@@ -105,30 +102,20 @@ def compute_baseline_summary(
     user_prompt = _build_user_prompt(usable)
 
     try:
-        response = service.client.chat.completions.create(
-            model=_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=_MAX_TOKENS,
-            temperature=0.4,
-            response_format=response_format(BASELINE_SUMMARY_SCHEMA),
-            timeout=_TIMEOUT_SECONDS,
+        response = chat_complete(
+            spec=SPEC_BASELINE_SUMMARY,
+            system=system,
+            user=user_prompt,
+            surface="baseline_summary",
+            response_format_override=response_format(BASELINE_SUMMARY_SCHEMA),
+            user_id=user_id,
         )
-        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
-        # after the call returns and BEFORE any parsing — we have already
-        # paid for this response, so a downstream parse failure must not
-        # lose the cost row. This service bypasses services/llm.py, so
-        # without this hook it is invisible to the ledger.
-        try:
-            from services.llm_usage import record_response_usage
-            record_response_usage(response, surface="baseline_summary",
-                                  model=_MODEL, user_id=user_id,)
-        except Exception:
-            pass
-        raw = (response.choices[0].message.content or "").strip()
+        if response is None:
+            return None
+        raw = response.text
     except Exception as e:
+        from services.processing_authorization import rethrow_processing_authorization
+        rethrow_processing_authorization(e)
         logger.warning(
             "baseline_summary: openai call failed user=%s err=%s",
             user_id, e,
@@ -283,13 +270,13 @@ def _serialise_turns(previous_turns: list[dict]) -> list[dict]:
 def _build_system_prompt() -> str:
     from services.will_voice import with_voice_rules
     return with_voice_rules(
-        "You're a charisma coach analysing a brand-new user's EBCP "
+        "You're a speaking coach analysing a brand-new user's EBCP "
         "Baseline Mapping (4 scripted opener turns).\n"
         "\n"
         "The 4 turns by design probe different terrain:\n"
         "  Turn 1 — math confidence (\"Are you good at math?\")\n"
         "  Turn 2 — math under pressure (a numeric challenge)\n"
-        "  Turn 3 — a charismatic leader they admire\n"
+        "  Turn 3 — a leader whose communication they admire\n"
         "  Turn 4 — a fictional character they'd bring to a negotiation\n"
         "\n"
         "Your job is to digest the 4 answers into a structured "

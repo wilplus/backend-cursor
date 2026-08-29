@@ -35,6 +35,7 @@ class AnalysisInputs:
     storage_key: str
     duration_seconds: int
     canonical_attempt_registered: bool = False
+    phase1_boundary_registered: bool = False
 
 
 @dataclass(frozen=True)
@@ -131,9 +132,24 @@ def dispatch_recording_analysis(
             return None
         return complete_attempt(database=database, **kwargs)
 
+    def sync_phase1(status: str, error: Exception | str | None = None) -> None:
+        if not inputs.phase1_boundary_registered:
+            return
+        from services.processing_authorization import ProcessingAuthorizationService
+
+        ProcessingAuthorizationService(database).sync_processing_job(
+            attempt_id=inputs.session_id,
+            runtime_job_id=None,
+            status=status,
+            attempts=1,
+            error_code=(type(error).__name__ if isinstance(error, Exception)
+                        else str(error)[:160] if error else None),
+        )
+
     def ideal_text_failure(exc: IdealTextUnconfirmedError) \
             -> FailedIdealTextAnalysis:
         try:
+            sync_phase1("failed", exc)
             record_transition(
                 attempt_id=inputs.session_id,
                 to_status="failed_ideal_text_unconfirmed",
@@ -205,6 +221,9 @@ def dispatch_recording_analysis(
                 canonical_attempt_registered=(
                     inputs.canonical_attempt_registered
                 ),
+                phase1_boundary_registered=(
+                    inputs.phase1_boundary_registered
+                ),
             )
         except Exception as exc:
             log.warning(
@@ -235,6 +254,7 @@ def dispatch_recording_analysis(
         )
 
     if async_enabled():
+        sync_phase1("processing")
         record_transition(
             attempt_id=inputs.session_id,
             to_status="processing",
@@ -254,6 +274,7 @@ def dispatch_recording_analysis(
                     input_provenance=lifecycle_input,
                     confidence_producer_manifest=producer_manifest,
                 )
+                sync_phase1("completed")
                 database.set_session_analysis_state(inputs.session_id, "ready")
             except IdealTextUnconfirmedError as exc:
                 log.error(
@@ -272,6 +293,7 @@ def dispatch_recording_analysis(
                 )
                 sentry_sdk.capture_exception(exc)
                 try:
+                    sync_phase1("failed", exc)
                     record_transition(
                         attempt_id=inputs.session_id,
                         to_status="failed",
@@ -293,6 +315,7 @@ def dispatch_recording_analysis(
             audit_paid=audit_paid_for_arc(inputs.arc_id, inputs.user_id),
         ))
 
+    sync_phase1("processing")
     record_transition(
         attempt_id=inputs.session_id,
         to_status="processing",
@@ -309,12 +332,14 @@ def dispatch_recording_analysis(
             input_provenance=lifecycle_input,
             confidence_producer_manifest=producer_manifest,
         )
+        sync_phase1("completed")
         return CompletedAnalysis(readout, sent_to_coach)
     except IdealTextUnconfirmedError as exc:
         sentry_sdk.capture_exception(exc)
         return ideal_text_failure(exc)
     except Exception as exc:
         try:
+            sync_phase1("failed", exc)
             record_transition(
                 attempt_id=inputs.session_id,
                 to_status="failed",

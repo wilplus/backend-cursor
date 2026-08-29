@@ -28,8 +28,8 @@ _W_C, _W_A, _W_S = 2.0, 1.0, 0.6
 # explicit coach product decisions remain represented by the coach tag.
 _W_CONF_MACHINE = 1.0
 
-# Stamped on the caller's blob beside sex_source (SPEC §7.2) so a ranking can
-# be explained after the fact: which lane actually supplied the confidence.
+# Stamped on the caller's blob so a ranking can be explained after the fact:
+# which lane actually supplied the confidence.
 SOURCE_MACHINE = "machine"
 SOURCE_NONE = "none"
 

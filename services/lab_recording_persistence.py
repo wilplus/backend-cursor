@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
+import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -22,6 +23,10 @@ class StoredRecording:
     bucket: str
     storage_key: str
     audio_url: str
+    storage_provider: str
+    content_type: str
+    exact_bytes_sha256: str
+    verification_method: str
 
 
 @dataclass(frozen=True)
@@ -38,6 +43,7 @@ def store_recording_audio(
     *,
     upload_key: str,
     owner_principal_id: str,
+    acquisition_principal_id: str | None = None,
     user_id: str | None,
     database: Any,
     deadline: Any,
@@ -45,9 +51,12 @@ def store_recording_audio(
 ) -> StoredRecording:
     """Store parent audio and ensure its owning session exists."""
     from services.lab_audio_storage import (
+        get_exact_storage_object_bytes,
         lab_audio_public_url,
         put_lab_audio_bytes,
+        storage_provider as lab_storage_provider,
     )
+    from services.processing_authorization import ProcessingAuthorizationService
 
     deadline.check("store")
     # Every accepted upload gets a fresh immutable Take id. Retry collapse is
@@ -70,6 +79,36 @@ def store_recording_audio(
     except Exception as exc:
         log.error("lab: parent upload failed: %s", exc, exc_info=True)
         raise RecordingPersistenceError("Failed to store recording") from exc
+    exact_sha256 = hashlib.sha256(audio_bytes).hexdigest()
+    storage_provider = lab_storage_provider()
+    authorization = ProcessingAuthorizationService(database)
+    verification_method = "trusted_object_checksum_sha256"
+    if authorization.enforced:
+        try:
+            stored_bytes = get_exact_storage_object_bytes(
+                storage_key,
+                bucket=bucket,
+                storage_provider=storage_provider,
+            )
+            if hashlib.sha256(stored_bytes).hexdigest() != exact_sha256:
+                raise ValueError("stored audio checksum mismatch")
+            verification_method = "read_after_write_sha256"
+        except Exception as exc:
+            try:
+                authorization.queue_orphan(
+                    acquisition_principal_id=(
+                        acquisition_principal_id or owner_principal_id
+                    ),
+                    storage_provider=storage_provider,
+                    bucket=bucket, object_key=storage_key,
+                    exact_bytes_sha256=exact_sha256,
+                    reason_code="UPLOAD_VERIFICATION_FAILED",
+                )
+            except Exception:
+                pass
+            raise RecordingPersistenceError(
+                "Stored recording verification failed"
+            ) from exc
     audio_url = (
         lab_audio_public_url(storage_key)
         or f"s3://{bucket}/{storage_key}"
@@ -87,6 +126,18 @@ def store_recording_audio(
             exc,
             exc_info=True,
         )
+        try:
+            authorization.queue_orphan(
+                acquisition_principal_id=(
+                    acquisition_principal_id or owner_principal_id
+                ),
+                storage_provider=storage_provider,
+                bucket=bucket, object_key=storage_key,
+                exact_bytes_sha256=exact_sha256,
+                reason_code="SESSION_CREATE_FAILED",
+            )
+        except Exception:
+            pass
         raise RecordingPersistenceError("Failed to create session") from exc
     database.v2_set_session_upload_key(session_id, upload_key)
 
@@ -96,6 +147,10 @@ def store_recording_audio(
         bucket=bucket,
         storage_key=storage_key,
         audio_url=audio_url,
+        storage_provider=storage_provider,
+        content_type=content_type,
+        exact_bytes_sha256=exact_sha256,
+        verification_method=verification_method,
     )
 
 

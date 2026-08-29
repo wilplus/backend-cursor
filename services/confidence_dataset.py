@@ -253,7 +253,7 @@ def partition_rows(rows: Any, manifest: Any) -> dict[str, list[dict]]:
 def split_audit(partitions: Any) -> dict:
     """Internal balance report; observation only, never an auto-reshuffler."""
     source = partitions if isinstance(partitions, dict) else {}
-    dimensions = ("language", "device", "source", "sex", "acoustic_region")
+    dimensions = ("language", "device", "source", "acoustic_region")
     out: dict[str, Any] = {"partitions": {}, "speaker_overlap": []}
     speaker_sets: dict[str, set[str]] = {}
     for partition in PARTITIONS:

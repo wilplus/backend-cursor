@@ -249,11 +249,10 @@ class TestAttach(unittest.TestCase):
                                 baseline_kind="user")
         for p in pieces:
             read = p["metrics"]["voice_confidence"]
-            self.assertEqual(read["version"], "voice-confidence-v2")
+            self.assertEqual(read["version"], "voice-confidence-universal-v3")
             self.assertEqual(read["baseline"], "user")
-            # Un-resolved sex is stamped honestly, not left absent.
-            self.assertEqual(read["sex"], "unknown")
-            self.assertEqual(read["sex_source"], "unknown")
+            self.assertNotIn("sex", read)
+            self.assertNotIn("sex_source", read)
             self.assertIn(read["band"], (
                 "confident", "close_to_confident", "neutral",
                 "unconfident", "doubtful"))
@@ -321,8 +320,7 @@ class TestRankTermFlag(unittest.TestCase):
 
     _STAMPED = {"voice_confidence": {"score": 0.7, "band": "confident",
                                      "baseline": "user", "cues": 7,
-                                     "sex": "male", "sex_source": "declared",
-                                     "version": "voice-confidence-v2"}}
+                                     "version": "voice-confidence-universal-v3"}}
 
     def test_flag_off_is_none(self):
         from services.voice_confidence import rank_term
@@ -343,10 +341,7 @@ class TestRankTermFlag(unittest.TestCase):
             self.assertEqual(rank_term(self._STAMPED), 0.7)
 
     def test_a_superseded_weighting_does_not_rank(self):
-        """THE mixed-basis guard. A v1 stamp scored a wide pitch range as
-        +0.18*z for everyone; v2 SUBTRACTS 0.08*z for a man. Ranking the two
-        against each other is comparing different scales that both look
-        plausible — so the older weighting sits out until it is backfilled."""
+        """Values from a retired calculation sit out until recomputed."""
         from services.voice_confidence import rank_term
         stale = {"voice_confidence": {"score": 0.7, "band": "confident",
                                       "baseline": "user", "cues": 7,
@@ -472,6 +467,7 @@ class TestSelectionUsesTheTerm(unittest.TestCase):
         self.assertEqual(picks[0]["snippet_id"], "old")
 
 
+@unittest.skip("retired sex-routed contract retained as historical test text")
 class TestSexConditionedWeights(unittest.TestCase):
     """v2 — the cue weights route on speaker sex, and cue 1 REVERSES.
 
@@ -571,6 +567,7 @@ class TestSexConditionedWeights(unittest.TestCase):
                            w_female["speech_rate"])
 
 
+@unittest.skip("retired sex-routed contract retained as historical test text")
 class TestSexNormalizationAndInference(unittest.TestCase):
 
     def test_normalize_sex_accepts_only_the_three_values(self):
@@ -614,6 +611,7 @@ class TestSexNormalizationAndInference(unittest.TestCase):
                 infer_sex_from_baseline({"f0_mean": (110.0, 12.0)}), "male")
 
 
+@unittest.skip("retired sex-routed contract retained as historical test text")
 class TestSexResolution(unittest.TestCase):
 
     _MALE_BASELINE = {"f0_mean": (110.0, 12.0)}
@@ -681,6 +679,7 @@ class TestSexResolution(unittest.TestCase):
             resolve_speaker_sex("u1", None, database=bare), (None, "unknown"))
 
 
+@unittest.skip("retired sex-routed contract retained as historical test text")
 class TestTakeSexPrecedence(unittest.TestCase):
     """resolve_take_sex — the single authority on whose sex applies to a take.
 
@@ -753,6 +752,7 @@ class TestTakeSexPrecedence(unittest.TestCase):
         self.assertNotIn("speaker_is_account_holder", stage_source)
 
 
+@unittest.skip("retired sex-routed contract retained as historical test text")
 class TestSexReachesTheStampedBlob(unittest.TestCase):
 
     def test_read_for_piece_records_the_route_and_its_authority(self):
@@ -821,6 +821,7 @@ class TestSexReachesTheStampedBlob(unittest.TestCase):
                            self._stamp(unsure_male, "male"))
 
 
+@unittest.skip("superseded by Phase-1 universal-boundary fence tests")
 class TestFences(unittest.TestCase):
 
     def test_an_inferred_sex_is_never_written_back(self):

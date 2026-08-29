@@ -17,6 +17,7 @@ Project/Take send endpoint. Ownership is verified before this function runs.
 from __future__ import annotations
 
 import logging
+import uuid
 
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,48 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
         # Already in/through the coach queue — idempotent no-op.
         return {"ok": True, "already_sent": True, "status": current}
 
+    permit_id = None
+    try:
+        from services.authorized_provider import (
+            AuthorizedProviderAdapter,
+            ProviderCoordinates,
+        )
+        from services.processing_authorization import (
+            ProcessingAuthorizationError,
+            ProcessingAuthorizationService,
+        )
+
+        recording_id = str(
+            session.get("recording_1_id") or session.get("recording_id") or ""
+        )
+        authorization = ProcessingAuthorizationService(db)
+        principal_id = authorization.resolve_acquisition_principal(
+            str(session.get("owner_principal_id") or ""),
+            user_id=str(session.get("user_id") or user_id or "") or None,
+            recording_id=recording_id or None,
+        )
+        adapter = AuthorizedProviderAdapter(
+            db,
+            ProviderCoordinates(
+                acquisition_principal_id=principal_id,
+                take_id=str(session_id),
+                recording_id=recording_id or None,
+            ),
+            authorization=authorization,
+        )
+        permit = adapter.authorize_operation(
+            "coach_delivery",
+            manifest={"content": ["coach_packet"], "purpose": "coach_review"},
+            idempotency_key=f"coach-delivery:{session_id}:{uuid.uuid4()}",
+        )
+        permit_id = str((permit or {}).get("permit_id") or "") or None
+        adapter.authorization.record_provider_event(permit_id, "started")
+    except ProcessingAuthorizationError as error:
+        return {
+            "ok": False, "already_sent": False, "status": current,
+            "reason": "processing_authorization_required", "code": error.code,
+        }
+
     # Reserve the human-review allowance before accepting work.  Idempotency
     # is per Take, so retries never double-consume a slot.
     credit = _reserve_review_credit(str(user_id), str(session_id))
@@ -101,6 +144,13 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
         ok = False
 
     if not ok:
+        if permit_id:
+            try:
+                adapter.authorization.record_provider_event(
+                    permit_id, "failed", error_code="COACH_QUEUE_WRITE_FAILED",
+                )
+            except Exception:
+                pass
         try:
             db.refund_coach_review_credit(str(user_id), str(session_id))
         except Exception as refund_error:
@@ -111,6 +161,16 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
             )
         return {"ok": False, "already_sent": False, "status": current,
                 "reason": "queue_write_failed"}
+
+    if permit_id:
+        try:
+            adapter.authorization.record_provider_event(
+                permit_id, "completed", metadata={"result_kind": "coach_queue"},
+            )
+        except Exception:
+            logger.exception(
+                "lab_send: provider completion evidence failed sid=%s", session_id,
+            )
 
     # Best-effort admin notification — a nudge, not part of send-success.
     # Founder 2026-07-16 (BE-3a): a mid-take RE-READ is part of its parent

@@ -403,8 +403,8 @@ _BP_PAYLOAD_VERSION = "v10"  # v10: peer/panel ratings no longer enter live
                             # warm cache was still serving picks ranked by the
                             # retired charisma blend. Only a payload bump can
                             # force the recompute (the audit's finding #3).
-                            # (v7: the voice-confidence WEIGHTING changed (sex
-                            # routing) and history was backfilled — the stamped
+                            # (v7: the voice-confidence WEIGHTING changed and
+                            # history was backfilled — the stamped
                             # scores under a warm cache are not the ones that
                             # produced its picks, and no session row moved, so
                             # only a payload bump forces the recompute
@@ -437,7 +437,7 @@ def _bp_signature(sessions: list, corrections: Optional[dict] = None) -> str:
     made under the old blend and the flip would look like a no-op.
 
     The composite's VERSION is in for the same reason, one level down: a
-    weighting change (v1 sex-blind → v2 sex-routed) alters which take wins
+    weighting-version change alters which take wins
     without adding a take or a publish. Deploying the bump alone would leave
     warm arcs serving picks from the retired weighting until something
     unrelated invalidated them, so the change would land arc-by-arc at random

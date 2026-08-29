@@ -77,42 +77,29 @@ def generate_coach_note_draft(
     if not transcript:
         return None
     try:
-        from services.openai_service import OpenAIService
-        service = OpenAIService()
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_COACH_COMMENT_DRAFT
     except Exception as e:
         logger.warning("coach_comment_drafter: openai import failed: %s", e)
-        return None
-    if not service.client:
         return None
     observations = metric_observations(metrics)
     try:
         from services.llm_schemas import COACH_NOTE_DRAFT_SCHEMA, response_format
-        from services.ml_surface_contracts import resolve_surface_model
-        model = resolve_surface_model("coach_comment_draft", _MODEL)
-        resp = service.client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _system_prompt()},
-                {"role": "user", "content": _user_prompt(
-                    transcript, slide, observations, take_comparison, goal)},
-            ],
-            max_tokens=_MAX_TOKENS,
-            temperature=0.6,
-            response_format=response_format(COACH_NOTE_DRAFT_SCHEMA),
+        resp = chat_complete(
+            spec=SPEC_COACH_COMMENT_DRAFT,
+            system=_system_prompt(),
+            user=_user_prompt(
+                transcript, slide, observations, take_comparison, goal
+            ),
+            surface="coach_comment_draft",
+            response_format_override=response_format(COACH_NOTE_DRAFT_SCHEMA),
         )
-        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
-        # after the call returns and BEFORE any parsing — we have already
-        # paid for this response, so a downstream parse failure must not
-        # lose the cost row. This service bypasses services/llm.py, so
-        # without this hook it is invisible to the ledger.
-        try:
-            from services.llm_usage import record_response_usage
-            record_response_usage(resp, surface="coach_comment_draft",
-                                  model=model,)
-        except Exception:
-            pass
-        raw = (resp.choices[0].message.content or "").strip()
+        if resp is None:
+            return None
+        raw = resp.text
     except Exception as e:
+        from services.processing_authorization import rethrow_processing_authorization
+        rethrow_processing_authorization(e)
         logger.warning("coach_comment_drafter: llm call failed: %s", e)
         return None
     try:

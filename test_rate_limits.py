@@ -431,7 +431,9 @@ class RealRouteTransparencyTests(unittest.TestCase):
             mod = _life_mod if path == "routes/life_routes.py" else _v2_mod
             for name in expected:
                 capped[name] = mod
-        self.assertGreaterEqual(len(capped), 30, "route list went stale")
+        # Phase-2 corpus/training and retired coaching-chat routes are absent
+        # from the active paid-route registry in Phase 1.
+        self.assertGreaterEqual(len(capped), 23, "route list went stale")
         for name, mod in capped.items():
             with self.subTest(route=name):
                 view = getattr(mod, name, None)
@@ -467,8 +469,6 @@ class CoveredRoutesTests(unittest.TestCase):
             "v2_lab_presentation_extract": "heavy_limit",
         },
         "routes/v2/coach.py": {
-            "v2_coach_annotation_upload": "whisper_limit",
-            "v2_coach_training_import": "whisper_limit",
             "v2_coach_put_say_it_stronger": "llm_limit",
             "v2_coach_verify_ideal_text": "heavy_limit",
             "v2_coach_approve_ideal_text": "heavy_limit",
@@ -476,14 +476,9 @@ class CoveredRoutesTests(unittest.TestCase):
             "v2_coach_session_video": "heavy_limit",
         },
         "routes/v2/user_chat.py": {
-            "v2_user_chat_first_question": "llm_limit",
         },
         "routes/v2/coaching.py": {
             "v2_chat_query": "llm_limit",
-            "v2_chat_snippet_followup": "llm_limit",
-            "v2_coaching_intro_bubble": "llm_limit",
-            "v2_coaching_state_machine_turn": "llm_limit",
-            "v2_coaching_turn": "llm_limit",
             "v2_onboarding_opener_next": "llm_limit",
             "v2_onboarding_opener_start": "llm_limit",
         },

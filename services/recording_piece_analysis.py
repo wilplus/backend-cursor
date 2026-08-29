@@ -147,7 +147,6 @@ def _attach_voice_confidence(
             attach_voice_confidence,
             enabled,
             resolve_confidence_baseline,
-            resolve_take_sex,
         )
 
         if not enabled():
@@ -156,17 +155,10 @@ def _attach_voice_confidence(
             state.user_id,
             [piece.get("metrics") for piece in analyzed],
         )
-        sex, sex_source = resolve_take_sex(
-            state.user_id,
-            state.session_context,
-            baseline,
-        )
         attach_voice_confidence(
             analyzed,
             baseline=baseline,
             baseline_kind=baseline_kind,
-            sex=sex,
-            sex_source=sex_source,
         )
     except Exception as error:
         log.warning(

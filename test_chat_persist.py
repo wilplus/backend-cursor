@@ -194,9 +194,11 @@ class ParseChatRequestTests(unittest.TestCase):
         self.assertEqual(parsed["question"], "rehearse this")
         self.assertEqual(len(parsed["history"]), 1)
         self.assertEqual(parsed["presentation_context"], {"take_count": 1})
-        self.assertEqual(parsed["audio_bytes"], b"voice")
-        self.assertEqual(parsed["transcript_source"], "server_whisper")
-        self.assertEqual(parsed["audio_duration_sec"], 2.5)
+        # Chat transport is text-only. Voice bytes must enter through the
+        # recording boundary where exact audio lineage is established.
+        self.assertNotIn("audio_bytes", parsed)
+        self.assertNotIn("transcript_source", parsed)
+        self.assertNotIn("audio_duration_sec", parsed)
         self.assertTrue(parsed["persist_thread"])
 
 

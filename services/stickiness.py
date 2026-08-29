@@ -168,17 +168,14 @@ def _serialise_snippets(snippets: list[dict]) -> list[dict]:
 def _extract_topics_via_llm(items: list[dict]) -> list[str] | None:
     """One batch call. Returns per-turn topic list (some may be empty)."""
     try:
-        from services.openai_service import OpenAIService
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_STICKINESS_TOPICS
         from services.llm_schemas import (
             SESSION_TOPIC_EXTRACTION_SCHEMA,
             response_format,
         )
     except Exception as e:
         logger.warning("stickiness: import failed: %s", e)
-        return None
-
-    service = OpenAIService()
-    if not service.client:
         return None
 
     user_prompt = _build_user_prompt(items)
@@ -207,29 +204,21 @@ def _extract_topics_via_llm(items: list[dict]) -> list[str] | None:
     )
 
     try:
-        response = service.client.chat.completions.create(
-            model=_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=_MAX_TOKENS,
-            temperature=0.2,
-            response_format=response_format(SESSION_TOPIC_EXTRACTION_SCHEMA),
+        response = chat_complete(
+            spec=SPEC_STICKINESS_TOPICS,
+            system=system_prompt,
+            user=user_prompt,
+            surface="stickiness_topics",
+            response_format_override=response_format(
+                SESSION_TOPIC_EXTRACTION_SCHEMA
+            ),
         )
-        # Cost ledger (token-pricing Phase 0). Recorded HERE, immediately
-        # after the call returns and BEFORE any parsing — we have already
-        # paid for this response, so a downstream parse failure must not
-        # lose the cost row. This service bypasses services/llm.py, so
-        # without this hook it is invisible to the ledger.
-        try:
-            from services.llm_usage import record_response_usage
-            record_response_usage(response, surface="stickiness_topics",
-                                  model=_MODEL,)
-        except Exception:
-            pass
-        raw = (response.choices[0].message.content or "").strip()
+        if response is None:
+            return None
+        raw = response.text
     except Exception as e:
+        from services.processing_authorization import rethrow_processing_authorization
+        rethrow_processing_authorization(e)
         logger.warning("stickiness: openai call failed: %s", e)
         return None
 

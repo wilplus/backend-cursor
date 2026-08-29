@@ -25,7 +25,7 @@ from typing import Any
 
 
 CLASSES = ("yes", "in_between", "no")
-SLICE_DIMENSIONS = ("language", "device", "source", "sex")
+SLICE_DIMENSIONS = ("language", "device", "source")
 SCHEMA_VERSION = 1
 POLICY_VERSION = "confidence-release-gate-v1"
 

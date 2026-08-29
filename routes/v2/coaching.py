@@ -27,112 +27,14 @@ from typing import Any
 from auth import optional_auth, require_auth
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
 from services.rate_limits import llm_limit
-from services.skills import get_skill as _get_skill, resolve_for_snippet as _skill_for_snippet
 from config import Config
 from routes.v2.blueprint import v2_bp
+from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db
 from services.snippet_values import display_hz, resolve_all
 
 logger = logging.getLogger(__name__)
 config = Config()
-
-
-def _generate_snippet_follow_up_question(
-    snippet_type: str,
-    transcript: str,
-    admin_comment: str,
-) -> str | None:
-    """Generate a single follow-up question for the Infinite Retention Loop.
-
-    Called when an admin labels/comments on a snippet. The question is stored
-    on the snippet row so it can be served instantly when the user later clicks
-    the snippet — no latency at click time.
-
-    snippet_type: "charisma" | "stress" | "unlabeled"
-    transcript:   Whisper transcript of the snippet audio.
-    admin_comment: Coach's text note on the snippet.
-
-    Returns the generated question string, or None on failure.
-    """
-    try:
-        from services.openai_service import OpenAIService
-        service = OpenAIService()
-        if not service.client:
-            return None
-
-        if snippet_type == "charisma":
-            system_prompt = (
-                "You are a charisma coaching assistant. "
-                "An admin coach has flagged this audio snippet as a HIGH-CHARISMA moment "
-                "and left a comment about it. Your task is to write a response that:\n"
-                "1. Opens with ONE brief warm acknowledgment of this specific moment (1 sentence)\n"
-                "2. Follows with ONE powerful question that helps the user deconstruct WHY they "
-                "felt so confident and how they can deliberately replicate that energy "
-                "(e.g. in cold calls, presentations, or negotiations)\n"
-                "The question must be:\n"
-                "- Specific to the transcript content (reference what they actually said)\n"
-                "- High-energy and motivating in tone\n"
-                "- Focused on replicability (how to trigger this state on demand)\n"
-                "- No longer than 2 sentences\n"
-                "FORMATTING RULE: Separate your acknowledgment from your question using the exact "
-                "delimiter `|||`. "
-                "Example: `That energy you described is magnetic! ||| What specific conditions were "
-                "present that day that let you access that state so easily?`\n"
-                "Return ONLY these two parts separated by `|||`, nothing else."
-            )
-        elif snippet_type == "stress":
-            system_prompt = (
-                "You are a performance coaching assistant. "
-                "An admin coach has flagged this audio snippet as a HIGH-STRESS or VOCAL-STRAIN moment "
-                "and left a comment. Your task is to write a response that:\n"
-                "1. Opens with ONE brief empathetic acknowledgment of this specific moment (1 sentence)\n"
-                "2. Follows with ONE targeted question that addresses the cognitive load or emotional "
-                "trigger that caused the vocal stress spike\n"
-                "The question must be:\n"
-                "- Specific to what the speaker was saying in the transcript\n"
-                "- Empathetic but direct (not dismissive)\n"
-                "- Focused on uncovering the root cause of that specific stress moment\n"
-                "- No longer than 2 sentences\n"
-                "FORMATTING RULE: Separate your acknowledgment from your question using the exact "
-                "delimiter `|||`. "
-                "Example: `That moment sounds genuinely tough. ||| What was running through your mind "
-                "right before your voice shifted?`\n"
-                "Return ONLY these two parts separated by `|||`, nothing else."
-            )
-        else:
-            # unlabeled or unknown — generic deepening question
-            system_prompt = (
-                "You are a voice coaching assistant. "
-                "Based on this audio transcript and the coach's comment, write a response that:\n"
-                "1. Opens with ONE brief acknowledgment of the moment (1 sentence)\n"
-                "2. Follows with ONE insightful question to help the speaker reflect on it\n"
-                "FORMATTING RULE: Separate your acknowledgment from your question using the exact "
-                "delimiter `|||`. "
-                "Return ONLY these two parts separated by `|||`, nothing else."
-            )
-
-        user_content = (
-            f"Transcript: \"{transcript}\"\n"
-            f"Coach comment: \"{admin_comment}\""
-        )
-
-        response = service.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            max_tokens=120,
-            temperature=0.7,
-        )
-        question = response.choices[0].message.content.strip()
-        if question.startswith('"') and question.endswith('"'):
-            question = question[1:-1]
-        return question if question else None
-
-    except Exception as e:
-        logger.warning("_generate_snippet_follow_up_question failed: %s", e)
-        return None
 
 
 def _build_user_raw_snippet_list(
@@ -433,7 +335,6 @@ def _coach_intent_for_snippet(snippet: dict) -> str:
     return _skill_for_snippet(snippet)
 
 
-@v2_bp.route("/coaching/start", methods=["POST"])
 @llm_limit
 @require_auth
 def v2_coaching_start():
@@ -502,7 +403,6 @@ def v2_coaching_start():
         return jsonify({"code": "V2_ERROR", "error": "Failed to start coaching"}), 500
 
 
-@v2_bp.route("/coaching/<coaching_id>", methods=["GET"])
 @require_auth
 def v2_coaching_get(coaching_id):
     """Re-hydrate a coaching session — survive reloads of /coach/[id].
@@ -548,7 +448,6 @@ def v2_coaching_get(coaching_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to load coaching"}), 500
 
 
-@v2_bp.route("/coaching/turn", methods=["POST"])
 @llm_limit
 @require_auth
 def v2_coaching_turn():
@@ -732,7 +631,6 @@ def v2_coaching_turn():
         return jsonify({"code": "V2_ERROR", "error": "Coaching turn failed"}), 500
 
 
-@v2_bp.route("/coaching/state-machine/turn", methods=["POST"])
 @llm_limit
 @require_auth
 def v2_coaching_state_machine_turn():
@@ -1140,13 +1038,11 @@ def v2_chat_session_state():
         snippets = [
             {
                 "id": s.get("id"),
-                "snippet_type": s.get("snippet_type"),
                 "admin_comment": s.get("admin_comment"),
                 "audio_url": _resolve_snippet_audio_url(s),
                 "transcript": s.get("transcript"),
                 "turn_number": s.get("turn_number"),
                 "question_text": s.get("question_text"),
-                "question_tone": s.get("question_tone"),
                 "start_offset_ms": s.get("start_offset_ms") or 0,
                 "duration_ms": s.get("duration_ms"),
                 # PM-9: the six denormalized columns are dead on the live
@@ -1273,9 +1169,6 @@ def _parse_chat_request(req) -> dict:
     parsed: dict[str, Any] = {
         "question": None,
         "history": None,
-        "audio_bytes": None,
-        "transcript_source": "web_speech",
-        "audio_duration_sec": 0.0,
         "presentation_context": {},
         "persist_thread": False,
         "user_client_id": None,
@@ -1323,24 +1216,6 @@ def _parse_chat_request(req) -> dict:
     parsed["user_client_id"] = req.form.get("client_id") or None
     parsed["user_created_at"] = req.form.get("client_created_at") or None
 
-    audio_file = req.files.get("audio_file")
-    if audio_file is None:
-        return parsed
-    try:
-        parsed["audio_bytes"] = audio_file.read()
-    except Exception as read_err:
-        logger.warning(
-            "chat/query: audio read failed user=%s err=%s — continuing text-only",
-            getattr(req, "user_id", None), read_err,
-        )
-    source = (req.form.get("transcript_source") or "").strip().lower()
-    if source in ("web_speech", "server_whisper"):
-        parsed["transcript_source"] = source
-    try:
-        parsed["audio_duration_sec"] = float(
-            req.form.get("audio_duration_sec") or "0")
-    except (TypeError, ValueError):
-        pass
     return parsed
 
 
@@ -1374,6 +1249,7 @@ def _finalize_chat_response(
 
 
 @v2_bp.route("/chat/query", methods=["POST"])
+@phase1_provider_route
 @llm_limit
 @optional_auth
 def v2_chat_query():
@@ -1438,33 +1314,14 @@ def v2_chat_query():
     get request.user_id=None and the general bot (no per-user reads/
     writes, no DSP attribution). NEVER 401s — signed-out chat works.
 
-    ─────────────────────────────────────────────────────────────────
-    Phase Stress-Contrast (BE-3) — dual-mode body parsing
-    ─────────────────────────────────────────────────────────────────
-    This endpoint additively supports a ``multipart/form-data`` body
-    when the frontend captures audio alongside the typed/dictated
-    question. Path A (text → LLM) is unchanged. Path B (audio → DSP)
-    fires asynchronously via ``casual_voice_analytics`` and never
-    blocks the HTTP response.
-
-    Multipart fields (all when Path B applies):
-      - question:              str (required; same semantics as JSON)
-      - history:               JSON-stringified list (optional)
-      - audio_file:            webm/opus blob (required for Path B)
-      - transcript_source:     "web_speech" | "server_whisper"
-                                (default "web_speech")
-      - audio_duration_sec:    float hint (optional)
-
-    JSON callers (the existing path) keep the exact same request
-    and response shape — no regression.
+    Multipart text remains accepted for compatibility, but this endpoint does
+    not accept or analyze voice. Voice processing belongs exclusively to the
+    authorized recording boundary.
     """
     try:
         transport = _parse_chat_request(request)
         question = transport["question"]
         history = transport["history"]
-        audio_bytes = transport["audio_bytes"]
-        transcript_source = transport["transcript_source"]
-        audio_duration_sec = transport["audio_duration_sec"]
         presentation_context = transport["presentation_context"]
         persist_thread = transport["persist_thread"]
         user_client_id = transport["user_client_id"]
@@ -1693,44 +1550,6 @@ def v2_chat_query():
             life_context=life_context,
         )
 
-        # ── Path B — fire-and-forget DSP extraction. Spawned BEFORE
-        # the jsonify so the daemon's stack frame exists by the time
-        # the request worker recycles, but AFTER Path A so we never
-        # delay the LLM. The dispatch itself is a thread.start() —
-        # microseconds; safe to do before returning. Failure to
-        # dispatch is logged and swallowed; the LLM answer still
-        # ships.
-        # Anonymous (unsigned-home) chat skips DSP capture — there's no
-        # user to attribute the casual-voice benchmark to.
-        if audio_bytes and request.user_id:
-            try:
-                from services.casual_voice_analytics import (
-                    analyze_casual_audio_async,
-                )
-                analyze_casual_audio_async(
-                    user_id=str(request.user_id),
-                    # session_id is None for pure Lounge chat — the
-                    # endpoint isn't session-bound. The column on
-                    # casual_voice_benchmarks is nullable for this
-                    # exact reason; see migration comment.
-                    session_id=None,
-                    audio_bytes=audio_bytes,
-                    transcript=question.strip(),
-                    duration_sec=audio_duration_sec,
-                    transcript_source=transcript_source,
-                )
-            except Exception as cv_err:
-                # The dispatcher should never raise (it's just a
-                # thread.start), but defense-in-depth: a broken
-                # casual-voice path MUST NOT take down the chat
-                # response. Log and move on.
-                logger.warning(
-                    "chat/query: casual_voice dispatch failed "
-                    "user=%s err=%s (non-fatal — LLM answer still "
-                    "returned)",
-                    request.user_id, cv_err,
-                )
-
         # S1 — per-turn intent → the one contextual button the FE renders.
         # ("audit" is set by the audit intercept above, not the librarian, but
         # is a valid enum value so the FE contract stays consistent.)
@@ -1758,7 +1577,6 @@ def v2_chat_query():
         }), 500
 
 
-@v2_bp.route("/chat/snippet-followup", methods=["POST"])
 @llm_limit
 @require_auth
 def v2_chat_snippet_followup():
@@ -1940,7 +1758,6 @@ _COACHING_INTRO_STATIC_FALLBACK = (
 )
 
 
-@v2_bp.route("/coaching/intro-bubble", methods=["POST"])
 @llm_limit
 @require_auth
 def v2_coaching_intro_bubble():

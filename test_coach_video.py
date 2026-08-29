@@ -107,29 +107,16 @@ class CoachVideoTests(unittest.TestCase):
         self.assertEqual(self.stored["ref"], f"https://cdn/{key}")
         self.assertEqual(resp.get_json()["video_ref"], self.stored["ref"])
 
-    def test_take_is_captured_into_the_training_corpus(self):
-        """Subsystem V: every upload writes an asset row. The route swallows
-        capture failures as non-fatal (live-loop fence), so nothing else in the
-        suite would notice this lane going dark — which is exactly how the
-        publish-time RLHF emitter stayed dead code for months."""
+    def test_take_is_not_captured_into_a_training_corpus(self):
+        """Phase 1 stores product video without a hidden learning write."""
         self._post("feedback.mp4")
-        self.assertEqual(len(self.assets), 1)
-        row = self.assets[0]
-        self.assertEqual(row["session_id"], SID)
-        self.assertEqual(row["content_type"], "take_summary")
-        self.assertEqual(str(row["recorded_by"]), COACH)
-        self.assertEqual(row["video_ref"], self.stored["ref"])
-        # take_summary's comment only exists at publish — captured later as
-        # comment_text_at_publish, so the snapshot is null here.
-        self.assertIsNone(row.get("comment_text_snapshot"))
+        self.assertEqual(self.assets, [])
 
-    def test_re_record_supersedes_rather_than_replaces(self):
-        """The kept↔superseded pair IS the preference signal — a second take
-        must add a row and link the prior one, never overwrite it."""
+    def test_re_record_does_not_create_a_training_preference(self):
         self._post("feedback.mp4")
         self._post("feedback.mp4")
-        self.assertEqual(len(self.assets), 2)
-        self.assertEqual(self.superseded, [("asset-1", "asset-2")])
+        self.assertEqual(self.assets, [])
+        self.assertEqual(self.superseded, [])
 
     def test_re_record_does_not_overwrite_the_prior_take(self):
         """Subsystem V: the storage key carries a per-upload uuid so a coach

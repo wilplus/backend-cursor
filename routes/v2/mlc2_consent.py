@@ -15,6 +15,7 @@ from flask import jsonify, request
 
 from auth import require_auth
 from config import Config
+from routes.phase2_guard import phase2_learning_disabled
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.project_repository import ProjectOwnershipError, ProjectRepository
@@ -94,6 +95,7 @@ def _owner_and_status() -> tuple[str, dict]:
 
 
 @v2_bp.route("/user/mlc2-consent", methods=["GET", "POST", "DELETE"])
+@phase2_learning_disabled
 @require_auth
 def v2_user_mlc2_consent():
     """Read, explicitly grant, or explicitly withdraw founder consent.

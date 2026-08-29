@@ -56,6 +56,7 @@ class LLMSpec:
     temperature: float
     max_tokens: int
     response_format: Optional[dict] = None
+    timeout_seconds: Optional[float] = None
     """Forwarded verbatim to OpenAI's API. ``None`` = default (plain
     text). For JSON output use ``{"type": "json_object"}``; for a
     pinned schema use ``{"type": "json_schema", "json_schema": ...}``
@@ -80,6 +81,24 @@ SPEC_MASTER_DOC_RAG = LLMSpec(
     response_format=None,
 )
 """Chat reply for the post-signup FAQ surface (master_doc_rag)."""
+
+SPEC_MASTER_DOC_ROUTER = LLMSpec(
+    model=CHEAP_MODEL, temperature=0.0, max_tokens=40,
+)
+
+SPEC_STICKINESS_TOPICS = LLMSpec(
+    model=CHEAP_MODEL, temperature=0.2, max_tokens=400,
+)
+SPEC_COACH_COMMENT_DRAFT = LLMSpec(
+    model=CHEAP_MODEL, temperature=0.6, max_tokens=320,
+)
+SPEC_SNIPPET_DRAFT = LLMSpec(
+    model=CHEAP_MODEL, temperature=0.5, max_tokens=220,
+)
+SPEC_BASELINE_SUMMARY = LLMSpec(
+    model=CHEAP_MODEL, temperature=0.4, max_tokens=600,
+    timeout_seconds=8.0,
+)
 
 
 SPEC_CONVERSATION_SUMMARY = LLMSpec(

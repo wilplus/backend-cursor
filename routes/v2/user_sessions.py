@@ -18,6 +18,7 @@ from flask import jsonify, request
 from auth import optional_auth, require_auth
 from config import Config
 from routes.admin import is_admin, is_coach
+from routes.phase2_guard import operational_purpose_disabled
 from routes.v2.arcs import (
     _arc_audit_paid,
     _presentation_group_key,
@@ -44,17 +45,9 @@ def v2_user_get_results(session_id):
       - results_published_at IS NOT NULL → "completed" (admin has reviewed & published)
       - otherwise → "processing"
 
-    When completed, payload includes all non-skipped snippets with their
-    metrics, admin_comment, snippet_type, and audio URLs.
-
-    Optional query param ``include_contrast=true`` (Phase
-    Stress-Contrast / BE-3) attaches a ``contrast`` field powered
-    by ``db.compute_stress_contrast``: median deltas between the
-    user's last 5 published snippets ("official / high-stakes")
-    and their last 5 casual voice benchmarks captured during
-    /v2/chat/query. ``contrast`` is None when either side has
-    fewer than 3 samples; the frontend uses None to omit the card
-    entirely (do not render a placeholder).
+    When completed, payload includes non-skipped snippets, neutral acoustic
+    measurements, coach text and audio coordinates. Retired behavioral labels
+    and internal numeric verdicts are never serialized.
     """
     try:
         if not _is_valid_uuid(session_id):
@@ -68,17 +61,6 @@ def v2_user_get_results(session_id):
         # Founder re-lock 2026-07-06: the automatic results read is never
         # 402-gated (payment scopes only the coach HUMAN layer, and this legacy
         # route carries the old coaching shape the willab FE doesn't use).
-
-        # BE-3: stress contrast is opt-in via query param so callers
-        # that don't render the dashboard section don't pay for two
-        # extra table reads. Cheap when included (≤10 indexed rows
-        # per side) but still gated for hygiene.
-        include_contrast = (
-            (request.args.get("include_contrast") or "")
-            .strip()
-            .lower()
-            in ("1", "true", "yes")
-        )
 
         # Dual-state: admin must explicitly publish before user sees results
         is_published = bool(session.get("results_published_at"))
@@ -114,13 +96,11 @@ def v2_user_get_results(session_id):
             payload["snippets"] = [
                 {
                     "id": s.get("id"),
-                    "snippet_type": s.get("snippet_type"),
                     "admin_comment": s.get("admin_comment"),
                     "audio_url": _resolve_snippet_audio_url(s),
                     "transcript": s.get("transcript"),
                     "turn_number": s.get("turn_number"),
                     "question_text": s.get("question_text"),
-                    "question_tone": s.get("question_tone"),
                     "start_offset_ms": s.get("start_offset_ms") or 0,
                     "duration_ms": s.get("duration_ms"),
                     # PM-9: the denormalized columns are dead on the live
@@ -141,32 +121,6 @@ def v2_user_get_results(session_id):
                 session.get("session_kpi_narrative_ai_draft")
                 or session.get("ai_task_alignment_comment")
             )
-            payload["ai_score"] = session.get("ai_task_alignment_score")
-
-        # ── BE-3 Stress Contrast ─────────────────────────────────────
-        # Gated by ?include_contrast=true. Computed across the WHOLE
-        # user (last 5 published snippets vs last 5 casual chat
-        # benchmarks), not just this session — that's the point: the
-        # delta is a per-user trait, not a per-session one. Surface
-        # it on the same payload so the dashboard renders it in the
-        # session-review view without a second round-trip.
-        #
-        # Returns None when either pool has <3 samples; the frontend
-        # treats None as "omit the section entirely" (do NOT render
-        # a 'not enough data' placeholder — see FE Prompt 3 C7).
-        if include_contrast:
-            try:
-                payload["contrast"] = db.compute_stress_contrast(user_id)
-            except Exception as contrast_err:
-                # Aggregator failure must not break the rest of the
-                # results payload. Log and surface None so the FE
-                # uniformly handles "no contrast available".
-                logger.warning(
-                    "user/results: stress contrast failed user=%s "
-                    "session=%s err=%s",
-                    user_id, session_id, contrast_err,
-                )
-                payload["contrast"] = None
 
         return jsonify(payload), 200
 
@@ -1756,6 +1710,7 @@ def _practice_user_payload(practice, attempts=None):
 @v2_bp.route("/user/snippets/<snippet_id>/confidence-practice",
              methods=["POST"])
 @require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
 def v2_start_confident_voice_practice(snippet_id):
     """Open/resume the one optional same-passage practice for this take."""
     if not _is_valid_uuid(snippet_id):
@@ -1881,6 +1836,7 @@ def v2_start_confident_voice_practice(snippet_id):
 
 @v2_bp.route("/user/confidence-practice/<practice_id>", methods=["GET"])
 @require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
 def v2_get_confident_voice_practice(practice_id):
     if not _is_valid_uuid(practice_id):
         return jsonify({"code": "INVALID_INPUT",
@@ -1895,6 +1851,7 @@ def v2_get_confident_voice_practice(practice_id):
 @v2_bp.route("/user/confidence-practice/<practice_id>/attempts",
              methods=["POST"])
 @require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
 def v2_add_confident_voice_practice_attempt(practice_id):
     """Transcribe and acoustically compare one retained same-text attempt."""
     if not _is_valid_uuid(practice_id):
@@ -1957,7 +1914,7 @@ def v2_add_confident_voice_practice_attempt(practice_id):
         # available. Honest absence stays None; we never synthesize a score.
         try:
             from services.voice_confidence import (
-                read_for_piece, resolve_confidence_baseline, resolve_take_sex,
+                read_for_piece, resolve_confidence_baseline,
             )
             take_rows = db.get_snippets_by_session(
                 str(practice.get("take_session_id"))) or []
@@ -1966,13 +1923,8 @@ def v2_add_confident_voice_practice_attempt(practice_id):
             baseline, baseline_kind = resolve_confidence_baseline(
                 str(practice.get("owner_user_id") or request.user_id),
                 take_metrics, database=db)
-            session = db.v2_get_session_by_id(
-                str(practice.get("take_session_id"))) or {}
-            sex, sex_source = resolve_take_sex(
-                str(practice.get("owner_user_id") or request.user_id),
-                session, baseline, database=db)
             confidence_read = read_for_piece(
-                metrics, baseline, baseline_kind, sex, sex_source)
+                metrics, baseline, baseline_kind)
             if confidence_read:
                 metrics["voice_confidence"] = confidence_read
         except Exception as confidence_err:
@@ -2045,6 +1997,7 @@ def v2_add_confident_voice_practice_attempt(practice_id):
 @v2_bp.route("/user/confidence-practice/<practice_id>/complete",
              methods=["PUT"])
 @require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
 def v2_complete_confident_voice_practice(practice_id):
     """Dismiss or retain an attempt. Never writes any presentation surface."""
     if not _is_valid_uuid(practice_id):

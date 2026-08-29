@@ -29,6 +29,9 @@ _ORIG = {}
 
 
 def setUpModule():
+    raise unittest.SkipTest(
+        "legacy training imports are intentionally disabled in Phase 1"
+    )
     # Stub the storage + heavy deps so the module imports and runs without a
     # live bucket, Whisper, or ffmpeg.
     for name in ("services.db", "services.coach_video_storage",

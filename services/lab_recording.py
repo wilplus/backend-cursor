@@ -258,7 +258,7 @@ class _SkipAnalytics(Exception):
     introduced on the live path (where stages is None and this never fires)."""
 
 
-def process_lab_recording(
+def _process_lab_recording_impl(
     *,
     session_id: str,
     user_id: Optional[str],
@@ -486,6 +486,62 @@ def process_lab_recording(
         )
 
     return build_readout_payload(snippets_data, stickiness_list)
+
+
+def process_lab_recording(**kwargs) -> dict:
+    """Authorize every external analysis call for this exact recording.
+
+    The wrapper sits below queue, synchronous and coach call-site choices, so
+    a caller cannot bypass the provider boundary by invoking the canonical
+    processor directly.
+    """
+    from services.authorized_provider import (
+        AuthorizedProviderAdapter,
+        ProviderCoordinates,
+        protected_provider_scope,
+    )
+    from services.db import db
+    from services.processing_authorization import (
+        ProcessingAuthorizationError,
+        ProcessingAuthorizationService,
+    )
+
+    authorization = ProcessingAuthorizationService(db)
+    if not authorization.enforced:
+        return _process_lab_recording_impl(**kwargs)
+
+    session_id = str(kwargs.get("session_id") or "")
+    recording_id = str(kwargs.get("recording_id") or "")
+    session = db.v2_get_session_by_id(session_id) or {}
+    principal_id = authorization.resolve_acquisition_principal(
+        str(session.get("owner_principal_id") or ""),
+        user_id=str(kwargs.get("user_id") or "") or None,
+        recording_id=recording_id,
+    )
+    if authorization.enforced and not principal_id:
+        raise ProcessingAuthorizationError(
+            "PROCESSING_PRINCIPAL_UNRESOLVED",
+            "The recording owner could not be resolved.",
+            403,
+        )
+    adapter = AuthorizedProviderAdapter(
+        db,
+        ProviderCoordinates(principal_id, session_id, recording_id),
+        authorization=authorization,
+    )
+    import uuid
+
+    with protected_provider_scope(
+        adapter,
+        idempotency_prefix=(
+            f"recording-analysis:{session_id}:{recording_id}:{uuid.uuid4()}"
+        ),
+    ):
+        return _process_lab_recording_impl(**kwargs)
+
+
+# Keep source-introspection tooling focused on the canonical processing body.
+process_lab_recording.__wrapped__ = _process_lab_recording_impl
 
 
 def build_readout_from_session(

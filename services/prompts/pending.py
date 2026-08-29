@@ -71,7 +71,6 @@ REGISTER = {
 
     # ── interview / coaching chat (routes/v2/user_chat.py) ──
     "interview.system": SourceRef(_V2_CHAT, "_INTERVIEW_SYSTEM_PROMPT"),
-    "interview.snippet_followup": SourceRef(_V2_COACHING, "_generate_snippet_follow_up_question"),
     "interview.llm_question": SourceRef(_V2_CHAT, "_generate_llm_question"),
     "interview.few_shot_block": SourceRef(_V2_CHAT, "_build_few_shot_block"),
     "interview.longitudinal_block": SourceRef(_V2_CHAT, "_build_longitudinal_context_block"),

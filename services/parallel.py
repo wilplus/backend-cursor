@@ -35,6 +35,7 @@ and returns it.
 from __future__ import annotations
 
 import logging
+from contextvars import copy_context
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Optional
 
@@ -62,7 +63,10 @@ def run_in_parallel(*thunks: Callable[[], Any],
     workers = min(max_workers or len(calls), MAX_WORKERS, len(calls))
     with ThreadPoolExecutor(max_workers=workers,
                             thread_name_prefix="willab-par") as pool:
-        futures = [pool.submit(t) for t in calls]
+        # Context carries the accepted Take's provider authority.  Each thunk
+        # needs its own copy because one Context cannot be entered by two
+        # threads concurrently.
+        futures = [pool.submit(copy_context().run, t) for t in calls]
         # Collected by INDEX, not by as_completed(): submission order is the
         # contract, and as_completed() is precisely the function that would
         # silently break it.

@@ -18,7 +18,7 @@ import re
 from typing import Any, Optional
 
 
-_CONFIDENT_TRIGGERS = {"confident", "confidence_review", "charisma"}
+_CONFIDENT_TRIGGERS = {"confident", "confidence_review"}
 _CONFIDENCE_REVIEW_WHY = "Possible confident moment for review."
 _WORD_RE = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)*", re.UNICODE)
 
@@ -126,7 +126,7 @@ def current_take_confident_voice_candidate(
         if suggestion.get("kind") != "emphasize" \
                 or trigger not in _CONFIDENT_TRIGGERS:
             continue
-        candidates.append((0 if trigger in ("confident", "charisma") else 1,
+        candidates.append((0 if trigger == "confident" else 1,
                            ordinal, piece, suggestion))
 
     # The three-item Take contract contains one Confident Voice EVALUATION,

@@ -24,6 +24,10 @@ from werkzeug.utils import secure_filename
 
 from config import Config
 from routes.admin import is_admin, require_admin_or_coach
+from routes.phase2_guard import (
+    operational_purpose_disabled,
+    phase2_learning_disabled,
+)
 from routes.v2.arcs import _spoken_takes_and_reads
 from routes.v2.blueprint import v2_bp
 from services.rate_limits import heavy_limit, llm_limit, whisper_limit
@@ -403,22 +407,23 @@ def v2_coach_audit_data(user_id):
     """Audit-assembly data — the felt-state correlation for the interactive
     HTML audit (so it SUCKS UP the user's real data instead of being typed).
 
-    Groups the stored pre-recording feelings (U10) against the existing
-    per-snippet performance signal to produce the audit's "Performance under
-    feeling" + "Stress as fuel" sections. DIRECTIONAL coaching indicators —
+    Groups the user's stored pre-recording self-reports against the existing
+    per-snippet delivery signal to produce the audit's "Performance under
+    feeling" section. These are user-declared states, not machine-inferred
+    emotions. DIRECTIONAL coaching indicators —
     `headline`s are DRAFTS the coach curates; everything is gated on a minimum
     number of takes (returns null headlines below it, never a one-take claim).
 
     Coach-facing assembly (the coach reviews + curates before it reaches the
     user — the audit is the human-gated deliverable).
 
-    200 { user_id, performance_under_feeling, stress_as_fuel, takes:[...] }
+    200 { user_id, performance_under_feeling, takes:[...] }
     """
     if not _is_valid_uuid(user_id):
         return jsonify({"code": "INVALID_INPUT", "error": "user_id must be a UUID"}), 400
     try:
         from services.feeling_performance import (
-            correlate_feeling_performance, session_performance, stress_as_fuel,
+            correlate_feeling_performance, session_performance,
         )
         rows = db.v2_list_user_lab_sessions(user_id) or []
         feel_by_session = {}
@@ -445,7 +450,6 @@ def v2_coach_audit_data(user_id):
         return jsonify({
             "user_id": user_id,
             "performance_under_feeling": correlate_feeling_performance(pairs),
-            "stress_as_fuel": stress_as_fuel(pairs),
             "takes": takes,
         }), 200
     except Exception as e:
@@ -516,6 +520,7 @@ def v2_coach_student_audit_send(user_id):
 
 
 @v2_bp.route("/coach/annotation-uploads", methods=["POST"])
+@phase2_learning_disabled
 @whisper_limit
 @require_admin_or_coach
 def v2_coach_annotation_upload():
@@ -1360,6 +1365,7 @@ def _coach_practice_payload(practice: dict) -> dict:
     methods=["GET", "PUT"],
 )
 @require_admin_or_coach
+@operational_purpose_disabled("personalized_exercise_recommendation")
 def v2_coach_confident_voice_practice(session_id, snippet_id):
     """Review/share practice only after the coach's blind moment rating.
 
@@ -1633,12 +1639,52 @@ def v2_coach_session_recut(session_id):
         if not storage_path:
             return jsonify({"code": "NO_AUDIO", "error": "Recording has no stored audio."}), 422
 
-        # Bucket-tolerant read: a take may live in the lab bucket or, if
-        # it predates the split, the coach bucket (P0 audit 2026-08-03).
-        from services.lab_audio_storage import get_lab_audio_bytes
+        from services.processing_authorization import ProcessingAuthorizationService
+        authorization = ProcessingAuthorizationService(db)
         try:
-            audio_bytes = get_lab_audio_bytes(storage_path)
+            if authorization.enforced:
+                from services.authorized_provider import (
+                    AuthorizedProviderAdapter,
+                    ProviderCoordinates,
+                )
+                attempt_result = (
+                    db.client.table("processing_recording_attempts")
+                    .select("id,acquisition_principal_id")
+                    .eq("recording_id", str(recording_id)).limit(1).execute()
+                )
+                attempt = (attempt_result.data or [None])[0]
+                if not isinstance(attempt, dict):
+                    raise RuntimeError("AUTHORIZED_AUDIO_LINEAGE_MISSING")
+                object_result = (
+                    db.client.table("processing_audio_objects")
+                    .select("storage_provider,bucket,object_key")
+                    .eq("recording_attempt_id", str(attempt["id"]))
+                    .limit(1).execute()
+                )
+                audio_object = (object_result.data or [None])[0]
+                if not isinstance(audio_object, dict):
+                    raise RuntimeError("AUTHORIZED_AUDIO_OBJECT_MISSING")
+                principal_id = str(attempt["acquisition_principal_id"])
+                authorization.require_current(principal_id, operation="coach_recut")
+                adapter = AuthorizedProviderAdapter(
+                    db,
+                    ProviderCoordinates(principal_id, session_id, str(recording_id)),
+                    authorization=authorization,
+                )
+                audio_bytes = adapter.download_audio(
+                    storage_provider=str(audio_object["storage_provider"]),
+                    bucket=str(audio_object["bucket"]),
+                    object_key=str(audio_object["object_key"]),
+                    idempotency_key=f"coach-recut-download:{session_id}:{uuid.uuid4()}",
+                )
+            else:
+                # Compatibility before the reviewed Phase‑1 policy is active.
+                from services.lab_audio_storage import get_lab_audio_bytes
+                audio_bytes = get_lab_audio_bytes(storage_path)
         except Exception as fe:
+            from services.processing_authorization import ProcessingAuthorizationError
+            if isinstance(fe, ProcessingAuthorizationError):
+                return jsonify({"code": fe.code, "error": fe.message}), fe.status
             logger.error("recut: audio fetch failed sid=%s err=%s", session_id, fe)
             return jsonify({"code": "AUDIO_FETCH_FAILED", "error": "Could not load stored audio."}), 502
         if not audio_bytes:
@@ -1774,25 +1820,9 @@ def v2_coach_session_video(session_id):
         db.set_session_coach_video_ref(session_id, video_ref)
         logger.info("coach video stored sid=%s key=%s", session_id, storage_key)
 
-        # Subsystem V — capture the take into the training corpus (best-effort;
-        # NEVER breaks the upload). take_summary's comment ("overall message")
-        # only exists at publish, so comment_text_snapshot is null here and the
-        # real text is captured as comment_text_at_publish later.
-        try:
-            from services.coach_video_capture import capture_coach_video
-            capture_coach_video(
-                database=db, session_id=session_id, content_type="take_summary",
-                recorded_by=str(request.user_id), video_ref=video_ref,
-                comment_text=None, snippet_id=None,
-                device=(request.form.get("device") or None),
-                source=(request.form.get("source") or None),
-                duration=request.form.get("duration"),
-                idempotency_key=_idem,
-                video_bytes=video_bytes, filename=safe_name,
-            )
-        except Exception as _cap_err:
-            logger.warning("coach video corpus capture failed sid=%s: %s (non-fatal)",
-                           session_id, _cap_err)
+        # Phase 1 stores the coach's product video only.  The former
+        # best-effort corpus capture was a hidden pooled-learning write and is
+        # deliberately absent until a separately approved Phase-2 cutover.
 
         return jsonify({
             "status": "ok", "session_id": session_id, "video_ref": video_ref,
@@ -2759,6 +2789,7 @@ def _int_or(raw, default: int) -> int:
 
 
 @v2_bp.route("/coach/training-imports", methods=["POST"])
+@phase2_learning_disabled
 @whisper_limit
 @require_admin_or_coach
 def v2_coach_training_import():
@@ -2779,12 +2810,6 @@ def v2_coach_training_import():
                     auto-detect. Non-English NEEDS this: our Whisper prompt
                     is an English disfluency primer and Whisper follows its
                     prompt's language.
-      speaker_sex   (optional) female | male | prefer_not_to_say — WHOSE
-                    VOICE this is, not the coach's. The confidence composite
-                    routes one cue's DIRECTION on it, and an imported take is
-                    someone else's voice filed under the coach's account, so
-                    absent it the pipeline uses the acoustic route rather
-                    than inheriting the coach's own declared sex.
       stages        (optional) comma-separated ticks — the COACH-ONLY choice
                     of how much analysis to run. Default 'confidence':
                       confidence  always on — transcript, pieces, acoustics,
@@ -2850,7 +2875,6 @@ def v2_coach_training_import():
                               or request.form.get("upload_idempotency_key")
                               or "").strip() or None),
             language=(request.form.get("language") or "").strip() or None,
-            speaker_sex=(request.form.get("speaker_sex") or "").strip() or None,
         )
         if not prepared.get("ok"):
             _reason = prepared.get("reason") or "failed"
@@ -2998,7 +3022,7 @@ def v2_coach_list_training_imports():
     ?include_archived=1 — archive is a tidier list, never lost corpus.
 
     200 { imports: [{session_id, arc_id, topic, speaker_label, created_at,
-          status, queue_count, labelled_count, language, speaker_sex,
+          status, queue_count, labelled_count, language,
           duration_sec, archived_at}], count }
     """
     try:
@@ -3048,10 +3072,6 @@ def v2_coach_list_training_imports():
                 # where that question gets asked.
                 "language": ctx.get("language"),
                 # Same class of question for the confidence composite: one
-                # cue's DIRECTION routes on it, so "which route did this run
-                # use" is worth being able to see. Declared value only —
-                # absent means the acoustic route decided.
-                "speaker_sex": ctx.get("speaker_sex"),
                 "duration_sec": ctx.get("duration_sec"),
                 # null on live rows; set = when it was archived. Present on
                 # every row so the shape doesn't shift with the query param.

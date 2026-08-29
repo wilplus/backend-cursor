@@ -12,7 +12,6 @@ into the explicit retryable processing failure.
 from __future__ import annotations
 
 from dataclasses import replace
-from io import BytesIO
 import logging
 from typing import Optional
 
@@ -160,26 +159,60 @@ def transcribe_recording(
 ) -> RecordingState:
     """Return a new state containing the normalized Whisper transcript."""
     try:
-        from services.openai_service import OpenAIService
+        from services.authorized_provider import (
+            AuthorizedProviderAdapter,
+            ProviderCoordinates,
+        )
+        from services.db import db
+        from services.processing_authorization import ProcessingAuthorizationService
 
-        service = OpenAIService()
-        if not service.client:
-            return replace(state, segments=(), words_all=())
-
+        authorization = ProcessingAuthorizationService(db)
         whisper_bytes, whisper_name = _transcription_audio(state, log=log)
-        transcription = service.transcribe_audio(
-            BytesIO(whisper_bytes),
+        if authorization.enforced:
+            session = db.v2_get_session_by_id(state.session_id) or {}
+            principal_id = authorization.resolve_acquisition_principal(
+                str(session.get("owner_principal_id") or ""),
+                user_id=str(state.user_id) if state.user_id else None,
+                recording_id=state.recording_id,
+            )
+            if not principal_id:
+                from services.processing_authorization import ProcessingAuthorizationError
+                raise ProcessingAuthorizationError(
+                    "PROCESSING_PRINCIPAL_UNRESOLVED",
+                    "The recording owner could not be resolved.", 403,
+                )
+        else:
+            principal_id = "phase1-gate-inactive"
+        adapter = AuthorizedProviderAdapter(
+            db,
+            ProviderCoordinates(
+                acquisition_principal_id=principal_id,
+                take_id=state.session_id,
+                recording_id=state.recording_id,
+            ),
+            authorization=authorization,
+        )
+        transcription = adapter.transcribe_audio(
+            whisper_bytes,
             whisper_name,
             vocabulary=merge_slide_vocabulary(state.session_context),
             language=_language_hint(state.session_context),
             usage_surface=f"whisper_{state.recording_kind or 'spoken'}",
             usage_user_id=state.user_id,
             usage_session_id=state.session_id,
-        ) or {}
+        )
+        if transcription is None:
+            return replace(state, segments=(), words_all=())
+        transcription = transcription or {}
         segments = list(transcription.get("segments") or [])
         words = list(transcription.get("words") or [])
         _settle_transcription_charge(state, transcription, log=log)
     except Exception as error:
+        from services.processing_authorization import ProcessingAuthorizationError
+        if isinstance(error, ProcessingAuthorizationError):
+            # Authority failures are terminal domain errors. They must never
+            # masquerade as an empty transcript or a successful degraded run.
+            raise
         log.warning(
             "process_lab_recording.voice_metrics_diag sid=%s "
             "status=transcription_failed err=%s (acoustics still computed)",

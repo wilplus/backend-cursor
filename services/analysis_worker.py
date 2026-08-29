@@ -115,7 +115,7 @@ def _emit(progress: ProgressFn, stage: str, percent: int,
         logger.warning("analysis progress callback failed: %s", pe)
 
 
-def run_full_analysis(
+def _run_full_analysis_impl(
     *,
     session_id: str,
     user_id: Optional[str],
@@ -451,3 +451,63 @@ def run_full_analysis(
                 session_id, _take_result_err,
             )
     return readout_local, sent_local
+
+
+def run_full_analysis(**kwargs) -> Tuple[Dict[str, Any], bool]:
+    """Run one accepted Take inside the shared provider-authorization scope.
+
+    All shared ``services.llm`` calls—including calls made by bounded worker
+    threads—receive a separate provider permit tied to these exact recording
+    coordinates.  The gate is inert while Phase-1 enforcement is disabled.
+    """
+    from services.authorized_provider import (
+        AuthorizedProviderAdapter,
+        ProviderCoordinates,
+        protected_provider_scope,
+    )
+    from services.db import db
+    from services.processing_authorization import ProcessingAuthorizationService
+
+    authorization = ProcessingAuthorizationService(db)
+    if not authorization.enforced:
+        return _run_full_analysis_impl(**kwargs)
+
+    session_id = str(kwargs.get("session_id") or "")
+    recording_id = str(kwargs.get("recording_id") or "")
+    session = db.v2_get_session_by_id(session_id) or {}
+    principal_id = authorization.resolve_acquisition_principal(
+        str(session.get("owner_principal_id") or ""),
+        user_id=str(kwargs.get("user_id") or "") or None,
+        recording_id=recording_id,
+    )
+    if authorization.enforced and not principal_id:
+        from services.processing_authorization import ProcessingAuthorizationError
+        raise ProcessingAuthorizationError(
+            "PROCESSING_PRINCIPAL_UNRESOLVED",
+            "The recording owner could not be resolved.",
+            403,
+        )
+    adapter = AuthorizedProviderAdapter(
+        db,
+        ProviderCoordinates(
+            acquisition_principal_id=principal_id,
+            take_id=session_id,
+            recording_id=recording_id,
+        ),
+        authorization=authorization,
+    )
+    import uuid
+
+    with protected_provider_scope(
+        adapter,
+        idempotency_prefix=(
+            f"take-analysis:{session_id}:{recording_id}:{uuid.uuid4()}"
+        ),
+    ):
+        return _run_full_analysis_impl(**kwargs)
+
+
+# Preserve introspection of the canonical pipeline for existing wiring tests
+# and operational tooling while keeping the authorization scope at the public
+# call boundary.
+run_full_analysis.__wrapped__ = _run_full_analysis_impl

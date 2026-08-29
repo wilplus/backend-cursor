@@ -29,15 +29,6 @@ def signup():
 
     Optional body fields:
         name           (str)  — display name stored in Supabase user_metadata
-        sex            (str)  — "female" | "male" | "prefer_not_to_say".
-                                Routes the cue weights of the voice-confidence
-                                composite, where pitch variability reverses
-                                direction by speaker sex
-                                (services/voice_confidence.py). OPTIONAL on
-                                purpose: omitted simply means "not answered",
-                                and the composite then falls back to sex-blind
-                                weights. Also settable later via
-                                POST /v2/user/profile.
 
     On success (201):
         { user: { id, email }, access_token, refresh_token, expires_in,
@@ -108,22 +99,6 @@ def signup():
                 ),
             }), 400
 
-        # Speaker sex — validated HERE: after the consent gate, so that gate
-        # keeps its precedence, but before create_user, so a typo is a clean
-        # 400 rather than an orphaned Supabase account plus an error.
-        from services.voice_confidence import normalize_sex
-        raw_sex = body.get("sex")
-        sex = None
-        if raw_sex is not None:
-            sex = normalize_sex(raw_sex)
-            if sex is None:
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": (
-                        "sex must be one of female, male, prefer_not_to_say."
-                    ),
-                }), 400
-
         # ── 3. Create Supabase user ───────────────────────────────────────
         supabase = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY)
 
@@ -166,21 +141,6 @@ def signup():
             user_agent=user_agent or None,
         )
         terms_recorded = consent_row is not None
-
-        # ── 4b. Speaker sex (optional) ────────────────────────────────────
-        # BEST-EFFORT, and deliberately not part of the response contract.
-        # The account already exists at this point; failing the signup over a
-        # weight-routing hint would be absurd, and the user can set it later
-        # via POST /v2/user/profile. Silence here costs the composite nothing
-        # more than sex-blind weights.
-        if sex:
-            try:
-                db.set_user_speaker_sex(user_id, sex)
-            except Exception as sex_err:
-                logger.warning(
-                    "signup: speaker-sex persist failed user=%s: %s "
-                    "(non-fatal)", user_id, sex_err,
-                )
 
         # ── 5. Sign in to get session tokens for the new user ────────────
         # The frontend will call supabase.auth.setSession() with these tokens
