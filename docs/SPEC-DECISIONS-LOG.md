@@ -407,3 +407,45 @@ it cannot style text, create feedback, change a coach verdict, or admit a clip t
 Album. Uncertain outputs abstain. A kill switch restores the deterministic route immediately.
 There is no full-rollout flag and no automatic online retraining/promotion; every new model
 version needs a new sealed evaluation and an explicit rollout decision.
+
+---
+
+## L · Phase-1 processing and retired-signal cutover (founder 2026-08-29)
+
+This section supersedes earlier operational text wherever it suggests active
+challenge/threat inference, sex-dependent weights, pitch-based sex inference,
+or hidden corpus writes.
+
+**L1 · Universal delivery calculation.** `power_score` keeps its internal
+blended ranking role, but has no challenge/threat input. Confidence uses
+`voice-confidence-universal-v3`: one cue contract for every speaker. The
+product neither asks for speaker sex for processing nor infers it from f0.
+Historical versions are incomparable and cannot be relabeled as v3.
+
+**L2 · One processing authority.** Required Phase-1 recording/coaching uses one
+server-owned policy, acquisition-principal, immutable receipt/snapshot and
+provider-permit boundary. Passive viewing never creates acceptance. Guest
+claim preserves the original acquisition principal. Phase-2 learning cannot
+borrow this authority.
+
+**L3 · Exact acquisition evidence.** Accepted intake atomically links the Take,
+recording, exact storage provider/bucket/key, exact-byte SHA-256, authorization
+snapshot, durable job and outbox event. Uploaded-but-unreferenced objects enter
+an exact-coordinate orphan cleanup queue.
+
+**L4 · Phase-2 remains dark.** Corpus imports, hidden coach-video learning
+writes, MLC-2 bundled-consent routes, datasets, training, evaluation,
+promotion, personalized exercise recommendation and exercise adequacy are not
+operational Phase-1 purposes. Registry presence is not processing authority.
+
+**L5 · Deletion fails closed.** A request blocks future processing immediately.
+Completion cannot be claimed until canonical, product, storage, provider,
+coach, cache, dataset and model lineage have approved resolvers and verified
+terminal evidence. Unknown or mixed-purpose dependencies produce
+`review_required`; they are never silently skipped.
+
+**L6 · Activation remains separate.** Migration 0310 and local implementation
+do not activate the policy. Exact Product/legal artifacts, retention/deletion
+readiness, staging proof and explicit production authorization are still
+required. The destructive historical cleanup migration remains outside the
+manifest until separately authorized.

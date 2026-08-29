@@ -17,6 +17,9 @@ not fork or paraphrase its content into this file. It carries:
   (`scripts/local_ci.sh`), the `MIGRATE_ON_BOOT` warning (merging a
   migration IS running it in prod), the CONFIG-FIRST rule, and
   founder sign-off on all user-facing copy.
+- the Phase-1 processing boundary: no direct user-data provider calls, no
+  route-local authorization logic, and no Phase-2 learning activation without
+  its own reviewed authorization.
 
 The frontend repo (`frontend-cursor`) carries the same filter, kept
 **identical** on purpose — a divergence between the two copies is itself

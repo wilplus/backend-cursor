@@ -1652,28 +1652,28 @@ Dataset creation, training, evaluation and promotion each remain separately
 unauthorized until their own operational review. Engineering must not guess
 any external artifact or legal code.
 
-## 18. Unresolved conflict requiring an external decision
+## 18. Implemented technical classification boundary and external decision
 
-Founder intent classifies `power_score` as internal speaking-delivery/ranking,
-not emotion, intention, health, identity, sex or gender inference. The current
-source audit cannot yet support the required “no sex/gender inference” finding:
-`voice-confidence-v2`, which can feed `power_score`, contains declared-sex
-weight routing and default-on acoustic fallback sex inference from baseline
-f0. It also emits a “confident/doubtful” spectrum that Product/legal must
-classify under the applicable GDPR and AI Act definitions.
+The Phase-1 implementation removes every active challenge/threat input from
+`power_score`, removes declared-sex routing, removes acoustic fallback sex
+inference, and replaces `voice-confidence-v2` with the single universal
+`voice-confidence-universal-v3` cue contract. The active application no longer
+collects a speaker-sex field for processing, selects weights by sex, infers sex
+from f0, or accepts challenge/threat as a runtime compatibility alias.
 
-The retired challenge/threat inputs are absent from the current
-`power_score` API and must remain absent. The repository still contains
-historical challenge/threat corpus vocabulary and retired artifacts; the exact
-classification must prove they are non-executing for the deployed pipeline or
-classify any surviving operation. An active challenge/threat inference path is
-an additional explicit emotion/intention conflict, not a compatibility alias.
+Historical challenge/threat and sex-routed rows are not silently reinterpreted.
+The migration installs a future-write guard on any retained retired corpus
+tables. A separate allowlisted cleanup migration remains pending and must not be
+run without its own founder authorization, row-count preview, retention review,
+and rollback evidence.
 
-No code or L1/L2/L3 rule changes in this design. The conflicts must be resolved
-by an exact Product/legal classification of the deployed pipeline or by a
-separate founder north-star decision about the conflicting upstream behavior.
-Until then, policy/phase activation fails closed. Engineering must neither
-remove the term nor approve the legal conclusion itself.
+This resolves the factual source-code conflict; it does **not** let Engineering
+make the legal classification. Product/legal must still classify the exact
+deployed `power_score` and universal confidence pipeline under the applicable
+GDPR and AI Act definitions, bind the result to an evidence hash, and approve
+the exact Terms, Privacy and AI-notice artifacts. Phase-1 policy activation
+fails closed until those artifacts exist. AC-9 remains unchanged: no score,
+band, ratio or machine verdict is shown to a user.
 
 ## 19. ED-PLF-1.2 → ED-PLF-1.3 summary and decision filter
 
@@ -1705,7 +1705,8 @@ WHY: These controls make the authorization architecture safe for the live F1 pro
 REDIRECT: Complete Product/legal review, then request separate authorization for implementation. No production activation is authorized.
 ```
 
-> ENGINEERING DESIGN READY — ED-PLF-1.3 awaits Product/legal, Engineering,
-> ML/data, security, processor and production review. No implementation,
-> migration, data deletion, deployment, dataset creation, training, evaluation,
-> promotion or runtime activation has started.
+> ENGINEERING DESIGN IMPLEMENTED LOCALLY — ED-PLF-1.3 Phase-1 code and migration
+> rehearsal exist on an isolated branch. No production migration, data cleanup,
+> deployment, dataset creation, training, evaluation, promotion or runtime
+> activation has occurred. Product/legal, ML/data, Engineering, security,
+> processor, deletion-readiness and production reviews remain required.
