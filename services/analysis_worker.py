@@ -510,4 +510,4 @@ def run_full_analysis(**kwargs) -> Tuple[Dict[str, Any], bool]:
 # Preserve introspection of the canonical pipeline for existing wiring tests
 # and operational tooling while keeping the authorization scope at the public
 # call boundary.
-run_full_analysis.__wrapped__ = _run_full_analysis_impl
+setattr(run_full_analysis, "__wrapped__", _run_full_analysis_impl)

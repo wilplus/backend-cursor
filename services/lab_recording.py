@@ -541,7 +541,7 @@ def process_lab_recording(**kwargs) -> dict:
 
 
 # Keep source-introspection tooling focused on the canonical processing body.
-process_lab_recording.__wrapped__ = _process_lab_recording_impl
+setattr(process_lab_recording, "__wrapped__", _process_lab_recording_impl)
 
 
 def build_readout_from_session(

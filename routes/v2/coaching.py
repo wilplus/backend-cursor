@@ -27,6 +27,7 @@ from typing import Any
 from auth import optional_auth, require_auth
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
 from services.rate_limits import llm_limit
+from services.skills import get_skill as _get_skill, resolve_for_snippet as _skill_for_snippet
 from config import Config
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
