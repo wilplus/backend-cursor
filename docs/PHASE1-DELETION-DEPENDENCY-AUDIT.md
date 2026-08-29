@@ -45,15 +45,21 @@ not override it.
 
 ## Fail-closed invariants
 
-1. Freeze the resolved principal/account/project/Take/recording/snippet graph
-   and every target before the first destructive call.
+1. Resolve the principal/account/project/Take/recording/snippet graph inside
+   PostgreSQL, bind it to the purge request's acquisition principal, and freeze
+   that exact graph with every target before the first destructive call.
 2. PostgreSQL hashes the exact JSONB graph and target array it stores.
+   Dependency selectors must equal the graph coordinate they declare; storage
+   and provider targets must match a real object/operation owned by the
+   request's acquisition principal before the inventory can freeze.
 3. Any unknown relation, unresolved retention rule, mixed-purpose relation,
    legacy object without exact byte lineage, shared object, or missing provider
    contract prevents all deletion.
    A legacy Take linked only by account, without a matching canonical owner
    principal, is included in the frozen graph and blocks with
    `LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED`; it is never silently omitted.
+   A generic resolver cannot change an `unknown` target; a future resolution
+   requires its own reviewed, typed RPC.
 4. A target cannot be recorded as deleted/not-found while its verified
    remaining count is non-zero.
 5. Provider contracts and their activation/retirement facts are immutable and
@@ -64,9 +70,10 @@ not override it.
    hash, target states, and remaining counts.
 8. Operator execution is off unless `PHASE1_PURGE_EXECUTION_ENABLED=true` and
    the exact purge request ID is repeated as confirmation.
-9. Immediately before any destructive call, the worker rechecks the frozen
-   resolver version, code-owned dependency-manifest hash and live catalog hash.
-   A schema or resolver change after freeze requires a new reviewed request.
+9. Immediately before destructive execution, the worker rechecks the frozen
+   resolver version, code-owned dependency-manifest hash, live catalog hash,
+   and the database-resolved canonical subject graph. A schema, claim graph or
+   resolver change after freeze requires a new reviewed request.
 
 ## Rehearsal evidence
 

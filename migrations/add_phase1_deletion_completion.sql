@@ -374,9 +374,176 @@ GRANT EXECUTE ON FUNCTION public.mark_phase1_storage_object_purged_v1(
     UUID,TEXT,UUID,TEXT,TEXT,TEXT,TEXT
 ) TO service_role;
 
+-- Resolve the canonical subject graph inside PostgreSQL. The worker consumes
+-- this exact value and the freeze RPC recomputes it, so a malformed worker
+-- payload cannot attach another principal's rows to the purge request.
+CREATE OR REPLACE FUNCTION public.resolve_phase1_purge_subject_graph_v1(
+    p_acquisition_principal_id UUID
+) RETURNS JSONB
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+DECLARE
+    principal_values TEXT[]; user_values TEXT[]; project_values TEXT[];
+    take_values TEXT[]; recording_values TEXT[]; snippet_values TEXT[];
+    permit_values TEXT[]; job_values TEXT[]; unresolved_take_values TEXT[];
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM public.owner_principals
+         WHERE id = p_acquisition_principal_id
+    ) THEN RAISE EXCEPTION 'PURGE_ACQUISITION_PRINCIPAL_NOT_FOUND'; END IF;
+
+    WITH RECURSIVE claim_edges(source_id, target_id) AS (
+        SELECT source_owner_principal_id, target_owner_principal_id
+          FROM public.owner_claim_events
+        UNION ALL
+        SELECT target_owner_principal_id, source_owner_principal_id
+          FROM public.owner_claim_events
+    ), linked_principals(id) AS (
+        SELECT p_acquisition_principal_id
+        UNION
+        SELECT edge.target_id
+          FROM claim_edges edge
+          JOIN linked_principals linked ON linked.id = edge.source_id
+    )
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO principal_values
+      FROM (SELECT DISTINCT id::text AS value FROM linked_principals) rows;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO user_values
+      FROM (
+          SELECT principal.user_id::text AS value
+            FROM public.owner_principals principal
+           WHERE principal.id::text = ANY(principal_values)
+             AND principal.user_id IS NOT NULL
+          UNION
+          SELECT event.claimed_user_id::text
+            FROM public.owner_claim_events event
+           WHERE event.claimed_user_id IS NOT NULL
+             AND (event.source_owner_principal_id::text = ANY(principal_values)
+                  OR event.target_owner_principal_id::text = ANY(principal_values))
+      ) rows;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO take_values
+      FROM (
+          SELECT session.id::text AS value
+            FROM public.v2_sessions session
+           WHERE session.owner_principal_id::text = ANY(principal_values)
+              OR session.user_id::text = ANY(user_values)
+      ) rows;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO user_values
+      FROM (
+          SELECT unnest(user_values) AS value
+          UNION
+          SELECT session.user_id::text
+            FROM public.v2_sessions session
+           WHERE session.id::text = ANY(take_values)
+             AND session.user_id IS NOT NULL
+      ) rows;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO unresolved_take_values
+      FROM (
+          SELECT session.id::text AS value
+            FROM public.v2_sessions session
+           WHERE session.id::text = ANY(take_values)
+             AND COALESCE(session.owner_principal_id::text, '') <>
+                 ALL(principal_values)
+      ) rows;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO project_values
+      FROM (
+          SELECT project.id::text AS value
+            FROM public.projects project
+           WHERE project.owner_principal_id::text = ANY(principal_values)
+          UNION
+          SELECT session.project_id::text
+            FROM public.v2_sessions session
+           WHERE session.id::text = ANY(take_values)
+             AND session.project_id IS NOT NULL
+          UNION
+          SELECT session.arc_id::text
+            FROM public.v2_sessions session
+           WHERE session.id::text = ANY(take_values)
+             AND session.arc_id IS NOT NULL
+          UNION
+          SELECT attempt.project_id::text
+            FROM public.processing_recording_attempts attempt
+           WHERE attempt.acquisition_principal_id::text = ANY(principal_values)
+      ) rows;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO recording_values
+      FROM (
+          SELECT session.recording_1_id::text AS value
+            FROM public.v2_sessions session
+           WHERE session.id::text = ANY(take_values)
+             AND session.recording_1_id IS NOT NULL
+          UNION
+          SELECT attempt.recording_id::text
+            FROM public.processing_recording_attempts attempt
+           WHERE attempt.acquisition_principal_id::text = ANY(principal_values)
+          UNION
+          SELECT recording.id::text
+            FROM public.recordings recording
+           WHERE recording.session_v2_id::text = ANY(take_values)
+              OR recording.session_id::text = ANY(take_values)
+          UNION
+          SELECT snippet.recording_id::text
+            FROM public.snippets snippet
+           WHERE snippet.session_id::text = ANY(take_values)
+             AND snippet.recording_id IS NOT NULL
+      ) rows;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO snippet_values
+      FROM (
+          SELECT snippet.id::text AS value
+            FROM public.snippets snippet
+           WHERE snippet.session_id::text = ANY(take_values)
+      ) rows;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO permit_values
+      FROM (
+          SELECT permit.id::text AS value
+            FROM public.processing_provider_permits permit
+           WHERE permit.acquisition_principal_id::text = ANY(principal_values)
+      ) rows;
+
+    SELECT COALESCE(array_agg(value ORDER BY value), '{}'::text[])
+      INTO job_values
+      FROM (
+          SELECT job.id::text AS value
+            FROM public.phase1_processing_jobs job
+           WHERE job.acquisition_principal_id::text = ANY(principal_values)
+      ) rows;
+
+    RETURN jsonb_build_object(
+        'principal_ids', to_jsonb(principal_values),
+        'user_ids', to_jsonb(user_values),
+        'project_ids', to_jsonb(project_values),
+        'take_ids', to_jsonb(take_values),
+        'recording_ids', to_jsonb(recording_values),
+        'snippet_ids', to_jsonb(snippet_values),
+        'permit_ids', to_jsonb(permit_values),
+        'job_ids', to_jsonb(job_values),
+        'unresolved_legacy_take_ids', to_jsonb(unresolved_take_values)
+    );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.resolve_phase1_purge_subject_graph_v1(UUID)
+    FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_phase1_purge_subject_graph_v1(UUID)
+    TO service_role;
+
 -- Freeze the subject graph and every table/object/provider target together.
 -- An exact replay is idempotent; a different replay is a hard conflict.
-CREATE OR REPLACE FUNCTION public.freeze_phase1_purge_inventory_v2(
+CREATE OR REPLACE FUNCTION public.freeze_phase1_purge_inventory_v3(
     p_purge_request_id UUID,
     p_resolver_version TEXT,
     p_dependency_manifest_sha256 TEXT,
@@ -390,6 +557,7 @@ AS $$
 DECLARE req public.data_purge_requests; existing public.data_purge_inventory_manifests;
         item JSONB; kind TEXT; ref TEXT; item_state TEXT; unknown_count INTEGER;
         computed_subject_graph_sha256 TEXT; computed_target_manifest_sha256 TEXT;
+        expected_subject_graph JSONB; item_metadata JSONB; locator_key TEXT;
 BEGIN
     SELECT * INTO req FROM public.data_purge_requests
      WHERE id = p_purge_request_id FOR UPDATE;
@@ -399,6 +567,15 @@ BEGIN
        OR jsonb_typeof(p_targets) <> 'array'
        OR jsonb_array_length(p_targets) = 0
     THEN RAISE EXCEPTION 'PURGE_MANIFEST_INVALID'; END IF;
+    IF p_resolver_version <> 'phase1-purge-resolver-v3' THEN
+        RAISE EXCEPTION 'PURGE_RESOLVER_VERSION_INVALID';
+    END IF;
+    expected_subject_graph := public.resolve_phase1_purge_subject_graph_v1(
+        req.acquisition_principal_id
+    );
+    IF p_subject_graph IS DISTINCT FROM expected_subject_graph THEN
+        RAISE EXCEPTION 'PURGE_SUBJECT_GRAPH_MISMATCH';
+    END IF;
     IF EXISTS (
         SELECT 1 FROM jsonb_array_elements(p_targets) candidate
          GROUP BY COALESCE(candidate->>'target_kind', 'unknown'),
@@ -448,11 +625,84 @@ BEGIN
     FOR item IN SELECT value FROM jsonb_array_elements(p_targets) LOOP
         kind := COALESCE(item->>'target_kind', 'unknown');
         ref := COALESCE(NULLIF(item->>'target_ref', ''), 'unresolved');
+        item_metadata := COALESCE(item->'metadata', '{}'::jsonb);
         IF kind NOT IN (
             'database_row', 'r2_object', 'supabase_object', 'transcript',
             'derived_feedback', 'processing_queue', 'provider_operation',
             'coach_packet', 'cache', 'dataset_lineage', 'model_lineage'
         ) THEN kind := 'unknown'; END IF;
+        IF kind <> 'unknown' AND ref LIKE 'dependency:%' THEN
+            locator_key := CASE item_metadata->>'locator_kind'
+                WHEN 'principal' THEN 'principal_ids'
+                WHEN 'user' THEN 'user_ids'
+                WHEN 'project' THEN 'project_ids'
+                WHEN 'take' THEN 'take_ids'
+                WHEN 'recording' THEN 'recording_ids'
+                WHEN 'snippet' THEN 'snippet_ids'
+                WHEN 'permit' THEN 'permit_ids'
+                WHEN 'job' THEN 'job_ids'
+                ELSE NULL END;
+            IF locator_key IS NULL
+               OR length(COALESCE(item_metadata->>'dependency_code', '')) = 0
+               OR ref <> ('dependency:' || (item_metadata->>'dependency_code'))
+               OR length(COALESCE(item_metadata->>'relation', '')) = 0
+               OR length(COALESCE(item_metadata->>'selector_column', '')) = 0
+               OR jsonb_typeof(item_metadata->'locator_values') <> 'array'
+               OR item_metadata->'locator_values' IS DISTINCT FROM
+                  p_subject_graph->locator_key
+            THEN RAISE EXCEPTION 'PURGE_DEPENDENCY_TARGET_GRAPH_MISMATCH'; END IF;
+        ELSIF kind IN ('r2_object', 'supabase_object') THEN
+            IF item_metadata->>'source_relation' = 'processing_audio_objects' THEN
+                IF NOT EXISTS (
+                    SELECT 1 FROM public.processing_audio_objects object_row
+                     WHERE object_row.id =
+                           (item_metadata->>'source_id')::uuid
+                       AND object_row.acquisition_principal_id =
+                           req.acquisition_principal_id
+                       AND object_row.storage_provider = item_metadata->>'provider'
+                       AND object_row.bucket = item_metadata->>'bucket'
+                       AND object_row.object_key = item_metadata->>'key'
+                       AND object_row.exact_bytes_sha256 =
+                           lower(item_metadata->>'sha256')
+                ) THEN RAISE EXCEPTION 'PURGE_STORAGE_TARGET_GRAPH_MISMATCH'; END IF;
+            ELSIF item_metadata->>'source_relation' =
+                  'processing_orphan_objects' THEN
+                IF NOT EXISTS (
+                    SELECT 1 FROM public.processing_orphan_objects object_row
+                     WHERE object_row.id =
+                           (item_metadata->>'source_id')::uuid
+                       AND object_row.acquisition_principal_id =
+                           req.acquisition_principal_id
+                       AND object_row.storage_provider = item_metadata->>'provider'
+                       AND object_row.bucket = item_metadata->>'bucket'
+                       AND object_row.object_key = item_metadata->>'key'
+                       AND object_row.exact_bytes_sha256 =
+                           lower(item_metadata->>'sha256')
+                ) THEN RAISE EXCEPTION 'PURGE_STORAGE_TARGET_GRAPH_MISMATCH'; END IF;
+            ELSE
+                RAISE EXCEPTION 'PURGE_STORAGE_TARGET_SOURCE_INVALID';
+            END IF;
+            IF (kind = 'r2_object') IS DISTINCT FROM
+               (item_metadata->>'provider' = 'r2')
+            THEN RAISE EXCEPTION 'PURGE_STORAGE_TARGET_KIND_MISMATCH'; END IF;
+        ELSIF kind = 'provider_operation' THEN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM public.processing_provider_operations operation
+                  JOIN public.processing_provider_permits permit
+                    ON permit.id = operation.permit_id
+                 WHERE operation.id =
+                       (item_metadata->>'provider_operation_id')::uuid
+                   AND permit.acquisition_principal_id =
+                       req.acquisition_principal_id
+                   AND permit.provider = item_metadata->>'provider'
+                   AND permit.operation_kind = item_metadata->>'operation_kind'
+                   AND operation.provider_operation_ref IS NOT DISTINCT FROM
+                       item_metadata->>'provider_operation_ref'
+            ) THEN RAISE EXCEPTION 'PURGE_PROVIDER_TARGET_GRAPH_MISMATCH'; END IF;
+        ELSIF kind <> 'unknown' THEN
+            RAISE EXCEPTION 'PURGE_TARGET_SOURCE_INVALID';
+        END IF;
         item_state := CASE WHEN kind = 'unknown' THEN 'unknown' ELSE 'pending' END;
         INSERT INTO public.data_purge_targets (
             purge_request_id, target_kind, target_ref, resolver_version,
@@ -460,7 +710,7 @@ BEGIN
         ) VALUES (
             p_purge_request_id, kind, ref, p_resolver_version, item_state,
             GREATEST(0, COALESCE((item->>'initial_match_count')::integer, 0)),
-            COALESCE(item->'metadata', '{}'::jsonb)
+            item_metadata
         ) ON CONFLICT (purge_request_id, target_kind, target_ref) DO NOTHING;
     END LOOP;
     FOREACH ref IN ARRAY COALESCE(p_catalog_unknown_relations, '{}'::text[]) LOOP
@@ -488,14 +738,14 @@ BEGIN
     );
 END;
 $$;
-REVOKE ALL ON FUNCTION public.freeze_phase1_purge_inventory_v2(
+REVOKE ALL ON FUNCTION public.freeze_phase1_purge_inventory_v3(
     UUID,TEXT,TEXT,JSONB,JSONB,TEXT,TEXT[]
 ) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.freeze_phase1_purge_inventory_v2(
+GRANT EXECUTE ON FUNCTION public.freeze_phase1_purge_inventory_v3(
     UUID,TEXT,TEXT,JSONB,JSONB,TEXT,TEXT[]
 ) TO service_role;
 
-CREATE OR REPLACE FUNCTION public.resolve_phase1_purge_target_v2(
+CREATE OR REPLACE FUNCTION public.resolve_phase1_purge_target_v3(
     p_target_id UUID,
     p_state TEXT,
     p_evidence_sha256 TEXT,
@@ -518,6 +768,13 @@ BEGIN
     IF p_evidence_sha256 !~ '^[0-9a-f]{64}$'
     THEN RAISE EXCEPTION 'PURGE_EVIDENCE_HASH_INVALID'; END IF;
 
+    SELECT * INTO target FROM public.data_purge_targets
+     WHERE id = p_target_id FOR UPDATE;
+    IF target.id IS NULL THEN RAISE EXCEPTION 'PURGE_TARGET_NOT_FOUND'; END IF;
+    IF target.state = 'unknown' THEN
+        RAISE EXCEPTION 'PURGE_UNKNOWN_TARGET_REQUIRES_REVIEWED_RESOLVER';
+    END IF;
+
     UPDATE public.data_purge_targets
        SET state = p_state,
            evidence_sha256 = lower(p_evidence_sha256),
@@ -525,7 +782,7 @@ BEGIN
            last_error_code = p_last_error_code,
            retention_rule_id = p_retention_rule_id,
            resolved_at = now()
-     WHERE id = p_target_id AND state IN ('pending', 'failed', 'unknown')
+     WHERE id = p_target_id AND state IN ('pending', 'failed')
      RETURNING * INTO target;
     IF target.id IS NULL THEN RAISE EXCEPTION 'PURGE_TARGET_NOT_RESOLVABLE'; END IF;
     INSERT INTO public.data_purge_events (
@@ -547,14 +804,14 @@ BEGIN
     );
 END;
 $$;
-REVOKE ALL ON FUNCTION public.resolve_phase1_purge_target_v2(
+REVOKE ALL ON FUNCTION public.resolve_phase1_purge_target_v3(
     UUID,TEXT,TEXT,INTEGER,TEXT,UUID
 ) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.resolve_phase1_purge_target_v2(
+GRANT EXECUTE ON FUNCTION public.resolve_phase1_purge_target_v3(
     UUID,TEXT,TEXT,INTEGER,TEXT,UUID
 ) TO service_role;
 
-CREATE OR REPLACE FUNCTION public.finalize_phase1_purge_v2(
+CREATE OR REPLACE FUNCTION public.finalize_phase1_purge_v3(
     p_purge_request_id UUID, p_evidence_sha256 TEXT
 ) RETURNS JSONB
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
@@ -609,10 +866,21 @@ BEGIN
     RETURN jsonb_build_object('purge_request_id', req.id, 'state', 'done');
 END;
 $$;
-REVOKE ALL ON FUNCTION public.finalize_phase1_purge_v2(UUID,TEXT)
+REVOKE ALL ON FUNCTION public.finalize_phase1_purge_v3(UUID,TEXT)
     FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.finalize_phase1_purge_v2(UUID,TEXT)
+GRANT EXECUTE ON FUNCTION public.finalize_phase1_purge_v3(UUID,TEXT)
     TO service_role;
+
+-- Migration 0310 remains byte-for-byte historical, but its permissive purge
+-- writer functions must not remain callable after the v3 boundary exists.
+REVOKE EXECUTE ON FUNCTION public.freeze_phase1_purge_inventory_v1(
+    UUID,TEXT,JSONB
+) FROM service_role;
+REVOKE EXECUTE ON FUNCTION public.resolve_phase1_purge_target_v1(
+    UUID,TEXT,TEXT,TEXT,UUID
+) FROM service_role;
+REVOKE EXECUTE ON FUNCTION public.finalize_phase1_purge_v1(UUID,TEXT)
+    FROM service_role;
 
 -- Keep these statements explicit. Besides being easier to audit, the security
 -- gate verifies that every newly created public table enables RLS in the same

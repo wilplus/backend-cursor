@@ -16,9 +16,13 @@ BEGIN;
 \set attempt_id '70000000-0000-0000-0000-00000000000a'
 \set audio_id '70000000-0000-0000-0000-00000000000b'
 \set purge_audio '70000000-0000-0000-0000-00000000000c'
+\set other_principal_id '70000000-0000-0000-0000-00000000000d'
+\set purge_mismatch '70000000-0000-0000-0000-00000000000e'
 
 INSERT INTO public.owner_principals (id, guest_secret_hash)
-VALUES ('70000000-0000-0000-0000-000000000001'::uuid, repeat('7', 64))
+VALUES
+    ('70000000-0000-0000-0000-000000000001'::uuid, repeat('7', 64)),
+    ('70000000-0000-0000-0000-00000000000d'::uuid, repeat('8', 64))
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.data_purge_requests (
@@ -35,7 +39,10 @@ INSERT INTO public.data_purge_requests (
      'lawful_deletion', 'purge-duplicate'),
     ('70000000-0000-0000-0000-00000000000c'::uuid,
      '70000000-0000-0000-0000-000000000001'::uuid,
-     'lawful_deletion', 'purge-audio')
+     'lawful_deletion', 'purge-audio'),
+    ('70000000-0000-0000-0000-00000000000e'::uuid,
+     '70000000-0000-0000-0000-00000000000d'::uuid,
+     'lawful_deletion', 'purge-mismatch')
 ON CONFLICT (id) DO NOTHING;
 
 -- Canonical audio acquisition remains immutable. Byte erasure is proven by a
@@ -180,22 +187,43 @@ BEGIN
 END;
 $$;
 
-SELECT public.freeze_phase1_purge_inventory_v2(
+SELECT public.freeze_phase1_purge_inventory_v3(
     '70000000-0000-0000-0000-000000000002'::uuid,
-    'phase1-purge-resolver-v2', repeat('a', 64),
-    jsonb_build_object('principal_ids', jsonb_build_array(
+    'phase1-purge-resolver-v3', repeat('a', 64),
+    public.resolve_phase1_purge_subject_graph_v1(
         '70000000-0000-0000-0000-000000000001'::uuid
-    )),
+    ),
     jsonb_build_array(jsonb_build_object(
-        'target_kind', 'database_row', 'target_ref', 'synthetic:unknown',
-        'initial_match_count', 0, 'metadata', '{}'::jsonb
+        'target_kind', 'database_row', 'target_ref', 'dependency:synthetic',
+        'initial_match_count', 0, 'metadata', jsonb_build_object(
+            'dependency_code', 'synthetic', 'relation', 'projects',
+            'selector_column', 'owner_principal_id',
+            'locator_kind', 'principal',
+            'locator_values', public.resolve_phase1_purge_subject_graph_v1(
+                '70000000-0000-0000-0000-000000000001'::uuid
+            )->'principal_ids', 'disposition', 'delete', 'delete_order', 1
+        )
     )), repeat('b', 64), ARRAY['purge_unclassified_fixture']
 );
 
 DO $$
-DECLARE result JSONB;
+DECLARE result JSONB; target_id UUID;
 BEGIN
-    result := public.finalize_phase1_purge_v2(
+    SELECT id INTO target_id FROM public.data_purge_targets
+     WHERE purge_request_id =
+           '70000000-0000-0000-0000-000000000002'::uuid
+       AND state = 'unknown' LIMIT 1;
+    BEGIN
+        PERFORM public.resolve_phase1_purge_target_v3(
+            target_id, 'deleted', repeat('9', 64), 0
+        );
+        RAISE EXCEPTION 'unknown target bypassed reviewed resolution';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT LIKE
+           '%PURGE_UNKNOWN_TARGET_REQUIRES_REVIEWED_RESOLVER%'
+        THEN RAISE; END IF;
+    END;
+    result := public.finalize_phase1_purge_v3(
         '70000000-0000-0000-0000-000000000002'::uuid, repeat('c', 64)
     );
     IF result->>'state' <> 'review_required'
@@ -206,45 +234,69 @@ $$;
 
 DROP TABLE public.purge_unclassified_fixture;
 
-SELECT public.freeze_phase1_purge_inventory_v2(
+SELECT public.freeze_phase1_purge_inventory_v3(
     '70000000-0000-0000-0000-000000000003'::uuid,
-    'phase1-purge-resolver-v2', repeat('d', 64),
-    jsonb_build_object('principal_ids', jsonb_build_array(
+    'phase1-purge-resolver-v3', repeat('d', 64),
+    public.resolve_phase1_purge_subject_graph_v1(
         '70000000-0000-0000-0000-000000000001'::uuid
-    )),
+    ),
     jsonb_build_array(jsonb_build_object(
-        'target_kind', 'database_row', 'target_ref', 'synthetic:clean',
+        'target_kind', 'database_row', 'target_ref', 'dependency:synthetic',
         'initial_match_count', 1,
-        'metadata', jsonb_build_object('dependency_code', 'synthetic')
+        'metadata', jsonb_build_object(
+            'dependency_code', 'synthetic', 'relation', 'projects',
+            'selector_column', 'owner_principal_id',
+            'locator_kind', 'principal',
+            'locator_values', public.resolve_phase1_purge_subject_graph_v1(
+                '70000000-0000-0000-0000-000000000001'::uuid
+            )->'principal_ids', 'disposition', 'delete', 'delete_order', 1
+        )
     )), repeat('e', 64), ARRAY[]::text[]
 );
 
 -- Exact replay is idempotent and uses server-computed JSONB hashes.
-SELECT public.freeze_phase1_purge_inventory_v2(
+SELECT public.freeze_phase1_purge_inventory_v3(
     '70000000-0000-0000-0000-000000000003'::uuid,
-    'phase1-purge-resolver-v2', repeat('d', 64),
-    jsonb_build_object('principal_ids', jsonb_build_array(
+    'phase1-purge-resolver-v3', repeat('d', 64),
+    public.resolve_phase1_purge_subject_graph_v1(
         '70000000-0000-0000-0000-000000000001'::uuid
-    )),
+    ),
     jsonb_build_array(jsonb_build_object(
-        'target_kind', 'database_row', 'target_ref', 'synthetic:clean',
+        'target_kind', 'database_row', 'target_ref', 'dependency:synthetic',
         'initial_match_count', 1,
-        'metadata', jsonb_build_object('dependency_code', 'synthetic')
+        'metadata', jsonb_build_object(
+            'dependency_code', 'synthetic', 'relation', 'projects',
+            'selector_column', 'owner_principal_id',
+            'locator_kind', 'principal',
+            'locator_values', public.resolve_phase1_purge_subject_graph_v1(
+                '70000000-0000-0000-0000-000000000001'::uuid
+            )->'principal_ids', 'disposition', 'delete', 'delete_order', 1
+        )
     )), repeat('e', 64), ARRAY[]::text[]
 );
 
 DO $$
 BEGIN
     BEGIN
-        PERFORM public.freeze_phase1_purge_inventory_v2(
+        PERFORM public.freeze_phase1_purge_inventory_v3(
             '70000000-0000-0000-0000-000000000003'::uuid,
-            'phase1-purge-resolver-v2', repeat('d', 64),
-            jsonb_build_object('principal_ids', jsonb_build_array(
+            'phase1-purge-resolver-v3', repeat('d', 64),
+            public.resolve_phase1_purge_subject_graph_v1(
                 '70000000-0000-0000-0000-000000000001'::uuid
-            )),
+            ),
             jsonb_build_array(jsonb_build_object(
-                'target_kind', 'database_row', 'target_ref', 'synthetic:changed',
-                'initial_match_count', 1, 'metadata', '{}'::jsonb
+                'target_kind', 'database_row',
+                'target_ref', 'dependency:changed',
+                'initial_match_count', 1,
+                'metadata', jsonb_build_object(
+                    'dependency_code', 'changed', 'relation', 'projects',
+                    'selector_column', 'owner_principal_id',
+                    'locator_kind', 'principal',
+                    'locator_values', public.resolve_phase1_purge_subject_graph_v1(
+                        '70000000-0000-0000-0000-000000000001'::uuid
+                    )->'principal_ids', 'disposition', 'delete',
+                    'delete_order', 1
+                )
             )), repeat('e', 64), ARRAY[]::text[]
         );
         RAISE EXCEPTION 'PURGE_INVENTORY_REPLAY_CONFLICT was not raised';
@@ -257,17 +309,17 @@ $$;
 DO $$
 BEGIN
     BEGIN
-        PERFORM public.freeze_phase1_purge_inventory_v2(
+        PERFORM public.freeze_phase1_purge_inventory_v3(
             '70000000-0000-0000-0000-000000000004'::uuid,
-            'phase1-purge-resolver-v2', repeat('f', 64),
-            jsonb_build_object('principal_ids', jsonb_build_array(
+            'phase1-purge-resolver-v3', repeat('f', 64),
+            public.resolve_phase1_purge_subject_graph_v1(
                 '70000000-0000-0000-0000-000000000001'::uuid
-            )),
+            ),
             jsonb_build_array(
                 jsonb_build_object('target_kind', 'database_row',
-                                   'target_ref', 'synthetic:duplicate'),
+                                   'target_ref', 'dependency:duplicate'),
                 jsonb_build_object('target_kind', 'database_row',
-                                   'target_ref', 'synthetic:duplicate')
+                                   'target_ref', 'dependency:duplicate')
             ), repeat('1', 64), ARRAY[]::text[]
         );
         RAISE EXCEPTION 'PURGE_MANIFEST_DUPLICATE_TARGET was not raised';
@@ -277,21 +329,82 @@ BEGIN
 END;
 $$;
 
+-- A valid graph for a different principal cannot be frozen under this
+-- request, even when every JSON/hash field is otherwise well formed.
+DO $$
+BEGIN
+    BEGIN
+        PERFORM public.freeze_phase1_purge_inventory_v3(
+            '70000000-0000-0000-0000-00000000000e'::uuid,
+            'phase1-purge-resolver-v3', repeat('6', 64),
+            public.resolve_phase1_purge_subject_graph_v1(
+                '70000000-0000-0000-0000-000000000001'::uuid
+            ),
+            jsonb_build_array(jsonb_build_object(
+                'target_kind', 'database_row',
+                'target_ref', 'dependency:cross-principal',
+                'initial_match_count', 0, 'metadata', jsonb_build_object(
+                    'dependency_code', 'cross-principal',
+                    'relation', 'projects',
+                    'selector_column', 'owner_principal_id',
+                    'locator_kind', 'principal',
+                    'locator_values', jsonb_build_array(
+                        '70000000-0000-0000-0000-000000000001'
+                    ), 'disposition', 'delete', 'delete_order', 1
+                )
+            )), repeat('7', 64), ARRAY[]::text[]
+        );
+        RAISE EXCEPTION 'cross-principal subject graph was accepted';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT LIKE '%PURGE_SUBJECT_GRAPH_MISMATCH%' THEN RAISE; END IF;
+    END;
+END;
+$$;
+
+DO $$
+BEGIN
+    BEGIN
+        PERFORM public.freeze_phase1_purge_inventory_v3(
+            '70000000-0000-0000-0000-00000000000e'::uuid,
+            'phase1-purge-resolver-v3', repeat('6', 64),
+            public.resolve_phase1_purge_subject_graph_v1(
+                '70000000-0000-0000-0000-00000000000d'::uuid
+            ),
+            jsonb_build_array(jsonb_build_object(
+                'target_kind', 'r2_object',
+                'target_ref', 'audio-object:70000000-0000-0000-0000-00000000000b',
+                'initial_match_count', 1,
+                'metadata', jsonb_build_object(
+                    'provider', 'r2', 'bucket', 'synthetic-recordings',
+                    'key', 'principal/take.wav', 'sha256', repeat('7', 64),
+                    'source_relation', 'processing_audio_objects',
+                    'source_id', '70000000-0000-0000-0000-00000000000b'
+                )
+            )), repeat('7', 64), ARRAY[]::text[]
+        );
+        RAISE EXCEPTION 'cross-principal storage target was accepted';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT LIKE '%PURGE_STORAGE_TARGET_GRAPH_MISMATCH%'
+        THEN RAISE; END IF;
+    END;
+END;
+$$;
+
 DO $$
 DECLARE target_id UUID;
 BEGIN
     SELECT id INTO target_id FROM public.data_purge_targets
      WHERE purge_request_id = '70000000-0000-0000-0000-000000000003'::uuid
-       AND target_ref = 'synthetic:clean';
+       AND target_ref = 'dependency:synthetic';
     BEGIN
-        PERFORM public.resolve_phase1_purge_target_v2(
+        PERFORM public.resolve_phase1_purge_target_v3(
             target_id, 'deleted', repeat('2', 64), 1
         );
         RAISE EXCEPTION 'PURGE_TARGET_STILL_PRESENT was not raised';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM NOT LIKE '%PURGE_TARGET_STILL_PRESENT%' THEN RAISE; END IF;
     END;
-    PERFORM public.resolve_phase1_purge_target_v2(
+    PERFORM public.resolve_phase1_purge_target_v3(
         target_id, 'deleted', repeat('3', 64), 0
     );
     IF EXISTS (
@@ -304,7 +417,7 @@ $$;
 DO $$
 DECLARE result JSONB;
 BEGIN
-    result := public.finalize_phase1_purge_v2(
+    result := public.finalize_phase1_purge_v3(
         '70000000-0000-0000-0000-000000000003'::uuid, repeat('4', 64)
     );
     IF result->>'state' <> 'done' THEN

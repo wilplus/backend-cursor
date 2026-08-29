@@ -19,13 +19,17 @@ INSERT INTO public.v2_sessions (
 );
 INSERT INTO public.snippets (
     id, session_id, recording_id, start_offset_ms, duration_ms
-) VALUES (
-    '50000000-0000-4000-8000-000000000001',
-    '10000000-0000-4000-8000-000000000001',
-    '40000000-0000-4000-8000-000000000001',
-    1250,
-    5000
-);
+) VALUES
+    (
+        '50000000-0000-4000-8000-000000000001',
+        '10000000-0000-4000-8000-000000000001',
+        '40000000-0000-4000-8000-000000000001', 1250, 5000
+    ),
+    (
+        '50000000-0000-4000-8000-000000000002',
+        '10000000-0000-4000-8000-000000000001',
+        '40000000-0000-4000-8000-000000000001', 7000, 4000
+    );
 
 DO $$
 DECLARE
@@ -48,7 +52,36 @@ DECLARE
                 'take-feedback-manager-evidence-v1',
             'source_code_sha256', repeat('8', 64)
         ),
-        'blocks', '[]'::jsonb
+        'blocks', jsonb_build_array(jsonb_build_object(
+            'confidence_candidates', jsonb_build_array(
+                jsonb_build_object(
+                    'candidate_id', 'relative-confidence:legacy:one',
+                    'snippet_id', '50000000-0000-4000-8000-000000000001',
+                    'eligibility', 'eligible',
+                    'machine_version', 'voice-confidence-v2',
+                    'clip_identity', jsonb_build_object(
+                        'take_id', '10000000-0000-4000-8000-000000000001',
+                        'recording_id', '40000000-0000-4000-8000-000000000001',
+                        'snippet_id', '50000000-0000-4000-8000-000000000001',
+                        'start_offset_ms', 1250, 'duration_ms', 5000,
+                        'clip_identity_sha256', repeat('c', 64)
+                    )
+                ),
+                jsonb_build_object(
+                    'candidate_id', 'relative-confidence:legacy:two',
+                    'snippet_id', '50000000-0000-4000-8000-000000000002',
+                    'eligibility', 'eligible',
+                    'machine_version', 'voice-confidence-v2',
+                    'clip_identity', jsonb_build_object(
+                        'take_id', '10000000-0000-4000-8000-000000000001',
+                        'recording_id', '40000000-0000-4000-8000-000000000001',
+                        'snippet_id', '50000000-0000-4000-8000-000000000002',
+                        'start_offset_ms', 7000, 'duration_ms', 4000,
+                        'clip_identity_sha256', repeat('d', 64)
+                    )
+                )
+            )
+        ))
     );
     frame JSONB := jsonb_build_object(
         'frame_hash', repeat('a', 64),
@@ -89,25 +122,36 @@ DECLARE
                 ),
                 jsonb_build_object(
                     'candidate_id', 'relative-confidence:legacy:snippet',
-                    'snippet_id', '50000000-0000-4000-8000-000000000001',
+                    'snippet_id', '50000000-0000-4000-8000-000000000002',
                     'eligibility', 'excluded',
                     'exclusion_reason', 'incompatible_detector_version',
-                    'machine_version', 'voice-confidence-v2'
+                    'machine_version', 'voice-confidence-v2',
+                    'clip_identity', jsonb_build_object(
+                        'take_id', '10000000-0000-4000-8000-000000000001',
+                        'recording_id', '40000000-0000-4000-8000-000000000001',
+                        'snippet_id', '50000000-0000-4000-8000-000000000002',
+                        'start_offset_ms', 7000,
+                        'duration_ms', 4000,
+                        'clip_identity_sha256', repeat('d', 64)
+                    )
                 )
             )
         ))
     );
     outcome JSONB;
 BEGIN
-    -- The immutable 0309/v2 function remains available for its historical
-    -- contract. The new migration marks the old frame incompatible.
-    PERFORM public.record_take_feedback_policy_v3_shadow_v2(
-        'arc-v3-rehearsal',
+    -- The database owner seeds a historical row to simulate data written
+    -- before 0311. Service-role execution of the old writer is revoked.
+    INSERT INTO public.take_feedback_policy_v3_shadow_frames (
+        take_session_id, recording_id, policy_version, arc_id,
+        acquisition_principal_id, owner_user_id, take_index, frame, frame_hash
+    ) VALUES (
         '10000000-0000-4000-8000-000000000001',
         '40000000-0000-4000-8000-000000000001',
+        'take-feedback-policy-v3-dark-v2', 'arc-v3-rehearsal',
         '30000000-0000-4000-8000-000000000001',
-        '20000000-0000-4000-8000-000000000001',
-        2, 'take-feedback-policy-v3-dark-v2', legacy_frame, repeat('9', 64)
+        '20000000-0000-4000-8000-000000000001', 2,
+        legacy_frame, repeat('9', 64)
     );
 
     SELECT public.record_take_feedback_policy_v3_shadow_v3(
@@ -178,13 +222,28 @@ BEGIN
         );
         RAISE EXCEPTION 'mismatched clip interval was accepted';
     EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM = 'mismatched clip interval was accepted' THEN RAISE; END IF;
+        IF SQLERRM NOT LIKE '%universal-v3 confidence clip lineage mismatch%'
+        THEN RAISE; END IF;
     END;
 
-    IF (SELECT count(*) FROM public.take_feedback_detector_reconciliation
-         WHERE take_session_id =
-               '10000000-0000-4000-8000-000000000001') <> 2 THEN
-        RAISE EXCEPTION 'detector transition did not preserve incompatible and recomputed evidence';
+    IF (SELECT count(*) FROM public.take_feedback_detector_reconciliation row
+         WHERE row.take_session_id =
+               '10000000-0000-4000-8000-000000000001'
+           AND row.outcome = 'incompatible_detector_version') <> 2 THEN
+        RAISE EXCEPTION 'exact incompatible clip inventory was not preserved';
+    END IF;
+    IF (SELECT count(*) FROM public.take_feedback_detector_reconciliation row
+         WHERE row.take_session_id =
+               '10000000-0000-4000-8000-000000000001'
+           AND row.outcome = 'recomputed') <> 1 THEN
+        RAISE EXCEPTION 'recomputation was not limited to the exact matching clip';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.take_feedback_detector_reconciliation row
+         WHERE row.snippet_id = '50000000-0000-4000-8000-000000000002'
+           AND row.outcome = 'recomputed'
+    ) THEN
+        RAISE EXCEPTION 'unrecomputed v2 clip was falsely marked recomputed';
     END IF;
 
     -- An old detector result cannot enter the universal contract as an
@@ -207,7 +266,30 @@ BEGIN
         );
         RAISE EXCEPTION 'incompatible detector artifact was accepted as eligible';
     EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM = 'incompatible detector artifact was accepted as eligible'
+        IF SQLERRM NOT LIKE
+           '%invalid universal-v3 detector transition inventory%'
+        THEN RAISE; END IF;
+    END;
+
+    -- Exclusion changes eligibility, not provenance. An incompatible v2 clip
+    -- with altered coordinates must still be rejected.
+    BEGIN
+        PERFORM public.record_take_feedback_policy_v3_shadow_v3(
+            'arc-v3-rehearsal',
+            '10000000-0000-4000-8000-000000000001',
+            '40000000-0000-4000-8000-000000000001',
+            '30000000-0000-4000-8000-000000000001',
+            '20000000-0000-4000-8000-000000000001',
+            2, 'take-feedback-policy-v3-universal-dark-v3',
+            jsonb_set(
+                frame,
+                '{blocks,0,confidence_candidates,1,clip_identity,duration_ms}',
+                '3999'::jsonb
+            ), repeat('a', 64)
+        );
+        RAISE EXCEPTION 'excluded incompatible clip bypassed exact lineage';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT LIKE '%universal-v3 confidence clip lineage mismatch%'
         THEN RAISE; END IF;
     END;
 END;
@@ -228,6 +310,13 @@ BEGIN
         'service_role', 'public.take_feedback_policy_v3_shadow_frames', 'DELETE'
     ) THEN
         RAISE EXCEPTION 'service role can bypass the validating RPC';
+    END IF;
+    IF has_function_privilege(
+        'service_role',
+        'public.record_take_feedback_policy_v3_shadow_v2(text,uuid,uuid,uuid,uuid,integer,text,jsonb,text)',
+        'EXECUTE'
+    ) THEN
+        RAISE EXCEPTION 'service role can still write historical v2 frames';
     END IF;
 END;
 $$;

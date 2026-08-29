@@ -106,9 +106,13 @@ Requested verdict:
 - Migration 0309 was left unchanged and continues to own only its historical
   v2 RPC/contract.
 - Migration 0311 adds the universal-v3-only RPC and an immutable reconciliation
-  ledger.
-- The PostgreSQL rehearsal writes one historical v2 frame, one current v3
-  frame, verifies exact v3 replay, rejects changed replay, rejects a v2
-  candidate at the v3 boundary, and verifies the recomputation link.
+  ledger keyed by exact Take, recording, snippet, interval, candidate and clip
+  identity. The historical v2 RPC remains defined for audit but service-role
+  execution is revoked after the transition.
+- The PostgreSQL rehearsal writes one historical v2 frame with two exact clips
+  and one current v3 frame that recomputes only one. It verifies exact replay,
+  rejects changed replay, rejects eligible v2 input, rejects falsified lineage
+  on an excluded v2 clip, and proves that the unrecomputed clip remains only
+  `incompatible_detector_version`.
 - Unit tests prove that a v2 measurement becomes
   `excluded/incompatible_detector_version`, never an unmeasured ranked item.

@@ -39,6 +39,24 @@ CREATE TABLE IF NOT EXISTS public.projects (
         public.owner_principals(id) ON DELETE RESTRICT,
     display_name TEXT NOT NULL DEFAULT 'Rehearsal'
 );
+CREATE TABLE IF NOT EXISTS public.v2_sessions (
+    id UUID PRIMARY KEY,
+    user_id UUID,
+    owner_principal_id UUID,
+    project_id UUID,
+    arc_id TEXT,
+    recording_1_id UUID
+);
+CREATE TABLE IF NOT EXISTS public.recordings (
+    id UUID PRIMARY KEY,
+    session_v2_id UUID,
+    session_id UUID
+);
+CREATE TABLE IF NOT EXISTS public.snippets (
+    id UUID PRIMARY KEY,
+    session_id UUID,
+    recording_id UUID
+);
 CREATE TABLE IF NOT EXISTS public.owner_claim_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     source_owner_principal_id UUID NOT NULL,

@@ -26,7 +26,7 @@ from services.lab_audio_storage import (
 )
 from services.provider_deletion import resolve_provider_operation
 
-RESOLVER_VERSION = "phase1-purge-resolver-v2"
+RESOLVER_VERSION = "phase1-purge-resolver-v3"
 _MISSING_RELATION_CODES = {"42P01", "PGRST205"}
 
 
@@ -179,117 +179,27 @@ class DataPurgeOrchestrator:
         }
 
     def build_subject_graph(
-        self, principal_id: str, existing_relations: frozenset[str],
+        self, principal_id: str, _existing_relations: frozenset[str],
     ) -> SubjectGraph:
-        principals = {principal_id}
-        users: set[str] = set()
-
-        # Claimed guest and account principals are one acquisition lineage.
-        if "owner_claim_events" in existing_relations:
-            changed = True
-            while changed:
-                changed = False
-                for selector, opposite in (
-                    ("source_owner_principal_id", "target_owner_principal_id"),
-                    ("target_owner_principal_id", "source_owner_principal_id"),
-                ):
-                    rows = self._rows(
-                        "owner_claim_events",
-                        "source_owner_principal_id,target_owner_principal_id,claimed_user_id",
-                        selector=selector, values=tuple(sorted(principals)),
-                        existing_relations=existing_relations,
-                    )
-                    before = len(principals)
-                    principals |= self._ids(rows, opposite)
-                    users |= self._ids(rows, "claimed_user_id")
-                    changed = changed or len(principals) != before
-
-        owner_rows = self._rows(
-            "owner_principals", "id,user_id", selector="id",
-            values=tuple(sorted(principals)), existing_relations=existing_relations,
+        result = self.client.rpc("resolve_phase1_purge_subject_graph_v1", {
+            "p_acquisition_principal_id": principal_id,
+        }).execute()
+        payload = _one(result.data)
+        if not payload:
+            raise RuntimeError("PURGE_SUBJECT_GRAPH_RESOLUTION_FAILED")
+        keys = (
+            "principal_ids", "user_ids", "project_ids", "take_ids",
+            "recording_ids", "snippet_ids", "permit_ids", "job_ids",
+            "unresolved_legacy_take_ids",
         )
-        users |= self._ids(owner_rows, "user_id")
-
-        projects = self._rows(
-            "projects", "id,presentation_ref", selector="owner_principal_id",
-            values=tuple(sorted(principals)), existing_relations=existing_relations,
-        )
-        project_ids = self._ids(projects, "id")
-        takes = self._rows(
-            "v2_sessions",
-            "id,user_id,owner_principal_id,project_id,arc_id,recording_1_id",
-            selector="owner_principal_id", values=tuple(sorted(principals)),
-            existing_relations=existing_relations,
-        )
-        # Older rows can pre-date canonical principal ownership. They must not
-        # disappear from a user's purge merely because they still carry only
-        # the historical account coordinate. Include their complete Take graph
-        # in the frozen inventory, but block deletion until ownership is
-        # reconciled rather than guessing that ``user_id`` is sufficient.
-        legacy_user_takes = self._rows(
-            "v2_sessions",
-            "id,user_id,owner_principal_id,project_id,arc_id,recording_1_id",
-            selector="user_id", values=tuple(sorted(users)),
-            existing_relations=existing_relations,
-        )
-        takes_by_id = {
-            str(row.get("id")): row for row in (*takes, *legacy_user_takes)
-            if row.get("id")
-        }
-        takes = list(takes_by_id.values())
-        unresolved_legacy_take_ids = {
-            str(row["id"]) for row in legacy_user_takes
-            if str(row.get("owner_principal_id") or "") not in principals
-        }
-        take_ids = self._ids(takes, "id")
-        users |= self._ids(takes, "user_id")
-        project_ids |= self._ids(takes, "project_id")
-        project_ids |= self._ids(takes, "arc_id")
-        recording_ids = self._ids(takes, "recording_1_id")
-
-        attempts = self._rows(
-            "processing_recording_attempts", "id,recording_id,project_id",
-            selector="acquisition_principal_id", values=tuple(sorted(principals)),
-            existing_relations=existing_relations,
-        )
-        recording_ids |= self._ids(attempts, "recording_id")
-        project_ids |= self._ids(attempts, "project_id")
-
-        recordings = []
-        if take_ids and "recordings" in existing_relations:
-            for selector in ("session_v2_id", "session_id"):
-                recordings.extend(self._rows(
-                    "recordings", "id", selector=selector,
-                    values=tuple(sorted(take_ids)),
-                    existing_relations=existing_relations,
-                ))
-        recording_ids |= self._ids(recordings, "id")
-
-        snippets = self._rows(
-            "snippets", "id,recording_id", selector="session_id",
-            values=tuple(sorted(take_ids)), existing_relations=existing_relations,
-        )
-        snippet_ids = self._ids(snippets, "id")
-        recording_ids |= self._ids(snippets, "recording_id")
-
-        permits = self._rows(
-            "processing_provider_permits", "id", selector="acquisition_principal_id",
-            values=tuple(sorted(principals)), existing_relations=existing_relations,
-        )
-        jobs = self._rows(
-            "phase1_processing_jobs", "id", selector="acquisition_principal_id",
-            values=tuple(sorted(principals)), existing_relations=existing_relations,
-        )
-        return SubjectGraph(
-            principal_ids=tuple(sorted(principals)),
-            user_ids=tuple(sorted(users)), project_ids=tuple(sorted(project_ids)),
-            take_ids=tuple(sorted(take_ids)),
-            recording_ids=tuple(sorted(recording_ids)),
-            snippet_ids=tuple(sorted(snippet_ids)),
-            permit_ids=tuple(sorted(self._ids(permits, "id"))),
-            job_ids=tuple(sorted(self._ids(jobs, "id"))),
-            unresolved_legacy_take_ids=tuple(sorted(unresolved_legacy_take_ids)),
-        )
+        if any(not isinstance(payload.get(key), list) for key in keys):
+            raise RuntimeError("PURGE_SUBJECT_GRAPH_INVALID")
+        graph = SubjectGraph(**{
+            key: tuple(str(item) for item in payload[key]) for key in keys
+        })
+        if principal_id not in graph.principal_ids:
+            raise RuntimeError("PURGE_SUBJECT_GRAPH_PRINCIPAL_MISMATCH")
+        return graph
 
     def _retention_rule(
         self, category: str, existing_relations: frozenset[str],
@@ -516,6 +426,7 @@ class DataPurgeOrchestrator:
                 "provider_operation", f"provider-operation:{operation.get('id')}",
                 1, {
                     "provider": provider, "operation_kind": kind,
+                    "provider_operation_id": str(operation.get("id") or ""),
                     "provider_operation_ref": operation.get("provider_operation_ref"),
                     "contract_id": str(contract.get("id") or ""),
                     "resolution_mode": contract.get("resolution_mode"),
@@ -568,13 +479,13 @@ class DataPurgeOrchestrator:
             .eq("purge_request_id", purge_request_id).limit(1).execute().data
         )
         if existing:
-            self._assert_frozen_contract(existing)
+            self._assert_frozen_contract(existing, purge_request_id)
             return {"purge_request_id": purge_request_id, "state": "frozen",
                     "inventory_sha256": existing.get("target_manifest_sha256")}
         inventory = self.build_inventory(purge_request_id)
         graph_payload = inventory["graph"].payload()
         target_payload = [item.payload() for item in inventory["targets"]]
-        result = self.client.rpc("freeze_phase1_purge_inventory_v2", {
+        result = self.client.rpc("freeze_phase1_purge_inventory_v3", {
             "p_purge_request_id": purge_request_id,
             "p_resolver_version": RESOLVER_VERSION,
             "p_dependency_manifest_sha256": dependency_manifest_sha256(),
@@ -596,7 +507,9 @@ class DataPurgeOrchestrator:
             raise RuntimeError("PURGE_INVENTORY_NOT_FROZEN")
         return manifest
 
-    def _assert_frozen_contract(self, manifest: Mapping[str, Any]) -> None:
+    def _assert_frozen_contract(
+        self, manifest: Mapping[str, Any], purge_request_id: str,
+    ) -> None:
         """Refuse deletion if code or catalog changed after inventory freeze."""
         if str(manifest.get("resolver_version") or "") != RESOLVER_VERSION:
             raise RuntimeError("PURGE_RESOLVER_VERSION_CHANGED")
@@ -613,6 +526,15 @@ class DataPurgeOrchestrator:
             != str(manifest.get("catalog_sha256") or "")
         ):
             raise RuntimeError("PURGE_CATALOG_CHANGED_AFTER_FREEZE")
+        request = self._request(purge_request_id)
+        current_graph = self.build_subject_graph(
+            str(request["acquisition_principal_id"]),
+            frozenset(str(item) for item in current_catalog.get(
+                "existing_allowlisted_relations", []
+            )),
+        ).payload()
+        if current_graph != (manifest.get("subject_graph") or {}):
+            raise RuntimeError("PURGE_SUBJECT_GRAPH_CHANGED_AFTER_FREEZE")
 
     def _targets(self, purge_request_id: str) -> list[dict]:
         return self._rows(
@@ -638,7 +560,7 @@ class DataPurgeOrchestrator:
             "retention_rule_id": retention_rule_id,
             **dict(evidence_extra or {}),
         })
-        self.client.rpc("resolve_phase1_purge_target_v2", {
+        self.client.rpc("resolve_phase1_purge_target_v3", {
             "p_target_id": str(target["id"]), "p_state": state,
             "p_evidence_sha256": evidence,
             "p_remaining_match_count": remaining,
@@ -785,7 +707,7 @@ class DataPurgeOrchestrator:
         if any(str(row.get("state")) == "unknown" for row in targets):
             return
         manifest = self._manifest(purge_request_id)
-        self._assert_frozen_contract(manifest)
+        self._assert_frozen_contract(manifest, purge_request_id)
         raw_graph = manifest.get("subject_graph") or {}
         graph = SubjectGraph(**{
             key: tuple(str(item) for item in raw_graph.get(key, []))
@@ -831,7 +753,7 @@ class DataPurgeOrchestrator:
                 "remaining_match_count": row.get("remaining_match_count"),
             } for row in targets), key=lambda item: item["id"]),
         })
-        result = self.client.rpc("finalize_phase1_purge_v2", {
+        result = self.client.rpc("finalize_phase1_purge_v3", {
             "p_purge_request_id": purge_request_id,
             "p_evidence_sha256": evidence,
         }).execute()

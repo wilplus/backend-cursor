@@ -114,6 +114,12 @@ def test_migration_seals_server_canonical_json_and_is_rpc_only():
     assert "p_subject_graph_sha256" not in MIGRATION
     assert "p_target_manifest_sha256" not in MIGRATION
     assert "PURGE_MANIFEST_DUPLICATE_TARGET" in MIGRATION
+    assert "resolve_phase1_purge_subject_graph_v1" in MIGRATION
+    assert "PURGE_SUBJECT_GRAPH_MISMATCH" in MIGRATION
+    assert "PURGE_STORAGE_TARGET_GRAPH_MISMATCH" in MIGRATION
+    assert "PURGE_PROVIDER_TARGET_GRAPH_MISMATCH" in MIGRATION
+    assert "PURGE_UNKNOWN_TARGET_REQUIRES_REVIEWED_RESOLVER" in MIGRATION
+    assert "REVOKE EXECUTE ON FUNCTION public.freeze_phase1_purge_inventory_v1" in MIGRATION
     assert "register_phase1_provider_deletion_contract_v1" in MIGRATION
     assert "retire_phase1_provider_deletion_contract_v1" in MIGRATION
     assert "event_sequence BIGINT GENERATED ALWAYS AS IDENTITY" in MIGRATION
@@ -276,10 +282,10 @@ def test_changed_catalog_after_freeze_blocks_execution(monkeypatch):
 
     with pytest.raises(RuntimeError, match="PURGE_CATALOG_CHANGED_AFTER_FREEZE"):
         orchestrator._assert_frozen_contract({
-            "resolver_version": "phase1-purge-resolver-v2",
+            "resolver_version": "phase1-purge-resolver-v3",
             "dependency_manifest_sha256": "a" * 64,
             "catalog_sha256": "frozen",
-        })
+        }, "purge-1")
 
 
 def test_legacy_account_only_take_is_an_explicit_unknown_target(monkeypatch):

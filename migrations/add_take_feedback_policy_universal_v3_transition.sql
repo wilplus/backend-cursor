@@ -10,7 +10,15 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS public.take_feedback_detector_reconciliation (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     take_session_id UUID NOT NULL REFERENCES public.v2_sessions(id)
-        ON DELETE CASCADE,
+        ON DELETE RESTRICT,
+    recording_id UUID NOT NULL,
+    snippet_id UUID NOT NULL REFERENCES public.snippets(id) ON DELETE RESTRICT,
+    candidate_id TEXT NOT NULL,
+    start_offset_ms INTEGER NOT NULL CHECK (start_offset_ms >= 0),
+    duration_ms INTEGER NOT NULL CHECK (duration_ms > 0),
+    clip_identity_sha256 TEXT NOT NULL CHECK (
+        clip_identity_sha256 ~ '^[0-9a-f]{64}$'
+    ),
     old_policy_version TEXT NOT NULL,
     old_detector_version TEXT NOT NULL,
     outcome TEXT NOT NULL CHECK (outcome IN (
@@ -18,47 +26,82 @@ CREATE TABLE IF NOT EXISTS public.take_feedback_detector_reconciliation (
     )),
     replacement_policy_version TEXT,
     replacement_detector_version TEXT,
+    replacement_frame_hash TEXT CHECK (
+        replacement_frame_hash IS NULL
+        OR replacement_frame_hash ~ '^[0-9a-f]{64}$'
+    ),
     evidence_sha256 TEXT NOT NULL CHECK (evidence_sha256 ~ '^[0-9a-f]{64}$'),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT detector_reconciliation_replacement_check CHECK (
         (outcome = 'incompatible_detector_version'
             AND replacement_policy_version IS NULL
-            AND replacement_detector_version IS NULL)
+            AND replacement_detector_version IS NULL
+            AND replacement_frame_hash IS NULL)
         OR (outcome = 'recomputed'
             AND replacement_policy_version =
                 'take-feedback-policy-v3-universal-dark-v3'
             AND replacement_detector_version =
-                'voice-confidence-universal-v3')
+                'voice-confidence-universal-v3'
+            AND replacement_frame_hash IS NOT NULL)
     ),
     UNIQUE (
-        take_session_id, old_policy_version, outcome,
-        replacement_policy_version, replacement_detector_version
+        take_session_id, candidate_id, clip_identity_sha256,
+        old_policy_version, outcome, replacement_policy_version,
+        replacement_detector_version, replacement_frame_hash
     )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS take_feedback_detector_reconciliation_identity_idx
     ON public.take_feedback_detector_reconciliation (
-        take_session_id, old_policy_version, outcome,
+        take_session_id, candidate_id, clip_identity_sha256,
+        old_policy_version, outcome,
         COALESCE(replacement_policy_version, ''),
-        COALESCE(replacement_detector_version, '')
+        COALESCE(replacement_detector_version, ''),
+        COALESCE(replacement_frame_hash, '')
     );
 
 -- Existing v2 frames keep their bytes and meaning. This append-only marker
 -- states only that they are not eligible inputs to the new universal ranker.
 INSERT INTO public.take_feedback_detector_reconciliation (
-    take_session_id, old_policy_version, old_detector_version, outcome,
-    evidence_sha256
+    take_session_id, recording_id, snippet_id, candidate_id,
+    start_offset_ms, duration_ms, clip_identity_sha256,
+    old_policy_version, old_detector_version, outcome, evidence_sha256
 )
-SELECT frame.take_session_id, frame.policy_version, 'voice-confidence-v2',
+SELECT frame.take_session_id, frame.recording_id, snippet.id,
+       candidate ->> 'candidate_id', snippet.start_offset_ms,
+       snippet.duration_ms,
+       candidate #>> '{clip_identity,clip_identity_sha256}',
+       frame.policy_version, 'voice-confidence-v2',
        'incompatible_detector_version',
        encode(extensions.digest(concat_ws(':',
-           frame.take_session_id::text, frame.policy_version,
-           'voice-confidence-v2', 'incompatible_detector_version'
+           frame.take_session_id::text, frame.recording_id::text,
+           snippet.id::text, candidate ->> 'candidate_id',
+           candidate #>> '{clip_identity,clip_identity_sha256}',
+           frame.policy_version, 'voice-confidence-v2',
+           'incompatible_detector_version'
        ), 'sha256'), 'hex')
   FROM public.take_feedback_policy_v3_shadow_frames frame
+ CROSS JOIN LATERAL jsonb_array_elements(COALESCE(
+            frame.frame -> 'blocks', '[]'::jsonb)) block
+ CROSS JOIN LATERAL jsonb_array_elements(COALESCE(
+            block -> 'confidence_candidates', '[]'::jsonb)) candidate
+  JOIN public.snippets snippet
+    ON snippet.id::text = candidate ->> 'snippet_id'
+   AND snippet.session_id = frame.take_session_id
+   AND snippet.recording_id = frame.recording_id
+   AND candidate #>> '{clip_identity,take_id}' = frame.take_session_id::text
+   AND candidate #>> '{clip_identity,recording_id}' = frame.recording_id::text
+   AND candidate #>> '{clip_identity,snippet_id}' = snippet.id::text
+   AND candidate #>> '{clip_identity,start_offset_ms}' =
+       snippet.start_offset_ms::text
+   AND candidate #>> '{clip_identity,duration_ms}' = snippet.duration_ms::text
  WHERE frame.policy_version = 'take-feedback-policy-v3-dark-v2'
    AND frame.frame #>> '{implementation_versions,confidence_detector_version}'
        = 'voice-confidence-v2'
+   AND candidate ->> 'machine_version' = 'voice-confidence-v2'
+   AND length(COALESCE(candidate ->> 'candidate_id', '')) > 0
+   AND COALESCE(candidate #>> '{clip_identity,clip_identity_sha256}', '')
+       ~ '^[0-9a-f]{64}$'
 ON CONFLICT DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.record_take_feedback_policy_v3_shadow_v3(
@@ -177,7 +220,15 @@ BEGIN
                    block -> 'confidence_candidates', '[]'::jsonb)) candidate
           LEFT JOIN public.snippets snippet
             ON snippet.id::text = candidate ->> 'snippet_id'
-         WHERE candidate ->> 'eligibility' = 'eligible'
+         WHERE (
+               candidate ->> 'eligibility' = 'eligible'
+               OR (
+                   candidate ->> 'machine_version' = 'voice-confidence-v2'
+                   AND candidate ->> 'eligibility' = 'excluded'
+                   AND candidate ->> 'exclusion_reason' =
+                       'incompatible_detector_version'
+               )
+           )
            AND (
                snippet.id IS NULL
                OR snippet.session_id IS DISTINCT FROM p_take_session_id
@@ -246,39 +297,97 @@ BEGIN
         RETURN jsonb_build_object('outcome', 'conflict');
     END IF;
 
-    IF EXISTS (
-        SELECT 1 FROM public.take_feedback_policy_v3_shadow_frames prior
-         WHERE prior.take_session_id = p_take_session_id
-           AND prior.policy_version = 'take-feedback-policy-v3-dark-v2'
-           AND prior.frame #>>
-               '{implementation_versions,confidence_detector_version}'
-               = 'voice-confidence-v2'
-    ) THEN
-        INSERT INTO public.take_feedback_detector_reconciliation (
-            take_session_id, old_policy_version, old_detector_version,
-            outcome, evidence_sha256
-        ) VALUES (
-            p_take_session_id, 'take-feedback-policy-v3-dark-v2',
-            'voice-confidence-v2', 'incompatible_detector_version',
-            encode(extensions.digest(concat_ws(':',
-                p_take_session_id::text, 'take-feedback-policy-v3-dark-v2',
-                'voice-confidence-v2', 'incompatible_detector_version'
-            ), 'sha256'), 'hex')
-        ) ON CONFLICT DO NOTHING;
-        INSERT INTO public.take_feedback_detector_reconciliation (
-            take_session_id, old_policy_version, old_detector_version,
-            outcome, replacement_policy_version,
-            replacement_detector_version, evidence_sha256
-        ) VALUES (
-            p_take_session_id, 'take-feedback-policy-v3-dark-v2',
-            'voice-confidence-v2', 'recomputed', p_policy_version,
-            'voice-confidence-universal-v3',
-            encode(extensions.digest(concat_ws(':',
-                p_take_session_id::text, 'take-feedback-policy-v3-dark-v2',
-                p_policy_version, p_frame_hash, 'recomputed'
-            ), 'sha256'), 'hex')
-        ) ON CONFLICT DO NOTHING;
-    END IF;
+    -- Reconcile per exact old clip. A new frame does not mean that every v2
+    -- artifact in the Take was recomputed. Only a matching universal-v3
+    -- candidate with the same immutable clip identity creates that fact.
+    INSERT INTO public.take_feedback_detector_reconciliation (
+        take_session_id, recording_id, snippet_id, candidate_id,
+        start_offset_ms, duration_ms, clip_identity_sha256,
+        old_policy_version, old_detector_version, outcome, evidence_sha256
+    )
+    SELECT prior.take_session_id, prior.recording_id, snippet.id,
+           old_candidate ->> 'candidate_id', snippet.start_offset_ms,
+           snippet.duration_ms,
+           old_candidate #>> '{clip_identity,clip_identity_sha256}',
+           prior.policy_version, 'voice-confidence-v2',
+           'incompatible_detector_version',
+           encode(extensions.digest(concat_ws(':',
+               prior.take_session_id::text, prior.recording_id::text,
+               snippet.id::text, old_candidate ->> 'candidate_id',
+               old_candidate #>> '{clip_identity,clip_identity_sha256}',
+               prior.policy_version, 'voice-confidence-v2',
+               'incompatible_detector_version'
+           ), 'sha256'), 'hex')
+      FROM public.take_feedback_policy_v3_shadow_frames prior
+     CROSS JOIN LATERAL jsonb_array_elements(COALESCE(
+                prior.frame -> 'blocks', '[]'::jsonb)) old_block
+     CROSS JOIN LATERAL jsonb_array_elements(COALESCE(
+                old_block -> 'confidence_candidates', '[]'::jsonb)) old_candidate
+      JOIN public.snippets snippet
+        ON snippet.id::text = old_candidate ->> 'snippet_id'
+       AND snippet.session_id = prior.take_session_id
+       AND snippet.recording_id = prior.recording_id
+       AND old_candidate #>> '{clip_identity,take_id}' =
+           prior.take_session_id::text
+       AND old_candidate #>> '{clip_identity,recording_id}' =
+           prior.recording_id::text
+       AND old_candidate #>> '{clip_identity,snippet_id}' = snippet.id::text
+       AND old_candidate #>> '{clip_identity,start_offset_ms}' =
+           snippet.start_offset_ms::text
+       AND old_candidate #>> '{clip_identity,duration_ms}' =
+           snippet.duration_ms::text
+     WHERE prior.take_session_id = p_take_session_id
+       AND prior.policy_version = 'take-feedback-policy-v3-dark-v2'
+       AND prior.frame #>>
+           '{implementation_versions,confidence_detector_version}' =
+           'voice-confidence-v2'
+       AND old_candidate ->> 'machine_version' = 'voice-confidence-v2'
+       AND length(COALESCE(old_candidate ->> 'candidate_id', '')) > 0
+       AND COALESCE(
+            old_candidate #>> '{clip_identity,clip_identity_sha256}', '')
+           ~ '^[0-9a-f]{64}$'
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO public.take_feedback_detector_reconciliation (
+        take_session_id, recording_id, snippet_id, candidate_id,
+        start_offset_ms, duration_ms, clip_identity_sha256,
+        old_policy_version, old_detector_version, outcome,
+        replacement_policy_version, replacement_detector_version,
+        replacement_frame_hash, evidence_sha256
+    )
+    SELECT incompatible.take_session_id, incompatible.recording_id,
+           incompatible.snippet_id, incompatible.candidate_id,
+           incompatible.start_offset_ms, incompatible.duration_ms,
+           incompatible.clip_identity_sha256, incompatible.old_policy_version,
+           incompatible.old_detector_version, 'recomputed', p_policy_version,
+           'voice-confidence-universal-v3', p_frame_hash,
+           encode(extensions.digest(concat_ws(':',
+               incompatible.take_session_id::text,
+               incompatible.recording_id::text,
+               incompatible.snippet_id::text, incompatible.candidate_id,
+               incompatible.clip_identity_sha256,
+               incompatible.old_policy_version, p_policy_version,
+               p_frame_hash, 'recomputed'
+           ), 'sha256'), 'hex')
+      FROM public.take_feedback_detector_reconciliation incompatible
+     WHERE incompatible.take_session_id = p_take_session_id
+       AND incompatible.outcome = 'incompatible_detector_version'
+       AND EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements(COALESCE(
+                      p_frame -> 'blocks', '[]'::jsonb)) current_block
+            CROSS JOIN jsonb_array_elements(COALESCE(
+                      current_block -> 'confidence_candidates', '[]'::jsonb))
+                      current_candidate
+            WHERE current_candidate ->> 'eligibility' = 'eligible'
+              AND current_candidate ->> 'machine_version' =
+                  'voice-confidence-universal-v3'
+              AND current_candidate ->> 'snippet_id' =
+                  incompatible.snippet_id::text
+              AND current_candidate #>> '{clip_identity,clip_identity_sha256}' =
+                  incompatible.clip_identity_sha256
+       )
+    ON CONFLICT DO NOTHING;
     RETURN jsonb_build_object(
         'outcome', 'stored', 'take_session_id', existing.take_session_id,
         'policy_version', existing.policy_version,
@@ -305,5 +414,11 @@ REVOKE ALL ON FUNCTION public.record_take_feedback_policy_v3_shadow_v3(
 GRANT EXECUTE ON FUNCTION public.record_take_feedback_policy_v3_shadow_v3(
     TEXT, UUID, UUID, UUID, UUID, INTEGER, TEXT, JSONB, TEXT
 ) TO service_role;
+
+-- Preserve migration 0309 and its function body for audit, but close the old
+-- production writer after the transition. Historical rows remain readable.
+REVOKE EXECUTE ON FUNCTION public.record_take_feedback_policy_v3_shadow_v2(
+    TEXT, UUID, UUID, UUID, UUID, INTEGER, TEXT, JSONB, TEXT
+) FROM service_role;
 
 COMMIT;
