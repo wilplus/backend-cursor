@@ -6,6 +6,17 @@
 review session survives itself. Entries here are **binding** and get folded into the numbered
 sections on the next spec pass. Where this file and SPEC.md v3 disagree, **this file is newer.**
 
+## 2026-08-29 · PLF-1 onboarding and processing flow
+
+The product/legal onboarding, recording-eligibility, AI-transparency,
+termination, deletion, and audio-lineage decision is locked in
+[`PRODUCT-LEGAL-FLOW-PLF-1.md`](./PRODUCT-LEGAL-FLOW-PLF-1.md).
+
+PLF-1 supersedes earlier conversational assumptions about per-recording
+sole-speaker confirmation, full-date-of-birth collection, per-recording
+country checks, and waiting for training before feedback. It does not activate
+or authorize implementation, deployment, datasets, training, or promotion.
+
 ---
 
 ## A · Architecture — the model changed shape
