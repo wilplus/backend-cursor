@@ -346,3 +346,5 @@
 0308	add_atomic_take_feedback_response.sql
 0309	add_take_feedback_policy_v3_shadow.sql
 0310	add_phase1_processing_boundary.sql
+0311	add_take_feedback_policy_universal_v3_transition.sql
+0312	add_phase1_deletion_completion.sql

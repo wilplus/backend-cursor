@@ -264,6 +264,42 @@ def get_exact_storage_object_bytes(
     raise ValueError("unsupported storage provider")
 
 
+def verify_lab_audio_object_absent(
+    key: str, *, bucket: str, storage_provider: str,
+) -> bool:
+    """Verify exact absence without treating provider errors as absence."""
+    key = key.lstrip("/")
+    bucket = (bucket or "").strip()
+    if not key or not bucket:
+        raise ValueError("exact bucket and object key are required")
+    provider = (storage_provider or "").strip().lower()
+    if provider == "r2":
+        try:
+            _client().head_object(Bucket=bucket, Key=key)
+        except Exception as error:
+            response = getattr(error, "response", {}) or {}
+            status = (response.get("ResponseMetadata") or {}).get(
+                "HTTPStatusCode"
+            )
+            code = str((response.get("Error") or {}).get("Code") or "")
+            if status == 404 and code in ("404", "NoSuchKey", "NotFound"):
+                return True
+            raise
+        return False
+    if provider == "supabase":
+        from services.db import db
+
+        folder, name = posixpath.split(key)
+        listing = db.client.storage.from_(bucket).list(
+            folder, {"search": name, "limit": 100},
+        )
+        return name not in {
+            str(item.get("name") or "")
+            for item in (listing or []) if isinstance(item, dict)
+        }
+    raise ValueError("unsupported storage provider")
+
+
 def delete_verified_lab_audio_object(
     key: str, *, bucket: str, storage_provider: str,
     expected_sha256: str,
@@ -290,18 +326,9 @@ def delete_verified_lab_audio_object(
         if hashlib.sha256(before).hexdigest() != expected_sha256:
             raise ValueError("object checksum does not match purge inventory")
         client.delete_object(Bucket=bucket, Key=key)
-        try:
-            client.head_object(Bucket=bucket, Key=key)
-        except Exception as error:
-            response = getattr(error, "response", {}) or {}
-            status = (response.get("ResponseMetadata") or {}).get(
-                "HTTPStatusCode"
-            )
-            code = str((response.get("Error") or {}).get("Code") or "")
-            if status == 404 and code in ("404", "NoSuchKey", "NotFound"):
-                return True
-            raise
-        return False
+        return verify_lab_audio_object_absent(
+            key, bucket=bucket, storage_provider=provider,
+        )
     if provider == "supabase":
         from services.db import db
 
@@ -314,11 +341,7 @@ def delete_verified_lab_audio_object(
         removed = storage.remove([key])
         if removed is None:
             raise RuntimeError("storage provider did not acknowledge deletion")
-        folder, name = posixpath.split(key)
-        listing = storage.list(folder, {"search": name, "limit": 100})
-        names = {
-            str(item.get("name") or "")
-            for item in (listing or []) if isinstance(item, dict)
-        }
-        return name not in names
+        return verify_lab_audio_object_absent(
+            key, bucket=bucket, storage_provider=provider,
+        )
     raise ValueError("unsupported storage provider")

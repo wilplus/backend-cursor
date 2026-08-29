@@ -11153,7 +11153,7 @@ class DatabaseService:
             return None
         try:
             result = self.client.rpc(
-                "record_take_feedback_policy_v3_shadow_v2",
+                "record_take_feedback_policy_v3_shadow_v3",
                 {
                     "p_arc_id": str(arc_id),
                     "p_take_session_id": str(take_session_id),

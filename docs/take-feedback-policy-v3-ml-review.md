@@ -6,7 +6,10 @@ creation, training, or promotion.
 
 ## Runtime boundary
 
-- Policy ID: `take-feedback-policy-v3-dark-v2`.
+- Current policy ID: `take-feedback-policy-v3-universal-dark-v3`.
+- Frame schema: `take-feedback-policy-v3-frame-v3`.
+- Migration 0309 and `take-feedback-policy-v3-dark-v2` remain immutable
+  historical contracts; migration 0311 adds the universal-v3 write boundary.
 - Activation requires both `TAKE_FEEDBACK_POLICY_V3_MODE=dark` and an exact
   match with `TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID`.
 - The current v2 Manager remains the only serving path.
@@ -33,10 +36,13 @@ lexicographic and reproducible:
 
 1. Exact clip lineage eligibility.
 2. Comparable, current-version stamped acoustic score present.
-3. Highest speaker-relative `voice-confidence-v2` score.
+3. Highest speaker-relative `voice-confidence-universal-v3` score.
 4. Spoken order and candidate ID as stable tie-breakers.
 
-No retired personality or psychological construct participates in ranking.
+No retired personality, psychological, or sex-routed construct participates
+in ranking. A stamped `voice-confidence-v2` candidate remains in the frozen
+inventory as `excluded/incompatible_detector_version` until the exact clip is
+recomputed. It is never silently converted into an unmeasured candidate.
 
 The winner is the best delivery *relative to that block*. No absolute positive
 threshold is required. A non-positive or unmeasured winner carries tentative
@@ -58,10 +64,11 @@ all four source modules that can affect the result. The deployment commit is
 also stored when the runtime provides it. Versionless verbal candidates remain
 in the inventory but are excluded from selection.
 
-The service role has read-only table access. The only write boundary is the
-validating security-definer RPC, which independently verifies Take ownership,
-recording identity, exact snippet interval lineage, version metadata, and dark
-non-exposure/non-dataset invariants.
+The service role has read-only table access. The current write boundary is the
+new validating `record_take_feedback_policy_v3_shadow_v3` security-definer RPC,
+which independently verifies Take ownership, recording identity, exact snippet
+interval lineage, universal-v3 version metadata, typed incompatibility, and
+dark non-exposure/non-dataset invariants. The old v2 RPC is not modified.
 
 ## Exposure and blindness
 
@@ -78,8 +85,9 @@ non-exposure/non-dataset invariants.
 ML/data should explicitly accept or reject:
 
 1. The 75-word, 60–90 normal block definition and exact-snippet cut boundary.
-2. The lexicographic relative-confidence definition, including missing-score
-   behavior and the distinction between "best available" and "confident".
+2. The lexicographic relative-confidence definition, including the explicit
+   difference between a genuinely missing measurement and an incompatible v2
+   measurement, and between "best available" and "confident".
 3. The completeness and reason codes of the candidate/exclusion inventory.
 4. The Take 1 versus Take 2+ lane policy.
 5. The non-exposure semantics and blind-field denylist.
@@ -88,7 +96,19 @@ ML/data should explicitly accept or reject:
 
 Requested verdict:
 
-> ML/DATA REVIEWED — `take-feedback-policy-v3-dark-v2` candidate inventory,
+> ML/DATA REVIEWED — `take-feedback-policy-v3-universal-dark-v3` candidate inventory,
 > relative-confidence definition, exposure semantics, and leakage controls are
 > accepted for founder-only dark comparison. This does not authorize serving,
 > datasets, training, or promotion.
+
+## Version-transition verification
+
+- Migration 0309 was left unchanged and continues to own only its historical
+  v2 RPC/contract.
+- Migration 0311 adds the universal-v3-only RPC and an immutable reconciliation
+  ledger.
+- The PostgreSQL rehearsal writes one historical v2 frame, one current v3
+  frame, verifies exact v3 replay, rejects changed replay, rejects a v2
+  candidate at the v3 boundary, and verifies the recomputation link.
+- Unit tests prove that a v2 measurement becomes
+  `excluded/incompatible_detector_version`, never an unmeasured ranked item.

@@ -173,6 +173,41 @@ def test_exact_clip_lineage_mismatch_is_retained_as_a_typed_exclusion():
     assert invalid["blocks"][0]["selected_candidate_id"] is None
 
 
+def test_old_detector_artifact_is_excluded_not_ranked_as_missing_evidence():
+    pieces = [_piece(0, 0, 75, 0.9), _piece(1, 0, 20, 0.1)]
+    snippets = []
+    for piece, version in zip(
+        pieces, ("voice-confidence-v2", "voice-confidence-universal-v3")
+    ):
+        snippets.append({
+            "id": piece["snippet_id"],
+            "session_id": "take-2",
+            "recording_id": "recording-1",
+            "start_offset_ms": piece["start_offset_ms"],
+            "duration_ms": piece["duration_ms"],
+            "metrics": {"voice_confidence": {
+                "version": version, "score": piece["score"],
+            }},
+        })
+    frame = build_shadow_frame(
+        take_document={
+            "take_session_id": "take-2", "text": "x" * 100,
+            "pieces": pieces,
+        },
+        snippets=snippets,
+        suggestions={}, feedback_candidates=[], take_index=1,
+        expected_recording_id="recording-1",
+    )
+    assert frame is not None
+    candidates = frame["blocks"][0]["confidence_candidates"]
+    legacy = next(row for row in candidates if row["snippet_id"] == "snippet-0")
+    current = next(row for row in candidates if row["snippet_id"] == "snippet-1")
+    assert legacy["eligibility"] == "excluded"
+    assert legacy["exclusion_reason"] == "incompatible_detector_version"
+    assert legacy["machine_version"] == "voice-confidence-v2"
+    assert frame["blocks"][0]["selected_candidate_id"] == current["candidate_id"]
+
+
 def test_invalid_rewrite_and_praise_candidates_are_frozen_not_dropped():
     pieces = [_piece(0, 0, 75, 0.4)]
     snippets = [{

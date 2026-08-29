@@ -22,8 +22,8 @@ from services.take_feedback_manager import (
 from services.voice_confidence import VERSION as CONFIDENCE_DETECTOR_VERSION
 
 
-POLICY_VERSION = "take-feedback-policy-v3-dark-v2"
-FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v2"
+POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
+FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v3"
 SUGGESTION_GENERATOR_CONTRACT_VERSION = "feedback-candidate-generator-v1"
 TARGET_WORDS = 75
 MIN_WORDS = 60
@@ -296,6 +296,16 @@ def _confidence_candidate(
         expected_take_id=expected_take_id,
         expected_recording_id=expected_recording_id,
     )
+    # A detector-version change is a construct/provenance boundary, not
+    # missing evidence. Old sex-routed v2 measurements stay visible in the
+    # frozen inventory but cannot be ranked by the universal-v3 policy until
+    # the exact clip is recomputed.
+    if (
+        exclusion_reason is None
+        and observed_version is not None
+        and observed_version != CONFIDENCE_DETECTOR_VERSION
+    ):
+        exclusion_reason = "incompatible_detector_version"
     return {
         "candidate_id": (
             f"relative-confidence:{piece['take_id']}:{piece['snippet_id']}"
@@ -306,7 +316,10 @@ def _confidence_candidate(
         "document_span": {"start": piece["start"], "end": piece["end"]},
         "word_count": piece["word_count"],
         "clip_identity": clip_identity,
-        "eligibility": "eligible" if clip_identity else "excluded",
+        "eligibility": (
+            "eligible" if clip_identity and exclusion_reason is None
+            else "excluded"
+        ),
         "exclusion_reason": exclusion_reason,
         "machine_score": score,
         "machine_version": observed_version,

@@ -457,6 +457,9 @@ class TestAC9Fence(unittest.TestCase):
                 "services/star_verdicts.py", "services/db.py",
                 "routes/v2_routes.py", "routes/v2/coach.py",
                 "routes/v2/explore_ideal_text.py",
+                # Compliance-only subject inventory. It never returns a
+                # verdict to the student; it locates the row for deletion.
+                "services/data_purge_registry.py",
             ), f"unexpected reader of star_verdicts: {line}")
 
     def test_the_routes_are_coach_gated(self):

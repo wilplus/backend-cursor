@@ -1,7 +1,13 @@
--- Disposable prerequisites for migration 0309 only. Never deploy this file.
-CREATE ROLE anon NOLOGIN;
-CREATE ROLE authenticated NOLOGIN;
-CREATE ROLE service_role NOLOGIN;
+-- Disposable prerequisites for migrations 0309 and 0311. Never deploy this file.
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+
+DO $$ BEGIN CREATE ROLE anon NOLOGIN;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE authenticated NOLOGIN;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE service_role NOLOGIN;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE TABLE public.recordings (
     id UUID PRIMARY KEY
