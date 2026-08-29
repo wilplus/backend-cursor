@@ -1,26 +1,28 @@
-# ED-PLF-1.1 — Product/legal onboarding and processing engineering design
+# ED-PLF-1.2 — Staged authorization and continuously learning service design
 
-**Product contract:** `PLF-1.1`
+**Product contract:** `PLF staged rollout` (`core_service` → `learning_live`)
 **Status:** ENGINEERING DESIGN READY FOR REVIEW · NO IMPLEMENTATION STARTED  
 **Prepared:** 2026-08-29  
 **Owner:** Artur Willoński
 
 Decision-filter stamp:
 
-`FILTER: JUSTIFIED-SCAFFOLDING — cat F1-SUPPORT — preserve recording→feedback while closing authorization, lineage, and deletion boundaries; keep datasets, training, and promotion disabled.`
+`FILTER: JUSTIFIED-SCAFFOLDING — cat F1-SUPPORT — Phase 1 preserves recording→feedback without pooled learning; Phase 2 remains fenced until the bounded learning loop and all external approvals are real.`
 
 ## 1. Scope and non-authorization boundary
 
-This document is a standalone implementation design for the locked product
-decision in
-[`PRODUCT-LEGAL-FLOW-PLF-1.1.md`](./PRODUCT-LEGAL-FLOW-PLF-1.1.md).
+This document is a standalone implementation design for the locked staged
+rollout. [`PRODUCT-LEGAL-FLOW-PLF-1.1.md`](./PRODUCT-LEGAL-FLOW-PLF-1.1.md)
+governs Phase 1. Phase 2 requires a new exact Product/legal artifact before it
+can become active.
 It defines the dependency cutover, schema, APIs, user/guest flow, provider
 boundary, termination/deletion workflow, rollout, rollback, monitoring, and
 tests.
 
-ED-PLF-1.1 supersedes ED-PLF-1. The amendment separates required service
-processing from optional pooled model improvement, adds purpose-specific
-withdrawal, and makes learning eligibility a fresh release-time computation.
+ED-PLF-1.2 supersedes ED-PLF-1.1. It adds the conditional
+`learning_live` phase, one-action re-acceptance for existing users, one-action
+onboarding for new users, and explicit coverage of eligible historical and
+future recordings. This is a design revision, not a policy activation.
 
 Preparing this design does **not** authorize:
 
@@ -40,29 +42,44 @@ basis approved for each purpose and must not decide it in code.
 
 ## 2. Outcomes
 
-PLF-1.1 produces one authoritative processing-authorization boundary for both
-accounts and guests, with independent current states for the service and
-optional pooled learning:
+The design produces one authoritative phase-aware processing boundary for
+accounts and guests:
+
+```text
+                         unknown/unsafe
+                              |
+                              v
+                           killed
+
+approved Phase 1 policy                 approved Phase 2 policy
+         |                                       |
+         v                                       v
+    core_service  -- reviewed cutover -->   learning_live
+         |                                       |
+one Agree and continue                  one current Agree and continue
+core + individual profile               bounded pooled learning required
+pooled eligibility always false         historical + future scope permitted
+dataset/training gates off               separate gates still required
+```
+
+In either service phase, an accepted recording follows one product path:
 
 ```text
 durable owner principal
-  -> approved Terms/notice + 18+ receipt + residence country
-  -> immutable required-service acceptance
-  -> separate optional pooled-improvement grant or withdrawal
-  -> purpose-specific current-authority check
+  -> exact current phase/policy receipt
   -> recording object SHA-256 + recording attempt + authorization snapshot
   -> durable processing job
-  -> provider permit
-  -> feedback
+  -> typed provider permit
+  -> recording → transcription → ranking → feedback
 ```
 
-It also produces two distinct stop boundaries:
+Refusal, termination, and deletion are separate states:
 
 ```text
-pooled-improvement withdrawal
-  -> recording/coaching remain active
-  -> future release/training/evaluation/promotion eligibility becomes false
-  -> pending learning-only work cancelled
+current-policy refusal/missing acceptance
+  -> no new recording or coaching
+  -> existing content + legal/data-rights surfaces remain available
+  -> no purge request
 
 service termination/account deletion
   -> new work blocked immediately
@@ -76,28 +93,31 @@ service termination/account deletion
 ```
 
 The user never waits for model training. Committing an outbox/provenance event
-does not create a dataset release or start a training job.
+does not create a dataset release or start a training job. Opening, signing in,
+or merely using a legal/data-rights surface never creates acceptance.
 
 ## 3. Current-state dependency audit
 
 ### 3.1 Competing acceptance sources
 
-| Producer/reader | Current responsibility | Classification | PLF-1.1 treatment |
+| Producer/reader | Current responsibility | Classification | ED-PLF-1.2 treatment |
 | --- | --- | --- | --- |
-| Frontend `WelcomeConsent` and `useWillabFlow` | Local first-run button and `localStorage` flag | Product gate with no authoritative server receipt | Retire as an authority; retain only presentation state until PLF-1.1 cutover |
+| Frontend `WelcomeConsent` and `useWillabFlow` | Local first-run button and `localStorage` flag | Product gate with no authoritative server receipt | Replace with a server-backed “Agree and continue” action; local state remains presentation-only |
 | `GET/PUT /v2/user/consent` + `user_consents` | Authenticated Terms ledger plus mic/share/email preferences | Mixed-purpose legacy product state | Preserve historical rows; stop using it for recording authority; keep unrelated preferences |
 | `GET/PUT /v2/user/sharing-consent` + `user_settings` flags | Chat mic/share/email/Terms flags | Mixed-purpose legacy product state | Remove Terms as an authority; preserve mic/email/peer-sharing preferences |
-| `GET/POST/DELETE /v2/user/mlc2-consent` | Founder-only explicit bundled consent and speaker binding | Canonical but founder-only and legally over-specific | Generalize in place into the neutral PLF authorization contract; preserve historical events |
+| `GET/POST/DELETE /v2/user/mlc2-consent` | Founder-only bundled acceptance and speaker binding | Canonical but founder-only and legally over-specific | Preserve as historical evidence only; never infer Phase 1 or Phase 2 authority from it |
 | `ml_product_legal_approvals` | Immutable approved copy/evidence | Reusable canonical foundation | Rename/generalize; keep immutable approval records |
 | `ml_consent_*` tables/RPCs | Two consent purposes fixed to Article 6(1)(a) | Reusable structure with incorrect universal semantics | Rename/generalize in place; do not maintain a parallel consent ledger |
 
-There must be exactly one service authority and one independently derived
-pooled-improvement authority after cutover. Historical ledgers remain audit
-evidence, but no legacy row is automatically relabelled as a PLF-1.1 event.
+There must be exactly one current service-phase authority after cutover.
+`core_service` never grants pooled eligibility. `learning_live` requires the
+exact current Phase 2 receipt and the approved bounded pooled purpose.
+Historical ledgers remain audit evidence, but no legacy row is relabelled as a
+Phase 1 or Phase 2 acceptance.
 
 ### 3.2 Identity and acquisition
 
-| Dependency | Current behavior | PLF-1.1 treatment |
+| Dependency | Current behavior | ED-PLF-1.2 treatment |
 | --- | --- | --- |
 | `owner_principals` | Durable account or signed guest owner | Reuse unchanged as the identity root |
 | `X-Willab-Guest-Owner` | Signed guest capability | Reuse for guest authorization status and acceptance |
@@ -110,14 +130,14 @@ When a guest principal is claimed into an account:
 - past acquisition records remain tied to the original guest principal;
 - existing recordings keep that acquisition provenance;
 - the claim event links the graph for access and deletion traversal;
-- a pre-existing account principal needs its own current PLF-1.1 service acceptance for
-  future recordings unless it already accepted the same active service
+- a pre-existing account principal needs its own exact current-phase service
+  acceptance for future recordings unless it already accepted the same active
   policy; and
 - no compliance record is copied or rewritten.
 
 ### 3.3 Recording and processing producers
 
-| Path | Current gate | PLF-1.1 requirement |
+| Path | Current gate | ED-PLF-1.2 requirement |
 | --- | --- | --- |
 | `POST /v2/lab/recordings` | Optional auth plus account/guest ownership | Require current PLF authority before reading/uploading accepted voice data |
 | `POST /v2/lab/recordings/:id/retry-processing` | Ownership only | Recheck current authority before retry/provider work |
@@ -138,10 +158,10 @@ transcription, stickiness/scoring, Ideal Text and coaching generation, user
 chat, coach draft generation, snippet transcription, reference-video
 processing, imports, Life, journal and administrative tools.
 
-PLF-1.1 applies to operations that send user-acquired recording, transcript,
+The active PLF phase applies to operations that send user-acquired recording, transcript,
 derived voice features, or associated coaching content. These operations must
 go through a provider adapter requiring a database-issued processing permit.
-Unrelated system/admin generation remains outside PLF-1.1 but must declare a
+Unrelated system/admin generation remains outside this boundary but must declare a
 different data origin; absence of an origin is rejected.
 
 The checked-in implementation audit must classify every provider caller as:
@@ -167,67 +187,76 @@ PLF deletion.
 
 ## 4. Locked invariants
 
-1. One active PLF policy is authoritative for recording/coaching.
-2. A browser-local flag is never authorization.
-3. Account and guest principals use the same server contract.
-4. No full date of birth is collected; only an over-18 result is retained.
-5. Age is never inferred from voice.
-6. Country of residence is collected at setup, not before each recording.
-7. Gateway location is rechecked only on a versioned risk trigger.
-8. No per-recording sole-speaker checkbox exists.
-9. The Terms contain the voice-only rule.
-10. Each accepted recording references the exact immutable authorization
+1. Exactly one runtime phase is authoritative: `core_service`,
+   `learning_live`, or `killed`; unknown values resolve to `killed`.
+2. Opening the app, signing in, inactivity, a preselected state, and
+   browser-local flags are never acceptance.
+3. One explicit “Agree and continue” action creates one immutable receipt for
+   the exact current phase and policy.
+4. Account and guest principals use the same server contract.
+5. No full date of birth is collected; only an over-18 result is retained.
+6. Age, sex, and gender are never inferred from voice; sex/gender is not
+   collected by this flow.
+7. Country of residence is collected at setup, not before each recording.
+8. Gateway location is rechecked only on a versioned risk trigger.
+9. No per-recording sole-speaker checkbox exists; the Terms contain the
+   voice-only rule.
+10. `core_service` permits recording, transcription, coaching, and the
+    individual learning profile but makes pooled eligibility false.
+11. `learning_live` requires the exact current Phase 2 receipt before new
+    recording/coaching and may cover eligible existing and future recordings.
+12. Historical coverage is explicit, inventory-backed, and never inferred
+    from storage, a prior service receipt, or a legacy consent row.
+13. Each accepted recording references the exact immutable authorization
     snapshot active at acquisition.
-11. Current authority is checked again at downstream provider, dataset,
-    training, evaluation, and promotion boundaries.
-12. Product/legal events, product actions, ML judgments and exposures remain
+14. Current authority is checked again at provider, coach, dataset, training,
+    evaluation, and promotion boundaries.
+15. Product/legal events, product actions, ML judgments and exposures remain
     separate records.
-13. Audio SHA-256 verifies exact bytes; it is not globally unique identity and
-    is never treated as a speaker identifier.
-14. A provider call carrying PLF user data cannot occur without a typed permit.
-15. Termination blocks new processing immediately, even while deletion runs.
-16. Dataset creation, training, evaluation and promotion remain disabled.
-17. Required service acceptance never creates pooled-improvement authority.
-18. Withdrawing pooled-improvement authority leaves recording and coaching
-    available while blocking future learning use immediately.
-19. Release eligibility is recomputed from source evidence; it is never
-    inherited from a policy-purpose flag or acquisition snapshot.
-20. No founder, coach, administrator, migration or script bypass exists.
+16. Audio SHA-256 verifies exact bytes; it is not globally unique identity and
+    is never treated as a speaker identifier or voiceprint.
+17. A provider call carrying PLF user data cannot occur without a typed permit.
+18. Refusal or missing current acceptance blocks new service but does not
+    delete existing content or create a purge request.
+19. Termination blocks new processing immediately and starts cancellation and
+    purge; deletion is a separately attributable request where applicable.
+20. Release eligibility is recomputed from source evidence; it is never
+    inherited from a policy-purpose field or acquisition snapshot.
+21. Dataset creation, training, evaluation, and promotion remain independently
+    default-off and require separate authorization even in `learning_live`.
+22. Feedback never waits for a training run.
+23. Phase 1 retention follows only the approved core-service schedule; it is
+    never extended merely because a future learning phase is contemplated.
+24. No founder, coach, administrator, migration, worker, or script bypass
+    exists.
 
 ## 5. Target architecture
 
 ```text
-                           immutable approval evidence (R2 + SHA-256)
-                                           |
-                                product_legal_approvals
-                                           |
-                           processing_authorization_policies
-                                           |
-                        processing_authorization_policy_purposes
-                                           |
-owner_principals -- processing_authorization_events -- event_purposes
-        |                    |                 |
-        |         age/residence receipts      |
-        |                    |                 |
-        |         location risk assessments   |
-        |                    |                 |
-        +---- recording attempt acceptance RPC+
-                          |       |       |
-                  auth snapshot  audio object  processing job
-                          |       |       |
-                          +--- provider operation/permit
-                                      |
-                                   feedback
+approved evidence -> phase policy -> purpose rows
+                          |
+owner principal -> explicit acceptance event -> current phase authority
+      |                         |                         |
+      |               age/residence/notices              |
+      |                         |                         |
+      +------ recording acceptance RPC -----------------+
+                        |         |         |
+                   snapshot  audio+SHA  processing job
+                        |         |         |
+                        +---- provider permit ----> feedback
 
-pooled withdrawal -> learning-work cancellation + release exclusion
+Phase 2 existing-user acceptance
+  -> historical coverage cutoff
+  -> complete historical inventory
+       ├─ verified eligible candidate
+       └─ typed exclusion
+  -> immutable inventory hash
 
-service termination -> data_purge_request -> frozen purge targets
-                                            | DB
-                                            | R2
-                                            | provider operations
-                                            | queues
-                                            | dataset/release lineage
-                                            | evaluations/training/models
+canonical events -> surface eligibility -> dataset release
+  -> training/calibration -> evaluation -> promotion -> assigned serving model
+
+refusal/missing receipt -> new service blocked; content/legal access retained
+termination/deletion -> frozen purge targets -> DB/R2/provider/queues/ML lineage
 ```
 
 ## 6. Canonical schema design
@@ -245,7 +274,8 @@ Required columns:
 
 - `id uuid primary key`
 - `approval_reference text unique not null`
-- `contract_family text not null` — `PLF-1.1`, optional future families
+- `contract_family text not null` — `PLF`
+- `rollout_phase text not null` — `core_service` or `learning_live`
 - `approved_copy_sha256 char(64) not null`
 - `onboarding_copy text not null`
 - `terms_version text not null`
@@ -267,6 +297,7 @@ Authoritative purpose registry:
 
 - `core_recording_voice_processing`
 - `coach_review`
+- `individual_learning_profile`
 - `personalized_exercise_recommendation`
 - `pooled_model_improvement`
 
@@ -285,7 +316,9 @@ In-place generalization of `ml_consent_policies`:
 
 - `version text primary key`
 - `product_legal_approval_id uuid not null`
-- `contract_family text not null check (contract_family = 'PLF-1.1')`
+- `contract_family text not null check (contract_family = 'PLF')`
+- `rollout_phase text not null check (rollout_phase in
+  ('core_service', 'learning_live'))`
 - `acceptance_kind text not null` — value comes from the approved artifact,
   not source code
 - `required_for_recording boolean not null`
@@ -294,8 +327,43 @@ In-place generalization of `ml_consent_policies`:
 - `age_policy_version text not null`
 - `location_risk_policy_version text not null`
 
-At most one policy may be active for a contract family at a time. Activating a
-policy requires immutable approval evidence whose copy hash verifies.
+At most one policy may be active for the runtime phase. Activating a policy
+requires immutable approval evidence whose copy hash verifies. A
+`learning_live` policy is invalid unless `pooled_model_improvement` is present
+as required for service under the exact approved artifact. A `core_service`
+policy cannot confer pooled eligibility.
+
+#### `processing_runtime_transitions`
+
+Append-only transitions provide the authoritative state machine:
+
+- `id uuid primary key`
+- `from_phase`, `to_phase`: `core_service`, `learning_live`, `killed`
+- exact policy and Product/legal approval IDs when entering a service phase
+- Engineering, Product/legal, ML/data and founder approval references
+- transition reason, actor, deployment version and timestamp
+- idempotency key and immutable transition hash
+
+`current_processing_runtime_state_v1` resolves the latest valid transition.
+Missing, malformed, contradictory, or unknown state resolves to `killed`.
+No environment variable or frontend value can independently activate a phase.
+
+#### `processing_operational_capability_events`
+
+Operational learning gates are a separate append-only state machine:
+
+- `capability`: `dataset_release`, `training`, `evaluation`, `promotion`
+- `state`: `disabled`, `enabled`, `killed`
+- exact surface scope and environment
+- activation and retirement timestamps
+- Product/legal, ML/data, Engineering, security and founder approval references
+- deployment/config version, actor, reason and idempotency key
+- immutable event hash
+
+The latest valid event resolves each capability; missing, malformed or unknown
+state is `disabled`. A policy row cannot enable a capability. Phase 1 rejects
+all four even if a bad capability event says enabled. Phase 2 merely makes
+separate activation possible; it never implies it.
 
 #### `processing_authorization_policy_purposes`
 
@@ -307,7 +375,7 @@ One row per policy and purpose:
 - `legal_basis_code text not null`
 - `article_9_basis_code text null`
 - `provider_processing_allowed boolean`
-- `authorization_control`: `required_service`, `optional_affirmative`
+- `authorization_control`: `required_service`, `separate_consent`
 
 The row records the approved legal scope and control type only. It contains no
 `dataset_release_allowed`, `training_allowed`, `evaluation_allowed`, or
@@ -315,7 +383,7 @@ The row records the approved legal scope and control type only. It contains no
 independent decisions. Dataset creation, training, evaluation, and promotion
 remain hard-disabled under this design regardless of policy wording.
 
-### 6.2 Immutable service and optional-purpose decisions
+### 6.2 Immutable service acceptance, refusal, and termination
 
 #### `processing_authorization_events`
 
@@ -323,9 +391,15 @@ In-place generalization of `ml_consent_events`:
 
 - exact `acquisition_principal_id`
 - exact policy and approval IDs
-- `event_kind`: `service_accepted`, `service_terminated`, `purpose_granted`,
-  `purpose_withdrawn`
-- `purpose_id null` for service events and required for purpose events
+- `event_kind`: `service_accepted`, `service_refused`, `service_terminated`,
+  `purpose_granted`, `purpose_withdrawn`
+- exact `rollout_phase`
+- `coverage_scope`: `future_only` or `existing_and_future`
+- `historical_coverage_cutoff_at null` in Phase 1 and fixed to the server
+  acceptance time for every Phase 2 receipt (a new user's inventory is simply
+  empty)
+- `purpose_id null` for service events and required only for separately
+  authorized purpose events
 - accepted copy, Terms, Privacy and AI-notice versions
 - `locale`
 - `residence_country_code char(2)`
@@ -334,25 +408,35 @@ In-place generalization of `ml_consent_events`:
 - source route, client version, occurred/received times
 - immutable affirmative action envelope
 - idempotency key
-- `supersedes_event_id` for termination or purpose withdrawal
+- `supersedes_event_id` for renewed acceptance, termination, or a separately
+  authorized purpose withdrawal
 
 Checks enforce that service acceptance has `adult_confirmed=true`, a supported
 residence country under the referenced policy, and every required service
-purpose. Optional pooled authorization requires its own affirmative action and
-cannot be synthesized from service acceptance. Service termination references
-the exact service-acceptance event; pooled withdrawal references the exact
-pooled grant. Neither deletes the prior event.
+purpose. Phase 1 acceptance must use `future_only` and cannot authorize pooled
+learning. Phase 2 acceptance must use `existing_and_future`, match the exact
+active Phase 2 policy, and prominently presented copy must cover eligible
+stored and future recordings. Service termination references the exact current
+acceptance and never deletes it. `service_refused` records only an explicit
+“Not now” action; it grants nothing and creates no purge request.
+
+Passive entry, authentication, page rendering, and inactivity never call the
+acceptance RPC. If Product/legal assigns consent to a purpose, only the
+separate `purpose_granted`/`purpose_withdrawn` contract may represent it; the
+mandatory service button cannot synthesize that consent.
 
 #### `processing_authorization_event_purposes`
 
-One immutable row per service or optional-purpose decision containing the
-exact approved legal-basis codes. One required service control may create rows
-for its required purposes. The separate, initially unchecked pooled control
-creates only `pooled_model_improvement`; service acceptance never creates it.
+One immutable row per required service purpose or separately authorized
+purpose containing the exact approved legal-basis codes. In Phase 1, the
+service action creates only core-service purpose rows and pooled eligibility
+is false. In Phase 2, the single service action creates every purpose row that
+the exact counsel-approved contractual policy marks required, including the
+bounded pooled-model purpose. Engineering never assigns those basis codes.
 
 Historical MLC-2 founder consent rows are preserved as historical
 `acceptance_kind=explicit_consent` records. They are not automatically expanded
-or interpreted as PLF-1.1 service or pooled authority.
+or interpreted as Phase 1 or Phase 2 service authority.
 
 ### 6.3 Residence and risk-triggered location assessment
 
@@ -397,6 +481,11 @@ Authenticated post-render acknowledgement referencing the presentation,
 principal, payload hash, client version and render timestamp. It is a product
 transparency receipt, never a consent, exposure label or ML judgment.
 
+Every conversational AI surface also renders a persistent, non-dismissible
+AI identification label. Emotion-recognition processing has no fallback to
+this general notice: it remains disabled until its own approved disclosure,
+authority and technical classification are configured.
+
 ### 6.5 Recording authorization snapshots
 
 #### `processing_authorization_snapshots`
@@ -404,12 +493,13 @@ transparency receipt, never a consent, exposure label or ML judgment.
 In-place generalization of `ml_consent_snapshots`:
 
 - principal, accepted event and policy
+- exact runtime phase at acquisition
 - recording attempt, project and eventual Take
 - age receipt/state
 - residence event and latest required location assessment
 - exact required-service purpose-state object
-- pooled-improvement state at acquisition, recorded separately and never
-  treated as permanent downstream authority
+- `pooled_learning_eligible_at_acquisition` (always false in `core_service`;
+  true in `learning_live` only when the exact Phase 2 receipt applies)
 - `captured_at`
 - retention state
 - canonical snapshot SHA-256
@@ -417,9 +507,56 @@ In-place generalization of `ml_consent_snapshots`:
 The recording-acceptance RPC creates this snapshot in the same PostgreSQL
 transaction as the recording attempt and processing job/outbox record. A
 historical snapshot proves acquisition conditions but never overrides a later
-service termination or pooled withdrawal when current authority is rechecked.
+refusal, policy retirement, service termination, retention expiry or deletion
+when current authority is rechecked.
 
-### 6.6 Release-time learning eligibility
+### 6.6 Historical recording coverage
+
+Phase 2 acceptance may cover eligible recordings already stored, but an
+acceptance event alone does not make any historical object eligible. Coverage
+requires a complete, immutable inventory.
+
+#### `processing_historical_coverage_sets`
+
+- `id uuid primary key`
+- exact Phase 2 acceptance event, policy and Product/legal approval
+- acquisition-principal graph root and immutable graph version
+- `coverage_cutoff_at` captured by the acceptance transaction
+- state: `inventorying`, `finalized`, `failed`, `superseded`
+- expected, inventoried, candidate and excluded counts
+- inventory code/schema version
+- finalized inventory hash and timestamp
+- lease/retry metadata and idempotency key
+
+#### `processing_historical_coverage_items`
+
+One row for every recording discovered at or before the cutoff:
+
+- coverage set, recording, attempt, Take and exact audio-object IDs
+- original acquisition principal and original authorization snapshot
+- ownership-resolution evidence and principal-graph version
+- stored hash plus independently recomputed object SHA-256
+- original collection, current retention, expiry, deletion, quarantine and
+  legal-hold states
+- disposition: `candidate` or `excluded`
+- one typed exclusion reason where excluded
+- immutable item hash and inventory timestamp
+
+Required exclusion reasons include `unresolved_owner`, `missing_audio_object`,
+`missing_original_snapshot`, `hash_unverified`, `hash_mismatch`,
+`retention_expired`, `deletion_pending`, `quarantined`,
+`legal_hold_blocks_training`, `unknown_or_third_party_provenance`,
+`orphaned_recording`, and `not_lawfully_retained`.
+
+The Phase 2 acceptance transaction records the cutoff and commits quickly.
+An asynchronous worker then enumerates the complete principal graph. Every
+discovered recording becomes either a candidate or a typed exclusion. The set
+is finalized atomically only when counts reconcile and its deterministic hash
+verifies. Until then every historical item is learning-ineligible. Recordings
+created after the cutoff use their Phase 2 acquisition snapshots, preventing
+gaps and double inclusion.
+
+### 6.7 Release-time learning eligibility
 
 #### `ml_release_eligibility_decisions`
 
@@ -430,7 +567,9 @@ eligibility evaluation attempt:
 - evidence span, recording object, Take, clip and candidate coordinates;
 - exact `acquisition_principal_id` and canonical `speaker_id`;
 - original service acquisition snapshot;
-- current pooled-improvement grant/withdrawal decision;
+- current Phase 2 service acceptance and active policy;
+- historical coverage set/item when the recording predates the acceptance
+  cutoff, or a Phase 2 acquisition snapshot for future recordings;
 - retention, deletion and purge state observed at evaluation;
 - stored audio hash and independently recomputed audio-object SHA-256;
 - applicable MLC-2 or MLC-3 contract/epoch/schema versions;
@@ -438,14 +577,17 @@ eligibility evaluation attempt:
 - evaluated time, evaluator code version and immutable decision hash.
 
 The release builder recomputes this decision immediately before including an
-item. It does not read eligibility from policy booleans, an acquisition
-snapshot, or a prior decision. A dataset retry recomputes it again. Training
-or evaluation retry and model promotion independently revalidate current
-pooled authority and release validity. A withdrawal makes every future
-decision ineligible immediately; an immutable published release is
+item. It does not read eligibility from a policy-purpose boolean, an
+acquisition snapshot, an inventory disposition or a prior decision. Phase 1
+recordings are always excluded unless a finalized Phase 2 historical-coverage
+item proves every required condition. A dataset retry recomputes eligibility.
+Training creation/retry, evaluation and promotion independently revalidate
+the current Phase 2 acceptance, release validity and operational capability.
+Refusal, policy retirement, termination, expiry, deletion or quarantine makes
+future use ineligible immediately. An immutable published release is
 invalidated and replaced through reviewed lineage rather than silently edited.
 
-### 6.7 Exact audio-object lineage
+### 6.8 Exact audio-object lineage
 
 #### `recording_audio_objects`
 
@@ -479,7 +621,7 @@ R2 and PostgreSQL cannot commit in one distributed transaction. Therefore:
 
 The route never dispatches processing until step 3 succeeds.
 
-### 6.8 Provider operations and permits
+### 6.9 Provider operations and permits
 
 #### `processing_provider_operations`
 
@@ -503,10 +645,11 @@ Append-only lifecycle: `authorized`, `queued`, `started`, `completed`,
 `issue_processing_provider_permit_v1` revalidates:
 
 - exact ownership and acquisition principal;
-- active, non-terminated PLF-1.1 service acceptance for product feedback;
+- active current-phase service acceptance for product feedback;
 - purpose-specific current authority;
-- current pooled-improvement authority for any separately authorized
-  dataset/training/evaluation/promotion provider operation;
+- `learning_live`, current Phase 2 acceptance, fresh release eligibility and
+  the corresponding default-off capability for any dataset, training,
+  evaluation or promotion provider operation;
 - required current location assessment;
 - object SHA verification;
 - absence of an active termination/purge block; and
@@ -517,16 +660,18 @@ require that operation ID and reject missing, stale or mismatched permits.
 Raw OpenAI client access is forbidden from PLF user-data modules by a static
 dependency test.
 
-### 6.9 Purpose withdrawal, termination, and purge
+### 6.10 Refusal, termination, deletion, and purge
 
-Pooled-improvement withdrawal is not a purge request. It atomically appends the
-withdrawal event, makes future learning eligibility false, and enqueues
-idempotent cancellation for pending dataset, training, evaluation and
-promotion work linked to that principal. It does not cancel ordinary feedback
-or coaching work, delete product recordings needed for the service, or claim
-that previously trained weights were erased.
+An explicit refusal of the current Phase 2 policy—or simply not accepting it—
+is not termination or deletion. It blocks new recording, coaching and learning
+use, while preserving access to existing content, export, deletion and legal
+surfaces under the prior retention policy. It creates no purge request.
 
-Whole-service termination or account deletion uses the purge path below.
+Whole-service termination or account deletion uses the purge path below. If
+an exact approved policy later uses a separate consent for any purpose, its
+purpose-specific withdrawal is recorded independently and enforced according
+to that artifact; Engineering must not infer such a control from this staged
+contract.
 
 Generalize `ml_purge_requests`/`ml_purge_events` in place so product and ML
 deletion share one orchestrator.
@@ -565,8 +710,18 @@ The purge resolver registry is an explicit allowlist. An unknown table,
 provider, bucket, release link or artifact type changes the request to
 `review_required`; it never reports success.
 
-### 6.10 Security, immutability and RLS
+### 6.11 Security, immutability and RLS
 
+- Partial unique indexes enforce one active policy per phase and one finalized
+  coverage set per acceptance/cutoff.
+- Authorization status uses `(acquisition_principal_id, rollout_phase,
+  occurred_at desc)`; historical inventory uses `(coverage_set_id,
+  recording_id)` unique plus state/reason indexes; release checks use
+  `(dataset_release_id, learning_surface, evidence_span_id, evaluated_at desc)`.
+- Audio locators are unique within their store/bucket/key coordinates, while
+  content hashes are deliberately non-unique.
+- Foreign keys prohibit cross-principal recording/snapshot/coverage lineage;
+  deferred constraints are allowed only inside the reviewed atomic RPC.
 - Canonical approval, authorization, snapshot, notice receipt, object
   coordinates and purge event rows are append-only.
 - Browser roles receive no direct table write access.
@@ -587,9 +742,11 @@ provider, bucket, release link or artifact type changes the request to
 One reusable backend service owns:
 
 - principal resolution for account and signed guest;
-- policy/status reads;
-- required-service acceptance and termination;
-- optional-purpose grant and withdrawal;
+- authoritative runtime-phase and policy/status reads;
+- exact current-phase acceptance, explicit refusal and termination;
+- historical-coverage cutoff creation and inventory status;
+- separately approved purpose grant/withdrawal only where the Product/legal
+  artifact requires it;
 - current-purpose checks;
 - residence/location assessment resolution;
 - recording snapshot creation;
@@ -601,14 +758,17 @@ Routes and jobs may not recreate these rules.
 Public decisions:
 
 - `PLF_POLICY_NOT_CONFIGURED` — 503, recording disabled
+- `PLF_PHASE_KILLED` — 503, all new recording/coaching disabled
 - `PLF_ACCEPTANCE_REQUIRED` — 403, show setup gate
-- `PLF_POLICY_CHANGED` — 409, show renewed acceptance
+- `PLF_PHASE2_REACCEPTANCE_REQUIRED` — 409, show the prominent stored-and-
+  future-recordings Phase 2 screen
+- `PLF_POLICY_CHANGED` — 409, show renewed current-phase acceptance
 - `PLF_ADULT_CONFIRMATION_REQUIRED` — 403
 - `PLF_REGION_BLOCKED` — 451 or reviewed product status
 - `PLF_LOCATION_REVIEW_REQUIRED` — 403, no provider work
 - `PLF_TERMINATED` — 403, legal/self-service surfaces only
-- `PLF_POOLED_IMPROVEMENT_NOT_AUTHORIZED` — learning use denied while
-  recording/coaching remain available
+- `PLF_LEARNING_NOT_AUTHORIZED` — current phase/receipt or release evidence
+  does not authorize this learning operation
 - `PLF_PROVIDER_NOT_AUTHORIZED` — 503, fail closed
 
 ### 7.2 `DataPurgeOrchestrator`
@@ -629,11 +789,11 @@ implementation error for a PLF user-data origin.
 | Endpoint/event | Auth | Canonical write | Behavior |
 | --- | --- | --- | --- |
 | `POST /v2/processing-authorization/bootstrap` | Optional auth or signed guest | Creates/reuses `owner_principal` only | Returns principal capability and current policy status |
-| `GET /v2/processing-authorization` | Account or signed guest | None | Returns approved public copy, versions, `service_authorized`, and `pooled_model_improvement_authorized` separately |
-| `POST /v2/processing-authorization/accept-service` | Account or signed guest | Atomic service acceptance, required-purpose rows, age/residence receipts, initial location assessment and speaker binding when resolvable | Requires exact service copy/policy hash, `adult_confirmed=true`, country and idempotency key; never grants pooled improvement |
-| `POST /v2/processing-authorization/pooled-improvement` | Account or signed guest | Immutable `purpose_granted` for `pooled_model_improvement` | Requires a distinct affirmative action, exact optional copy/version and idempotency key |
-| `POST /v2/processing-authorization/pooled-improvement/withdraw` | Account or signed guest | Immutable `purpose_withdrawn` plus learning-work cancellation outbox event | Leaves recording/coaching active and immediately blocks future learning eligibility |
+| `GET /v2/processing-authorization` | Account or signed guest | None | Returns exact phase, approved public copy/versions, current receipt state, allowed surfaces and historical-inventory status |
+| `POST /v2/processing-authorization/accept-service` | Account or signed guest | Atomic service acceptance, required-purpose rows, age/residence receipts, initial location assessment and speaker binding when resolvable | One explicit button; Phase 1 is future-only/core, Phase 2 is existing-and-future and captures a cutoff |
+| `POST /v2/processing-authorization/refuse-current-policy` | Account or signed guest | Immutable explicit refusal | Blocks new service without termination or purge; omission remains no response, not refusal |
 | `POST /v2/processing-authorization/terminate-service` | Account or signed guest | Atomic service termination and purge request | Immediately blocks all new recording/processing |
+| historical coverage inventory job | Reviewed service | Complete item inventory and atomic finalized set | Every pre-cutoff recording is candidate or typed exclusion; no dataset side effect |
 | `POST /v2/ai-notices/:version/rendered` | Account or signed guest | Render receipt | Authenticated post-paint acknowledgement |
 | `POST /v2/lab/recordings` | Account or signed guest | Audio object, attempt, snapshot and job/outbox in one DB transaction after R2 upload | Rejects before provider work without current authority |
 | `POST .../retry-processing` | Exact owner | Provider operation only after revalidation | Termination blocks retry |
@@ -641,7 +801,7 @@ implementation error for a PLF user-data origin.
 | `POST .../send-to-coach` | Exact owner | Coach-delivery event | Requires `coach_review` purpose |
 | queue worker claim | Service | Provider permit and operation events | Rechecks current authority before download and each provider stage |
 | coach queue claim/read | Coach | Existing blind assignment events | Cancelled/terminated items cannot be newly opened |
-| future dataset builder | Offline reviewed service | Release/exclusion records plus `ml_release_eligibility_decisions` | Recomputes acquisition, current pooled authority, principal/speaker, retention/withdrawal, audio hash and surface-contract eligibility; remains disabled |
+| future dataset builder | Offline reviewed service | Release/exclusion records plus `ml_release_eligibility_decisions` | Recomputes acquisition, current Phase 2 authority, historical/future coverage, principal/speaker, retention/deletion, audio hash and surface-contract eligibility; remains disabled |
 
 No endpoint accepts an arbitrary principal ID from the browser as authority.
 
@@ -652,12 +812,13 @@ No endpoint accepts an arbitrary principal ID from the browser as authority.
 ```text
 open Willab
   -> bootstrap durable signed guest principal
-  -> fetch active PLF policy
-  -> show country field + required service acceptance control
-  -> show a separate, initially unchecked pooled-improvement control
-  -> service copy includes 18+ confirmation and voice-only Terms
+  -> fetch exact active phase and PLF policy
+  -> show country field + one “Agree and continue” action
+  -> Phase 1 copy: core recording/coaching + individual profile
+  -> Phase 2 copy: complete continuously learning service
+  -> copy includes 18+ confirmation and voice-only Terms
   -> server verifies exact policy/copy and trusted initial country assessment
-  -> server stores pooled grant only if the second control was affirmatively selected
+  -> server stores one exact phase receipt
   -> show first-exposure AI notice
   -> enter Lounge/Lab
   -> no per-recording speaker or country prompt
@@ -665,26 +826,30 @@ open Willab
 
 ### 9.2 Existing account
 
-The same screen and server contract apply. A legacy Terms row or localStorage
-flag does not silently satisfy PLF-1.1. Existing projects and completed content
-are preserved. Until the user accepts, only sign-in, Terms/Privacy, data-rights
-and termination/deletion surfaces remain available.
+In Phase 1, the same one-action screen and server contract apply. A legacy
+Terms row or localStorage flag does not silently satisfy the current policy.
 
-Declining the optional pooled-improvement control does not limit recording,
-coaching, or personalized exercise recommendations. It makes the associated
-data ineligible for pooled dataset, training, evaluation, and promotion use.
+On transition to Phase 2, every existing user must re-accept once before a new
+recording or new coaching. The screen prominently states—outside the full
+Terms—that eligible recordings already stored and future recordings may be
+used for Willab's bounded pooled speech-coaching models. The server action
+captures the historical cutoff and starts the inventory. Before acceptance,
+historical recordings remain excluded from shared datasets/training. Before
+inventory finalization, they remain excluded even after acceptance.
+
+If the user does not accept, existing projects and completed content remain
+viewable and exportable, and deletion plus Terms/Privacy/data-rights surfaces
+remain available. New recording and coaching are blocked. No purge starts.
 
 ### 9.3 Guest signup
 
 The guest owner claim runs as it does today. Acquisition events remain on the
 guest principal and are linked through claim provenance. If the target account
-principal lacks the same current PLF policy acceptance, it must accept before
-making a future recording. Existing accepted guest recordings remain traceable
-to their original receipt.
-
-Optional pooled authority remains bound to the acquisition principal that made
-the affirmative choice. Claiming a guest graph never copies or fabricates a
-pooled grant for another principal.
+principal lacks the same current phase/policy receipt, it must accept before a
+future recording. Existing guest recordings remain traceable to their original
+receipt and may be historical candidates only through a finalized Phase 2
+inventory covering their exact principal graph. Claiming never copies or
+fabricates acceptance.
 
 ### 9.4 Policy change
 
@@ -692,23 +857,19 @@ When the active policy version changes materially, status returns
 `PLF_POLICY_CHANGED`; the user reviews and accepts the new exact copy before
 new processing. Historical acceptances remain immutable.
 
-### 9.5 Pooled-improvement withdrawal
+### 9.5 Refusal and missing acceptance
 
-The account page exposes an independently approved control to stop pooled model
-improvement. After immutable confirmation:
+An explicit “Not now” may record refusal; closing the screen or timing out is
+only no response. Either state blocks new service under the current policy.
+Neither state deletes data, starts a purge, or is presented as account
+termination. Existing content and data-rights controls remain accessible.
 
-- recording, feedback, coach review and exercise recommendations continue;
-- pending learning-only jobs are cancelled;
-- dataset/retry/training/evaluation/promotion checks fail closed;
-- historical acquisition and authorization events remain auditable; and
-- the UI makes no claim that already trained weights were automatically
-  deleted.
-
-### 9.6 Service termination
+### 9.6 Service termination and deletion
 
 The account page uses “End recording and coaching” or approved equivalent and
-keeps it visually and semantically separate from pooled-improvement
-withdrawal. After immutable confirmation:
+keeps it visually and semantically separate from refusing updated Terms.
+Account deletion is also separately attributable. After immutable
+confirmation:
 
 - all new recording and coaching requests fail closed;
 - active jobs receive cancellation requests;
@@ -725,7 +886,7 @@ The blind-review sequence does not change:
 blind packet -> immutable coach judgment -> reveal context
 ```
 
-PLF-1.1 changes queue eligibility only:
+The current PLF phase changes queue eligibility only:
 
 - new coach delivery requires active `coach_review` authority;
 - termination revokes unopened assignments and cancels pending deliveries;
@@ -735,8 +896,8 @@ PLF-1.1 changes queue eligibility only:
 - a generic “item no longer available” response prevents identity/status
   leakage.
 
-The `personalized_exercise_recommendation` product purpose is represented by
-PLF-1.1, but exercise matching remains MLC-3 work and is not implemented by
+The `personalized_exercise_recommendation` product purpose may be represented
+by an approved policy, but exercise matching remains MLC-3 work and is not implemented by
 this design. The technical `exercise_adequacy_classification` surface appears
 only in MLC-3 provenance.
 
@@ -769,335 +930,281 @@ objects required by valid lineage are retained with an
 
 Current code lacks complete training/evaluation/model-lineage tables. Dataset,
 training and promotion must therefore remain disabled until those canonical
-tables and purge links exist. PLF-1.1 must not fabricate successful model purge
-evidence.
+tables and purge links exist. This design must not fabricate successful model
+purge evidence.
 
-## 12. Migration and cutover plan
+## 12. Migration and controlled-cutover plan
 
-Migration numbers are proposed sequencing only; implementation review owns
-the final manifest entries.
+Migration numbers are sequencing placeholders only. Each slice is additive,
+rehearsed against a production-like backup, and separately reviewed.
 
-### Slice A — neutral authorization schema (`0310` proposed)
+| Slice | Dark deliverable | Gate before activation |
+| --- | --- | --- |
+| A | Phase-neutral registry, approvals, events, runtime transitions, RLS/RPCs | Engineering + Product/legal schema review |
+| B | Account/guest status, one-action acceptance/refusal/termination APIs and dark UI | Exact-copy Product/legal + Engineering review |
+| C | Audio-object SHA-256, atomic recording boundary and orphan sweeper | Engineering + ML/data lineage review |
+| D | Provider permits and complete provider dependency refactor | Security/Engineering + processor review |
+| E | Historical-coverage sets/items and inventory-only worker | ML/data + Product/legal eligibility review |
+| F | Purge inventory and synthetic deletion execution | Product/legal + Engineering deletion acceptance |
+| G | Phase 1 readiness monitor and founder rehearsal | Product/legal + Security + Engineering |
+| H | Separately authorized `core_service` production transition | Explicit deployment authorization |
+| I | Bounded dataset/training/evaluation/promotion infrastructure and rehearsals, still default-off | MLC-2/MLC-3 + security + processor + production reviews |
+| J | Phase 2 exact policy, re-acceptance UI and historical inventory rehearsal | Product/legal + ML/data + Engineering acceptance |
+| K | Separately authorized `learning_live` production transition | Explicit founder deployment authorization |
+| L | Dataset, training, evaluation and promotion capabilities | Each capability separately authorized; no bundled activation |
 
-- Rename/generalize the existing canonical approval/consent tables in place.
-- Add purpose registry and policy-purpose rows.
-- Preserve historical founder events exactly.
-- Add distinct service and optional-purpose grant/withdrawal events.
-- Add release-time eligibility-decision structure without enabling a builder.
-- Add age/residence/location and AI-notice tables.
-- Add service-only RPC contracts and RLS.
-- Seed no PLF policy and create no user acceptance.
+No migration seeds a policy, creates a user receipt, reinterprets historical
+data, enables a learning capability or changes the live route.
 
-### Slice B — audio and recording boundary (`0311` proposed)
+### Authoritative runtime transitions
 
-- Add `recording_audio_objects` and exact SHA-256 columns/constraints.
-- Add one atomic recording-acceptance RPC.
-- Add orphan-object inventory/sweeper contract.
-- Keep the existing live route unchanged behind the cutover mode.
+The only runtime states are:
 
-### Slice C — provider permits (`0312` proposed)
+- `core_service` — current Phase 1 policy is authoritative;
+- `learning_live` — current Phase 2 policy is authoritative; and
+- `killed` — no new recording, coaching or provider processing.
 
-- Add provider operation/event tables and permit RPC.
-- Refactor in-scope provider calls behind `AuthorizedProviderAdapter`.
-- Complete and check in the provider dependency classification.
-- Run in read-only rehearsal; no product activation.
+Unknown, missing or contradictory state resolves to `killed`. State changes
+occur only through the reviewed append-only transition contract. Environment
+variables and frontend values may request a deployment configuration but
+cannot independently activate a phase.
 
-### Slice D — termination and purge (`0313` proposed)
-
-- Generalize purge tables and add target inventory.
-- Implement cancellation/deletion adapters for PostgreSQL, R2, OpenAI and
-  queues.
-- Run inventory-only rehearsals against synthetic principals.
-- Keep destructive production execution disabled.
-
-### Slice E — status, UI and readiness (`0314` proposed)
-
-- Add aggregate-only readiness RPC and alerts.
-- Implement account/guest onboarding with separate required-service and
-  optional pooled-improvement controls.
-- Implement AI notice, pooled withdrawal, and service termination UI.
-- Replace local Welcome authority and founder-only gate.
-- Update exact approved Terms/Privacy copy only after Product/legal evidence is
-  configured.
-
-### Atomic cutover mode
-
-One backend-controlled mode selects the whole authorization writer boundary:
-
-- `legacy` — current behavior; PLF schema dark
-- `plf11` — PLF-1.1 authoritative; legacy Terms writes disabled/read-only
-- `killed` — no new recording/provider work
-
-Unknown values resolve to `killed`. No mode writes the same service or pooled
-decision to both legacy and PLF stores. After the first PLF-1.1 production
-event, rollback is to `killed`, never to `legacy`, because legacy recording
-would acquire new data without the current PLF contract.
-
-Frontend state is presentation only. The backend mode and current status are
-authoritative.
+At each surface cutover, canonical authorization writes activate atomically as
+legacy authorization writes become non-authoritative/read-only. There is no
+learning-provenance dual write. Product state needed by the live app may remain
+in mixed legacy tables until migrated, but those tables cannot authorize a
+dataset, training run or provider operation.
 
 ### Data treatment at cutover
 
 - Preserve projects, recordings, Takes, transcripts, Ideal Text, locks,
   orange anchors, coach judgments, invoices and product history.
-- Preserve historical acceptance and consent records unchanged.
-- Do not import or reinterpret historical records as PLF-1.1.
-- Require active PLF-1.1 service acceptance before the next new recording or retry
-  that invokes processing.
-- Require a new explicit pooled grant before any post-cutover data becomes
-  eligible for pooled improvement; service acceptance alone is insufficient.
-- Never backfill a fabricated audio hash. Existing objects may be hashed by an
-  explicit verified download job; until verified, they are excluded from new
-  learning eligibility.
+- Preserve all historical acceptance/consent evidence unchanged.
+- Never relabel a legacy row as Phase 1 or Phase 2 acceptance.
+- Never fabricate a historical hash. An object is excluded until a verified
+  download recomputes its SHA-256.
+- Phase 1 recordings remain pooled-ineligible.
+- Phase 2 existing-user acceptance creates a cutoff and inventory; it does
+  not immediately make stored recordings eligible.
+- Deleted, expired, orphaned, quarantined, legally blocked and unknown-
+  provenance recordings remain typed exclusions.
 
-## 13. Rollback
+## 13. Rollback and kill behavior
 
-### Before PLF activation
+Before phase activation, dark services/UI can be removed while additive schema
+remains inert. After either service phase has accepted a production receipt,
+rollback is only to `killed`, never to legacy authority:
 
-Disable dark services/UI and revert application code. Additive/renamed schema
-remains inert; immutable rehearsal rows remain marked non-production.
+1. append a reviewed transition to `killed`;
+2. stop new recording, coach delivery and provider work;
+3. keep receipts, objects, snapshots, coverage sets and queued events
+   immutable;
+4. keep cancellation/purge and transactional-outbox retries operational;
+5. repair forward or deploy the last compatible phase-aware build; and
+6. reactivate a service phase only through a new reviewed transition.
 
-### After PLF activation
+Database rollback is forward-only and cannot delete authorization, notice,
+inventory or deletion evidence. A Phase 2 incident does not fall back to Phase
+1 without a new Product/legal policy and explicit transition because doing so
+would silently change the accepted service.
 
-- set mode to `killed`;
-- stop new recording and provider work;
-- keep service, purpose, withdrawal, object, snapshot and queued events immutable;
-- repair forward or deploy the last PLF-compatible application;
-- never fall back to localStorage, `user_consents`, `user_settings.terms`, or
-  founder-only consent as recording authority; and
-- keep purge jobs retryable.
+## 14. Monitoring and audit signals
 
-Database down-migrations must not delete immutable authorization/deletion
-evidence. Recovery is forward-only.
+Aggregate-only readiness and production metrics include:
 
-## 14. Monitoring and alerts
+- current runtime phase, transition age and exact active-policy count;
+- unknown/contradictory state (must be zero and resolves killed);
+- passive/page-render acceptance attempts (must be zero);
+- approval-copy/evidence hash verification failures;
+- Phase 1 snapshots or release decisions marked pooled-eligible (must be zero);
+- Phase 2 recording/coaching attempts without the current receipt;
+- historical coverage sets by state/age and count mismatches;
+- historical items treated eligible before atomic finalization (must be zero);
+- coverage cutoff gaps or double-inventoried recordings (must be zero);
+- new recordings without snapshots or verified audio-object hashes (zero);
+- provider operations without valid permits or after termination (zero);
+- release items without a fresh independently recomputed eligibility decision
+  and SHA-256 (zero whenever release creation is separately enabled);
+- legacy authority writes after cutover (zero);
+- refusal events that created purge work (zero);
+- purge requests by state/age, unknown targets and delete verification failures;
+- dataset, training, evaluation and promotion capabilities and unexpected job
+  counts (all zero until their separate activation).
 
-Aggregate-only readiness metrics:
-
-- active PLF policy count (must equal one before enforcement);
-- approved-copy/evidence hash verification failures;
-- recording attempts without an authorization snapshot (must be zero in
-  `plf1` mode);
-- audio objects missing SHA verification (must be zero for new attempts);
-- provider operations without a valid permit (must be zero);
-- provider operations started after termination (must be zero);
-- risk assessments in `review_required`/`unavailable`;
-- terminated principals with active processing jobs;
-- purge requests by state and oldest age;
-- unknown/failed purge targets;
-- R2 delete verification failures;
-- legacy Terms writes after cutover (must be zero);
-- service acceptances that produced an implicit pooled grant (must be zero);
-- pooled-withdrawn principals with pending learning-only jobs;
-- release items lacking a fresh eligibility decision (must be zero whenever
-  release creation is separately enabled);
-- MLC-2/MLC-3 dataset, training and promotion flags (must remain false).
-
-Alerts route to Sentry/operations using reason codes and opaque IDs only.
+Alerts use opaque IDs, phase/policy versions, counts and reason codes—never
+audio, transcripts, blind packets or legal evidence contents.
 
 ## 15. Test and verification matrix
 
-### Schema and security
+### Acceptance, state and identity
 
-- approval, policy, service/purpose events, snapshots, eligibility decisions,
-  notices and purge evidence are
-  append-only;
-- purpose and legal-basis rows match the exact approved policy;
-- no authorization purpose is named `exercise_adequacy_classification`;
-- service acceptance cannot insert a pooled-improvement grant;
-- no browser role has direct write access;
-- service RPCs reject wrong principal, stale copy, stale policy and
-  idempotency collisions;
-- unknown mode is killed;
-- no direct PLF-table write bypass exists.
+- opening, authentication, rendering, timeout and passive use never accept;
+- one explicit button produces one immutable, idempotent receipt with exact
+  phase, policy/copy hashes, principal, timestamp, locale and client version;
+- wrong principal, stale copy, stale phase and idempotency collision fail;
+- account and signed guest contracts behave identically;
+- guest claim preserves original acquisition provenance and never copies a
+  receipt;
+- unknown/missing/contradictory runtime state is killed;
+- no browser/admin/founder/coach/script direct-write bypass exists.
 
-### Identity
+### Phase 1
 
-- new authenticated principal accepts service once;
-- new guest principal accepts service once with the signed capability;
-- another guest token cannot read/write the receipt;
-- signup preserving the same principal preserves receipt identity;
-- claim into a pre-existing account preserves guest acquisition provenance
-  without copying it;
-- deletion traversal covers every claimed/aliased principal for the subject;
-- unresolved speaker identity never becomes learning-eligible.
+- one action permits recording, transcription, coaching and individual profile;
+- it creates no pooled-learning authority or eligibility;
+- every Phase 1 release candidate is excluded unless later covered by a valid
+  finalized Phase 2 historical item;
+- dataset/training/evaluation/promotion capabilities remain false;
+- the recording→transcription→ranking→feedback loop is unchanged and does not
+  wait for training.
 
-### Onboarding
+### Phase 2 and historical recordings
 
-- required service control begins inactive;
-- pooled-improvement control is separate and begins unchecked;
-- exact service and optional-purpose policy/copy hashes are required;
-- `adult_confirmed=false` fails and no date of birth is stored;
-- unsupported residence country fails under the active policy;
-- supported country creates the correct immutable receipt;
-- accepting service with pooled improvement unchecked allows recording and
-  coaching but creates no pooled grant;
-- pooled grant requires the second explicit affirmative action;
-- no per-recording sole-speaker control exists;
-- AI notice receipt is created only after authenticated render confirmation;
-- material policy change forces renewed acceptance.
+- a new user accepts the complete current service with one action;
+- an existing user must accept the exact Phase 2 policy before new recording
+  or coaching;
+- the rendered screen and submitted hash prominently cover eligible stored and
+  future recordings;
+- a refusal/no response blocks new service but retains view/export/delete and
+  legal surfaces and creates no purge;
+- the acceptance transaction freezes one cutoff;
+- every pre-cutoff recording is inventoried exactly once as candidate or typed
+  exclusion; post-cutoff recordings use Phase 2 snapshots;
+- no historical item is eligible before re-acceptance and atomic inventory
+  finalization;
+- only lawfully collected/retained, exact-owner, hash-verified, non-deleted,
+  non-expired, non-quarantined and legally available items may become
+  candidates;
+- orphaned, unknown/third-party provenance and unverifiable objects stay
+  excluded;
+- a changed policy requires a new exact receipt.
 
-### Location
+### Learning-boundary races
 
-- no check runs on an ordinary unchanged session;
-- every versioned risk trigger creates an assessment;
-- browser-spoofed country headers are rejected;
-- signed/trusted gateway country is accepted;
-- blocked/review-required decisions prevent new recording/provider work;
-- no raw IP enters PLF location tables.
+- release creation/retry independently recomputes current Phase 2 authority,
+  principal/speaker lineage, coverage, retention/deletion and object hash;
+- training creation/retry rechecks current authority and release validity;
+- evaluation and promotion recheck independently;
+- refusal, policy retirement or termination racing any worker fails closed;
+- prior snapshots/inventory/eligibility decisions cannot override current
+  authority;
+- stored hashes are not trusted labels; release construction recomputes bytes;
+- each default-off capability blocks its operation even in `learning_live`;
+- feedback delivery never waits for a dataset or training run.
 
-### Recording atomicity and audio
+### Recording, provider and coach boundaries
 
-- no current authority: object is not processed and no job is dispatched;
-- R2 upload failure: no DB attempt/snapshot/job;
-- DB acceptance failure after upload: object enters orphan cleanup only;
-- acceptance succeeds: object, attempt, snapshot and job/outbox share exact
-  principal/project coordinates;
-- hash is computed from exact input bytes;
-- one-byte change changes SHA-256;
-- identical bytes from two principals produce distinct object records;
-- worker read-back mismatch fails before provider upload;
-- retries reuse the exact object and independently recheck authority.
+- no authority means no dispatched job/provider upload;
+- upload/DB partial failure uses only the orphan-cleanup path;
+- exact bytes, object, attempt, snapshot, principal and Take coordinates agree;
+- worker hash mismatch fails before provider use;
+- every in-scope provider call requires a matching fresh permit;
+- authorization errors never degrade to an empty transcript;
+- direct provider-client imports from PLF user-data modules fail static tests;
+- coach packets remain blind and reveal no policy/identity detail;
+- new delivery requires current authority; immutable prior judgments are not
+  overwritten.
 
-### Provider boundary
+### Transparency, refusal, termination and deletion
 
-- every in-scope call requires a valid permit;
-- permit purpose/provider/object mismatch fails;
-- termination between job enqueue and worker claim prevents provider upload;
-- termination between stages prevents the next provider operation;
-- authorization exceptions propagate as terminal domain states and are never
-  converted to empty transcripts;
-- static test rejects direct OpenAI client use in PLF user-data modules;
-- admin/founder scripts cannot mint permits without exact provenance.
+- conversational AI remains persistently identified;
+- first-exposure notice is evidenced only by authenticated render confirmation;
+- no emotion processing occurs without its separately approved disclosure and
+  authority;
+- refusal/no response is distinct from termination and deletion;
+- termination immediately blocks new work and atomically creates purge work;
+- deletion is separately attributable;
+- complete target inventory, shared-object reference checks, provider outcomes,
+  release invalidation and model quarantine are proven;
+- unknown dependency yields `review_required`, never success.
 
-### Pooled-improvement withdrawal and learning eligibility
+### Migration, regression, performance and security
 
-- pooled withdrawal is idempotent and preserves the original grant;
-- pooled withdrawal leaves recording, feedback, coach review and personalized
-  exercise recommendation available;
-- pooled withdrawal cancels pending dataset, training, evaluation and
-  promotion work but does not cancel product feedback jobs;
-- pooled withdrawal blocks dataset creation/retry, training/retry,
-  evaluation/retry and promotion immediately;
-- service termination still blocks all product and learning processing;
-- every release candidate receives a newly computed immutable eligibility
-  decision;
-- eligibility verifies the original acquisition snapshot, current pooled
-  authority, exact principal/speaker lineage, retention/withdrawal/deletion
-  state, independently recomputed audio-object hash, and the exact
-  surface-specific MLC-2 or MLC-3 contract;
-- stale snapshots and earlier eligible decisions cannot override a current
-  pooled withdrawal;
-- a stored audio hash is not trusted without independent recomputation;
-- a missing or wrong surface contract/version produces a typed exclusion;
-- service/policy flags cannot be read as dataset eligibility; and
-- no test asserts or UI copy claims that pooled withdrawal automatically
-  deletes already trained weights.
-
-### Coach
-
-- authorized item reaches the blind queue;
-- blind payload remains free of machine/user answers;
-- terminated unopened assignment cannot be claimed;
-- generic unavailability response leaks no termination reason;
-- prior immutable blind judgment is not overwritten.
-
-### Termination and deletion
-
-- termination immediately blocks recording/retry/coach delivery;
-- duplicate termination is idempotent;
-- pending queue/provider operations receive cancellation;
-- target inventory is complete and immutable;
-- unknown dependency produces `review_required`, never success;
-- unshared R2 object is deleted and read-after-delete verified;
-- shared object is retained while affected lineage is invalidated;
-- provider with no deletion API records its contractually verified retention
-  outcome rather than a fake delete;
-- datasets/releases containing the subject are invalidated;
-- affected models are quarantined and cannot be promoted;
-- allowlisted legal/billing/security evidence is retained with reason/expiry;
-- completion requires every target terminal.
-
-### Migration and regression
-
-- migrations apply from a production-like schema and reapply safely;
-- historical founder consent remains byte-for-byte auditable;
-- no historical acceptance is relabelled PLF-1.1;
-- no historical founder bundled consent is inferred as PLF-1.1 service or
-  pooled authority;
-- project, Take, transcript, Ideal Text, lock and orange state counts are
-  unchanged;
-- current recording→processing→Ideal Text flow passes under PLF-1.1 service
-  acceptance whether pooled improvement is granted or declined;
-- guests remain able to record after accepting;
-- signed-in users and guests receive identical processing behavior;
-- viewing/exporting/deleting data remains available after termination;
-- dataset/training/promotion remain hard-disabled.
-
-### Performance and failure
-
-- authorization status read is indexed and bounded;
-- recording acceptance adds no provider round trip;
-- SHA calculation streams or uses the already-loaded upload without a second
-  browser upload;
-- location checks do not run every session;
-- purge work never runs in the request process;
-- provider/storage outages fail closed with a durable retryable state.
+- migrations apply/reapply against production-like schema;
+- product row counts/state remain unchanged unless explicitly allowlisted;
+- historical founder records remain byte-for-byte auditable and confer no new
+  authority;
+- no legacy table can authorize a canonical dataset/training operation;
+- status reads are indexed/bounded; acceptance adds no provider round trip;
+- hash calculation avoids a second browser upload; purge is never request-
+  synchronous;
+- signed-in and guest feedback behavior remains equivalent;
+- provider/storage outages fail closed with durable retry state.
 
 ## 16. Required checked-in audit artifacts
 
-Before each implementation cutover, Engineering must provide:
+Before each cutover, Engineering must provide:
 
-1. producer/reader/route/job/UI map for all acceptance sources;
-2. provider-caller classification with no `mixed` or `unknown` row;
-3. storage bucket/key and deletion-adapter inventory;
-4. database product/learning/mixed/unknown classification;
-5. before/after row counts for any data-changing migration;
-6. proof legacy acceptance paths cannot authorize recording after cutover;
-7. proof datasets/releases cannot read an inactive authorization; and
-8. Product/legal, Engineering and ML/data review evidence appropriate to the
-   affected slice.
+1. producer/reader/route/job/UI map for every acceptance and refusal source;
+2. product-state, learning-only, mixed-purpose or unknown table classification;
+3. provider-caller classification with no unresolved `mixed` or `unknown` row;
+4. bucket/key, hash and deletion-adapter inventory;
+5. historical inventory reconciliation and exclusion-reason report;
+6. migration preview and before/after counts for every allowlisted table;
+7. proof passive and legacy paths cannot authorize new work;
+8. proof release/training code cannot read legacy authority;
+9. rollback/kill-switch and alert-path rehearsal; and
+10. Product/legal, Engineering, ML/data, security and processor evidence
+    required for that slice.
 
-Unknown dependencies fail closed.
+Unknown dependencies fail closed. Each mixed-purpose dependency has a named
+migration owner and must pass ML/data review before its learning path changes.
 
-## 17. Implementation slices and gates
+## 17. Remaining externally owned approvals
 
-| Slice | Deliverable | Review before next slice |
-| --- | --- | --- |
-| 1 | Neutral schema, purpose registry, RLS/RPCs, no active policy | Engineering + Product/legal schema review |
-| 2 | Account/guest authorization APIs and dark UI | Product/legal exact-copy review + Engineering |
-| 3 | Audio object SHA and atomic recording boundary, dark | Engineering + ML/data lineage review |
-| 4 | Provider permits and complete dependency refactor, dark | Security/Engineering + processor review |
-| 5 | Termination/purge inventory and synthetic execution | Product/legal + Engineering deletion acceptance |
-| 6 | Readiness monitor and controlled founder rehearsal | Product/legal + ML/data + Engineering |
-| 7 | Separately authorized production cutover | Explicit deployment authorization |
+Phase 1 activation requires:
 
-MLC-3 exercise matching begins only after the PLF foundation required by its
-data acquisition, authorization, audio lineage and deletion contracts is
-accepted. MLC-3 still requires its own design and ML/data approval.
+1. exact Phase 1 Terms/Privacy/AI-notice copy and hashes;
+2. exact lawful-basis and any Article 9 code per purpose;
+3. jurisdiction/18+ policy and risk-trigger handling;
+4. processor inventory, DPAs/transfers and deletion/retention capabilities;
+5. approved retention schedule and legal/security/billing exceptions;
+6. DPIA/security review and AI Act classification/disclosure decision; and
+7. Product, Product/legal, Engineering, security and production deployment
+   approval.
 
-## 18. Unresolved approval inputs
+Phase 2 additionally requires:
 
-The design is implementable, but activation requires these externally owned
-answers/artifacts:
+1. a real, bounded, operating pooled-learning pipeline with documented benefit,
+   cadence, scope and non-generic purpose;
+2. exact prominent existing-and-future-recordings copy and legal opinion;
+3. completed lineage, historical inventory, release, training, evaluation,
+   promotion, deletion and model-quarantine controls;
+4. approved MLC-2/MLC-3 label/release/evaluation contracts;
+5. processor/security assessment for every new transfer and training system;
+6. re-acceptance, refusal and rollback rehearsal; and
+7. separate Product/legal, ML/data, Engineering, security and founder
+   activation approvals.
 
-1. exact approved required-service, optional pooled-improvement,
-   Terms/Privacy/AI-notice copy and hashes;
-2. exact lawful-basis code per purpose, including Article 9 treatment;
-3. approved jurisdiction-policy artifact and handling of travel/risk mismatch;
-4. documented AI Act classification for confidence and learning-profile
-   processing;
-5. processor inventory, DPA/transfer references and deletion/retention
-   capability per provider;
-6. approved retention schedule, including legal/security/billing exceptions;
-7. persistent AI badge product decision (the first-exposure notice itself is
-   retained); and
-8. whether self-attested 18+ is the launch method or an external over-18-only
-   provider is required in any jurisdiction.
+Dataset creation, training, evaluation and promotion each remain separately
+unauthorized until their own operational review. Engineering must not guess
+any external artifact or legal code.
 
-None of these may be guessed by Engineering.
+## 18. Revision summary and decision filter
 
-> ENGINEERING DESIGN READY — ED-PLF-1.1 awaits Product/legal, Engineering, and
-> ML/data review. No implementation, migration, data deletion, deployment,
-> dataset creation, training, evaluation, promotion, or runtime activation has
-> started.
+ED-PLF-1.2 changes ED-PLF-1.1 by:
+
+- replacing the optional pooled-learning checkbox model with honest Phase 1
+  core service and conditional Phase 2 continuously learning service;
+- requiring one explicit current-policy action in either phase;
+- requiring existing-user Phase 2 re-acceptance with prominent coverage of
+  eligible stored and future recordings;
+- introducing complete immutable historical coverage sets and typed exclusions;
+- separating refusal/no response from termination and deletion;
+- making runtime phase transitions authoritative and defaulting unknown to
+  killed;
+- keeping dataset, training, evaluation and promotion as independent default-
+  off capabilities; and
+- requiring rollback to killed, never legacy authorization.
+
+```yaml
+VERDICT: JUSTIFIED-SCAFFOLDING
+CATEGORY: F1-SUPPORT
+WHY: The design separates a truthful core-service phase from a conditional learning-live phase and prevents passive, retroactive or unverifiable learning eligibility.
+REDIRECT: Implement only after the phase-specific approvals; activate learning_live only when the bounded learning loop and all lineage, deletion, processor, legal, ML/data, security and production gates are real.
+```
+
+> ENGINEERING DESIGN READY — ED-PLF-1.2 awaits Product/legal, Engineering,
+> ML/data, security, processor and production review. No implementation,
+> migration, data deletion, deployment, dataset creation, training, evaluation,
+> promotion or runtime activation has started.
