@@ -26,7 +26,7 @@ from services.lab_audio_storage import (
 )
 from services.provider_deletion import resolve_provider_operation
 
-RESOLVER_VERSION = "phase1-purge-resolver-v3"
+RESOLVER_VERSION = "phase1-purge-resolver-v4"
 _MISSING_RELATION_CODES = {"42P01", "PGRST205"}
 
 
@@ -64,6 +64,11 @@ class SubjectGraph:
     snippet_ids: tuple[str, ...] = ()
     permit_ids: tuple[str, ...] = ()
     job_ids: tuple[str, ...] = ()
+    speaker_ids: tuple[str, ...] = ()
+    practice_ids: tuple[str, ...] = ()
+    practice_attempt_ids: tuple[str, ...] = ()
+    exercise_audio_lineage_ids: tuple[str, ...] = ()
+    exercise_blind_packet_ids: tuple[str, ...] = ()
     unresolved_legacy_take_ids: tuple[str, ...] = ()
 
     def values(self, locator_kind: str) -> tuple[str, ...]:
@@ -76,6 +81,11 @@ class SubjectGraph:
             "snippet": self.snippet_ids,
             "permit": self.permit_ids,
             "job": self.job_ids,
+            "speaker": self.speaker_ids,
+            "practice": self.practice_ids,
+            "practice_attempt": self.practice_attempt_ids,
+            "exercise_audio_lineage": self.exercise_audio_lineage_ids,
+            "exercise_blind_packet": self.exercise_blind_packet_ids,
         }.get(locator_kind, ())
 
     def payload(self) -> dict[str, list[str]]:
@@ -84,6 +94,8 @@ class SubjectGraph:
             for key in (
                 "principal_ids", "user_ids", "project_ids", "take_ids",
                 "recording_ids", "snippet_ids", "permit_ids", "job_ids",
+                "speaker_ids", "practice_ids", "practice_attempt_ids",
+                "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
                 "unresolved_legacy_take_ids",
             )
         }
@@ -181,7 +193,7 @@ class DataPurgeOrchestrator:
     def build_subject_graph(
         self, principal_id: str, _existing_relations: frozenset[str],
     ) -> SubjectGraph:
-        result = self.client.rpc("resolve_phase1_purge_subject_graph_v1", {
+        result = self.client.rpc("resolve_phase1_purge_subject_graph_v2", {
             "p_acquisition_principal_id": principal_id,
         }).execute()
         payload = _one(result.data)
@@ -190,6 +202,8 @@ class DataPurgeOrchestrator:
         keys = (
             "principal_ids", "user_ids", "project_ids", "take_ids",
             "recording_ids", "snippet_ids", "permit_ids", "job_ids",
+            "speaker_ids", "practice_ids", "practice_attempt_ids",
+            "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
             "unresolved_legacy_take_ids",
         )
         if any(not isinstance(payload.get(key), list) for key in keys):
@@ -485,7 +499,7 @@ class DataPurgeOrchestrator:
         inventory = self.build_inventory(purge_request_id)
         graph_payload = inventory["graph"].payload()
         target_payload = [item.payload() for item in inventory["targets"]]
-        result = self.client.rpc("freeze_phase1_purge_inventory_v3", {
+        result = self.client.rpc("freeze_phase1_purge_inventory_v4", {
             "p_purge_request_id": purge_request_id,
             "p_resolver_version": RESOLVER_VERSION,
             "p_dependency_manifest_sha256": dependency_manifest_sha256(),
@@ -714,6 +728,8 @@ class DataPurgeOrchestrator:
             for key in (
                 "principal_ids", "user_ids", "project_ids", "take_ids",
                 "recording_ids", "snippet_ids", "permit_ids", "job_ids",
+                "speaker_ids", "practice_ids", "practice_attempt_ids",
+                "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
                 "unresolved_legacy_take_ids",
             )
         })

@@ -282,7 +282,7 @@ def test_changed_catalog_after_freeze_blocks_execution(monkeypatch):
 
     with pytest.raises(RuntimeError, match="PURGE_CATALOG_CHANGED_AFTER_FREEZE"):
         orchestrator._assert_frozen_contract({
-            "resolver_version": "phase1-purge-resolver-v3",
+            "resolver_version": "phase1-purge-resolver-v4",
             "dependency_manifest_sha256": "a" * 64,
             "catalog_sha256": "frozen",
         }, "purge-1")
@@ -324,6 +324,36 @@ def test_legacy_account_only_take_is_an_explicit_unknown_target(monkeypatch):
         unresolved.metadata["reason_code"]
         == "LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED"
     )
+
+
+def test_practice_dependencies_use_the_reviewed_physical_lineage_keys():
+    by_code = {dependency.code: dependency for dependency in DEPENDENCIES}
+    assert (
+        by_code["practice"].selector_column,
+        by_code["practice"].locator_kind,
+    ) == ("id", "practice")
+    assert (
+        by_code["practice_attempt"].selector_column,
+        by_code["practice_attempt"].locator_kind,
+    ) == ("id", "practice_attempt")
+    assert (
+        by_code["voice_album_practice"].selector_column,
+        by_code["voice_album_practice"].locator_kind,
+    ) == ("practice_attempt_id", "practice_attempt")
+
+
+def test_subject_graph_keeps_practice_and_m3_lineage_coordinates_separate():
+    graph = SubjectGraph(
+        principal_ids=("principal-1",), speaker_ids=("speaker-1",),
+        practice_ids=("practice-1",),
+        practice_attempt_ids=("attempt-1",),
+        exercise_audio_lineage_ids=("lineage-1",),
+        exercise_blind_packet_ids=("packet-1",),
+    )
+    assert graph.values("practice") == ("practice-1",)
+    assert graph.values("practice_attempt") == ("attempt-1",)
+    assert graph.values("exercise_audio_lineage") == ("lineage-1",)
+    assert graph.values("exercise_blind_packet") == ("packet-1",)
 
 
 def test_already_verified_object_is_not_deleted_twice(monkeypatch):

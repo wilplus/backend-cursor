@@ -23,7 +23,8 @@ from typing import Literal
 Disposition = Literal["delete", "retain", "external_review"]
 LocatorKind = Literal[
     "principal", "user", "project", "take", "recording", "snippet",
-    "permit", "job"
+    "permit", "job", "speaker", "practice", "practice_attempt",
+    "exercise_audio_lineage", "exercise_blind_packet"
 ]
 
 
@@ -165,14 +166,15 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "delete", "database_row", 60),
     PurgeDependency("voice_album", "voice_album", "user_id", "user", "delete",
                     "derived_feedback", 60),
-    PurgeDependency("voice_album_practice", "voice_album_practice", "user_id",
-                    "user", "delete", "derived_feedback", 60),
+    PurgeDependency("voice_album_practice", "voice_album_practice",
+                    "practice_attempt_id", "practice_attempt", "delete",
+                    "derived_feedback", 60),
     PurgeDependency("voice_album_routing", "owner_voice_album_routing", "user_id",
                     "user", "delete", "derived_feedback", 60),
-    PurgeDependency("practice", "confident_voice_practice", "user_id", "user",
+    PurgeDependency("practice", "confident_voice_practice", "id", "practice",
                     "delete", "derived_feedback", 60),
     PurgeDependency("practice_attempt", "confident_voice_practice_attempt",
-                    "user_id", "user", "delete", "derived_feedback", 60),
+                    "id", "practice_attempt", "delete", "derived_feedback", 60),
     PurgeDependency("user_audits", "user_audits", "user_id", "user", "delete",
                     "database_row", 60),
     PurgeDependency("uploaded_files", "user_uploaded_files", "user_id", "user",
@@ -445,6 +447,23 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "ml_confidence_producer_receipts",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
+    PurgeDependency("exercise_authorization_checks",
+                    "exercise_authorization_checks",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_learning_profiles", "learning_profiles",
+                    "speaker_id", "speaker", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_audio_lineages", "exercise_audio_lineages",
+                    "id", "exercise_audio_lineage", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_blind_packets", "exercise_blind_packets",
+                    "id", "exercise_blind_packet", "external_review",
+                    "coach_packet", 300),
+    PurgeDependency("exercise_blind_packet_events",
+                    "exercise_blind_packet_events", "blind_packet_id",
+                    "exercise_blind_packet", "external_review",
+                    "coach_packet", 300),
 
     # Historical corpora and review stores are frozen or mixed-purpose. They
     # are named explicitly so catalog audit is complete, while their matches
@@ -504,6 +523,9 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "processing_policy_versions", "processing_policy_purposes",
     "processing_purpose_registry", "processing_legal_artifacts",
     "processing_authorization_receipt_purposes",
+    "exercise_need_contracts", "exercise_media_objects",
+    "exercise_definitions", "exercise_versions",
+    "exercise_catalog_snapshots", "exercise_catalog_snapshot_items",
     "data_purge_inventory_manifests", "processing_provider_deletion_contracts",
     "processing_provider_deletion_contract_events", "detector_version",
 })
