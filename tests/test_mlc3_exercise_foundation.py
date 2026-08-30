@@ -127,6 +127,9 @@ def test_audio_lineage_binds_exact_bytes_and_all_owner_coordinates():
         "owner_principal_id = p_acquisition_principal_id",
         "session_id = p_take_id", "recording_id = p_recording_id",
         "object_row.exact_bytes_sha256", "source_audio_lineage",
+        "snippet.start_offset_ms IS DISTINCT FROM p_start_offset_ms",
+        "snippet.duration_ms IS DISTINCT FROM p_duration_ms",
+        "EXERCISE_AUDIO_LINEAGE_SNIPPET_INTERVAL_MISMATCH",
     ):
         assert boundary in function
     assert "require_current_exercise_authorization_v1" in function
@@ -158,6 +161,33 @@ def test_blind_packet_schema_has_allowlisted_fields_and_reveal_sequence():
     assert "EXERCISE_BLIND_REVEAL_REQUIRES_JUDGMENT" in validator
     assert "EXERCISE_BLIND_REVEAL_NOT_GRANTED" in validator
     assert "actor_provenance IN ('blind_coach', 'blind_peer')" in validator
+    assert "evidence_span_id = assignment.evidence_span_id" in validator
+    assert "EXERCISE_BLIND_JUDGMENT_EVIDENCE_MISMATCH" in validator
+
+
+def test_blind_packet_is_database_bound_to_exact_assignment_evidence():
+    validator = _function("validate_exercise_blind_packet_lineage_v1")
+    for boundary in (
+        "learning_surface_id <> 'confidence_classification'",
+        "evidence.acquisition_principal_id <> lineage.acquisition_principal_id",
+        "evidence.speaker_id <> lineage.speaker_id",
+        "evidence.project_id <> lineage.project_id",
+        "evidence.take_id <> lineage.take_id",
+        "evidence.recording_attempt_id <> lineage.recording_attempt_id",
+        "evidence_object.bucket <> processing_object.bucket",
+        "evidence_object.object_key <> processing_object.object_key",
+        "evidence_object.sha256 <> processing_object.exact_bytes_sha256",
+        "evidence_start_ms <> lineage.start_offset_ms",
+        "evidence_end_ms - evidence_start_ms <> lineage.duration_ms",
+        "NEW.clip_duration_ms <> lineage.duration_ms",
+        "NEW.confidence_taxonomy_version <> assignment.taxonomy_version",
+        "NEW.visible_payload_sha256 <> assignment.blind_packet_sha256",
+    ):
+        assert boundary in validator
+    assert "exercise_blind_packet_lineage_guard" in SQL
+    writer = _function("register_exercise_blind_packet_v1")
+    assert "INSERT INTO public.exercise_blind_packets" in writer
+    assert "'blind_packet_created'" in writer
 
 
 def test_all_new_tables_are_rls_append_only_and_rpc_only():
@@ -174,6 +204,7 @@ def test_all_new_tables_are_rls_append_only_and_rpc_only():
         "record_exercise_authorization_check_v1",
         "ensure_learning_profile_v1",
         "register_exercise_audio_lineage_v1",
+        "register_exercise_blind_packet_v1",
     ):
         assert f"GRANT EXECUTE ON FUNCTION public.{function}" in SQL
 

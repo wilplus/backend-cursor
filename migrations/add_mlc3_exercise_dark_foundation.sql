@@ -431,6 +431,7 @@ SET search_path = public
 AS $$
 DECLARE
     packet public.exercise_blind_packets;
+    assignment public.ml_review_assignments;
     judgment public.ml_judgments;
 BEGIN
     SELECT * INTO packet FROM public.exercise_blind_packets
@@ -447,12 +448,17 @@ BEGIN
         RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_NOT_CREATED';
     END IF;
     IF NEW.event_kind = 'blind_judgment_submitted' THEN
+        SELECT * INTO assignment FROM public.ml_review_assignments
+         WHERE id = NEW.review_assignment_id
+           AND learning_surface_id = 'confidence_classification';
         SELECT * INTO judgment FROM public.ml_judgments
          WHERE id = NEW.judgment_id
            AND review_assignment_id = NEW.review_assignment_id
+           AND learning_surface_id = 'confidence_classification'
+           AND evidence_span_id = assignment.evidence_span_id
            AND actor_provenance IN ('blind_coach', 'blind_peer');
-        IF judgment.id IS NULL THEN
-            RAISE EXCEPTION 'EXERCISE_BLIND_JUDGMENT_REQUIRED';
+        IF assignment.id IS NULL OR judgment.id IS NULL THEN
+            RAISE EXCEPTION 'EXERCISE_BLIND_JUDGMENT_EVIDENCE_MISMATCH';
         END IF;
     END IF;
     IF NEW.event_kind IN (
@@ -474,6 +480,94 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
+-- Bind a blind packet to the exact immutable confidence evidence selected by
+-- its assignment.  This trigger is intentionally below the RPC boundary so
+-- even a privileged/manual insert cannot pair a valid assignment with another
+-- principal, speaker, recording, object or interval.
+CREATE OR REPLACE FUNCTION public.validate_exercise_blind_packet_lineage_v1()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+    assignment public.ml_review_assignments;
+    evidence public.ml_evidence_spans;
+    evidence_object public.ml_object_artifacts;
+    lineage public.exercise_audio_lineages;
+    processing_object public.processing_audio_objects;
+    evidence_start_ms INTEGER;
+    evidence_end_ms INTEGER;
+BEGIN
+    SELECT * INTO assignment FROM public.ml_review_assignments
+     WHERE id = NEW.review_assignment_id
+       AND reviewer_principal_id = NEW.reviewer_principal_id;
+    IF assignment.id IS NULL
+       OR assignment.learning_surface_id <> 'confidence_classification' THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_ASSIGNMENT_SURFACE_INVALID';
+    END IF;
+
+    SELECT * INTO evidence FROM public.ml_evidence_spans
+     WHERE id = assignment.evidence_span_id;
+    SELECT * INTO lineage FROM public.exercise_audio_lineages
+     WHERE id = NEW.audio_lineage_id;
+    IF evidence.id IS NULL OR lineage.id IS NULL THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_EVIDENCE_REQUIRED';
+    END IF;
+
+    SELECT * INTO evidence_object FROM public.ml_object_artifacts
+     WHERE id = evidence.object_artifact_id;
+    SELECT * INTO processing_object FROM public.processing_audio_objects
+     WHERE id = lineage.processing_audio_object_id;
+    IF evidence_object.id IS NULL OR processing_object.id IS NULL THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_AUDIO_OBJECT_REQUIRED';
+    END IF;
+
+    BEGIN
+        evidence_start_ms := (evidence.coordinates ->> 'start_ms')::INTEGER;
+        evidence_end_ms := (evidence.coordinates ->> 'end_ms')::INTEGER;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_COORDINATES_INVALID';
+    END;
+
+    IF evidence.acquisition_principal_id <> lineage.acquisition_principal_id
+       OR evidence.speaker_id <> lineage.speaker_id
+       OR evidence.project_id <> lineage.project_id
+       OR evidence.take_id <> lineage.take_id
+       OR evidence.recording_attempt_id <> lineage.recording_attempt_id
+       OR evidence_object.acquisition_principal_id
+            <> lineage.acquisition_principal_id
+       OR evidence_object.speaker_id <> lineage.speaker_id
+       OR evidence_object.object_store <> 'cloudflare_r2'
+       OR evidence_object.artifact_kind <> 'audio'
+       OR evidence_object.bucket <> processing_object.bucket
+       OR evidence_object.object_key <> processing_object.object_key
+       OR evidence_object.sha256 <> processing_object.exact_bytes_sha256
+       OR evidence_object.byte_size <> processing_object.byte_size
+       OR evidence_start_ms <> lineage.start_offset_ms
+       OR evidence_end_ms - evidence_start_ms <> lineage.duration_ms THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_LINEAGE_MISMATCH';
+    END IF;
+
+    IF NEW.clip_duration_ms <> lineage.duration_ms THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_DURATION_MISMATCH';
+    END IF;
+    IF NEW.confidence_taxonomy_version <> assignment.taxonomy_version THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_TAXONOMY_MISMATCH';
+    END IF;
+    IF NEW.visible_payload_sha256 <> assignment.blind_packet_sha256 THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_PAYLOAD_HASH_MISMATCH';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS exercise_blind_packet_lineage_guard
+    ON public.exercise_blind_packets;
+CREATE TRIGGER exercise_blind_packet_lineage_guard
+    BEFORE INSERT ON public.exercise_blind_packets
+    FOR EACH ROW EXECUTE FUNCTION
+        public.validate_exercise_blind_packet_lineage_v1();
 
 DROP TRIGGER IF EXISTS exercise_blind_packet_event_sequence
     ON public.exercise_blind_packet_events;
@@ -1050,6 +1144,10 @@ BEGIN
        OR btrim(COALESCE(p_idempotency_key, '')) = '' THEN
         RAISE EXCEPTION 'EXERCISE_AUDIO_LINEAGE_INVALID';
     END IF;
+    IF snippet.start_offset_ms IS DISTINCT FROM p_start_offset_ms
+       OR snippet.duration_ms IS DISTINCT FROM p_duration_ms THEN
+        RAISE EXCEPTION 'EXERCISE_AUDIO_LINEAGE_SNIPPET_INTERVAL_MISMATCH';
+    END IF;
     lineage_hash := encode(extensions.digest(concat_ws(':',
         p_acquisition_principal_id::text, p_speaker_id::text,
         profile.id::text, auth.id::text, object_row.id::text,
@@ -1080,6 +1178,87 @@ BEGIN
         RAISE EXCEPTION 'EXERCISE_AUDIO_LINEAGE_IDEMPOTENCY_CONFLICT';
     END IF;
     RETURN lineage;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.register_exercise_blind_packet_v1(
+    p_review_assignment_id UUID,
+    p_audio_lineage_id UUID,
+    p_reviewer_principal_id UUID,
+    p_packet_schema_version TEXT,
+    p_confidence_taxonomy_version TEXT,
+    p_playback_token_sha256 TEXT,
+    p_playback_expires_at TIMESTAMPTZ,
+    p_clip_duration_ms INTEGER,
+    p_language_code TEXT,
+    p_asr_transcript TEXT,
+    p_asr_transcript_sha256 TEXT,
+    p_visible_payload_sha256 TEXT,
+    p_blindness_policy_version TEXT,
+    p_idempotency_key TEXT
+) RETURNS public.exercise_blind_packets
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    packet public.exercise_blind_packets;
+BEGIN
+    IF p_packet_schema_version <> 'confidence-exercise-blind-packet-v1'
+       OR COALESCE(p_playback_token_sha256, '') !~ '^[0-9a-f]{64}$'
+       OR p_playback_expires_at <= now()
+       OR p_clip_duration_ms <= 0
+       OR COALESCE(p_visible_payload_sha256, '') !~ '^[0-9a-f]{64}$'
+       OR btrim(COALESCE(p_confidence_taxonomy_version, '')) = ''
+       OR btrim(COALESCE(p_blindness_policy_version, '')) = ''
+       OR btrim(COALESCE(p_idempotency_key, '')) = '' THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_INVALID';
+    END IF;
+
+    SELECT * INTO packet FROM public.exercise_blind_packets
+     WHERE idempotency_key = p_idempotency_key;
+    IF packet.id IS NOT NULL THEN
+        IF packet.review_assignment_id <> p_review_assignment_id
+           OR packet.audio_lineage_id <> p_audio_lineage_id
+           OR packet.reviewer_principal_id <> p_reviewer_principal_id
+           OR packet.packet_schema_version <> p_packet_schema_version
+           OR packet.confidence_taxonomy_version
+                <> p_confidence_taxonomy_version
+           OR packet.playback_token_sha256 <> p_playback_token_sha256
+           OR packet.playback_expires_at <> p_playback_expires_at
+           OR packet.clip_duration_ms <> p_clip_duration_ms
+           OR packet.language_code IS DISTINCT FROM p_language_code
+           OR packet.asr_transcript IS DISTINCT FROM p_asr_transcript
+           OR packet.asr_transcript_sha256
+                IS DISTINCT FROM p_asr_transcript_sha256
+           OR packet.visible_payload_sha256 <> p_visible_payload_sha256 THEN
+            RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_IDEMPOTENCY_CONFLICT';
+        END IF;
+        RETURN packet;
+    END IF;
+
+    INSERT INTO public.exercise_blind_packets (
+        review_assignment_id, audio_lineage_id, reviewer_principal_id,
+        packet_schema_version, confidence_taxonomy_version,
+        playback_token_sha256, playback_expires_at, clip_duration_ms,
+        language_code, asr_transcript, asr_transcript_sha256,
+        visible_payload_sha256, idempotency_key
+    ) VALUES (
+        p_review_assignment_id, p_audio_lineage_id,
+        p_reviewer_principal_id, p_packet_schema_version,
+        p_confidence_taxonomy_version, lower(p_playback_token_sha256),
+        p_playback_expires_at, p_clip_duration_ms, p_language_code,
+        p_asr_transcript, lower(p_asr_transcript_sha256),
+        lower(p_visible_payload_sha256), p_idempotency_key
+    ) RETURNING * INTO packet;
+
+    INSERT INTO public.exercise_blind_packet_events (
+        blind_packet_id, review_assignment_id, event_kind,
+        actor_principal_id, blindness_policy_version, idempotency_key,
+        occurred_at
+    ) VALUES (
+        packet.id, packet.review_assignment_id, 'blind_packet_created', NULL,
+        p_blindness_policy_version, p_idempotency_key || ':created', now()
+    );
+    RETURN packet;
 END;
 $$;
 
@@ -1439,6 +1618,8 @@ $$;
 
 REVOKE ALL ON FUNCTION public.validate_exercise_blind_event_sequence_v1()
     FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.validate_exercise_blind_packet_lineage_v1()
+    FROM PUBLIC, anon, authenticated, service_role;
 
 REVOKE ALL ON FUNCTION public.register_exercise_need_contract_v1(
     TEXT,INTEGER,TEXT,JSONB,TEXT[],TEXT[],TEXT[],JSONB,TEXT,TEXT,TEXT,TEXT
@@ -1495,6 +1676,15 @@ GRANT EXECUTE ON FUNCTION public.register_exercise_audio_lineage_v1(
     INTEGER,INTEGER,TEXT,TEXT
 ) TO service_role;
 
+REVOKE ALL ON FUNCTION public.register_exercise_blind_packet_v1(
+    UUID,UUID,UUID,TEXT,TEXT,TEXT,TIMESTAMPTZ,INTEGER,TEXT,TEXT,TEXT,
+    TEXT,TEXT,TEXT
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.register_exercise_blind_packet_v1(
+    UUID,UUID,UUID,TEXT,TEXT,TEXT,TIMESTAMPTZ,INTEGER,TEXT,TEXT,TEXT,
+    TEXT,TEXT,TEXT
+) TO service_role;
+
 REVOKE ALL ON FUNCTION public.get_mlc3_exercise_foundation_health_v1()
     FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_mlc3_exercise_foundation_health_v1()
@@ -1509,6 +1699,6 @@ COMMENT ON TABLE public.exercise_audio_lineages IS
 COMMENT ON TABLE public.learning_profiles IS
     'Stable pseudonymous profile identity only; it contains no trait, diagnosis, label, or biometric identity inference.';
 COMMENT ON TABLE public.exercise_blind_packets IS
-    'Typed storage for the exact confidence-exercise-blind-packet-v1 allowlist. M3-2 creates no packet producer or user/coach route.';
+    'Typed RPC-only storage for the exact confidence-exercise-blind-packet-v1 allowlist. M3-2 creates no runtime packet producer or user/coach route.';
 
 COMMIT;

@@ -14,6 +14,8 @@ BEGIN;
 \set receipt_id '80000000-0000-0000-0000-000000000001'
 \set auth_snapshot_id '90000000-0000-0000-0000-000000000001'
 \set audio_object_id 'a0000000-0000-0000-0000-000000000001'
+\set evidence_object_id 'a1000000-0000-0000-0000-000000000001'
+\set evidence_span_id 'b1000000-0000-0000-0000-000000000001'
 \set review_assignment_id 'b0000000-0000-0000-0000-000000000001'
 
 INSERT INTO public.owner_principals (id, user_id) VALUES
@@ -32,8 +34,9 @@ VALUES (:'take_id', :'owner_id', :'project_id');
 INSERT INTO public.takes (
     id, recording_attempt_id, owner_principal_id, project_id
 ) VALUES (:'take_id', :'take_id', :'owner_id', :'project_id');
-INSERT INTO public.snippets (id, session_id, recording_id)
-VALUES (:'snippet_id', :'take_id', :'recording_id');
+INSERT INTO public.snippets (
+    id, session_id, recording_id, start_offset_ms, duration_ms
+) VALUES (:'snippet_id', :'take_id', :'recording_id', 1250, 2400);
 
 INSERT INTO public.processing_policy_versions (
     id, version, status, activated_at
@@ -68,6 +71,22 @@ INSERT INTO public.ml_speakers (id) VALUES (:'speaker_id');
 INSERT INTO public.ml_speaker_principals (
     speaker_id, acquisition_principal_id
 ) VALUES (:'speaker_id', :'owner_id');
+INSERT INTO public.ml_object_artifacts (
+    id, acquisition_principal_id, speaker_id, object_store, bucket,
+    object_key, sha256, byte_size, content_type, artifact_kind
+) VALUES (
+    :'evidence_object_id', :'owner_id', :'speaker_id', 'cloudflare_r2',
+    'recordings', 'm3/rehearsal.wav', repeat('a', 64), 1024,
+    'audio/wav', 'audio'
+);
+INSERT INTO public.ml_evidence_spans (
+    id, acquisition_principal_id, speaker_id, project_id,
+    recording_attempt_id, take_id, object_artifact_id, coordinates
+) VALUES (
+    :'evidence_span_id', :'owner_id', :'speaker_id', :'project_id',
+    :'take_id', :'take_id', :'evidence_object_id',
+    '{"start_ms":1250,"end_ms":3650}'::jsonb
+);
 
 -- Purpose exists but cannot authorize until it is operational.
 SET ROLE service_role;
@@ -143,6 +162,9 @@ BEGIN
         IF SQLERRM = 'changed exact lineage replay unexpectedly succeeded' THEN
             RAISE;
         END IF;
+        IF SQLERRM <> 'EXERCISE_AUDIO_LINEAGE_SNIPPET_INTERVAL_MISMATCH' THEN
+            RAISE;
+        END IF;
     END;
 END;
 $$;
@@ -199,32 +221,161 @@ END;
 $$;
 RESET ROLE;
 
--- Blind reveal cannot be recorded before the immutable blind judgment.
+-- Blind packets must be bound to the assignment's exact immutable evidence.
 INSERT INTO public.ml_review_assignments (
-    id, learning_surface_id, evidence_span_id, reviewer_principal_id
+    id, learning_surface_id, evidence_span_id, reviewer_principal_id,
+    blind_packet_sha256, taxonomy_version
 ) VALUES (
     :'review_assignment_id', 'confidence_classification',
-    'b1000000-0000-0000-0000-000000000001', :'reviewer_id'
+    :'evidence_span_id', :'reviewer_id', repeat('1', 64),
+    'confidence-five-state-v1'
 );
-INSERT INTO public.exercise_blind_packets (
-    id, review_assignment_id, audio_lineage_id, reviewer_principal_id,
-    packet_schema_version, confidence_taxonomy_version,
-    playback_token_sha256, playback_expires_at, clip_duration_ms,
-    language_code, visible_payload_sha256, idempotency_key
+INSERT INTO public.ml_review_assignments (
+    id, learning_surface_id, evidence_span_id, reviewer_principal_id,
+    blind_packet_sha256, taxonomy_version
 ) VALUES (
-    'b2000000-0000-0000-0000-000000000001', :'review_assignment_id',
+    'b0000000-0000-0000-0000-000000000002', 'praise_generation',
+    :'evidence_span_id', :'reviewer_id', repeat('2', 64),
+    'confidence-five-state-v1'
+);
+INSERT INTO public.ml_evidence_spans (
+    id, acquisition_principal_id, speaker_id, project_id,
+    recording_attempt_id, take_id, object_artifact_id, coordinates
+) VALUES (
+    'b1000000-0000-0000-0000-000000000002', :'owner_id', :'speaker_id',
+    :'project_id', :'take_id', :'take_id', :'evidence_object_id',
+    '{"start_ms":1500,"end_ms":3900}'::jsonb
+);
+INSERT INTO public.ml_review_assignments (
+    id, learning_surface_id, evidence_span_id, reviewer_principal_id,
+    blind_packet_sha256, taxonomy_version
+) VALUES (
+    'b0000000-0000-0000-0000-000000000003',
+    'confidence_classification',
+    'b1000000-0000-0000-0000-000000000002', :'reviewer_id',
+    repeat('3', 64), 'confidence-five-state-v1'
+);
+
+DO $$
+DECLARE lineage_id UUID;
+BEGIN
+    SELECT id INTO lineage_id FROM public.exercise_audio_lineages LIMIT 1;
+    BEGIN
+        PERFORM public.register_exercise_blind_packet_v1(
+            'b0000000-0000-0000-0000-000000000002', lineage_id,
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1', repeat('f', 64),
+            now() + interval '15 minutes', 2400, 'en', NULL, NULL,
+            repeat('2', 64), 'blind-policy-v1', 'wrong-surface'
+        );
+        RAISE EXCEPTION 'wrong-surface blind packet unexpectedly succeeded';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'wrong-surface blind packet unexpectedly succeeded' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_BLIND_ASSIGNMENT_SURFACE_INVALID' THEN RAISE; END IF;
+    END;
+    BEGIN
+        PERFORM public.register_exercise_blind_packet_v1(
+            'b0000000-0000-0000-0000-000000000003', lineage_id,
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1', repeat('f', 64),
+            now() + interval '15 minutes', 2400, 'en', NULL, NULL,
+            repeat('3', 64), 'blind-policy-v1', 'wrong-evidence'
+        );
+        RAISE EXCEPTION 'unrelated-evidence blind packet unexpectedly succeeded';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'unrelated-evidence blind packet unexpectedly succeeded' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_BLIND_PACKET_LINEAGE_MISMATCH' THEN RAISE; END IF;
+    END;
+    BEGIN
+        PERFORM public.register_exercise_blind_packet_v1(
+            'b0000000-0000-0000-0000-000000000001', lineage_id,
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1', repeat('f', 64),
+            now() + interval '15 minutes', 2500, 'en', NULL, NULL,
+            repeat('1', 64), 'blind-policy-v1', 'wrong-duration'
+        );
+        RAISE EXCEPTION 'wrong-duration blind packet unexpectedly succeeded';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'wrong-duration blind packet unexpectedly succeeded' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_BLIND_PACKET_DURATION_MISMATCH' THEN RAISE; END IF;
+    END;
+    BEGIN
+        PERFORM public.register_exercise_blind_packet_v1(
+            'b0000000-0000-0000-0000-000000000001', lineage_id,
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v2', repeat('f', 64),
+            now() + interval '15 minutes', 2400, 'en', NULL, NULL,
+            repeat('1', 64), 'blind-policy-v1', 'wrong-taxonomy'
+        );
+        RAISE EXCEPTION 'wrong-taxonomy blind packet unexpectedly succeeded';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'wrong-taxonomy blind packet unexpectedly succeeded' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_BLIND_PACKET_TAXONOMY_MISMATCH' THEN RAISE; END IF;
+    END;
+    BEGIN
+        PERFORM public.register_exercise_blind_packet_v1(
+            'b0000000-0000-0000-0000-000000000001', lineage_id,
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1', repeat('f', 64),
+            now() + interval '15 minutes', 2400, 'en', NULL, NULL,
+            repeat('9', 64), 'blind-policy-v1', 'wrong-payload-hash'
+        );
+        RAISE EXCEPTION 'wrong-payload blind packet unexpectedly succeeded';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'wrong-payload blind packet unexpectedly succeeded' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_BLIND_PACKET_PAYLOAD_HASH_MISMATCH' THEN RAISE; END IF;
+    END;
+END;
+$$;
+
+SET ROLE service_role;
+SELECT public.register_exercise_blind_packet_v1(
+    :'review_assignment_id',
     (SELECT id FROM public.exercise_audio_lineages LIMIT 1), :'reviewer_id',
     'confidence-exercise-blind-packet-v1', 'confidence-five-state-v1',
-    repeat('f', 64), now() + interval '15 minutes', 2400, 'en',
-    repeat('1', 64), 'blind-packet-1'
+    repeat('f', 64), now() + interval '15 minutes', 2400, 'en', NULL, NULL,
+    repeat('1', 64), 'blind-policy-v1', 'blind-packet-1'
 );
-INSERT INTO public.exercise_blind_packet_events (
-    blind_packet_id, review_assignment_id, event_kind,
-    blindness_policy_version, idempotency_key, occurred_at
+RESET ROLE;
+
+-- A blind judgment attached to the assignment but pointing at another evidence
+-- span cannot unlock reveal or enter the review sequence.
+INSERT INTO public.ml_judgments (
+    id, review_assignment_id, learning_surface_id, evidence_span_id,
+    actor_provenance
 ) VALUES (
-    'b2000000-0000-0000-0000-000000000001', :'review_assignment_id',
-    'blind_packet_created', 'blind-policy-v1', 'packet-created', now()
+    'b3000000-0000-0000-0000-000000000001', :'review_assignment_id',
+    'confidence_classification',
+    'b1000000-0000-0000-0000-000000000002', 'blind_coach'
 );
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO public.exercise_blind_packet_events (
+            blind_packet_id, review_assignment_id, event_kind, judgment_id,
+            blindness_policy_version, idempotency_key, occurred_at
+        ) VALUES (
+            (SELECT id FROM public.exercise_blind_packets
+              WHERE idempotency_key = 'blind-packet-1'),
+            'b0000000-0000-0000-0000-000000000001',
+            'blind_judgment_submitted',
+            'b3000000-0000-0000-0000-000000000001', 'blind-policy-v1',
+            'wrong-judgment-evidence', now()
+        );
+        RAISE EXCEPTION 'wrong-evidence blind judgment unexpectedly succeeded';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'wrong-evidence blind judgment unexpectedly succeeded' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_BLIND_JUDGMENT_EVIDENCE_MISMATCH' THEN RAISE; END IF;
+    END;
+END;
+$$;
+
+-- Blind reveal cannot be recorded before an exact immutable blind judgment.
 DO $$
 BEGIN
     BEGIN
@@ -232,7 +383,8 @@ BEGIN
             blind_packet_id, review_assignment_id, event_kind,
             blindness_policy_version, idempotency_key, occurred_at
         ) VALUES (
-            'b2000000-0000-0000-0000-000000000001',
+            (SELECT id FROM public.exercise_blind_packets
+              WHERE idempotency_key = 'blind-packet-1'),
             'b0000000-0000-0000-0000-000000000001',
             'post_judgment_reveal_granted', 'blind-policy-v1',
             'illegal-reveal', now()

@@ -55,7 +55,9 @@ CREATE TABLE public.takes (
 CREATE TABLE public.snippets (
     id UUID PRIMARY KEY,
     session_id UUID,
-    recording_id UUID
+    recording_id UUID,
+    start_offset_ms INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL
 );
 CREATE TABLE public.owner_claim_events (
     source_owner_principal_id UUID NOT NULL,
@@ -215,16 +217,42 @@ BEGIN
     VALUES (p_speaker_id) ON CONFLICT DO NOTHING;
 END;
 $$;
+CREATE TABLE public.ml_object_artifacts (
+    id UUID PRIMARY KEY,
+    acquisition_principal_id UUID NOT NULL REFERENCES public.owner_principals(id),
+    speaker_id UUID NOT NULL REFERENCES public.ml_speakers(id),
+    object_store TEXT NOT NULL,
+    bucket TEXT NOT NULL,
+    object_key TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    byte_size BIGINT NOT NULL,
+    content_type TEXT NOT NULL,
+    artifact_kind TEXT NOT NULL
+);
+CREATE TABLE public.ml_evidence_spans (
+    id UUID PRIMARY KEY,
+    acquisition_principal_id UUID NOT NULL REFERENCES public.owner_principals(id),
+    speaker_id UUID NOT NULL REFERENCES public.ml_speakers(id),
+    project_id UUID NOT NULL REFERENCES public.projects(id),
+    recording_attempt_id UUID NOT NULL,
+    take_id UUID NOT NULL REFERENCES public.takes(id),
+    object_artifact_id UUID REFERENCES public.ml_object_artifacts(id),
+    coordinates JSONB NOT NULL
+);
 CREATE TABLE public.ml_review_assignments (
     id UUID PRIMARY KEY,
     learning_surface_id TEXT NOT NULL REFERENCES public.ml_learning_surfaces(id),
-    evidence_span_id UUID NOT NULL,
+    evidence_span_id UUID NOT NULL REFERENCES public.ml_evidence_spans(id),
     reviewer_principal_id UUID NOT NULL REFERENCES public.owner_principals(id),
+    blind_packet_sha256 TEXT NOT NULL,
+    taxonomy_version TEXT NOT NULL,
     UNIQUE (id, reviewer_principal_id)
 );
 CREATE TABLE public.ml_judgments (
     id UUID PRIMARY KEY,
     review_assignment_id UUID REFERENCES public.ml_review_assignments(id),
+    learning_surface_id TEXT NOT NULL REFERENCES public.ml_learning_surfaces(id),
+    evidence_span_id UUID NOT NULL REFERENCES public.ml_evidence_spans(id),
     actor_provenance TEXT NOT NULL
 );
 CREATE OR REPLACE FUNCTION public.reject_mlc2_immutable_mutation()
