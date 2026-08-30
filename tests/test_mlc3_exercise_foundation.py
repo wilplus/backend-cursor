@@ -90,6 +90,9 @@ def test_authorization_is_product_purpose_not_learning_surface_and_fails_closed(
     for boundary in (
         "checked_at >= now() - interval '5 minutes'",
         "purpose.operational AND purpose.authorizes_processing",
+        "receipt.acquisition_principal_id = p_acquisition_principal_id",
+        "receipt.policy_id = snapshot.policy_id",
+        "processing_policy_purposes",
         "policy.status = 'active'", "processing_service_blocks",
         "EXERCISE_CURRENT_AUTHORIZATION_REVOKED",
     ):
@@ -139,10 +142,12 @@ def test_audio_lineage_binds_exact_bytes_and_all_owner_coordinates():
 def test_blind_packet_schema_has_allowlisted_fields_and_reveal_sequence():
     packet = _table("exercise_blind_packets")
     for field in (
-        "review_assignment_id", "audio_lineage_id", "reviewer_principal_id",
+        "review_assignment_id", "audio_lineage_id", "authorization_check_id",
+        "reviewer_principal_id",
         "packet_schema_version", "confidence_taxonomy_version",
         "playback_token_sha256", "playback_expires_at", "clip_duration_ms",
-        "language_code", "asr_transcript", "visible_payload_sha256",
+        "language_code", "asr_transcript", "visible_payload",
+        "visible_payload_sha256",
     ):
         assert field in packet
     for forbidden in (
@@ -181,13 +186,40 @@ def test_blind_packet_is_database_bound_to_exact_assignment_evidence():
         "evidence_end_ms - evidence_start_ms <> lineage.duration_ms",
         "NEW.clip_duration_ms <> lineage.duration_ms",
         "NEW.confidence_taxonomy_version <> assignment.taxonomy_version",
+        "NEW.visible_payload <> expected_payload",
+        "NEW.asr_transcript_sha256",
+        "IS DISTINCT FROM expected_transcript_sha256",
+        "NEW.visible_payload_sha256 <> expected_payload_sha256",
         "NEW.visible_payload_sha256 <> assignment.blind_packet_sha256",
+        "'blind_review_preparation'",
     ):
         assert boundary in validator
     assert "exercise_blind_packet_lineage_guard" in SQL
+    builder = _function("build_exercise_blind_visible_payload_v1")
+    for allowed in (
+        "'blind_packet_id'", "'review_assignment_id'",
+        "'packet_schema_version'", "'confidence_taxonomy_version'",
+        "'playback_token'", "'clip_duration_ms'", "'language_code'",
+        "'asr_transcript'", "'allowed_response_ids'",
+        "'audio_unclear_control'",
+    ):
+        assert allowed in builder
+    for forbidden in (
+        "machine_score", "machine_prediction", "speaker_id", "take_id",
+        "exercise_version_id", "need_code", "user_answer",
+    ):
+        assert forbidden not in builder
     writer = _function("register_exercise_blind_packet_v1")
     assert "INSERT INTO public.exercise_blind_packets" in writer
     assert "'blind_packet_created'" in writer
+    assert "require_current_exercise_authorization_v1" in writer
+    assert "'blind_review_preparation'" in writer
+    assert "build_exercise_blind_visible_payload_v1" in writer
+    assert "convert_to(p_asr_transcript, 'UTF8')" in writer
+    assert "pg_advisory_xact_lock" in writer
+    assert "WHERE idempotency_key = p_idempotency_key" in writer
+    assert "p_visible_payload_sha256" not in writer
+    assert "p_asr_transcript_sha256" not in writer
 
 
 def test_all_new_tables_are_rls_append_only_and_rpc_only():

@@ -17,6 +17,8 @@ BEGIN;
 \set evidence_object_id 'a1000000-0000-0000-0000-000000000001'
 \set evidence_span_id 'b1000000-0000-0000-0000-000000000001'
 \set review_assignment_id 'b0000000-0000-0000-0000-000000000001'
+\set blind_packet_id 'b2000000-0000-0000-0000-000000000001'
+\set playback_reference_id 'b4000000-0000-0000-0000-000000000001'
 
 INSERT INTO public.owner_principals (id, user_id) VALUES
     (:'owner_id', '11000000-0000-0000-0000-000000000001'),
@@ -113,6 +115,10 @@ SELECT public.record_exercise_authorization_check_v1(
 );
 SELECT public.record_exercise_authorization_check_v1(
     :'owner_id', :'auth_snapshot_id', 'profile_identity', 'profile-auth-allowed'
+);
+SELECT public.record_exercise_authorization_check_v1(
+    :'owner_id', :'auth_snapshot_id', 'blind_review_preparation',
+    'blind-review-auth-allowed'
 );
 SELECT public.ensure_learning_profile_v1(
     :'speaker_id', :'owner_id',
@@ -227,7 +233,14 @@ INSERT INTO public.ml_review_assignments (
     blind_packet_sha256, taxonomy_version
 ) VALUES (
     :'review_assignment_id', 'confidence_classification',
-    :'evidence_span_id', :'reviewer_id', repeat('1', 64),
+    :'evidence_span_id', :'reviewer_id', encode(extensions.digest(convert_to(
+        public.build_exercise_blind_visible_payload_v1(
+            :'blind_packet_id', :'review_assignment_id',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1', :'playback_reference_id',
+            2400, 'en', 'Measured passage.'
+        )::TEXT, 'UTF8'
+    ), 'sha256'), 'hex'),
     'confidence-five-state-v1'
 );
 INSERT INTO public.ml_review_assignments (
@@ -255,6 +268,23 @@ INSERT INTO public.ml_review_assignments (
     'b1000000-0000-0000-0000-000000000002', :'reviewer_id',
     repeat('3', 64), 'confidence-five-state-v1'
 );
+INSERT INTO public.ml_review_assignments (
+    id, learning_surface_id, evidence_span_id, reviewer_principal_id,
+    blind_packet_sha256, taxonomy_version
+) VALUES (
+    'b0000000-0000-0000-0000-000000000004',
+    'confidence_classification', :'evidence_span_id', :'reviewer_id',
+    encode(extensions.digest(convert_to(
+        public.build_exercise_blind_visible_payload_v1(
+            'b2000000-0000-0000-0000-000000000006',
+            'b0000000-0000-0000-0000-000000000004',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1',
+            'b4000000-0000-0000-0000-000000000006',
+            2400, 'en', 'Measured passage.'
+        )::TEXT, 'UTF8'
+    ), 'sha256'), 'hex'), 'confidence-five-state-v1'
+);
 
 DO $$
 DECLARE lineage_id UUID;
@@ -262,12 +292,16 @@ BEGIN
     SELECT id INTO lineage_id FROM public.exercise_audio_lineages LIMIT 1;
     BEGIN
         PERFORM public.register_exercise_blind_packet_v1(
+            'b2000000-0000-0000-0000-000000000002',
             'b0000000-0000-0000-0000-000000000002', lineage_id,
+            (SELECT id FROM public.exercise_authorization_checks
+              WHERE idempotency_key = 'blind-review-auth-allowed'),
             '10000000-0000-0000-0000-000000000002',
             'confidence-exercise-blind-packet-v1',
-            'confidence-five-state-v1', repeat('f', 64),
-            now() + interval '15 minutes', 2400, 'en', NULL, NULL,
-            repeat('2', 64), 'blind-policy-v1', 'wrong-surface'
+            'confidence-five-state-v1',
+            'b4000000-0000-0000-0000-000000000002',
+            '2099-01-01T00:00:00Z'::timestamptz, 2400, 'en', NULL,
+            'blind-policy-v1', 'wrong-surface'
         );
         RAISE EXCEPTION 'wrong-surface blind packet unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
@@ -276,12 +310,16 @@ BEGIN
     END;
     BEGIN
         PERFORM public.register_exercise_blind_packet_v1(
+            'b2000000-0000-0000-0000-000000000003',
             'b0000000-0000-0000-0000-000000000003', lineage_id,
+            (SELECT id FROM public.exercise_authorization_checks
+              WHERE idempotency_key = 'blind-review-auth-allowed'),
             '10000000-0000-0000-0000-000000000002',
             'confidence-exercise-blind-packet-v1',
-            'confidence-five-state-v1', repeat('f', 64),
-            now() + interval '15 minutes', 2400, 'en', NULL, NULL,
-            repeat('3', 64), 'blind-policy-v1', 'wrong-evidence'
+            'confidence-five-state-v1',
+            'b4000000-0000-0000-0000-000000000003',
+            '2099-01-01T00:00:00Z'::timestamptz, 2400, 'en', NULL,
+            'blind-policy-v1', 'wrong-evidence'
         );
         RAISE EXCEPTION 'unrelated-evidence blind packet unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
@@ -290,12 +328,16 @@ BEGIN
     END;
     BEGIN
         PERFORM public.register_exercise_blind_packet_v1(
+            'b2000000-0000-0000-0000-000000000004',
             'b0000000-0000-0000-0000-000000000001', lineage_id,
+            (SELECT id FROM public.exercise_authorization_checks
+              WHERE idempotency_key = 'blind-review-auth-allowed'),
             '10000000-0000-0000-0000-000000000002',
             'confidence-exercise-blind-packet-v1',
-            'confidence-five-state-v1', repeat('f', 64),
-            now() + interval '15 minutes', 2500, 'en', NULL, NULL,
-            repeat('1', 64), 'blind-policy-v1', 'wrong-duration'
+            'confidence-five-state-v1',
+            'b4000000-0000-0000-0000-000000000004',
+            '2099-01-01T00:00:00Z'::timestamptz, 2500, 'en', NULL,
+            'blind-policy-v1', 'wrong-duration'
         );
         RAISE EXCEPTION 'wrong-duration blind packet unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
@@ -304,12 +346,16 @@ BEGIN
     END;
     BEGIN
         PERFORM public.register_exercise_blind_packet_v1(
+            'b2000000-0000-0000-0000-000000000005',
             'b0000000-0000-0000-0000-000000000001', lineage_id,
+            (SELECT id FROM public.exercise_authorization_checks
+              WHERE idempotency_key = 'blind-review-auth-allowed'),
             '10000000-0000-0000-0000-000000000002',
             'confidence-exercise-blind-packet-v1',
-            'confidence-five-state-v2', repeat('f', 64),
-            now() + interval '15 minutes', 2400, 'en', NULL, NULL,
-            repeat('1', 64), 'blind-policy-v1', 'wrong-taxonomy'
+            'confidence-five-state-v2',
+            'b4000000-0000-0000-0000-000000000005',
+            '2099-01-01T00:00:00Z'::timestamptz, 2400, 'en', NULL,
+            'blind-policy-v1', 'wrong-taxonomy'
         );
         RAISE EXCEPTION 'wrong-taxonomy blind packet unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
@@ -318,12 +364,16 @@ BEGIN
     END;
     BEGIN
         PERFORM public.register_exercise_blind_packet_v1(
+            'b2000000-0000-0000-0000-000000000009',
             'b0000000-0000-0000-0000-000000000001', lineage_id,
+            (SELECT id FROM public.exercise_authorization_checks
+              WHERE idempotency_key = 'blind-review-auth-allowed'),
             '10000000-0000-0000-0000-000000000002',
             'confidence-exercise-blind-packet-v1',
-            'confidence-five-state-v1', repeat('f', 64),
-            now() + interval '15 minutes', 2400, 'en', NULL, NULL,
-            repeat('9', 64), 'blind-policy-v1', 'wrong-payload-hash'
+            'confidence-five-state-v1',
+            'b4000000-0000-0000-0000-000000000009',
+            '2099-01-01T00:00:00Z'::timestamptz, 2400, 'en',
+            'Measured passage.', 'blind-policy-v1', 'wrong-payload-hash'
         );
         RAISE EXCEPTION 'wrong-payload blind packet unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
@@ -333,15 +383,219 @@ BEGIN
 END;
 $$;
 
+-- A privileged writer still cannot persist a payload assembled by the caller
+-- or a transcript hash that was not derived from the stored transcript.
+DO $$
+DECLARE
+    lineage_id UUID;
+    auth_id UUID;
+    canonical_payload JSONB;
+    canonical_payload_hash TEXT;
+    playback_reference_hash TEXT;
+BEGIN
+    SELECT id INTO lineage_id FROM public.exercise_audio_lineages LIMIT 1;
+    SELECT id INTO auth_id FROM public.exercise_authorization_checks
+     WHERE idempotency_key = 'blind-review-auth-allowed';
+    canonical_payload := public.build_exercise_blind_visible_payload_v1(
+        'b2000000-0000-0000-0000-000000000006',
+        'b0000000-0000-0000-0000-000000000004',
+        'confidence-exercise-blind-packet-v1',
+        'confidence-five-state-v1',
+        'b4000000-0000-0000-0000-000000000006',
+        2400, 'en', 'Measured passage.'
+    );
+    canonical_payload_hash := encode(extensions.digest(
+        convert_to(canonical_payload::TEXT, 'UTF8'), 'sha256'
+    ), 'hex');
+    playback_reference_hash := encode(extensions.digest(convert_to(
+        'b4000000-0000-0000-0000-000000000006', 'UTF8'
+    ), 'sha256'), 'hex');
+
+    BEGIN
+        INSERT INTO public.exercise_blind_packets (
+            id, review_assignment_id, audio_lineage_id,
+            authorization_check_id, reviewer_principal_id,
+            packet_schema_version, confidence_taxonomy_version,
+            playback_token_sha256, playback_expires_at, clip_duration_ms,
+            language_code, asr_transcript, asr_transcript_sha256,
+            visible_payload, visible_payload_sha256, idempotency_key
+        ) VALUES (
+            'b2000000-0000-0000-0000-000000000006',
+            'b0000000-0000-0000-0000-000000000004', lineage_id, auth_id,
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1', playback_reference_hash,
+            '2099-01-01T00:00:00Z', 2400, 'en', 'Measured passage.',
+            encode(extensions.digest(
+                convert_to('Measured passage.', 'UTF8'), 'sha256'
+            ), 'hex'), canonical_payload || '{"machine_score":0.99}'::jsonb,
+            canonical_payload_hash, 'caller-built-payload'
+        );
+        RAISE EXCEPTION 'caller-built payload unexpectedly succeeded';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'caller-built payload unexpectedly succeeded' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_BLIND_PACKET_PAYLOAD_NOT_CANONICAL' THEN RAISE; END IF;
+    END;
+
+    BEGIN
+        INSERT INTO public.exercise_blind_packets (
+            id, review_assignment_id, audio_lineage_id,
+            authorization_check_id, reviewer_principal_id,
+            packet_schema_version, confidence_taxonomy_version,
+            playback_token_sha256, playback_expires_at, clip_duration_ms,
+            language_code, asr_transcript, asr_transcript_sha256,
+            visible_payload, visible_payload_sha256, idempotency_key
+        ) VALUES (
+            'b2000000-0000-0000-0000-000000000006',
+            'b0000000-0000-0000-0000-000000000004', lineage_id, auth_id,
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1', playback_reference_hash,
+            '2099-01-01T00:00:00Z', 2400, 'en', 'Measured passage.',
+            repeat('9', 64), canonical_payload, canonical_payload_hash,
+            'caller-built-transcript-hash'
+        );
+        RAISE EXCEPTION 'caller transcript hash unexpectedly succeeded';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'caller transcript hash unexpectedly succeeded' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_BLIND_PACKET_TRANSCRIPT_HASH_MISMATCH' THEN RAISE; END IF;
+    END;
+END;
+$$;
+
 SET ROLE service_role;
 SELECT public.register_exercise_blind_packet_v1(
-    :'review_assignment_id',
-    (SELECT id FROM public.exercise_audio_lineages LIMIT 1), :'reviewer_id',
+    :'blind_packet_id', :'review_assignment_id',
+    (SELECT id FROM public.exercise_audio_lineages LIMIT 1),
+    (SELECT id FROM public.exercise_authorization_checks
+      WHERE idempotency_key = 'blind-review-auth-allowed'), :'reviewer_id',
     'confidence-exercise-blind-packet-v1', 'confidence-five-state-v1',
-    repeat('f', 64), now() + interval '15 minutes', 2400, 'en', NULL, NULL,
-    repeat('1', 64), 'blind-policy-v1', 'blind-packet-1'
+    :'playback_reference_id', '2099-01-01T00:00:00Z'::timestamptz, 2400, 'en',
+    'Measured passage.', 'blind-policy-v1', 'blind-packet-1'
+);
+
+-- An exact retry is a replay, not a second packet or a unique-key error.
+SELECT public.register_exercise_blind_packet_v1(
+    :'blind_packet_id', :'review_assignment_id',
+    (SELECT id FROM public.exercise_audio_lineages LIMIT 1),
+    (SELECT id FROM public.exercise_authorization_checks
+      WHERE idempotency_key = 'blind-review-auth-allowed'), :'reviewer_id',
+    'confidence-exercise-blind-packet-v1', 'confidence-five-state-v1',
+    :'playback_reference_id', '2099-01-01T00:00:00Z', 2400, 'en',
+    'Measured passage.', 'blind-policy-v1', 'blind-packet-1'
 );
 RESET ROLE;
+
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM public.exercise_blind_packets
+         WHERE idempotency_key = 'blind-packet-1') <> 1
+       OR (SELECT asr_transcript_sha256 FROM public.exercise_blind_packets
+            WHERE idempotency_key = 'blind-packet-1') <>
+          encode(extensions.digest(
+              convert_to('Measured passage.', 'UTF8'), 'sha256'
+          ), 'hex')
+       OR (SELECT visible_payload_sha256 FROM public.exercise_blind_packets
+            WHERE idempotency_key = 'blind-packet-1') <>
+          encode(extensions.digest(convert_to(
+              (SELECT visible_payload::TEXT
+                 FROM public.exercise_blind_packets
+                WHERE idempotency_key = 'blind-packet-1'),
+              'UTF8'
+          ), 'sha256'), 'hex') THEN
+        RAISE EXCEPTION 'server-derived packet or exact replay is invalid';
+    END IF;
+END;
+$$;
+
+-- A previously valid authorization cannot be replayed after live authority is
+-- blocked.  The exception subtransaction rolls the synthetic block back.
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO public.processing_service_blocks (
+            acquisition_principal_id, effective_at
+        ) VALUES (
+            '10000000-0000-0000-0000-000000000001', now()
+        );
+        PERFORM public.register_exercise_blind_packet_v1(
+            'b2000000-0000-0000-0000-000000000001',
+            'b0000000-0000-0000-0000-000000000001',
+            (SELECT id FROM public.exercise_audio_lineages LIMIT 1),
+            (SELECT id FROM public.exercise_authorization_checks
+              WHERE idempotency_key = 'blind-review-auth-allowed'),
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1',
+            'b4000000-0000-0000-0000-000000000001',
+            '2099-01-01T00:00:00Z', 2400, 'en', 'Measured passage.',
+            'blind-policy-v1', 'blind-packet-1'
+        );
+        RAISE EXCEPTION 'revoked blind packet replay unexpectedly succeeded';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'revoked blind packet replay unexpectedly succeeded' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_CURRENT_AUTHORIZATION_REVOKED' THEN RAISE; END IF;
+    END;
+END;
+$$;
+
+-- Policy-purpose membership and receipt/policy consistency are live gates,
+-- not facts trusted from the historical authorization check.
+DO $$
+BEGIN
+    BEGIN
+        DELETE FROM public.processing_policy_purposes
+         WHERE policy_id = '70000000-0000-0000-0000-000000000001'
+           AND purpose_id = 'personalized_exercise_recommendation';
+        PERFORM public.register_exercise_blind_packet_v1(
+            'b2000000-0000-0000-0000-000000000001',
+            'b0000000-0000-0000-0000-000000000001',
+            (SELECT id FROM public.exercise_audio_lineages LIMIT 1),
+            (SELECT id FROM public.exercise_authorization_checks
+              WHERE idempotency_key = 'blind-review-auth-allowed'),
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1',
+            'b4000000-0000-0000-0000-000000000001',
+            '2099-01-01T00:00:00Z', 2400, 'en', 'Measured passage.',
+            'blind-policy-v1', 'blind-packet-1'
+        );
+        RAISE EXCEPTION 'missing policy purpose unexpectedly authorized replay';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'missing policy purpose unexpectedly authorized replay' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_CURRENT_AUTHORIZATION_REVOKED' THEN RAISE; END IF;
+    END;
+
+    BEGIN
+        INSERT INTO public.processing_policy_versions (
+            id, version, status, activated_at
+        ) VALUES (
+            '70000000-0000-0000-0000-000000000002',
+            'unrelated-policy-v1', 'active', now() - interval '1 hour'
+        );
+        UPDATE public.processing_authorization_receipts
+           SET policy_id = '70000000-0000-0000-0000-000000000002'
+         WHERE id = '80000000-0000-0000-0000-000000000001';
+        PERFORM public.register_exercise_blind_packet_v1(
+            'b2000000-0000-0000-0000-000000000001',
+            'b0000000-0000-0000-0000-000000000001',
+            (SELECT id FROM public.exercise_audio_lineages LIMIT 1),
+            (SELECT id FROM public.exercise_authorization_checks
+              WHERE idempotency_key = 'blind-review-auth-allowed'),
+            '10000000-0000-0000-0000-000000000002',
+            'confidence-exercise-blind-packet-v1',
+            'confidence-five-state-v1',
+            'b4000000-0000-0000-0000-000000000001',
+            '2099-01-01T00:00:00Z', 2400, 'en', 'Measured passage.',
+            'blind-policy-v1', 'blind-packet-1'
+        );
+        RAISE EXCEPTION 'receipt policy mismatch unexpectedly authorized replay';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'receipt policy mismatch unexpectedly authorized replay' THEN RAISE; END IF;
+        IF SQLERRM <> 'EXERCISE_CURRENT_AUTHORIZATION_REVOKED' THEN RAISE; END IF;
+    END;
+END;
+$$;
 
 -- A blind judgment attached to the assignment but pointing at another evidence
 -- span cannot unlock reveal or enter the review sequence.

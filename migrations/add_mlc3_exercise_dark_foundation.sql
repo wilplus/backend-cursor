@@ -358,6 +358,8 @@ CREATE TABLE IF NOT EXISTS public.exercise_blind_packets (
         REFERENCES public.ml_review_assignments(id) ON DELETE RESTRICT,
     audio_lineage_id           UUID NOT NULL
         REFERENCES public.exercise_audio_lineages(id) ON DELETE RESTRICT,
+    authorization_check_id     UUID NOT NULL
+        REFERENCES public.exercise_authorization_checks(id) ON DELETE RESTRICT,
     reviewer_principal_id      UUID NOT NULL
         REFERENCES public.owner_principals(id) ON DELETE RESTRICT,
     packet_schema_version      TEXT NOT NULL CHECK (
@@ -378,6 +380,9 @@ CREATE TABLE IF NOT EXISTS public.exercise_blind_packets (
         asr_transcript_sha256 IS NULL
         OR asr_transcript_sha256 ~ '^[0-9a-f]{64}$'
     ),
+    visible_payload            JSONB NOT NULL CHECK (
+        jsonb_typeof(visible_payload) = 'object'
+    ),
     visible_payload_sha256     TEXT NOT NULL CHECK (
         visible_payload_sha256 ~ '^[0-9a-f]{64}$'
     ),
@@ -396,6 +401,45 @@ CREATE TABLE IF NOT EXISTS public.exercise_blind_packets (
         playback_expires_at > created_at
     )
 );
+
+-- This is the only constructor for the persisted client-visible packet.  The
+-- playback reference is a non-authorizing opaque handle: an authenticated
+-- reviewer route must exchange it for a separate short-lived bearer grant.
+CREATE OR REPLACE FUNCTION public.build_exercise_blind_visible_payload_v1(
+    p_blind_packet_id UUID,
+    p_review_assignment_id UUID,
+    p_packet_schema_version TEXT,
+    p_confidence_taxonomy_version TEXT,
+    p_playback_reference_id UUID,
+    p_clip_duration_ms INTEGER,
+    p_language_code TEXT,
+    p_asr_transcript TEXT
+) RETURNS JSONB
+LANGUAGE sql IMMUTABLE SET search_path = public
+AS $$
+SELECT jsonb_strip_nulls(jsonb_build_object(
+    'blind_packet_id', p_blind_packet_id,
+    'review_assignment_id', p_review_assignment_id,
+    'packet_schema_version', p_packet_schema_version,
+    'confidence_taxonomy_version', p_confidence_taxonomy_version,
+    -- Schema v1 calls this a playback_token, but it is deliberately only an
+    -- authenticated lookup reference and cannot authorize object access.
+    'playback_token', p_playback_reference_id,
+    'clip_duration_ms', p_clip_duration_ms,
+    'language_code', p_language_code,
+    'asr_transcript', CASE WHEN p_asr_transcript IS NULL THEN NULL ELSE
+        jsonb_build_object(
+            'source', 'machine_transcription',
+            'text', p_asr_transcript
+        )
+    END,
+    'allowed_response_ids', jsonb_build_array(
+        'rating_yes', 'rating_in_between', 'rating_no',
+        'rating_not_sure', 'rating_audio_unclear'
+    ),
+    'audio_unclear_control', 'rating_audio_unclear'
+));
+$$;
 
 CREATE TABLE IF NOT EXISTS public.exercise_blind_packet_events (
     id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -498,6 +542,11 @@ DECLARE
     processing_object public.processing_audio_objects;
     evidence_start_ms INTEGER;
     evidence_end_ms INTEGER;
+    expected_payload JSONB;
+    expected_payload_sha256 TEXT;
+    expected_transcript_sha256 TEXT;
+    payload_transcript TEXT;
+    playback_reference_id UUID;
 BEGIN
     SELECT * INTO assignment FROM public.ml_review_assignments
      WHERE id = NEW.review_assignment_id
@@ -514,6 +563,14 @@ BEGIN
     IF evidence.id IS NULL OR lineage.id IS NULL THEN
         RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_EVIDENCE_REQUIRED';
     END IF;
+
+    -- Revalidate present authority below the RPC boundary.  This protects
+    -- creation and idempotent replay even if a historical check was once
+    -- authorized, or a privileged caller attempts a direct insert.
+    PERFORM public.require_current_exercise_authorization_v1(
+        NEW.authorization_check_id, lineage.acquisition_principal_id,
+        'blind_review_preparation'
+    );
 
     SELECT * INTO evidence_object FROM public.ml_object_artifacts
      WHERE id = evidence.object_artifact_id;
@@ -555,7 +612,41 @@ BEGIN
     IF NEW.confidence_taxonomy_version <> assignment.taxonomy_version THEN
         RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_TAXONOMY_MISMATCH';
     END IF;
-    IF NEW.visible_payload_sha256 <> assignment.blind_packet_sha256 THEN
+
+    BEGIN
+        playback_reference_id :=
+            (NEW.visible_payload ->> 'playback_token')::UUID;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_PLAYBACK_REFERENCE_INVALID';
+    END;
+    payload_transcript := NEW.visible_payload #>> '{asr_transcript,text}';
+    expected_payload := public.build_exercise_blind_visible_payload_v1(
+        NEW.id, NEW.review_assignment_id, NEW.packet_schema_version,
+        NEW.confidence_taxonomy_version, playback_reference_id,
+        NEW.clip_duration_ms, NEW.language_code, NEW.asr_transcript
+    );
+    IF NEW.visible_payload <> expected_payload
+       OR payload_transcript IS DISTINCT FROM NEW.asr_transcript THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_PAYLOAD_NOT_CANONICAL';
+    END IF;
+    IF NEW.playback_token_sha256 <> encode(extensions.digest(
+        convert_to(playback_reference_id::TEXT, 'UTF8'), 'sha256'
+    ), 'hex') THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_PLAYBACK_REFERENCE_MISMATCH';
+    END IF;
+    expected_transcript_sha256 := CASE WHEN NEW.asr_transcript IS NULL
+        THEN NULL ELSE encode(extensions.digest(
+            convert_to(NEW.asr_transcript, 'UTF8'), 'sha256'
+        ), 'hex') END;
+    IF NEW.asr_transcript_sha256
+          IS DISTINCT FROM expected_transcript_sha256 THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_TRANSCRIPT_HASH_MISMATCH';
+    END IF;
+    expected_payload_sha256 := encode(extensions.digest(
+        convert_to(expected_payload::TEXT, 'UTF8'), 'sha256'
+    ), 'hex');
+    IF NEW.visible_payload_sha256 <> expected_payload_sha256
+       OR NEW.visible_payload_sha256 <> assignment.blind_packet_sha256 THEN
         RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_PAYLOAD_HASH_MISMATCH';
     END IF;
     RETURN NEW;
@@ -1011,6 +1102,12 @@ BEGIN
        AND purpose_id = 'personalized_exercise_recommendation';
     IF snapshot.id IS NULL
        OR NOT EXISTS (
+           SELECT 1 FROM public.processing_authorization_receipts receipt
+            WHERE receipt.id = snapshot.receipt_id
+              AND receipt.acquisition_principal_id = p_acquisition_principal_id
+              AND receipt.policy_id = snapshot.policy_id
+       )
+       OR NOT EXISTS (
            SELECT 1 FROM public.processing_purpose_registry purpose
             WHERE purpose.id = 'personalized_exercise_recommendation'
               AND purpose.operational AND purpose.authorizes_processing
@@ -1020,6 +1117,12 @@ BEGIN
             WHERE policy.id = snapshot.policy_id AND policy.status = 'active'
               AND policy.activated_at <= now()
               AND (policy.retired_at IS NULL OR policy.retired_at > now())
+       )
+       OR NOT EXISTS (
+           SELECT 1 FROM public.processing_policy_purposes policy_purpose
+            WHERE policy_purpose.policy_id = snapshot.policy_id
+              AND policy_purpose.purpose_id =
+                    'personalized_exercise_recommendation'
        )
        OR NOT EXISTS (
            SELECT 1 FROM public.processing_authorization_receipt_purposes rp
@@ -1182,18 +1285,18 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.register_exercise_blind_packet_v1(
+    p_blind_packet_id UUID,
     p_review_assignment_id UUID,
     p_audio_lineage_id UUID,
+    p_authorization_check_id UUID,
     p_reviewer_principal_id UUID,
     p_packet_schema_version TEXT,
     p_confidence_taxonomy_version TEXT,
-    p_playback_token_sha256 TEXT,
+    p_playback_reference_id UUID,
     p_playback_expires_at TIMESTAMPTZ,
     p_clip_duration_ms INTEGER,
     p_language_code TEXT,
     p_asr_transcript TEXT,
-    p_asr_transcript_sha256 TEXT,
-    p_visible_payload_sha256 TEXT,
     p_blindness_policy_version TEXT,
     p_idempotency_key TEXT
 ) RETURNS public.exercise_blind_packets
@@ -1201,53 +1304,111 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
     packet public.exercise_blind_packets;
+    lineage public.exercise_audio_lineages;
+    auth public.exercise_authorization_checks;
+    visible_payload JSONB;
+    visible_payload_sha256 TEXT;
+    transcript_sha256 TEXT;
+    playback_reference_sha256 TEXT;
+    idempotency_lock BIGINT;
+    assignment_lock BIGINT;
 BEGIN
-    IF p_packet_schema_version <> 'confidence-exercise-blind-packet-v1'
-       OR COALESCE(p_playback_token_sha256, '') !~ '^[0-9a-f]{64}$'
+    IF p_blind_packet_id IS NULL OR p_playback_reference_id IS NULL
+       OR p_packet_schema_version <> 'confidence-exercise-blind-packet-v1'
        OR p_playback_expires_at <= now()
        OR p_clip_duration_ms <= 0
-       OR COALESCE(p_visible_payload_sha256, '') !~ '^[0-9a-f]{64}$'
        OR btrim(COALESCE(p_confidence_taxonomy_version, '')) = ''
        OR btrim(COALESCE(p_blindness_policy_version, '')) = ''
        OR btrim(COALESCE(p_idempotency_key, '')) = '' THEN
         RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_INVALID';
     END IF;
 
+    SELECT * INTO lineage FROM public.exercise_audio_lineages
+     WHERE id = p_audio_lineage_id;
+    IF lineage.id IS NULL THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_EVIDENCE_REQUIRED';
+    END IF;
+    SELECT * INTO auth FROM public.require_current_exercise_authorization_v1(
+        p_authorization_check_id, lineage.acquisition_principal_id,
+        'blind_review_preparation'
+    );
+
+    visible_payload := public.build_exercise_blind_visible_payload_v1(
+        p_blind_packet_id, p_review_assignment_id, p_packet_schema_version,
+        p_confidence_taxonomy_version, p_playback_reference_id,
+        p_clip_duration_ms, p_language_code, p_asr_transcript
+    );
+    visible_payload_sha256 := encode(extensions.digest(
+        convert_to(visible_payload::TEXT, 'UTF8'), 'sha256'
+    ), 'hex');
+    transcript_sha256 := CASE WHEN p_asr_transcript IS NULL THEN NULL ELSE
+        encode(extensions.digest(
+            convert_to(p_asr_transcript, 'UTF8'), 'sha256'
+        ), 'hex') END;
+    playback_reference_sha256 := encode(extensions.digest(
+        convert_to(p_playback_reference_id::TEXT, 'UTF8'), 'sha256'
+    ), 'hex');
+
+    -- Serialize both retry identity and one-packet-per-assignment identity.
+    -- Locks are acquired in numeric order to avoid cross-key deadlocks.
+    idempotency_lock := hashtextextended(
+        'exercise-blind-packet:' || p_idempotency_key, 0
+    );
+    assignment_lock := hashtextextended(
+        'exercise-blind-assignment:' || p_review_assignment_id::TEXT, 0
+    );
+    PERFORM pg_advisory_xact_lock(LEAST(idempotency_lock, assignment_lock));
+    IF idempotency_lock <> assignment_lock THEN
+        PERFORM pg_advisory_xact_lock(
+            GREATEST(idempotency_lock, assignment_lock)
+        );
+    END IF;
+
     SELECT * INTO packet FROM public.exercise_blind_packets
      WHERE idempotency_key = p_idempotency_key;
     IF packet.id IS NOT NULL THEN
-        IF packet.review_assignment_id <> p_review_assignment_id
+        IF packet.id <> p_blind_packet_id
+           OR packet.review_assignment_id <> p_review_assignment_id
            OR packet.audio_lineage_id <> p_audio_lineage_id
            OR packet.reviewer_principal_id <> p_reviewer_principal_id
            OR packet.packet_schema_version <> p_packet_schema_version
            OR packet.confidence_taxonomy_version
                 <> p_confidence_taxonomy_version
-           OR packet.playback_token_sha256 <> p_playback_token_sha256
+           OR packet.playback_token_sha256 <> playback_reference_sha256
            OR packet.playback_expires_at <> p_playback_expires_at
            OR packet.clip_duration_ms <> p_clip_duration_ms
            OR packet.language_code IS DISTINCT FROM p_language_code
            OR packet.asr_transcript IS DISTINCT FROM p_asr_transcript
            OR packet.asr_transcript_sha256
-                IS DISTINCT FROM p_asr_transcript_sha256
-           OR packet.visible_payload_sha256 <> p_visible_payload_sha256 THEN
+                IS DISTINCT FROM transcript_sha256
+           OR packet.visible_payload <> visible_payload
+           OR packet.visible_payload_sha256 <> visible_payload_sha256 THEN
             RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_IDEMPOTENCY_CONFLICT';
         END IF;
         RETURN packet;
     END IF;
 
+    IF EXISTS (
+        SELECT 1 FROM public.exercise_blind_packets existing
+         WHERE existing.review_assignment_id = p_review_assignment_id
+    ) THEN
+        RAISE EXCEPTION 'EXERCISE_BLIND_PACKET_ASSIGNMENT_CONFLICT';
+    END IF;
+
     INSERT INTO public.exercise_blind_packets (
-        review_assignment_id, audio_lineage_id, reviewer_principal_id,
-        packet_schema_version, confidence_taxonomy_version,
+        id, review_assignment_id, audio_lineage_id, authorization_check_id,
+        reviewer_principal_id, packet_schema_version,
+        confidence_taxonomy_version,
         playback_token_sha256, playback_expires_at, clip_duration_ms,
         language_code, asr_transcript, asr_transcript_sha256,
-        visible_payload_sha256, idempotency_key
+        visible_payload, visible_payload_sha256, idempotency_key
     ) VALUES (
-        p_review_assignment_id, p_audio_lineage_id,
-        p_reviewer_principal_id, p_packet_schema_version,
-        p_confidence_taxonomy_version, lower(p_playback_token_sha256),
+        p_blind_packet_id, p_review_assignment_id, p_audio_lineage_id,
+        auth.id, p_reviewer_principal_id, p_packet_schema_version,
+        p_confidence_taxonomy_version, playback_reference_sha256,
         p_playback_expires_at, p_clip_duration_ms, p_language_code,
-        p_asr_transcript, lower(p_asr_transcript_sha256),
-        lower(p_visible_payload_sha256), p_idempotency_key
+        p_asr_transcript, transcript_sha256, visible_payload,
+        visible_payload_sha256, p_idempotency_key
     ) RETURNING * INTO packet;
 
     INSERT INTO public.exercise_blind_packet_events (
@@ -1588,6 +1749,18 @@ GRANT EXECUTE ON FUNCTION public.freeze_phase1_purge_inventory_v4(
 
 -- ── RLS, append-only enforcement, and RPC-only writes ───────────────────
 
+ALTER TABLE public.exercise_need_contracts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_media_objects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_definitions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_catalog_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_catalog_snapshot_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_authorization_checks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.learning_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_audio_lineages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_blind_packets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_blind_packet_events ENABLE ROW LEVEL SECURITY;
+
 DO $$
 DECLARE table_name TEXT;
 BEGIN
@@ -1599,7 +1772,6 @@ BEGIN
         'exercise_audio_lineages', 'exercise_blind_packets',
         'exercise_blind_packet_events'
     ] LOOP
-        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
         EXECUTE format(
             'REVOKE ALL ON TABLE public.%I FROM anon, authenticated, service_role',
             table_name
@@ -1620,6 +1792,9 @@ REVOKE ALL ON FUNCTION public.validate_exercise_blind_event_sequence_v1()
     FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.validate_exercise_blind_packet_lineage_v1()
     FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.build_exercise_blind_visible_payload_v1(
+    UUID,UUID,TEXT,TEXT,UUID,INTEGER,TEXT,TEXT
+) FROM PUBLIC, anon, authenticated, service_role;
 
 REVOKE ALL ON FUNCTION public.register_exercise_need_contract_v1(
     TEXT,INTEGER,TEXT,JSONB,TEXT[],TEXT[],TEXT[],JSONB,TEXT,TEXT,TEXT,TEXT
@@ -1677,12 +1852,12 @@ GRANT EXECUTE ON FUNCTION public.register_exercise_audio_lineage_v1(
 ) TO service_role;
 
 REVOKE ALL ON FUNCTION public.register_exercise_blind_packet_v1(
-    UUID,UUID,UUID,TEXT,TEXT,TEXT,TIMESTAMPTZ,INTEGER,TEXT,TEXT,TEXT,
-    TEXT,TEXT,TEXT
+    UUID,UUID,UUID,UUID,UUID,TEXT,TEXT,UUID,TIMESTAMPTZ,INTEGER,TEXT,TEXT,
+    TEXT,TEXT
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.register_exercise_blind_packet_v1(
-    UUID,UUID,UUID,TEXT,TEXT,TEXT,TIMESTAMPTZ,INTEGER,TEXT,TEXT,TEXT,
-    TEXT,TEXT,TEXT
+    UUID,UUID,UUID,UUID,UUID,TEXT,TEXT,UUID,TIMESTAMPTZ,INTEGER,TEXT,TEXT,
+    TEXT,TEXT
 ) TO service_role;
 
 REVOKE ALL ON FUNCTION public.get_mlc3_exercise_foundation_health_v1()
@@ -1699,6 +1874,6 @@ COMMENT ON TABLE public.exercise_audio_lineages IS
 COMMENT ON TABLE public.learning_profiles IS
     'Stable pseudonymous profile identity only; it contains no trait, diagnosis, label, or biometric identity inference.';
 COMMENT ON TABLE public.exercise_blind_packets IS
-    'Typed RPC-only storage for the exact confidence-exercise-blind-packet-v1 allowlist. M3-2 creates no runtime packet producer or user/coach route.';
+    'Typed RPC-only storage for the server-built confidence-exercise-blind-packet-v1 allowlist. The visible playback reference is not a bearer credential. M3-2 creates no runtime packet producer or user/coach route.';
 
 COMMIT;
