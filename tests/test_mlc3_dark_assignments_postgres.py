@@ -13,6 +13,7 @@ import itertools
 import json
 import os
 import threading
+from time import monotonic, sleep
 from uuid import uuid4
 
 import psycopg2
@@ -102,9 +103,15 @@ def assign(c, ctx, **changes):
 
 @pytest.fixture
 def ctx(db):
+    return make_context(db)
+
+
+def make_context(db, *, speaker=None, create_frame=True):
     index = next(_counter)
     x = {name: str(uuid4()) for name in ("owner", "reviewer", "speaker", "project", "take", "recording", "snippet",
          "policy", "receipt", "snapshot", "object", "ml_object", "evidence")}
+    if speaker is not None:
+        x["speaker"] = speaker
     x.update(language="q" + chr(ord("a") + index % 26), block="speech-block:" + uuid4().hex, key=str(uuid4()))
     query(db, "INSERT INTO owner_principals(id,user_id) VALUES (%s,%s),(%s,%s)", (x["owner"], str(uuid4()), x["reviewer"], str(uuid4())))
     query(db, "INSERT INTO projects(id,owner_principal_id) VALUES (%s,%s)", (x["project"], x["owner"]))
@@ -121,7 +128,7 @@ def ctx(db):
     query(db, "INSERT INTO processing_recording_attempts VALUES (%s,%s,%s,%s)", (x["take"], x["owner"], x["project"], x["recording"]))
     object_key = str(uuid4())
     query(db, "INSERT INTO processing_audio_objects VALUES (%s,%s,%s,'r2','synthetic-recordings',%s,1024,'audio/wav',%s,'read_after_write_sha256',NULL)", (x["object"], x["owner"], x["take"], object_key, "a" * 64))
-    query(db, "INSERT INTO ml_speakers VALUES (%s)", (x["speaker"],))
+    query(db, "INSERT INTO ml_speakers VALUES (%s) ON CONFLICT DO NOTHING", (x["speaker"],))
     query(db, "INSERT INTO ml_speaker_principals VALUES (%s,%s)", (x["speaker"], x["owner"]))
     query(db, "INSERT INTO ml_object_artifacts VALUES (%s,%s,%s,'cloudflare_r2','synthetic-recordings',%s,%s,1024,'audio/wav','audio')", (x["ml_object"], x["owner"], x["speaker"], object_key, "a" * 64))
     query(db, "INSERT INTO ml_evidence_spans VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", (x["evidence"], x["owner"], x["speaker"], x["project"], x["take"], x["take"], x["ml_object"], Json({"start_ms": 1250, "end_ms": 3650})))
@@ -146,11 +153,55 @@ def ctx(db):
     second_candidate = {**candidate, "candidate_id": "candidate-" + second_snippet, "snippet_id": second_snippet,
                         "clip_identity": {**candidate["clip_identity"], "snippet_id": second_snippet, "start_offset_ms": 5000}}
     frame["blocks"].append({"block_id": x["second_block"], "selected_candidate_id": second_candidate["candidate_id"], "confidence_candidates": [second_candidate]})
-    query(db, "INSERT INTO take_feedback_policy_v3_shadow_frames(take_session_id,recording_id,policy_version,acquisition_principal_id,frame,frame_hash) VALUES (%s,%s,'take-feedback-policy-v3-universal-dark-v3',%s,%s,%s)",
-          (x["take"], x["recording"], x["owner"], Json(frame), "e" * 64))
+    x["source_frame"] = frame
+    if create_frame:
+        insert_source_frame(db, x)
     x["versions"] = [add_exercise(db, x) for _ in range(3)]
     x["catalog"] = catalogue(db, x)
     return x
+
+
+def insert_source_frame(db, ctx):
+    query(db, "INSERT INTO take_feedback_policy_v3_shadow_frames(take_session_id,recording_id,policy_version,acquisition_principal_id,frame,frame_hash) VALUES (%s,%s,'take-feedback-policy-v3-universal-dark-v3',%s,%s,%s)",
+          (ctx["take"], ctx["recording"], ctx["owner"], Json(ctx["source_frame"]), "e" * 64))
+
+
+def wait_for_lock(db, application, event):
+    deadline = monotonic() + 5
+    while not query(db, "SELECT 1 FROM pg_stat_activity WHERE application_name=%s AND wait_event=%s", (application, event)):
+        if monotonic() >= deadline:
+            raise AssertionError(f"worker never reached {event} wait")
+        sleep(0.01)
+
+
+def assignment_during_wait(db, ctx, mutation, **changes):
+    """Change live state only after the assignment has captured its snapshot."""
+    holder = connect()
+    holder.autocommit = False
+    query(holder, "SELECT pg_advisory_xact_lock(hashtextextended('exercise-profile:' || %s || ':' || %s,0))",
+          (ctx["speaker"], ctx["need"]))
+    application = "m33_assignment_" + uuid4().hex
+
+    def work():
+        c = connect()
+        try:
+            query(c, "SET application_name=%s", (application,))
+            return assign(c, ctx, **changes)
+        finally:
+            c.close()
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as workers:
+            future = workers.submit(work)
+            try:
+                wait_for_lock(db, application, "advisory")
+                mutation()
+            finally:
+                holder.commit()
+            return future.result(timeout=5)
+    finally:
+        holder.rollback()
+        holder.close()
 
 
 def test_complete_pool_probability_rng_hash_and_zero_exposure(db, ctx):
@@ -588,3 +639,183 @@ def test_aggregate_health_is_zero_invariant_and_has_no_identity(db):
     assert result["incomplete_frames"] == 0 and result["invalid_selections"] == 0
     assert not result["serves_user"] and not result["dataset_eligible"]
     assert set(result) == {"serves_user", "dataset_eligible", "assignments", "no_match", "post_blind_requests", "incomplete_frames", "invalid_selections"}
+
+
+@pytest.mark.parametrize("revoked", [False, True])
+def test_same_speaker_foreign_acquisition_never_contributes_history(db, ctx, revoked):
+    first = assign(db, ctx)
+    other = make_context(db, speaker=ctx["speaker"])
+    other.update(need=ctx["need"], language=ctx["language"], catalog=ctx["catalog"])
+    other["observation"] = observe(db, other)["id"]
+    if revoked:
+        query(db, "INSERT INTO processing_service_blocks(acquisition_principal_id,effective_at) VALUES (%s,clock_timestamp())", (ctx["owner"],))
+    second = assign(db, other)
+    s = one(db, "SELECT snapshot FROM exercise_selection_feature_snapshots WHERE id=%s", (second["id"],))["snapshot"]
+    # Even an exclusion ID or count would introduce a foreign purge dependency.
+    assert first["id"] not in json.dumps(s)
+    assert ctx["observation"] not in json.dumps(s)
+    assert s["acquisition_scope"] == "same_principal_only"
+    assert s["cross_principal_exclusion_reason"] == "cross_principal_not_authorized"
+    assert "cross_principal_exclusion_count" not in s
+    assert s["prior_assignment_ids"] == []
+    previous = one(db, "SELECT eligibility,exclusion_reasons FROM exercise_candidates WHERE candidate_set_id=%s AND exercise_version_id=%s",
+                   (second["id"], first["selected_exercise_version_id"]))
+    assert previous == {"eligibility": "eligible", "exclusion_reasons": []}
+    rng = one(db, "SELECT * FROM exercise_randomization_assignments WHERE assignment_id=%s", (second["id"],))
+    assert one(db, "SELECT to_jsonb(prior_assignment_ids) AS ids FROM exercise_randomization_assignments WHERE assignment_id=%s", (second["id"],))["ids"] == []
+    assert rng["repetition_state"] == "first_dark_assignment"
+
+
+def invalidate_source(db, ctx, kind):
+    if kind == "deleted_audio":
+        query(db, "UPDATE processing_audio_objects SET deleted_at=clock_timestamp() WHERE id=%s", (ctx["object"],))
+    else:
+        query(db, "UPDATE snippets SET duration_ms=duration_ms+1 WHERE id=%s", (ctx["snippet"],))
+
+
+@pytest.mark.parametrize("replay", [False, True])
+@pytest.mark.parametrize("kind", ["deleted_audio", "changed_interval"])
+def test_source_invalidated_during_assignment_wait_rejects_create_and_replay(db, ctx, replay, kind):
+    existing = assign(db, ctx) if replay else None
+    before = one(db, "SELECT count(*) AS n FROM exercise_candidate_sets")["n"]
+    with pytest.raises(psycopg2.Error, match="SOURCE_MISMATCH"):
+        assignment_during_wait(db, ctx, lambda: invalidate_source(db, ctx, kind))
+    assert one(db, "SELECT count(*) AS n FROM exercise_candidate_sets")["n"] == before
+    rows = query(db, "SELECT id FROM exercise_assignments WHERE idempotency_key=%s", (ctx["key"],))
+    assert rows == ([{"id": existing["id"]}] if existing else [])
+
+
+@pytest.mark.parametrize("kind", ["catalogue", "version_and_catalogue", "source_frame"])
+def test_late_committed_catalogue_version_or_source_frame_retries(db, kind):
+    x = make_context(db, create_frame=kind != "source_frame")
+    writer = connect()
+    writer.autocommit = False
+    try:
+        if kind == "source_frame":
+            insert_source_frame(writer, x)
+            expected = "FRAME_NOT_COMMITTED_ASOF"
+        else:
+            if kind == "version_and_catalogue":
+                add_exercise(writer, x)
+            x["catalog"] = catalogue(writer, x)
+            expected = "CATALOG_NOT_COMMITTED_ASOF"
+        before = one(db, "SELECT count(*) AS n FROM exercise_candidate_sets")["n"]
+        with pytest.raises(psycopg2.Error, match=expected) as error:
+            assignment_during_wait(db, x, writer.commit)
+        assert error.value.pgcode == "40001"
+        assert one(db, "SELECT count(*) AS n FROM exercise_candidate_sets")["n"] == before
+        # New invocation has a new visibility boundary; only then may it create.
+        assignment = assign(db, x)
+        frozen = one(db, "SELECT * FROM exercise_candidate_sets WHERE id=%s", (assignment["id"],))
+        rng = one(db, "SELECT * FROM exercise_randomization_assignments WHERE assignment_id=%s", (assignment["id"],))
+        assert assign(db, x)["id"] == assignment["id"]
+        assert one(db, "SELECT * FROM exercise_candidate_sets WHERE id=%s", (assignment["id"],)) == frozen
+        assert one(db, "SELECT * FROM exercise_randomization_assignments WHERE assignment_id=%s", (assignment["id"],)) == rng
+    finally:
+        writer.rollback()
+        writer.close()
+
+
+@pytest.mark.parametrize("kind", ["revocation", "deleted_audio", "changed_interval", "policy_expiry"])
+def test_observation_uniqueness_wait_revalidates_current_authority_and_source(db, ctx, kind):
+    prediction = add_prediction(db, ctx)
+    holder = connect()
+    holder.autocommit = False
+    first = rpc(holder, "record_exercise_profile_observation_v1", ctx["lineage"], ctx["need"], prediction, ctx["auth"])
+    application = "m33_observation_" + uuid4().hex
+
+    def work():
+        c = connect()
+        try:
+            query(c, "SET application_name=%s", (application,))
+            return rpc(c, "record_exercise_profile_observation_v1", ctx["lineage"], ctx["need"], prediction, ctx["auth"])
+        finally:
+            c.close()
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as workers:
+            future = workers.submit(work)
+            try:
+                wait_for_lock(db, application, "transactionid")
+                if kind == "revocation":
+                    query(db, "INSERT INTO processing_service_blocks(acquisition_principal_id,effective_at) VALUES (%s,clock_timestamp())", (ctx["owner"],))
+                elif kind == "policy_expiry":
+                    query(db, "UPDATE processing_policy_versions SET retired_at=clock_timestamp() WHERE id=%s", (ctx["policy"],))
+                else:
+                    invalidate_source(db, ctx, kind)
+            finally:
+                holder.commit()
+            expected = "CURRENT_AUTHORIZATION_REVOKED" if kind in ("revocation", "policy_expiry") else "OBSERVATION_PROVENANCE_INVALID"
+            with pytest.raises(psycopg2.Error, match=expected):
+                future.result(timeout=5)
+        # No deletion/retroactive alteration: the first, originally valid row remains.
+        assert query(db, "SELECT id FROM learning_profile_observations WHERE prediction_id=%s", (prediction,)) == [{"id": first["id"]}]
+    finally:
+        holder.rollback()
+        holder.close()
+
+
+@pytest.mark.parametrize("replay", [False, True])
+def test_policy_retirement_effective_during_lock_wait_rejects(db, ctx, replay):
+    if replay:
+        assign(db, ctx)
+    with pytest.raises(psycopg2.Error, match="CURRENT_AUTHORIZATION_REVOKED"):
+        assignment_during_wait(db, ctx, lambda: query(db,
+            "UPDATE processing_policy_versions SET retired_at=clock_timestamp() WHERE id=%s", (ctx["policy"],)))
+
+
+@pytest.mark.parametrize("operation", ["assignment_create", "assignment_replay", "observation_create", "observation_replay"])
+def test_long_running_transaction_does_not_freeze_policy_authority(db, ctx, operation):
+    prediction = add_prediction(db, ctx)
+    if operation == "assignment_replay":
+        assign(db, ctx)
+    elif operation == "observation_replay":
+        rpc(db, "record_exercise_profile_observation_v1", ctx["lineage"], ctx["need"], prediction, ctx["auth"])
+    worker = connect()
+    worker.autocommit = False
+    try:
+        query(worker, "SELECT now()")  # pin the old transaction time
+        query(db, "UPDATE processing_policy_versions SET retired_at=clock_timestamp() WHERE id=%s", (ctx["policy"],))
+        with pytest.raises(psycopg2.Error, match="CURRENT_AUTHORIZATION_REVOKED"):
+            if operation.startswith("assignment"):
+                assign(worker, ctx)
+            else:
+                rpc(worker, "record_exercise_profile_observation_v1", ctx["lineage"], ctx["need"], prediction, ctx["auth"])
+    finally:
+        worker.rollback()
+        worker.close()
+
+
+def test_principal_purge_inventory_covers_all_permitted_dark_dependencies(db, ctx, monkeypatch):
+    from services.data_purge import DataPurgeOrchestrator, SubjectGraph
+    from services.data_purge_registry import DEPENDENCIES
+
+    first = assign(db, ctx)
+    second = assign(db, ctx, lineage=ctx["second_lineage"], observation=ctx["second_observation"], block=ctx["second_block"], key=str(uuid4()))
+    foreign = make_context(db, speaker=ctx["speaker"])
+    assign(db, foreign)
+    personal = {"learning_profile_observations", "exercise_selection_feature_snapshots", "exercise_candidate_sets",
+                "exercise_candidates", "exercise_assignments", "exercise_randomization_assignments", "exercise_requests"}
+    deps = [d for d in DEPENDENCIES if d.relation in personal or d.relation == "learning_profiles"]
+    orchestrator = DataPurgeOrchestrator(type("Database", (), {"client": object()})())
+
+    def rows(relation, columns, *, selector, values, existing_relations):
+        assert relation in {d.relation for d in deps}
+        assert selector in ("speaker_id", "acquisition_principal_id") and columns == selector
+        return query(db, f"SELECT {columns} FROM {relation} WHERE {selector}::text=ANY(%s)", (list(values),))
+
+    monkeypatch.setattr(orchestrator, "_rows", rows)
+    graph = SubjectGraph(principal_ids=(ctx["owner"],), speaker_ids=(ctx["speaker"],))
+    targets = {d.relation: orchestrator._dependency_target(d, graph, frozenset(personal | {"learning_profiles"})) for d in deps}
+    for table in personal - {"exercise_requests"}:
+        target = targets[table]
+        assert target.target_kind == "unknown"
+        assert target.metadata["reason_code"] == "EXPLICIT_RESOLVER_REQUIRED"
+        assert target.initial_match_count == one(db, f"SELECT count(*) AS n FROM {table} WHERE acquisition_principal_id=%s", (ctx["owner"],))["n"]
+    # Shared identity is a separate already-inventoried, fail-closed dependency.
+    assert targets["learning_profiles"].target_kind == "unknown"
+    assert targets["learning_profiles"].initial_match_count == 1
+    snapshot = one(db, "SELECT snapshot FROM exercise_selection_feature_snapshots WHERE id=%s", (second["id"],))["snapshot"]
+    assert snapshot["prior_assignment_ids"] == [first["id"]]
+    for ref in snapshot["profile_observations"] + snapshot["excluded_observations"]:
+        assert one(db, "SELECT acquisition_principal_id FROM learning_profile_observations WHERE id=%s", (ref["id"],))["acquisition_principal_id"] == ctx["owner"]

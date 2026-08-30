@@ -467,6 +467,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # M3-3 dark frames carry direct, RPC-derived acquisition ownership. They
     # are inventoried even though serving/learning is disabled. Matching rows
     # block purge completion pending the separate canonical retention review.
+    # Observations/history (including exclusion IDs) cannot cross principals;
+    # the deferred finalizer enforces this. Shared profile identity is already
+    # inventoried above by speaker. Any future cross-principal feature reuse
+    # needs explicit authorization AND a new dependency traversal before use.
     PurgeDependency("exercise_profile_observations", "learning_profile_observations",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),

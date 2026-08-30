@@ -8,6 +8,10 @@ deletion classifications and remaining gates are mapped in
 [`MLC3-M3-3-IMPLEMENTATION-REVIEW.md`](MLC3-M3-3-IMPLEMENTATION-REVIEW.md).
 No legacy producer/reader/route/job/UI was cut over. New personal tables are
 explicitly inventoried as `external_review`; they cannot be skipped by purge.
+The corrective M3-3 boundary permits only same-acquisition-principal feature
+and assignment history, including exclusions. Shared speaker/profile identity
+remains a separate speaker-scoped `external_review` dependency. Cross-principal
+history reuse is not permitted or hidden behind a principal-only selector.
 
 Owner: Señor Engineer
 

@@ -2,6 +2,18 @@
 -- No seeds, producers, flags, policy activation, jobs, labels or releases.
 BEGIN;
 
+-- Commit visibility, not a caller timestamp, bounds immutable assignment
+-- inputs. Existing rows receive this migration's xid: a conservative known-
+-- committed lower bound, NOT a reconstruction of historical commit time.
+-- 0313 and the source-frame migrations remain byte-for-byte unchanged.
+ALTER TABLE public.exercise_need_contracts ADD COLUMN IF NOT EXISTS mlc3_input_xid XID8 NOT NULL DEFAULT pg_current_xact_id();
+ALTER TABLE public.exercise_media_objects ADD COLUMN IF NOT EXISTS mlc3_input_xid XID8 NOT NULL DEFAULT pg_current_xact_id();
+ALTER TABLE public.exercise_definitions ADD COLUMN IF NOT EXISTS mlc3_input_xid XID8 NOT NULL DEFAULT pg_current_xact_id();
+ALTER TABLE public.exercise_versions ADD COLUMN IF NOT EXISTS mlc3_input_xid XID8 NOT NULL DEFAULT pg_current_xact_id();
+ALTER TABLE public.exercise_catalog_snapshots ADD COLUMN IF NOT EXISTS mlc3_input_xid XID8 NOT NULL DEFAULT pg_current_xact_id();
+ALTER TABLE public.exercise_catalog_snapshot_items ADD COLUMN IF NOT EXISTS mlc3_input_xid XID8 NOT NULL DEFAULT pg_current_xact_id();
+ALTER TABLE public.take_feedback_policy_v3_shadow_frames ADD COLUMN IF NOT EXISTS mlc3_input_xid XID8 NOT NULL DEFAULT pg_current_xact_id();
+
 -- A verification receipt is evidence of availability, not a permanent promise
 -- that an immutable object still exists. No provider is called by this RPC.
 CREATE TABLE IF NOT EXISTS public.exercise_media_availability_checks (
@@ -200,18 +212,24 @@ AS $$ SELECT encode(extensions.digest(convert_to(p_value::text, 'UTF8'), 'sha256
 CREATE OR REPLACE FUNCTION public.require_exercise_assignment_authority_v1(p_check UUID,p_principal UUID)
 RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
+DECLARE auth public.exercise_authorization_checks; checked_now TIMESTAMPTZ;
 BEGIN
     IF current_setting('transaction_isolation') <> 'read committed' THEN
         RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_REQUIRES_READ_COMMITTED'; END IF;
-    PERFORM public.require_current_exercise_authorization_v1(p_check,p_principal,'catalog_assignment');
-    -- The accepted foundation helper uses transaction-time `now()`. A block
-    -- becoming effective during a keyed-lock wait must also stop this work.
+    auth := public.require_current_exercise_authorization_v1(p_check,p_principal,'catalog_assignment');
+    -- Preserve foundation purpose/receipt consistency, but never delegate
+    -- time validity to its transaction-start now(). This volatile wrapper is
+    -- called again after every potentially blocking write/lock and on replay.
+    checked_now := clock_timestamp();
     IF EXISTS (SELECT 1 FROM public.processing_service_blocks
-        WHERE acquisition_principal_id=p_principal AND effective_at<=clock_timestamp())
+        WHERE acquisition_principal_id=p_principal AND effective_at<=checked_now)
+       OR NOT EXISTS (SELECT 1 FROM public.processing_authorization_snapshots s
+           JOIN public.processing_policy_versions p ON p.id=s.policy_id
+           WHERE s.id=auth.authorization_snapshot_id AND p.status='active'
+             AND auth.purpose_id=s.purpose_id AND auth.policy_version=p.version
+             AND p.activated_at<=checked_now AND (p.retired_at IS NULL OR p.retired_at>checked_now))
     THEN RAISE EXCEPTION 'EXERCISE_CURRENT_AUTHORIZATION_REVOKED'; END IF;
-    IF NOT EXISTS (SELECT 1 FROM public.exercise_authorization_checks
-        WHERE id=p_check AND checked_at >= clock_timestamp()-interval '5 minutes'
-          AND checked_at <= clock_timestamp())
+    IF auth.checked_at < checked_now-interval '5 minutes' OR auth.checked_at > checked_now
     THEN RAISE EXCEPTION 'EXERCISE_CURRENT_AUTHORIZATION_REQUIRED'; END IF;
 END;
 $$;
@@ -355,6 +373,11 @@ BEGIN
     SELECT * INTO STRICT o FROM public.learning_profile_observations
      WHERE audio_lineage_id = l.id AND need_contract_id = n.id AND prediction_id = p.id;
     IF o.observation_sha256 <> h THEN RAISE EXCEPTION 'EXERCISE_OBSERVATION_REPLAY_CONFLICT'; END IF;
+    -- ON CONFLICT can wait for another transaction. Its historically valid
+    -- insert does not authorize this caller to return after revocation.
+    PERFORM public.require_exercise_assignment_authority_v1(p_authorization_check_id,l.acquisition_principal_id);
+    IF NOT public.exercise_evidence_matches_audio_v1(p.evidence_span_id,l.id)
+    THEN RAISE EXCEPTION 'EXERCISE_OBSERVATION_PROVENANCE_INVALID'; END IF;
     RETURN o;
 END;
 $$;
@@ -460,6 +483,9 @@ BEGIN
     PERFORM pg_advisory_xact_lock(hashtextextended('exercise-idem:' || p_idempotency_key,0));
     PERFORM pg_advisory_xact_lock(hashtextextended('exercise-profile:' || l.speaker_id::text || ':' || n.id::text,0));
     PERFORM public.require_exercise_assignment_authority_v1(p_authorization_check_id,l.acquisition_principal_id);
+    IF NOT public.exercise_evidence_matches_audio_v1(
+        (SELECT evidence_span_id FROM public.ml_machine_predictions WHERE id=o.prediction_id),l.id)
+    THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_SOURCE_MISMATCH'; END IF;
     SELECT a.* INTO existing FROM public.exercise_assignments a
     WHERE a.idempotency_key = p_idempotency_key;
     IF existing.id IS NULL THEN
@@ -476,12 +502,25 @@ BEGIN
     -- cannot silently become an assignment-time feature from the future.
     IF EXISTS (SELECT 1 FROM public.exercise_assignments a
         WHERE a.speaker_id = l.speaker_id AND a.need_contract_id = n.id
+          AND a.acquisition_principal_id = l.acquisition_principal_id
           AND (a.recorded_xid = pg_current_xact_id() OR NOT pg_visible_in_snapshot(a.recorded_xid,visibility)))
     THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_CONCURRENT_HISTORY_RETRY' USING ERRCODE = '40001'; END IF;
     IF o.observed_at >= assignment_at OR o.recorded_at >= assignment_at
        OR o.recorded_xid = pg_current_xact_id() OR NOT pg_visible_in_snapshot(o.recorded_xid,visibility)
     THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_SOURCE_NOT_COMMITTED_ASOF'; END IF;
     SELECT * INTO STRICT catalog FROM public.exercise_catalog_snapshots WHERE id = p_catalog_snapshot_id;
+    IF catalog.mlc3_input_xid=pg_current_xact_id() OR NOT pg_visible_in_snapshot(catalog.mlc3_input_xid,visibility)
+       OR n.mlc3_input_xid=pg_current_xact_id() OR NOT pg_visible_in_snapshot(n.mlc3_input_xid,visibility)
+       OR EXISTS (SELECT 1 FROM public.exercise_catalog_snapshot_items i
+           JOIN public.exercise_versions v ON v.id=i.exercise_version_id
+           JOIN public.exercise_definitions d ON d.id=v.exercise_definition_id
+           JOIN public.exercise_media_objects m ON m.id=v.media_object_id
+           JOIN public.exercise_need_contracts nc ON nc.id=v.need_contract_id
+           CROSS JOIN LATERAL unnest(ARRAY[i.mlc3_input_xid,v.mlc3_input_xid,d.mlc3_input_xid,
+               m.mlc3_input_xid,nc.mlc3_input_xid]) input_xid
+           WHERE i.catalog_snapshot_id=catalog.id
+             AND (input_xid=pg_current_xact_id() OR NOT pg_visible_in_snapshot(input_xid,visibility)))
+    THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_CATALOG_NOT_COMMITTED_ASOF' USING ERRCODE='40001'; END IF;
     IF catalog.finalized_at > assignment_at
        OR (catalog.scope_language_code IS NOT NULL AND catalog.scope_language_code <> p_language_code)
     THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_CATALOG_SCOPE_INVALID'; END IF;
@@ -495,6 +534,8 @@ BEGIN
     THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_CATALOG_STALE'; END IF;
     SELECT * INTO STRICT source_frame FROM public.take_feedback_policy_v3_shadow_frames
      WHERE take_session_id = l.take_id AND policy_version = 'take-feedback-policy-v3-universal-dark-v3';
+    IF source_frame.mlc3_input_xid=pg_current_xact_id() OR NOT pg_visible_in_snapshot(source_frame.mlc3_input_xid,visibility)
+    THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_FRAME_NOT_COMMITTED_ASOF' USING ERRCODE='40001'; END IF;
     IF source_frame.acquisition_principal_id <> l.acquisition_principal_id
        OR source_frame.recording_id <> l.recording_id OR source_frame.created_at > assignment_at
     THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_FRAME_LINEAGE_INVALID'; END IF;
@@ -529,7 +570,8 @@ BEGIN
     SELECT COALESCE(array_agg(a.id ORDER BY a.assigned_at,a.id),'{}'::uuid[]),
            COALESCE(array_agg(a.selected_exercise_version_id) FILTER (WHERE a.selected_exercise_version_id IS NOT NULL),'{}'::uuid[])
       INTO prior_ids,prior_versions FROM public.exercise_assignments a
-     WHERE a.speaker_id = l.speaker_id AND a.need_contract_id = n.id;
+     WHERE a.speaker_id = l.speaker_id AND a.need_contract_id = n.id
+       AND a.acquisition_principal_id = l.acquisition_principal_id;
     feature_snapshot := jsonb_build_object(
         'schema_version','exercise-asof-v1','assignment_at',assignment_at,
         'source_observation_id',o.id,'source_observation_sha256',o.observation_sha256,
@@ -539,22 +581,21 @@ BEGIN
         'max_source_observed_at',(SELECT max((x->>'observed_at')::timestamptz) FROM jsonb_array_elements(observation_inventory) x),
         'max_source_recorded_at',(SELECT max((x->>'recorded_at')::timestamptz) FROM jsonb_array_elements(observation_inventory) x),
         'baseline_version','not_used-dark-v1','baseline_observation_ids','[]'::jsonb,
+        'acquisition_scope','same_principal_only',
+        'cross_principal_exclusion_reason','cross_principal_not_authorized',
         'prior_assignment_ids',to_jsonb(prior_ids),'prior_rendered_exposures','[]'::jsonb,
         'exposure_state','not_collected_dark','owner_response','not_collected_dark',
         'excluded_observations',(SELECT COALESCE(jsonb_agg(jsonb_build_object(
-            'id',obs.id,'reason',CASE WHEN obs.acquisition_principal_id <> l.acquisition_principal_id
-            THEN 'cross_principal_not_authorized' ELSE 'not_available_asof' END) ORDER BY obs.event_sequence),'[]'::jsonb)
+            'id',obs.id,'reason','not_available_asof') ORDER BY obs.event_sequence),'[]'::jsonb)
             FROM public.learning_profile_observations obs WHERE obs.speaker_id = l.speaker_id
-            AND obs.need_contract_id = n.id AND (obs.acquisition_principal_id <> l.acquisition_principal_id
-                OR obs.observed_at >= assignment_at OR obs.recorded_at >= assignment_at
+            AND obs.need_contract_id = n.id AND obs.acquisition_principal_id = l.acquisition_principal_id
+            AND (obs.observed_at >= assignment_at OR obs.recorded_at >= assignment_at
                 OR obs.recorded_xid = pg_current_xact_id() OR NOT pg_visible_in_snapshot(obs.recorded_xid,visibility)))
     );
     feature_snapshot := feature_snapshot || jsonb_build_object(
         'excluded_observation_count',jsonb_array_length(feature_snapshot->'excluded_observations'),
         'not_available_asof_count',(SELECT count(*) FROM jsonb_array_elements(feature_snapshot->'excluded_observations') x
-            WHERE x->>'reason'='not_available_asof'),
-        'cross_principal_exclusion_count',(SELECT count(*) FROM jsonb_array_elements(feature_snapshot->'excluded_observations') x
-            WHERE x->>'reason'='cross_principal_not_authorized'));
+            WHERE x->>'reason'='not_available_asof'));
     feature_hash := public.exercise_json_sha256_v1(feature_snapshot);
     common_reasons := public.exercise_need_gate_reasons_v1(n,o.features,o.audio_quality);
     -- Catalogue items, not a caller-supplied shortlist, are the complete universe.
@@ -649,6 +690,9 @@ BEGIN
             'sha256'),'hex'));
     version_hash := public.exercise_json_sha256_v1(versions);
     PERFORM public.require_exercise_assignment_authority_v1(p_authorization_check_id,l.acquisition_principal_id);
+    IF NOT public.exercise_evidence_matches_audio_v1(
+        (SELECT evidence_span_id FROM public.ml_machine_predictions WHERE id=o.prediction_id),l.id)
+    THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_SOURCE_MISMATCH'; END IF;
     INSERT INTO public.exercise_selection_feature_snapshots VALUES (
         assignment_id,l.acquisition_principal_id,l.speaker_id,l.id,o.id,assignment_at,visibility,
         'exercise-asof-v1',feature_snapshot,feature_hash,false,false);
@@ -683,6 +727,10 @@ BEGIN
         encode(extensions.digest(seed,'sha256'),'hex'),draw,selection_mode,selected_rank,0.01,prior_ids,
         CASE WHEN cardinality(prior_ids)=0 THEN 'first_dark_assignment' ELSE 'repeated_dark_assignment' END,
         'dark_non_exposure',false,false);
+    PERFORM public.require_exercise_assignment_authority_v1(p_authorization_check_id,l.acquisition_principal_id);
+    IF NOT public.exercise_evidence_matches_audio_v1(
+        (SELECT evidence_span_id FROM public.ml_machine_predictions WHERE id=o.prediction_id),l.id)
+    THEN RAISE EXCEPTION 'EXERCISE_ASSIGNMENT_SOURCE_MISMATCH'; END IF;
     RETURN existing;
 END;
 $$;
@@ -731,6 +779,8 @@ BEGIN
     PERFORM pg_advisory_xact_lock(hashtextextended('exercise-request-idem:' || p_idempotency_key,0));
     PERFORM pg_advisory_xact_lock(hashtextextended('exercise-request:' || a.id::text || ':' || p_reviewer_principal_id::text,0));
     PERFORM public.require_exercise_assignment_authority_v1(p_authorization_check_id,a.acquisition_principal_id);
+    IF NOT public.exercise_evidence_matches_audio_v1(judgment.evidence_span_id,a.audio_lineage_id)
+    THEN RAISE EXCEPTION 'EXERCISE_REQUEST_REQUIRES_EXACT_POST_BLIND_REVEAL'; END IF;
     SELECT * INTO result FROM public.exercise_requests
      WHERE idempotency_key = p_idempotency_key;
     IF result.id IS NULL THEN
@@ -745,6 +795,9 @@ BEGIN
         reveal_event_id,authorization_check_id,reviewer_principal_id,state,reason_code,request_sha256,idempotency_key)
     VALUES (a.id,a.acquisition_principal_id,packet.id,judgment.id,reveal.id,p_authorization_check_id,
         p_reviewer_principal_id,'dark_pending','no_eligible_exercise',h,p_idempotency_key) RETURNING * INTO result;
+    PERFORM public.require_exercise_assignment_authority_v1(p_authorization_check_id,a.acquisition_principal_id);
+    IF NOT public.exercise_evidence_matches_audio_v1(judgment.evidence_span_id,a.audio_lineage_id)
+    THEN RAISE EXCEPTION 'EXERCISE_REQUEST_REQUIRES_EXACT_POST_BLIND_REVEAL'; END IF;
     RETURN result;
 END;
 $$;
@@ -763,6 +816,23 @@ BEGIN
     SELECT * INTO s FROM public.exercise_selection_feature_snapshots WHERE id=f.feature_snapshot_id;
     SELECT * INTO r FROM public.exercise_randomization_assignments WHERE assignment_id=f.id;
     SELECT * INTO STRICT l FROM public.exercise_audio_lineages WHERE id=f.audio_lineage_id;
+    IF a.id IS NULL OR s.id IS NULL OR r.assignment_id IS NULL
+    THEN RAISE EXCEPTION 'EXERCISE_FINALIZATION_INCOMPLETE_OR_INVALID'; END IF;
+    -- Principal-only purge selectors are sound only if every personal
+    -- reference in the frame belongs to that principal. Exclusions are not
+    -- permission to retain another principal's IDs, counts or features.
+    IF s.snapshot->>'acquisition_scope' IS DISTINCT FROM 'same_principal_only'
+       OR s.snapshot->'prior_assignment_ids' IS DISTINCT FROM to_jsonb(r.prior_assignment_ids)
+       OR EXISTS (SELECT 1 FROM unnest(r.prior_assignment_ids) prior_id
+           WHERE NOT EXISTS (SELECT 1 FROM public.exercise_assignments prior
+               WHERE prior.id=prior_id AND prior.acquisition_principal_id=f.acquisition_principal_id
+                 AND prior.speaker_id=f.speaker_id AND prior.need_contract_id=f.need_contract_id))
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(
+           (s.snapshot->'profile_observations') || (s.snapshot->'excluded_observations')) ref
+           WHERE NOT EXISTS (SELECT 1 FROM public.learning_profile_observations obs
+               WHERE obs.id=(ref->>'id')::uuid AND obs.acquisition_principal_id=f.acquisition_principal_id
+                 AND obs.speaker_id=f.speaker_id AND obs.need_contract_id=f.need_contract_id))
+    THEN RAISE EXCEPTION 'EXERCISE_FINALIZATION_ACQUISITION_SCOPE_INVALID'; END IF;
     IF a.id IS NULL OR s.id IS NULL OR r.assignment_id IS NULL
        OR f.feature_snapshot_id <> f.id
        OR f.acquisition_principal_id <> l.acquisition_principal_id OR f.speaker_id <> l.speaker_id
