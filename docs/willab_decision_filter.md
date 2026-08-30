@@ -15,31 +15,38 @@ the sole canonical presentation document. Later Takes propose improvements but
 never rebuild or silently overwrite it.
 - **Three load-bearing pieces:** **(a)** perfect per-slide transcription,
   **(b)** coherent initial Ideal Text with stable Paragraph identity, and
-  **(c)** Manager arbitration that returns exactly three evidence-ranked
-  Feedback items for every valid Take: one Confident Voice candidate, one
-  actionable verbal/structure improvement, and one evidence-backed praise
-  item. Weak evidence uses tentative language; it is never invented. The
-  record → process → Ideal Text → next-Take loop never waits for a coach.
+  **(c)** versioned Manager arbitration. The currently served V2 policy returns
+  exactly three evidence-ranked items. The founder-locked, not-yet-activated
+  Feedback Policy V3 instead partitions each Slide run into deterministic
+  blocks closest to 75 words: Take 1 returns one relative-best Confident Voice
+  item per valid block; Take 2+ adds at most one global actionable improvement
+  and at most one global evidence-backed praise. An honest empty rewrite or
+  praise lane shows no card. Weak evidence uses tentative language; it is never
+  invented. The record → process → Ideal Text → next-Take loop never waits for
+  a coach or exercise.
 
-**F2 — the asynchronous learning and confidence overlay, SECOND priority.**
+**F2 — the asynchronous learning, confidence, and practice overlay, SECOND priority.**
 Machine Feedback and coach review retain one auditable lineage. Confident Voice
 asks one qualitative question about how assured the delivery sounds. Voice Album
 admission requires Machine Yes + User Yes + Coach Yes about the exact same
-recording. Owner answers are routing signals, never blind training labels.
+recording. Deterministically eligible exercises may be matched to that exact
+clip after the blind-rating boundary; learned adequacy may rank only the
+eligible pool. Owner answers are routing signals, never blind training labels.
 
-> **⚠️ 2026-08-13 — the charisma construct is RETIRED (founder re-lock).** F2 read "stress → charisma (internally threat → challenge = breakthrough)" until this date. That construct had no written operational definition, so nothing could say what a rater was being asked — the exact defect SPEC §1.4 exists to prevent — and §17 names charisma explicitly as something `confidence` must NOT be folded together with. It was not just wording: it was ROUTING LIVE FEEDBACK (`_W_D`/`_W_B` inside `power_score`, and the replace/emphasize/no-star decision in the star lane), so retiring it was a code change, not a docs change. The coach's challenge/threat rows in `training_labels` are a CORPUS, not a construct claim, and are versioned rather than rewritten (SPEC §3.2).
+> **⚠️ 2026-08-29 — challenge/threat and sex routing are RETIRED executable behavior.** `power_score` has no challenge/threat inputs; confidence uses one universal, sex-blind cue contract; the product neither collects speaker sex for processing nor infers it from pitch. Historical rows are audit-only and receive no new writes. They are never compatibility aliases, product evidence, or training input. Cleanup is a separately authorized, previewed retention operation—not an automatic migration side effect.
 
 **LOCKED CHOICES** (founder re-locked 2026-08-26; complete contract:
 [`CANONICAL_PRODUCT_CONTRACT.md`](CANONICAL_PRODUCT_CONTRACT.md)):
 - **L1 — One canonical document.** Ideal Text is persistent and user-controlled.
   Take 1 creates it; later Takes never replace it with a transcript or best-of
   assembly. Best Presentation as a separate product artifact is retired.
-- **L2 — Manager-gated Feedback.** Detectors create Candidates; only Manager-
-  approved Candidates surface. Every valid Take has exactly three items: the
-  best Confident Voice candidate, the best actionable verbal/structure
-  improvement, and the best evidence-backed praise. Each lane selects its best
-  available evidence even when weak, using tentative language and never
-  inventing words, praise, or certainty.
+- **L2 — Manager-gated, versioned Feedback.** Detectors create Candidates;
+  only Manager-approved Candidates surface. V2 keeps its exact-three budget
+  until a separate V3 cutover. V3 uses one relative-best Confident Voice item
+  per valid 75-word block; Take 1 has no rewrite/praise, while Take 2+ has at
+  most one global rewrite and one global praise. Each active-policy lane ranks
+  its complete pool. It never invents evidence or fills an honest
+  `no_defensible_candidate` lane.
 - **L3 — Provenance walls.** Machine prediction, owner routing, blind peer
   rating, coach judgment, and detector verdict remain separate. Voice Album
   membership requires Machine Yes + User Yes + Coach Yes on the exact recording.
@@ -61,7 +68,7 @@ recording. Owner answers are routing signals, never blind training labels.
 
 **STEP 3 — LOCKED-CHOICE CHECK (second hard gate, separate from fences).** Any YES → **REJECT**:
 1. Rebuilds or silently changes Ideal Text from a later transcript, best-of assembly, machine proposal, or coach action? → breaks **L1**.
-2. Surfaces a raw Candidate, bypasses Manager arbitration, exceeds the budget, or manufactures Feedback? → breaks **L2**.
+2. Surfaces a raw Candidate, bypasses Manager arbitration, exceeds the active versioned budget, or manufactures Feedback? → breaks **L2**.
 3. Mixes owner routing, peer rating, coach judgment, machine prediction, or detector verdict provenance; or reuses one recording's signal for another? → breaks **L3**.
 
 *Refactor guard:* a cleaner-architecture claim must prove it leaves L1/L2/L3 and the live loop untouched. **No behavior change ⇒ no priority.**
@@ -70,7 +77,9 @@ recording. Owner answers are routing signals, never blind training labels.
 - **F1-CORE** — changes per-slide transcription accuracy, initial Ideal Text coherence/Paragraph identity, or Manager evidence selection and arbitration.
 - **F1-SURFACE** — hardens record→Take, Ideal Text read/edit/protect, Feedback decisions, or root-roadmap delivery.
 - **F1-SUPPORT** — required for a load-bearing piece to ship/run, naming a **specific, currently-in-flight F1 task** it unblocks. Rhetorical line-of-sight is NOT enough (see R11).
-- **F2** — coach-review lineage, provenance-safe learning, Confident Voice, and exact-recording Voice Album admission.
+- **F2** — coach-review lineage, provenance-safe learning, Confident Voice,
+  exact-clip exercise matching/practice, and exact-recording Voice Album
+  admission.
 - **SCAFFOLDING** — Lounge, cadence, PWA, audits, chat, onboarding, profile, infra, cosmetics.
 - **DRIFT** — introduces or serves a NEW goal/surface/construct no F1/F2 piece needs (engagement, retention, a new score, a coach-only feature), or reframes the product away from F1+F2.
 
@@ -125,6 +134,8 @@ REDIRECT: <if not a clean ADVANCE-F1: name the nearest F1-advancing action. Defa
 | **H** | Whisper accuracy on accented speech / vocab priming | **ADVANCE-F1** | F1-CORE | raises transcription fidelity = piece (a) |
 | **I** | Use owner Yes as blind model ground truth | **REJECT** | — | mixes provenance and breaks **L3** |
 | **J** | CSV export of transcripts | **DEFER** | SCAFFOLDING | legitimate, neutral, off critical path, nothing it unblocks is in flight |
+| **K** | Replace exact-three with the locked per-block V3 budget behind its cutover | **ADVANCE-F1** | F1-CORE | directly sharpens Manager evidence coverage without bypassing arbitration |
+| **L** | Let an adequacy model choose an exercise that failed the deterministic safety gate | **REJECT** | — | breaks **CONSTRUCT** and the canonical exercise gate; learned rank may order only the eligible pool |
 
 *Self-check: B and G die as DRIFT/REJECT (non-F1 goal); J merely DEFERs (neutral). E passes via the F1-SURFACE lane while G/B do not. D and I die at the FENCE step before any F1 framing can rescue them.*
 
@@ -141,7 +152,7 @@ REDIRECT: <if not a clean ADVANCE-F1: name the nearest F1-advancing action. Defa
 | R5 | "Quick / low-effort / while we're in here." | Cheap off-goal is still off-goal; "while we're in here" is how fences erode. Quick + on-path ⇒ do it; quick + off-path ⇒ still waits. |
 | R6 | "Users want a score / number / rating." | AC-9 + CONSTRUCT. Surfacing any score/ratio/confidence-number = REJECT regardless of demand. Redirect to a qualitative read. |
 | R7 | “Let each Take regenerate the Ideal Text.” | Breaks L1. Generate a proposal and require explicit user acceptance. |
-| R8 | “Show every strong detector output.” | Breaks L2. Route Candidates through Manager arbitration and its evidence budget. |
+| R8 | “Show every strong detector output.” | Breaks L2. Route Candidates through Manager arbitration and its active versioned evidence budget. |
 | R9 | "Ship the shadow guess as a badge — it's accurate enough." | Breaks BLIND COACH + CONSTRUCT. Shadow learns silently; coach labels stay blind. Redirect: measure shadow-vs-coach agreement OFF-SURFACE. |
 | R10 | “Owner agreement is good enough training data.” | Breaks L3. Owner answers remain routing signals, separate from blind and coach labels. |
 | R11 | "It unblocks F1/F2 later / it's a foundation / a platform." | The favorite laundering move. Demand the **named, near-term, in-flight** F1/F2 task and the line of sight. None ⇒ tier-3 scaffolding dressed as critical path. Park. |

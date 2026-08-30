@@ -1,6 +1,7 @@
 # Willab canonical product contract
 
-Status: founder-locked on 2026-08-26.
+Status: founder-locked on 2026-08-26. Feedback Policy V3 amendment locked on
+2026-08-30; it remains inactive until a separately authorized serving cutover.
 
 This document is the product source of truth for the frontend and backend.
 Historical prompts, handoffs, schemas, routes, names, and tests are evidence of
@@ -64,9 +65,14 @@ with this contract, this contract wins.
     confirmation. Applying it removes the root styling. Editing or unlocking
     also clears stale root metadata. Undo restores the complete prior text,
     root, and decision state.
-20. Presentation Mode and export render slide image, one root per Paragraph,
-    and normal-sized Ideal Text. They never duplicate a flagship phrase as a
-    separate third text layer.
+20. Presentation Mode and export render, in order, the Slide image, accepted
+    roots, and normal-sized Ideal Text. Recording Mode renders the same accepted
+    roots as memory cues. A root is eligible for either surface only when its
+    Paragraph is locked and the user explicitly accepted the orange action.
+    Before Take 3 an uncovered Slide has no generated fallback root. After Take
+    3, the Manager may propose at most one root for an uncovered Slide, but the
+    user must still explicitly lock and apply it. No surface duplicates a root
+    as a separate third text layer.
 
 ## 4. Feedback and Manager arbitration
 
@@ -78,17 +84,34 @@ with this contract, this contract wins.
     Candidates become user-facing Feedback.
 23. Machine Feedback appears immediately after processing. Coach review is
     asynchronous and never blocks the next Take.
-24. Every valid Take surfaces exactly three Feedback items, in this contract:
-    (1) the highest-ranked Confident Voice candidate; (2) the highest-ranked
-    actionable verbal/structure improvement; and (3) the highest-ranked
-    evidence-backed praise. Families never borrow or surrender slots.
-25. Each family ranks its complete candidate pool and selects its best
-    available item, not the first match. Weak evidence is allowed with
+24. Feedback budgets are versioned Manager policy. Until Feedback Policy V3 is
+    separately activated, the live V2 contract remains exactly three items per
+    valid Take: the highest-ranked Confident Voice candidate, the highest-ranked
+    actionable verbal/structure improvement, and the highest-ranked
+    evidence-backed praise. Families never borrow or surrender V2 slots.
+24a. Under Feedback Policy V3, the Manager deterministically partitions each
+    contiguous Slide run at persisted snippet/Paragraph boundaries into blocks
+    closest to 75 words, normally 60-90 words. It never cuts words, fabricates
+    boundaries, reorders chronology, or crosses a Slide boundary. An indivisible
+    short or long Paragraph remains intact with a typed partition exception.
+24b. V3 Take 1 surfaces exactly one relative-best Confident Voice item per valid
+    block and no Actionable Improvement or Praise. V3 Take 2+ surfaces exactly
+    one relative-best Confident Voice item per valid block, plus zero or one
+    globally highest-ranked Actionable Improvement and zero or one globally
+    highest-ranked Evidence-backed Praise for the entire Take. V3 therefore has
+    no whole-Take three-item cap.
+25. Each active-policy lane ranks its complete candidate pool and selects its
+    best available item, not the first match. Under V3, confidence is relative
+    only to the eligible clips inside its block; it is not an objective claim
+    that the clip is confident. Improvement and Praise remain Take-level
+    comparisons across their complete eligible pools. Weak evidence uses
     tentative language. Feedback never invents words, praise, or certainty.
-    Missing or unusable audio/transcription may fail the whole set; ordinary
-    weak evidence may not.
-26. The three-item set is frozen for the Take. Responding to one item never
-    causes a previously hidden replacement to appear.
+    When a valid Take has no honest Improvement or Praise candidate, V3 freezes
+    `no_defensible_candidate` for that lane and shows no card. Missing or
+    unusable source material remains a separate typed exclusion.
+26. The complete selected set for the active policy version is frozen before
+    exposure. Responding to one item never causes a previously hidden
+    replacement to appear.
 27. Actionable Improvement covers a verbal correction, stronger formulation,
     or material structure improvement. Praise must quote or otherwise identify
     real textual evidence; modest praise is valid when it is the best honest
@@ -134,18 +157,55 @@ with this contract, this contract wins.
     journey behavior, coach decisions, or Voice Album eligibility. The blind
     peer quorum never appears in the rehearsal or personal coaching loop.
 
+## 5a. Confidence-linked exercise policy
+
+35a. After the owner submits the five-state response for an exact Confident
+    Voice clip, the product may assign an exercise to that exact clip. Audio
+    unclear blocks matching for that clip. The other responses remain separate
+    self-reports and never override deterministic exercise eligibility.
+35b. A deterministic safety and need-compatibility gate runs before ranking.
+    A model may rank only eligible exercise versions and may never bypass the
+    gate. The complete in-scope catalogue is frozen with every version marked
+    eligible or typed-excluded. If none is eligible, the product creates a
+    post-blind coach request rather than inventing or forcing an exercise.
+35c. Until a primary endpoint, horizon, missing-data treatment, and evaluation
+    contract are separately approved, serving may select only the deterministic
+    top eligible exercise. Any future 80/20 exploration is an exposure policy,
+    not a dataset split, and must freeze the complete pool, probabilities,
+    stable draw, policy version, and selected version without rerandomizing on
+    refresh or retry.
+35d. The user is shown which exact exercise version was assigned and its prior
+    use, so the product does not unknowingly repeat it. One practice session may
+    contain at most three same-passage Recording Attempts. Practice attempts are
+    not presentation Takes and never mutate Ideal Text, locks, or orange roots.
+35e. Exercise comparison is qualitative. No acoustic score, rank, probability,
+    or machine verdict is shown to the user. Opening, skipping, timing out, or
+    making no attempt is not an effectiveness label.
+35f. Coach and peer confidence judgments remain independently blind and may be
+    plural. Need evidence, exercise candidates, user answers, and machine output
+    remain hidden until that rater submits an immutable confidence judgment.
+    Only afterward may a coach choose an eligible exercise, author a versioned
+    case-specific exercise, or report no safe match. Sharing with the user is a
+    separate explicit action. A coach who later authors an exercise may still
+    participate in the confidence quorum when their judgment predates reveal.
+35g. Exercise eligibility, exercise assignment, practice outcomes, owner
+    self-reports, blind coach/peer confidence judgments, professional authoring,
+    and Voice Album admission remain separate provenance. Exercise outcomes
+    never train Confidence Classification. A practice recording enters Voice
+    Album only through Machine Yes + User Yes + Coach Yes on that exact attempt.
+
 ## 6. Coach review and learning lineage
 
-35a. Confident Voice, Actionable Improvement, and Praise responses use
+35h. Confident Voice, Actionable Improvement, and Praise responses use
     separate schemas and remain separate datasets. Shown is not positive, skip
     is not rejection, and a user response is not a gold label.
-35b. Actionable Improvement offers Apply suggestion, Edit myself, and Keep
+35i. Actionable Improvement offers Apply suggestion, Edit myself, and Keep
     wording. Praise offers Useful, Not useful, and Not sure. Praise responses
     never style text.
-35c. Every surfaced set writes an immutable exposure ledger containing the
+35j. Every surfaced set writes an immutable exposure ledger containing the
     complete candidate set, evidence and internal scores, selected candidate,
     model and prompt version, user action, and later coach-judgment provenance.
-35d. Evidence-backed verbal corrections and praise wording/explanations may
+35k. Evidence-backed verbal corrections and praise wording/explanations may
     create surface-specific DPO pairs. Praise selection/ranking is not trained
     until the exposure ledger is complete. The three families are never merged
     into one undifferentiated training set.

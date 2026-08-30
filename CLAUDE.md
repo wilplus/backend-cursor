@@ -8,17 +8,22 @@ after Take 1 → evidence-backed Manager Feedback after every Take. Ideal Text i
 the sole canonical presentation document. Later Takes propose improvements but
 never rebuild or silently overwrite it. The load-bearing pieces are per-slide
 transcription, coherent initial Ideal Text with stable Paragraph identity, and
-Manager arbitration that returns exactly three evidence-ranked Feedback items
-for every valid Take: one Confident Voice candidate, one actionable verbal or
-structure improvement, and one evidence-backed praise item. Weak evidence uses
-tentative language; it is never invented. The record → process → Ideal Text →
-next-Take loop never waits for a coach.
+versioned Manager arbitration. The currently served V2 policy returns exactly
+three evidence-ranked Feedback items. The founder-locked, not-yet-activated V3
+policy partitions each Slide run into deterministic blocks closest to 75 words:
+Take 1 returns one relative-best Confident Voice item per valid block; Take 2+
+adds at most one global actionable improvement and at most one global
+evidence-backed praise. An honest empty rewrite or praise lane shows no card.
+Weak evidence uses tentative language; it is never invented. The record →
+process → Ideal Text → next-Take loop never waits for a coach or exercise.
 
-**F2 — the asynchronous learning and confidence overlay, SECOND priority.**
+**F2 — the asynchronous learning, confidence, and practice overlay, SECOND priority.**
 Machine Feedback and coach review retain one auditable lineage. Confident Voice
 asks one qualitative question about how assured the delivery sounds. Voice Album
 admission requires Machine Yes + User Yes + Coach Yes about the exact same
-recording. Owner answers are routing signals, never blind training labels.
+recording. Deterministically eligible exercises may be matched to that exact
+clip after the blind-rating boundary; learned adequacy may rank only the
+eligible pool. Owner answers are routing signals, never blind training labels.
 
 > **⚠️ 2026-08-29 — challenge/threat and sex routing are RETIRED executable behavior.** `power_score` has no challenge/threat inputs; confidence uses one universal, sex-blind cue contract; the product neither collects speaker sex for processing nor infers it from pitch. Historical rows are audit-only and receive no new writes. They are never compatibility aliases, product evidence, or training input. Cleanup is a separately authorized, previewed retention operation—not an automatic migration side effect.
 
@@ -26,9 +31,12 @@ recording. Owner answers are routing signals, never blind training labels.
 [`docs/CANONICAL_PRODUCT_CONTRACT.md`](docs/CANONICAL_PRODUCT_CONTRACT.md)):
 **L1** Ideal Text is the one persistent, user-controlled document; later Takes
 never rebuild or silently change it, and Best Presentation is retired.
-**L2** Detectors create Candidates and only Manager-approved Candidates surface,
-with exactly one best available item from each of the three locked families for
-every valid Take. Weak evidence uses tentative language; it is never invented.
+**L2** Detectors create Candidates and only Manager-approved Candidates surface
+under the active versioned budget. V2 keeps exactly one item from each of three
+families until a separate cutover. V3 uses one relative-best Confident Voice
+item per valid 75-word block; Take 1 has no rewrite/praise, while Take 2+ has at
+most one global rewrite and one global praise. It never invents evidence or
+fills an honest `no_defensible_candidate` lane.
 **L3** Machine prediction, owner routing, blind peer rating, coach judgment, and
 detector verdict remain separate; Album membership requires Machine Yes + User
 Yes + Coach Yes on the exact recording.
@@ -41,8 +49,8 @@ Every proposed decision — feature, refactor, bugfix, library, copy, infra, pro
 
 1. **STATE & SPLIT** — restate it in one sentence + what it concretely changes; split bundles and run each.
 2. **FENCE CHECK (first, hard stop)** — touches AC-9 / construct / blind-coach / live-loop / surfaced copy? → **REJECT**. (First on purpose: a fence breach that *sounds* like an F1 win — e.g. "surface a confidence score for progress" — must die here.)
-3. **LOCKED-CHOICE CHECK** — rebuilds or silently changes Ideal Text (L1)? surfaces raw Candidates, bypasses Manager, exceeds the budget, or manufactures Feedback (L2)? mixes label provenance or reuses signals across recordings (L3)? Any yes → **REJECT**. Refactors must prove L1/L2/L3 and the live loop remain intact.
-4. **CLASSIFY (one tier)** — **F1-CORE** changes per-slide transcription, initial Ideal Text coherence/identity, or Manager evidence arbitration. **F1-SURFACE** hardens record→Take, Ideal Text read/edit/protect, Feedback decisions, or root-roadmap delivery. **F1-SUPPORT** is required for a named in-flight F1 task. **F2** covers coach-review lineage, provenance-safe learning, Confident Voice, and Voice Album. Everything else is **SCAFFOLDING** or **DRIFT**.
+3. **LOCKED-CHOICE CHECK** — rebuilds or silently changes Ideal Text (L1)? surfaces raw Candidates, bypasses Manager, exceeds the active versioned budget, or manufactures Feedback (L2)? mixes label provenance or reuses signals across recordings (L3)? Any yes → **REJECT**. Refactors must prove L1/L2/L3 and the live loop remain intact.
+4. **CLASSIFY (one tier)** — **F1-CORE** changes per-slide transcription, initial Ideal Text coherence/identity, or Manager evidence arbitration. **F1-SURFACE** hardens record→Take, Ideal Text read/edit/protect, Feedback decisions, or root-roadmap delivery. **F1-SUPPORT** is required for a named in-flight F1 task. **F2** covers coach-review lineage, provenance-safe learning, Confident Voice, exact-clip exercise matching/practice, and Voice Album. Everything else is **SCAFFOLDING** or **DRIFT**.
 5. **RATIONALIZATION SCAN** — “more usage” is not an F1 goal. “Foundation,” “cleaner,” or “later” requires a named in-flight F1/F2 task. No concrete mechanism means park or reject.
 6. **CONTENTION** — F1-CORE wins all ties. F1-SURFACE sits behind open F1-CORE. F1-SUPPORT passes only with the named in-flight task. F2 yields to F1-CORE. SCAFFOLDING passes only as the named unblocker of in-flight F1/F2. **DRIFT vs DEFER:** off-goal + serves a non-F1 goal = REJECT-DRIFT; off-goal but neutral & legit-someday with nothing in flight = DEFER.
 7. **VERDICT + REDIRECT (always emit):**
