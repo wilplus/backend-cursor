@@ -2,6 +2,13 @@
 
 Status: **M3-1 COMPLETE — DOCUMENTATION ONLY — CUTOVER BLOCKED**
 
+Implementation addendum (M3-3): the original legacy audit remains unchanged.
+New dark-only dependencies, authoritative RPCs, observation inputs, tables,
+deletion classifications and remaining gates are mapped in
+[`MLC3-M3-3-IMPLEMENTATION-REVIEW.md`](MLC3-M3-3-IMPLEMENTATION-REVIEW.md).
+No legacy producer/reader/route/job/UI was cut over. New personal tables are
+explicitly inventoried as `external_review`; they cannot be skipped by purge.
+
 Owner: Señor Engineer
 
 Product owner: Artur Willoński

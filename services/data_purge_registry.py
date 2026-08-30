@@ -464,6 +464,30 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "exercise_blind_packet_events", "blind_packet_id",
                     "exercise_blind_packet", "external_review",
                     "coach_packet", 300),
+    # M3-3 dark frames carry direct, RPC-derived acquisition ownership. They
+    # are inventoried even though serving/learning is disabled. Matching rows
+    # block purge completion pending the separate canonical retention review.
+    PurgeDependency("exercise_profile_observations", "learning_profile_observations",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_feature_snapshots", "exercise_selection_feature_snapshots",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_candidate_sets", "exercise_candidate_sets",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_candidates", "exercise_candidates",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_assignments", "exercise_assignments",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_randomization", "exercise_randomization_assignments",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_requests", "exercise_requests",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "coach_packet", 300),
 
     # Historical corpora and review stores are frozen or mixed-purpose. They
     # are named explicitly so catalog audit is complete, while their matches
@@ -526,6 +550,7 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "exercise_need_contracts", "exercise_media_objects",
     "exercise_definitions", "exercise_versions",
     "exercise_catalog_snapshots", "exercise_catalog_snapshot_items",
+    "exercise_media_availability_checks",
     "data_purge_inventory_manifests", "processing_provider_deletion_contracts",
     "processing_provider_deletion_contract_events", "detector_version",
 })
