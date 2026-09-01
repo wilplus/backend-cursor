@@ -351,3 +351,4 @@
 0313	add_mlc3_exercise_dark_foundation.sql
 0314	add_mlc3_dark_assignment_frames.sql
 0315	add_ideal_text_core_snapshot.sql
+0316	fix_ideal_text_core_pgcrypto_search_path.sql

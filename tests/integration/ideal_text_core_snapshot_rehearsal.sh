@@ -8,6 +8,8 @@ ideal_psql="${IDEAL_CORE_TEST_PSQL:-psql}"
 for apply in 1 2; do
   "$ideal_psql" "$IDEAL_CORE_REHEARSAL_DSN" -X -v ON_ERROR_STOP=1 -q \
     -f migrations/add_ideal_text_core_snapshot.sql
+  "$ideal_psql" "$IDEAL_CORE_REHEARSAL_DSN" -X -v ON_ERROR_STOP=1 -q \
+    -f migrations/fix_ideal_text_core_pgcrypto_search_path.sql
 done
 "$ideal_psql" "$IDEAL_CORE_REHEARSAL_DSN" -X -v ON_ERROR_STOP=1 -q \
   -f tests/integration/ideal_text_core_snapshot_rehearsal.sql
