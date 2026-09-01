@@ -32,14 +32,14 @@ BEGIN
       IF NEW.analysis_state IS DISTINCT FROM 'ready'
          OR COALESCE(NEW.recording_kind,'spoken')<>'spoken'
          OR NEW.paired_session_id IS NOT NULL
-         OR NULLIF(trim(NEW.arc_id),'') IS NULL
+         OR NULLIF(trim(NEW.arc_id::text),'') IS NULL
       THEN RETURN NEW; END IF;
     ELSIF TG_OP='UPDATE' THEN
       IF NEW.analysis_state IS DISTINCT FROM 'ready'
          OR OLD.analysis_state IS NOT DISTINCT FROM 'ready'
          OR COALESCE(NEW.recording_kind,'spoken')<>'spoken'
          OR NEW.paired_session_id IS NOT NULL
-         OR NULLIF(trim(NEW.arc_id),'') IS NULL
+         OR NULLIF(trim(NEW.arc_id::text),'') IS NULL
       THEN RETURN NEW; END IF;
     ELSE
       RETURN OLD;
@@ -191,7 +191,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.v2_sessions session
     WHERE session.id=p_source_take_session_id
-      AND session.arc_id=p_arc_id
+      AND session.arc_id::text=p_arc_id
       AND session.project_id=p_project_id
       AND session.owner_principal_id=p_acquisition_principal_id
       AND COALESCE(session.analysis_state,'ready')='ready'
@@ -279,7 +279,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
   FROM public.ideal_text_document_generations source
   WHERE EXISTS (
     SELECT 1 FROM public.v2_sessions session
-    WHERE session.arc_id=source.arc_id
+    WHERE session.arc_id::text=source.arc_id
       AND COALESCE(session.analysis_state,'ready')='ready'
       AND COALESCE(session.recording_kind,'spoken')='spoken'
       AND session.paired_session_id IS NULL
@@ -319,7 +319,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
       FROM public.v2_sessions session
       JOIN public.owner_principals owner
         ON owner.id=session.owner_principal_id
-      WHERE session.arc_id=p_arc_id
+      WHERE session.arc_id::text=p_arc_id
         AND session.project_id=snapshot.project_id
         AND session.owner_principal_id=snapshot.acquisition_principal_id
         AND (owner.user_id::text=p_actor_id OR owner.id::text=p_actor_id)

@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS public.v2_sessions(
   user_id UUID,
   owner_principal_id UUID REFERENCES public.owner_principals(id),
   project_id UUID REFERENCES public.projects(id),
-  arc_id TEXT,
+  arc_id UUID,
   take_index INTEGER,
   analysis_state TEXT,
   recording_kind TEXT,
@@ -65,6 +65,5 @@ INSERT INTO public.v2_sessions(
   '10000000-0000-4000-8000-000000000001',
   '20000000-0000-4000-8000-000000000001',
   '30000000-0000-4000-8000-000000000001',
-  'arc-core',1,'ready','spoken'
+  '50000000-0000-4000-8000-000000000001',1,'ready','spoken'
 ) ON CONFLICT DO NOTHING;
-
