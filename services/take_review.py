@@ -134,6 +134,12 @@ def finalize_later_take_review(
             raise TakeReviewFinalizationError(
                 take_session_id, "owner edit was not preserved")
 
+    # Publish the exact later-Take review state before returning. The
+    # canonical words remain untouched; only their immutable cold-open read
+    # model advances. The GET path never repairs a missing snapshot.
+    from services.ideal_text_core_snapshot import publish_for_arc
+    publish_for_arc(database, str(arc_id), str(owner_user_id))
+
     return {
         **after,
         "version": index,

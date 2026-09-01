@@ -161,6 +161,8 @@ def _reassemble_after_decision(arc_id) -> None:
         if not _living_transcript_enabled():
             return
         maybe_assemble_ideal_text(str(arc_id), require_target=False)
+        from services.ideal_text_core_snapshot import publish_for_arc
+        publish_for_arc(db, str(arc_id))
     except Exception as e:
         logger.warning("living_transcript: post-decision reassembly "
                        "failed arc=%s: %s", arc_id, e)

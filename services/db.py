@@ -10728,6 +10728,141 @@ class DatabaseService:
     # add_coach_feedback_saved.sql, add_coach_arc_ideal_text.sql,
     # add_user_arc_ideal_notes.sql.
 
+    def publish_ideal_text_document_snapshot(
+        self, *, arc_id: str, actor_id: str,
+        acquisition_principal_id: str, project_id: str,
+        source_take_session_id: str, version: int, source_generation: int,
+        source_fingerprint_sha256: str, payload: dict,
+        enrichment_seed: dict,
+    ) -> Optional[dict]:
+        """Atomically append and point at one immutable cold-open snapshot."""
+        try:
+            result = self.client.rpc(
+                "publish_ideal_text_document_snapshot_v1", {
+                    "p_arc_id": str(arc_id),
+                    "p_actor_id": str(actor_id),
+                    "p_acquisition_principal_id": str(
+                        acquisition_principal_id),
+                    "p_project_id": str(project_id),
+                    "p_source_take_session_id": str(source_take_session_id),
+                    "p_version": int(version),
+                    "p_source_generation": int(source_generation),
+                    "p_source_fingerprint_sha256": str(
+                        source_fingerprint_sha256),
+                    "p_payload": payload,
+                    "p_enrichment_seed": enrichment_seed,
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            logger.warning(
+                "publish ideal-text document snapshot failed arc=%s: %s",
+                arc_id, error)
+            return None
+
+    def get_ideal_text_document_generation(
+        self, arc_id: str,
+    ) -> Optional[int]:
+        """Generation fence captured before snapshot materialisation."""
+        if not arc_id:
+            return None
+        try:
+            result = self.client.rpc(
+                "read_ideal_text_document_generation_v1", {
+                    "p_arc_id": str(arc_id),
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            return int(data) if isinstance(data, int) else None
+        except Exception as error:
+            low = str(error).lower()
+            if "read_ideal_text_document_generation_v1" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                return None
+            logger.warning("ideal-text generation read failed: %s", error)
+            return None
+
+    def list_pending_ideal_text_document_publications(
+        self, limit: int = 100,
+    ) -> list[dict]:
+        """Durable generation rows whose current snapshot is still absent."""
+        try:
+            result = self.client.rpc(
+                "list_pending_ideal_text_document_publications_v1", {
+                    "p_limit": max(1, min(int(limit), 500)),
+                }).execute()
+            return [row for row in (result.data or [])
+                    if isinstance(row, dict) and row.get("arc_id")]
+        except Exception as error:
+            low = str(error).lower()
+            if "list_pending_ideal_text_document_publications_v1" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                return []
+            logger.warning("ideal-text pending publication read failed: %s",
+                           error)
+            return []
+
+    def get_ideal_text_document_snapshot(
+        self, arc_id: str, actor_id: str,
+        snapshot_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """One immutable snapshot, current by default; strictly read-only."""
+        if not arc_id or not actor_id:
+            return None
+        try:
+            if snapshot_id:
+                rows = (self.client.table("ideal_text_document_snapshots")
+                        .select("*").eq("id", str(snapshot_id))
+                        .eq("arc_id", str(arc_id))
+                        .eq("actor_id", str(actor_id)).limit(1)
+                        .execute().data) or []
+                return rows[0] if rows else None
+            heads = (self.client.table("ideal_text_document_heads")
+                     .select("snapshot_id").eq("arc_id", str(arc_id))
+                     .eq("actor_id", str(actor_id)).limit(1)
+                     .execute().data) or []
+            if not heads:
+                return None
+            rows = (self.client.table("ideal_text_document_snapshots")
+                    .select("*").eq("id", str(heads[0]["snapshot_id"]))
+                    .limit(1).execute().data) or []
+            return rows[0] if rows else None
+        except Exception as error:
+            low = str(error).lower()
+            if "ideal_text_document_" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                return None
+            logger.warning("ideal-text document snapshot read failed: %s",
+                           error)
+            return None
+
+    def get_ideal_text_document_core(
+        self, arc_id: str, actor_id: str,
+    ) -> Optional[dict]:
+        """One owner-checked RPC read for the strict cold-open path."""
+        if not arc_id or not actor_id:
+            return None
+        try:
+            result = self.client.rpc(
+                "read_ideal_text_document_core_v1", {
+                    "p_arc_id": str(arc_id),
+                    "p_actor_id": str(actor_id),
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            return data if isinstance(data, dict) else None
+        except Exception as error:
+            low = str(error).lower()
+            if "read_ideal_text_document_core_v1" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                return None
+            logger.warning("ideal-text core RPC read failed: %s", error)
+            return None
+
     def set_session_analysis_state(
         self, session_id: str, state: str, error: Optional[str] = None,
     ) -> bool:
@@ -14530,7 +14665,8 @@ class DatabaseService:
         (older rows read as spoken/unsaved)."""
         if not arc_id:
             return []
-        _full_cols = ("id, user_id, arc_id, take_index, status, "
+        _full_cols = ("id, user_id, owner_principal_id, project_id, arc_id, "
+                      "take_index, status, "
                       "created_at, intake_context, results_published_at, "
                       "recording_kind, paired_session_id, "
                       "coach_feedback_saved_at, analysis_state")
@@ -14555,7 +14691,8 @@ class DatabaseService:
                     raise
             res = (
                 self.client.table("v2_sessions")
-                .select("id, user_id, arc_id, take_index, status, "
+                .select("id, user_id, owner_principal_id, project_id, arc_id, "
+                        "take_index, status, "
                         "created_at, intake_context, results_published_at")
                 .eq("arc_id", arc_id)
                 .order("take_index", desc=False)
@@ -14571,7 +14708,8 @@ class DatabaseService:
                 try:
                     res = (
                         self.client.table("v2_sessions")
-                        .select("id, user_id, arc_id, take_index, status, "
+                        .select("id, user_id, owner_principal_id, project_id, "
+                                "arc_id, take_index, status, "
                                 "created_at, intake_context")
                         .eq("arc_id", arc_id)
                         .order("take_index", desc=False)

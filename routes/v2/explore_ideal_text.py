@@ -54,6 +54,16 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+def _publish_ideal_text_core(arc_id, actor_id=None) -> None:
+    """Publish the immutable cold-open read model after a product write."""
+    try:
+        from services.ideal_text_core_snapshot import publish_for_arc
+        publish_for_arc(db, str(arc_id), str(actor_id) if actor_id else None)
+    except Exception as error:
+        logger.warning("ideal-text core publication failed arc=%s: %s",
+                       arc_id, error)
+
+
 def _ideal_optional_read(label, default, reader):
     """Keep auxiliary state machines outside Ideal Text availability.
 
@@ -457,6 +467,209 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref, user_id=None):
     except Exception as e:
         logger.warning("ideal-text pieces failed arc=%s: %s", arc_id, e)
         return []
+
+
+@v2_bp.route("/explore/arc/<arc_id>/ideal-text/core", methods=["GET"])
+@require_auth
+def v2_explore_get_ideal_text_core(arc_id):
+    """Strict, read-only cold-open document.
+
+    This endpoint reads one immutable prepared snapshot.  It does not compose,
+    repair, persist, sign media, aggregate feedback or prepare analytics.
+    """
+    from time import perf_counter
+    started = perf_counter()
+    snapshot = db.get_ideal_text_document_core(
+        arc_id, str(request.user_id))
+    if not snapshot:
+        response = jsonify({
+            "code": "IDEAL_TEXT_DOCUMENT_PENDING",
+            "state": "pending",
+        })
+        response.status_code = 404
+    else:
+        payload = dict(snapshot.get("payload") or {})
+        payload.update({
+            "document_snapshot_id": str(snapshot.get("id")),
+            "document_snapshot_sha256": snapshot.get("payload_sha256"),
+        })
+        response = jsonify(payload)
+    elapsed = (perf_counter() - started) * 1000
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Server-Timing"] = f"ideal_core;dur={elapsed:.1f}"
+    return response
+
+
+@v2_bp.route("/explore/arc/<arc_id>/ideal-text/enrichment", methods=["GET"])
+@require_auth
+def v2_explore_get_ideal_text_enrichment(arc_id):
+    """Optional sections bound to one immutable document snapshot."""
+    from time import perf_counter
+    from services.ideal_text_enrichment import run_sections
+    started = perf_counter()
+    owned, sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    snapshot_id = (request.args.get("document_snapshot_id") or "").strip()
+    if not snapshot_id:
+        return jsonify({"code": "SNAPSHOT_REQUIRED",
+                        "error": "document_snapshot_id is required"}), 400
+    # The generation-fenced core read treats a head invalidated by a source
+    # mutation as stale immediately.  Reading the mutable head directly here
+    # would let enrichment attach to an old document during republishing.
+    current = db.get_ideal_text_document_core(
+        arc_id, str(request.user_id))
+    selected = db.get_ideal_text_document_snapshot(
+        arc_id, str(request.user_id), snapshot_id)
+    if not selected:
+        return jsonify({"code": "SNAPSHOT_NOT_FOUND"}), 404
+    if not current or str(current.get("id")) != str(selected.get("id")):
+        return jsonify({
+            "code": "SNAPSHOT_STALE",
+            "current_document_snapshot_id": (
+                str(current.get("id")) if current else None),
+        }), 409
+
+    allowed_sections = {
+        "feedback", "document_layers", "notes", "history", "journey",
+        "entitlement", "learning",
+    }
+    requested_raw = (request.args.get("sections") or "").strip()
+    requested_sections = (
+        {value.strip() for value in requested_raw.split(",") if value.strip()}
+        if requested_raw else allowed_sections
+    )
+    invalid_sections = sorted(requested_sections - allowed_sections)
+    if invalid_sections:
+        return jsonify({
+            "code": "INVALID_ENRICHMENT_SECTION",
+            "sections": invalid_sections,
+        }), 400
+
+    actor_id = str(request.user_id)
+    core = selected.get("payload") or {}
+    seed = selected.get("enrichment_seed") or {}
+    moments = seed.get("moments") if isinstance(seed, dict) else []
+    moments = moments if isinstance(moments, list) else []
+    take_ids = [moment.get("take_session_id") for moment in moments
+                if isinstance(moment, dict)]
+
+    def feedback_section():
+        explanations = _ideal_optional_read(
+            "moment_explanations", {},
+            lambda: _moment_explanations_map(take_ids))
+        playback = _ideal_optional_read(
+            "moment_playback", {}, lambda: _moment_playback_map(take_ids))
+        review = _ideal_optional_read(
+            "confidence_review_status", {},
+            lambda: _confidence_review_status_map(arc_id, moments))
+        references = _ideal_optional_read(
+            "moment_references", {},
+            lambda: _moment_reference_map([
+                value.get("reference_post_slug")
+                if isinstance(value, dict) else None
+                for value in explanations.values()
+            ]))
+        return {
+            "key_moments": decorate_key_moments(
+                moments,
+                suggestions_enabled=bool(seed.get("suggestions_enabled")),
+                explanations=explanations,
+                playback=playback,
+                review_status=review,
+                references=references,
+            ),
+            "explanations_available": bool(explanations),
+        }
+
+    def document_layers_section():
+        result = {
+            "prior_edit": seed.get("prior_edit")
+            if isinstance(seed, dict) else None,
+        }
+        result.update(_ideal_save_state(arc_id, core.get("version")))
+        result.update(_tracked_changes_block(
+            arc_id, str(core.get("text") or ""), actor_id,
+            str(core.get("latest_take_session_id") or ""),
+            review_version=core.get("version")))
+        return result
+
+    def learning_section():
+        latest_id = str(core.get("latest_take_session_id") or "")
+        latest = next((row for row in sessions
+                       if str(row.get("id") or "") == latest_id), None)
+        if not isinstance(latest, dict):
+            return {"learning_exposure": None}
+        from services.learning_exposures import prepare_ideal_text_presentation
+        handle = prepare_ideal_text_presentation(
+            database=db,
+            owner_principal_id=str(latest.get("owner_principal_id") or ""),
+            project_id=str(latest.get("project_id") or arc_id),
+            take_id=latest_id,
+            actor_id=actor_id,
+            text=str(core.get("text") or ""),
+            version=core.get("version"),
+            take_count=core.get("take_count"),
+            title=core.get("title"),
+            parts=core.get("parts"),
+            delivery_mode="canary",
+        )
+        return {"learning_exposure": handle}
+
+    def journey_section():
+        from services.journey_messages import journey_seen
+        return {
+            "journey_next_steps_seen": journey_seen(
+                db, actor_id, arc_id, take_count),
+        }
+
+    take_count = int(core.get("take_count") or 0)
+    readers = {
+        "feedback": feedback_section,
+        "document_layers": document_layers_section,
+        "notes": lambda: {
+            "notes_text": db.get_user_arc_ideal_notes(
+                arc_id, actor_id)},
+        "history": lambda: {
+            "decision_history": db.list_intervention_decision_history(arc_id)},
+        "journey": journey_section,
+        "entitlement": lambda: {
+            "moments_unlocked": _moments_entitled(arc_id),
+            "price_tokens": _price_of("moment_explanation"),
+        },
+        "learning": learning_section,
+    }
+    sections, timings = run_sections({
+        name: reader for name, reader in readers.items()
+        if name in requested_sections
+    })
+    # Optional readers run concurrently and can outlive the snapshot check at
+    # the top of this request.  Re-read the generation-fenced core after every
+    # reader has settled.  A source mutation during enrichment must return a
+    # retryable stale response and, crucially, must never deliver a stale
+    # presentation acknowledgement token to the browser.
+    final_current = db.get_ideal_text_document_core(
+        arc_id, str(request.user_id))
+    if (not final_current
+            or str(final_current.get("id")) != str(selected.get("id"))):
+        return jsonify({
+            "code": "SNAPSHOT_STALE",
+            "current_document_snapshot_id": (
+                str(final_current.get("id")) if final_current else None),
+        }), 409
+    elapsed = (perf_counter() - started) * 1000
+    response = jsonify({
+        "document_snapshot_id": snapshot_id,
+        "sections": sections,
+    })
+    timing_parts = [f"ideal_enrichment;dur={elapsed:.1f}"]
+    timing_parts.extend(
+        f"section_{name};dur={duration:.1f}"
+        for name, duration in sorted(timings.items()))
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Server-Timing"] = ", ".join(timing_parts)
+    return response
+
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text", methods=["GET"])
@@ -2760,6 +2973,7 @@ def v2_explore_set_part_lock(arc_id, part_id):
         if locked:
             from services.rooting_phrase import propose_rooting_phrase
             _proposal = propose_rooting_phrase(target.get("text"))
+        _publish_ideal_text_core(arc_id, user_id)
         return jsonify({
             "locked": locked,
             "part_id": str(part_id),
@@ -2880,6 +3094,7 @@ def v2_explore_set_part_root(arc_id, part_id):
                 "arc=%s part=%s: %s", arc_id, part_id,
                 _canonical_root_error,
             )
+        _publish_ideal_text_core(arc_id, user_id)
         return jsonify({
             "saved": True,
             "part_id": str(part_id),
@@ -3089,6 +3304,7 @@ def v2_explore_put_ideal_user_edit(arc_id):
         except Exception as _var_err:
             logger.warning("ideal user-edit: variant capture failed "
                            "arc=%s: %s", arc_id, _var_err)
+        _publish_ideal_text_core(arc_id, str(request.user_id))
         return jsonify({"saved": True, "arc_id": arc_id,
                         "version": current}), 200
     except Exception as e:

@@ -562,6 +562,16 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                 logger.warning(
                     "ideal_text: version snapshot failed arc=%s: %s",
                     arc_id, _sv_err)
+            # Cold-open publication is a write-boundary responsibility. The
+            # student GET intentionally cannot assemble or repair a document;
+            # it only reads the immutable head published here.
+            try:
+                from services.ideal_text_core_snapshot import publish_for_arc
+                publish_for_arc(database, str(arc_id))
+            except Exception as _core_err:
+                logger.warning(
+                    "ideal_text: core snapshot publish failed arc=%s: %s",
+                    arc_id, _core_err)
         return ok
     except Exception as e:
         logger.warning("ideal_text: eager assembly failed arc=%s: %s",

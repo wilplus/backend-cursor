@@ -2066,6 +2066,8 @@ def v2_coach_put_ideal_text(arc_id):
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
+        from services.ideal_text_core_snapshot import publish_for_arc
+        publish_for_arc(db, str(arc_id))
         return jsonify({"ok": True, "arc_id": arc_id}), 200
     except Exception as e:
         logger.error("coach ideal-text PUT failed arc=%s: %s", arc_id, e,
@@ -2103,6 +2105,8 @@ def v2_coach_verify_ideal_text(arc_id):
         row = db.get_coach_arc_ideal_text(arc_id) or {}
         version = row.get("version") or 1
         if outcome == "already":
+            from services.ideal_text_core_snapshot import publish_for_arc
+            publish_for_arc(db, str(arc_id))
             return jsonify({"already_verified": True, "arc_id": arc_id,
                             "version": version}), 200
         owner = next(
@@ -2146,6 +2150,8 @@ def v2_coach_verify_ideal_text(arc_id):
             logger.warning("ideal-text annotation capture failed arc=%s: %s "
                            "(non-fatal)", arc_id, _ann_err)
 
+        from services.ideal_text_core_snapshot import publish_for_arc
+        publish_for_arc(db, str(arc_id))
         return jsonify({"verified": True, "arc_id": arc_id,
                         "version": version}), 200
     except Exception as e:
@@ -2228,6 +2234,8 @@ def v2_coach_approve_ideal_text(arc_id):
             logger.warning("ideal-text annotation capture at approve failed "
                            "arc=%s: %s (non-fatal)", arc_id, _ann_err)
 
+        from services.ideal_text_core_snapshot import publish_for_arc
+        publish_for_arc(db, str(arc_id))
         return jsonify({"ok": True, "arc_id": arc_id, "approved": True}), 200
     except Exception as e:
         logger.error("coach ideal-text approve failed arc=%s: %s", arc_id, e,

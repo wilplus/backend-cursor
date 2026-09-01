@@ -132,6 +132,18 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "derived_feedback", 55),
     PurgeDependency("ideal_part_revision", "ideal_text_part_revision", "arc_id",
                     "project", "external_review", "derived_feedback", 300),
+    # Immutable cold-open read model. Heads go first because their restrictive
+    # FK points at snapshots; generations are only durable publication work.
+    # None is legal/training evidence, so all three follow product deletion.
+    PurgeDependency("ideal_document_head", "ideal_text_document_heads",
+                    "arc_id", "project", "delete", "cache", 53),
+    PurgeDependency("ideal_document_snapshot",
+                    "ideal_text_document_snapshots",
+                    "acquisition_principal_id", "principal", "delete",
+                    "cache", 54),
+    PurgeDependency("ideal_document_generation",
+                    "ideal_text_document_generations", "arc_id", "project",
+                    "delete", "processing_queue", 55),
     PurgeDependency("ideal_block_variants", "ideal_text_block_variants", "arc_id",
                     "project", "delete", "derived_feedback", 55),
     PurgeDependency("coach_ideal", "coach_arc_ideal_text", "arc_id", "project",

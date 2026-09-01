@@ -1008,6 +1008,16 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
     except Exception as e:
         logger.warning("pipeline_jobs: coach delivery sweep failed: %s", e)
         counts["coach_deliveries_requeued"] = 0
+    try:
+        from services.ideal_text_core_snapshot import (
+            sweep_pending_publications,
+        )
+        counts["ideal_text_publications_requeued"] = (
+            sweep_pending_publications(db, limit=max_rows))
+    except Exception as e:
+        logger.warning(
+            "pipeline_jobs: Ideal Text publication sweep failed: %s", e)
+        counts["ideal_text_publications_requeued"] = 0
     return counts
 
 
