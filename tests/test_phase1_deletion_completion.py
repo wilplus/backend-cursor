@@ -342,6 +342,20 @@ def test_practice_dependencies_use_the_reviewed_physical_lineage_keys():
     ) == ("practice_attempt_id", "practice_attempt")
 
 
+def test_n1_dependencies_are_acquisition_principal_scoped():
+    by_code = {dependency.code: dependency for dependency in DEPENDENCIES}
+    for code in (
+        "exercise_n1_source_patterns",
+        "exercise_n1_pattern_snapshots",
+        "exercise_n1_pattern_candidates",
+    ):
+        dependency = by_code[code]
+        assert dependency.selector_column == "acquisition_principal_id"
+        assert dependency.locator_kind == "principal"
+        assert dependency.disposition == "external_review"
+    assert "exercise_n1_version_compatibility_profiles" in NON_SUBJECT_RELATIONS
+
+
 def test_subject_graph_keeps_practice_and_m3_lineage_coordinates_separate():
     graph = SubjectGraph(
         principal_ids=("principal-1",), speaker_ids=("speaker-1",),

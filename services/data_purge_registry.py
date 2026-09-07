@@ -504,6 +504,21 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("exercise_requests", "exercise_requests",
                     "acquisition_principal_id", "principal", "external_review",
                     "coach_packet", 300),
+    # N1 pattern results and frozen companion inventories are exact-clip ML
+    # provenance. They remain non-serving/non-dataset, but any matching row
+    # must block ordinary deletion until its canonical purge path is reviewed.
+    PurgeDependency("exercise_n1_source_patterns",
+                    "exercise_n1_source_pattern_results",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_n1_pattern_snapshots",
+                    "exercise_n1_pattern_snapshots",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_n1_pattern_candidates",
+                    "exercise_n1_pattern_candidates",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
 
     # Historical corpora and review stores are frozen or mixed-purpose. They
     # are named explicitly so catalog audit is complete, while their matches
@@ -567,6 +582,7 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "exercise_definitions", "exercise_versions",
     "exercise_catalog_snapshots", "exercise_catalog_snapshot_items",
     "exercise_media_availability_checks",
+    "exercise_n1_version_compatibility_profiles",
     "data_purge_inventory_manifests", "processing_provider_deletion_contracts",
     "processing_provider_deletion_contract_events", "detector_version",
 })
