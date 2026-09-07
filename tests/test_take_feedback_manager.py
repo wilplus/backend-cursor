@@ -61,6 +61,24 @@ def test_fallbacks_are_three_lane_ready_and_do_not_invent_lexical_words():
     assert text[praise["span"]["start"]:praise["span"]["end"]] == praise["quote"]
 
 
+def test_fallbacks_restore_each_family_clip_from_frozen_membership():
+    text = "Actually this sentence has enough words, and it can become clearer. Short and direct."
+    rows = ensure_required_families(
+        text,
+        [_row("cv", "confident_voice", 0, kind="bold",
+              source="confident_voice", snippet_id="live-confidence")],
+        take_session_id="take-1",
+        snippet_id="rebuilt-representative",
+        snippet_ids_by_family={
+            "rewrite_clarity": "frozen-rewrite",
+            "great_formulation": "frozen-praise",
+        },
+    )
+    by_family = {row["feedback_family"]: row for row in rows}
+    assert by_family["rewrite_clarity"]["snippet_id"] == "frozen-rewrite"
+    assert by_family["great_formulation"]["snippet_id"] == "frozen-praise"
+
+
 def test_structural_deletion_scar_competes_even_when_a_rewrite_already_exists():
     text = (
         "I need it to be modern, so I don't want. "

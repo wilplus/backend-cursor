@@ -102,6 +102,16 @@ def has_required_families(keys: Any) -> bool:
     )
 
 
+def snippet_ids_by_family(keys: Any) -> dict[str, str]:
+    """Return the exact clip identities already frozen for each family."""
+    return {
+        str(key["feedback_family"]): str(key["snippet_id"])
+        for key in sanitize_selected_keys(keys)
+        if key.get("feedback_family") in REQUIRED_FAMILIES
+        and key.get("snippet_id")
+    }
+
+
 def filter_to_selected(changes: Iterable[Any], keys: Any) -> list[dict]:
     """Keep current payload rows whose immutable membership key was claimed."""
     allowed = {
