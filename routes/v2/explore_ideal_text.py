@@ -500,6 +500,46 @@ def v2_explore_get_ideal_text_core(arc_id):
     return response
 
 
+@v2_bp.route("/explore/arc/<arc_id>/recording-roots", methods=["GET"])
+@require_auth
+def v2_explore_get_recording_roots(arc_id):
+    """Live committed roots, bound to the current immutable document.
+
+    Root choice is product state, not document content and not an ML label.
+    The immutable core owns exact Paragraph -> Slide lineage; current part rows
+    own the latest lock/root choice.  The projection refuses any identity or
+    content mismatch rather than guessing where a phrase belongs.
+    """
+    owned, _sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    actor_id = str(request.user_id)
+    snapshot = db.get_ideal_text_document_core(arc_id, actor_id)
+    if not snapshot:
+        return jsonify({
+            "code": "IDEAL_TEXT_DOCUMENT_PENDING",
+            "state": "pending",
+        }), 404
+    from services.recording_roots import (
+        RecordingRootsStale,
+        project_recording_roots,
+    )
+    try:
+        roots = project_recording_roots(
+            snapshot,
+            db.get_ideal_text_parts(arc_id, actor_id, with_lock=True),
+        )
+    except RecordingRootsStale as error:
+        return jsonify({"code": str(error)}), 409
+    response = jsonify({
+        "document_snapshot_id": str(snapshot.get("id")),
+        "document_snapshot_sha256": snapshot.get("payload_sha256"),
+        "roots": roots,
+    })
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/enrichment", methods=["GET"])
 @require_auth
 def v2_explore_get_ideal_text_enrichment(arc_id):
