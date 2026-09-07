@@ -2300,6 +2300,19 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # document slices; they invent neither lexical content nor certainty.
         # This full pool, not merely the winners, is snapshotted for later
         # ranking evaluation.
+        from services.take_feedback_set import (
+            claim_feedback_set,
+            filter_candidates_to_selected,
+            filter_to_selected,
+            has_required_families,
+            load_feedback_set,
+            selected_keys,
+            snippet_ids_by_family,
+        )
+        _feedback_set = (
+            load_feedback_set(db, str(arc_id), _arm_sid)
+            if _take_contract_on and _arm_sid else None
+        )
         if _take_contract_on and _arm_sid:
             for _candidate in changes:
                 if not isinstance(_candidate, dict):
@@ -2307,17 +2320,20 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                 _family = feedback_family_of(_candidate)
                 if _family:
                     _candidate["feedback_family"] = _family
-            _candidate_sid = (
-                (_review_evidence_piece or {}).get("snippet_id")
-                if isinstance(_review_evidence_piece, dict) else None
-            )
-            if not _candidate_sid:
-                _current_doc = locals().get("_review_doc")
-                _candidate_sid = next((
-                    p.get("snippet_id")
-                    for p in ((_current_doc or {}).get("pieces") or [])
-                    if isinstance(p, dict) and p.get("snippet_id")
-                ), None)
+            # Text-lane fallback provenance must not move when the owner
+            # answers a Confident Voice card.  Use the exact family clips from
+            # an existing immutable set; for a new set use the first persisted
+            # source piece, whose identity is stable across GETs.
+            _frozen_family_snippets = snippet_ids_by_family(
+                (_feedback_set or {}).get("selected_keys"))
+            _current_doc = locals().get("_review_doc")
+            _candidate_sid = next((
+                p.get("snippet_id")
+                for p in ((_current_doc or {}).get("pieces") or [])
+                if isinstance(p, dict) and p.get("snippet_id")
+            ), None)
+            _rewrite_sid = _frozen_family_snippets.get(
+                "rewrite_clarity", _candidate_sid)
             from services.take_feedback_manager import (
                 evidence_backed_rewrite_candidates,
                 ensure_required_families,
@@ -2330,13 +2346,14 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             changes.extend(evidence_backed_rewrite_candidates(
                 served_text,
                 take_session_id=_arm_sid,
-                snippet_id=_candidate_sid,
+                snippet_id=_rewrite_sid,
             ))
             changes = ensure_required_families(
                 served_text,
                 changes,
                 take_session_id=_arm_sid,
                 snippet_id=_candidate_sid,
+                snippet_ids_by_family=_frozen_family_snippets,
             )
             _feedback_exposure = exposure_snapshot(changes)
         else:
@@ -2400,18 +2417,6 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
         # Manager result is claimed in the database; every later GET may only
         # rebuild those identities. Playback URLs refresh and decided items
         # disappear, but accepting item one can never reveal item four.
-        from services.take_feedback_set import (
-            claim_feedback_set,
-            filter_candidates_to_selected,
-            filter_to_selected,
-            has_required_families,
-            load_feedback_set,
-            selected_keys,
-        )
-        _feedback_set = (
-            load_feedback_set(db, str(arc_id), _arm_sid)
-            if _take_contract_on and _arm_sid else None
-        )
         _feedback_response_count = 0
         if _feedback_set is not None:
             changes = filter_candidates_to_selected(

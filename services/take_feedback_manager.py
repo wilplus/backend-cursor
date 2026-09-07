@@ -276,6 +276,7 @@ def ensure_required_families(
     *,
     take_session_id: Any,
     snippet_id: Any,
+    snippet_ids_by_family: Optional[dict[str, Any]] = None,
 ) -> list[dict]:
     """Add honest weak fallbacks only for genuinely absent text lanes.
 
@@ -285,6 +286,11 @@ def ensure_required_families(
     """
     text = served_text if isinstance(served_text, str) else ""
     sid = str(snippet_id or "")
+    family_snippets = {
+        str(family): str(value)
+        for family, value in (snippet_ids_by_family or {}).items()
+        if family in FAMILIES and value
+    }
     take = str(take_session_id or "")
     rows = [dict(row) for row in (changes or []) if isinstance(row, dict)]
     present = {
@@ -306,7 +312,7 @@ def ensure_required_families(
                 continue
             rows.append({
                 "id": _stable_id("rewrite-review", take, quote),
-                "snippet_id": sid,
+                "snippet_id": family_snippets.get("rewrite_clarity", sid),
                 "take_session_id": take,
                 "kind": "replace",
                 "source": "wording",
@@ -334,7 +340,7 @@ def ensure_required_families(
         )
         rows.append({
             "id": _stable_id("praise-review", take, quote),
-            "snippet_id": sid,
+            "snippet_id": family_snippets.get("great_formulation", sid),
             "take_session_id": take,
             "kind": "advice",
             "source": "structural",
