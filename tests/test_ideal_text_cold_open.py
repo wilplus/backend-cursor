@@ -32,6 +32,7 @@ def test_stable_paragraph_identity_carries_proven_slide_lineage():
     )
     assert pieces == [{
         "piece_key": 0,
+        "part_id": "p-1",
         "text": "After.",
         "root_phrase": "After",
         "root_type": "flagship",
@@ -54,6 +55,39 @@ def test_new_paragraph_identity_never_guesses_a_slide():
             "parts": [{"id": "old-id", "text": "Before."}],
             "pieces": [{"slide_index": 4}],
         },
+    )
+    assert pieces[0]["slide_index"] is None
+
+
+def test_legacy_first_edit_preserves_slide_slots_when_structure_is_unchanged():
+    pieces = core._exact_pieces(  # noqa: SLF001 - pure contract test
+        {
+            "auto_text": "Original one.\n\nOriginal two.",
+            "document": {"paragraphs": [
+                {"slide_index": 0, "snippet_id": "s-1"},
+                {"slide_index": 1, "snippet_id": "s-2"},
+            ]},
+        },
+        "Edited one.\n\nOriginal two.",
+        [
+            {"id": "p-1", "text": "Edited one."},
+            {"id": "p-2", "text": "Original two."},
+        ],
+    )
+    assert [(piece["part_id"], piece["slide_index"])
+            for piece in pieces] == [("p-1", 0), ("p-2", 1)]
+
+
+def test_legacy_first_edit_refuses_structural_slide_guess():
+    pieces = core._exact_pieces(  # noqa: SLF001 - pure contract test
+        {
+            "auto_text": "Original one.\n\nOriginal two.",
+            "document": {"paragraphs": [
+                {"slide_index": 0}, {"slide_index": 1},
+            ]},
+        },
+        "Merged and changed.",
+        [{"id": "new", "text": "Merged and changed."}],
     )
     assert pieces[0]["slide_index"] is None
 

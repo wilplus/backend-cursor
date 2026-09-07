@@ -679,10 +679,15 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
         },
         "learning": learning_section,
     }
+    # The first enrichment read keeps the cold-open budget tight.  A client
+    # retry names only the sections that reported retryable; give that focused
+    # request enough time to finish the Manager/database work instead of
+    # repeatedly detaching the same reader at the two-second boundary.
+    enrichment_timeout = 8.0 if requested_raw else 2.0
     sections, timings = run_sections({
         name: reader for name, reader in readers.items()
         if name in requested_sections
-    })
+    }, timeout_seconds=enrichment_timeout)
     # Optional readers run concurrently and can outlive the snapshot check at
     # the top of this request.  Re-read the generation-fenced core after every
     # reader has settled.  A source mutation during enrichment must return a
