@@ -113,12 +113,19 @@ def _exact_pieces(
     paragraphs = [part.strip() for part in text.split("\n\n") if part.strip()]
     document = row.get("document") if isinstance(row.get("document"), dict) else {}
     provenance = document.get("paragraphs") if isinstance(document, dict) else []
+    provenance_rows: list[Mapping[str, Any]] | None = (
+        provenance
+        if isinstance(provenance, list)
+        and all(isinstance(item, Mapping) for item in provenance)
+        else None
+    )
+    part_rows = parts or []
     source_text = str(row.get("auto_text") or row.get("text") or "").strip()
     source_paragraphs = [part.strip() for part in source_text.split("\n\n")
                          if part.strip()]
     aligned = (
-        isinstance(provenance, list)
-        and len(provenance) == len(paragraphs) == len(source_paragraphs)
+        provenance_rows is not None
+        and len(provenance_rows) == len(paragraphs) == len(source_paragraphs)
         and source_paragraphs == paragraphs
     )
     previous_by_part: dict[str, Mapping[str, Any]] = {}
@@ -135,20 +142,40 @@ def _exact_pieces(
                 if old_id:
                     previous_by_part[old_id] = old_piece
 
+    # Compatibility adoption for documents first edited before the immutable
+    # core began returning stored Paragraph identity.  The only live edit
+    # surface mutates the existing Paragraph slots in place: it cannot insert,
+    # delete, split, merge, or reorder them.  Under that contract equal counts
+    # prove that slot N is still the same Slide-bounded Paragraph even when its
+    # wording changed.  This repairs those already-saved documents once; from
+    # the next snapshot onward `part_id` is carried explicitly and this branch
+    # is no longer needed for that document.  Any structural ambiguity fails
+    # closed to the unlinked "Your talk" view.
+    ordinal_adoption = (
+        bool(part_rows)
+        and provenance_rows is not None
+        and len(part_rows) == len(paragraphs) == len(source_paragraphs)
+        and len(provenance_rows) == len(paragraphs)
+    )
+
     out: list[dict[str, Any]] = []
     for index, paragraph in enumerate(paragraphs):
-        part = parts[index] if parts and index < len(parts) else {}
+        part = part_rows[index] if index < len(part_rows) else {}
         previous = previous_by_part.get(str(part.get("id") or ""), {})
         source: Mapping[str, Any] = previous
-        if aligned and isinstance(provenance, list):
-            candidate = provenance[index]
-            if isinstance(candidate, Mapping):
-                source = candidate
+        if aligned and provenance_rows is not None:
+            source = provenance_rows[index]
+        elif not source and ordinal_adoption:
+            # See the compatibility proof above.  Never use this when a
+            # stable-id mapping exists: durable identity always wins.
+            assert provenance_rows is not None
+            source = provenance_rows[index]
         slide = source.get("slide_index")
         if isinstance(slide, bool) or not isinstance(slide, int) or slide < 0:
             slide = None
         out.append({
             "piece_key": index,
+            "part_id": part.get("id"),
             "text": paragraph,
             "root_phrase": part.get("root_phrase"),
             "root_type": "flagship" if part.get("root_phrase") else None,
@@ -351,4 +378,3 @@ def publish_for_arc(database: Any, arc_id: str,
                     arc_id, enqueue_error,
                 )
         return None
-
