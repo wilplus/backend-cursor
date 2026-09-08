@@ -34,6 +34,17 @@ class RaterLanguageContractTests(unittest.TestCase):
             {}, snippets=[{"transcript": "To jest po polsku"}],
         ))
 
+    def test_explicit_provider_language_names_normalize_to_iso(self):
+        self.assertEqual(session_language(
+            {}, recording={"transcription_language": "English"},
+        ), "en")
+        self.assertEqual(session_language(
+            {}, snippets=[{"language": "Polish"}],
+        ), "pl")
+        self.assertIsNone(session_language(
+            {}, snippets=[{"language": "unrecognized-provider-value"}],
+        ))
+
     def test_routing_requires_an_exact_match(self):
         self.assertTrue(can_rate_language(["en", "pl"], "PL"))
         self.assertFalse(can_rate_language(["en"], "pl"))

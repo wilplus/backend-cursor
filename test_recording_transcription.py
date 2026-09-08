@@ -137,6 +137,26 @@ class RecordingTranscriptionTests(unittest.TestCase):
 
         self.assertEqual(result.words_all[0]["word"], "Kept")
 
+    def test_provider_language_is_persisted_without_text_inference(self):
+        service = MagicMock()
+        service.client = True
+        service.transcribe_audio.return_value = {
+            "duration": 20,
+            "language": "English",
+            "segments": [],
+            "words": [{"word": "Kept", "start": 0.0, "end": 0.2}],
+        }
+        modules, _, _ = self._dependencies(service)
+
+        with patch.dict(sys.modules, modules), patch(
+            "services.db.db.set_recording_transcription_language_if_missing",
+            return_value="en",
+        ) as persist:
+            result = rt.transcribe_recording(self._state(session_context={}))
+
+        self.assertEqual(result.words_all[0]["word"], "Kept")
+        persist.assert_called_once_with("recording-1", "en")
+
     def test_provider_failure_returns_empty_transcription_state(self):
         service = MagicMock()
         service.client = True
@@ -192,4 +212,3 @@ class RecordingTranscriptionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
