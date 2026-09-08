@@ -1,5 +1,6 @@
 import uuid
 
+from services.db import DatabaseService
 from services.feedback_data_contract import (
     TAXONOMY_VERSION,
     blind_packet_hash,
@@ -9,6 +10,7 @@ from services.feedback_data_contract import (
     canonical_root_phrase_skip,
     canonical_feedback_decision,
 )
+from tests.fakes import FakeSupabaseClient
 
 
 OWNER_ID = "10000000-0000-0000-0000-000000000001"
@@ -174,12 +176,18 @@ def test_fallback_and_source_target_mismatch_are_research_only():
 
 
 def test_typed_decisions_never_infer_editor_open_as_a_preference():
+    exact = {
+        "candidate_id": "33333333-3333-4333-8333-333333333333",
+        "feedback_membership_id": "44444444-4444-4444-8444-444444444444",
+        "feedback_exposure_id": "55555555-5555-4555-8555-555555555555",
+    }
     assert canonical_feedback_decision(
         take_id=TAKE_ID,
         rater_id=OWNER_ID,
         feedback_id="rewrite-1",
         feedback_family="rewrite_clarity",
         response="edit_myself",
+        **exact,
     ) is None
     accepted = canonical_feedback_decision(
         take_id=TAKE_ID,
@@ -187,6 +195,7 @@ def test_typed_decisions_never_infer_editor_open_as_a_preference():
         feedback_id="rewrite-1",
         feedback_family="rewrite_clarity",
         response="apply_suggestion",
+        **exact,
     )
     assert accepted["value"] == "accept_proposed"
     assert accepted["taxonomy_version"] == TAXONOMY_VERSION
@@ -196,7 +205,58 @@ def test_typed_decisions_never_infer_editor_open_as_a_preference():
         feedback_id="rewrite-1",
         feedback_family="rewrite_clarity",
         response="apply_suggestion",
+        **exact,
     )
+    assert canonical_feedback_decision(
+        take_id=TAKE_ID,
+        rater_id=OWNER_ID,
+        feedback_id="rewrite-1",
+        feedback_family="rewrite_clarity",
+        response="apply_suggestion",
+    ) is None
+    regenerated = canonical_feedback_decision(
+        take_id=TAKE_ID,
+        rater_id=OWNER_ID,
+        feedback_id="rewrite-1",
+        feedback_family="rewrite_clarity",
+        response="apply_suggestion",
+        **{**exact, "candidate_id": "66666666-6666-4666-8666-666666666666"},
+    )
+    assert regenerated is not None
+    assert regenerated["idempotency_key"] != accepted["idempotency_key"]
+
+
+def test_database_writer_uses_exact_candidate_membership_and_exposure():
+    client = FakeSupabaseClient(rpc_rows={
+        "record_feedback_human_decision_v1": [{"decision_id": "decision-1"}],
+    })
+    database = DatabaseService.__new__(DatabaseService)
+    database.client = client
+    exact = {
+        "candidate_id": "33333333-3333-4333-8333-333333333333",
+        "feedback_membership_id": "44444444-4444-4444-8444-444444444444",
+        "feedback_exposure_id": "55555555-5555-4555-8555-555555555555",
+    }
+    decision = canonical_feedback_decision(
+        take_id=TAKE_ID,
+        rater_id=OWNER_ID,
+        feedback_id="same-display-key",
+        feedback_family="rewrite_clarity",
+        response="apply_suggestion",
+        **exact,
+    )
+    assert decision is not None
+    assert database.record_canonical_feedback_decision(
+        project_id=PROJECT_ID,
+        take_id=TAKE_ID,
+        rater_id=OWNER_ID,
+        decision=decision,
+    ) == {"decision_id": "decision-1"}
+    payload = client.rpcs["record_feedback_human_decision_v1"].calls[0][1][1]
+    assert payload["p_candidate_id"] == exact["candidate_id"]
+    assert payload["p_feedback_membership_id"] == exact["feedback_membership_id"]
+    assert payload["p_feedback_exposure_id"] == exact["feedback_exposure_id"]
+    assert "p_feedback_id" not in payload
 
 
 def test_blind_packet_hash_ignores_forbidden_ratings_and_predictions():

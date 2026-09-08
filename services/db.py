@@ -11637,7 +11637,11 @@ class DatabaseService:
                 "p_project_id": str(project_id),
                 "p_take_id": str(take_id),
                 "p_rater_id": str(rater_id),
-                "p_feedback_id": str(decision["feedback_id"]),
+                "p_feedback_membership_id": str(
+                    decision["feedback_membership_id"]),
+                "p_candidate_id": str(decision["candidate_id"]),
+                "p_feedback_exposure_id": str(
+                    decision["feedback_exposure_id"]),
                 "p_feedback_family": str(decision["feedback_family"]),
                 "p_value": str(decision["value"]),
                 "p_taxonomy_version": str(decision["taxonomy_version"]),

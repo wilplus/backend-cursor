@@ -131,6 +131,10 @@ from routes.v2.user_account import (  # noqa: F401 — re-exported for import co
 from routes.v2.mlc2_consent import (  # noqa: F401 — re-exported for import compat
     v2_user_mlc2_consent,
 )
+from routes.v2.rooting_phrase_qualification import (  # noqa: F401
+    v2_rooting_phrase_qualification,
+    v2_rooting_phrase_qualification_action,
+)
 from routes.v2.processing_authorization import (  # noqa: F401
     v2_processing_ai_rendered,
     v2_processing_authorization,

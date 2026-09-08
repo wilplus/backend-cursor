@@ -542,6 +542,9 @@ def build_feedback_exposure_bundle(
 def canonical_feedback_decision(
     *, take_id: str, rater_id: str, feedback_id: str,
     feedback_family: str, response: str,
+    candidate_id: Optional[str] = None,
+    feedback_membership_id: Optional[str] = None,
+    feedback_exposure_id: Optional[str] = None,
 ) -> Optional[dict]:
     """Map a UI action to one typed judgment without semantic inference.
 
@@ -552,10 +555,24 @@ def canonical_feedback_decision(
     value = _DECISION_MAP.get((feedback_family, response))
     if value is None:
         return None
+    exact_ids = (
+        candidate_id, feedback_membership_id, feedback_exposure_id,
+    )
+    if any(value is None for value in exact_ids):
+        return None
+    try:
+        canonical_candidate_id = str(uuid.UUID(str(candidate_id)))
+        canonical_membership_id = str(uuid.UUID(str(feedback_membership_id)))
+        canonical_exposure_id = str(uuid.UUID(str(feedback_exposure_id)))
+    except (TypeError, ValueError):
+        return None
     key_payload = {
         "take_id": take_id,
         "rater_id": rater_id,
         "feedback_id": feedback_id,
+        "candidate_id": canonical_candidate_id,
+        "feedback_membership_id": canonical_membership_id,
+        "feedback_exposure_id": canonical_exposure_id,
         "feedback_family": feedback_family,
         "value": value,
         "taxonomy_version": TAXONOMY_VERSION,
