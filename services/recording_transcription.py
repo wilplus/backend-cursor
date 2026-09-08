@@ -206,6 +206,28 @@ def transcribe_recording(
         transcription = transcription or {}
         segments = list(transcription.get("segments") or [])
         words = list(transcription.get("words") or [])
+        # Persist the provider's explicit language result. Without this, a
+        # successfully transcribed live Take later reaches the blind-review
+        # router as ``language_unknown``. This never infers from transcript
+        # text and never overwrites previously frozen language evidence.
+        from services.rater_languages import normalize_provider_language
+        detected_language = normalize_provider_language(
+            transcription.get("language")
+        )
+        if detected_language:
+            stored_language = db.set_recording_transcription_language_if_missing(
+                state.recording_id,
+                detected_language,
+            )
+            if stored_language != detected_language:
+                log.warning(
+                    "recording language was not persisted or conflicts "
+                    "sid=%s recording_id=%s detected=%s stored=%s",
+                    state.session_id,
+                    state.recording_id,
+                    detected_language,
+                    stored_language,
+                )
         _settle_transcription_charge(state, transcription, log=log)
     except Exception as error:
         from services.processing_authorization import ProcessingAuthorizationError

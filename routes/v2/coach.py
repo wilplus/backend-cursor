@@ -199,7 +199,7 @@ def _rater_language_outcome(session, snippets=None, proficient=None):
     return evaluate_rater_access(proficient, language), language
 
 
-def _rater_language_error(outcome):
+def _rater_language_error(outcome, language=None):
     """HTTP workflow response for a non-routable blind-label request."""
     if outcome == "profile_required":
         return jsonify({
@@ -215,6 +215,7 @@ def _rater_language_error(outcome):
         return jsonify({
             "code": "RATER_LANGUAGE_MISMATCH",
             "error": "This clip is not in one of your selected languages.",
+            "language": language,
         }), 409
     return None
 
@@ -782,7 +783,7 @@ def v2_coach_get_session(session_id):
         snippets_for_language = db.get_snippets_by_session(session_id) or []
         language_outcome, _language = _rater_language_outcome(
             session, snippets_for_language)
-        language_error = _rater_language_error(language_outcome)
+        language_error = _rater_language_error(language_outcome, _language)
         if language_error is not None:
             return language_error
 
@@ -3446,6 +3447,92 @@ def v2_coach_confidence_queue(session_id):
         logger.warning("confidence queue failed sid=%s: %s", session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not load the queue"}), 500
+
+
+@v2_bp.route("/coach/sessions/<session_id>/language", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_confirm_session_language(session_id):
+    """Confirm routing language for a historical Take with missing metadata.
+
+    Language is routing metadata, never a confidence judgment. Existing
+    provider or coach evidence is immutable through this endpoint: an exact
+    replay succeeds and a competing value fails closed.
+    """
+    try:
+        from services.rater_languages import normalize_language, session_language
+
+        body = request.get_json(silent=True) or {}
+        language = normalize_language(body.get("language"))
+        if not language:
+            return jsonify({
+                "code": "INVALID_LANGUAGE",
+                "error": "language must be a two-letter ISO code",
+            }), 422
+
+        sess = db.v2_get_session_by_id(str(session_id))
+        if not sess:
+            return jsonify({"code": "NOT_FOUND", "error": "session not found"}), 404
+        recording_id = str(sess.get("recording_1_id") or "")
+        recording = db.get_recording(recording_id) if recording_id else None
+        if not recording:
+            return jsonify({
+                "code": "RECORDING_NOT_FOUND",
+                "error": "the Take has no canonical recording",
+            }), 409
+
+        current = session_language(sess, recording=recording, snippets=[])
+        if current:
+            if current != language:
+                return jsonify({
+                    "code": "CLIP_LANGUAGE_ALREADY_SET",
+                    "error": "the recording already has a different verified language",
+                    "language": current,
+                }), 409
+            return jsonify({
+                "session_id": str(session_id),
+                "language": current,
+                "replayed": True,
+            }), 200
+
+        stored = db.set_recording_transcription_language_if_missing(
+            recording_id,
+            language,
+        )
+        if stored != language:
+            if stored:
+                return jsonify({
+                    "code": "CLIP_LANGUAGE_ALREADY_SET",
+                    "error": "the recording language changed while it was being confirmed",
+                    "language": stored,
+                }), 409
+            return jsonify({
+                "code": "LANGUAGE_CONFIRMATION_FAILED",
+                "error": "the recording language could not be saved",
+            }), 500
+
+        logger.info(
+            "coach confirmed historical recording language sid=%s "
+            "recording_id=%s language=%s actor=%s",
+            session_id,
+            recording_id,
+            language,
+            getattr(request, "user_id", None),
+        )
+        return jsonify({
+            "session_id": str(session_id),
+            "language": language,
+            "replayed": False,
+        }), 200
+    except Exception as error:
+        logger.warning(
+            "coach language confirmation failed sid=%s err=%s",
+            session_id,
+            error,
+        )
+        return jsonify({
+            "code": "SERVER_ERROR",
+            "error": "could not confirm the recording language",
+        }), 500
 
 
 @v2_bp.route(

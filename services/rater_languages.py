@@ -14,12 +14,37 @@ from typing import Any
 _ISO_639_1 = re.compile(r"^[a-z]{2}$")
 MAX_LANGUAGES = 20
 
+# Whisper verbose responses have used both ISO codes (``en``) and English
+# names (``english``). These are explicit provider values, not guesses from
+# transcript text. Unknown names remain fail-closed.
+_PROVIDER_LANGUAGE_NAMES = {
+    "czech": "cs",
+    "dutch": "nl",
+    "english": "en",
+    "french": "fr",
+    "german": "de",
+    "italian": "it",
+    "polish": "pl",
+    "portuguese": "pt",
+    "spanish": "es",
+    "swedish": "sv",
+    "ukrainian": "uk",
+}
+
 
 def normalize_language(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     code = value.strip().lower()
     return code if _ISO_639_1.fullmatch(code) else None
+
+
+def normalize_provider_language(value: Any) -> str | None:
+    """Normalize an explicit transcription-provider language value."""
+    if not isinstance(value, str):
+        return None
+    raw = value.strip().lower()
+    return normalize_language(_PROVIDER_LANGUAGE_NAMES.get(raw, raw))
 
 
 def validate_proficient_languages(value: Any) -> tuple[list[str] | None, str | None]:
@@ -55,12 +80,12 @@ def session_language(
         return explicit
 
     rec = recording if isinstance(recording, dict) else {}
-    detected = normalize_language(rec.get("transcription_language"))
+    detected = normalize_provider_language(rec.get("transcription_language"))
     if detected:
         return detected
 
     observed = [
-        normalize_language(item.get("language"))
+        normalize_provider_language(item.get("language"))
         for item in (snippets or [])
         if isinstance(item, dict)
     ]

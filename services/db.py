@@ -554,6 +554,45 @@ class DatabaseService:
             if "column" in error_msg.lower() and "does not exist" in error_msg.lower():
                 raise Exception(f"Database schema error: {error_msg}. Please ensure all required columns exist in the recordings table.")
             raise
+
+    def set_recording_transcription_language_if_missing(
+        self,
+        recording_id: str,
+        language: str,
+    ) -> Optional[str]:
+        """Freeze one recording language without overwriting prior evidence.
+
+        The conditional update is the concurrency boundary. Exact retries are
+        idempotent; competing values preserve and return the committed winner
+        so callers can fail closed instead of silently relabelling audio.
+        """
+        if not recording_id or not language:
+            return None
+        try:
+            from services.rater_languages import normalize_provider_language
+
+            result = (
+                self.client.table("recordings")
+                .update({"transcription_language": language})
+                .eq("id", recording_id)
+                .is_("transcription_language", "null")
+                .execute()
+            )
+            if result.data:
+                return normalize_provider_language(
+                    result.data[0].get("transcription_language")
+                )
+            current = self.get_recording(recording_id)
+            value = current.get("transcription_language") if current else None
+            return normalize_provider_language(value)
+        except Exception as error:
+            logger.warning(
+                "set_recording_transcription_language_if_missing failed "
+                "recording_id=%s err=%s",
+                recording_id,
+                error,
+            )
+            return None
     
     def get_recording(self, recording_id: str, user_id: str = None):
         """Get a recording by ID, optionally verifying ownership"""
