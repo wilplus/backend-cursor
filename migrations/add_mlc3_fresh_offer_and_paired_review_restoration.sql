@@ -1,5 +1,5 @@
--- MLC-3 P2 fresh-offer, paired-review, and post-blind authoring restoration.
--- Pending, unassigned, synthetic-only, non-serving, and non-dataset.
+-- 0320: MLC-3 P2 fresh-offer, paired-review, and post-blind authoring
+-- restoration. Synthetic-only, non-serving, and non-dataset.
 
 BEGIN;
 
@@ -952,6 +952,20 @@ DROP TRIGGER IF EXISTS exercise_service_event_exposure_disabled
 CREATE TRIGGER exercise_service_event_exposure_disabled
 BEFORE INSERT ON public.exercise_service_offer_events FOR EACH ROW
 EXECUTE FUNCTION public.reject_exercise_service_event_exposure_v1();
+
+-- Keep these declarations explicit as well as applying the shared policy loop
+-- below.  This makes the security boundary auditable by the migration scanner
+-- and prevents a newly added table from being mistaken for an implicit RLS
+-- dependency.
+ALTER TABLE public.exercise_service_offers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_service_offer_candidates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_service_offer_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_pair_revisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_pair_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_pair_judgments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_reviewer_context_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_service_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercise_authoring_drafts ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE relation_name TEXT;

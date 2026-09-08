@@ -1,4 +1,4 @@
--- Feedback Policy V3 service contract restoration. Pending and unassigned.
+-- 0318: Feedback Policy V3 service contract restoration.
 -- The schema is executable only through synthetic RPCs and structurally
 -- cannot serve or create learning-eligible records in this release.
 

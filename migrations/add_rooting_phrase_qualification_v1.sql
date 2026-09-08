@@ -1,4 +1,4 @@
--- Rooting Phrase Qualification V1. Pending and deliberately unassigned.
+-- 0321: Rooting Phrase Qualification V1.
 -- Product-routing only: no judgment, supervision, exposure, or dataset rows.
 -- All writers remain synthetic-only and no runtime route is enabled.
 
@@ -654,6 +654,10 @@ BEGIN
   IF TG_OP='DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
 END $$;
+
+-- Trigger-only infrastructure: no application role may invoke this directly.
+REVOKE ALL ON FUNCTION public.advance_ideal_text_document_generation_v1()
+    FROM PUBLIC,anon,authenticated,service_role;
 
 DROP TRIGGER IF EXISTS ideal_text_part_advances_document_generation
   ON public.ideal_text_part;
@@ -1815,6 +1819,14 @@ BEGIN
         'serves_user',false);
 END;
 $$;
+
+ALTER TABLE public.root_phrase_content_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.root_phrase_semantic_input_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.root_phrase_semantic_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.root_phrase_owner_alignment_actions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.root_phrase_qualification_revisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.root_phrase_product_actions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.root_phrase_block_heads ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE relation_name TEXT;

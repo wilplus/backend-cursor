@@ -10,16 +10,16 @@ from services.rooting_phrase_qualification_v1 import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RPQ_SQL = (ROOT / "migrations/pending/add_rooting_phrase_qualification_v1.sql").read_text()
+RPQ_SQL = (ROOT / "migrations/add_rooting_phrase_qualification_v1.sql").read_text()
 P1_SQL = (
-    ROOT / "migrations/pending/add_mlc3_practice_foundation_restoration.sql"
+    ROOT / "migrations/add_mlc3_practice_foundation_restoration.sql"
 ).read_text()
 P2_SQL = (
     ROOT
-    / "migrations/pending/add_mlc3_fresh_offer_and_paired_review_restoration.sql"
+    / "migrations/add_mlc3_fresh_offer_and_paired_review_restoration.sql"
 ).read_text()
 V3_SQL = (
-    ROOT / "migrations/pending/add_feedback_v3_serving_restoration.sql"
+    ROOT / "migrations/add_feedback_v3_serving_restoration.sql"
 ).read_text()
 MANIFEST = (ROOT / "migrations/manifest.txt").read_text()
 
@@ -30,13 +30,13 @@ def test_runtime_and_all_persisted_surfaces_are_structurally_disabled():
     for sql in (RPQ_SQL, P1_SQL, P2_SQL, V3_SQL):
         assert "serves_user BOOLEAN NOT NULL DEFAULT false CHECK (NOT serves_user)" in sql
         assert "dataset_eligible BOOLEAN NOT NULL DEFAULT false CHECK (NOT dataset_eligible)" in sql
-    for filename in (
-        "add_rooting_phrase_qualification_v1.sql",
-        "add_mlc3_practice_foundation_restoration.sql",
-        "add_mlc3_fresh_offer_and_paired_review_restoration.sql",
-        "add_feedback_v3_serving_restoration.sql",
+    for entry in (
+        "0318\tadd_feedback_v3_serving_restoration.sql",
+        "0319\tadd_mlc3_practice_foundation_restoration.sql",
+        "0320\tadd_mlc3_fresh_offer_and_paired_review_restoration.sql",
+        "0321\tadd_rooting_phrase_qualification_v1.sql",
     ):
-        assert filename not in MANIFEST
+        assert entry in MANIFEST
 
 
 @pytest.mark.parametrize(

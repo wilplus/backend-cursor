@@ -353,3 +353,7 @@
 0315	add_ideal_text_core_snapshot.sql
 0316	fix_ideal_text_core_pgcrypto_search_path.sql
 0317	add_mlc3_n1_source_pattern_provenance.sql
+0318	add_feedback_v3_serving_restoration.sql
+0319	add_mlc3_practice_foundation_restoration.sql
+0320	add_mlc3_fresh_offer_and_paired_review_restoration.sql
+0321	add_rooting_phrase_qualification_v1.sql

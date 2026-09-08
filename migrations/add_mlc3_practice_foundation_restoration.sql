@@ -1,4 +1,4 @@
--- MLC-3 P1/P2 restoration. Pending and deliberately unassigned.
+-- 0319: MLC-3 P1/P2 practice foundation restoration.
 --
 -- This is the canonical product-practice evidence boundary consumed by RPQ.
 -- It does not serve an exercise, expose a user, or make a learning label.
