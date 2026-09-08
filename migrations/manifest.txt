@@ -357,3 +357,4 @@
 0319	add_mlc3_practice_foundation_restoration.sql
 0320	add_mlc3_fresh_offer_and_paired_review_restoration.sql
 0321	add_rooting_phrase_qualification_v1.sql
+0322	add_coach_guidance_delivery_d3.sql

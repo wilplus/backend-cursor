@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 _RATING_VALUES = (
     "yes", "in_between", "no", "not_sure", "audio_unclear",
     # Historical v1 rows remain valid completed labels.
@@ -52,6 +51,30 @@ def reveal_transcript_after_commit(transcript: Any, *, committed: bool) -> str:
     if not committed:
         return ""
     return transcript if isinstance(transcript, str) else ""
+
+
+def reveal_acoustic_features_after_commit(
+    features: Any, *, committed: bool
+) -> dict | None:
+    """Release raw acoustic reference data only after the blind answer.
+
+    Returning ``None`` rather than an empty feature object before commitment
+    keeps the data out of the wire payload altogether. The caller remains
+    responsible for supplying the canonical, display-only feature projection.
+    """
+    if not committed or not isinstance(features, dict):
+        return None
+    return dict(features)
+
+
+def can_reveal_acoustic_features(rows: Any, *, requested: bool) -> bool:
+    """Whether a second-pass queue may contain any acoustic measurements."""
+    if not requested or not isinstance(rows, list):
+        return False
+    return all(
+        isinstance(row, dict) and row.get("label") is not None
+        for row in rows
+    )
 
 
 def redact_contextual_snippets(snippets: Any) -> list[dict]:

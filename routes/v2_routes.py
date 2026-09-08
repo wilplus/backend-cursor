@@ -135,6 +135,12 @@ from routes.v2.rooting_phrase_qualification import (  # noqa: F401
     v2_rooting_phrase_qualification,
     v2_rooting_phrase_qualification_action,
 )
+from routes.v2.coach_guidance_delivery import (  # noqa: F401
+    v2_coach_guidance_attachment,
+    v2_coach_guidance_batch,
+    v2_coach_guidance_event,
+    v2_coach_guidance_publication,
+)
 from routes.v2.processing_authorization import (  # noqa: F401
     v2_processing_ai_rendered,
     v2_processing_authorization,

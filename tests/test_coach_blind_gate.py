@@ -1,7 +1,9 @@
 from services.coach_blind_gate import (
     blind_label_progress,
+    can_reveal_acoustic_features,
     has_committed_blind_label,
     redact_contextual_snippets,
+    reveal_acoustic_features_after_commit,
     reveal_transcript_after_commit,
 )
 
@@ -30,6 +32,24 @@ def test_transcript_is_released_only_after_a_committed_answer():
     assert reveal_transcript_after_commit(
         "Exact words", committed=True) == "Exact words"
     assert reveal_transcript_after_commit(None, committed=True) == ""
+
+
+def test_acoustic_features_are_released_only_after_a_committed_answer():
+    features = {"f0_mean": 146.4, "speech_rate": 132}
+    assert reveal_acoustic_features_after_commit(
+        features, committed=False) is None
+    assert reveal_acoustic_features_after_commit(
+        features, committed=True) == features
+    assert reveal_acoustic_features_after_commit(
+        "not-a-feature-object", committed=True) is None
+
+
+def test_acoustic_queue_requires_explicit_second_pass_and_every_answer():
+    complete = [{"label": {"value": "yes"}}, {"label": {"value": "no"}}]
+    incomplete = [{"label": {"value": "yes"}}, {"label": None}]
+    assert not can_reveal_acoustic_features(complete, requested=False)
+    assert not can_reveal_acoustic_features(incomplete, requested=True)
+    assert can_reveal_acoustic_features(complete, requested=True)
 
 
 def test_redaction_keeps_audio_and_own_answer_but_drops_context():
