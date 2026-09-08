@@ -1488,6 +1488,13 @@ def v2_post_take_feedback_response(take_session_id):
         row, err = parse_feedback_response(request.get_json(silent=True) or {})
         if err:
             return jsonify({"code": "INVALID_INPUT", "error": err}), 400
+        canonical_identity = {
+            key: row.pop(key, None)
+            for key in (
+                "candidate_id", "feedback_membership_id",
+                "feedback_exposure_id",
+            )
+        }
         result = db.insert_take_feedback_self_report(
             arc_id=arc_id,
             take_session_id=str(take_session_id),
@@ -1545,6 +1552,11 @@ def v2_post_take_feedback_response(take_session_id):
                 feedback_id=row["feedback_id"],
                 feedback_family=row["feedback_family"],
                 response=row["response"],
+                candidate_id=canonical_identity["candidate_id"],
+                feedback_membership_id=canonical_identity[
+                    "feedback_membership_id"],
+                feedback_exposure_id=canonical_identity[
+                    "feedback_exposure_id"],
             )
             if canonical_decision is not None and session.get("project_id"):
                 canonical_saved = db.record_canonical_feedback_decision(

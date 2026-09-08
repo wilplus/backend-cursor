@@ -1,6 +1,7 @@
 """Validation for immutable user responses to the frozen Take feedback set."""
 from __future__ import annotations
 
+import uuid
 from typing import Any, Optional
 
 
@@ -41,11 +42,32 @@ def parse_feedback_response(
     supplied_snippet = body.get("snippet_id")
     if supplied_snippet is not None:
         supplied_snippet = str(supplied_snippet).strip() or None
+    exact_identity = {
+        "candidate_id": body.get("candidate_id"),
+        "feedback_membership_id": body.get("feedback_membership_id"),
+        "feedback_exposure_id": body.get("feedback_exposure_id"),
+    }
+    supplied_identity_count = sum(
+        value is not None for value in exact_identity.values()
+    )
+    if supplied_identity_count not in (0, len(exact_identity)):
+        return None, "complete canonical feedback identity is required"
+    if supplied_identity_count:
+        try:
+            exact_identity = {
+                key: str(uuid.UUID(str(value)))
+                for key, value in exact_identity.items()
+            }
+        except (TypeError, ValueError):
+            return None, "canonical feedback identity must contain UUIDs"
+    else:
+        exact_identity = {}
     return {
         "feedback_id": feedback_id,
         "feedback_family": family,
         "response": response,
         "snippet_id": supplied_snippet,
+        **exact_identity,
     }, None
 
 
@@ -76,4 +98,12 @@ def validate_feedback_response(
         "feedback_family": family,
         "response": parsed["response"],
         "snippet_id": member_snippet,
+        **{
+            key: parsed[key]
+            for key in (
+                "candidate_id", "feedback_membership_id",
+                "feedback_exposure_id",
+            )
+            if key in parsed
+        },
     }, None

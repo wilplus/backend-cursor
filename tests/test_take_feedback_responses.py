@@ -58,3 +58,25 @@ def test_typed_parse_does_not_make_a_stale_membership_decision():
         "response": "no",
         "snippet_id": "different",
     }, KEYS)[0] is None
+
+
+def test_exact_canonical_identity_is_all_or_nothing_and_opaque():
+    body = {
+        "feedback_id": "rw",
+        "feedback_family": "rewrite_clarity",
+        "response": "apply_suggestion",
+        "candidate_id": "11111111-1111-4111-8111-111111111111",
+        "feedback_membership_id": "22222222-2222-4222-8222-222222222222",
+        "feedback_exposure_id": "33333333-3333-4333-8333-333333333333",
+    }
+    row, err = parse_feedback_response(body)
+    assert err is None
+    assert row["candidate_id"] == body["candidate_id"]
+    assert row["feedback_membership_id"] == body["feedback_membership_id"]
+    assert row["feedback_exposure_id"] == body["feedback_exposure_id"]
+    assert parse_feedback_response({
+        **body, "feedback_exposure_id": None,
+    })[0] is None
+    assert parse_feedback_response({
+        **body, "candidate_id": "not-a-uuid",
+    })[0] is None

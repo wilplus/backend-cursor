@@ -356,6 +356,51 @@ def test_n1_dependencies_are_acquisition_principal_scoped():
     assert "exercise_n1_version_compatibility_profiles" in NON_SUBJECT_RELATIONS
 
 
+def test_restored_practice_feedback_and_root_ledgers_fail_closed_by_principal():
+    by_code = {dependency.code: dependency for dependency in DEPENDENCIES}
+    codes = (
+        "exercise_practice_sessions",
+        "exercise_practice_upload_recoveries",
+        "exercise_practice_attempts",
+        "exercise_practice_measurements",
+        "exercise_practice_validity",
+        "exercise_practice_selections",
+        "exercise_practice_events",
+        "exercise_service_offers",
+        "exercise_service_offer_candidates",
+        "exercise_service_offer_events",
+        "exercise_pair_revisions",
+        "exercise_service_requests",
+        "feedback_v3_memberships",
+        "feedback_v3_membership_items",
+        "feedback_v3_owner_responses",
+        "root_phrase_content_versions",
+        "root_phrase_semantic_input_snapshots",
+        "root_phrase_semantic_results",
+        "root_phrase_owner_alignment_actions",
+        "root_phrase_qualification_revisions",
+        "root_phrase_product_actions",
+        "root_phrase_block_heads",
+    )
+    for code in codes:
+        dependency = by_code[code]
+        assert dependency.selector_column == "acquisition_principal_id"
+        assert dependency.locator_kind == "principal"
+        assert dependency.disposition == "external_review"
+    assert by_code["exercise_pair_assignment_reviewers"].selector_column == (
+        "reviewer_principal_id"
+    )
+    assert by_code["exercise_pair_judgment_reviewers"].selector_column == (
+        "reviewer_principal_id"
+    )
+    assert by_code["exercise_reviewer_context"].selector_column == (
+        "reviewer_principal_id"
+    )
+    assert by_code["exercise_authoring_draft_authors"].selector_column == (
+        "author_principal_id"
+    )
+
+
 def test_subject_graph_keeps_practice_and_m3_lineage_coordinates_separate():
     graph = SubjectGraph(
         principal_ids=("principal-1",), speaker_ids=("speaker-1",),

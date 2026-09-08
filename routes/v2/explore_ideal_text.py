@@ -2449,6 +2449,11 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                                 _response_row.get("feedback_family") or ""),
                             response=str(
                                 _response_row.get("response") or ""),
+                            candidate_id=_response_row.get("candidate_id"),
+                            feedback_membership_id=_response_row.get(
+                                "feedback_membership_id"),
+                            feedback_exposure_id=_response_row.get(
+                                "feedback_exposure_id"),
                         )
                         if _canonical_decision is not None:
                             db.record_canonical_feedback_decision(
@@ -2786,6 +2791,11 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                                     _response_row.get("feedback_family") or ""),
                                 response=str(
                                     _response_row.get("response") or ""),
+                                candidate_id=_response_row.get("candidate_id"),
+                                feedback_membership_id=_response_row.get(
+                                    "feedback_membership_id"),
+                                feedback_exposure_id=_response_row.get(
+                                    "feedback_exposure_id"),
                             )
                             if _canonical_decision is not None:
                                 db.record_canonical_feedback_decision(
