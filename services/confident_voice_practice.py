@@ -44,15 +44,17 @@ INTRO_AFTER_NO = (
     "confidence easier to hear."
 )
 FINAL_STRONGEST = (
-    "This was your clearest attempt. Listen once more and decide for yourself."
+    "Listen to this attempt beside your original and decide for yourself."
 )
-FINAL_QUESTION = "Does this take sound confident to you?"
+FINAL_QUESTION = "Does this sound better to you than the original?"
 UNSUCCESSFUL = (
     "We haven’t found the right adjustment yet. A coach can review this "
     "pattern and may recommend a more suitable exercise."
 )
 
 ASSESSMENT_COPY = {
+    "recorded_for_comparison":
+        "Recorded. Listen to it beside your original and trust your own judgment.",
     "clearer_less_rushed":
         "This sounded clearer and less rushed. Each word had more space.",
     "opening_improved_ending_compressed":
@@ -286,6 +288,56 @@ def _median_wpm(snippets: list[dict]) -> Optional[float]:
     return statistics.median(values) if values else None
 
 
+_PATTERN_ORDINAL = {
+    "low_confidence_rushing_dominant": 0,
+    "near_confident": 1,
+    "confident": 2,
+}
+
+
+def confidence_pattern_distance(pattern: str, supported: Any) -> Optional[int]:
+    """Deterministic proximity used only to route an eligible exercise.
+
+    It is not a confidence score or an outcome label. Unknown source or
+    exercise patterns fail closed.
+    """
+    source = _PATTERN_ORDINAL.get(str(pattern))
+    if source is None or not isinstance(supported, list):
+        return None
+    values = [
+        abs(source - _PATTERN_ORDINAL[value])
+        for value in supported
+        if value in _PATTERN_ORDINAL
+    ]
+    return min(values) if values else None
+
+
+def rank_exercises_for_pattern(
+    pattern: str, exercises: list[dict]
+) -> list[tuple[int, int, str, dict]]:
+    """Complete deterministic order for already reviewed active exercises."""
+    ranked: list[tuple[int, int, str, dict]] = []
+    for exercise in exercises:
+        distance = confidence_pattern_distance(
+            pattern, exercise.get("supported_confidence_patterns")
+        )
+        if distance is None:
+            continue
+        criteria = exercise.get("matching_criteria")
+        editorial = (
+            int(criteria.get("editorial_priority") or 0)
+            if isinstance(criteria, dict)
+            else 0
+        )
+        ranked.append((
+            distance,
+            -editorial,
+            str(exercise.get("exercise_id") or ""),
+            exercise,
+        ))
+    return sorted(ranked, key=lambda item: item[:3])
+
+
 def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
                           database: Any) -> list[dict]:
     """Attach at most one active exercise after Feedback Manager selection."""
@@ -294,8 +346,24 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
                   and row.get("snippet_id")]
     if not candidates or not take_session_id:
         return rows
-    exercise = database.get_active_diagnostic_exercise(EXERCISE_ID)
-    if not exercise:
+    exercise_rows = (
+        database.list_diagnostic_exercises() or []
+        if hasattr(database, "list_diagnostic_exercises")
+        else [{"exercise_id": EXERCISE_ID}]
+    )
+    exercises = []
+    for row in exercise_rows:
+        exercise_id = str(row.get("exercise_id") or "")
+        active = database.get_active_diagnostic_exercise(exercise_id)
+        if active:
+            if (exercise_id == EXERCISE_ID
+                    and not active.get("supported_confidence_patterns")):
+                active = {
+                    **active,
+                    "supported_confidence_patterns": list(_PATTERN_ORDINAL),
+                }
+            exercises.append(active)
+    if not exercises:
         return rows
     existing = database.get_confident_voice_practice_by_take(take_session_id)
     if existing and existing.get("status") in ("completed", "dismissed"):
@@ -315,7 +383,9 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     by_id = {str(row.get("id")): row for row in snippets}
     take_rows = database.get_snippets_by_session(take_session_id) or []
     median_wpm = _median_wpm(take_rows)
-    ranked = []
+    ranked: list[
+        tuple[int, int, int, str, int, dict, dict, dict, dict]
+    ] = []
     for index, row in enumerate(candidates):
         snippet = by_id.get(str(row.get("snippet_id")))
         if not snippet:
@@ -341,15 +411,34 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
             session_median_wpm=median_wpm,
             semantic_or_structural_problem=verbal_problem,
         )
-        supported = exercise.get("supported_confidence_patterns")
-        if isinstance(supported, list) and supported \
-                and verdict.get("pattern") not in supported:
-            continue
         if verdict.get("eligible"):
-            ranked.append((verdict.get("priority", 0), index, row, snippet, verdict))
+            for exercise in exercises:
+                distance = confidence_pattern_distance(
+                    str(verdict.get("pattern") or ""),
+                    exercise.get("supported_confidence_patterns"),
+                )
+                if distance is None:
+                    continue
+                criteria = exercise.get("matching_criteria")
+                editorial = (
+                    int(criteria.get("editorial_priority") or 0)
+                    if isinstance(criteria, dict)
+                    else 0
+                )
+                ranked.append((
+                    distance,
+                    -editorial,
+                    -int(verdict.get("priority") or 0),
+                    str(exercise.get("exercise_id") or ""),
+                    index,
+                    row,
+                    snippet,
+                    verdict,
+                    exercise,
+                ))
     if not ranked:
         return rows
-    _, _, chosen, snippet, verdict = max(ranked, key=lambda item: (item[0], -item[1]))
+    _, _, _, _, _, chosen, snippet, verdict, exercise = min(ranked)
     intro = (exercise.get("confident_introduction_copy")
              if verdict.get("pattern") == "confident" else
              exercise.get("introduction_copy"))
@@ -365,6 +454,11 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
         "passage": (snippet.get("transcript") or chosen.get("quote") or "").strip(),
         "practice_id": str(existing.get("id")) if existing else None,
         "resume": bool(existing and existing.get("status") == "open"),
+        "matching_policy_version": "exercise-proximity-service-v1",
+        "pattern_distance": confidence_pattern_distance(
+            str(verdict.get("pattern") or ""),
+            exercise.get("supported_confidence_patterns"),
+        ),
     }
     return rows
 
@@ -485,7 +579,9 @@ def public_attempt(attempt: dict) -> dict:
         "attempt_index": int(attempt.get("attempt_index") or 0),
         "audio_ref": attempt.get("audio_ref"),
         "duration_ms": attempt.get("duration_ms"),
-        "assessment": ASSESSMENT_COPY.get(key, ASSESSMENT_COPY["similar_try_ending"]),
+        "assessment": ASSESSMENT_COPY.get(
+            key, ASSESSMENT_COPY["recorded_for_comparison"]
+        ),
         "is_strongest": bool(attempt.get("is_strongest")),
         "kept": bool(attempt.get("kept")),
         "user_answer": attempt.get("user_answer"),

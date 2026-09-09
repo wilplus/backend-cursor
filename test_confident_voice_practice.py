@@ -188,13 +188,19 @@ class ManagerTests(unittest.TestCase):
         ], take_session_id="take-1", database=_Db())
         self.assertFalse(any("practice_exercise" in row for row in rows))
 
-    def test_active_exercise_must_support_the_detected_pattern(self):
+    def test_closest_reviewed_exercise_is_offered_when_pattern_is_not_exact(self):
         rows = cvp.attach_exercise_offer([
             {"source": "confident_voice", "snippet_id": "snippet-a"},
         ], take_session_id="take-1", database=_Db(
             supported_patterns=["confident"],
         ))
-        self.assertFalse(any("practice_exercise" in row for row in rows))
+        offer = next(row["practice_exercise"] for row in rows
+                     if "practice_exercise" in row)
+        self.assertEqual(offer["pattern_distance"], 1)
+        self.assertEqual(
+            offer["matching_policy_version"],
+            "exercise-proximity-service-v1",
+        )
 
     def test_offer_carries_answer_specific_framing(self):
         rows = cvp.attach_exercise_offer([

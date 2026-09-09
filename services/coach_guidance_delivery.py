@@ -1,22 +1,63 @@
-"""Disabled D3 coach-guidance boundary.
+"""Coach-guidance and practice pilot boundary.
 
-The persistence contract is executable in synthetic rehearsals, while this
-module deliberately exposes no production activation path.  Keeping the gate
-literal prevents a configuration typo from turning product evidence into live
-delivery or ML supervision.
+The released D3 foundation remains dark by default.  The product loop has a
+separate two-part gate (global switch plus an exact user/principal allowlist),
+while dataset, training, evaluation and promotion are intentionally absent
+from this module.  In other words, enabling this service can expose an
+exercise, but can never make its evidence learning-eligible.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
-
-
-COACH_GUIDANCE_D3_RUNTIME_ENABLED = False
+from hashlib import sha256
+from typing import Any
 
 
 def runtime_is_enabled() -> bool:
-    """Return the reviewed gate state; D3 is local/synthetic only."""
-    return COACH_GUIDANCE_D3_RUNTIME_ENABLED
+    """Return the backend rollout gate; disabled is the default."""
+    from config import Config
+
+    return bool(Config.MLC3_PILOT_ENABLED)
+
+
+def principal_is_allowlisted(*, principal_id: str | None) -> bool:
+    """Require an exact configured identity in addition to the master gate."""
+    if not runtime_is_enabled():
+        return False
+    from config import Config
+
+    allowed_principals = set(Config.MLC3_PILOT_PRINCIPAL_IDS)
+    return bool(principal_id and str(principal_id) in allowed_principals)
+
+
+def exact_bytes_sha256(body: bytes) -> str:
+    """Fingerprint exact media bytes; this is not a speaker identifier."""
+    return sha256(body).hexdigest()
+
+
+def require_video_upload(
+    *, body: bytes, content_type: str, max_bytes: int
+) -> str:
+    """Validate coach video before an upload permit is requested."""
+    normalized = (content_type or "").split(";", 1)[0].strip().lower()
+    if not normalized.startswith("video/"):
+        raise ValueError("COACH_GUIDANCE_VIDEO_REQUIRED")
+    if not body or len(body) > max_bytes:
+        raise ValueError("COACH_GUIDANCE_VIDEO_SIZE_INVALID")
+    return normalized
+
+
+def require_audio_upload(
+    *, body: bytes, content_type: str, max_bytes: int
+) -> str:
+    """Validate a practice recording without interpreting its outcome."""
+    normalized = (content_type or "").split(";", 1)[0].strip().lower()
+    if not normalized.startswith("audio/"):
+        raise ValueError("PRACTICE_AUDIO_REQUIRED")
+    if not body or len(body) > max_bytes:
+        raise ValueError("PRACTICE_AUDIO_SIZE_INVALID")
+    return normalized
 
 
 @dataclass(frozen=True)

@@ -82,6 +82,52 @@ def user_media_use_r2() -> bool:
     ])
 
 
+def require_user_media_r2() -> str:
+    """Return the dedicated R2 bucket or fail closed.
+
+    Service-mode MLC-3 provenance says ``storage_provider=r2`` and therefore
+    must never use the legacy Supabase development fallback.
+    """
+    if not user_media_use_r2():
+        raise RuntimeError("MLC3_R2_USER_MEDIA_NOT_CONFIGURED")
+    return (getattr(_config(), "R2_USER_MEDIA_BUCKET", None) or "").strip()
+
+
+def put_user_media_r2_bytes(key: str, body: bytes, content_type: str) -> str:
+    bucket = require_user_media_r2()
+    _client().put_object(
+        Bucket=bucket,
+        Key=key.lstrip("/"),
+        Body=body,
+        ContentType=content_type,
+    )
+    return bucket
+
+
+def get_user_media_r2_bytes(key: str, *, bucket: str) -> bytes:
+    required_bucket = require_user_media_r2()
+    if bucket.strip() != required_bucket:
+        raise RuntimeError("MLC3_R2_USER_MEDIA_BUCKET_MISMATCH")
+    response = _client().get_object(
+        Bucket=required_bucket,
+        Key=key.lstrip("/"),
+    )
+    return response["Body"].read()
+
+
+def presigned_get_user_media_r2(
+    key: str, expires_in: int = 3600, *, bucket: str,
+) -> str:
+    required_bucket = require_user_media_r2()
+    if bucket.strip() != required_bucket:
+        raise RuntimeError("MLC3_R2_USER_MEDIA_BUCKET_MISMATCH")
+    return _client().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": required_bucket, "Key": key.lstrip("/")},
+        ExpiresIn=_clamp_ttl(expires_in),
+    )
+
+
 def user_media_public_url(storage_key: str) -> Optional[str]:
     """Stable HTTPS URL when R2_USER_MEDIA_PUBLIC_BASE_URL is set
     (public bucket / custom domain). ``None`` means the read path
@@ -144,11 +190,29 @@ def put_user_media_bytes(
     return bucket
 
 
+def get_user_media_bytes(key: str, *, bucket: Optional[str] = None) -> bytes:
+    """Read exact bytes for post-write integrity verification.
+
+    This is a backend-only transport primitive.  User playback continues to
+    use signed URLs; returning bytes here is solely for SHA-256 verification
+    before immutable provenance is finalized.
+    """
+    key = key.lstrip("/")
+    resolved_bucket = (bucket or user_media_bucket_name()).strip()
+    if user_media_use_r2():
+        response = _client().get_object(Bucket=resolved_bucket, Key=key)
+        return response["Body"].read()
+    from services.db import db
+
+    return db.download_audio(resolved_bucket, key)
+
+
 def presigned_get_user_media(
     key: str,
     expires_in: int = 3600,
     *,
     supabase_db: Any = None,
+    bucket: str | None = None,
 ) -> Optional[str]:
     """Mint a signed GET URL for ``key`` so the admin can play the
     asset without us proxying the bytes. Returns ``None`` only if
@@ -157,24 +221,24 @@ def presigned_get_user_media(
     """
     key = key.lstrip("/")
     if user_media_use_r2():
-        bucket = user_media_bucket_name()
+        resolved_bucket = (bucket or user_media_bucket_name()).strip()
         try:
             return _client().generate_presigned_url(
                 "get_object",
-                Params={"Bucket": bucket, "Key": key},
+                Params={"Bucket": resolved_bucket, "Key": key},
                 ExpiresIn=_clamp_ttl(expires_in),
             )
         except Exception as e:
             logger.warning(
                 "user_media: presigned GET failed bucket=%s key=%s err=%s",
-                bucket, key, e,
+                resolved_bucket, key, e,
             )
             return None
     if supabase_db is None:
         from services.db import db as supabase_db
     try:
         return supabase_db.create_signed_url(
-            user_media_bucket_name(), key, expires_in,
+            (bucket or user_media_bucket_name()).strip(), key, expires_in,
         )
     except Exception as e:
         logger.warning(

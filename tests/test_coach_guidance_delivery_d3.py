@@ -4,6 +4,7 @@ import pytest
 
 from services.coach_guidance_delivery import (
     parse_attachment_request,
+    principal_is_allowlisted,
     runtime_is_enabled,
     synthetic_context_payload,
 )
@@ -28,8 +29,18 @@ def _identity_payload(**updates):
     return payload
 
 
-def test_runtime_has_no_configuration_activation_path():
+def test_runtime_gate_is_disabled_by_default():
     assert runtime_is_enabled() is False
+
+
+def test_pilot_allowlist_accepts_only_exact_acquisition_principal(monkeypatch):
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_PILOT_ENABLED", True)
+    monkeypatch.setattr(Config, "MLC3_PILOT_PRINCIPAL_IDS", ("principal-1",))
+    assert principal_is_allowlisted(principal_id="principal-1") is True
+    assert principal_is_allowlisted(principal_id="user-1") is False
+    assert principal_is_allowlisted(principal_id=None) is False
 
 
 def test_general_guidance_never_accepts_exercise_identity():

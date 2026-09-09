@@ -6,8 +6,31 @@ ALTER TABLE public.v2_sessions
     ADD COLUMN IF NOT EXISTS recording_kind TEXT DEFAULT 'spoken',
     ADD COLUMN IF NOT EXISTS paired_session_id UUID,
     ADD COLUMN IF NOT EXISTS analysis_state TEXT DEFAULT 'ready';
+ALTER TABLE public.snippets
+    ADD COLUMN IF NOT EXISTS transcript TEXT;
 ALTER TABLE public.processing_recording_attempts
-    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
+    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed',
+    ADD COLUMN IF NOT EXISTS authorization_snapshot_id UUID,
+    ADD COLUMN IF NOT EXISTS upload_idempotency_key TEXT,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL
+        DEFAULT clock_timestamp();
+ALTER TABLE public.processing_audio_objects
+    ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+ALTER TABLE public.processing_authorization_snapshots
+    ALTER COLUMN id SET DEFAULT gen_random_uuid(),
+    ADD COLUMN IF NOT EXISTS source_take_id UUID,
+    ADD COLUMN IF NOT EXISTS source_recording_id UUID,
+    ADD COLUMN IF NOT EXISTS operation_kind TEXT,
+    ADD COLUMN IF NOT EXISTS authority_evidence_sha256 TEXT UNIQUE,
+    ADD COLUMN IF NOT EXISTS pooled_learning_eligible BOOLEAN NOT NULL
+        DEFAULT false,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL
+        DEFAULT clock_timestamp(),
+    ADD COLUMN IF NOT EXISTS authority_checked_at TIMESTAMPTZ NOT NULL
+        DEFAULT clock_timestamp();
+ALTER TABLE public.processing_authorization_receipts
+    ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ NOT NULL
+        DEFAULT clock_timestamp();
 ALTER TABLE public.projects
     ADD COLUMN IF NOT EXISTS setup JSONB NOT NULL DEFAULT '{}'::jsonb;
 
@@ -79,6 +102,37 @@ CREATE TABLE public.feedback_exposures (
         OR (NOT is_selected AND position_shown IS NULL AND shown_at IS NULL)
     ),
     UNIQUE (candidate_set_id, candidate_id)
+);
+CREATE TABLE public.confidence_self_reports (
+    id UUID PRIMARY KEY,
+    evidence_span_id UUID NOT NULL REFERENCES public.evidence_spans(id),
+    task_type TEXT NOT NULL DEFAULT 'confidence_classification'
+        CHECK (task_type = 'confidence_classification'),
+    value TEXT NOT NULL CHECK (value IN (
+        'yes', 'in_between', 'no', 'not_sure', 'audio_unclear'
+    )),
+    rater_role TEXT NOT NULL DEFAULT 'owner' CHECK (rater_role = 'owner'),
+    rater_id UUID NOT NULL,
+    taxonomy_version TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    supersedes_id UUID REFERENCES public.confidence_self_reports(id),
+    idempotency_key TEXT NOT NULL UNIQUE
+);
+CREATE TABLE public.processing_audio_object_deletion_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    audio_object_id UUID NOT NULL UNIQUE
+        REFERENCES public.processing_audio_objects(id) ON DELETE RESTRICT,
+    purge_request_id UUID NOT NULL
+        REFERENCES public.data_purge_requests(id) ON DELETE RESTRICT,
+    acquisition_principal_id UUID NOT NULL
+        REFERENCES public.owner_principals(id) ON DELETE RESTRICT,
+    storage_provider TEXT NOT NULL,
+    bucket TEXT NOT NULL,
+    object_key TEXT NOT NULL,
+    exact_bytes_sha256 TEXT NOT NULL,
+    evidence_sha256 TEXT NOT NULL,
+    verified_deleted_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
 CREATE TABLE public.ideal_text_document_generations (
     arc_id TEXT PRIMARY KEY,

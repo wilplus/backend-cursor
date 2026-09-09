@@ -141,6 +141,24 @@ from routes.v2.coach_guidance_delivery import (  # noqa: F401
     v2_coach_guidance_event,
     v2_coach_guidance_publication,
 )
+from routes.v2.mlc3_first_client_service import (  # noqa: F401
+    v2_mlc3_create_exercise_offer,
+    v2_mlc3_create_practice_session,
+    v2_mlc3_exercise_offer_event,
+    v2_mlc3_feedback_render,
+    v2_mlc3_feedback_respond,
+    v2_mlc3_get_exercise_offer,
+    v2_mlc3_get_practice_session,
+    v2_mlc3_practice_attempt,
+    v2_mlc3_practice_event,
+    v2_mlc3_practice_preference,
+)
+from routes.v2.mlc3_first_client_coach import (  # noqa: F401
+    v2_coach_mlc3_review_complete,
+    v2_coach_mlc3_review_judgment,
+    v2_coach_mlc3_review_render,
+    v2_coach_mlc3_reviews,
+)
 from routes.v2.processing_authorization import (  # noqa: F401
     v2_processing_ai_rendered,
     v2_processing_authorization,

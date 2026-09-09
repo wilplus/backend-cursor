@@ -26,12 +26,23 @@ logger = logging.getLogger(__name__)
 # because filler density is what the candidate generator reads downstream.
 _DISFLUENT_PROMPT = "Umm, let me think like, hmm... Okay, so, uh, yeah. I mean, you know, it's like, um, well..."
 
+TRANSCRIPTION_PROVIDER = "openai"
+TRANSCRIPTION_MODEL_VERSION = "whisper-1"
+TRANSCRIPTION_PROMPT_VERSION = "disfluent-preservation-v1"
+TRANSCRIPTION_LANGUAGE_POLICY_VERSION = "auto-detect-no-hint-v1"
+TRANSCRIPTION_OUTPUT_SCHEMA_VERSION = "whisper-verbose-word-timestamps-v1"
+
+
+class SnippetTranscriptionProviderError(RuntimeError):
+    """The provider outcome is uncertain and must be recorded durably."""
+
 
 def transcribe_snippet_bytes(
     mp3_bytes: bytes,
     hint_filename: str = "snippet.mp3",
     *,
     language_hint: Optional[str] = None,
+    raise_on_provider_error: bool = False,
 ) -> Optional[dict[str, Any]]:
     """Run Whisper on a single snippet's MP3 bytes.
 
@@ -47,6 +58,10 @@ def transcribe_snippet_bytes(
     client = getattr(openai_service, "client", None)
     if client is None:
         logger.warning("snippet_transcription: OpenAI client not initialized; skipping")
+        if raise_on_provider_error:
+            raise SnippetTranscriptionProviderError(
+                "openai_client_not_initialized"
+            )
         return None
 
     ct = mimetypes.guess_type(hint_filename or "")[0] or "audio/mpeg"
@@ -55,7 +70,7 @@ def transcribe_snippet_bytes(
         hint_filename = f"snippet{ext}"
 
     kwargs: dict[str, Any] = {
-        "model": "whisper-1",
+        "model": TRANSCRIPTION_MODEL_VERSION,
         "file": (hint_filename, mp3_bytes, ct),
         "response_format": "verbose_json",
         "timestamp_granularities": ["word"],
@@ -72,6 +87,10 @@ def transcribe_snippet_bytes(
             len(mp3_bytes), language_hint, type(e).__name__,
         )
         sentry_sdk.capture_exception(e)
+        if raise_on_provider_error:
+            raise SnippetTranscriptionProviderError(
+                f"provider_outcome_uncertain:{type(e).__name__}"
+            ) from e
         return None
 
     # Normalize response: openai SDK returns an object with attributes; older versions
@@ -93,6 +112,7 @@ def transcribe_snippet_bytes(
                 "word": str(_attr(w, "word", "")),
                 "start": float(_attr(w, "start", 0.0) or 0.0),
                 "end": float(_attr(w, "end", 0.0) or 0.0),
+                "confidence": _attr(w, "probability", None),
             })
         except (TypeError, ValueError):
             continue
@@ -114,6 +134,7 @@ def transcribe_snippet_bytes(
         pass
 
     return {
+        "provider_response_id": _attr(resp, "id", None),
         "transcript": text or None,
         "language": (language or None),
         "words": words or None,

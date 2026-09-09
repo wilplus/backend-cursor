@@ -312,9 +312,27 @@ def build_feedback_exposure_bundle(
         return None
     keys = [dict(key) for key in selected_keys if isinstance(key, dict)] \
         if isinstance(selected_keys, list) else []
-    if (len(keys) != 3
-            or {str(key.get("feedback_family")) for key in keys} != _FAMILIES):
+    service_v3 = manager_rules_version == "take-feedback-policy-v3-serving-v1"
+    selected_families = {
+        str(key.get("feedback_family")) for key in keys
+    }
+    if service_v3:
+        if (
+            not keys
+            or "confident_voice" not in selected_families
+            or not selected_families <= _FAMILIES
+            or len({
+                (str(key.get("id") or ""), str(key.get("feedback_family") or ""))
+                for key in keys
+            }) != len(keys)
+        ):
+            return None
+    elif len(keys) != 3 or selected_families != _FAMILIES:
         return None
+
+    candidate_inputs = [
+        row for row in (candidates or []) if isinstance(row, dict)
+    ]
 
     commit_value = commit or code_commit()
     transcript = _transcript_snapshot(
@@ -328,9 +346,7 @@ def build_feedback_exposure_bundle(
         return None
 
     canonical_candidates: list[dict] = []
-    for raw in candidates or []:
-        if not isinstance(raw, dict):
-            continue
+    for raw in candidate_inputs:
         family = str(raw.get("feedback_family") or "")
         candidate_key = str(raw.get("id") or "")
         if family not in _FAMILIES or not candidate_key:
@@ -374,9 +390,13 @@ def build_feedback_exposure_bundle(
             "rule_version": raw.get("rule_version"),
             "model_version": raw.get("model_version"),
             "prompt_version": raw.get("prompt_version"),
-            "training_eligible": eligible,
+            # A live product exposure is not a dataset release.  V3 service
+            # records therefore remain structurally ineligible even where
+            # their exact transcript target is valid.
+            "training_eligible": eligible and not service_v3,
             "ineligibility_reason": (
-                None if eligible
+                "service_product_evidence_only" if service_v3
+                else None if eligible
                 else "fallback_or_source_target_mismatch"
             ),
             "evidence": evidence,
@@ -460,6 +480,10 @@ def build_feedback_exposure_bundle(
         (str(key.get("id")), str(key.get("feedback_family"))) not in available
         for key in keys
     ):
+        return None
+    if service_v3 and len(canonical_candidates) != len(candidate_inputs):
+        # Complete inventory is a service invariant.  A malformed excluded
+        # candidate cannot disappear merely because it was never selectable.
         return None
 
     versions = {
