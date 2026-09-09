@@ -360,3 +360,4 @@
 0322	add_coach_guidance_delivery_d3.sql
 0323	add_mlc3_first_client_service_d2.sql
 0324	add_mlc3_coach_inline_exercise_authoring_d5.sql
+0325	add_mlc3_founder_canary_security_closure.sql
