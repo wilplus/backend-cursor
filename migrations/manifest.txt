@@ -359,3 +359,4 @@
 0321	add_rooting_phrase_qualification_v1.sql
 0322	add_coach_guidance_delivery_d3.sql
 0323	add_mlc3_first_client_service_d2.sql
+0324	add_mlc3_coach_inline_exercise_authoring_d5.sql

@@ -10,9 +10,13 @@ from flask import Response, jsonify, request
 
 from routes.admin import require_admin_or_coach
 from routes.v2.blueprint import v2_bp
-from services.coach_guidance_delivery import runtime_is_enabled
-from services.db import db
 from services.blind_review_media import load_authorized_blind_clip
+from services.coach_guidance_delivery import (
+    inline_authoring_is_enabled,
+    runtime_is_enabled,
+)
+from services.db import db as identity_db
+from services.db import first_client_repository as db
 from services.user_media_storage import get_user_media_r2_bytes
 
 _DECISIONS = {
@@ -44,7 +48,7 @@ def _body() -> dict[str, Any]:
 
 def _reviewer_principal_id() -> str:
     user_id = _uuid(getattr(request, "user_id", None), "reviewer_user_id")
-    principal = db.get_owner_principal_for_user(user_id) or {}
+    principal = identity_db.get_owner_principal_for_user(user_id) or {}
     return _uuid(principal.get("id"), "reviewer_principal_id")
 
 
@@ -107,6 +111,128 @@ def v2_coach_mlc3_blind_playback(playback_reference_id: str):
         return jsonify({"code": "INVALID_INPUT"}), 400
     except Exception:
         return _unavailable()
+
+
+@v2_bp.get("/coach/mlc3/source-playback/<assignment_id>")
+@require_admin_or_coach
+def v2_coach_mlc3_source_playback(assignment_id: str):
+    """Return only the exact canonical source clip for one blind assignment."""
+    if not inline_authoring_is_enabled():
+        return _closed()
+    try:
+        reviewer_user = _uuid(
+            getattr(request, "user_id", None), "reviewer_user_id"
+        )
+        reviewer = _reviewer_principal_id()
+        opaque_assignment = _uuid(assignment_id, "assignment_id")
+        clip = load_authorized_blind_clip(
+            resolve=lambda: db.resolve_coach_inline_blind_audio_read(
+                opaque_assignment, reviewer_user, reviewer,
+            ),
+            load=lambda object_row: get_user_media_r2_bytes(
+                str(object_row["object_key"]),
+                bucket=str(object_row["bucket"]),
+            ),
+        )
+        response = Response(clip, status=200, mimetype="audio/wav")
+        response.headers["Cache-Control"] = "private, no-store, max-age=0"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+    except (TypeError, ValueError):
+        return jsonify({"code": "INVALID_INPUT"}), 400
+    except Exception:
+        return _unavailable()
+
+
+def _project_acquisition_principal(project_id: str) -> str:
+    identity = db.get_project_identity(project_id) or {}
+    return _uuid(
+        identity.get("owner_principal_id"), "acquisition_principal_id"
+    )
+
+
+@v2_bp.post("/coach/mlc3/inline/assignments/<assignment_id>/render")
+@require_admin_or_coach
+def v2_coach_mlc3_inline_render(assignment_id: str):
+    if not inline_authoring_is_enabled():
+        return _closed()
+    try:
+        body = _body()
+        project_id = _uuid(body.get("project_id"), "project_id")
+        row = db.ack_coach_inline_blind_render({
+            "p_review_assignment_id": _uuid(
+                assignment_id, "review_assignment_id"
+            ),
+            "p_blind_packet_id": _uuid(
+                body.get("blind_packet_id"), "blind_packet_id"
+            ),
+            "p_presentation_id": _uuid(
+                body.get("presentation_id"), "presentation_id"
+            ),
+            "p_acknowledgement_token": _uuid(
+                body.get("acknowledgement_token"), "acknowledgement_token"
+            ),
+            "p_acquisition_principal_id": _project_acquisition_principal(
+                project_id
+            ),
+            "p_reviewer_principal_id": _reviewer_principal_id(),
+            "p_render_instance_id": _uuid(
+                body.get("render_instance_id"), "render_instance_id"
+            ),
+            "p_client_rendered_at": str(
+                body.get("client_rendered_at") or ""
+            ),
+            "p_client_version": str(body.get("client_version") or ""),
+            "p_visible_payload_sha256": str(
+                body.get("visible_payload_sha256") or ""
+            ),
+            "p_idempotency_key": _idempotency_key(),
+        })
+        if not row:
+            return _unavailable()
+        return jsonify({"exposure_id": str(row["id"])}), 201
+    except (TypeError, ValueError):
+        return jsonify({"code": "INVALID_INPUT"}), 400
+
+
+@v2_bp.post("/coach/mlc3/inline/assignments/<assignment_id>/judgments")
+@require_admin_or_coach
+def v2_coach_mlc3_inline_judgment(assignment_id: str):
+    if not inline_authoring_is_enabled():
+        return _closed()
+    try:
+        body = _body()
+        decision = str(body.get("decision") or "")
+        if decision not in _DECISIONS:
+            raise ValueError("decision is not in the five-state taxonomy")
+        project_id = _uuid(body.get("project_id"), "project_id")
+        row = db.submit_coach_inline_blind_judgment({
+            "p_review_assignment_id": _uuid(
+                assignment_id, "review_assignment_id"
+            ),
+            "p_blind_packet_id": _uuid(
+                body.get("blind_packet_id"), "blind_packet_id"
+            ),
+            "p_acquisition_principal_id": _project_acquisition_principal(
+                project_id
+            ),
+            "p_reviewer_principal_id": _reviewer_principal_id(),
+            "p_exposure_id": _uuid(body.get("exposure_id"), "exposure_id"),
+            "p_decision": decision,
+            "p_decided_at": datetime.now(UTC).isoformat(),
+            "p_idempotency_key": _idempotency_key(),
+        })
+        if not row:
+            return _unavailable()
+        return jsonify({
+            "judgment_id": str(row["judgment_id"]),
+            "decision": str(row["decision"]),
+            "meaning": "blind_confidence_judgment_only",
+            "serves_user": False,
+            "dataset_eligible": False,
+        }), 201
+    except (TypeError, ValueError):
+        return jsonify({"code": "INVALID_INPUT"}), 400
 
 
 @v2_bp.get("/coach/mlc3/reviews/<project_id>")

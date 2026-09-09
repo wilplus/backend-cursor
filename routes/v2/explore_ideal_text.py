@@ -38,7 +38,7 @@ from routes.v2.arcs import (
     _reassemble_after_decision,
 )
 from routes.v2.blueprint import v2_bp
-from services.db import db
+from services.db import db, first_client_repository
 from services.ideal_text_read import (
     decorate_key_moments,
     resolve_historical_read,
@@ -2831,7 +2831,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                     arc_id, database=db, session_id=_arm_sid,
                 )
             _service_rows = prepare_first_client_feedback(
-                database=db,
+                database=first_client_repository,
                 session=_service_session,
                 take_document=_service_doc,
                 served_text=served_text,
