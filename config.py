@@ -269,6 +269,28 @@ class Config:
         os.getenv("MAX_USER_MEDIA_SIZE_MB", "200")
     )
 
+    # MLC-3 first-client pilot.  This is deliberately independent from every
+    # dataset/training switch: enabling the product loop must never authorize
+    # pooled learning.  The global switch and the exact subject allowlist are
+    # both required, so an incomplete deployment remains invisible (404).
+    MLC3_PILOT_ENABLED = (
+        (os.getenv("MLC3_PILOT_ENABLED") or "0").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+    MLC3_PILOT_PRINCIPAL_IDS = tuple(
+        value.strip()
+        for value in (
+            os.getenv("MLC3_PILOT_PRINCIPAL_IDS") or ""
+        ).split(",")
+        if value.strip()
+    )
+    MLC3_PILOT_MAX_VIDEO_MB = int(
+        os.getenv("MLC3_PILOT_MAX_VIDEO_MB", "200")
+    )
+    MLC3_PILOT_MAX_AUDIO_MB = int(
+        os.getenv("MLC3_PILOT_MAX_AUDIO_MB", "25")
+    )
+
     # ── Cloudflare R2 — USER INTERVIEW AUDIO ─────────────────────────────────
     # Deliberately a separate bucket from coach feedback videos because the
     # content type, lifecycle, and access policy differ:

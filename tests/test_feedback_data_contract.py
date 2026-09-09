@@ -175,6 +175,38 @@ def test_fallback_and_source_target_mismatch_are_research_only():
         "fallback_or_source_target_mismatch"
 
 
+def test_v3_service_bundle_allows_variable_budget_but_never_dataset_use():
+    session, document, text, rows, _keys = _fixture()
+    keys = [
+        {"id": "confidence-1", "feedback_family": "confident_voice"},
+        {"id": "praise-1", "feedback_family": "great_formulation"},
+    ]
+    bundle = build_feedback_exposure_bundle(
+        session=session,
+        transcript_document=document,
+        served_text=text,
+        candidates=rows,
+        selected_keys=keys,
+        manager_rules_version="take-feedback-policy-v3-serving-v1",
+        commit="abc123",
+    )
+    assert bundle is not None
+    assert bundle["selected_keys"] == keys
+    assert all(not row["training_eligible"] for row in bundle["candidates"])
+    assert {
+        row["ineligibility_reason"] for row in bundle["candidates"]
+    } == {"service_product_evidence_only"}
+    assert build_feedback_exposure_bundle(
+        session=session,
+        transcript_document=document,
+        served_text=text,
+        candidates=rows,
+        selected_keys=[keys[1]],
+        manager_rules_version="take-feedback-policy-v3-serving-v1",
+        commit="abc123",
+    ) is None
+
+
 def test_typed_decisions_never_infer_editor_open_as_a_preference():
     exact = {
         "candidate_id": "33333333-3333-4333-8333-333333333333",

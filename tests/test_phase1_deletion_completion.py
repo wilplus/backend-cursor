@@ -401,6 +401,42 @@ def test_restored_practice_feedback_and_root_ledgers_fail_closed_by_principal():
     )
 
 
+def test_first_client_allowlist_and_reviewer_edges_are_deletion_attributed():
+    by_code = {dependency.code: dependency for dependency in DEPENDENCIES}
+    expected = {
+        "mlc3_service_principal_allowlist_subjects": (
+            "acquisition_principal_id", "authorization_receipt",
+        ),
+        "mlc3_service_principal_allowlist_approvers": (
+            "approved_by_principal_id", "authorization_receipt",
+        ),
+        "exercise_service_confidence_assignment_reviewers": (
+            "reviewer_principal_id", "coach_packet",
+        ),
+        "exercise_service_confidence_render_reviewers": (
+            "reviewer_principal_id", "coach_packet",
+        ),
+        "exercise_service_confidence_judgment_reviewers": (
+            "reviewer_principal_id", "coach_packet",
+        ),
+        "exercise_service_blind_review_set_reviewers": (
+            "reviewer_principal_id", "coach_packet",
+        ),
+        "exercise_service_blind_reveal_grant_reviewers": (
+            "reviewer_principal_id", "coach_packet",
+        ),
+        "exercise_service_blind_reveal_access_reviewers": (
+            "reviewer_principal_id", "coach_packet",
+        ),
+    }
+    for code, (selector, target_kind) in expected.items():
+        dependency = by_code[code]
+        assert dependency.selector_column == selector
+        assert dependency.locator_kind == "principal"
+        assert dependency.target_kind == target_kind
+        assert dependency.disposition == "external_review"
+
+
 def test_subject_graph_keeps_practice_and_m3_lineage_coordinates_separate():
     graph = SubjectGraph(
         principal_ids=("principal-1",), speaker_ids=("speaker-1",),

@@ -1658,7 +1658,7 @@ def v2_post_take_feedback_response(take_session_id):
 def _practice_user_payload(practice, attempts=None):
     """Owner-safe practice shape. Raw metrics/comparison scores stay private."""
     from services.confident_voice_practice import (
-        FINAL_QUESTION, FINAL_STRONGEST, INSTRUCTION, TITLE, UNSUCCESSFUL,
+        FINAL_QUESTION, FINAL_STRONGEST, INSTRUCTION, TITLE,
         public_attempt,
     )
     # A coach's private draft is never user-visible. Only an explicit Share
@@ -1680,13 +1680,8 @@ def _practice_user_payload(practice, attempts=None):
         "audio_ref": resolve_playable_ref(row.get("audio_ref")),
     }) for row in rows]
     strongest = next((row for row in public_rows if row["is_strongest"]), None)
-    improved = any(bool((row.get("comparison") or {}).get("improved"))
-                   for row in rows if isinstance(row, dict))
     final_ready = len(public_rows) >= 3
-    final_message = (
-        UNSUCCESSFUL if final_ready and not improved
-        else FINAL_STRONGEST if strongest else None
-    )
+    final_message = FINAL_STRONGEST if strongest else None
     return {
         "id": str(practice.get("id")),
         "status": practice.get("status") or "open",
@@ -1781,11 +1776,24 @@ def v2_start_confident_voice_practice(snippet_id):
         if not verdict.get("eligible"):
             return jsonify({"code": "NOT_ELIGIBLE",
                             "error": "This moment does not match the exercise."}), 409
-        supported = exercise.get("supported_confidence_patterns")
-        if isinstance(supported, list) and supported \
-                and verdict.get("pattern") not in supported:
+        from services.confident_voice_practice import rank_exercises_for_pattern
+        reviewed_exercises = []
+        for row in db.list_diagnostic_exercises() or []:
+            active = db.get_active_diagnostic_exercise(
+                str(row.get("exercise_id") or "")
+            )
+            if active:
+                reviewed_exercises.append(active)
+        ranked_exercises = rank_exercises_for_pattern(
+            str(verdict.get("pattern") or ""), reviewed_exercises
+        )
+        if not ranked_exercises:
             return jsonify({"code": "NOT_ELIGIBLE",
-                            "error": "This moment does not match the exercise."}), 409
+                            "error": "This exercise cannot be matched safely."}), 409
+        pattern_distance, _, _, best_exercise = ranked_exercises[0]
+        if str(best_exercise.get("exercise_id")) != exercise_id:
+            return jsonify({"code": "EXERCISE_OFFER_STALE",
+                            "error": "A better matching exercise is now available."}), 409
         evidence = body.get("evidence") if isinstance(body.get("evidence"), dict) else {}
         span = evidence.get("span") if isinstance(evidence.get("span"), dict) else {}
         slide_index = evidence.get("slide_index")
@@ -1826,6 +1834,8 @@ def v2_start_confident_voice_practice(snippet_id):
             "machine_assessment": {
                 "pattern": verdict.get("pattern"),
                 "priority": verdict.get("priority"),
+                "pattern_distance": pattern_distance,
+                "matching_policy_version": "exercise-proximity-service-v1",
             },
             "acoustic_evidence": {
                 "signals": verdict.get("signals"),
@@ -1898,7 +1908,7 @@ def v2_add_confident_voice_practice_attempt(practice_id):
             return jsonify({"code": "TRANSCRIPTION_FAILED",
                             "error": "We couldn't hear that clearly. Try again."}), 422
         from services.confident_voice_practice import (
-            acoustic_snapshot, comparison_for_attempt, passage_alignment,
+            acoustic_snapshot, passage_alignment,
         )
         alignment = passage_alignment(
             str(practice.get("exact_passage") or ""),
@@ -1950,16 +1960,19 @@ def v2_add_confident_voice_practice_attempt(practice_id):
             "audio_ref": "captured",
             "transcript": transcription["transcript"],
         })
-        from services.confident_voice_practice import (
-            machine_confidence_decision,
-        )
         original = ((practice.get("acoustic_evidence") or {}).get("snapshot")
                     if isinstance(practice.get("acoustic_evidence"), dict) else {}) or {}
         previous = (existing[-1].get("acoustic_metrics") if existing else None)
-        strongest_row = next((row for row in existing if row.get("is_strongest")), None)
-        strongest_snapshot = (strongest_row or {}).get("acoustic_metrics")
-        comparison = comparison_for_attempt(
-            original, current_snapshot, previous, strongest_snapshot)
+        # Keep raw, versioned before/after observations for later validation,
+        # but do not manufacture an improvement label or choose a "best"
+        # attempt before the need-specific thresholds are approved.
+        comparison = {
+            "contract_version": "practice-product-observation-v1",
+            "baseline": original,
+            "attempt": current_snapshot,
+            "previous_attempt": previous,
+            "no_automatic_outcome": True,
+        }
         attempt_index = len(existing) + 1
         key = (f"confidence-practice/{request.user_id}/{practice_id}/"
                f"{attempt_index}-{uuid.uuid4().hex}{ext}")
@@ -1979,21 +1992,19 @@ def v2_add_confident_voice_practice_attempt(practice_id):
             "transcript_alignment": alignment,
             "acoustic_metrics": current_snapshot,
             "comparison": comparison,
-            "assessment_key": comparison["assessment_key"],
-            "machine_confidence_decision": machine_confidence_decision(
-                current_snapshot),
+            "assessment_key": "recorded_for_comparison",
+            "machine_confidence_decision": None,
         })
         if not inserted:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save that attempt."}), 500
         candidates = existing + [inserted]
-        def _attempt_strength(row):
-            value = (row.get("comparison") or {}).get("internal_strength")
-            return float(value) if isinstance(value, (int, float)) else -999.0
-        strongest = max(
-            candidates,
-            key=_attempt_strength,
-        )
+        # The first passage-valid attempt is the stable comparison target.
+        # Later attempts remain visible, but cannot be cherry-picked by an
+        # unvalidated score.
+        strongest = min(candidates, key=lambda row: int(
+            row.get("attempt_index") or 2**31 - 1
+        ))
         db.set_confident_voice_practice_strongest(
             practice_id, str(strongest.get("id")))
         refreshed = db.list_confident_voice_practice_attempts(practice_id)
@@ -2037,10 +2048,13 @@ def v2_complete_confident_voice_practice(practice_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "attempt_id and user_answer are required"}), 400
     attempts = db.list_confident_voice_practice_attempts(practice_id)
-    strongest = next((row for row in attempts if row.get("is_strongest")), None)
-    if not strongest or str(strongest.get("id")) != str(attempt_id):
+    comparison_attempt = next(
+        (row for row in attempts if row.get("is_strongest")), None
+    )
+    if (not comparison_attempt
+            or str(comparison_attempt.get("id")) != str(attempt_id)):
         return jsonify({"code": "INVALID_INPUT",
-                        "error": "Choose the acoustically strongest attempt."}), 400
+                        "error": "Use the frozen first valid attempt."}), 400
     kept = db.keep_confident_voice_practice_attempt(
         practice_id, str(attempt_id), str(answer))
     if not kept:

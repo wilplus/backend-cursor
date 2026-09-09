@@ -37,6 +37,54 @@ def coach_videos_use_r2() -> bool:
     )
 
 
+def require_coach_video_r2() -> str:
+    """Return the configured R2 bucket for service-mode coach media."""
+    if not coach_videos_use_r2():
+        raise RuntimeError("MLC3_R2_COACH_MEDIA_NOT_CONFIGURED")
+    bucket = (getattr(_config(), "R2_BUCKET_NAME", None) or "").strip()
+    if not bucket:
+        raise RuntimeError("MLC3_R2_COACH_MEDIA_BUCKET_NOT_CONFIGURED")
+    return bucket
+
+
+def put_coach_object_r2_bytes(
+    bucket: str, key: str, body: bytes, content_type: str,
+) -> None:
+    required_bucket = require_coach_video_r2()
+    if bucket.strip() != required_bucket:
+        raise RuntimeError("MLC3_R2_COACH_MEDIA_BUCKET_MISMATCH")
+    _client().put_object(
+        Bucket=required_bucket,
+        Key=key.lstrip("/"),
+        Body=body,
+        ContentType=content_type,
+    )
+
+
+def get_coach_object_r2_bytes(bucket: str, key: str) -> bytes:
+    required_bucket = require_coach_video_r2()
+    if bucket.strip() != required_bucket:
+        raise RuntimeError("MLC3_R2_COACH_MEDIA_BUCKET_MISMATCH")
+    response = _client().get_object(
+        Bucket=required_bucket,
+        Key=key.lstrip("/"),
+    )
+    return response["Body"].read()
+
+
+def presigned_get_coach_object_r2(
+    bucket: str, key: str, expires_in: int = 3600,
+) -> str:
+    required_bucket = require_coach_video_r2()
+    if bucket.strip() != required_bucket:
+        raise RuntimeError("MLC3_R2_COACH_MEDIA_BUCKET_MISMATCH")
+    return _client().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": required_bucket, "Key": key.lstrip("/")},
+        ExpiresIn=_clamp_ttl(expires_in),
+    )
+
+
 def r2_bucket_name() -> str:
     """R2 Bucket name (S3 API). Falls back to COACH_FEEDBACK_VIDEO_BUCKET."""
     c = _config()
@@ -96,7 +144,7 @@ def presigned_get_coach_object(
 ) -> Optional[str]:
     key = key.lstrip("/")
     if coach_videos_use_r2():
-        b = r2_bucket_name()
+        b = (bucket or "").strip() or r2_bucket_name()
         return _client().generate_presigned_url(
             "get_object",
             Params={"Bucket": b, "Key": key},
@@ -110,7 +158,7 @@ def presigned_get_coach_object(
 def put_coach_object_bytes(bucket: str, key: str, body: bytes, content_type: str) -> None:
     key = key.lstrip("/")
     if coach_videos_use_r2():
-        b = r2_bucket_name()
+        b = (bucket or "").strip() or r2_bucket_name()
         _client().put_object(Bucket=b, Key=key, Body=body, ContentType=content_type)
         return
     from services.db import db
@@ -121,7 +169,7 @@ def put_coach_object_bytes(bucket: str, key: str, body: bytes, content_type: str
 def get_coach_object_bytes(bucket: str, key: str) -> bytes:
     key = key.lstrip("/")
     if coach_videos_use_r2():
-        b = r2_bucket_name()
+        b = (bucket or "").strip() or r2_bucket_name()
         r = _client().get_object(Bucket=b, Key=key)
         return r["Body"].read()
     from services.db import db

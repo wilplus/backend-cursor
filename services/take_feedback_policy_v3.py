@@ -23,6 +23,7 @@ from services.voice_confidence import VERSION as CONFIDENCE_DETECTOR_VERSION
 
 
 POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
+SERVICE_POLICY_VERSION = "take-feedback-policy-v3-serving-v1"
 FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v3"
 SUGGESTION_GENERATOR_CONTRACT_VERSION = "feedback-candidate-generator-v1"
 TARGET_WORDS = 75
@@ -648,6 +649,29 @@ def build_shadow_frame(
         "serves_user_feedback": False,
         "dataset_eligible": False,
     }
+    encoded = json.dumps(
+        frame, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return {**frame, "frame_hash": hashlib.sha256(encoded).hexdigest()}
+
+
+def build_service_candidate_frame(**kwargs: Any) -> Optional[dict]:
+    """Build a fresh service candidate calculation without recording exposure.
+
+    The shared calculator preserves the accepted 75-word and Take budgets, but
+    the returned identity is explicitly service preparation.  It is never read
+    from, nor written to, the dark-frame table.
+    """
+    shadow = build_shadow_frame(**kwargs)
+    if shadow is None:
+        return None
+    frame = {
+        **shadow,
+        "policy_version": SERVICE_POLICY_VERSION,
+        "frame_schema_version": "take-feedback-policy-v3-service-candidates-v1",
+        "operation_mode": "allowlisted_service_preparation",
+    }
+    frame.pop("frame_hash", None)
     encoded = json.dumps(
         frame, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")

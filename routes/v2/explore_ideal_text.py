@@ -2811,6 +2811,46 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
                     "take=%s: %s", arc_id, _arm_sid,
                     _canonical_feedback_error,
                 )
+
+        # ALLOWLISTED FEEDBACK V3 SERVICE. This is a fresh calculation over
+        # the complete current-Take pool, not a conversion of the dark frame.
+        # Any missing snapshot, provenance, database contract or exact N1
+        # dependency returns None and preserves the working legacy response.
+        # The frontend flag remains presentation-only; both backend and DB
+        # authority are independently required by the called service RPCs.
+        try:
+            from services.mlc3_first_client_feedback import (
+                prepare_first_client_feedback,
+            )
+
+            _service_session = db.v2_get_session_by_id(_arm_sid) or {} \
+                if _arm_sid else {}
+            _service_doc = locals().get("_review_doc")
+            if not isinstance(_service_doc, dict) and _arm_sid:
+                _service_doc = build_transcript_document(
+                    arc_id, database=db, session_id=_arm_sid,
+                )
+            _service_rows = prepare_first_client_feedback(
+                database=db,
+                session=_service_session,
+                take_document=_service_doc,
+                served_text=served_text,
+                snippets=(
+                    db.get_snippets_by_session(_arm_sid) or []
+                    if _arm_sid else []
+                ),
+                suggestions=_user_sugs,
+                feedback_candidates=_feedback_exposure,
+                owner_user_id=str(user_id),
+            )
+            if _service_rows is not None:
+                changes = _service_rows
+                _styles = []
+        except Exception as _service_feedback_error:
+            logger.warning(
+                "Feedback V3 service preparation failed arc=%s take=%s: %s",
+                arc_id, _arm_sid, _service_feedback_error,
+            )
         _style = {"style_changes": _styles} if _styles else {}
         # THE EXPERIMENT'S RECORD — after the span check on purpose: a row
         # stamped surfaced=True for a serve the guard then zeroed would claim

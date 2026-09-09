@@ -49,3 +49,27 @@ def operational_purpose_disabled(purpose_id: str):
         return disabled
 
     return decorate
+
+
+def mlc3_pilot_required(function):
+    """Expose the service loop only to the reviewed first-client allowlist.
+
+    Authentication must wrap this decorator.  A disabled or non-allowlisted
+    caller receives 404 so the unreleased surface is not discoverable.
+    """
+    @wraps(function)
+    def gated(*args, **kwargs):
+        from flask import request
+
+        from services.coach_guidance_delivery import principal_is_allowlisted
+        from services.db import db
+
+        user_id = str(getattr(request, "user_id", "") or "")
+        principal = db.get_owner_principal_for_user(user_id) if user_id else None
+        principal_id = str((principal or {}).get("id") or "")
+        if not principal_is_allowlisted(principal_id=principal_id):
+            return jsonify({"code": "NOT_FOUND"}), 404
+        request.mlc3_principal_id = principal_id
+        return function(*args, **kwargs)
+
+    return gated
