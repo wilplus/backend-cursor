@@ -21,6 +21,13 @@ def runtime_is_enabled() -> bool:
     return bool(Config.MLC3_PILOT_ENABLED)
 
 
+def inline_authoring_is_enabled() -> bool:
+    """Coach draft gate; separate from user serving and learning switches."""
+    from config import Config
+
+    return bool(Config.MLC3_COACH_INLINE_AUTHORING_ENABLED)
+
+
 def principal_is_allowlisted(*, principal_id: str | None) -> bool:
     """Require an exact configured identity in addition to the master gate."""
     if not runtime_is_enabled():

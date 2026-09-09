@@ -3169,6 +3169,97 @@ def v2_coach_restore_training_import(session_id):
                         "error": "could not restore the import"}), 500
 
 
+def _coach_inline_canonical_queue_rows(
+    prepared: dict[str, Any],
+    *,
+    session_id: str,
+    project_id: str,
+) -> list[dict[str, Any]]:
+    """Project frozen D5 items without collapsing their review identity.
+
+    A snippet identifies audio lineage, not a review act. The same clip may
+    have multiple frozen candidate/membership assignments, so this function
+    iterates the canonical items directly and preserves database order.
+    """
+    raw_items = prepared.get("items")
+    if not isinstance(raw_items, list):
+        raise ValueError("COACH_INLINE_CANONICAL_ITEMS_REQUIRED")
+    rows: list[dict[str, Any]] = []
+    decision_values = {
+        "rating_yes": "yes",
+        "rating_in_between": "in_between",
+        "rating_no": "no",
+        "rating_not_sure": "not_sure",
+        "rating_audio_unclear": "audio_unclear",
+    }
+    for expected_position, raw in enumerate(raw_items, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError("COACH_INLINE_CANONICAL_ITEM_INVALID")
+        exact = raw
+        required_uuids = (
+            "review_batch_id",
+            "review_assignment_id",
+            "blind_packet_id",
+            "take_id",
+            "snippet_id",
+            "playback_reference_id",
+            "presentation_id",
+            "acknowledgement_token",
+        )
+        if any(
+            not _is_valid_uuid(str(exact.get(key) or ""))
+            for key in required_uuids
+        ):
+            raise ValueError("COACH_INLINE_CANONICAL_IDENTITY_INVALID")
+        if str(exact["review_assignment_id"]) != str(
+            exact["playback_reference_id"]
+        ):
+            raise ValueError("COACH_INLINE_PLAYBACK_IDENTITY_INVALID")
+        payload_hash = str(exact.get("visible_payload_sha256") or "")
+        if re.fullmatch(r"[0-9a-f]{64}", payload_hash) is None:
+            raise ValueError("COACH_INLINE_VISIBLE_PAYLOAD_INVALID")
+        position = exact.get("canonical_position")
+        if not isinstance(position, int) or position != expected_position:
+            raise ValueError("COACH_INLINE_CANONICAL_ORDER_INVALID")
+        if str(exact["take_id"]) != session_id:
+            continue
+        value = decision_values.get(str(exact.get("judgment") or ""))
+        label = None if value is None else {
+            "value": value,
+            "unrateable": value == "audio_unclear",
+            "confident": True if value == "yes" else (
+                False if value == "no" else None
+            ),
+            "intensity": None,
+            "note": None,
+        }
+        rows.append({
+            "snippet_id": str(exact["snippet_id"]),
+            "review_assignment_id": str(exact["review_assignment_id"]),
+            "canonical_position": position,
+            "playback_reference_id": str(exact["playback_reference_id"]),
+            "label": label,
+            "re_review": False,
+            "rating_locked": label is not None,
+            "rating_lock_reason": (
+                "immutable_blind_judgment" if label else None
+            ),
+            "learning_exposures": [],
+            "blind_review": {
+                "project_id": project_id,
+                "review_batch_id": str(exact["review_batch_id"]),
+                "review_assignment_id": str(exact["review_assignment_id"]),
+                "blind_packet_id": str(exact["blind_packet_id"]),
+                "presentation_id": str(exact["presentation_id"]),
+                "acknowledgement_token": str(
+                    exact["acknowledgement_token"]
+                ),
+                "visible_payload_sha256": payload_hash,
+            },
+        })
+    return rows
+
+
 @v2_bp.route("/coach/sessions/<session_id>/confidence-queue", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_confidence_queue(session_id):
@@ -3179,13 +3270,13 @@ def v2_coach_confidence_queue(session_id):
     persisted for audit but discarded from this payload, which
     carries the moment (words + audio) and NOTHING that could hint at an
     answer (BLIND COACH — audio only before the answer; no transcript,
-    voice_confidence, acoustic_read, or tone word). The exact transcript is
-    returned for a row only after this coach has committed its label. If no
-    cohort exists, one mixed-policy cohort is built and persisted exactly once
-    (any take, not just an import).
+    voice_confidence, acoustic_read, or tone word). Transcript content remains
+    absent even for answered rows; only the separate complete-batch reveal
+    endpoint may return it. If no cohort exists, one mixed-policy cohort is
+    built and persisted exactly once (any take, not just an import).
 
-    200 { session_id, queue: [{snippet_id, transcript, audio_ref,
-          start_offset_ms, duration_ms, label}], count, labelled }
+    200 { session_id, queue: [{snippet_id, playback_reference_id, label}],
+          count, labelled }
     404 · 500
     """
     try:
@@ -3211,15 +3302,8 @@ def v2_coach_confidence_queue(session_id):
             rows.sort(key=lambda item: (
                 0 if str(item.get("snippet_id")) in pending_rereviews else 1,
             ))
-        # PLAYABLE urls, not storage keys (FE §2): this is a LISTENING screen
-        # — the coach hears the piece and judges. A bare key renders a dead
-        # player and the surface silently degrades to labelling TEXT, which
-        # is a different task and a corpus of a different thing. A row whose
-        # audio_ref is already an http(s) URL is left alone; a key is signed.
-        _resolve_audio_refs(rows)
         labels = db.get_confidence_labels_by_snippet_ids(
             [r["snippet_id"] for r in rows]) or {}
-        from services.coach_blind_gate import reveal_transcript_after_commit
         from services.label_quorum import (
             rater_submission_access, routing_priority,
         )
@@ -3343,11 +3427,11 @@ def v2_coach_confidence_queue(session_id):
                     )
             else:
                 r["label"] = None
-            # The browser never receives the words before THIS rater's blind
-            # answer is safely stored. A visual-only hide would still expose
-            # them through the network payload and corrupt the instrument.
-            r["transcript"] = reveal_transcript_after_commit(
-                r.get("transcript"), committed=bool(mine))
+            # D5 complete-batch blindness: this queue is always audio-only,
+            # including answered rows. Transcript content is returned by the
+            # reviewer-specific guidance context only after every required
+            # assignment in the canonical batch has an immutable judgment.
+            r["transcript"] = ""
             visible_rows.append(r)
         # Human disagreement and audio retries move ahead of ordinary unseen
         # rows. The priority is stripped before serialization: routing logic
@@ -3367,23 +3451,43 @@ def v2_coach_confidence_queue(session_id):
         _project_id = str(sess.get("project_id") or "")
         _blind_candidates = [{
             "candidate_key": str(row.get("snippet_id") or ""),
-            "audio_ref": row.get("audio_ref"),
-            "start_offset_ms": row.get("start_offset_ms"),
-            "duration_ms": row.get("duration_ms"),
         } for row in visible_rows]
-        if _coach_id and _owner_id and _project_id:
+        from services.coach_guidance_delivery import inline_authoring_is_enabled
+        if (_coach_id and _owner_id and _project_id and
+                inline_authoring_is_enabled()):
+            from services.db import first_client_repository
+
+            reviewer_identity = db.get_owner_principal_for_user(_coach_id) or {}
+            reviewer_principal_id = str(reviewer_identity.get("id") or "")
+            prepared = first_client_repository.prepare_coach_inline_blind_batch({
+                "p_project_id": _project_id,
+                "p_acquisition_principal_id": _owner_id,
+                "p_reviewer_principal_id": reviewer_principal_id,
+                "p_idempotency_key": (
+                    f"coach-inline-visible-request:{_project_id}:"
+                    f"{reviewer_principal_id}"
+                ),
+            }) if _is_valid_uuid(reviewer_principal_id) else None
+            if not prepared:
+                raise ValueError("COACH_INLINE_CANONICAL_BATCH_REQUIRED")
+            # Render the exact frozen assignments themselves. Never use
+            # snippet_id as a dictionary key: two legitimate review acts may
+            # share one clip while carrying different membership/candidate,
+            # offer, packet and presentation identities.
+            visible_rows = _coach_inline_canonical_queue_rows(
+                prepared,
+                session_id=str(session_id),
+                project_id=_project_id,
+            )
+        elif _coach_id and _owner_id and _project_id:
             from services.feedback_data_contract import (
                 TAXONOMY_VERSION, blind_packet_hash,
             )
             from services.learning_exposures import (
                 prepare_blind_confidence_presentation,
             )
+            opaque_rows = []
             for row in visible_rows:
-                # A previously answered row is history/resume, not a new blind
-                # exposure. Its transcript may now be revealed, so never use
-                # it to mint another pre-judgment packet.
-                if row.get("label") is not None:
-                    continue
                 try:
                     evidence = db.get_canonical_confidence_evidence(
                         take_id=str(session_id),
@@ -3406,40 +3510,59 @@ def v2_coach_confidence_queue(session_id):
                     )
                     if assignment is None:
                         continue
+                    assignment_id = str(assignment.get("assignment_id") or "")
+                    if not _is_valid_uuid(assignment_id):
+                        continue
                     visible_payload = {
                         "snippet_id": str(row["snippet_id"]),
-                        "audio_ref": row.get("audio_ref"),
-                        "start_offset_ms": row.get("start_offset_ms"),
-                        "duration_ms": row.get("duration_ms"),
+                        "playback_reference_id": assignment_id,
                         "re_review": bool(row.get("re_review")),
                     }
-                    row["learning_exposures"] = [
-                        prepare_blind_confidence_presentation(
-                            database=db,
-                            owner_principal_id=_owner_id,
-                            project_id=_project_id,
-                            take_id=str(session_id),
-                            evidence_span_id=str(
-                                evidence["evidence_span_id"]),
-                            actor_role="coach",
-                            actor_id=_coach_id,
-                            complete_candidate_set=_blind_candidates,
-                            selected_candidate=visible_payload,
-                            visible_payload=visible_payload,
-                            versions={
-                                "surface_schema":
-                                    "blind-confidence-exposure-v1",
-                                "taxonomy_version": TAXONOMY_VERSION,
-                                "blind_packet_hash": str(packet_hash),
-                            },
-                            delivery_mode="canary",
-                        )
-                    ]
+                    learning_exposures = []
+                    # An answered row is history/resume, not a new exposure.
+                    if row.get("label") is None:
+                        learning_exposures = [
+                            prepare_blind_confidence_presentation(
+                                database=db,
+                                owner_principal_id=_owner_id,
+                                project_id=_project_id,
+                                take_id=str(session_id),
+                                evidence_span_id=str(
+                                    evidence["evidence_span_id"]),
+                                actor_role="coach",
+                                actor_id=_coach_id,
+                                complete_candidate_set=_blind_candidates,
+                                selected_candidate=visible_payload,
+                                visible_payload=visible_payload,
+                                versions={
+                                    "surface_schema":
+                                        "blind-confidence-exposure-v2-opaque",
+                                    "taxonomy_version": TAXONOMY_VERSION,
+                                    "blind_packet_hash": str(packet_hash),
+                                },
+                                delivery_mode="canary",
+                            )
+                        ]
+                    # Explicit allowlist: raw storage references, clip
+                    # coordinates, transcript, predictions and evidence kind
+                    # never cross the pre-judgment response boundary.
+                    opaque_rows.append({
+                        "snippet_id": str(row["snippet_id"]),
+                        "playback_reference_id": assignment_id,
+                        "label": row.get("label"),
+                        "re_review": bool(row.get("re_review")),
+                        "rating_locked": bool(row.get("rating_locked")),
+                        "rating_lock_reason": row.get("rating_lock_reason"),
+                        "learning_exposures": learning_exposures,
+                    })
                 except Exception as exposure_error:
                     logger.warning(
                         "blind presentation not prepared take=%s snippet=%s: %s",
                         session_id, row.get("snippet_id"), exposure_error,
                     )
+            visible_rows = opaque_rows
+        else:
+            visible_rows = []
         return jsonify({"session_id": session_id, "queue": visible_rows,
                         "count": len(visible_rows),
                         "labelled": labelled}), 200

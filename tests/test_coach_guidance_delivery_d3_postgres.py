@@ -97,6 +97,11 @@ def _install_full_review_shape(db) -> None:
         "metadata jsonb NOT NULL DEFAULT '{}'::jsonb,"
         "UNIQUE(review_assignment_id,event_kind))",
     )
+    query(
+        db,
+        "ALTER TABLE ml_evidence_spans ADD COLUMN IF NOT EXISTS "
+        "canonical_event_id uuid NULL REFERENCES ml_canonical_events(id)",
+    )
 
 
 def _make_packet(db, ctx, *, second: bool = False, expired: bool = False):

@@ -290,6 +290,12 @@ class Config:
     MLC3_PILOT_MAX_AUDIO_MB = int(
         os.getenv("MLC3_PILOT_MAX_AUDIO_MB", "25")
     )
+    # Coach-side drafting is intentionally separable from user serving.
+    # The database still requires the complete blind-review/reveal contract.
+    MLC3_COACH_INLINE_AUTHORING_ENABLED = (
+        (os.getenv("MLC3_COACH_INLINE_AUTHORING_ENABLED") or "0")
+        .strip().lower() in ("1", "true", "yes", "on")
+    )
 
     # ── Cloudflare R2 — USER INTERVIEW AUDIO ─────────────────────────────────
     # Deliberately a separate bucket from coach feedback videos because the
