@@ -11,6 +11,7 @@ from services.first_client_repository import FirstClientRepository
 
 ROOT = Path(__file__).resolve().parents[1]
 SQL = (ROOT / "migrations/add_mlc3_general_user_service_d4.sql").read_text()
+D2_SQL = (ROOT / "migrations/add_mlc3_first_client_service_d2.sql").read_text()
 GUARD = (ROOT / "routes/phase2_guard.py").read_text()
 GUIDANCE = (ROOT / "services/coach_guidance_delivery.py").read_text()
 DESIGN_SHA256 = (
@@ -197,8 +198,24 @@ def test_repository_uses_exact_rollout_enrollment_rpc():
 
 def test_database_allocates_practice_attempt_indexes_for_runtime():
     assert "reserve_exercise_practice_service_upload_v2" in SQL
-    assert "practice-service-session:" in SQL
-    assert "COALESCE(max(row.attempt_index), 0) + 1" in SQL
+    assert (
+        "reserve_exercise_practice_service_upload_v1"
+        "(uuid,uuid,uuid,text,bigint,text,text,text,integer)" in SQL
+    )
+    assert (
+        "reserve_exercise_practice_service_upload_v1"
+        "(uuid,uuid,integer,uuid,text,bigint,text,text,text,integer)"
+        not in SQL
+    )
+    assert "practice-service-upload-session:" in D2_SQL
+    assert "COALESCE(max(row.attempt_index), 0) + 1" in D2_SQL
+    v2_body = SQL.split(
+        "CREATE OR REPLACE FUNCTION "
+        "public.reserve_exercise_practice_service_upload_v2",
+        1,
+    )[1].split("\n$$;", 1)[0]
+    assert "next_attempt_index" not in v2_body
+    assert "RETURN public.reserve_exercise_practice_service_upload_v1(" in v2_body
     repository = (ROOT / "services/first_client_repository.py").read_text()
     assert '"reserve_exercise_practice_service_upload_v2"' in repository
     assert (

@@ -1,6 +1,13 @@
 # MLC-3 General-User Service Rollout D4 — Release Packet
 
-Status: `RELEASE_REVIEW_REQUESTED`
+Status: `SUPERSEDED_BY_PRODUCTION_SHAPE_CORRECTION`
+
+The original checksum-pinned 0326 package failed atomically during the first
+production pre-deploy. Its runtime registry named a 10-argument practice-upload
+function that was present only in the rehearsal template, while numbered
+migration 0323 and production expose the authoritative 9-argument function.
+No D4 object or ledger row was committed. The replacement review authority is
+`MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION.md`.
 
 Design authority: `MLC-3 General-User Service Rollout D4`, SHA-256
 `4ee8cc5f1dda8cf5e727fefdaef12a1a96a85d9fcd01c74e8953564026bf1085`.
@@ -137,4 +144,3 @@ ae3d8af0219dc6812320e2dc1ee8c24a70475b120060214b497fa63173006d78  src/services/a
 > No commit, push, merge, deployment, production migration, activation, real
 > collection, dataset creation, training, evaluation, or promotion is
 > authorized.
-

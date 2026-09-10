@@ -61,7 +61,7 @@ _FORBIDDEN_RPCS = _FOUNDER_FORBIDDEN_RPCS + (
     "require_mlc3_current_pair_speaker_identity_v1(uuid,uuid)",
     "assign_synthetic_exercise_pair_v1(uuid,uuid,text,text)",
     "submit_synthetic_exercise_pair_judgment_v1(uuid,uuid,text,text)",
-    "reserve_exercise_practice_service_upload_v1(uuid,uuid,integer,uuid,text,bigint,text,text,text,integer)",
+    "reserve_exercise_practice_service_upload_v1(uuid,uuid,uuid,text,bigint,text,text,text,integer)",
 )
 _RLS_TABLES = tuple(dict.fromkeys(_FOUNDER_RLS_TABLES + _D4_TABLES))
 

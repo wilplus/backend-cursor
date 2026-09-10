@@ -630,7 +630,7 @@ def test_complete_runtime_registry_is_rollout_bound_rls_and_rpc_only(db):
         ("require_mlc3_service_principal_v1(uuid)", False),
         ("record_mlc3_self_speaker_target_v1(uuid,uuid,uuid,uuid,uuid,text)", False),
         ("record_mlc3_practice_self_speaker_target_v1(uuid,uuid,uuid,text)", False),
-        ("reserve_exercise_practice_service_upload_v1(uuid,uuid,integer,uuid,text,bigint,text,text,text,integer)", False),
+        ("reserve_exercise_practice_service_upload_v1(uuid,uuid,uuid,text,bigint,text,text,text,integer)", False),
         ("register_mlc3_general_rollout_v2(uuid,uuid,jsonb,jsonb,uuid,timestamptz,text)", False),
         ("assign_synthetic_exercise_pair_v1(uuid,uuid,text,text)", False),
         ("submit_synthetic_exercise_pair_judgment_v1(uuid,uuid,text,text)", False),
