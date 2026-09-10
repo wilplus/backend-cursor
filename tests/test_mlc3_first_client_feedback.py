@@ -98,6 +98,13 @@ class _Database:
         self.bundle = None
         self.membership_payload = None
 
+    def ensure_service_enrollment(self, **_payload):
+        return {
+            "id": "c0000000-0000-4000-8000-000000000001",
+            "rollout_revision_id": "d0000000-0000-4000-8000-000000000001",
+            "operation_mode": "general_service",
+        }
+
     def record_feedback_v3_service_candidate_set(self, bundle):
         self.bundle = bundle
         return {"candidate_set_id": bundle["candidate_set_id"]}
@@ -123,8 +130,7 @@ class _Database:
 def test_first_client_rows_receive_exact_service_identity(monkeypatch):
     from config import Config
 
-    monkeypatch.setattr(Config, "MLC3_PILOT_ENABLED", True)
-    monkeypatch.setattr(Config, "MLC3_PILOT_PRINCIPAL_IDS", (OWNER,))
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
     session, document, snippets = _source()
     database = _Database()
     rows = prepare_first_client_feedback(
@@ -151,8 +157,7 @@ def test_first_client_rows_receive_exact_service_identity(monkeypatch):
 def test_closed_backend_gate_returns_legacy_fallback(monkeypatch):
     from config import Config
 
-    monkeypatch.setattr(Config, "MLC3_PILOT_ENABLED", False)
-    monkeypatch.setattr(Config, "MLC3_PILOT_PRINCIPAL_IDS", (OWNER,))
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", False)
     session, document, snippets = _source()
     assert prepare_first_client_feedback(
         database=_Database(), session=session, take_document=document,

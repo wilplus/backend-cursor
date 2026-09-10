@@ -296,7 +296,10 @@ def v2_coach_guidance_batch(arc_id: str):
             "reveal_grant_id": reveal_grants[0] if reveal_grants else project_id,
             "batch_complete": True,
             "items": items,
-            "operation_mode": "allowlisted_service",
+            "operation_mode": str(
+                getattr(request, "mlc3_operation_mode", "")
+                or "allowlisted_service"
+            ),
             "synthetic_only": False,
             "serves_user": False,
             "dataset_eligible": False,

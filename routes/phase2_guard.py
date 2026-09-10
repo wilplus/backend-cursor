@@ -51,25 +51,46 @@ def operational_purpose_disabled(purpose_id: str):
     return decorate
 
 
-def mlc3_pilot_required(function):
-    """Expose the service loop only to the reviewed first-client allowlist.
+def mlc3_service_required(function):
+    """Expose the service loop only after rollout-aware DB enrollment.
 
-    Authentication must wrap this decorator.  A disabled or non-allowlisted
-    caller receives 404 so the unreleased surface is not discoverable.
+    Authentication must wrap this decorator. A disabled or ineligible caller
+    receives 404 so the surface is not discoverable. Legacy founder-pilot
+    variables do not authorize this path.
     """
     @wraps(function)
     def gated(*args, **kwargs):
         from flask import request
 
-        from services.coach_guidance_delivery import principal_is_allowlisted
-        from services.db import db
+        from services.coach_guidance_delivery import runtime_is_enabled
+        from services.db import db, first_client_repository
 
         user_id = str(getattr(request, "user_id", "") or "")
         principal = db.get_owner_principal_for_user(user_id) if user_id else None
         principal_id = str((principal or {}).get("id") or "")
-        if not principal_is_allowlisted(principal_id=principal_id):
+        if not runtime_is_enabled() or not principal_id:
+            return jsonify({"code": "NOT_FOUND"}), 404
+        enrollment = first_client_repository.ensure_service_enrollment(
+            acquisition_principal_id=principal_id,
+            owner_user_id=user_id,
+            idempotency_key=(
+                f"http-enrollment:{principal_id}:"
+                f"{getattr(request, 'request_id', '') or 'request'}"
+            ),
+        )
+        if not enrollment:
             return jsonify({"code": "NOT_FOUND"}), 404
         request.mlc3_principal_id = principal_id
+        request.mlc3_rollout_revision_id = enrollment.get(
+            "rollout_revision_id"
+        )
+        request.mlc3_enrollment_revision_id = enrollment.get("id")
+        request.mlc3_operation_mode = enrollment.get("operation_mode")
         return function(*args, **kwargs)
 
     return gated
+
+
+# Compatibility only for dormant imports. New runtime routes use the
+# rollout-aware name above; both names execute the exact same guard.
+mlc3_pilot_required = mlc3_service_required

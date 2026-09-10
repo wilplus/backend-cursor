@@ -47,6 +47,13 @@ def prepare_first_client_feedback(
         or str(owner_user_id or "") != str(take.get("user_id") or owner_user_id)
     ):
         return None
+    enrollment = database.ensure_service_enrollment(
+        acquisition_principal_id=principal_id,
+        owner_user_id=str(owner_user_id),
+        idempotency_key=f"feedback-entry:{take_id}",
+    )
+    if not isinstance(enrollment, dict) or not enrollment.get("id"):
+        return None
     frame = build_service_candidate_frame(
         take_document=take_document,
         snippets=snippets,

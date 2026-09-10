@@ -109,7 +109,13 @@ class PracticeAttemptOrchestrator:
             command, session, attempt, validity, selection
         )
         playback_url = self._playback_url(command, attempt)
-        owner_pair = self._owner_pair(command, session, attempt, selection)
+        owner_pair = (
+            None
+            if session.get("operation_mode") in {
+                "cohort_service", "general_service"
+            }
+            else self._owner_pair(command, session, attempt, selection)
+        )
         return self._response(
             attempt=attempt,
             duration_ms=duration_ms,
@@ -574,18 +580,11 @@ class PracticeAttemptOrchestrator:
         command: PracticeAttemptCommand,
         attempt: dict[str, Any],
     ) -> str:
-        from services.user_media_storage import presigned_get_user_media_r2
-
-        media = self._require(
-            self.repository.resolve_exercise_practice_media_read(
-                str(attempt["id"]), command.principal_id
-            ),
-            "PRACTICE_MEDIA_READ_FAILED",
-        )
-        return presigned_get_user_media_r2(
-            str(media["object_key"]),
-            expires_in=900,
-            bucket=str(media["bucket"]),
+        # The browser never receives an R2 credential or presigned URL. The
+        # authenticated route performs fresh authority/deletion checks before
+        # and after reading the exact bytes.
+        return (
+            f"/api/v2/user/mlc3/practice-attempts/{attempt['id']}/playback"
         )
 
     def _owner_pair(
@@ -650,6 +649,10 @@ class PracticeAttemptOrchestrator:
             "selection_state": selection["selection_state"],
             "selected_attempt_id": selection.get("selected_attempt_id"),
             "owner_pair": owner_pair,
+            "speaker_confirmation_required": (
+                owner_pair is None
+                and selection.get("selection_state") == "selected_first_valid"
+            ),
             "serves_user": False,
             "dataset_eligible": False,
         }

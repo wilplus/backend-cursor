@@ -11,6 +11,12 @@ from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
+_SERVICE_OPERATION_MODES = (
+    "allowlisted_service",
+    "cohort_service",
+    "general_service",
+)
+
 
 class FirstClientRepository:
     """RPC/read facade for the gated first-client service."""
@@ -50,6 +56,60 @@ class FirstClientRepository:
                 "current Ideal Text snapshot read failed project=%s: %s",
                 project_id, error,
             )
+            return None
+
+    def ensure_service_enrollment(
+        self,
+        *,
+        acquisition_principal_id: str,
+        owner_user_id: str,
+        idempotency_key: str,
+    ) -> Optional[dict]:
+        """Resolve the current rollout and create/replay exact enrollment."""
+        try:
+            result = self.client.rpc(
+                "ensure_mlc3_service_enrollment_v2",
+                {
+                    "p_acquisition_principal_id": str(
+                        acquisition_principal_id
+                    ),
+                    "p_owner_user_id": str(owner_user_id),
+                    "p_idempotency_key": str(idempotency_key),
+                },
+            ).execute()
+            return self._rpc_row(result.data)
+        except Exception as error:
+            logger.warning(
+                "MLC-3 rollout enrollment failed principal=%s: %s",
+                acquisition_principal_id,
+                error,
+            )
+            return None
+
+    def record_feedback_self_speaker_target(
+        self, payload: dict,
+    ) -> Optional[dict]:
+        """Persist the exact affirmative source-voice routing action."""
+        try:
+            result = self.client.rpc(
+                "record_mlc3_feedback_self_speaker_target_v1", payload,
+            ).execute()
+            return self._rpc_row(result.data)
+        except Exception as error:
+            logger.warning("Source self-speaker confirmation failed: %s", error)
+            return None
+
+    def confirm_practice_speaker_and_pair(
+        self, payload: dict,
+    ) -> Optional[dict]:
+        """Persist practice voice identity and create an exact same-speaker pair."""
+        try:
+            result = self.client.rpc(
+                "confirm_mlc3_practice_speaker_and_pair_v1", payload,
+            ).execute()
+            return self._rpc_row(result.data)
+        except Exception as error:
+            logger.warning("Practice self-speaker confirmation failed: %s", error)
             return None
 
     def record_feedback_v3_service_candidate_set(
@@ -165,7 +225,7 @@ class FirstClientRepository:
                     .select("*").eq("id", str(offer_id))
                     .eq("acquisition_principal_id",
                         str(acquisition_principal_id))
-                    .eq("operation_mode", "allowlisted_service")
+                    .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                     .eq("serves_user", True).eq("dataset_eligible", False)
                     .limit(1).execute().data or [])
             return rows[0] if rows else None
@@ -230,7 +290,7 @@ class FirstClientRepository:
                     .select("*").eq("id", str(session_id))
                     .eq("acquisition_principal_id",
                         str(acquisition_principal_id))
-                    .eq("operation_mode", "allowlisted_service")
+                    .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                     .eq("serves_user", True).eq("dataset_eligible", False)
                     .limit(1).execute().data or [])
             return rows[0] if rows else None
@@ -295,7 +355,7 @@ class FirstClientRepository:
     ) -> Optional[dict]:
         try:
             result = self.client.rpc(
-                "reserve_exercise_practice_service_upload_v1", payload,
+                "reserve_exercise_practice_service_upload_v2", payload,
             ).execute()
             return self._rpc_row(result.data)
         except Exception as error:
@@ -503,7 +563,7 @@ class FirstClientRepository:
                      .eq("practice_session_id", str(practice_session_id))
                      .eq("acquisition_principal_id",
                          str(acquisition_principal_id))
-                     .eq("operation_mode", "allowlisted_service")
+                     .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                      .order("comparison_revision", desc=True)
                      .limit(1).execute().data or [])
             if not pairs:
@@ -515,7 +575,7 @@ class FirstClientRepository:
                            .eq("reviewer_principal_id",
                                str(acquisition_principal_id))
                            .eq("reviewer_role", "owner")
-                           .eq("operation_mode", "allowlisted_service")
+                           .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                            .limit(1).execute().data or [])
             pair["assignment"] = assignments[0] if assignments else None
             return pair
@@ -531,7 +591,7 @@ class FirstClientRepository:
             return (self.client.table("exercise_practice_sessions")
                     .select("id,acquisition_principal_id,project_id")
                     .eq("project_id", str(project_id))
-                    .eq("operation_mode", "allowlisted_service")
+                    .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                     .eq("serves_user", True).eq("dataset_eligible", False)
                     .order("created_at").execute().data or [])
         except Exception as error:
@@ -652,14 +712,14 @@ class FirstClientRepository:
                 return None
             sessions = (self.client.table("exercise_practice_sessions")
                         .select("*").eq("id", review_set["practice_session_id"])
-                        .eq("operation_mode", "allowlisted_service")
+                        .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                         .limit(1).execute().data or [])
             if not sessions:
                 return None
             session = dict(sessions[0])
             offers = (self.client.table("exercise_service_offers")
                       .select("*").eq("id", session["source_offer_id"])
-                      .eq("operation_mode", "allowlisted_service")
+                      .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                       .limit(1).execute().data or [])
             if not offers:
                 return None
@@ -668,7 +728,7 @@ class FirstClientRepository:
                      .select("*").eq("membership_id",
                                       offer["feedback_membership_id"])
                      .eq("candidate_id", offer["feedback_candidate_id"])
-                     .eq("operation_mode", "allowlisted_service")
+                     .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                      .eq("selected", True).limit(1).execute().data or [])
             candidate_sets = (self.client.table("exercise_candidate_sets")
                               .select("need_contract_id")
@@ -685,7 +745,7 @@ class FirstClientRepository:
             ).select("raw_measurements,safeguards,extractor_version,"
                      "feature_schema_version")
              .eq("attempt_id", review_set["practice_attempt_id"])
-             .eq("operation_mode", "allowlisted_service")
+             .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
              .order("measurement_revision", desc=True).limit(1)
              .execute().data or [])
             if not items or not candidate_sets or not assignments:
@@ -781,13 +841,13 @@ class FirstClientRepository:
                                             str(membership_id))
                            .eq("acquisition_principal_id",
                                str(acquisition_principal_id))
-                           .eq("operation_mode", "allowlisted_service")
+                           .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                            .execute().data or [])
             result: list[dict] = []
             for attachment in attachments:
                 versions = (self.client.table("coach_guidance_attachment_versions")
                             .select("*").eq("attachment_id", attachment["id"])
-                            .eq("operation_mode", "allowlisted_service")
+                            .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                             .eq("serves_user", True).order(
                                 "version_number", desc=True
                             ).limit(1).execute().data or [])
@@ -797,7 +857,7 @@ class FirstClientRepository:
                             .select("id").eq("attachment_version_id",
                                              versions[0]["id"])
                             .eq("event_kind", "assigned")
-                            .eq("operation_mode", "allowlisted_service")
+                            .in_("operation_mode", list(_SERVICE_OPERATION_MODES))
                             .limit(1).execute().data or [])
                 if assigned:
                     result.append({

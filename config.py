@@ -284,6 +284,14 @@ class Config:
         ).split(",")
         if value.strip()
     )
+    # General-user MLC-3 serving. This is intentionally independent from the
+    # founder-pilot switches above: legacy pilot configuration must never
+    # broaden the rollout-aware database authorization boundary. Disabled is
+    # the only safe default.
+    MLC3_SERVICE_ENABLED = (
+        (os.getenv("MLC3_SERVICE_ENABLED") or "0").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
     MLC3_PILOT_MAX_VIDEO_MB = int(
         os.getenv("MLC3_PILOT_MAX_VIDEO_MB", "200")
     )

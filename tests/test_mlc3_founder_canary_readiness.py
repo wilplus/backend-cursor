@@ -49,6 +49,9 @@ R2_SCRIPT = (ROOT / "scripts/rehearse_mlc3_founder_r2.py").read_text()
 SECURITY_MIGRATION = (
     ROOT / "migrations" / "add_mlc3_founder_canary_security_closure.sql"
 ).read_text()
+D4_RELEASE_MIGRATION = (
+    ROOT / "migrations" / "add_mlc3_general_user_service_d4.sql"
+).read_text()
 REPOSITORY = (ROOT / "services/first_client_repository.py").read_text()
 
 PRINCIPAL = "11111111-1111-4111-8111-111111111111"
@@ -794,7 +797,14 @@ def test_exact_rpc_registry_covers_every_first_client_repository_call():
     ))
     registered = {signature.split("(", 1)[0]
                   for signature in _REQUIRED_RPC_SIGNATURES}
-    assert called == registered
+    d4_successors = {
+        "ensure_mlc3_service_enrollment_v2",
+        "record_mlc3_feedback_self_speaker_target_v1",
+        "confirm_mlc3_practice_speaker_and_pair_v1",
+        "reserve_exercise_practice_service_upload_v2",
+    }
+    superseded = {"reserve_exercise_practice_service_upload_v1"}
+    assert called - d4_successors == registered - superseded
     assert len(_REQUIRED_RPC_SIGNATURES) == len(registered)
 
 
@@ -825,14 +835,19 @@ def test_lower_level_writers_are_forbidden_and_revoked_before_activation():
     assert "FROM PUBLIC, anon, authenticated, service_role" in SECURITY_MIGRATION
 
 
-def test_security_closure_is_terminal_release_migration_0325():
+def test_security_closure_precedes_terminal_d4_release_migration_0326():
     manifest = (ROOT / "migrations/manifest.txt").read_text().splitlines()
+    assert "0325\tadd_mlc3_founder_canary_security_closure.sql" in manifest
     assert manifest[-1] == (
-        "0325\tadd_mlc3_founder_canary_security_closure.sql"
+        "0326\tadd_mlc3_general_user_service_d4.sql"
     )
     assert "release migration 0325" in SECURITY_MIGRATION
+    assert "release migration 0326" in D4_RELEASE_MIGRATION
     assert SECURITY_MIGRATION.rindex("NOTIFY pgrst, 'reload schema';") < (
         SECURITY_MIGRATION.rindex("COMMIT;")
+    )
+    assert D4_RELEASE_MIGRATION.rindex("NOTIFY pgrst, 'reload schema';") < (
+        D4_RELEASE_MIGRATION.rindex("COMMIT;")
     )
 
 
