@@ -97,6 +97,29 @@ def test_runtime_cutover_registry_is_exact_and_fails_closed():
     assert "require_mlc3_service_access_v2" in SQL
 
 
+def test_offer_event_uses_the_rollout_resolver_through_exact_live_guard():
+    mode_registry, resolver_cutover = SQL.split(
+        "-- Cut every runtime wrapper over to the rollout-aware resolver.", 1
+    )
+    resolver_registry, chain_check = resolver_cutover.split(
+        "-- The offer event writer delegates authorization", 1
+    )
+    event_signature = (
+        "public.record_exercise_offer_service_event_v1"
+        "(uuid,uuid,uuid,text,uuid,text,jsonb,timestamptz,text)"
+    )
+    guard_signature = "public.require_exercise_service_offer_live_v1(uuid,uuid)"
+
+    assert event_signature in mode_registry
+    assert guard_signature in mode_registry
+    assert guard_signature in resolver_registry
+    assert event_signature not in resolver_registry
+    assert "require_exercise_service_offer_live_v1" in chain_check
+    assert "require_mlc3_service_access_v2" in chain_check
+    assert "require_mlc3_service_principal_v1" in chain_check
+    assert "MLC3_OFFER_RESOLVER_CHAIN_CONFLICT" in chain_check
+
+
 def test_new_service_rows_freeze_rollout_enrollment_and_hash():
     assert "rollout_revision_id UUID" in SQL
     assert "enrollment_revision_id UUID" in SQL

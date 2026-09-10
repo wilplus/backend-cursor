@@ -2100,6 +2100,7 @@ BEGIN
         'public.require_coach_guidance_service_access_v1(uuid,uuid,text)',
         'public.require_coach_guidance_service_media_live_v1(uuid,uuid)',
         'public.require_exercise_practice_service_live_v1(uuid,uuid)',
+        'public.require_exercise_service_offer_live_v1(uuid,uuid)',
         'public.require_feedback_v3_service_membership_live_v1(uuid,uuid)',
         'public.reserve_coach_guidance_service_upload_v1(uuid,uuid,text,text,text,text,bigint,text,timestamptz,text)',
         'public.reserve_exercise_practice_service_upload_v1(uuid,uuid,uuid,text,bigint,text,text,text,integer)',
@@ -2137,7 +2138,7 @@ BEGIN
         'public.create_exercise_practice_service_session_v1(uuid,uuid,uuid,text)',
         'public.freeze_feedback_v3_service_membership_v1(uuid,uuid,uuid,uuid,uuid,text,jsonb,text)',
         'public.issue_exercise_service_authority_v1(uuid,uuid,uuid,text,text)',
-        'public.record_exercise_offer_service_event_v1(uuid,uuid,uuid,text,uuid,text,jsonb,timestamptz,text)',
+        'public.require_exercise_service_offer_live_v1(uuid,uuid)',
         'public.record_exercise_service_acquisition_receipt_v1(uuid,text,uuid,uuid,uuid,uuid,text)',
         'public.record_feedback_v3_service_candidate_set_v1(uuid,uuid,uuid,jsonb)',
         'public.record_feedback_v3_service_response_v1(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text)',
@@ -2192,6 +2193,42 @@ BEGIN
     ELSIF position('require_mlc3_service_access_v2' IN definition) = 0 THEN
         RAISE EXCEPTION 'MLC3_RUNTIME_RESOLVER_CUTOVER_CONFLICT: %',
             signature;
+    END IF;
+END;
+$$;
+
+-- The offer event writer delegates authorization through the authoritative
+-- live-offer guard. Verify that complete transitive chain explicitly: the
+-- event must retain the guard and the guard must carry the V2 access resolver.
+-- This avoids requiring a redundant direct resolver call in the event writer
+-- while still failing closed if either edge is bypassed or drifts.
+DO $$
+DECLARE
+    event_signature TEXT :=
+        'public.record_exercise_offer_service_event_v1(uuid,uuid,uuid,text,uuid,text,jsonb,timestamptz,text)';
+    guard_signature TEXT :=
+        'public.require_exercise_service_offer_live_v1(uuid,uuid)';
+    event_oid REGPROCEDURE;
+    guard_oid REGPROCEDURE;
+    event_definition TEXT;
+    guard_definition TEXT;
+BEGIN
+    event_oid := to_regprocedure(event_signature);
+    guard_oid := to_regprocedure(guard_signature);
+    IF event_oid IS NULL THEN
+        RAISE EXCEPTION 'MLC3_RUNTIME_FUNCTION_MISSING: %', event_signature;
+    END IF;
+    IF guard_oid IS NULL THEN
+        RAISE EXCEPTION 'MLC3_RUNTIME_FUNCTION_MISSING: %', guard_signature;
+    END IF;
+
+    event_definition := pg_get_functiondef(event_oid);
+    guard_definition := pg_get_functiondef(guard_oid);
+    IF position('require_exercise_service_offer_live_v1' IN event_definition) = 0
+       OR position('require_mlc3_service_principal_v1' IN event_definition) > 0
+       OR position('require_mlc3_service_access_v2' IN guard_definition) = 0
+       OR position('require_mlc3_service_principal_v1' IN guard_definition) > 0 THEN
+        RAISE EXCEPTION 'MLC3_OFFER_RESOLVER_CHAIN_CONFLICT';
     END IF;
 END;
 $$;
