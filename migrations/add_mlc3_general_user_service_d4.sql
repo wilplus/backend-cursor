@@ -2102,7 +2102,7 @@ BEGIN
         'public.require_exercise_practice_service_live_v1(uuid,uuid)',
         'public.require_feedback_v3_service_membership_live_v1(uuid,uuid)',
         'public.reserve_coach_guidance_service_upload_v1(uuid,uuid,text,text,text,text,bigint,text,timestamptz,text)',
-        'public.reserve_exercise_practice_service_upload_v1(uuid,uuid,integer,uuid,text,bigint,text,text,text,integer)',
+        'public.reserve_exercise_practice_service_upload_v1(uuid,uuid,uuid,text,bigint,text,text,text,integer)',
         'public.resolve_coach_guidance_service_media_read_v1(uuid,uuid)',
         'public.resolve_exercise_practice_media_read_v1(uuid,uuid)',
         'public.resolve_exercise_service_offer_read_v1(uuid,uuid)',
@@ -2166,7 +2166,7 @@ BEGIN
     END LOOP;
 
     signature :=
-        'public.reserve_exercise_practice_service_upload_v1(uuid,uuid,integer,uuid,text,bigint,text,text,text,integer)';
+        'public.reserve_exercise_practice_service_upload_v1(uuid,uuid,uuid,text,bigint,text,text,text,integer)';
     function_oid := to_regprocedure(signature);
     IF function_oid IS NULL THEN
         RAISE EXCEPTION 'MLC3_RUNTIME_FUNCTION_MISSING: %', signature;
@@ -2369,10 +2369,9 @@ BEGIN
 END;
 $$;
 
--- The released V1 upload reservation still accepts a caller-provided attempt
--- index. D4 closes that boundary: the database allocates the next index under
--- the exact practice-session lock, while a replay reuses the already frozen
--- index and delegates all immutable request validation to V1.
+-- Keep a versioned public D4 surface while preserving V1's authoritative
+-- database allocation of attempt_index and its immutable replay checks.  The
+-- released V1 signature has no caller-provided attempt index.
 CREATE OR REPLACE FUNCTION public.reserve_exercise_practice_service_upload_v2(
     p_session_id UUID,
     p_acquisition_principal_id UUID,
@@ -2385,35 +2384,13 @@ CREATE OR REPLACE FUNCTION public.reserve_exercise_practice_service_upload_v2(
     p_ttl_seconds INTEGER DEFAULT 900
 ) RETURNS public.exercise_practice_upload_recoveries
 LANGUAGE plpgsql SECURITY DEFINER VOLATILE SET search_path = public AS $$
-DECLARE existing public.exercise_practice_upload_recoveries;
-DECLARE next_attempt_index INTEGER;
 BEGIN
     PERFORM public.require_mlc3_service_access_v2(
         p_acquisition_principal_id, NULL, NULL
     );
-    PERFORM pg_advisory_xact_lock(hashtextextended(
-        'practice-service-session:' || p_session_id::TEXT, 0
-    ));
-    SELECT * INTO existing
-      FROM public.exercise_practice_upload_recoveries row
-     WHERE row.idempotency_key = p_idempotency_key
-     FOR SHARE;
-    IF existing.id IS NOT NULL THEN
-        IF existing.session_id <> p_session_id
-           OR existing.acquisition_principal_id <>
-               p_acquisition_principal_id
-        THEN RAISE EXCEPTION 'PRACTICE_SERVICE_UPLOAD_REPLAY_CONFLICT'; END IF;
-        next_attempt_index := existing.attempt_index;
-    ELSE
-        SELECT COALESCE(max(row.attempt_index), 0) + 1
-          INTO next_attempt_index
-          FROM public.exercise_practice_upload_recoveries row
-         WHERE row.session_id = p_session_id
-           AND row.acquisition_principal_id = p_acquisition_principal_id;
-    END IF;
     RETURN public.reserve_exercise_practice_service_upload_v1(
-        p_session_id, p_acquisition_principal_id, next_attempt_index,
-        p_recording_id, p_object_key, p_byte_size, p_content_type,
+        p_session_id, p_acquisition_principal_id, p_recording_id,
+        p_object_key, p_byte_size, p_content_type,
         p_intended_exact_bytes_sha256, p_idempotency_key, p_ttl_seconds
     );
 END;
@@ -3198,7 +3175,7 @@ REVOKE ALL ON FUNCTION public.submit_exercise_service_owner_pair_judgment_v1(
 GRANT EXECUTE ON FUNCTION public.submit_exercise_service_owner_pair_judgment_v1(
     UUID,UUID,TEXT,TEXT) TO service_role;
 REVOKE ALL ON FUNCTION public.reserve_exercise_practice_service_upload_v1(
-    UUID,UUID,INTEGER,UUID,TEXT,BIGINT,TEXT,TEXT,TEXT,INTEGER
+    UUID,UUID,UUID,TEXT,BIGINT,TEXT,TEXT,TEXT,INTEGER
 ) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.reserve_exercise_practice_service_upload_v2(
     UUID,UUID,UUID,TEXT,BIGINT,TEXT,TEXT,TEXT,INTEGER

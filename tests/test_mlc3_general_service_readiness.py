@@ -286,7 +286,7 @@ def test_readiness_registry_covers_d4_and_closes_superseded_writers():
         "require_mlc3_current_pair_speaker_identity_v1(uuid,uuid)",
         "assign_synthetic_exercise_pair_v1(uuid,uuid,text,text)",
         "submit_synthetic_exercise_pair_judgment_v1(uuid,uuid,text,text)",
-        "reserve_exercise_practice_service_upload_v1(uuid,uuid,integer,uuid,text,bigint,text,text,text,integer)",
+        "reserve_exercise_practice_service_upload_v1(uuid,uuid,uuid,text,bigint,text,text,text,integer)",
     }.issubset(_FORBIDDEN_RPCS)
     assert not any(
         signature.startswith("reserve_exercise_practice_service_upload_v1(")
