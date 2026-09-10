@@ -1,6 +1,11 @@
 # MLC-3 General-User Service D4 — Production-Shape Release Correction
 
-Status: `RELEASE_RE_REVIEW_REQUESTED`
+Status: `SUPERSEDED_BY_RESOLVER_CHAIN_CORRECTION`
+
+Superseded by
+`docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION-2.md` after the
+second fail-safe production pre-deploy exposed the exact offer-live resolver
+chain used by the released schema.
 
 Design authority: `MLC-3 General-User Service Rollout D4`, SHA-256
 `4ee8cc5f1dda8cf5e727fefdaef12a1a96a85d9fcd01c74e8953564026bf1085`.

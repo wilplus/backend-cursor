@@ -148,6 +148,26 @@ def rejected(db, statement: str, parameters=(), match: str | None = None):
             cursor.execute("RELEASE SAVEPOINT expected_rejection")
 
 
+def test_offer_event_authority_is_transitively_rollout_bound(db):
+    definitions = one(
+        db,
+        "SELECT "
+        "pg_get_functiondef(to_regprocedure(%s)) AS event_definition, "
+        "pg_get_functiondef(to_regprocedure(%s)) AS guard_definition",
+        (
+            "public.record_exercise_offer_service_event_v1("
+            "uuid,uuid,uuid,text,uuid,text,jsonb,timestamptz,text)",
+            "public.require_exercise_service_offer_live_v1(uuid,uuid)",
+        ),
+    )
+    event_definition = definitions["event_definition"]
+    guard_definition = definitions["guard_definition"]
+    assert "require_exercise_service_offer_live_v1" in event_definition
+    assert "require_mlc3_service_principal_v1" not in event_definition
+    assert "require_mlc3_service_access_v2" in guard_definition
+    assert "require_mlc3_service_principal_v1" not in guard_definition
+
+
 def service_rpc(db, name: str, *arguments):
     with db.cursor(cursor_factory=RealDictCursor) as cursor:
         cursor.execute("SET ROLE service_role")
