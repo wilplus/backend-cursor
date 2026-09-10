@@ -48,12 +48,13 @@ def test_first_client_http_and_persistence_glue_have_narrow_boundaries():
 def test_all_four_service_gates_are_independent_and_default_closed(monkeypatch):
     from config import Config
 
-    assert Config.MLC3_PILOT_ENABLED is False
+    assert Config.MLC3_SERVICE_ENABLED is False
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
     monkeypatch.setattr(Config, "MLC3_PILOT_ENABLED", True)
     monkeypatch.setattr(Config, "MLC3_PILOT_PRINCIPAL_IDS", ())
-    assert principal_is_allowlisted(principal_id="principal") is False
+    assert principal_is_allowlisted(principal_id="principal") is True
     assert "state = 'disabled'" in SQL
-    assert "NEXT_PUBLIC_MLC3_PILOT_ENABLED" not in ROUTE
+    assert "MLC3_PILOT_ENABLED" not in ROUTE
 
 
 def test_service_rpcs_never_delegate_to_synthetic_rpcs():
@@ -408,8 +409,12 @@ def test_service_playback_uses_authoritative_resolvers_and_strict_r2():
         "resolve_exercise_confidence_media_read_v1",
     ):
         assert "require_" in _function(name)
-    assert "presigned_get_user_media_r2" in PRACTICE_ORCHESTRATOR
-    assert "presigned_get_coach_object_r2" in ROUTE
+    assert "presigned_get_user_media_r2" not in PRACTICE_ORCHESTRATOR
+    assert "presigned_get_coach_object_r2" not in ROUTE
+    assert "/api/v2/user/mlc3/practice-attempts/" in PRACTICE_ORCHESTRATOR
+    assert "get_user_media_r2_bytes" in ROUTE
+    assert "get_coach_object_r2_bytes" in ROUTE
+    assert ROUTE.count("_exact_media_matches(") >= 4
     assert "get_exercise_service_offer(" not in ROUTE
     assert "get_processing_audio_object(" not in COACH_ROUTE
 
@@ -490,8 +495,8 @@ def test_new_tables_are_rls_and_runtime_read_only(table: str):
 
 
 def test_route_surface_is_hidden_and_has_no_learning_operations():
-    assert ROUTE.count("@mlc3_pilot_required") == 12
-    assert ROUTE.count("@require_auth") == 12
+    assert ROUTE.count("@mlc3_service_required") == 17
+    assert ROUTE.count("@require_auth") == 17
     for forbidden in (
         "/user/mlc3/dataset",
         "/user/mlc3/training",

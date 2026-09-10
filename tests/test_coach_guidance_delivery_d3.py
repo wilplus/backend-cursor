@@ -33,13 +33,14 @@ def test_runtime_gate_is_disabled_by_default():
     assert runtime_is_enabled() is False
 
 
-def test_pilot_allowlist_accepts_only_exact_acquisition_principal(monkeypatch):
+def test_rollout_presentation_gate_does_not_use_legacy_allowlist(monkeypatch):
     from config import Config
 
-    monkeypatch.setattr(Config, "MLC3_PILOT_ENABLED", True)
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    monkeypatch.setattr(Config, "MLC3_PILOT_ENABLED", False)
     monkeypatch.setattr(Config, "MLC3_PILOT_PRINCIPAL_IDS", ("principal-1",))
     assert principal_is_allowlisted(principal_id="principal-1") is True
-    assert principal_is_allowlisted(principal_id="user-1") is False
+    assert principal_is_allowlisted(principal_id="user-1") is True
     assert principal_is_allowlisted(principal_id=None) is False
 
 

@@ -15,10 +15,14 @@ from typing import Any
 
 
 def runtime_is_enabled() -> bool:
-    """Return the backend rollout gate; disabled is the default."""
+    """Return the rollout-aware backend gate; disabled is the default.
+
+    Founder-pilot environment values are deliberately ignored here. Exact
+    principal access is decided by the database enrollment resolver.
+    """
     from config import Config
 
-    return bool(Config.MLC3_PILOT_ENABLED)
+    return bool(Config.MLC3_SERVICE_ENABLED)
 
 
 def inline_authoring_is_enabled() -> bool:
@@ -29,13 +33,12 @@ def inline_authoring_is_enabled() -> bool:
 
 
 def principal_is_allowlisted(*, principal_id: str | None) -> bool:
-    """Require an exact configured identity in addition to the master gate."""
-    if not runtime_is_enabled():
-        return False
-    from config import Config
+    """Compatibility name for the presentation gate only.
 
-    allowed_principals = set(Config.MLC3_PILOT_PRINCIPAL_IDS)
-    return bool(principal_id and str(principal_id) in allowed_principals)
+    Database enrollment remains authoritative. This helper cannot authorize a
+    principal and intentionally ignores the retired environment allowlist.
+    """
+    return bool(runtime_is_enabled() and principal_id)
 
 
 def exact_bytes_sha256(body: bytes) -> str:

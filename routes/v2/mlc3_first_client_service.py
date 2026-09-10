@@ -1,7 +1,7 @@
-"""Allowlisted first-client exercise loop.
+"""Rollout-aware MLC-3 exercise service loop.
 
 Every endpoint is hidden behind authentication, the backend master switch,
-the exact acquisition-principal allowlist, and the database service contract.
+the exact acquisition-principal enrollment, and the database service contract.
 Dataset, training, evaluation, and promotion operations do not exist here.
 """
 from __future__ import annotations
@@ -9,16 +9,17 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Any
 
-from flask import jsonify, request
+from flask import Response, jsonify, request
 
 from auth import require_auth
 from config import Config
-from routes.phase2_guard import mlc3_pilot_required
+from routes.phase2_guard import mlc3_service_required
 from routes.v2.blueprint import v2_bp
 from services.coach_guidance_delivery import require_audio_upload
-from services.coach_video_storage import presigned_get_coach_object_r2
+from services.coach_video_storage import get_coach_object_r2_bytes
 from services.db import first_client_repository as db
 from services.practice_attempt_orchestrator import (
     PracticeAttemptCommand,
@@ -26,6 +27,7 @@ from services.practice_attempt_orchestrator import (
     PracticeAttemptOrchestrator,
     PracticeAttemptUnavailable,
 )
+from services.user_media_storage import get_user_media_r2_bytes
 
 practice_attempt_orchestrator = PracticeAttemptOrchestrator(db)
 _SERVICE_RESPONSES = {
@@ -85,6 +87,17 @@ def _service_unavailable():
     return jsonify({"code": "MLC3_SERVICE_NOT_AVAILABLE"}), 409
 
 
+def _speaker_result(row: dict) -> dict:
+    return {
+        "assertion_id": str(row["assertion_id"]),
+        "speaker_id": str(row["speaker_id"]),
+        "target_binding_id": str(row["target_binding_id"]),
+        "replayed": bool(row.get("replayed")),
+        "meaning": "identity_routing_only",
+        "dataset_eligible": False,
+    }
+
+
 def _rpc_time(value: Any, field: str) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -121,24 +134,40 @@ def _offer_public_payload(offer: dict, version: dict | None = None) -> dict:
     }
     if version:
         media = version.get("media") or {}
-        media_url = presigned_get_coach_object_r2(
-            str(media.get("bucket") or ""),
-            str(media.get("object_key") or ""),
-            expires_in=900,
-        )
         payload["exercise"] = {
             "version_id": str(version["id"]),
             "instruction_text": version["instruction_text"],
             "content_identity_sha256": version["version_sha256"],
-            "media_url": media_url,
+            "media_url": (
+                f"/api/v2/user/mlc3/exercise-offers/{offer['id']}/playback"
+            ),
             "media_content_type": media.get("content_type"),
         }
     return payload
 
 
+def _private_media_response(
+    body: bytes, *, content_type: str,
+) -> Response:
+    response = Response(body, status=200, mimetype=content_type)
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+def _exact_media_matches(before: dict, after: dict) -> bool:
+    return all(
+        str(before.get(key)) == str(after.get(key))
+        for key in (
+            "bucket", "object_key", "exact_bytes_sha256", "byte_size",
+            "content_type",
+        )
+    )
+
+
 @v2_bp.post("/user/mlc3/feedback/render")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_feedback_render():
     try:
         body = _body()
@@ -172,7 +201,7 @@ def v2_mlc3_feedback_render():
 
 @v2_bp.post("/user/mlc3/feedback/respond")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_feedback_respond():
     try:
         body = _body()
@@ -210,9 +239,38 @@ def v2_mlc3_feedback_respond():
         return _error(error)
 
 
+@v2_bp.post("/user/mlc3/feedback/speaker")
+@require_auth
+@mlc3_service_required
+def v2_mlc3_feedback_self_speaker():
+    """Record only an explicit affirmative source-voice confirmation."""
+    try:
+        body = _body()
+        if body.get("assertion") != "this_is_my_voice":
+            raise ValueError(
+                "only an affirmative self-speaker action is accepted"
+            )
+        row = db.record_feedback_self_speaker_target({
+            "p_acquisition_principal_id": _principal_id(),
+            "p_owner_user_id": _uuid(
+                getattr(request, "user_id", None), "owner_user_id"
+            ),
+            "p_membership_id": _uuid(
+                body.get("membership_id"), "membership_id"
+            ),
+            "p_candidate_id": _uuid(body.get("candidate_id"), "candidate_id"),
+            "p_idempotency_key": _idempotency_key(),
+        })
+        if row is None:
+            return _service_unavailable()
+        return jsonify(_speaker_result(row)), 201
+    except (TypeError, ValueError) as error:
+        return _error(error)
+
+
 @v2_bp.post("/user/mlc3/exercise-offers")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_create_exercise_offer():
     try:
         body = _body()
@@ -239,7 +297,7 @@ def v2_mlc3_create_exercise_offer():
 
 @v2_bp.get("/user/mlc3/exercise-offers/<offer_id>")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_get_exercise_offer(offer_id: str):
     try:
         principal = _principal_id()
@@ -279,9 +337,46 @@ def v2_mlc3_get_exercise_offer(offer_id: str):
         return _error(error)
 
 
+@v2_bp.get("/user/mlc3/exercise-offers/<offer_id>/playback")
+@require_auth
+@mlc3_service_required
+def v2_mlc3_exercise_offer_playback(offer_id: str):
+    """Serve exact exercise bytes through the authenticated application."""
+    try:
+        principal = _principal_id()
+        exact_offer_id = _uuid(offer_id, "offer_id")
+        before = db.resolve_exercise_service_offer_read(
+            exact_offer_id, principal,
+        )
+        media = (before or {}).get("media")
+        if not isinstance(media, dict):
+            return _service_unavailable()
+        body = get_coach_object_r2_bytes(
+            str(media["bucket"]), str(media["object_key"])
+        )
+        if (
+            len(body) != int(media["byte_size"])
+            or sha256(body).hexdigest() != str(media["exact_bytes_sha256"])
+        ):
+            return _service_unavailable()
+        after = db.resolve_exercise_service_offer_read(
+            exact_offer_id, principal,
+        )
+        after_media = (after or {}).get("media")
+        if not isinstance(after_media, dict) or not _exact_media_matches(
+            media, after_media,
+        ):
+            return _service_unavailable()
+        return _private_media_response(
+            body, content_type=str(media["content_type"])
+        )
+    except (TypeError, ValueError, KeyError, RuntimeError):
+        return _service_unavailable()
+
+
 @v2_bp.post("/user/mlc3/exercise-offers/<offer_id>/events")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_exercise_offer_event(offer_id: str):
     try:
         body = _body()
@@ -315,7 +410,7 @@ def v2_mlc3_exercise_offer_event(offer_id: str):
 
 @v2_bp.post("/user/mlc3/exercise-offers/<offer_id>/practice-sessions")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_create_practice_session(offer_id: str):
     try:
         body = _body()
@@ -337,7 +432,7 @@ def v2_mlc3_create_practice_session(offer_id: str):
 
 @v2_bp.get("/user/mlc3/practice-sessions/<session_id>")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_get_practice_session(session_id: str):
     try:
         principal = _principal_id()
@@ -380,7 +475,7 @@ def v2_mlc3_get_practice_session(session_id: str):
 
 @v2_bp.post("/user/mlc3/practice-sessions/<session_id>/events")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_practice_event(session_id: str):
     try:
         body = _body()
@@ -415,7 +510,7 @@ def v2_mlc3_practice_event(session_id: str):
 
 @v2_bp.post("/user/mlc3/practice-sessions/<session_id>/attempts")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_practice_attempt(session_id: str):
     try:
         upload = request.files.get("audio")
@@ -468,10 +563,43 @@ def v2_mlc3_practice_attempt(session_id: str):
         return _error(ValueError(str(error)))
 
 
+@v2_bp.get("/user/mlc3/practice-attempts/<attempt_id>/playback")
+@require_auth
+@mlc3_service_required
+def v2_mlc3_practice_attempt_playback(attempt_id: str):
+    """Serve exact practice bytes with live checks on both sides of R2."""
+    try:
+        principal = _principal_id()
+        exact_attempt_id = _uuid(attempt_id, "attempt_id")
+        before = db.resolve_exercise_practice_media_read(
+            exact_attempt_id, principal,
+        )
+        if not isinstance(before, dict):
+            return _service_unavailable()
+        body = get_user_media_r2_bytes(
+            str(before["object_key"]), bucket=str(before["bucket"])
+        )
+        if (
+            len(body) != int(before["byte_size"])
+            or sha256(body).hexdigest() != str(before["exact_bytes_sha256"])
+        ):
+            return _service_unavailable()
+        after = db.resolve_exercise_practice_media_read(
+            exact_attempt_id, principal,
+        )
+        if not isinstance(after, dict) or not _exact_media_matches(before, after):
+            return _service_unavailable()
+        return _private_media_response(
+            body, content_type=str(before["content_type"])
+        )
+    except (TypeError, ValueError, KeyError, RuntimeError):
+        return _service_unavailable()
+
+
 
 @v2_bp.post("/user/mlc3/practice-sessions/<session_id>/preference")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_practice_preference(session_id: str):
     try:
         body = _body()
@@ -508,9 +636,40 @@ def v2_mlc3_practice_preference(session_id: str):
         return _error(error)
 
 
+@v2_bp.post("/user/mlc3/practice-attempts/<attempt_id>/speaker")
+@require_auth
+@mlc3_service_required
+def v2_mlc3_practice_self_speaker(attempt_id: str):
+    """Confirm the practice voice and create a pair only for the same speaker."""
+    try:
+        body = _body()
+        if body.get("assertion") != "this_is_my_voice":
+            raise ValueError(
+                "only an affirmative self-speaker action is accepted"
+            )
+        row = db.confirm_practice_speaker_and_pair({
+            "p_acquisition_principal_id": _principal_id(),
+            "p_owner_user_id": _uuid(
+                getattr(request, "user_id", None), "owner_user_id"
+            ),
+            "p_practice_attempt_id": _uuid(attempt_id, "attempt_id"),
+            "p_idempotency_key": _idempotency_key(),
+        })
+        if row is None:
+            return _service_unavailable()
+        return jsonify({
+            "speaker_target": _speaker_result(row["speaker_target"]),
+            "eligibility_result": row["eligibility_result"],
+            "owner_pair": row.get("owner_pair"),
+            "dataset_eligible": False,
+        }), 201
+    except (TypeError, ValueError) as error:
+        return _error(error)
+
+
 @v2_bp.get("/user/mlc3/guidance/<membership_id>")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_user_guidance(membership_id: str):
     """Deliver assigned guidance; delivery remains separate from exposure."""
     try:
@@ -547,12 +706,9 @@ def v2_mlc3_user_guidance(membership_id: str):
                 )
                 if not media:
                     return _service_unavailable()
-                media_url = presigned_get_coach_object_r2(
-                    str(media["bucket"]), str(media["object_key"]),
-                    expires_in=900,
+                media_url = (
+                    f"/api/v2/user/mlc3/guidance/{version['id']}/playback"
                 )
-                if not media_url:
-                    return _service_unavailable()
                 media_content_type = media["content_type"]
             payload.append({
                 "attachment_version_id": str(version["id"]),
@@ -576,9 +732,42 @@ def v2_mlc3_user_guidance(membership_id: str):
         return _error(error)
 
 
+@v2_bp.get("/user/mlc3/guidance/<attachment_version_id>/playback")
+@require_auth
+@mlc3_service_required
+def v2_mlc3_user_guidance_playback(attachment_version_id: str):
+    """Serve assigned private guidance with before/after authority checks."""
+    try:
+        principal = _principal_id()
+        version_id = _uuid(attachment_version_id, "attachment_version_id")
+        before = db.resolve_coach_guidance_service_media_read(
+            version_id, principal,
+        )
+        if not isinstance(before, dict):
+            return _service_unavailable()
+        body = get_coach_object_r2_bytes(
+            str(before["bucket"]), str(before["object_key"])
+        )
+        if (
+            len(body) != int(before["byte_size"])
+            or sha256(body).hexdigest() != str(before["exact_bytes_sha256"])
+        ):
+            return _service_unavailable()
+        after = db.resolve_coach_guidance_service_media_read(
+            version_id, principal,
+        )
+        if not isinstance(after, dict) or not _exact_media_matches(before, after):
+            return _service_unavailable()
+        return _private_media_response(
+            body, content_type=str(before["content_type"])
+        )
+    except (TypeError, ValueError, KeyError, RuntimeError):
+        return _service_unavailable()
+
+
 @v2_bp.post("/user/mlc3/guidance/<attachment_version_id>/events")
 @require_auth
-@mlc3_pilot_required
+@mlc3_service_required
 def v2_mlc3_user_guidance_event(attachment_version_id: str):
     try:
         body = _body()
