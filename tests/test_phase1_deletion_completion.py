@@ -97,6 +97,16 @@ def test_dependency_registry_classifies_runtime_relations_without_overlap():
     assert _migration_subject_relations() <= classified_relations()
 
 
+def test_confident_moment_relations_are_deletion_registered():
+    registered = {dependency.relation for dependency in DEPENDENCIES}
+    assert {
+        "confident_moment_bundle_attachments",
+        "root_phrase_coverage_frames",
+        "root_phrase_coverage_items",
+        "feedback_language_revision_deliveries",
+    } <= registered
+
+
 def test_ambiguous_shared_and_mixed_purpose_paths_fail_closed():
     by_relation = {dependency.relation: dependency for dependency in DEPENDENCIES}
     assert by_relation["charisma_snippets"].disposition == "external_review"
