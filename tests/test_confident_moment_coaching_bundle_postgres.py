@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import re
-import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
@@ -15,7 +14,11 @@ from psycopg2.extras import Json
 from tests import test_coach_guidance_delivery_d3_postgres as d3
 from tests import test_mlc3_coach_inline_authoring_d5_postgres as d5
 from tests import test_mlc3_first_client_service_postgres as d2
-from tests.test_mlc3_dark_assignments_postgres import assign, make_context
+from tests.test_mlc3_dark_assignments_postgres import (
+    assign,
+    make_context,
+    wait_for_lock,
+)
 from tests.test_mlc3_general_user_service_d4_postgres import (
     CAPACITY,
     _activate_contract,
@@ -192,7 +195,9 @@ def _positive_projection_context(db):
     return context, feedback
 
 
-def _add_selected_feedback_item(db, feedback, family: str, position: int):
+def _add_selected_feedback_item(
+    db, feedback, family: str, position: int, generated_output=None,
+):
     """Add a second frozen-shape item before the bundle is prepared.
 
     The legacy one-item fixture cannot express the production Manager mixed
@@ -224,11 +229,11 @@ def _add_selected_feedback_item(db, feedback, family: str, position: int):
             original["candidate_evidence_id"], family,
             "verbal" if family == "rewrite_clarity" else "vocal",
             candidate_key,
-            Json(
+            Json(generated_output or (
                 {"proposed_text": "A clearer fixture sentence."}
                 if family == "rewrite_clarity"
                 else {"comment": f"{family} fixture output"}
-            ),
+            )),
         ),
     )
     rows(
@@ -382,6 +387,34 @@ def _assert_service_json_rejected(db, name, arguments, match):
             cur.execute("RELEASE SAVEPOINT d11_expected_rejection")
 
 
+def _coach_projection_item(projection, revision_id):
+    return next(
+        item
+        for bundle in projection["bundle_projection"]["bundles"]
+        for item in bundle["feedback_language_items"]
+        if item["coach_update"]
+        and item["coach_update"]["current_revision_id"] == revision_id
+    )
+
+
+def _render_v2_args(db, owner, revision, delivery, presentation_id):
+    attachment_id = one(
+        db,
+        "SELECT id FROM confident_moment_bundle_attachments "
+        "WHERE feedback_membership_id=%s AND attached_candidate_id=%s",
+        (revision["feedback_membership_id"], revision["feedback_candidate_id"]),
+    )["id"]
+    return (
+        owner,
+        attachment_id,
+        revision["id"],
+        delivery["id"],
+        presentation_id,
+        str(uuid4()),
+        f"render-v2-{uuid4()}",
+    )
+
+
 def test_apply_reapply_forced_rls_and_exact_signatures(db):
     with db.cursor() as cur:
         cur.execute(SQL)
@@ -454,6 +487,10 @@ def test_runtime_roles_have_no_direct_writes_or_rpc_execution(db):
             assert cur.fetchone()[0] is False
             cur.execute("SELECT has_function_privilege(%s,'public.project_confident_moment_bundles_v1(uuid,uuid,uuid)','EXECUTE')", (role,))
             assert cur.fetchone()[0] is (role == "service_role")
+            cur.execute("SELECT has_function_privilege(%s,'public.ack_feedback_language_revision_render_v2(uuid,uuid,uuid,uuid,uuid,uuid,text)','EXECUTE')", (role,))
+            assert cur.fetchone()[0] is (role == "service_role")
+            cur.execute("SELECT to_regprocedure('public.ack_feedback_language_revision_render_v1(uuid,uuid,uuid,uuid,text)') IS NULL")
+            assert cur.fetchone()[0] is True
             cur.execute(
                 "SELECT has_function_privilege(%s,"
                 "'public.validate_confident_moment_projection_item_v1()',"
@@ -556,7 +593,10 @@ def test_failed_statement_leaves_no_partial_row(db):
         cur.execute(SQL)
         cur.execute("BEGIN")
         cur.execute("SAVEPOINT negative")
-        with pytest.raises(psycopg2.Error):
+        with pytest.raises(
+            psycopg2.Error,
+            match='null value in column "acquisition_principal_id"',
+        ):
             cur.execute("INSERT INTO public.root_phrase_coverage_frames(id) VALUES(gen_random_uuid())")
         cur.execute("ROLLBACK TO SAVEPOINT negative")
         cur.execute("SELECT count(*) FROM public.root_phrase_coverage_frames")
@@ -720,10 +760,18 @@ def test_d11_positive_projection_is_complete_hashed_and_exactly_replayed(db):
         bundle["exercise"] is None
         for bundle in first["bundle_projection"]["bundles"]
     )
-    assert all(
-        "coach_update" in bundle and bundle["coach_update"] is None
-        for bundle in first["bundle_projection"]["bundles"]
+    assert first["bundle_projection"]["contract_version"] == (
+        "confident-moment-coaching-bundle-v2"
     )
+    assert first["bundle_projection"]["feedback_language_shape_version"] == (
+        "feedback-language-items-v1"
+    )
+    for bundle in first["bundle_projection"]["bundles"]:
+        assert {"comment", "rephrase", "coach_update"}.isdisjoint(bundle)
+        assert all(
+            item["coach_update"] is None
+            for item in bundle["feedback_language_items"]
+        )
     with db.cursor() as cur:
         cur.execute(
             "SELECT count(*) FROM confident_moment_bundle_projection_items item "
@@ -770,6 +818,7 @@ def test_d11_rollout_revocation_during_projection_fails_without_partial_rows(db)
 
         def read_projection():
             with reader.cursor() as cur:
+                cur.execute("SET application_name='d11-projection-revocation'")
                 cur.execute(
                     "SELECT project_confident_moment_bundles_v1(%s,%s,%s)",
                     (context["owner"], context["project"], context["take"]),
@@ -777,10 +826,10 @@ def test_d11_rollout_revocation_during_projection_fails_without_partial_rows(db)
 
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(read_projection)
-            time.sleep(0.15)
+            wait_for_lock(db, "d11-projection-revocation", "advisory")
             assert not future.done()
             writer.commit()
-            with pytest.raises(psycopg2.Error):
+            with pytest.raises(psycopg2.Error, match="MLC3_ROLLOUT_NOT_ACTIVE"):
                 future.result(timeout=5)
         reader.rollback()
         with db.cursor() as cur:
@@ -797,10 +846,184 @@ def test_d11_rollout_revocation_during_projection_fails_without_partial_rows(db)
         reader.close()
 
 
+def test_d12_rewrite_observation_without_replacement_is_actionable_comment(db):
+    with db.cursor() as cur:
+        cur.execute(SQL)
+    context, feedback = _positive_projection_context(db)
+    candidate_id = _add_selected_feedback_item(
+        db,
+        feedback,
+        "rewrite_clarity",
+        2,
+        {"observation": "The solution arrives after a long problem setup."},
+    )
+    one(
+        db,
+        "SELECT prepare_confident_moment_bundle_v1(%s,%s,%s,%s,%s,%s) payload",
+        (
+            context["owner"], context["project"], context["take"],
+            feedback["membership"]["id"], feedback["candidate_id"],
+            f"d12-observation-{uuid4()}",
+        ),
+    )
+    projection = service_json_rpc(
+        db, "project_confident_moment_bundles_v1",
+        context["owner"], context["project"], context["take"],
+    )
+    item = next(
+        item
+        for item in projection["bundle_projection"]["bundles"][0][
+            "feedback_language_items"
+        ]
+        if item["attached_candidate_id"] == candidate_id
+    )
+    assert item["resolution_state"] == "machine_fallback"
+    assert item["exclusion_reason"] is None
+    assert item["output"] == {
+        "output_kind": "comment",
+        "comment_purpose": "actionable_observation",
+        "text": "The solution arrives after a long problem setup.",
+        "origin": "machine",
+    }
+    assert item["coach_update"] is None
+
+
+def test_d12_no_anchor_schedule_project_and_render_uses_exact_bundle_subject(db):
+    _install_released_render_ack(db)
+    with db.cursor() as cur:
+        cur.execute(SQL)
+    context, feedback, batch, grant, judgment, reveal_item = (
+        _feedback_language_context(db, ("rewrite_clarity",))
+    )
+    rewrite_id = feedback["mixed_candidate_ids"]["rewrite_clarity"]
+    rows(
+        db,
+        "ALTER TABLE feedback_v3_membership_items DISABLE TRIGGER "
+        "feedback_v3_membership_items_append_only",
+    )
+    try:
+        rows(
+            db,
+            "UPDATE feedback_v3_membership_items SET slide_index=slide_index+1 "
+            "WHERE membership_id=%s AND candidate_id=%s",
+            (feedback["membership"]["id"], rewrite_id),
+        )
+    finally:
+        rows(
+            db,
+            "ALTER TABLE feedback_v3_membership_items ENABLE TRIGGER "
+            "feedback_v3_membership_items_append_only",
+        )
+    prepared = one(
+        db,
+        "SELECT prepare_confident_moment_bundle_v1(%s,%s,%s,%s,%s,%s) payload",
+        (
+            context["owner"], context["project"], context["take"],
+            feedback["membership"]["id"], rewrite_id,
+            f"d12-no-anchor-prepare-{uuid4()}",
+        ),
+    )["payload"]
+    assert prepared["bundle_subject_kind"] == "no_anchor_paragraph_trigger"
+    attachment_id = prepared["attachments"][0]["id"]
+    output_hash = one(
+        db, "SELECT feedback_candidate_output_sha256_v1(%s) value", (rewrite_id,),
+    )["value"]
+    revision = service_json_rpc(
+        db, "record_feedback_language_coach_revision_v2",
+        context["reviewer"], batch["id"], grant["id"],
+        reveal_item["reveal_access_id"], reveal_item["review_assignment_id"],
+        judgment["judgment_id"], feedback["membership"]["id"], rewrite_id,
+        output_hash, "comment", "actionable_observation",
+        "State the solution before expanding the detail.", None,
+        f"d12-no-anchor-revision-{uuid4()}",
+    )
+    before_delivery = one(
+        db, "SELECT count(*) n FROM feedback_language_revision_deliveries"
+    )["n"]
+    _assert_service_json_rejected(
+        db, "transition_feedback_language_delivery_v2",
+        (
+            revision["id"], context["owner"], context["take"],
+            feedback["candidate_id"], None, "schedule",
+            f"d12-no-anchor-foreign-{uuid4()}",
+        ),
+        "CONFIDENT_MOMENT_ANCHOR_INVALID",
+    )
+    assert one(
+        db, "SELECT count(*) n FROM feedback_language_revision_deliveries"
+    )["n"] == before_delivery
+    delivery = service_json_rpc(
+        db, "transition_feedback_language_delivery_v2",
+        revision["id"], context["owner"], context["take"], rewrite_id, None,
+        "schedule", f"d12-no-anchor-delivery-{uuid4()}",
+    )
+    assert delivery["anchor_candidate_id"] == rewrite_id
+    event_id, presentation_id = str(uuid4()), str(uuid4())
+    visible_hash = uuid4().hex * 2
+    rows(
+        db,
+        "INSERT INTO ml_canonical_events(id,learning_surface_id,feedback_family_id,"
+        "payload_type) VALUES(%s,'coach_comment_generation',NULL,'coach_comment_event')",
+        (event_id,),
+    )
+    rows(
+        db,
+        "INSERT INTO ml_semantic_artifacts(id,canonical_event_id,learning_surface_id,"
+        "pipeline_stage_id,feedback_family_id,evidence_span_id,artifact_type,"
+        "semantic_version,content,content_sha256) VALUES(%s,%s,"
+        "'coach_comment_generation','generate',NULL,NULL,'coach_comment_final',"
+        "'feedback-language-coach-revision-v1',%s::jsonb,%s)",
+        (
+            revision["id"], event_id,
+            Json({"text": "State the solution before expanding the detail."}),
+            revision["revision_sha256"],
+        ),
+    )
+    rows(
+        db,
+        "INSERT INTO ml_presentations(id,canonical_event_id,learning_surface_id,"
+        "artifact_id,actor_principal_id,actor_role,delivery_mode,evaluation_only,"
+        "visible_payload_sha256,acknowledgement_token,idempotency_key) VALUES"
+        "(%s,%s,'coach_comment_generation',%s,%s,'owner','canary',false,%s,%s,%s)",
+        (
+            presentation_id, event_id, revision["id"], context["owner"],
+            visible_hash, str(uuid4()), f"d12-no-anchor-presentation-{uuid4()}",
+        ),
+    )
+    unread_projection = service_json_rpc(
+        db, "project_confident_moment_bundles_v1",
+        context["owner"], context["project"], context["take"],
+    )
+    coach_item = _coach_projection_item(unread_projection, revision["id"])
+    assert coach_item["bundle_attachment_id"] == attachment_id
+    assert coach_item["coach_update"]["unread"] is True
+    service_json_rpc(
+        db, "ack_feedback_language_revision_render_v2",
+        context["owner"], attachment_id, revision["id"], delivery["id"],
+        presentation_id, str(uuid4()), f"d12-no-anchor-render-{uuid4()}",
+    )
+    rendered_projection = service_json_rpc(
+        db, "project_confident_moment_bundles_v1",
+        context["owner"], context["project"], context["take"],
+    )
+    assert _coach_projection_item(rendered_projection, revision["id"])[
+        "coach_update"
+    ]["unread"] is False
+
+
 def test_d11_revision_and_delivery_exact_replay_successor_and_stale_rejection(db):
     with db.cursor() as cur:
         cur.execute(SQL)
     context, feedback, batch, grant, judgment, item = _feedback_language_context(db)
+    one(
+        db,
+        "SELECT prepare_confident_moment_bundle_v1(%s,%s,%s,%s,%s,%s) payload",
+        (
+            context["owner"], context["project"], context["take"],
+            feedback["membership"]["id"], feedback["candidate_id"],
+            f"d11-replay-prepare-{uuid4()}",
+        ),
+    )
     output_hash = one(
         db,
         "SELECT feedback_candidate_output_sha256_v1(%s) value",
@@ -941,6 +1164,88 @@ def _render_projection_context(db, mixed_first: bool | None = None):
     return context, feedback, revision, delivery, presentation_id
 
 
+def _second_coach_comment_chain(db, context, feedback, candidate_id):
+    reviewer_id, reviewer_user_id = str(uuid4()), str(uuid4())
+    rows(
+        db, "INSERT INTO owner_principals(id,user_id) VALUES(%s,%s)",
+        (reviewer_id, reviewer_user_id),
+    )
+    second = {**context, "reviewer": reviewer_id}
+    d3._authorize_coach(db, second)
+    packet = d3._make_packet(db, second)
+    owner_user_id = one(
+        db, "SELECT user_id FROM owner_principals WHERE id=%s", (context["owner"],),
+    )["user_id"]
+    service_rpc(
+        db, "ensure_mlc3_service_enrollment_v2",
+        context["owner"], owner_user_id, f"d12-second-coach-enrollment-{uuid4()}",
+    )
+    d5._batch(db, second)
+    judgment_id = d3._judge(db, second, packet, decision="rating_yes")
+    inline = one(
+        db,
+        "SELECT prepare_coach_inline_guidance_context_v1(%s,%s,%s,%s) payload",
+        (second["project"], second["owner"], reviewer_id, str(uuid4())),
+    )["payload"]
+    item = next(
+        value for value in inline["items"]
+        if value["review_assignment_id"] == packet["review_assignment_id"]
+    )
+    output_hash = one(
+        db, "SELECT feedback_candidate_output_sha256_v1(%s) value", (candidate_id,),
+    )["value"]
+    revision = service_json_rpc(
+        db, "record_feedback_language_coach_revision_v2",
+        reviewer_id, inline["review_batch_id"], inline["reveal_grant_id"],
+        item["reveal_access_id"], item["review_assignment_id"], judgment_id,
+        feedback["membership"]["id"], candidate_id, output_hash, "comment",
+        "positive_praise", "This is a strong, memorable formulation.", None,
+        f"d12-second-coach-revision-{uuid4()}",
+    )
+    delivery = service_json_rpc(
+        db, "transition_feedback_language_delivery_v2",
+        revision["id"], context["owner"], context["take"],
+        feedback["candidate_id"], None,
+        "schedule", f"d12-second-coach-delivery-{uuid4()}",
+    )
+    event_id, presentation_id = str(uuid4()), str(uuid4())
+    visible_hash = uuid4().hex * 2
+    rows(
+        db,
+        "INSERT INTO ml_canonical_events(id,learning_surface_id,feedback_family_id,"
+        "payload_type) VALUES(%s,'praise_generation','great_formulation',"
+        "'praise_generation_event')",
+        (event_id,),
+    )
+    rows(
+        db,
+        "INSERT INTO ml_semantic_artifacts(id,canonical_event_id,learning_surface_id,"
+        "pipeline_stage_id,feedback_family_id,evidence_span_id,artifact_type,"
+        "semantic_version,content,content_sha256) VALUES(%s,%s,'praise_generation',"
+        "'generate','great_formulation',NULL,'generated_praise',"
+        "'feedback-language-coach-revision-v1',"
+        "%s::jsonb,%s)",
+        (
+            revision["id"], event_id,
+            Json({"text": "This is a strong, memorable formulation."}),
+            revision["revision_sha256"],
+        ),
+    )
+    rows(
+        db,
+        "INSERT INTO ml_presentations(id,canonical_event_id,learning_surface_id,"
+        "artifact_id,actor_principal_id,actor_role,delivery_mode,evaluation_only,"
+        "visible_payload_sha256,acknowledgement_token,idempotency_key) VALUES"
+        "(%s,%s,'praise_generation',%s,%s,'owner','canary',false,%s,%s,%s)",
+        (
+            presentation_id, event_id, revision["id"], context["owner"],
+            visible_hash, str(uuid4()), f"d12-second-coach-presentation-{uuid4()}",
+        ),
+    )
+    db.commit()
+    return reviewer_id, revision, delivery, presentation_id
+
+
 @pytest.mark.parametrize("mixed_first", [False, True])
 @pytest.mark.parametrize("rendered", [False, True])
 def test_mixed_attachment_projection_has_no_cross_item_state_inheritance(
@@ -951,11 +1256,18 @@ def test_mixed_attachment_projection_has_no_cross_item_state_inheritance(
     context, _feedback, revision, delivery, presentation_id = (
         _render_projection_context(db, mixed_first=mixed_first)
     )
+    attachment_id = one(
+        db,
+        "SELECT id FROM confident_moment_bundle_attachments "
+        "WHERE feedback_membership_id=%s AND attached_candidate_id=%s",
+        (revision["feedback_membership_id"], revision["feedback_candidate_id"]),
+    )["id"]
     if rendered:
         service_json_rpc(
             db,
-            "ack_feedback_language_revision_render_v1",
-            context["owner"], delivery["id"], presentation_id, str(uuid4()),
+            "ack_feedback_language_revision_render_v2",
+            context["owner"], attachment_id, revision["id"], delivery["id"],
+            presentation_id, str(uuid4()),
             f"mixed-render-{uuid4()}",
         )
     projection = service_json_rpc(
@@ -966,22 +1278,48 @@ def test_mixed_attachment_projection_has_no_cross_item_state_inheritance(
     bundles = projection["bundle_projection"]["bundles"]
     assert len(bundles) == 1
     bundle = bundles[0]
-    assert bundle["comment"] == {
+    assert {"comment", "rephrase", "coach_update"}.isdisjoint(bundle)
+    items = bundle["feedback_language_items"]
+    assert [item["canonical_position"] for item in items] == sorted(
+        item["canonical_position"] for item in items
+    )
+    coach_output = next(
+        item for item in items
+        if item["output"] and item["output"]["origin"] == "coach"
+    )
+    assert coach_output["output"] == {
         "output_kind": "comment",
         "comment_purpose": "confidence_explanation",
         "text": "Keep this delivery clear.",
         "origin": "coach",
     }
-    assert bundle["rephrase"] == {
+    assert coach_output["bundle_attachment_id"] == attachment_id
+    assert coach_output["coach_update"] == {
+        "current_revision_id": revision["id"],
+        "revision_sha256": revision["revision_sha256"],
+        "revision_delivery_id": delivery["id"],
+        "delivery_subject_sha256": delivery["delivery_subject_sha256"],
+        "presentation_id": presentation_id,
+        "rendered_exposure_id": coach_output["coach_update"]["rendered_exposure_id"],
+        "unread": not rendered,
+    }
+    machine_rephrase = next(
+        item for item in items
+        if item["output"] and item["output"]["output_kind"] == "rephrase"
+    )
+    assert machine_rephrase["output"] == {
         "output_kind": "rephrase",
         "comment_purpose": None,
         "text": "A clearer fixture sentence.",
         "origin": "machine",
     }
-    assert bundle["coach_update"] == {
-        "current_revision_id": revision["id"],
-        "unread": not rendered,
-    }
+    praise = next(
+        item for item in items
+        if item["output"] and item["output"].get("comment_purpose") == "positive_praise"
+    )
+    assert praise["output"]["origin"] == "machine"
+    assert machine_rephrase["coach_update"] is None
+    assert praise["coach_update"] is None
     frozen = rows(
         db,
         "SELECT candidate.feedback_family,item.resolution_state,item.revision_id,"
@@ -1014,6 +1352,82 @@ def test_mixed_attachment_projection_has_no_cross_item_state_inheritance(
     assert praise_item["unread"] is False
     summary = projection["confident_moment_summary"]["items"]
     assert summary[0]["has_unread_coach_update"] is (not rendered)
+
+
+@pytest.mark.parametrize("reverse_render_order", [False, True])
+def test_d12_two_coaches_two_comments_are_independent_per_attachment(
+    db, reverse_render_order,
+):
+    context, feedback, first_revision, first_delivery, first_presentation = (
+        _render_projection_context(db, mixed_first=False)
+    )
+    praise_candidate_id = feedback["mixed_candidate_ids"]["great_formulation"]
+    second_reviewer, second_revision, second_delivery, second_presentation = (
+        _second_coach_comment_chain(db, context, feedback, praise_candidate_id)
+    )
+    assert second_reviewer != context["reviewer"]
+    initial = service_json_rpc(
+        db, "project_confident_moment_bundles_v1",
+        context["owner"], context["project"], context["take"],
+    )
+    bundle = initial["bundle_projection"]["bundles"][0]
+    coach_items = [
+        item for item in bundle["feedback_language_items"]
+        if item["resolution_state"] == "coach_revision"
+    ]
+    assert len(coach_items) == 2
+    assert {item["output"]["comment_purpose"] for item in coach_items} == {
+        "confidence_explanation", "positive_praise",
+    }
+    assert {item["coach_update"]["current_revision_id"] for item in coach_items} == {
+        first_revision["id"], second_revision["id"],
+    }
+    assert all(item["coach_update"]["unread"] for item in coach_items)
+    assert initial["confident_moment_summary"]["items"][0][
+        "has_unread_coach_update"
+    ] is True
+
+    chains = [
+        (first_revision, first_delivery, first_presentation),
+        (second_revision, second_delivery, second_presentation),
+    ]
+    if reverse_render_order:
+        chains.reverse()
+    first_chain, second_chain = chains
+    service_json_rpc(
+        db, "ack_feedback_language_revision_render_v2",
+        *_render_v2_args(db, context["owner"], *first_chain),
+    )
+    midway = service_json_rpc(
+        db, "project_confident_moment_bundles_v1",
+        context["owner"], context["project"], context["take"],
+    )
+    first_item = _coach_projection_item(midway, first_chain[0]["id"])
+    second_item = _coach_projection_item(midway, second_chain[0]["id"])
+    assert first_item["coach_update"]["unread"] is False
+    assert second_item["coach_update"]["unread"] is True
+    assert midway["confident_moment_summary"]["items"][0][
+        "has_unread_coach_update"
+    ] is True
+
+    service_json_rpc(
+        db, "ack_feedback_language_revision_render_v2",
+        *_render_v2_args(db, context["owner"], *second_chain),
+    )
+    final = service_json_rpc(
+        db, "project_confident_moment_bundles_v1",
+        context["owner"], context["project"], context["take"],
+    )
+    assert all(
+        not item["coach_update"]["unread"]
+        for item in final["bundle_projection"]["bundles"][0][
+            "feedback_language_items"
+        ]
+        if item["coach_update"]
+    )
+    assert final["confident_moment_summary"]["items"][0][
+        "has_unread_coach_update"
+    ] is False
 
 
 def test_projection_relational_trigger_rejects_a_valid_but_swapped_attachment(db):
@@ -1164,11 +1578,8 @@ def test_coach_revision_render_currentness_and_projection_unread_leaf(db):
     )
     before_count = one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"]
     _assert_service_json_rejected(
-        db, "ack_feedback_language_revision_render_v1",
-        (
-            context["owner"], delivery_a["id"], presentation_id, str(uuid4()),
-            f"render-stale-{uuid4()}",
-        ),
+        db, "ack_feedback_language_revision_render_v2",
+        _render_v2_args(db, context["owner"], revision, delivery_a, presentation_id),
         "no rows|FEEDBACK_LANGUAGE",
     )
     assert one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"] == before_count
@@ -1177,11 +1588,11 @@ def test_coach_revision_render_currentness_and_projection_unread_leaf(db):
         db, "project_confident_moment_bundles_v1",
         context["owner"], context["project"], context["take"],
     )
-    assert unread_projection["bundle_projection"]["bundles"][0]["coach_update"]["unread"] is True
-    render_instance, render_key = str(uuid4()), f"render-current-{uuid4()}"
-    render_args = (
-        context["owner"], delivery_b["id"], presentation_id, render_instance,
-        render_key,
+    assert _coach_projection_item(unread_projection, revision["id"])[
+        "coach_update"
+    ]["unread"] is True
+    render_args = _render_v2_args(
+        db, context["owner"], revision, delivery_b, presentation_id
     )
     wording_before = one(
         db,
@@ -1190,10 +1601,10 @@ def test_coach_revision_render_currentness_and_projection_unread_leaf(db):
         (revision["id"],),
     )
     rendered = service_json_rpc(
-        db, "ack_feedback_language_revision_render_v1", *render_args
+        db, "ack_feedback_language_revision_render_v2", *render_args
     )
     assert service_json_rpc(
-        db, "ack_feedback_language_revision_render_v1", *render_args
+        db, "ack_feedback_language_revision_render_v2", *render_args
     ) == rendered
     assert one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"] == before_count + 1
     assert one(
@@ -1206,7 +1617,9 @@ def test_coach_revision_render_currentness_and_projection_unread_leaf(db):
         db, "project_confident_moment_bundles_v1",
         context["owner"], context["project"], context["take"],
     )
-    assert read_projection["bundle_projection"]["bundles"][0]["coach_update"]["unread"] is False
+    assert _coach_projection_item(read_projection, revision["id"])[
+        "coach_update"
+    ]["unread"] is False
     assert read_projection["bundle_projection"]["response_sha256"] != unread_projection["bundle_projection"]["response_sha256"]
     assert one(
         db,
@@ -1224,41 +1637,226 @@ def test_coach_revision_render_currentness_and_projection_unread_leaf(db):
     )
     assert invalidated["delivery_state"] == "invalidated"
     _assert_service_json_rejected(
-        db, "ack_feedback_language_revision_render_v1",
-        (
-            context["owner"], delivery_b["id"], presentation_id, str(uuid4()),
-            f"render-invalidated-{uuid4()}",
-        ),
+        db, "ack_feedback_language_revision_render_v2",
+        _render_v2_args(db, context["owner"], revision, delivery_b, presentation_id),
         "no rows|FEEDBACK_LANGUAGE",
     )
     assert one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"] == before_count + 1
 
 
+def test_d12_ack_rejects_cross_attachment_binding_without_exposure(db):
+    context, feedback, revision, delivery, presentation_id = (
+        _render_projection_context(db, mixed_first=False)
+    )
+    foreign_attachment = one(
+        db,
+        "SELECT id FROM confident_moment_bundle_attachments "
+        "WHERE feedback_membership_id=%s AND attached_candidate_id<>%s "
+        "ORDER BY canonical_position LIMIT 1",
+        (feedback["membership"]["id"], feedback["candidate_id"]),
+    )["id"]
+    before = one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"]
+    _assert_service_json_rejected(
+        db,
+        "ack_feedback_language_revision_render_v2",
+        (
+            context["owner"], foreign_attachment, revision["id"], delivery["id"],
+            presentation_id, str(uuid4()), f"d12-cross-attachment-{uuid4()}",
+        ),
+        "no rows|FEEDBACK_LANGUAGE",
+    )
+    assert one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"] == before
+
+
+def test_d12_ack_rejects_duplicate_canonical_presentations_before_exposure(db):
+    context, _feedback, revision, delivery, presentation_id = (
+        _render_projection_context(db)
+    )
+    rows(
+        db,
+        "INSERT INTO ml_presentations(id,canonical_event_id,learning_surface_id,"
+        "artifact_id,actor_principal_id,actor_role,delivery_mode,evaluation_only,"
+        "visible_payload_sha256,acknowledgement_token,idempotency_key) "
+        "SELECT %s,canonical_event_id,learning_surface_id,artifact_id,"
+        "actor_principal_id,actor_role,delivery_mode,evaluation_only,"
+        "visible_payload_sha256,%s,%s FROM ml_presentations WHERE id=%s",
+        (
+            str(uuid4()), str(uuid4()), f"d12-duplicate-presentation-{uuid4()}",
+            presentation_id,
+        ),
+    )
+    before = one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"]
+    _assert_service_json_rejected(
+        db, "ack_feedback_language_revision_render_v2",
+        _render_v2_args(db, context["owner"], revision, delivery, presentation_id),
+        "FEEDBACK_LANGUAGE_RENDER_PRESENTATION_CARDINALITY_INVALID",
+    )
+    assert one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"] == before
+
+
+def _adversarially_rebind_delivery_anchor(db, delivery_id, membership_id, candidate_id):
+    foreign_anchor = one(
+        db,
+        "SELECT id AS attached_candidate_id FROM feedback_candidates "
+        "WHERE id<>%s ORDER BY id LIMIT 1",
+        (candidate_id,),
+    )["attached_candidate_id"]
+    rows(db, "ALTER TABLE feedback_language_revision_deliveries DISABLE TRIGGER "
+             "feedback_language_revision_deliveries_append_only")
+    try:
+        rows(
+            db,
+            "UPDATE feedback_language_revision_deliveries SET anchor_candidate_id=%s "
+            "WHERE id=%s",
+            (foreign_anchor, delivery_id),
+        )
+    finally:
+        rows(db, "ALTER TABLE feedback_language_revision_deliveries ENABLE TRIGGER "
+                 "feedback_language_revision_deliveries_append_only")
+
+
+def test_d12_projection_rejects_foreign_delivery_anchor_without_partial_state(db):
+    context, feedback, revision, delivery, _presentation_id = (
+        _render_projection_context(db)
+    )
+    _adversarially_rebind_delivery_anchor(
+        db, delivery["id"], feedback["membership"]["id"], revision["feedback_candidate_id"],
+    )
+    before = one(db, "SELECT count(*) n FROM confident_moment_bundle_projections")["n"]
+    _assert_service_json_rejected(
+        db, "project_confident_moment_bundles_v1",
+        (context["owner"], context["project"], context["take"]),
+        "CONFIDENT_MOMENT_PROJECTION_INVALID",
+    )
+    assert one(db, "SELECT count(*) n FROM confident_moment_bundle_projections")["n"] == before
+
+
+def test_d12_ack_rejects_foreign_delivery_anchor_without_exposure(db):
+    context, feedback, revision, delivery, presentation_id = (
+        _render_projection_context(db)
+    )
+    _adversarially_rebind_delivery_anchor(
+        db, delivery["id"], feedback["membership"]["id"], revision["feedback_candidate_id"],
+    )
+    before = one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"]
+    _assert_service_json_rejected(
+        db, "ack_feedback_language_revision_render_v2",
+        _render_v2_args(db, context["owner"], revision, delivery, presentation_id),
+        "FEEDBACK_LANGUAGE_DELIVERY_LINEAGE_INVALID",
+    )
+    assert one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"] == before
+
+
+def test_d12_projection_item_trigger_rejects_foreign_delivery_anchor(db):
+    context, feedback, revision, delivery, _presentation_id = (
+        _render_projection_context(db)
+    )
+    projected = service_json_rpc(
+        db, "project_confident_moment_bundles_v1",
+        context["owner"], context["project"], context["take"],
+    )
+    source_projection_id = one(
+        db,
+        "SELECT id FROM confident_moment_bundle_projections WHERE response_sha256=%s",
+        (projected["bundle_projection"]["response_sha256"],),
+    )["id"]
+    rows(db, "SET CONSTRAINTS ALL IMMEDIATE")
+    rows(db, "SET CONSTRAINTS ALL DEFERRED")
+    _adversarially_rebind_delivery_anchor(
+        db, delivery["id"], feedback["membership"]["id"], revision["feedback_candidate_id"],
+    )
+    replacement_projection_id = str(uuid4())
+    rows(
+        db,
+        "INSERT INTO confident_moment_bundle_projections("
+        "id,acquisition_principal_id,project_id,take_id,feedback_membership_id,"
+        "document_snapshot_id,document_snapshot_sha256,projection_policy_version,"
+        "projection_code_version,stabilized_inventory_sha256,response_sha256,"
+        "idempotency_key) SELECT %s,acquisition_principal_id,project_id,take_id,"
+        "feedback_membership_id,document_snapshot_id,document_snapshot_sha256,"
+        "projection_policy_version,projection_code_version,%s,%s,%s FROM "
+        "confident_moment_bundle_projections WHERE id=%s",
+        (
+            replacement_projection_id, uuid4().hex * 2, uuid4().hex * 2,
+            f"d12-cross-anchor-projection-{uuid4()}", source_projection_id,
+        ),
+    )
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO confident_moment_bundle_projection_items("
+            "projection_id,acquisition_principal_id,bundle_attachment_id,"
+            "bundle_subject_candidate_id,attached_candidate_id,anchor_candidate_id,"
+            "resolution_state,exclusion_reason,revision_id,delivery_id,presentation_id,"
+            "rendered_exposure_id,unread,candidate_output_sha256,output_sha256,"
+            "canonical_position,exercise_present,item_sha256) SELECT %s,"
+            "acquisition_principal_id,bundle_attachment_id,bundle_subject_candidate_id,"
+            "attached_candidate_id,anchor_candidate_id,resolution_state,exclusion_reason,"
+            "revision_id,delivery_id,presentation_id,rendered_exposure_id,unread,"
+            "candidate_output_sha256,output_sha256,canonical_position,exercise_present,"
+            "item_sha256 FROM confident_moment_bundle_projection_items "
+            "WHERE projection_id=%s AND revision_id=%s",
+            (replacement_projection_id, source_projection_id, revision["id"]),
+        )
+        with pytest.raises(
+            psycopg2.Error, match="CONFIDENT_MOMENT_PROJECTION_ITEM_LINEAGE_INVALID"
+        ):
+            cur.execute("SET CONSTRAINTS confident_moment_projection_item_lineage_v1 IMMEDIATE")
+    db.rollback()
+
+
+def test_d12_projection_rejects_multiple_rendered_exposure_heads(db):
+    context, _feedback, revision, delivery, presentation_id = (
+        _render_projection_context(db)
+    )
+    service_json_rpc(
+        db, "ack_feedback_language_revision_render_v2",
+        *_render_v2_args(db, context["owner"], revision, delivery, presentation_id),
+    )
+    rows(
+        db,
+        "INSERT INTO ml_rendered_exposures(presentation_id,actor_principal_id,"
+        "render_instance_id,client_rendered_at,client_version,payload_sha256,"
+        "idempotency_key) SELECT id,actor_principal_id,%s,clock_timestamp(),"
+        "'d12-adversarial',visible_payload_sha256,%s FROM ml_presentations WHERE id=%s",
+        (str(uuid4()), f"d12-second-exposure-{uuid4()}", presentation_id),
+    )
+    before = one(db, "SELECT count(*) n FROM confident_moment_bundle_projections")["n"]
+    _assert_service_json_rejected(
+        db,
+        "project_confident_moment_bundles_v1",
+        (context["owner"], context["project"], context["take"]),
+        "CONFIDENT_MOMENT_PROJECTION_INVALID",
+    )
+    assert one(
+        db, "SELECT count(*) n FROM confident_moment_bundle_projections"
+    )["n"] == before
+
+
 @pytest.mark.parametrize("first_committer", ["projection", "render"])
 def test_projection_and_render_serialize_in_both_commit_orders(db, first_committer):
-    context, _feedback, _revision, delivery, presentation_id = (
+    context, _feedback, revision, delivery, presentation_id = (
         _render_projection_context(db)
     )
     prior = service_json_rpc(
         db, "project_confident_moment_bundles_v1",
         context["owner"], context["project"], context["take"],
     )
-    assert prior["bundle_projection"]["bundles"][0]["coach_update"]["unread"] is True
+    assert _coach_projection_item(prior, revision["id"])["coach_update"]["unread"] is True
     db.commit()
     first = psycopg2.connect(db.dsn)
     second = psycopg2.connect(db.dsn)
     first.autocommit = False
     second.autocommit = False
-    render_args = (
-        context["owner"], delivery["id"], presentation_id, str(uuid4()),
-        f"render-race-{uuid4()}",
+    render_args = _render_v2_args(
+        db, context["owner"], revision, delivery, presentation_id
     )
 
     def render(connection):
         with connection.cursor() as cur:
+            cur.execute("SET application_name='d11-projection-render-worker'")
             cur.execute("SET ROLE service_role")
             cur.execute(
-                "SELECT public.ack_feedback_language_revision_render_v1(%s,%s,%s,%s,%s)",
+                "SELECT public.ack_feedback_language_revision_render_v2(%s,%s,%s,%s,%s,%s,%s)",
                 render_args,
             )
             result = cur.fetchone()[0]
@@ -1267,6 +1865,8 @@ def test_projection_and_render_serialize_in_both_commit_orders(db, first_committ
         return result
 
     def project(connection):
+        with connection.cursor() as cur:
+            cur.execute("SET application_name='d11-projection-render-worker'")
         result = service_json_rpc(
             connection, "project_confident_moment_bundles_v1",
             context["owner"], context["project"], context["take"],
@@ -1282,7 +1882,7 @@ def test_projection_and_render_serialize_in_both_commit_orders(db, first_committ
                     context["owner"], context["project"], context["take"],
                 )
                 future = pool.submit(render, second)
-                time.sleep(0.15)
+                wait_for_lock(db, "d11-projection-render-worker", "advisory")
                 assert not future.done()
                 first.commit()
                 future.result(timeout=10)
@@ -1291,28 +1891,72 @@ def test_projection_and_render_serialize_in_both_commit_orders(db, first_committ
                 with first.cursor() as cur:
                     cur.execute("SET ROLE service_role")
                     cur.execute(
-                        "SELECT public.ack_feedback_language_revision_render_v1(%s,%s,%s,%s,%s)",
+                        "SELECT public.ack_feedback_language_revision_render_v2(%s,%s,%s,%s,%s,%s,%s)",
                         render_args,
                     )
                     cur.fetchone()
                     cur.execute("RESET ROLE")
                 future = pool.submit(project, second)
-                time.sleep(0.15)
+                wait_for_lock(db, "d11-projection-render-worker", "advisory")
                 assert not future.done()
                 first.commit()
                 post = future.result(timeout=10)
-                assert post["bundle_projection"]["bundles"][0]["coach_update"]["unread"] is False
+                assert _coach_projection_item(post, revision["id"])[
+                    "coach_update"
+                ]["unread"] is False
         final = service_json_rpc(
             db, "project_confident_moment_bundles_v1",
             context["owner"], context["project"], context["take"],
         )
-        assert final["bundle_projection"]["bundles"][0]["coach_update"]["unread"] is False
+        assert _coach_projection_item(final, revision["id"])[
+            "coach_update"
+        ]["unread"] is False
         assert final["bundle_projection"]["response_sha256"] != prior["bundle_projection"]["response_sha256"]
     finally:
         first.rollback()
         second.rollback()
         first.close()
         second.close()
+        # This test intentionally commits both immutable projection versions to
+        # prove the race ordering. Remove only its disposable fixture records so
+        # a later test's newly selected rollout does not make reapply correctly
+        # reject this now-historical enrollment.
+        db.rollback()
+        rows(
+            db,
+            "ALTER TABLE confident_moment_bundle_projection_items DISABLE TRIGGER "
+            "confident_moment_bundle_projection_items_append_only",
+        )
+        rows(
+            db,
+            "ALTER TABLE confident_moment_bundle_projections DISABLE TRIGGER "
+            "confident_moment_bundle_projections_append_only",
+        )
+        try:
+            rows(
+                db,
+                "DELETE FROM confident_moment_bundle_projection_items "
+                "WHERE acquisition_principal_id=%s",
+                (context["owner"],),
+            )
+            rows(
+                db,
+                "DELETE FROM confident_moment_bundle_projections "
+                "WHERE acquisition_principal_id=%s",
+                (context["owner"],),
+            )
+        finally:
+            rows(
+                db,
+                "ALTER TABLE confident_moment_bundle_projection_items ENABLE TRIGGER "
+                "confident_moment_bundle_projection_items_append_only",
+            )
+            rows(
+                db,
+                "ALTER TABLE confident_moment_bundle_projections ENABLE TRIGGER "
+                "confident_moment_bundle_projections_append_only",
+            )
+        db.commit()
 
 
 def test_d11_legacy_root_writer_cannot_invert_projection_global_lock_order(db):
@@ -1362,19 +2006,7 @@ def test_d11_legacy_root_writer_cannot_invert_projection_global_lock_order(db):
 
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(activate_legacy)
-            deadline = time.monotonic() + 5
-            while True:
-                with db.cursor() as cur:
-                    cur.execute(
-                        "SELECT wait_event FROM pg_stat_activity "
-                        "WHERE application_name='d11-legacy-root-order'"
-                    )
-                    waited = cur.fetchone()
-                if waited and waited[0] == "advisory":
-                    break
-                if time.monotonic() >= deadline:
-                    raise AssertionError("legacy writer never waited on global lock")
-                time.sleep(0.01)
+            wait_for_lock(db, "d11-legacy-root-order", "advisory")
             with projection_order.cursor() as cur:
                 cur.execute("SET LOCAL lock_timeout='250ms'")
                 cur.execute(
@@ -1424,11 +2056,39 @@ def _delete_source_audio(connection, owner_principal_id):
     )
 
 
+@pytest.mark.parametrize("withdrawal", ["reviewer_access", "source_deletion"])
+def test_invalidated_delivery_still_requires_live_coach_source_authority(
+    db, withdrawal
+):
+    context, feedback, revision, delivery, _presentation_id = (
+        _render_projection_context(db)
+    )
+    invalidated = service_json_rpc(
+        db, "transition_feedback_language_delivery_v2",
+        revision["id"], context["owner"], context["take"],
+        feedback["candidate_id"], delivery["id"], "invalidate",
+        f"d12-invalidated-authority-{uuid4()}",
+    )
+    assert invalidated["delivery_state"] == "invalidated"
+    if withdrawal == "reviewer_access":
+        _withdraw_reviewer_access(db, context["reviewer"])
+    else:
+        _delete_source_audio(db, context["owner"])
+    db.commit()
+    before = one(db, "SELECT count(*) n FROM confident_moment_bundle_projections")["n"]
+    _assert_service_json_rejected(
+        db, "project_confident_moment_bundles_v1",
+        (context["owner"], context["project"], context["take"]),
+        "COACH_GUIDANCE_REVIEWER_ACCESS_REQUIRED|MLC3_DUAL_PURPOSE_AUTHORITY_REQUIRED|CONFIDENT_MOMENT_PROJECTION_INVALID",
+    )
+    assert one(db, "SELECT count(*) n FROM confident_moment_bundle_projections")["n"] == before
+
+
 def _ack_render(connection, args):
     with connection.cursor() as cur:
         cur.execute("SET ROLE service_role")
         cur.execute(
-            "SELECT public.ack_feedback_language_revision_render_v1(%s,%s,%s,%s,%s)",
+            "SELECT public.ack_feedback_language_revision_render_v2(%s,%s,%s,%s,%s,%s,%s)",
             args,
         )
         result = cur.fetchone()[0]
@@ -1447,14 +2107,13 @@ def test_ack_render_revalidates_exact_coach_source_authority_in_both_orders(
     Withdrawal-wins must create zero exposure.  Render-wins may keep only the
     one exposure it fully validated before the withdrawing writer proceeds.
     """
-    context, _feedback, _revision, delivery, presentation_id = (
+    context, _feedback, revision, delivery, presentation_id = (
         _render_projection_context(db)
     )
     db.commit()
     before = one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"]
-    render_args = (
-        context["owner"], delivery["id"], presentation_id, str(uuid4()),
-        f"render-authority-{uuid4()}",
+    render_args = _render_v2_args(
+        db, context["owner"], revision, delivery, presentation_id
     )
     first = psycopg2.connect(db.dsn)
     second = psycopg2.connect(db.dsn)
@@ -1462,6 +2121,8 @@ def test_ack_render_revalidates_exact_coach_source_authority_in_both_orders(
     second.autocommit = False
 
     def withdraw(connection):
+        with connection.cursor() as cur:
+            cur.execute("SET application_name='d11-render-authority-withdrawal'")
         if withdrawal == "reviewer_access":
             _withdraw_reviewer_access(connection, context["reviewer"])
         else:
@@ -1474,31 +2135,46 @@ def test_ack_render_revalidates_exact_coach_source_authority_in_both_orders(
         return result
 
     try:
+        expected_error = (
+            "COACH_GUIDANCE_REVIEWER_ACCESS_REQUIRED"
+            if withdrawal == "reviewer_access"
+            else "MLC3_DUAL_PURPOSE_AUTHORITY_REQUIRED"
+        )
         if first_committer == "withdrawal":
             withdraw(first)
-            with pytest.raises(psycopg2.Error) as failure:
+            with pytest.raises(psycopg2.Error, match=expected_error):
                 render(second)
-            message = str(failure.value)
-            assert any(
-                code in message
-                for code in ("FEEDBACK_LANGUAGE", "COACH_GUIDANCE", "MLC3_DUAL_PURPOSE")
-            )
             second.rollback()
             assert one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"] == before
         else:
             with ThreadPoolExecutor(max_workers=1) as pool:
                 _ack_render(first, render_args)
+                if withdrawal == "reviewer_access":
+                    # Hold the exact reviewer leaf so the opposing writer's
+                    # commit order is observed, not inferred from a sleep.
+                    with first.cursor() as cur:
+                        cur.execute(
+                            "SELECT coach.id FROM coach_users coach "
+                            "JOIN auth.users auth_user ON lower(auth_user.email)="
+                            "lower(coach.email) JOIN owner_principals principal "
+                            "ON principal.user_id=auth_user.id "
+                            "WHERE principal.id=%s FOR UPDATE OF coach",
+                            (context["reviewer"],),
+                        )
                 future = pool.submit(withdraw, second)
-                time.sleep(0.15)
+                wait_for_lock(
+                    db,
+                    "d11-render-authority-withdrawal",
+                    "transactionid" if withdrawal == "reviewer_access" else "advisory",
+                )
                 first.commit()
                 future.result(timeout=10)
             assert one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"] == before + 1
-            with pytest.raises(psycopg2.Error):
+            with pytest.raises(psycopg2.Error, match=expected_error):
                 _ack_render(
                     db,
-                    (
-                        context["owner"], delivery["id"], presentation_id,
-                        str(uuid4()), f"render-authority-{uuid4()}",
+                    _render_v2_args(
+                        db, context["owner"], revision, delivery, presentation_id
                     ),
                 )
             db.rollback()
@@ -1517,13 +2193,12 @@ def test_ack_render_revalidates_exact_coach_source_authority_in_both_orders(
 
 def test_ack_render_exact_replay_is_idempotent_while_authority_unchanged(db):
     """Exact unchanged replay stays effectively-once after the added guards."""
-    context, _feedback, _revision, delivery, presentation_id = (
+    context, _feedback, revision, delivery, presentation_id = (
         _render_projection_context(db)
     )
     before = one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"]
-    render_args = (
-        context["owner"], delivery["id"], presentation_id, str(uuid4()),
-        f"render-replay-{uuid4()}",
+    render_args = _render_v2_args(
+        db, context["owner"], revision, delivery, presentation_id
     )
     first_result = _ack_render(db, render_args)
     assert _ack_render(db, render_args) == first_result
@@ -1532,7 +2207,7 @@ def test_ack_render_exact_replay_is_idempotent_while_authority_unchanged(db):
 
 def test_ack_render_rejects_a_delivery_whose_lineage_is_not_exact_v2(db):
     """A legacy or forked delivery head can never authorise an exposure."""
-    context, _feedback, _revision, delivery, presentation_id = (
+    context, _feedback, revision, delivery, presentation_id = (
         _render_projection_context(db)
     )
     before = one(db, "SELECT count(*) n FROM ml_rendered_exposures")["n"]
@@ -1557,10 +2232,10 @@ def test_ack_render_rejects_a_delivery_whose_lineage_is_not_exact_v2(db):
     )
     _assert_service_json_rejected(
         db,
-        "ack_feedback_language_revision_render_v1",
-        (
-            context["owner"], legacy_delivery_id, presentation_id, str(uuid4()),
-            f"render-lineage-{uuid4()}",
+        "ack_feedback_language_revision_render_v2",
+        _render_v2_args(
+            db, context["owner"], revision,
+            {**delivery, "id": legacy_delivery_id}, presentation_id,
         ),
         "FEEDBACK_LANGUAGE",
     )
@@ -1603,6 +2278,8 @@ def test_projection_item_structural_constraints_reject_cross_attachment_leakage(
         "confident_moment_projection_item_state_shape_check",
         "confident_moment_projection_item_render_shape_check",
         "confident_moment_projection_item_output_shape_check",
+        "confident_moment_projection_item_exclusion_reason_check",
+        "confident_moment_projection_item_coach_presentation_check",
     } <= installed
     assert {"presentation_id", "rendered_exposure_id", "unread"} <= (
         _projection_item_columns(db)
@@ -1614,6 +2291,8 @@ def test_projection_item_structural_constraints_reject_cross_attachment_leakage(
         ("machine_fallback", None, None, None, True),
         # excluded carrying an unread coach flag
         ("excluded", "machine_output_invalid", None, None, True),
+        # arbitrary free text is not an allowed product exclusion
+        ("excluded", "unreviewed_free_text", None, None, False),
         # coach_revision without its own revision identity
         ("coach_revision", None, None, None, False),
     ]
@@ -1621,7 +2300,7 @@ def test_projection_item_structural_constraints_reject_cross_attachment_leakage(
     # transaction and is rolled back after the expected rejection.
     for state, exclusion, revision_id, delivery_id, unread in forbidden:
         with db.cursor() as cur:
-            try:
+            with pytest.raises(psycopg2.Error) as failure:
                 cur.execute(
                     "INSERT INTO public.confident_moment_bundle_projection_items("
                     "projection_id,acquisition_principal_id,bundle_attachment_id,"
@@ -1635,13 +2314,66 @@ def test_projection_item_structural_constraints_reject_cross_attachment_leakage(
                         "a" * 64, "a" * 64, "b" * 64, unread,
                     ),
                 )
-            except psycopg2.Error:
-                db.rollback()
-            else:  # pragma: no cover - a successful insert is the failure
-                db.rollback()
-                raise AssertionError(
-                    f"projection item shape {state!r} unread={unread} was accepted"
-                )
+            assert failure.value.diag.constraint_name in {
+                "confident_moment_projection_item_state_shape_check",
+                "confident_moment_projection_item_render_shape_check",
+                "confident_moment_projection_item_exclusion_reason_check",
+                "confident_moment_projection_item_coach_presentation_check",
+            }
+            db.rollback()
+
+
+def test_coach_projection_item_requires_exact_nonnull_presentation(db):
+    context, _feedback, revision, _delivery, _presentation_id = (
+        _render_projection_context(db)
+    )
+    projected = service_json_rpc(
+        db, "project_confident_moment_bundles_v1",
+        context["owner"], context["project"], context["take"],
+    )
+    source_projection_id = one(
+        db,
+        "SELECT id FROM confident_moment_bundle_projections WHERE response_sha256=%s",
+        (projected["bundle_projection"]["response_sha256"],),
+    )["id"]
+    replacement_projection_id = str(uuid4())
+    rows(
+        db,
+        "INSERT INTO confident_moment_bundle_projections("
+        "id,acquisition_principal_id,project_id,take_id,feedback_membership_id,"
+        "document_snapshot_id,document_snapshot_sha256,projection_policy_version,"
+        "projection_code_version,stabilized_inventory_sha256,response_sha256,"
+        "idempotency_key) SELECT %s,acquisition_principal_id,project_id,take_id,"
+        "feedback_membership_id,document_snapshot_id,document_snapshot_sha256,"
+        "projection_policy_version,projection_code_version,%s,%s,%s FROM "
+        "confident_moment_bundle_projections WHERE id=%s",
+        (
+            replacement_projection_id, uuid4().hex * 2, uuid4().hex * 2,
+            f"d12-null-presentation-projection-{uuid4()}", source_projection_id,
+        ),
+    )
+    with db.cursor() as cur:
+        with pytest.raises(psycopg2.Error) as failure:
+            cur.execute(
+                "INSERT INTO confident_moment_bundle_projection_items("
+                "projection_id,acquisition_principal_id,bundle_attachment_id,"
+                "bundle_subject_candidate_id,attached_candidate_id,anchor_candidate_id,"
+                "resolution_state,exclusion_reason,revision_id,delivery_id,"
+                "presentation_id,rendered_exposure_id,unread,candidate_output_sha256,"
+                "output_sha256,canonical_position,exercise_present,item_sha256) "
+                "SELECT %s,acquisition_principal_id,bundle_attachment_id,"
+                "bundle_subject_candidate_id,attached_candidate_id,anchor_candidate_id,"
+                "resolution_state,exclusion_reason,revision_id,delivery_id,NULL,"
+                "rendered_exposure_id,unread,candidate_output_sha256,output_sha256,"
+                "canonical_position,exercise_present,item_sha256 FROM "
+                "confident_moment_bundle_projection_items WHERE projection_id=%s "
+                "AND revision_id=%s",
+                (replacement_projection_id, source_projection_id, revision["id"]),
+            )
+        assert failure.value.diag.constraint_name == (
+            "confident_moment_projection_item_coach_presentation_check"
+        )
+    db.rollback()
 
 
 def test_projection_items_never_carry_foreign_attachment_currentness(db):
@@ -1707,8 +2439,10 @@ def test_projection_sql_resets_every_item_scoped_variable_inside_the_loop():
         "presentation_count:=NULL",
         "current_presentation_id:=NULL",
         "current_rendered_exposure_id:=NULL",
-        "item_comment_payload:=NULL",
-        "item_rephrase_payload:=NULL",
+        "item_output:=NULL",
+        "item_coach_update:=NULL",
+        "revision_sha256:=NULL",
+        "delivery_subject_sha256:=NULL",
         "output_hash:=public.feedback_candidate_output_sha256_v1(",
     ):
         assert variable in inner, f"{variable} is not reset per attachment"
@@ -1719,14 +2453,13 @@ def test_projection_sql_resets_every_item_scoped_variable_inside_the_loop():
                      "current_presentation_id:=NULL",
                      "current_rendered_exposure_id:=NULL"):
         assert variable in prologue, f"{variable} is reset conditionally"
-    # The bundle-scoped accumulators must be distinct from the item-scoped ones.
-    assert "bundle_coach_revision_id" in source
+    # D12 retains only an existential bundle summary fold. All identity remains
+    # inside the attachment-scoped array entry.
+    assert "feedback_language_items:='[]'::jsonb" in source
     assert "bundle_unread" in source
-    # A coach revision must never clear a sibling attachment's payload slot,
-    # and the machine fallback must never overwrite coach-authored text.
-    assert "INTO item_comment_payload,item_rephrase_payload,output_hash" in source
-    assert "ELSIF NOT rephrase_is_coach THEN rephrase_payload:=" in source
-    assert "ELSIF NOT comment_is_coach THEN comment_payload:=" in source
+    assert "'feedback_language_items',feedback_language_items" in source
+    assert "'coach_update',CASE WHEN resolution='coach_revision'" in source
+    assert "'output',CASE WHEN resolution='excluded' THEN NULL" in source
     # has_unread_coach_update must fold existentially, not last-wins.
     assert "bundle_unread:=bundle_unread OR unread;" in source
 
@@ -1755,7 +2488,7 @@ def test_every_function_created_by_this_migration_is_execute_revoked(db):
     granted = {"public.project_confident_moment_bundles_v1",
                "public.record_feedback_language_coach_revision_v2",
                "public.transition_feedback_language_delivery_v2",
-               "public.ack_feedback_language_revision_render_v1"}
+               "public.ack_feedback_language_revision_render_v2"}
     for name in sorted(created):
         for signature in [
             row["sig"] for row in rows(
@@ -1793,7 +2526,7 @@ def test_each_canonical_projection_table_is_defined_exactly_once(db):
 def test_ack_acquires_the_audio_and_purge_serializers_it_depends_on(db):
     """D11 2 / A3 Stage 2: the acknowledgement reads deletion and purge state
     through its coach/source guard, so it must hold orders 60 and 70."""
-    body = _function_body("ack_feedback_language_revision_render_v1")
+    body = _function_body("ack_feedback_language_revision_render_v2")
     acquired = re.findall(r"pg_advisory_xact_lock\(hashtextextended\('([a-z0-9-]+)", body)
     for serializer in ("mlc3-rollout-policy-v2", "mlc3-service-principal",
                        "confident-moment-project-inventory",
@@ -1818,7 +2551,7 @@ def test_ack_acquires_the_audio_and_purge_serializers_it_depends_on(db):
 
 def test_ack_passes_a_live_candidate_output_recomputation_not_its_own_column(db):
     """The guard's candidate-output equality must not be self-satisfying."""
-    body = _function_body("ack_feedback_language_revision_render_v1")
+    body = _function_body("ack_feedback_language_revision_render_v2")
     assert body.count("require_feedback_language_coach_source_live_v1(") == 2
     assert "revision.candidate_output_sha256,'FEEDBACK_LANGUAGE" not in body
     assert body.count(
@@ -1826,12 +2559,12 @@ def test_ack_passes_a_live_candidate_output_recomputation_not_its_own_column(db)
     ) == 2
 
 
-def test_coach_update_is_present_and_null_without_a_valid_delivery_per_d11(db):
-    """D11 4.4: the stable key is present, but no current coach delivery is
-    represented honestly as JSON null rather than a synthetic empty update."""
+def test_d12_projection_uses_only_attachment_scoped_feedback_language_items(db):
+    """D12 retires the lossy Bundle-level wording/currentness fold."""
     body = _function_body("project_confident_moment_bundles_v1")
-    assert "'coach_update',CASE WHEN bundle_coach_revision_id IS NULL THEN NULL" in body
-    assert (
-        "'current_revision_id',bundle_coach_revision_id,'unread',bundle_unread"
-        in body
-    )
+    assert "'contract_version','confident-moment-coaching-bundle-v2'" in body
+    assert "'feedback_language_shape_version','feedback-language-items-v1'" in body
+    assert "'feedback_language_items',feedback_language_items" in body
+    assert "'comment',comment_payload" not in body
+    assert "'rephrase',rephrase_payload" not in body
+    assert "bundle_coach_revision_id" not in body

@@ -19,8 +19,8 @@ import pytest
 from tests.confident_moment_production_fixtures import (
     CONSENT_POLICY_VERSION,
     _copy_hash,
-    _hash,
     accept_authorization,
+    create_product_rows,
     grant_consent,
     one,
     query,
@@ -46,31 +46,52 @@ def db():
 
 
 def _product_rows(db):
-    """Product rows with NAMED columns, in final form, every NOT NULL supplied."""
-    ids = {name: str(uuid4()) for name in ("owner", "project", "attempt", "take")}
-    query(
+    return create_product_rows(db)
+
+
+def test_released_rehearsal_applies_recording_attempt_take_boundary(db):
+    """The released lane contains 0297's functions and exact identity checks."""
+    assert one(
         db,
-        "INSERT INTO owner_principals(id,guest_secret_hash) VALUES(%s,%s)",
-        (ids["owner"], _hash(f"owner-{ids['owner']}")),
-    )
-    query(
+        "SELECT to_regprocedure('public.register_recording_attempt_v1(uuid,uuid,"
+        "uuid,text,uuid,text,text,text,text)') IS NOT NULL AS present",
+    )["present"] is True
+    constraints = {
+        row["conname"]: row["definition"]
+        for row in query(
+            db,
+            "SELECT conname,pg_get_constraintdef(oid) AS definition "
+            "FROM pg_constraint WHERE conrelid='public.takes'::regclass",
+        )
+    }
+    assert "take_identity_matches_attempt" in constraints
+    assert "id = recording_attempt_id" in constraints[
+        "take_identity_matches_attempt"
+    ]
+
+
+def test_product_rows_follow_exact_v2_attempt_take_lineage(db):
+    ids = _product_rows(db)
+    row = one(
         db,
-        "INSERT INTO projects(id,owner_principal_id,display_name) VALUES(%s,%s,%s)",
-        (ids["project"], ids["owner"], "Production fixture project"),
+        "SELECT s.id AS session_id,s.project_id AS session_project_id,"
+        "a.id AS attempt_id,a.upload_idempotency_key,a.recording_kind,a.status,"
+        "a.attempt_count,a.provenance_eligible,a.created_at,a.terminal_at,"
+        "t.id AS take_id,t.recording_attempt_id,t.take_index,t.completion_hash,"
+        "t.completed_at FROM v2_sessions s "
+        "JOIN recording_attempts a ON a.id=s.id "
+        "JOIN takes t ON t.recording_attempt_id=a.id WHERE s.id=%s",
+        (ids["attempt"],),
     )
-    query(
-        db,
-        "INSERT INTO recording_attempts(id,owner_principal_id,project_id) "
-        "VALUES(%s,%s,%s)",
-        (ids["attempt"], ids["owner"], ids["project"]),
-    )
-    query(
-        db,
-        "INSERT INTO takes(id,owner_principal_id,project_id,recording_attempt_id) "
-        "VALUES(%s,%s,%s,%s)",
-        (ids["take"], ids["owner"], ids["project"], ids["attempt"]),
-    )
-    return ids
+    assert row["session_id"] == row["attempt_id"] == row["take_id"]
+    assert row["take_id"] == row["recording_attempt_id"]
+    assert row["session_project_id"] == ids["project"]
+    for field in (
+        "upload_idempotency_key", "recording_kind", "status", "attempt_count",
+        "provenance_eligible", "created_at", "terminal_at", "take_index",
+        "completion_hash", "completed_at",
+    ):
+        assert row[field] is not None, field
 
 
 def test_policy_registration_uses_the_canonical_phase1_writers(db):

@@ -56,7 +56,7 @@ def test_d5_visible_render_reuses_the_canonical_v3_transition():
 
 def test_coach_update_render_is_bound_to_the_exact_revision_and_surface():
     render = SQL.split(
-        "CREATE OR REPLACE FUNCTION public.ack_feedback_language_revision_render_v1",
+        "CREATE OR REPLACE FUNCTION public.ack_feedback_language_revision_render_v2",
         1,
     )[1].split("END $$;", 1)[0]
     assert "artifact_id=d.revision_id" in render
@@ -64,6 +64,8 @@ def test_coach_update_render_is_bound_to_the_exact_revision_and_surface():
     assert "coach_comment_generation" in render
     assert "correction_generation" in render
     assert "praise_generation" in render
+    assert "p_bundle_attachment_id" in render
+    assert "attached_candidate_id=revision.feedback_candidate_id" in render
     assert "feedback-language-delivery-subject:" in render
     assert "feedback-language-revision-head:" in render
     assert "successor.supersedes_delivery_id=delivery.id" in render

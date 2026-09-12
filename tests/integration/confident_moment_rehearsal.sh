@@ -51,7 +51,7 @@ export PGPORT="${CONFIDENT_MOMENT_PGPORT:-55432}"
 export PGUSER="${CONFIDENT_MOMENT_PGUSER:-postgres}"
 export LC_ALL=C LANG=C
 
-log="$(mktemp -t confident-moment-rehearsal)"
+log="$(mktemp "${TMPDIR:-/tmp}/confident-moment-rehearsal.XXXXXX")"
 ok=0; skipped=0
 
 # The narrow prerequisite files are mutually exclusive alternatives: each is a
@@ -59,7 +59,7 @@ ok=0; skipped=0
 # `\set ON_ERROR_STOP on` itself. Composing them requires a preprocessed copy
 # whose CREATEs are idempotent and whose error stop is off. They are copied as
 # a set into one directory so their `\ir` includes still resolve.
-fixture_dir="$(mktemp -d -t confident-moment-fixtures)"
+fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/confident-moment-fixtures.XXXXXX")"
 trap 'rm -rf "$fixture_dir" "$log"' EXIT
 for source_file in tests/integration/*.sql; do
   sed -e 's/^\\set ON_ERROR_STOP on/\\set ON_ERROR_STOP off/' \
@@ -122,6 +122,25 @@ if [ "$LANE" = "narrow" ]; then
   psql -q -d "$DB" -c "DROP FUNCTION IF EXISTS public.assign_ml_speaker_split_v1(uuid,text)" >>"$log" 2>&1
 else
   soft tests/integration/mlc2_rehearsal_prerequisites.sql
+  # Build the real 0297 RecordingAttempt -> Take boundary rather than retaining
+  # the narrow three/four-column stand-ins from the MLC-2 prerequisite file.
+  # At this point nothing else references those two stand-ins, so a disposable
+  # released rehearsal can replace them without CASCADE.  The v2 session and
+  # append-only helper represent objects already released before 0297.
+  soft tests/integration/take_feedback_policy_v3_prerequisites.sql
+  psql -q -d "$DB" -v ON_ERROR_STOP=1 \
+    -c "ALTER TABLE public.v2_sessions
+        ADD COLUMN IF NOT EXISTS project_id uuid" \
+    -c "DROP TABLE public.takes" \
+    -c "DROP TABLE public.recording_attempts" \
+    -c "CREATE OR REPLACE FUNCTION public.reject_canonical_feedback_mutation()
+        RETURNS trigger LANGUAGE plpgsql AS \$\$
+        BEGIN
+          RAISE EXCEPTION 'canonical feedback evidence is append-only';
+        END;
+        \$\$" >>"$log" 2>&1
+  hard migrations/add_processing_jobs.sql
+  hard migrations/add_recording_attempt_take_boundary.sql
 fi
 
 hard migrations/add_mlc2_foundation.sql
@@ -134,7 +153,6 @@ hard migrations/fix_mlc2_pgcrypto_search_path.sql
 if [ "$LANE" = "released" ]; then
   # Real phase-1 tables. These replace the narrow copies the helpers expect,
   # which is exactly why this lane runs schema checks and not behaviour.
-  soft tests/integration/take_feedback_policy_v3_prerequisites.sql
   psql -q -d "$DB" -c "ALTER TABLE public.v2_sessions ADD COLUMN IF NOT EXISTS project_id uuid" >>"$log" 2>&1
   hard migrations/add_take_feedback_policy_v3_shadow.sql
   soft tests/integration/phase1_processing_prerequisites.sql

@@ -197,6 +197,70 @@ def register_speaker(connection, principal_id, *, identity_hash=None):
     )
 
 
+def create_product_rows(connection):
+    """Create the exact released v2-session -> attempt -> Take lineage.
+
+    Product tables do not yet expose a canonical writer, so the fixture uses
+    named columns and supplies every required value in final form.  Migration
+    0297 intentionally uses one identity for the v2 session, durable recording
+    attempt, and successful canonical Take.
+    """
+    ids = {
+        name: str(uuid4())
+        for name in ("user", "owner", "project", "attempt")
+    }
+    ids["take"] = ids["attempt"]
+    query(
+        connection,
+        "INSERT INTO auth.users(id,email) VALUES(%s,%s)",
+        (ids["user"], f"fixture-{ids['user']}@example.invalid"),
+    )
+    query(
+        connection,
+        "INSERT INTO owner_principals(id,guest_secret_hash) VALUES(%s,%s)",
+        (ids["owner"], _hash(f"owner-{ids['owner']}")),
+    )
+    query(
+        connection,
+        "INSERT INTO projects(id,owner_principal_id,display_name) "
+        "VALUES(%s,%s,%s)",
+        (ids["project"], ids["owner"], "Production fixture project"),
+    )
+    query(
+        connection,
+        "INSERT INTO v2_sessions(id,arc_id,owner_principal_id,user_id,"
+        "take_index,recording_kind,project_id,canonical_take_index,"
+        "analysis_state) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (
+            ids["attempt"], f"fixture-{ids['attempt']}", ids["owner"],
+            ids["user"], 1, "spoken", ids["project"], 1, "processing",
+        ),
+    )
+    query(
+        connection,
+        "INSERT INTO recording_attempts("
+        "id,owner_principal_id,project_id,upload_idempotency_key,"
+        "recording_kind,status,attempt_count,provenance_eligible,created_at,"
+        "terminal_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,now(),now())",
+        (
+            ids["attempt"], ids["owner"], ids["project"],
+            f"fixture-upload-{ids['attempt']}", "spoken", "succeeded", 1,
+            True,
+        ),
+    )
+    query(
+        connection,
+        "INSERT INTO takes(id,recording_attempt_id,owner_principal_id,"
+        "project_id,take_index,completion_hash,completed_at) "
+        "VALUES(%s,%s,%s,%s,%s,%s,now())",
+        (
+            ids["take"], ids["attempt"], ids["owner"], ids["project"], 1,
+            _hash(f"completion-{ids['attempt']}"),
+        ),
+    )
+    return ids
+
+
 def grant_consent(connection, principal_id, recording_attempt_id, take_id):
     """Record a consent grant and the per-take snapshot the frame requires."""
     legal_approval_id = str(uuid4())

@@ -133,7 +133,7 @@ DO $confident_moment_item_shape$ BEGIN
  ALTER TABLE public.confident_moment_bundle_projection_items
   DROP CONSTRAINT IF EXISTS confident_moment_projection_item_state_shape_check;
  ALTER TABLE public.confident_moment_bundle_projection_items
-  ADD CONSTRAINT confident_moment_projection_item_state_shape_check CHECK(
+ ADD CONSTRAINT confident_moment_projection_item_state_shape_check CHECK(
    (resolution_state='coach_revision' AND revision_id IS NOT NULL
      AND delivery_id IS NOT NULL AND exclusion_reason IS NULL
      AND output_sha256 IS NOT NULL)
@@ -159,6 +159,17 @@ DO $confident_moment_item_shape$ BEGIN
    candidate_output_sha256 IS NOT NULL AND output_sha256 IS NOT NULL
    AND candidate_output_sha256 ~ '^[0-9a-f]{64}$' AND output_sha256 ~ '^[0-9a-f]{64}$'
    AND (resolution_state='coach_revision' OR output_sha256=candidate_output_sha256));
+ ALTER TABLE public.confident_moment_bundle_projection_items
+  DROP CONSTRAINT IF EXISTS confident_moment_projection_item_exclusion_reason_check;
+ ALTER TABLE public.confident_moment_bundle_projection_items
+ ADD CONSTRAINT confident_moment_projection_item_exclusion_reason_check CHECK(
+   exclusion_reason IS NULL OR exclusion_reason IN(
+    'machine_output_invalid','delivery_explicitly_invalidated'));
+ ALTER TABLE public.confident_moment_bundle_projection_items
+  DROP CONSTRAINT IF EXISTS confident_moment_projection_item_coach_presentation_check;
+ ALTER TABLE public.confident_moment_bundle_projection_items
+  ADD CONSTRAINT confident_moment_projection_item_coach_presentation_check CHECK(
+   resolution_state<>'coach_revision' OR presentation_id IS NOT NULL);
 END $confident_moment_item_shape$;
 
 CREATE OR REPLACE FUNCTION public.validate_confident_moment_projection_item_v1()
@@ -170,6 +181,7 @@ DECLARE projection_row public.confident_moment_bundle_projections;
  presentation_row public.ml_presentations;
  exposure_row public.ml_rendered_exposures;
  expected_surface text;
+ presentation_count integer;
 BEGIN
  SELECT * INTO projection_row FROM public.confident_moment_bundle_projections
   WHERE id=NEW.projection_id AND acquisition_principal_id=NEW.acquisition_principal_id;
@@ -203,6 +215,7 @@ BEGIN
    OR delivery_row.target_take_id IS DISTINCT FROM projection_row.take_id
    OR delivery_row.feedback_membership_id IS DISTINCT FROM projection_row.feedback_membership_id
    OR delivery_row.feedback_candidate_id IS DISTINCT FROM NEW.attached_candidate_id
+   OR delivery_row.anchor_candidate_id IS DISTINCT FROM COALESCE(attachment_row.anchor_candidate_id,attachment_row.bundle_subject_candidate_id)
    OR delivery_row.reviewer_principal_id IS DISTINCT FROM revision_row.rater_id
    OR delivery_row.candidate_output_version IS DISTINCT FROM revision_row.candidate_output_version
    OR delivery_row.candidate_output_sha256 IS DISTINCT FROM revision_row.candidate_output_sha256
@@ -212,15 +225,23 @@ BEGIN
    OR EXISTS(SELECT 1 FROM public.feedback_revisions successor WHERE successor.supersedes_id=revision_row.id AND successor.taxonomy_version='feedback-language-coach-revision-v1') THEN
    RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_ITEM_LINEAGE_INVALID';
   END IF;
-  expected_surface:=CASE revision_row.output_kind WHEN 'rephrase' THEN 'correction_generation' WHEN 'comment' THEN CASE revision_row.comment_purpose WHEN 'positive_praise' THEN 'praise_generation' ELSE 'coach_comment_generation' END END;
-  IF NEW.presentation_id IS NOT NULL THEN
-   SELECT * INTO presentation_row FROM public.ml_presentations WHERE id=NEW.presentation_id;
-   IF presentation_row.id IS NULL OR presentation_row.artifact_id IS DISTINCT FROM revision_row.id
+  PERFORM public.require_feedback_language_coach_source_live_v1(
+   revision_row.id,NEW.acquisition_principal_id,projection_row.feedback_membership_id,
+   NEW.attached_candidate_id,NEW.candidate_output_sha256,
+   'CONFIDENT_MOMENT_PROJECTION_ITEM_LINEAGE_INVALID');
+ expected_surface:=CASE revision_row.output_kind WHEN 'rephrase' THEN 'correction_generation' WHEN 'comment' THEN CASE revision_row.comment_purpose WHEN 'positive_praise' THEN 'praise_generation' ELSE 'coach_comment_generation' END END;
+  SELECT count(*) INTO presentation_count FROM public.ml_presentations canonical_presentation
+   WHERE canonical_presentation.artifact_id=revision_row.id
+     AND canonical_presentation.actor_principal_id=NEW.acquisition_principal_id
+     AND canonical_presentation.learning_surface_id=expected_surface
+     AND canonical_presentation.delivery_mode<>'shadow';
+  SELECT * INTO presentation_row FROM public.ml_presentations WHERE id=NEW.presentation_id;
+  IF presentation_count<>1 OR presentation_row.id IS NULL
+    OR presentation_row.artifact_id IS DISTINCT FROM revision_row.id
     OR presentation_row.actor_principal_id IS DISTINCT FROM NEW.acquisition_principal_id
     OR presentation_row.learning_surface_id IS DISTINCT FROM expected_surface
     OR presentation_row.delivery_mode='shadow' THEN
-    RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_ITEM_LINEAGE_INVALID'; END IF;
-  END IF;
+   RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_ITEM_LINEAGE_INVALID'; END IF;
   IF NEW.rendered_exposure_id IS NOT NULL THEN
    SELECT * INTO exposure_row FROM public.ml_rendered_exposures WHERE id=NEW.rendered_exposure_id;
    IF exposure_row.id IS NULL OR exposure_row.presentation_id IS DISTINCT FROM NEW.presentation_id
@@ -239,6 +260,7 @@ BEGIN
    OR delivery_row.target_take_id IS DISTINCT FROM projection_row.take_id
    OR delivery_row.feedback_membership_id IS DISTINCT FROM projection_row.feedback_membership_id
    OR delivery_row.feedback_candidate_id IS DISTINCT FROM NEW.attached_candidate_id
+   OR delivery_row.anchor_candidate_id IS DISTINCT FROM COALESCE(attachment_row.anchor_candidate_id,attachment_row.bundle_subject_candidate_id)
    OR revision_row.taxonomy_version IS DISTINCT FROM 'feedback-language-coach-revision-v1'
    OR revision_row.acquisition_principal_id IS DISTINCT FROM NEW.acquisition_principal_id
    OR revision_row.feedback_membership_id IS DISTINCT FROM projection_row.feedback_membership_id
@@ -250,6 +272,10 @@ BEGIN
    OR EXISTS(SELECT 1 FROM public.feedback_language_revision_deliveries successor WHERE successor.supersedes_delivery_id=delivery_row.id AND successor.delivery_policy_version='feedback-language-delivery-v2')
    OR EXISTS(SELECT 1 FROM public.feedback_revisions successor WHERE successor.supersedes_id=revision_row.id AND successor.taxonomy_version='feedback-language-coach-revision-v1') THEN
    RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_ITEM_LINEAGE_INVALID'; END IF;
+  PERFORM public.require_feedback_language_coach_source_live_v1(
+   revision_row.id,NEW.acquisition_principal_id,projection_row.feedback_membership_id,
+   NEW.attached_candidate_id,NEW.candidate_output_sha256,
+   'CONFIDENT_MOMENT_PROJECTION_ITEM_LINEAGE_INVALID');
  END IF;
  RETURN NEW;
 END $$;
@@ -286,6 +312,7 @@ BEGIN
   SELECT 1
   FROM public.confident_moment_bundle_projection_items item
   JOIN public.confident_moment_bundle_projections projection ON projection.id=item.projection_id
+  LEFT JOIN public.confident_moment_bundle_attachments attachment ON attachment.id=item.bundle_attachment_id
   LEFT JOIN public.feedback_revisions revision ON revision.id=item.revision_id
   LEFT JOIN public.feedback_language_revision_deliveries delivery ON delivery.id=item.delivery_id
   LEFT JOIN public.ml_presentations presentation ON presentation.id=item.presentation_id
@@ -303,6 +330,7 @@ BEGIN
     OR delivery.target_take_id IS DISTINCT FROM projection.take_id
     OR delivery.feedback_membership_id IS DISTINCT FROM projection.feedback_membership_id
     OR delivery.feedback_candidate_id IS DISTINCT FROM item.attached_candidate_id
+    OR delivery.anchor_candidate_id IS DISTINCT FROM COALESCE(attachment.anchor_candidate_id,attachment.bundle_subject_candidate_id)
     OR delivery.reviewer_principal_id IS DISTINCT FROM revision.rater_id
     OR delivery.candidate_output_version IS DISTINCT FROM revision.candidate_output_version
     OR delivery.candidate_output_sha256 IS DISTINCT FROM revision.candidate_output_sha256
@@ -314,15 +342,24 @@ BEGIN
     OR EXISTS(SELECT 1 FROM public.feedback_revisions successor
       WHERE successor.supersedes_id=revision.id
         AND successor.taxonomy_version='feedback-language-coach-revision-v1')
-    OR (item.presentation_id IS NOT NULL AND (
-      presentation.id IS NULL OR presentation.artifact_id IS DISTINCT FROM revision.id
+    OR item.presentation_id IS NULL
+    OR presentation.id IS NULL OR presentation.artifact_id IS DISTINCT FROM revision.id
       OR presentation.actor_principal_id IS DISTINCT FROM item.acquisition_principal_id
       OR presentation.learning_surface_id IS DISTINCT FROM CASE revision.output_kind
         WHEN 'rephrase' THEN 'correction_generation'
         WHEN 'comment' THEN CASE revision.comment_purpose
           WHEN 'positive_praise' THEN 'praise_generation'
           ELSE 'coach_comment_generation' END END
-      OR presentation.delivery_mode='shadow'))
+      OR presentation.delivery_mode='shadow'
+    OR (SELECT count(*) FROM public.ml_presentations canonical_presentation
+      WHERE canonical_presentation.artifact_id=revision.id
+        AND canonical_presentation.actor_principal_id=item.acquisition_principal_id
+        AND canonical_presentation.learning_surface_id=CASE revision.output_kind
+          WHEN 'rephrase' THEN 'correction_generation'
+          WHEN 'comment' THEN CASE revision.comment_purpose
+            WHEN 'positive_praise' THEN 'praise_generation'
+            ELSE 'coach_comment_generation' END END
+        AND canonical_presentation.delivery_mode<>'shadow')<>1
     OR (item.rendered_exposure_id IS NOT NULL AND (
       exposure.id IS NULL OR exposure.presentation_id IS DISTINCT FROM item.presentation_id
       OR exposure.actor_principal_id IS DISTINCT FROM item.acquisition_principal_id
@@ -332,6 +369,7 @@ BEGIN
   SELECT 1
   FROM public.confident_moment_bundle_projection_items item
   JOIN public.confident_moment_bundle_projections projection ON projection.id=item.projection_id
+  LEFT JOIN public.confident_moment_bundle_attachments attachment ON attachment.id=item.bundle_attachment_id
   LEFT JOIN public.feedback_language_revision_deliveries delivery ON delivery.id=item.delivery_id
   LEFT JOIN public.feedback_revisions revision ON revision.id=delivery.revision_id
   WHERE item.resolution_state='excluded' AND item.delivery_id IS NOT NULL
@@ -343,6 +381,7 @@ BEGIN
       OR delivery.target_take_id IS DISTINCT FROM projection.take_id
       OR delivery.feedback_membership_id IS DISTINCT FROM projection.feedback_membership_id
       OR delivery.feedback_candidate_id IS DISTINCT FROM item.attached_candidate_id
+      OR delivery.anchor_candidate_id IS DISTINCT FROM COALESCE(attachment.anchor_candidate_id,attachment.bundle_subject_candidate_id)
       OR revision.taxonomy_version IS DISTINCT FROM 'feedback-language-coach-revision-v1'
       OR revision.acquisition_principal_id IS DISTINCT FROM item.acquisition_principal_id
       OR revision.feedback_membership_id IS DISTINCT FROM projection.feedback_membership_id
@@ -477,6 +516,34 @@ BEGIN
   p_feedback_membership_id,p_acquisition_principal_id);
 END $$;
 
+-- Existing coach-backed projection items are also a live-authority audit on
+-- reapply. Explicit delivery invalidation does not preserve stale reviewer or
+-- deleted source authority.
+DO $confident_moment_existing_projection_authority_audit$
+DECLARE projection_item record;
+BEGIN
+ FOR projection_item IN
+  SELECT item.acquisition_principal_id,item.attached_candidate_id,
+         item.candidate_output_sha256,projection.feedback_membership_id,
+         COALESCE(item.revision_id,delivery.revision_id) revision_id
+  FROM public.confident_moment_bundle_projection_items item
+  JOIN public.confident_moment_bundle_projections projection
+    ON projection.id=item.projection_id
+  LEFT JOIN public.feedback_language_revision_deliveries delivery
+    ON delivery.id=item.delivery_id
+  WHERE item.resolution_state='coach_revision'
+     OR (item.resolution_state='excluded'
+         AND item.exclusion_reason='delivery_explicitly_invalidated')
+ LOOP
+  PERFORM public.require_feedback_language_coach_source_live_v1(
+   projection_item.revision_id,projection_item.acquisition_principal_id,
+   projection_item.feedback_membership_id,projection_item.attached_candidate_id,
+   projection_item.candidate_output_sha256,
+   'CONFIDENT_MOMENT_EXISTING_PROJECTION_LINEAGE_INVALID');
+ END LOOP;
+END
+$confident_moment_existing_projection_authority_audit$;
+
 CREATE OR REPLACE FUNCTION public.project_confident_moment_bundles_v1(
  p_acquisition_principal_id uuid,p_project_id uuid,p_take_id uuid
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER VOLATILE SET search_path=public AS $$
@@ -486,13 +553,13 @@ DECLARE membership public.feedback_v3_memberships; snapshot public.ideal_text_do
  bundles jsonb:='[]'::jsonb; summary_items jsonb:='[]'::jsonb; coverage jsonb;
  bundle jsonb; summary jsonb; body jsonb; response_hash text; summary_hash text;
  root_head public.root_phrase_block_heads; root_action public.root_phrase_product_actions;
- comment_payload jsonb; rephrase_payload jsonb; coach_revision_id uuid; unread boolean;
+ feedback_language_items jsonb; item_output jsonb; item_coach_update jsonb;
+ coach_revision_id uuid; unread boolean;
  resolution text; exclusion text; output_hash text; delivery_id uuid;
  current_presentation_id uuid; current_rendered_exposure_id uuid; presentation_count integer;
- current_count integer; item_hash text; item_position integer:=0;
- bundle_coach_revision_id uuid; bundle_unread boolean;
- item_comment_payload jsonb; item_rephrase_payload jsonb;
- comment_is_coach boolean; rephrase_is_coach boolean;
+ rendered_count integer; current_count integer; item_hash text;
+ bundle_unread boolean; revision_sha256 text; delivery_subject_sha256 text;
+ delivery_anchor_candidate_id uuid;
 BEGIN
  PERFORM public.lock_confident_moment_inventory_v1(p_acquisition_principal_id,p_project_id,p_take_id);
  PERFORM public.require_mlc3_service_access_v2(p_acquisition_principal_id,NULL,NULL);
@@ -511,8 +578,9 @@ BEGIN
   'membership',membership.id,'snapshot',snapshot.id,
   'attachments',COALESCE((SELECT jsonb_agg(jsonb_build_array(a.id,a.bundle_subject_candidate_id,a.attached_candidate_id,a.canonical_position) ORDER BY a.canonical_position,a.attached_candidate_id) FROM public.confident_moment_bundle_attachments a WHERE a.acquisition_principal_id=p_acquisition_principal_id AND a.project_id=p_project_id AND a.take_id=p_take_id),'[]'::jsonb),
   'heads',COALESCE((SELECT jsonb_agg(jsonb_build_array(h.slide_index,h.block_key,h.active_root_action_id,h.interaction_state_revision) ORDER BY h.slide_index,h.block_key) FROM public.root_phrase_block_heads h WHERE h.acquisition_principal_id=p_acquisition_principal_id AND h.project_id=p_project_id),'[]'::jsonb),
-  'deliveries',COALESCE((SELECT jsonb_agg(jsonb_build_array(d.id,d.revision_id,d.delivery_state,d.delivery_revision,d.supersedes_delivery_id) ORDER BY d.feedback_candidate_id,d.delivery_revision,d.id) FROM public.feedback_language_revision_deliveries d WHERE d.recipient_principal_id=p_acquisition_principal_id AND d.target_take_id=p_take_id AND d.delivery_policy_version='feedback-language-delivery-v2'),'[]'::jsonb),
+  'deliveries',COALESCE((SELECT jsonb_agg(jsonb_build_array(d.id,d.revision_id,d.anchor_candidate_id,d.delivery_state,d.delivery_revision,d.supersedes_delivery_id) ORDER BY d.feedback_candidate_id,d.delivery_revision,d.id) FROM public.feedback_language_revision_deliveries d WHERE d.recipient_principal_id=p_acquisition_principal_id AND d.target_take_id=p_take_id AND d.delivery_policy_version='feedback-language-delivery-v2'),'[]'::jsonb),
   'render_state',COALESCE((SELECT jsonb_agg(jsonb_build_array(d.id,p.id,e.id,e.render_instance_id,e.payload_sha256) ORDER BY d.feedback_candidate_id,d.delivery_revision,d.id,p.id,e.authenticated_at,e.id) FROM public.feedback_language_revision_deliveries d JOIN public.feedback_revisions r ON r.id=d.revision_id JOIN public.ml_presentations p ON p.artifact_id=d.revision_id AND p.actor_principal_id=d.recipient_principal_id AND p.delivery_mode<>'shadow' AND p.learning_surface_id=(CASE r.output_kind WHEN 'rephrase' THEN 'correction_generation' WHEN 'comment' THEN CASE r.comment_purpose WHEN 'positive_praise' THEN 'praise_generation' ELSE 'coach_comment_generation' END END) LEFT JOIN public.ml_rendered_exposures e ON e.presentation_id=p.id AND e.actor_principal_id=d.recipient_principal_id WHERE d.recipient_principal_id=p_acquisition_principal_id AND d.target_take_id=p_take_id AND d.delivery_policy_version='feedback-language-delivery-v2'),'[]'::jsonb),
+  'audio_state',jsonb_build_object('objects',COALESCE((SELECT jsonb_agg(jsonb_build_array(o.id,o.exact_bytes_sha256,o.deleted_at) ORDER BY o.id) FROM public.processing_audio_objects o WHERE o.acquisition_principal_id=p_acquisition_principal_id AND o.recording_attempt_id=p_take_id),'[]'::jsonb),'deletions',COALESCE((SELECT jsonb_agg(jsonb_build_array(x.id,x.audio_object_id,x.purge_request_id,x.evidence_sha256) ORDER BY x.id) FROM public.processing_audio_object_deletion_events x JOIN public.processing_audio_objects o ON o.id=x.audio_object_id WHERE o.acquisition_principal_id=p_acquisition_principal_id AND o.recording_attempt_id=p_take_id),'[]'::jsonb),'purges',COALESCE((SELECT jsonb_agg(jsonb_build_array(q.id,q.state) ORDER BY q.id) FROM public.data_purge_requests q WHERE q.acquisition_principal_id=p_acquisition_principal_id),'[]'::jsonb)),
   'revisions',COALESCE((SELECT jsonb_agg(jsonb_build_array(r.id,r.supersedes_id,r.revision_sha256) ORDER BY r.feedback_candidate_id,r.rater_id,r.created_at,r.id) FROM public.feedback_revisions r WHERE r.acquisition_principal_id=p_acquisition_principal_id AND r.feedback_membership_id=membership.id AND r.taxonomy_version='feedback-language-coach-revision-v1'),'[]'::jsonb))) INTO inventory_before;
  PERFORM pg_advisory_xact_lock(hashtextextended('feedback-v3-membership-current:'||membership.id::text,0));
  PERFORM pg_advisory_xact_lock(hashtextextended('ideal-text-document-head:'||p_project_id::text,0));
@@ -538,8 +606,9 @@ BEGIN
   'membership',membership.id,'snapshot',snapshot.id,
   'attachments',COALESCE((SELECT jsonb_agg(jsonb_build_array(a.id,a.bundle_subject_candidate_id,a.attached_candidate_id,a.canonical_position) ORDER BY a.canonical_position,a.attached_candidate_id) FROM public.confident_moment_bundle_attachments a WHERE a.acquisition_principal_id=p_acquisition_principal_id AND a.project_id=p_project_id AND a.take_id=p_take_id),'[]'::jsonb),
   'heads',COALESCE((SELECT jsonb_agg(jsonb_build_array(h.slide_index,h.block_key,h.active_root_action_id,h.interaction_state_revision) ORDER BY h.slide_index,h.block_key) FROM public.root_phrase_block_heads h WHERE h.acquisition_principal_id=p_acquisition_principal_id AND h.project_id=p_project_id),'[]'::jsonb),
-  'deliveries',COALESCE((SELECT jsonb_agg(jsonb_build_array(d.id,d.revision_id,d.delivery_state,d.delivery_revision,d.supersedes_delivery_id) ORDER BY d.feedback_candidate_id,d.delivery_revision,d.id) FROM public.feedback_language_revision_deliveries d WHERE d.recipient_principal_id=p_acquisition_principal_id AND d.target_take_id=p_take_id AND d.delivery_policy_version='feedback-language-delivery-v2'),'[]'::jsonb),
+  'deliveries',COALESCE((SELECT jsonb_agg(jsonb_build_array(d.id,d.revision_id,d.anchor_candidate_id,d.delivery_state,d.delivery_revision,d.supersedes_delivery_id) ORDER BY d.feedback_candidate_id,d.delivery_revision,d.id) FROM public.feedback_language_revision_deliveries d WHERE d.recipient_principal_id=p_acquisition_principal_id AND d.target_take_id=p_take_id AND d.delivery_policy_version='feedback-language-delivery-v2'),'[]'::jsonb),
   'render_state',COALESCE((SELECT jsonb_agg(jsonb_build_array(d.id,p.id,e.id,e.render_instance_id,e.payload_sha256) ORDER BY d.feedback_candidate_id,d.delivery_revision,d.id,p.id,e.authenticated_at,e.id) FROM public.feedback_language_revision_deliveries d JOIN public.feedback_revisions r ON r.id=d.revision_id JOIN public.ml_presentations p ON p.artifact_id=d.revision_id AND p.actor_principal_id=d.recipient_principal_id AND p.delivery_mode<>'shadow' AND p.learning_surface_id=(CASE r.output_kind WHEN 'rephrase' THEN 'correction_generation' WHEN 'comment' THEN CASE r.comment_purpose WHEN 'positive_praise' THEN 'praise_generation' ELSE 'coach_comment_generation' END END) LEFT JOIN public.ml_rendered_exposures e ON e.presentation_id=p.id AND e.actor_principal_id=d.recipient_principal_id WHERE d.recipient_principal_id=p_acquisition_principal_id AND d.target_take_id=p_take_id AND d.delivery_policy_version='feedback-language-delivery-v2'),'[]'::jsonb),
+  'audio_state',jsonb_build_object('objects',COALESCE((SELECT jsonb_agg(jsonb_build_array(o.id,o.exact_bytes_sha256,o.deleted_at) ORDER BY o.id) FROM public.processing_audio_objects o WHERE o.acquisition_principal_id=p_acquisition_principal_id AND o.recording_attempt_id=p_take_id),'[]'::jsonb),'deletions',COALESCE((SELECT jsonb_agg(jsonb_build_array(x.id,x.audio_object_id,x.purge_request_id,x.evidence_sha256) ORDER BY x.id) FROM public.processing_audio_object_deletion_events x JOIN public.processing_audio_objects o ON o.id=x.audio_object_id WHERE o.acquisition_principal_id=p_acquisition_principal_id AND o.recording_attempt_id=p_take_id),'[]'::jsonb),'purges',COALESCE((SELECT jsonb_agg(jsonb_build_array(q.id,q.state) ORDER BY q.id) FROM public.data_purge_requests q WHERE q.acquisition_principal_id=p_acquisition_principal_id),'[]'::jsonb)),
   'revisions',COALESCE((SELECT jsonb_agg(jsonb_build_array(r.id,r.supersedes_id,r.revision_sha256) ORDER BY r.feedback_candidate_id,r.rater_id,r.created_at,r.id) FROM public.feedback_revisions r WHERE r.acquisition_principal_id=p_acquisition_principal_id AND r.feedback_membership_id=membership.id AND r.taxonomy_version='feedback-language-coach-revision-v1'),'[]'::jsonb))) INTO inventory_after;
  IF inventory_after<>inventory_before THEN RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_RETRY_REQUIRED'; END IF;
  membership:=public.require_feedback_v3_service_membership_live_v1(membership.id,p_acquisition_principal_id);
@@ -551,73 +620,84 @@ BEGIN
  FOR subject IN SELECT DISTINCT ON(a.bundle_subject_candidate_id) a.*,item.slide_index,item.block_key FROM public.confident_moment_bundle_attachments a JOIN public.feedback_v3_membership_items item ON item.membership_id=a.feedback_membership_id AND item.candidate_id=a.bundle_subject_candidate_id WHERE a.acquisition_principal_id=p_acquisition_principal_id AND a.project_id=p_project_id AND a.take_id=p_take_id ORDER BY a.bundle_subject_candidate_id,a.canonical_position LOOP
   SELECT * INTO root_head FROM public.root_phrase_block_heads h WHERE h.acquisition_principal_id=p_acquisition_principal_id AND h.project_id=p_project_id AND h.slide_index=subject.slide_index AND h.block_key=subject.block_key;
   SELECT * INTO root_action FROM public.root_phrase_product_actions WHERE id=root_head.active_root_action_id;
-  -- Bundle-scoped composition accumulators only.  Item-scoped render and
-  -- currentness state is reset per attachment inside the inner loop.
-  comment_payload:=NULL; rephrase_payload:=NULL;
-  comment_is_coach:=false; rephrase_is_coach:=false;
-  bundle_coach_revision_id:=NULL; bundle_unread:=false;
+  feedback_language_items:='[]'::jsonb; bundle_unread:=false;
   FOR attachment IN SELECT a.*,candidate.feedback_family,candidate.generated_output FROM public.confident_moment_bundle_attachments a JOIN public.feedback_candidates candidate ON candidate.id=a.attached_candidate_id WHERE a.feedback_membership_id=membership.id AND a.bundle_subject_candidate_id=subject.bundle_subject_candidate_id AND a.acquisition_principal_id=p_acquisition_principal_id AND a.project_id=p_project_id AND a.take_id=p_take_id ORDER BY a.canonical_position,a.attached_candidate_id LOOP
-   item_position:=item_position+1; resolution:='machine_fallback'; exclusion:=NULL; delivery_id:=NULL;
+   resolution:='machine_fallback'; exclusion:=NULL; delivery_id:=NULL;
    -- Every attachment-scoped leaf is cleared here.  A coach-updated
    -- attachment must not leak its revision, presentation, rendered
    -- exposure or unread state into the next machine-only attachment.
    coach_revision_id:=NULL; unread:=false; presentation_count:=NULL;
-   item_comment_payload:=NULL; item_rephrase_payload:=NULL;
+   rendered_count:=NULL; item_output:=NULL; item_coach_update:=NULL;
+   revision_sha256:=NULL; delivery_subject_sha256:=NULL;
    current_presentation_id:=NULL; current_rendered_exposure_id:=NULL;
    output_hash:=public.feedback_candidate_output_sha256_v1(attachment.attached_candidate_id);
    SELECT count(*) INTO current_count FROM public.feedback_language_revision_deliveries d WHERE d.delivery_policy_version='feedback-language-delivery-v2' AND d.recipient_principal_id=p_acquisition_principal_id AND d.target_take_id=p_take_id AND d.feedback_membership_id=membership.id AND d.feedback_candidate_id=attachment.attached_candidate_id AND NOT EXISTS(SELECT 1 FROM public.feedback_language_revision_deliveries successor WHERE successor.supersedes_delivery_id=d.id AND successor.delivery_policy_version='feedback-language-delivery-v2');
    IF current_count>1 THEN RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_INVALID'; END IF;
-   SELECT d.id,d.revision_id INTO delivery_id,coach_revision_id FROM public.feedback_language_revision_deliveries d WHERE d.delivery_policy_version='feedback-language-delivery-v2' AND d.recipient_principal_id=p_acquisition_principal_id AND d.target_take_id=p_take_id AND d.feedback_membership_id=membership.id AND d.feedback_candidate_id=attachment.attached_candidate_id AND NOT EXISTS(SELECT 1 FROM public.feedback_language_revision_deliveries successor WHERE successor.supersedes_delivery_id=d.id AND successor.delivery_policy_version='feedback-language-delivery-v2');
+   SELECT d.id,d.revision_id,d.delivery_subject_sha256,d.anchor_candidate_id INTO delivery_id,coach_revision_id,delivery_subject_sha256,delivery_anchor_candidate_id FROM public.feedback_language_revision_deliveries d WHERE d.delivery_policy_version='feedback-language-delivery-v2' AND d.recipient_principal_id=p_acquisition_principal_id AND d.target_take_id=p_take_id AND d.feedback_membership_id=membership.id AND d.feedback_candidate_id=attachment.attached_candidate_id AND NOT EXISTS(SELECT 1 FROM public.feedback_language_revision_deliveries successor WHERE successor.supersedes_delivery_id=d.id AND successor.delivery_policy_version='feedback-language-delivery-v2');
    IF delivery_id IS NOT NULL THEN
+   IF delivery_anchor_candidate_id IS DISTINCT FROM COALESCE(attachment.anchor_candidate_id,attachment.bundle_subject_candidate_id) THEN RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_INVALID'; END IF;
+   PERFORM public.require_feedback_language_coach_source_live_v1(
+    coach_revision_id,p_acquisition_principal_id,membership.id,
+    attachment.attached_candidate_id,
+    public.feedback_candidate_output_sha256_v1(attachment.attached_candidate_id),
+    'CONFIDENT_MOMENT_PROJECTION_INVALID');
    IF EXISTS(SELECT 1 FROM public.feedback_language_revision_deliveries d WHERE d.id=delivery_id AND d.delivery_state='invalidated') THEN resolution:='excluded'; exclusion:='delivery_explicitly_invalidated'; coach_revision_id:=NULL; unread:=false;
    ELSIF EXISTS(SELECT 1 FROM public.feedback_revisions successor WHERE successor.supersedes_id=coach_revision_id AND successor.taxonomy_version='feedback-language-coach-revision-v1') THEN RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_INVALID';
     ELSE
-     PERFORM public.require_feedback_language_coach_source_live_v1(
-      coach_revision_id,p_acquisition_principal_id,membership.id,
-      attachment.attached_candidate_id,
-      public.feedback_candidate_output_sha256_v1(attachment.attached_candidate_id),
-      'CONFIDENT_MOMENT_PROJECTION_INVALID');
      SELECT count(*),(array_agg(p.id ORDER BY p.prepared_at,p.id))[1] INTO presentation_count,current_presentation_id
       FROM public.ml_presentations p JOIN public.feedback_revisions r ON r.id=coach_revision_id
       WHERE p.artifact_id=coach_revision_id AND p.actor_principal_id=p_acquisition_principal_id
        AND p.learning_surface_id=(CASE r.output_kind WHEN 'rephrase' THEN 'correction_generation' WHEN 'comment' THEN CASE r.comment_purpose WHEN 'positive_praise' THEN 'praise_generation' ELSE 'coach_comment_generation' END END)
        AND p.delivery_mode<>'shadow';
-     IF presentation_count>1 THEN RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_INVALID'; END IF;
-     SELECT e.id INTO current_rendered_exposure_id FROM public.ml_rendered_exposures e
+     IF presentation_count<>1 THEN RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_INVALID'; END IF;
+     SELECT count(*),(array_agg(e.id ORDER BY e.authenticated_at,e.id))[1]
+      INTO rendered_count,current_rendered_exposure_id FROM public.ml_rendered_exposures e
       WHERE e.presentation_id=current_presentation_id AND e.actor_principal_id=p_acquisition_principal_id
-      ORDER BY e.authenticated_at,e.id LIMIT 1;
+     ;
+     IF rendered_count>1 THEN RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_INVALID'; END IF;
      unread:=current_rendered_exposure_id IS NULL;
-     resolution:='coach_revision'; SELECT CASE WHEN r.output_kind='comment' THEN jsonb_build_object('output_kind','comment','comment_purpose',r.comment_purpose,'text',r.value,'origin','coach') END,CASE WHEN r.output_kind='rephrase' THEN jsonb_build_object('output_kind','rephrase','comment_purpose',NULL,'text',r.value,'origin','coach') END,r.revision_sha256 INTO item_comment_payload,item_rephrase_payload,output_hash FROM public.feedback_revisions r WHERE r.id=coach_revision_id AND r.feedback_membership_id=membership.id AND r.feedback_candidate_id=attachment.attached_candidate_id;
-     -- D11 4.4: a valid coach revision supersedes the machine fallback for
-     -- its own kind, and never clears the sibling kind's slot.
-     IF item_comment_payload IS NOT NULL THEN comment_payload:=item_comment_payload; comment_is_coach:=true; END IF;
-     IF item_rephrase_payload IS NOT NULL THEN rephrase_payload:=item_rephrase_payload; rephrase_is_coach:=true; END IF;
+     resolution:='coach_revision';
+     SELECT jsonb_build_object('output_kind',r.output_kind,'comment_purpose',r.comment_purpose,'text',r.value,'origin','coach'),r.revision_sha256
+      INTO item_output,revision_sha256 FROM public.feedback_revisions r
+      WHERE r.id=coach_revision_id AND r.feedback_membership_id=membership.id
+       AND r.feedback_candidate_id=attachment.attached_candidate_id;
+     output_hash:=revision_sha256;
+     item_coach_update:=jsonb_build_object(
+      'current_revision_id',coach_revision_id,'revision_sha256',revision_sha256,
+      'revision_delivery_id',delivery_id,'delivery_subject_sha256',delivery_subject_sha256,
+      'presentation_id',current_presentation_id,
+      'rendered_exposure_id',current_rendered_exposure_id,'unread',unread);
     END IF;
    ELSIF attachment.feedback_family='rewrite_clarity' THEN
-    IF NULLIF(btrim(attachment.generated_output->>'proposed_text'),'') IS NULL THEN resolution:='excluded'; exclusion:='machine_output_invalid'; ELSIF NOT rephrase_is_coach THEN rephrase_payload:=jsonb_build_object('output_kind','rephrase','comment_purpose',NULL,'text',attachment.generated_output->>'proposed_text','origin','machine'); END IF;
+    IF NULLIF(btrim(attachment.generated_output->>'proposed_text'),'') IS NOT NULL THEN
+     item_output:=jsonb_build_object('output_kind','rephrase','comment_purpose',NULL,'text',attachment.generated_output->>'proposed_text','origin','machine');
+    ELSIF NULLIF(btrim(attachment.generated_output->>'observation'),'') IS NOT NULL THEN
+     item_output:=jsonb_build_object('output_kind','comment','comment_purpose','actionable_observation','text',attachment.generated_output->>'observation','origin','machine');
+    ELSE resolution:='excluded'; exclusion:='machine_output_invalid'; END IF;
    ELSIF attachment.feedback_family='great_formulation' THEN
-    IF NULLIF(btrim(COALESCE(attachment.generated_output->>'comment',attachment.generated_output->>'quote')),'') IS NULL THEN resolution:='excluded'; exclusion:='machine_output_invalid'; ELSIF NOT comment_is_coach THEN comment_payload:=jsonb_build_object('output_kind','comment','comment_purpose','positive_praise','text',COALESCE(attachment.generated_output->>'comment',attachment.generated_output->>'quote'),'origin','machine'); END IF;
+    IF NULLIF(btrim(COALESCE(attachment.generated_output->>'comment',attachment.generated_output->>'quote')),'') IS NULL THEN resolution:='excluded'; exclusion:='machine_output_invalid'; ELSE item_output:=jsonb_build_object('output_kind','comment','comment_purpose','positive_praise','text',COALESCE(attachment.generated_output->>'comment',attachment.generated_output->>'quote'),'origin','machine'); END IF;
+   ELSIF attachment.feedback_family='confident_voice' THEN
+    IF NULLIF(btrim(COALESCE(attachment.generated_output->>'comment',attachment.generated_output->>'quote')),'') IS NULL THEN resolution:='excluded'; exclusion:='machine_output_invalid'; ELSE item_output:=jsonb_build_object('output_kind','comment','comment_purpose','confidence_explanation','text',COALESCE(attachment.generated_output->>'comment',attachment.generated_output->>'quote'),'origin','machine'); END IF;
    END IF;
-   item_hash:=public.exercise_json_sha256_v1(jsonb_build_object('attachment',attachment.id,'resolution',resolution,'exclusion',exclusion,'revision',coach_revision_id,'delivery',delivery_id,'presentation',current_presentation_id,'rendered_exposure',current_rendered_exposure_id,'unread',unread,'output_hash',output_hash,'position',item_position,'exercise',false));
+   item_hash:=public.exercise_json_sha256_v1(jsonb_build_object('attachment',attachment.id,'resolution',resolution,'exclusion',exclusion,'revision',coach_revision_id,'delivery',delivery_id,'presentation',current_presentation_id,'rendered_exposure',current_rendered_exposure_id,'unread',unread,'output_hash',output_hash,'position',attachment.canonical_position,'exercise',false));
    INSERT INTO public.confident_moment_bundle_projection_items(projection_id,acquisition_principal_id,bundle_attachment_id,bundle_subject_candidate_id,attached_candidate_id,anchor_candidate_id,resolution_state,exclusion_reason,revision_id,delivery_id,presentation_id,rendered_exposure_id,unread,candidate_output_sha256,output_sha256,canonical_position,exercise_present,item_sha256)
-   VALUES(projection.id,p_acquisition_principal_id,attachment.id,attachment.bundle_subject_candidate_id,attachment.attached_candidate_id,attachment.anchor_candidate_id,resolution,exclusion,coach_revision_id,delivery_id,current_presentation_id,current_rendered_exposure_id,unread,public.feedback_candidate_output_sha256_v1(attachment.attached_candidate_id),output_hash,item_position,false,item_hash)
+   VALUES(projection.id,p_acquisition_principal_id,attachment.id,attachment.bundle_subject_candidate_id,attachment.attached_candidate_id,attachment.anchor_candidate_id,resolution,exclusion,coach_revision_id,delivery_id,current_presentation_id,current_rendered_exposure_id,unread,public.feedback_candidate_output_sha256_v1(attachment.attached_candidate_id),output_hash,attachment.canonical_position,false,item_hash)
    ON CONFLICT(projection_id,bundle_attachment_id) DO NOTHING;
-   -- Deterministic bundle fold: the last coach-resolved attachment in
-   -- canonical order supplies the single D6 coach_update object.  Machine
-   -- and excluded attachments never contribute coach currentness.
+   feedback_language_items:=feedback_language_items||jsonb_build_array(jsonb_build_object(
+    'bundle_attachment_id',attachment.id,'attached_candidate_id',attachment.attached_candidate_id,
+    'canonical_position',attachment.canonical_position,'resolution_state',resolution,
+    'exclusion_reason',exclusion,'output',CASE WHEN resolution='excluded' THEN NULL ELSE item_output END,
+    'coach_update',CASE WHEN resolution='coach_revision' THEN item_coach_update ELSE NULL END));
    IF resolution='coach_revision' THEN
-    bundle_coach_revision_id:=coach_revision_id;
-    -- Existential: a bundle has an unread coach update if ANY of its
-    -- coach-resolved attachments is still unread.
     bundle_unread:=bundle_unread OR unread;
    END IF;
   END LOOP;
-  bundle:=jsonb_build_object('bundle_id',subject.bundle_subject_candidate_id,'bundle_subject_kind',subject.bundle_subject_kind,'slide_index',subject.slide_index,'block_key',subject.block_key,'paragraph_id',subject.paragraph_id,'subject',jsonb_build_object('candidate_id',subject.bundle_subject_candidate_id,'evidence_span_id',subject.bundle_subject_evidence_span_id,'canonical_feedback_presentation_id',subject.canonical_feedback_presentation_id),'confidence_anchor',CASE WHEN subject.bundle_subject_kind='confidence_anchor' THEN jsonb_build_object('candidate_id',subject.bundle_subject_candidate_id,'evidence_span_id',subject.bundle_subject_evidence_span_id,'playback_reference_id',subject.canonical_feedback_presentation_id) ELSE NULL END,'comment',comment_payload,'rephrase',rephrase_payload,'exercise',NULL,'root',jsonb_build_object('is_orange',root_head.active_root_action_id IS NOT NULL,'is_locked',COALESCE(root_action.persistence_state='owner_locked',false),'can_restore_previous',COALESCE(root_action.restore_product_action_id IS NOT NULL OR root_action.supersedes_action_id IS NOT NULL,false)),'coach_update',CASE WHEN bundle_coach_revision_id IS NULL THEN NULL ELSE jsonb_build_object('current_revision_id',bundle_coach_revision_id,'unread',bundle_unread) END,'state_revision',GREATEST(COALESCE(root_head.interaction_state_revision,0),1));
+  bundle:=jsonb_build_object('bundle_id',subject.bundle_subject_candidate_id,'bundle_subject_kind',subject.bundle_subject_kind,'slide_index',subject.slide_index,'block_key',subject.block_key,'paragraph_id',subject.paragraph_id,'subject',jsonb_build_object('candidate_id',subject.bundle_subject_candidate_id,'evidence_span_id',subject.bundle_subject_evidence_span_id,'canonical_feedback_presentation_id',subject.canonical_feedback_presentation_id),'confidence_anchor',CASE WHEN subject.bundle_subject_kind='confidence_anchor' THEN jsonb_build_object('candidate_id',subject.bundle_subject_candidate_id,'evidence_span_id',subject.bundle_subject_evidence_span_id,'playback_reference_id',subject.canonical_feedback_presentation_id) ELSE NULL END,'feedback_language_items',feedback_language_items,'exercise',NULL,'root',jsonb_build_object('is_orange',root_head.active_root_action_id IS NOT NULL,'is_locked',COALESCE(root_action.persistence_state='owner_locked',false),'can_restore_previous',COALESCE(root_action.restore_product_action_id IS NOT NULL OR root_action.supersedes_action_id IS NOT NULL,false)),'state_revision',GREATEST(COALESCE(root_head.interaction_state_revision,0),1));
   bundles:=bundles||jsonb_build_array(bundle);
   summary_items:=summary_items||jsonb_build_array(jsonb_build_object('bundle_id',subject.bundle_subject_candidate_id,'paragraph_id',subject.paragraph_id,'slide_index',subject.slide_index,'block_key',subject.block_key,'marker_present',true,'is_orange',root_head.active_root_action_id IS NOT NULL,'is_locked',COALESCE(root_action.persistence_state='owner_locked',false),'has_unread_coach_update',bundle_unread,'state_revision',GREATEST(COALESCE(root_head.interaction_state_revision,0),1)));
  END LOOP;
  SELECT COALESCE((SELECT jsonb_build_object('target_slide_count',f.target_slide_count,'achieved_slide_count',f.achieved_slide_count,'target_met',f.target_met) FROM public.root_phrase_coverage_frames f WHERE f.acquisition_principal_id=p_acquisition_principal_id AND f.take_id=p_take_id AND f.feedback_membership_id=membership.id AND f.document_snapshot_id=snapshot.id ORDER BY f.frozen_at DESC LIMIT 1),jsonb_build_object('target_slide_count',0,'achieved_slide_count',0,'target_met',false)) INTO coverage;
- body:=jsonb_build_object('contract_version','confident-moment-coaching-bundle-v1','project_id',p_project_id,'take_id',p_take_id,'document_snapshot_id',snapshot.id,'feedback_membership_id',membership.id,'bundles',bundles,'coverage',coverage);
+ body:=jsonb_build_object('contract_version','confident-moment-coaching-bundle-v2','feedback_language_shape_version','feedback-language-items-v1','project_id',p_project_id,'take_id',p_take_id,'document_snapshot_id',snapshot.id,'feedback_membership_id',membership.id,'bundles',bundles,'coverage',coverage);
  response_hash:=public.exercise_json_sha256_v1(body); body:=body||jsonb_build_object('response_sha256',response_hash);
  summary:=jsonb_build_object('contract_version','confident-moment-core-summary-v1','document_snapshot_id',snapshot.id,'items',summary_items); summary_hash:=public.exercise_json_sha256_v1(summary); summary:=summary||jsonb_build_object('summary_sha256',summary_hash);
  projection_key:='confident-moment-projection:'||p_acquisition_principal_id::text||':'||p_project_id::text||':'||p_take_id::text||':'||inventory_after;
@@ -869,18 +949,27 @@ BEGIN
  PERFORM public.require_mlc3_service_access_v2(p_recipient_principal_id,d.authorization_rollout_revision_id,d.authorization_enrollment_revision_id); RETURN to_jsonb(d);
 END $$;
 
-CREATE OR REPLACE FUNCTION public.ack_feedback_language_revision_render_v1(p_recipient_principal_id uuid,p_revision_delivery_id uuid,p_presentation_id uuid,p_render_instance_id uuid,p_idempotency_key text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER VOLATILE SET search_path=public AS $$
+CREATE OR REPLACE FUNCTION public.ack_feedback_language_revision_render_v2(p_recipient_principal_id uuid,p_bundle_attachment_id uuid,p_revision_id uuid,p_revision_delivery_id uuid,p_presentation_id uuid,p_render_instance_id uuid,p_idempotency_key text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER VOLATILE SET search_path=public AS $$
 DECLARE d public.feedback_language_revision_deliveries; revision public.feedback_revisions;
  membership public.feedback_v3_memberships; p public.ml_presentations;
+ attachment public.confident_moment_bundle_attachments;
  e public.ml_rendered_exposures; affected_take_id uuid;
+ audio_inventory_before text; audio_inventory_after text; exposure_count integer;
 BEGIN
  IF COALESCE(btrim(p_idempotency_key),'')='' THEN RAISE EXCEPTION 'FEEDBACK_LANGUAGE_RENDER_INVALID'; END IF;
  SELECT * INTO STRICT d FROM public.feedback_language_revision_deliveries
   WHERE id=p_revision_delivery_id AND recipient_principal_id=p_recipient_principal_id;
  SELECT * INTO STRICT revision FROM public.feedback_revisions
-  WHERE id=d.revision_id AND taxonomy_version='feedback-language-coach-revision-v1';
+  WHERE id=p_revision_id AND id=d.revision_id
+    AND taxonomy_version='feedback-language-coach-revision-v1';
  SELECT * INTO STRICT membership FROM public.feedback_v3_memberships
   WHERE id=revision.feedback_membership_id AND acquisition_principal_id=p_recipient_principal_id;
+ SELECT * INTO STRICT attachment FROM public.confident_moment_bundle_attachments
+  WHERE id=p_bundle_attachment_id
+    AND acquisition_principal_id=p_recipient_principal_id
+    AND feedback_membership_id=membership.id
+    AND attached_candidate_id=revision.feedback_candidate_id
+    AND project_id=membership.project_id AND take_id=membership.take_id;
  PERFORM pg_advisory_xact_lock(hashtextextended('mlc3-rollout-policy-v2',0));
  PERFORM pg_advisory_xact_lock(hashtextextended('mlc3-service-principal:'||p_recipient_principal_id::text,0));
  PERFORM pg_advisory_xact_lock(hashtextextended('confident-moment-project-inventory:'||membership.project_id::text,0));
@@ -890,14 +979,17 @@ BEGIN
  FOR affected_take_id IN SELECT id FROM (VALUES(membership.take_id),(d.target_take_id)) affected(id) ORDER BY id LOOP
   PERFORM pg_advisory_xact_lock(hashtextextended('feedback-v3-membership-inventory:'||membership.project_id::text||':'||affected_take_id::text,0));
  END LOOP;
- -- D11 order 60/70.  The coach/source guard below reads
- -- processing_audio_objects.deleted_at and data_purge_requests, so this
- -- transaction must hold the same serializers the audio-deletion and purge
- -- writers acquire, or the post-write revalidation is an unserialized re-read.
- FOR affected_take_id IN SELECT DISTINCT object_row.recording_attempt_id FROM public.processing_audio_objects object_row
-   WHERE object_row.acquisition_principal_id=p_recipient_principal_id
-     AND object_row.recording_attempt_id IN (membership.take_id,d.target_take_id)
-   ORDER BY 1 LOOP
+ -- D11 order 60/70. Freeze the complete affected audio/deletion/purge identity
+ -- before waiting, acquire both speaker-attempt serializers unconditionally,
+ -- then lock the exact pre-lock object set and rederive. A writer that wins the
+ -- race produces a typed retry before any exposure mutation.
+ SELECT public.exercise_json_sha256_v1(jsonb_build_object(
+  'takes',(SELECT jsonb_agg(id ORDER BY id) FROM (VALUES(membership.take_id),(d.target_take_id)) affected(id)),
+  'audio',COALESCE((SELECT jsonb_agg(jsonb_build_array(object_row.id,object_row.recording_attempt_id,object_row.exact_bytes_sha256,object_row.deleted_at) ORDER BY object_row.id) FROM public.processing_audio_objects object_row WHERE object_row.acquisition_principal_id=p_recipient_principal_id AND object_row.recording_attempt_id IN(membership.take_id,d.target_take_id)),'[]'::jsonb),
+  'deletions',COALESCE((SELECT jsonb_agg(jsonb_build_array(deletion.id,deletion.audio_object_id,deletion.purge_request_id,deletion.exact_bytes_sha256,deletion.evidence_sha256) ORDER BY deletion.id) FROM public.processing_audio_object_deletion_events deletion JOIN public.processing_audio_objects object_row ON object_row.id=deletion.audio_object_id WHERE object_row.acquisition_principal_id=p_recipient_principal_id AND object_row.recording_attempt_id IN(membership.take_id,d.target_take_id)),'[]'::jsonb),
+  'purges',COALESCE((SELECT jsonb_agg(jsonb_build_array(purge.id,purge.state) ORDER BY purge.id) FROM public.data_purge_requests purge WHERE purge.acquisition_principal_id=p_recipient_principal_id),'[]'::jsonb)
+ )) INTO audio_inventory_before;
+ FOR affected_take_id IN SELECT id FROM (VALUES(membership.take_id),(d.target_take_id)) affected(id) ORDER BY id LOOP
   PERFORM pg_advisory_xact_lock(hashtextextended('mlc3-speaker-attempt:'||affected_take_id::text,0));
  END LOOP;
  FOR affected_take_id IN SELECT object_row.id FROM public.processing_audio_objects object_row
@@ -906,6 +998,15 @@ BEGIN
    ORDER BY 1 LOOP
   PERFORM pg_advisory_xact_lock(hashtextextended('mlc3-processing-audio-object:'||affected_take_id::text,0));
  END LOOP;
+ SELECT public.exercise_json_sha256_v1(jsonb_build_object(
+  'takes',(SELECT jsonb_agg(id ORDER BY id) FROM (VALUES(membership.take_id),(d.target_take_id)) affected(id)),
+  'audio',COALESCE((SELECT jsonb_agg(jsonb_build_array(object_row.id,object_row.recording_attempt_id,object_row.exact_bytes_sha256,object_row.deleted_at) ORDER BY object_row.id) FROM public.processing_audio_objects object_row WHERE object_row.acquisition_principal_id=p_recipient_principal_id AND object_row.recording_attempt_id IN(membership.take_id,d.target_take_id)),'[]'::jsonb),
+  'deletions',COALESCE((SELECT jsonb_agg(jsonb_build_array(deletion.id,deletion.audio_object_id,deletion.purge_request_id,deletion.exact_bytes_sha256,deletion.evidence_sha256) ORDER BY deletion.id) FROM public.processing_audio_object_deletion_events deletion JOIN public.processing_audio_objects object_row ON object_row.id=deletion.audio_object_id WHERE object_row.acquisition_principal_id=p_recipient_principal_id AND object_row.recording_attempt_id IN(membership.take_id,d.target_take_id)),'[]'::jsonb),
+  'purges',COALESCE((SELECT jsonb_agg(jsonb_build_array(purge.id,purge.state) ORDER BY purge.id) FROM public.data_purge_requests purge WHERE purge.acquisition_principal_id=p_recipient_principal_id),'[]'::jsonb)
+ )) INTO audio_inventory_after;
+ IF audio_inventory_after IS DISTINCT FROM audio_inventory_before THEN
+  RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_RETRY_REQUIRED';
+ END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('feedback-language-candidate:'||revision.feedback_candidate_id::text||':'||revision.rater_id::text,0));
  PERFORM pg_advisory_xact_lock(hashtextextended('feedback-language-delivery-subject:'||p_recipient_principal_id::text||':'||d.target_take_id::text||':'||membership.id::text||':'||revision.feedback_candidate_id::text,0));
  PERFORM pg_advisory_xact_lock(hashtextextended('feedback-language-revision-head:'||membership.id::text||':'||revision.feedback_candidate_id::text||':'||revision.rater_id::text,0));
@@ -925,6 +1026,7 @@ BEGIN
  IF d.delivery_policy_version IS DISTINCT FROM 'feedback-language-delivery-v2'
   OR d.feedback_membership_id IS DISTINCT FROM membership.id
   OR d.feedback_candidate_id IS DISTINCT FROM revision.feedback_candidate_id
+  OR d.anchor_candidate_id IS DISTINCT FROM COALESCE(attachment.anchor_candidate_id,attachment.bundle_subject_candidate_id)
   OR d.reviewer_principal_id IS DISTINCT FROM revision.rater_id
   OR d.revision_taxonomy_version IS DISTINCT FROM revision.taxonomy_version
   OR d.candidate_output_sha256 IS DISTINCT FROM revision.candidate_output_sha256 THEN
@@ -936,19 +1038,32 @@ BEGIN
   revision.id,p_recipient_principal_id,membership.id,revision.feedback_candidate_id,
   public.feedback_candidate_output_sha256_v1(revision.feedback_candidate_id),
   'FEEDBACK_LANGUAGE_COACH_AUTHORITY_INVALID');
- -- Exact replay remains effectively-once, but a historical receipt is never
- -- continuing authority: every replay first passes the complete current leaf
- -- guard above and the exact recipient D4 authority check.
- SELECT * INTO e FROM public.ml_rendered_exposures replayed
-  WHERE replayed.presentation_id=p_presentation_id
-    AND replayed.render_instance_id=p_render_instance_id
-    AND replayed.actor_principal_id=p_recipient_principal_id;
- IF e.id IS NOT NULL THEN RETURN to_jsonb(e); END IF;
+ SELECT count(*) INTO exposure_count FROM public.ml_presentations canonical_presentation
+  WHERE canonical_presentation.artifact_id=d.revision_id
+    AND canonical_presentation.actor_principal_id=p_recipient_principal_id
+    AND canonical_presentation.learning_surface_id=(CASE revision.output_kind WHEN 'rephrase' THEN 'correction_generation' WHEN 'comment' THEN CASE revision.comment_purpose WHEN 'positive_praise' THEN 'praise_generation' ELSE 'coach_comment_generation' END END)
+    AND canonical_presentation.delivery_mode<>'shadow';
+ IF exposure_count<>1 THEN RAISE EXCEPTION 'FEEDBACK_LANGUAGE_RENDER_PRESENTATION_CARDINALITY_INVALID'; END IF;
  SELECT * INTO STRICT p FROM public.ml_presentations WHERE id=p_presentation_id
   AND actor_principal_id=p_recipient_principal_id AND artifact_id=d.revision_id
   AND learning_surface_id=(CASE revision.output_kind WHEN 'rephrase' THEN 'correction_generation' WHEN 'comment' THEN CASE revision.comment_purpose WHEN 'positive_praise' THEN 'praise_generation' ELSE 'coach_comment_generation' END END)
   AND delivery_mode<>'shadow';
+ SELECT count(*) INTO exposure_count FROM public.ml_rendered_exposures existing
+  WHERE existing.presentation_id=p.id
+    AND existing.actor_principal_id=p_recipient_principal_id;
+ IF exposure_count>1 THEN RAISE EXCEPTION 'FEEDBACK_LANGUAGE_RENDER_INVALID'; END IF;
+ -- Lost-ack replay is considered only after the presentation has been proven
+ -- to be the exact current delivery/revision/surface identity.
+ SELECT * INTO e FROM public.ml_rendered_exposures replayed
+  WHERE replayed.presentation_id=p.id
+    AND replayed.render_instance_id=p_render_instance_id
+    AND replayed.actor_principal_id=p_recipient_principal_id;
+ IF e.id IS NOT NULL THEN RETURN to_jsonb(e); END IF;
  SELECT * INTO e FROM public.ack_mlc2_rendered_exposure_v1(p.id,p.acknowledgement_token,p_recipient_principal_id,p_render_instance_id,clock_timestamp(),'feedback-language-coach-revision-v1',p.visible_payload_sha256,p_idempotency_key);
+ SELECT count(*) INTO exposure_count FROM public.ml_rendered_exposures existing
+  WHERE existing.presentation_id=p.id
+    AND existing.actor_principal_id=p_recipient_principal_id;
+ IF exposure_count<>1 THEN RAISE EXCEPTION 'FEEDBACK_LANGUAGE_RENDER_INVALID'; END IF;
  IF NOT EXISTS(SELECT 1 FROM public.feedback_language_revision_deliveries current_delivery
    WHERE current_delivery.id=d.id AND current_delivery.delivery_state<>'invalidated'
    AND NOT EXISTS(SELECT 1 FROM public.feedback_language_revision_deliveries successor WHERE successor.supersedes_delivery_id=current_delivery.id AND successor.delivery_policy_version='feedback-language-delivery-v2'))
@@ -964,6 +1079,7 @@ BEGIN
   'FEEDBACK_LANGUAGE_COACH_AUTHORITY_INVALID');
  RETURN to_jsonb(e);
 END $$;
+DROP FUNCTION IF EXISTS public.ack_feedback_language_revision_render_v1(uuid,uuid,uuid,uuid,text);
 
 CREATE OR REPLACE FUNCTION public.require_root_phrase_practice_source_live_v1(p_acquisition_principal_id uuid,p_content_version_id uuid,p_practice_attempt_id uuid,p_source_target_speaker_binding_id uuid,p_practice_target_speaker_binding_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER VOLATILE SET search_path=public AS $$
 DECLARE
@@ -1211,6 +1327,7 @@ CREATE OR REPLACE FUNCTION public.transition_feedback_language_delivery_v2(
  p_action text,p_idempotency_key text
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER VOLATILE SET search_path=public AS $$
 DECLARE revision public.feedback_revisions; membership public.feedback_v3_memberships;
+ attachment public.confident_moment_bundle_attachments; expected_anchor_candidate_id uuid;
  current_delivery public.feedback_language_revision_deliveries; result public.feedback_language_revision_deliveries;
  access jsonb; next_revision integer; subject_hash text; delivery_hash text;
  affected_take_id uuid;
@@ -1222,13 +1339,17 @@ BEGIN
     AND acquisition_principal_id=p_recipient_principal_id;
  SELECT * INTO STRICT membership FROM public.feedback_v3_memberships
   WHERE id=revision.feedback_membership_id AND acquisition_principal_id=p_recipient_principal_id;
- IF NOT EXISTS(SELECT 1 FROM public.v2_sessions target_take
+ SELECT * INTO STRICT attachment FROM public.confident_moment_bundle_attachments bundle_attachment
+  WHERE bundle_attachment.acquisition_principal_id=p_recipient_principal_id
+    AND bundle_attachment.feedback_membership_id=membership.id
+    AND bundle_attachment.attached_candidate_id=revision.feedback_candidate_id;
+ expected_anchor_candidate_id:=COALESCE(
+  attachment.anchor_candidate_id,attachment.bundle_subject_candidate_id);
+ IF p_anchor_candidate_id IS DISTINCT FROM expected_anchor_candidate_id
+  OR NOT EXISTS(SELECT 1 FROM public.v2_sessions target_take
    WHERE target_take.id=p_target_take_id
      AND target_take.owner_principal_id=p_recipient_principal_id
-     AND target_take.project_id=membership.project_id)
-  OR NOT EXISTS(SELECT 1 FROM public.feedback_v3_membership_items item
-   WHERE item.membership_id=membership.id AND item.candidate_id=p_anchor_candidate_id
-     AND item.feedback_family='confident_voice' AND item.selected) THEN
+     AND target_take.project_id=membership.project_id) THEN
   RAISE EXCEPTION 'CONFIDENT_MOMENT_ANCHOR_INVALID';
  END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('mlc3-rollout-policy-v2',0));
@@ -1245,7 +1366,17 @@ BEGIN
    'feedback-v3-membership-inventory:'||membership.project_id::text||':'||affected_take_id::text,0));
  END LOOP;
  membership:=public.require_feedback_v3_service_membership_live_v1(
-  membership.id,p_recipient_principal_id);
+ membership.id,p_recipient_principal_id);
+ SELECT * INTO STRICT attachment FROM public.confident_moment_bundle_attachments bundle_attachment
+  WHERE bundle_attachment.id=attachment.id
+    AND bundle_attachment.acquisition_principal_id=p_recipient_principal_id
+    AND bundle_attachment.feedback_membership_id=membership.id
+    AND bundle_attachment.attached_candidate_id=revision.feedback_candidate_id;
+ expected_anchor_candidate_id:=COALESCE(
+  attachment.anchor_candidate_id,attachment.bundle_subject_candidate_id);
+ IF p_anchor_candidate_id IS DISTINCT FROM expected_anchor_candidate_id THEN
+  RAISE EXCEPTION 'CONFIDENT_MOMENT_PROJECTION_RETRY_REQUIRED';
+ END IF;
  IF NOT EXISTS(SELECT 1 FROM public.v2_sessions target_take
    WHERE target_take.id=p_target_take_id
      AND target_take.owner_principal_id=p_recipient_principal_id
@@ -1294,12 +1425,12 @@ BEGIN
  subject_hash:=public.exercise_json_sha256_v1(jsonb_build_object('recipient',p_recipient_principal_id,'take',p_target_take_id,'membership',membership.id,'candidate',revision.feedback_candidate_id,'reviewer',revision.rater_id,'output_hash',revision.candidate_output_sha256));
  IF result.id IS NOT NULL THEN next_revision:=result.delivery_revision;
  ELSE next_revision:=COALESCE(current_delivery.delivery_revision,0)+1; END IF;
- delivery_hash:=public.exercise_json_sha256_v1(jsonb_build_object('revision',revision.id,'subject',subject_hash,'anchor',p_anchor_candidate_id,'predecessor',p_expected_current_delivery_id,'action',p_action,'delivery_revision',next_revision));
+ delivery_hash:=public.exercise_json_sha256_v1(jsonb_build_object('revision',revision.id,'subject',subject_hash,'anchor',expected_anchor_candidate_id,'predecessor',p_expected_current_delivery_id,'action',p_action,'delivery_revision',next_revision));
  IF result.id IS NOT NULL THEN
   IF result.revision_id<>p_revision_id
    OR result.recipient_principal_id<>p_recipient_principal_id
    OR result.target_take_id<>p_target_take_id
-   OR result.anchor_candidate_id<>p_anchor_candidate_id
+   OR result.anchor_candidate_id<>expected_anchor_candidate_id
    OR result.supersedes_delivery_id IS DISTINCT FROM p_expected_current_delivery_id
    OR result.delivery_state<>(CASE p_action WHEN 'schedule' THEN 'scheduled_next_take' ELSE 'invalidated' END)
    OR result.delivery_subject_sha256<>subject_hash
@@ -1320,7 +1451,7 @@ BEGIN
  access:=public.require_mlc3_service_access_v2(p_recipient_principal_id,
   (access->>'rollout_revision_id')::uuid,(access->>'enrollment_revision_id')::uuid);
  INSERT INTO public.feedback_language_revision_deliveries(revision_id,acquisition_principal_id,recipient_principal_id,target_take_id,anchor_candidate_id,delivery_state,delivery_revision,authorization_rollout_revision_id,authorization_enrollment_revision_id,delivery_sha256,idempotency_key,feedback_membership_id,feedback_candidate_id,reviewer_principal_id,revision_taxonomy_version,candidate_output_version,candidate_output_sha256,delivery_subject_sha256,supersedes_delivery_id,delivery_policy_version)
- VALUES(revision.id,p_recipient_principal_id,p_recipient_principal_id,p_target_take_id,p_anchor_candidate_id,CASE p_action WHEN 'schedule' THEN 'scheduled_next_take' ELSE 'invalidated' END,next_revision,(access->>'rollout_revision_id')::uuid,(access->>'enrollment_revision_id')::uuid,delivery_hash,p_idempotency_key,membership.id,revision.feedback_candidate_id,revision.rater_id,revision.taxonomy_version,revision.candidate_output_version,revision.candidate_output_sha256,subject_hash,p_expected_current_delivery_id,'feedback-language-delivery-v2') RETURNING * INTO result;
+ VALUES(revision.id,p_recipient_principal_id,p_recipient_principal_id,p_target_take_id,expected_anchor_candidate_id,CASE p_action WHEN 'schedule' THEN 'scheduled_next_take' ELSE 'invalidated' END,next_revision,(access->>'rollout_revision_id')::uuid,(access->>'enrollment_revision_id')::uuid,delivery_hash,p_idempotency_key,membership.id,revision.feedback_candidate_id,revision.rater_id,revision.taxonomy_version,revision.candidate_output_version,revision.candidate_output_sha256,subject_hash,p_expected_current_delivery_id,'feedback-language-delivery-v2') RETURNING * INTO result;
  RETURN to_jsonb(result);
 END $$;
 
@@ -1366,7 +1497,7 @@ ALTER TABLE public.root_phrase_product_actions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.root_phrase_product_actions FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.feedback_revisions,public.root_phrase_product_actions FROM PUBLIC,anon,authenticated,service_role;
 DO $$ DECLARE f text; BEGIN
- FOREACH f IN ARRAY ARRAY['public.reject_confident_moment_mutation_v1()','public.require_feedback_language_coach_source_live_v1(uuid,uuid,uuid,uuid,text,text)','public.lock_confident_moment_inventory_v1(uuid,uuid,uuid)','public.require_root_phrase_practice_source_live_v1(uuid,uuid,uuid,uuid,uuid)','public.transition_ideal_text_root_state_v1(uuid,uuid,uuid,uuid,bigint,text,text)','public.prepare_confident_moment_bundle_v1(uuid,uuid,uuid,uuid,uuid,text)','public.ack_confident_moment_bundle_item_render_v1(uuid,uuid,uuid,uuid,text)','public.freeze_root_phrase_coverage_frame_v1(uuid,uuid,uuid,uuid,uuid,text,text)','public.record_feedback_language_coach_revision_v1(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,uuid,text)','public.record_feedback_language_coach_revision_v2(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,uuid,text)','public.schedule_feedback_language_revision_v1(uuid,uuid,uuid,uuid,text)','public.transition_feedback_language_delivery_v2(uuid,uuid,uuid,uuid,uuid,text,text)','public.ack_feedback_language_revision_render_v1(uuid,uuid,uuid,uuid,text)','public.project_confident_moment_bundles_v1(uuid,uuid,uuid)','public.record_root_phrase_product_action_v2(uuid,uuid,uuid,uuid,integer,text,uuid,uuid,uuid,uuid,uuid,uuid,bigint,uuid,uuid,uuid,text,text)'] LOOP
+ FOREACH f IN ARRAY ARRAY['public.reject_confident_moment_mutation_v1()','public.require_feedback_language_coach_source_live_v1(uuid,uuid,uuid,uuid,text,text)','public.lock_confident_moment_inventory_v1(uuid,uuid,uuid)','public.require_root_phrase_practice_source_live_v1(uuid,uuid,uuid,uuid,uuid)','public.transition_ideal_text_root_state_v1(uuid,uuid,uuid,uuid,bigint,text,text)','public.prepare_confident_moment_bundle_v1(uuid,uuid,uuid,uuid,uuid,text)','public.ack_confident_moment_bundle_item_render_v1(uuid,uuid,uuid,uuid,text)','public.freeze_root_phrase_coverage_frame_v1(uuid,uuid,uuid,uuid,uuid,text,text)','public.record_feedback_language_coach_revision_v1(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,uuid,text)','public.record_feedback_language_coach_revision_v2(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,uuid,text)','public.schedule_feedback_language_revision_v1(uuid,uuid,uuid,uuid,text)','public.transition_feedback_language_delivery_v2(uuid,uuid,uuid,uuid,uuid,text,text)','public.ack_feedback_language_revision_render_v2(uuid,uuid,uuid,uuid,uuid,uuid,text)','public.project_confident_moment_bundles_v1(uuid,uuid,uuid)','public.record_root_phrase_product_action_v2(uuid,uuid,uuid,uuid,integer,text,uuid,uuid,uuid,uuid,uuid,uuid,bigint,uuid,uuid,uuid,text,text)'] LOOP
   EXECUTE 'REVOKE ALL ON FUNCTION '||f||' FROM PUBLIC,anon,authenticated,service_role';
  END LOOP;
 END $$;
@@ -1375,7 +1506,7 @@ REVOKE ALL ON FUNCTION public.validate_confident_moment_projection_item_v1()
 GRANT EXECUTE ON FUNCTION public.project_confident_moment_bundles_v1(uuid,uuid,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.record_feedback_language_coach_revision_v2(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,uuid,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.transition_feedback_language_delivery_v2(uuid,uuid,uuid,uuid,uuid,text,text) TO service_role;
-GRANT EXECUTE ON FUNCTION public.ack_feedback_language_revision_render_v1(uuid,uuid,uuid,uuid,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.ack_feedback_language_revision_render_v2(uuid,uuid,uuid,uuid,uuid,uuid,text) TO service_role;
 
 -- Closed D11 writer/trigger registry.  An unexpected overload or a missing,
 -- renamed, disabled, or rebound trigger aborts the entire transaction.
@@ -1395,7 +1526,7 @@ DECLARE
   'public.record_feedback_language_coach_revision_v2(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,uuid,text)',
   'public.schedule_feedback_language_revision_v1(uuid,uuid,uuid,uuid,text)',
   'public.transition_feedback_language_delivery_v2(uuid,uuid,uuid,uuid,uuid,text,text)',
-  'public.ack_feedback_language_revision_render_v1(uuid,uuid,uuid,uuid,text)',
+  'public.ack_feedback_language_revision_render_v2(uuid,uuid,uuid,uuid,uuid,uuid,text)',
   'public.ack_confident_moment_bundle_item_render_v1(uuid,uuid,uuid,uuid,text)',
   'public.ack_feedback_v3_service_render_v1(uuid,uuid,uuid,uuid,uuid,uuid,text,timestamptz,text,text)',
   'public.register_mlc3_general_rollout_v2(uuid,uuid,jsonb,jsonb,uuid,timestamptz,text)',
@@ -1419,7 +1550,7 @@ BEGIN
  SELECT count(*) INTO actual_count FROM pg_proc procedure
   JOIN pg_namespace namespace ON namespace.oid=procedure.pronamespace
   WHERE namespace.nspname='public' AND procedure.proname=ANY(ARRAY[
-   'freeze_synthetic_feedback_v3_membership_v1','freeze_feedback_v3_service_membership_v1','publish_ideal_text_document_snapshot_v1','prepare_confident_moment_bundle_v1','freeze_root_phrase_coverage_frame_v1','record_root_phrase_product_action_v2','activate_synthetic_root_phrase_v1','remove_synthetic_root_phrase_v1','transition_ideal_text_root_state_v1','record_feedback_language_coach_revision_v1','record_feedback_language_coach_revision_v2','schedule_feedback_language_revision_v1','transition_feedback_language_delivery_v2','ack_feedback_language_revision_render_v1','ack_confident_moment_bundle_item_render_v1','ack_feedback_v3_service_render_v1','register_mlc3_general_rollout_v2','halt_mlc3_service_rollout_v1','ensure_mlc3_service_enrollment_v2','activate_phase1_policy_v1','accept_phase1_processing_authorization_v1','mark_phase1_storage_object_purged_v1','finalize_phase1_purge_v3']);
+   'freeze_synthetic_feedback_v3_membership_v1','freeze_feedback_v3_service_membership_v1','publish_ideal_text_document_snapshot_v1','prepare_confident_moment_bundle_v1','freeze_root_phrase_coverage_frame_v1','record_root_phrase_product_action_v2','activate_synthetic_root_phrase_v1','remove_synthetic_root_phrase_v1','transition_ideal_text_root_state_v1','record_feedback_language_coach_revision_v1','record_feedback_language_coach_revision_v2','schedule_feedback_language_revision_v1','transition_feedback_language_delivery_v2','ack_feedback_language_revision_render_v2','ack_confident_moment_bundle_item_render_v1','ack_feedback_v3_service_render_v1','register_mlc3_general_rollout_v2','halt_mlc3_service_rollout_v1','ensure_mlc3_service_enrollment_v2','activate_phase1_policy_v1','accept_phase1_processing_authorization_v1','mark_phase1_storage_object_purged_v1','finalize_phase1_purge_v3']);
  IF actual_count<>expected_count THEN
   RAISE EXCEPTION 'CONFIDENT_MOMENT_WRITER_OVERLOAD_DRIFT';
  END IF;

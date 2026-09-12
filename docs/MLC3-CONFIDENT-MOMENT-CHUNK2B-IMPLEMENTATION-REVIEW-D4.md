@@ -38,10 +38,11 @@
    snippet, recipient, candidate, candidate-output hash, coach role, and live
    authorization/deletion state.
 3. Projection-item shape checks are validated and a closed, non-callable
-   `BEFORE INSERT` validator binds projection, attachment, principal, Project,
-   Take, snapshot, membership, candidate, coach revision, current v2 delivery,
-   presentation, rendered exposure, and output hashes. The populated-reapply
-   audit is NULL-safe and fails closed; it never backfills immutable history.
+   `AFTER INSERT` `DEFERRABLE INITIALLY DEFERRED` constraint trigger binds
+   projection, attachment, principal, Project, Take, snapshot, membership,
+   candidate, coach revision, current v2 delivery, presentation, rendered
+   exposure, and output hashes. The populated-reapply audit is NULL-safe and
+   fails closed; it never backfills immutable history.
 4. Current coach delivery render state creates an immutable unread-to-read
    projection successor. With zero valid coach deliveries, the response retains
    the `coach_update` key with JSON `null`, per D11 section 4.4.
