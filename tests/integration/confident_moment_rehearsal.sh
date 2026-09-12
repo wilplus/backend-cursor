@@ -204,6 +204,8 @@ if [ "$LANE" = "narrow" ]; then
   # released lane keeps all of them — production-shaped checking happens there.
   psql -q -d "$DB" \
     -c "DROP INDEX IF EXISTS public.processing_one_active_policy_idx" \
+    -c "CREATE UNIQUE INDEX IF NOT EXISTS confident_moment_narrow_speaker_split_identity_idx
+        ON public.ml_speaker_split_assignments(speaker_id, split_policy_version)" \
     -c "ALTER TABLE public.projects ALTER COLUMN display_name DROP NOT NULL" \
     -c "ALTER TABLE public.ml_speakers ALTER COLUMN identity_version DROP NOT NULL" >>"$log" 2>&1
 fi
