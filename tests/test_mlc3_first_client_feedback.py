@@ -1,3 +1,5 @@
+from hashlib import sha256
+
 from services.feedback_data_contract import build_feedback_exposure_bundle
 from services.mlc3_first_client_feedback import prepare_first_client_feedback
 from services.take_feedback_policy_v3 import build_service_candidate_frame
@@ -97,6 +99,31 @@ class _Database:
     def __init__(self):
         self.bundle = None
         self.membership_payload = None
+        self.client = self
+
+    def rpc(self, name, payload):
+        assert name == "read_feedback_v3_candidate_source_snapshot_v1"
+        assert payload == {
+            "p_acquisition_principal_id": OWNER,
+            "p_project_id": PROJECT,
+            "p_take_id": TAKE,
+        }
+        _, document, _ = _source()
+        self._rpc_data = {
+            "snapshot_contract_version": (
+                "feedback-v3-candidate-source-snapshot-v1"
+            ),
+            "document_snapshot_id": SNAPSHOT,
+            "source_generation": 1,
+            "surface": document["text"],
+            "surface_sha256": sha256(document["text"].encode()).hexdigest(),
+        }
+        return self
+
+    def execute(self):
+        class Result:
+            data = self._rpc_data
+        return Result()
 
     def ensure_service_enrollment(self, **_payload):
         return {
