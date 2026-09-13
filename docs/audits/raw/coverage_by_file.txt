@@ -1,0 +1,318 @@
+# pytest-cov over routes/ services/ utils/ app.py config.py auth.py worker.py — total 56.4% of 46558 statements
+# pct statements file
+  0.0   318 routes/v2/user_chat.py
+  0.0   111 services/annotation_export.py
+  0.0    86 services/arc_checkout.py
+  0.0    23 services/auto_comment.py
+  0.0    40 services/casual_voice_analytics.py
+  0.0    41 services/conversation_summary.py
+  0.0   159 services/copilot_video_pipeline.py
+  0.0    50 services/fact_check.py
+  0.0   127 services/metrics_v2.py
+  0.0   104 services/reference_video_upload_worker.py
+  0.0   155 services/session_concatenation.py
+  0.0   105 services/snippet_extraction.py
+  0.0   300 services/snippet_truncation.py
+  0.0   110 services/stickiness.py
+  0.0    98 services/training_import.py
+  0.0   164 services/tutor_video_url.py
+  0.0    40 services/unsubscribe_tokens.py
+ 12.4   121 services/directive_suggestions.py
+ 13.0    46 services/session_publish.py
+ 13.9   166 routes/internal_webhooks.py
+ 14.2   113 services/baseline_summary.py
+ 14.6   130 services/session_metrics.py
+ 14.9    47 services/coaching_intro.py
+ 15.7   573 services/first_client_repository.py
+ 16.1   622 routes/v2/admin.py
+ 17.6   629 services/openai_service.py
+ 18.2    66 services/coach_publish_delivery.py
+ 18.2    77 services/snippet_drafts.py
+ 18.8   154 worker.py
+ 19.8    86 routes/auth.py
+ 20.5  7381 services/db.py
+ 22.0   626 routes/v2/coaching.py
+ 27.1    70 services/ml_finetuning_export.py
+ 27.3    99 services/user_media_storage.py
+ 28.1   185 routes/v2/mlc3_first_client_coach.py
+ 28.6   182 routes/v2/processing_authorization.py
+ 29.5    44 services/audio_storage.py
+ 29.7   192 services/processing_authorization.py
+ 31.1    61 routes/v2/lounge.py
+ 31.6    57 routes/recordings.py
+ 31.7    63 routes/user.py
+ 32.6    95 routes/v2/ceo.py
+ 32.7   388 services/life_store.py
+ 32.8   119 routes/v2/ceo_work_items.py
+ 32.8   311 routes/v2/coach_guidance_delivery.py
+ 32.9    76 services/snippet_transcription.py
+ 33.3    66 routes/v2/admin_tokens.py
+ 35.5    31 services/orphan_audio_cleanup.py
+ 36.0    25 routes/drift_webhook.py
+ 36.6    93 services/coach_video_storage.py
+ 37.7   334 services/data_purge.py
+ 37.9   227 routes/v2/user_account.py
+ 38.3   373 routes/v2/mlc3_first_client_service.py
+ 39.0    41 routes/v2/admin_pipeline.py
+ 39.1    64 services/assignment_email.py
+ 39.1   161 services/practice_attempt_orchestrator.py
+ 39.5    76 routes/token_routes.py
+ 41.0   105 services/session_cadence.py
+ 41.4   128 services/post_session_results_email.py
+ 41.6   777 routes/v2/user_sessions.py
+ 43.3  1628 routes/v2/coach.py
+ 43.5   154 services/part_acoustics.py
+ 44.9   118 services/drift_job.py
+ 46.0   335 services/ceo_work_items.py
+ 47.1    17 routes/v2/rooting_phrase_qualification.py
+ 49.5   182 services/ideal_text_core_snapshot.py
+ 50.0    58 services/audit_intent.py
+ 50.0    24 services/skills/__init__.py
+ 52.1  1235 routes/v2/explore_ideal_text.py
+ 52.3   155 services/next_session_icebreaker.py
+ 52.5   158 services/analysis_worker.py
+ 53.4   335 services/ceo_intelligence.py
+ 54.2    72 services/goal_update.py
+ 54.4    57 services/provider_deletion.py
+ 55.0    40 routes/phase2_guard.py
+ 55.4   350 routes/v2/lab_recording.py
+ 55.8   181 services/life_reminders.py
+ 55.8   129 auth.py
+ 56.2    73 routes/admin.py
+ 56.2    73 services/snippet_stickiness.py
+ 56.9    51 services/utils.py
+ 57.1    98 services/job_queue.py
+ 57.3   103 services/voice_album.py
+ 57.8    45 routes/v2/common.py
+ 58.1    74 services/coach_video_capture.py
+ 60.0     5 routes/v2/auth_alias.py
+ 62.7   110 services/stripe_checkout_credits.py
+ 62.8    43 utils/metrics.py
+ 64.2   274 services/slide_alignment.py
+ 64.6    65 routes/v2/canonical_publish.py
+ 64.7   102 services/life_chat.py
+ 65.2    46 services/draft_delivery.py
+ 65.5    55 services/project_repository.py
+ 65.9   129 services/ml_dpo_export.py
+ 66.3   101 routes/v2/projects.py
+ 66.7     6 services/prompts/snippet_stickiness.py
+ 66.8   578 routes/v2/arcs.py
+ 67.0    94 services/take_feedback_policy_v3_service.py
+ 67.2   235 services/master_doc_rag.py
+ 67.7   462 services/pipeline_jobs.py
+ 68.5   600 services/life_engine.py
+ 69.2    78 services/take_feedback_set.py
+ 69.3   355 services/life_import.py
+ 69.4   779 routes/life_routes.py
+ 70.4   142 services/prompts/registry.py
+ 70.9   103 services/mlc2_confidence_producer.py
+ 70.9    79 services/authorized_provider.py
+ 71.4    77 services/user_patterns.py
+ 72.3   130 services/coach_comment_drafter.py
+ 72.4   145 services/lab_audio_storage.py
+ 72.7   128 routes/dev_bugs.py
+ 72.7   139 services/acoustic_baseline.py
+ 72.8   147 app.py
+ 73.2   112 services/journal_media.py
+ 73.4    79 services/ffmpeg_audio_extract.py
+ 74.0   100 services/dataset_releases.py
+ 74.6   114 services/feedback_repository.py
+ 74.8   250 services/confident_voice_practice.py
+ 75.0    68 services/stripe_checkout_webhook.py
+ 75.1   181 services/arc_notifications.py
+ 75.6    90 routes/v2/mlc2_consent.py
+ 76.5    98 routes/dev_tasks.py
+ 76.6    77 services/lab_send.py
+ 76.7    60 services/take_review.py
+ 76.8    69 services/coach_guidance_delivery.py
+ 77.1    96 services/lab_recording_persistence.py
+ 77.2    79 services/llm.py
+ 77.3   409 services/audio_metrics.py
+ 77.8    90 services/mlc3_general_service_monitor.py
+ 78.7   150 services/swap_detector.py
+ 79.5    39 services/product_discovery.py
+ 79.5    83 services/email_service.py
+ 79.7   118 services/mlc3_general_service_readiness.py
+ 80.0   380 services/token_account.py
+ 80.0    25 services/voice_album_routing.py
+ 80.2    86 services/learning_exposures.py
+ 80.4   270 services/ceo.py
+ 80.8   302 services/dev_tasks.py
+ 81.0    63 services/mlc3_pilot_storage.py
+ 81.4   204 services/mlc2_confidence.py
+ 82.1   140 services/take_feedback_manager.py
+ 82.3    62 services/delivery_alignment.py
+ 82.7   150 services/lab_recording.py
+ 82.8    29 services/f1_observability.py
+ 82.8   145 services/readout_context.py
+ 83.0   446 routes/journal.py
+ 83.0    47 services/confidence_review_policy.py
+ 83.2   440 services/moment_suggestions.py
+ 83.3    72 services/coaching_state_machine.py
+ 83.3    60 services/presentation_change_intent.py
+ 83.6    61 routes/jobs.py
+ 83.7   153 services/coach_publish.py
+ 83.7    49 services/audio_ref_resolver.py
+ 83.9   124 services/readout_snippets.py
+ 84.0    25 services/journey_messages.py
+ 84.2   228 services/ideal_text_variants.py
+ 84.3   121 services/lab_analysis_dispatch.py
+ 84.6   130 services/dimension_registry.py
+ 84.9    53 services/mlc2_confidence_blind.py
+ 85.3   190 services/rate_limits.py
+ 85.7    28 routes/v2/learning_exposures.py
+ 86.0   258 services/master_document.py
+ 86.2   130 services/rushed_phrase_endings_n1.py
+ 86.2    29 services/data_purge_registry.py
+ 86.3   233 services/tracked_changes.py
+ 86.3   102 services/recording_transcription.py
+ 86.3   124 services/prior_take_changes.py
+ 86.3   402 services/life_panel.py
+ 86.4    59 services/mlc3_first_client_feedback.py
+ 86.5    74 services/mlc2_confidence_readiness.py
+ 86.5    52 services/deck_parser.py
+ 86.9    84 services/intervention_spend.py
+ 87.0   146 services/confidence_evaluation.py
+ 87.1    70 services/take_comparison.py
+ 87.3   276 services/mlc3_founder_canary_readiness.py
+ 87.3   237 services/feedback_data_contract.py
+ 87.3    79 services/tier_checkout.py
+ 87.6   266 services/best_presentation.py
+ 88.1    42 services/rooting_phrase.py
+ 88.3    60 services/user_audit.py
+ 88.5    52 services/take_lifecycle.py
+ 88.8   134 services/dev_bugs.py
+ 89.1   202 services/journal_image.py
+ 89.5    95 utils/errors.py
+ 89.5   105 services/stripe_subscription_tiers.py
+ 89.6   183 services/confidence_dataset.py
+ 90.0    30 services/audit_email.py
+ 90.0    40 services/blind_review_media.py
+ 90.0    20 services/pipeline_admin.py
+ 90.0    40 services/project_ownership.py
+ 90.1   253 services/transcript_document.py
+ 90.2    41 services/ideal_text_quality_gate.py
+ 90.4   114 services/take_feedback_candidates.py
+ 90.5    63 services/cross_take_selection.py
+ 90.7    86 services/create_take.py
+ 90.8   250 services/ideal_text_block.py
+ 90.9    11 services/logging_setup.py
+ 91.0   145 services/say_it_stronger.py
+ 91.2    91 services/confidence_rollout.py
+ 91.2   114 services/mlc2_foundation.py
+ 91.3    92 services/recording_piece_analysis.py
+ 91.4   162 services/confidence_labels.py
+ 91.4    58 services/snippet_values.py
+ 91.4    35 services/recording_roots.py
+ 91.6    95 services/pipeline_health.py
+ 91.6   250 services/take_feedback_policy_v3.py
+ 91.7    72 services/ml_dpo_release.py
+ 91.7   218 services/journal.py
+ 91.9    62 services/ideal_text_confirmation.py
+ 92.0    25 services/mlc3_founder_canary_monitor.py
+ 92.6    27 services/min_content_gate.py
+ 92.7   329 services/intervention_candidates.py
+ 92.7    55 services/token_prices.py
+ 93.1    29 services/recording_transcript_persistence.py
+ 93.2    44 services/provenance_check.py
+ 93.3    45 services/admin_user_directory.py
+ 93.3    15 services/ideal_text_report.py
+ 93.3    30 services/kpi_timeline.py
+ 93.4   106 services/swap_offer.py
+ 93.4   122 services/delivery_stars.py
+ 93.7   142 services/ideal_decision_ledger.py
+ 93.8    48 services/onboarding_opener.py
+ 93.8    48 services/processing_stages.py
+ 93.8   162 services/community_content.py
+ 94.0    50 services/lab_audio_intake.py
+ 94.1    34 services/coach_blind_gate.py
+ 94.7   246 services/manager_engine.py
+ 94.9    39 services/provenance.py
+ 95.0   119 services/verbal_markers.py
+ 95.0   179 services/star_verdicts.py
+ 95.1   162 services/voice_confidence.py
+ 95.5   154 services/intake_context.py
+ 95.5    22 services/prompts/coach_comment_drafter.py
+ 95.5    88 services/secrets.py
+ 95.5    44 services/take_feedback_responses.py
+ 95.8    71 services/llm_usage.py
+ 95.8    71 services/transcript_smoothing.py
+ 95.8    24 services/feelings.py
+ 95.8    24 services/moment_confidence.py
+ 95.9   394 services/slide_word_split.py
+ 96.2    78 services/slide_boundary_metrics.py
+ 96.2    79 services/key_points.py
+ 96.2    53 services/feeling_performance.py
+ 96.2   213 services/ideal_text_parts.py
+ 96.2    80 services/ml_surface_contracts.py
+ 96.4    84 services/rate_windows.py
+ 96.5    86 services/snippet_salience.py
+ 96.6    87 services/lounge_messages.py
+ 96.7    30 services/founder_confidence_comparison.py
+ 96.7    30 services/prompts/say_it_stronger.py
+ 96.7    60 services/rater_languages.py
+ 96.7    61 services/pipeline_stage_execution.py
+ 96.8    31 services/professional_confidence.py
+ 97.2   181 services/label_quorum.py
+ 97.2   109 services/ideal_text_annotations.py
+ 97.4    76 services/context_document.py
+ 97.4    78 services/protected_phrases.py
+ 97.5    40 services/ideal_text_enrichment.py
+ 97.9   140 services/ideal_text_read.py
+ 98.0    49 services/suggestion_quotes.py
+ 98.0   102 services/state_ratings.py
+ 98.2    57 services/delivery_cues.py
+ 98.5   130 services/drift_monitor.py
+ 98.5    66 services/recording_persistence.py
+ 98.6    69 services/canonical_product.py
+100.0     0 routes/__init__.py
+100.0    23 routes/life_reminders_webhook.py
+100.0     0 routes/v2/__init__.py
+100.0     2 routes/v2/blueprint.py
+100.0    26 routes/v2_routes.py
+100.0     0 services/__init__.py
+100.0    74 services/ab_slide_pairs.py
+100.0    11 services/arc_entitlement.py
+100.0    16 services/candidate_capture.py
+100.0    20 services/chat_intents.py
+100.0    12 services/coach_pseudonym.py
+100.0    28 services/confidence_reviews.py
+100.0    11 services/dad_jokes.py
+100.0    16 services/domains.py
+100.0    11 services/email_threading.py
+100.0    12 services/explore_arc.py
+100.0    49 services/interview_completion_gate.py
+100.0    12 services/key_moments.py
+100.0    16 services/lab_recording_gate.py
+100.0    51 services/lab_recording_intake.py
+100.0    29 services/lab_recording_response.py
+100.0    66 services/llm_config.py
+100.0    48 services/llm_pricing.py
+100.0    11 services/llm_schemas.py
+100.0    21 services/mlc2_confidence_cutover.py
+100.0     8 services/named_emotion.py
+100.0    17 services/parallel.py
+100.0    22 services/power_phrase_ranking.py
+100.0     0 services/prompts/__init__.py
+100.0     6 services/prompts/best_presentation.py
+100.0     5 services/prompts/delivery_alignment.py
+100.0     7 services/prompts/master_document.py
+100.0     7 services/prompts/moment_suggestions.py
+100.0     8 services/prompts/pending.py
+100.0     4 services/prompts/slide_alignment.py
+100.0     4 services/prompts/swap_continuity.py
+100.0    18 services/realtime_notify.py
+100.0    58 services/recording_feedback_scoring.py
+100.0    32 services/recording_state.py
+100.0    18 services/rehearsal_roots.py
+100.0    22 services/rooting_phrase_qualification_v1.py
+100.0    10 services/skills/base.py
+100.0     4 services/skills/charisma.py
+100.0     4 services/skills/stress.py
+100.0    15 services/snippet_tables.py
+100.0    67 services/strategy_export.py
+100.0    14 services/text_flags.py
+100.0    59 services/upload_guard.py
+100.0    13 services/video_url_validation.py
+100.0    10 services/will_voice.py
+100.0     0 utils/__init__.py

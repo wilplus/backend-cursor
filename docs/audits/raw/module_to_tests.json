@@ -1,0 +1,1383 @@
+{
+ "services.ab_slide_pairs": [
+  "test_ab_slide_pairs.py"
+ ],
+ "routes.v2.explore_ideal_text": [
+  "test_acoustic_kpi.py",
+  "test_confidence_review_status.py",
+  "test_delivery_layer.py",
+  "test_ideal_text_parts.py",
+  "test_ideal_text_route.py",
+  "test_ideal_text_slide_linkage.py",
+  "test_journey_messages.py",
+  "test_key_points.py",
+  "test_master_document.py",
+  "test_moment_suggestions.py",
+  "test_prior_take_changes.py",
+  "test_single_deliverable.py",
+  "test_user_ideal_edit.py",
+  "tests/test_ideal_text_cold_open.py",
+  "tests/test_recording_roots.py"
+ ],
+ "services": [
+  "test_acoustic_kpi.py",
+  "test_analysis_state_broadcast.py",
+  "test_arc_notifications.py",
+  "test_audio_ref_resolver.py",
+  "test_community_content.py",
+  "test_confidence_dataset.py",
+  "test_confidence_evaluation.py",
+  "test_confidence_reviews.py",
+  "test_confidence_rollout.py",
+  "test_confident_voice_practice.py",
+  "test_delivery_alignment.py",
+  "test_delivery_cues.py",
+  "test_delivery_stars.py",
+  "test_dev_bugs.py",
+  "test_dev_tasks.py",
+  "test_dimension_registry.py",
+  "test_draft_delivery_lifecycle.py",
+  "test_drift_job.py",
+  "test_email_threading.py",
+  "test_feedback_repository.py",
+  "test_ffmpeg_audio_extract.py",
+  "test_ideal_text_block.py",
+  "test_ideal_text_confirmation.py",
+  "test_ideal_text_parts.py",
+  "test_ideal_text_slide_linkage.py",
+  "test_intake_context.py",
+  "test_intervention_candidates.py",
+  "test_intervention_spend.py",
+  "test_interview_completion_gate.py",
+  "test_journal.py",
+  "test_journal_image.py",
+  "test_key_moments.py",
+  "test_kpi_timeline.py",
+  "test_lab_recording.py",
+  "test_lab_send.py",
+  "test_label_quorum.py",
+  "test_life_panel.py",
+  "test_life_setup_horizon_fold.py",
+  "test_living_transcript.py",
+  "test_manager_engine.py",
+  "test_moment_reference.py",
+  "test_moment_suggestions.py",
+  "test_next_session_icebreaker.py",
+  "test_onboarding_opener.py",
+  "test_parallel.py",
+  "test_per_slide_budget.py",
+  "test_pieces_canonical.py",
+  "test_pieces_slide_stickiness.py",
+  "test_pipeline_admin.py",
+  "test_pipeline_job_retry.py",
+  "test_pipeline_timing.py",
+  "test_power_phrase_ranking.py",
+  "test_provenance.py",
+  "test_rate_limits.py",
+  "test_rate_windows.py",
+  "test_recording_lane_guards.py",
+  "test_recording_prompt_intent.py",
+  "test_recording_transcription.py",
+  "test_say_it_stronger.py",
+  "test_single_deliverable.py",
+  "test_slide_clock_offset.py",
+  "test_snippet_stickiness.py",
+  "test_snippet_table_name.py",
+  "test_step2_peer_review.py",
+  "test_swap_detector.py",
+  "test_swap_offer.py",
+  "test_tracked_changes.py",
+  "test_vc_backfill.py",
+  "test_verbal_markers.py",
+  "test_voice_album.py",
+  "test_worker_fork_safety.py",
+  "tests/test_admin_user_directory.py",
+  "tests/test_blind_review_media.py",
+  "tests/test_ceo_foundation.py",
+  "tests/test_ceo_intelligence.py",
+  "tests/test_ceo_work_items.py",
+  "tests/test_ideal_text_cold_open.py",
+  "tests/test_mlc3_pilot_storage.py",
+  "tests/test_phase1_deletion_completion.py",
+  "tests/test_snippet_transcription.py"
+ ],
+ "services.acoustic_baseline": [
+  "test_acoustic_kpi.py",
+  "test_swap_detector.py"
+ ],
+ "services.analysis_worker": [
+  "test_acoustic_kpi.py",
+  "test_analysis_worker.py",
+  "test_lab_analysis_dispatch.py",
+  "test_pipeline_timing.py",
+  "test_recording_lane_guards.py"
+ ],
+ "services.db": [
+  "test_acoustic_kpi.py",
+  "test_analysis_state_broadcast.py",
+  "test_annotation_capture.py",
+  "test_coach_comment_drafter.py",
+  "test_community_content.py",
+  "test_confidence_labels.py",
+  "test_db_session_status.py",
+  "test_delivery_stars.py",
+  "test_email_threading.py",
+  "test_feedback_repository.py",
+  "test_ideal_text_annotations.py",
+  "test_ideal_text_block.py",
+  "test_instant_ideal_text.py",
+  "test_intake_context.py",
+  "test_interview_completion_gate.py",
+  "test_journal.py",
+  "test_kpi_timeline.py",
+  "test_lab_send.py",
+  "test_label_quorum.py",
+  "test_life_setup_horizon_fold.py",
+  "test_llm_usage.py",
+  "test_master_doc_output_guards.py",
+  "test_moment_suggestions.py",
+  "test_next_session_icebreaker.py",
+  "test_onboarding_opener.py",
+  "test_orphan_sweep_and_concurrency.py",
+  "test_pieces_canonical.py",
+  "test_pieces_slide_stickiness.py",
+  "test_pipeline_admin.py",
+  "test_processing_jobs.py",
+  "test_project_tenant_isolation.py",
+  "test_provenance.py",
+  "test_recording_kind.py",
+  "test_recording_transcription.py",
+  "test_say_it_stronger.py",
+  "test_session_previews.py",
+  "test_single_deliverable.py",
+  "test_slide_boundary_metrics.py",
+  "test_slide_corrections.py",
+  "test_snippet_table_name.py",
+  "test_star_verdicts.py",
+  "test_stripe_not_our_product.py",
+  "test_token_arc_charged.py",
+  "test_token_pricing.py",
+  "test_training_import.py",
+  "test_vc_backfill.py",
+  "test_voice_confidence.py",
+  "test_wave3_be.py",
+  "test_will_voice.py",
+  "test_worker_fork_safety.py",
+  "tests/test_atomic_take_feedback_response.py",
+  "tests/test_feedback_data_contract.py",
+  "tests/test_first_client_refactor.py",
+  "tests/test_take_feedback_policy_v3_integration.py"
+ ],
+ "services.intervention_candidates": [
+  "test_acoustic_kpi.py",
+  "test_ideal_text_parts.py",
+  "test_intervention_candidates.py",
+  "test_per_slide_budget.py",
+  "tests/test_take_feedback_manager.py"
+ ],
+ "services.lab_recording": [
+  "test_acoustic_kpi.py",
+  "test_analysis_worker.py",
+  "test_annotation_mode.py",
+  "test_coach_session.py",
+  "test_delivery_layer.py",
+  "test_feedback_repository.py",
+  "test_guest_readout_video.py",
+  "test_lab_recording.py",
+  "test_lab_recording_response.py",
+  "test_moment_suggestions.py",
+  "test_parallel.py",
+  "test_pieces_slide_stickiness.py",
+  "test_reread_fold.py",
+  "test_slide_clock_offset.py",
+  "test_speed_metric.py",
+  "test_training_import.py",
+  "test_wave4_phase2.py",
+  "test_wave4_slides.py",
+  "test_whisper_compress.py"
+ ],
+ "services.part_acoustics": [
+  "test_acoustic_kpi.py"
+ ],
+ "services.recording_piece_analysis": [
+  "test_acoustic_kpi.py",
+  "test_recording_piece_analysis.py"
+ ],
+ "services.snippet_salience": [
+  "test_acoustic_kpi.py",
+  "test_pieces_slide_stickiness.py",
+  "test_snippet_salience.py"
+ ],
+ "services.realtime_notify": [
+  "test_analysis_state_broadcast.py"
+ ],
+ "services.arc_notifications": [
+  "test_analysis_worker.py",
+  "test_arc_notifications.py",
+  "test_confidence_review_policy.py",
+  "test_delivery_stars.py",
+  "test_ideal_bubble_backfill.py",
+  "test_ideal_text_confirmation.py",
+  "test_instant_ideal_text.py",
+  "test_lab_analysis_dispatch.py",
+  "test_master_document.py",
+  "test_projects.py",
+  "test_single_deliverable.py"
+ ],
+ "services.ideal_text_confirmation": [
+  "test_analysis_worker.py",
+  "test_ideal_text_confirmation.py",
+  "test_lab_analysis_dispatch.py",
+  "test_processing_jobs.py"
+ ],
+ "services.lab_send": [
+  "test_analysis_worker.py",
+  "test_annotation_mode.py",
+  "test_lab_send.py",
+  "test_reread_fold.py"
+ ],
+ "services.session_cadence": [
+  "test_analysis_worker.py",
+  "test_session_cadence.py"
+ ],
+ "services.ml_finetuning_export": [
+  "test_annotation_capture.py"
+ ],
+ "services.star_verdicts": [
+  "test_annotation_capture.py",
+  "test_feedback_supersession.py",
+  "test_star_verdicts.py"
+ ],
+ "routes": [
+  "test_annotation_mode.py",
+  "test_arc_batch.py",
+  "test_arc_unlock.py",
+  "test_chat_persist.py",
+  "test_coach_auth.py",
+  "test_coach_session.py",
+  "test_coach_session_language.py",
+  "test_coach_snippet_save.py",
+  "test_coach_video.py",
+  "test_community_content.py",
+  "test_confidence_reviews.py",
+  "test_consent_endpoint.py",
+  "test_context_document.py",
+  "test_delivery_layer.py",
+  "test_dev_bugs.py",
+  "test_dev_tasks.py",
+  "test_eager_ideal_text.py",
+  "test_email_threading.py",
+  "test_guest_readout_video.py",
+  "test_ideal_text_parts.py",
+  "test_ideal_text_route.py",
+  "test_ideal_text_slide_linkage.py",
+  "test_instant_ideal_text.py",
+  "test_jobs_status_route.py",
+  "test_journal.py",
+  "test_journal_image.py",
+  "test_key_points.py",
+  "test_life_panel.py",
+  "test_life_setup_horizon_fold.py",
+  "test_living_transcript.py",
+  "test_master_document.py",
+  "test_mlc2_consent_endpoint.py",
+  "test_moment_reference.py",
+  "test_moment_suggestions.py",
+  "test_named_emotion.py",
+  "test_onboarding_opener.py",
+  "test_presentation_delete.py",
+  "test_presentation_extract.py",
+  "test_prior_take_changes.py",
+  "test_project_setup.py",
+  "test_recording_lane_guards.py",
+  "test_reread_fold.py",
+  "test_say_it_stronger.py",
+  "test_single_deliverable.py",
+  "test_suggestion_feedback.py",
+  "test_training_deletion.py",
+  "test_transcript_edit_route.py",
+  "test_user_ideal_edit.py",
+  "test_voice_album.py",
+  "test_wave2_be.py",
+  "test_wave3_be.py",
+  "test_wave4_phase2.py",
+  "test_wave4_slides.py"
+ ],
+ "routes.v2.coach": [
+  "test_annotation_mode.py",
+  "test_delivery_layer.py",
+  "test_reread_fold.py",
+  "test_resolve_audio_refs.py",
+  "tests/test_founder_confidence_comparison.py",
+  "tests/test_mlc3_coach_inline_authoring_d5.py"
+ ],
+ "routes.v2_routes": [
+  "test_annotation_mode.py",
+  "test_arc_batch.py",
+  "test_arc_unlock.py",
+  "test_chat_persist.py",
+  "test_coach_session.py",
+  "test_coach_session_language.py",
+  "test_coach_snippet_save.py",
+  "test_coach_video.py",
+  "test_confidence_reviews.py",
+  "test_consent_endpoint.py",
+  "test_context_document.py",
+  "test_delivery_layer.py",
+  "test_eager_ideal_text.py",
+  "test_email_threading.py",
+  "test_guest_readout_video.py",
+  "test_ideal_text_parts.py",
+  "test_ideal_text_route.py",
+  "test_ideal_text_slide_linkage.py",
+  "test_instant_ideal_text.py",
+  "test_key_points.py",
+  "test_living_transcript.py",
+  "test_master_document.py",
+  "test_mlc2_consent_endpoint.py",
+  "test_moment_reference.py",
+  "test_moment_suggestions.py",
+  "test_named_emotion.py",
+  "test_onboarding_opener.py",
+  "test_presentation_delete.py",
+  "test_presentation_extract.py",
+  "test_prior_take_changes.py",
+  "test_project_setup.py",
+  "test_rate_limits.py",
+  "test_recording_lane_guards.py",
+  "test_reread_fold.py",
+  "test_say_it_stronger.py",
+  "test_single_deliverable.py",
+  "test_suggestion_feedback.py",
+  "test_training_deletion.py",
+  "test_transcript_edit_route.py",
+  "test_user_ideal_edit.py",
+  "test_voice_album.py",
+  "test_wave2_be.py",
+  "test_wave3_be.py",
+  "test_wave4_phase2.py",
+  "test_wave4_slides.py"
+ ],
+ "services.coach_video_storage": [
+  "test_annotation_mode.py",
+  "test_audio_ref_resolver.py",
+  "test_coach_video.py",
+  "test_ops_guardrails.py",
+  "test_recording_lane_guards.py",
+  "test_resolve_audio_refs.py",
+  "test_training_import.py",
+  "tests/test_mlc3_pilot_storage.py"
+ ],
+ "services.min_content_gate": [
+  "test_annotation_mode.py",
+  "test_lab_recording_gate.py",
+  "test_min_content_gate.py",
+  "test_training_import.py",
+  "test_wave2_be.py"
+ ],
+ "routes.v2.canonical_publish": [
+  "test_arc_batch.py",
+  "test_eager_ideal_text.py"
+ ],
+ "services.arc_entitlement": [
+  "test_arc_entitlement.py",
+  "test_delivery_layer.py"
+ ],
+ "services.coach_publish_delivery": [
+  "test_arc_notifications.py"
+ ],
+ "config": [
+  "test_arc_unlock.py",
+  "test_audio_ref_resolver.py",
+  "test_delivery_stars.py",
+  "test_email_threading.py",
+  "test_journal_image.py",
+  "test_life_panel.py",
+  "test_mlc2_foundation.py",
+  "test_openai_client_timeouts.py",
+  "test_ops_guardrails.py",
+  "test_wave2_be.py",
+  "tests/test_coach_guidance_delivery_d3.py",
+  "tests/test_mlc3_first_client_feedback.py",
+  "tests/test_mlc3_first_client_service_d2.py"
+ ],
+ "services.audio_metrics": [
+  "test_audio_metrics_features.py",
+  "test_f0_octave.py",
+  "test_min_content_gate.py",
+  "test_pieces_slide_stickiness.py",
+  "test_recording_transcription.py",
+  "test_segmentation.py",
+  "test_speed_metric.py",
+  "test_whisper_compress.py"
+ ],
+ "services.audio_ref_resolver": [
+  "test_audio_ref_resolver.py"
+ ],
+ "services.audit_intent": [
+  "test_audit_intent.py"
+ ],
+ "services.best_presentation": [
+  "test_best_presentation.py",
+  "test_community_content.py",
+  "test_eager_ideal_text.py",
+  "test_ideal_text_block.py",
+  "test_ideal_text_report.py",
+  "test_ideal_text_slide_linkage.py",
+  "test_journal_image.py",
+  "test_living_transcript.py",
+  "test_moment_suggestions.py",
+  "test_polish_as_suggestions.py",
+  "test_recording_lane_guards.py",
+  "test_say_it_stronger.py",
+  "test_single_deliverable.py",
+  "test_vc_backfill.py",
+  "test_voice_confidence.py"
+ ],
+ "services.candidate_capture": [
+  "test_candidate_capture.py"
+ ],
+ "services.canonical_product": [
+  "test_canonical_product.py",
+  "test_projects.py"
+ ],
+ "services.chat_intents": [
+  "test_chat_intents.py"
+ ],
+ "services.dad_jokes": [
+  "test_chat_intents.py",
+  "test_dad_jokes.py"
+ ],
+ "routes.v2.coaching": [
+  "test_chat_persist.py"
+ ],
+ "auth": [
+  "test_coach_auth.py",
+  "test_confidence_reviews.py",
+  "test_life_panel.py",
+  "test_optional_auth.py"
+ ],
+ "routes.admin": [
+  "test_coach_auth.py"
+ ],
+ "services.coach_comment_drafter": [
+  "test_coach_comment_drafter.py",
+  "test_pieces_canonical.py"
+ ],
+ "services.ml_surface_contracts": [
+  "test_coach_comment_drafter.py",
+  "test_llm_usage.py",
+  "test_ml_dpo_loop.py"
+ ],
+ "services.openai_service": [
+  "test_coach_comment_drafter.py",
+  "test_dev_tasks.py",
+  "test_journal_image.py",
+  "test_llm_usage.py",
+  "test_openai_client_timeouts.py",
+  "test_openai_report_progress.py",
+  "test_pieces_slide_stickiness.py",
+  "test_recording_prompt_intent.py",
+  "test_recording_transcription.py",
+  "tests/test_phase1_compliance_contract.py"
+ ],
+ "services.coach_publish": [
+  "test_coach_publish_service.py"
+ ],
+ "services.coach_video_capture": [
+  "test_coach_video.py",
+  "test_coach_video_capture.py"
+ ],
+ "routes.journal": [
+  "test_community_content.py",
+  "test_journal.py",
+  "test_journal_image.py"
+ ],
+ "services.community_content": [
+  "test_community_content.py"
+ ],
+ "services.cross_take_selection": [
+  "test_community_content.py",
+  "test_cross_take_selection.py",
+  "test_journal_image.py",
+  "test_pieces_slide_stickiness.py",
+  "test_reread_fold.py"
+ ],
+ "services.ideal_text_block": [
+  "test_community_content.py",
+  "test_delivery_layer.py",
+  "test_eager_ideal_text.py",
+  "test_ideal_decision_ledger.py",
+  "test_ideal_text_block.py",
+  "test_ideal_text_confirmation.py",
+  "test_ideal_text_read.py",
+  "test_ideal_text_slide_linkage.py",
+  "test_intervention_candidates.py",
+  "test_journal_image.py",
+  "test_key_points.py",
+  "test_living_transcript.py",
+  "test_marker_hygiene.py",
+  "test_master_document.py",
+  "test_moment_reference.py",
+  "test_moment_suggestions.py",
+  "test_polish_as_suggestions.py",
+  "test_single_deliverable.py",
+  "test_user_ideal_edit.py"
+ ],
+ "services.ideal_text_report": [
+  "test_community_content.py",
+  "test_ideal_text_report.py",
+  "test_journal_image.py"
+ ],
+ "services.llm": [
+  "test_community_content.py",
+  "test_journal_image.py",
+  "test_llm_usage.py",
+  "test_moment_suggestions.py",
+  "test_onboarding_opener.py",
+  "test_say_it_stronger.py",
+  "test_swap_offer.py",
+  "tests/test_ceo_intelligence.py"
+ ],
+ "services.confidence_dataset": [
+  "test_confidence_dataset.py"
+ ],
+ "services.confidence_evaluation": [
+  "test_confidence_evaluation.py"
+ ],
+ "services.confidence_labels": [
+  "test_confidence_labels.py"
+ ],
+ "services.confidence_review_policy": [
+  "test_confidence_review_policy.py"
+ ],
+ "services.voice_album": [
+  "test_confidence_review_policy.py",
+  "test_confidence_reviews.py",
+  "test_key_moments.py",
+  "test_voice_album.py",
+  "tests/test_voice_album_machine_quorum.py"
+ ],
+ "services.confidence_reviews": [
+  "test_confidence_reviews.py"
+ ],
+ "services.confidence_rollout": [
+  "test_confidence_rollout.py"
+ ],
+ "services.confident_voice_practice": [
+  "test_confident_voice_practice.py"
+ ],
+ "routes.v2": [
+  "test_consent_endpoint.py",
+  "test_context_document.py",
+  "test_ideal_text_route.py",
+  "test_ideal_text_slide_linkage.py",
+  "test_mlc2_consent_endpoint.py",
+  "test_recording_lane_guards.py",
+  "test_resolve_audio_refs.py",
+  "tests/test_founder_confidence_comparison.py",
+  "tests/test_mlc3_coach_inline_authoring_d5.py",
+  "tests/test_mlc3_first_client_service_d2.py",
+  "tests/test_mlc3_general_user_service_d4.py"
+ ],
+ "routes.v2.user_account": [
+  "test_consent_endpoint.py"
+ ],
+ "routes.v2.arcs": [
+  "test_context_document.py",
+  "test_delivery_layer.py",
+  "test_ideal_text_route.py",
+  "test_presentation_delete.py",
+  "test_project_setup.py",
+  "test_single_deliverable.py"
+ ],
+ "routes.v2.lab_recording": [
+  "test_context_document.py",
+  "test_create_take.py",
+  "test_data_foundation_canary.py",
+  "test_delivery_layer.py",
+  "test_guest_readout_video.py",
+  "test_recording_lane_guards.py"
+ ],
+ "services.context_document": [
+  "test_context_document.py",
+  "test_life_panel.py"
+ ],
+ "services.lab_audio_intake": [
+  "test_context_document.py",
+  "test_lab_audio_intake.py"
+ ],
+ "services.lab_recording_intake": [
+  "test_context_document.py",
+  "test_lab_audio_intake.py",
+  "test_lab_recording_intake.py",
+  "test_recording_lane_guards.py"
+ ],
+ "services.create_take": [
+  "test_create_take.py",
+  "test_recording_lane_guards.py"
+ ],
+ "services.project_ownership": [
+  "test_create_take.py",
+  "test_delivery_layer.py",
+  "test_eager_ideal_text.py",
+  "test_guest_readout_video.py",
+  "test_project_ownership.py",
+  "test_suggestion_feedback.py",
+  "test_transcript_edit_route.py"
+ ],
+ "services.delivery_alignment": [
+  "test_delivery_alignment.py"
+ ],
+ "services.delivery_stars": [
+  "test_delivery_alignment.py",
+  "test_delivery_stars.py",
+  "test_star_verdicts.py"
+ ],
+ "services.delivery_cues": [
+  "test_delivery_cues.py"
+ ],
+ "services.pipeline_jobs": [
+  "test_delivery_layer.py",
+  "test_ideal_text_confirmation.py",
+  "test_jobs_status_route.py",
+  "test_lab_analysis_dispatch.py",
+  "test_orphan_sweep_and_concurrency.py",
+  "test_pipeline_job_retry.py",
+  "test_processing_jobs.py"
+ ],
+ "services.moment_suggestions": [
+  "test_delivery_stars.py",
+  "test_living_transcript.py",
+  "test_moment_suggestions.py",
+  "test_parallel.py",
+  "test_star_verdicts.py"
+ ],
+ "routes.dev_bugs": [
+  "test_dev_bugs.py",
+  "test_dev_tasks.py"
+ ],
+ "services.dev_bugs": [
+  "test_dev_bugs.py"
+ ],
+ "routes.dev_tasks": [
+  "test_dev_tasks.py"
+ ],
+ "scripts.backfill_dev_task_images": [
+  "test_dev_tasks.py"
+ ],
+ "services.dev_tasks": [
+  "test_dev_tasks.py"
+ ],
+ "services.dimension_registry": [
+  "test_dimension_registry.py",
+  "test_drift_job.py",
+  "test_intervention_candidates.py",
+  "test_rate_windows.py"
+ ],
+ "services.snippet_values": [
+  "test_dimension_registry.py",
+  "test_snippet_value_resolution.py"
+ ],
+ "services.domains": [
+  "test_domains.py"
+ ],
+ "services.draft_delivery": [
+  "test_draft_delivery_lifecycle.py"
+ ],
+ "services.drift_job": [
+  "test_drift_job.py"
+ ],
+ "services.drift_monitor": [
+  "test_drift_monitor.py"
+ ],
+ "services.audit_email": [
+  "test_email_threading.py"
+ ],
+ "services.coach_pseudonym": [
+  "test_email_threading.py"
+ ],
+ "services.email_service": [
+  "test_email_threading.py",
+  "test_ops_guardrails.py"
+ ],
+ "services.email_threading": [
+  "test_email_threading.py"
+ ],
+ "services.post_session_results_email": [
+  "test_email_threading.py"
+ ],
+ "services.user_audit": [
+  "test_email_threading.py",
+  "test_lab_recording_response.py",
+  "test_wave3_be.py"
+ ],
+ "utils.errors": [
+  "test_error_sanitization.py",
+  "test_rate_limits.py"
+ ],
+ "services.explore_arc": [
+  "test_explore_arc.py"
+ ],
+ "services.f1_observability": [
+  "test_f1_observability.py",
+  "test_lab_recording_response.py",
+  "test_recording_transcript_persistence.py"
+ ],
+ "services.feedback_repository": [
+  "test_feedback_repository.py"
+ ],
+ "services.transcript_document": [
+  "test_feedback_repository.py",
+  "test_ideal_text_slide_linkage.py",
+  "test_key_points.py",
+  "test_living_transcript.py",
+  "test_slide_paragraphs.py",
+  "test_swap_detector.py"
+ ],
+ "services.tracked_changes": [
+  "test_feedback_supersession.py",
+  "test_key_points.py",
+  "test_living_transcript.py",
+  "test_tracked_changes.py"
+ ],
+ "services.voice_album_routing": [
+  "test_feedback_supersession.py"
+ ],
+ "services.feeling_performance": [
+  "test_feeling_performance.py"
+ ],
+ "services.feelings": [
+  "test_feelings.py"
+ ],
+ "services.ffmpeg_audio_extract": [
+  "test_ffmpeg_audio_extract.py"
+ ],
+ "services.goal_update": [
+  "test_goal_update.py"
+ ],
+ "services.ideal_decision_ledger": [
+  "test_ideal_decision_ledger.py",
+  "test_ideal_text_read.py",
+  "test_ledger_acceptance_freeze.py",
+  "test_living_transcript.py",
+  "test_marker_hygiene.py",
+  "test_master_document.py",
+  "test_prior_take_changes.py",
+  "test_protected_phrases.py"
+ ],
+ "services.ideal_text_annotations": [
+  "test_ideal_text_annotations.py"
+ ],
+ "services.ideal_text_parts": [
+  "test_ideal_text_parts.py",
+  "test_ideal_text_slide_linkage.py",
+  "test_swap_detector.py"
+ ],
+ "services.manager_engine": [
+  "test_ideal_text_parts.py",
+  "test_intervention_candidates.py",
+  "test_manager_engine.py",
+  "test_per_slide_budget.py"
+ ],
+ "services.ideal_text_quality_gate": [
+  "test_ideal_text_quality_gate.py"
+ ],
+ "services.ideal_text_read": [
+  "test_ideal_text_read.py"
+ ],
+ "services.master_document": [
+  "test_ideal_text_slide_linkage.py",
+  "test_key_points.py",
+  "test_master_document.py",
+  "test_recording_lane_guards.py"
+ ],
+ "services.ideal_text_variants": [
+  "test_ideal_text_variants.py"
+ ],
+ "services.lounge_messages": [
+  "test_instant_ideal_text.py",
+  "test_lounge_kind_migration.py",
+  "test_lounge_messages.py",
+  "test_single_deliverable.py"
+ ],
+ "services.intake_context": [
+  "test_intake_context.py",
+  "test_lab_recording_intake.py",
+  "test_slide_clock_offset.py",
+  "test_wave4_slides.py"
+ ],
+ "services.intervention_spend": [
+  "test_intervention_spend.py",
+  "test_per_slide_budget.py"
+ ],
+ "services.interview_completion_gate": [
+  "test_interview_completion_gate.py"
+ ],
+ "services.job_queue": [
+  "test_job_queue_timeouts.py",
+  "test_orphan_sweep_and_concurrency.py",
+  "test_worker_fork_safety.py"
+ ],
+ "worker": [
+  "test_job_queue_timeouts.py",
+  "test_orphan_sweep_and_concurrency.py",
+  "test_worker_fork_safety.py"
+ ],
+ "routes.jobs": [
+  "test_jobs_status_route.py"
+ ],
+ "services.journal": [
+  "test_journal.py"
+ ],
+ "services.journal_media": [
+  "test_journal.py",
+  "test_journal_image.py"
+ ],
+ "services.journal_image": [
+  "test_journal_image.py"
+ ],
+ "services.journey_messages": [
+  "test_journey_messages.py"
+ ],
+ "services.key_moments": [
+  "test_key_moments.py"
+ ],
+ "services.power_phrase_ranking": [
+  "test_key_moments.py",
+  "test_pieces_slide_stickiness.py",
+  "test_power_phrase_ranking.py",
+  "test_voice_album.py",
+  "test_voice_confidence.py"
+ ],
+ "services.professional_confidence": [
+  "test_key_moments.py"
+ ],
+ "services.key_points": [
+  "test_key_points.py"
+ ],
+ "services.kpi_timeline": [
+  "test_kpi_timeline.py"
+ ],
+ "services.lab_analysis_dispatch": [
+  "test_lab_analysis_dispatch.py"
+ ],
+ "services.lab_recording_gate": [
+  "test_lab_recording_gate.py"
+ ],
+ "services.lab_audio_storage": [
+  "test_lab_recording_persistence.py",
+  "test_ops_guardrails.py",
+  "tests/test_phase1_deletion_completion.py"
+ ],
+ "services.lab_recording_persistence": [
+  "test_lab_recording_persistence.py",
+  "test_recording_lane_guards.py"
+ ],
+ "services.lab_recording_response": [
+  "test_lab_recording_response.py"
+ ],
+ "services.session_publish": [
+  "test_lab_send.py",
+  "test_reread_fold.py"
+ ],
+ "services.label_quorum": [
+  "test_label_quorum.py",
+  "test_state_ratings.py"
+ ],
+ "routes.v2.learning_exposures": [
+  "test_learning_exposure_route.py"
+ ],
+ "services.learning_exposures": [
+  "test_learning_exposures.py",
+  "tests/test_ideal_text_cold_open.py"
+ ],
+ "routes.life_reminders_webhook": [
+  "test_life_panel.py"
+ ],
+ "routes.life_routes": [
+  "test_life_panel.py",
+  "test_life_setup_horizon_fold.py",
+  "test_rate_limits.py"
+ ],
+ "services.life_chat": [
+  "test_life_panel.py"
+ ],
+ "services.life_engine": [
+  "test_life_panel.py",
+  "test_life_setup_horizon_fold.py"
+ ],
+ "services.life_import": [
+  "test_life_panel.py",
+  "test_life_setup_horizon_fold.py"
+ ],
+ "services.life_panel": [
+  "test_life_panel.py",
+  "test_life_setup_horizon_fold.py"
+ ],
+ "services.life_reminders": [
+  "test_life_panel.py"
+ ],
+ "services.life_store": [
+  "test_life_panel.py"
+ ],
+ "services.master_doc_rag": [
+  "test_life_panel.py",
+  "test_master_doc_output_guards.py",
+  "test_recording_prompt_intent.py",
+  "test_wave3_be.py",
+  "test_will_voice.py",
+  "tests/test_phase1_compliance_contract.py"
+ ],
+ "services.transcript_smoothing": [
+  "test_living_transcript.py"
+ ],
+ "services.llm_config": [
+  "test_llm_usage.py"
+ ],
+ "services.llm_pricing": [
+  "test_llm_usage.py"
+ ],
+ "services.llm_usage": [
+  "test_llm_usage.py"
+ ],
+ "services.slide_word_split": [
+  "test_master_document.py",
+  "test_pieces_canonical.py",
+  "test_readout_context.py",
+  "test_recording_transcription.py",
+  "test_slide_clock_offset.py",
+  "test_slide_paragraphs.py",
+  "test_slide_word_split.py"
+ ],
+ "services.token_account": [
+  "test_migration_security_rules.py",
+  "test_recording_transcription.py",
+  "test_single_deliverable.py",
+  "test_stripe_not_our_product.py",
+  "test_token_arc_charged.py",
+  "test_token_pricing.py"
+ ],
+ "services.ml_dpo_export": [
+  "test_ml_dpo_loop.py"
+ ],
+ "services.ml_dpo_release": [
+  "test_ml_dpo_loop.py"
+ ],
+ "routes.v2.mlc2_consent": [
+  "test_mlc2_consent_endpoint.py"
+ ],
+ "services.mlc2_foundation": [
+  "test_mlc2_foundation.py",
+  "tests/test_mlc2_confidence.py",
+  "tests/test_mlc2_confidence_blind.py",
+  "tests/test_mlc2_confidence_producer.py"
+ ],
+ "services.moment_confidence": [
+  "test_moment_suggestions.py"
+ ],
+ "services.moment_direction": [
+  "test_moment_suggestions.py"
+ ],
+ "services.prompts.moment_suggestions": [
+  "test_moment_suggestions.py"
+ ],
+ "services.text_flags": [
+  "test_moment_suggestions.py",
+  "test_suggestion_quotes.py"
+ ],
+ "services.named_emotion": [
+  "test_named_emotion.py"
+ ],
+ "services.next_session_icebreaker": [
+  "test_next_session_icebreaker.py",
+  "test_will_voice.py"
+ ],
+ "services.onboarding_opener": [
+  "test_onboarding_opener.py"
+ ],
+ "services.audio_storage": [
+  "test_ops_guardrails.py"
+ ],
+ "services.secrets": [
+  "test_ops_guardrails.py"
+ ],
+ "services.upload_guard": [
+  "test_ops_guardrails.py"
+ ],
+ "services.parallel": [
+  "test_parallel.py"
+ ],
+ "services.recording_feedback_scoring": [
+  "test_parallel.py",
+  "test_recording_feedback_scoring.py"
+ ],
+ "services.slide_alignment": [
+  "test_parallel.py",
+  "test_pieces_slide_stickiness.py",
+  "test_readout_context.py",
+  "test_recording_feedback_scoring.py",
+  "test_wave4_phase2.py"
+ ],
+ "services.rate_windows": [
+  "test_pause_count_exactness.py",
+  "test_rate_windows.py"
+ ],
+ "services.say_it_stronger": [
+  "test_pieces_slide_stickiness.py",
+  "test_say_it_stronger.py",
+  "test_swap_offer.py"
+ ],
+ "services.snippet_stickiness": [
+  "test_pieces_slide_stickiness.py",
+  "test_recording_feedback_scoring.py",
+  "test_snippet_stickiness.py"
+ ],
+ "services.pipeline_admin": [
+  "test_pipeline_admin.py"
+ ],
+ "services.pipeline_health": [
+  "test_pipeline_health.py"
+ ],
+ "services.pipeline_stage_execution": [
+  "test_pipeline_stage_execution.py"
+ ],
+ "services.logging_setup": [
+  "test_pipeline_timing.py"
+ ],
+ "services.presentation_change_intent": [
+  "test_presentation_change_intent.py"
+ ],
+ "services.prior_take_changes": [
+  "test_prior_take_changes.py"
+ ],
+ "services.product_discovery": [
+  "test_product_discovery.py"
+ ],
+ "routes.v2.blueprint": [
+  "test_projects.py"
+ ],
+ "routes.v2.projects": [
+  "test_projects.py"
+ ],
+ "services.project_repository": [
+  "test_projects.py"
+ ],
+ "services.prompts": [
+  "test_prompt_registry.py",
+  "test_single_deliverable.py"
+ ],
+ "services.prompts.registry": [
+  "test_prompt_registry.py"
+ ],
+ "services.protected_phrases": [
+  "test_protected_phrases.py"
+ ],
+ "services.provenance": [
+  "test_provenance.py"
+ ],
+ "services.provenance_check": [
+  "test_provenance.py"
+ ],
+ "utils.metrics": [
+  "test_provenance.py"
+ ],
+ "services.rate_limits": [
+  "test_rate_limits.py"
+ ],
+ "utils": [
+  "test_rate_limits.py"
+ ],
+ "services.rater_languages": [
+  "test_rater_languages.py"
+ ],
+ "services.readout_context": [
+  "test_readout_context.py"
+ ],
+ "services.readout_snippets": [
+  "test_readout_snippets.py"
+ ],
+ "services.recording_state": [
+  "test_recording_feedback_scoring.py",
+  "test_recording_persistence.py",
+  "test_recording_piece_analysis.py",
+  "test_recording_transcript_persistence.py",
+  "test_recording_transcription.py"
+ ],
+ "services.recording_persistence": [
+  "test_recording_persistence.py"
+ ],
+ "services.coaching_state_machine": [
+  "test_recording_prompt_intent.py",
+  "test_step2_peer_review.py"
+ ],
+ "services.recording_transcript_persistence": [
+  "test_recording_transcript_persistence.py"
+ ],
+ "services.slide_boundary_metrics": [
+  "test_recording_transcript_persistence.py",
+  "test_slide_boundary_metrics.py"
+ ],
+ "services.recording_transcription": [
+  "test_recording_transcription.py"
+ ],
+ "services.token_prices": [
+  "test_recording_transcription.py",
+  "test_token_arc_charged.py",
+  "test_token_pricing.py"
+ ],
+ "services.rehearsal_roots": [
+  "test_rehearsal_roots.py"
+ ],
+ "services.prompts.best_presentation": [
+  "test_single_deliverable.py"
+ ],
+ "services.snippet_tables": [
+  "test_snippet_table_name.py"
+ ],
+ "services.state_ratings": [
+  "test_state_ratings.py"
+ ],
+ "services.strategy_export": [
+  "test_strategy_export.py"
+ ],
+ "services.stripe_checkout_credits": [
+  "test_stripe_not_our_product.py"
+ ],
+ "services.stripe_subscription_tiers": [
+  "test_stripe_not_our_product.py",
+  "test_token_pricing.py"
+ ],
+ "services.tier_checkout": [
+  "test_stripe_not_our_product.py"
+ ],
+ "routes.v2.user_sessions": [
+  "test_suggestion_feedback.py",
+  "test_training_deletion.py"
+ ],
+ "services.suggestion_quotes": [
+  "test_suggestion_quotes.py"
+ ],
+ "services.swap_detector": [
+  "test_swap_detector.py"
+ ],
+ "services.prompts.swap_continuity": [
+  "test_swap_offer.py"
+ ],
+ "services.swap_offer": [
+  "test_swap_offer.py"
+ ],
+ "services.take_comparison": [
+  "test_take_comparison.py"
+ ],
+ "services.take_lifecycle": [
+  "test_take_lifecycle.py",
+  "tests/test_mlc2_confidence_cutover_integration.py"
+ ],
+ "services.take_feedback_candidates": [
+  "test_take_review.py"
+ ],
+ "services.take_feedback_set": [
+  "test_take_review.py",
+  "tests/test_take_feedback_set.py"
+ ],
+ "services.take_review": [
+  "test_take_review.py"
+ ],
+ "services.training_import": [
+  "test_training_import.py"
+ ],
+ "services.user_patterns": [
+  "test_user_patterns.py"
+ ],
+ "services.voice_confidence": [
+  "test_vc_backfill.py",
+  "test_voice_confidence.py"
+ ],
+ "services.verbal_markers": [
+  "test_verbal_markers.py"
+ ],
+ "services.video_url_validation": [
+  "test_video_url_validation.py"
+ ],
+ "services.deck_parser": [
+  "test_wave4_slides.py"
+ ],
+ "services.baseline_summary": [
+  "test_will_voice.py"
+ ],
+ "services.coaching_intro": [
+  "test_will_voice.py"
+ ],
+ "services.directive_suggestions": [
+  "test_will_voice.py"
+ ],
+ "services.snippet_drafts": [
+  "test_will_voice.py"
+ ],
+ "services.will_voice": [
+  "test_will_voice.py"
+ ],
+ "services.utils": [
+  "test_word_diff_gate.py"
+ ],
+ "app": [
+  "tests/integration/test_api_seams.py"
+ ],
+ "services.admin_user_directory": [
+  "tests/test_admin_user_directory.py"
+ ],
+ "services.blind_review_media": [
+  "tests/test_blind_review_media.py"
+ ],
+ "services.ceo": [
+  "tests/test_ceo_foundation.py",
+  "tests/test_ceo_intelligence.py"
+ ],
+ "services.ceo_intelligence": [
+  "tests/test_ceo_intelligence.py"
+ ],
+ "services.ceo_work_items": [
+  "tests/test_ceo_work_items.py"
+ ],
+ "services.coach_blind_gate": [
+  "tests/test_coach_blind_gate.py"
+ ],
+ "services.coach_guidance_delivery": [
+  "tests/test_coach_guidance_delivery_d3.py",
+  "tests/test_mlc3_coach_inline_authoring_d5.py",
+  "tests/test_mlc3_first_client_service_d2.py"
+ ],
+ "services.data_purge_registry": [
+  "tests/test_coach_guidance_delivery_d3.py",
+  "tests/test_mlc3_coach_inline_authoring_d5.py",
+  "tests/test_mlc3_dark_assignment_contract.py",
+  "tests/test_mlc3_dark_assignments_postgres.py",
+  "tests/test_mlc3_first_client_service_d2.py",
+  "tests/test_mlc3_n1_source_pattern_postgres.py",
+  "tests/test_phase1_deletion_completion.py"
+ ],
+ "services.dataset_releases": [
+  "tests/test_dataset_releases.py"
+ ],
+ "services.feedback_data_contract": [
+  "tests/test_feedback_data_contract.py",
+  "tests/test_mlc3_first_client_feedback.py"
+ ],
+ "services.first_client_repository": [
+  "tests/test_first_client_refactor.py",
+  "tests/test_mlc3_general_user_service_d4.py"
+ ],
+ "services.practice_attempt_orchestrator": [
+  "tests/test_first_client_refactor.py"
+ ],
+ "services.founder_confidence_comparison": [
+  "tests/test_founder_confidence_comparison.py"
+ ],
+ "services.ideal_text_core_snapshot": [
+  "tests/test_ideal_text_cold_open.py"
+ ],
+ "services.ideal_text_enrichment": [
+  "tests/test_ideal_text_cold_open.py"
+ ],
+ "services.mlc2_confidence": [
+  "tests/test_mlc2_confidence.py"
+ ],
+ "services.mlc2_confidence_blind": [
+  "tests/test_mlc2_confidence_blind.py"
+ ],
+ "services.mlc2_confidence_producer": [
+  "tests/test_mlc2_confidence_producer.py"
+ ],
+ "services.mlc2_confidence_readiness": [
+  "tests/test_mlc2_confidence_readiness.py"
+ ],
+ "routes.v2.coach_guidance_delivery": [
+  "tests/test_mlc3_coach_inline_authoring_d5.py"
+ ],
+ "services.data_purge": [
+  "tests/test_mlc3_dark_assignments_postgres.py",
+  "tests/test_phase1_deletion_completion.py"
+ ],
+ "services.mlc3_first_client_feedback": [
+  "tests/test_mlc3_first_client_feedback.py"
+ ],
+ "services.take_feedback_policy_v3": [
+  "tests/test_mlc3_first_client_feedback.py",
+  "tests/test_take_feedback_policy_v3.py"
+ ],
+ "services.take_feedback_policy_v3_service": [
+  "tests/test_mlc3_first_client_feedback.py"
+ ],
+ "routes.v2.mlc3_first_client_coach": [
+  "tests/test_mlc3_first_client_service_d2.py"
+ ],
+ "services.mlc3_founder_canary_monitor": [
+  "tests/test_mlc3_founder_canary_monitor.py"
+ ],
+ "scripts": [
+  "tests/test_mlc3_founder_canary_readiness.py",
+  "tests/test_phase1_deletion_completion.py"
+ ],
+ "scripts.check_mlc3_founder_canary_readiness": [
+  "tests/test_mlc3_founder_canary_readiness.py",
+  "tests/test_mlc3_founder_canary_readiness_postgres.py"
+ ],
+ "scripts.rehearse_mlc3_founder_r2": [
+  "tests/test_mlc3_founder_canary_readiness.py"
+ ],
+ "scripts.sign_mlc3_founder_deployment_attestation": [
+  "tests/test_mlc3_founder_canary_readiness.py"
+ ],
+ "services.mlc3_founder_canary_readiness": [
+  "tests/test_mlc3_founder_canary_readiness.py"
+ ],
+ "services.mlc3_general_service_monitor": [
+  "tests/test_mlc3_general_service_monitor.py"
+ ],
+ "scripts.check_mlc3_general_service_readiness": [
+  "tests/test_mlc3_general_service_readiness.py"
+ ],
+ "services.mlc3_general_service_readiness": [
+  "tests/test_mlc3_general_service_readiness.py"
+ ],
+ "routes.v2.mlc3_first_client_service": [
+  "tests/test_mlc3_general_user_service_d4.py"
+ ],
+ "services.mlc3_pilot_storage": [
+  "tests/test_mlc3_pilot_storage.py"
+ ],
+ "services.user_media_storage": [
+  "tests/test_mlc3_pilot_storage.py"
+ ],
+ "scripts.run_phase1_data_purge": [
+  "tests/test_phase1_deletion_completion.py"
+ ],
+ "services.provider_deletion": [
+  "tests/test_phase1_deletion_completion.py"
+ ],
+ "services.processing_stages": [
+  "tests/test_processing_stages.py"
+ ],
+ "services.recording_roots": [
+  "tests/test_recording_roots.py"
+ ],
+ "services.rooting_phrase": [
+  "tests/test_rooting_phrase.py"
+ ],
+ "services.rooting_phrase_qualification_v1": [
+  "tests/test_rooting_phrase_qualification_v1.py"
+ ],
+ "services.rushed_phrase_endings_n1": [
+  "tests/test_rushed_phrase_endings_n1.py"
+ ],
+ "services.snippet_transcription": [
+  "tests/test_snippet_transcription.py"
+ ],
+ "services.take_feedback_manager": [
+  "tests/test_take_feedback_manager.py"
+ ],
+ "services.take_feedback_responses": [
+  "tests/test_take_feedback_responses.py"
+ ]
+}

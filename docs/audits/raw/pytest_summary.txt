@@ -1,0 +1,80 @@
+routes/v2/lounge.py                               61     42    31%   39-42, 68-94, 124-154, 172-186
+routes/v2/mlc2_consent.py                         90     22    76%   87-94, 117, 127, 133, 142, 156, 206, 210-220
+routes/v2/mlc3_first_client_coach.py             185    133    28%   31-32, 36-39, 43-46, 50-52, 56, 60, 71-72, 90-113, 120-144, 148-149, 157-195, 201-235, 241-302, 308-327, 333-360, 366-382
+routes/v2/mlc3_first_client_service.py           373    230    38%   51-52, 56-61, 65-68, 72-75, 83, 91, 102-111, 115-119, 123-146, 172-199, 206-239, 247-268, 275-295, 302-337, 353, 361, 373-374, 381-408, 415-430, 437-473, 480-508, 515-563, 578, 586, 591, 595-596, 604-636, 644-667, 675-732, 747, 755, 760, 764-765, 772-798
+routes/v2/processing_authorization.py            182    130    29%   32-37, 44-46, 58-85, 102, 105, 111, 115-122, 134-162, 171-184, 190-216, 223-233, 240-273, 279-301, 307-315
+routes/v2/projects.py                            101     34    66%   45-46, 55, 60, 65, 73, 77-79, 100-106, 114-133, 145, 159-166, 177-178
+routes/v2/rooting_phrase_qualification.py         17      9    47%   14, 19-23, 28-31
+routes/v2/user_account.py                        227    141    38%   106, 129, 135, 172, 195, 213-219, 261-272, 290-299, 320-401, 426-449, 488-508, 535-630, 654-657, 688-691, 703-726
+routes/v2/user_chat.py                           318    318     0%   17-907
+routes/v2/user_sessions.py                       777    454    42%   52-130, 147, 164-180, 222-271, 302-334, 369-422, 437, 444, 456-457, 467, 503-506, 528, 535, 551-554, 579-583, 619-695, 727, 821-827, 913, 962-963, 988-994, 1019-1020, 1088-1092, 1109-1131, 1149-1171, 1213, 1227, 1271-1274, 1304-1308, 1316-1317, 1385-1389, 1406-1461, 1477-1654, 1660-1685, 1723-1855, 1863-1870, 1879-2016, 2026-2075, 2089-2094
+utils/errors.py                                   95     10    89%   132, 167, 276-280, 308-309, 317-318
+utils/metrics.py                                  43     16    63%   49, 61-69, 83-95
+worker.py                                        154    125    19%   34-35, 56-79, 105-125, 132-147, 160-166, 170-248, 253-260, 271-301, 312-359, 374
+----------------------------------------------------------------------------
+TOTAL                                          46558  20294    56%
+
+51 files skipped due to complete coverage.
+Coverage JSON written to file /tmp/claude-0/-home-user/051ca8c4-d1f3-5dee-ba2b-dc15e95979f4/scratchpad/audit/be_cov.json
+============================= slowest 60 durations =============================
+24.53s call     test_audio_metrics_features.py::ReadoutFeatureTests::test_all_ten_readout_features_present
+4.06s call     test_session_globals_wiring.py::TestSessionGlobalsAreReachable::test_compute_session_global_metrics_has_a_caller
+3.99s call     test_session_globals_wiring.py::TestSessionGlobalsAreReachable::test_the_caller_is_on_the_LIVE_recording_pipeline
+3.59s call     test_session_globals_wiring.py::TestSessionGlobalsAreReachable::test_the_globals_writer_is_reachable_from_it
+3.27s call     tests/test_phase1_deletion_completion.py::test_dependency_registry_classifies_runtime_relations_without_overlap
+3.20s call     test_snippet_table_name.py::TestTableNameIsCentralised::test_no_table_call_hardcodes_the_legacy_name
+3.10s call     test_snippet_value_resolution.py::TestTheFixtureIsFaithful::test_the_columns_really_are_unwritten_on_the_live_path
+3.01s call     test_snippet_table_name.py::TestTableNameIsCentralised::test_the_storage_prefix_is_not_the_table_and_must_not_be_renamed
+2.84s call     test_stress_snippets_retired.py::TestNoRuntimeCodeTouchesStressSnippets::test_the_deleted_accessors_have_not_returned
+2.81s call     test_stress_snippets_retired.py::TestNoRuntimeCodeTouchesStressSnippets::test_no_table_call_targets_the_retired_table
+2.39s call     test_prompt_registry.py::TestPromptRegistry::test_lockfile_matches_code
+2.21s call     test_prompt_registry.py::TestPromptRegistry::test_prompt_ids_are_namespaced
+2.11s call     test_rls_guard.py::ReportContentTests::test_sentry_is_best_effort_and_silent_on_a_clean_run
+1.94s call     test_prompt_registry.py::TestPromptRegistry::test_manifest_builds
+1.08s call     test_stripe_not_our_product.py::TierCheckoutTests::test_tier_with_no_mapped_price_is_a_config_error_not_a_crash
+0.77s call     test_rating_resume_is_own_only.py::TestTheReaderIsRaterScoped::test_it_does_not_select_the_note
+0.71s call     test_snippet_value_resolution.py::TestNothingReadsTheDeadColumns::test_no_row_read_of_a_dead_column
+0.67s call     test_rating_resume_is_own_only.py::TestTheReaderIsRaterScoped::test_no_rater_means_no_rows
+0.66s call     test_rating_resume_is_own_only.py::TestTheReaderIsRaterScoped::test_it_filters_on_rater_id
+0.56s setup    tests/integration/test_api_seams.py::test_critical_routes_are_wired
+0.53s call     test_presentation_extract.py::PresentationExtractValidationTests::test_oversize_pdf_413_contract
+0.46s call     test_migration_security_rules.py::NewFunctionsRevokeExecuteTests::test_every_created_function_revokes_execute_from_public
+0.43s call     test_dev_tasks.py::ExportPdfTests::test_markup_in_task_text_cannot_break_the_render
+0.39s call     test_rating_resume_is_own_only.py::TestTheReaderIsRaterScoped::test_the_reader_exists_and_takes_a_rater
+0.36s call     test_rating_resume_is_own_only.py::TestTheReviewReadPassesTheRater::test_the_rating_is_two_fields_not_three_values
+0.34s call     test_jwks.py::test_jwks_endpoint
+0.30s call     test_onboarding_opener.py::OpenerGuestAccessTests::test_start_no_joke_returns_204_for_a_guest_no_crash
+0.24s call     test_lab_analysis_dispatch.py::AnalysisDispatchTests::test_synchronous_take_one_timeout_is_not_reported_as_success
+0.23s call     test_rate_limits.py::CoveredRoutesTests::test_paid_routes_carry_their_limit_decorator
+0.18s call     test_migrations.py::CliTests::test_verify_passes_on_the_real_tree
+0.17s call     test_journal.py::PublishedFilterTranslationTests::test_hostile_search_leaves_the_status_filter_intact
+0.17s call     test_migrations.py::CliTests::test_verify_verbose_lists_destructive_files
+0.17s call     test_migrations.py::CliTests::test_verify_fails_on_an_untracked_sql_file
+0.17s call     test_migrations.py::CliTests::test_verify_recovers_after_the_stray_is_removed
+0.16s call     test_life_panel.py::NoNudgesTests::test_no_module_can_send_anything
+0.16s call     test_migrations.py::CliTests::test_offline_plan_needs_no_database
+0.16s call     test_parallel.py::OrderTests::test_the_same_inputs_give_the_same_output_every_time
+0.15s call     test_life_panel.py::NoNudgesTests::test_nothing_tracks_silence_or_streaks
+0.15s call     test_migrations.py::DestructiveDetectionTests::test_real_repo_files_flagged_are_the_known_set
+0.14s call     test_key_points.py::KeyPointsAreDeferredTests::test_the_flag_is_gone_rather_than_defaulted_off
+0.14s call     test_confidence_reviews.py::ConfidenceReviewRouteTests::test_unknown_snippet_is_a_404
+0.14s call     test_confidence_reviews.py::ConfidenceReviewRouteTests::test_missing_table_names_the_routing_migration
+0.13s call     test_confidence_reviews.py::ConfidenceReviewRouteTests::test_bad_uuid_is_a_400
+0.13s call     test_delivery_layer.py::PublishRouteContractTests::test_publish_analysis_is_the_only_publish_door
+0.13s call     test_confidence_reviews.py::ConfidenceReviewRouteTests::test_saves_owner_scoped_voice_album_routing
+0.13s call     test_delivery_layer.py::PublishRouteContractTests::test_wrapup_contract_points_stand
+0.13s call     test_living_transcript.py::ProposalNeverPaintsTests::test_the_accent_writer_has_exactly_ONE_caller_and_it_is_the_bake
+0.13s call     test_confidence_reviews.py::ConfidenceReviewRouteTests::test_response_carries_no_machine_score_or_training_label
+0.13s call     test_confidence_reviews.py::ConfidenceReviewRouteTests::test_string_true_is_a_400_at_the_route
+0.12s call     test_single_deliverable.py::MomentExplanationGetTests::test_route_paths_match_the_fe_pin
+0.12s call     test_projects.py::test_guest_project_is_created_before_take_and_returns_credential
+0.12s call     test_confidence_reviews.py::ConfidenceReviewRouteTests::test_foreign_owner_is_a_404
+0.12s call     test_projects.py::test_duplicate_display_names_are_not_rejected
+0.12s call     test_confidence_reviews.py::ConfidenceReviewRouteTests::test_changing_answer_replaces_the_routing_state
+0.12s call     test_projects.py::test_shaky_voice_and_ownerless_merge_routes_are_not_registered
+0.12s call     test_min_content_gate.py::MinContentGateTests::test_65s_voiced_passes
+0.11s call     test_projects.py::test_send_to_coach_uses_exact_owned_project_take_coordinates
+0.11s call     test_projects.py::test_send_to_coach_hides_an_unowned_take
+0.11s call     test_migration_security_rules.py::NewTablesEnableRlsTests::test_every_new_public_table_enables_rls_in_its_own_migration
+0.10s call     test_rating_resume_is_own_only.py::TestTheReviewReadPassesTheRater::test_the_map_only_reads_ratings_when_given_a_rater
+5048 passed, 362 skipped, 10 warnings, 113 subtests passed in 120.99s (0:02:00)
