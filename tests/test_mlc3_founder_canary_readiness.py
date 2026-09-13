@@ -837,10 +837,15 @@ def test_lower_level_writers_are_forbidden_and_revoked_before_activation():
 
 def test_security_closure_precedes_terminal_d4_release_migration_0326():
     manifest = (ROOT / "migrations/manifest.txt").read_text().splitlines()
-    assert "0325\tadd_mlc3_founder_canary_security_closure.sql" in manifest
-    assert manifest[-1] == (
-        "0326\tadd_mlc3_general_user_service_d4.sql"
-    )
+    security = "0325\tadd_mlc3_founder_canary_security_closure.sql"
+    d4_release = "0326\tadd_mlc3_general_user_service_d4.sql"
+    assert security in manifest
+    assert d4_release in manifest
+    # The property under test is the ORDER: the security closure must land
+    # before the D4 release it closes over. This used to assert that 0326 was
+    # the last manifest row, which held only until the next migration existed
+    # and said nothing about the ordering it meant to protect.
+    assert manifest.index(security) < manifest.index(d4_release)
     assert "release migration 0325" in SECURITY_MIGRATION
     assert "release migration 0326" in D4_RELEASE_MIGRATION
     assert SECURITY_MIGRATION.rindex("NOTIFY pgrst, 'reload schema';") < (

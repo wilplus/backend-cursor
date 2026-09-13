@@ -1,6 +1,6 @@
 from pathlib import Path
 
-SQL = (Path(__file__).resolve().parents[1] / "migrations/pending/add_confident_moment_coaching_bundle_v1.sql").read_text()
+SQL = (Path(__file__).resolve().parents[1] / "migrations/add_confident_moment_coaching_bundle_v1.sql").read_text()
 
 
 def test_coverage_is_database_derived_and_honest():

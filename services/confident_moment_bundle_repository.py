@@ -2,7 +2,7 @@
 
 Focused repository only — does not wrap services/db.py.  Calls the exact
 Chunk 2 SECURITY DEFINER RPCs defined in
-migrations/pending/add_confident_moment_coaching_bundle_v1.sql:
+migrations/add_confident_moment_coaching_bundle_v1.sql:
 
 - prepare_confident_moment_bundle_v1
 - project_confident_moment_bundles_v1

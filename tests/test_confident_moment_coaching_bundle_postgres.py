@@ -37,7 +37,7 @@ from tests.test_rooting_phrase_qualification_postgres import (
 
 DSN = os.environ.get("CONFIDENT_MOMENT_REHEARSAL_DSN", "")
 pytestmark = pytest.mark.skipif(not DSN, reason="disposable rehearsal only")
-SQL = (Path(__file__).resolve().parents[1] / "migrations/pending/add_confident_moment_coaching_bundle_v1.sql").read_text()
+SQL = (Path(__file__).resolve().parents[1] / "migrations/add_confident_moment_coaching_bundle_v1.sql").read_text()
 FOUNDATION_SQL = (
     Path(__file__).resolve().parents[1] / "migrations/add_mlc2_foundation.sql"
 ).read_text()

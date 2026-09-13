@@ -244,8 +244,8 @@ hard migrations/add_mlc3_general_user_service_d4.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.
-hard migrations/pending/add_confident_moment_coaching_bundle_v1.sql
-hard migrations/pending/add_confident_moment_coaching_bundle_v1.sql
+hard migrations/add_confident_moment_coaching_bundle_v1.sql
+hard migrations/add_confident_moment_coaching_bundle_v1.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
