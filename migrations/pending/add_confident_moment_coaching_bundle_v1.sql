@@ -1894,6 +1894,15 @@ ALTER TABLE public.user_arc_ideal_notes
  ADD COLUMN IF NOT EXISTS user_text_version integer NULL,
  ADD COLUMN IF NOT EXISTS user_text_revision bigint NULL;
 DO $cm_owner_lane_shape$ BEGIN
+ -- Legacy empty-string owner notes predate this lane shape.  '' is the "no
+ -- owner text" lane written wrongly, and the CHECK below admits that lane
+ -- only as NULL, so a live database carrying one row of it fails the ALTER.
+ -- Normalising first destroys no owner content -- there is none to destroy --
+ -- and it must precede the revision backfill, which would otherwise stamp a
+ -- revision onto a row that can never satisfy either branch.
+ UPDATE public.user_arc_ideal_notes
+    SET user_text=NULL, user_text_version=NULL, user_text_revision=NULL
+  WHERE user_text IS NOT NULL AND length(user_text)=0;
  UPDATE public.user_arc_ideal_notes SET user_text_revision=1
   WHERE user_text IS NOT NULL AND user_text_version>0 AND user_text_revision IS NULL;
  ALTER TABLE public.user_arc_ideal_notes DROP CONSTRAINT IF EXISTS user_arc_ideal_notes_owner_lane_shape;

@@ -12,7 +12,7 @@ Date: 2026-09-12
 - Playback closure D46: `2cc526321f10387ec775356995700e57c889c57b48d0441f1a2ffdd781d65db4`
 - Speaker-binding closure D48: `e637c3b25b77f24444b38ef7ad628890abf248869337a6ddc50c2d81090d0509`
 - Currentness and lock closure D49: `a833c211cf077f294a7973714c065aaa65a1c1aede33c49e4d7ae3debcdc7031`
-- Pending migration: `7ba7660f8cb5c808b3c246693c67769f048016d08c6192cc15a04fecd11aee91`
+- Pending migration: `5c0e288ddc4142704edeba34b5b207f7042dbc83d765855812801963dbe0cbcd`
 
 The pending migration remains unnumbered and absent from the numbered migration manifest.
 

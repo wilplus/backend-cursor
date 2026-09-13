@@ -48,7 +48,7 @@ latest override.
 Chunks 1–5 are implemented behind literal default-off gates and independently
 accepted for the local, unnumbered snapshot.
 
-- Pending migration SHA: `7ba7660f8cb5c808b3c246693c67769f048016d08c6192cc15a04fecd11aee91`.
+- Pending migration SHA: `5c0e288ddc4142704edeba34b5b207f7042dbc83d765855812801963dbe0cbcd`.
 - SQL/data audit: accepted after executable D46–D49 currentness, contention,
   exact owner-decision and target-speaker tests; PostgreSQL/security `110 passed`; narrow and production-shaped
   apply/reapply green.
