@@ -1900,9 +1900,21 @@ DO $cm_owner_lane_shape$ BEGIN
  -- Normalising first destroys no owner content -- there is none to destroy --
  -- and it must precede the revision backfill, which would otherwise stamp a
  -- revision onto a row that can never satisfy either branch.
+ -- The generation trigger is suspended for exactly this statement.  At this
+ -- point in the transaction the INSTALLED advance_ideal_text_document_generation_v1
+ -- is still the released one, whose ideal_text_part branch dereferences NEW.id
+ -- outside the TG_TABLE_NAME test; a user_arc_ideal_notes row has no id, so any
+ -- statement that actually changes user_text raises 42703 there.  The corrected
+ -- definition lands later in this migration, but the owner-lane constraint must
+ -- be established before it.  Suspending is also semantically right: '' -> NULL
+ -- is not a document text change, so the generation must not advance.
+ ALTER TABLE public.user_arc_ideal_notes
+   DISABLE TRIGGER user_ideal_edit_advances_document_generation;
  UPDATE public.user_arc_ideal_notes
     SET user_text=NULL, user_text_version=NULL, user_text_revision=NULL
   WHERE user_text IS NOT NULL AND length(user_text)=0;
+ ALTER TABLE public.user_arc_ideal_notes
+   ENABLE TRIGGER user_ideal_edit_advances_document_generation;
  UPDATE public.user_arc_ideal_notes SET user_text_revision=1
   WHERE user_text IS NOT NULL AND user_text_version>0 AND user_text_revision IS NULL;
  ALTER TABLE public.user_arc_ideal_notes DROP CONSTRAINT IF EXISTS user_arc_ideal_notes_owner_lane_shape;
