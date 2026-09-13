@@ -207,6 +207,16 @@ def main() -> int:
         logger.info("boot sweep: %s", counts)
     except Exception as e:
         logger.warning("boot sweep failed: %s", e)
+    try:
+        from services.confident_moment_delivery_worker import (
+            _CONFIDENT_MOMENT_BOOT_SWEEP_TOKEN,
+            sweep_due_confident_moment_deliveries,
+        )
+        sweep_due_confident_moment_deliveries(
+            _boot_token=_CONFIDENT_MOMENT_BOOT_SWEEP_TOKEN
+        )
+    except Exception as e:
+        logger.warning("confident-moment boot sweep failed: %s", e)
     # ONE CHAIN, NOT ONE PER BOOT. run_sweep_loop re-enqueues itself in a
     # `finally`, so a chain never ends — and this used to start a fresh one
     # every boot. Ten restarts left ten immortal chains sweeping in parallel,

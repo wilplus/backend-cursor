@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+import time
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -259,3 +261,57 @@ def enqueue(func_path: str, *args: Any, delay_seconds: int = 0,
     except Exception as e:
         logger.warning("job_queue: enqueue failed (%s): %s", func_path, e)
         return False
+
+
+def enqueue_with_monotonic_deadline(
+    func_path: str,
+    *args: Any,
+    rq_job_id: str,
+    deadline_monotonic: float,
+) -> bool:
+    """One isolated, deadline-bounded enqueue for the delivery sweep.
+
+    The enclosing sweep owns SIGALRM. This adapter never touches cached Redis
+    state and never installs a nested timer.
+    """
+    if os.name != "posix" or threading.current_thread() is not threading.main_thread():
+        return False
+    remaining = deadline_monotonic - time.monotonic()
+    url = (os.getenv("REDIS_URL") or "").strip()
+    if remaining <= 0 or not url or not rq_job_id:
+        return False
+    connection = None
+    try:
+        import redis
+        from rq import Queue
+
+        timeout = max(0.001, remaining)
+        connection = redis.from_url(
+            url,
+            socket_connect_timeout=timeout,
+            socket_timeout=timeout,
+            retry_on_timeout=False,
+            retry=None,
+        )
+        remaining = deadline_monotonic - time.monotonic()
+        if remaining <= 0:
+            return False
+        queue = Queue(queue_name(), connection=connection)
+        queue.enqueue(
+            func_path,
+            *args,
+            job_id=rq_job_id,
+            job_timeout=job_timeout_seconds(),
+            result_ttl=0,
+            failure_ttl=7 * 24 * 3600,
+        )
+        return True
+    except Exception as error:  # noqa: BLE001 - bounded wake-up is best effort
+        logger.warning("job_queue: bounded enqueue failed (%s): %s", func_path, error)
+        return False
+    finally:
+        if connection is not None:
+            try:
+                connection.connection_pool.disconnect(inuse_connections=True)
+            except Exception:  # noqa: BLE001 - local cleanup is best effort
+                pass

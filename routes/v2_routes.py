@@ -135,6 +135,15 @@ from routes.v2.rooting_phrase_qualification import (  # noqa: F401
     v2_rooting_phrase_qualification,
     v2_rooting_phrase_qualification_action,
 )
+from routes.v2.confident_moment_bundles import (  # noqa: F401 — Chunk 3, disabled by default
+    list_confident_moment_bundles,
+    ack_confident_moment_bundle_render,
+    ack_coach_update_render,
+    publish_confident_moment_coach_feedback_language,
+    record_confident_moment_family_response,
+    record_confident_moment_root_action,
+    update_confident_moment_bundle_text,
+)
 from routes.v2.coach_guidance_delivery import (  # noqa: F401
     v2_coach_guidance_attachment,
     v2_coach_guidance_batch,

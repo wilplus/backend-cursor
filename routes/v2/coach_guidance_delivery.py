@@ -201,11 +201,34 @@ def _store_inline_general_media(
 @v2_bp.get("/coach/guidance/batches/<arc_id>")
 @require_admin_or_coach
 def v2_coach_guidance_batch(arc_id: str):
-    if not runtime_is_enabled() and not inline_authoring_is_enabled():
+    from services.confident_moment_bundle import (
+        runtime_is_enabled as confident_moment_is_enabled,
+    )
+    if (
+        not runtime_is_enabled()
+        and not inline_authoring_is_enabled()
+        and not confident_moment_is_enabled()
+    ):
         return _disabled_response()
     try:
         project_id = _uuid(arc_id, "project_id")
         reviewer = _reviewer_principal_id()
+        if confident_moment_is_enabled():
+            from services.confident_moment_bundle_repository import (
+                ConfidentMomentBundleRepository,
+            )
+            bundle_context = ConfidentMomentBundleRepository(
+                client_provider=lambda: db.client
+            ).project_coach_authoring_context(
+                project_id=project_id,
+                reviewer_principal_id=reviewer,
+                idempotency_key=(
+                    f"confident-moment-coach-context:{project_id}:{reviewer}"
+                ),
+            )
+            if not isinstance(bundle_context, dict):
+                return _unavailable()
+            return jsonify(bundle_context), 200
         if inline_authoring_is_enabled():
             project = db.get_project_identity(project_id)
             if not project:
@@ -214,7 +237,7 @@ def v2_coach_guidance_batch(arc_id: str):
                 project.get("owner_principal_id"),
                 "acquisition_principal_id",
             )
-            context = db.prepare_coach_inline_guidance_context({
+            inline_context = db.prepare_coach_inline_guidance_context({
                 "p_project_id": project_id,
                 "p_acquisition_principal_id": owner_principal_id,
                 "p_reviewer_principal_id": reviewer,
@@ -222,9 +245,9 @@ def v2_coach_guidance_batch(arc_id: str):
                     f"coach-inline-context:{project_id}:{reviewer}"
                 ),
             })
-            if not context:
+            if not inline_context:
                 return _unavailable()
-            return jsonify(context), 200
+            return jsonify(inline_context), 200
         sessions = db.list_exercise_service_review_sessions(project_id)
         if sessions is None:
             return _unavailable()

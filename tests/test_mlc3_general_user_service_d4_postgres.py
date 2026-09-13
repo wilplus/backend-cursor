@@ -7,6 +7,7 @@ media, production mutation, exposure, dataset or learning operation occurs.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
@@ -290,7 +291,7 @@ def _activate_ga(db, context):
             capacity_hash,
             user_id,
             "founder-signed-test",
-            "c" * 64,
+            hashlib.sha256(f"ga-risk:{user_id}".encode()).hexdigest(),
         ),
     )
     rollout = one(

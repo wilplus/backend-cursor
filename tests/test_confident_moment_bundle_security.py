@@ -1,4 +1,5 @@
 import ast
+import tokenize
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,17 +47,35 @@ def test_d5_prepared_presentation_is_not_a_render_or_response():
 
 def test_d5_visible_render_reuses_the_canonical_v3_transition():
     render = SQL.split(
-        "CREATE OR REPLACE FUNCTION public.ack_confident_moment_bundle_item_render_v1",
+        "CREATE OR REPLACE FUNCTION public.ack_confident_moment_bundle_item_render_v3",
         1,
     )[1].split("END $$;", 1)[0]
     assert "ack_feedback_v3_service_render_v1" in render
-    assert "a.canonical_feedback_presentation_id<>p_presentation_id" in render
+    assert "bundle_subject_candidate_id=p_bundle_id" in render
+    assert "a.canonical_feedback_presentation_id<>p_feedback_exposure_id" in render
+    assert "'presentation_id'" not in render
+    assert "confident-moment-bundle-item-render-v3" in render
+    assert render.count("require_feedback_v3_service_membership_live_v1") == 3
+    assert "m.document_snapshot_id<>a.document_snapshot_id" in render
     assert "INSERT INTO public.feedback_exposures" not in render
+    assert "render_receipt_id" in render
+    assert "r.id=r.feedback_exposure_id" in render
+
+
+def test_d15_projection_exposes_exact_family_and_feedback_exposure_identity():
+    projection = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.project_confident_moment_bundles_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    assert "'feedback_family',attachment.feedback_family" in projection
+    assert "'canonical_feedback_exposure_id',attachment.canonical_feedback_presentation_id" in projection
+    assert "'family',attachment.feedback_family" in projection
+    assert "'feedback_exposure',attachment.canonical_feedback_presentation_id" in projection
 
 
 def test_coach_update_render_is_bound_to_the_exact_revision_and_surface():
     render = SQL.split(
-        "CREATE OR REPLACE FUNCTION public.ack_feedback_language_revision_render_v2",
+        "CREATE OR REPLACE FUNCTION public.ack_feedback_language_revision_render_v3",
         1,
     )[1].split("END $$;", 1)[0]
     assert "artifact_id=d.revision_id" in render
@@ -65,6 +84,9 @@ def test_coach_update_render_is_bound_to_the_exact_revision_and_surface():
     assert "correction_generation" in render
     assert "praise_generation" in render
     assert "p_bundle_attachment_id" in render
+    assert "bundle_subject_candidate_id=p_bundle_id" in render
+    assert "feedback-language-revision-render-v3" in render
+    assert "e.idempotency_key<>p_idempotency_key" in render
     assert "attached_candidate_id=revision.feedback_candidate_id" in render
     assert "feedback-language-delivery-subject:" in render
     assert "feedback-language-revision-head:" in render
@@ -85,7 +107,7 @@ def test_projection_unread_is_derived_from_canonical_render_exposure():
     assert "d.delivery_state LIKE 'scheduled_%'" not in projection
 
 
-def test_canonical_ideal_text_helper_is_the_only_literal_root_writer():
+def test_only_reviewed_atomic_boundaries_write_ideal_text_parts():
     assert "p_expected_part_revision_id bigint" in SQL
     helper = SQL.split(
         "CREATE OR REPLACE FUNCTION public.transition_ideal_text_root_state_v1", 1
@@ -93,10 +115,80 @@ def test_canonical_ideal_text_helper_is_the_only_literal_root_writer():
     assert "UPDATE public.ideal_text_part" in helper
     assert "INSERT INTO public.ideal_text_part_revision" in helper
     outside = SQL.replace(helper, "")
+    update = outside.split(
+        "CREATE OR REPLACE FUNCTION public.apply_confident_moment_bundle_text_update_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    assert "UPDATE public.ideal_text_part SET" in update
+    assert "INSERT INTO public.ideal_text_part_revision" in update
+    outside = outside.replace(update, "")
+    ordinary = outside.split(
+        "CREATE OR REPLACE FUNCTION public.compare_and_set_user_ideal_edit_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    assert "UPDATE public.ideal_text_part SET" in ordinary
+    assert "INSERT INTO public.ideal_text_part_revision" in ordinary
+    outside = outside.replace(ordinary, "")
     assert "UPDATE public.ideal_text_part SET" not in outside
     assert "PERFORM public.transition_ideal_text_root_state_v1" in outside
     assert "CONFIDENT_MOMENT_LEGACY_ACTIVATION_SHAPE_DRIFT" in outside
     assert "CONFIDENT_MOMENT_LEGACY_REMOVAL_SHAPE_DRIFT" in outside
+
+
+def test_d25_lock_helper_has_closed_three_phase_order():
+    helper = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.lock_confident_moment_position_100_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    phase_a = helper.index("^root-block:")
+    phase_b = helper.index("^ideal-root-transition:")
+    phase_c = helper.index("^ideal-text-part-revision-head:")
+    assert phase_a < phase_b < phase_c
+    assert helper.count("pg_advisory_xact_lock") == 3
+    assert helper.count("SELECT DISTINCT value") == 3
+    assert helper.count("ORDER BY convert_to(value,'UTF8')") == 3
+
+
+def test_coach_publish_uses_prewrite_authority_and_postrevision_source_guard():
+    body = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.publish_confident_moment_coach_feedback_language_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    revision_call = body.index("record_feedback_language_coach_revision_v2")
+    post_guard = body.index("require_feedback_language_coach_source_live_v1")
+    assert body.index("require_coach_guidance_reviewer_access_v1") < revision_call
+    assert body.index("require_coach_guidance_assignment_live_v1") < revision_call
+    assert body.index("require_mlc3_service_access_v2") < revision_call
+    assert revision_call < post_guard
+    assert "created_revision_id,a.acquisition_principal_id,a.feedback_membership_id" in body
+    assert "output_hash:=public.feedback_candidate_output_sha256_v1" in body
+
+
+def test_d20_d24_structural_storage_is_present_and_non_learning():
+    required_tables = (
+        "ideal_text_user_edit_cas_operations",
+        "confident_moment_bundle_text_update_bindings",
+        "confident_moment_coach_authorability_inventories",
+        "confident_moment_coach_authorability_items",
+        "confident_moment_blind_assignment_bindings",
+        "confident_moment_coach_wording_authority_bindings",
+        "feedback_language_delivery_materialization_jobs",
+    )
+    for table in required_tables:
+        definition = SQL.split(f"CREATE TABLE IF NOT EXISTS public.{table}", 1)[1]
+        definition = definition.split(";", 1)[0]
+        assert "serves_user boolean NOT NULL DEFAULT false CHECK(NOT serves_user)" in definition
+        assert "dataset_eligible boolean NOT NULL DEFAULT false CHECK(NOT dataset_eligible)" in definition
+    assert "CHECK(source_document_snapshot_id=result_document_snapshot_id)" in SQL
+    assert "user_text_revision bigint NULL" in SQL
+    for action in (
+        "owner_part_created",
+        "owner_part_text_updated",
+        "owner_part_reordered",
+        "owner_part_text_updated_and_reordered",
+        "owner_part_removed",
+    ):
+        assert action in SQL
 
 
 def test_d6_root_source_matrix_and_practice_guard_are_closed():
@@ -113,8 +205,7 @@ def test_d6_root_source_matrix_and_practice_guard_are_closed():
     assert "greatest(lineage.recording_attempt_id,attempt.processing_recording_attempt_id)" in guard
     assert "require_practice_source_live_v1" in guard
     assert "require_exercise_service_offer_live_v1" in guard
-    assert "source_binding.binding_state<>'active'" in guard
-    assert "practice_binding.binding_state<>'active'" in guard
+    assert guard.count("resolve_confident_moment_target_speaker_binding_v1") == 2
     assert "source_binding.speaker_id<>practice_binding.speaker_id" in guard
     assert "ROOTING_PHRASE_SPEAKER_IDENTITY_INVALID" in guard
     assert "INSERT INTO public.exercise_pair_revisions" not in guard
@@ -305,6 +396,7 @@ def test_d11_runtime_rpc_caller_registry_is_exact():
         "ensure_mlc3_service_enrollment_v2",
         "freeze_feedback_v3_service_membership_v1",
         "ack_feedback_v3_service_render_v1",
+        "record_confident_moment_bundle_family_response_v1",
         "publish_ideal_text_document_snapshot_v1",
         "accept_phase1_processing_authorization_v1",
         "mark_phase1_storage_object_purged_v1",
@@ -314,6 +406,7 @@ def test_d11_runtime_rpc_caller_registry_is_exact():
         ("services/first_client_repository.py", "ensure_service_enrollment", "ensure_mlc3_service_enrollment_v2"),
         ("services/first_client_repository.py", "freeze_feedback_v3_service_membership", "freeze_feedback_v3_service_membership_v1"),
         ("services/first_client_repository.py", "ack_feedback_v3_service_render", "ack_feedback_v3_service_render_v1"),
+        ("services/confident_moment_bundle_repository.py", "record_family_response", "record_confident_moment_bundle_family_response_v1"),
         ("services/db.py", "publish_ideal_text_document_snapshot", "publish_ideal_text_document_snapshot_v1"),
         ("services/processing_authorization.py", "accept", "accept_phase1_processing_authorization_v1"),
         ("services/data_purge.py", "_resolve_object", "mark_phase1_storage_object_purged_v1"),
@@ -323,10 +416,12 @@ def test_d11_runtime_rpc_caller_registry_is_exact():
     for path in ROOT.rglob("*.py"):
         relative = path.relative_to(ROOT)
         if "tests" in relative.parts or any(
-            part in {"venv", ".venv", "build", "dist"} for part in relative.parts
+            part in {"venv", ".venv", ".venv-ci", "build", "dist"}
+            for part in relative.parts
         ):
             continue
-        tree = ast.parse(path.read_text())
+        with tokenize.open(path) as source:
+            tree = ast.parse(source.read(), filename=str(path))
         parents: dict[ast.AST, ast.AST] = {}
         for node in ast.walk(tree):
             for child in ast.iter_child_nodes(node):
@@ -350,3 +445,249 @@ def test_d11_runtime_rpc_caller_registry_is_exact():
     assert actual == expected
     monitor = (ROOT / "scripts/monitor_mlc3_general_service.py").read_text()
     assert monitor.count("halt_mlc3_service_rollout_v1") == 1
+
+
+def test_bundle_text_update_binding_is_part_of_root_action_identity():
+    sql = SQL.lower()
+    assert "source_text_update_binding_id uuid" in sql
+    assert "r.source_text_update_binding_id is distinct from p_source_text_update_binding_id" in sql
+    assert "'text_update_binding',p_source_text_update_binding_id" in sql
+    assert "source_ideal_text_revision_id,source_text_update_binding_id,source_target_speaker_binding_id" in sql
+
+
+def test_d29_d37_delivery_scheduler_contract_is_closed_and_dark():
+    for table in (
+        "feedback_language_delivery_job_claim_attempts",
+        "feedback_language_delivery_job_claim_heads",
+        "feedback_language_delivery_job_due_heads",
+        "feedback_language_delivery_scan_runs",
+        "feedback_language_delivery_stalled_scan_halt_receipts",
+    ):
+        assert f"CREATE TABLE IF NOT EXISTS public.{table}" in SQL
+    assert "CREATE INDEX IF NOT EXISTS feedback_language_delivery_due_pending_idx" in SQL
+    scanner = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.scan_due_feedback_language_delivery_jobs_v1", 1
+    )[1].split("END $$;", 1)[0]
+    assert "p_limit IS DISTINCT FROM 3" in scanner
+    assert "ORDER BY h.next_probe_at,h.job_id LIMIT 3" in scanner
+    assert "FOR UPDATE NOWAIT" in scanner
+    assert "SKIP LOCKED" not in scanner
+    assert "contention_nowait_count" in scanner
+    assert "currentness_miss_count" in scanner
+    assert "CONFIDENT_MOMENT_DELIVERY_SCAN_SERVER_BUDGET_EXCEEDED" in scanner
+    assert "require_mlc3_service_access_v2" not in scanner
+    assert "DROP FUNCTION IF EXISTS public.claim_due_feedback_language_delivery_jobs_v1" in SQL
+    assert "dataset_eligible boolean NOT NULL DEFAULT false CHECK(NOT dataset_eligible)" in SQL
+
+
+def test_d29_core_v2_has_exact_snapshot_shape_and_database_hash():
+    core = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.read_ideal_text_document_core_v2", 1
+    )[1].split("END $$;", 1)[0]
+    for key in (
+        "'id'", "'arc_id'", "'actor_id'", "'acquisition_principal_id'",
+        "'project_id'", "'source_take_session_id'", "'version'",
+        "'source_generation'", "'source_fingerprint_sha256'", "'payload_sha256'",
+        "'payload'", "'enrichment_seed'", "'supersedes_id'", "'created_at'",
+    ):
+        assert key in core
+    assert "YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"" in core
+    assert "read_sha256" in core
+    assert "to_jsonb(s)" not in core and "to_jsonb(snapshot)" not in core
+
+
+def test_d43_source_playback_authority_is_internal_exact_and_bounded():
+    body = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.resolve_confident_moment_source_playback_authority_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    for token in (
+        "pg_try_advisory_xact_lock",
+        "'lock_timeout','50ms'",
+        "processing_audio_object_deletion_events",
+        "data_purge_requests",
+        "byte_size BETWEEN 1 AND 26214400",
+        "require_mlc3_service_access_v2",
+        "require_feedback_v3_service_membership_live_v1",
+        "'confident-moment-source-playback-authority-v1'",
+        "'authority_sha256'",
+        "'dataset_eligible',false",
+    ):
+        assert token in body
+    assert "presigned" not in body.lower()
+    assert "INSERT INTO" not in body and "UPDATE public." not in body
+    assert (
+        "GRANT EXECUTE ON FUNCTION public.resolve_confident_moment_source_playback_authority_v1(uuid,uuid,uuid) TO service_role"
+        in SQL
+    )
+
+
+def test_d43_exercise_correlation_has_closed_family_scope_and_no_writes():
+    body = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.resolve_confident_moment_exercise_offer_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    for token in (
+        "family<>'confident_voice'",
+        "a.bundle_subject_kind<>'confidence_anchor'",
+        "feedback_v3_service_response_bindings",
+        "require_feedback_v3_service_response_v1",
+        "require_exercise_service_offer_live_v1",
+        "'confident-moment-exercise-correlation-v2'",
+        "'status','not_supplied'",
+        "'status','available'",
+        "'dataset_eligible',false",
+    ):
+        assert token in body
+    assert "INSERT INTO" not in body and "UPDATE public." not in body
+
+
+def test_d43_owner_decision_is_persisted_and_changes_projection_identity():
+    projection = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.project_confident_moment_bundles_v1", 1
+    )[1].split("END $$;", 1)[0]
+    assert "derive_confident_moment_owner_decision_v1" in projection
+    assert "'owner_decisions'" in projection
+    assert "'owner_decision',owner_decision" in projection
+    assert "ADD COLUMN IF NOT EXISTS owner_decision jsonb NULL" in SQL
+    assert "confident_moment_owner_decision_bindings" in projection
+
+
+def test_d46_emit_authorization_is_stateless_closed_and_rederives_authority():
+    body = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.authorize_confident_moment_source_playback_emit_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    for token in (
+        "resolve_confident_moment_source_playback_authority_v1",
+        "p_expected_authority_sha256",
+        "p_buffered_bytes_sha256",
+        "p_playback_request_id",
+        "'confident-moment-source-playback-emit-v1'",
+        "'emit_authorized',true",
+        "'emit_authorization_sha256'",
+        "'dataset_eligible',false",
+        "CONFIDENT_MOMENT_USER_READ_RETRY_REQUIRED",
+        "CONFIDENT_MOMENT_SOURCE_MEDIA_POLICY_INVALID",
+    ):
+        assert token in body
+    assert "INSERT INTO" not in body
+    assert "UPDATE public." not in body
+    assert "DELETE FROM" not in body
+    assert "expires_at" not in body
+    assert (
+        "GRANT EXECUTE ON FUNCTION public.authorize_confident_moment_source_playback_emit_v1(uuid,uuid,uuid,text,text,uuid) TO service_role"
+        in SQL
+    )
+
+
+def test_d48_exercise_correlation_and_practice_guard_bind_exact_speaker_ids():
+    correlation = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.resolve_confident_moment_exercise_offer_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    for token in (
+        "source_target_speaker_binding_id",
+        "resolve_confident_moment_target_speaker_binding_v1",
+        "source_binding_result",
+    ):
+        assert token in correlation
+    not_supplied = correlation.split("'status','not_supplied'", 1)[1].split("RETURN", 1)[0]
+    assert "source_target_speaker_binding_id" not in not_supplied
+    guard = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.require_root_phrase_practice_source_live_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    for token in (
+        "resolve_confident_moment_exercise_offer_v1",
+        "correlation->>'source_target_speaker_binding_id'",
+        "practice_result",
+        "source_result",
+        "practice_binding.acquisition_principal_id<>p_acquisition_principal_id",
+        "CONFIDENT_MOMENT_PROJECTION_INVALID",
+    ):
+        assert token in guard
+
+
+def test_d49_owner_decision_binding_is_exact_append_only_and_projection_owned():
+    assert "CREATE TABLE IF NOT EXISTS public.confident_moment_owner_decision_bindings" in SQL
+    assert "UNIQUE(bundle_attachment_id)" in SQL
+    assert "'confident_moment_owner_decision_bindings'" in SQL
+    assert "t||'_append_only'" in SQL
+    assert "'confident-moment-owner-decision:'" in SQL
+    projection = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.project_confident_moment_bundles_v1", 1
+    )[1].split("END $$;", 1)[0]
+    assert "confident_moment_owner_decision_bindings" in projection
+    assert "feedback_v3_service_response_bindings b WHERE" not in projection
+    assert "'feedback_language_shape_version','feedback-language-items-v2'" in projection
+
+
+def test_d49_owner_decision_writers_are_in_the_closed_overload_registry():
+    registry = SQL.split("expected_functions text[]:=ARRAY[", 1)[1].split(
+        "];\n signature text;", 1
+    )[0]
+    for signature in (
+        "public.record_feedback_human_decision_v1(uuid,uuid,uuid,text,text,text,text,text)",
+        "public.record_feedback_human_decision_v1(uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text)",
+        "public.record_confident_moment_bundle_family_response_v1(uuid,uuid,uuid,uuid,uuid,text,text)",
+    ):
+        assert registry.count(signature) == 1
+
+    overload_names = SQL.split("procedure.proname=ANY(ARRAY[", 1)[1].split("]);", 1)[0]
+    assert overload_names.count("'record_feedback_human_decision_v1'") == 1
+    assert overload_names.count("'record_confident_moment_bundle_family_response_v1'") == 1
+
+
+def test_d49_canonical_speaker_resolver_is_the_only_binding_currentness_rule():
+    resolver = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.resolve_confident_moment_target_speaker_binding_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    for token in (
+        "CONFIDENT_MOMENT_TARGET_SPEAKER_INVALID",
+        "supersedes_revision_id=r.id",
+        "supersedes_binding_id=b.id",
+        "speaker_identity_status='resolved'",
+        "b.clip_id=p_clip_id",
+        "b.practice_attempt_id=p_practice_attempt_id",
+        "'confident-moment-target-speaker-binding-v1'",
+    ):
+        assert token in resolver
+    correlation = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.resolve_confident_moment_exercise_offer_v1", 1
+    )[1].split("END $$;", 1)[0]
+    guard = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.require_root_phrase_practice_source_live_v1", 1
+    )[1].split("END $$;", 1)[0]
+    assert "resolve_confident_moment_target_speaker_binding_v1" in correlation
+    assert guard.count("resolve_confident_moment_target_speaker_binding_v1") == 2
+
+
+def test_d49_practice_guard_precedes_root_lock_and_timeout_claim_is_truthful():
+    root = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.record_root_phrase_product_action_v2", 1
+    )[1].split("END $$;", 1)[0]
+    first_guard = root.index("require_root_phrase_practice_source_live_v1")
+    first_root_lock = root.index("'root-block:'")
+    assert first_guard < first_root_lock
+    playback = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.resolve_confident_moment_source_playback_authority_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    assert "set_config('statement_timeout'" not in playback
+    assert "pg_try_advisory_xact_lock" in playback
+    assert "FOR SHARE NOWAIT" in playback
+
+
+def test_root_only_ideal_text_updates_do_not_invalidate_semantic_snapshot():
+    body = SQL.split(
+        "CREATE OR REPLACE FUNCTION public.advance_ideal_text_document_generation_v1",
+        1,
+    )[1].split("END $$;", 1)[0]
+    root_only_guard = body.split(
+        "IF TG_TABLE_NAME='ideal_text_part' AND TG_OP='UPDATE' THEN", 1
+    )[1].split("SELECT capability_id INTO cap", 1)[0]
+    assert "NEW.text IS NOT DISTINCT FROM OLD.text" in root_only_guard
+    assert "NEW.ord IS NOT DISTINCT FROM OLD.ord" in root_only_guard
+    assert "RETURN NEW" in root_only_guard

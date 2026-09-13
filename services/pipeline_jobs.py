@@ -1118,6 +1118,16 @@ def run_sweep_loop(chain_id: Optional[str] = None) -> None:
             log_saturation()
         except Exception as he:
             logger.warning("pipeline_jobs: health probe failed: %s", he)
+        try:
+            from services.confident_moment_delivery_worker import (
+                sweep_due_confident_moment_deliveries,
+            )
+            sweep_due_confident_moment_deliveries()
+        except Exception as delivery_error:
+            logger.warning(
+                "pipeline_jobs: confident-moment sweep failed: %s",
+                delivery_error,
+            )
     finally:
         if chain_id and job_queue.renew_sweep_lease(
                 chain_id,

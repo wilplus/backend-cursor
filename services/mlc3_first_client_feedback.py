@@ -8,7 +8,9 @@ frozen N1 inventory already exists for the exact clip.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from hashlib import sha256
 from typing import Any
+import uuid
 
 from services.coach_guidance_delivery import principal_is_allowlisted
 from services.feedback_data_contract import build_feedback_exposure_bundle
@@ -54,6 +56,44 @@ def prepare_first_client_feedback(
     )
     if not isinstance(enrollment, dict) or not enrollment.get("id"):
         return None
+    # D20 snapshot-first boundary. Immutable evidence coordinates may only be
+    # produced after PostgreSQL identifies the exact current source surface.
+    try:
+        snapshot_result = database.client.rpc(
+            "read_feedback_v3_candidate_source_snapshot_v1",
+            {
+                "p_acquisition_principal_id": principal_id,
+                "p_project_id": project_id,
+                "p_take_id": take_id,
+            },
+        ).execute()
+        source_snapshot = getattr(snapshot_result, "data", snapshot_result)
+    except Exception:
+        return None
+    if not isinstance(source_snapshot, dict) or set(source_snapshot) != {
+        "snapshot_contract_version", "document_snapshot_id",
+        "source_generation", "surface", "surface_sha256",
+    }:
+        return None
+    try:
+        snapshot_id = str(uuid.UUID(str(source_snapshot.get(
+            "document_snapshot_id"
+        ))))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    source_generation = source_snapshot.get("source_generation")
+    if (
+        source_snapshot.get("snapshot_contract_version")
+        != "feedback-v3-candidate-source-snapshot-v1"
+        or snapshot_id != source_snapshot.get("document_snapshot_id")
+        or not isinstance(source_generation, int)
+        or isinstance(source_generation, bool)
+        or source_generation < 1
+        or source_snapshot.get("surface") != served_text
+        or source_snapshot.get("surface_sha256")
+        != sha256(served_text.encode("utf-8")).hexdigest()
+    ):
+        return None
     frame = build_service_candidate_frame(
         take_document=take_document,
         snippets=snippets,
@@ -76,6 +116,8 @@ def prepare_first_client_feedback(
         candidates=inventory["candidates"],
         selected_keys=inventory["selected_keys"],
         manager_rules_version="take-feedback-policy-v3-serving-v1",
+        document_snapshot_id=str(source_snapshot["document_snapshot_id"]),
+        document_surface_sha256=str(source_snapshot["surface_sha256"]),
     )
     if bundle is None or len(bundle.get("candidates") or []) != len(
         inventory["membership_items"]
@@ -86,13 +128,6 @@ def prepare_first_client_feedback(
         not isinstance(candidate_result, dict)
         or str(candidate_result.get("candidate_set_id") or "")
         != str(bundle["candidate_set_id"])
-    ):
-        return None
-    snapshot = database.get_current_ideal_text_document_snapshot(project_id)
-    if (
-        not isinstance(snapshot, dict)
-        or str(snapshot.get("source_take_session_id") or "") != take_id
-        or not snapshot.get("id")
     ):
         return None
     canonical = _canonical_index(bundle)
@@ -109,12 +144,12 @@ def prepare_first_client_feedback(
         "p_project_id": project_id,
         "p_take_id": take_id,
         "p_candidate_set_id": bundle["candidate_set_id"],
-        "p_document_snapshot_id": str(snapshot["id"]),
+        "p_document_snapshot_id": str(source_snapshot["document_snapshot_id"]),
         "p_block_partition_version": inventory["block_partition_version"],
         "p_items": membership_items,
         "p_idempotency_key": (
             f"feedback-v3-service-membership:{bundle['candidate_set_id']}:"
-            f"{snapshot['id']}"
+            f"{source_snapshot['document_snapshot_id']}"
         ),
     })
     if not isinstance(membership, dict) or not membership.get("id"):
