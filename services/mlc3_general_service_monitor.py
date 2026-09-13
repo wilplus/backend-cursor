@@ -3,11 +3,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import re
 from typing import Any, Mapping
 
 
 MONITOR_CONTRACT_VERSION = "mlc3-general-service-monitor-v1"
 _ACTIVE_STATES = {"explicit_cohort", "generally_available"}
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_UTC_MICROSECOND_RE = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:"
+    r"[0-9]{2}\.[0-9]{6}Z$"
+)
 
 
 @dataclass(frozen=True)
@@ -162,6 +168,38 @@ def assess_general_service_monitor(
     failure_count = _integer(health.get("service_failure_count"))
     if failure_count is None or failure_count != 0:
         signals.append("service_lifecycle_failure")
+
+    scanner = health.get("confident_moment_delivery_scanner")
+    if not isinstance(scanner, Mapping):
+        signals.append("confident_moment_delivery_scanner_invalid")
+        hard.add("confident_moment_delivery_scanner_invalid")
+    else:
+        unfinished = _integer(scanner.get("unfinished_over_5s_count"))
+        contention = _integer(scanner.get("skipped_contention_60s_count"))
+        set_hash = scanner.get("unfinished_set_sha256")
+        oldest = scanner.get("oldest_started_at")
+        scanner_hard = scanner.get("hard_stop")
+        invalid = (
+            unfinished is None or unfinished < 0
+            or contention is None or contention < 0
+            or not isinstance(scanner_hard, bool)
+            or scanner_hard is not bool(unfinished)
+            or (unfinished == 0 and (set_hash is not None or oldest is not None))
+            or (unfinished and (
+                not isinstance(set_hash, str) or not _SHA256_RE.fullmatch(set_hash)
+                or not isinstance(oldest, str)
+                or not _UTC_MICROSECOND_RE.fullmatch(oldest)
+            ))
+        )
+        if invalid:
+            signals.append("confident_moment_delivery_scanner_invalid")
+            hard.add("confident_moment_delivery_scanner_invalid")
+        else:
+            if contention:
+                signals.append("confident_moment_delivery_contention")
+            if scanner_hard:
+                signals.append("confident_moment_delivery_scanner_stalled")
+                hard.add("confident_moment_delivery_scanner_stalled")
 
     deduplicated = tuple(dict.fromkeys(signals))
     return GeneralServiceMonitorReport(

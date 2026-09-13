@@ -24,6 +24,13 @@ def _health() -> dict:
         "oldest_unresolved_recovery_at": None,
         "oldest_required_coach_assignment_at": None,
         "service_failure_count": 0,
+        "confident_moment_delivery_scanner": {
+            "unfinished_over_5s_count": 0,
+            "unfinished_set_sha256": None,
+            "oldest_started_at": None,
+            "skipped_contention_60s_count": 0,
+            "hard_stop": False,
+        },
         "capacity_policy": {
             "max_concurrent_uploads": 10,
             "max_uploads_per_principal": 2,

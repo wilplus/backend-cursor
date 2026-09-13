@@ -305,6 +305,43 @@ class Config:
         .strip().lower() in ("1", "true", "yes", "on")
     )
 
+    # ── Confident Moment Coaching Bundle v1 (Chunk 3) ────────────────────────
+    # Local disabled-gate implementation only. These flags never imply
+    # dataset eligibility, training, evaluation, promotion, or serving of
+    # any learned model. Both must remain false until separately authorized
+    # activation readiness review. See Interface Manifest D6 and Contract
+    # Delta D3.
+    CONFIDENT_MOMENT_BUNDLE_V1_ENABLED = (
+        (os.getenv("CONFIDENT_MOMENT_BUNDLE_V1_ENABLED") or "0")
+        .strip().lower() in ("1", "true", "yes", "on")
+    )
+    ROOTING_COVERAGE_V1_ENABLED = (
+        (os.getenv("ROOTING_COVERAGE_V1_ENABLED") or "0")
+        .strip().lower() in ("1", "true", "yes", "on")
+    )
+    # PAM remains an independently gated, non-serving future layer.  These
+    # literal default-off seams prevent Bundle activation from implicitly
+    # enabling profile extraction, baselines, matching or authoring.
+    PAM_PROFILE_V1_ENABLED = (
+        (os.getenv("PAM_PROFILE_V1_ENABLED") or "0").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+    PAM_BASELINE_V1_ENABLED = (
+        (os.getenv("PAM_BASELINE_V1_ENABLED") or "0").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+    PAM_MATCHING_V1_ENABLED = (
+        (os.getenv("PAM_MATCHING_V1_ENABLED") or "0").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+    PAM_COACH_AUTHORING_V1_ENABLED = (
+        (os.getenv("PAM_COACH_AUTHORING_V1_ENABLED") or "0").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+    PAM_USER_SERVING_V1_ENABLED = (
+        (os.getenv("PAM_USER_SERVING_V1_ENABLED") or "0").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
     # ── Cloudflare R2 — USER INTERVIEW AUDIO ─────────────────────────────────
     # Deliberately a separate bucket from coach feedback videos because the
     # content type, lifecycle, and access policy differ:

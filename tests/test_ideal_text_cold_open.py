@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
 from flask import Flask, request
 from services import ideal_text_core_snapshot as core
 from services.ideal_text_enrichment import run_sections
@@ -145,8 +146,127 @@ def test_core_handler_is_strictly_read_only_by_architecture():
         "compose_locked", "persist_auto_ideal_text",
         "prepare_ideal_text_presentation", "_tracked_changes_block",
         "_moment_explanations_map", "_moment_playback_map",
-        "_confidence_review_status_map",
+        "_confidence_review_status_map", "ensure_service_enrollment",
     })
+
+
+def _call_core(monkeypatch, *, principal, projection=None, projection_error=None):
+    import routes.v2.explore_ideal_text as route
+
+    snapshot = {
+        "id": "00000000-0000-0000-0000-000000000010",
+        "payload_sha256": "a" * 64,
+        "payload": {
+            "text": "The F1 Ideal Text remains available.",
+            "latest_take_session_id": (
+                "00000000-0000-0000-0000-000000000020"
+            ),
+        },
+    }
+    status = {
+        "state": "available" if projection is not None else "disabled",
+        "code": None,
+        "retryable": False,
+    }
+    if projection_error is not None:
+        code = str(projection_error)
+        status = {
+            "state": "unavailable", "code": code,
+            "retryable": code == "CONFIDENT_MOMENT_PROJECTION_RETRY_REQUIRED",
+        }
+    core_read = {
+        "snapshot": snapshot,
+        "dynamic_overlay": {
+            "owner_edit": {
+                "text": None, "source_document_version": None,
+                "user_text_revision": None, "user_text_sha256": None,
+                "parts": [], "current_bundle_text_update_binding": None,
+            },
+            "confident_moment_summary": projection,
+            "confident_moment_summary_status": status,
+        },
+        "read_sha256": "b" * 64,
+    }
+    database = Mock()
+    database.get_ideal_text_document_core_v2.return_value = core_read
+    service_repository = Mock()
+    monkeypatch.setattr(route, "db", database)
+    monkeypatch.setattr(route, "first_client_repository", service_repository)
+    app = Flask(__name__)
+    with app.test_request_context("/v2/core"):
+        request.user_id = "00000000-0000-0000-0000-000000000030"
+        response = route.v2_explore_get_ideal_text_core.__wrapped__(
+            "00000000-0000-0000-0000-000000000040"
+        )
+    return response, database, service_repository
+
+
+def test_core_omits_optional_f2_for_absent_principal_without_enrollment(monkeypatch):
+    response, _database, service_repository = _call_core(
+        monkeypatch, principal=None
+    )
+    assert response.status_code == 200
+    assert response.get_json()["text"] == "The F1 Ideal Text remains available."
+    assert response.get_json()["confident_moment_summary"] is None
+    assert response.get_json()["confident_moment_summary_status"] == {
+        "state": "disabled", "code": None, "retryable": False,
+    }
+    _database.get_ideal_text_document_core_v2.assert_called_once()
+    _database.get_owner_principal_for_user.assert_not_called()
+    service_repository.ensure_service_enrollment.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "MLC3_CURRENT_ENROLLMENT_REQUIRED",
+        "MLC3_COHORT_MEMBERSHIP_REQUIRED",
+        "MLC3_ENROLLMENT_AUTHORITY_STALE",
+    ],
+)
+def test_core_omits_optional_f2_for_foreign_or_revoked_participant(
+    monkeypatch, code
+):
+    response, _database, service_repository = _call_core(
+        monkeypatch,
+        principal={"id": "00000000-0000-0000-0000-000000000050"},
+        projection_error=RuntimeError(code),
+    )
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["text"] == "The F1 Ideal Text remains available."
+    assert payload["confident_moment_summary"] is None
+    assert payload["confident_moment_summary_status"] == {
+        "state": "unavailable", "code": code, "retryable": False,
+    }
+    service_repository.ensure_service_enrollment.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("code", "retryable"),
+    [
+        ("CONFIDENT_MOMENT_PROJECTION_RETRY_REQUIRED", True),
+        ("CONFIDENT_MOMENT_PROJECTION_INVALID", False),
+    ],
+)
+def test_core_preserves_f1_and_reports_typed_f2_failure(
+    monkeypatch, code, retryable
+):
+    response, _database, service_repository = _call_core(
+        monkeypatch,
+        principal={"id": "00000000-0000-0000-0000-000000000050"},
+        projection_error=RuntimeError(code),
+    )
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["text"] == "The F1 Ideal Text remains available."
+    assert payload["confident_moment_summary"] is None
+    assert payload["confident_moment_summary_status"] == {
+        "state": "unavailable",
+        "code": code,
+        "retryable": retryable,
+    }
+    service_repository.ensure_service_enrollment.assert_not_called()
 
 
 def test_snapshot_contract_is_rpc_only_and_owner_checked():
