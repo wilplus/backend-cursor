@@ -26,11 +26,6 @@
       "module": "best_presentation",
       "sha256": "8f7e6be1567fd66580fdcad7b86d0ba5a103cd83fe35d0b4e6346da086f5e3d6"
     },
-    "chat.snippet_followup": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "0194b5cc7ffcfc28502dc2e390ce9068e1c17f89e82639b48aaa078d2d6f6f87"
-    },
     "coach_comment_draft.style_example": {
       "kind": "static",
       "module": "coach_comment_drafter",
@@ -45,26 +40,6 @@
       "kind": "builder",
       "module": "coach_comment_drafter",
       "sha256": "0108028681ea0abb05aab915fa13ab9529636b66e4ca878c527aef14da19ef0d"
-    },
-    "coaching.intent_system": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "2011fa511188722a9c4498e88a1b0788b0134e2335c485789379bd286068e6a5"
-    },
-    "coaching.profile_augment": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "ccd2e088d0a011433152294e279929ace22dfd6aea134a67e80dda6b950e5290"
-    },
-    "coaching.turn": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "41681de6183e02c8f964147edaaecc7c5ce076f166a136659c18855427f898f3"
-    },
-    "coaching_intro.builder": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "704eac40802656d0236289287cff497cee3f62f574afb5f5697c892bc20d634f"
     },
     "coaching_state_machine.system": {
       "kind": "source_ref",
@@ -355,16 +330,6 @@
       "kind": "source_ref",
       "module": "pending",
       "sha256": "8eab818f2866ebd9b4c6247e00eedbbd3ac3792e2e19999ded9832342ae5b34f"
-    },
-    "skill_charisma.awareness": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "2ea81ca82b36ac9061a5aa042aa56b97de38f7c4f32685feb67c97b5c952c672"
-    },
-    "skill_stress.awareness": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "a30229f5020d4640e4e748442888ab3bd5395d9bd70b9ddf8aa92ae58bb683df"
     },
     "slide_claims.system": {
       "kind": "static",

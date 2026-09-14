@@ -33,7 +33,6 @@ CHAT_ENTRY = "services/llm.py"
 # path → number of direct ``.chat.completions.create(`` calls, frozen 2026-09-14.
 # Down only. Each entry is a migration still owed to ``services.llm.chat_complete``.
 GRANDFATHERED_DIRECT_CHAT_CALLS = {
-    "routes/v2/coaching.py": 2,
     "services/ceo_work_items.py": 1,
     "services/dev_tasks.py": 2,
     "services/life_engine.py": 1,   # its own key (LIFE_PANEL_OPENAI_API_KEY); see _client

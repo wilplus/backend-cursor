@@ -3,7 +3,7 @@
 Base commit: `c7ff532fcc892e0e8c2ad6098c5146dcb2eabdd3`
 
 ```text
-f463c3f1496c5540a566168b16ec0a758db2fd543160b27c5d84888d1efbddee  config.py
+0f0a15ad5a69136f81dc66af2c3bc9e2b8d71fdefec814bb23e0ab3bdcc4b397  config.py
 744c7771d6e8fe71201cb68bb81eb6bd0ff85bbcefbf59d32c85cce8b2901cc9  docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-POINT7-2026-09-12.md
 88328fbb48c0f3d1a799c8c95c0fb279b83fa3fefe6f376d046cf1c1101af6b7  docs/MLC3-CONFIDENT-MOMENT-COACHING-COACH-CONTEXT-PRINCIPAL-AMENDMENT-D26.md
 25bddb8673bff3debe7572125c3b64ac40bcda29d8c5f424c75201b5c7970454  docs/MLC3-CONFIDENT-MOMENT-COACHING-FEEDBACK-EXPOSURE-IDENTITY-AMENDMENT-D15.md
@@ -53,7 +53,7 @@ dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confi
 794c3d04c55016987c75dc9bdc7bab64ded34a14a7a6e3ee832b6b22f32b9568  services/confident_moment_user_media.py
 09ac4873e142bd68c682abaf28acb15e4fb0a445aab749ad8b28b47020b1df22  services/data_purge.py
 5ff3880f55da07671775de92e279e13e0dca96b615329632b6d6cd88096cbbb9  services/data_purge_registry.py
-c710a08db969fe26b10514907b778408926001e63eef1aa4eaf42669bab0dd1a  services/db.py
+559914b63cf148c2d71c7232f818bfb33df0589a9977813cdb223b229a5e46ac  services/db.py
 b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedback_data_contract.py
 35955687744b693dfb26fe79b79767c54c3a851dabfba4c015790c4537c459c7  services/feedback_language.py
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
@@ -133,6 +133,26 @@ after Phase 5; the drift is Phase 6's alone:
 - `services/db.py` — audit Q-A7: `update_coaching_attempt_self_rating` and
   `get_user_kpi_timeline_rows` deleted with the two routes that were their
   only callers.
+
+`services/confident_moment_bundle_repository.py`, migration 0327 and every
+other entry are untouched.
+
+## Re-freeze 2026-09-14 — post-audit remediation, Phase 6b (backend)
+
+Re-frozen by the same rule. Every entry above was consistent with `main`
+after Phase 6 (#499); the drift is Phase 6b's alone:
+
+- `services/db.py` — audit Q-A6: the ten `coaching_sessions` /
+  `coaching_attempts` methods whose only callers were the retired coaching
+  lane (`create_coaching_session`, `get_coaching_session`,
+  `append_coaching_message`, `update_coaching_stage`,
+  `set_coaching_trial_recording`, `v2_get_student_coaching_memory`,
+  `insert_coaching_attempt`, `_next_coaching_attempt_number`,
+  `list_coaching_attempts_for_snippet`,
+  `list_recent_coaching_attempts_for_user`) deleted. The two annotation
+  methods the admin routes read stay. No table is touched.
+- `config.py` — audit Q-A6: `LEARNER_PROFILE_INJECTION_ENABLED` deleted;
+  its only reader was the retired coaching turn's prompt augmentation.
 
 `services/confident_moment_bundle_repository.py`, migration 0327 and every
 other entry are untouched.
