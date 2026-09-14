@@ -17,11 +17,13 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from scripts.check_mlc3_founder_canary_readiness import (
+    _D4_SUPERSEDING_RPC,
     _DEPENDENCY_TABLES,
     _FORBIDDEN_RPC_SIGNATURES,
     _REQUIRED_RPC_SIGNATURES,
     _RLS_TABLES,
     _SERVICE_ZERO_PREDICATES,
+    post_d4_surface,
 )
 from scripts.sign_mlc3_founder_deployment_attestation import sign_manifest
 from scripts import rehearse_mlc3_founder_r2 as r2_rehearsal
@@ -869,3 +871,79 @@ def test_r2_rehearsal_has_fixed_synthetic_prefix_and_cleanup_confirmation():
         R2_SCRIPT.index("control_plane = _load_private_bucket_export(")
         < R2_SCRIPT.index("client = _client()")
     )
+
+
+class _FakeCursor:
+    """Minimal psycopg2-shaped cursor for the post-D4 surface probe."""
+
+    def __init__(self, result, *, raises=False):
+        self._result = result
+        self._raises = raises
+        self.statements: list[tuple] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, statement, parameters=()):
+        if self._raises:
+            raise RuntimeError("connection is in a failed transaction")
+        self.statements.append((statement, parameters))
+
+    def fetchone(self):
+        return self._result
+
+
+class _FakeConnection:
+    def __init__(self, result, *, raises=False):
+        self.cursor_object = _FakeCursor(result, raises=raises)
+        self.rolled_back = False
+
+    def cursor(self):
+        return self.cursor_object
+
+    def rollback(self):
+        self.rolled_back = True
+
+
+def test_post_d4_surface_probes_the_v2_writer_not_the_superseded_one():
+    connection = _FakeConnection((True,))
+    assert post_d4_surface(connection) is True
+    statement, parameters = connection.cursor_object.statements[0]
+    assert "to_regprocedure" in statement
+    assert parameters == (f"public.{_D4_SUPERSEDING_RPC}",)
+    assert _D4_SUPERSEDING_RPC.startswith(
+        "reserve_exercise_practice_service_upload_v2("
+    )
+
+
+def test_pre_d4_database_is_not_reported_as_superseded():
+    assert post_d4_surface(_FakeConnection((False,))) is False
+    assert post_d4_surface(_FakeConnection(None)) is False
+
+
+def test_the_guard_never_blocks_a_gate_run_when_the_probe_itself_fails():
+    connection = _FakeConnection((True,), raises=True)
+    assert post_d4_surface(connection) is False
+    assert connection.rolled_back is True
+
+
+def test_the_superseded_writer_stays_required_and_the_guard_explains_it():
+    # The registry is scoped to the pre-D4 surface on purpose; the guard exists
+    # so that scoping cannot be mistaken for a stale list on a post-D4 database.
+    assert any(
+        signature.startswith("reserve_exercise_practice_service_upload_v1(")
+        for signature in _REQUIRED_RPC_SIGNATURES
+    )
+    assert not any(
+        signature.startswith("reserve_exercise_practice_service_upload_v2(")
+        for signature in _REQUIRED_RPC_SIGNATURES
+    )
+    source = (Path(__file__).resolve().parents[1] / (
+        "scripts/check_mlc3_founder_canary_readiness.py"
+    )).read_text()
+    assert "founder_canary_surface_superseded_by_d4" in source
+    assert "--allow-superseded-surface" in source
+    assert "check_mlc3_general_service_readiness.py" in source

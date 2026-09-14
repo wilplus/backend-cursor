@@ -485,6 +485,47 @@ def _aggregate_health(connection, principal_id: str, coach_email: str) -> dict:
     return dict(payload) if isinstance(payload, dict) else {}
 
 
+_D4_SUPERSEDING_RPC = (
+    "reserve_exercise_practice_service_upload_v2"
+    "(uuid,uuid,uuid,text,bigint,text,text,text,integer)"
+)
+
+
+def post_d4_surface(connection) -> bool:
+    """True once migration 0326 (general-user service D4) has been applied.
+
+    `_REQUIRED_RPC_SIGNATURES` describes the PRE-D4 surface on purpose: it
+    requires `reserve_exercise_practice_service_upload_v1`, which 0326
+    deliberately revokes from `service_role` in favour of `_v2` (the v2 body
+    calls v1 as SECURITY DEFINER, so v1 needs no grant of its own).  Running
+    this gate against a post-D4 database therefore reports exactly one missing
+    service grant that is expected and correct — a reading that looks like a
+    failure and is not.
+
+    `scripts/check_mlc3_general_service_readiness.py` is the post-D4 gate; it
+    derives these registries and performs that swap itself.  Two scripts, two
+    deployment surfaces — see
+    `tests/test_mlc3_founder_canary_readiness.py::test_exact_rpc_registry_covers_every_first_client_repository_call`
+    (`d4_successors` / `superseded`), which pins the distinction.
+    """
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT to_regprocedure(%s) IS NOT NULL",
+                (f"public.{_D4_SUPERSEDING_RPC}",),
+            )
+            row = cursor.fetchone()
+    except Exception:
+        # Never let the guard itself block a gate run: if the surface cannot be
+        # determined, fall back to the historical behaviour and report.
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return False
+    return bool(row and row[0])
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--principal-id", required=True)
@@ -492,6 +533,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--r2-smoke-manifest", required=True)
     parser.add_argument("--deployment-attestation", required=True)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--allow-superseded-surface", action="store_true",
+        help=(
+            "run anyway on a post-D4 database, accepting the one expected "
+            "missing service grant on the superseded upload writer"
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -544,6 +592,29 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
+        if post_d4_surface(connection):
+            if not args.allow_superseded_surface:
+                print(json.dumps({
+                    "ready_for_activation_review": False,
+                    "blocker_codes": [
+                        "founder_canary_surface_superseded_by_d4",
+                    ],
+                    "detail": (
+                        "migration 0326 is applied, so this pre-D4 gate would "
+                        "report one expected missing service grant on "
+                        "reserve_exercise_practice_service_upload_v1. Run "
+                        "scripts/check_mlc3_general_service_readiness.py "
+                        "instead, or pass --allow-superseded-surface for the "
+                        "historical pre-D4 reading."
+                    ),
+                }, sort_keys=True))
+                return 2
+            print(
+                "NOTE post-D4 database: one missing service grant on "
+                "reserve_exercise_practice_service_upload_v1 is expected and "
+                "correct; 0326 revoked it in favour of _v2.",
+                file=sys.stderr,
+            )
         try:
             health = _aggregate_health(
                 connection, args.principal_id, args.coach_email,
