@@ -143,9 +143,19 @@ def test_railway_monitor_is_recurring_read_only_and_alerting():
 
 
 def test_normal_feedback_selection_precedes_and_does_not_depend_on_writer_gate():
-    route = (ROOT / "routes" / "v2" / "explore_ideal_text.py").read_text()
-    claim = route.index("_feedback_set = claim_feedback_set(")
-    writer_gate = route.index("confidence_prior_learning_writes_enabled()")
-    write = route.index("db.record_canonical_feedback_exposure(", writer_gate)
+    # The `changes` block moved out of the route in Phase 5 (audit Q-C1).
+    # Its orchestrator (`_ChangesRun.execute`) claims and filters first,
+    # then reads the writer gate, then — and only then — dual-writes.
+    import inspect
+    from services.ideal_text_changes import _ChangesRun
+    execute = inspect.getsource(_ChangesRun.execute)
+    claim = execute.index("self._claim_or_filter()")
+    writer_gate = execute.index("confidence_prior_learning_writes_enabled()")
+    write = execute.index("self._canonical_dual_write", writer_gate)
     assert claim < writer_gate < write
-    assert "changes = filter_to_selected" in route[claim:writer_gate]
+    claim_stage = inspect.getsource(_ChangesRun._claim_or_filter)
+    assert "self.feedback_set = claim_feedback_set(" in claim_stage
+    assert "self.changes = filter_to_selected(" in claim_stage
+    assert "confidence_prior_learning_writes_enabled" not in claim_stage
+    write_stage = inspect.getsource(_ChangesRun._canonical_dual_write)
+    assert "db.record_canonical_feedback_exposure(" in write_stage

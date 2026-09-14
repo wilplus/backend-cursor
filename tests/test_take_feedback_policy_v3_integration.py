@@ -4,7 +4,9 @@ from services.db import DatabaseService
 from tests.fakes import FakeSupabaseClient
 
 
-ROUTE = Path("routes/v2/explore_ideal_text.py").read_text()
+# The student `changes` block, where the V3 shadow is armed; it moved out
+# of the route in Phase 5 (audit Q-C1).
+ROUTE = Path("services/ideal_text_changes.py").read_text()
 LEGACY_MIGRATION = Path("migrations/add_take_feedback_policy_v3_shadow.sql").read_text()
 MIGRATION = Path(
     "migrations/add_take_feedback_policy_universal_v3_transition.sql"

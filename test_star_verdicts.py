@@ -457,6 +457,10 @@ class TestAC9Fence(unittest.TestCase):
                 "services/star_verdicts.py", "services/db.py",
                 "routes/v2/coach.py",
                 "routes/v2/explore_ideal_text.py",
+                # The student `changes` block, moved out of the route in
+                # Phase 5 (audit Q-C1). Same read, same purpose: verdicts
+                # govern suppression and supersession, never a surface.
+                "services/ideal_text_changes.py",
                 # Compliance-only subject inventory. It never returns a
                 # verdict to the student; it locates the row for deletion.
                 "services/data_purge_registry.py",

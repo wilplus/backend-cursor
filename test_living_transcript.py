@@ -1284,7 +1284,8 @@ class ServeChangesTests(unittest.TestCase):
              patch.object(db, "get_moment_suggestions_by_arc",
                           return_value=(sugs or {})), \
              patch.object(db, "get_suggestion_feedback_by_session",
-                          return_value=[]):
+                          return_value=[]), \
+             patch.object(db, "v2_get_session_by_id", return_value={}):
             return v2_explore_ideal_text._tracked_changes_block(ARC, self.DOC)
 
     def test_flag_off_key_is_absent(self):
@@ -1308,6 +1309,35 @@ class ServeChangesTests(unittest.TestCase):
              patch.object(db, "get_arc_sessions",
                           side_effect=RuntimeError("boom")):
             self.assertEqual(v2_explore_ideal_text._tracked_changes_block(ARC, self.DOC), {})
+
+    def test_a_failing_stage_is_named_not_silent(self):
+        """Audit Q-C1 (founder 2026-09-14): a stage that falls back is
+        reported in `degraded`, never dropped without a trace. The V3
+        shadow read fails here; the changes are still served."""
+        with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
+             patch.object(db, "get_arc_sessions",
+                          return_value=[{"id": T1, "take_index": 1,
+                                         "recording_kind": "spoken"}]), \
+             patch.object(db, "get_snippets_by_session", return_value=[
+                 {"id": S1, "start_offset_ms": 0,
+                  "transcript": "We started small.",
+                  "metrics": {"piece": {"slide_index": 0}}}]), \
+             patch.object(db, "get_coach_snippet_drafts", return_value=[]), \
+             patch.object(db, "get_user_transcript_edits", return_value=[]), \
+             patch.object(db, "get_moment_suggestions_by_arc",
+                          return_value={}), \
+             patch.object(db, "get_suggestion_feedback_by_session",
+                          return_value=[]), \
+             patch.object(db, "v2_get_session_by_id",
+                          side_effect=RuntimeError("shadow store down")):
+            out = v2_explore_ideal_text._tracked_changes_block(ARC, self.DOC)
+        self.assertEqual(out["changes"], [])
+        stages = [d["stage"] for d in out["degraded"]]
+        self.assertIn("ideal_text.changes.v3_shadow", stages)
+        self.assertTrue(all(d["kind"] == "RuntimeError"
+                            for d in out["degraded"]))
+        # The reason stays in the log, never in the marker.
+        self.assertNotIn("shadow store down", str(out))
 
 
 if __name__ == "__main__":
