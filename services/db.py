@@ -353,159 +353,6 @@ class DatabaseService:
         msg = str(err).lower()
         return ("42p01" in msg) or ("does not exist" in msg) or ("undefined_table" in msg)
 
-    def _select_student_profile_row(self, user_id: str) -> Optional[dict]:
-        """Read profile from new table first; fallback to legacy table during migration."""
-        try:
-            res = (
-                self.client.table(self._student_profile_table)
-                .select("*")
-                .eq("user_id", user_id)
-                .limit(1)
-                .execute()
-            )
-            if res.data:
-                return res.data[0]
-        except Exception as e:
-            if not self._is_relation_missing_error(e):
-                raise
-        try:
-            res = (
-                self.client.table(self._legacy_student_profile_table)
-                .select("*")
-                .eq("user_id", user_id)
-                .limit(1)
-                .execute()
-            )
-            return res.data[0] if res.data else None
-        except Exception:
-            return None
-    
-    def get_active_session(self, user_id: str):
-        """Get the active (non-completed) session for a user"""
-        result = self.client.table("recording_sessions")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .is_("completed_at", "null")\
-            .execute()
-        
-        if result.data:
-            return result.data[0]
-        return None
-    
-    def create_session(self, user_id: str, cursor: float = None, mode: str = None, 
-                       mood: str = None, readiness: int = None, inspiration_needed: bool = None,
-                       pre_questions_completed: bool = False, status: str = None):
-        """Create a new recording session with optional questionnaire data"""
-        session_data = {
-            "user_id": user_id,
-            "pre_questions_completed": pre_questions_completed,  # ✅ Set based on questionnaire
-            "recording_completed": False,
-            "post_questions_completed": False
-        }
-        
-        # Set status if provided
-        if status is not None:
-            session_data["status"] = status
-        
-        # Add questionnaire data if provided
-        if cursor is not None:
-            session_data["cursor"] = cursor
-        if mode is not None:
-            session_data["mode"] = mode
-        if mood is not None:
-            session_data["mood"] = mood
-        if readiness is not None:
-            session_data["readiness"] = readiness
-        if inspiration_needed is not None:
-            session_data["inspiration_needed"] = inspiration_needed
-        
-        result = self.client.table("recording_sessions")\
-            .insert(session_data)\
-            .execute()
-        
-        return result.data[0] if result.data else None
-    
-    def abandon_session(self, session_id: str, user_id: str):
-        """Abandon a session (status = abandoned, completed_at set)"""
-        result = self.client.table("recording_sessions")\
-            .update({
-                "status": "abandoned",
-                "completed_at": "now()",
-                "abandoned_at": "now()"
-            })\
-            .eq("id", session_id)\
-            .eq("user_id", user_id)\
-            .execute()
-        
-        return result.data[0] if result.data else None
-    
-    def get_pre_questions(self, limit: int = 3):
-        """Get pre-recording questions ordered by order_index"""
-        result = self.client.table("pre_recording_questions")\
-            .select("*")\
-            .order("order_index")\
-            .limit(limit)\
-            .execute()
-        
-        return result.data
-    
-    def create_pre_question(self, session_id: str, question_text: str, order_index: int, 
-                           command_id: int = None, cursor: float = None, mode: str = None):
-        """Create a personalized pre-recording question"""
-        question_data = {
-            "question_text": question_text,
-            "order_index": order_index
-        }
-        
-        # Add optional metadata
-        if command_id is not None:
-            question_data["command_id"] = command_id
-        if cursor is not None:
-            question_data["cursor"] = cursor
-        if mode is not None:
-            question_data["mode"] = mode
-        
-        result = self.client.table("pre_recording_questions")\
-            .insert(question_data)\
-            .execute()
-        
-        return result.data[0] if result.data else None
-    
-    def save_pre_answers(self, session_id: str, answers: list, user_id: str = None, snapshot_per_answer: list = None):
-        """Save pre-recording answers. snapshot_per_answer: optional list of dicts with question_text_snapshot, question_type_snapshot, question_code_snapshot, order_index_snapshot."""
-        records = []
-        for i, ans in enumerate(answers):
-            rec = {
-                "recording_session_id": session_id,
-                "question_id": ans["question_id"],
-                "answer_text": ans["answer_text"]
-            }
-            if user_id:
-                rec["user_id"] = user_id
-            if snapshot_per_answer and i < len(snapshot_per_answer):
-                snap = snapshot_per_answer[i]
-                if snap.get("question_text_snapshot") is not None:
-                    rec["question_text_snapshot"] = snap["question_text_snapshot"]
-                if snap.get("question_type_snapshot") is not None:
-                    rec["question_type_snapshot"] = snap["question_type_snapshot"]
-                if snap.get("question_code_snapshot") is not None:
-                    rec["question_code_snapshot"] = snap["question_code_snapshot"]
-                if snap.get("order_index_snapshot") is not None:
-                    rec["order_index_snapshot"] = snap["order_index_snapshot"]
-            records.append(rec)
-        
-        result = self.client.table("pre_recording_answers")\
-            .insert(records)\
-            .execute()
-        
-        # Mark session as pre_questions_completed
-        self.client.table("recording_sessions")\
-            .update({"pre_questions_completed": True})\
-            .eq("id", session_id)\
-            .execute()
-        
-        return result.data
-    
     def create_recording(self, data: dict):
         """Create a recording record"""
         result = self.client.table("recordings")\
@@ -606,19 +453,6 @@ class DatabaseService:
         
         return result.data[0] if result.data else None
 
-    def get_recording_for_homework_session(self, recording_id, user_id: str, session: dict):
-        """Load recording for report UI: prefer owner match, else id-only if linked from session."""
-        if not recording_id or not session:
-            return None
-        rec = self.get_recording(recording_id, user_id)
-        if rec:
-            return rec
-        rid = str(recording_id)
-        allowed = {str(x) for x in (session.get("recording_1_id"),) if x}
-        if rid not in allowed:
-            return None
-        return self.get_recording(recording_id, None)
-
     def get_user_recordings(self, user_id: str, limit: int = 10, offset: int = 0):
         """Get recordings for a user with pagination"""
         # Get paginated recordings with count
@@ -650,235 +484,6 @@ class DatabaseService:
             "offset": offset
         }
     
-    def get_prior_recordings_for_trend(self, user_id: str, exclude_recording_id: str = None):
-        """Get prior recordings for trend computation (need >=2)"""
-        query = self.client.table("recordings")\
-            .select("id,words_per_minute,filler_words_count,created_at")\
-            .eq("user_id", user_id)\
-            .not_.is_("words_per_minute", "null")\
-            .order("created_at", desc=True)\
-            .limit(10)
-        
-        if exclude_recording_id:
-            query = query.neq("id", exclude_recording_id)
-        
-        result = query.execute()
-        return result.data
-    
-    def get_post_questions(self, user_id: str, classification: str, exclude_question_ids: list = None):
-        """Get post-recording questions based on classification"""
-        # Determine question type
-        if classification == "struggler":
-            question_type = "reflective"
-        elif classification == "strong":
-            question_type = "amplifying"
-        else:  # uncertain
-            question_type = "reflective"
-        
-        candidates = []
-        
-        # 1. User-specific post questions
-        user_specific = self.client.table("professional_notes_specific_questions")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .eq("question_type", "post")\
-            .execute()
-        
-        if user_specific.data:
-            candidates.extend(user_specific.data)
-        
-        # 2. Global post questions
-        global_query = self.client.table("post_recording_questions")\
-            .select("*")
-        
-        # Filter by type if the table has a type column
-        # (Assuming it does, adjust if schema differs)
-        try:
-            global_questions = global_query.eq("question_type", question_type).execute()
-        except Exception:
-            # If no question_type column, get all
-            global_questions = global_query.execute()
-        
-        if global_questions.data:
-            candidates.extend(global_questions.data)
-        
-        # Filter out excluded questions
-        if exclude_question_ids:
-            candidates = [q for q in candidates if q.get("id") not in exclude_question_ids]
-        
-        # Return exactly 3 (allow repeats if needed)
-        return candidates[:3]
-    
-    def get_recent_post_question_ids(self, user_id: str, limit: int = 3):
-        """Get question IDs from recent sessions to avoid repeats"""
-        # Get recent sessions with post answers
-        sessions = self.client.table("recording_sessions")\
-            .select("id")\
-            .eq("user_id", user_id)\
-            .not_.is_("completed_at", "null")\
-            .order("completed_at", desc=True)\
-            .limit(limit)\
-            .execute()
-        
-        if not sessions.data:
-            return []
-        
-        session_ids = [s["id"] for s in sessions.data]
-        
-        # Get post answers from these sessions
-        answers = self.client.table("post_recording_answers")\
-            .select("question_id")\
-            .in_("session_id", session_ids)\
-            .execute()
-        
-        return list(set([a["question_id"] for a in answers.data]))
-    
-    def get_recent_question_set_ids(self, user_id: str, limit: int = 5) -> List[int]:
-        """Get recently used question set IDs to avoid repetition"""
-        # Get recent recordings
-        recordings = self.client.table("recordings")\
-            .select("id")\
-            .eq("user_id", user_id)\
-            .order("created_at", desc=True)\
-            .limit(limit * 2)\
-            .execute()
-        
-        if not recordings.data:
-            return []
-
-        # Get post answers from these recordings
-        # Note: We'll need to store question_set_id in post_answers or in a separate table
-        # For now, return empty list (will be improved when question_set_id is stored)
-        return []
-    
-    def create_post_question(self, question_text: str, question_type: str, question_set_id: int = None, order_index: int = None):
-        """Create a post-recording question record in the database"""
-        question_data = {
-            "question_text": question_text,
-            "question_type": question_type,  # "scale", "binary", "free_text"
-        }
-        
-        # Add optional metadata if columns exist
-        if question_set_id is not None:
-            question_data["question_set_id"] = question_set_id
-        if order_index is not None:
-            question_data["order_index"] = order_index
-        
-        result = self.client.table("post_recording_questions")\
-            .insert(question_data)\
-            .execute()
-        
-        return result.data[0] if result.data else None
-    
-    def save_post_answers(self, session_id: str, recording_id: str, answers: list):
-        """Save post-recording answers"""
-        # Validate that question_ids are valid UUIDs
-        for ans in answers:
-            question_id = ans.get("question_id")
-            if not question_id:
-                raise ValueError(f"Missing question_id in answer: {ans}")
-            # Check if it's a valid UUID format (basic check)
-            if len(question_id) != 36 or question_id.count('-') != 4:
-                raise ValueError(f"Invalid question_id format (must be UUID): {question_id}")
-        
-        records = [
-            {
-                "recording_id": recording_id,
-                "session_id": session_id,
-                "question_id": ans["question_id"],
-                "answer_text": ans["answer_text"]
-            }
-            for ans in answers
-        ]
-        
-        result = self.client.table("post_recording_answers")\
-            .insert(records)\
-            .execute()
-        
-        # Mark session as post_questions_completed
-        self.client.table("recording_sessions")\
-            .update({"post_questions_completed": True})\
-            .eq("id", session_id)\
-            .execute()
-        
-        return result.data
-    
-    def complete_session(self, session_id: str):
-        """Mark session as completed (status + completed_at for v1 predicate)"""
-        result = self.client.table("recording_sessions")\
-            .update({"status": "completed", "completed_at": "now()"})\
-            .eq("id", session_id)\
-            .execute()
-        
-        return result.data[0] if result.data else None
-    
-    def get_previous_performance_score(self, user_id: str, exclude_recording_id: str = None):
-        """Get the most recent performance score for a user"""
-        # Get user's recordings ordered by date
-        query = self.client.table("recordings")\
-            .select("id")\
-            .eq("user_id", user_id)\
-            .order("created_at", desc=True)\
-            .limit(10)\
-            .execute()
-        
-        if not query.data:
-            return None
-        
-        # Find the previous recording (exclude current if specified)
-        previous_recording_id = None
-        for rec in query.data:
-            if rec["id"] != exclude_recording_id:
-                previous_recording_id = rec["id"]
-                break
-        
-        if not previous_recording_id:
-            return None
-        
-        # Get performance score for that recording
-        perf_result = self.client.table("performance_scores")\
-            .select("performance")\
-            .eq("recording_id", previous_recording_id)\
-            .execute()
-        
-        if perf_result.data:
-            return float(perf_result.data[0].get("performance", 0))
-        
-        return None
-    
-    def save_performance_score(self, recording_id: str, performance_data: dict):
-        """Save performance score to database"""
-        score_data = {
-            "recording_id": recording_id,
-            "performance": performance_data["performance"],
-            "final_kpi": performance_data["final_kpi"],
-            "resilience_bonus": performance_data.get("bonuses", {}).get("resilience", 0),
-            "awareness_bonus": performance_data.get("bonuses", {}).get("awareness", 0),
-            "progress_bonus": performance_data.get("bonuses", {}).get("progress", 0),
-            "streak_bonus": performance_data.get("bonuses", {}).get("streak", 0),
-            "filler_score": performance_data.get("raw_scores", {}).get("filler_score", 0),
-            "pacing_score": performance_data.get("raw_scores", {}).get("pacing_score", 0),
-            "attitude_score": performance_data.get("raw_scores", {}).get("attitude_score", 0),
-            "reflection_score": performance_data.get("raw_scores", {}).get("reflection_score", 0),
-        }
-        if "self_rating_score" in performance_data:
-            score_data["self_rating_score"] = performance_data["self_rating_score"]
-        
-        result = self.client.table("performance_scores")\
-            .insert(score_data)\
-            .execute()
-        
-        return result.data[0] if result.data else None
-    
-    def get_performance_score(self, recording_id: str):
-        """Get performance score for a recording"""
-        result = self.client.table("performance_scores")\
-            .select("*")\
-            .eq("recording_id", recording_id)\
-            .execute()
-        
-        return result.data[0] if result.data else None
-    
     def get_user_admin_context(self, user_id: str):
         """Return admin context for report generation. V2: no professional_notes tables; minimal dict.
 
@@ -908,35 +513,6 @@ class DatabaseService:
             query = query.neq("id", exclude_recording_id)
         result = query.execute()
         return result.data if result.data else []
-    
-    def get_session(self, session_id: str, user_id: str = None):
-        """Get a session by ID"""
-        query = self.client.table("recording_sessions").select("*").eq("id", session_id)
-        
-        if user_id:
-            query = query.eq("user_id", user_id)
-        
-        result = query.execute()
-        
-        return result.data[0] if result.data else None
-    
-    def get_pre_answers(self, session_id: str):
-        """Get pre-recording answers for a session"""
-        result = self.client.table("pre_recording_answers")\
-            .select("*,pre_recording_questions(*)")\
-            .eq("recording_session_id", session_id)\
-            .execute()
-        
-        return result.data
-    
-    def get_post_answers(self, session_id: str):
-        """Get post-recording answers for a session"""
-        result = self.client.table("post_recording_answers")\
-            .select("*,post_recording_questions(*)")\
-            .eq("session_id", session_id)\
-            .execute()
-        
-        return result.data
     
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         """Create a signed URL for a file in Supabase Storage"""
@@ -1160,264 +736,7 @@ class DatabaseService:
             sentry_sdk.capture_exception(e)
             raise Exception(f"Failed to download from {bucket}/{path}: {e}") from e
 
-    def save_admin_notification(self, data: dict):
-        """Save admin notification record"""
-        result = self.client.table("admin_notifications")\
-            .insert(data)\
-            .execute()
-        
-        return result.data[0] if result.data else None
-    
-    def update_admin_notification(self, notification_id: str, data: dict):
-        """Update admin notification status"""
-        result = self.client.table("admin_notifications")\
-            .update(data)\
-            .eq("id", notification_id)\
-            .execute()
-        
-        return result.data[0] if result.data else None
-
     # --- v1 planned session flow ---
-    def get_active_override(self, user_id: str):
-        """Get active admin_session_override for user (is_active, not expired, remaining_sessions null or >0)."""
-        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        result = self.client.table("admin_session_overrides")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .eq("is_active", True)\
-            .execute()
-        if not result.data:
-            return None
-        for row in result.data:
-            if row.get("expires_at") and str(row["expires_at"]) < now:
-                continue
-            remaining = row.get("remaining_sessions")
-            if remaining is not None and remaining <= 0:
-                continue
-            return row
-        return None
-
-    def consume_admin_override(self, override_id: str):
-        """Decrement remaining_sessions if not null. Idempotent: only decrement once per override use."""
-        row = self.client.table("admin_session_overrides").select("remaining_sessions").eq("id", override_id).execute()
-        if not row.data:
-            return
-        remaining = row.data[0].get("remaining_sessions")
-        if remaining is None:
-            return
-        self.client.table("admin_session_overrides")\
-            .update({"remaining_sessions": max(0, remaining - 1)})\
-            .eq("id", override_id)\
-            .execute()
-
-    def log_exposure(self, user_id: str, content_type: str, content_code: str, session_id: str = None,
-                     recording_id: str = None, content_id: str = None, tier: int = None, was_selected: bool = False):
-        """Insert content_exposures row (v1 anti-repetition + analytics)."""
-        data = {
-            "user_id": user_id,
-            "content_type": content_type,
-            "content_code": content_code,
-            "was_selected": was_selected,
-        }
-        if session_id:
-            data["session_id"] = session_id
-        if recording_id:
-            data["recording_id"] = recording_id
-        if content_id:
-            data["content_id"] = content_id
-        if tier is not None:
-            data["tier"] = tier
-        try:
-            self.client.table("content_exposures").insert(data).execute()
-        except Exception:
-            pass  # ignore duplicate / constraint errors for idempotency
-
-    def get_recent_exposures(self, user_id: str, content_type: str, limit: int) -> List[dict]:
-        """Recent exposures for user + content_type (for anti-repeat)."""
-        result = self.client.table("content_exposures")\
-            .select("content_code, session_id, was_selected, exposed_at")\
-            .eq("user_id", user_id)\
-            .eq("content_type", content_type)\
-            .order("exposed_at", desc=True)\
-            .limit(limit * 3)\
-            .execute()
-        return result.data or []
-
-    def get_intent_selection_count(self, user_id: str, intent: str) -> int:
-        """Count how many times this user has selected this intent (was_selected=true). Used to detect newly-tested command for post-question."""
-        result = self.client.table("content_exposures")\
-            .select("id", count="exact")\
-            .eq("user_id", user_id)\
-            .eq("content_type", "intent")\
-            .eq("content_code", intent)\
-            .eq("was_selected", True)\
-            .execute()
-        return getattr(result, "count", None) or len(result.data or [])
-
-    def get_completed_sessions_count(self, user_id: str) -> int:
-        """Count sessions with status = 'completed' for user (no_fillers_challenge gating)."""
-        result = self.client.table("recording_sessions")\
-            .select("id", count="exact")\
-            .eq("user_id", user_id)\
-            .eq("status", "completed")\
-            .execute()
-        return getattr(result, "count", None) or len(result.data or [])
-
-    def get_avg_fillers_per_min(self, user_id: str, last_n: int = 5) -> float:
-        """Avg fillers/min over last_n recordings. Uses recordings.duration and filler_words_count. If missing data -> return 999 (ineligible)."""
-        recs = self.client.table("recordings")\
-            .select("id, duration, filler_words_count")\
-            .eq("user_id", user_id)\
-            .order("created_at", desc=True)\
-            .limit(last_n)\
-            .execute()
-        if not recs.data or len(recs.data) < last_n:
-            return 999.0
-        total_fillers = 0
-        total_min = 0
-        for r in recs.data:
-            dur = r.get("duration")
-            fc = r.get("filler_words_count")
-            if dur is None or not isinstance(dur, (int, float)) or dur <= 0:
-                return 999.0
-            total = None
-            if isinstance(fc, dict):
-                total = fc.get("total")
-            if total is None:
-                return 999.0
-            total_fillers += int(total)
-            total_min += float(dur) / 60.0
-        if total_min <= 0:
-            return 999.0
-        return total_fillers / total_min
-
-    def get_pre_question_templates_for_theme(self, theme_code: str = None, exclude_codes: List[str] = None, limit: int = 1) -> List[dict]:
-        """Get active pre_recording_questions for theme (theme_code or theme_code IS NULL). Exclude codes if provided."""
-        q = self.client.table("pre_recording_questions")\
-            .select("*")\
-            .eq("active", True)\
-            .order("order_index")
-        if theme_code:
-            q = q.eq("theme_code", theme_code)
-        else:
-            q = q.is_("theme_code", "null")
-        result = q.limit(limit * 3).execute()
-        rows = result.data or []
-        if exclude_codes:
-            rows = [r for r in rows if r.get("code") not in exclude_codes]
-        return rows[:limit]
-
-    def insert_session_command_options(self, session_id: str, options: List[dict]):
-        """Insert rows into session_command_options (option_id, intent, tier, mode, prompt_text_snapshot, is_primary, cursor_min, cursor_max)."""
-        for o in options:
-            row = {
-                "session_id": session_id,
-                "option_id": o["option_id"],
-                "intent": o["intent"],
-                "tier": o["tier"],
-                "mode": o["mode"],
-                "prompt_text_snapshot": o["prompt_text_snapshot"],
-                "is_primary": o.get("is_primary", False),
-            }
-            if o.get("cursor_min") is not None:
-                row["cursor_min"] = o["cursor_min"]
-            if o.get("cursor_max") is not None:
-                row["cursor_max"] = o["cursor_max"]
-            try:
-                self.client.table("session_command_options").insert(row).execute()
-            except Exception:
-                pass
-
-    def get_session_command_options(self, session_id: str) -> List[dict]:
-        """Get session_command_options for session (A/B/C)."""
-        result = self.client.table("session_command_options")\
-            .select("*")\
-            .eq("session_id", session_id)\
-            .order("option_id")\
-            .execute()
-        return result.data or []
-
-    def update_session_planned_pre_question(self, session_id: str, planned_id: str, text_snapshot: str, type_snapshot: str, code_snapshot: str):
-        """Set planned pre-question snapshot on session."""
-        self.client.table("recording_sessions")\
-            .update({
-                "planned_pre_question_id": planned_id,
-                "planned_pre_question_text_snapshot": text_snapshot,
-                "planned_pre_question_type_snapshot": type_snapshot,
-                "planned_pre_question_code_snapshot": code_snapshot,
-            })\
-            .eq("id", session_id)\
-            .execute()
-
-    def update_session_theme(self, session_id: str, recommended_code: str = None, recommended_reason: str = None, chosen_code: str = None, chosen_source: str = None):
-        """Set theme decision on session."""
-        data = {}
-        if recommended_code is not None:
-            data["theme_recommended_code"] = recommended_code
-        if recommended_reason is not None:
-            data["theme_recommended_reason"] = recommended_reason
-        if chosen_code is not None:
-            data["theme_chosen_code"] = chosen_code
-        if chosen_source is not None:
-            data["theme_chosen_source"] = chosen_source
-        if data:
-            self.client.table("recording_sessions").update(data).eq("id", session_id).execute()
-
-    def update_session_selected_command(self, session_id: str, option_id: str, intent: str, tier: int, mode: str, prompt_snapshot: str):
-        """Persist selected command snapshot; mirror mode into structure (rollout)."""
-        self.client.table("recording_sessions")\
-            .update({
-                "selected_command_option_id": option_id,
-                "selected_intent": intent,
-                "selected_tier": tier,
-                "selected_mode": mode,
-                "selected_prompt_text_snapshot": prompt_snapshot,
-                "structure": mode,
-            })\
-            .eq("id", session_id)\
-            .execute()
-
-    def update_session_post_question_set_id(self, session_id: str, set_id: int):
-        """Set post_question_set_id on session (chosen at upload)."""
-        self.client.table("recording_sessions")\
-            .update({"post_question_set_id": set_id})\
-            .eq("id", session_id)\
-            .execute()
-
-    def update_session_admin_override_consumed(self, session_id: str, override_id: str):
-        """Set admin_override_id_applied and admin_override_consumed_at (idempotent guard)."""
-        self.client.table("recording_sessions")\
-            .update({
-                "admin_override_id_applied": override_id,
-                "admin_override_consumed_at": "now()",
-            })\
-            .eq("id", session_id)\
-            .execute()
-
-    def get_recent_theme_exposures_by_session(self, user_id: str, limit_sessions: int = 2) -> List[str]:
-        """Get theme_chosen_code from last N completed sessions (for anti-repeat)."""
-        sessions = self.client.table("recording_sessions")\
-            .select("theme_chosen_code")\
-            .eq("user_id", user_id)\
-            .eq("status", "completed")\
-            .not_.is_("theme_chosen_code", "null")\
-            .order("completed_at", desc=True)\
-            .limit(limit_sessions)\
-            .execute()
-        return [s["theme_chosen_code"] for s in (sessions.data or []) if s.get("theme_chosen_code")]
-
-    def get_recent_post_set_exposures_by_theme(self, user_id: str, theme_code: str, limit_same_theme: int = 2) -> List[int]:
-        """Get post_question_set_id from recent sessions for same theme (for anti-repeat at upload)."""
-        sessions = self.client.table("recording_sessions")\
-            .select("post_question_set_id")\
-            .eq("user_id", user_id)\
-            .eq("theme_chosen_code", theme_code)\
-            .not_.is_("post_question_set_id", "null")\
-            .order("completed_at", desc=True)\
-            .limit(limit_same_theme)\
-            .execute()
-        return [s["post_question_set_id"] for s in (sessions.data or []) if s.get("post_question_set_id") is not None]
-
     def get_incomplete_sessions_older_than(self, days: float) -> List[dict]:
         """Return recording_sessions that are not completed and created_at is older than days (for cleanup)."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
@@ -1454,16 +773,6 @@ class DatabaseService:
         return len(deleted_ids), deleted_ids
 
     # ---------- V2 flow ----------
-    def v2_get_universal_questions(self):
-        """Get 3 universal questions ordered by position."""
-        result = self.client.table("v2_universal_questions").select("*").order("position").execute()
-        return result.data or []
-
-    def v2_get_metric_definitions(self):
-        """All 5 metric definitions (code, left_label, right_label)."""
-        result = self.client.table("v2_metric_definitions").select("*").execute()
-        return result.data or []
-
     def v2_get_student_overrides(self, user_id: str):
         """Overrides for user (tasks, prompts, metric/skip flags, pending tutor video)."""
         result = self.client.table("v2_student_overrides").select("*").eq("user_id", user_id).execute()
@@ -1472,24 +781,6 @@ class DatabaseService:
             if str(row.get("user_id") or "") == str(user_id):
                 return row
         return None
-
-    def v2_get_active_session(self, user_id: str):
-        """Active v2 session (status != completed)."""
-        result = (
-            self.client.table("v2_sessions")
-            .select("*")
-            .eq("user_id", user_id)
-            .neq("status", "completed")
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_create_session(self, user_id: str):
-        """Create new v2 session (status=universal_questions)."""
-        result = self.client.table("v2_sessions").insert({"user_id": user_id, "status": "universal_questions"}).execute()
-        return result.data[0] if result.data else None
 
     def v2_update_session(self, session_id: str, user_id: str, data: dict):
         """Update v2 session; verify user_id."""
@@ -1519,10 +810,6 @@ class DatabaseService:
         self.client.table("v2_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
         # PostgREST/Supabase delete often returns empty result.data even on success; if we got here without exception, treat as success.
         return True
-
-    def v2_session_expired(self, session: dict, hours: float = 1.0) -> bool:
-        """True if session is incomplete and created_at is older than hours. Disabled: always returns False so the app never deletes sessions by age."""
-        return False
 
     def v2_get_incomplete_sessions_older_than(self, hours: float) -> List[dict]:
         """Return v2_sessions that are not completed and created_at is older than hours (for cleanup)."""
@@ -1613,28 +900,6 @@ class DatabaseService:
             "p_session_id": str(session_id),
             "p_actor_user_id": str(actor_user_id),
             "p_actor_is_admin": bool(actor_is_admin),
-        }).execute()
-        data = result.data
-        if isinstance(data, list):
-            return data[0] if data else None
-        return data if isinstance(data, dict) else None
-
-    def publish_coach_review_revision(self, **payload) -> Optional[dict]:
-        """Publish one immutable review revision and its outbox atomically."""
-        result = self.client.rpc("publish_coach_review_revision_v1", {
-            "p_revision_id": payload["revision_id"],
-            "p_session_id": payload["session_id"],
-            "p_owner_user_id": payload["owner_user_id"],
-            "p_project_id": payload["project_id"],
-            "p_actor_user_id": payload["actor_user_id"],
-            "p_actor_is_admin": bool(payload.get("actor_is_admin")),
-            "p_admin_override_reason": payload.get("admin_override_reason"),
-            "p_idempotency_key": payload["idempotency_key"],
-            "p_payload_hash": payload["payload_hash"],
-            "p_feedback_items": payload["feedback_items"],
-            "p_overall_message": payload.get("overall_message"),
-            "p_share_video": bool(payload.get("share_video")),
-            "p_delivery_payload": payload.get("delivery_payload") or {},
         }).execute()
         data = result.data
         if isinstance(data, list):
@@ -2137,127 +1402,6 @@ class DatabaseService:
         )
         return result.data[0] if result.data else None
 
-    def v2_set_charisma_snippet_label(
-        self,
-        snippet_id: str,
-        reviewer_id: str,
-        label: str,
-        notes: Optional[str],
-        reviewer_email: Optional[str] = None,
-    ) -> Optional[dict]:
-        """Set coach_label (charisma/no_charisma) for one snippet."""
-        payload = {
-            "coach_label": label,
-            "coach_label_notes": notes,
-            "labeled_by": reviewer_id,
-            "labeled_by_admin_id": reviewer_id,
-            "labeled_by_admin_email": (reviewer_email or "").strip() or None,
-            "labeled_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        result = (
-            self.client.table(SNIPPETS_TABLE)
-            .update(payload)
-            .eq("id", snippet_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_clear_charisma_snippet_label(self, snippet_id: str) -> Optional[dict]:
-        """Remove coach label so the snippet returns to the unlabeled queue."""
-        payload = {
-            "coach_label": None,
-            "coach_label_notes": None,
-            "labeled_by": None,
-            "labeled_by_admin_id": None,
-            "labeled_by_admin_email": None,
-            "labeled_at": None,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        result = (
-            self.client.table(SNIPPETS_TABLE)
-            .update(payload)
-            .eq("id", snippet_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_merge_charisma_snippet_features(self, snippet_id: str, patch: dict) -> Optional[dict]:
-        """Shallow-merge patch into features JSONB."""
-        row = self.v2_get_charisma_snippet(snippet_id)
-        if not row:
-            return None
-        features = dict(row.get("features") or {})
-        for k, v in (patch or {}).items():
-            if v is None:
-                features.pop(k, None)
-            else:
-                features[k] = v
-        result = (
-            self.client.table(SNIPPETS_TABLE)
-            .update({
-                "features": features,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            })
-            .eq("id", snippet_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_list_charisma_snippets(
-        self,
-        *,
-        source_type: Optional[str] = None,
-        recording_id: Optional[str] = None,
-        label_state: str = "all",
-        limit: int = 50,
-        offset: int = 0,
-        sort_created_desc: bool = True,
-        exclude_queue_skipped: bool = False,
-    ) -> list[dict]:
-        """List charisma snippets with optional filtering and recording metadata."""
-        query = self.client.table(SNIPPETS_TABLE).select("*")
-        query = query.order("created_at", desc=sort_created_desc)
-        query = query.range(offset, max(offset + limit - 1, offset))
-        if source_type:
-            query = query.eq("source_type", source_type)
-        if recording_id:
-            query = query.eq("recording_id", recording_id)
-        if label_state == "unlabeled":
-            query = query.is_("coach_label", "null")
-        result = query.execute()
-        rows = result.data or []
-        if label_state == "labeled":
-            rows = [r for r in rows if r.get("coach_label") is not None]
-        if exclude_queue_skipped:
-            rows = [
-                r
-                for r in rows
-                if not (isinstance(r.get("features"), dict) and r.get("features", {}).get("queue_skipped") is True)
-            ]
-        if not rows:
-            return []
-        recording_ids = [r.get("recording_id") for r in rows if r.get("recording_id")]
-        recordings_map: dict[str, dict] = {}
-        if recording_ids:
-            try:
-                recs = (
-                    self.client.table("recordings")
-                    .select("id, recording_origin, source_metadata, user_id, session_v2_id, created_at, storage_path")
-                    .in_("id", recording_ids)
-                    .execute()
-                )
-                recordings_map = {str(r["id"]): r for r in (recs.data or []) if r.get("id")}
-            except Exception:
-                recordings_map = {}
-        out = []
-        for row in rows:
-            item = dict(row)
-            rid = str(item.get("recording_id")) if item.get("recording_id") else None
-            item["recording"] = recordings_map.get(rid)
-            out.append(item)
-        return out
-
     def v2_get_last_completed_session(self, user_id: str):
         """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
         wide = "id, report_id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at, score_for_display"
@@ -2315,13 +1459,6 @@ class DatabaseService:
         }).eq("id", session_id).eq("user_id", user_id).execute()
         return True
 
-    def v2_mark_tutor_feedback_sent_for_user(self, user_id: str):
-        """Set tutor_feedback_sent_at to now on the user's most recent completed session. Call when admin sends new homework (POST send-assignment)."""
-        last = self.v2_get_last_completed_session(user_id)
-        if not last:
-            return
-        self.v2_mark_tutor_feedback_sent(last["id"], user_id)
-
     def v2_get_student_coaching_memory(self, user_id: str):
         """Return the coaching memory row for the user, or None.
 
@@ -2348,85 +1485,6 @@ class DatabaseService:
                 )
                 return None
             raise
-
-    def v2_upsert_student_coaching_memory(self, user_id: str, session_id: str):
-        """
-        Update per-student coaching memory from the last 5 completed sessions.
-        Call after session is marked completed (e.g. after v2_update_session in post-answers).
-        Current session is included; when loading the other 4, exclude session_id explicitly for idempotency.
-        Derives recurring_issues from last 5 recording_1_performance_profile (e.g. too_fast in >=3 of 5).
-        """
-        # Fetch only the columns we need for this upsert (faster than full session)
-        result = (
-            self.client.table("v2_sessions")
-            .select("status, score, recording_1_performance_profile")
-            .eq("id", session_id)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        session = result.data[0] if result.data else None
-        if not session or (session.get("status") or "").strip().lower() != "completed":
-            return
-        current_score = session.get("score")
-        current_profile = session.get("recording_1_performance_profile")
-
-        # Last 4 OTHER completed sessions (exclude current session_id); include profile for recurring_issues
-        result = (
-            self.client.table("v2_sessions")
-            .select("score, recording_1_performance_profile")
-            .eq("user_id", user_id)
-            .eq("status", "completed")
-            .neq("id", session_id)
-            .order("completed_at", desc=True)
-            .limit(4)
-            .execute()
-        )
-        others = list(reversed(result.data or []))  # oldest first
-
-        last_5_scores = []
-        last_5_profiles = []
-        for row in others:
-            s = row.get("score")
-            if s is not None:
-                try:
-                    last_5_scores.append(float(s))
-                except (TypeError, ValueError):
-                    pass
-            prof = row.get("recording_1_performance_profile")
-            last_5_profiles.append(prof if isinstance(prof, dict) else None)
-
-        if current_score is not None:
-            try:
-                last_5_scores.append(float(current_score))
-            except (TypeError, ValueError):
-                pass
-        last_5_profiles.append(current_profile if isinstance(current_profile, dict) else None)
-
-        last_5_scores = last_5_scores[-5:]
-        last_5_profiles = last_5_profiles[-5:]
-
-        # Recurring issues: if a pattern appears in >=3 of last 5 profiles, add it (cap at 3 issues)
-        recurring_issues = []
-        too_fast_count = sum(1 for p in last_5_profiles if p and (p.get("pace_level") or "").strip() == "too_fast")
-        if too_fast_count >= 3:
-            recurring_issues.append("too_fast")
-        too_slow_count = sum(1 for p in last_5_profiles if p and (p.get("pace_level") or "").strip() == "too_slow")
-        if too_slow_count >= 3:
-            recurring_issues.append("too_slow")
-        high_fillers_count = sum(1 for p in last_5_profiles if p and (p.get("filler_level") or "").strip() == "high")
-        if high_fillers_count >= 3:
-            recurring_issues.append("high_fillers")
-        recurring_issues = recurring_issues[:3]
-
-        payload = {
-            "user_id": user_id,
-            "last_5_scores": last_5_scores,
-            "recurring_issues": recurring_issues,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        self.client.table("v2_student_coaching_memory").upsert(
-            payload, on_conflict="user_id"
-        ).execute()
 
     # ---------- Sniper adaptive (user_sniper_profile, session_sniper_metrics) ----------
 
@@ -2555,9 +1613,6 @@ class DatabaseService:
         result = self.client.table("tasks").update(payload).eq("id", task_id).execute()
         return result.data[0] if result.data else None
 
-    def v2_delete_student_task(self, task_id: str):
-        self.client.table("tasks").delete().eq("id", task_id).execute()
-
     def _normalize_task_template_fields(self, data: dict, *, partial: bool = False) -> dict:
         payload = {}
         if "target_profile" in data or not partial:
@@ -2590,47 +1645,6 @@ class DatabaseService:
             payload["replaces_task_id"] = data.get("replaces_task_id") or None
         return payload
 
-    def v2_get_task_pool(
-        self,
-        *,
-        include_inactive: bool = False,
-        include_behavioral: bool = False,
-    ):
-        """Return rows from `tasks_pool`.
-
-        `include_behavioral` defaults to False so the legacy admin warm-up
-        modal stays uncluttered after the 12 canonical behavioral tasks are
-        seeded. The diagnose-and-prescribe engine should opt in via
-        `include_behavioral=True` (or use `v2_get_next_active_task_pool_template`
-        with `is_behavioral=True`).
-        """
-        try:
-            q = self.client.table("tasks_pool").select("*")
-            if not include_inactive:
-                q = q.eq("is_active", True)
-            if not include_behavioral:
-                q = q.eq("is_behavioral", False)
-            result = (
-                q.order("is_active", desc=True)
-                .order("target_profile")
-                .order("level")
-                .order("step_in_level")
-                .order("order_index")
-                .order("created_at")
-                .execute()
-            )
-            return result.data or []
-        except Exception:
-            # Backward compatibility with older schemas that do not yet have new columns.
-            result = (
-                self.client.table("tasks_pool")
-                .select("*")
-                .order("order_index")
-                .order("created_at")
-                .execute()
-            )
-            return result.data or []
-
     def v2_get_task_pool_by_id(self, pool_id: str):
         result = self.client.table("tasks_pool").select("*").eq("id", pool_id).execute()
         return result.data[0] if result.data else None
@@ -2642,25 +1656,6 @@ class DatabaseService:
         data.setdefault("updated_at", datetime.now(timezone.utc).isoformat())
         data.update(self._normalize_task_template_fields(data, partial=False))
         result = self.client.table("tasks_pool").insert(data).execute()
-        return result.data[0] if result.data else None
-
-    def v2_update_task_pool(self, pool_id: str, data: dict):
-        payload = {}
-        if "text" in data:
-            payload["text"] = data["text"]
-        if "order_index" in data:
-            payload["order_index"] = int(data["order_index"])
-        if "max_performance_score" in data:
-            try:
-                payload["max_performance_score"] = float(data["max_performance_score"])
-            except (TypeError, ValueError):
-                payload["max_performance_score"] = 1.0
-        payload.update(self._normalize_task_template_fields(data, partial=True))
-        if payload:
-            payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-        if not payload:
-            return self.v2_get_task_pool_by_id(pool_id)
-        result = self.client.table("tasks_pool").update(payload).eq("id", pool_id).execute()
         return result.data[0] if result.data else None
 
     def v2_delete_task_pool(self, pool_id: str, *, hard_delete: bool = False):
@@ -2706,68 +1701,6 @@ class DatabaseService:
                 inserted.append(new_row)
         return inserted
 
-    def v2_create_task_pool_entry_and_assign_student(
-        self,
-        user_id: str,
-        text: str,
-        order_index: int = 0,
-        max_performance_score: float = 1.0,
-        insert_at: Any = "end",
-        target_profile: str = TASK_TEMPLATE_DEFAULT_PROFILE,
-        level: int = TASK_TEMPLATE_DEFAULT_LEVEL,
-        step_in_level: int = TASK_TEMPLATE_DEFAULT_STEP,
-        is_active: bool = True,
-        replaces_task_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Insert tasks_pool row, then sync student's tasks from pool selection."""
-        text_clean = (text or "").strip()
-        if not text_clean:
-            raise ValueError("text is required")
-        rows = self.v2_get_student_tasks(user_id)
-        existing_ids = [str(r["pool_task_id"]) for r in rows if r.get("pool_task_id")]
-        dropped_non_pool = sum(1 for r in rows if not r.get("pool_task_id"))
-        try:
-            mps = float(max_performance_score)
-        except (TypeError, ValueError):
-            mps = 1.0
-        pool_row = self.v2_insert_task_pool(
-            {
-                "text": text_clean,
-                "order_index": int(order_index),
-                "max_performance_score": mps,
-                "target_profile": target_profile,
-                "level": level,
-                "step_in_level": step_in_level,
-                "is_active": bool(is_active),
-                "replaces_task_id": replaces_task_id,
-            }
-        )
-        if not pool_row:
-            raise RuntimeError("Failed to insert task pool row")
-        new_id = str(pool_row["id"])
-        if insert_at == "end" or insert_at is None:
-            final_ids = existing_ids + [new_id]
-        else:
-            try:
-                idx = int(insert_at)
-            except (TypeError, ValueError):
-                idx = len(existing_ids)
-            idx = max(0, min(idx, len(existing_ids)))
-            final_ids = existing_ids[:idx] + [new_id] + existing_ids[idx:]
-        try:
-            assigned = self.v2_sync_student_tasks_from_pool(user_id, final_ids)
-        except Exception:
-            try:
-                self.v2_delete_task_pool(new_id, hard_delete=True)
-            except Exception:
-                pass
-            raise
-        return {
-            "tasks_pool": pool_row,
-            "tasks": assigned,
-            "dropped_non_pool_tasks": dropped_non_pool,
-        }
-
     def v2_get_next_active_task_pool_template(
         self,
         *,
@@ -2804,117 +1737,6 @@ class DatabaseService:
             excluded = {str(x) for x in exclude_pool_task_ids if x}
             rows = [r for r in rows if str(r.get("id")) not in excluded]
         return rows
-
-    def v2_get_last_homework_performance_score(self, user_id: str):
-        """Last completed homework session's canonical score (0-1), or None if no completed session."""
-        result = (
-            self.client.table("v2_sessions")
-            .select("score")
-            .eq("user_id", user_id)
-            .eq("status", "completed")
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if not result.data:
-            return None
-        row = result.data[0]
-        score = row.get("score")
-        if score is None:
-            return None
-        return float(score)
-
-    def v2_get_performance_history(self, user_id: str, limit: int = 5) -> List[dict]:
-        """Last N completed homework sessions: session_id, created_at, score (0-1). Oldest first for chart S1..SN."""
-        from services.utils import score_01_from_recording_row
-
-        result = (
-            self.client.table("v2_sessions")
-            .select("id, created_at, score, score_for_display, recording_1_id")
-            .eq("user_id", user_id)
-            .eq("status", "completed")
-            .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
-        )
-        if not result.data:
-            return []
-        rows = list(reversed(result.data))
-        out = []
-        for r in rows:
-            s01 = None
-            if r.get("score_for_display") is not None:
-                try:
-                    s01 = max(0.0, min(1.0, float(r.get("score_for_display")) / 100.0))
-                except (TypeError, ValueError):
-                    s01 = None
-            if s01 is None:
-                s = r.get("score")
-                if s is None:
-                    continue
-                s01 = float(s or 0)
-            # Stored score can be 0 while the recording job wrote the real value in scoring_debug only.
-            if s01 <= 0 and r.get("recording_1_id"):
-                try:
-                    rec = self.get_recording(str(r["recording_1_id"]), None)
-                    recovered = score_01_from_recording_row(rec or {})
-                    if recovered is not None and recovered > 0:
-                        s01 = recovered
-                except Exception:
-                    pass
-            out.append(
-                {
-                    "session_id": str(r["id"]) if r.get("id") else None,
-                    "created_at": r.get("created_at"),
-                    "score": s01,
-                    # Backward compatibility for existing callers.
-                    "performance_score_end": s01,
-                }
-            )
-        return out
-
-    def v2_get_assigned_task_for_user(self, user_id: str):
-        """First homework task by order_index (no auto-create). None if none configured."""
-        result = (
-            self.client.table("tasks")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("order_index")
-            .order("created_at")
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_get_active_homework_session(self, user_id: str):
-        """Active homework flow session.
-
-        `post_questions` stays here only for legacy compatibility with older rows;
-        the current web client should not depend on that state.
-        """
-        statuses = (
-            "task",
-            "warm_up",  # legacy rows until rename_homework_session_status_warm_up_to_task.sql
-            "task_block",
-            "final_task_ready",
-            "post_questions",
-            "completing_from_recording_1",
-        )
-        result = (
-            self.client.table("v2_sessions")
-            .select("*")
-            .eq("user_id", user_id)
-            .in_("status", statuses)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def v2_create_homework_session(self, user_id: str):
-        """Create new homework flow session (status=task: first recording step)."""
-        result = self.client.table("v2_sessions").insert({"user_id": user_id, "status": "task"}).execute()
-        return result.data[0] if result.data else None
 
     def v2_find_session_by_upload_key(self, key: Optional[str]
                                       ) -> Optional[dict]:
@@ -3269,38 +2091,6 @@ class DatabaseService:
 
     # Context fields: context_short (session summary), context_long (report text), coach_notes (speaker_profile). See docs/CONTEXT-FIELDS.md.
 
-    def v2_append_context_long_entry(self, session_id: str, user_id: str, text: str):
-        """Append one report entry to context_long_entries with current UTC timestamp. Returns updated session."""
-        from datetime import datetime, timezone
-        entry = {"at": datetime.now(timezone.utc).isoformat(), "text": text}
-        # Fetch current entries, append, update
-        row = self.v2_get_session(session_id, user_id)
-        if not row:
-            return None
-        entries = list(row.get("context_long_entries") or [])
-        entries.append(entry)
-        self.client.table("v2_sessions").update({
-            "context_long_entries": entries,
-            "context_long": text,  # keep latest in TEXT for simple reads
-        }).eq("id", session_id).eq("user_id", user_id).execute()
-        return self.v2_get_session(session_id, user_id)
-
-    def v2_set_context_long_entries(self, session_id: str, user_id: str, entries: list):
-        """Admin: set full context_long_entries list. Each entry: { "at": "ISO8601", "text": "..." }. context_long = last entry text or "". Returns updated session or None."""
-        row = self.v2_get_session(session_id, user_id)
-        if not row:
-            return None
-        normalized = []
-        for e in entries or []:
-            if isinstance(e, dict) and e.get("text") is not None:
-                normalized.append({"at": e.get("at") or "", "text": str(e["text"])})
-        latest = normalized[-1]["text"] if normalized else ""
-        self.client.table("v2_sessions").update({
-            "context_long_entries": normalized,
-            "context_long": latest,
-        }).eq("id", session_id).eq("user_id", user_id).execute()
-        return self.v2_get_session(session_id, user_id)
-
     # ---------- Metric questions (2 questions for AI task block; admin Metrics section) ----------
     def v2_get_metric_questions(self):
         """All rows from v2_metric_questions ordered by position (the 3 task-block questions)."""
@@ -3312,34 +2102,9 @@ class DatabaseService:
         )
         return result.data or []
 
-    def v2_get_metric_questions_for_flow(self):
-        """First 3 from v2_metric_questions by position (metric_question_1, 2, 3 for task block)."""
-        rows = self.v2_get_metric_questions()
-        return rows[:3]
-
-    def v2_insert_metric_question(self, data: dict):
-        result = self.client.table("v2_metric_questions").insert(data).execute()
-        return result.data[0] if result.data else None
-
-    def v2_update_metric_question(self, question_id: str, data: dict):
-        result = self.client.table("v2_metric_questions").update(data).eq("id", question_id).execute()
-        return result.data[0] if result.data else None
-
     def v2_update_metric_question_by_position(self, position: int, text: str):
         """Update the single row with this position (1, 2, or 3)."""
         result = self.client.table("v2_metric_questions").update({"text": (text or "").strip()}).eq("position", position).execute()
-        return result.data[0] if result.data else None
-
-    def v2_delete_metric_question(self, question_id: str):
-        self.client.table("v2_metric_questions").delete().eq("id", question_id).execute()
-
-    def v2_upsert_metric_definition(self, code: str, left_label: str, right_label: str):
-        now = datetime.now(timezone.utc).isoformat()
-        result = (
-            self.client.table("v2_metric_definitions")
-            .upsert({"code": code, "left_label": left_label, "right_label": right_label, "updated_at": now}, on_conflict="code")
-            .execute()
-        )
         return result.data[0] if result.data else None
 
     _V2_OVERRIDES_COLUMNS = {
@@ -3410,92 +2175,6 @@ class DatabaseService:
                 return row
         return self.v2_get_student_overrides(user_id)
 
-    def v2_set_pending_tutor_video(
-        self,
-        user_id: str,
-        video_url: str = None,
-        video_description: str = None,
-        video_bucket: str = None,
-        video_storage_path: str = None,
-    ):
-        """Store coach message and/or video URL for the next session. Call when admin sends assignment. Message is returned as tutor_video_description in GET session/status (homework flow is text-only; no video)."""
-        payload = {}
-        if video_url is not None:
-            payload["pending_tutor_video_url"] = (video_url or "").strip() or None
-        if video_description is not None:
-            payload["pending_tutor_video_description"] = (video_description or "").strip() or None
-        if video_bucket is not None:
-            payload["pending_tutor_video_bucket"] = (video_bucket or "").strip() or None
-        if video_storage_path is not None:
-            payload["pending_tutor_video_storage_path"] = (video_storage_path or "").strip() or None
-        if payload:
-            self.v2_upsert_student_overrides(user_id, payload)
-        return True
-
-    def v2_get_and_clear_pending_tutor_video(self, user_id: str):
-        """Return (url, description, bucket, storage_path) for the pending tutor video and clear all. Used on session/start to attach to the new session."""
-        row = (
-            self.client.table("v2_student_overrides")
-            .select(
-                "pending_tutor_video_url, pending_tutor_video_description, "
-                "pending_tutor_video_bucket, pending_tutor_video_storage_path"
-            )
-            .eq("user_id", user_id)
-            .execute()
-        )
-        url = None
-        description = None
-        bucket = None
-        storage_path = None
-        if row.data:
-            r = row.data[0]
-            if r.get("pending_tutor_video_url"):
-                url = (r["pending_tutor_video_url"] or "").strip() or None
-            if r.get("pending_tutor_video_description"):
-                description = (r["pending_tutor_video_description"] or "").strip() or None
-            if r.get("pending_tutor_video_bucket"):
-                bucket = (r["pending_tutor_video_bucket"] or "").strip() or None
-            if r.get("pending_tutor_video_storage_path"):
-                storage_path = (r["pending_tutor_video_storage_path"] or "").strip() or None
-        if url is not None or description is not None or bucket is not None or storage_path is not None:
-            self.client.table("v2_student_overrides").update(
-                {
-                    "pending_tutor_video_url": None,
-                    "pending_tutor_video_description": None,
-                    "pending_tutor_video_bucket": None,
-                    "pending_tutor_video_storage_path": None,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }
-            ).eq("user_id", user_id).execute()
-        return (url, description, bucket, storage_path)
-
-    def v2_create_report(self, session_v2_id: str, recording_id: str, report_text: str):
-        result = self.client.table("v2_reports").insert({
-            "session_v2_id": session_v2_id,
-            "recording_id": recording_id,
-            "report_text": report_text,
-        }).execute()
-        return result.data[0] if result.data else None
-
-    def v2_list_users_with_sessions(self, limit: int = 50, offset: int = 0):
-        """List user_ids that have at least one v2_session (for admin students list)."""
-        fetch = max((offset + limit) * 2, 100)
-        result = (
-            self.client.table("v2_sessions")
-            .select("user_id")
-            .order("created_at", desc=True)
-            .limit(fetch)
-            .execute()
-        )
-        seen = set()
-        out = []
-        for row in (result.data or []):
-            uid = row.get("user_id")
-            if uid and uid not in seen:
-                seen.add(uid)
-                out.append(uid)
-        return out[offset : offset + limit]
-
     def v2_list_auth_users(self, limit: int = 50, offset: int = 0):
         """List all auth users (id, email) via Supabase Auth Admin API so new students appear in admin list.
         Returns list of dicts with user_id and email (email may be None if not present)."""
@@ -3545,37 +2224,6 @@ class DatabaseService:
             .execute()
         )
         return result.data[0] if result.data else None
-
-    def v2_upsert_student_details(self, user_id: str, data: dict):
-        """Create/update student details. Allowed keys: name, price_per_live_lesson, credits, is_archived."""
-        payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}
-        if "name" in data:
-            name_val = data.get("name")
-            if name_val is None:
-                payload["name"] = None
-            else:
-                payload["name"] = str(name_val).strip() or None
-        if "price_per_live_lesson" in data:
-            payload["price_per_live_lesson"] = data.get("price_per_live_lesson")
-        if "credits" in data:
-            payload["credits"] = data.get("credits")
-        if "is_archived" in data:
-            payload["is_archived"] = bool(data.get("is_archived"))
-        result = self.client.table("v2_student_details").upsert(payload, on_conflict="user_id").execute()
-        return result.data[0] if result.data else None
-
-    def v2_get_archived_user_ids(self) -> set:
-        """Return set of user_id strings that have is_archived = true in v2_student_details."""
-        try:
-            res = (
-                self.client.table("v2_student_details")
-                .select("user_id")
-                .eq("is_archived", True)
-                .execute()
-            )
-            return {str(row["user_id"]) for row in (res.data or [])}
-        except Exception:
-            return set()
 
     def v2_increment_student_credits(self, user_id: str, delta: int) -> int | None:
         """Add delta to credits (e.g. Stripe payment). Negative delta allowed for corrections; result floors at 0. Returns new balance or None on failure."""
@@ -3938,40 +2586,6 @@ class DatabaseService:
             )
             return 0
 
-    def v2_get_student_list_stats(self, user_id: str):
-        """Optional stats for admin students list: sessions_count, last_session_at (ISO), avg_performance (0-100)."""
-        sessions = (
-            self.client.table("v2_sessions")
-            .select("id, created_at, recording_1_id")
-            .eq("user_id", user_id)
-            .order("created_at", desc=True)
-            .limit(1000)
-            .execute()
-        )
-        rows = sessions.data or []
-        if not rows:
-            return None
-        sessions_count = len(rows)
-        last_session_at = max((r.get("created_at") for r in rows if r.get("created_at")), default=None)
-        session_ids = [r["id"] for r in rows if r.get("id")]
-        avg_performance = None
-        if session_ids:
-            recs = (
-                self.client.table("recordings")
-                .select("performance_score_v2")
-                .in_("session_v2_id", session_ids)
-                .not_.is_("performance_score_v2", "null")
-                .execute()
-            )
-            scores = [r.get("performance_score_v2") for r in (recs.data or []) if r.get("performance_score_v2") is not None]
-            if scores:
-                avg_performance = round((sum(scores) / len(scores)) * 100)
-        return {
-            "sessions_count": sessions_count,
-            "last_session_at": last_session_at,
-            "avg_performance": avg_performance,
-        }
-
     def v2_get_sessions_with_previews(self, user_id: str, limit: int = 50):
         """Get v2 sessions for a user with full report text and all analytics previews for admin session history."""
         all_session_columns = [
@@ -4083,48 +2697,6 @@ class DatabaseService:
             out.append(rec)
         return out
 
-    def v2_get_last_report_for_user(self, user_id: str):
-        """Get full text of the most recent completed report for admin 'Last Report' section. Only considers sessions with status='completed'. Returns { report_text, report_preview } or None."""
-        result = (
-            self.client.table("v2_sessions")
-            .select("id, report_id, completed_at, student_completion_email_sent_at")
-            .eq("user_id", user_id)
-            .eq("status", "completed")
-            .order("completed_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if not result.data:
-            return None
-        s = result.data[0]
-        report_text = None
-        if s.get("report_id"):
-            r = self.client.table("v2_reports").select("report_text").eq("id", s["report_id"]).execute()
-            if r.data:
-                report_text = r.data[0].get("report_text") or ""
-        if report_text is None and s.get("id"):
-            try:
-                ctx = self.client.table("v2_sessions").select("context_long, context_long_entries").eq("id", s["id"]).execute()
-                if ctx.data:
-                    row = ctx.data[0]
-                    report_text = (row.get("context_long") or "").strip()
-                    if not report_text and row.get("context_long_entries"):
-                        entries = row["context_long_entries"]
-                        if isinstance(entries, list) and entries:
-                            last = entries[-1]
-                            if isinstance(last, dict) and last.get("text"):
-                                report_text = (last["text"] or "").strip()
-            except Exception:
-                pass
-        if not report_text:
-            return None
-        return {
-            "report_text": report_text,
-            "report_preview": (report_text or "")[:500],
-            "student_completion_email_sent_at": s.get("student_completion_email_sent_at"),
-            "report_delivered": True,
-        }
-
     def v2_get_speaker_profile(self, user_id: str):
         """Get speaker profile for admin panel (main_goal, motivation, coach_notes, etc.)."""
         result = self.client.table("v2_speaker_profiles").select("*").eq("user_id", user_id).execute()
@@ -4133,47 +2705,6 @@ class DatabaseService:
             if str(row.get("user_id") or "") == str(user_id):
                 return row
         return None
-
-    def v2_upsert_speaker_profile(self, user_id: str, data: dict):
-        """Create or update speaker profile. Keys: main_goal, motivation, strong_points, weak_points, charismatic_traits, hobbies_interests, personality_type, coach_notes."""
-        allowed = {"main_goal", "motivation", "strong_points", "weak_points", "charismatic_traits", "hobbies_interests", "personality_type", "coach_notes"}
-        payload = {k: v for k, v in data.items() if k in allowed}
-        payload["user_id"] = user_id
-        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-        result = self.client.table("v2_speaker_profiles").upsert(payload, on_conflict="user_id").execute()
-        rows = result.data or []
-        for row in rows:
-            if str(row.get("user_id") or "") == str(user_id):
-                return row
-        return self.v2_get_speaker_profile(user_id)
-
-    def get_user_name_from_auth(self, user_id: str) -> str | None:
-        """Fetch user display name from Supabase Auth user_metadata. Returns None if not found or on error."""
-        try:
-            import httpx
-            url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
-            resp = httpx.get(
-                url,
-                headers={
-                    "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
-                    "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
-                },
-                timeout=5,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                meta = data.get("user_metadata") or {}
-                raw = (
-                    meta.get("full_name")
-                    or meta.get("name")
-                    or meta.get("display_name")
-                    or ""
-                )
-                cleaned = str(raw).strip()
-                return cleaned if cleaned else None
-            return None
-        except Exception:
-            return None
 
     def get_user_email_from_auth(self, user_id: str) -> str | None:
         """Fetch user email from Supabase Auth (admin API). Returns None if not found or on error."""
@@ -4220,56 +2751,6 @@ class DatabaseService:
             return None
         except Exception:
             return None
-
-    def v2_delete_student(self, user_id: str) -> dict:
-        """
-        Delete a student and related admin-managed rows.
-        Returns a dict with per-step status for observability.
-        """
-        result = {
-            "user_id": user_id,
-            "details_deleted": False,
-            "overrides_deleted": False,
-            "speaker_profile_deleted": False,
-            "student_tasks_deleted": False,
-            "post_questions_deleted": False,
-            "sessions_deleted": False,
-            "auth_user_deleted": False,
-        }
-
-        # Best-effort cleanup in public schema first.
-        self.client.table("v2_student_details").delete().eq("user_id", user_id).execute()
-        result["details_deleted"] = True
-        self.client.table("v2_student_overrides").delete().eq("user_id", user_id).execute()
-        result["overrides_deleted"] = True
-        self.client.table("v2_speaker_profiles").delete().eq("user_id", user_id).execute()
-        result["speaker_profile_deleted"] = True
-        self.client.table("tasks").delete().eq("user_id", user_id).execute()
-        result["student_tasks_deleted"] = True
-        self.client.table("v2_student_post_recording_questions").delete().eq("user_id", user_id).execute()
-        result["post_questions_deleted"] = True
-        self.client.table("v2_sessions").delete().eq("user_id", user_id).execute()
-        result["sessions_deleted"] = True
-
-        # Remove user from Supabase Auth as final step.
-        import httpx
-        url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
-        resp = httpx.delete(
-            url,
-            headers={
-                "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
-                "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
-            },
-            timeout=10,
-        )
-        if resp.status_code in (200, 204):
-            result["auth_user_deleted"] = True
-            return result
-        if resp.status_code == 404:
-            # User already absent in auth; treat delete as idempotent success.
-            result["auth_user_deleted"] = True
-            return result
-        raise RuntimeError(f"auth_delete_failed status={resp.status_code} body={resp.text[:300]}")
 
     # ---------- Coach AI Conversations ----------
 
@@ -4318,47 +2799,6 @@ class DatabaseService:
 
     # ---------- Admin Copilot Inbox ----------
 
-    def upsert_student_profile_fields(self, user_id: str, fields: Dict[str, Any]) -> dict:
-        payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}
-        payload.update(fields or {})
-        try:
-            res = (
-                self.client.table(self._student_profile_table)
-                .upsert(payload, on_conflict="user_id")
-                .execute()
-            )
-            return res.data[0] if res.data else payload
-        except Exception as e:
-            if self._is_relation_missing_error(e):
-                res = (
-                    self.client.table(self._legacy_student_profile_table)
-                    .upsert(payload, on_conflict="user_id")
-                    .execute()
-                )
-                return res.data[0] if res.data else payload
-            raise
-
-    def list_recent_student_ids(self, limit: int = 500) -> List[str]:
-        try:
-            rows = (
-                self.client.table("v2_sessions")
-                .select("user_id, created_at")
-                .order("created_at", desc=True)
-                .limit(limit)
-                .execute()
-            )
-            ids: List[str] = []
-            seen = set()
-            for row in (rows.data or []):
-                uid = str(row.get("user_id") or "").strip()
-                if not uid or uid in seen:
-                    continue
-                seen.add(uid)
-                ids.append(uid)
-            return ids
-        except Exception:
-            return []
-
     def create_admin_annotation_event(
         self,
         *,
@@ -4399,46 +2839,6 @@ class DatabaseService:
             payload.pop("new_value_hash", None)
             self.client.table("admin_annotation_events").insert(payload).execute()
 
-    def insert_admin_student_send_drafts(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        if not rows:
-            return []
-        res = self.client.table("admin_student_send_drafts").insert(rows).execute()
-        return res.data or []
-
-    def archive_copilot_queue_row(self, user_id: str, session_id: str, admin_user_id: Optional[str] = None) -> bool:
-        payload = {
-            "user_id": user_id,
-            "session_id": session_id,
-            "archived_at": datetime.now(timezone.utc).isoformat(),
-            "archived_by": admin_user_id,
-        }
-        self.client.table("admin_copilot_queue_archives").upsert(
-            payload, on_conflict="user_id,session_id"
-        ).execute()
-        return True
-
-    def unarchive_copilot_queue_row(self, user_id: str, session_id: str) -> bool:
-        (
-            self.client.table("admin_copilot_queue_archives")
-            .delete()
-            .eq("user_id", user_id)
-            .eq("session_id", session_id)
-            .execute()
-        )
-        return True
-
-    def get_copilot_queue_archived_pairs(self) -> set:
-        """Return set of (user_id, session_id) string tuples that are archived."""
-        try:
-            res = (
-                self.client.table("admin_copilot_queue_archives")
-                .select("user_id, session_id")
-                .execute()
-            )
-            return {(str(r["user_id"]), str(r["session_id"])) for r in (res.data or [])}
-        except Exception:
-            return set()
-
     def list_admin_student_send_drafts(self, *, status: Optional[str] = None) -> List[Dict[str, Any]]:
         q = (
             self.client.table("admin_student_send_drafts")
@@ -4450,162 +2850,6 @@ class DatabaseService:
             q = q.eq("status", status)
         res = q.execute()
         return res.data or []
-
-    def get_admin_student_send_draft(self, draft_id: str, user_id: str) -> Optional[Dict[str, Any]]:
-        res = (
-            self.client.table("admin_student_send_drafts")
-            .select("*")
-            .eq("id", draft_id)
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-        )
-        return res.data[0] if res.data else None
-
-    def mark_admin_student_send_draft_sent(
-        self,
-        draft_id: str,
-        user_id: str,
-        approved_by: str,
-        *,
-        delivery_email_soft_failed: bool = False,
-        draft_payload: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
-        payload: Dict[str, Any] = {
-            "status": "sent",
-            "approved_by": approved_by,
-            "sent_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "delivery_lifecycle": "delivered",
-            "delivery_email_soft_failed": bool(delivery_email_soft_failed),
-            "delivery_failed_step": None,
-        }
-        if draft_payload is not None:
-            payload["draft_payload"] = draft_payload
-        res = (
-            self.client.table("admin_student_send_drafts")
-            .update(payload)
-            .eq("id", draft_id)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return res.data[0] if res.data else None
-
-    def queue_admin_student_send_draft_pipeline(
-        self,
-        *,
-        draft_id: str,
-        user_id: str,
-        pipeline_job_id: str,
-        script_mode: str,
-        script_manifest: Dict[str, Any],
-        created_by: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
-        now = datetime.now(timezone.utc).isoformat()
-        payload = {
-            "pipeline_job_id": pipeline_job_id,
-            "pipeline_status": "queued",
-            "pipeline_error": None,
-            "pipeline_started_at": None,
-            "pipeline_finished_at": None,
-            "script_mode": script_mode,
-            "script_manifest": script_manifest or {},
-            "updated_at": now,
-            "delivery_lifecycle": "delivering",
-            "delivery_started_at": now,
-            "delivery_failed_step": None,
-            "delivery_email_soft_failed": False,
-        }
-        if created_by:
-            payload["approved_by"] = created_by
-        res = (
-            self.client.table("admin_student_send_drafts")
-            .update(payload)
-            .eq("id", draft_id)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return res.data[0] if res.data else None
-
-    def get_admin_student_send_draft_by_pipeline_job(self, pipeline_job_id: str) -> Optional[Dict[str, Any]]:
-        res = (
-            self.client.table("admin_student_send_drafts")
-            .select("*")
-            .eq("pipeline_job_id", pipeline_job_id)
-            .limit(1)
-            .execute()
-        )
-        return res.data[0] if res.data else None
-
-    def update_admin_student_send_draft_pipeline_status(
-        self,
-        *,
-        draft_id: str,
-        user_id: str,
-        status: str,
-        error: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
-        now = datetime.now(timezone.utc).isoformat()
-        payload: Dict[str, Any] = {
-            "pipeline_status": status,
-            "pipeline_error": (error or None),
-            "updated_at": now,
-        }
-        if status == "failed":
-            payload["delivery_lifecycle"] = "failed"
-            payload["delivery_failed_step"] = "render"
-        elif status in ("queued", "running_tts", "running_video", "uploading"):
-            payload["delivery_lifecycle"] = "delivering"
-        if status in ("running_tts", "running_video", "uploading"):
-            payload["pipeline_started_at"] = now
-            payload["pipeline_finished_at"] = None
-        elif status in ("sent", "failed"):
-            payload["pipeline_finished_at"] = now
-        res = (
-            self.client.table("admin_student_send_drafts")
-            .update(payload)
-            .eq("id", draft_id)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return res.data[0] if res.data else None
-
-    def mark_admin_student_send_draft_pipeline_sent(
-        self,
-        *,
-        draft_id: str,
-        user_id: str,
-        approved_by: str,
-        feedback_video_storage_path: str,
-        script_manifest: Optional[Dict[str, Any]] = None,
-        delivery_email_soft_failed: bool = False,
-        draft_payload: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
-        payload: Dict[str, Any] = {
-            "status": "sent",
-            "pipeline_status": "sent",
-            "pipeline_error": None,
-            "feedback_video_storage_path": feedback_video_storage_path,
-            "approved_by": approved_by,
-            "sent_at": datetime.now(timezone.utc).isoformat(),
-            "pipeline_finished_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "delivery_lifecycle": "delivered",
-            "delivery_email_soft_failed": bool(delivery_email_soft_failed),
-            "delivery_failed_step": None,
-        }
-        if script_manifest is not None:
-            payload["script_manifest"] = script_manifest
-        if draft_payload is not None:
-            payload["draft_payload"] = draft_payload
-        res = (
-            self.client.table("admin_student_send_drafts")
-            .update(payload)
-            .eq("id", draft_id)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return res.data[0] if res.data else None
 
     def try_claim_admin_send_draft_delivery_in_progress(self, draft_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """Atomically move lifecycle idle|failed → delivering. Returns row if claim succeeded."""
@@ -4630,38 +2874,6 @@ class DatabaseService:
         except Exception as e:
             logger.warning("try_claim_admin_send_draft_delivery_in_progress: %s", e)
             return None
-
-    def reset_admin_send_draft_delivery_idle(self, draft_id: str, user_id: str) -> Optional[Dict[str, Any]]:
-        now = datetime.now(timezone.utc).isoformat()
-        res = (
-            self.client.table("admin_student_send_drafts")
-            .update(
-                {
-                    "delivery_lifecycle": "idle",
-                    "delivery_started_at": None,
-                    "updated_at": now,
-                }
-            )
-            .eq("id", draft_id)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return res.data[0] if res.data else None
-
-    def clear_admin_send_draft_email_soft_failure(self, draft_id: str, user_id: str) -> Optional[Dict[str, Any]]:
-        res = (
-            self.client.table("admin_student_send_drafts")
-            .update(
-                {
-                    "delivery_email_soft_failed": False,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }
-            )
-            .eq("id", draft_id)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return res.data[0] if res.data else None
 
     def create_admin_uploaded_reference_video(
         self,
@@ -4749,73 +2961,6 @@ class DatabaseService:
         )
         if since_iso:
             q = q.gt("created_at", since_iso)
-        res = q.execute()
-        return res.data or []
-
-    def list_reference_transcripts_for_copilot(
-        self,
-        *,
-        user_id: str,
-        limit: int = 6,
-    ) -> List[Dict[str, Any]]:
-        cap = max(1, min(50, int(limit)))
-        out: List[Dict[str, Any]] = []
-        seen: set[str] = set()
-        try:
-            user_rows = (
-                self.client.table("admin_uploaded_reference_videos")
-                .select("*")
-                .eq("is_active", True)
-                .eq("user_id", user_id)
-                .eq("transcription_status", "done")
-                .order("created_at", desc=True)
-                .limit(cap)
-                .execute()
-            ).data or []
-        except Exception:
-            user_rows = []
-        try:
-            universal_rows = (
-                self.client.table("admin_uploaded_reference_videos")
-                .select("*")
-                .eq("is_active", True)
-                .eq("is_universal", True)
-                .eq("transcription_status", "done")
-                .order("created_at", desc=True)
-                .limit(cap)
-                .execute()
-            ).data or []
-        except Exception:
-            universal_rows = []
-
-        for row in (user_rows + universal_rows):
-            rid = str(row.get("id") or "").strip()
-            if not rid or rid in seen:
-                continue
-            transcript = (row.get("transcript_text") or "").strip()
-            if not transcript:
-                continue
-            seen.add(rid)
-            out.append(row)
-            if len(out) >= cap:
-                break
-        return out
-
-    def list_admin_uploaded_reference_videos(
-        self,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-        is_active: Optional[bool] = None,
-    ) -> List[Dict[str, Any]]:
-        q = (
-            self.client.table("admin_uploaded_reference_videos")
-            .select("*")
-            .order("created_at", desc=True)
-            .range(max(0, int(offset)), max(0, int(offset)) + max(1, min(500, int(limit))) - 1)
-        )
-        if is_active is not None:
-            q = q.eq("is_active", bool(is_active))
         res = q.execute()
         return res.data or []
 
@@ -4932,16 +3077,6 @@ class DatabaseService:
                 return hit
         return _query({"user_id": user_id})
 
-    def get_admin_uploaded_reference_video(self, reference_video_id: str) -> Optional[Dict[str, Any]]:
-        res = (
-            self.client.table("admin_uploaded_reference_videos")
-            .select("*")
-            .eq("id", reference_video_id)
-            .limit(1)
-            .execute()
-        )
-        return res.data[0] if res.data else None
-
     def update_admin_uploaded_reference_video(
         self,
         reference_video_id: str,
@@ -4957,25 +3092,6 @@ class DatabaseService:
         )
         return res.data[0] if res.data else None
 
-    def create_copilot_reference_upload_job(
-        self,
-        *,
-        created_by: Optional[str],
-        student_user_id: str,
-    ) -> Optional[Dict[str, Any]]:
-        now = datetime.now(timezone.utc).isoformat()
-        payload: Dict[str, Any] = {
-            "student_user_id": student_user_id,
-            "stage": "queued",
-            "percent": 0,
-            "message": "Queued",
-            "updated_at": now,
-        }
-        if created_by:
-            payload["created_by"] = created_by
-        res = self.client.table("copilot_reference_upload_jobs").insert(payload).execute()
-        return res.data[0] if res.data else None
-
     def update_copilot_reference_upload_job(
         self,
         job_id: str,
@@ -4987,16 +3103,6 @@ class DatabaseService:
             self.client.table("copilot_reference_upload_jobs")
             .update(payload)
             .eq("id", job_id)
-            .execute()
-        )
-        return res.data[0] if res.data else None
-
-    def get_copilot_reference_upload_job(self, job_id: str) -> Optional[Dict[str, Any]]:
-        res = (
-            self.client.table("copilot_reference_upload_jobs")
-            .select("*")
-            .eq("id", job_id)
-            .limit(1)
             .execute()
         )
         return res.data[0] if res.data else None
@@ -5570,59 +3676,6 @@ class DatabaseService:
             return res.data[0] if res.data else None
         except Exception as e:
             logger.warning("v2_get_last_completed_session_full failed for %s: %s", user_id, e)
-            return None
-
-    def v2_user_has_pending_copilot_draft(self, user_id: str) -> bool:
-        try:
-            r = (
-                self.client.table("admin_student_send_drafts")
-                .select("id")
-                .eq("user_id", user_id)
-                .eq("status", "pending")
-                .limit(1)
-                .execute()
-            )
-            return bool(r.data)
-        except Exception:
-            return False
-
-    def get_auth_user_id_by_email(self, email: str) -> Optional[str]:
-        """Resolve Supabase auth user UUID from email (admin API list). Case-insensitive match."""
-        needle = (email or "").strip().lower()
-        if not needle or "@" not in needle:
-            return None
-        try:
-            import httpx
-
-            base = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
-            page = 1
-            per_page = 1000
-            while page <= 50:
-                resp = httpx.get(
-                    base,
-                    params={"per_page": per_page, "page": page},
-                    headers={
-                        "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
-                        "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
-                    },
-                    timeout=15,
-                )
-                if resp.status_code != 200:
-                    return None
-                data = resp.json()
-                users = data.get("users") or (data.get("data") or {}).get("users") or []
-                if not users:
-                    return None
-                for u in users:
-                    em = (u.get("email") or "").strip().lower()
-                    if em == needle:
-                        uid = u.get("id")
-                        return str(uid).strip() if uid else None
-                if len(users) < per_page:
-                    return None
-                page += 1
-            return None
-        except Exception:
             return None
 
     def v2_list_all_auth_user_ids(self, cap: int = 2000) -> List[str]:
@@ -10156,100 +8209,6 @@ class DatabaseService:
         except Exception:
             return False  # best-effort; not load-bearing
 
-    def pop_pending_icebreaker_for_user(
-        self,
-        user_id: str,
-    ) -> Optional[dict]:
-        """Atomic-ish: find the user's most-recent session whose
-        icebreaker is pending+non-null, mark it delivered, return
-        ``{question, source_session_id}``.
-
-        Returns None when:
-          - no pending icebreaker exists for this user
-          - the columns are missing (migration pending)
-          - the read OR the mark-delivered failed
-
-        Atomicity caveat: SELECT then UPDATE on two HTTP calls.
-        Race window between them = "if two first-question requests
-        for the same user fire in parallel, both might consume the
-        same row." Mirrors pop_next_directive's caveat exactly —
-        acceptable because chat surfaces are user-driven and serial
-        per session. If we ever need stricter guarantees, promote
-        to a stored function with SELECT ... FOR UPDATE SKIP LOCKED.
-
-        Called from /v2/user/chat/first-question AFTER the directives-
-        queue check (admin overrides still win) but BEFORE the
-        contextual-init flow — see the route comment for the full
-        priority order.
-        """
-        if not user_id:
-            return None
-        try:
-            picked = (
-                self.client.table("v2_sessions")
-                .select(
-                    "id, next_session_icebreaker"
-                )
-                .eq("user_id", user_id)
-                .eq("next_session_icebreaker_status", "pending")
-                .not_.is_("next_session_icebreaker", None)
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            rows = picked.data or []
-            if not rows:
-                return None
-            row = rows[0]
-        except Exception as sel_err:
-            err_low = str(sel_err).lower()
-            if (
-                "next_session_icebreaker" in err_low
-                and ("does not exist" in err_low or "pgrst" in err_low)
-            ):
-                # Columns not yet present — silently fall through to
-                # legacy path. Mirrors pop_next_directive.
-                return None
-            logger.warning(
-                "pop_pending_icebreaker: select failed user=%s err=%s "
-                "— falling through",
-                user_id, sel_err,
-            )
-            return None
-
-        question = (row.get("next_session_icebreaker") or "").strip()
-        if not question:
-            # Status was 'pending' but the value was empty/whitespace —
-            # treat as if no icebreaker exists. Don't flip it to
-            # 'delivered' (nothing was delivered).
-            return None
-
-        # Mark delivered. If this UPDATE fails we abort delivery — same
-        # rationale as pop_next_directive: better to let the LLM
-        # fallback fire than to re-serve the same icebreaker twice.
-        try:
-            (
-                self.client.table("v2_sessions")
-                .update({
-                    "next_session_icebreaker_status": "delivered",
-                })
-                .eq("id", row["id"])
-                .execute()
-            )
-        except Exception as upd_err:
-            logger.warning(
-                "pop_pending_icebreaker: mark-delivered failed "
-                "user=%s sid=%s err=%s — falling through to LLM "
-                "to avoid double-firing the same icebreaker",
-                user_id, row.get("id"), upd_err,
-            )
-            return None
-
-        return {
-            "question": question,
-            "source_session_id": row.get("id"),
-        }
-
     def get_next_session_id_for(
         self,
         user_id: str,
@@ -11930,63 +9889,6 @@ class DatabaseService:
             )
             return None
 
-    def list_blind_coach_evidence(
-        self, *, take_id: str, coach_id: str,
-    ) -> list[dict]:
-        """Database-enforced pre-judgment allowlist."""
-        if not take_id or not coach_id:
-            return []
-        try:
-            result = self.client.rpc("blind_coach_evidence_v1", {
-                "p_take_id": str(take_id),
-                "p_coach_id": str(coach_id),
-            }).execute()
-            return [row for row in (result.data or []) if isinstance(row, dict)]
-        except Exception as error:
-            logger.warning("blind canonical evidence read failed: %s", error)
-            return []
-
-    def get_coach_evidence_comparison(
-        self, *, evidence_span_id: str, coach_id: str,
-    ) -> Optional[dict]:
-        """Post-judgment comparison; SQL returns nothing before commitment."""
-        if not evidence_span_id or not coach_id:
-            return None
-        try:
-            rows = self.client.rpc("coach_evidence_comparison_v1", {
-                "p_evidence_span_id": str(evidence_span_id),
-                "p_coach_id": str(coach_id),
-            }).execute().data or []
-            return rows[0] if rows and isinstance(rows[0], dict) else None
-        except Exception as error:
-            logger.warning("canonical coach comparison read failed: %s", error)
-            return None
-
-    def create_dataset_release(self, manifest: dict) -> Optional[dict]:
-        """Atomically persist one pre-built immutable dataset manifest.
-
-        This is intentionally not exposed by a user/coach route. A dedicated
-        internal release workflow supplies the fully reviewed manifest; live
-        product tables are never queried as an ad-hoc training dataset.
-        """
-        if not isinstance(manifest, dict) or not manifest.get(
-                "manifest_checksum"):
-            return None
-        try:
-            result = self.client.rpc("create_dataset_release_v1", {
-                "p_manifest": manifest,
-            }).execute()
-            data = result.data
-            if isinstance(data, list):
-                return data[0] if data and isinstance(data[0], dict) else None
-            return data if isinstance(data, dict) else None
-        except Exception as error:
-            logger.warning(
-                "dataset release create failed release=%s: %s",
-                manifest.get("release_identifier"), error,
-            )
-            return None
-
     def record_canonical_processing_stage(
         self, *, processing_job_id: Optional[str], owner_principal_id: str,
         project_id: str, take_id: str, stage: str, status: str,
@@ -12030,27 +9932,6 @@ class DatabaseService:
                 "canonical processing stage dual-write failed "
                 "take=%s stage=%s status=%s: %s",
                 take_id, stage, status, stage_error,
-            )
-            return None
-
-    def get_canonical_feedback_parity(
-        self, take_id: str,
-    ) -> Optional[dict]:
-        """Internal observation-only compatibility/canonical parity report."""
-        if not take_id:
-            return None
-        try:
-            result = self.client.rpc("feedback_data_parity_v1", {
-                "p_take_id": str(take_id),
-            }).execute()
-            data = result.data
-            if isinstance(data, list):
-                return data[0] if data and isinstance(data[0], dict) else None
-            return data if isinstance(data, dict) else None
-        except Exception as parity_error:
-            logger.warning(
-                "canonical feedback parity read failed take=%s: %s",
-                take_id, parity_error,
             )
             return None
 
@@ -18497,16 +16378,6 @@ class DatabaseService:
             logger.warning("upsert_read_alignment failed sid=%s: %s",
                            session_id, e)
             return False
-
-    def get_read_alignment(self, session_id: Optional[str]) -> Optional[dict]:
-        if not session_id:
-            return None
-        try:
-            res = (self.client.table("read_alignments").select("*")
-                   .eq("session_id", str(session_id)).limit(1).execute())
-            return (res.data or [None])[0]
-        except Exception:
-            return None
 
     # ── Confident Voice micro-practice ────────────────────────────────
     # These tables are intentionally isolated from presentation text,
