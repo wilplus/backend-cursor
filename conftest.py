@@ -53,6 +53,107 @@ import pytest  # noqa: E402
 
 from tests.fakes import FakeSupabaseClient, swap_attr  # noqa: E402
 
+# ── The rehearsal tier (audit Q-T2, founder decision 2026-09-14) ─────────────
+#
+# The tests/*_postgres.py suites run only against a DISPOSABLE local
+# PostgreSQL built by scripts/rehearsal_tier.sh. Each module gates itself on a
+# *_REHEARSAL_DSN variable with a module-level `skipif(..., reason="disposable
+# ... rehearsal only")`. Left alone, an ordinary `pytest` reports those ~260
+# cases as SKIPPED, which reads as "ran, chose not to" when the truth is
+# "never runnable here". So:
+#
+#   default run              the tier is DESELECTED (pytest's own word for
+#                            "not run"), never skipped, and the terminal
+#                            summary says so with the command that runs it;
+#   WILLAB_REHEARSAL=1       the tier is selected; the runner script has
+#                            already exported every DSN, so the per-module
+#                            skipif is inert. A missing DSN under
+#                            WILLAB_REHEARSAL=1 is an ERROR, not a skip —
+#                            the tier claims to have run only when it did.
+#
+# Membership is derived from the module's own skipif reason rather than from
+# the file name: tests/test_rooting_coverage_policy_postgres.py reads SQL text
+# and needs no database, so it stays in the unit tier despite its name.
+_REHEARSAL_REASON = ("disposable", "rehearsal")
+
+
+def _rehearsal_gate(module) -> tuple[bool, str] | None:
+    """(dsn_present, reason) if the module is a DSN-gated rehearsal suite."""
+    marks = getattr(module, "pytestmark", None)
+    if marks is None:
+        return None
+    for mark in marks if isinstance(marks, list) else [marks]:
+        reason = str(mark.kwargs.get("reason", ""))
+        if mark.name == "skipif" and any(w in reason.lower() for w in _REHEARSAL_REASON):
+            condition = mark.args[0] if mark.args else mark.kwargs.get("condition", False)
+            return (not bool(condition), reason)
+    return None
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "rehearsal: DSN-gated PostgreSQL rehearsal suite; deselected unless "
+        "WILLAB_REHEARSAL=1 (see scripts/rehearsal_tier.sh)",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    tier_on = os.environ.get("WILLAB_REHEARSAL") == "1"
+    kept, deselected, modules, missing = [], [], set(), set()
+    for item in items:
+        gate = _rehearsal_gate(item.module)
+        if gate is None:
+            kept.append(item)
+            continue
+        item.add_marker(pytest.mark.rehearsal)
+        modules.add(item.module.__name__)
+        if not tier_on:
+            deselected.append(item)
+            continue
+        dsn_present, reason = gate
+        if not dsn_present:
+            missing.add(item.module.__name__)
+        kept.append(item)
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = kept
+    config._willab_rehearsal = {
+        "tier_on": tier_on, "modules": sorted(modules),
+        "deselected": len(deselected), "missing": sorted(missing),
+    }
+    if missing:
+        # The module-level skipif would turn these into 250 quiet skips and a
+        # green exit — exactly the "ran, chose not to" reading the tier exists
+        # to end. Refuse to start instead (pytest exit status 4).
+        raise pytest.UsageError(
+            "WILLAB_REHEARSAL=1 but the rehearsal DSN is unset for: "
+            + ", ".join(sorted(missing))
+            + " — scripts/rehearsal_tier.sh exports every *_REHEARSAL_DSN; "
+            "do not set WILLAB_REHEARSAL by hand."
+        )
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    info = getattr(config, "_willab_rehearsal", None)
+    if not info or not info["modules"]:
+        return
+    tr = terminalreporter
+    if not info["tier_on"]:
+        tr.write_sep("-", "rehearsal tier")
+        tr.write_line(
+            f"NOT RUN: {info['deselected']} PostgreSQL rehearsal tests in "
+            f"{len(info['modules'])} modules (deselected, not skipped). "
+            f"Run them with scripts/rehearsal_tier.sh, or "
+            f"scripts/local_ci.sh --with-rehearsal."
+        )
+    else:
+        tr.write_sep("-", "rehearsal tier")
+        tr.write_line(
+            f"RAN: {len(info['modules'])} PostgreSQL rehearsal modules against the "
+            f"disposable cluster (WILLAB_REHEARSAL=1)."
+        )
+
 
 @pytest.fixture(scope="session")
 def repo_scan():

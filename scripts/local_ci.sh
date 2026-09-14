@@ -30,9 +30,16 @@
 # and runs the job's steps in the job's order with the job's env vars.
 # test_local_ci_mirror.py fails if this file and the workflow drift apart.
 #
-#   ./scripts/local_ci.sh                # the `checks` job
-#   ./scripts/local_ci.sh --with-evals   # + the live-model probes (needs a key)
-#   ./scripts/local_ci.sh --no-setup     # skip dependency install, reuse .venv-ci
+#   ./scripts/local_ci.sh                  # the `checks` job
+#   ./scripts/local_ci.sh --with-evals     # + the live-model probes (needs a key)
+#   ./scripts/local_ci.sh --with-rehearsal # + the PostgreSQL rehearsal tier
+#   ./scripts/local_ci.sh --no-setup       # skip dependency install, reuse .venv-ci
+#
+# The rehearsal tier (tests/*_postgres.py, scripts/rehearsal_tier.sh) is
+# NOT opt-in when the change needs it: if the diff against origin/main touches
+# migrations/ or an MLC-3 storage path, the tier runs whether or not
+# --with-rehearsal was passed, and a tier that cannot run is RED. The trigger
+# is the change, not discipline (audit Q-T2, founder 2026-09-14).
 #
 # Exit 0 means every gate CI would have run passed here. Anything else and
 # the branch is not mergeable — the quota outage is not a licence to merge
@@ -58,12 +65,14 @@ VENV="$REPO/.venv-ci"
 PY="$VENV/bin/python"
 
 WITH_EVALS=0
+WITH_REHEARSAL=0
 DO_SETUP=1
 for arg in "$@"; do
   case "$arg" in
-    --with-evals) WITH_EVALS=1 ;;
-    --no-setup)   DO_SETUP=0 ;;
-    -h|--help)    sed -n '2,40p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --with-evals)     WITH_EVALS=1 ;;
+    --with-rehearsal) WITH_REHEARSAL=1 ;;
+    --no-setup)       DO_SETUP=0 ;;
+    -h|--help)        sed -n '2,40p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -149,6 +158,20 @@ step "Run unit-tier tests" env \
   SUPABASE_KEY=ci-placeholder-key \
   "$PY" -m pytest "${IGNORES[@]}" -p no:cacheprovider -q
 
+# ── The rehearsal tier (PostgreSQL) ───────────────────────────────────────
+# Required by the change, or opted in. scripts/rehearsal_trigger.sh decides
+# (same script the workflow runs), so the local gate and CI agree on WHEN;
+# scripts/rehearsal_tier.sh is the HOW.
+REHEARSAL="not run (--with-rehearsal not passed; no migration or MLC-3 storage change)"
+if [ "$WITH_REHEARSAL" = 1 ] || scripts/rehearsal_trigger.sh --quiet; then
+  if [ "$WITH_REHEARSAL" = 1 ]; then
+    REHEARSAL="ran (--with-rehearsal)"
+  else
+    REHEARSAL="ran (REQUIRED: $(scripts/rehearsal_trigger.sh --why))"
+  fi
+  step "Rehearsal tier (PostgreSQL)" env REHEARSAL_PYTHON="$PY" scripts/rehearsal_tier.sh
+fi
+
 # ── The evals job (opt-in: live model calls, pennies per run) ─────────────
 # CI skips these GREEN when the key is absent, so an unkeyed local run is
 # not a failure — but it IS a gap, and the summary says so rather than
@@ -178,6 +201,7 @@ for i in "${!NAMES[@]}"; do
   printf '  %-4s %s\n' "${RESULTS[$i]}" "${NAMES[$i]}"
 done
 dim "  evals: $EVALS"
+dim "  rehearsal tier: $REHEARSAL"
 echo
 
 if [ "$FAILED" != 0 ]; then
@@ -196,4 +220,5 @@ cat <<EOF
   code. Verified locally at $SHA via scripts/local_ci.sh on python
   ${CI_PYTHON%.*} with the pinned $CI_RUFF / $CI_MYPY: migrations, migration
   runner, ruff, mypy and the unit tier all green. Evals: $EVALS.
+  Rehearsal tier: $REHEARSAL.
 EOF

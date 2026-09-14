@@ -138,6 +138,21 @@ class CoverageTests(unittest.TestCase):
                 f"would be claiming coverage it doesn't have",
             )
 
+    def test_the_rehearsal_tier_is_bound_to_the_change_on_both_sides(self):
+        """Both sides consult scripts/rehearsal_trigger.sh before deciding
+        whether the PostgreSQL tier runs, and both run the same runner. A
+        side that only ran it on --with-rehearsal would be back to
+        discipline (audit Q-T2, founder 2026-09-14)."""
+        for text, side in ((CHECKS, "workflow"), (SCRIPT, "script")):
+            self.assertIn("scripts/rehearsal_trigger.sh", text,
+                          f"the {side} does not consult the trigger")
+            self.assertIn("scripts/rehearsal_tier.sh", text,
+                          f"the {side} does not run the tier")
+        self.assertIn('step "Rehearsal tier (PostgreSQL)"', SCRIPT)
+        for helper in ("scripts/rehearsal_trigger.sh", "scripts/rehearsal_tier.sh"):
+            self.assertTrue(os.access(os.path.join(ROOT, helper), os.X_OK),
+                            f"{helper} is not executable")
+
     def test_the_blocking_evals_are_reachable_locally(self):
         # Both are merge-blocking in CI. They cost live model calls, so the
         # script keeps them behind --with-evals rather than running them on

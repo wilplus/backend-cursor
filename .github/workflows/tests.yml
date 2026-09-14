@@ -119,6 +119,24 @@ jobs:
             -p no:cacheprovider \
             -q
 
+      # The PostgreSQL rehearsal tier (tests/*_postgres.py) runs against a
+      # disposable cluster the script builds on the runner (ubuntu-latest
+      # ships postgresql-16). It is REQUIRED when the diff touches a
+      # migration or an MLC-3 storage path (scripts/rehearsal_trigger.sh —
+      # the same decision the local gate makes) and otherwise not run.
+      # Bound to the change, not to discipline (audit Q-T2, 2026-09-14).
+      - name: Rehearsal tier (PostgreSQL)
+        env:
+          REHEARSAL_PYTHON: python
+        run: |
+          git fetch -q --depth=1 origin main
+          if scripts/rehearsal_trigger.sh --quiet; then
+            echo "REQUIRED: $(scripts/rehearsal_trigger.sh --why)"
+            scripts/rehearsal_tier.sh
+          else
+            echo "not run: $(scripts/rehearsal_trigger.sh --why)"
+          fi
+
   # ── The behavioral gates: live-model probes ───────────────────────────
   #
   # All three make live OpenAI calls (pennies per run) and all three used
