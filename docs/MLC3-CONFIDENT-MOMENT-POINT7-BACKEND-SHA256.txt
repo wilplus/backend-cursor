@@ -45,7 +45,7 @@ a833c211cf077f294a7973714c065aaa65a1c1aede33c49e4d7ae3debcdc7031  docs/MLC3-CONF
 39b62b500f23732bfbb0326ffe0ae054b9233c1267665a11a9275eb10205bdcb  migrations/add_confident_moment_coaching_bundle_v1.sql
 dc5fbbcc22b374040e74b800a8733eaeb44a36e2556ba9a5cf4bef3bad9559eb  routes/v2/coach_guidance_delivery.py
 bcfc7b89e112d1bcd7bc1ed642064b800d57146971a4245eea3699921e4d526a  routes/v2/confident_moment_bundles.py
-7f54326e1dce97b965fc9102650586ffc7841949a35c285d124000f4a1a339ce  routes/v2/explore_ideal_text.py
+859581d78f7ec5d1263299222dae45837cecbf2e91205a22d956f1e26654de2a  routes/v2/explore_ideal_text.py
 a4968eb69e4886ef88c7b5e5dbc5cabf2cea1e5b455bdaa2c02be54c538e6dde  scripts/monitor_mlc3_general_service.py
 7e4f842eaa1bbdbbf784eb4777412e4814c7f4c8374200cbdaae42413604b779  services/confident_moment_bundle.py
 3a2e0299fa95d1b8e4e38661a786900c0565362d9b4651b97c2f9178d079625b  services/confident_moment_bundle_repository.py
@@ -59,7 +59,7 @@ b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedb
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
 588e9a03b11dfa6ff1f92e8535f4f45a3eb0032c52081ba4579a2d7e855c73a3  services/mlc3_first_client_feedback.py
 a32a213e6d2dd0c20a0bc4d9daee5985802eee650334996268b9797225e61b10  services/mlc3_general_service_monitor.py
-ad855146c146e9d1ce3e0d4f26ffc5fc38d1e37a29c9fb3729b7a7dfc3155a6e  services/pipeline_jobs.py
+07d39f109ec55b8db5eb59fa8d4358b0c2ec94b3c408ce375d2140fb887cbc33  services/pipeline_jobs.py
 969647d87ca6be07b395d3be3a70ba5a0b5dedb82a5d90159729ac19807ffe12  services/rooting_coverage.py
 9c62027810dde624befd20442b212ecbe1cf6d6e78455b517321b2ce37cd31bd  test_acoustic_kpi.py
 601d7f1743f90575af0716fbd596bef3f699fac909805831562ca03d4a4aeeb9  test_ideal_text_parts.py
@@ -103,3 +103,20 @@ consistent with `main` before Phase 4; the drift is Phase 4's alone:
   Its entry is removed rather than hashed.
 
 Migration 0327 and every other entry are untouched.
+
+## Re-freeze 2026-09-14 — post-audit remediation, Phase 5 (backend)
+
+Re-frozen by the same rule. Every entry above was consistent with `main`
+before Phase 5; the drift is Phase 5's alone:
+
+- `routes/v2/explore_ideal_text.py` — audit Q-C1: the 901-line `changes`
+  block moved to `services/ideal_text_changes.py`, split by stage; the
+  route keeps a delegating wrapper (`_tracked_changes_block`) and its GET
+  records every optional-read, compose and exposure fallback into one
+  `DegradationLog`, served as `degraded` only when non-empty.
+- `services/pipeline_jobs.py` — audit Q-C1: the session-recording runner
+  creates the run's `DegradationLog` and the job row's `result` carries
+  `degraded` (stage names and exception class names only; never numbers).
+
+`services/confident_moment_bundle_repository.py`, migration 0327 and every
+other entry are untouched.
