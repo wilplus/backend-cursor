@@ -445,7 +445,7 @@ class TestSelectionUsesTheTerm(unittest.TestCase):
                 "machine_confidence": confidence}
 
     def test_more_confident_delivery_wins_a_tied_slide(self):
-        from services.best_presentation import select_best_per_slide
+        from services.slide_selection import select_best_per_slide
         picks = select_best_per_slide([
             self._cand(0, "flat", "We tripled revenue this year.", -0.8),
             self._cand(0, "sure", "We tripled revenue this year again.", 0.8),
@@ -455,7 +455,7 @@ class TestSelectionUsesTheTerm(unittest.TestCase):
     def test_none_confidence_does_not_penalise_a_piece(self):
         """Unstamped (older) pieces must compete on the other terms, not be
         treated as maximally doubtful."""
-        from services.best_presentation import select_best_per_slide
+        from services.slide_selection import select_best_per_slide
         picks = select_best_per_slide([
             {"slide_index": 0, "snippet_id": "old", "transcript": "Strong line.",
              "activation": 0.9, "slide_stickiness": 0.9,

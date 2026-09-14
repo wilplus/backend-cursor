@@ -1193,7 +1193,7 @@ def v2_user_list_trainings():
         coach_reviewed}], batch_verified, delivered_at, ideal_ready } ] }
     """
     try:
-        from services.best_presentation import TAKES_TARGET
+        from services.slide_selection import TAKES_TARGET
         rows = db.list_user_arc_sessions(request.user_id) or []
         by_arc: dict = {}
         for r in rows:

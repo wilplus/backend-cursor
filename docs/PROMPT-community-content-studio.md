@@ -247,7 +247,7 @@ Pure, no I/O, fully unit-testable:
   `journal_community_post`. #254 already ships an isolation test — extend it rather
   than adding a parallel one.
 - **L1.** No F1 assembly module may import this service. Grep-fence over
-  `services/best_presentation.py`, `services/ideal_text_block.py`,
+  `services/slide_selection.py`, `services/ideal_text_block.py`,
   `services/ideal_text_report.py`, `services/cross_take_selection.py`,
   `services/charisma_snippet_service.py` — none may contain `community_content`.
   (Mirrors the L1 grep-fence already documented in `say_it_stronger.py`.)

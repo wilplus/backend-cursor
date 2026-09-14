@@ -304,7 +304,7 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
     """
     if database is None:
         from services.db import db as database
-    from services.best_presentation import build_best_presentation
+    from services.slide_selection import build_best_presentation
 
     bp = build_best_presentation(arc_id, coach_view=True, database=database) \
         if _accepts_database(build_best_presentation) \
@@ -477,7 +477,7 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
             # feedback proposals; they never refresh, rebuild or version-bump
             # the document behind the user's back.
             return True
-        from services.best_presentation import (
+        from services.slide_selection import (
             TAKES_TARGET, spoken_arc_sessions,
         )
         spoken = spoken_arc_sessions(database.get_arc_sessions(arc_id))

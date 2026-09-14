@@ -1,6 +1,6 @@
 """Prompt for Best-Presentation composition (Prompt D §4) — F1/L1 surface.
 
-Moved verbatim from services/best_presentation.py (registry extraction
+Moved verbatim from services/slide_selection.py (registry extraction
 2026-08-03). L1 FENCE lives in this text: the composition is verbatim-
 select with a light continuity polish — "change only a FEW words per
 slide", "NEVER add new claims". Editing these rules is an L1-relevant

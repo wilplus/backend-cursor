@@ -65,7 +65,7 @@ def collect_take_texts(database, arc_id: Any) -> list:
     if not arc_id:
         return []
     try:
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         sessions = spoken_arc_sessions(database.get_arc_sessions(arc_id))
         texts = []
         for s in sessions:

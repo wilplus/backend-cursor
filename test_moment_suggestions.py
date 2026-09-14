@@ -150,7 +150,7 @@ class AssemblyAnchorTests(unittest.TestCase):
         }]}
         with patch.object(mod, "assemble_ideal_text_block",
                           wraps=mod.assemble_ideal_text_block):
-            with patch("services.best_presentation.build_best_presentation",
+            with patch("services.slide_selection.build_best_presentation",
                        return_value=bp):
                 return mod.assemble_ideal_text_block(
                     ARC, database=object(), extra_anchor_ids=extra)
@@ -903,7 +903,7 @@ class LedgerBakeAssemblyTests(unittest.TestCase):
             "snippet_id": SNIP, "session_id": SESS,
             "key_phrases": [],
         }]}
-        with patch("services.best_presentation.build_best_presentation",
+        with patch("services.slide_selection.build_best_presentation",
                    return_value=bp), \
              patch.object(mod, "_polish_as_suggestions_enabled",
                           return_value=True):
@@ -1400,7 +1400,7 @@ class PolishRecurrenceProtectionTests(unittest.TestCase):
             "key_phrases": [],
         }]}
         db = self._Db(take_texts)
-        with patch("services.best_presentation.build_best_presentation",
+        with patch("services.slide_selection.build_best_presentation",
                    return_value=bp), \
              patch.object(mod, "_polish_as_suggestions_enabled",
                           return_value=True):
@@ -1464,7 +1464,7 @@ class VersionSnapshotWriteTests(unittest.TestCase):
             "key_phrases": [],
         }]}
         db = self._Db()
-        with patch("services.best_presentation.build_best_presentation",
+        with patch("services.slide_selection.build_best_presentation",
                    return_value=bp), \
              patch.object(mod, "_polish_as_suggestions_enabled",
                           return_value=True):
@@ -1490,7 +1490,7 @@ class VersionSnapshotWriteTests(unittest.TestCase):
             "polished": False, "snippet_id": SNIP, "session_id": SESS,
             "key_phrases": [],
         }]}
-        with patch("services.best_presentation.build_best_presentation",
+        with patch("services.slide_selection.build_best_presentation",
                    return_value=bp), \
              patch.object(mod, "_polish_as_suggestions_enabled",
                           return_value=True):

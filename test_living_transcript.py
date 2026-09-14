@@ -656,7 +656,7 @@ class AssemblyFlagTests(unittest.TestCase):
             "text": "just the best line", "verbatim": "just the best line",
             "polished": False, "snippet_id": S1, "session_id": T1,
             "key_phrases": []}]}
-        with patch("services.best_presentation.build_best_presentation",
+        with patch("services.slide_selection.build_best_presentation",
                    return_value=bp), \
              patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)):
             mod.maybe_assemble_ideal_text(ARC, database=db,

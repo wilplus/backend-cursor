@@ -6,7 +6,7 @@ arc + kind) and fires from every trigger without duplication:
 
   • best_presentation_ready — ONLY when the arc has >=3 takes AND
     coach_finalized (the coach has corrected EVERY slide — the REAL signal
-    from services.best_presentation, NOT a proxy like "all takes published";
+    from services.slide_selection, NOT a proxy like "all takes published";
     a coach can publish every take's automatic review + commentary without
     having done the separate ideal-text correction pass) AND the arc is PAID.
     Fired from: lab upload (take >=3), publish (a take lands, may complete
@@ -60,10 +60,10 @@ def _insert(db, user_id: str, *, client_key: str, kind: str, body: str,
 def _arc_owner_and_topic(db, arc_id: str) -> tuple[Optional[str], int, Any]:
     """(owner_user_id, take_count, topic) for an arc — the cheap facts. The
     review-readiness signal itself (coach_finalized) comes from
-    services.best_presentation, not from here (see maybe_fire_best_
+    services.slide_selection, not from here (see maybe_fire_best_
     presentation_ready) — "all takes published" is NOT the same thing as "the
     coach corrected the ideal text" and must not be conflated."""
-    from services.best_presentation import spoken_arc_sessions
+    from services.slide_selection import spoken_arc_sessions
     # SPOKEN takes only (2026-07-15) — a read never counts toward the ≥3
     # lifecycle trigger.
     sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id))
@@ -84,7 +84,7 @@ def maybe_fire_best_presentation_ready(db, arc_id: Any) -> Optional[str]:
       coach_finalized AND paid  → best_presentation_ready (the real buttons)
       otherwise                 → transcript_ready (transcript)
 
-    coach_finalized is the REAL signal (services.best_presentation — has the
+    coach_finalized is the REAL signal (services.slide_selection — has the
     coach corrected EVERY slide?), not a proxy. Idempotent per (arc, kind);
     safe to call from upload, publish, checkout, and the coach's edit save —
     the terminal card fires exactly once, whichever trigger completes the
@@ -96,7 +96,7 @@ def maybe_fire_best_presentation_ready(db, arc_id: Any) -> Optional[str]:
         if not owner or take_count < TAKES_TARGET:
             return None
         from services.arc_entitlement import is_arc_entitled
-        from services.best_presentation import build_best_presentation
+        from services.slide_selection import build_best_presentation
         paid = is_arc_entitled(db, arc_id, owner)
         # Cache-aware (Part B) — a repeated call with an unchanged arc/edits
         # skips the LLM compose, so this is cheap on the common no-op path.
@@ -539,7 +539,7 @@ def backfill_ideal_bubbles(db, user_id: Any, arc_id: Any) -> int:
         fired = 0
         _n_spoken = None
         try:
-            from services.best_presentation import spoken_arc_sessions
+            from services.slide_selection import spoken_arc_sessions
             _n_spoken = len(spoken_arc_sessions(
                 db.get_arc_sessions(arc_id)))
         except Exception:

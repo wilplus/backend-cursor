@@ -322,7 +322,7 @@ def _run_full_analysis_impl(
                     # Spoken take count → the takes-1-and-2 nudge
                     # line (bug token 3c; soft nudge, never a gate).
                     def _spoken_take_count() -> int:
-                        from services.best_presentation import (
+                        from services.slide_selection import (
                             spoken_arc_sessions,
                         )
                         return len(spoken_arc_sessions(

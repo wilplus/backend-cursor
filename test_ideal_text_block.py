@@ -55,7 +55,7 @@ class AssembleTests(unittest.TestCase):
 
     def _run(self, bp, *, extra_anchor_ids=None):
         from services import ideal_text_block as mod
-        with patch("services.best_presentation.build_best_presentation",
+        with patch("services.slide_selection.build_best_presentation",
                    return_value=bp):
             return mod.assemble_ideal_text_block(
                 "arc1", extra_anchor_ids=extra_anchor_ids
@@ -103,7 +103,7 @@ class CanonicalPersistenceTests(unittest.TestCase):
         bp = _bp(slides=[{"index": 0, "text": "Great line.",
                           "key_phrases": [],
                           "snippet_id": None, "session_id": None}])
-        with patch("services.best_presentation.build_best_presentation",
+        with patch("services.slide_selection.build_best_presentation",
                    return_value=bp):
             out = mod.assemble_ideal_text_block("arc1")
         self.assertNotIn("[[moment:", out["text"])

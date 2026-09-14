@@ -216,7 +216,7 @@ SPEC_BEST_PRESENTATION = LLMSpec(
     temperature=0.2,
     # A handful of short slide lines; small cap keeps it from running long.
     max_tokens=600,
-    # Schema lives in services/best_presentation.py, passed at call time.
+    # Schema lives in services/slide_selection.py, passed at call time.
     response_format=None,
 )
 """Best-Presentation composition (Prompt D §4) — lightly stitches the user's

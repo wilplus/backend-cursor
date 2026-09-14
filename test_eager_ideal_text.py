@@ -53,7 +53,7 @@ def _read(paired="s1"):
 
 class SpokenFilterTests(unittest.TestCase):
     def test_reads_filtered_legacy_kept(self):
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         rows = [_spoken(1), _read("s1"), _spoken(2),
                 {"id": "legacy", "take_index": 3}]   # pre-migration row
         out = spoken_arc_sessions(rows)

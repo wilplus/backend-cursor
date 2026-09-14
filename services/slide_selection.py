@@ -1,4 +1,16 @@
-"""Best-Presentation composition (willab Prompt D §4) — REPLACES the audit.
+"""Per-slide selection — the best take of each slide across the arc.
+
+Renamed from ``services/best_presentation.py`` (audit Q-T4, Phase 6, commit
+1 of 2; zero behaviour change). L1 retired the Best Presentation ARTIFACT,
+not this mechanism: selecting the best take per slide is F1 piece (b), and
+the readers below (the arc's spoken sessions, the per-slide picks) are live
+Ideal Text infrastructure. The composition of the retired artifact
+(``build_best_presentation`` and its prompt) leaves in commit 2, once nothing
+in production calls its route.
+
+Original header follows.
+
+Best-Presentation composition (willab Prompt D §4) — REPLACES the audit.
 
 After the explore arc's 3 (optional 4th) takes, this assembles the user's
 strongest version of the talk: for EACH slide, their best-rated delivery of

@@ -16,7 +16,7 @@ THE MODEL (founder re-price 2026-07-06 — $25/25 credits, selective delivery):
     POST /v2/arc/<arc_id>/unlock — see services/db.deduct_credits_strict):
     the coach-CORRECTED ideal text (a real coach-authored artifact; the raw
     auto-assembled draft is NEVER shown to the student, at any payment state —
-    see services/best_presentation.py coach_finalized), the cross-take
+    see services/slide_selection.py coach_finalized), the cross-take
     breakthroughs LIST, the game, and the snippet library.
   • The 402 fires ONLY when the user OPENS one of those four paid surfaces —
     a clean paywall, never an error on the record/analysis path.

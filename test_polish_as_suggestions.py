@@ -39,7 +39,7 @@ def _bp(edited, verbatim, polished, *, snip=SNIP):
 
 class AssembleVerbatimTests(unittest.TestCase):
     def _assemble(self, bp, *, flag):
-        with patch("services.best_presentation.build_best_presentation",
+        with patch("services.slide_selection.build_best_presentation",
                    return_value=bp), \
              patch.object(itb, "_polish_as_suggestions_enabled",
                           return_value=flag):
@@ -106,9 +106,9 @@ class PolishPersistTests(unittest.TestCase):
                           return_value=True), \
              patch.object(itb, "assemble_ideal_text_block",
                           return_value=auto), \
-             patch("services.best_presentation.spoken_arc_sessions",
+             patch("services.slide_selection.spoken_arc_sessions",
                    return_value=[{"id": "s1"}]), \
-             patch("services.best_presentation.TAKES_TARGET", 1):
+             patch("services.slide_selection.TAKES_TARGET", 1):
             return itb.maybe_assemble_ideal_text(
                 ARC, database=db, require_target=False)
 
@@ -143,9 +143,9 @@ class PolishPersistTests(unittest.TestCase):
                           return_value=False), \
              patch.object(itb, "assemble_ideal_text_block",
                           return_value=auto), \
-             patch("services.best_presentation.spoken_arc_sessions",
+             patch("services.slide_selection.spoken_arc_sessions",
                    return_value=[{"id": "s1"}]), \
-             patch("services.best_presentation.TAKES_TARGET", 1):
+             patch("services.slide_selection.TAKES_TARGET", 1):
             itb.maybe_assemble_ideal_text(ARC, database=db,
                                           require_target=False)
         self.assertEqual(db.upserts, [])
