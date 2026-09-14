@@ -53,7 +53,7 @@ dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confi
 794c3d04c55016987c75dc9bdc7bab64ded34a14a7a6e3ee832b6b22f32b9568  services/confident_moment_user_media.py
 09ac4873e142bd68c682abaf28acb15e4fb0a445aab749ad8b28b47020b1df22  services/data_purge.py
 5ff3880f55da07671775de92e279e13e0dca96b615329632b6d6cd88096cbbb9  services/data_purge_registry.py
-bc33431197e2876ec7771d2511c2ec42b644758387280f65b5403fd2dc520cd2  services/db.py
+dcb26dd2bee8ab15f05be3625f065dd4002b4401b219ad09ad0677e3d17a63af  services/db.py
 b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedback_data_contract.py
 35955687744b693dfb26fe79b79767c54c3a851dabfba4c015790c4537c459c7  services/feedback_language.py
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
@@ -87,7 +87,9 @@ consistent with `main` before Phase 4; the drift is Phase 4's alone:
 
 - `config.py` — audit Q-A5: 17 attributes with no reader deleted; the F1
   flags and tunables added as boot-time Config attributes.
-- `services/db.py` — audit Q-A1 step 1: 106 methods with no caller deleted.
+- `services/db.py` — audit Q-A1 step 1: 106 methods with no caller deleted;
+  step 2 / Q-A2: 81 F1-table methods carved into three repository modules
+  (verbatim, delegates kept) and `new_client()` added.
 - `services/feedback_data_contract.py`, `services/pipeline_jobs.py`,
   `routes/v2/explore_ideal_text.py` — audit Q-A5: their environment reads
   now go through Config (same defaults, same parsing).
