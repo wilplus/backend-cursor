@@ -86,8 +86,10 @@ class OpenAIClientConstructionTests(unittest.TestCase):
             def __init__(self, **kwargs):
                 captured.update(kwargs)
 
+        # The constructor lives in services.llm_client since Q-A4; it imports
+        # ``openai`` lazily, so the SDK's own attribute is the seam.
         with patch.object(osvc.config, "OPENAI_API_KEY", "sk-test"), \
-                patch.object(osvc.openai, "OpenAI", _FakeClient):
+                patch("openai.OpenAI", _FakeClient):
             svc = osvc.OpenAIService()
         self.assertIsNotNone(svc.client)
         self.assertEqual(captured.get("timeout"),

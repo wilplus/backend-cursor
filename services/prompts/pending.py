@@ -53,21 +53,10 @@ REGISTER = {
     "master_doc_rag_lane.bodies": SourceRef(_MDR, "_LANE_BODIES"),
     "master_doc_rag_lane.builder": SourceRef(_MDR, "_build_lane_prompt"),
 
-    # ── legacy OpenAIService hub (pre-llm.py; 14 prompt-bearing methods) ──
+    # ── Whisper priming prompt (services/openai_service.py is transcription-only
+    #    since Q-A4; the thirteen chat methods that lived beside it had no
+    #    callers and were deleted, and their entries with them) ──
     "legacy_openai.whisper_priming": SourceRef(_OAI, "OpenAIService.transcribe_audio"),
-    "legacy_openai.classify_speech": SourceRef(_OAI, "OpenAIService.classify_speech"),
-    "legacy_openai.final_report": SourceRef(_OAI, "OpenAIService.generate_final_report"),
-    "legacy_openai.context_short": SourceRef(_OAI, "OpenAIService.generate_context_short"),
-    "legacy_openai.coach_insight": SourceRef(_OAI, "OpenAIService.generate_coach_insight"),
-    "legacy_openai.final_task": SourceRef(_OAI, "OpenAIService.generate_final_task"),
-    "legacy_openai.custom_questions": SourceRef(_OAI, "OpenAIService.analyze_custom_questions"),
-    "legacy_openai.suggested_questions": SourceRef(_OAI, "OpenAIService.generate_suggested_questions"),
-    "legacy_openai.ai_task_score": SourceRef(_OAI, "OpenAIService.generate_ai_task_score"),
-    "legacy_openai.coach_suggestions": SourceRef(_OAI, "OpenAIService.generate_coach_suggestions"),
-    "legacy_openai.admin_grade_comment": SourceRef(_OAI, "OpenAIService.generate_admin_grade_comment_draft"),
-    "legacy_openai.student_email": SourceRef(_OAI, "OpenAIService.generate_student_email_draft"),
-    "legacy_openai.next_task": SourceRef(_OAI, "OpenAIService.generate_next_task_suggestion"),
-    "legacy_openai.video_script": SourceRef(_OAI, "OpenAIService.generate_video_script_draft"),
 
     # ── interview / coaching chat (routes/v2/user_chat.py) ──
     "interview.system": SourceRef(_V2_CHAT, "_INTERVIEW_SYSTEM_PROMPT"),

@@ -143,11 +143,13 @@ def _client():
     key = (getattr(config, "LIFE_PANEL_OPENAI_API_KEY", "") or "").strip()
     if key:
         try:
-            import openai
-            # Same strict client timeout as the shared OpenAIService client
-            # (a hung call must never park a worker for the SDK's 600s).
-            return openai.OpenAI(
-                api_key=key,
+            # The dedicated key, built by the one constructor (audit Q-A4) so
+            # it carries the same strict timeout and retry policy as the
+            # shared client — a hung call must never park a worker for the
+            # SDK's 600s.
+            from services.llm_client import build_openai_client
+            return build_openai_client(
+                key,
                 timeout=config.OPENAI_TIMEOUT_SECONDS,
                 max_retries=config.OPENAI_MAX_RETRIES,
             )
