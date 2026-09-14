@@ -24,6 +24,7 @@ MODE="${1:-}"
 TRIGGER_PATHS=(
   'migrations/'
   'tests/integration/'
+  'scripts/rehearsal_tier.sh'
   'services/first_client_repository.py'
   'services/mlc3_pilot_storage.py'
   'services/confident_moment_bundle_repository.py'
