@@ -77,6 +77,34 @@ class PinTests(unittest.TestCase):
 
 
 class QuarantineTests(unittest.TestCase):
+    def test_every_quarantined_file_exists(self):
+        """A phantom entry is a list that has rotted (audit Q-T3, 2026-09-14).
+
+        Four of the six entries named files deleted months earlier; the list
+        looked maintained and covered nothing. An --ignore for a file that
+        is not there is silently accepted by pytest, so only this test can
+        notice. Removing a module means removing its entry in the same PR.
+        """
+        ci = re.findall(r"--ignore=(\S+\.py)", CHECKS)
+        missing = [m for m in ci if not os.path.exists(os.path.join(ROOT, m))]
+        self.assertEqual(
+            missing, [],
+            f"quarantined files that do not exist: {missing} — delete the "
+            f"entry from BOTH tests.yml and scripts/local_ci.sh",
+        )
+
+    def test_no_test_modules_hide_in_scripts(self):
+        """scripts/ is hand-run tooling, not a test tree. pytest collects
+        test_*.py recursively from the repo root, so a test_ file parked
+        under scripts/ would be collected as a test again — which is how
+        two print scripts (now scripts/sentry_smoke.py and
+        scripts/jwt_secret_check.py) sat in the quarantine list for months."""
+        stray = sorted(
+            n for n in os.listdir(os.path.join(ROOT, "scripts"))
+            if n.startswith("test_") and n.endswith(".py")
+        )
+        self.assertEqual(stray, [], f"test modules under scripts/: {stray}")
+
     def test_the_ignore_list_matches_exactly(self):
         ci = set(re.findall(r"--ignore=(\S+\.py)", CHECKS))
         block = re.search(r"QUARANTINE=\(\n(.*?)\n\)", SCRIPT, re.S)
@@ -89,6 +117,17 @@ class QuarantineTests(unittest.TestCase):
 
 
 class CoverageTests(unittest.TestCase):
+    def test_the_gate_exports_CI_like_actions_does(self):
+        """GitHub Actions exports CI=true on every job. Tests marked CI-only
+        (test_audio_metrics_features: the librosa/numba cold start, ~25 s
+        per process — audit Q-T11) skip without it. The local mirror must
+        export it in the unit-tier step or it covers less than CI does
+        while printing GREEN."""
+        step = re.search(r'step "Run unit-tier tests" env \\\n(.*?)\n\s*"\$PY"', SCRIPT, re.S)
+        self.assertIsNotNone(step, "unit-tier step not found in the script")
+        self.assertRegex(step.group(1), r"(?m)^\s*CI=1 \\$",
+                         "the unit-tier step does not export CI=1")
+
     def test_every_gate_in_checks_has_a_step_in_the_script(self):
         for name in step_names(CHECKS):
             if name in SETUP_STEPS:

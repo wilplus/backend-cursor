@@ -47,13 +47,9 @@ CI_RUFF="ruff==0.15.8"
 CI_MYPY="mypy==2.3.0"
 
 # QUARANTINE — integration-tier modules that need live Supabase / network.
-# Byte-for-byte the workflow's --ignore list.
+# Byte-for-byte the workflow's --ignore list, and every entry must exist
+# (test_local_ci_mirror.py checks both).
 QUARANTINE=(
-  test_admin_student_profile_regressions.py
-  test_guest_funnel.py
-  test_homework_regressions.py
-  test_score_unification.py
-  test_sentry.py
   test_auth_request.py
 )
 
@@ -142,8 +138,12 @@ step "Mypy (type-check)" "$VENV/bin/mypy" .
 
 # Minimal placeholder env, same as the workflow: enough that import-time
 # guards don't hard-crash, and useless for reaching anything real.
+# CI=1 is what GitHub Actions exports on its own; tests marked CI-only (the
+# librosa cold-start suite, audit Q-T11) key on it, so the gate must set it
+# too or it would silently cover less than the workflow does.
 IGNORES=(); for m in "${QUARANTINE[@]}"; do IGNORES+=("--ignore=$m"); done
 step "Run unit-tier tests" env \
+  CI=1 \
   JWT_SECRET=ci-placeholder-secret \
   SUPABASE_URL=https://ci-placeholder.invalid \
   SUPABASE_KEY=ci-placeholder-key \

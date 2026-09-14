@@ -109,12 +109,12 @@ jobs:
           # Supabase / network. They fail in CI for environmental
           # reasons, not real regressions. Run them locally against a
           # real env, or wire secrets + stubs later to un-quarantine.
+          #
+          # Every entry here MUST exist: test_local_ci_mirror.py fails on
+          # a phantom (2026-09-14, audit Q-T3 — four of the six entries
+          # named files deleted months earlier, and the two print scripts
+          # that were listed as tests now live under scripts/).
           pytest \
-            --ignore=test_admin_student_profile_regressions.py \
-            --ignore=test_guest_funnel.py \
-            --ignore=test_homework_regressions.py \
-            --ignore=test_score_unification.py \
-            --ignore=test_sentry.py \
             --ignore=test_auth_request.py \
             -p no:cacheprovider \
             -q
