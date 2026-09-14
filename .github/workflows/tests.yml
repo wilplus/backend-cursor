@@ -77,7 +77,7 @@ jobs:
           # pytest is a CI-only runner (not a runtime dep). It runs the
           # existing unittest-style tests as-is + gives clean exit codes
           # and --ignore filtering for the quarantined modules.
-          pip install pytest ruff==0.15.8 mypy==2.3.0
+          pip install pytest pytest-cov==7.1.0 ruff==0.15.8 mypy==2.3.0
 
       # Migrations first, and deliberately: it is the cheapest gate and the
       # only one whose failure means "this would have broken prod on the
@@ -116,8 +116,15 @@ jobs:
           # that were listed as tests now live under scripts/).
           pytest \
             --ignore=test_auth_request.py \
+            --cov=services --cov=routes --cov-report=json:coverage.json \
             -p no:cacheprovider \
             -q
+
+      # Per-file floor on the NAMED F1 modules only — no global number
+      # (audit Q-T12, founder 2026-09-14). Floors in scripts/coverage_floor.json;
+      # a load-bearing module that loses coverage turns this red.
+      - name: F1 coverage floor
+        run: python scripts/coverage_floor.py coverage.json
 
       # The PostgreSQL rehearsal tier (tests/*_postgres.py) runs against a
       # disposable cluster the script builds on the runner (ubuntu-latest
