@@ -142,13 +142,64 @@ sql_file $CHAIN migrations/add_mlc3_first_client_service_d2.sql
 clone willab_service_rehearsal $CHAIN                   # First-Client Service D2
 
 echo "→ building the Confident Moment lanes via tests/integration/confident_moment_rehearsal.sh"
+# Two checkpoints are cut from the same builds (the recipe's
+# CONFIDENT_MOMENT_CHECKPOINTS hook; docs/REHEARSAL-TIER-PENDING-LANE-RECIPES.md):
+#   released, right after 0325 add_mlc3_founder_canary_security_closure.sql → canary
+#   narrow,   right after 0326 add_mlc3_general_user_service_d4.sql         → D4 template
+# Neither suite runs on the finished chain: from 0326 on the canary audit's
+# required-RPC list names a function 0326 deliberately revoked (7/9 there), and
+# D5/D4 helpers trip triggers installed after their own slice.
+CKPT_narrow="add_mlc3_general_user_service_d4.sql=willab_confident_moment_narrow_0326"
+CKPT_released="add_mlc3_founder_canary_security_closure.sql=willab_confident_moment_released_0325"
 for lane in narrow released; do
+  ck="CKPT_$lane"
   if ! CONFIDENT_MOMENT_PGHOST="$SOCK" CONFIDENT_MOMENT_PGPORT="$PORT" CONFIDENT_MOMENT_PGUSER=postgres \
+       CONFIDENT_MOMENT_CHECKPOINTS="${!ck}" \
        bash tests/integration/confident_moment_rehearsal.sh "$lane" "willab_confident_moment_$lane" >"$SOCK/$lane.log" 2>&1; then
     echo "  $lane lane FAILED:" >&2; tail -20 "$SOCK/$lane.log" >&2; exit 1
   fi
-  grep -E "^Built" "$SOCK/$lane.log" | sed 's/^/  /'
+  grep -E "^Built|^  checkpoint" "$SOCK/$lane.log" | sed 's/^/  /'
 done
+
+# canary: released @0325 with the two required purposes made operational.
+# scripts/check_mlc3_founder_canary_readiness.py counts exactly
+# personalized_exercise_recommendation and coach_review WHERE operational AND
+# authorizes_processing; the recipe seeds all six purposes false, so the test
+# that disables coach_review and expects 1 could never move off 0. CHECK
+# processing_purpose_operational_invariant demands the five control columns
+# whenever authorizes_processing is true, so the booleans alone are rejected.
+clone willab_d3_canary willab_confident_moment_released_0325
+"${PSQL[@]}" -d willab_d3_canary -c "UPDATE public.processing_purpose_registry
+   SET operational = true, authorizes_processing = true,
+       capability_version = 'rehearsal-capability-v1', reviewed_at = now(),
+       retention_control_version = 'rehearsal-retention-v1',
+       deletion_control_version = 'rehearsal-deletion-v1',
+       rights_control_version = 'rehearsal-rights-v1'
+ WHERE id IN ('personalized_exercise_recommendation', 'coach_review')" >"$SOCK/apply.log" 2>&1 \
+  || { echo "  canary purpose seed failed:" >&2; grep -m3 ERROR "$SOCK/apply.log" >&2; exit 1; }
+
+# D4: narrow @0326 as the TEMPLATE the suite clones per test, plus the two
+# relaxations its fixture helpers need: a default on ml_judgments.id, and the
+# MLC-2 / phase-1 append-only guards disabled. The suite asserts nothing about
+# immutability (none of "append-only", "append_only", "immutable" occurs in
+# it); those guards are exercised by the MLC-2 suites in their own lane, and
+# tests/test_mlc3_first_client_service_postgres.py already relaxes them the
+# same way in _age_authorization_checks. Disposable-only.
+relax_append_only() {  # relax_append_only <db>
+  "${PSQL[@]}" -d "$1" \
+    -c "ALTER TABLE public.ml_judgments ALTER COLUMN id SET DEFAULT gen_random_uuid()" \
+    -c "DO \$\$ DECLARE r record; BEGIN
+          FOR r IN SELECT t.tgrelid::regclass AS rel, t.tgname
+                     FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
+                    WHERE NOT t.tgisinternal
+                      AND p.proname IN ('reject_mlc2_immutable_mutation',
+                                        'reject_phase1_immutable_mutation')
+          LOOP EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', r.rel, r.tgname); END LOOP;
+        END \$\$" >"$SOCK/apply.log" 2>&1 \
+    || { echo "  relaxations on $1 failed:" >&2; grep -m3 ERROR "$SOCK/apply.log" >&2; exit 1; }
+}
+clone willab_ga_template willab_confident_moment_narrow_0326
+relax_append_only willab_ga_template
 
 # lane name | DSN variable | database | modules
 LANES=(
@@ -157,16 +208,13 @@ LANES=(
   "service|MLC3_FIRST_CLIENT_REHEARSAL_DSN|willab_service_rehearsal|tests/test_mlc3_first_client_service_postgres.py"
   "confident-moment narrow|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_narrow|tests/test_confident_moment_coaching_bundle_postgres.py"
   "confident-moment released|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_released|tests/test_confident_moment_production_fixtures.py"
+  "canary|MLC3_CANARY_READINESS_REHEARSAL_DSN|willab_d3_canary|tests/test_mlc3_founder_canary_readiness_postgres.py"
+  "d4|MLC3_GENERAL_USER_REHEARSAL_DSN|willab_ga_template|tests/test_mlc3_general_user_service_d4_postgres.py"
 )
-# Suites with NO verified recipe. Their fixture helpers mutate canonical rows
-# that the MLC-2 / phase-1 append-only triggers reject on every chain that
-# satisfies their own migration's dependencies (0324 needs ml_presentations,
-# 0325 needs submit_mlc2_confidence_blind_judgment_v1, 0326 needs 0324).
-# Reported NOT RUN, never skipped; see docs/REHEARSAL-TIER.md "Pending lanes".
+# Suites with no GREEN recipe. Reported NOT RUN, never skipped, never run as
+# "expected to fail"; see docs/REHEARSAL-TIER.md "Pending lanes".
 PENDING=(
-  "tests/test_mlc3_coach_inline_authoring_d5_postgres.py|D5: no verified recipe (best known: narrow chain @0324 + ml_judgments id default → 11/12)"
-  "tests/test_mlc3_founder_canary_readiness_postgres.py|canary: no verified recipe (best known: narrow chain @0325 → 8/9)"
-  "tests/test_mlc3_general_user_service_d4_postgres.py|D4: no verified recipe (best known: narrow chain @0326 template → 24/34)"
+  "tests/test_mlc3_coach_inline_authoring_d5_postgres.py|D5: narrow @0324 + the D4 relaxations reaches 11/12; the last failure is an assertion, not a fixture gap (tests/test_mlc3_coach_inline_authoring_d5_postgres.py:782 — prepare_coach_inline_blind_batch_v1 returns 1 item, 2 expected), a question for D5's owner; recipe in docs/REHEARSAL-TIER-PENDING-LANE-RECIPES.md"
 )
 
 if [ "$KEEP" = 1 ]; then
@@ -181,18 +229,33 @@ fi
 # ── Run the tier, one pytest invocation per lane (two lanes share a DSN name,
 #    and each suite must see only its own database). ─────────────────────────
 echo "→ running the rehearsal lanes"
+# Every lane gets a wall clock. The suites race real connections, and a race
+# test that deadlocks itself (seen once in three runs on 2026-09-14: the
+# coaching-bundle suite's render/withdrawal ordering test, holding a render
+# transaction open while joining the thread it blocks) otherwise stalls the
+# tier — and the CI job — forever. The slowest lane runs ~40 s; 900 s is a
+# hang, not a slow machine. Override with REHEARSAL_LANE_TIMEOUT=<seconds>.
+LANE_TIMEOUT="${REHEARSAL_LANE_TIMEOUT:-900}"
+if command -v timeout >/dev/null 2>&1; then WALLCLOCK=(timeout -k 15 "$LANE_TIMEOUT")
+elif command -v gtimeout >/dev/null 2>&1; then WALLCLOCK=(gtimeout -k 15 "$LANE_TIMEOUT")   # macOS coreutils
+else WALLCLOCK=(); echo "  (no timeout(1) on this machine — lanes run without a wall clock)"; fi
 STATUS=0; SUMMARY=()
 for lane in "${LANES[@]}"; do
   IFS='|' read -r name var db modules <<<"$lane"
-  if env WILLAB_REHEARSAL=1 JWT_SECRET=ci-placeholder-secret \
-         SUPABASE_URL=https://ci-placeholder.invalid SUPABASE_KEY=ci-placeholder-key \
-         "$var=$(dsn "$db")" \
-         "$PY" -m pytest $modules -p no:cacheprovider -q --tb=short >"$SOCK/lane.log" 2>&1; then
-    line="$(grep -E "passed|failed|error" "$SOCK/lane.log" | tail -1)"
+  env WILLAB_REHEARSAL=1 JWT_SECRET=ci-placeholder-secret \
+      SUPABASE_URL=https://ci-placeholder.invalid SUPABASE_KEY=ci-placeholder-key \
+      "$var=$(dsn "$db")" \
+      "${WALLCLOCK[@]}" \
+      "$PY" -m pytest $modules -p no:cacheprovider -q --tb=short >"$SOCK/lane.log" 2>&1
+  rc=$?
+  line="$(grep -E "passed|failed|error" "$SOCK/lane.log" | tail -1)"
+  if [ "$rc" = 0 ]; then
     SUMMARY+=("  pass  $name: $line")
+  elif [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
+    STATUS=1
+    SUMMARY+=("  FAIL  $name: timed out after ${LANE_TIMEOUT}s — a hung test, not a slow one ($(tr -cd '.' <"$SOCK/lane.log" | wc -c) passed before the stall)")
   else
     STATUS=1
-    line="$(grep -E "passed|failed|error" "$SOCK/lane.log" | tail -1)"
     SUMMARY+=("  FAIL  $name: $line")
     grep -E "^(FAILED|ERROR) " "$SOCK/lane.log" | head -20
     grep -E "^E  " "$SOCK/lane.log" | sort | uniq -c | sort -rn | head -5

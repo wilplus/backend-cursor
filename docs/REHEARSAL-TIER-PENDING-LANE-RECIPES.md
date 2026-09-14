@@ -1,5 +1,14 @@
 # Rehearsal tier — recipes for the three pending lanes
 
+> **Folded into the runner the same day.** `scripts/rehearsal_tier.sh` now
+> carries the canary and D4 lanes as verified lanes. It cuts the checkpoints
+> with the recipe's own `CONFIDENT_MOMENT_CHECKPOINTS` hook
+> (`tests/integration/confident_moment_rehearsal.sh`) instead of the awk copy
+> shown under "Shared mechanics", so the three mechanics listed there no longer
+> apply to the runner; the awk form stays valid for a by-hand checkpoint. D5
+> remains pending with the assertion located below. Current status lives in
+> `docs/REHEARSAL-TIER.md`; this document is the evidence trail.
+
 Date: 2026-09-14. Every result below was produced by execution on a disposable
 PostgreSQL 16.13 cluster built by `scripts/rehearsal_tier.sh --build-only`,
 python 3.12.3, `requirements.txt` + pytest 9.1.1.

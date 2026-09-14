@@ -34,7 +34,7 @@ each module's own skipif reason, not on the file name.
 
 ```sh
 scripts/rehearsal_tier.sh            # build a disposable cluster, run, tear down
-scripts/rehearsal_tier.sh --keep     # leave the cluster up; prints the six DSNs
+scripts/rehearsal_tier.sh --keep     # leave the cluster up; prints one DSN export per lane
 scripts/rehearsal_tier.sh --dry-run  # list the modules, build nothing
 scripts/local_ci.sh --with-rehearsal # the full gate plus the tier
 ```
@@ -53,6 +53,13 @@ under the database-name prefix each fixture demands — not clones of the final
 schema. One `pytest` invocation per lane, so a suite only ever sees its own
 database. Every row marked *verified* was run to green on 2026-09-14.
 
+Checkpoints of the checked-in Confident Moment recipe are cut from the same
+build: `tests/integration/confident_moment_rehearsal.sh` reads
+`CONFIDENT_MOMENT_CHECKPOINTS` (`<released file>=<database>` pairs) and clones
+the lane right after that file applies. The canary and D4 lanes are such
+checkpoints; neither suite can run on the finished chain (see the notes under
+the table).
+
 | Lane | Recipe | Database | DSN variable | Suites | Status |
 |---|---|---|---|---|---|
 | m33 | `mlc3_assignment_prerequisites.sql` → 0313, 0314, 0317 → `rpq_restoration_prerequisites.sql` → 0318–0321 (each applied twice) | `willab_m33_rehearsal` | `MLC3_REHEARSAL_DSN` | dark assignments (57), N1 source pattern (34), rooting-phrase qualification (24) | **verified 115/115** |
@@ -60,29 +67,76 @@ database. Every row marked *verified* was run to green on 2026-09-14.
 | service | d3 → 0323 | `willab_service_rehearsal` | `MLC3_FIRST_CLIENT_REHEARSAL_DSN` | First-Client Service D2 (73) | **verified 73/73** |
 | confident-moment narrow | `tests/integration/confident_moment_rehearsal.sh narrow` (the checked-in recipe) | `willab_confident_moment_narrow` | `CONFIDENT_MOMENT_REHEARSAL_DSN` | coaching bundle (74) | **verified 74/74** |
 | confident-moment released | `… confident_moment_rehearsal.sh released` | `willab_confident_moment_released` | `CONFIDENT_MOMENT_REHEARSAL_DSN` | production-shaped fixtures (9) | **verified 9/9** |
+| canary | released lane, checkpoint right after 0325 `add_mlc3_founder_canary_security_closure.sql`, cloned; then `personalized_exercise_recommendation` and `coach_review` in `processing_purpose_registry` made operational with the five control columns the CHECK demands | `willab_d3_canary` | `MLC3_CANARY_READINESS_REHEARSAL_DSN` | founder canary readiness (9) | **verified 9/9** |
+| d4 | narrow lane, checkpoint right after 0326 `add_mlc3_general_user_service_d4.sql`, cloned as the TEMPLATE the suite clones per test; two relaxations: `ml_judgments.id` gets a default, and every trigger on `reject_mlc2_immutable_mutation` / `reject_phase1_immutable_mutation` is disabled (the suite asserts nothing about immutability; the MLC-2 lanes do) | `willab_ga_template` | `MLC3_GENERAL_USER_REHEARSAL_DSN` | General-User Service D4 (34) | **verified 34/34** |
 
-### Pending lanes (reported NOT RUN)
+### Pending lane (reported NOT RUN)
 
-Three suites have **no verified recipe** and the runner reports them
-`NOT RUN` with the reason, never as skipped and never as passed:
+One suite has no GREEN recipe. The runner reports it `NOT RUN` with the
+reason, never as skipped, never as passed, and never as "expected to fail":
 
-| Suite | Why | Best result found while investigating |
+| Suite | Where it stands | Why it is not a lane yet |
 |---|---|---|
-| `test_mlc3_coach_inline_authoring_d5_postgres.py` | migration 0324 needs `ml_presentations` (MLC-2 foundation), but with the MLC-2 migrations applied the suite's helpers trip `reject_mlc2_immutable_mutation` | narrow chain stopped after 0324, plus `ALTER TABLE ml_judgments ALTER COLUMN id SET DEFAULT gen_random_uuid()`: 11/12 |
-| `test_mlc3_founder_canary_readiness_postgres.py` | 0325 needs `submit_mlc2_confidence_blind_judgment_v1` (MLC-2 confidence producer); one readiness count differs on the narrow chain (`required_operational_purpose_count` 0 ≠ 1, the narrow lane drops `processing_one_active_policy_idx`) | narrow chain stopped after 0325: 8/9 |
-| `test_mlc3_general_user_service_d4_postgres.py` | 0326 needs 0324; on the narrow chain ten tests trip the MLC-2 / phase-1 append-only triggers during fixture setup | narrow chain stopped after 0326, cloned as the D4 template: 24/34 |
+| `test_mlc3_coach_inline_authoring_d5_postgres.py` | narrow lane, checkpoint right after 0324, plus the two D4 relaxations: **11/12**, fixture setup complete | the one failure is an assertion, not a fixture gap: `tests/test_mlc3_coach_inline_authoring_d5_postgres.py:782` expects two items in the visible blind batch and `prepare_coach_inline_blind_batch_v1` returns one. That is a behavioural question for D5's owner. 0324 is the right checkpoint: the same suite scores 5/12 at 0326. |
 
-Closing a pending lane means writing its recipe into
-`scripts/rehearsal_tier.sh` (a chain checkpoint plus whatever relaxation the
-suite's author used) and moving the row up. The founder ran these suites by
-hand before their releases (#486, #487, #488, #490); the fixture databases
-those runs used were not checked in.
+The step-by-step recipes, including this one, are in
+`docs/REHEARSAL-TIER-PENDING-LANE-RECIPES.md` (established by execution on a
+clean rebuild, 2026-09-14). Two corrections to what this page said before
+that work:
+
+1. The canary count difference was never caused by the narrow lane dropping
+   `processing_one_active_policy_idx` (the index is present in the released
+   lane). It was the six purpose rows seeded false, which the lane now fixes.
+2. The canary suite must not run on the finished chain. 0326 supersedes
+   `reserve_exercise_practice_service_upload_v1` with `_v2` and revokes v1 from
+   `service_role` (deliberately; v2 calls v1 internally), while
+   `scripts/check_mlc3_founder_canary_readiness.py` still lists v1 in
+   `_REQUIRED_RPC_SIGNATURES`. From 0326 on, the deployed readiness audit
+   therefore reports one false missing grant, and the suite scores 7/9 there.
+   The revocation is right and the required list is stale against it. That is
+   a founder decision about a production monitor, not a lane recipe; it is
+   recorded here so nobody "fixes" the lane instead.
+
+Closing the pending lane means resolving that assertion (or the behaviour
+behind it) and then adding the checkpoint, the relaxations and the row above,
+the same way the canary and D4 lanes were added. The founder ran these suites
+by hand before their releases (#486, #487, #488, #490); the fixture databases
+those runs used were not checked in, which is why the recipes had to be
+reconstructed.
+
+### Every lane has a wall clock
+
+`scripts/rehearsal_tier.sh` runs each lane under `timeout` (default 900 s,
+`REHEARSAL_LANE_TIMEOUT=<seconds>` to override) and reports a lane that hits
+it as `FAIL … timed out after Ns — a hung test, not a slow one`, with the
+number of tests that had passed before the stall. The slowest lane takes about
+40 s, so the limit only ever catches a hang. The wrapper is coreutils
+`timeout` (`gtimeout` on macOS); without either the lanes run unbounded and
+the runner says so.
+
+It exists because of a real one, seen once in three runs on 2026-09-14 while
+folding the lanes above (not caused by the fold; the suite is unchanged since
+#490): `test_confident_moment_coaching_bundle_postgres.py::`
+`test_ack_render_revalidates_exact_coach_source_authority_in_both_orders`
+`[render-reviewer_access]`. Its render-first branch holds a `FOR UPDATE` row
+lock on the reviewer's `coach_users` row in one connection, submits the
+withdrawing writer to a `ThreadPoolExecutor`, and polls `pg_stat_activity` for
+that writer to block (`wait_for_lock`, 5 s deadline, raises). When the poll
+misses its deadline the exception leaves the `with ThreadPoolExecutor` block,
+whose exit joins the worker — which is blocked on the row lock the test still
+holds, and which only the test's own `finally` (outside the block) would
+release. The tier, and the CI job, then wait forever. The fix belongs in the
+test (release `first` before the pool can join: `try … except BaseException:
+first.rollback(); raise` around the wait-and-commit), but that file is in the
+Confident Moment reviewed-hash manifest, so it goes through the packet's
+re-freeze-and-review rule as its own change, not this one.
 
 ## When it is required
 
 **The trigger is the change, not discipline.** `scripts/rehearsal_trigger.sh`
 exits 0 when the diff against `origin/main` touches `migrations/`,
-`tests/integration/`, or an MLC-3 storage module (the list is in the script).
+`tests/integration/`, the tier's own runner `scripts/rehearsal_tier.sh`, or an
+MLC-3 storage module (the list is in the script).
 Both `scripts/local_ci.sh` and the `checks` job in
 `.github/workflows/tests.yml` consult it:
 
@@ -100,8 +154,11 @@ the same script.
    any database whose name lacks the lane prefix and any host outside
    `/tmp/willab-*`.
 2. If it needs a new lane, add the clone and the export in
-   `scripts/rehearsal_tier.sh`; if the template lacks an object it needs, add
-   it to the checked-in recipe, not to the test.
+   `scripts/rehearsal_tier.sh`; if it needs the chain as it stood at an
+   earlier migration, cut a checkpoint with `CONFIDENT_MOMENT_CHECKPOINTS`;
+   if the template lacks an object it needs, add it to the checked-in recipe,
+   not to the test. A relaxation is acceptable only when the suite asserts
+   nothing about the guard being relaxed, and it is stated next to the lane.
 3. Run `scripts/rehearsal_tier.sh` and paste the result into the PR.
 
 ## Relation to the proposal for a production-shaped lane

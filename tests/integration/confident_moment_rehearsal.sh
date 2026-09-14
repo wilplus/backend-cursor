@@ -33,6 +33,12 @@
 #   CONFIDENT_MOMENT_PGHOST / PGPORT / PGUSER  libpq connection to a DISPOSABLE
 #                                              local cluster (never production)
 #   CONFIDENT_MOMENT_TEST_PYTHON               python with pytest + psycopg2
+#   CONFIDENT_MOMENT_CHECKPOINTS               optional, space-separated
+#                                              <released file>=<database> pairs:
+#                                              right after that file applies, the
+#                                              lane is cloned under that name
+#                                              (scripts/rehearsal_tier.sh cuts the
+#                                              canary and D4 lanes this way)
 #
 # The database name must start with willab_confident_moment_ — the pytest
 # fixture refuses anything else.
@@ -76,6 +82,7 @@ hard() {
   : > "$log"
   if psql -q -d "$DB" -v ON_ERROR_STOP=1 -X -f "$1" >"$log" 2>&1; then
     ok=$((ok + 1)); printf '  ok      %s\n' "$(basename "$1")"
+    checkpoint_after "$(basename "$1")"
   else
     printf '  FAILED  %s\n' "$(basename "$1")" >&2
     grep -m2 'ERROR:' "$log" | sed 's/^/          /' >&2
@@ -85,6 +92,32 @@ hard() {
 soft() {
   psql -q -d "$DB" -X -f "$fixture_dir/$(basename "$1")" >>"$log" 2>&1
   skipped=$((skipped + 1)); printf '  fixture %s\n' "$(basename "$1")"
+}
+# A chain checkpoint: the lane as it stands right after a named released file,
+# cloned under a disposable name. Suites written against an earlier slice of
+# the chain (later migrations install triggers their fixture helpers trip) run
+# against a checkpoint, not the finished lane. Requested through
+# CONFIDENT_MOMENT_CHECKPOINTS; an existing clone is kept, never rebuilt.
+checkpoint_after() {
+  local pair name
+  for pair in ${CONFIDENT_MOMENT_CHECKPOINTS:-}; do
+    [ "${pair%%=*}" = "$1" ] || continue
+    name="${pair#*=}"
+    case "$name" in
+      willab_confident_moment_*) ;;
+      *) echo "Refusing a non-disposable checkpoint name: $name" >&2; exit 2 ;;
+    esac
+    if [ "$(psql -X -tAc "SELECT 1 FROM pg_database WHERE datname='$name'" -d postgres 2>/dev/null)" = 1 ]; then
+      printf '  checkpoint %s (exists; kept)\n' "$name"; continue
+    fi
+    if psql -q -d postgres -v ON_ERROR_STOP=1 -X -c "CREATE DATABASE \"$name\" TEMPLATE \"$DB\"" >>"$log" 2>&1; then
+      printf '  checkpoint %s -> %s\n' "$1" "$name"
+    else
+      printf '  FAILED  checkpoint %s\n' "$name" >&2
+      grep -m2 'ERROR:' "$log" | sed 's/^/          /' >&2
+      exit 1
+    fi
+  done
 }
 
 echo "Building $LANE lane in $DB"
