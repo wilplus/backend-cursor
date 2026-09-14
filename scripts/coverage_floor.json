@@ -4,6 +4,7 @@
   "services/analysis_worker.py": 51.5,
   "services/feedback_data_contract.py": 86.2,
   "services/ideal_text_block.py": 89.8,
+  "services/ideal_text_changes.py": 60.9,
   "services/ideal_text_core_snapshot.py": 48.4,
   "services/ideal_text_parts.py": 95.2,
   "services/intervention_candidates.py": 91.7,

@@ -64,13 +64,17 @@ def _publish_ideal_text_core(arc_id, actor_id=None) -> None:
                        arc_id, error)
 
 
-def _ideal_optional_read(label, default, reader):
+def _ideal_optional_read(label, default, reader, degradation=None):
     """Keep auxiliary state machines outside Ideal Text availability.
 
     Coach delivery, feedback enrichment, pricing, and journey metadata are
     valuable additions to the notebook; none owns the canonical document. A
-    fault in one is logged and omitted instead of turning safe text into a 500.
+    fault in one is omitted instead of turning safe text into a 500 — and,
+    when the request carries a ``DegradationLog`` (audit Q-C1), named in
+    the payload's `degraded` list rather than only in the log.
     """
+    if degradation is not None:
+        return degradation.run(f"optional.{label}", reader, default)
     try:
         return reader()
     except Exception as exc:
@@ -785,6 +789,15 @@ def v2_explore_get_ideal_text(arc_id):
         owned, _sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        # Every optional stage of this read either succeeds or is named in
+        # the payload's `degraded` list (audit Q-C1, founder 2026-09-14):
+        # the FE can show a shorter notebook for what it is, never a silent
+        # one. Absent when nothing degraded.
+        from services.degradation import DegradationLog
+        _deg = DegradationLog("ideal_text")
+
+        def _optional(label, default, reader):
+            return _ideal_optional_read(label, default, reader, _deg)
         row = db.get_coach_arc_ideal_text(arc_id)
 
         # ── SINGLE DELIVERABLE (founder re-shape 2026-07-17): the ideal
@@ -840,7 +853,7 @@ def v2_explore_get_ideal_text(arc_id):
         # free-form edit won — that wins wholesale), then extract the
         # anchors from the folded text so they always match what's
         # served. The canonical row is never touched (L1). ──
-        _suggestion_display = _ideal_optional_read(
+        _suggestion_display = _optional(
             "suggestion_display",
             None,
             lambda: resolve_suggestion_display(
@@ -941,6 +954,7 @@ def v2_explore_get_ideal_text(arc_id):
             logger.error(
                 "compose failed arc=%s: %s — serving the pinned stored "
                 "composition (§12.1 failed-rebuild rule)", arc_id, _cmp_err)
+            _deg.record("compose", _cmp_err)
             try:
                 from services.ideal_text_parts import pinned_parts
                 _composed = pinned_parts(_p_rows)
@@ -950,15 +964,16 @@ def v2_explore_get_ideal_text(arc_id):
                 logger.error(
                     "compose pin fallback ALSO failed arc=%s: %s — locks "
                     "will be invisible this read", arc_id, _pin_err)
+                _deg.record("compose_pin", _pin_err)
                 _composed = None
         _moment_take_ids = [m.get("take_session_id") for m in _moments]
-        _has_expl = _ideal_optional_read(
+        _has_expl = _optional(
             "moment_explanations", {},
             lambda: _moment_explanations_map(_moment_take_ids))
-        _playback = _ideal_optional_read(
+        _playback = _optional(
             "moment_playback", {},
             lambda: _moment_playback_map(_moment_take_ids))
-        _review_status = _ideal_optional_read(
+        _review_status = _optional(
             "confidence_review_status", {},
             lambda: _confidence_review_status_map(arc_id, _moments))
         # Ticket 6: resolve every attached post ONCE per request, not once per
@@ -967,7 +982,7 @@ def v2_explore_get_ideal_text(arc_id):
         # callers (and tests) legitimately hand back a truthy marker instead,
         # and a bare .get() there is an AttributeError that takes the whole
         # ideal-text response down with it.
-        _refs = _ideal_optional_read(
+        _refs = _optional(
             "moment_references", {},
             lambda: _moment_reference_map([
                 v.get("reference_post_slug") if isinstance(v, dict) else None
@@ -983,7 +998,7 @@ def v2_explore_get_ideal_text(arc_id):
             references=_refs,
         )
 
-        _notes = _ideal_optional_read(
+        _notes = _optional(
             "owner_notes", None,
             lambda: db.get_user_arc_ideal_notes(arc_id, request.user_id))
 
@@ -1011,18 +1026,18 @@ def v2_explore_get_ideal_text(arc_id):
         # so the two can never disagree about whether a take can start.
         _can_record_take = _project.can_record_take
         from services.journey_messages import journey_seen
-        _journey_seen = _ideal_optional_read(
+        _journey_seen = _optional(
             "journey_state", False,
             lambda: journey_seen(
                 db, request.user_id, arc_id, len(_spoken_rows)))
 
-        _decision_history = _ideal_optional_read(
+        _decision_history = _optional(
             "decision_history", [],
             lambda: db.list_intervention_decision_history(arc_id))
-        _moments_unlocked = _ideal_optional_read(
+        _moments_unlocked = _optional(
             "moment_entitlement", False,
             lambda: _moments_entitled(arc_id))
-        _moment_price = _ideal_optional_read(
+        _moment_price = _optional(
             "moment_price", 0,
             lambda: _price_of("moment_explanation"))
 
@@ -1088,6 +1103,7 @@ def v2_explore_get_ideal_text(arc_id):
                     "ideal-text presentation not prepared arc=%s take=%s: %s",
                     arc_id, _latest_take_sid, _exposure_error,
                 )
+                _deg.record("learning_exposure", _exposure_error)
 
         return jsonify({
             "arc_id": arc_id,
@@ -1187,7 +1203,8 @@ def v2_explore_get_ideal_text(arc_id):
                 # The take this arbitration is about — NOT the doc-level id,
                 # which is None under the master flag (see _tracked_changes_
                 # block). It keys the withhold arm and every arm row.
-                _latest_take_sid or "", review_version=_version),
+                _latest_take_sid or "", review_version=_version,
+                degradation=_deg),
             # ── PROPOSAL HISTORY (slice 2, founder 2026-08-11): the arc's
             # decided proposals, texts included, newest first — the deck
             # editor's "proposals from earlier iterations". Rows predating
@@ -1200,6 +1217,9 @@ def v2_explore_get_ideal_text(arc_id):
             "price_tokens": _moment_price,
             # The personal notebook copy — free with the text now.
             "notes_text": _notes, "notes": _notes, "user_notes": _notes,
+            # Every optional stage that fell back on this read, by name
+            # (audit Q-C1). Absent when the notebook is complete.
+            **_deg.payload(),
         }), 200
     except Exception as e:
         logger.error("explore ideal-text GET failed arc=%s: %s", arc_id, e,
@@ -1997,906 +2017,35 @@ def _with_evidence_coordinates(rows, *, arc_id, served_text, pieces):
 
 
 def _tracked_changes_block(arc_id, served_text, user_id="",
-                           take_session_id="", review_version=None) -> dict:
+                           take_session_id="", review_version=None,
+                           degradation=None) -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
     ABSENT and the FE keeps rendering today's star layer.
 
-    Anchors are resolved against the SERVED text: each piece of the take
-    the document came from is located as an exact substring, then the
-    change is narrowed inside that window. A piece whose words are no
-    longer there (baked, coach-corrected, student-edited) yields NO
-    change rather than a mis-pointed one (#219). Best-effort.
-
-    THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder 2026-08-07). The
-    three lanes below still PRODUCE candidates exactly as they did; none
-    of them SERVES one. Everything they assemble goes through
-    `intervention_candidates.select`, which applies the frozen exact-three
-    family contract and collision resolution.
-    Concatenating the lanes and serving the result — which is what this
-    did — meant the budget the whole of Appendix H exists to enforce was
-    not enforced anywhere, because `manager_engine` had no caller.
-
-    THE CUE SHEET IS DEFERRED (founder 2026-08-07). E-1's `key_points`
-    was a starting-point milestone per block — a verbatim opening phrase,
-    working as designed — and it read on screen as an intervention that
-    explained nothing. Real interventions replace it. `services/
-    key_points.py` and its tests are kept; only the wiring is gone, so
-    `KEY_POINTS_ENABLED` no longer does anything and should be deleted
-    from Railway."""
-    try:
-        # Only a durable review identity activates the immutable Take
-        # contract. The student GET always supplies it. Keeping the legacy
-        # no-version mode is intentional for internal pre-review callers; it
-        # cannot claim a set whose Take/version provenance it does not know.
-        _take_contract_on = (
-            bool(take_session_id)
-            and isinstance(review_version, int)
-            and not isinstance(review_version, bool)
-            and review_version >= 1
-        )
-        from services.ideal_text_block import _living_transcript_enabled
-        if not _living_transcript_enabled():
-            return {}
-        from services.intervention_candidates import (
-            feedback_family_of,
-            select as _select,
-        )
-        from services.tracked_changes import (
-            build_tracked_changes, verify_changes,
-        )
-        from services.transcript_document import (
-            build_transcript_document, relocate_pieces,
-        )
-        from services.master_document import (
-            assemble_master_document, master_document_enabled,
-            upgrade_changes,
-        )
-        _master_on = master_document_enabled()
-        if _master_on:
-            # MASTER MODEL (founder 2026-07-22): the document is the
-            # persistent master; its pieces carry per-piece spans + the
-            # origin take badge, so the star lane anchors unchanged. The
-            # prior-take lane is superseded by block upgrade offers.
-            _master = assemble_master_document(arc_id, database=db)
-            if _master.get("ready"):
-                doc = _master.get("document") or {}
-                doc["text"] = _master.get("text")
-            else:
-                # No skeleton yet (flip-ON before the next take / pre-
-                # migration): the star lane keeps anchoring on the
-                # living-transcript document rather than going dark.
-                _master_on = False
-                doc = build_transcript_document(arc_id, database=db)
-        else:
-            doc = build_transcript_document(arc_id, database=db)
-        if not doc:
-            return {}
-        # The served text may already carry approved bakes / coach text —
-        # re-anchor the pieces onto it MONOTONICALLY (never a bare
-        # first-occurrence search, the review's mis-anchor defect).
-        # PARAGRAPH FALLBACK (founder 2026-08-12). This is the call that
-        # was taking the feedback engine dark: lock a paragraph — even the
-        # AI's own words, unedited — and the NEXT take's pieces no longer
-        # match the composed text, so every one of them was dropped and
-        # build_tracked_changes below received nothing to anchor to.
-        # Unlocatable pieces now take their paragraph's span, tagged
-        # anchor_grain='paragraph' so word-precise consumers decline.
-        _pieces = relocate_pieces(served_text, doc.get("pieces") or [],
-                                  paragraph_fallback=True)
-        # The canonical Take-1 provenance stays beside the canonical words.
-        # Later-Take feedback is evaluated against new audio, but its deck
-        # route must come from the document actually being served — never from
-        # whichever transcript happened to be latest when this GET ran.
-        _canonical_pieces = []
-        try:
-            _canonical_row = db.get_coach_arc_ideal_text(arc_id) or {}
-            _canonical_document = _canonical_row.get("document") or {}
-            _canonical_pieces = relocate_pieces(
-                served_text,
-                _canonical_document.get("pieces") or [],
-                paragraph_fallback=True,
-            )
-        except Exception as _canonical_err:
-            logger.warning(
-                "canonical feedback provenance failed arc=%s: %s",
-                arc_id, _canonical_err)
-        _sugs = db.get_moment_suggestions_by_arc(arc_id) or {}
-        from services.ideal_decision_ledger import load_ledger
-        _ledger = load_ledger(db, arc_id)
-        _verdicts = db.get_star_verdicts_by_snippet_ids(
-            list(_sugs.keys())) if _sugs else {}
-        from services.star_verdicts import (
-            filter_user_suggestions, released_user_verdicts,
-        )
-        # BLIND COACH / publish boundary: a saved coach verdict is still
-        # private review state. It can suppress or supersede user feedback
-        # only after that snippet's take has been published.
-        _released_verdicts = released_user_verdicts(
-            _verdicts, _pieces, db.get_arc_sessions(arc_id) or [])
-        _user_sugs = filter_user_suggestions(_sugs, _released_verdicts)
-        _applied = []
-        try:
-            # The master document spans takes: feed EVERY distinct origin
-            # session, not the doc-level take_session_id (which is None
-            # under the master flag and starved the applied map — review
-            # findings #12/#16).
-            _sess_ids = {p.get("take_session_id")
-                         for p in (doc.get("pieces") or [])
-                         if p.get("take_session_id")}
-            if doc.get("take_session_id"):
-                _sess_ids.add(doc.get("take_session_id"))
-            _applied = [k for k, v in _moment_applied_map(
-                sorted(_sess_ids)).items() if v]
-        except Exception:
-            _applied = []
-        # T3 (founder 2026-07-23): an emphasis star bolds only its
-        # KEY-PHRASE sub-span, not the whole fragment. The signal is the
-        # snippet's say-it-stronger upgrade wordings — bulk-read once for
-        # the emphasize snippets only (bounded; get_snippets_by_ids added
-        # #232), never a per-snippet storm. Best-effort → no narrowing
-        # falls back to the whole fragment (today's behavior).
-        _kp_by_snip = {}
-        try:
-            from services.tracked_changes import (
-                key_phrases_from_say_it_stronger,
-            )
-            _emph_ids = [k for k, v in (_user_sugs or {}).items()
-                         if isinstance(v, dict)
-                         and v.get("kind") == "emphasize"]
-            if _emph_ids:
-                for _srow in (db.get_snippets_by_ids(_emph_ids) or []):
-                    _phr = key_phrases_from_say_it_stronger(
-                        _srow.get("say_it_stronger"))
-                    if _phr:
-                        _kp_by_snip[str(_srow.get("id"))] = _phr
-        except Exception as _kp_err:
-            logger.warning("emphasis key-phrases failed arc=%s: %s",
-                           arc_id, _kp_err)
-        changes = build_tracked_changes(
-            served_text, _pieces, _user_sugs, applied=_applied,
-            key_phrases_by_snippet=_kp_by_snip)
-        from services.tracked_changes import build_coach_revision_changes
-        changes.extend(build_coach_revision_changes(
-            served_text, _pieces, _sugs, _ledger, _released_verdicts))
-
-        # REQUIRED CURRENT-TAKE CONFIDENT VOICE (founder 2026-08-26).
-        # The canonical words may stay unchanged while Take 2/3 supplies a new
-        # delivery.  Build one acoustic evaluation from that exact Take and
-        # route it to the corresponding canonical slide.  Playback is the
-        # evidence; a span marked slide_route is navigation only and is never
-        # presented as words the user said.  Historical confident moments are
-        # excluded from this Take's immutable set.
-        _review_sid = str(take_session_id or doc.get("take_session_id") or "")
-        _review_evidence_piece = None
-        if _take_contract_on and _review_sid:
-            try:
-                from services.take_feedback_candidates import (
-                    current_take_confident_voice_candidate,
-                )
-                _answered_confidence = {
-                    str(row.get("snippet_id"))
-                    for row in (db.list_owner_voice_album_routes(
-                        str(arc_id)) or [])
-                    if isinstance(row, dict) and row.get("snippet_id")
-                }
-                _review_doc = build_transcript_document(
-                    arc_id, database=db, session_id=_review_sid)
-                _review_cv, _review_evidence_piece = \
-                    current_take_confident_voice_candidate(
-                        served_text,
-                        canonical_pieces=(_canonical_pieces or _pieces),
-                        take_document=_review_doc,
-                        suggestions=_user_sugs,
-                        excluded_snippet_ids=_answered_confidence,
-                    )
-                changes = [
-                    c for c in changes
-                    if not (isinstance(c, dict)
-                            and c.get("source") == "confident_voice"
-                            and str(c.get("take_session_id") or "")
-                            != _review_sid)
-                ]
-                if _review_cv is not None:
-                    # One suggestion row owns one identity. Replace any direct
-                    # relocation of the same snippet with the explicit
-                    # Take-scoped candidate, then put the reserved family at
-                    # the front of the Manager pool.
-                    changes = [
-                        c for c in changes
-                        if not (isinstance(c, dict)
-                                and c.get("source") == "confident_voice")
-                    ]
-                    changes.insert(0, _review_cv)
-            except Exception as _review_cv_err:
-                logger.warning(
-                    "current-Take Confident Voice failed arc=%s take=%s: %s",
-                    arc_id, _review_sid, _review_cv_err)
-
-        # ── HEAR IT (founder 2026-08-15) ──────────────────────────────────
-        # "in the justification of the positive feedback give them the
-        # playback of that phrase emphasising that it was said really well."
-        #
-        # The praise lane is the ONE lane whose claim is about the SOUND, so
-        # it is the one lane that cannot be taken on trust: "you delivered
-        # this beautifully" over words the student cannot replay is an
-        # assertion, and the whole point of citing the cues is that it should
-        # be evidence. Playback makes it checkable in one tap.
-        #
-        # FREE, and deliberately from the free map: `_moment_playback_map`
-        # exists precisely because the star sheet plays a student's own
-        # recording ABOVE the paywall (audit 2026-07-18). Sourcing it from
-        # the paid moments read would put a paywall between somebody and
-        # their own voice.
-        #
-        # ONLY the praise device gets it. Every other change is a claim about
-        # WORDS and reads fine without audio; attaching a player to all of
-        # them would be a per-snippet resolve on every serve for no reason.
-        try:
-            _praise = [c for c in changes
-                       if isinstance(c, dict)
-                       and (c.get("source") == "confident_voice"
-                            or c.get("device") == "impeccable")
-                       and c.get("take_session_id")]
-            if _praise:
-                _pb = _moment_playback_map(
-                    sorted({c["take_session_id"] for c in _praise}))
-                for _c in _praise:
-                    _row = _pb.get(str(_c.get("snippet_id") or ""))
-                    if _row and _row.get("snippet_audio_ref"):
-                        _c.update(_row)
-        except Exception as _pb_err:
-            # No player is a smaller loss than no praise. The line still
-            # renders and still names its cues.
-            logger.warning("praise playback failed arc=%s: %s",
-                           arc_id, _pb_err)
-
-        # ── CROSS-TAKE DISCERNMENT (founder decision 2026-07-20 #4):
-        # where the PREVIOUS take said the same thing better, its wording
-        # comes back as an approvable change on this document. The
-        # ranking blend does the judging (L2 untouched); a fragment the
-        # student already decided on is never re-offered. Best-effort. ──
-        _additions: list = []
-        if _master_on:
-            # Block-level upgrade offers — the master model's cross-take lane.
-            try:
-                changes.extend(upgrade_changes(arc_id, served_text, db))
-            except Exception as _up_err:
-                logger.warning("upgrade changes failed arc=%s: %s",
-                               arc_id, _up_err)
-            # MATERIAL RECOVERY, a separate lane on purpose. A candidate block
-            # is a decked slide the master has never seen, carrying the words
-            # the speaker actually said over it. It is NOT a span-anchored
-            # edit — there is nothing in the document to anchor to — and while
-            # it was forced into the `changes` shape as a zero-width `insert`
-            # it reached nobody at all.
-            try:
-                from services.master_document import block_additions
-                _additions = block_additions(arc_id, served_text, db)
-            except Exception as _add_err:
-                logger.warning("block additions failed arc=%s: %s",
-                               arc_id, _add_err)
-        try:
-            _prev = None if _master_on else _previous_spoken_session(
-                arc_id, doc.get("take_session_id"))
-            if _prev:
-                from services.prior_take_changes import (
-                    build_prior_take_changes,
-                )
-                from services.ideal_decision_ledger import load_ledger
-                _prev_doc = build_transcript_document(
-                    arc_id, database=db, session_id=_prev)
-                if _prev_doc:
-                    # ONLY cross-take decisions suppress a cross-take
-                    # offer — a star-lane decision on the same snippet
-                    # must not silence it (review finding).
-                    _decided = {
-                        str(r.get("snippet_id"))
-                        for r in (load_ledger(db, arc_id) or [])
-                        if r.get("snippet_id")
-                        and r.get("source") == "prior_take"
-                    }
-                    changes.extend(build_prior_take_changes(
-                        {"text": served_text, "pieces": _pieces},
-                        _prev_doc, database=db, decided_ids=_decided))
-        except Exception as _pt_err:
-            logger.warning("prior-take changes failed arc=%s: %s",
-                           arc_id, _pt_err)
-
-        # ── THE GATE. Every lane above has now PROPOSED; nothing has been
-        # served. The manager builds the exact-three family set from all of
-        # them, resolves collisions (which subsumes the old
-        # `drop_overlaps` sweep — see intervention_candidates.select) and
-        # returns the survivors in document order. A lane that is not
-        # declared there does not reach the user. ──
-        # THE SESSION KEY, and it is not doc-level. Under the master flag
-        # `doc["take_session_id"]` is None (the same starvation review
-        # findings #12/#16 hit on the applied map), which would make
-        # `is_withheld` short-circuit to False — the withhold arm NEVER firing
-        # — and every arm row carry an empty session_id, which the writer
-            # drops. Flipping the controls on that would produce exactly the
-            # failure the module warns about: a table that looks like a working
-            # experiment while recording nothing. The caller passes the arc's
-        # latest spoken take instead: the take this arbitration is about.
-        _arm_sid = _review_sid
-        # Classify the COMPLETE pool before selection, then add only honest
-        # weak fallbacks for genuinely absent text lanes. Fallbacks are exact
-        # document slices; they invent neither lexical content nor certainty.
-        # This full pool, not merely the winners, is snapshotted for later
-        # ranking evaluation.
-        from services.take_feedback_set import (
-            claim_feedback_set,
-            filter_candidates_to_selected,
-            filter_to_selected,
-            has_required_families,
-            load_feedback_set,
-            selected_keys,
-            snippet_ids_by_family,
-        )
-        _feedback_set = (
-            load_feedback_set(db, str(arc_id), _arm_sid)
-            if _take_contract_on and _arm_sid else None
-        )
-        if _take_contract_on and _arm_sid:
-            for _candidate in changes:
-                if not isinstance(_candidate, dict):
-                    continue
-                _family = feedback_family_of(_candidate)
-                if _family:
-                    _candidate["feedback_family"] = _family
-            # Text-lane fallback provenance must not move when the owner
-            # answers a Confident Voice card.  Use the exact family clips from
-            # an existing immutable set; for a new set use the first persisted
-            # source piece, whose identity is stable across GETs.
-            _frozen_family_snippets = snippet_ids_by_family(
-                (_feedback_set or {}).get("selected_keys"))
-            _current_doc = locals().get("_review_doc")
-            _candidate_sid = next((
-                p.get("snippet_id")
-                for p in ((_current_doc or {}).get("pieces") or [])
-                if isinstance(p, dict) and p.get("snippet_id")
-            ), None)
-            _rewrite_sid = _frozen_family_snippets.get(
-                "rewrite_clarity", _candidate_sid)
-            from services.take_feedback_manager import (
-                evidence_backed_rewrite_candidates,
-                ensure_required_families,
-                exposure_snapshot,
-            )
-            # Structural deletion scars are a real candidate lane, not an
-            # emergency fallback. Add the complete exact-text pool before the
-            # Manager ranks it, so the presence of any weaker model rewrite
-            # cannot suppress an obvious word-preserving repair.
-            changes.extend(evidence_backed_rewrite_candidates(
-                served_text,
-                take_session_id=_arm_sid,
-                snippet_id=_rewrite_sid,
-            ))
-            changes = ensure_required_families(
-                served_text,
-                changes,
-                take_session_id=_arm_sid,
-                snippet_id=_candidate_sid,
-                snippet_ids_by_family=_frozen_family_snippets,
-            )
-            _feedback_exposure = exposure_snapshot(changes)
-        else:
-            _feedback_exposure = []
-
-        # TAKE FEEDBACK V3 SHADOW. This is a real, founder-scoped comparison
-        # write over the complete current-Take inventory, but it is not the
-        # serving path and cannot create a rendered exposure. Default OFF;
-        # ML/data reviews these frames before any user-visible activation.
-        try:
-            from services.take_feedback_policy_v3 import (
-                POLICY_VERSION as V3_POLICY_VERSION,
-                build_shadow_frame,
-                dark_enabled,
-            )
-
-            _v3_session = (
-                db.v2_get_session_by_id(_arm_sid) or {}
-                if _arm_sid else {}
-            )
-            _v3_principal_id = _v3_session.get("owner_principal_id")
-            if _arm_sid and dark_enabled(_v3_principal_id):
-                _v3_take_index = _v3_session.get("take_index")
-                _v3_doc = locals().get("_review_doc")
-                if not isinstance(_v3_doc, dict):
-                    _v3_doc = build_transcript_document(
-                        arc_id, database=db, session_id=_arm_sid)
-                _v3_frame = build_shadow_frame(
-                    take_document=_v3_doc,
-                    snippets=db.get_snippets_by_session(_arm_sid) or [],
-                    suggestions=_user_sugs,
-                    feedback_candidates=changes,
-                    take_index=_v3_take_index,
-                    expected_recording_id=_v3_session.get("recording_1_id"),
-                )
-                if _v3_frame is not None:
-                    _v3_saved = db.record_take_feedback_policy_v3_shadow(
-                        arc_id=str(arc_id),
-                        take_session_id=_arm_sid,
-                        recording_id=str(_v3_frame["recording_id"]),
-                        acquisition_principal_id=str(_v3_principal_id),
-                        owner_user_id=str(user_id),
-                        take_index=int(_v3_frame["take_index"]),
-                        policy_version=V3_POLICY_VERSION,
-                        frame=_v3_frame,
-                        frame_hash=_v3_frame["frame_hash"],
-                    )
-                    if not _v3_saved or _v3_saved.get("outcome") != "stored":
-                        logger.warning(
-                            "take feedback v3 dark frame not stored "
-                            "arc=%s take=%s", arc_id, _arm_sid,
-                        )
-        except Exception as _v3_error:
-            # Shadow evaluation can never darken the current feedback product.
-            logger.warning(
-                "take feedback v3 dark evaluation failed arc=%s take=%s: %s",
-                arc_id, _arm_sid, _v3_error,
-            )
-        _learning_presentations: dict[str, list[dict]] = {}
-        # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete
-        # Manager result is claimed in the database; every later GET may only
-        # rebuild those identities. Playback URLs refresh and decided items
-        # disappear, but accepting item one can never reveal item four.
-        _feedback_response_count = 0
-        if _feedback_set is not None:
-            changes = filter_candidates_to_selected(
-                changes, _feedback_set["selected_keys"])
-            _response_rows = db.list_take_feedback_self_reports(
-                _arm_sid, str(user_id))
-            # DECISION BACKFILL-ON-READ. A compatibility response may have
-            # landed during the brief backend-first window before migration
-            # 0294 existed. Because that legacy response is first-write-final,
-            # the user cannot safely be asked to tap it again. Rebuilding the
-            # typed canonical decision from its explicit family/response is
-            # deterministic and idempotent; ambiguous editor-open actions
-            # intentionally remain unresolved.
-            try:
-                from services.feedback_data_contract import (
-                    canonical_feedback_decision,
-                )
-
-                _decision_session = db.v2_get_session_by_id(_arm_sid) or {}
-                if _decision_session.get("project_id"):
-                    for _response_row in _response_rows:
-                        if not isinstance(_response_row, dict):
-                            continue
-                        _canonical_decision = canonical_feedback_decision(
-                            take_id=_arm_sid,
-                            rater_id=str(user_id),
-                            feedback_id=str(
-                                _response_row.get("feedback_id") or ""),
-                            feedback_family=str(
-                                _response_row.get("feedback_family") or ""),
-                            response=str(
-                                _response_row.get("response") or ""),
-                            candidate_id=_response_row.get("candidate_id"),
-                            feedback_membership_id=_response_row.get(
-                                "feedback_membership_id"),
-                            feedback_exposure_id=_response_row.get(
-                                "feedback_exposure_id"),
-                        )
-                        if _canonical_decision is not None:
-                            db.record_canonical_feedback_decision(
-                                project_id=str(
-                                    _decision_session["project_id"]),
-                                take_id=_arm_sid,
-                                rater_id=str(user_id),
-                                decision=_canonical_decision,
-                            )
-            except Exception as _decision_backfill_error:
-                logger.warning(
-                    "canonical decision backfill failed arc=%s take=%s: %s",
-                    arc_id, _arm_sid, _decision_backfill_error,
-                )
-            _responded_ids = {
-                str(row.get("feedback_id")) for row in _response_rows
-                if isinstance(row, dict) and row.get("feedback_id")
-            }
-            _feedback_response_count = len(_responded_ids)
-            if _responded_ids:
-                changes = [row for row in changes
-                           if str(row.get("id") or "") not in _responded_ids]
-        # THE TAKE'S SPENT BUDGET (founder 2026-08-10: "each feedback needs
-        # to be there; full and end to end and waiting; not that it appears
-        # once the other is accepted"). Decided interventions keep their
-        # slots: the count rides into the gate, which subtracts it from
-        # the frozen three, so the set on screen is chosen once and only
-        # shrinks. A count miss reads 0 and degrades to per-read arbitration.
-        from services.intervention_spend import (
-            spent_by_paragraph, spent_count, style_spend,
-        )
-        # THE STYLE LANE'S OWN LEDGER (founder 2026-08-12). Its ≤3-per-take /
-        # ≤2-per-slide cap is cumulative like the budgeted one, so it needs
-        # the decisions the two reads above deliberately exclude. One read,
-        # both numbers — this lands on the polled ideal-text GET.
-        _style_spent = style_spend(db, arc_id, _arm_sid, served_text)
-        # SINGLE-POINT FOCUS (founder 2026-08-12): the one paragraph feedback
-        # is routed to until it comes onboard. None on cold start — no
-        # baseline, a first take, or a document whose worst part is already at
-        # the speaker's own level — and None means "behave exactly as before",
-        # never "suppress everything".
-        from services.part_acoustics import current_focus
-        _sel = _select(changes, user_id=user_id,
-                       session_id=_arm_sid,
-                       # Under the immutable three-family contract, only an
-                       # explicit self-report consumes a frozen slot. The
-                       # legacy mutation endpoint may also write a spend row
-                       # for Apply/Keep; counting both would make one action
-                       # look like two resolved feedback items.
-                       decided_count=(
-                           _feedback_response_count if _take_contract_on
-                           else spent_count(db, arc_id, _arm_sid)
-                       ),
-                       focus_part_id=current_focus(arc_id, user_id,
-                                                   database=db),
-                       # PER SLIDE, UP TO 1. The served
-                       # text is the unit map: one paragraph per slide, and
-                       # the paragraph is the chunk the student decides on.
-                       # `decided_count` rides along untouched so a caller
-                       # without the text still gets the flat cap.
-                       served_text=served_text,
-                       spent_by_paragraph=spent_by_paragraph(
-                           db, arc_id, _arm_sid, served_text),
-                       # Historical style spend remains a separate ledger
-                       # lane, but its count is subtracted before the current
-                       # whole-Take exact-three selection. This preserves provenance
-                       # without granting style an extra allowance.
-                       style_decided_count=(
-                           0 if _take_contract_on else _style_spent["count"]
-                       ),
-                       style_spent_by_paragraph=_style_spent["by_paragraph"],
-                       mvp_feedback_contract=_take_contract_on,
-                       # R1 gen-3 — the layer filter runs inside the gate,
-                       # BEFORE the budget: an open part takes everything;
-                       # a locked part takes the STYLE LANE (bold only) plus
-                       # a pending Confident Voice. Both still enter the same
-                       # whole-Take exact-three selection after admissibility.
-                       parts=_locked_parts(arc_id, user_id, served_text))
-        changes = _sel["changes"]
-        # Style has a distinct payload only because it has a distinct action;
-        # its membership was already selected inside the same frozen Take set.
-        # It is span-verified against the same served text.
-        _styles = _sel.get("style_changes") or []
-
-        # Exact evidence coordinates are part of the feedback item, not an
-        # optional UI convenience. Verbal feedback stops at text evidence;
-        # only Confident Voice carries playback. A row whose project/take/
-        # slide/paragraph cannot be proven is withheld rather than guessed.
-        _evidence_pieces = [
-            p for p in [
-                _review_evidence_piece,
-                *_canonical_pieces,
-                *_pieces,
-            ] if isinstance(p, dict)
-        ]
-        evidence_args = {
-            "arc_id": arc_id,
-            "served_text": served_text,
-            "pieces": _evidence_pieces,
-        }
-        changes = _with_evidence_coordinates(changes, **evidence_args)
-        _styles = _with_evidence_coordinates(_styles, **evidence_args)
-        # OPTIONAL CONFIDENT VOICE MICRO-PRACTICE.  This runs only after the
-        # Feedback Manager has selected the Take's final three interactions, so
-        # the exercise cannot become a fourth card or bypass the manager's
-        # feedback mix.  It annotates at most one already-selected Confident
-        # Voice row; no new intervention is created.  Missing migration/config
-        # is a clean no-offer, never a reason to lose the feedback itself.
-        try:
-            from services.confident_voice_practice import attach_exercise_offer
-            changes = attach_exercise_offer(
-                changes, take_session_id=_arm_sid, database=db)
-        except Exception as _practice_err:
-            logger.warning(
-                "confident voice practice offer failed arc=%s take=%s: %s",
-                arc_id, _arm_sid, _practice_err)
-        if _styles and not verify_changes(served_text, _styles):
-            logger.warning("style lane: span check failed arc=%s "
-                           "(serving none)", arc_id)
-            _styles = []
-        _style = {"style_changes": _styles} if _styles else {}
-        # Additions ride OUTSIDE the budget and outside the span check — they
-        # have no span. Absent when there are none, so the FE draws nothing
-        # rather than an empty section. See master_document.block_additions for
-        # why they are not arbitrated: the exact three are FEEDBACK, and
-        # this is material the speaker already said going missing from their
-        # own script.
-        _add = {"additions": _additions} if _additions else {}
-        if not verify_changes(served_text, changes):
-            logger.warning("tracked changes: span check failed arc=%s "
-                           "(serving none)", arc_id)
-            from services.take_feedback_manager import strip_internal_evidence
-            _styles = strip_internal_evidence(_styles)
-            return {
-                "changes": [],
-                **_add,
-                **({"style_changes": _styles} if _styles else {}),
-            }
-
-        # Claim only the FINAL, coordinate-proven, span-verified rows. The set
-        # spans both the budgeted and style lanes and is therefore capped at
-        # three for the whole Take. A set without Confident Voice is refused —
-        # the required evaluation cannot be silently replaced by a third
-        # rewrite. On a concurrent first open, the database returns the one
-        # winner and this response immediately conforms to it.
-        if _feedback_set is not None:
-            changes = filter_to_selected(
-                changes, _feedback_set["selected_keys"])
-            _styles = filter_to_selected(
-                _styles, _feedback_set["selected_keys"])
-        elif _take_contract_on and _arm_sid:
-            _session = db.v2_get_session_by_id(_arm_sid) or {}
-            _take_index = _session.get("take_index")
-            _version_int = (
-                review_version if isinstance(review_version, int)
-                and not isinstance(review_version, bool) else _take_index
-            )
-            _combined = [*changes, *_styles]
-            _keys = selected_keys(_combined)
-            if (not isinstance(_take_index, int)
-                    or isinstance(_take_index, bool)
-                    or _version_int != _take_index
-                    or not has_required_families(_keys)):
-                logger.error(
-                    "feedback set not claimable arc=%s take=%s index=%s "
-                    "version=%s families=%s",
-                    arc_id, _arm_sid, _take_index, _version_int,
-                    [key.get("feedback_family") for key in _keys])
-                changes, _styles = [], []
-            else:
-                _feedback_set = claim_feedback_set(
-                    db,
-                    arc_id=str(arc_id),
-                    owner_user_id=str(user_id),
-                    take_session_id=_arm_sid,
-                    take_index=_take_index,
-                    review_version=_version_int,
-                    changes=_combined,
-                )
-                if _feedback_set is None:
-                    logger.error(
-                        "feedback set claim failed arc=%s take=%s",
-                        arc_id, _arm_sid)
-                    changes, _styles = [], []
-                else:
-                    from services.take_feedback_manager import POLICY_VERSION
-                    _selected_ids = {
-                        str(key.get("id") or "")
-                        for key in _feedback_set["selected_keys"]
-                    }
-                    for _snapshot_row in _feedback_exposure:
-                        _snapshot_row["selected"] = (
-                            str(_snapshot_row.get("id") or "")
-                            in _selected_ids
-                        )
-                    db.insert_take_feedback_exposure(
-                        arc_id=str(arc_id),
-                        take_session_id=_arm_sid,
-                        review_version=_version_int,
-                        policy_version=POLICY_VERSION,
-                        candidate_set=_feedback_exposure,
-                        selected_keys=_feedback_set["selected_keys"],
-                    )
-                    changes = filter_to_selected(
-                        changes, _feedback_set["selected_keys"])
-                    _styles = filter_to_selected(
-                        _styles, _feedback_set["selected_keys"])
-        # CANONICAL DUAL-WRITE / BACKFILL-ON-READ. This deliberately runs for
-        # both a newly claimed compatibility set and an already frozen set.
-        # During a backend-first rollout the canonical migration may be
-        # briefly unavailable on the first GET; limiting this write to the
-        # claim branch would then leave a permanent provenance hole because
-        # the compatibility set is insert-once. The canonical RPC is itself
-        # idempotent, so every later read safely ensures parity without
-        # changing membership or user-visible behavior.
-        from services.take_lifecycle import (
-            confidence_prior_learning_writes_enabled,
-        )
-
-        if (_feedback_set is not None and _take_contract_on and _arm_sid
-                and confidence_prior_learning_writes_enabled()):
-            try:
-                from services.feedback_data_contract import (
-                    build_feedback_exposure_bundle,
-                )
-                from services.take_feedback_manager import POLICY_VERSION
-
-                _canonical_session = locals().get("_session")
-                if not isinstance(_canonical_session, dict):
-                    _canonical_session = db.v2_get_session_by_id(
-                        _arm_sid) or {}
-                _selected_ids = {
-                    str(key.get("id") or "")
-                    for key in _feedback_set["selected_keys"]
-                }
-                for _snapshot_row in _feedback_exposure:
-                    _snapshot_row["selected"] = (
-                        str(_snapshot_row.get("id") or "")
-                        in _selected_ids
-                    )
-                _canonical_doc = locals().get("_review_doc")
-                if not isinstance(_canonical_doc, dict):
-                    _canonical_doc = build_transcript_document(
-                        arc_id, database=db, session_id=_arm_sid)
-                _canonical_bundle = build_feedback_exposure_bundle(
-                    session=_canonical_session,
-                    transcript_document=_canonical_doc,
-                    served_text=served_text,
-                    candidates=_feedback_exposure,
-                    selected_keys=_feedback_set["selected_keys"],
-                    manager_rules_version=POLICY_VERSION,
-                )
-                if _canonical_bundle is None:
-                    logger.warning(
-                        "canonical feedback bundle unavailable "
-                        "arc=%s take=%s", arc_id, _arm_sid,
-                    )
-                else:
-                    _canonical_result = db.record_canonical_feedback_exposure(
-                        _canonical_bundle)
-                    if _canonical_result is None:
-                        logger.warning(
-                            "canonical feedback dual-write missing "
-                            "arc=%s take=%s", arc_id, _arm_sid,
-                        )
-                    else:
-                        try:
-                            from services.learning_exposures import (
-                                prepare_feedback_presentations,
-                            )
-
-                            _learning_presentations = (
-                                prepare_feedback_presentations(
-                                    database=db,
-                                    bundle=_canonical_bundle,
-                                    actor_id=str(user_id),
-                                    delivery_mode="canary",
-                                )
-                            )
-                        except Exception as _presentation_error:
-                            # The feedback remains a valid product result, but
-                            # it is not silently counted as exposed learning
-                            # data. Readiness reports the missing ACK coverage.
-                            logger.warning(
-                                "learning presentation preparation failed "
-                                "arc=%s take=%s: %s",
-                                arc_id, _arm_sid, _presentation_error,
-                            )
-                        # Selection and exposure are separate durable stages:
-                        # the first proves which three won, the second proves
-                        # the complete selected/unselected ledger committed.
-                        from services.processing_stages import (
-                            recorder_for_take,
-                        )
-                        _feedback_stage_recorder = recorder_for_take(
-                            database=db,
-                            session=_canonical_session,
-                            input_provenance={
-                                "candidate_set_id": _canonical_bundle[
-                                    "candidate_set_id"],
-                                "input_hash": _canonical_bundle["input_hash"],
-                            },
-                        )
-                        if _feedback_stage_recorder is not None:
-                            _feedback_stage_recorder.record(
-                                "manager_selection", "succeeded",
-                                output=_feedback_set["selected_keys"],
-                            )
-                            _feedback_stage_recorder.record(
-                                "exposure", "succeeded",
-                                output={
-                                    "candidate_set_id": _canonical_result.get(
-                                        "candidate_set_id"),
-                                    "candidate_count": len(
-                                        _canonical_bundle["candidates"]),
-                                    "selected_count": 3,
-                                },
-                            )
-                        # If this GET just repaired a missing canonical
-                        # exposure, replay any already-final compatibility
-                        # responses now as well; one reopen reaches parity.
-                        from services.feedback_data_contract import (
-                            canonical_feedback_decision,
-                        )
-                        for _response_row in locals().get(
-                                "_response_rows", []) or []:
-                            if not isinstance(_response_row, dict):
-                                continue
-                            _canonical_decision = canonical_feedback_decision(
-                                take_id=_arm_sid,
-                                rater_id=str(user_id),
-                                feedback_id=str(
-                                    _response_row.get("feedback_id") or ""),
-                                feedback_family=str(
-                                    _response_row.get("feedback_family") or ""),
-                                response=str(
-                                    _response_row.get("response") or ""),
-                                candidate_id=_response_row.get("candidate_id"),
-                                feedback_membership_id=_response_row.get(
-                                    "feedback_membership_id"),
-                                feedback_exposure_id=_response_row.get(
-                                    "feedback_exposure_id"),
-                            )
-                            if _canonical_decision is not None:
-                                db.record_canonical_feedback_decision(
-                                    project_id=str(
-                                        _canonical_session["project_id"]),
-                                    take_id=_arm_sid,
-                                    rater_id=str(user_id),
-                                    decision=_canonical_decision,
-                                )
-            except Exception as _canonical_feedback_error:
-                logger.warning(
-                    "canonical feedback dual-write failed arc=%s "
-                    "take=%s: %s", arc_id, _arm_sid,
-                    _canonical_feedback_error,
-                )
-
-        # ALLOWLISTED FEEDBACK V3 SERVICE. This is a fresh calculation over
-        # the complete current-Take pool, not a conversion of the dark frame.
-        # Any missing snapshot, provenance, database contract or exact N1
-        # dependency returns None and preserves the working legacy response.
-        # The frontend flag remains presentation-only; both backend and DB
-        # authority are independently required by the called service RPCs.
-        try:
-            from services.mlc3_first_client_feedback import (
-                prepare_first_client_feedback,
-            )
-
-            _service_session = db.v2_get_session_by_id(_arm_sid) or {} \
-                if _arm_sid else {}
-            _service_doc = locals().get("_review_doc")
-            if not isinstance(_service_doc, dict) and _arm_sid:
-                _service_doc = build_transcript_document(
-                    arc_id, database=db, session_id=_arm_sid,
-                )
-            _service_rows = prepare_first_client_feedback(
-                database=first_client_repository,
-                session=_service_session,
-                take_document=_service_doc,
-                served_text=served_text,
-                snippets=(
-                    db.get_snippets_by_session(_arm_sid) or []
-                    if _arm_sid else []
-                ),
-                suggestions=_user_sugs,
-                feedback_candidates=_feedback_exposure,
-                owner_user_id=str(user_id),
-            )
-            if _service_rows is not None:
-                changes = _service_rows
-                _styles = []
-        except Exception as _service_feedback_error:
-            logger.warning(
-                "Feedback V3 service preparation failed arc=%s take=%s: %s",
-                arc_id, _arm_sid, _service_feedback_error,
-            )
-        _style = {"style_changes": _styles} if _styles else {}
-        # THE EXPERIMENT'S RECORD — after the span check on purpose: a row
-        # stamped surfaced=True for a serve the guard then zeroed would claim
-        # notes the student never saw. Only when the arms actually ran: rows
-        # written with the controls inert would stamp the policy (gamma,
-        # withhold_rate) as if an assignment had happened when none did.
-        if ((changes or _styles) and _sel.get("controls")
-                and _sel.get("result") is not None):
-            _record_arms(_sel["result"], _arm_sid, user_id)
-        from services.take_feedback_manager import strip_internal_evidence
-        changes = strip_internal_evidence(changes)
-        _styles = strip_internal_evidence(_styles)
-        for _visible_row in [*changes, *_styles]:
-            _visible_key = str(_visible_row.get("id") or "")
-            _packets = _learning_presentations.get(_visible_key) or []
-            if _packets:
-                _visible_row["learning_exposures"] = _packets
-        _style = {"style_changes": _styles} if _styles else {}
-        return {"changes": changes, **_add, **_style}
-    except Exception as e:
-        logger.warning("tracked changes failed arc=%s: %s", arc_id, e)
-        return {}
+    The stages live in ``services.ideal_text_changes`` (audit Q-C1 / Q-C3);
+    this wrapper binds them to the database service and to the helpers this
+    surface shares (the moment maps, the previous-take lookup, the locked
+    parts, the evidence coordinates, the experiment arms). It keeps the name
+    and signature the internal callers and the tests use. ``degradation`` is
+    the request's log; without one the block reports its own fallbacks
+    under a `degraded` key of its own.
+    """
+    from services.ideal_text_changes import ChangesDeps, build_changes_block
+    return build_changes_block(
+        arc_id, served_text, user_id, take_session_id, review_version,
+        deps=ChangesDeps(
+            database=db,
+            first_client_repository=first_client_repository,
+            applied_map=_moment_applied_map,
+            playback_map=_moment_playback_map,
+            previous_spoken_session=_previous_spoken_session,
+            locked_parts=_locked_parts,
+            with_evidence_coordinates=_with_evidence_coordinates,
+            record_arms=_record_arms,
+        ),
+        degradation=degradation,
+    )
 
 
 @v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/lock", methods=["PUT"])

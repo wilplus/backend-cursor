@@ -655,6 +655,11 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
             "message": message,
         })
 
+    # Every best-effort stage of the run names itself here when it falls
+    # back (audit Q-C1); the job row carries the list, so the polled status
+    # can show a shorter result for what it is.
+    from services.degradation import DegradationLog
+    _degradation = DegradationLog("take_analysis")
     readout, sent = run_full_analysis(
         session_id=str(payload.get("session_id")),
         user_id=payload.get("user_id"),
@@ -671,12 +676,15 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
         spark_enabled=bool(payload.get("spark_enabled")),
         progress=_progress,
         stage_recorder=_stage_recorder,
+        degradation=_degradation,
     )
     # Small mechanical summary only — the readout itself is served by the
-    # existing GETs, and job rows never carry scores/verdicts (AC-9).
+    # existing GETs, and job rows never carry scores/verdicts (AC-9). The
+    # degraded-stage list is names, never numbers.
     result: Dict[str, Any] = {
         "snippet_count": len((readout or {}).get("snippets") or []),
         "sent_to_coach": bool(sent),
+        **_degradation.payload(),
     }
     _confidence_manifest = confidence_source_manifest(
         audio_bytes=audio_bytes,

@@ -671,56 +671,97 @@ class TestNothingBypassesTheGate(unittest.TestCase):
 
     Read through the AST, never the source text. A comment EXPLAINING the
     fence would otherwise trip it, which is a mistake this repo has now made
-    three times."""
+    three times.
 
-    SERVE = ROOT / "routes" / "v2" / "explore_ideal_text.py"
+    Since audit Q-C1 (Phase 5) the serve path is ``services/ideal_text_
+    changes.py``: ``_ChangesRun.execute`` runs the stages in order and the
+    gate is the ``_select`` stage. The route keeps a thin wrapper."""
 
-    def _fn(self):
+    SERVE = ROOT / "services" / "ideal_text_changes.py"
+    ROUTE = ROOT / "routes" / "v2" / "explore_ideal_text.py"
+
+    def _run_class(self):
         tree = ast.parse(self.SERVE.read_text())
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) \
-                    and node.name == "_tracked_changes_block":
+            if isinstance(node, ast.ClassDef) and node.name == "_ChangesRun":
                 return node
-        raise AssertionError("_tracked_changes_block not found")
+        raise AssertionError("_ChangesRun not found")
 
-    def _gate_line(self, fn):
-        for node in ast.walk(fn):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
-                    and node.func.id == "_select":
-                return node.lineno
-        raise AssertionError("the gate is not called at all")
+    def _method(self, name):
+        for node in self._run_class().body:
+            if isinstance(node, ast.FunctionDef) and node.name == name:
+                return node
+        raise AssertionError(f"{name} not found")
+
+    def _stage_order(self):
+        """The stage methods ``execute`` calls, in call order — both the
+        bare ``self._x()`` calls and the ``log.run("…", self._x)`` ones."""
+        order = []
+        for node in ast.walk(self._method("execute")):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            if (isinstance(fn, ast.Attribute) and fn.attr == "run"
+                    and len(node.args) >= 2
+                    and isinstance(node.args[1], ast.Attribute)):
+                order.append((node.lineno, node.args[1].attr))
+            elif (isinstance(fn, ast.Attribute)
+                  and isinstance(fn.value, ast.Name)
+                  and fn.value.id == "self"):
+                order.append((node.lineno, fn.attr))
+        return [name for _, name in sorted(order)]
 
     def test_the_serve_path_imports_and_calls_the_gate(self):
-        fn = self._fn()
+        gate = self._method("_select")
         imported = any(
             isinstance(n, ast.ImportFrom)
             and n.module == "services.intervention_candidates"
             and any(a.name == "select" for a in n.names)
-            for n in ast.walk(fn))
+            for n in ast.walk(gate))
         self.assertTrue(imported, "the gate is not imported")
-        self.assertGreater(self._gate_line(fn), 0)
+        called = any(
+            isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+            and n.func.id == "_select"
+            for n in ast.walk(gate))
+        self.assertTrue(called, "the gate is not called at all")
+        self.assertIn("_select", self._stage_order())
+
+    def test_the_route_wrapper_only_delegates(self):
+        """The route's ``_tracked_changes_block`` binds the helpers and calls
+        the service; it must not grow lanes of its own."""
+        tree = ast.parse(self.ROUTE.read_text())
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef)
+                  and n.name == "_tracked_changes_block")
+        calls = {n.func.id for n in ast.walk(fn)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        self.assertIn("build_changes_block", calls)
+        self.assertNotIn("_select", calls)
+        self.assertLess(fn.end_lineno - fn.lineno, 40,
+                        "the wrapper is growing logic of its own")
 
     def test_nothing_extends_changes_after_the_gate(self):
-        """Every lane's `changes.extend(...)` must sit ABOVE the `_select`
-        call. One below it is a lane serving straight to the user."""
-        fn = self._fn()
-        gate = self._gate_line(fn)
-        for node in ast.walk(fn):
-            appends = (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr in ("extend", "append")
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "changes"
-            ) or (
-                isinstance(node, ast.AugAssign)
-                and isinstance(node.target, ast.Name)
-                and node.target.id == "changes"
-            )
-            if appends:
-                self.assertLess(
-                    node.lineno, gate,
-                    f"line {node.lineno} adds to `changes` after the gate")
+        """Every lane's ``self.changes.extend(...)`` must sit in a stage that
+        runs ABOVE the ``_select`` stage. One below it is a lane serving
+        straight to the user."""
+        order = self._stage_order()
+        gate = order.index("_select")
+        after = set(order[gate + 1:])
+        for method in self._run_class().body:
+            if not isinstance(method, ast.FunctionDef) \
+                    or method.name not in after:
+                continue
+            for node in ast.walk(method):
+                appends = (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ("extend", "append", "insert")
+                    and isinstance(node.func.value, ast.Attribute)
+                    and node.func.value.attr == "changes"
+                )
+                if appends:
+                    self.fail(f"{method.name} line {node.lineno} adds to "
+                              f"`changes` after the gate")
 
     def test_the_old_unbudgeted_sweep_is_gone(self):
         """`drop_overlaps` resolved collisions BEFORE any budget existed.
@@ -728,11 +769,12 @@ class TestNothingBypassesTheGate(unittest.TestCase):
         leaving it after would be a second, disagreeing owner of the same
         rule. The function still EXISTS (other callers, its own tests) — it
         just may not run on the serve path."""
-        fn = self._fn()
-        names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
-        imported = {a.name for n in ast.walk(fn)
+        cls = self._run_class()
+        names = {n.id for n in ast.walk(cls) if isinstance(n, ast.Name)}
+        attrs = {n.attr for n in ast.walk(cls) if isinstance(n, ast.Attribute)}
+        imported = {a.name for n in ast.walk(cls)
                     if isinstance(n, ast.ImportFrom) for a in n.names}
-        self.assertNotIn("drop_overlaps", names | imported)
+        self.assertNotIn("drop_overlaps", names | attrs | imported)
 
 
 

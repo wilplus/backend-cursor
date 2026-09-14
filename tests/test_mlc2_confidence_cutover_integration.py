@@ -64,9 +64,11 @@ def test_rehearsed_enabled_branch_fails_before_promotion_without_source():
 
 
 def test_legacy_feedback_shadow_is_disabled_by_the_same_flag():
+    # The `changes` block moved out of the route in Phase 5 (audit Q-C1);
+    # its orchestrator holds the one writer gate.
     source = (
         __import__("pathlib").Path(__file__).resolve().parents[1]
-        / "routes" / "v2" / "explore_ideal_text.py"
+        / "services" / "ideal_text_changes.py"
     ).read_text()
     condition = "and confidence_prior_learning_writes_enabled()"
     assert condition in source

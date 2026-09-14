@@ -76,11 +76,12 @@ def test_confidence_dark_contract_is_not_imported_by_live_product_code():
 
 def test_slice4_live_bridge_is_guarded_by_the_one_hard_disabled_flag():
     lifecycle = (ROOT / "services" / "take_lifecycle.py").read_text()
-    route = (ROOT / "routes" / "v2" / "explore_ideal_text.py").read_text()
+    # The `changes` block moved out of the route in Phase 5 (audit Q-C1).
+    block = (ROOT / "services" / "ideal_text_changes.py").read_text()
     assert "configured_confidence_cutover().canonical_writes_enabled" \
         in lifecycle
     assert "promote_recording_attempt_with_confidence_outbox" in lifecycle
-    assert "and confidence_prior_learning_writes_enabled()" in route
+    assert "and confidence_prior_learning_writes_enabled()" in block
     config = (ROOT / "config.py").read_text()
     assert 'MLC2_CONFIDENCE_CUTOVER_MODE = "dark"' in config
 
