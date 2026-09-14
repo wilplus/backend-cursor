@@ -54,6 +54,15 @@ import pytest  # noqa: E402
 from tests.fakes import FakeSupabaseClient, swap_attr  # noqa: E402
 
 
+@pytest.fixture(scope="session")
+def repo_scan():
+    """The one-walk-per-session repo scanner (tests/repo_scan.py) for
+    pytest-style fence tests; unittest modules import it directly."""
+    from tests import repo_scan as scan
+
+    return scan
+
+
 @pytest.fixture
 def fake_supabase():
     """A fresh FakeSupabaseClient; seed tables via .seed(table, rows)."""

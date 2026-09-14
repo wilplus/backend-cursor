@@ -10,10 +10,19 @@ default lean test env), runs where it is. librosa is NOT required —
 the librosa block in _analyze_pcm is best-effort and skips when
 absent, which these tests also confirm.
 
-Run (where numpy is present): python3 -m unittest test_audio_metrics_features
+CI-ONLY (audit Q-T11, 2026-09-14). The first _analyze_pcm call in a process
+pays librosa's numba JIT cold start — about 25 s, a quarter of the whole
+suite — and every test here calls it, so the cost belongs to the class, not
+to whichever test runs first. GitHub Actions exports CI=true; scripts/
+local_ci.sh (the gate) exports CI=1; a bare local `pytest` skips this class
+and says so. Run it by hand with `CI=1 python3 -m unittest
+test_audio_metrics_features`.
+
+Run (where numpy is present): CI=1 python3 -m unittest test_audio_metrics_features
 """
 from __future__ import annotations
 
+import os
 import unittest
 
 try:
@@ -24,6 +33,8 @@ except ImportError:
 
 
 @unittest.skipUnless(_HAS_NUMPY, "numpy not installed in this env")
+@unittest.skipUnless(os.environ.get("CI"),
+                     "CI-only: librosa/numba cold start (~25 s); set CI=1")
 class ReadoutFeatureTests(unittest.TestCase):
 
     @classmethod

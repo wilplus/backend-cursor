@@ -25,17 +25,20 @@ Run: python3 -m unittest test_session_globals_wiring
 from __future__ import annotations
 
 import ast
-import pathlib
 import unittest
 
-ROOT = pathlib.Path(__file__).parent
-SKIP_DIRS = {".git", "node_modules", "venv", ".venv", "__pycache__",
-             "migrations", "docs", "scripts"}
+from tests import repo_scan
+
+ROOT = repo_scan.ROOT
+# Runtime code only: not migrations (SQL), not docs, not hand-run scripts, not
+# tests. Environments and caches are excluded by repo_scan itself (the gate's
+# own .venv-ci used to be walked and parsed here — audit Q-T11).
+SKIP_DIRS = {"migrations", "docs", "scripts"}
 
 
 def _python_files():
-    for path in ROOT.rglob("*.py"):
-        if any(part in SKIP_DIRS for part in path.parts):
+    for path in repo_scan.python_files():
+        if any(part in SKIP_DIRS for part in path.relative_to(ROOT).parts):
             continue
         if path.name.startswith("test_"):
             continue
@@ -51,9 +54,8 @@ def _callers_of(function_name: str) -> set[str]:
     """
     found: set[str] = set()
     for path in _python_files():
-        try:
-            tree = ast.parse(path.read_text(), filename=str(path))
-        except (SyntaxError, UnicodeDecodeError):
+        tree = repo_scan.try_parse(path)
+        if tree is None:
             continue
         defines = any(isinstance(n, ast.FunctionDef) and n.name == function_name
                       for n in ast.walk(tree))
@@ -109,8 +111,7 @@ class TestSessionGlobalsAreReachable(unittest.TestCase):
         """`dimension_evaluations` was empty because the telemetry was wired
         into a function that had not run since June. The telemetry's own
         reachability is therefore this chain's, not its own."""
-        source = (ROOT / "services" / "session_metrics.py").read_text()
-        tree = ast.parse(source)
+        tree = repo_scan.parse(ROOT / "services" / "session_metrics.py")
         target = next((n for n in ast.walk(tree)
                        if isinstance(n, ast.FunctionDef)
                        and n.name == "compute_session_global_metrics"), None)
@@ -123,8 +124,8 @@ class TestSessionGlobalsAreReachable(unittest.TestCase):
         """The inverse check. If every reader of the globals disappears, the
         whole chain above is dead weight and should be deleted rather than
         maintained — this failing is a prompt to decide which."""
-        readers = [p for p in (ROOT / "routes").rglob("*.py")
-                   if "global_wpm" in p.read_text()]
+        readers = [p for p in repo_scan.python_files("routes")
+                   if "global_wpm" in repo_scan.source_text(p)]
         self.assertTrue(readers, "nothing reads the session globals any more")
 
 

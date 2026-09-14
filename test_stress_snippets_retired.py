@@ -25,10 +25,11 @@ Run: python3 -m unittest test_stress_snippets_retired
 from __future__ import annotations
 
 import ast
-import pathlib
 import unittest
 
-ROOT = pathlib.Path(__file__).parent
+from tests import repo_scan
+
+ROOT = repo_scan.ROOT
 TABLE = "stress_snippets"
 
 # Runtime code only. scripts/ is hand-run tooling — see the module docstring.
@@ -36,10 +37,9 @@ RUNTIME_DIRS = ("services", "routes", "utils")
 
 
 def _runtime_files():
+    # One walk per session, shared with the other fence modules (audit Q-T11).
     for d in RUNTIME_DIRS:
-        for py in (ROOT / d).rglob("*.py"):
-            if "__pycache__" not in str(py):
-                yield py
+        yield from repo_scan.python_files(d)
 
 
 class TestNoRuntimeCodeTouchesStressSnippets(unittest.TestCase):
@@ -47,7 +47,7 @@ class TestNoRuntimeCodeTouchesStressSnippets(unittest.TestCase):
         """`.table("stress_snippets")` must not appear in runtime code."""
         offenders = []
         for py in _runtime_files():
-            tree = ast.parse(py.read_text(encoding="utf-8"))
+            tree = repo_scan.parse(py)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
@@ -79,7 +79,7 @@ class TestNoRuntimeCodeTouchesStressSnippets(unittest.TestCase):
                 "generate_stress_draft_for_snippet")
         found = []
         for py in _runtime_files():
-            tree = ast.parse(py.read_text(encoding="utf-8"))
+            tree = repo_scan.parse(py)
             for node in ast.walk(tree):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
                         and node.name in gone:

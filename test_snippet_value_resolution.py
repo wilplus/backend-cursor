@@ -19,11 +19,12 @@ Run: python3 -m unittest test_snippet_value_resolution
 from __future__ import annotations
 
 import ast
-import pathlib
 import re
 import unittest
 
-ROOT = pathlib.Path(__file__).parent
+from tests import repo_scan  # noqa: E402
+
+ROOT = repo_scan.ROOT
 
 # services.snippet_values is PURE — no db, no supabase — so this suite imports
 # it directly. It lives apart from session_metrics for exactly that reason.
@@ -83,14 +84,11 @@ class TestTheFixtureIsFaithful(unittest.TestCase):
         # its own explanation of the bug.
         target = "recompute_snippet_metrics_for_window"
         callers = []
-        for path in ROOT.rglob("*.py"):
+        for path in repo_scan.python_files():
             if path.name == "snippet_extraction.py" or path.name.startswith("test_"):
                 continue
-            if ".mypy_cache" in path.parts or "node_modules" in path.parts:
-                continue
-            try:
-                tree = ast.parse(path.read_text())
-            except SyntaxError:
+            tree = repo_scan.try_parse(path)
+            if tree is None:
                 continue
             for node in ast.walk(tree):
                 called = (isinstance(node, ast.Call)
@@ -222,11 +220,11 @@ class TestNothingReadsTheDeadColumns(unittest.TestCase):
     def test_no_row_read_of_a_dead_column(self):
         dead = set(_FIELDS)
         offenders = []
-        for path in (ROOT / "routes").rglob("*.py"):
+        for path in repo_scan.python_files("routes"):
             rel = str(path.relative_to(ROOT))
             if rel in self.ALLOWED:
                 continue
-            tree = ast.parse(path.read_text())
+            tree = repo_scan.parse(path)
             for node in ast.walk(tree):
                 # s.get("wpm") / row.get("fillers") — a dict read of a column
                 # name off something that is not the metrics blob.
