@@ -24,12 +24,12 @@ from config import Config
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 ARC = "a1"
@@ -69,15 +69,15 @@ class SlideLinkageTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "get_user_ideal_edit",
+                 patch.object(db, "get_user_ideal_edit",
                               return_value=edit), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                 patch.object(db, "get_user_arc_ideal_notes",
                               return_value=None), \
-                 patch.object(v2.db, "get_best_presentation_cache",
+                 patch.object(db, "get_best_presentation_cache",
                               return_value=cache, create=True):
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
             resp, status = out if isinstance(out, tuple) else (out, 200)
             return resp.get_json(), status
 
@@ -300,17 +300,17 @@ class ComposeFailureFallbackTests(unittest.TestCase):
                        return_value={}), \
                  patch("routes.v2.explore_ideal_text."
                        "_tracked_changes_block", return_value={}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "get_user_ideal_edit",
+                 patch.object(db, "get_user_ideal_edit",
                               return_value=None), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                 patch.object(db, "get_user_arc_ideal_notes",
                               return_value=None), \
-                 patch.object(v2.db, "get_ideal_text_parts",
+                 patch.object(db, "get_ideal_text_parts",
                               return_value=locked_rows, create=True), \
                  patch("services.ideal_text_parts.compose_locked",
                        side_effect=RuntimeError("alignment blew up")):
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
             resp, status = out if isinstance(out, tuple) else (out, 200)
             body = resp.get_json()
         self.assertEqual(status, 200)

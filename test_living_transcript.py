@@ -1247,12 +1247,12 @@ class ApprovalKeyRegressionTests(unittest.TestCase):
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -1272,20 +1272,20 @@ class ServeChangesTests(unittest.TestCase):
              "transcript": "And then we shipped it fast.",
              "metrics": {"piece": {"slide_index": 0}}}]
         with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)), \
-             patch.object(v2.db, "get_arc_sessions",
+             patch.object(db, "get_arc_sessions",
                           return_value=[{"id": T1, "take_index": 1,
                                          "recording_kind": "spoken"}]), \
-             patch.object(v2.db, "get_snippets_by_session",
+             patch.object(db, "get_snippets_by_session",
                           return_value=_snips), \
-             patch.object(v2.db, "get_coach_snippet_drafts",
+             patch.object(db, "get_coach_snippet_drafts",
                           return_value=[]), \
-             patch.object(v2.db, "get_user_transcript_edits",
+             patch.object(db, "get_user_transcript_edits",
                           return_value=[]), \
-             patch.object(v2.db, "get_moment_suggestions_by_arc",
+             patch.object(db, "get_moment_suggestions_by_arc",
                           return_value=(sugs or {})), \
-             patch.object(v2.db, "get_suggestion_feedback_by_session",
+             patch.object(db, "get_suggestion_feedback_by_session",
                           return_value=[]):
-            return v2._tracked_changes_block(ARC, self.DOC)
+            return v2_explore_ideal_text._tracked_changes_block(ARC, self.DOC)
 
     def test_flag_off_key_is_absent(self):
         self.assertEqual(self._block(flag=False), {})
@@ -1305,9 +1305,9 @@ class ServeChangesTests(unittest.TestCase):
 
     def test_broken_document_degrades_to_absent(self):
         with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
-             patch.object(v2.db, "get_arc_sessions",
+             patch.object(db, "get_arc_sessions",
                           side_effect=RuntimeError("boom")):
-            self.assertEqual(v2._tracked_changes_block(ARC, self.DOC), {})
+            self.assertEqual(v2_explore_ideal_text._tracked_changes_block(ARC, self.DOC), {})
 
 
 if __name__ == "__main__":

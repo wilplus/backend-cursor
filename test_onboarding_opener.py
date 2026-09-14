@@ -275,12 +275,11 @@ class PickRandomJokeTests(unittest.TestCase):
 # A guest (request.user_id is None) must get the setup payload, not 401.
 try:
     from flask import Flask, request
-    from routes import v2_routes as _v2
+    from routes.v2 import coaching as v2_coaching
     _V2_IMPORT_ERROR = None
 except Exception as _e:  # pragma: no cover
     Flask = None
     request = None
-    _v2 = None
     _V2_IMPORT_ERROR = _e
 
 
@@ -301,7 +300,7 @@ class OpenerGuestAccessTests(unittest.TestCase):
             request.user_id = None  # anonymous — the guest case
             with patch("services.onboarding_opener.pick_random_joke",
                        return_value=joke):
-                out = _v2.v2_onboarding_opener_start.__wrapped__()
+                out = v2_coaching.v2_onboarding_opener_start.__wrapped__()
         resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 200)
         body = resp.get_json()
@@ -316,7 +315,7 @@ class OpenerGuestAccessTests(unittest.TestCase):
             request.user_id = None
             with patch("services.onboarding_opener.pick_random_joke",
                        return_value=None):
-                out = _v2.v2_onboarding_opener_start.__wrapped__()
+                out = v2_coaching.v2_onboarding_opener_start.__wrapped__()
         _resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 204)
 

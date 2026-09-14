@@ -14,14 +14,14 @@ import unittest
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import coach as v2_coach
+    from services.db import db
     import services.coach_video_storage as cvs
     import services.coach_video_capture as cvc
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover - env/bootstrap guard
     Flask = None
     request = None
-    v2 = None
     cvs = None
     cvc = None
     _IMPORT_ERROR = e
@@ -74,8 +74,8 @@ class CoachVideoTests(unittest.TestCase):
         return created
 
     def _patch_db(self, attr, fn):
-        self.originals[f"db:{attr}"] = (v2.db, attr, getattr(v2.db, attr, None))
-        setattr(v2.db, attr, fn)
+        self.originals[f"db:{attr}"] = (db, attr, getattr(db, attr, None))
+        setattr(db, attr, fn)
 
     def _fake_put(self, bucket, key, data, content_type):
         self.stored["key"] = key
@@ -96,7 +96,7 @@ class CoachVideoTests(unittest.TestCase):
             # Subsystem V corpus capture below raises AttributeError and is
             # swallowed as "non-fatal", hiding whether capture works at all.
             request.user_id = COACH
-            return v2.v2_coach_session_video.__wrapped__(SID)
+            return v2_coach.v2_coach_session_video.__wrapped__(SID)
 
     def test_happy_path_stores_and_sets_ref(self):
         resp, status = self._post("feedback.mp4")
@@ -140,7 +140,7 @@ class CoachVideoTests(unittest.TestCase):
         self.assertNotIn("ref", self.stored)
 
     def test_missing_session_404(self):
-        setattr(v2.db, "v2_get_session_by_id", lambda sid: None)
+        setattr(db, "v2_get_session_by_id", lambda sid: None)
         resp, status = self._post("feedback.mp4")
         self.assertEqual(status, 404)
         self.assertNotIn("ref", self.stored)

@@ -12,7 +12,8 @@ The services.skills aliases below mirror the ones ``routes/v2_routes.py``
 keeps for its own staying callers -- the registry import is shared, the
 aliased NAMES are what the moved bodies reference.
 
-Re-exported from ``routes.v2_routes`` for import compatibility.
+Formerly re-exported from the ``routes.v2_routes`` façade (removed 2026-09-14,
+audit Q-A3); import from this module.
 """
 import logging
 import re

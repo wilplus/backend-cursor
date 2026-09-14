@@ -13,12 +13,12 @@ import unittest
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -96,7 +96,7 @@ class DeductCreditsStrictTests(unittest.TestCase):
     def _svc(self, balances):
         # Bypass __init__ (no live supabase connection) — same technique as
         # test_wave2_be.CreditGrantLogicTests._svc.
-        cls = v2.db.__class__
+        cls = db.__class__
         s = cls.__new__(cls)
         fake = _FakeCreditsClient(balances)
         s.client = fake
@@ -175,7 +175,7 @@ class ArcUnlockRouteTests(unittest.TestCase):
     def _call(self, arc_id="a1"):
         with self.app.test_request_context():
             request.user_id = "u1"
-            resp, status = v2.v2_arc_unlock.__wrapped__(arc_id)
+            resp, status = v2_arcs.v2_arc_unlock.__wrapped__(arc_id)
             return resp.get_json(), status
 
     def test_unlock_is_gone_tombstone(self):

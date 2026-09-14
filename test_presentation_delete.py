@@ -16,12 +16,12 @@ import unittest
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import user_sessions as v2_user_sessions
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -69,12 +69,12 @@ class PresentationDeleteTests(unittest.TestCase):
             setattr(target, attr, orig)
 
     def _patch_db(self, attr, fn):
-        self.originals[f"db:{attr}"] = (v2.db, attr, getattr(v2.db, attr, None))
-        setattr(v2.db, attr, fn)
+        self.originals[f"db:{attr}"] = (db, attr, getattr(db, attr, None))
+        setattr(db, attr, fn)
 
     def _pid(self, n_takes):
         """The presentation_id of the group with exactly n_takes sessions."""
-        groups = v2._user_presentation_groups(self.UID)
+        groups = v2_user_sessions._user_presentation_groups(self.UID)
         for pid, sids in groups.items():
             if len(sids) == n_takes:
                 return pid, sids
@@ -83,7 +83,7 @@ class PresentationDeleteTests(unittest.TestCase):
     # ── grouping / take_number ──
 
     def test_groups_match_strengths_ordering(self):
-        groups = v2._user_presentation_groups(self.UID)
+        groups = v2_user_sessions._user_presentation_groups(self.UID)
         # deck A → [s1, s2] (oldest first = take 1); deck B → [s3]; s4 excluded
         two = [sids for sids in groups.values() if len(sids) == 2]
         self.assertEqual(two, [["s1", "s2"]])
@@ -95,7 +95,7 @@ class PresentationDeleteTests(unittest.TestCase):
         pid, sids = self._pid(2)
         with self.app.test_request_context():
             request.user_id = self.UID
-            resp, status = v2.v2_user_delete_presentation.__wrapped__(pid)
+            resp, status = v2_user_sessions.v2_user_delete_presentation.__wrapped__(pid)
         self.assertEqual(status, 200)
         self.assertEqual(resp.get_json()["deleted_sessions"], 2)
         self.assertEqual({s for s, _ in self.deleted_sessions}, {"s1", "s2"})
@@ -103,7 +103,7 @@ class PresentationDeleteTests(unittest.TestCase):
     def test_delete_unknown_presentation_404(self):
         with self.app.test_request_context():
             request.user_id = self.UID
-            resp, status = v2.v2_user_delete_presentation.__wrapped__("deadbeef")
+            resp, status = v2_user_sessions.v2_user_delete_presentation.__wrapped__("deadbeef")
         self.assertEqual(status, 404)
         self.assertEqual(self.deleted_sessions, [])
 
@@ -113,7 +113,7 @@ class PresentationDeleteTests(unittest.TestCase):
         pid, sids = self._pid(2)  # [s1, s2]
         with self.app.test_request_context():
             request.user_id = self.UID
-            resp, status = v2.v2_user_delete_take.__wrapped__(pid, "2")
+            resp, status = v2_user_sessions.v2_user_delete_take.__wrapped__(pid, "2")
         self.assertEqual(status, 200)
         self.assertEqual(resp.get_json()["deleted_session"], "s2")  # take 2 = newest
         self.assertEqual(self.deleted_sessions, [("s2", self.UID)])
@@ -122,14 +122,14 @@ class PresentationDeleteTests(unittest.TestCase):
         pid, sids = self._pid(2)
         with self.app.test_request_context():
             request.user_id = self.UID
-            resp, status = v2.v2_user_delete_take.__wrapped__(pid, "1")
+            resp, status = v2_user_sessions.v2_user_delete_take.__wrapped__(pid, "1")
         self.assertEqual(resp.get_json()["deleted_session"], "s1")
 
     def test_delete_take_bad_number_400(self):
         pid, _ = self._pid(2)
         with self.app.test_request_context():
             request.user_id = self.UID
-            _resp, status = v2.v2_user_delete_take.__wrapped__(pid, "abc")
+            _resp, status = v2_user_sessions.v2_user_delete_take.__wrapped__(pid, "abc")
         self.assertEqual(status, 400)
         self.assertEqual(self.deleted_sessions, [])
 
@@ -137,7 +137,7 @@ class PresentationDeleteTests(unittest.TestCase):
         pid, _ = self._pid(2)
         with self.app.test_request_context():
             request.user_id = self.UID
-            _resp, status = v2.v2_user_delete_take.__wrapped__(pid, "9")
+            _resp, status = v2_user_sessions.v2_user_delete_take.__wrapped__(pid, "9")
         self.assertEqual(status, 404)
         self.assertEqual(self.deleted_sessions, [])
 

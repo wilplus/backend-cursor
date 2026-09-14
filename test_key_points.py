@@ -17,10 +17,10 @@ from unittest.mock import patch
 from services.key_points import _opening_clause, build_key_points
 
 try:
-    from routes import v2_routes as v2
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from services.db import db
     _V2_ERR = None
 except Exception as e:  # pragma: no cover
-    v2 = None
     _V2_ERR = e
 
 
@@ -238,9 +238,9 @@ class KeyPointsAreDeferredTests(unittest.TestCase):
                    return_value=True), \
              patch("routes.v2.explore_ideal_text._moment_applied_map", return_value={}), \
              patch("routes.v2.explore_ideal_text._previous_spoken_session", return_value=None), \
-             patch.object(v2.db, "get_moment_suggestions_by_arc",
+             patch.object(db, "get_moment_suggestions_by_arc",
                           return_value={}):
-            return v2._tracked_changes_block("a1", served)
+            return v2_explore_ideal_text._tracked_changes_block("a1", served)
 
     def test_the_cue_sheet_never_reaches_the_student(self):
         self.assertNotIn("key_points", self._run())
@@ -251,7 +251,7 @@ class KeyPointsAreDeferredTests(unittest.TestCase):
 
         Checked through the AST: a comment SAYING the flag is retired must not
         register as the flag still being read."""
-        self.assertFalse(hasattr(v2, "_key_points_enabled"))
+        self.assertFalse(hasattr(v2_explore_ideal_text, "_key_points_enabled"))
         tree = ast.parse((pathlib.Path(__file__).parent / "routes" / "v2"
                           / "explore_ideal_text.py").read_text())
         read_env = {a.value for n in ast.walk(tree)

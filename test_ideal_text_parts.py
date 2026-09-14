@@ -704,12 +704,12 @@ class TestComposeLocked(unittest.TestCase):
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 ARC = "a1"
@@ -735,12 +735,12 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                        return_value=(True, [])), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=_row()), \
-                 patch.object(v2.db, "get_ideal_text_parts",
+                 patch.object(db, "get_ideal_text_parts",
                               return_value=existing or [], create=True), \
                  patch.object(
-                     v2.db, "compare_and_set_user_ideal_edit",
+                     db, "compare_and_set_user_ideal_edit",
                      return_value={
                          "ideal_text_user_edit_contract_version":
                              "ideal-text-user-edit-cas-v2",
@@ -749,7 +749,7 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
                          "dataset_eligible": False,
                      } if edit_ok and parts_ok else None,
                  ) as m_parts:
-                out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_parts
 
@@ -882,9 +882,9 @@ class TheGetServesIdentityOnlyWhenItStillFits(unittest.TestCase):
     def _block(self, rows, text):
         with self.app.test_request_context():
             request.user_id = "u1"
-            with patch.object(v2.db, "get_ideal_text_parts",
+            with patch.object(db, "get_ideal_text_parts",
                               return_value=rows, create=True):
-                return v2._ideal_parts_block(ARC, "u1", text)
+                return v2_explore_ideal_text._ideal_parts_block(ARC, "u1", text)
 
     def test_stored_parts_that_match_are_served(self):
         a, b = _id(), _id()
@@ -920,9 +920,9 @@ class TheGetServesIdentityOnlyWhenItStillFits(unittest.TestCase):
     def test_a_broken_read_degrades_to_the_pre_migration_payload(self):
         with self.app.test_request_context():
             request.user_id = "u1"
-            with patch.object(v2.db, "get_ideal_text_parts",
+            with patch.object(db, "get_ideal_text_parts",
                               side_effect=RuntimeError("boom"), create=True):
-                self.assertEqual(v2._ideal_parts_block(ARC, "u1", "x"), {})
+                self.assertEqual(v2_explore_ideal_text._ideal_parts_block(ARC, "u1", "x"), {})
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -952,14 +952,14 @@ class TheLockEndpoint(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                        return_value=(True, [])), \
-                 patch.object(v2.db, "get_ideal_text_parts",
+                 patch.object(db, "get_ideal_text_parts",
                               return_value=rows, create=True), \
                  patch("routes.v2.explore_ideal_text._tracked_changes_block",
                        return_value={"changes": changes or []}), \
-                 patch.object(v2.db, "set_ideal_text_part_lock",
+                 patch.object(db, "set_ideal_text_part_lock",
                               return_value=write_ok,
                               create=True) as m_write:
-                out = v2.v2_explore_set_part_lock.__wrapped__(
+                out = v2_explore_ideal_text.v2_explore_set_part_lock.__wrapped__(
                     "a1", part_id or self.PA)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_write
@@ -1056,13 +1056,13 @@ class TheLockEndpoint(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                        return_value=(True, [])), \
-                 patch.object(v2.db, "get_ideal_text_parts",
+                 patch.object(db, "get_ideal_text_parts",
                               return_value=self._rows(), create=True), \
                  patch("routes.v2.explore_ideal_text._tracked_changes_block",
                        side_effect=RuntimeError("boom")), \
-                 patch.object(v2.db, "set_ideal_text_part_lock",
+                 patch.object(db, "set_ideal_text_part_lock",
                               return_value=True, create=True) as m_write:
-                out = v2.v2_explore_set_part_lock.__wrapped__("a1", self.PA)
+                out = v2_explore_ideal_text.v2_explore_set_part_lock.__wrapped__("a1", self.PA)
                 _resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 500)
         m_write.assert_not_called()
@@ -1081,15 +1081,15 @@ class TheLockEndpoint(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                        return_value=(True, [])), \
-                 patch.object(v2.db, "get_ideal_text_parts",
+                 patch.object(db, "get_ideal_text_parts",
                               return_value=self._rows(), create=True), \
                  patch("routes.v2.explore_ideal_text._tracked_changes_block",
                        return_value={"changes": []}), \
-                 patch.object(v2.db, "set_ideal_text_part_lock",
+                 patch.object(db, "set_ideal_text_part_lock",
                               return_value=True, create=True), \
-                 patch.object(v2.db, "record_ideal_decision",
+                 patch.object(db, "record_ideal_decision",
                               create=True) as m_dec:
-                v2.v2_explore_set_part_lock.__wrapped__("a1", self.PA)
+                v2_explore_ideal_text.v2_explore_set_part_lock.__wrapped__("a1", self.PA)
         m_dec.assert_not_called()
 
 
@@ -1121,16 +1121,16 @@ class SeedOnLock(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                        return_value=(True, [])), \
-                 patch.object(v2.db, "get_ideal_text_parts",
+                 patch.object(db, "get_ideal_text_parts",
                               return_value=stored or [], create=True), \
-                 patch.object(v2.db, "replace_ideal_text_parts",
+                 patch.object(db, "replace_ideal_text_parts",
                               return_value=replace_ok,
                               create=True) as m_replace, \
                  patch("routes.v2.explore_ideal_text._tracked_changes_block",
                        return_value={"changes": changes or []}), \
-                 patch.object(v2.db, "set_ideal_text_part_lock",
+                 patch.object(db, "set_ideal_text_part_lock",
                               return_value=True, create=True) as m_write:
-                out = v2.v2_explore_set_part_lock.__wrapped__(
+                out = v2_explore_ideal_text.v2_explore_set_part_lock.__wrapped__(
                     "a1", part_id or self.PA)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_replace, m_write

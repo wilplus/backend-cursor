@@ -140,12 +140,13 @@ class SuggestedActionContractTests(unittest.TestCase):
 # ── route shapes (skip locally without flask; run in CI) ──
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import coach as v2_coach
+    from routes.v2 import user_account as v2_user_account
+    from services.db import db
     _RT_ERR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _RT_ERR = e
 
 UID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -155,17 +156,17 @@ UID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 class RecordingProgressRouteTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
-        self._orig = getattr(v2.db, "v2_get_cumulative_recorded_seconds", None)
-        v2.db.v2_get_cumulative_recorded_seconds = lambda uid: 720
+        self._orig = getattr(db, "v2_get_cumulative_recorded_seconds", None)
+        db.v2_get_cumulative_recorded_seconds = lambda uid: 720
 
     def tearDown(self):
         if self._orig is not None:
-            v2.db.v2_get_cumulative_recorded_seconds = self._orig
+            db.v2_get_cumulative_recorded_seconds = self._orig
 
     def test_progress_shape_unlocked(self):
         with self.app.test_request_context():
             request.user_id = "u1"
-            resp, status = v2.v2_user_recording_progress.__wrapped__()
+            resp, status = v2_user_account.v2_user_recording_progress.__wrapped__()
             data = resp.get_json()
             self.assertEqual(status, 200)
             self.assertEqual(data["recorded_seconds"], 720)
@@ -177,10 +178,10 @@ class RecordingProgressRouteTests(unittest.TestCase):
 class CoachStudentDetailRouteTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
-        self._o1 = getattr(v2.db, "get_user_profile", None)
-        self._o2 = getattr(v2.db, "v2_list_user_lab_sessions", None)
-        v2.db.get_user_profile = lambda uid: {"domain": "sales", "goal": "win deals"}
-        v2.db.v2_list_user_lab_sessions = lambda uid: [
+        self._o1 = getattr(db, "get_user_profile", None)
+        self._o2 = getattr(db, "v2_list_user_lab_sessions", None)
+        db.get_user_profile = lambda uid: {"domain": "sales", "goal": "win deals"}
+        db.v2_list_user_lab_sessions = lambda uid: [
             {"id": "s1", "intake_context": {"topic": "pitch"},
              "created_at": "2026-06-01", "status": "pending_admin_review",
              "results_published_at": None},
@@ -188,14 +189,14 @@ class CoachStudentDetailRouteTests(unittest.TestCase):
 
     def tearDown(self):
         if self._o1 is not None:
-            v2.db.get_user_profile = self._o1
+            db.get_user_profile = self._o1
         if self._o2 is not None:
-            v2.db.v2_list_user_lab_sessions = self._o2
+            db.v2_list_user_lab_sessions = self._o2
 
     def test_drilldown_pseudonymized_no_pii(self):
         with self.app.test_request_context():
             request.user_id = "coach-1"
-            resp, status = v2.v2_coach_student_detail.__wrapped__(UID)
+            resp, status = v2_coach.v2_coach_student_detail.__wrapped__(UID)
             data = resp.get_json()
             self.assertEqual(status, 200)
             self.assertTrue(data["pseudonym"])
@@ -207,11 +208,11 @@ class CoachStudentDetailRouteTests(unittest.TestCase):
             self.assertNotIn(UID, str(data.get("pseudonym")))
 
     def test_unknown_id_returns_404(self):
-        v2.db.v2_list_user_lab_sessions = lambda uid: []
-        v2.db.get_user_profile = lambda uid: {}
+        db.v2_list_user_lab_sessions = lambda uid: []
+        db.get_user_profile = lambda uid: {}
         with self.app.test_request_context():
             request.user_id = "coach-1"
-            resp, status = v2.v2_coach_student_detail.__wrapped__(UID)
+            resp, status = v2_coach.v2_coach_student_detail.__wrapped__(UID)
             self.assertEqual(status, 404)
             self.assertEqual(resp.get_json()["code"], "STUDENT_NOT_FOUND")
 
@@ -230,7 +231,7 @@ class AuditSendGateTests(unittest.TestCase):
         try:
             with self.app.test_request_context():
                 request.user_id = "coach-1"
-                resp, status = v2.v2_coach_student_audit_send.__wrapped__(UID)
+                resp, status = v2_coach.v2_coach_student_audit_send.__wrapped__(UID)
                 self.assertEqual(status, 409)
                 self.assertEqual(resp.get_json()["code"], "AUDIT_LOCKED")
         finally:
@@ -245,26 +246,26 @@ class RecutGuardTests(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
-        self._o = getattr(v2.db, "v2_get_session_by_id", None)
-        self._d = getattr(v2.db, "get_coach_snippet_drafts", None)
-        v2.db.v2_get_session_by_id = lambda sid: {
+        self._o = getattr(db, "v2_get_session_by_id", None)
+        self._d = getattr(db, "get_coach_snippet_drafts", None)
+        db.v2_get_session_by_id = lambda sid: {
             "id": sid, "results_published_at": None, "recording_1_id": "r1",
         }
-        v2.db.get_coach_snippet_drafts = lambda sid: [
+        db.get_coach_snippet_drafts = lambda sid: [
             {"snippet_id": "a"}, {"snippet_id": "b"},
             {"snippet_id": "c"}, {"snippet_id": "d"},
         ]
 
     def tearDown(self):
         if self._o is not None:
-            v2.db.v2_get_session_by_id = self._o
+            db.v2_get_session_by_id = self._o
         if self._d is not None:
-            v2.db.get_coach_snippet_drafts = self._d
+            db.get_coach_snippet_drafts = self._d
 
     def test_refused_without_force_when_coach_drafts_exist(self):
         with self.app.test_request_context():  # no ?force
             request.user_id = "coach-1"
-            resp, status = v2.v2_coach_session_recut.__wrapped__(UID)
+            resp, status = v2_coach.v2_coach_session_recut.__wrapped__(UID)
             self.assertEqual(status, 409)
             data = resp.get_json()
             self.assertEqual(data["code"], "RECUT_WOULD_DISCARD_COACH_WORK")

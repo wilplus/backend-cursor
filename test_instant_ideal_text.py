@@ -21,14 +21,13 @@ import config as _config_module
 
 try:
     from flask import Flask, jsonify, request
-    from routes import v2_routes as v2
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
     from services.db import DatabaseService
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     jsonify = None
     request = None
-    v2 = None
     DatabaseService = None
     _IMPORT_ERROR = e
 
@@ -176,9 +175,9 @@ class FlagDefaultTests(unittest.TestCase):
             # Boot-time Config read (audit Q-A5): an unset variable parses off.
             self.assertFalse(_config_module._env_flag("INSTANT_IDEAL_TEXT_ENABLED", "0"))
         with patch.object(Config, "INSTANT_IDEAL_TEXT_ENABLED", False):
-            self.assertFalse(v2._instant_ideal_enabled())
+            self.assertFalse(v2_explore_ideal_text._instant_ideal_enabled())
         with patch.object(Config, "INSTANT_IDEAL_TEXT_ENABLED", True):
-            self.assertTrue(v2._instant_ideal_enabled())
+            self.assertTrue(v2_explore_ideal_text._instant_ideal_enabled())
 
 
 if __name__ == "__main__":

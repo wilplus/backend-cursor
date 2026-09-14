@@ -16,12 +16,12 @@ import unittest
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import common as v2_common
+    from routes.v2 import lab_recording as v2_lab_recording
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -35,7 +35,7 @@ class PresentationExtractValidationTests(unittest.TestCase):
         with self.app.test_request_context(
             method="POST", data=data, content_type="multipart/form-data"
         ):
-            resp, status = v2.v2_lab_presentation_extract.__wrapped__()
+            resp, status = v2_lab_recording.v2_lab_presentation_extract.__wrapped__()
             return status, resp.get_json()
 
     def test_missing_file_400(self):
@@ -57,14 +57,14 @@ class PresentationExtractValidationTests(unittest.TestCase):
 
     def test_oversize_pdf_413_contract(self):
         # One byte over the cap → the FE-popup contract.
-        big = b"\x00" * (v2._PRESENTATION_MAX_MB * 1024 * 1024 + 1)
+        big = b"\x00" * (v2_common._PRESENTATION_MAX_MB * 1024 * 1024 + 1)
         status, body = self._post({"file": (io.BytesIO(big), "deck.pdf")})
         self.assertEqual(status, 413)
         self.assertEqual(body["code"], "FILE_TOO_LARGE")
         # limit_mb is the single source of truth the FE renders.
-        self.assertEqual(body["limit_mb"], v2._PRESENTATION_MAX_MB)
+        self.assertEqual(body["limit_mb"], v2_common._PRESENTATION_MAX_MB)
         # message names the limit (no silent compression — a lighter export).
-        self.assertIn(str(v2._PRESENTATION_MAX_MB), body["error"])
+        self.assertIn(str(v2_common._PRESENTATION_MAX_MB), body["error"])
 
 
 if __name__ == "__main__":

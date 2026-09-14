@@ -14,7 +14,8 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import user_sessions as v2_user_sessions
+    from services.db import db
     from services.project_ownership import (
         GUEST_OWNER_HEADER,
         issue_guest_owner,
@@ -23,7 +24,6 @@ try:
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -55,13 +55,13 @@ class TranscriptEditRouteTests(unittest.TestCase):
             return True
 
         self._patches = [
-            patch.object(v2.db, "v2_get_session_by_id",
+            patch.object(db, "v2_get_session_by_id",
                          lambda sid: self._session),
-            patch.object(v2.db, "get_snippet_by_id",
+            patch.object(db, "get_snippet_by_id",
                          lambda sid: self._snippet_row),
-            patch.object(v2.db, "get_session_slide_transcripts",
+            patch.object(db, "get_session_slide_transcripts",
                          lambda sid: self._stx),
-            patch.object(v2.db, "upsert_user_transcript_edit", _upsert),
+            patch.object(db, "upsert_user_transcript_edit", _upsert),
         ]
         for p in self._patches:
             p.start()
@@ -74,7 +74,7 @@ class TranscriptEditRouteTests(unittest.TestCase):
         headers = {GUEST_OWNER_HEADER: guest_token} if guest_token else None
         with self.app.test_request_context(json=body, headers=headers):
             request.user_id = user_id
-            resp, status = v2.v2_user_put_transcript_edit.__wrapped__(session_id)
+            resp, status = v2_user_sessions.v2_user_put_transcript_edit.__wrapped__(session_id)
             return resp.get_json(), status
 
     def test_snippet_edit_saves(self):
@@ -93,7 +93,7 @@ class TranscriptEditRouteTests(unittest.TestCase):
             "owner_principal_id": issued.principal_id,
         }
         with patch.object(
-            v2.db,
+            db,
             "get_owner_principal",
             return_value={
                 "id": issued.principal_id,
@@ -181,7 +181,7 @@ class TranscriptEditRouteTests(unittest.TestCase):
         self.assertEqual(status, 400)
 
     def test_db_failure_500s(self):
-        with patch.object(v2.db, "upsert_user_transcript_edit",
+        with patch.object(db, "upsert_user_transcript_edit",
                           lambda *a, **k: False):
             body, status = self._call({"snippet_id": _SNIP, "text": "x"})
         self.assertEqual(status, 500)
@@ -313,7 +313,7 @@ class UpsertUserTranscriptEditTests(unittest.TestCase):
     ON CONFLICT can't be used — see the db docstring)."""
 
     def _db(self, store):
-        cls = v2.db.__class__
+        cls = db.__class__
         s = cls.__new__(cls)  # bypass __init__ (no live connection)
         s.client = _FakeEditsClient(store)
         return s

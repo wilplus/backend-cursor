@@ -402,11 +402,11 @@ class WrappedTransparencyTests(_Base):
 
 
 try:
-    import routes.v2_routes as _v2_mod
+    import importlib as _importlib
     import routes.life_routes as _life_mod
     _ROUTES_ERR = None
 except Exception as e:  # pragma: no cover - needs the full app deps
-    _v2_mod = _life_mod = None
+    _importlib = _life_mod = None
     _ROUTES_ERR = e
 
 
@@ -421,14 +421,16 @@ class RealRouteTransparencyTests(unittest.TestCase):
     """
 
     def test_every_capped_route_exposes_its_raw_handler(self):
-        # Iterate EVERY registry bucket (the /v2 layer is split across
-        # routes/v2_routes.py + routes/v2/* since the god-file split).
-        # routes.v2_routes re-exports every moved handler, so resolving the
-        # v2 buckets through it also re-verifies the re-export surface the
-        # suite's `v2.<handler>.__wrapped__()` convention depends on.
+        # Iterate EVERY registry bucket. Handlers are resolved on the domain
+        # module that OWNS them (the routes/v2_routes.py façade is gone since
+        # audit Q-A3), which is also what the suite's
+        # `<module>.<handler>.__wrapped__()` convention depends on.
         capped = {}
         for path, expected in CoveredRoutesTests.EXPECTED.items():
-            mod = _life_mod if path == "routes/life_routes.py" else _v2_mod
+            if not expected:
+                continue  # an empty bucket names no handler; do not import for nothing
+            mod = (_life_mod if path == "routes/life_routes.py"
+                   else _importlib.import_module(path[:-3].replace("/", ".")))
             for name in expected:
                 capped[name] = mod
         # Phase-2 corpus/training and retired coaching-chat routes are absent
@@ -527,10 +529,12 @@ class CoveredRoutesTests(unittest.TestCase):
     def test_no_in_process_rate_limit_dicts_remain(self):
         """Both per-worker dicts were replaced by the shared limiter. A new
         one would quietly reintroduce the `cap x workers` bug."""
+        import glob
         import os
         root = os.path.dirname(os.path.abspath(__file__))
-        with open(os.path.join(root, "routes/v2_routes.py")) as fh:
-            source = fh.read()
+        # The /v2 layer is the domain modules under routes/v2/ (the façade is
+        # gone since audit Q-A3); scan every one of them.
+        source = "".join(open(p).read() for p in sorted(glob.glob(os.path.join(root, "routes/v2/*.py"))))
         for ghost in ("_icebreaker_regen_last",
                       "_ICEBREAKER_REGEN_RATE_LIMIT_SEC"):
             with self.subTest(ghost=ghost):

@@ -22,12 +22,12 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import coach as v2_coach
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -70,22 +70,22 @@ class AnnotationUploadTests(unittest.TestCase):
                        return_value=None), \
                  patch("services.coach_video_storage.coach_media_public_url",
                        return_value="https://cdn/x.webm"), \
-                 patch.object(v2.db, "create_recording", side_effect=_rec), \
-                 patch.object(v2.db, "v2_get_session_by_id",
+                 patch.object(db, "create_recording", side_effect=_rec), \
+                 patch.object(db, "v2_get_session_by_id",
                               return_value=None), \
-                 patch.object(v2.db, "v2_create_internal_session",
+                 patch.object(db, "v2_create_internal_session",
                               return_value={"id": "x"}), \
-                 patch.object(v2.db, "set_session_user_id") as m_uid, \
-                 patch.object(v2.db, "set_session_source",
+                 patch.object(db, "set_session_user_id") as m_uid, \
+                 patch.object(db, "set_session_source",
                               return_value=True), \
-                 patch.object(v2.db, "set_session_intake_context",
+                 patch.object(db, "set_session_intake_context",
                               side_effect=lambda sid, ctx: calls.update(
                                   intake=ctx) or True), \
-                 patch.object(v2.db, "v2_set_session_recording",
+                 patch.object(db, "v2_set_session_recording",
                               return_value={"id": "x"}), \
                  patch("services.lab_recording.process_lab_recording",
                        side_effect=_proc), \
-                 patch.object(v2.db, "v2_update_session_status_unscoped",
+                 patch.object(db, "v2_update_session_status_unscoped",
                               side_effect=lambda sid, st: calls.update(
                                   status=(sid, st))), \
                  patch("services.lab_send.send_lab_recording_to_coach",
@@ -93,7 +93,7 @@ class AnnotationUploadTests(unittest.TestCase):
                            "must flip status directly, not via send "
                            "(which emails the admin)")):
                 calls["m_uid"] = m_uid
-                out = v2.v2_coach_annotation_upload.__wrapped__()
+                out = v2_coach.v2_coach_annotation_upload.__wrapped__()
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, calls
 
@@ -158,7 +158,7 @@ class AnnotationUploadTests(unittest.TestCase):
         with self.app.test_request_context(
                 method="POST", data={}, content_type="multipart/form-data"):
             request.user_id = "coach-1"
-            out = v2.v2_coach_annotation_upload.__wrapped__()
+            out = v2_coach.v2_coach_annotation_upload.__wrapped__()
             resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 400)
 
@@ -185,17 +185,17 @@ class QueueLabelTests(unittest.TestCase):
             # v2_coach_queue lives in routes.v2.coach and resolves these
             # helpers from THAT module — patching the routes.v2_routes
             # re-export would leave the real helpers running.
-            with patch.object(v2.db, "list_review_queue", return_value=rows), \
-                 patch.object(v2.db, "get_user_proficient_languages",
+            with patch.object(db, "list_review_queue", return_value=rows), \
+                 patch.object(db, "get_user_proficient_languages",
                               return_value=["en"]), \
                  patch("routes.v2.coach._coach_state_map", return_value={}), \
                  patch("routes.v2.coach._coach_session_state",
                        return_value="to_review"), \
                  patch("routes.v2.coach._coach_pseudonym",
                        return_value="Falcon"), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(db, "get_snippets_by_session",
                               return_value=[{"id": "s"}]):
-                out = v2.v2_coach_queue.__wrapped__()
+                out = v2_coach.v2_coach_queue.__wrapped__()
                 resp, status = out if isinstance(out, tuple) else (out, 200)
         by_id = {r["session_id"]: r for r in resp.get_json()}
         self.assertTrue(by_id["a"]["annotation_mode"])

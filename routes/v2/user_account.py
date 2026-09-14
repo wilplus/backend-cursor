@@ -5,7 +5,8 @@ Moved verbatim out of ``routes/v2_routes.py`` (god-file split, phase 3);
 bodies are byte-identical. Routes register on the SAME ``v2_bp`` object, so
 endpoint names and the URL map are unchanged.
 
-Re-exported from ``routes.v2_routes`` for import compatibility.
+Formerly re-exported from the ``routes.v2_routes`` façade (removed 2026-09-14,
+audit Q-A3); import from this module.
 """
 import logging
 

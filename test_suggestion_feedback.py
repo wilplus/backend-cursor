@@ -15,7 +15,9 @@ from config import Config
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from routes.v2 import user_sessions as v2_user_sessions
+    from services.db import db
     from services.project_ownership import (
         GUEST_OWNER_HEADER,
         issue_guest_owner,
@@ -24,7 +26,6 @@ try:
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 SESS = "11111111-1111-1111-1111-111111111111"
@@ -41,7 +42,7 @@ class SuggestionFeedbackTests(unittest.TestCase):
         headers = {GUEST_OWNER_HEADER: guest_token} if guest_token else None
         with self.app.test_request_context(json=body, headers=headers):
             request.user_id = caller
-            out = v2.v2_user_suggestion_feedback.__wrapped__(snippet_id)
+            out = v2_user_sessions.v2_user_suggestion_feedback.__wrapped__(snippet_id)
             resp, status = out if isinstance(out, tuple) else (out, 200)
             return resp.get_json(), status
 
@@ -53,11 +54,11 @@ class SuggestionFeedbackTests(unittest.TestCase):
         return b
 
     def test_authed_owner_saves(self):
-        with patch.object(v2.db, "v2_get_session_by_id",
+        with patch.object(db, "v2_get_session_by_id",
                           return_value={"id": SESS, "user_id": "u1"}), \
-             patch.object(v2.db, "get_snippet_by_id",
+             patch.object(db, "get_snippet_by_id",
                           return_value={"id": SNIP, "session_id": SESS}), \
-             patch.object(v2.db, "insert_user_suggestion_feedback",
+             patch.object(db, "insert_user_suggestion_feedback",
                           return_value=True) as m_ins:
             body, status = self._call(self._ok_body(), caller="u1")
         self.assertEqual(status, 200)
@@ -71,21 +72,21 @@ class SuggestionFeedbackTests(unittest.TestCase):
 
     def test_guest_on_unclaimed_session_saves(self):
         issued = issue_guest_owner()
-        with patch.object(v2.db, "v2_get_session_by_id",
+        with patch.object(db, "v2_get_session_by_id",
                           return_value={
                               "id": SESS,
                               "user_id": None,
                               "owner_principal_id": issued.principal_id,
                           }), \
-             patch.object(v2.db, "get_owner_principal",
+             patch.object(db, "get_owner_principal",
                           return_value={
                               "id": issued.principal_id,
                               "user_id": None,
                               "guest_secret_hash": issued.secret_hash,
                           }), \
-             patch.object(v2.db, "get_snippet_by_id",
+             patch.object(db, "get_snippet_by_id",
                           return_value={"id": SNIP, "session_id": SESS}), \
-             patch.object(v2.db, "insert_user_suggestion_feedback",
+             patch.object(db, "insert_user_suggestion_feedback",
                           return_value=True) as m_ins:
             body, status = self._call(
                 self._ok_body(target="comment", action="preferred",
@@ -96,7 +97,7 @@ class SuggestionFeedbackTests(unittest.TestCase):
         self.assertIsNone(m_ins.call_args.kwargs["user_id"])
 
     def test_guest_bare_session_id_is_not_authorization(self):
-        with patch.object(v2.db, "v2_get_session_by_id",
+        with patch.object(db, "v2_get_session_by_id",
                           return_value={
                               "id": SESS,
                               "user_id": None,
@@ -104,34 +105,34 @@ class SuggestionFeedbackTests(unittest.TestCase):
                                   "33333333-3333-4333-8333-333333333333"
                               ),
                           }), \
-             patch.object(v2.db, "insert_user_suggestion_feedback") as m_ins:
+             patch.object(db, "insert_user_suggestion_feedback") as m_ins:
             _, status = self._call(self._ok_body(), caller=None)
         self.assertEqual(status, 404)
         m_ins.assert_not_called()
 
     def test_claimed_session_hidden_from_other_caller(self):
-        with patch.object(v2.db, "v2_get_session_by_id",
+        with patch.object(db, "v2_get_session_by_id",
                           return_value={"id": SESS, "user_id": "owner"}), \
-             patch.object(v2.db, "insert_user_suggestion_feedback") as m_ins:
+             patch.object(db, "insert_user_suggestion_feedback") as m_ins:
             _, s_guest = self._call(self._ok_body(), caller=None)
             _, s_other = self._call(self._ok_body(), caller="intruder")
         self.assertEqual((s_guest, s_other), (404, 404))
         m_ins.assert_not_called()
 
     def test_snippet_must_belong_to_session(self):
-        with patch.object(v2.db, "v2_get_session_by_id",
+        with patch.object(db, "v2_get_session_by_id",
                           return_value={"id": SESS, "user_id": "u1"}), \
-             patch.object(v2.db, "get_snippet_by_id",
+             patch.object(db, "get_snippet_by_id",
                           return_value={"id": SNIP,
                                         "session_id": "other-session"}), \
-             patch.object(v2.db, "insert_user_suggestion_feedback") as m_ins:
+             patch.object(db, "insert_user_suggestion_feedback") as m_ins:
             body, status = self._call(self._ok_body(), caller="u1")
         self.assertEqual(status, 404)
         self.assertEqual(body["code"], "SNIPPET_NOT_FOUND")
         m_ins.assert_not_called()
 
     def test_bad_target_action_and_index_400(self):
-        with patch.object(v2.db, "v2_get_session_by_id",
+        with patch.object(db, "v2_get_session_by_id",
                           return_value={"id": SESS, "user_id": "u1"}):
             _, s1 = self._call(self._ok_body(target="scores"), caller="u1")
             _, s2 = self._call(self._ok_body(action="loved"), caller="u1")
@@ -147,11 +148,11 @@ class SuggestionFeedbackTests(unittest.TestCase):
     def test_reverted_action_accepted(self):
         # Approve is a reversible toggle (2026-07-15) — the undo reports as
         # action='reverted' so applied→reverted pairs stay honest.
-        with patch.object(v2.db, "v2_get_session_by_id",
+        with patch.object(db, "v2_get_session_by_id",
                           return_value={"id": SESS, "user_id": "u1"}), \
-             patch.object(v2.db, "get_snippet_by_id",
+             patch.object(db, "get_snippet_by_id",
                           return_value={"id": SNIP, "session_id": SESS}), \
-             patch.object(v2.db, "insert_user_suggestion_feedback",
+             patch.object(db, "insert_user_suggestion_feedback",
                           return_value=True) as m_ins:
             body, status = self._call(
                 self._ok_body(action="reverted"), caller="u1")
@@ -159,11 +160,11 @@ class SuggestionFeedbackTests(unittest.TestCase):
         self.assertEqual(m_ins.call_args.kwargs["action"], "reverted")
 
     def test_apply_all_case(self):
-        with patch.object(v2.db, "v2_get_session_by_id",
+        with patch.object(db, "v2_get_session_by_id",
                           return_value={"id": SESS, "user_id": "u1"}), \
-             patch.object(v2.db, "get_snippet_by_id",
+             patch.object(db, "get_snippet_by_id",
                           return_value={"id": SNIP, "session_id": SESS}), \
-             patch.object(v2.db, "insert_user_suggestion_feedback",
+             patch.object(db, "insert_user_suggestion_feedback",
                           return_value=True) as m_ins:
             body, status = self._call(
                 self._ok_body(target="comment_video", action="apply_all",
@@ -190,28 +191,28 @@ class LedgerHookTests(unittest.TestCase):
         body = {"session_id": SESS, "target": target, "action": action}
         with self.app.test_request_context(json=body):
             request.user_id = "u1"
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value={"id": SESS, "user_id": "u1",
                                             "arc_id": self.ARC}), \
-                 patch.object(v2.db, "get_snippet_by_id",
+                 patch.object(db, "get_snippet_by_id",
                               return_value={"id": SNIP, "session_id": SESS,
                                             "transcript": "The Rough Span"}), \
-                 patch.object(v2.db, "insert_user_suggestion_feedback",
+                 patch.object(db, "insert_user_suggestion_feedback",
                               return_value=True), \
-                 patch.object(v2.db, "get_moment_suggestions_by_arc",
+                 patch.object(db, "get_moment_suggestions_by_arc",
                               return_value={SNIP: {
                                   "snippet_id": SNIP, "kind": "replace",
                                   "trigger": trigger,
                                   "replacement_text": "smoother"}}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value={"version": 3}), \
-                 patch.object(v2.db, "upsert_ideal_decision",
+                 patch.object(db, "upsert_ideal_decision",
                               return_value=True) as m_up, \
-                 patch.object(v2.db, "delete_ideal_decision",
+                 patch.object(db, "delete_ideal_decision",
                               return_value=True) as m_del, \
-                 patch.object(v2.db, "delete_moment_suggestion",
+                 patch.object(db, "delete_moment_suggestion",
                               return_value=True) as m_row:
-                out = v2.v2_user_suggestion_feedback.__wrapped__(SNIP)
+                out = v2_user_sessions.v2_user_suggestion_feedback.__wrapped__(SNIP)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_up, m_del, m_row
 
@@ -255,17 +256,17 @@ class LedgerHookTests(unittest.TestCase):
                 "action": "applied"}
         with self.app.test_request_context(json=body):
             request.user_id = "u1"
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value={"id": SESS, "user_id": "u1",
                                             "arc_id": self.ARC}), \
-                 patch.object(v2.db, "get_snippet_by_id",
+                 patch.object(db, "get_snippet_by_id",
                               return_value={"id": SNIP, "session_id": SESS,
                                             "transcript": "x"}), \
-                 patch.object(v2.db, "insert_user_suggestion_feedback",
+                 patch.object(db, "insert_user_suggestion_feedback",
                               return_value=True), \
-                 patch.object(v2.db, "get_moment_suggestions_by_arc",
+                 patch.object(db, "get_moment_suggestions_by_arc",
                               side_effect=RuntimeError("boom")):
-                out = v2.v2_user_suggestion_feedback.__wrapped__(SNIP)
+                out = v2_user_sessions.v2_user_suggestion_feedback.__wrapped__(SNIP)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 200)
         self.assertTrue(resp.get_json()["saved"])
@@ -286,19 +287,19 @@ class DocumentPhraseKeyTests(unittest.TestCase):
     def test_key_is_the_smoothed_document_phrase_not_the_raw_words(self):
         with self.app.test_request_context():
             with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
-                 patch.object(v2.db, "get_arc_sessions",
+                 patch.object(db, "get_arc_sessions",
                               return_value=[{"id": SESS, "take_index": 1,
                                              "recording_kind": "spoken"}]), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(db, "get_snippets_by_session",
                               return_value=[{"id": SNIP,
                                              "start_offset_ms": 0,
                                              "language": "en",
                                              "transcript": self.RAW}]), \
-                 patch.object(v2.db, "get_coach_snippet_drafts",
+                 patch.object(db, "get_coach_snippet_drafts",
                               return_value=[]), \
-                 patch.object(v2.db, "get_user_transcript_edits",
+                 patch.object(db, "get_user_transcript_edits",
                               return_value=[]):
-                out = v2._document_phrase_for(self.ARC, SNIP,
+                out = v2_user_sessions._document_phrase_for(self.ARC, SNIP,
                                               fallback=self.RAW)
         self.assertEqual(out, "We started small in a tiny room")
         self.assertNotIn("um ", out)
@@ -306,16 +307,16 @@ class DocumentPhraseKeyTests(unittest.TestCase):
     def test_flag_off_keeps_the_raw_fallback(self):
         with self.app.test_request_context():
             with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", False):
-                out = v2._document_phrase_for(self.ARC, SNIP,
+                out = v2_user_sessions._document_phrase_for(self.ARC, SNIP,
                                               fallback=self.RAW)
         self.assertEqual(out, self.RAW)
 
     def test_build_failure_falls_back_never_raises(self):
         with self.app.test_request_context():
             with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
-                 patch.object(v2.db, "get_arc_sessions",
+                 patch.object(db, "get_arc_sessions",
                               side_effect=RuntimeError("boom")):
-                out = v2._document_phrase_for(self.ARC, SNIP,
+                out = v2_user_sessions._document_phrase_for(self.ARC, SNIP,
                                               fallback=self.RAW)
         self.assertEqual(out, self.RAW)
 
@@ -333,31 +334,31 @@ class DocumentTargetTests(unittest.TestCase):
         body = {"session_id": SESS, "target": target, "action": action}
         with Flask(__name__).test_request_context(json=body):
             request.user_id = "u1"
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value={"id": SESS, "user_id": "u1",
                                             "arc_id": self.ARC}), \
-                 patch.object(v2.db, "get_snippet_by_id",
+                 patch.object(db, "get_snippet_by_id",
                               return_value={"id": SNIP, "session_id": SESS,
                                             "transcript": "the span"}), \
-                 patch.object(v2.db, "insert_user_suggestion_feedback",
+                 patch.object(db, "insert_user_suggestion_feedback",
                               return_value=True), \
-                 patch.object(v2.db, "get_moment_suggestions_by_arc",
+                 patch.object(db, "get_moment_suggestions_by_arc",
                               return_value={SNIP: {
                                   "snippet_id": SNIP, "kind": "replace",
                                   "trigger": "polish",
                                   "replacement_text": "smoother"}}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value={"version": 2}), \
                  patch("routes.v2.user_sessions._document_phrase_for",
                               side_effect=lambda a, sn, fallback=None:
                               fallback), \
-                 patch.object(v2.db, "upsert_ideal_decision",
+                 patch.object(db, "upsert_ideal_decision",
                               return_value=True) as m_led, \
-                 patch.object(v2.db, "delete_moment_suggestion",
+                 patch.object(db, "delete_moment_suggestion",
                               return_value=True), \
                  patch("routes.v2.user_sessions._reassemble_after_decision",
                               return_value=None):
-                out = v2.v2_user_suggestion_feedback.__wrapped__(SNIP)
+                out = v2_user_sessions.v2_user_suggestion_feedback.__wrapped__(SNIP)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_led
 
@@ -382,11 +383,11 @@ class DocumentTargetTests(unittest.TestCase):
 
     def test_applied_map_counts_document_targets(self):
         with Flask(__name__).test_request_context():
-            with patch.object(v2.db, "get_suggestion_feedback_by_session",
+            with patch.object(db, "get_suggestion_feedback_by_session",
                               return_value=[{"snippet_id": SNIP,
                                              "target": "document_replace",
                                              "action": "applied"}]):
-                out = v2._moment_applied_map([SESS])
+                out = v2_arcs._moment_applied_map([SESS])
         self.assertTrue(out.get(SNIP))   # consumed → no re-offer
 
 

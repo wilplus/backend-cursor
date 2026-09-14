@@ -160,12 +160,13 @@ class DeckParserGuardTests(unittest.TestCase):
 # ── extract route shape (skip without flask; run in CI) ──
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import lab_recording as v2_lab_recording
+    from routes.v2 import user_account as v2_user_account
+    from services.db import db
     _RT_ERR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _RT_ERR = e
 
 
@@ -177,7 +178,7 @@ class ExtractRouteTests(unittest.TestCase):
     def test_missing_file_400(self):
         with self.app.test_request_context(method="POST"):
             request.user_id = None
-            resp, status = v2.v2_lab_presentation_extract.__wrapped__()
+            resp, status = v2_lab_recording.v2_lab_presentation_extract.__wrapped__()
             self.assertEqual(status, 400)
             self.assertEqual(resp.get_json()["code"], "INVALID_INPUT")
 
@@ -188,17 +189,17 @@ class LastSetupRouteTests(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
-        self._o = getattr(v2.db, "v2_list_user_lab_sessions", None)
+        self._o = getattr(db, "v2_list_user_lab_sessions", None)
 
     def tearDown(self):
         if self._o is not None:
-            v2.db.v2_list_user_lab_sessions = self._o
+            db.v2_list_user_lab_sessions = self._o
 
     def _get(self, sessions):
-        v2.db.v2_list_user_lab_sessions = lambda uid, **k: sessions
+        db.v2_list_user_lab_sessions = lambda uid, **k: sessions
         with self.app.test_request_context():
             request.user_id = "u1"
-            resp, status = v2.v2_user_last_setup.__wrapped__()
+            resp, status = v2_user_account.v2_user_last_setup.__wrapped__()
             return status, resp.get_json()
 
     def test_returns_prefill_without_tap_timeline(self):

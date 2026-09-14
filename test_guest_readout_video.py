@@ -21,13 +21,13 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import lab_recording as v2_lab_recording
+    from services.db import db
     from services.project_ownership import GUEST_OWNER_HEADER, issue_guest_owner
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -49,15 +49,15 @@ class GuestReadoutTests(unittest.TestCase):
                          "owner_principal_id": self._guest.principal_id,
                          "status": "readout_ready"}
         self._p = [
-            patch.object(v2.db, "v2_get_session_by_id",
+            patch.object(db, "v2_get_session_by_id",
                          lambda sid: self._session),
-            patch.object(v2.db, "get_owner_principal",
+            patch.object(db, "get_owner_principal",
                          lambda principal_id: {
                              "id": self._guest.principal_id,
                              "user_id": None,
                              "guest_secret_hash": self._guest.secret_hash,
                          } if principal_id == self._guest.principal_id else None),
-            patch.object(v2.db, "get_owner_principal_for_user",
+            patch.object(db, "get_owner_principal_for_user",
                          lambda user_id: {"id": "owner-1", "user_id": user_id}),
             patch("services.lab_recording.build_readout_from_session",
                   lambda sid, **kw: dict(self._READOUT)),
@@ -75,7 +75,7 @@ class GuestReadoutTests(unittest.TestCase):
         with self.app.test_request_context(headers=headers):
             if user_id is not None:
                 request.user_id = user_id
-            resp, status = v2.v2_guest_get_recording_readout.__wrapped__(session_id)
+            resp, status = v2_lab_recording.v2_guest_get_recording_readout.__wrapped__(session_id)
             return resp.get_json(), status
 
     def test_guest_owned_session_served_with_verified_guest_principal(self):
@@ -144,7 +144,7 @@ class VideoRejectTests(unittest.TestCase):
             )
             with patch("routes.v2.lab_recording.resolve_take_project",
                        return_value=project):
-                resp, status = v2.v2_lab_create_recording.__wrapped__()
+                resp, status = v2_lab_recording.v2_lab_create_recording.__wrapped__()
             return resp.get_json(), status
 
     def setUp(self):

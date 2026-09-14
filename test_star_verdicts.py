@@ -29,13 +29,13 @@ import types
 import unittest
 from unittest.mock import MagicMock
 
-# The /v2 route layer is split across routes/v2_routes.py and the per-domain
-# modules under routes/v2/ (the god-file split). Source-level fences below
-# must read ALL of them, or carving a domain out silently empties the fence.
-# Globbed rather than listed so later phases are covered automatically.
+# The /v2 route layer is the per-domain modules under routes/v2/ (the
+# routes/v2_routes.py façade is gone since audit Q-A3). Source-level fences
+# below must read ALL of them, or carving a domain out silently empties the
+# fence. Globbed rather than listed so later phases are covered automatically.
 _V2_ROUTE_FILES = {
     p: open(p, encoding="utf-8").read()
-    for p in ["routes/v2_routes.py"] + sorted(glob.glob("routes/v2/*.py"))
+    for p in sorted(glob.glob("routes/v2/*.py"))
     if os.path.basename(p) != "__init__.py"
 }
 
@@ -455,7 +455,7 @@ class TestAC9Fence(unittest.TestCase):
             path = line.split(":", 1)[0]
             self.assertIn(path, (
                 "services/star_verdicts.py", "services/db.py",
-                "routes/v2_routes.py", "routes/v2/coach.py",
+                "routes/v2/coach.py",
                 "routes/v2/explore_ideal_text.py",
                 # Compliance-only subject inventory. It never returns a
                 # verdict to the student; it locates the row for deletion.

@@ -16,10 +16,9 @@ from services.named_emotion import (
 )
 
 try:
-    from routes import v2_routes as v2
+    from routes.v2 import lab_recording as v2_lab_recording
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -49,15 +48,15 @@ class VocabularyTests(unittest.TestCase):
 class CaptureTests(unittest.TestCase):
 
     def test_flow_tags_capture_a_valid_key(self):
-        tags = v2._recording_flow_tags({"named_emotion": " Excited "})
+        tags = v2_lab_recording._recording_flow_tags({"named_emotion": " Excited "})
         self.assertEqual(tags.get("named_emotion"), "excited")
 
     def test_flow_tags_drop_an_unknown_word_silently(self):
-        tags = v2._recording_flow_tags({"named_emotion": "rage"})
+        tags = v2_lab_recording._recording_flow_tags({"named_emotion": "rage"})
         self.assertNotIn("named_emotion", tags)
 
     def test_absent_field_adds_nothing(self):
-        self.assertNotIn("named_emotion", v2._recording_flow_tags({}))
+        self.assertNotIn("named_emotion", v2_lab_recording._recording_flow_tags({}))
 
 if __name__ == "__main__":
     unittest.main()

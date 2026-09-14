@@ -16,7 +16,8 @@ SAME ``v2_bp`` object, so endpoint names and the URL map are unchanged.
 Imported by routes/v2/explore_ideal_text.py, coach.py and user_sessions.py --
 so this module must never import from them.
 
-Re-exported from ``routes.v2_routes`` for import compatibility.
+Formerly re-exported from the ``routes.v2_routes`` façade (removed 2026-09-14,
+audit Q-A3); import from this module.
 """
 import hashlib
 import logging
