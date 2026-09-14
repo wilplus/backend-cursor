@@ -52,6 +52,7 @@ set -uo pipefail
 CI_PYTHON="3.12.1"
 CI_RUFF="ruff==0.15.8"
 CI_MYPY="mypy==2.3.0"
+CI_COV="pytest-cov==7.1.0"
 
 # QUARANTINE — integration-tier modules that need live Supabase / network.
 # Byte-for-byte the workflow's --ignore list, and every entry must exist
@@ -102,10 +103,10 @@ if [ "$DO_SETUP" = 1 ]; then
   bold "→ installing the CI pins"
   if command -v uv >/dev/null 2>&1; then
     uv pip install --python "$PY" -q \
-      -r requirements.txt pytest "$CI_RUFF" "$CI_MYPY" || exit 2
+      -r requirements.txt pytest "$CI_COV" "$CI_RUFF" "$CI_MYPY" || exit 2
   else
     "$PY" -m pip install -q --upgrade pip || exit 2
-    "$PY" -m pip install -q -r requirements.txt pytest "$CI_RUFF" "$CI_MYPY" || exit 2
+    "$PY" -m pip install -q -r requirements.txt pytest "$CI_COV" "$CI_RUFF" "$CI_MYPY" || exit 2
   fi
 fi
 
@@ -156,7 +157,13 @@ step "Run unit-tier tests" env \
   JWT_SECRET=ci-placeholder-secret \
   SUPABASE_URL=https://ci-placeholder.invalid \
   SUPABASE_KEY=ci-placeholder-key \
-  "$PY" -m pytest "${IGNORES[@]}" -p no:cacheprovider -q
+  "$PY" -m pytest "${IGNORES[@]}" \
+    --cov=services --cov=routes --cov-report=json:coverage.json \
+    -p no:cacheprovider -q
+
+# Per-file floor on the NAMED F1 modules only (audit Q-T12). Same script,
+# same floors file as the workflow.
+step "F1 coverage floor" "$PY" scripts/coverage_floor.py coverage.json
 
 # ── The rehearsal tier (PostgreSQL) ───────────────────────────────────────
 # Required by the change, or opted in. scripts/rehearsal_trigger.sh decides

@@ -32,3 +32,7 @@ exports/*.pdf
 # also the bare name: a symlink named .venv-ci (committed by accident in #490)
 # is not matched by the directory pattern above
 .venv-ci
+
+# pytest-cov output read by scripts/coverage_floor.py
+coverage.json
+.coverage

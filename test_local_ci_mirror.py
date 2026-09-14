@@ -67,8 +67,8 @@ class PinTests(unittest.TestCase):
         self.assertEqual(ci.group(1), mine.group(1))
 
     def test_ruff_and_mypy_are_pinned_to_the_same_versions(self):
-        for tool in ("ruff", "mypy"):
-            pin = re.search(rf"{tool}==[\d.]+", CHECKS)
+        for tool in ("ruff", "mypy", "pytest-cov"):
+            pin = re.search(rf"{re.escape(tool)}==[\d.]+", CHECKS)
             self.assertIsNotNone(pin, f"{tool} pin vanished from the workflow")
             self.assertIn(
                 pin.group(0), SCRIPT,
