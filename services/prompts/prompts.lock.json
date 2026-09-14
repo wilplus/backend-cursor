@@ -166,36 +166,6 @@
       "module": "pending",
       "sha256": "849ee6ab845f455300e3a7aed0505397e4861212f7c826a68d1434c4db4e4754"
     },
-    "interview.few_shot_block": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "9d5ec5b92e22b2904abe04a464565d1269f0f785cd69f72ee517e580ee0d1bcc"
-    },
-    "interview.llm_question": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "49a5d2fc142706d6e481b9e76b8cd4167b692c55c01dfbc3899c0bb52a07dc15"
-    },
-    "interview.longitudinal_block": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "84dcfff805da56163f73f33a230e28da4a2b43d65d3d1a6030effb7d0793935b"
-    },
-    "interview.master_score_block": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "cdeb77a4c9e5988d61fbc5f25649f129c2ba1839f834ec9b99847c16577c4ef5"
-    },
-    "interview.profile_augment": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "a821afa1417971bb8141d90448f1667a1a21a640e459cedafd410ad07b5ba973"
-    },
-    "interview.system": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "faef4e03b9a1e677a55fb07b85e64bda649020797a64a043eb060bfab3b7e966"
-    },
     "journal_image_brief.fallback": {
       "kind": "source_ref",
       "module": "pending",
@@ -360,11 +330,6 @@
       "kind": "source_ref",
       "module": "pending",
       "sha256": "fd4fcb8730380fb34b05e4d36aa40ddc2d6e6ebe016eb02c34fa7e1a6360333b"
-    },
-    "onboarding_opener.builder": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "425e9dccdff3b467009b21b7027fbea9b0391bbcc3c28a9d808ec0732c656927"
     },
     "say_it_stronger.system": {
       "kind": "static",

@@ -28,7 +28,6 @@
   "routes/v2/explore_ideal_text.py:v2_explore_put_ideal_user_edit": 158,
   "routes/v2/explore_ideal_text.py:v2_explore_set_part_lock": 44,
   "routes/v2/explore_ideal_text.py:v2_explore_set_part_root": 41,
-  "routes/v2/user_chat.py:_build_longitudinal_context_block": 44,
   "routes/v2/user_sessions.py:v2_add_confident_voice_practice_attempt": 38,
   "routes/v2/user_sessions.py:v2_post_take_feedback_response": 43,
   "routes/v2/user_sessions.py:v2_start_confident_voice_practice": 53,

@@ -190,7 +190,6 @@ def _run_full_analysis_impl(
         #                                   canonical metrics-computed signal"
         #   routes/v2/coaching.py           feeds the coaching state machine, so
         #                                   target_dynamic_db was never derived
-        #   routes/v2/user_chat.py          reads the latest session's globals
         #   routes/v2/admin.py              admin session view
         #
         # HERE is the right call site: process_lab_recording has just persisted

@@ -11,7 +11,6 @@ path (an unknown slug and a draft slug both 404 — no existence leak).
 
   GET  /v2/journal/posts            ?category&q&sort&limit&offset
   GET  /v2/journal/posts/<slug>
-  GET  /v2/journal/categories
 
 ADMIN — the CMS. Password in the BODY (not a header) so the browser page can
 send it from a form field; that is why every admin endpoint, including the
@@ -154,21 +153,6 @@ def journal_get_post(slug):
         return jsonify({"code": "NOT_FOUND",
                         "error": "post not found"}), 404
     return jsonify(jr.serialize_post(row)), 200
-
-
-@journal_bp.route("/v2/journal/categories", methods=["GET"])
-def journal_categories():
-    """Category keys + published counts. NO AUTH. Every category is listed
-    (count 0 included) so the FE can render a stable chip row."""
-    try:
-        counts = db.journal_category_counts()
-    except Exception as e:
-        logger.warning("journal_categories failed: %s", e)
-        counts = {}
-    return jsonify({"categories": [
-        {"key": key, "count": int(counts.get(key, 0))}
-        for key in jr.CATEGORIES
-    ]}), 200
 
 
 # ── ADMIN (password in body; every route POST) ─────────────────────────────
