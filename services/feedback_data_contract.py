@@ -160,7 +160,8 @@ def _transcript_snapshot(
 
 def _exact_transcript_evidence(
     *, family: str, row: dict, document: dict, transcript: dict,
-    served_text: str,
+    served_text: str, document_snapshot_id: Optional[str] = None,
+    document_surface_sha256: Optional[str] = None,
 ) -> Optional[dict]:
     pieces = _piece_by_snippet(document)
     snippet_id = str(row.get("snippet_id") or "")
@@ -240,17 +241,36 @@ def _exact_transcript_evidence(
         kind = "transcript_span"
         task_type = "praise_selection"
 
-    locator = {
-        "surface": "ideal_text",
-        "start": target_start,
-        "end": target_end,
-        "exact_text": target_text,
-        "paragraph_index": (
-            (row.get("evidence") or {}).get("paragraph_index")
-            if isinstance(row.get("evidence"), dict) else None
-        ),
-        "surface_hash": content_hash(served_text),
-    }
+    snapshot_bound = (
+        document_snapshot_id is not None or document_surface_sha256 is not None
+    )
+    if snapshot_bound:
+        if (
+            not isinstance(document_snapshot_id, str)
+            or not document_snapshot_id
+            or not isinstance(document_surface_sha256, str)
+            or document_surface_sha256
+            != hashlib.sha256(served_text.encode("utf-8")).hexdigest()
+            or target_text is None
+        ):
+            return None
+        locator = {
+            "version": "ideal-text-target-locator-v1",
+            "surface": "ideal_text",
+            "surface_hash": document_surface_sha256,
+            "start": target_start,
+            "end": target_end,
+            "exact_text": target_text,
+        }
+        locator_sha256 = content_hash({
+            "document_snapshot_id": document_snapshot_id,
+            "locator": locator,
+        })
+    else:
+        # Historical/synthetic callers are explicitly non-snapshot-bound.
+        # Text equality can never upgrade them to a locator after the fact.
+        locator = None
+        locator_sha256 = None
     evidence_identity = {
         "take_id": row.get("take_session_id") or document.get("take_session_id"),
         "snippet_id": snippet_id,
@@ -261,7 +281,9 @@ def _exact_transcript_evidence(
         "end_char": end,
         "exact_text": exact_text,
         "replacement_text": replacement,
+        "document_snapshot_id": document_snapshot_id,
         "target_locator": locator,
+        "target_locator_sha256": locator_sha256,
     }
     evidence_hash = content_hash(evidence_identity)
     return {
@@ -280,7 +302,9 @@ def _exact_transcript_evidence(
         "replacement_text": replacement,
         "slide_index": slide_index,
         "paragraph_index": paragraph_index,
+        "document_snapshot_id": document_snapshot_id,
         "target_locator": locator,
+        "target_locator_sha256": locator_sha256,
         "technical_metadata": {
             "duration_ms": duration_ms,
             "language": (piece or {}).get("language"),
@@ -298,6 +322,8 @@ def build_feedback_exposure_bundle(
     prompt_version: Optional[str] = None,
     experiment_assignment: Optional[dict] = None,
     commit: Optional[str] = None,
+    document_snapshot_id: Optional[str] = None,
+    document_surface_sha256: Optional[str] = None,
 ) -> Optional[dict]:
     """Build one deterministic complete selection/exposure transaction."""
     if not isinstance(session, dict) or not isinstance(transcript_document, dict):
@@ -357,6 +383,8 @@ def build_feedback_exposure_bundle(
             document=transcript_document,
             transcript=transcript,
             served_text=served_text,
+            document_snapshot_id=document_snapshot_id,
+            document_surface_sha256=document_surface_sha256,
         )
         if evidence is None:
             continue

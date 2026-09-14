@@ -265,6 +265,18 @@ class DestructiveDetectionTests(unittest.TestCase):
             # the now-empty guest principal after its complete entity graph is
             # transferred to an already-existing permanent owner principal.
             "add_canonical_project_ownership.sql",
+            # Flagged on three patterns, none of which destroys user data.
+            # DROP COLUMN drops begin_idempotency_key from
+            # feedback_language_delivery_scan_runs — a table this same file
+            # creates twelve lines earlier, so the column never exists in any
+            # database it has not already built. TRUNCATE is the privilege
+            # name in a REVOKE. DELETE FROM appears only inside PL/pgSQL
+            # bodies, removing transaction-scoped capability rows.
+            # APPLIED BY HAND 2026-09-13 and recorded as 0327, which is why
+            # the file is allowed into the manifest at all — an UN-applied
+            # destructive migration here aborts the Railway migrate step and
+            # blocks every deploy (see #359).
+            "add_confident_moment_coaching_bundle_v1.sql",
         }, "The destructive set changed. If you added a migration that drops "
            "something, add it here deliberately — don't just update the literal.")
 

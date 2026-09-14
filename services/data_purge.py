@@ -69,6 +69,7 @@ class SubjectGraph:
     practice_attempt_ids: tuple[str, ...] = ()
     exercise_audio_lineage_ids: tuple[str, ...] = ()
     exercise_blind_packet_ids: tuple[str, ...] = ()
+    delivery_job_ids: tuple[str, ...] = ()
     unresolved_legacy_take_ids: tuple[str, ...] = ()
 
     def values(self, locator_kind: str) -> tuple[str, ...]:
@@ -86,6 +87,7 @@ class SubjectGraph:
             "practice_attempt": self.practice_attempt_ids,
             "exercise_audio_lineage": self.exercise_audio_lineage_ids,
             "exercise_blind_packet": self.exercise_blind_packet_ids,
+            "delivery_job": self.delivery_job_ids,
         }.get(locator_kind, ())
 
     def payload(self) -> dict[str, list[str]]:
@@ -96,6 +98,7 @@ class SubjectGraph:
                 "recording_ids", "snippet_ids", "permit_ids", "job_ids",
                 "speaker_ids", "practice_ids", "practice_attempt_ids",
                 "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
+                "delivery_job_ids",
                 "unresolved_legacy_take_ids",
             )
         }
@@ -199,7 +202,7 @@ class DataPurgeOrchestrator:
         payload = _one(result.data)
         if not payload:
             raise RuntimeError("PURGE_SUBJECT_GRAPH_RESOLUTION_FAILED")
-        keys = (
+        keys: tuple[str, ...] = (
             "principal_ids", "user_ids", "project_ids", "take_ids",
             "recording_ids", "snippet_ids", "permit_ids", "job_ids",
             "speaker_ids", "practice_ids", "practice_attempt_ids",
@@ -208,6 +211,16 @@ class DataPurgeOrchestrator:
         )
         if any(not isinstance(payload.get(key), list) for key in keys):
             raise RuntimeError("PURGE_SUBJECT_GRAPH_INVALID")
+        principal_ids = tuple(str(item) for item in payload["principal_ids"])
+        delivery_jobs = self._rows(
+            "feedback_language_delivery_materialization_jobs",
+            "id",
+            selector="acquisition_principal_id",
+            values=principal_ids,
+            existing_relations=_existing_relations,
+        )
+        payload["delivery_job_ids"] = sorted(self._ids(delivery_jobs, "id"))
+        keys = (*keys, "delivery_job_ids")
         graph = SubjectGraph(**{
             key: tuple(str(item) for item in payload[key]) for key in keys
         })
@@ -730,6 +743,7 @@ class DataPurgeOrchestrator:
                 "recording_ids", "snippet_ids", "permit_ids", "job_ids",
                 "speaker_ids", "practice_ids", "practice_attempt_ids",
                 "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
+                "delivery_job_ids",
                 "unresolved_legacy_take_ids",
             )
         })

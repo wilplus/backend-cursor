@@ -362,3 +362,4 @@
 0324	add_mlc3_coach_inline_exercise_authoring_d5.sql
 0325	add_mlc3_founder_canary_security_closure.sql
 0326	add_mlc3_general_user_service_d4.sql
+0327	add_confident_moment_coaching_bundle_v1.sql

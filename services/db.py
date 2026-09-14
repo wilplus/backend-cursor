@@ -10902,6 +10902,34 @@ class DatabaseService:
             logger.warning("ideal-text core RPC read failed: %s", error)
             return None
 
+    def get_ideal_text_document_core_v2(
+        self, arc_id: str, actor_id: str,
+    ) -> Optional[dict]:
+        """One exact D29 core envelope; used only by the current core GET."""
+        if not arc_id or not actor_id:
+            return None
+        try:
+            result = self.client.rpc(
+                "read_ideal_text_document_core_v2", {
+                    "p_arc_id": str(arc_id),
+                    "p_actor_id": str(actor_id),
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            if data is None:
+                return None
+            from services.confident_moment_bundle import (
+                validate_ideal_text_core_v2,
+            )
+            return validate_ideal_text_core_v2(data)
+        except Exception as error:
+            low = str(error).lower()
+            if "read_ideal_text_document_core_v2" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                return None
+            raise
+
     def set_session_analysis_state(
         self, session_id: str, state: str, error: Optional[str] = None,
     ) -> bool:
@@ -11469,8 +11497,29 @@ class DatabaseService:
                 }).execute()
             data = result.data
             if isinstance(data, list):
-                return data[0] if data and isinstance(data[0], dict) else None
-            return data if isinstance(data, dict) else None
+                data = data[0] if data and isinstance(data[0], dict) else None
+            if not isinstance(data, dict):
+                return None
+            take_id = data.get("take_id")
+            try:
+                import uuid as _uuid
+                canonical_take_id = str(_uuid.UUID(str(take_id)))
+            except (TypeError, ValueError):
+                return None
+            if canonical_take_id != take_id:
+                return None
+            try:
+                from services.confident_moment_delivery_worker import (
+                    arm_confident_moment_deliveries_for_take,
+                )
+                arm_confident_moment_deliveries_for_take(
+                    canonical_take_id, idempotency_key
+                )
+            except Exception as arm_error:  # noqa: BLE001
+                logger.warning(
+                    "post-promotion Confident Moment arm failed: %s", arm_error
+                )
+            return data
         except Exception as promotion_error:
             logger.error(
                 "recording attempt promotion failed attempt=%s: %s",
@@ -12277,38 +12326,40 @@ class DatabaseService:
     def upsert_user_ideal_edit(
         self, arc_id: str, user_id: str, text: str, version: Optional[int],
     ) -> bool:
-        """Persist the student's in-place SD edit + the version it was made
-        against (sibling columns; NEVER touches the coach canonical or the
-        legacy `text` notebook — L1). Best-effort; False on missing column
-        (migration pending) / error."""
-        if not arc_id or not user_id or not isinstance(text, str):
-            return False
-        try:
-            self.client.table("user_arc_ideal_notes").upsert({
-                "arc_id": str(arc_id),
-                "user_id": str(user_id),
-                # user_arc_ideal_notes.text is NOT NULL — keep the row valid
-                # without disturbing a real notebook copy: only default it to
-                # "" when creating a fresh row (the coalesce keeps any existing
-                # notebook text on a pure edit-update via on_conflict).
-                "user_text": text,
-                "user_text_version": (
-                    int(version) if isinstance(version, int) else None),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }, on_conflict="arc_id,user_id").execute()
-            return True
-        except Exception as e:
-            _e = str(e).lower()
-            if any(c in _e for c in (
-                "user_text", "user_arc_ideal_notes",
-            )) and ("does not exist" in _e or "pgrst" in _e):
-                logger.warning(
-                    "upsert_user_ideal_edit: column/table missing (run "
-                    "migrations/add_user_ideal_edit.sql) arc=%s", arc_id)
-                return False
-            logger.warning("upsert_user_ideal_edit failed arc=%s: %s",
-                           arc_id, e)
-            return False
+        """Retired direct owner-lane writer.
+
+        D21/D22 require the text, complete parts and immutable part revisions
+        to commit through one CAS RPC. Returning false protects any stale
+        application caller from recreating the former two-transaction path.
+        """
+        logger.warning("upsert_user_ideal_edit is retired; use CAS writer")
+        return False
+
+    def compare_and_set_user_ideal_edit(
+        self, *, owner_user_id: str, arc_id: str,
+        source_document_version: int,
+        expected_user_text_revision: Optional[int],
+        expected_user_text_sha256: Optional[str], desired_user_text: str,
+        desired_parts_lineage: Any, idempotency_key: Optional[str],
+    ) -> Optional[dict]:
+        """Atomically persist the ordinary owner edit and complete part graph."""
+        result = self.client.rpc(
+            "compare_and_set_user_ideal_edit_v1",
+            {
+                "p_owner_user_id": owner_user_id,
+                "p_arc_id": arc_id,
+                "p_source_document_version": source_document_version,
+                "p_expected_user_text_revision": expected_user_text_revision,
+                "p_expected_user_text_sha256": expected_user_text_sha256,
+                "p_desired_user_text": desired_user_text,
+                "p_desired_parts_lineage": desired_parts_lineage,
+                "p_idempotency_key": idempotency_key,
+            },
+        ).execute()
+        data = getattr(result, "data", result)
+        if not isinstance(data, dict):
+            raise TypeError("compare_and_set_user_ideal_edit_v1 returned non-object")
+        return data
 
     # ── ideal_text_part — the document as an ordered list with stable ids ──
     # SPEC-parts-locking-and-layers §3.1, Step 0. Identity only; PR 3 adds the

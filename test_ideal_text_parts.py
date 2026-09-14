@@ -725,9 +725,7 @@ def _row(**over):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class ThePutStoresIdentityWithTheWords(unittest.TestCase):
-    """`parts` is OPTIONAL on the user-edit PUT — absent is today's behaviour
-    byte for byte — and when present it is written with the text or not at
-    all."""
+    """Legacy request shapes are adapted to the one atomic CAS writer."""
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -741,10 +739,16 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
                               return_value=_row()), \
                  patch.object(v2.db, "get_ideal_text_parts",
                               return_value=existing or [], create=True), \
-                 patch.object(v2.db, "upsert_user_ideal_edit",
-                              return_value=edit_ok), \
-                 patch.object(v2.db, "replace_ideal_text_parts",
-                              return_value=parts_ok, create=True) as m_parts:
+                 patch.object(
+                     v2.db, "compare_and_set_user_ideal_edit",
+                     return_value={
+                         "ideal_text_user_edit_contract_version":
+                             "ideal-text-user-edit-cas-v2",
+                         "saved": True, "arc_id": ARC,
+                         "source_document_version": 3,
+                         "dataset_eligible": False,
+                     } if edit_ok and parts_ok else None,
+                 ) as m_parts:
                 out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_parts
@@ -754,7 +758,9 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
         does not wipe identity a newer one stored."""
         _b, status, m = self._put({"text": "one\n\ntwo", "version": 3})
         self.assertEqual(status, 200)
-        m.assert_not_called()
+        self.assertIsNone(
+            m.call_args.kwargs["desired_parts_lineage"]
+        )
 
     def test_parts_are_stored_alongside_the_text(self):
         a, b = _id(), _id()
@@ -763,11 +769,9 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
             "parts": [{"id": a, "text": "one"}, {"id": b, "text": "two"}]})
         self.assertEqual(status, 200)
         m.assert_called_once()
-        self.assertEqual(m.call_args[0][2],
-                         [{"id": a, "ord": 0, "text": "one",
-                           "locked_at": None},
-                          {"id": b, "ord": 1, "text": "two",
-                           "locked_at": None}])
+        self.assertEqual(m.call_args.kwargs["desired_parts_lineage"],
+                         [{"id": a, "ord": 0, "text": "one"},
+                          {"id": b, "ord": 1, "text": "two"}])
 
     def test_a_locked_flag_stamps_the_part(self):
         # Explicit true preserves/creates a commit; editing itself never adds
@@ -778,9 +782,9 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
             "parts": [{"id": a, "text": "one", "locked": True},
                       {"id": b, "text": "two", "locked": False}]})
         self.assertEqual(status, 200)
-        rows = m.call_args[0][2]
-        self.assertIsNotNone(rows[0]["locked_at"])
-        self.assertIsNone(rows[1]["locked_at"])
+        rows = m.call_args.kwargs["desired_parts_lineage"]
+        self.assertIs(rows[0]["locked"], True)
+        self.assertIs(rows[1]["locked"], False)
 
     def test_an_existing_lock_keeps_its_ORIGINAL_timestamp(self):
         # §6 — a decision made before a lock and one made after mean
@@ -791,8 +795,9 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
              "parts": [{"id": a, "text": "one", "locked": True}]},
             existing=[{"id": a, "ord": 0, "text": "old words",
                        "locked_at": "2026-08-01T00:00:00Z"}])
-        self.assertEqual(m.call_args[0][2][0]["locked_at"],
-                         "2026-08-01T00:00:00Z")
+        self.assertIs(
+            m.call_args.kwargs["desired_parts_lineage"][0]["locked"], True
+        )
 
     def test_explicit_false_reopens_the_paragraph(self):
         # Current clients carry the complete version state. A changed locked
@@ -803,7 +808,9 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
              "parts": [{"id": a, "text": "one", "locked": False}]},
             existing=[{"id": a, "ord": 0, "text": "one",
                        "locked_at": "2026-08-01T00:00:00Z"}])
-        self.assertIsNone(m.call_args[0][2][0]["locked_at"])
+        self.assertIs(
+            m.call_args.kwargs["desired_parts_lineage"][0]["locked"], False
+        )
 
     def test_omitted_lock_preserves_an_older_clients_commit(self):
         a = _id()
@@ -812,8 +819,9 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
              "parts": [{"id": a, "text": "one"}]},
             existing=[{"id": a, "ord": 0, "text": "one",
                        "locked_at": "2026-08-01T00:00:00Z"}])
-        self.assertEqual(m.call_args[0][2][0]["locked_at"],
-                         "2026-08-01T00:00:00Z")
+        self.assertNotIn(
+            "locked", m.call_args.kwargs["desired_parts_lineage"][0]
+        )
 
     def test_a_non_boolean_lock_is_refused(self):
         _b, status, m = self._put({
@@ -852,20 +860,17 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
             "parts": [{"id": a, "text": "<b>one</b>"},
                       {"id": _id(), "text": "two"}]})
         self.assertEqual(status, 200)
-        self.assertEqual(m.call_args[0][2][0],
-                         {"id": a, "ord": 0, "text": "one",
-                          "locked_at": None})
+        self.assertEqual(m.call_args.kwargs["desired_parts_lineage"][0],
+                         {"id": a, "ord": 0, "text": "one"})
 
-    def test_a_failed_parts_write_does_not_fail_the_EDIT(self):
-        """The words are what matter. A parts write that fails leaves the GET
-        omitting the key, the client re-mints, and the next save stores them —
-        losing identity costs the ids; failing here would cost the words."""
+    def test_a_failed_atomic_parts_write_fails_the_edit(self):
+        """Text and parts now commit or roll back together."""
         _b, status, _m = self._put(
             {"text": "one\n\ntwo", "version": 3,
              "parts": [{"id": _id(), "text": "one"},
                        {"id": _id(), "text": "two"}]},
             parts_ok=False)
-        self.assertEqual(status, 200)
+        self.assertEqual(status, 500)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

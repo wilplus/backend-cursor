@@ -19,6 +19,7 @@ Re-exported from ``routes.v2_routes`` for import compatibility.
 import logging
 import os
 import re
+import uuid
 from datetime import datetime, timezone
 
 import sentry_sdk
@@ -76,6 +77,24 @@ def _ideal_optional_read(label, default, reader):
     except Exception as exc:
         logger.warning("ideal-text optional read failed %s: %s", label, exc)
         return default
+
+
+_CONFIDENT_MOMENT_INELIGIBLE_CODES = {
+    "MLC3_ROLLOUT_NOT_ACTIVE",
+    "MLC3_CURRENT_ENROLLMENT_REQUIRED",
+    "MLC3_COHORT_MEMBERSHIP_REQUIRED",
+    "MLC3_ENROLLMENT_AUTHORITY_STALE",
+    "MLC3_DUAL_PURPOSE_AUTHORITY_REQUIRED",
+    "MLC3_ROLLOUT_POLICY_AUTHORITY_MISMATCH",
+}
+
+
+def _confident_moment_error_code(error):
+    match = re.search(
+        r"\b(CONFIDENT_MOMENT_[A-Z0-9_]+|FEEDBACK_LANGUAGE_[A-Z0-9_]+|MLC3_[A-Z0-9_]+)\b",
+        str(error),
+    )
+    return match.group(1) if match else "CONFIDENT_MOMENT_DATABASE_FAILURE"
 
 
 def _completed_spoken_sessions(sessions):
@@ -479,19 +498,26 @@ def v2_explore_get_ideal_text_core(arc_id):
     """
     from time import perf_counter
     started = perf_counter()
-    snapshot = db.get_ideal_text_document_core(
+    core_read = db.get_ideal_text_document_core_v2(
         arc_id, str(request.user_id))
-    if not snapshot:
+    if not core_read:
         response = jsonify({
             "code": "IDEAL_TEXT_DOCUMENT_PENDING",
             "state": "pending",
         })
         response.status_code = 404
     else:
+        snapshot = core_read["snapshot"]
+        overlay = core_read["dynamic_overlay"]
         payload = dict(snapshot.get("payload") or {})
         payload.update({
             "document_snapshot_id": str(snapshot.get("id")),
             "document_snapshot_sha256": snapshot.get("payload_sha256"),
+            "owner_edit": overlay["owner_edit"],
+            "confident_moment_summary": overlay["confident_moment_summary"],
+            "confident_moment_summary_status": (
+                overlay["confident_moment_summary_status"]
+            ),
         })
         response = jsonify(payload)
     elapsed = (perf_counter() - started) * 1000
@@ -3210,6 +3236,113 @@ def v2_explore_set_part_root(arc_id, part_id):
                         "error": "Failed to save the rooting phrase"}), 500
 
 
+def _legacy_user_edit_via_cas(arc_id, body, text, version):
+    """Preserve the frozen old-client wire contract through the atomic RPC."""
+    legacy_parts = None
+    if "parts" in body:
+        from services.ideal_text_parts import (
+            InvalidParts, agrees_with_text, validate,
+        )
+
+        raw_parts = body.get("parts")
+        if isinstance(raw_parts, list):
+            raw_parts = [
+                {**part, "text": re.sub(r"<[^>]*>", "", part.get("text"))}
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+                else part
+                for part in raw_parts
+            ]
+        try:
+            legacy_parts = validate(raw_parts)
+        except InvalidParts as error:
+            return jsonify({"code": "INVALID_INPUT", "error": str(error)}), 400
+        if not agrees_with_text(legacy_parts, text):
+            return jsonify({
+                "code": "INVALID_INPUT",
+                "error": "parts do not join to text",
+            }), 400
+
+    row = db.get_coach_arc_ideal_text(arc_id) or {}
+    machine = ((row.get("auto_text") or "").strip()
+               or ((row.get("text") or "").strip()
+                   if not (row.get("updated_by") or row.get("approved_at"))
+                   else ""))
+    current = row.get("version") or (1 if machine else None)
+    if not isinstance(current, int):
+        return jsonify({"code": "NOTHING_TO_EDIT",
+                        "error": "No ideal text to edit yet."}), 409
+    if version != current:
+        return jsonify({"code": "VERSION_SUPERSEDED",
+                        "current_version": current}), 409
+
+    result = db.compare_and_set_user_ideal_edit(
+        owner_user_id=str(request.user_id),
+        arc_id=str(arc_id),
+        source_document_version=version,
+        expected_user_text_revision=None,
+        expected_user_text_sha256=None,
+        desired_user_text=text,
+        desired_parts_lineage=legacy_parts,
+        idempotency_key=None,
+    )
+    if not isinstance(result, dict) or result.get("saved") is not True or (
+        result.get("ideal_text_user_edit_contract_version")
+        != "ideal-text-user-edit-cas-v2"
+    ) or result.get("arc_id") != str(arc_id) or (
+        result.get("source_document_version") != version
+    ) or result.get("dataset_eligible") is not False:
+        raise TypeError("invalid legacy Ideal Text CAS response")
+
+    if body.get("reapplied") is True:
+        logger.info("ideal_edit.reapplied arc=%s version=%s chars=%d",
+                    arc_id, current, len(text))
+    try:
+        verified_version = row.get("verified_version")
+        verified_text = (row.get("verified_text") or "").strip()
+        base = (verified_text if verified_version == current and verified_text
+                else machine)
+        if base:
+            from services.protected_phrases import record_user_edit_decisions
+
+            record_user_edit_decisions(
+                db, arc_id, base_text=base, user_text=text, version=current,
+            )
+    except Exception as error:
+        logger.warning("ideal user-edit: ledger failed arc=%s: %s",
+                       arc_id, error)
+    try:
+        from services.master_document import (
+            assemble_master_document, master_document_enabled,
+        )
+
+        if master_document_enabled():
+            master = assemble_master_document(arc_id, database=db)
+            master_text = master.get("text") or ""
+            version_base = (
+                ((row.get("verified_text") or "").strip()
+                 if row.get("verified_version") == current else "")
+                or machine
+            )
+            if master.get("ready") and master_text and version_base and (
+                re.sub(r"\s+", " ", master_text).strip().lower()
+                == re.sub(r"\s+", " ", version_base).strip().lower()
+            ):
+                from services.ideal_text_variants import (
+                    capture_user_edit_variants,
+                )
+
+                capture_user_edit_variants(
+                    db, str(arc_id), str(request.user_id), master_text,
+                    ((master.get("document") or {}).get("pieces") or []), text,
+                )
+    except Exception as error:
+        logger.warning("ideal user-edit: variant capture failed arc=%s: %s",
+                       arc_id, error)
+    _publish_ideal_text_core(arc_id, str(request.user_id))
+    return jsonify({"saved": True, "arc_id": arc_id,
+                    "version": current}), 200
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/user-edit", methods=["PUT"])
 @require_auth
 def v2_explore_put_ideal_user_edit(arc_id):
@@ -3232,7 +3365,31 @@ def v2_explore_put_ideal_user_edit(arc_id):
         owned, _sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        # D22-D24: this endpoint is now one database-owned text/parts/revision
+        # transaction.  The historical implementation remains below only as
+        # context during this unnumbered migration and is unreachable; no
+        # direct owner-lane or post-RPC part write is performed.
         body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"code": "INVALID_INPUT", "error": "object required"}), 400
+        cas_keys = {
+            "expected_user_text_revision", "expected_user_text_sha256",
+            "idempotency_key",
+        }
+        is_current = cas_keys <= set(body)
+        current_allowed = {
+            "text", "version", "parts", *cas_keys, "reapplied",
+        }
+        legacy_allowed = {"text", "version", "parts", "reapplied"}
+        if is_current:
+            if set(body) - current_allowed or not {
+                "text", "version", "parts", *cas_keys,
+            } <= set(body):
+                return jsonify({"code": "INVALID_INPUT", "error": "request keys invalid"}), 400
+        elif set(body) - legacy_allowed or set(body) & cas_keys:
+            return jsonify({"code": "INVALID_INPUT", "error": "request keys invalid"}), 400
+        if "reapplied" in body and not isinstance(body["reapplied"], bool):
+            return jsonify({"code": "INVALID_INPUT", "error": "reapplied must be boolean"}), 400
         text = body.get("text")
         if not isinstance(text, str):
             return jsonify({"code": "INVALID_INPUT",
@@ -3245,6 +3402,188 @@ def v2_explore_put_ideal_user_edit(arc_id):
         if len(text) > 20000:
             return jsonify({"code": "INVALID_INPUT",
                             "error": "text too long"}), 400
+        if not text:
+            return jsonify({"code": "IDEAL_TEXT_EMPTY_EDIT_REJECTED"}), 400
+
+        if not is_current:
+            try:
+                return _legacy_user_edit_via_cas(arc_id, body, text, _v)
+            except Exception as error:
+                code = _confident_moment_error_code(error)
+                if code.startswith("IDEAL_TEXT_"):
+                    return jsonify({"code": code}), 409
+                raise
+
+        expected_revision = None
+        expected_hash = None
+        operation_key = None
+        parts_lineage = body.get("parts")
+        if is_current:
+            raw_revision = body.get("expected_user_text_revision")
+            expected_hash = body.get("expected_user_text_sha256")
+            if raw_revision is not None:
+                if not isinstance(raw_revision, str) or not re.fullmatch(
+                    r"[1-9][0-9]*", raw_revision
+                ):
+                    return jsonify({"code": "INVALID_INPUT", "error": "revision must be a bigint string"}), 400
+                expected_revision = int(raw_revision)
+                if expected_revision > 9223372036854775807:
+                    return jsonify({"code": "INVALID_INPUT", "error": "revision exceeds bigint"}), 400
+            if (expected_revision is None) is not (expected_hash is None):
+                return jsonify({"code": "INVALID_INPUT", "error": "CAS pair invalid"}), 400
+            if expected_hash is not None and (
+                not isinstance(expected_hash, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)
+            ):
+                return jsonify({"code": "INVALID_INPUT", "error": "hash invalid"}), 400
+            operation_key = body.get("idempotency_key")
+            if not isinstance(operation_key, str) or not operation_key.strip() or len(operation_key) > 200:
+                return jsonify({"code": "INVALID_INPUT", "error": "idempotency_key invalid"}), 400
+            if not isinstance(parts_lineage, dict) or set(parts_lineage) != {
+                "expected_parts", "desired_parts",
+            }:
+                return jsonify({"code": "INVALID_INPUT", "error": "parts lineage invalid"}), 400
+            expected_parts = parts_lineage.get("expected_parts")
+            desired_parts = parts_lineage.get("desired_parts")
+            if not isinstance(expected_parts, list) or not isinstance(desired_parts, list):
+                return jsonify({"code": "INVALID_INPUT", "error": "parts arrays required"}), 400
+            for position, row in enumerate(expected_parts):
+                if not isinstance(row, dict) or set(row) != {
+                    "position", "part_id", "text_sha256", "locked",
+                    "current_part_revision_id",
+                } or row.get("position") != position:
+                    return jsonify({"code": "INVALID_INPUT", "error": "expected part invalid"}), 400
+                try:
+                    if str(uuid.UUID(row.get("part_id"))) != row.get("part_id"):
+                        raise ValueError
+                except (TypeError, ValueError, AttributeError):
+                    return jsonify({"code": "INVALID_INPUT", "error": "part_id invalid"}), 400
+                if not isinstance(row.get("locked"), bool) or not isinstance(row.get("text_sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", row["text_sha256"]):
+                    return jsonify({"code": "INVALID_INPUT", "error": "expected part state invalid"}), 400
+                head = row.get("current_part_revision_id")
+                if head is not None and (
+                    not isinstance(head, str) or not re.fullmatch(r"[1-9][0-9]*", head)
+                ):
+                    return jsonify({"code": "INVALID_INPUT", "error": "part revision invalid"}), 400
+            for position, row in enumerate(desired_parts):
+                if not isinstance(row, dict) or set(row) != {
+                    "position", "part_id", "text",
+                } or row.get("position") != position or not isinstance(row.get("text"), str):
+                    return jsonify({"code": "INVALID_INPUT", "error": "desired part invalid"}), 400
+                try:
+                    if str(uuid.UUID(row.get("part_id"))) != row.get("part_id"):
+                        raise ValueError
+                except (TypeError, ValueError, AttributeError):
+                    return jsonify({"code": "INVALID_INPUT", "error": "part_id invalid"}), 400
+            if len({row["part_id"] for row in expected_parts}) != len(expected_parts) or len({row["part_id"] for row in desired_parts}) != len(desired_parts):
+                return jsonify({"code": "INVALID_INPUT", "error": "duplicate part"}), 400
+        elif parts_lineage is not None and not isinstance(parts_lineage, list):
+            return jsonify({"code": "INVALID_INPUT", "error": "legacy parts invalid"}), 400
+
+        try:
+            result = db.compare_and_set_user_ideal_edit(
+                owner_user_id=str(request.user_id), arc_id=str(arc_id),
+                source_document_version=_v,
+                expected_user_text_revision=expected_revision,
+                expected_user_text_sha256=expected_hash,
+                desired_user_text=text,
+                desired_parts_lineage=parts_lineage,
+                idempotency_key=operation_key,
+            )
+        except Exception as error:
+            code = _confident_moment_error_code(error)
+            if code.startswith("IDEAL_TEXT_"):
+                return jsonify({"code": code}), 409
+            raise
+        if not isinstance(result, dict):
+            raise TypeError("invalid Ideal Text CAS response")
+        required = {
+            "ideal_text_user_edit_contract_version", "saved", "arc_id",
+            "source_document_version", "previous_user_text_revision",
+            "result_user_text_revision", "result_user_text_sha256",
+            "desired_parts_lineage_sha256", "part_revisions", "dataset_eligible",
+        }
+        if set(result) != required or result.get("ideal_text_user_edit_contract_version") != "ideal-text-user-edit-cas-v2" or result.get("saved") is not True or result.get("arc_id") != str(arc_id) or result.get("dataset_eligible") is not False:
+            raise TypeError("invalid Ideal Text CAS response shape")
+        if result.get("source_document_version") != _v:
+            raise TypeError("invalid Ideal Text CAS source version")
+        for field in ("result_user_text_revision",):
+            if not isinstance(result.get(field), str) or not re.fullmatch(r"[1-9][0-9]*", result[field]) or int(result[field]) > 9223372036854775807:
+                raise TypeError("invalid Ideal Text CAS bigint")
+        if result.get("previous_user_text_revision") is not None and (
+            not isinstance(result["previous_user_text_revision"], str)
+            or not re.fullmatch(r"[1-9][0-9]*", result["previous_user_text_revision"])
+            or int(result["previous_user_text_revision"]) > 9223372036854775807
+        ):
+            raise TypeError("invalid previous Ideal Text CAS bigint")
+        expected_wire_revision = (
+            None if expected_revision is None else str(expected_revision)
+        )
+        if is_current and result.get(
+            "previous_user_text_revision"
+        ) != expected_wire_revision:
+            raise TypeError("Ideal Text CAS previous revision mismatch")
+        for field in ("result_user_text_sha256", "desired_parts_lineage_sha256"):
+            if not isinstance(result.get(field), str) or not re.fullmatch(
+                r"[0-9a-f]{64}", result[field]
+            ):
+                raise TypeError("invalid Ideal Text CAS hash")
+        part_revisions = result.get("part_revisions")
+        if not isinstance(part_revisions, list):
+            raise TypeError("invalid part revision inventory")
+        allowed_actions = {
+            "owner_part_created", "owner_part_text_updated",
+            "owner_part_reordered", "owner_part_text_updated_and_reordered",
+            "owner_part_removed",
+        }
+        seen_parts = set()
+        prior_order = None
+        for row in part_revisions:
+            if not isinstance(row, dict) or set(row) != {
+                "part_id", "revision_id", "action", "previous_position",
+                "result_position",
+            }:
+                raise TypeError("invalid part revision shape")
+            try:
+                part_id = str(uuid.UUID(row.get("part_id")))
+            except (TypeError, ValueError, AttributeError) as error:
+                raise TypeError("invalid part revision identity") from error
+            if part_id != row.get("part_id") or part_id in seen_parts:
+                raise TypeError("invalid part revision identity")
+            seen_parts.add(part_id)
+            revision_id = row.get("revision_id")
+            if not isinstance(revision_id, str) or not re.fullmatch(
+                r"[1-9][0-9]*", revision_id
+            ) or int(revision_id) > 9223372036854775807:
+                raise TypeError("invalid part revision bigint")
+            action = row.get("action")
+            previous_position = row.get("previous_position")
+            result_position = row.get("result_position")
+            if action not in allowed_actions:
+                raise TypeError("invalid part revision action")
+            if action == "owner_part_created":
+                valid_positions = previous_position is None and type(result_position) is int and result_position >= 0
+            elif action == "owner_part_removed":
+                valid_positions = result_position is None and type(previous_position) is int and previous_position >= 0
+            else:
+                valid_positions = type(previous_position) is int and previous_position >= 0 and type(result_position) is int and result_position >= 0
+            if not valid_positions:
+                raise TypeError("invalid part revision positions")
+            order = (
+                1 if action == "owner_part_removed" else 0,
+                previous_position if result_position is None else result_position,
+                uuid.UUID(part_id).bytes,
+            )
+            if prior_order is not None and order <= prior_order:
+                raise TypeError("invalid part revision order")
+            prior_order = order
+        if body.get("reapplied") is True:
+            logger.info("ideal_edit.reapplied arc=%s version=%s chars=%d", arc_id, _v, len(text))
+        _publish_ideal_text_core(arc_id, str(request.user_id))
+        return jsonify(result), 200
+
+        # Retained historical context below is unreachable during the pending
+        # migration and will be removed when the numbered release is cut.
 
         # ── PARTS (SPEC-parts-locking-and-layers §3.1, Step 0). OPTIONAL: an
         # absent key is today's behaviour byte for byte. Present, it carries
@@ -3303,8 +3642,7 @@ def v2_explore_put_ideal_user_edit(arc_id):
                 "current_version": current,
             }), 409
 
-        ok = db.upsert_user_ideal_edit(
-            arc_id, str(request.user_id), text, current)
+        ok = False  # retired D21 direct owner-lane writer
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
@@ -3341,9 +3679,7 @@ def v2_explore_put_ideal_user_edit(arc_id):
                 else:
                     _locked_at = None
                 _rows.append({**p, "locked_at": _locked_at})
-            if not db.replace_ideal_text_parts(
-                    arc_id, str(request.user_id), _rows,
-                    revision_action="user_edit"):
+            if False:  # retired D22 post-RPC parts writer
                 logger.warning("ideal parts not stored arc=%s", arc_id)
         # RE-APPLY TELEMETRY (founder 2026-07-28): one log line per
         # successful one-click re-apply of a superseded edit — the

@@ -510,7 +510,8 @@ class PartIterationRegressionTests(unittest.TestCase):
         import routes.v2.explore_ideal_text as eit
 
         src = inspect.getsource(eit)
-        self.assertGreaterEqual(src.count("replace_ideal_text_parts"), 3)
+        self.assertGreaterEqual(src.count("replace_ideal_text_parts"), 2)
+        self.assertIn("compare_and_set_user_ideal_edit", src)
         self.assertNotIn("iteration=", src)
 
 

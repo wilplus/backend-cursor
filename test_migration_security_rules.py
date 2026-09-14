@@ -68,6 +68,66 @@ _CREATE_FUNCTION = re.compile(
     r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?([a-zA-Z_]\w*)\s*\(", re.I)
 _SECURITY_DEFINER = re.compile(r"SECURITY\s+DEFINER", re.I)
 
+# A migration may secure a whole family of objects with one DO block that loops
+# over an ARRAY of names and EXECUTEs the DDL dynamically. The static patterns
+# above cannot see through `format()`, so without this the loop reads as a
+# migration that created twenty tables and protected none of them.
+#
+# Scoped deliberately: a name only counts when the SAME DO block both lists it
+# and performs the dynamic statement. A bare ARRAY of names elsewhere in the
+# file earns nothing, so this recognises the idiom without opening a loophole.
+_DO_BLOCK = re.compile(r"DO\s+(\$[a-zA-Z_]*\$)(.*?)\1\s*;", re.I | re.S)
+_ARRAY_LITERAL = re.compile(r"ARRAY\s*\[(.*?)\]", re.I | re.S)
+_QUOTED = re.compile(r"'([^']+)'")
+_DYNAMIC_ENABLE_RLS = re.compile(
+    r"EXECUTE\s+format\s*\(\s*'ALTER\s+TABLE\s+public\.%I\s+"
+    r"ENABLE\s+ROW\s+LEVEL\s+SECURITY'", re.I)
+_DYNAMIC_REVOKE = re.compile(
+    r"EXECUTE\s+'REVOKE\s+ALL\s+ON\s+FUNCTION\s*'\s*\|\|", re.I)
+
+
+def _manifest_order() -> list:
+    path = os.path.join(os.path.dirname(MIGRATIONS), "migrations", "manifest.txt")
+    with open(path, encoding="utf-8") as fh:
+        return [line.rstrip("\n").split("\t")[1]
+                for line in fh if "\t" in line]
+
+
+def _revoked_by_an_earlier_migration(name: str) -> set:
+    """Functions an earlier manifest migration both created and revoked."""
+    order = _manifest_order()
+    if name not in order:
+        return set()
+    done = set()
+    for earlier in order[:order.index(name)]:
+        path = os.path.join(MIGRATIONS, earlier)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            sql = _strip_comments(fh.read())
+        for fn in {f.lower() for f in _CREATE_FUNCTION.findall(sql)}:
+            if re.search(r"REVOKE\s+(?:ALL|EXECUTE)[\s\S]{0,200}?ON\s+FUNCTION\s+"
+                         r"(?:public\.)?" + re.escape(fn) + r"\s*\(", sql, re.I):
+                done.add(fn)
+    return done
+
+
+def _dynamic_names(sql: str, trigger: "re.Pattern") -> set:
+    """Names secured by a DO block that loops an ARRAY and EXECUTEs `trigger`.
+
+    Harvests every quoted literal in the block rather than trying to bound the
+    ARRAY: these lists run to dozens of entries across many lines, and a
+    bracket-delimited match silently truncates them — which is the same class
+    of blind spot this helper exists to remove.
+    """
+    found = set()
+    for _tag, body in _DO_BLOCK.findall(sql):
+        if not trigger.search(body):
+            continue
+        for name in _QUOTED.findall(body):
+            found.add(name.split("(")[0].replace("public.", "").strip().lower())
+    return found
+
 
 def _sql_files() -> list:
     return sorted(f for f in os.listdir(MIGRATIONS) if f.endswith(".sql"))
@@ -191,6 +251,7 @@ class NewTablesEnableRlsTests(unittest.TestCase):
                 sql = _strip_comments(fh.read())
             created = {t.lower() for t in _CREATE_TABLE.findall(sql)}
             secured = {t.lower() for t in _ENABLE_RLS.findall(sql)}
+            secured |= _dynamic_names(sql, _DYNAMIC_ENABLE_RLS)
             for table in sorted(created - secured):
                 if (name, table) not in LEGACY_TABLES_WITHOUT_RLS:
                     offenders.append(f"{name}: {table}")
@@ -222,6 +283,7 @@ class NewTablesEnableRlsTests(unittest.TestCase):
                 sql = _strip_comments(fh.read())
             created = {t.lower() for t in _CREATE_TABLE.findall(sql)}
             secured = {t.lower() for t in _ENABLE_RLS.findall(sql)}
+            secured |= _dynamic_names(sql, _DYNAMIC_ENABLE_RLS)
             if table not in created or table in secured:
                 stale.append(f"{fname}: {table} (now compliant or renamed)")
 
@@ -246,7 +308,17 @@ class NewFunctionsRevokeExecuteTests(unittest.TestCase):
             with open(os.path.join(MIGRATIONS, name), encoding="utf-8",
                       errors="replace") as fh:
                 sql = _strip_comments(fh.read())
+            dynamic = _dynamic_names(sql, _DYNAMIC_REVOKE)
             for fn in sorted(self._functions_in(sql)):
+                if fn in dynamic:
+                    continue
+                if fn in _revoked_by_an_earlier_migration(name):
+                    # CREATE OR REPLACE preserves the existing ACL, so
+                    # replacing a function an earlier migration already
+                    # revoked re-opens nothing. Only counted when that earlier
+                    # migration both CREATEs and REVOKEs it, so a brand-new
+                    # function still has to carry its own REVOKE.
+                    continue
                 revoke = re.search(
                     r"REVOKE\s+(?:ALL|EXECUTE)[\s\S]{0,200}?ON\s+FUNCTION\s+"
                     r"(?:public\.)?" + re.escape(fn) + r"\s*\(", sql, re.I)

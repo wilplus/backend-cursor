@@ -31,6 +31,21 @@ SNIP = "aaaa1111-aaaa-1111-aaaa-111111111111"
 SESS = "bbbb2222-bbbb-2222-bbbb-222222222222"
 
 
+def _cas_result(version=3):
+    return {
+        "ideal_text_user_edit_contract_version": "ideal-text-user-edit-cas-v2",
+        "saved": True,
+        "arc_id": ARC,
+        "source_document_version": version,
+        "previous_user_text_revision": None,
+        "result_user_text_revision": "1",
+        "result_user_text_sha256": "a" * 64,
+        "desired_parts_lineage_sha256": "b" * 64,
+        "part_revisions": [],
+        "dataset_eligible": False,
+    }
+
+
 def _row(**over):
     row = {"arc_id": ARC, "text": "machine text", "auto_text": "machine text",
            "updated_by": None, "approved_at": None, "version": 3,
@@ -51,8 +66,9 @@ class UserEditPutTests(unittest.TestCase):
                               return_value=(owned, [])), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "upsert_user_ideal_edit",
-                              return_value=True) as m_up:
+                 patch.object(v2.db, "compare_and_set_user_ideal_edit",
+                              return_value=_cas_result(
+                                  (row or {}).get("version", 1))) as m_up:
                 out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_up
@@ -63,8 +79,8 @@ class UserEditPutTests(unittest.TestCase):
         self.assertTrue(body["saved"])
         self.assertEqual(body["version"], 3)
         # stamped with the CURRENT version (which equals the provided one)
-        self.assertEqual(m_up.call_args.args[2], "my edit")
-        self.assertEqual(m_up.call_args.args[3], 3)
+        self.assertEqual(m_up.call_args.kwargs["desired_user_text"], "my edit")
+        self.assertEqual(m_up.call_args.kwargs["source_document_version"], 3)
 
     def test_stale_version_409_with_current(self):
         # edit made against v2 but v3 has assembled since → refetch signal
@@ -79,7 +95,7 @@ class UserEditPutTests(unittest.TestCase):
             "text": "<b>bold</b> **kept** [[moment:x|y]]m[[/moment]]",
             "version": 3})
         self.assertEqual(status, 200)
-        saved = m_up.call_args.args[2]
+        saved = m_up.call_args.kwargs["desired_user_text"]
         self.assertNotIn("<b>", saved)
         self.assertIn("**kept**", saved)          # FE markers ride through
         self.assertIn("[[moment:x|y]]", saved)
@@ -116,15 +132,21 @@ class UserEditPutTests(unittest.TestCase):
         _hits = [m for m in cm.output if "ideal_edit.reapplied" in m]
         self.assertEqual(len(_hits), 1)
 
-    def test_reapplied_absent_or_nonbool_never_logs_never_errors(self):
-        # Lenient: anything but boolean true is ignored — same 200, no log.
-        for extra in ({}, {"reapplied": "yes"}, {"reapplied": 1},
-                      {"reapplied": False}, {"reapplied": None}):
+    def test_reapplied_absent_or_false_never_logs(self):
+        for extra in ({}, {"reapplied": False}):
             with self.assertNoLogs("routes.v2_routes", level="INFO"):
                 body, status, _ = self._put(
                     {"text": "my edit", "version": 3, **extra})
             self.assertEqual(status, 200)
             self.assertTrue(body["saved"])
+
+    def test_reapplied_non_boolean_is_rejected(self):
+        for value in ("yes", 1, None):
+            _body, status, writer = self._put(
+                {"text": "my edit", "version": 3, "reapplied": value}
+            )
+            self.assertEqual(status, 400)
+            writer.assert_not_called()
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -145,8 +167,8 @@ class LedgerInheritanceTests(unittest.TestCase):
                               return_value=(True, [])), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "upsert_user_ideal_edit",
-                              return_value=True), \
+                 patch.object(v2.db, "compare_and_set_user_ideal_edit",
+                              return_value=_cas_result(row.get("version", 1))), \
                  patch.object(v2.db, "upsert_ideal_decision",
                               return_value=True) as m_led:
                 out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
@@ -194,8 +216,8 @@ class LedgerInheritanceTests(unittest.TestCase):
                               return_value=(True, [])), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "upsert_user_ideal_edit",
-                              return_value=True), \
+                 patch.object(v2.db, "compare_and_set_user_ideal_edit",
+                              return_value=_cas_result(2)), \
                  patch.object(v2.db, "upsert_ideal_decision",
                               side_effect=RuntimeError("boom")):
                 out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
