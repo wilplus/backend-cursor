@@ -11,7 +11,7 @@ Convention
   optionally future ``LOCAL_MODEL`` etc.). Bump them in one place when
   OpenAI deprecates.
 - Each user-facing LLM surface gets its own named ``LLMSpec`` (e.g.
-  ``SPEC_SNIPPET_FOLLOWUP``) so the temperature / max_tokens /
+  ``SPEC_DELIVERY_ALIGNMENT``) so the temperature / max_tokens /
   response_format choice is captured next to the model decision and
   visible at a glance.
 - New LLM surfaces should add their spec here, NOT inline at the
@@ -125,26 +125,6 @@ SPEC_DIRECTIVE_SUGGESTIONS = LLMSpec(
     response_format={"type": "json_object"},
 )
 """Admin's 5-step (now 2-step) directive arc suggestion generator."""
-
-
-SPEC_COACHING_INTRO = LLMSpec(
-    model=CHEAP_MODEL,
-    # Warmth without drift. Mirrors snippet-followup.
-    temperature=0.5,
-    max_tokens=120,
-    response_format={"type": "json_object"},
-)
-"""Personalized intro line for the post-labeling recording session."""
-
-
-SPEC_SNIPPET_FOLLOWUP = LLMSpec(
-    model=CHEAP_MODEL,
-    # Some warmth; not creative writing.
-    temperature=0.4,
-    max_tokens=200,
-    response_format={"type": "json_object"},
-)
-"""One-shot follow-up question after a user labels a snippet (BE-0)."""
 
 
 SPEC_DELIVERY_ALIGNMENT = LLMSpec(

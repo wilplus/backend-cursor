@@ -275,10 +275,6 @@
     "lines": 32,
     "db_calls": 2
   },
-  "routes/v2/coaching.py:_build_user_raw_snippet_list": {
-    "lines": 99,
-    "db_calls": 1
-  },
   "routes/v2/coaching.py:v2_chat_query": {
     "lines": 323,
     "db_calls": 1
@@ -286,30 +282,6 @@
   "routes/v2/coaching.py:v2_chat_session_state": {
     "lines": 138,
     "db_calls": 2
-  },
-  "routes/v2/coaching.py:v2_chat_snippet_followup": {
-    "lines": 158,
-    "db_calls": 1
-  },
-  "routes/v2/coaching.py:v2_coaching_get": {
-    "lines": 42,
-    "db_calls": 2
-  },
-  "routes/v2/coaching.py:v2_coaching_intro_bubble": {
-    "lines": 144,
-    "db_calls": 2
-  },
-  "routes/v2/coaching.py:v2_coaching_start": {
-    "lines": 64,
-    "db_calls": 2
-  },
-  "routes/v2/coaching.py:v2_coaching_state_machine_turn": {
-    "lines": 300,
-    "db_calls": 8
-  },
-  "routes/v2/coaching.py:v2_coaching_turn": {
-    "lines": 179,
-    "db_calls": 5
   },
   "routes/v2/confident_moment_bundles.py:record_confident_moment_root_action": {
     "lines": 130,

@@ -38,7 +38,6 @@ _OAI = "services/openai_service.py"
 # Hence the rule: a route module rename/move updates this map in the SAME
 # commit. The manifest fails loudly (never silently drops coverage), so a
 # green `python -m services.prompts.registry check` is the proof.
-_V2_COACHING = "routes/v2/coaching.py"
 _LIFE = "services/life_engine.py"
 
 REGISTER = {
@@ -57,19 +56,10 @@ REGISTER = {
     #    callers and were deleted, and their entries with them) ──
     "legacy_openai.whisper_priming": SourceRef(_OAI, "OpenAIService.transcribe_audio"),
 
-    # ── coaching chat (routes/v2/coaching.py) ──
-    "coaching.intent_system": SourceRef(_V2_COACHING, "_system_prompt_for_intent"),
-    "coaching.profile_augment": SourceRef(_V2_COACHING, "_augment_coaching_system_prompt"),
-    "coaching.turn": SourceRef(_V2_COACHING, "v2_coaching_turn"),
-    "chat.snippet_followup": SourceRef(_V2_COACHING, "v2_chat_snippet_followup"),
-
-    # ── 9-step structured coaching chat ──
+    # ── 9-step structured coaching chat (founder-signed copy contract; its
+    #    route left with the coaching lane, audit Q-A6) ──
     "coaching_state_machine.system": SourceRef(
         "services/coaching_state_machine.py", "build_state_machine_system_prompt"),
-
-    # ── skills (F2 awareness turns) ──
-    "skill_charisma.awareness": SourceRef("services/skills/charisma.py", "_AWARENESS_PROMPT"),
-    "skill_stress.awareness": SourceRef("services/skills/stress.py", "_AWARENESS_PROMPT"),
 
     # ── Life Panel engine ──
     "life_case.system": SourceRef(_LIFE, "_CASE_SYSTEM"),
@@ -103,7 +93,6 @@ REGISTER = {
         "services/next_session_icebreaker.py", "_llm_generate_question"),
     "next_session_icebreaker.user": SourceRef(
         "services/next_session_icebreaker.py", "_build_user_prompt"),
-    "coaching_intro.builder": SourceRef("services/coaching_intro.py", "generate_intro_line"),
     "baseline_summary.system": SourceRef("services/baseline_summary.py", "_build_system_prompt"),
     "baseline_summary.user": SourceRef("services/baseline_summary.py", "_build_user_prompt"),
     "baseline_summary.context_block": SourceRef(

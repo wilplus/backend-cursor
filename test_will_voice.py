@@ -175,7 +175,6 @@ class IntegrationSmokeTest(unittest.TestCase):
             "services.baseline_summary",
             "services.snippet_drafts",
             "services.next_session_icebreaker",
-            "services.coaching_intro",
             "services.directive_suggestions",
             "services.master_doc_rag",
         ]

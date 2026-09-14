@@ -414,6 +414,11 @@ def v2_explore_arc_best_presentation(arc_id):
     """
     try:
         from services.slide_selection import build_best_presentation
+        if request.args.get("source") == "deck-ref-fallback":
+            # Retirement watch (founder 2026-09-14): the FE's third deck-ref
+            # source (useArcDeckRef) marks its GET. A day of logs with no hit
+            # retires the fallback, then this route.
+            logger.warning("deck_ref_fallback arc=%s", arc_id)
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404

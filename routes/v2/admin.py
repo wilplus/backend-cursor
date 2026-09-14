@@ -250,10 +250,6 @@ def v2_admin_coaching_attempt_annotation_list(attempt_id):
         }), 500
 
 
-@v2_bp.route(
-    "/admin/users/<user_id>/learner-profile-override",
-    methods=["PUT", "DELETE"],
-)
 @v2_bp.route("/public/unsubscribe", methods=["POST"])
 def v2_public_unsubscribe():
     """Token-based unsubscribe from publish-results emails.
@@ -573,70 +569,6 @@ def v2_admin_update_snippet_coaching_rationale(snippet_id):
         return jsonify({
             "code": "V2_ERROR",
             "error": "Failed to save rationale review",
-        }), 500
-
-
-@require_admin
-def v2_admin_delete_user_file(user_id, file_id):
-    """Soft-delete one of ``user_id``'s uploaded files (Task 9).
-
-    Marks ``user_uploaded_files.deleted_at = NOW()`` for the
-    target row. The file disappears from the GET /files list
-    immediately. R2 bytes + row are purged by a weekly cron that
-    sweeps soft-deleted rows.
-
-    Owner-scoping: the path's ``user_id`` is the owner; the
-    helper enforces ``user_id eq + id eq + deleted_at IS NULL``.
-    A file_id that belongs to a different user, or a file that
-    was already soft-deleted, returns 404 — no existence leak.
-
-    Auth: admin only (``@require_admin``).
-
-    Responses:
-      204 — soft-delete succeeded; no body.
-      400 INVALID_INPUT — bad UUID on either path param.
-      404 FILE_NOT_FOUND — file_id doesn't belong to this user,
-                           or row was already soft-deleted.
-      500 V2_ERROR — unexpected.
-    """
-    if not _is_valid_uuid(user_id):
-        return jsonify({
-            "code": "INVALID_INPUT",
-            "error": "user_id must be a valid UUID",
-        }), 400
-    if not _is_valid_uuid(file_id):
-        return jsonify({
-            "code": "INVALID_INPUT",
-            "error": "file_id must be a valid UUID",
-        }), 400
-
-    try:
-        updated = db.soft_delete_user_uploaded_file(
-            file_id=file_id, user_id=user_id,
-        )
-        if not updated:
-            return jsonify({
-                "code": "FILE_NOT_FOUND",
-                "error": "File not found",
-            }), 404
-
-        logger.info(
-            "admin: soft-deleted user file user=%s file=%s "
-            "by admin=%s",
-            user_id, file_id,
-            getattr(request, "user_id", None),
-        )
-        return ("", 204)
-
-    except Exception as e:
-        logger.error(
-            "admin/users/<id>/files/<id> DELETE failed: %s",
-            e, exc_info=True,
-        )
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR",
-            "error": "Failed to delete file",
         }), 500
 
 
