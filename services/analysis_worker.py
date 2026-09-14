@@ -132,14 +132,22 @@ def _run_full_analysis_impl(
     spark_enabled: bool = False,
     progress: ProgressFn = None,
     stage_recorder: Optional[Any] = None,
+    degradation: Optional[Any] = None,
 ) -> Tuple[Dict[str, Any], bool]:
     """Runs the full pipeline to completion. Returns (readout, sent_to_coach).
 
     Transcribe → cut pieces → metrics → persist → cadence → auto-send →
-    arc cards → eager ideal-text. Stage semantics, ordering, and all
-    best-effort try/except behaviour are the closure's, unchanged.
+    arc cards → eager ideal-text. Stage semantics and ordering are the
+    closure's, unchanged. Every best-effort stage runs through
+    ``degradation`` (a ``DegradationLog``, audit Q-C1): the same fallback as
+    before, and the caller's job row names what degraded instead of a log
+    line nobody sees at request time.
     """
+    from services.degradation import DegradationLog
     from services.lab_recording import process_lab_recording
+
+    _deg = (degradation if degradation is not None
+            else DegradationLog("take_analysis"))
 
     with _Timeline(session_id) as tl:
         _emit(progress, "transcribing", 15, "Transcribing your take…")
@@ -192,14 +200,12 @@ def _run_full_analysis_impl(
         # Best-effort by construction. Aggregation that observes the scoring path
         # must never be able to break it — the same rule the drift telemetry
         # inside it already follows.
-        try:
+        def _session_globals() -> None:
             from services.session_metrics import compute_session_global_metrics
             _globals = compute_session_global_metrics(session_id)
             logger.info("lab: session globals sid=%s computed=%s",
                         session_id, _globals is not None)
-        except Exception as _gm_err:
-            logger.warning("lab: session globals failed sid=%s err=%s",
-                           session_id, _gm_err)
+        _deg.run("session_globals", _session_globals)
 
         _emit(progress, "ideal_text", 55, "Building your Ideal Text…")
         tl.mark("ideal_text")
@@ -208,53 +214,43 @@ def _run_full_analysis_impl(
         # arc, invite the NEXT take as a Lounge bubble. Authed only;
         # best-effort + idempotent.
         if user_id and arc_id:
-            try:
+            def _cadence() -> None:
                 from services.session_cadence import fire_arc_start
                 _goal = (db.get_user_profile(user_id) or {}).get("goal")
                 # Always-on (2026-06-17): the framing fires here on take 1.
                 # Idempotent per arc.
                 if take_index == 1:
                     fire_arc_start(user_id, arc_id, goal=_goal)
-            except Exception as _ce:
-                logger.warning("lab: cadence fire failed sid=%s: %s",
-                               session_id, _ce)
+            _deg.run("cadence", _cadence)
 
         # AUTO-SEND to the coach (founder re-lock 2026-07-06, bug #4):
         # EVERY registered recording reaches the coach queue. Idempotent
         # + best-effort; the merge-path send stays the guest fallback.
         sent_local = False
         if user_id:
-            try:
+            def _auto_send() -> bool:
                 from services.lab_send import send_lab_recording_to_coach
                 _send_res = send_lab_recording_to_coach(
                     session_id, str(user_id),
                 )
-                sent_local = bool(_send_res.get("ok"))
                 logger.info(
                     "lab: auto-send sid=%s ok=%s already=%s",
                     session_id, _send_res.get("ok"),
                     _send_res.get("already_sent"),
                 )
-            except Exception as _send_err:
-                logger.warning(
-                    "lab: auto-send failed sid=%s: %s (non-fatal)",
-                    session_id, _send_err,
-                )
+                return bool(_send_res.get("ok"))
+            sent_local = bool(_deg.run("auto_send", _auto_send, False))
 
         # Arc lifecycle cards + notes (founder #1/#11) — idempotent per
         # (arc, kind), best-effort.
         if user_id and arc_id:
-            try:
+            def _arc_cards() -> None:
                 from services.arc_notifications import (
                     fire_human_check_note,
                 )
                 if take_index == 1:
                     fire_human_check_note(db, user_id, arc_id)
-            except Exception as _bpe:
-                logger.warning(
-                    "lab: arc cards failed sid=%s: %s (non-fatal)",
-                    session_id, _bpe,
-                )
+            _deg.run("arc_cards", _arc_cards)
 
         # IDEAL TEXT + TAKE REVIEW (L1 + confirmation gate, 2026-08-26).
         # Take 1 creates the one canonical document. Its generation is NOT
@@ -294,17 +290,13 @@ def _run_full_analysis_impl(
                       "Finding feedback moments…")
                 tl.mark("feedback_moments")
                 if _moment_suggestions_enabled():
-                    try:
+                    def _moment_suggestions() -> None:
                         from services.moment_suggestions import (
                             generate_for_session,
                         )
                         generate_for_session(
                             session_id, arc_id)
-                    except Exception as _ms_err:
-                        logger.warning(
-                            "lab: moment suggestions failed "
-                            "sid=%s: %s (non-fatal)",
-                            session_id, _ms_err)
+                    _deg.run("moment_suggestions", _moment_suggestions)
                 _emit(progress, "speaking_anchors", 90,
                       "Preparing your speaking anchors…")
                 tl.mark("speaking_anchors")
@@ -320,6 +312,7 @@ def _run_full_analysis_impl(
                             source_session_id=session_id,
                             include_suggestion_anchors=(
                                 _moment_suggestions_enabled()),
+                            degradation=_deg,
                         )
                 if _confirmed_row is not None and user_id:
                     from services.arc_notifications import (
@@ -328,14 +321,14 @@ def _run_full_analysis_impl(
                     _new_v = _confirmed_row.get("version") or 1
                     # Spoken take count → the takes-1-and-2 nudge
                     # line (bug token 3c; soft nudge, never a gate).
-                    try:
+                    def _spoken_take_count() -> int:
                         from services.best_presentation import (
                             spoken_arc_sessions,
                         )
-                        _n_spoken = len(spoken_arc_sessions(
+                        return len(spoken_arc_sessions(
                             db.get_arc_sessions(arc_id)))
-                    except Exception:
-                        _n_spoken = None
+                    _n_spoken = _deg.run("spoken_take_count",
+                                         _spoken_take_count, None)
                     fire_ideal_version_ready(
                         db, user_id, arc_id, _new_v,
                         spoken_take_count=_n_spoken)
@@ -344,7 +337,7 @@ def _run_full_analysis_impl(
                     # gets. The assembler has no per-user selection
                     # channel yet, so capture it as structured
                     # metadata (selection-influence = named follow-up).
-                    try:
+                    def _user_edit_signal() -> None:
                         _pe = db.get_user_ideal_edit(arc_id, user_id)
                         if _pe and isinstance(_pe.get("version"), int) \
                                 and _pe["version"] < _new_v:
@@ -355,8 +348,7 @@ def _run_full_analysis_impl(
                                 "selection-influence is a follow-up)",
                                 arc_id, _pe["version"], _new_v,
                                 len(_pe.get("text") or ""))
-                    except Exception:
-                        pass
+                    _deg.run("user_edit_signal", _user_edit_signal)
             except IdealTextUnconfirmedError:
                 # This is the Take 1 success boundary, not optional telemetry.
                 # Queue/daemon/sync dispatchers translate it into the exact
@@ -367,11 +359,7 @@ def _run_full_analysis_impl(
                     # Confirmation is the gate: any unexpected builder/read
                     # fault is also forbidden from falling through to ready.
                     raise IdealTextUnconfirmedError(str(arc_id)) from _ea_err
-                logger.warning(
-                    "lab: post-take feedback stage failed sid=%s: %s "
-                    "(non-fatal)",
-                    session_id, _ea_err,
-                )
+                _deg.record("post_take_feedback", _ea_err)
 
         # THE ACOUSTIC KPI (founder 2026-08-12) — fold this take into the
         # per-part moving average and advance the single-point-focus ratchet.
@@ -390,14 +378,10 @@ def _run_full_analysis_impl(
         # report `kpi` as 0ms forever.
         tl.mark("kpi")
         if arc_id and user_id and recording_kind == "spoken":
-            try:
+            def _part_acoustics() -> None:
                 from services.part_acoustics import fold_session
                 fold_session(arc_id, user_id, session_id)
-            except Exception as _pa_err:
-                logger.warning(
-                    "lab: part acoustics failed sid=%s: %s (non-fatal)",
-                    session_id, _pa_err,
-                )
+            _deg.run("part_acoustics", _part_acoustics)
             # THE ACOUSTIC SWAP OFFER (founder 2026-08-13, stage 4). A locked
             # paragraph is invisible to the ranker, so a later take that
             # finally lands it has no way in — this is the one path that asks.
@@ -411,14 +395,10 @@ def _run_full_analysis_impl(
             # Its own try/except rather than sharing the fold's: a swap that
             # cannot be offered must not look like a KPI that could not be
             # written, and neither may cost the take (LIVE LOOP).
-            try:
+            def _swap_offer() -> None:
                 from services.swap_detector import offer_for_take
                 offer_for_take(arc_id, user_id, session_id)
-            except Exception as _sw_err:
-                logger.warning(
-                    "lab: swap offer failed sid=%s: %s (non-fatal)",
-                    session_id, _sw_err,
-                )
+            _deg.run("swap_offer", _swap_offer)
     # LATER-TAKE TERMINAL BOUNDARY — deliberately after every analysis/KPI/
     # swap stage. Reaching here does NOT by itself mean success: Take 2+ must
     # atomically establish its exact review version and historical snapshot.
@@ -436,7 +416,7 @@ def _run_full_analysis_impl(
             take_session_id=str(session_id),
             take_index=take_index,
         )
-        try:
+        def _review_version_card() -> None:
             from services.arc_notifications import fire_ideal_version_ready
             _announced = fire_ideal_version_ready(
                 db, user_id, arc_id, _review["version"])
@@ -445,11 +425,8 @@ def _run_full_analysis_impl(
                     "lab: review version card was not persisted sid=%s "
                     "arc=%s version=%s",
                     session_id, arc_id, _review["version"])
-        except Exception as _take_result_err:
-            logger.warning(
-                "lab: review version card failed sid=%s: %s (non-fatal)",
-                session_id, _take_result_err,
-            )
+                _deg.note("review_version_card", "card_not_persisted")
+        _deg.run("review_version_card", _review_version_card)
     return readout_local, sent_local
 
 

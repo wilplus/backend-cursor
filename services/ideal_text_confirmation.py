@@ -78,6 +78,7 @@ def build_initial_ideal_text_from_stored_artifacts(
     source_session_id: Optional[str] = None,
     include_suggestion_anchors: bool = False,
     timeout_seconds: float = IDEAL_TEXT_CONFIRM_TIMEOUT_SECONDS,
+    degradation: Optional[Any] = None,
 ) -> dict:
     """Build and confirm Take 1 using already-persisted transcript artifacts.
 
@@ -107,6 +108,10 @@ def build_initial_ideal_text_from_stored_artifacts(
                 require_target=False,
                 include_suggestion_anchors=include_suggestion_anchors,
                 source_session_id=source_session_id,
+                # Only when the caller shares a log: the assembler creates
+                # its own otherwise, and the call stays as it was.
+                **({"degradation": degradation} if degradation is not None
+                   else {}),
             )
             result.append(wait_for_ideal_text_confirmation(
                 database,

@@ -392,10 +392,61 @@ def assemble_ideal_text_block(arc_id: str, *, database=None,
     }
 
 
+def _persist_polish_suggestions(database, arc_id, auto) -> None:
+    """Persist the polish diffs as approvable suggestions (founder
+    2026-07-18) — kind='replace' + trigger='polish', replacement = the
+    light-edited version, so Approve folds verbatim→edited via the existing
+    serve fold. The served text stays verbatim. Never displaces an
+    acoustic/structural star already on that snippet (upsert is
+    snippet-keyed; acoustic stars are stored earlier in the same worker pass,
+    so 'replace'/'structure' win — a polish only lands where the snippet had
+    no other star)."""
+    # Protected phrases (founder 2026-07-20, rule 4a): a polish whose
+    # changed span is wording the speaker uses in >= 2 takes is THEIR
+    # phrasing — the smoothing is never offered.
+    from services.protected_phrases import (
+        collect_take_texts, phrase_recurs,
+    )
+    from services.suggestion_quotes import diff_quote
+    _take_texts = collect_take_texts(database, arc_id)
+    _existing = database.get_moment_suggestions_by_arc(arc_id) or {}
+    for p in (auto.get("polish") or []):
+        _sid = str(p.get("snippet_id"))
+        _prior = _existing.get(_sid)
+        # An acoustic/structural star owns this snippet → leave it.
+        # A prior POLISH row may refresh (a re-record can re-edit).
+        if _prior and _prior.get("trigger") != "polish":
+            continue
+        _edited = (p.get("edited") or "").strip()
+        if not _edited:
+            continue
+        _span = diff_quote(p.get("verbatim"), _edited) \
+            or (p.get("verbatim") or "")
+        if phrase_recurs(_span, _take_texts):
+            continue   # their wording — keep it (rule 4a)
+        database.upsert_moment_suggestion(
+            _sid, str(arc_id), "replace", _edited, None, "polish")
+
+
+def _snapshot_version(database, arc_id, text) -> None:
+    """Per-VERSION snapshot (founder 2026-07-20): freeze this version's text
+    (with anchors) + its pending reasoning, so the version bubble stays
+    readable after later versions supersede it (the GET's ?version form
+    serves it). Sanitized at write time — AC-9/CONSTRUCT hold in storage,
+    not just at serve. Pre-migration → no history, today's behavior."""
+    _row_now = database.get_coach_arc_ideal_text(arc_id) or {}
+    _v_now = _row_now.get("version") or 1
+    _sugs_now = database.get_moment_suggestions_by_arc(arc_id) or {}
+    database.upsert_ideal_text_version(
+        str(arc_id), int(_v_now), text,
+        sanitize_suggestions_snapshot(_sugs_now))
+
+
 def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                               require_target: bool = True,
                               include_suggestion_anchors: bool = False,
-                              source_session_id: Optional[str] = None) -> bool:
+                              source_session_id: Optional[str] = None,
+                              degradation=None) -> bool:
     """EAGER assembly (founder 2026-07-15): called from the analysis pipeline
     when a SPOKEN take completes — the moment the arc's 3rd spoken take is in,
     assemble the draft and PERSIST it as the machine block, so the coach's
@@ -406,9 +457,15 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         (persist_auto_ideal_text's guard);
       * the frozen MACHINE copy (auto_text): always refreshed — a re-record
         improves the free instant surface even mid-coach-edit (2026-07-17).
-    Best-effort: any failure returns False, never raises into the pipeline."""
+    Best-effort: any failure returns False, never raises into the pipeline.
+    Every optional stage names itself in ``degradation`` (a
+    ``DegradationLog``, audit Q-C1) when it falls back; the pipeline passes
+    its run's log so the job row carries the list."""
     if not arc_id:
         return False
+    from services.degradation import DegradationLog
+    log = (degradation if degradation is not None
+           else DegradationLog("ideal_text"))
     try:
         if database is None:
             from services.db import db as database
@@ -450,11 +507,11 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         if include_suggestion_anchors:
             # Star suggestions (2026-07-18): a suggestion-flagged pick gets
             # an in-text anchor so its grey star can attach. Best-effort.
-            try:
-                _extra = set(
-                    database.get_moment_suggestions_by_arc(arc_id) or {})
-            except Exception:
-                _extra = None
+            _extra = log.run(
+                "assembly.suggestion_anchor_ids",
+                lambda: set(
+                    database.get_moment_suggestions_by_arc(arc_id) or {}),
+                None)
         # THE DOCUMENT SOURCE (founder decision 2026-07-20 #1): the full
         # transcript of the latest spoken take, or — flag OFF — the legacy
         # best-moments selection. Everything downstream (persist, version
@@ -505,78 +562,27 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
             logger.info(
                 "ideal_text: eager draft persisted arc=%s chars=%d v=%d",
                 arc_id, len(text), source_take_count)
-        # Persist the polish diffs as approvable suggestions (founder
-        # 2026-07-18) — kind='replace' + trigger='polish', replacement =
-        # the light-edited version, so Approve folds verbatim→edited via the
-        # existing serve fold. The served text stays verbatim. Never displaces
-        # an acoustic/structural star already on that snippet (upsert is
-        # snippet-keyed; acoustic stars are stored earlier in the same worker
-        # pass, so 'replace'/'structure' win — a polish only lands where the
-        # snippet had no other star). Best-effort.
+        # Best-effort stages after the persist, each named when it falls
+        # back: the polish suggestions, the per-version snapshot (AFTER the
+        # polish persist so the step's suggestions are complete), and the
+        # cold-open publication — a write-boundary responsibility; the
+        # student GET intentionally cannot assemble or repair a document, it
+        # only reads the immutable head published here.
         if ok and _polish_as_suggestions_enabled():
-            try:
-                # Protected phrases (founder 2026-07-20, rule 4a): a polish
-                # whose changed span is wording the speaker uses in >= 2
-                # takes is THEIR phrasing — the smoothing is never offered.
-                from services.protected_phrases import (
-                    collect_take_texts, phrase_recurs,
-                )
-                from services.suggestion_quotes import diff_quote
-                _take_texts = collect_take_texts(database, arc_id)
-                _existing = database.get_moment_suggestions_by_arc(arc_id) or {}
-                for p in (auto.get("polish") or []):
-                    _sid = str(p.get("snippet_id"))
-                    _prior = _existing.get(_sid)
-                    # An acoustic/structural star owns this snippet → leave it.
-                    # A prior POLISH row may refresh (a re-record can re-edit).
-                    if _prior and _prior.get("trigger") != "polish":
-                        continue
-                    _edited = (p.get("edited") or "").strip()
-                    if not _edited:
-                        continue
-                    _span = diff_quote(p.get("verbatim"), _edited) \
-                        or (p.get("verbatim") or "")
-                    if phrase_recurs(_span, _take_texts):
-                        continue   # their wording — keep it (rule 4a)
-                    database.upsert_moment_suggestion(
-                        _sid, str(arc_id), "replace", _edited, None, "polish")
-            except Exception as _pe:
-                logger.warning("ideal_text: polish persist failed arc=%s: %s",
-                               arc_id, _pe)
-        # ── Per-VERSION snapshot (founder 2026-07-20): freeze this
-        # version's text (with anchors) + its pending reasoning, so the
-        # version bubble stays readable after later versions supersede it
-        # (the GET's ?version form serves it). Runs AFTER the polish
-        # persist so the step's suggestions are complete. Sanitized at
-        # write time — AC-9/CONSTRUCT hold in storage, not just at serve.
-        # Best-effort; pre-migration → no history, today's behavior. ──
+            log.run("assembly.polish_persist",
+                    lambda: _persist_polish_suggestions(database, arc_id, auto))
         if ok:
-            try:
-                _row_now = database.get_coach_arc_ideal_text(arc_id) or {}
-                _v_now = _row_now.get("version") or 1
-                _sugs_now = database.get_moment_suggestions_by_arc(
-                    arc_id) or {}
-                database.upsert_ideal_text_version(
-                    str(arc_id), int(_v_now), text,
-                    sanitize_suggestions_snapshot(_sugs_now))
-            except Exception as _sv_err:
-                logger.warning(
-                    "ideal_text: version snapshot failed arc=%s: %s",
-                    arc_id, _sv_err)
-            # Cold-open publication is a write-boundary responsibility. The
-            # student GET intentionally cannot assemble or repair a document;
-            # it only reads the immutable head published here.
-            try:
+            log.run("assembly.version_snapshot",
+                    lambda: _snapshot_version(database, arc_id, text))
+
+            def _publish_core() -> None:
                 from services.ideal_text_core_snapshot import publish_for_arc
                 publish_for_arc(database, str(arc_id))
-            except Exception as _core_err:
-                logger.warning(
-                    "ideal_text: core snapshot publish failed arc=%s: %s",
-                    arc_id, _core_err)
+            log.run("assembly.core_snapshot_publish", _publish_core)
         return ok
     except Exception as e:
-        logger.warning("ideal_text: eager assembly failed arc=%s: %s",
-                       arc_id, e)
+        # The whole assembly fell back (False, as always) — and now says so.
+        log.record("assembly", e)
         return False
 
 
