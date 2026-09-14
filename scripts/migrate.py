@@ -41,7 +41,7 @@ WHY NOT SUPABASE CLI / ALEMBIC / ATLAS
     wants Python revisions with down_revision chains; Atlas wants a declarative
     HCL schema. Any of them means rewriting or renaming 239 files that are
     referenced by name across migrations/README.md, docs/*.md and the test
-    suite (test_lounge_kind_migration.py pins a filename), and re-deriving a
+    suite (tests/test_lounge_kind_migration.py pins a filename), and re-deriving a
     history that cannot be re-derived. This runner adopts the same core
     contract those tools implement — ordered versions, a schema_migrations
     ledger, checksum drift detection, run-in-CI — against the files as they

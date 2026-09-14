@@ -1,0 +1,99 @@
+"""Unit tests for services.domains (willab beta §2 — domain enum + seed).
+
+Dependency-free module; no stubs needed.
+
+Run: python3 -m unittest tests.test_domains
+"""
+from __future__ import annotations
+
+import unittest
+
+
+class DomainEnumTests(unittest.TestCase):
+
+    def test_exactly_five_domains(self):
+        from services.domains import VALID_DOMAINS
+        self.assertEqual(len(VALID_DOMAINS), 5)
+
+    def test_canonical_keys(self):
+        from services.domains import VALID_DOMAINS
+        self.assertEqual(set(VALID_DOMAINS), {
+            "public_speaking", "sales", "executive_presence",
+            "customer_service", "interview_prep",
+        })
+
+    def test_is_valid_domain(self):
+        from services.domains import is_valid_domain
+        self.assertTrue(is_valid_domain("sales"))
+        self.assertFalse(is_valid_domain("marketing"))
+        self.assertFalse(is_valid_domain(None))
+        self.assertFalse(is_valid_domain(42))
+        self.assertFalse(is_valid_domain(""))
+
+
+class VocabSeedTests(unittest.TestCase):
+
+    def test_every_domain_has_a_seed(self):
+        from services.domains import VALID_DOMAINS, DOMAIN_VOCABULARY_SEED
+        for d in VALID_DOMAINS:
+            self.assertIn(d, DOMAIN_VOCABULARY_SEED)
+            self.assertTrue(len(DOMAIN_VOCABULARY_SEED[d]) >= 1)
+
+    def test_default_returns_list_copy(self):
+        from services.domains import default_domain_vocabulary
+        out = default_domain_vocabulary("sales")
+        self.assertIsInstance(out, list)
+        self.assertIn("objection", out)
+        # mutating the returned list must not corrupt the seed
+        out.append("XXX")
+        self.assertNotIn("XXX", default_domain_vocabulary("sales"))
+
+    def test_unknown_domain_returns_empty(self):
+        from services.domains import default_domain_vocabulary
+        self.assertEqual(default_domain_vocabulary("nope"), [])
+        self.assertEqual(default_domain_vocabulary(None), [])
+
+    def test_seed_matches_spec_public_speaking(self):
+        """Spot-check one domain against the §2 table verbatim."""
+        from services.domains import default_domain_vocabulary
+        self.assertEqual(
+            default_domain_vocabulary("public_speaking"),
+            ["keynote", "slide", "audience", "podium", "Q&A", "pacing"],
+        )
+
+
+class ResolveWhisperVocabTests(unittest.TestCase):
+    """The auto-seed fallback after the FE dropped the keywords input."""
+
+    def test_explicit_list_wins(self):
+        from services.domains import resolve_whisper_vocab
+        # A non-empty list is kept verbatim (trimmed), domain ignored.
+        self.assertEqual(
+            resolve_whisper_vocab(["Booksy", " ARR "], "sales"),
+            ["Booksy", "ARR"],
+        )
+
+    def test_empty_falls_back_to_domain_seed(self):
+        from services.domains import resolve_whisper_vocab, default_domain_vocabulary
+        self.assertEqual(
+            resolve_whisper_vocab([], "sales"),
+            default_domain_vocabulary("sales"),
+        )
+
+    def test_empty_and_unknown_domain_stays_empty(self):
+        from services.domains import resolve_whisper_vocab
+        self.assertEqual(resolve_whisper_vocab([], None), [])
+        self.assertEqual(resolve_whisper_vocab([], "nope"), [])
+        self.assertEqual(resolve_whisper_vocab(None, None), [])
+
+    def test_blank_only_list_falls_back(self):
+        from services.domains import resolve_whisper_vocab, default_domain_vocabulary
+        # A list of just whitespace is effectively empty → seed.
+        self.assertEqual(
+            resolve_whisper_vocab(["  ", ""], "interview_prep"),
+            default_domain_vocabulary("interview_prep"),
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

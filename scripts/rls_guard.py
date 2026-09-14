@@ -34,7 +34,7 @@ RUNS — the deploy — and says something every time.
 
 WHAT IT CANNOT SEE, AND WHY THAT MATTERS
 ----------------------------------------
-test_migration_security_rules.py already gates the migration FILES in CI. It
+tests/test_migration_security_rules.py already gates the migration FILES in CI. It
 cannot see the live database, so it is blind to a table created in the Supabase
 dashboard, applied by hand, or made by a tool. This reads `pg_class` /
 `pg_proc` directly, so it sees what is actually there. The two layers catch
