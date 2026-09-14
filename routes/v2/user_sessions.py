@@ -37,100 +37,6 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
-@v2_bp.route("/user/results/<session_id>", methods=["GET"])
-@require_auth
-def v2_user_get_results(session_id):
-    """User results endpoint for /results dual-state page.
-
-    Always returns { session_id, status }. Status is determined by:
-      - results_published_at IS NOT NULL → "completed" (admin has reviewed & published)
-      - otherwise → "processing"
-
-    When completed, payload includes non-skipped snippets, neutral acoustic
-    measurements, coach text and audio coordinates. Retired behavioral labels
-    and internal numeric verdicts are never serialized.
-    """
-    try:
-        if not _is_valid_uuid(session_id):
-            return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a valid UUID"}), 400
-
-        user_id = request.user_id
-        session = db.v2_get_session(session_id, user_id)
-        if not session:
-            return jsonify({"code": "NOT_FOUND", "error": "Session not found"}), 404
-
-        # Founder re-lock 2026-07-06: the automatic results read is never
-        # 402-gated (payment scopes only the coach HUMAN layer, and this legacy
-        # route carries the old coaching shape the willab FE doesn't use).
-
-        # Dual-state: admin must explicitly publish before user sees results
-        is_published = bool(session.get("results_published_at"))
-        status = "completed" if is_published else "processing"
-
-        payload = {
-            "session_id": str(session_id),
-            "status": status,
-            "created_at": session.get("created_at"),
-        }
-
-        if status == "completed":
-            snippets = db.v2_get_results_snippets_for_session(session_id, user_id)
-            # Shape each snippet for frontend consumption.
-            #
-            # IMPORTANT: audio_url comes from _resolve_snippet_audio_url
-            # (NOT the raw audio_segment_path column) so:
-            #   - Concat'd session snippets (storage_path =
-            #     session_recordings/<sid>/full.webm) get the R2 audio
-            #     bucket public URL — playable directly in the
-            #     <audio> tag without RLS / signing dance.
-            #   - Student / Path-C rows (storage_path =
-            #     charisma_snippets/<uuid>) get a short-lived Supabase
-            #     signed URL.
-            #   - Legacy rows (audio_segment_path = an absolute URL)
-            #     fall through to that URL.
-            # The previous version returned audio_segment_path verbatim,
-            # which was NULL for every auto_extracted snippet — so the
-            # /results page rendered un-playable cards.
-            #
-            # start_offset_ms ships too so the frontend can clamp
-            # playback when audio_url points at a concat'd full.webm.
-            payload["snippets"] = [
-                {
-                    "id": s.get("id"),
-                    "admin_comment": s.get("admin_comment"),
-                    "audio_url": _resolve_snippet_audio_url(s),
-                    "transcript": s.get("transcript"),
-                    "turn_number": s.get("turn_number"),
-                    "question_text": s.get("question_text"),
-                    "start_offset_ms": s.get("start_offset_ms") or 0,
-                    "duration_ms": s.get("duration_ms"),
-                    # PM-9: the denormalized columns are dead on the live
-                    # path (services/snippet_values), so this returned six
-                    # NULLs. Split-sink unchanged — these are the same raw
-                    # reference figures the user-lane panel already shows,
-                    # with no verdict, flag or characterization attached.
-                    "metrics": resolve_all(s),
-                }
-                for s in snippets
-            ]
-            # Include session-level summary if available.
-            # Phase 18.x split-sinks Option A — prefer the immutable
-            # AI draft over the editable column so admin's narrative
-            # edits don't leak to the user. Legacy fallback when the
-            # draft column is NULL.
-            payload["ai_summary"] = (
-                session.get("session_kpi_narrative_ai_draft")
-                or session.get("ai_task_alignment_comment")
-            )
-
-        return jsonify(payload), 200
-
-    except Exception as e:
-        logger.error("user/results failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch results"}), 500
-
-
 def _metrics_ready(session: dict) -> bool:
     """Task-8 mirror — has the compute-metrics / finalize chain
     populated the session-level aggregates yet?
@@ -1193,7 +1099,7 @@ def v2_user_list_trainings():
         coach_reviewed}], batch_verified, delivered_at, ideal_ready } ] }
     """
     try:
-        from services.best_presentation import TAKES_TARGET
+        from services.slide_selection import TAKES_TARGET
         rows = db.list_user_arc_sessions(request.user_id) or []
         by_arc: dict = {}
         for r in rows:

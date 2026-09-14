@@ -413,7 +413,7 @@ def v2_explore_arc_best_presentation(arc_id):
              404 NOT_FOUND · 500 V2_ERROR
     """
     try:
-        from services.best_presentation import build_best_presentation
+        from services.slide_selection import build_best_presentation
         owned, _ = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
@@ -481,7 +481,7 @@ def v2_explore_arc_progress(arc_id):
     EVERY slide of the ideal text — at 3/3 takes with coach_finalized=false the
     FE shows "Now we are waiting for the coach to assemble your speech!".
     Computed cheaply here (one edits read + the deck size from the sessions
-    already loaded), mirroring services/best_presentation.py's definition —
+    already loaded), mirroring services/slide_selection.py's definition —
     the ideal-text payload stays the authoritative gate.
 
     GUEST-capable: the matching signed Guest ID may read the Project's progress
@@ -493,7 +493,7 @@ def v2_explore_arc_progress(arc_id):
              · 404 · 500
     """
     try:
-        from services.best_presentation import presentation_progress
+        from services.slide_selection import presentation_progress
         sessions = db.get_arc_sessions(arc_id)
         if not sessions:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
@@ -526,7 +526,7 @@ def v2_explore_arc_progress(arc_id):
                 isinstance(_edits.get(i), str) and _edits[i].strip()
                 for i in range(_n_slides)
             )
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         return jsonify({
             # SPOKEN takes only (2026-07-15) — a read never inflates N/3.
             "arc_id": arc_id,
@@ -1192,7 +1192,7 @@ def v2_explore_arc_setup(arc_id):
         if not owned:
             return jsonify({"code": "NOT_FOUND",
                             "error": "project not found"}), 404
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         spoken = spoken_arc_sessions(sessions or [])
         if not spoken:
             return jsonify({"code": "NOT_FOUND",

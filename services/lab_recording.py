@@ -569,7 +569,7 @@ def build_readout_from_session(
     Drafts never leak before publish and an empty feedback-items list is a
     successful "no changes needed" result. This is FREE for every take of
     every arc — no payment check. Only FOUR surfaces stay paid: the coach-
-    corrected ideal text (services/best_presentation.py coach_finalized),
+    corrected ideal text (services/slide_selection.py coach_finalized),
     the cross-take breakthroughs LIST, the game, and the snippet library —
     none of which this function serves.
 

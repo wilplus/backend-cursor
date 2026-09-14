@@ -1834,7 +1834,7 @@ def _previous_spoken_session(arc_id, current_session_id):
     comparison base for cross-take discernment. None when this is the
     first take. Best-effort."""
     try:
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         spoken = spoken_arc_sessions(db.get_arc_sessions(arc_id) or [])
         spoken.sort(key=lambda s: (s.get("take_index") or 0,
                                    s.get("created_at") or ""))

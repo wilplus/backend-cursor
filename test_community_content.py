@@ -611,7 +611,7 @@ class FenceTests(unittest.TestCase):
     def test_l1_no_assembly_module_imports_this_surface(self):
         import inspect
         import importlib
-        for name in ("services.best_presentation", "services.ideal_text_block",
+        for name in ("services.slide_selection", "services.ideal_text_block",
                      "services.ideal_text_report",
                      "services.cross_take_selection",
                      "services.charisma_snippet_service"):

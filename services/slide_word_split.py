@@ -567,9 +567,10 @@ def _promote_token(token: str) -> str:
     lead = token[:len(token) - len(token.lstrip())]
     trail = token[len(token.rstrip()):]
     core = token.strip()
-    m = _UPGRADEABLE_TAIL_RE.search(core)
-    if m is None:
-        m = _CLOSERS_TAIL_RE.search(core)
+    m = _UPGRADEABLE_TAIL_RE.search(core) or _CLOSERS_TAIL_RE.search(core)
+    # _CLOSERS_TAIL_RE is a `*`-quantified group anchored at `$`: it matches
+    # every string (an empty tail at worst), so the fallback never misses.
+    assert m is not None
     return lead + core[:m.start()] + "." + m.group(1) + trail
 
 
@@ -754,7 +755,9 @@ def _contiguous_slide_runs(words_all: Any, slide_advances: Any,
     cur_si = None
     cur: list = []
     for w in ordered:
-        start_ms = int(float(w.get("start")) * 1000)
+        # Same reading as the sort key above: a word with no start sorts
+        # and buckets at 0 instead of raising on float(None).
+        start_ms = int(float(w.get("start") or 0.0) * 1000)
         si = slide_index_for_offset(start_ms, adv)
         si = 0 if not isinstance(si, int) else max(0, min(si, n - 1))
         if si != cur_si:

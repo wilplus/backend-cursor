@@ -30,7 +30,7 @@ def _say_it_stronger(inp: dict) -> Any:
 
 
 def _best_presentation(inp: dict) -> Any:
-    from services.best_presentation import _render_composition
+    from services.slide_selection import _render_composition
     out = _render_composition(inp.get("picks") or [], inp.get("slides") or [])
     if out is None:
         return None

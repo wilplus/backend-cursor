@@ -311,10 +311,6 @@
     "lines": 179,
     "db_calls": 5
   },
-  "routes/v2/coaching.py:v2_onboarding_opener_next": {
-    "lines": 93,
-    "db_calls": 1
-  },
   "routes/v2/confident_moment_bundles.py:record_confident_moment_root_action": {
     "lines": 130,
     "db_calls": 0
@@ -443,22 +439,6 @@
     "lines": 118,
     "db_calls": 4
   },
-  "routes/v2/user_chat.py:_augment_interview_prompt_with_profile": {
-    "lines": 101,
-    "db_calls": 1
-  },
-  "routes/v2/user_chat.py:_build_few_shot_block": {
-    "lines": 82,
-    "db_calls": 1
-  },
-  "routes/v2/user_chat.py:_build_longitudinal_context_block": {
-    "lines": 184,
-    "db_calls": 4
-  },
-  "routes/v2/user_chat.py:v2_user_coaching_self_rating": {
-    "lines": 120,
-    "db_calls": 2
-  },
   "routes/v2/user_sessions.py:_practice_user_payload": {
     "lines": 57,
     "db_calls": 2
@@ -482,10 +462,6 @@
   "routes/v2/user_sessions.py:v2_start_confident_voice_practice": {
     "lines": 136,
     "db_calls": 9
-  },
-  "routes/v2/user_sessions.py:v2_user_get_results": {
-    "lines": 90,
-    "db_calls": 2
   },
   "routes/v2/user_sessions.py:v2_user_get_session_readout": {
     "lines": 108,

@@ -22,7 +22,7 @@ def build_ideal_text_report(talk_id: Optional[str], *, database=None) -> dict:
     """The Ideal-Text report for a talk (arc). Best-effort — an arc with <3
     takes still returns its slides with ready=False (the FE shows the
     not-ready state, the route's paywall gate runs first)."""
-    from services.best_presentation import build_best_presentation
+    from services.slide_selection import build_best_presentation
 
     bp = build_best_presentation(talk_id, database=database)
     slides = bp.get("slides") or []

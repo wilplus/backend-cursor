@@ -12,7 +12,7 @@ comma fix would mark 20,000 characters as "corrected".
 WHY VERIFY (and not "coach_finalized"). The founder's spec said "at the
 coach_finalized event", but `coach_finalized` is not an event — it is a
 COMPUTED read over best-presentation edits (routes/v2_routes.py, mirroring
-services/best_presentation.py) that never fires anywhere. The actual
+services/slide_selection.py) that never fires anywhere. The actual
 finalize act on the ideal text is VERIFY: db.verify_ideal_text snapshots
 verified_text/verified_version and — load-bearing here — returns 'already'
 when the version is unchanged, so emission inherits exactly-once-per-version

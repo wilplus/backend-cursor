@@ -1922,7 +1922,7 @@ def v2_coach_arc_best_presentation(arc_id):
     `text` regardless of coach_finalized.
     """
     try:
-        from services.best_presentation import build_best_presentation
+        from services.slide_selection import build_best_presentation
         return jsonify({
             "arc_id": arc_id,
             **build_best_presentation(arc_id, coach_view=True),
@@ -1976,7 +1976,7 @@ def v2_coach_get_ideal_text(arc_id):
             assemble_ideal_text_block, extract_key_moments,
             maybe_assemble_ideal_text,
         )
-        from services.best_presentation import (
+        from services.slide_selection import (
             TAKES_TARGET, spoken_arc_sessions,
         )
         _arc_sessions = db.get_arc_sessions(arc_id)
@@ -2422,7 +2422,7 @@ def v2_coach_arc_review_state(arc_id):
                 "publish_payload": publish_payload,
             })
 
-        from services.best_presentation import TAKES_TARGET
+        from services.slide_selection import TAKES_TARGET
         row = db.get_coach_arc_ideal_text(arc_id) or {}
         _ideal_text = (row.get("text") or "").strip()
         _approved = bool(row.get("approved_at"))
@@ -3735,7 +3735,7 @@ def v2_coach_ab_pairs(arc_id):
     try:
         from services.ab_slide_pairs import build_pairs
         from services.audio_ref_resolver import resolve_playable_ref
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id) or [])
         if len(sessions) < 2:
             return jsonify({"arc_id": arc_id, "pairs": [],

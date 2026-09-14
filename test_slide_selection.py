@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import unittest
 
-import services.best_presentation as bp
+import services.slide_selection as bp
 
 
 def _cand(slide_index, sid, confidence, **kw):

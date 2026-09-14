@@ -61,7 +61,7 @@ def test_protected_user_data_modules_do_not_import_provider_client():
         "services/analysis_worker.py",
         "services/recording_transcription.py",
         "services/recording_piece_analysis.py",
-        "services/best_presentation.py",
+        "services/slide_selection.py",
         "services/coach_comment_drafter.py",
         "services/master_doc_rag.py",
         "services/moment_suggestions.py",

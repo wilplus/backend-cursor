@@ -31,7 +31,7 @@ _FAKE_BP = {
 class IdealTextReportTests(unittest.TestCase):
     def _build(self, bp=None):
         with mock.patch(
-            "services.best_presentation.build_best_presentation",
+            "services.slide_selection.build_best_presentation",
             return_value=(bp if bp is not None else _FAKE_BP),
         ):
             return build_ideal_text_report("arc1")
@@ -71,7 +71,7 @@ class IdealTextReportTests(unittest.TestCase):
 class KeyPhrasesMappingTests(unittest.TestCase):
     def test_key_phrases_map_to_camel_case(self):
         with mock.patch(
-            "services.best_presentation.build_best_presentation",
+            "services.slide_selection.build_best_presentation",
             return_value=_FAKE_BP,
         ):
             out = build_ideal_text_report("arc1")
@@ -83,7 +83,7 @@ class KeyPhrasesMappingTests(unittest.TestCase):
 class SnippetIdMappingTests(unittest.TestCase):
     def test_snippet_id_maps_to_camel_case(self):
         with mock.patch(
-            "services.best_presentation.build_best_presentation",
+            "services.slide_selection.build_best_presentation",
             return_value=_FAKE_BP,
         ):
             out = build_ideal_text_report("arc1")

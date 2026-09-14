@@ -216,7 +216,7 @@ def build_transcript_document(arc_id: Any, *, database=None,
     try:
         if database is None:
             from services.db import db as database
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         from services.transcript_smoothing import (
             finalize_document, smooth_piece,
         )

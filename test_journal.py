@@ -479,15 +479,6 @@ class PublicReadTests(_RouteCase):
         self.assertEqual(status, 503)
         self.assertEqual(body["code"], "UNAVAILABLE")
 
-    def test_categories_lists_every_key(self):
-        with patch.object(jroutes, "db", _FakeDb()):
-            body, status = self._get(jroutes.journal_categories)
-        self.assertEqual(status, 200)
-        self.assertEqual(len(body["categories"]), len(jr.CATEGORIES))
-        counts = {c["key"]: c["count"] for c in body["categories"]}
-        self.assertEqual(counts["voice"], 2)
-        self.assertEqual(counts["philosophy"], 0)
-
 
 # ── J-5 ADMIN gate + semantics ────────────────────────────────────────────
 

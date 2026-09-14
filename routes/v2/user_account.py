@@ -405,56 +405,6 @@ def v2_user_put_sharing_consent():
         }), 500
 
 
-@v2_bp.route("/user/kpi/timeline", methods=["GET"])
-@require_auth
-def v2_user_kpi_timeline():
-    """Return the user's session-by-session KPI trajectory.
-
-    M1.1 raw mode — per-session scores, no smoothing, no per-intent
-    cuts. The smoothing layer ships in a follow-up once we have
-    real distributions; the `smoothed_kpi` field will be additive
-    so FE chart code keeps rendering across the rollout.
-
-    Query params:
-      limit (int, optional, default 200) — max series length
-
-    Response 200:
-      Shape documented in services.kpi_timeline.build_user_kpi_timeline.
-
-    Response 401: missing auth (handled by decorator).
-    Response 500: unexpected (FE should fall back to empty chart).
-    """
-    try:
-        user_id = request.user_id
-        limit_raw = request.args.get("limit")
-        limit = 200
-        if limit_raw:
-            try:
-                limit = max(1, min(int(limit_raw), 500))
-            except ValueError:
-                pass  # silently coerce to default; non-blocking
-
-        from services.kpi_timeline import build_user_kpi_timeline
-        payload = build_user_kpi_timeline(user_id, limit=limit)
-        return jsonify(payload), 200
-
-    except Exception as e:
-        logger.error(
-            "user/kpi/timeline failed: %s", e, exc_info=True,
-        )
-        sentry_sdk.capture_exception(e)
-        # Soft-fail: return an empty payload so the FE chart renders
-        # its empty state rather than an error banner. Shape mirrors
-        # build_user_kpi_timeline — KPI fields removed per AC-9 (KPI
-        # is private-lane / coach-side; never user-facing).
-        return jsonify({
-            "series": [],
-            "summary": {
-                "sessions_count": 0,
-            },
-        }), 200
-
-
 # ── willab beta — user profile / intake (design §2, contract §3.1) ──
 #
 # The one-time, non-recording intake: the user picks a domain (one of

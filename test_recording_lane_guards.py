@@ -188,7 +188,7 @@ class SpokenOnlyIsArcTruthTests(unittest.TestCase):
     quietly let reads back in."""
 
     def test_spoken_arc_sessions_drops_reads_and_paired_rows(self):
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         rows = [
             {"id": "t1", "take_index": 1},
             {"id": "r1", "take_index": 1, "recording_kind": "read",
@@ -279,7 +279,7 @@ class RankingPoolExclusionAuditTests(unittest.TestCase):
     def test_read_snippets_never_enter_selection(self):
         # End-to-end: even a newer, higher-scoring, coach-challenge-
         # labeled read never surfaces in the composed slides.
-        from services import best_presentation as bp
+        from services import slide_selection as bp
         _orig = bp._render_composition
         bp._render_composition = lambda picks, slides: None
         try:

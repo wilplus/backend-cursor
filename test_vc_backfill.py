@@ -219,7 +219,7 @@ class CacheSignatureTests(unittest.TestCase):
         """Without this a backfilled arc keeps serving picks made under the
         retired weighting until something unrelated invalidates it — so the
         repair would land arc-by-arc at random times."""
-        from services import best_presentation as bp
+        from services import slide_selection as bp
         sessions = [{"id": "a", "take_index": 1, "results_published_at": ""}]
         before = bp._bp_signature(sessions)
         with unittest.mock.patch(
@@ -228,7 +228,7 @@ class CacheSignatureTests(unittest.TestCase):
         self.assertNotEqual(before, after)
 
     def test_the_ranking_flag_still_moves_the_signature(self):
-        from services import best_presentation as bp
+        from services import slide_selection as bp
         sessions = [{"id": "a", "take_index": 1, "results_published_at": ""}]
         with unittest.mock.patch.dict(
                 "os.environ", {"VOICE_CONFIDENCE_RANKING_ENABLED": "0"}):

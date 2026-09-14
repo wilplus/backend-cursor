@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, send_from_directory, request, redirect
+from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 import os
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -252,22 +252,6 @@ def health_trailing():
 def api_health():
     """Health at /api/health in case frontend or BFF uses this path."""
     return _health_response()
-
-
-@app.route("/api/admin/students", methods=["GET"])
-def api_admin_students_alias():
-    """Compatibility alias for callers using /api/admin/* directly against backend."""
-    qs = request.query_string.decode().strip()
-    target = "/v2/admin/students"
-    if qs:
-        target = f"{target}?{qs}"
-    return redirect(target, code=308)
-
-
-@app.route("/api/admin/students/<user_id>", methods=["GET", "PATCH", "DELETE"])
-def api_admin_student_alias(user_id):
-    """Compatibility alias for callers using /api/admin/* directly against backend."""
-    return redirect(f"/v2/admin/students/{user_id}", code=308)
 
 # Serve static assets (e.g. coach avatar for assignment email)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")

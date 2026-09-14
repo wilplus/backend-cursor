@@ -344,7 +344,7 @@ def _with_metrics(pieces: Any, arc_id: Any, database) -> list:
     if not rows:
         return []
     try:
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         sess_ids = [
             s.get("id")
             for s in spoken_arc_sessions(database.get_arc_sessions(arc_id))

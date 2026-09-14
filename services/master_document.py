@@ -100,7 +100,7 @@ def build_skeleton(arc_id: Any, database) -> list:
     while historical master-document rows still have compatibility readers.
     Best-effort."""
     try:
-        from services.best_presentation import spoken_arc_sessions
+        from services.slide_selection import spoken_arc_sessions
         from services.transcript_document import build_transcript_document
         spoken = spoken_arc_sessions(database.get_arc_sessions(arc_id) or [])
         if not spoken:

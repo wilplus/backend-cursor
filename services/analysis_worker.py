@@ -190,7 +190,6 @@ def _run_full_analysis_impl(
         #                                   canonical metrics-computed signal"
         #   routes/v2/coaching.py           feeds the coaching state machine, so
         #                                   target_dynamic_db was never derived
-        #   routes/v2/user_chat.py          reads the latest session's globals
         #   routes/v2/admin.py              admin session view
         #
         # HERE is the right call site: process_lab_recording has just persisted
@@ -322,7 +321,7 @@ def _run_full_analysis_impl(
                     # Spoken take count → the takes-1-and-2 nudge
                     # line (bug token 3c; soft nudge, never a gate).
                     def _spoken_take_count() -> int:
-                        from services.best_presentation import (
+                        from services.slide_selection import (
                             spoken_arc_sessions,
                         )
                         return len(spoken_arc_sessions(

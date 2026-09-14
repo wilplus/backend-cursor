@@ -415,7 +415,7 @@ class L1FenceTests(unittest.TestCase):
     composed/selected TEXT itself."""
 
     def test_compose_text_identical_with_and_without_suggestions(self):
-        from services import best_presentation as bp
+        from services import slide_selection as bp
         sis = {"already_strong": False,
                "upgrades": [{"original": "weak", "upgrade": "strong",
                              "reason": None}],
@@ -453,7 +453,7 @@ class L1FenceTests(unittest.TestCase):
         # Ranking/selection (select_best_per_slide) must not consult the
         # suggestion object — grep its function body only.
         import inspect
-        from services import best_presentation as bp
+        from services import slide_selection as bp
         body = inspect.getsource(bp.select_best_per_slide)
         self.assertNotIn("say_it_stronger", body)
 

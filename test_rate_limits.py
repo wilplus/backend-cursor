@@ -434,8 +434,9 @@ class RealRouteTransparencyTests(unittest.TestCase):
             for name in expected:
                 capped[name] = mod
         # Phase-2 corpus/training and retired coaching-chat routes are absent
-        # from the active paid-route registry in Phase 1.
-        self.assertGreaterEqual(len(capped), 23, "route list went stale")
+        # from the active paid-route registry in Phase 1; the two onboarding
+        # opener routes left in Phase 6 (audit Q-A7, no frontend caller).
+        self.assertGreaterEqual(len(capped), 21, "route list went stale")
         for name, mod in capped.items():
             with self.subTest(route=name):
                 view = getattr(mod, name, None)
@@ -477,12 +478,8 @@ class CoveredRoutesTests(unittest.TestCase):
             "v2_coach_session_recut": "heavy_limit",
             "v2_coach_session_video": "heavy_limit",
         },
-        "routes/v2/user_chat.py": {
-        },
         "routes/v2/coaching.py": {
             "v2_chat_query": "llm_limit",
-            "v2_onboarding_opener_next": "llm_limit",
-            "v2_onboarding_opener_start": "llm_limit",
         },
         "routes/v2/admin.py": {
             "v2_admin_regenerate_next_session_icebreaker": "regenerate_limit",

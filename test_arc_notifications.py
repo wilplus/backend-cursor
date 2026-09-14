@@ -67,7 +67,7 @@ def _snip(sid):
 class BestPresentationCardTests(unittest.TestCase):
     # Founder #1: the best-presentation buttons appear ONLY when the coach has
     # FINALIZED the ideal text (corrected every slide — the real signal from
-    # services.best_presentation) AND the arc is paid; otherwise the
+    # services.slide_selection) AND the arc is paid; otherwise the
     # transcript card.
     def _sessions(self, n, **kw):
         return [_sess(sid=f"s{i}", **kw) for i in range(n)]

@@ -38,7 +38,6 @@ _OAI = "services/openai_service.py"
 # Hence the rule: a route module rename/move updates this map in the SAME
 # commit. The manifest fails loudly (never silently drops coverage), so a
 # green `python -m services.prompts.registry check` is the proof.
-_V2_CHAT = "routes/v2/user_chat.py"
 _V2_COACHING = "routes/v2/coaching.py"
 _LIFE = "services/life_engine.py"
 
@@ -58,13 +57,7 @@ REGISTER = {
     #    callers and were deleted, and their entries with them) ──
     "legacy_openai.whisper_priming": SourceRef(_OAI, "OpenAIService.transcribe_audio"),
 
-    # ── interview / coaching chat (routes/v2/user_chat.py) ──
-    "interview.system": SourceRef(_V2_CHAT, "_INTERVIEW_SYSTEM_PROMPT"),
-    "interview.llm_question": SourceRef(_V2_CHAT, "_generate_llm_question"),
-    "interview.few_shot_block": SourceRef(_V2_CHAT, "_build_few_shot_block"),
-    "interview.longitudinal_block": SourceRef(_V2_CHAT, "_build_longitudinal_context_block"),
-    "interview.master_score_block": SourceRef(_V2_CHAT, "_build_master_score_block"),
-    "interview.profile_augment": SourceRef(_V2_CHAT, "_augment_interview_prompt_with_profile"),
+    # ── coaching chat (routes/v2/coaching.py) ──
     "coaching.intent_system": SourceRef(_V2_COACHING, "_system_prompt_for_intent"),
     "coaching.profile_augment": SourceRef(_V2_COACHING, "_augment_coaching_system_prompt"),
     "coaching.turn": SourceRef(_V2_COACHING, "v2_coaching_turn"),
@@ -111,8 +104,6 @@ REGISTER = {
     "next_session_icebreaker.user": SourceRef(
         "services/next_session_icebreaker.py", "_build_user_prompt"),
     "coaching_intro.builder": SourceRef("services/coaching_intro.py", "generate_intro_line"),
-    "onboarding_opener.builder": SourceRef(
-        "services/onboarding_opener.py", "generate_punchline_ack"),
     "baseline_summary.system": SourceRef("services/baseline_summary.py", "_build_system_prompt"),
     "baseline_summary.user": SourceRef("services/baseline_summary.py", "_build_user_prompt"),
     "baseline_summary.context_block": SourceRef(
