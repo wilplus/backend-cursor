@@ -18,12 +18,13 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import canonical_publish as v2_canonical_publish
+    from routes.v2 import user_sessions as v2_user_sessions
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -56,7 +57,7 @@ class UserTrainingsTests(unittest.TestCase):
     def _call(self):
         with self.app.test_request_context():
             request.user_id = "u1"
-            resp, status = v2.v2_user_list_trainings.__wrapped__()
+            resp, status = v2_user_sessions.v2_user_list_trainings.__wrapped__()
             return resp.get_json(), status
 
     def test_groups_by_arc_and_includes_deckless(self):
@@ -78,13 +79,13 @@ class UserTrainingsTests(unittest.TestCase):
              "intake_context": {"topic": "No-deck story"},
              "results_published_at": None},
         ]
-        with patch.object(v2.db, "list_user_arc_sessions",
+        with patch.object(db, "list_user_arc_sessions",
                           return_value=rows), \
-             patch.object(v2.db, "list_arc_batch_deliveries",
+             patch.object(db, "list_arc_batch_deliveries",
                           return_value={"a2": {
                               "arc_id": "a2",
                               "published_at": "2026-07-13T08:00:00Z"}}), \
-             patch.object(v2.db, "get_coach_best_presentation_edits",
+             patch.object(db, "get_coach_best_presentation_edits",
                           return_value={}):
             body, status = self._call()
         self.assertEqual(status, 200)
@@ -109,8 +110,8 @@ class UserTrainingsTests(unittest.TestCase):
         self.assertEqual(trainings[0]["arc_id"], "a2")
 
     def test_no_arcs_empty_list(self):
-        with patch.object(v2.db, "list_user_arc_sessions", return_value=[]), \
-             patch.object(v2.db, "list_arc_batch_deliveries",
+        with patch.object(db, "list_user_arc_sessions", return_value=[]), \
+             patch.object(db, "list_arc_batch_deliveries",
                           return_value={}):
             body, status = self._call()
         self.assertEqual(status, 200)
@@ -124,11 +125,11 @@ class UserTrainingsTests(unittest.TestCase):
                                "slides": [{"title": "A"}, {"title": "B"}]},
             "results_published_at": None,
         }]
-        with patch.object(v2.db, "list_user_arc_sessions",
+        with patch.object(db, "list_user_arc_sessions",
                           return_value=rows), \
-             patch.object(v2.db, "list_arc_batch_deliveries",
+             patch.object(db, "list_arc_batch_deliveries",
                           return_value={}), \
-             patch.object(v2.db, "get_coach_best_presentation_edits",
+             patch.object(db, "get_coach_best_presentation_edits",
                           return_value={0: "Edited.", 1: "Also edited."}):
             body, status = self._call()
         self.assertTrue(body["trainings"][0]["ideal_ready"])
@@ -147,7 +148,7 @@ class CanonicalPublishRouteTests(unittest.TestCase):
     def _call(self, body):
         with self.app.test_request_context(json=body):
             request.user_id = "44444444-4444-4444-8444-444444444444"
-            out = v2.v2_internal_publish_session_results.__wrapped__()
+            out = v2_canonical_publish.v2_internal_publish_session_results.__wrapped__()
             response, status = out if isinstance(out, tuple) else (out, 200)
             return response.get_json(), status
 

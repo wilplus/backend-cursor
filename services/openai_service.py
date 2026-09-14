@@ -42,10 +42,10 @@ class OpenAIService:
         """Resolve model from runtime_config, then env, then hard default."""
         base_default = "gpt-4o-mini"
         env_fallback = (
-            os.getenv("OPENAI_COPILOT_MODEL")
+            config.OPENAI_COPILOT_MODEL
             if purpose == "copilot"
-            else os.getenv("OPENAI_CHAT_MODEL")
-        ) or os.getenv("OPENAI_COPILOT_MODEL") or os.getenv("OPENAI_CHAT_MODEL")
+            else config.OPENAI_CHAT_MODEL
+        ) or config.OPENAI_COPILOT_MODEL or config.OPENAI_CHAT_MODEL
         now = time.time()
         cached = self._model_cache.get(purpose)
         if cached and (now - cached[0]) < 60:

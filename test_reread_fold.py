@@ -26,12 +26,13 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from routes.v2 import coach as v2_coach
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 SPOKEN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -67,7 +68,7 @@ class SpokenTakesAndReadsTests(unittest.TestCase):
              "created_at": "2026-07-16T11:00:00Z"},
             {"id": "legacy", "take_index": 2},   # pre-migration → spoken
         ]
-        spoken, reads = v2._spoken_takes_and_reads(rows)
+        spoken, reads = v2_arcs._spoken_takes_and_reads(rows)
         self.assertEqual([s["id"] for s in spoken], ["s1", "legacy"])
         self.assertEqual([r["id"] for r in reads["s1"]], ["r1", "r2"])
 
@@ -82,7 +83,7 @@ class FoldReadsOutOfQueueTests(unittest.TestCase):
             {"id": "r1", "recording_kind": "read", "paired_session_id": "s1"},
             {"id": "s2"},
         ]
-        out = v2.db.fold_reads_out_of_queue(rows)
+        out = db.fold_reads_out_of_queue(rows)
         self.assertEqual([r["id"] for r in out], ["s1", "s2"])
         self.assertTrue(out[0].get("has_reread"))
         self.assertFalse(out[1].get("has_reread"))
@@ -92,7 +93,7 @@ class FoldReadsOutOfQueueTests(unittest.TestCase):
             {"id": "r1", "paired_session_id": "elsewhere"},  # kind missing
             {"id": "legacy-row"},                            # no fold columns
         ]
-        out = v2.db.fold_reads_out_of_queue(rows)
+        out = db.fold_reads_out_of_queue(rows)
         self.assertEqual([r["id"] for r in out], ["legacy-row"])
 
 
@@ -120,20 +121,20 @@ class CoachGetFoldTests(unittest.TestCase):
         }
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value=_session_row()), \
-                 patch.object(v2.db, "get_user_proficient_languages",
+                 patch.object(db, "get_user_proficient_languages",
                               return_value=["en"]), \
-                 patch.object(v2.db, "claim_coach_review",
+                 patch.object(db, "claim_coach_review",
                               return_value={"assigned_to": "coach1",
                                             "claimed": True}), \
-                 patch.object(v2.db, "stamp_review_opened") as m_open, \
-                 patch.object(v2.db, "get_read_sessions_for",
+                 patch.object(db, "stamp_review_opened") as m_open, \
+                 patch.object(db, "get_read_sessions_for",
                               return_value=read_sessions), \
-                 patch.object(v2.db, "get_coach_snippet_drafts",
+                 patch.object(db, "get_coach_snippet_drafts",
                               return_value=[]), \
                  patch.object(
-                     v2.db, "get_own_state_ratings_for_session",
+                     db, "get_own_state_ratings_for_session",
                      side_effect=lambda sid, _rater: {
                          SPOKEN: {
                              PSNIP1: {"value": "yes"},
@@ -141,11 +142,11 @@ class CoachGetFoldTests(unittest.TestCase):
                          },
                          READ: {RSNIP: {"value": "no"}},
                      }.get(str(sid), {})), \
-                 patch.object(v2.db, "get_feelings_by_session",
+                 patch.object(db, "get_feelings_by_session",
                               return_value=[]), \
                  patch("services.lab_recording.build_readout_from_session",
                        side_effect=lambda sid, **kw: readouts[sid]):
-                resp, status = v2.v2_coach_get_session.__wrapped__(SPOKEN)
+                resp, status = v2_coach.v2_coach_get_session.__wrapped__(SPOKEN)
         return resp.get_json(), status, m_open
 
     def test_read_snippets_appended_stamped_and_reindexed(self):
@@ -217,18 +218,18 @@ class SnippetWriteRoutingTests(unittest.TestCase):
     def _save_snippet(self, snippet_id):
         with self.app.test_request_context(json={"note": "key moment"}):
             request.user_id = "coach1"
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value=_session_row()), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(db, "get_snippets_by_session",
                               side_effect=lambda sid: self._snips.get(
                                   str(sid), [])), \
-                 patch.object(v2.db, "get_read_sessions_for",
+                 patch.object(db, "get_read_sessions_for",
                               return_value=[{"id": READ}]), \
-                 patch.object(v2.db, "get_coach_snippet_drafts",
+                 patch.object(db, "get_coach_snippet_drafts",
                               return_value=[]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes:
-                resp, status = v2.v2_coach_save_snippet.__wrapped__(
+                resp, status = v2_coach.v2_coach_save_snippet.__wrapped__(
                     SPOKEN, snippet_id)
         return resp.get_json(), status, m_lanes
 
@@ -265,18 +266,18 @@ class SaveFeedbackRoutingTests(unittest.TestCase):
         snips = {SPOKEN: [{"id": PSNIP1}], READ: [{"id": RSNIP}]}
         with self.app.test_request_context(json=body):
             request.user_id = "coach1"
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value=_session_row()), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(db, "get_snippets_by_session",
                               side_effect=lambda sid: snips.get(
                                   str(sid), [])), \
-                 patch.object(v2.db, "get_read_sessions_for",
+                 patch.object(db, "get_read_sessions_for",
                               return_value=[{"id": READ}]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes, \
-                 patch.object(v2.db, "set_session_feedback_saved",
+                 patch.object(db, "set_session_feedback_saved",
                               return_value=True) as m_save:
-                resp, status = v2.v2_coach_save_feedback.__wrapped__(SPOKEN)
+                resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(SPOKEN)
         self.assertEqual(status, 200)
         self.assertEqual(resp.get_json()["snippets_saved"], 2)
         # lanes routed per owner
@@ -290,14 +291,14 @@ class SaveFeedbackRoutingTests(unittest.TestCase):
         with self.app.test_request_context(
                 json={"snippets": [{"id": READ2, "note": "x"}]}):
             request.user_id = "coach1"
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value=_session_row()), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(db, "get_snippets_by_session",
                               return_value=[{"id": PSNIP1}]), \
-                 patch.object(v2.db, "get_read_sessions_for",
+                 patch.object(db, "get_read_sessions_for",
                               return_value=[]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes") as m_lanes:
-                resp, status = v2.v2_coach_save_feedback.__wrapped__(SPOKEN)
+                resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(SPOKEN)
         self.assertEqual(status, 404)
         m_lanes.assert_not_called()
 
@@ -312,15 +313,15 @@ class QueueRowShapeTests(unittest.TestCase):
         app = Flask(__name__)
         with app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "list_review_queue",
+            with patch.object(db, "list_review_queue",
                               return_value=[row]), \
-                 patch.object(v2.db, "get_user_proficient_languages",
+                 patch.object(db, "get_user_proficient_languages",
                               return_value=["en"]), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(db, "get_snippets_by_session",
                               return_value=[]), \
-                 patch.object(v2.db, "get_coach_snippet_drafts",
+                 patch.object(db, "get_coach_snippet_drafts",
                               return_value=[]):
-                resp, status = v2.v2_coach_queue.__wrapped__()
+                resp, status = v2_coach.v2_coach_queue.__wrapped__()
         self.assertEqual(status, 200)
         out = resp.get_json()
         self.assertEqual(len(out), 1)
@@ -346,15 +347,15 @@ class DrilldownFoldTests(unittest.TestCase):
         app = Flask(__name__)
         with app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_user_profile",
+            with patch.object(db, "get_user_profile",
                               return_value={"domain": "d", "goal": "g"}), \
-                 patch.object(v2.db, "v2_list_user_lab_sessions",
+                 patch.object(db, "v2_list_user_lab_sessions",
                               return_value=rows), \
-                 patch.object(v2.db, "get_feelings_by_sessions",
+                 patch.object(db, "get_feelings_by_sessions",
                               return_value=[]), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=None):
-                resp, status = v2.v2_coach_student_detail.__wrapped__(uid)
+                resp, status = v2_coach.v2_coach_student_detail.__wrapped__(uid)
         self.assertEqual(status, 200)
         sessions = resp.get_json()["sessions"]
         self.assertEqual([s["session_id"] for s in sessions], [SPOKEN])
@@ -398,11 +399,11 @@ class LabSendEmailGateTests(unittest.TestCase):
 
     def _send(self, session_row):
         from services.lab_send import send_lab_recording_to_coach
-        with patch.object(v2.db, "v2_get_session_by_id",
+        with patch.object(db, "v2_get_session_by_id",
                           return_value=session_row), \
-             patch.object(v2.db, "v2_mark_session_pending_review",
+             patch.object(db, "v2_mark_session_pending_review",
                           return_value=True), \
-             patch.object(v2.db, "get_snippets_by_session",
+             patch.object(db, "get_snippets_by_session",
                           return_value=[]), \
              patch("services.session_publish._send_admin_notification") \
                 as m_mail:

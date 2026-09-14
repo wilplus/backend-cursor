@@ -28,6 +28,7 @@ from services.prior_take_changes import (
     build_prior_take_changes,
     why_key,
 )
+from config import Config
 
 
 def _p(sid, text, take=1, start=None, end=None):
@@ -228,12 +229,12 @@ class BuildChangesTests(unittest.TestCase):
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -252,16 +253,14 @@ class DecideEndpointTests(unittest.TestCase):
         from unittest.mock import patch
         with self.app.test_request_context(json=body):
             request.user_id = "u1"
-            with patch.dict("os.environ",
-                            {"LIVING_TRANSCRIPT_ENABLED":
-                             "1" if flag else "0"}), \
+            with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)), \
                  patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(owned, [])), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value={"version": 3}), \
-                 patch.object(v2.db, "upsert_ideal_decision",
+                 patch.object(db, "upsert_ideal_decision",
                               return_value=True) as m_led:
-                out = v2.v2_explore_decide_prior_take.__wrapped__(self.ARC)
+                out = v2_explore_ideal_text.v2_explore_decide_prior_take.__wrapped__(self.ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_led
 

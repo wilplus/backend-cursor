@@ -5,7 +5,8 @@ are leaf primitives -- an id validator, the upload size limits, and the two
 recording-pipeline feature flags -- with no route of their own, so they live
 here rather than in any single domain module.
 
-Re-exported from ``routes.v2_routes`` for import compatibility.
+Formerly re-exported from the ``routes.v2_routes`` façade (removed 2026-09-14,
+audit Q-A3); import from this module.
 """
 import logging
 import os

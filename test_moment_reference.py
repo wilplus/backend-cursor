@@ -22,12 +22,13 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from routes.v2 import coach as v2_coach
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 SNIP = "aaaa1111-aaaa-1111-aaaa-111111111111"
@@ -46,9 +47,9 @@ class ResolveTests(unittest.TestCase):
     """R-2 — resolution happens at read time and fails CLOSED."""
 
     def _resolve(self, slug, post):
-        with patch.object(v2.db, "get_journal_post_by_slug",
+        with patch.object(db, "get_journal_post_by_slug",
                           return_value=post) as m:
-            return v2._moment_reference(slug), m
+            return v2_arcs._moment_reference(slug), m
 
     def test_published_post_resolves_to_slug_title_url(self):
         out, _ = self._resolve("why-your-voice-shakes", _post())
@@ -76,15 +77,15 @@ class ResolveTests(unittest.TestCase):
         self.assertTrue(m.call_args.kwargs.get("published_only"))
 
     def test_blank_and_non_string_slugs_short_circuit(self):
-        with patch.object(v2.db, "get_journal_post_by_slug") as m:
+        with patch.object(db, "get_journal_post_by_slug") as m:
             for bad in (None, "", "   ", 42, [], {}):
-                self.assertIsNone(v2._moment_reference(bad), repr(bad))
+                self.assertIsNone(v2_arcs._moment_reference(bad), repr(bad))
             m.assert_not_called()          # no pointless DB round-trip
 
     def test_a_db_hiccup_degrades_to_no_reference(self):
-        with patch.object(v2.db, "get_journal_post_by_slug",
+        with patch.object(db, "get_journal_post_by_slug",
                           side_effect=RuntimeError("boom")):
-            self.assertIsNone(v2._moment_reference("s"))
+            self.assertIsNone(v2_arcs._moment_reference("s"))
 
     def test_a_row_without_a_slug_is_refused(self):
         out, _ = self._resolve("s", {"title": "no slug here"})
@@ -112,12 +113,12 @@ class CoachWriteTests(unittest.TestCase):
         _snip = snip if snip is not None else {"id": SNIP, "session_id": SESS}
         with self.app.test_request_context(json=body):
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_snippet_by_id", return_value=_snip), \
-                 patch.object(v2.db, "get_journal_post_by_slug",
+            with patch.object(db, "get_snippet_by_id", return_value=_snip), \
+                 patch.object(db, "get_journal_post_by_slug",
                               return_value=(_post() if post == "found" else None)), \
-                 patch.object(v2.db, "upsert_coach_snippet_draft",
+                 patch.object(db, "upsert_coach_snippet_draft",
                               side_effect=_upsert):
-                out = v2.v2_coach_put_moment_reference.__wrapped__(snippet_id)
+                out = v2_coach.v2_coach_put_moment_reference.__wrapped__(snippet_id)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, captured
 
@@ -166,7 +167,7 @@ class CoachWriteTests(unittest.TestCase):
 
     def test_endpoint_is_coach_gated(self):
         # The decorator is the gate; assert it is actually applied.
-        self.assertTrue(hasattr(v2.v2_coach_put_moment_reference, "__wrapped__"))
+        self.assertTrue(hasattr(v2_coach.v2_coach_put_moment_reference, "__wrapped__"))
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -174,9 +175,9 @@ class ExplanationsMapTests(unittest.TestCase):
     """R-3 — the slug rides the verified-star map, and only for golden stars."""
 
     def _map(self, drafts):
-        with patch.object(v2.db, "get_coach_snippet_drafts",
+        with patch.object(db, "get_coach_snippet_drafts",
                           return_value=drafts):
-            return v2._moment_explanations_map([SESS])
+            return v2_arcs._moment_explanations_map([SESS])
 
     def test_slug_is_carried_for_a_surfaced_note(self):
         out = self._map([{"snippet_id": SNIP, "surfaced": True,
@@ -208,9 +209,9 @@ class FenceTests(unittest.TestCase):
 
     def test_the_resolver_returns_no_numbers(self):
         # AC-9: a reference is a link, never a score/ratio/confidence.
-        with patch.object(v2.db, "get_journal_post_by_slug",
+        with patch.object(db, "get_journal_post_by_slug",
                           return_value=_post()):
-            out = v2._moment_reference("s")
+            out = v2_arcs._moment_reference("s")
         self.assertEqual(set(out), {"slug", "title", "url"})
         for v in out.values():
             self.assertNotRegex(str(v), r"\d+(\.\d+)?%")
@@ -240,32 +241,32 @@ class BatchResolutionTests(unittest.TestCase):
             calls.append(slug)
             return _post(slug=slug)
 
-        with patch.object(v2.db, "get_journal_post_by_slug",
+        with patch.object(db, "get_journal_post_by_slug",
                           side_effect=_by_slug):
-            out = v2._moment_reference_map(["a", "a", "b", "a", "b"])
+            out = v2_arcs._moment_reference_map(["a", "a", "b", "a", "b"])
         self.assertEqual(sorted(calls), ["a", "b"])      # 2 lookups, not 5
         self.assertEqual(sorted(out), ["a", "b"])
 
     def test_blank_and_none_slugs_cost_nothing(self):
-        with patch.object(v2.db, "get_journal_post_by_slug") as m:
-            self.assertEqual(v2._moment_reference_map([None, "", "  ", 7]), {})
+        with patch.object(db, "get_journal_post_by_slug") as m:
+            self.assertEqual(v2_arcs._moment_reference_map([None, "", "  ", 7]), {})
             m.assert_not_called()
 
     def test_an_unpublished_slug_is_simply_absent_from_the_map(self):
-        with patch.object(v2.db, "get_journal_post_by_slug", return_value=None):
-            self.assertEqual(v2._moment_reference_map(["draft-post"]), {})
+        with patch.object(db, "get_journal_post_by_slug", return_value=None):
+            self.assertEqual(v2_arcs._moment_reference_map(["draft-post"]), {})
 
     def test_empty_input(self):
-        self.assertEqual(v2._moment_reference_map([]), {})
-        self.assertEqual(v2._moment_reference_map(None), {})
+        self.assertEqual(v2_arcs._moment_reference_map([]), {})
+        self.assertEqual(v2_arcs._moment_reference_map(None), {})
 
     def test_a_non_dict_explanation_value_does_not_break_the_response(self):
         # REGRESSION: the explanations map holds dicts in production, but
         # callers hand back a truthy marker too. A bare .get() on that is an
         # AttributeError that took the ENTIRE ideal-text response down (the
         # student saw no key_moments at all). Guarded now.
-        with patch.object(v2.db, "get_journal_post_by_slug") as m:
+        with patch.object(db, "get_journal_post_by_slug") as m:
             self.assertEqual(
-                v2._moment_reference_map([True, None, 1, "ok"]), {})
+                v2_arcs._moment_reference_map([True, None, 1, "ok"]), {})
             # only the real string is even attempted
             self.assertEqual([c.args[0] for c in m.call_args_list], ["ok"])

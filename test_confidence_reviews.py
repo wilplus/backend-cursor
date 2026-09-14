@@ -107,10 +107,13 @@ class ConfidenceReviewRouteTests(unittest.TestCase):
 
     def setUp(self):
         import auth
-        from routes import v2_routes
-        self.v2 = v2_routes
+        from routes.v2 import register_domains
+        from routes.v2.blueprint import v2_bp
+        from services.db import db
+        register_domains()
+        self.db = db
         self.app = Flask(__name__)
-        self.app.register_blueprint(v2_routes.v2_bp, url_prefix="/v2")
+        self.app.register_blueprint(v2_bp, url_prefix="/v2")
         self.client = self.app.test_client()
         self.reviewer = _REVIEWER
         self._orig_verify = auth.verify_supabase_token
@@ -137,11 +140,11 @@ class ConfidenceReviewRouteTests(unittest.TestCase):
             return True
 
         self._p = [
-            patch.object(self.v2.db, "get_snippet_by_id",
+            patch.object(self.db, "get_snippet_by_id",
                          side_effect=fake_get_snippet),
-            patch.object(self.v2.db, "v2_get_session_by_id",
+            patch.object(self.db, "v2_get_session_by_id",
                          side_effect=fake_session),
-            patch.object(self.v2.db, "upsert_owner_voice_album_route",
+            patch.object(self.db, "upsert_owner_voice_album_route",
                          side_effect=fake_upsert, create=True),
             patch("services.voice_album.refresh_voice_album", return_value=0),
         ]
@@ -197,7 +200,7 @@ class ConfidenceReviewRouteTests(unittest.TestCase):
         self.assertEqual(self.saved, [])
 
     def test_missing_table_names_the_routing_migration(self):
-        with patch.object(self.v2.db, "upsert_owner_voice_album_route",
+        with patch.object(self.db, "upsert_owner_voice_album_route",
                           return_value=False, create=True):
             response = self._post({"ai_correct": True})
         self.assertEqual(response.status_code, 500)

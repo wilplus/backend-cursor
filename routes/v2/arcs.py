@@ -16,11 +16,11 @@ SAME ``v2_bp`` object, so endpoint names and the URL map are unchanged.
 Imported by routes/v2/explore_ideal_text.py, coach.py and user_sessions.py --
 so this module must never import from them.
 
-Re-exported from ``routes.v2_routes`` for import compatibility.
+Formerly re-exported from the ``routes.v2_routes`` façade (removed 2026-09-14,
+audit Q-A3); import from this module.
 """
 import hashlib
 import logging
-import os
 import re
 
 import sentry_sdk
@@ -824,8 +824,7 @@ def _moment_suggestions_enabled() -> bool:
     suggestion stars (emphasize / replace) resolved coach-label-first, else
     the defined voice-confidence read (never an experiment model);
     orange verified stars carry the coach message. DEFAULT OFF."""
-    return (os.getenv("MOMENT_SUGGESTIONS_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
+    return bool(config.MOMENT_SUGGESTIONS_ENABLED)
 
 
 def _take_full_text(session_id):

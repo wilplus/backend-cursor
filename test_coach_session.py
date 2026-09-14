@@ -13,13 +13,13 @@ import unittest
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import coach as v2_coach
+    from services.db import db
     import services.lab_recording as lab
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     lab = None
     _IMPORT_ERROR = e
 
@@ -89,13 +89,13 @@ class CoachSessionReadTests(unittest.TestCase):
             setattr(target, attr, orig)
 
     def _patch_db(self, attr, fn):
-        self.originals[f"db:{attr}"] = (v2.db, attr, getattr(v2.db, attr, None))
-        setattr(v2.db, attr, fn)
+        self.originals[f"db:{attr}"] = (db, attr, getattr(db, attr, None))
+        setattr(db, attr, fn)
 
     def _get(self, sid=SID):
         with self.app.test_request_context():
             request.user_id = "coach-1"
-            resp, status = v2.v2_coach_get_session.__wrapped__(sid)
+            resp, status = v2_coach.v2_coach_get_session.__wrapped__(sid)
             return status, resp.get_json()
 
     def test_resume_folds_coach_authoring(self):
@@ -132,7 +132,7 @@ class CoachSessionReadTests(unittest.TestCase):
         self.assertEqual(data["state"], "in_progress")
 
     def test_state_done_when_published(self):
-        setattr(v2.db, "v2_get_session_by_id", lambda sid: {
+        setattr(db, "v2_get_session_by_id", lambda sid: {
             "id": sid, "user_id": "u", "results_published_at": "2026-06-06T00:00:00Z",
             "intake_context": {"language": "en"},
             "coach_overall_message": None, "coach_video_ref": None,
@@ -144,7 +144,7 @@ class CoachSessionReadTests(unittest.TestCase):
         # Founder 2026-07-14 — "no pre-filled comment; the system learns from
         # what the coach writes." The AI draft is neither served in coach_state
         # nor promoted into the note; an untouched snippet opens EMPTY.
-        setattr(v2.db, "get_ai_draft_coach_notes_by_session",
+        setattr(db, "get_ai_draft_coach_notes_by_session",
                 lambda sid: {"a": "(draft a)", "b": "🎤 Draft for b."})
         status, data = self._get()
         snips = {s["id"]: s for s in data["snippets"]}
@@ -184,7 +184,7 @@ class CoachSessionReadTests(unittest.TestCase):
 
     def test_context_is_redacted_until_every_blind_label_is_committed(self):
         setattr(
-            v2.db,
+            db,
             "get_own_state_ratings_for_session",
             lambda sid, rater_id: {
                 "a": {"value": "yes", "unrateable": False},
@@ -212,19 +212,19 @@ class CoachSessionReadTests(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class PseudonymTests(unittest.TestCase):
     def test_stable(self):
-        self.assertEqual(v2._coach_pseudonym("user-1"), v2._coach_pseudonym("user-1"))
+        self.assertEqual(v2_coach._coach_pseudonym("user-1"), v2_coach._coach_pseudonym("user-1"))
 
     def test_friendly_two_words_no_raw_id(self):
-        p = v2._coach_pseudonym("user-1")
+        p = v2_coach._coach_pseudonym("user-1")
         self.assertIn(" ", p)                 # "Adjective Animal"
         self.assertNotIn("user-1", p)
 
     def test_variety_not_all_collide(self):
-        names = {v2._coach_pseudonym(f"u{i}") for i in range(8)}
+        names = {v2_coach._coach_pseudonym(f"u{i}") for i in range(8)}
         self.assertGreater(len(names), 1)
 
     def test_empty_anonymous(self):
-        self.assertEqual(v2._coach_pseudonym(None), "Anonymous")
+        self.assertEqual(v2_coach._coach_pseudonym(None), "Anonymous")
 
 
 if __name__ == "__main__":

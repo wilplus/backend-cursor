@@ -1,10 +1,10 @@
 from flask import Blueprint, request, jsonify
-from supabase import create_client
 from config import Config
 import logging
 import sentry_sdk
 import services.db as db_module
 from utils.errors import safe_error
+from services.db import new_client
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ def signup():
             }), 400
 
         # ── 3. Create Supabase user ───────────────────────────────────────
-        supabase = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY)
+        supabase = new_client()  # fresh service-role client; see services.db.new_client
 
         user_metadata: dict = {}
         if name:
@@ -193,7 +193,7 @@ def login():
             return jsonify({"code": "INVALID_INPUT", "error": "Email and password required"}), 400
         
         # Use Supabase client for password grant
-        supabase = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY)
+        supabase = new_client()  # fresh service-role client; see services.db.new_client
         
         # Sign in
         response = supabase.auth.sign_in_with_password({
@@ -228,7 +228,7 @@ def reset_password():
         if not email:
             return jsonify({"code": "INVALID_INPUT", "error": "Email required"}), 400
         
-        supabase = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY)
+        supabase = new_client()  # fresh service-role client; see services.db.new_client
         
         # Send reset email
         supabase.auth.reset_password_for_email(email)

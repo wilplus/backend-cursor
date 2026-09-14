@@ -12,12 +12,12 @@ import unittest
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import coach as v2_coach
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -42,8 +42,8 @@ class PerSnippetSaveTests(unittest.TestCase):
             setattr(target, attr, orig)
 
     def _patch_db(self, attr, fn):
-        self.originals[f"db:{attr}"] = (v2.db, attr, getattr(v2.db, attr, None))
-        setattr(v2.db, attr, fn)
+        self.originals[f"db:{attr}"] = (db, attr, getattr(db, attr, None))
+        setattr(db, attr, fn)
 
     # stateful fakes
     def _upsert_draft(self, sid, snip, fields, updated_by=None):
@@ -59,7 +59,7 @@ class PerSnippetSaveTests(unittest.TestCase):
     def _call(self, body, snip=SNIP):
         with self.app.test_request_context(json=body):
             request.user_id = "coach-1"
-            resp, status = v2.v2_coach_save_snippet.__wrapped__(SID, snip)
+            resp, status = v2_coach.v2_coach_save_snippet.__wrapped__(SID, snip)
             return status, resp.get_json()
 
     # ── canonical coach authoring + echo ──
@@ -100,7 +100,7 @@ class PerSnippetSaveTests(unittest.TestCase):
         self.assertEqual(status, 404)
 
     def test_session_not_found_404(self):
-        setattr(v2.db, "v2_get_session_by_id", lambda sid: None)
+        setattr(db, "v2_get_session_by_id", lambda sid: None)
         status, _ = self._call({"note": "x"})
         self.assertEqual(status, 404)
 

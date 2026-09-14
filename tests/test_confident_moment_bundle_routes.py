@@ -268,7 +268,12 @@ def test_only_projection_retry_maps_to_409():
 
 
 def test_registration_and_core_summary_use_exact_database_boundary():
-    registration = Path("routes/v2_routes.py").read_text()
+    # The routes/v2_routes.py façade is gone (audit Q-A3): the bundle module
+    # registers itself on v2_bp and routes/v2/__init__.py lists it in the
+    # load-bearing import order.
+    from routes.v2 import DOMAIN_MODULES
+    assert "confident_moment_bundles" in DOMAIN_MODULES
+    registration = Path("routes/v2/confident_moment_bundles.py").read_text()
     core = Path("routes/v2/explore_ideal_text.py").read_text()
     assert "list_confident_moment_bundles" in registration
     assert "ack_confident_moment_bundle_render" in registration

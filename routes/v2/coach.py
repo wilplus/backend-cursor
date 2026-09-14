@@ -8,7 +8,8 @@ split, phase 2) -- route bodies are byte-identical to what was there before.
 Routes register on the SAME ``v2_bp`` object, so endpoint names
 ("v2.<view_func>") and the URL map are unchanged by the split.
 
-Re-exported from ``routes.v2_routes`` for import compatibility.
+Formerly re-exported from the ``routes.v2_routes`` façade (removed 2026-09-14,
+audit Q-A3); import from this module.
 """
 import hashlib
 import logging

@@ -18,12 +18,13 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import coach as v2_coach
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 ARC = "a1"
@@ -64,12 +65,12 @@ class UserEditPutTests(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(owned, [])), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "compare_and_set_user_ideal_edit",
+                 patch.object(db, "compare_and_set_user_ideal_edit",
                               return_value=_cas_result(
                                   (row or {}).get("version", 1))) as m_up:
-                out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_up
 
@@ -134,7 +135,7 @@ class UserEditPutTests(unittest.TestCase):
 
     def test_reapplied_absent_or_false_never_logs(self):
         for extra in ({}, {"reapplied": False}):
-            with self.assertNoLogs("routes.v2_routes", level="INFO"):
+            with self.assertNoLogs("routes.v2.explore_ideal_text", level="INFO"):
                 body, status, _ = self._put(
                     {"text": "my edit", "version": 3, **extra})
             self.assertEqual(status, 200)
@@ -165,13 +166,13 @@ class LedgerInheritanceTests(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "compare_and_set_user_ideal_edit",
+                 patch.object(db, "compare_and_set_user_ideal_edit",
                               return_value=_cas_result(row.get("version", 1))), \
-                 patch.object(v2.db, "upsert_ideal_decision",
+                 patch.object(db, "upsert_ideal_decision",
                               return_value=True) as m_led:
-                out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_led
 
@@ -214,13 +215,13 @@ class LedgerInheritanceTests(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "compare_and_set_user_ideal_edit",
+                 patch.object(db, "compare_and_set_user_ideal_edit",
                               return_value=_cas_result(2)), \
-                 patch.object(v2.db, "upsert_ideal_decision",
+                 patch.object(db, "upsert_ideal_decision",
                               side_effect=RuntimeError("boom")):
-                out = v2.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_put_ideal_user_edit.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 200)
         self.assertTrue(resp.get_json()["saved"])
@@ -241,13 +242,13 @@ class StudentGetDisplayPriorityTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "get_user_ideal_edit",
+                 patch.object(db, "get_user_ideal_edit",
                               return_value=edit), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                 patch.object(db, "get_user_arc_ideal_notes",
                               return_value=None):
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status
 
@@ -301,13 +302,13 @@ class PriorEditReofferTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "get_user_ideal_edit",
+                 patch.object(db, "get_user_ideal_edit",
                               side_effect=_edit_patch), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                 patch.object(db, "get_user_arc_ideal_notes",
                               return_value=None):
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status
 
@@ -363,18 +364,18 @@ class CoachGetUserEditTests(unittest.TestCase):
     def _get(self, *, sessions, edit, coach_row):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions",
+            with patch.object(db, "get_arc_sessions",
                               return_value=sessions), \
-                 patch.object(v2.db, "get_user_ideal_edit",
+                 patch.object(db, "get_user_ideal_edit",
                               return_value=edit) as m_edit, \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=coach_row), \
                  patch("services.ideal_text_block.maybe_assemble_ideal_text",
                        return_value=False), \
                  patch("services.ideal_text_block.assemble_ideal_text_block",
                        return_value={"text": "x", "key_moments": [],
                                      "ready": True}):
-                out = v2.v2_coach_get_ideal_text.__wrapped__(ARC)
+                out = v2_coach.v2_coach_get_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_edit
 

@@ -20,12 +20,13 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from routes.v2 import coach as v2_coach
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 ARC = "a1"
@@ -154,9 +155,9 @@ class CoachIdealGetStatesTests(unittest.TestCase):
     def _get(self, sessions, row=None, auto=None):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions",
+            with patch.object(db, "get_arc_sessions",
                               return_value=sessions), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch("services.ideal_text_block.maybe_assemble_ideal_text",
                        return_value=False), \
@@ -164,7 +165,7 @@ class CoachIdealGetStatesTests(unittest.TestCase):
                        return_value=(auto or {"text": "cold fallback",
                                               "key_moments": [],
                                               "ready": True})):
-                resp, status = v2.v2_coach_get_ideal_text.__wrapped__(ARC)
+                resp, status = v2_coach.v2_coach_get_ideal_text.__wrapped__(ARC)
                 return resp.get_json(), status
 
     def test_three_takes_but_nothing_assembled_reads_empty_not_ready(self):
@@ -228,17 +229,17 @@ class ReviewStateTests(unittest.TestCase):
         ]
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_user_profile",
+            with patch.object(db, "get_user_profile",
                               return_value={"domain": "d", "goal": "g"}), \
-                 patch.object(v2.db, "v2_list_user_lab_sessions",
+                 patch.object(db, "v2_list_user_lab_sessions",
                               return_value=rows), \
-                 patch.object(v2.db, "get_feelings_by_sessions",
+                 patch.object(db, "get_feelings_by_sessions",
                               return_value=[]), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value={"text": "machine draft",
                                             "updated_by": None,
                                             "approved_at": None}):
-                resp, status = v2.v2_coach_student_detail.__wrapped__(uid)
+                resp, status = v2_coach.v2_coach_student_detail.__wrapped__(uid)
                 body = resp.get_json()
         self.assertEqual(status, 200)
         states = {s["session_id"]: s["review_state"] for s in body["sessions"]}
@@ -257,12 +258,12 @@ class GuestProgressTests(unittest.TestCase):
         headers = ({"X-Willab-Guest-Owner": guest.token} if guest else None)
         with app.test_request_context(headers=headers):
             request.user_id = caller
-            with patch.object(v2.db, "get_arc_sessions",
+            with patch.object(db, "get_arc_sessions",
                               return_value=sessions), \
-                 patch.object(v2.db, "get_coach_best_presentation_edits",
+                 patch.object(db, "get_coach_best_presentation_edits",
                               return_value={}), \
                  patch.object(
-                     v2.db,
+                     db,
                      "get_owner_principal",
                      return_value=(
                          {
@@ -273,7 +274,7 @@ class GuestProgressTests(unittest.TestCase):
                          if guest else None
                      ),
                  ):
-                resp, status = v2.v2_explore_arc_progress.__wrapped__(ARC)
+                resp, status = v2_arcs.v2_explore_arc_progress.__wrapped__(ARC)
                 return resp.get_json(), status
 
     def test_guest_reads_fully_unclaimed_arc(self):
@@ -334,11 +335,11 @@ class ArcReviewStateTests(unittest.TestCase):
     def _get(self, sessions, ideal_row=None):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions",
+            with patch.object(db, "get_arc_sessions",
                               return_value=sessions), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=ideal_row):
-                out = v2.v2_coach_arc_review_state.__wrapped__(ARC)
+                out = v2_coach.v2_coach_arc_review_state.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status
 
@@ -464,11 +465,11 @@ class PublishAnalysisAtomicTests(unittest.TestCase):
                 jsonify({"takes": published}) if publish_status == 200
                 else jsonify({"code": "PUBLISH_FAILED", "error": "invalid"})
             )
-            with patch.object(v2.db, "get_arc_sessions",
+            with patch.object(db, "get_arc_sessions",
                               return_value=sessions), \
                  patch("routes.v2.canonical_publish.publish_complete_reviews",
                        return_value=(response, publish_status)) as publish:
-                out = v2.v2_coach_publish_analysis.__wrapped__("arc-1")
+                out = v2_coach.v2_coach_publish_analysis.__wrapped__("arc-1")
             result, status = out if isinstance(out, tuple) else (out, 200)
             return result.get_json(), status, publish
 

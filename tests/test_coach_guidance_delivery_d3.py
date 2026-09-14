@@ -38,7 +38,8 @@ def test_rollout_presentation_gate_does_not_use_legacy_allowlist(monkeypatch):
 
     monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
     monkeypatch.setattr(Config, "MLC3_PILOT_ENABLED", False)
-    monkeypatch.setattr(Config, "MLC3_PILOT_PRINCIPAL_IDS", ("principal-1",))
+    # The legacy allowlist attribute is gone (audit Q-A5); nothing can read it.
+    assert not hasattr(Config, "MLC3_PILOT_PRINCIPAL_IDS")
     assert principal_is_allowlisted(principal_id="principal-1") is True
     assert principal_is_allowlisted(principal_id="user-1") is True
     assert principal_is_allowlisted(principal_id=None) is False

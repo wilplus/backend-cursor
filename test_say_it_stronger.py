@@ -460,12 +460,12 @@ class L1FenceTests(unittest.TestCase):
 
 try:
     from flask import Flask, request as _flask_request
-    from routes import v2_routes as _v2
+    from routes.v2 import coach as v2_coach
+    from services.db import db as v2_db
     _ROUTE_IMPORT_ERROR = None
 except Exception as _e:  # pragma: no cover
     Flask = None
     _flask_request = None
-    _v2 = None
     _ROUTE_IMPORT_ERROR = _e
 
 
@@ -487,9 +487,9 @@ class CoachSayItStrongerRouteTests(unittest.TestCase):
             return True
 
         self._p = [
-            patch.object(_v2.db, "get_snippet_by_id",
+            patch.object(v2_db, "get_snippet_by_id",
                          lambda sid: self._snippet_row),
-            patch.object(_v2.db, "set_charisma_snippet_say_it_stronger_final",
+            patch.object(v2_db, "set_charisma_snippet_say_it_stronger_final",
                          _set_final),
         ]
         for p_ in self._p:
@@ -513,7 +513,7 @@ class CoachSayItStrongerRouteTests(unittest.TestCase):
     def _call(self, body, snippet_id=None):
         with self.app.test_request_context(json=body):
             _flask_request.user_id = "coach1"
-            resp, status = _v2.v2_coach_put_say_it_stronger.__wrapped__(
+            resp, status = v2_coach.v2_coach_put_say_it_stronger.__wrapped__(
                 snippet_id or self._SNIP)
             return resp.get_json(), status
 

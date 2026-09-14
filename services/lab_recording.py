@@ -57,6 +57,9 @@ from services.readout_context import (
     attach_readout_context,
     attach_suggestions_to_chunks as _attach_suggestions_to_chunks,
 )
+from config import Config
+
+config = Config()
 
 __all__ = [
     "_WHISPER_MAX_BYTES",
@@ -247,9 +250,7 @@ def _coach_prefill_enabled() -> bool:
     2026-07-14): the coach writes the key-moment comment from scratch and the
     system learns from that. Set COACH_PREFILL_ENABLED=1 to restore the
     machine pre-fill without a redeploy."""
-    import os
-    return (os.getenv("COACH_PREFILL_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
+    return bool(config.COACH_PREFILL_ENABLED)
 
 
 class _SkipAnalytics(Exception):

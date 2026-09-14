@@ -7,6 +7,8 @@ from __future__ import annotations
 import unittest
 
 from services.slide_word_split import slice_words_for_window, split_words_by_slides
+from config import Config
+import config as _config_module
 
 
 def _w(word, start, end):
@@ -469,9 +471,11 @@ class SplitRunonSentencesTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {}, clear=False):
             import os
             os.environ.pop("SENTENCE_BOUNDARY_SPLIT_ENABLED", None)
+            # Boot-time Config read (audit Q-A5): unset means on.
+            self.assertTrue(_config_module._env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1"))
+        with mock.patch.object(Config, "SENTENCE_BOUNDARY_SPLIT_ENABLED", True):
             self.assertTrue(runon_split_enabled())
-        with mock.patch.dict("os.environ",
-                             {"SENTENCE_BOUNDARY_SPLIT_ENABLED": "0"}):
+        with mock.patch.object(Config, "SENTENCE_BOUNDARY_SPLIT_ENABLED", False):
             self.assertFalse(runon_split_enabled())
 
     def test_chunker_closes_at_the_promoted_boundary(self):

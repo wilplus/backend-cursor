@@ -109,12 +109,12 @@ class ClaimLedgerScoringTests(unittest.TestCase):
 # ── route shape (skip without flask; run in CI) ──
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import coach as v2_coach
+    from services.db import db
     _RT_ERR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _RT_ERR = e
 
 
@@ -124,12 +124,12 @@ class SlideAlignmentRouteTests(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
-        self._o = getattr(v2.db, "v2_get_session_by_id", None)
-        v2.db.v2_get_session_by_id = lambda sid: {"id": sid}
+        self._o = getattr(db, "v2_get_session_by_id", None)
+        db.v2_get_session_by_id = lambda sid: {"id": sid}
 
     def tearDown(self):
         if self._o is not None:
-            v2.db.v2_get_session_by_id = self._o
+            db.v2_get_session_by_id = self._o
 
     def _call(self, readout):
         import services.lab_recording as lab
@@ -138,7 +138,7 @@ class SlideAlignmentRouteTests(unittest.TestCase):
         try:
             with self.app.test_request_context():
                 request.user_id = "coach-1"
-                resp, status = v2.v2_coach_slide_alignment.__wrapped__(UID)
+                resp, status = v2_coach.v2_coach_slide_alignment.__wrapped__(UID)
                 return status, resp.get_json()
         finally:
             lab.build_readout_from_session = orig

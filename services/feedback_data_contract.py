@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import uuid
 from typing import Any, Iterable, Optional
+from config import Config
+
+config = Config()
 
 
 TAXONOMY_VERSION = "feedback-taxonomy-v1"
@@ -54,12 +56,7 @@ def _stable_uuid(*parts: Any) -> str:
 
 
 def code_commit() -> str:
-    return (
-        os.environ.get("RAILWAY_GIT_COMMIT_SHA")
-        or os.environ.get("GIT_COMMIT_SHA")
-        or os.environ.get("SOURCE_COMMIT")
-        or "unknown"
-    )
+    return config.CODE_COMMIT_SHA or "unknown"
 
 
 def _int(value: Any) -> Optional[int]:

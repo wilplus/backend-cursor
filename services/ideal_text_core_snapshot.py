@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
 from typing import Any, Mapping
 
@@ -20,6 +19,9 @@ from services.ideal_text_read import (
     resolve_project_read,
     resolve_suggestion_display,
 )
+from config import Config
+
+config = Config()
 
 logger = logging.getLogger(__name__)
 PUBLICATION_TASK_PATH = (
@@ -92,8 +94,7 @@ def _fold_applied(text: str, moments: list[dict[str, Any]]) -> str:
 
 
 def _suggestions_enabled() -> bool:
-    return (os.getenv("MOMENT_SUGGESTIONS_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
+    return bool(config.MOMENT_SUGGESTIONS_ENABLED)
 
 
 def _exact_pieces(

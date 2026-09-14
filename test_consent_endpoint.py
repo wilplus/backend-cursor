@@ -24,11 +24,12 @@ import unittest
 
 try:
     from flask import Flask
-    from routes import v2_routes as v2
+    from routes.v2 import user_account as v2_user_account
+    from services.db import db
+    from flask import request
     _IMPORT_ERROR = None
 except Exception as import_err:  # pragma: no cover - env/bootstrap guard
     Flask = None
-    v2 = None
     _IMPORT_ERROR = import_err
 
 
@@ -74,8 +75,8 @@ class ConsentEndpointTests(unittest.TestCase):
 
     def _patch_db(self, attr, replacement):
         key = f"db:{attr}"
-        self.originals[key] = (v2.db, attr, getattr(v2.db, attr))
-        setattr(v2.db, attr, replacement)
+        self.originals[key] = (db, attr, getattr(db, attr))
+        setattr(db, attr, replacement)
 
     def _patch_config(self, attr, replacement):
         # /v2/user/consent lives in routes.v2.user_account (god-file split),
@@ -199,8 +200,8 @@ class ConsentEndpointTests(unittest.TestCase):
             json=json_body,
         )
         with ctx:
-            v2.request.user_id = self.user_id
-            response, status = v2.v2_user_consent.__wrapped__()
+            request.user_id = self.user_id
+            response, status = v2_user_account.v2_user_consent.__wrapped__()
             return status, response.get_json()
 
     # ── tests ────────────────────────────────────────────────────────

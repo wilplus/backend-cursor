@@ -28,14 +28,19 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, jsonify, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from routes.v2 import coach as v2_coach
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from routes.v2 import lab_recording as v2_lab_recording
+    from services.db import db
+    from routes.v2 import register_domains
+    from routes.v2.blueprint import v2_bp
     from services.db import DatabaseService
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     jsonify = None
     request = None
-    v2 = None
     DatabaseService = None
     _IMPORT_ERROR = e
 
@@ -227,15 +232,15 @@ class VerifyRouteTests(unittest.TestCase):
     def _post(self, *, sessions, outcome, row):
         with self.app.test_request_context(json={}):
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions",
+            with patch.object(db, "get_arc_sessions",
                               return_value=sessions), \
-                 patch.object(v2.db, "verify_ideal_text",
+                 patch.object(db, "verify_ideal_text",
                               return_value=outcome), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch("services.arc_notifications.fire_ideal_verified") \
                     as m_fire:
-                out = v2.v2_coach_verify_ideal_text.__wrapped__(ARC)
+                out = v2_coach.v2_coach_verify_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_fire
 
@@ -282,11 +287,11 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
                               return_value=entitled_moments), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value=(expl or {})), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                 patch.object(db, "get_user_arc_ideal_notes",
                               return_value="notes"):
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status
 
@@ -347,7 +352,7 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
             "routes.v2.explore_ideal_text._moment_playback_map",
             side_effect=RuntimeError("media signer unavailable"),
         ), patch.object(
-            v2.db,
+            db,
             "list_intervention_decision_history",
             side_effect=RuntimeError("feedback ledger unavailable"),
         ):
@@ -391,11 +396,11 @@ class CrucialBubbleFieldTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                 patch.object(db, "get_user_arc_ideal_notes",
                               return_value=None):
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status
 
@@ -463,22 +468,22 @@ class RecordingFlowTagTests(unittest.TestCase):
     def test_read_tags_never_fold_again(self):
         # The retired lane must not be reachable by posting its old
         # fields: nothing about a read may ride into session_context.
-        self.assertEqual(v2._recording_flow_tags({
+        self.assertEqual(v2_lab_recording._recording_flow_tags({
             "read_target": "ideal_text", "ideal_version": "4"}), {})
-        self.assertEqual(v2._recording_flow_tags({
+        self.assertEqual(v2_lab_recording._recording_flow_tags({
             "read_target": "IDEAL_TEXT", "ideal_version": "soon"}), {})
 
     def test_unknown_target_and_no_fields_fold_nothing(self):
-        self.assertEqual(v2._recording_flow_tags(
+        self.assertEqual(v2_lab_recording._recording_flow_tags(
             {"read_target": "slide_7"}), {})
-        self.assertEqual(v2._recording_flow_tags({}), {})
+        self.assertEqual(v2_lab_recording._recording_flow_tags({}), {})
 
     def test_paired_snippet_uuid_guard(self):
         self.assertEqual(
-            v2._recording_flow_tags({"paired_snippet_id": self.SNIP}),
+            v2_lab_recording._recording_flow_tags({"paired_snippet_id": self.SNIP}),
             {"paired_snippet_id": self.SNIP})
         self.assertEqual(
-            v2._recording_flow_tags({"paired_snippet_id": "not-a-uuid"}), {})
+            v2_lab_recording._recording_flow_tags({"paired_snippet_id": "not-a-uuid"}), {})
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -502,13 +507,13 @@ class HistoricalVersionTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=(row or _row(version=3))), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                 patch.object(db, "get_user_arc_ideal_notes",
                               return_value=None), \
-                 patch.object(v2.db, "get_ideal_text_version",
+                 patch.object(db, "get_ideal_text_version",
                               return_value=snap):
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status
 
@@ -634,14 +639,14 @@ class MomentsUnlockTests(unittest.TestCase):
             request.user_id = UID
             with patch("routes.v2.arcs._arc_owned_by_caller",
                               return_value=(owned, [])), \
-                 patch.object(v2.db, "get_moment_unlock",
+                 patch.object(db, "get_moment_unlock",
                               return_value=({"arc_id": ARC} if entitled
                                             else None)), \
                  patch("services.token_account.charge",
                        return_value=res) as m_charge, \
-                 patch.object(v2.db, "insert_moment_unlock",
+                 patch.object(db, "insert_moment_unlock",
                               return_value=insert_row) as m_ins:
-                out = v2.v2_unlock_moments.__wrapped__(ARC)
+                out = v2_arcs.v2_unlock_moments.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_charge, m_ins
 
@@ -661,7 +666,7 @@ class MomentsUnlockTests(unittest.TestCase):
         one stops being exercised and is still what runs the day an env var
         gets cleared."""
         import inspect
-        src = inspect.getsource(v2.v2_unlock_moments)
+        src = inspect.getsource(v2_arcs.v2_unlock_moments)
         for legacy in ("deduct_credits_strict", "MOMENTS_UNLOCK_CREDITS",
                        "INSUFFICIENT_CREDITS", "credits_remaining",
                        "v2_increment_student_credits"):
@@ -722,7 +727,7 @@ class MomentExplanationGetTests(unittest.TestCase):
                                   "start_offset_ms": 0, "duration_ms": 900,
                                   "comment_text": "This is the turn.",
                               }]):
-                out = v2.v2_get_moment_explanation.__wrapped__(ARC, moment_id)
+                out = v2_arcs.v2_get_moment_explanation.__wrapped__(ARC, moment_id)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status
 
@@ -751,8 +756,9 @@ class MomentExplanationGetTests(unittest.TestCase):
         self.assertEqual(body["code"], "MOMENT_NOT_FOUND")
 
     def test_route_paths_match_the_fe_pin(self):
+        register_domains()
         app = Flask(__name__)
-        app.register_blueprint(v2.v2_bp, url_prefix="/v2")
+        app.register_blueprint(v2_bp, url_prefix="/v2")
         rules = {r.rule for r in app.url_map.iter_rules()}
         self.assertIn("/v2/explore/arc/<arc_id>/moments/<moment_id>", rules)
         self.assertIn("/v2/arc/<arc_id>/unlock-moments", rules)
@@ -778,7 +784,7 @@ class LegacyRetirementTests(unittest.TestCase):
     def test_arc_unlock_410(self):
         with self.app.test_request_context(json={}):
             request.user_id = UID
-            out = v2.v2_arc_unlock.__wrapped__(ARC)
+            out = v2_arcs.v2_arc_unlock.__wrapped__(ARC)
             resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 410)
 
@@ -789,8 +795,8 @@ class LegacyRetirementTests(unittest.TestCase):
         have already done."""
         with self.app.test_request_context(json={}):
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions", return_value=[]):
-                out = v2.v2_coach_publish_analysis.__wrapped__(ARC)
+            with patch.object(db, "get_arc_sessions", return_value=[]):
+                out = v2_coach.v2_coach_publish_analysis.__wrapped__(ARC)
             resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertNotEqual(status, 410)
         self.assertEqual(status, 404)   # no such arc, in this fixture
@@ -871,7 +877,7 @@ class PaywallRetirementTests(unittest.TestCase):
                               return_value=(True, [])), \
                  patch("services.best_presentation.build_best_presentation",
                        return_value={"ready": True, "slides": []}):
-                out = v2.v2_explore_arc_best_presentation.__wrapped__(ARC)
+                out = v2_arcs.v2_explore_arc_best_presentation.__wrapped__(ARC)
         resp, status = out if isinstance(out, tuple) else (out, 200)
         return resp.get_json(), status
 
@@ -893,9 +899,9 @@ class PaywallRetirementTests(unittest.TestCase):
                               side_effect=lambda sid: f"text-{sid}"), \
                  patch("routes.v2.arcs._take_key_moments",
                               side_effect=lambda sid, rids: []), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value={}):
-                out = v2.v2_explore_arc_feedback.__wrapped__(ARC)
+                out = v2_arcs.v2_explore_arc_feedback.__wrapped__(ARC)
         resp, status = out if isinstance(out, tuple) else (out, 200)
         return resp.get_json(), status
 

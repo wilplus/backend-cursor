@@ -196,12 +196,12 @@ if __name__ == "__main__":
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 from unittest.mock import patch
@@ -216,13 +216,13 @@ class VoiceAlbumReadTests(unittest.TestCase):
         app = Flask(__name__)
         with app.test_request_context():
             request.user_id = uid
-            with patch.object(v2.db, "get_arc_sessions",
+            with patch.object(db, "get_arc_sessions",
                               return_value=sessions), \
-                 patch.object(v2.db, "list_voice_album",
+                 patch.object(db, "list_voice_album",
                               return_value=entries, create=True), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(db, "get_snippets_by_session",
                               return_value=snips):
-                out = v2.v2_explore_arc_voice_album.__wrapped__("arc-1")
+                out = v2_arcs.v2_explore_arc_voice_album.__wrapped__("arc-1")
             resp, status = out if isinstance(out, tuple) else (out, 200)
             return resp.get_json(), status
 

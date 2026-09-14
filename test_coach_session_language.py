@@ -5,12 +5,12 @@ import unittest
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import coach as v2_coach
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as error:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = error
 
 
@@ -42,13 +42,13 @@ class CoachSessionLanguageTests(unittest.TestCase):
             setattr(target, attr, original)
 
     def _patch_db(self, attr, fn):
-        self.originals[attr] = (v2.db, attr, getattr(v2.db, attr, None))
-        setattr(v2.db, attr, fn)
+        self.originals[attr] = (db, attr, getattr(db, attr, None))
+        setattr(db, attr, fn)
 
     def _put(self, body):
         with self.app.test_request_context(json=body):
             request.user_id = "coach-1"
-            response, status = v2.v2_coach_confirm_session_language.__wrapped__(SID)
+            response, status = v2_coach.v2_coach_confirm_session_language.__wrapped__(SID)
             return status, response.get_json()
 
     def test_confirms_missing_language(self):

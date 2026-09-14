@@ -15,6 +15,7 @@ from services.master_document import (
     decide_block,
     upgrade_changes,
 )
+from config import Config
 
 ARC = "a1"
 T1 = "take-1-sess"
@@ -462,15 +463,21 @@ class AcceptedUpgradeRoundTripTests(unittest.TestCase):
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from services.db import db as v2_db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 _FLAGS = {"MASTER_DOCUMENT_ENABLED": "1", "LIVING_TRANSCRIPT_ENABLED": "1"}
+
+
+def _env_flags(flags):
+    """LIVING_TRANSCRIPT_ENABLED is a boot-time Config read since audit Q-A5;
+    it is patched on Config, the rest still go through the environment."""
+    return {k: v for k, v in flags.items() if k != "LIVING_TRANSCRIPT_ENABLED"}
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -485,22 +492,24 @@ class SaveEndpointTests(unittest.TestCase):
     def _post(self, *, blocks, version=3, flags=None):
         with self.app.test_request_context(json={}):
             request.user_id = "u1"
-            with patch.dict("os.environ", flags or _FLAGS), \
+            with patch.dict("os.environ", _env_flags(flags or _FLAGS)), \
+                 patch.object(Config, "LIVING_TRANSCRIPT_ENABLED",
+                              (flags or _FLAGS).get("LIVING_TRANSCRIPT_ENABLED") == "1"), \
                  patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2.db, "list_ideal_text_blocks",
+                 patch.object(v2_db, "list_ideal_text_blocks",
                               return_value=blocks), \
-                 patch.object(v2.db, "get_ideal_text_block",
+                 patch.object(v2_db, "get_ideal_text_block",
                               side_effect=lambda a, k: next(
                                   (dict(b) for b in blocks
                                    if b["block_key"] == k), None)), \
-                 patch.object(v2.db, "upsert_ideal_text_block",
+                 patch.object(v2_db, "upsert_ideal_text_block",
                               return_value=True) as m_up, \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(v2_db, "get_coach_arc_ideal_text",
                               return_value={"version": version}), \
-                 patch.object(v2.db, "insert_ideal_text_save",
+                 patch.object(v2_db, "insert_ideal_text_save",
                               return_value=True) as m_save:
-                out = v2.v2_explore_save_ideal_text.__wrapped__(ARC)
+                out = v2_explore_ideal_text.v2_explore_save_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_up, m_save
 
@@ -543,17 +552,17 @@ class DecideEndpointTests(unittest.TestCase):
             with patch.dict("os.environ", _FLAGS), \
                  patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2.db, "get_ideal_text_block",
+                 patch.object(v2_db, "get_ideal_text_block",
                               return_value=row), \
-                 patch.object(v2.db, "upsert_ideal_text_block",
+                 patch.object(v2_db, "upsert_ideal_text_block",
                               return_value=True) as m_up, \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(v2_db, "get_coach_arc_ideal_text",
                               return_value={"version": 3}), \
                  patch("services.ideal_text_block.maybe_assemble_ideal_text",
                        return_value=True) as m_asm, \
                  patch("services.arc_notifications.fire_ideal_version_ready",
                        return_value=True):
-                out = v2.v2_explore_decide_block.__wrapped__(ARC, 0)
+                out = v2_explore_ideal_text.v2_explore_decide_block.__wrapped__(ARC, 0)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_up, m_asm
 
@@ -603,21 +612,21 @@ class DecideEndpointTests(unittest.TestCase):
 class SaveStateServeTests(unittest.TestCase):
     def test_save_state_shape_and_is_saved(self):
         with patch.dict("os.environ", _FLAGS), \
-             patch.object(v2.db, "get_latest_ideal_text_save",
+             patch.object(v2_db, "get_latest_ideal_text_save",
                           return_value={"version": 3,
                                         "saved_at": "2026-07-22T08:00:00Z"}):
-            out = v2._ideal_save_state(ARC, 3)
+            out = v2_explore_ideal_text._ideal_save_state(ARC, 3)
             self.assertTrue(out["is_saved"])
-            out2 = v2._ideal_save_state(ARC, 4)
+            out2 = v2_explore_ideal_text._ideal_save_state(ARC, 4)
             self.assertFalse(out2["is_saved"])   # a new take supersedes
 
     def test_flag_off_or_never_saved_is_absent(self):
         with patch.dict("os.environ", {"MASTER_DOCUMENT_ENABLED": "0"}):
-            self.assertEqual(v2._ideal_save_state(ARC, 3), {})
+            self.assertEqual(v2_explore_ideal_text._ideal_save_state(ARC, 3), {})
         with patch.dict("os.environ", _FLAGS), \
-             patch.object(v2.db, "get_latest_ideal_text_save",
+             patch.object(v2_db, "get_latest_ideal_text_save",
                           return_value=None):
-            self.assertEqual(v2._ideal_save_state(ARC, 3), {})
+            self.assertEqual(v2_explore_ideal_text._ideal_save_state(ARC, 3), {})
 
 
 if __name__ == "__main__":

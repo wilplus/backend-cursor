@@ -31,12 +31,13 @@ class MinContentConstantsTests(unittest.TestCase):
 # ── app-dependent: db grant logic + route shapes ──
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import coach as v2_coach
+    from routes.v2 import lab_recording as v2_lab_recording
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -120,7 +121,7 @@ class CreditGrantLogicTests(unittest.TestCase):
     """The grant must fire exactly once and never re-grant after spend."""
 
     def _svc(self, store):
-        cls = v2.db.__class__
+        cls = db.__class__
         s = cls.__new__(cls)            # bypass __init__ (no live supabase)
         s.client = _FakeClient(store)
         return s
@@ -169,7 +170,7 @@ class ConfigRecordingRouteTests(unittest.TestCase):
 
     def test_serves_thresholds(self):
         with self.app.test_request_context():
-            resp, status = v2.v2_config_recording.__wrapped__()
+            resp, status = v2_lab_recording.v2_config_recording.__wrapped__()
             data = resp.get_json()
             self.assertEqual(status, 200)
             self.assertEqual(data["min_duration_sec"], 0.0)  # retired 2026-07-15
@@ -180,7 +181,7 @@ class ConfigRecordingRouteTests(unittest.TestCase):
         # gate — the FE shows a soft caution at/above it and the student
         # proceeds anyway. Served so the threshold in the copy has one home.
         with self.app.test_request_context():
-            resp, status = v2.v2_config_recording.__wrapped__()
+            resp, status = v2_lab_recording.v2_config_recording.__wrapped__()
             self.assertEqual(status, 200)
             self.assertEqual(resp.get_json()["long_take_caution_sec"], 600)
 
@@ -195,24 +196,24 @@ class ConfigRecordingRouteTests(unittest.TestCase):
 class CoachStudentsRouteTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
-        self._orig_list = getattr(v2.db, "list_coach_students", None)
-        self._orig_prof = getattr(v2.db, "get_user_profile", None)
-        v2.db.list_coach_students = lambda **k: [
+        self._orig_list = getattr(db, "list_coach_students", None)
+        self._orig_prof = getattr(db, "get_user_profile", None)
+        db.list_coach_students = lambda **k: [
             {"user_id": "secret-uid-123", "last_active": "2026-06-08T10:00:00Z",
              "session_count": 7},
         ]
-        v2.db.get_user_profile = lambda uid: {"domain": "sales", "goal": "x"}
+        db.get_user_profile = lambda uid: {"domain": "sales", "goal": "x"}
 
     def tearDown(self):
         if self._orig_list is not None:
-            v2.db.list_coach_students = self._orig_list
+            db.list_coach_students = self._orig_list
         if self._orig_prof is not None:
-            v2.db.get_user_profile = self._orig_prof
+            db.get_user_profile = self._orig_prof
 
     def _get(self):
         with self.app.test_request_context():
             request.user_id = "coach-1"
-            resp, status = v2.v2_coach_students.__wrapped__()
+            resp, status = v2_coach.v2_coach_students.__wrapped__()
             return status, resp.get_json()
 
     def test_pseudonymized_no_pii(self):

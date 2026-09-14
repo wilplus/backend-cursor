@@ -2,12 +2,12 @@ import unittest
 
 try:
     from flask import Flask
-    from routes import v2_routes as v2
+    from routes.v2 import mlc2_consent as v2_mlc2_consent
+    from flask import request
     from routes.v2 import mlc2_consent as route
     _IMPORT_ERROR = None
 except Exception as import_error:  # pragma: no cover
     Flask = None
-    v2 = None
     route = None
     _IMPORT_ERROR = import_error
 
@@ -57,13 +57,13 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
             json=body,
             headers={"X-Willab-Client-Version": "test-client"},
         ):
-            v2.request.user_id = "founder-user-id"
-            v2.request.token_payload = {
+            request.user_id = "founder-user-id"
+            request.token_payload = {
                 "sub": "founder-user-id",
                 "email": email,
                 "iss": "https://auth.example/auth/v1",
             }
-            response, status = v2.v2_user_mlc2_consent.__wrapped__()
+            response, status = v2_mlc2_consent.v2_user_mlc2_consent.__wrapped__()
             return status, response.get_json()
 
     def test_ordinary_account_is_not_modified_or_gated(self):

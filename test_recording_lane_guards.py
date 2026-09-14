@@ -27,11 +27,11 @@ from unittest.mock import patch
 
 try:
     from flask import Flask
-    from routes import v2_routes as v2
+    from routes.v2 import lab_recording as v2_lab_recording
+    from services.db import db as v2_db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
-    v2 = None
     _IMPORT_ERROR = e
 
 SESS = "11111111-1111-4111-8111-111111111111"
@@ -67,10 +67,10 @@ class UnpairedReadTests(unittest.TestCase):
                        return_value=project), \
                  patch("routes.v2.lab_recording."
                        "ensure_project_presentation_unchanged"), \
-                 patch.object(v2.db, "v2_get_session_by_id") as m_sess, \
+                 patch.object(v2_db, "v2_get_session_by_id") as m_sess, \
                  patch("services.coach_video_storage.put_coach_object_bytes") \
                     as m_put:
-                out = v2.v2_lab_create_recording.__wrapped__()
+                out = v2_lab_recording.v2_lab_create_recording.__wrapped__()
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 return resp.get_json(), status, m_sess, m_put
 

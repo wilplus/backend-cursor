@@ -17,7 +17,6 @@ never the reverse.
 Re-exported from ``routes.v2_routes`` for import compatibility.
 """
 import logging
-import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -187,8 +186,7 @@ def _instant_ideal_enabled() -> bool:
     2/3 feedback stay behind approval + the $25 unlock. DEFAULT OFF until the
     FE ships variant handling (deploy order: BE → FE → flip
     INSTANT_IDEAL_TEXT_ENABLED=1 in Railway)."""
-    return (os.getenv("INSTANT_IDEAL_TEXT_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
+    return bool(config.INSTANT_IDEAL_TEXT_ENABLED)
 
 
 def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):

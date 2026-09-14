@@ -24,12 +24,14 @@ stages are plumbing labels, not reads on the speaker).
 from __future__ import annotations
 
 import logging
-import os
 import time
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from services.db import db
 from services.ideal_text_confirmation import IdealTextUnconfirmedError
+from config import Config
+
+config = Config()
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +39,9 @@ ProgressFn = Optional[Callable[[str, int, Optional[str]], None]]
 
 
 def _moment_suggestions_enabled() -> bool:
-    """Star suggestions flag — same env read as routes/v2_routes.py's
-    `_moment_suggestions_enabled` (kept duplicated rather than importing a
-    routes module from services; both read MOMENT_SUGGESTIONS_ENABLED)."""
-    return (os.getenv("MOMENT_SUGGESTIONS_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
+    """Star suggestions flag — one boot-time read in Config (audit Q-A5);
+    routes/v2/arcs.py reads the same attribute."""
+    return bool(config.MOMENT_SUGGESTIONS_ENABLED)
 
 
 class _Timeline:

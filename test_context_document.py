@@ -24,12 +24,13 @@ from services.context_document import (
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from routes.v2 import lab_recording as v2_lab_recording
+    from services.db import db
     _V2_ERR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _V2_ERR = e
 
 ARC = "arc-1"
@@ -117,7 +118,7 @@ class InlineTakeOneUploadTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "INVALID_INPUT")
 
     def test_route_persists_brief_before_queueing_analysis(self):
-        route = inspect.getsource(v2.v2_lab_create_recording)
+        route = inspect.getsource(v2_lab_recording.v2_lab_create_recording)
         prepare_at = route.index("_prepare_lab_upload(")
         persist_at = route.index("_persist_lab_take(")
         analyze_at = route.index("_analysis_response(")
@@ -175,9 +176,9 @@ class UploadRouteTests(unittest.TestCase):
             request.user_id = UID
             with patch("routes.v2.arcs._arc_owned_by_caller",
                               return_value=(owned, [])), \
-                 patch.object(v2.db, "upsert_arc_context_document",
+                 patch.object(db, "upsert_arc_context_document",
                               return_value=True) as m_up:
-                out = v2.v2_explore_upload_context_document.__wrapped__(ARC)
+                out = v2_arcs.v2_explore_upload_context_document.__wrapped__(ARC)
         resp, status = out if isinstance(out, tuple) else (out, 200)
         return resp.get_json(), status, m_up
 
@@ -208,9 +209,9 @@ class GetRouteTests(unittest.TestCase):
             request.user_id = UID
             with patch("routes.v2.arcs._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(v2.db, "get_arc_context_document",
+                 patch.object(db, "get_arc_context_document",
                               return_value=row):
-                out = v2.v2_explore_get_context_document.__wrapped__(ARC)
+                out = v2_arcs.v2_explore_get_context_document.__wrapped__(ARC)
         resp, status = out if isinstance(out, tuple) else (out, 200)
         return resp.get_json(), status
 

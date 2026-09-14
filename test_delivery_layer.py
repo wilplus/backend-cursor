@@ -19,12 +19,18 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from routes.v2 import coach as v2_coach
+    from routes.v2 import common as v2_common
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from routes.v2 import lab_recording as v2_lab_recording
+    from services.db import db
+    from routes.v2 import register_domains
+    from routes.v2.blueprint import v2_bp
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 ARC = "a1"
@@ -108,28 +114,28 @@ class _FeedbackHarness(unittest.TestCase):
             request.user_id = caller
             with patch("services.arc_entitlement.is_arc_entitled",
                        return_value=entitled), \
-                 patch.object(v2, "is_admin", return_value=False), \
-                 patch.object(v2, "is_coach", return_value=False), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(v2_arcs, "is_admin", return_value=False), \
+                 patch.object(v2_arcs, "is_coach", return_value=False), \
+                 patch.object(db, "get_snippets_by_session",
                               side_effect=lambda sid: _snips(sid)), \
-                 patch.object(v2.db, "get_coach_snippet_drafts",
+                 patch.object(db, "get_coach_snippet_drafts",
                               side_effect=lambda sid: [{
                                   "snippet_id": f"{sid}-p0",
                                   "surfaced": surfaced,
                                   "note": "This is the turn.",
                                   "transcript_corrected": f"corrected {sid}",
                               }]), \
-                 patch.object(v2.db, "get_confidence_labels_by_snippet_ids",
+                 patch.object(db, "get_confidence_labels_by_snippet_ids",
                               side_effect=lambda ids: {
                                   str(i): self._ratings(confidence, peer_only)
                                   for i in ids}), \
-                 patch.object(v2.db, "get_user_transcript_edits",
+                 patch.object(db, "get_user_transcript_edits",
                               return_value=[]), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=None), \
-                 patch.object(v2.db, "v2_get_student_details",
+                 patch.object(db, "v2_get_student_details",
                               return_value={"credits": 7}):
-                resp, status = v2.v2_explore_arc_feedback.__wrapped__(ARC)
+                resp, status = v2_arcs.v2_explore_arc_feedback.__wrapped__(ARC)
                 return resp.get_json(), status
 
 
@@ -229,13 +235,13 @@ class IdealTextRoutesTests(unittest.TestCase):
         # (updated_by NULL would be the eager MACHINE draft → "machine").
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions",
+            with patch.object(db, "get_arc_sessions",
                               return_value=_sessions()), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value={"text": "coach block",
                                             "updated_by": "coach1",
                                             "approved_at": None}):
-                resp, status = v2.v2_coach_get_ideal_text.__wrapped__(ARC)
+                resp, status = v2_coach.v2_coach_get_ideal_text.__wrapped__(ARC)
                 body = resp.get_json()
         self.assertEqual(status, 200)
         self.assertEqual(body["source"], "coach")
@@ -248,16 +254,16 @@ class IdealTextRoutesTests(unittest.TestCase):
         # serves (and eager-persists for next open) — the panel is never dead.
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_arc_sessions",
+            with patch.object(db, "get_arc_sessions",
                               return_value=_sessions()), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(db, "get_coach_arc_ideal_text",
                               return_value=None), \
                  patch("services.ideal_text_block.maybe_assemble_ideal_text",
                        return_value=True), \
                  patch("services.ideal_text_block.assemble_ideal_text_block",
                        return_value={"text": "auto block",
                                      "key_moments": [], "ready": True}):
-                resp, status = v2.v2_coach_get_ideal_text.__wrapped__(ARC)
+                resp, status = v2_coach.v2_coach_get_ideal_text.__wrapped__(ARC)
                 body = resp.get_json()
         self.assertEqual(status, 200)
         self.assertEqual(body["source"], "auto")
@@ -267,14 +273,14 @@ class IdealTextRoutesTests(unittest.TestCase):
     def test_approve_persists_auto_when_no_block_saved(self):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_coach_arc_ideal_text",
+            with patch.object(db, "get_coach_arc_ideal_text",
                               return_value=None), \
                  patch("services.ideal_text_block.assemble_ideal_text_block",
                        return_value={"text": "auto block",
                                      "key_moments": [], "ready": True}), \
-                 patch.object(v2.db, "upsert_coach_arc_ideal_text",
+                 patch.object(db, "upsert_coach_arc_ideal_text",
                               return_value=True) as m_up:
-                resp, status = v2.v2_coach_approve_ideal_text.__wrapped__(ARC)
+                resp, status = v2_coach.v2_coach_approve_ideal_text.__wrapped__(ARC)
         self.assertEqual(status, 200)
         kw = m_up.call_args.kwargs
         self.assertTrue(kw["approve"])
@@ -283,12 +289,12 @@ class IdealTextRoutesTests(unittest.TestCase):
     def test_approve_409_when_nothing_assembled(self):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(v2.db, "get_coach_arc_ideal_text",
+            with patch.object(db, "get_coach_arc_ideal_text",
                               return_value=None), \
                  patch("services.ideal_text_block.assemble_ideal_text_block",
                        return_value={"text": "", "key_moments": [],
                                      "ready": False}):
-                resp, status = v2.v2_coach_approve_ideal_text.__wrapped__(ARC)
+                resp, status = v2_coach.v2_coach_approve_ideal_text.__wrapped__(ARC)
         self.assertEqual(status, 409)
         self.assertEqual(resp.get_json()["code"], "IDEAL_TEXT_EMPTY")
 
@@ -297,10 +303,10 @@ class IdealTextRoutesTests(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               lambda a: (True, _sessions())), \
-                 patch.object(v2.db, "upsert_user_arc_ideal_notes",
+                 patch.object(db, "upsert_user_arc_ideal_notes",
                               return_value=True) as m_notes, \
-                 patch.object(v2.db, "upsert_coach_arc_ideal_text") as m_canon:
-                resp, status = v2.v2_explore_put_ideal_notes.__wrapped__(ARC)
+                 patch.object(db, "upsert_coach_arc_ideal_text") as m_canon:
+                resp, status = v2_explore_ideal_text.v2_explore_put_ideal_notes.__wrapped__(ARC)
         self.assertEqual(status, 200)
         m_notes.assert_called_once_with(ARC, "u1", "my edited copy")
         m_canon.assert_not_called()   # L1 — the canonical is untouched
@@ -325,17 +331,17 @@ class SavePublishTests(unittest.TestCase):
         }
         with self.app.test_request_context(json=body):
             request.user_id = "coach1"
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value={"id": sid}), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(db, "get_snippets_by_session",
                               return_value=[{"id": snip}]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes, \
-                 patch.object(v2.db, "set_session_coach_overall_message",
+                 patch.object(db, "set_session_coach_overall_message",
                               return_value=True) as m_summary, \
-                 patch.object(v2.db, "set_session_feedback_saved",
+                 patch.object(db, "set_session_feedback_saved",
                               return_value=True) as m_save:
-                resp, status = v2.v2_coach_save_feedback.__wrapped__(sid)
+                resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(sid)
         self.assertEqual(status, 200)
         out = resp.get_json()
         self.assertTrue(out["saved"])
@@ -355,12 +361,12 @@ class SavePublishTests(unittest.TestCase):
         sid = "11111111-1111-4111-8111-111111111111"
         with self.app.test_request_context(json={}):
             request.user_id = "coach1"
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value={"id": sid}), \
                  patch("routes.v2.coach._save_coach_snippet_lanes") as m_lanes, \
-                 patch.object(v2.db, "set_session_feedback_saved",
+                 patch.object(db, "set_session_feedback_saved",
                               return_value=True) as m_save:
-                resp, status = v2.v2_coach_save_feedback.__wrapped__(sid)
+                resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(sid)
         self.assertEqual(status, 200)
         m_lanes.assert_not_called()
         m_save.assert_called_once_with(sid)
@@ -374,8 +380,9 @@ class PublishRouteContractTests(unittest.TestCase):
     review-state read + approve-without-publish routes stand."""
 
     def _rules(self):
+        register_domains()
         app = Flask(__name__)
-        app.register_blueprint(v2.v2_bp, url_prefix="/v2")
+        app.register_blueprint(v2_bp, url_prefix="/v2")
         return {r.rule: r.endpoint for r in app.url_map.iter_rules()}
 
     def test_publish_analysis_is_the_only_publish_door(self):
@@ -407,19 +414,19 @@ class AsyncReadoutStateTests(unittest.TestCase):
             headers={GUEST_OWNER_HEADER: guest.token},
         ):
             request.user_id = None
-            with patch.object(v2.db, "v2_get_session_by_id",
+            with patch.object(db, "v2_get_session_by_id",
                               return_value=dict(
                                   session, id=sid,
                                   owner_principal_id=guest.principal_id,
                               )), \
-                 patch.object(v2.db, "get_owner_principal",
+                 patch.object(db, "get_owner_principal",
                               return_value={
                                   "id": guest.principal_id,
                                   "user_id": None,
                                   "guest_secret_hash": guest.secret_hash,
                               }):
                 resp, status = \
-                    v2.v2_guest_get_recording_readout.__wrapped__(sid)
+                    v2_lab_recording.v2_guest_get_recording_readout.__wrapped__(sid)
                 return resp.get_json(), status
 
     def test_processing_state_served_without_readout(self):
@@ -471,9 +478,9 @@ class AsyncReadoutStateTests(unittest.TestCase):
         import os
         old = os.environ.pop("ASYNC_ANALYSIS_ENABLED", None)
         try:
-            self.assertFalse(v2._async_analysis_enabled())
+            self.assertFalse(v2_common._async_analysis_enabled())
             os.environ["ASYNC_ANALYSIS_ENABLED"] = "1"
-            self.assertTrue(v2._async_analysis_enabled())
+            self.assertTrue(v2_common._async_analysis_enabled())
         finally:
             if old is None:
                 os.environ.pop("ASYNC_ANALYSIS_ENABLED", None)

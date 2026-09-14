@@ -14,12 +14,12 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 
@@ -50,7 +50,9 @@ class TalksRouteIsDeletedTests(unittest.TestCase):
     and test_ideal_text_report.py (the pure builder mapping)."""
 
     def test_the_route_function_is_gone_from_the_aggregator(self):
-        self.assertFalse(hasattr(v2, "v2_talk_ideal_text"))
+        # The aggregator itself is gone (audit Q-A3); nothing can re-export it.
+        import importlib.util
+        self.assertIsNone(importlib.util.find_spec("routes.v2_routes"))
 
     def test_the_route_function_is_gone_from_its_module(self):
         from routes.v2 import explore_ideal_text
@@ -72,7 +74,7 @@ class PencilEditRichFormatTests(unittest.TestCase):
 
         self._p = [
             patch("routes.v2.arcs._arc_owned_by_caller", lambda a: (True, [])),
-            patch.object(v2.db, "upsert_best_presentation_edit", _upsert),
+            patch.object(db, "upsert_best_presentation_edit", _upsert),
         ]
         for p in self._p:
             p.start()
@@ -84,7 +86,7 @@ class PencilEditRichFormatTests(unittest.TestCase):
     def _call(self, text):
         with self.app.test_request_context(json={"text": text}):
             request.user_id = "u1"
-            resp, status = v2.v2_explore_arc_edit_slide.__wrapped__("a1", 0)
+            resp, status = v2_arcs.v2_explore_arc_edit_slide.__wrapped__("a1", 0)
             return resp.get_json(), status
 
     def test_marker_subset_passes_through(self):
@@ -130,9 +132,9 @@ class ArcProgressCoachFinalizedTests(unittest.TestCase):
         self._p = [
             # 2026-07-16: the guest-capable progress route reads
             # db.get_arc_sessions directly (no _arc_owned_by_caller).
-            patch.object(v2.db, "get_arc_sessions",
+            patch.object(db, "get_arc_sessions",
                          lambda arc_id: list(self._sessions)),
-            patch.object(v2.db, "get_coach_best_presentation_edits",
+            patch.object(db, "get_coach_best_presentation_edits",
                          lambda arc_id: dict(self._coach_edits)),
         ]
         for p_ in self._p:
@@ -145,7 +147,7 @@ class ArcProgressCoachFinalizedTests(unittest.TestCase):
     def _call(self):
         with self.app.test_request_context():
             request.user_id = "u1"
-            resp, status = v2.v2_explore_arc_progress.__wrapped__("a1")
+            resp, status = v2_arcs.v2_explore_arc_progress.__wrapped__("a1")
             return resp.get_json(), status
 
     def test_not_finalized_until_every_slide_corrected(self):

@@ -37,6 +37,18 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_flag(name: str, default: str = "0") -> bool:
+    """Boolean env var, F1-module convention: blank means ``default``; on is
+    exactly one of "1", "true", "yes". Same never-crash contract."""
+    return (os.getenv(name) or default).strip().lower() in ("1", "true", "yes")
+
+
+def _env_not_off(name: str, default: str = "1") -> bool:
+    """Default-ON kill switch: anything but an explicit "0", "false", "no"
+    or "off" keeps it on (the SENTENCE_BOUNDARY_SPLIT_ENABLED convention)."""
+    return (os.getenv(name) or default).strip().lower() not in ("0", "false", "no", "off")
+
+
 def _env_float(name: str, default: float) -> float:
     """Float env var with a safe fallback — same never-crash contract as
     _env_int (live loop)."""
@@ -74,8 +86,6 @@ class Config:
     ENV = os.getenv("ENV", "development")
     # When true, coach receives email at ADMIN_EMAIL when a student completes homework; assignment emails are sent. Set SEND_EMAILS=true to receive reports.
     SEND_EMAILS = os.getenv("SEND_EMAILS", "false").lower() == "true"
-    # Deprecated: homework delivery always unlocks after the email attempt (see _deliver_homework_assignment_core).
-    HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS = os.getenv("HOMEWORK_UNLOCK_WHEN_EMAIL_FAILS", "false").lower() == "true"
 
     # Supabase
     SUPABASE_URL = _secret("SUPABASE_URL")
@@ -96,6 +106,48 @@ class Config:
     OPENAI_TRANSCRIBE_TIMEOUT_SECONDS = _env_float(
         "OPENAI_TRANSCRIBE_TIMEOUT_SECONDS", 600.0)
     OPENAI_MAX_RETRIES = _env_int("OPENAI_MAX_RETRIES", 2)
+    # Chat model overrides (runtime_config in the database wins; these are the
+    # env fallbacks OpenAIService._chat_model reads before its hard default).
+    OPENAI_CHAT_MODEL = (os.getenv("OPENAI_CHAT_MODEL") or "").strip() or None
+    OPENAI_COPILOT_MODEL = (os.getenv("OPENAI_COPILOT_MODEL") or "").strip() or None
+
+    # ── F1 flags and tunables (audit Q-A5, 2026-09-14) ──────────────────────
+    # These used to be os.getenv reads scattered through the F1 modules
+    # (transcription, Ideal Text, Manager). They are read ONCE, here, at boot:
+    # a Railway variable change restarts the process, so nothing is lost, and
+    # the CONFIG-FIRST rule (set the variable before merging the code) now has
+    # one place to look. Tests toggle them with patch.object(Config, NAME, …).
+    # Defaults are the modules' own; the parsing conventions are preserved
+    # exactly (_env_flag: on = "1"/"true"/"yes"; _env_not_off: default-on).
+    INSTANT_IDEAL_TEXT_ENABLED = _env_flag("INSTANT_IDEAL_TEXT_ENABLED", "0")
+    MOMENT_SUGGESTIONS_ENABLED = _env_flag("MOMENT_SUGGESTIONS_ENABLED", "0")
+    POLISH_AS_SUGGESTIONS_ENABLED = _env_flag("POLISH_AS_SUGGESTIONS_ENABLED", "0")
+    LIVING_TRANSCRIPT_ENABLED = _env_flag("LIVING_TRANSCRIPT_ENABLED", "0")
+    MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
+    COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
+    SENTENCE_BOUNDARY_SPLIT_ENABLED = _env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1")
+    SENTENCE_SPLIT_MIN_GAP_MS = _env_int("SENTENCE_SPLIT_MIN_GAP_MS", 600)
+    SENTENCE_SPLIT_MIN_CHARS = _env_int("SENTENCE_SPLIT_MIN_CHARS", 60)
+    PIPELINE_JOB_STALE_MINUTES = _env_int("PIPELINE_JOB_STALE_MINUTES", 5)
+    PIPELINE_JOB_HEARTBEAT_SECONDS = _env_int("PIPELINE_JOB_HEARTBEAT_SECONDS", 60)
+    PIPELINE_JOB_MAX_ATTEMPTS = _env_int("PIPELINE_JOB_MAX_ATTEMPTS", 3)
+    PIPELINE_ORPHAN_STALE_MINUTES = _env_int("PIPELINE_ORPHAN_STALE_MINUTES", 30)
+    PIPELINE_SWEEP_INTERVAL_SECONDS = _env_int("PIPELINE_SWEEP_INTERVAL_SECONDS", 60)
+    # Take Feedback V3 dark mode: exact founder principal, explicit "dark".
+    TAKE_FEEDBACK_POLICY_V3_MODE = (os.getenv("TAKE_FEEDBACK_POLICY_V3_MODE") or "off").strip()
+    TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID = (
+        os.getenv("TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID") or ""
+    ).strip()
+    # The deployed code's commit, for feedback provenance rows. Railway sets
+    # the first; the others are the fallbacks the two F1 readers used to try
+    # separately (their union, so neither reader loses a source).
+    CODE_COMMIT_SHA = (
+        os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or os.getenv("GIT_COMMIT_SHA")
+        or os.getenv("SOURCE_COMMIT")
+        or os.getenv("SOURCE_VERSION")
+        or ""
+    ).strip()
     
     # Email (Resend)
     RESEND_API_KEY = _secret("RESEND_API_KEY")
@@ -115,10 +167,6 @@ class Config:
     # MLC-2 / ED-2.4 is additive and dark until the separately reviewed
     # per-surface cutovers.  This flag may enable foundation workers only; it
     # never authorizes a dataset release, training run or model promotion.
-    MLC2_FOUNDATION_ENABLED = (
-        (os.getenv("MLC2_FOUNDATION_ENABLED") or "false")
-        .strip().lower() in ("1", "true", "yes", "on")
-    )
     # Hard-disabled approval boundaries.  They intentionally are not env
     # toggles: ED-2.4 requires new reviewed implementation and authorization
     # before any of these capabilities exists.
@@ -192,7 +240,6 @@ class Config:
     
     # Audio limits
     MAX_AUDIO_SIZE_MB = 25
-    MAX_RECORDING_DURATION_SECONDS = 300
     # Long-take SOFT CAUTION (founder 2026-07-27). At or above this target
     # length the setup wizard shows a caution — practise the beginning and the
     # ending in short takes instead — and the user proceeds anyway if they
@@ -261,13 +308,6 @@ class Config:
         os.getenv("R2_USER_MEDIA_PUBLIC_BASE_URL") or ""
     ).strip()
 
-    # File size cap for the user-facing /v2/user/upload-media endpoint.
-    # Higher than MAX_AUDIO_SIZE_MB (25) because video is the primary
-    # use case here. 200 MB matches the in-browser MediaRecorder ceiling
-    # most clients hit before we'd want a chunked-upload strategy.
-    MAX_USER_MEDIA_SIZE_MB = int(
-        os.getenv("MAX_USER_MEDIA_SIZE_MB", "200")
-    )
 
     # MLC-3 first-client pilot.  This is deliberately independent from every
     # dataset/training switch: enabling the product loop must never authorize
@@ -276,13 +316,6 @@ class Config:
     MLC3_PILOT_ENABLED = (
         (os.getenv("MLC3_PILOT_ENABLED") or "0").strip().lower()
         in ("1", "true", "yes", "on")
-    )
-    MLC3_PILOT_PRINCIPAL_IDS = tuple(
-        value.strip()
-        for value in (
-            os.getenv("MLC3_PILOT_PRINCIPAL_IDS") or ""
-        ).split(",")
-        if value.strip()
     )
     # General-user MLC-3 serving. This is intentionally independent from the
     # founder-pilot switches above: legacy pilot configuration must never
@@ -402,20 +435,6 @@ class Config:
         in ("1", "true", "yes", "on")
     )
 
-    # ── Phase 2: 1:N coaching attempts history ───────────────────────────
-    # When TRUE (default), every outcome write also lands in the legacy
-    # charisma_snippets.follow_up_outcome JSONB so admin views and the
-    # backfill script still see the latest attempt. Flip to FALSE only
-    # after the migration is fully cut over and consumers exclusively
-    # read from coaching_attempts. Two consumers known today:
-    #   - the admin snippet card outcome strip (reads follow_up_outcome)
-    #   - get_top_followup_examples (reads coaching_attempts already)
-    # Until the admin strip is re-pointed, leaving dual-write on is the
-    # safer default.
-    COACHING_ATTEMPTS_DUAL_WRITE = (
-        (os.getenv("COACHING_ATTEMPTS_DUAL_WRITE") or "true").strip().lower()
-        in ("1", "true", "yes", "on")
-    )
 
     # ── Phase 3: inferred learner profile injection ──────────────────────
     # When TRUE, _augment_coaching_system_prompt appends a [LEARNER
@@ -434,55 +453,7 @@ class Config:
         in ("1", "true", "yes", "on")
     )
 
-    # ── Phase 15: longitudinal first-question generation ────────────────
-    # When TRUE, the contextual_init branch of _generate_llm_question
-    # enriches its system prompt with:
-    #   - the user's last 3 coaching_attempts on THIS snippet (so the
-    #     LLM can avoid repeating prior angles and acknowledge progress)
-    #   - the user's inferred_learner_profile (learner type + recurring
-    #     themes) for tone shaping
-    #   - the user's current learner_mirror narrative (continuity across
-    #     the system as a whole)
-    # And bumps temperature 0.7 → 0.85 so even identical inputs vary.
-    # Default ON — the contextual chat ("infinite flywheel") relies on
-    # the longitudinal block to make Session 2+ feel like the system
-    # remembers the user. Set LONGITUDINAL_FIRST_QUESTION_ENABLED=false
-    # in env to opt back out (kill switch preserved for incident
-    # response).
-    LONGITUDINAL_FIRST_QUESTION_ENABLED = (
-        (os.getenv("LONGITUDINAL_FIRST_QUESTION_ENABLED") or "true")
-        .strip().lower() in ("1", "true", "yes", "on")
-    )
 
-    # ── Phase 16: pre-baked baseline summary ────────────────────────────
-    # When TRUE, the first time a user reaches turn 5 of the EBCP run we
-    # fire a dedicated LLM call that digests turns 1-4 into a structured
-    # baseline_summary (headline, themes, aspirational_archetype, tension,
-    # coaching_handle) on user_settings. Every subsequent question
-    # generator for this user (interview turn 5+, contextual /chat
-    # first-question) reads that summary INSTEAD of having to re-derive
-    # who-this-user-is from raw transcripts on every call — which is
-    # where shallow openers leak in.
-    # Default ON — same rationale as LONGITUDINAL_FIRST_QUESTION_ENABLED:
-    # the baseline digest is the single source-of-truth for who-the-
-    # user-is by the time Session 2+ kicks in. Set
-    # BASELINE_SUMMARY_ENABLED=false in env to opt back out.
-    BASELINE_SUMMARY_ENABLED = (
-        (os.getenv("BASELINE_SUMMARY_ENABLED") or "true")
-        .strip().lower() in ("1", "true", "yes", "on")
-    )
-
-    # ── Phase 6: on-demand learner mirror ────────────────────────────────
-    # When TRUE the user-facing mirror endpoints (GET /v2/user/mirror,
-    # POST /v2/user/mirror/generate) accept requests and the generate
-    # path makes an LLM call. When FALSE both endpoints respond with
-    # FEATURE_DISABLED so the frontend can show a "coming soon" state
-    # without breaking. Default OFF: the LLM cost is per user click,
-    # so we gate it until the UX is ready end-to-end.
-    LEARNER_MIRROR_ENABLED = (
-        (os.getenv("LEARNER_MIRROR_ENABLED") or "").strip().lower()
-        in ("1", "true", "yes", "on")
-    )
     
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
@@ -662,8 +633,6 @@ class Config:
     AUDIT_PRICE_AMOUNT_MINOR = int(os.getenv("AUDIT_PRICE_AMOUNT_MINOR") or "2500")
     # Stripe Price id for the LEGACY audit checkout (mode=payment). Dormant.
     STRIPE_AUDIT_PRICE_ID = (os.getenv("STRIPE_AUDIT_PRICE_ID") or "").strip()
-    # Delivery SLA surfaced in the 402 / paywall copy (hours).
-    AUDIT_SLA_HOURS = int(os.getenv("AUDIT_SLA_HOURS") or "48")
     # Checkout redirect targets (legacy FE pages). Dormant alongside the above.
     AUDIT_CHECKOUT_SUCCESS_URL = (os.getenv("AUDIT_CHECKOUT_SUCCESS_URL") or "").strip() or None
     AUDIT_CHECKOUT_CANCEL_URL = (os.getenv("AUDIT_CHECKOUT_CANCEL_URL") or "").strip() or None
@@ -718,17 +687,8 @@ class Config:
     # dies at the next deploy; the other two configured the in-request trainer
     # and its artifact bucket. Nothing loads a stress model any more: clip
     # selection runs on heuristic suspicion scoring, permanently.
-    # Coach name and photo in assignment email (for artur@willonski.com / default admin)
-    COACH_NAME = os.getenv("COACH_NAME", "Artur")
-    COACH_IMAGE_URL = (os.getenv("COACH_IMAGE_URL") or "").strip() or None  # Optional; if set, used as coach avatar in email.
-    BACKEND_URL = (os.getenv("BACKEND_URL") or "").strip() or None  # Optional; if set and COACH_IMAGE_URL not set, email uses BACKEND_URL/static/coach-avatar.png as coach avatar.
 
-    # Tutor feedback window: time the tutor has to send feedback and assign new homework after a lesson is completed (hours)
-    TUTOR_FEEDBACK_WINDOW_HOURS = float(os.getenv("TUTOR_FEEDBACK_WINDOW_HOURS", "24"))
 
-    # Agentic video pipeline (admin copilot async generation)
-    COPILOT_VIDEO_PIPELINE_ENABLED = (os.getenv("COPILOT_VIDEO_PIPELINE_ENABLED") or "false").strip().lower() == "true"
-    COPILOT_VIDEO_PIPELINE_SECRET = (os.getenv("COPILOT_VIDEO_PIPELINE_SECRET") or "").strip()
     COPILOT_VIDEO_RETRAIN_SECRET = (os.getenv("COPILOT_VIDEO_RETRAIN_SECRET") or "").strip()
     COPILOT_VIDEO_RETRAIN_WEBHOOK_URL = (os.getenv("COPILOT_VIDEO_RETRAIN_WEBHOOK_URL") or "").strip() or None
 
@@ -748,11 +708,6 @@ class Config:
     # Cap extracted audio length for Whisper (API max ~25MB); first N seconds only if longer.
     REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS = int(os.getenv("REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS", "3600"))
 
-    # Recommendation engine v1 hook: when true, _complete_session_from_recording
-    # runs diagnose_session_state() and persists ai_suggested_profile /
-    # ai_suggested_task_id on v2_sessions. Failures are logged and swallowed
-    # (never abort session completion).
-    DIAGNOSE_SESSION_STATE_ENABLED = (os.getenv("DIAGNOSE_SESSION_STATE_ENABLED") or "false").strip().lower() == "true"
 
     # willab Prompt D — the audit is REPLACED by the Best-Presentation. Default
     # OFF retires the audit chat surface (the "audit" suggested_action button);

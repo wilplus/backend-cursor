@@ -51,7 +51,7 @@ def test_all_four_service_gates_are_independent_and_default_closed(monkeypatch):
     assert Config.MLC3_SERVICE_ENABLED is False
     monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
     monkeypatch.setattr(Config, "MLC3_PILOT_ENABLED", True)
-    monkeypatch.setattr(Config, "MLC3_PILOT_PRINCIPAL_IDS", ())
+    assert not hasattr(Config, "MLC3_PILOT_PRINCIPAL_IDS")  # legacy allowlist deleted (audit Q-A5)
     assert principal_is_allowlisted(principal_id="principal") is True
     assert "state = 'disabled'" in SQL
     assert "MLC3_PILOT_ENABLED" not in ROUTE

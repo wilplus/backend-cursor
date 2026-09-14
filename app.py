@@ -106,7 +106,9 @@ from routes.auth import auth_bp
 from routes.recordings import recordings_v2_bp
 from routes.user import user_bp
 from routes.admin import admin_bp
-from routes.v2_routes import v2_bp
+from routes.v2 import register_domains
+register_domains()  # every /v2 domain module, in order; each registers on v2_bp
+from routes.v2.blueprint import v2_bp
 from routes.internal_webhooks import internal_webhooks_bp
 from routes.dev_bugs import dev_bugs_bp
 from routes.dev_tasks import dev_tasks_bp

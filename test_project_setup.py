@@ -6,12 +6,11 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
     _IMPORT_ERROR = None
 except Exception as error:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = error
 
 PROJECT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
@@ -34,7 +33,7 @@ class ProjectSetupEndpointTests(unittest.TestCase):
                 "routes.v2.arcs._arc_owned_by_caller",
                 return_value=(owned, takes),
             ):
-                out = v2.v2_explore_arc_setup.__wrapped__(PROJECT)
+                out = v2_arcs.v2_explore_arc_setup.__wrapped__(PROJECT)
                 response, status = out if isinstance(out, tuple) else (out, 200)
                 return response.get_json(), status
 

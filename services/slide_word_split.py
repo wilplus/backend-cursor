@@ -18,9 +18,11 @@ reference frame as a snippet's start_offset_ms — so a word's slide is just
 from __future__ import annotations
 
 import math
-import os
 import re
 from typing import Any
+from config import Config
+
+config = Config()
 
 
 # ── Pause-snap — RETIRED FROM THE PIPELINE (founder 2026-08-11) ───────────
@@ -111,16 +113,6 @@ def context_with_clock_offset(session_context: Any) -> Any:
     if shifted is adv:
         return session_context
     return {**session_context, "slide_advances": shifted}
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None or str(raw).strip() == "":
-        return default
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return default
 
 
 def _snap_boundaries_to_pauses(slide_advances: Any, words: Any, *,
@@ -566,8 +558,7 @@ def runon_split_enabled() -> bool:
     """Run-on sentence-boundary kill-switch. Default ON; set
     SENTENCE_BOUNDARY_SPLIT_ENABLED=0 to fall back to Whisper's own
     punctuation only (live-loop safety valve, no redeploy)."""
-    return (os.getenv("SENTENCE_BOUNDARY_SPLIT_ENABLED") or "1") \
-        .strip().lower() not in ("0", "false", "no", "off")
+    return bool(config.SENTENCE_BOUNDARY_SPLIT_ENABLED)
 
 
 def _promote_token(token: str) -> str:
@@ -616,9 +607,9 @@ def split_runon_sentences(words: Any, *, min_gap_ms: int | None = None,
     Pure given env.
     """
     gap_need = min_gap_ms if isinstance(min_gap_ms, int) \
-        else _env_int("SENTENCE_SPLIT_MIN_GAP_MS", 600)
+        else int(config.SENTENCE_SPLIT_MIN_GAP_MS)
     chars_need = min_chars if isinstance(min_chars, int) \
-        else _env_int("SENTENCE_SPLIT_MIN_CHARS", 60)
+        else int(config.SENTENCE_SPLIT_MIN_CHARS)
     src = list(words or [])
     if not src:
         return src

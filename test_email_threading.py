@@ -361,10 +361,9 @@ class DeadMethodsGoneTests(unittest.TestCase):
 # routes/v2_routes.py::_coach_pseudonym — the coach recognises a student by
 # the same handle across queue, overlay and mailbox. ──
 try:
-    from routes import v2_routes as _v2
+    from routes.v2 import coach as v2_coach
     _RT_ERR = None
 except Exception as e:  # pragma: no cover
-    _v2 = None
     _RT_ERR = e
 
 
@@ -382,14 +381,14 @@ class PseudonymParityTests(unittest.TestCase):
         ]
         for uid in samples:
             self.assertEqual(
-                coach_pseudonym(uid), _v2._coach_pseudonym(uid),
+                coach_pseudonym(uid), v2_coach._coach_pseudonym(uid),
                 f"pseudonym drift for {uid!r} — the two copies MUST match",
             )
 
     def test_parity_on_falsy(self):
         from services.coach_pseudonym import coach_pseudonym
         for bad in (None, ""):
-            self.assertEqual(coach_pseudonym(bad), _v2._coach_pseudonym(bad))
+            self.assertEqual(coach_pseudonym(bad), v2_coach._coach_pseudonym(bad))
 
 
 if __name__ == "__main__":

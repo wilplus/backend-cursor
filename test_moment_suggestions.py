@@ -27,12 +27,14 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes import v2_routes as v2
+    from routes.v2 import arcs as v2_arcs
+    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
+    from routes.v2 import user_sessions as v2_user_sessions
+    from services.db import db as v2_db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
     request = None
-    v2 = None
     _IMPORT_ERROR = e
 
 ARC = "a1"
@@ -529,23 +531,23 @@ class AppliedMapAndFoldTests(unittest.TestCase):
             {"snippet_id": SNIP, "target": "moment_emphasize",
              "action": "reverted"},
         ]
-        with patch.object(v2.db, "get_suggestion_feedback_by_session",
+        with patch.object(v2_db, "get_suggestion_feedback_by_session",
                           return_value=rows):
-            self.assertEqual(v2._moment_applied_map([SESS]), {})
-        with patch.object(v2.db, "get_suggestion_feedback_by_session",
+            self.assertEqual(v2_arcs._moment_applied_map([SESS]), {})
+        with patch.object(v2_db, "get_suggestion_feedback_by_session",
                           return_value=list(reversed(rows))):
-            self.assertEqual(v2._moment_applied_map([SESS]), {SNIP: True})
+            self.assertEqual(v2_arcs._moment_applied_map([SESS]), {SNIP: True})
 
     def test_fold_emphasize_and_replace(self):
         text = (f"Start. [[moment:{SNIP}|{SESS}]]shaky bit[[/moment]] end.")
-        folded = v2._fold_applied_moments(text, [{
+        folded = v2_arcs._fold_applied_moments(text, [{
             "id": SNIP, "take_session_id": SESS, "applied": True,
             "suggestion": {"kind": "replace", "replacement": "steady bit"},
         }])
         self.assertIn(f"[[moment:{SNIP}|{SESS}]]steady bit[[/moment]]",
                       folded)
         self.assertNotIn("shaky bit", folded)
-        folded2 = v2._fold_applied_moments(text, [{
+        folded2 = v2_arcs._fold_applied_moments(text, [{
             "id": SNIP, "take_session_id": SESS, "applied": True,
             "suggestion": {"kind": "emphasize"},
         }])
@@ -563,7 +565,7 @@ class AppliedMapAndFoldTests(unittest.TestCase):
         # — the words come back untouched, marker-free.
         inner = " ".join(f"w{i}" for i in range(13))   # 13 > 12-word window
         text = f"Start. [[moment:{SNIP}|{SESS}]]{inner}[[/moment]] end."
-        folded = v2._fold_applied_moments(text, [{
+        folded = v2_arcs._fold_applied_moments(text, [{
             "id": SNIP, "take_session_id": SESS, "applied": True,
             "suggestion": {"kind": "emphasize"},
         }])
@@ -572,7 +574,7 @@ class AppliedMapAndFoldTests(unittest.TestCase):
 
     def test_unapplied_untouched(self):
         text = f"[[moment:{SNIP}|{SESS}]]x[[/moment]]"
-        self.assertEqual(v2._fold_applied_moments(text, [{
+        self.assertEqual(v2_arcs._fold_applied_moments(text, [{
             "id": SNIP, "take_session_id": SESS, "applied": False,
             "suggestion": {"kind": "replace", "replacement": "y"},
         }]), text)
@@ -596,30 +598,30 @@ class StudentGetStarTests(unittest.TestCase):
                               return_value=(True, [])), \
                  patch("routes.v2.explore_ideal_text._moment_suggestions_enabled",
                               return_value=stars), \
-                 patch.object(v2.db, "get_coach_arc_ideal_text",
+                 patch.object(v2_db, "get_coach_arc_ideal_text",
                               return_value=row), \
-                 patch.object(v2.db, "get_user_ideal_edit",
+                 patch.object(v2_db, "get_user_ideal_edit",
                               return_value=edit), \
-                 patch.object(v2.db, "get_moment_unlock",
+                 patch.object(v2_db, "get_moment_unlock",
                               return_value=None), \
-                 patch.object(v2.db, "get_moment_suggestions_by_arc",
+                 patch.object(v2_db, "get_moment_suggestions_by_arc",
                               return_value=(sugs or {})), \
-                 patch.object(v2.db, "get_coach_snippet_drafts",
+                 patch.object(v2_db, "get_coach_snippet_drafts",
                               return_value=(drafts or [])), \
-                 patch.object(v2.db, "get_snippets_by_session",
+                 patch.object(v2_db, "get_snippets_by_session",
                               return_value=[{
                                   "id": SNIP,
                                   "audio_segment_path": "https://cdn/take.webm",
                                   "start_offset_ms": 1500,
                                   "duration_ms": 900,
                               }]), \
-                 patch.object(v2.db, "get_suggestion_feedback_by_session",
+                 patch.object(v2_db, "get_suggestion_feedback_by_session",
                               return_value=(feedback or [])), \
-                 patch.object(v2.db, "get_user_arc_ideal_notes",
+                 patch.object(v2_db, "get_user_arc_ideal_notes",
                               return_value=None), \
-                 patch.object(v2.db, "upsert_coach_arc_ideal_text") as m_can, \
-                 patch.object(v2.db, "persist_auto_ideal_text") as m_auto:
-                out = v2.v2_explore_get_ideal_text.__wrapped__(ARC)
+                 patch.object(v2_db, "upsert_coach_arc_ideal_text") as m_can, \
+                 patch.object(v2_db, "persist_auto_ideal_text") as m_auto:
+                out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)
                 # L1: serving never writes the canonical.
                 m_can.assert_not_called()
@@ -836,8 +838,8 @@ class StudentGetStarTests(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class SuggestionTargetTests(unittest.TestCase):
     def test_moment_targets_registered(self):
-        self.assertIn("moment_emphasize", v2._SUGGESTION_TARGETS)
-        self.assertIn("moment_replace", v2._SUGGESTION_TARGETS)
+        self.assertIn("moment_emphasize", v2_user_sessions._SUGGESTION_TARGETS)
+        self.assertIn("moment_replace", v2_user_sessions._SUGGESTION_TARGETS)
 
 
 class StructuralQuoteVerbatimTests(unittest.TestCase):
