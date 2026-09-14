@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
+from config import Config
 
 try:
     from flask import Flask, request
@@ -284,8 +285,7 @@ class DocumentPhraseKeyTests(unittest.TestCase):
 
     def test_key_is_the_smoothed_document_phrase_not_the_raw_words(self):
         with self.app.test_request_context():
-            with patch.dict("os.environ",
-                            {"LIVING_TRANSCRIPT_ENABLED": "1"}), \
+            with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
                  patch.object(v2.db, "get_arc_sessions",
                               return_value=[{"id": SESS, "take_index": 1,
                                              "recording_kind": "spoken"}]), \
@@ -305,16 +305,14 @@ class DocumentPhraseKeyTests(unittest.TestCase):
 
     def test_flag_off_keeps_the_raw_fallback(self):
         with self.app.test_request_context():
-            with patch.dict("os.environ",
-                            {"LIVING_TRANSCRIPT_ENABLED": "0"}):
+            with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", False):
                 out = v2._document_phrase_for(self.ARC, SNIP,
                                               fallback=self.RAW)
         self.assertEqual(out, self.RAW)
 
     def test_build_failure_falls_back_never_raises(self):
         with self.app.test_request_context():
-            with patch.dict("os.environ",
-                            {"LIVING_TRANSCRIPT_ENABLED": "1"}), \
+            with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
                  patch.object(v2.db, "get_arc_sessions",
                               side_effect=RuntimeError("boom")):
                 out = v2._document_phrase_for(self.ARC, SNIP,

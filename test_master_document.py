@@ -15,6 +15,7 @@ from services.master_document import (
     decide_block,
     upgrade_changes,
 )
+from config import Config
 
 ARC = "a1"
 T1 = "take-1-sess"
@@ -473,6 +474,12 @@ except Exception as e:  # pragma: no cover
 _FLAGS = {"MASTER_DOCUMENT_ENABLED": "1", "LIVING_TRANSCRIPT_ENABLED": "1"}
 
 
+def _env_flags(flags):
+    """LIVING_TRANSCRIPT_ENABLED is a boot-time Config read since audit Q-A5;
+    it is patched on Config, the rest still go through the environment."""
+    return {k: v for k, v in flags.items() if k != "LIVING_TRANSCRIPT_ENABLED"}
+
+
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 @unittest.skip("retired incumbent/challenger endpoint")
 class SaveEndpointTests(unittest.TestCase):
@@ -485,7 +492,9 @@ class SaveEndpointTests(unittest.TestCase):
     def _post(self, *, blocks, version=3, flags=None):
         with self.app.test_request_context(json={}):
             request.user_id = "u1"
-            with patch.dict("os.environ", flags or _FLAGS), \
+            with patch.dict("os.environ", _env_flags(flags or _FLAGS)), \
+                 patch.object(Config, "LIVING_TRANSCRIPT_ENABLED",
+                              (flags or _FLAGS).get("LIVING_TRANSCRIPT_ENABLED") == "1"), \
                  patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
                  patch.object(v2.db, "list_ideal_text_blocks",

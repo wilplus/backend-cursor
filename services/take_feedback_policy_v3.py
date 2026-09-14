@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -20,6 +19,9 @@ from services.take_feedback_manager import (
     POLICY_VERSION as MANAGER_RULES_VERSION,
 )
 from services.voice_confidence import VERSION as CONFIDENCE_DETECTOR_VERSION
+from config import Config
+
+config = Config()
 
 
 POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
@@ -42,10 +44,8 @@ _VERSION_KEYS = (
 
 def dark_enabled(acquisition_principal_id: Any) -> bool:
     """True only for the exact configured founder in explicit dark mode."""
-    mode = (os.getenv("TAKE_FEEDBACK_POLICY_V3_MODE") or "off").strip()
-    founder = (
-        os.getenv("TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID") or ""
-    ).strip()
+    mode = (config.TAKE_FEEDBACK_POLICY_V3_MODE or "off").strip()
+    founder = (config.TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID or "").strip()
     owner = str(acquisition_principal_id or "").strip()
     return bool(
         mode == "dark"
@@ -595,12 +595,7 @@ def build_shadow_frame(
             "manager_rules_version": MANAGER_RULES_VERSION,
             "manager_evidence_schema_version": MANAGER_EVIDENCE_SCHEMA_VERSION,
             "source_code_sha256": _source_code_sha256(),
-            "deployment_commit": (
-                os.getenv("RAILWAY_GIT_COMMIT_SHA")
-                or os.getenv("GIT_COMMIT_SHA")
-                or os.getenv("SOURCE_VERSION")
-                or None
-            ),
+            "deployment_commit": config.CODE_COMMIT_SHA or None,
         },
         "block_policy": {
             "unit": "slide_bounded_semantic_speech_block",

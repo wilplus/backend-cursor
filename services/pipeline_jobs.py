@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 import logging
-import os
 import threading
 from typing import Any, Dict, Optional
 
@@ -55,6 +54,9 @@ from services.take_lifecycle import (
     complete_attempt,
     transition_attempt,
 )
+from config import Config
+
+config = Config()
 
 logger = logging.getLogger(__name__)
 
@@ -156,14 +158,6 @@ def _complete_job_attempt(job: Dict[str, Any], result: Any) -> Optional[dict]:
     )
 
 
-def _int_env(name: str, default: int) -> int:
-    raw = (os.getenv(name) or "").strip()
-    try:
-        return int(raw) if raw else default
-    except ValueError:
-        return default
-
-
 class ConfigMismatchError(RuntimeError):
     """A misconfiguration no retry can fix — fail the job immediately.
 
@@ -191,11 +185,11 @@ def stale_minutes() -> int:
     heartbeat thread, while the one-minute sweep still cuts the old
     15-to-20-minute recovery gap to at most six minutes.
     """
-    return max(2, _int_env("PIPELINE_JOB_STALE_MINUTES", 5))
+    return max(2, int(config.PIPELINE_JOB_STALE_MINUTES))
 
 
 def heartbeat_interval_seconds() -> int:
-    return max(10, _int_env("PIPELINE_JOB_HEARTBEAT_SECONDS", 60))
+    return max(10, int(config.PIPELINE_JOB_HEARTBEAT_SECONDS))
 
 
 # ── enqueue (web process) ────────────────────────────────────────────────
@@ -282,7 +276,7 @@ def enqueue_session_recording_job(
         session_id=session_id,
         dedup_key=dedup_key,
         payload=payload,
-        max_attempts=_int_env("PIPELINE_JOB_MAX_ATTEMPTS", 3),
+        max_attempts=int(config.PIPELINE_JOB_MAX_ATTEMPTS),
     )
     if row is None:
         # Most likely the partial-unique dedup index: an ACTIVE job already
@@ -1025,7 +1019,7 @@ def orphan_stale_minutes() -> int:
     """How long a 'processing' session with no job may sit before it is
     presumed stranded. Deliberately longer than the JOB staleness window —
     a job row is protection, and a session without one gets more rope."""
-    return max(5, _int_env("PIPELINE_ORPHAN_STALE_MINUTES", 30))
+    return max(5, int(config.PIPELINE_ORPHAN_STALE_MINUTES))
 
 
 def sweep_orphaned_sessions(max_rows: int = 100) -> int:
@@ -1071,7 +1065,7 @@ def sweep_interval_seconds() -> int:
     # Recovery is intentionally cheap (two bounded indexed reads).  Running
     # it once a minute keeps the two-minute stale boundary meaningful; a
     # five-minute loop made the real worst case twenty minutes.
-    return max(60, _int_env("PIPELINE_SWEEP_INTERVAL_SECONDS", 60))
+    return max(60, int(config.PIPELINE_SWEEP_INTERVAL_SECONDS))
 
 
 # The chain's lease runs for this many intervals. >1 so a single slow or

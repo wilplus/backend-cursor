@@ -72,10 +72,12 @@ Pure: no DB, no clock, no randomness. Unit-testable without a session.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Optional
 
 from services import manager_engine as me
+from config import Config
+
+config = Config()
 
 logger = logging.getLogger(__name__)
 
@@ -206,10 +208,10 @@ def _controls_enabled() -> bool:
         arm and dropped every arm row).
 
     Setting MANAGER_CONTROLS_ENABLED=0 in the environment still switches the
-    whole experiment off in one place, with no code change.
+    whole experiment off in one place, with no code change (read once at boot
+    through Config, audit Q-A5).
     """
-    return (os.getenv("MANAGER_CONTROLS_ENABLED") or "1").strip().lower() \
-        in ("1", "true", "yes")
+    return bool(config.MANAGER_CONTROLS_ENABLED)
 
 
 def _span(change: Any) -> Optional[tuple]:

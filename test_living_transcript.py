@@ -32,6 +32,7 @@ from services.transcript_smoothing import (
     finalize_document, hesitations_for, smooth_piece, strip_fillers,
     tidy_piece,
 )
+from config import Config
 
 
 def smooth_verbatim(text, language="en"):
@@ -657,8 +658,7 @@ class AssemblyFlagTests(unittest.TestCase):
             "key_phrases": []}]}
         with patch("services.best_presentation.build_best_presentation",
                    return_value=bp), \
-             patch.dict("os.environ",
-                        {"LIVING_TRANSCRIPT_ENABLED": "1" if flag else "0"}):
+             patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)):
             mod.maybe_assemble_ideal_text(ARC, database=db,
                                           require_target=False)
         return db.persisted
@@ -1271,8 +1271,7 @@ class ServeChangesTests(unittest.TestCase):
             {"id": S2, "start_offset_ms": 10,
              "transcript": "And then we shipped it fast.",
              "metrics": {"piece": {"slide_index": 0}}}]
-        with patch.dict("os.environ",
-                        {"LIVING_TRANSCRIPT_ENABLED": "1" if flag else "0"}), \
+        with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)), \
              patch.object(v2.db, "get_arc_sessions",
                           return_value=[{"id": T1, "take_index": 1,
                                          "recording_kind": "spoken"}]), \
@@ -1305,8 +1304,7 @@ class ServeChangesTests(unittest.TestCase):
         self.assertEqual(self._block(flag=True), {"changes": []})
 
     def test_broken_document_degrades_to_absent(self):
-        with patch.dict("os.environ",
-                        {"LIVING_TRANSCRIPT_ENABLED": "1"}), \
+        with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
              patch.object(v2.db, "get_arc_sessions",
                           side_effect=RuntimeError("boom")):
             self.assertEqual(v2._tracked_changes_block(ARC, self.DOC), {})

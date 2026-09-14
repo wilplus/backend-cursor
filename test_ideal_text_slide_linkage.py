@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import unittest
 from unittest.mock import patch
+from config import Config
 
 try:
     from flask import Flask, request
@@ -288,8 +289,7 @@ class ComposeFailureFallbackTests(unittest.TestCase):
         ]
         with app.test_request_context():
             request.user_id = "u1"
-            with patch.dict(os.environ,
-                            {"LIVING_TRANSCRIPT_ENABLED": "1"}), \
+            with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
                  patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                        return_value=(True, sessions)), \
                  patch("routes.v2.explore_ideal_text._moments_entitled",

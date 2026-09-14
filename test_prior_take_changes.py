@@ -28,6 +28,7 @@ from services.prior_take_changes import (
     build_prior_take_changes,
     why_key,
 )
+from config import Config
 
 
 def _p(sid, text, take=1, start=None, end=None):
@@ -252,9 +253,7 @@ class DecideEndpointTests(unittest.TestCase):
         from unittest.mock import patch
         with self.app.test_request_context(json=body):
             request.user_id = "u1"
-            with patch.dict("os.environ",
-                            {"LIVING_TRANSCRIPT_ENABLED":
-                             "1" if flag else "0"}), \
+            with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)), \
                  patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(owned, [])), \
                  patch.object(v2.db, "get_coach_arc_ideal_text",

@@ -4,6 +4,7 @@ from services.take_feedback_policy_v3 import (
     build_shadow_frame,
     dark_enabled,
 )
+from config import Config
 
 
 def _piece(index, slide, words, score):
@@ -260,9 +261,9 @@ def test_invalid_rewrite_and_praise_candidates_are_frozen_not_dropped():
 
 
 def test_dark_activation_is_fail_closed_and_founder_exact(monkeypatch):
-    monkeypatch.setenv("TAKE_FEEDBACK_POLICY_V3_MODE", "dark")
-    monkeypatch.setenv("TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID", "founder")
+    monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_MODE", "dark")
+    monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID", "founder")
     assert dark_enabled("founder") is True
     assert dark_enabled("someone-else") is False
-    monkeypatch.setenv("TAKE_FEEDBACK_POLICY_V3_MODE", "enabled")
+    monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_MODE", "enabled")
     assert dark_enabled("founder") is False

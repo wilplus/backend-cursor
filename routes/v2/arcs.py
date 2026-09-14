@@ -20,7 +20,6 @@ Re-exported from ``routes.v2_routes`` for import compatibility.
 """
 import hashlib
 import logging
-import os
 import re
 
 import sentry_sdk
@@ -824,8 +823,7 @@ def _moment_suggestions_enabled() -> bool:
     suggestion stars (emphasize / replace) resolved coach-label-first, else
     the defined voice-confidence read (never an experiment model);
     orange verified stars carry the coach message. DEFAULT OFF."""
-    return (os.getenv("MOMENT_SUGGESTIONS_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
+    return bool(config.MOMENT_SUGGESTIONS_ENABLED)
 
 
 def _take_full_text(session_id):

@@ -34,9 +34,11 @@ text only, no scores anywhere.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from typing import Any, Optional
+from config import Config
+
+config = Config()
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +47,7 @@ def _polish_as_suggestions_enabled() -> bool:
     """Serve the VERBATIM ideal text and offer the light polish as approvable
     stars, instead of silently replacing (founder 2026-07-18). DEFAULT OFF —
     on top of MOMENT_SUGGESTIONS_ENABLED (the star machinery it reuses)."""
-    return (os.getenv("POLISH_AS_SUGGESTIONS_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
+    return bool(config.POLISH_AS_SUGGESTIONS_ENABLED)
 
 MOMENT_RE = re.compile(
     r"\[\[moment:(?P<snippet_id>[0-9a-fA-F-]{8,})\|"
@@ -215,10 +216,10 @@ def _living_transcript_enabled() -> bool:
         this is truthy — so the Railway variable is already 1 and a default
         change buys nothing while risking everything.
 
-    An env flip stays the right lever here: reversible in seconds, no deploy,
-    and scoped to one environment."""
-    return (os.getenv("LIVING_TRANSCRIPT_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
+    A Railway variable flip stays the right lever here: reversible in
+    seconds (one restart, no deploy) and scoped to one environment. Read once
+    at boot through Config (audit Q-A5)."""
+    return bool(config.LIVING_TRANSCRIPT_ENABLED)
 
 
 def assemble_transcript_document(arc_id: str, *, database=None,

@@ -31,6 +31,8 @@ from unittest.mock import patch
 
 from services import intervention_candidates as ic
 from services import manager_engine as me
+from config import Config
+import config as _config_module
 
 ROOT = pathlib.Path(__file__).parent
 
@@ -443,10 +445,14 @@ class TestTheControlsAreOff(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=False):
             import os
             os.environ.pop("MANAGER_CONTROLS_ENABLED", None)
+            # The flag is read once at boot (Config, audit Q-A5); the default
+            # is what an unset variable parses to.
+            self.assertTrue(_config_module._env_flag("MANAGER_CONTROLS_ENABLED", "1"))
+        with patch.object(Config, "MANAGER_CONTROLS_ENABLED", True):
             self.assertTrue(ic._controls_enabled())
 
     def test_one_env_var_switches_the_experiment_off(self):
-        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "0"}):
+        with patch.object(Config, "MANAGER_CONTROLS_ENABLED", False):
             self.assertFalse(ic._controls_enabled())
 
     def test_the_user_id_is_withheld_while_they_are_off(self):
@@ -458,7 +464,7 @@ class TestTheControlsAreOff(unittest.TestCase):
             seen["session_id"] = kw.get("session_id")
             return {"selected": []}
 
-        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "0"}), \
+        with patch.object(Config, "MANAGER_CONTROLS_ENABLED", False), \
                 patch.object(me, "arbitrate", side_effect=_spy):
             ic.select([_change(0)], user_id="u1", session_id="sess1")
         # An empty id makes in_control()/is_withheld() return False by
@@ -475,7 +481,7 @@ class TestTheControlsAreOff(unittest.TestCase):
             seen["controls"] = kw.get("controls")
             return {"selected": []}
 
-        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "1"}), \
+        with patch.object(Config, "MANAGER_CONTROLS_ENABLED", True), \
                 patch.object(me, "arbitrate", side_effect=_spy):
             ic.select([_change(0)], user_id="u1", session_id="sess1")
         self.assertEqual(seen["user_id"], "u1")
@@ -517,7 +523,7 @@ class TestTheExplorationQuota(unittest.TestCase):
             seen["roll"] = kw.get("roll")
             return {"selected": []}
 
-        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "1"}), \
+        with patch.object(Config, "MANAGER_CONTROLS_ENABLED", True), \
                 patch.object(me, "arbitrate", side_effect=_spy):
             ic.select([_change(0)], user_id="u1", session_id="sess-1")
         self.assertIsNotNone(seen["roll"])
@@ -530,7 +536,7 @@ class TestTheExplorationQuota(unittest.TestCase):
             seen["roll"] = kw.get("roll")
             return {"selected": []}
 
-        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "0"}), \
+        with patch.object(Config, "MANAGER_CONTROLS_ENABLED", False), \
                 patch.object(me, "arbitrate", side_effect=_spy):
             ic.select([_change(0)], user_id="u1", session_id="sess-1")
         self.assertIsNone(seen["roll"])
@@ -542,7 +548,7 @@ class TestTheArmsAreKeyedOnLanes(unittest.TestCase):
     (every row still has fire_at = None)."""
 
     def test_every_arm_row_carries_a_lane_key(self):
-        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "1"}):
+        with patch.object(Config, "MANAGER_CONTROLS_ENABLED", True):
             out = ic.select([_change(0, source="polish"),
                              _change(1, source="prior_take")],
                             user_id="u1", session_id="sess-1")
@@ -562,10 +568,10 @@ class TestTheArmsAreKeyedOnLanes(unittest.TestCase):
     def test_select_reports_whether_an_experiment_ran(self):
         # The caller gates arm PERSISTENCE on this: rows written with the arms
         # inert would stamp the policy as if an assignment had happened.
-        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "1"}):
+        with patch.object(Config, "MANAGER_CONTROLS_ENABLED", True):
             self.assertTrue(ic.select([_change(0)], user_id="u1",
                                       session_id="s1")["controls"])
-        with patch.dict("os.environ", {"MANAGER_CONTROLS_ENABLED": "0"}):
+        with patch.object(Config, "MANAGER_CONTROLS_ENABLED", False):
             self.assertFalse(ic.select([_change(0)], user_id="u1",
                                        session_id="s1")["controls"])
 
