@@ -77,7 +77,7 @@ jobs:
           # pytest is a CI-only runner (not a runtime dep). It runs the
           # existing unittest-style tests as-is + gives clean exit codes
           # and --ignore filtering for the quarantined modules.
-          pip install pytest pytest-cov==7.1.0 ruff==0.15.8 mypy==2.3.0
+          pip install pytest pytest-cov==7.1.0 ruff==0.15.8 mypy==2.3.0 radon==6.0.1
 
       # Migrations first, and deliberately: it is the cheapest gate and the
       # only one whose failure means "this would have broken prod on the
@@ -94,6 +94,13 @@ jobs:
 
       - name: Mypy (type-check)
         run: mypy .
+
+      # Cyclomatic complexity ratchet (audit Q-C7, 2026-09-14): no function
+      # in the production surface over CC 25 unless frozen in
+      # scripts/complexity_baseline.json, and a frozen one may only come
+      # down. Static, so it runs with the other static gates.
+      - name: Complexity ratchet
+        run: python scripts/complexity_ratchet.py
 
       - name: Run unit-tier tests
         env:

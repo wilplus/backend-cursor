@@ -53,6 +53,7 @@ CI_PYTHON="3.12.1"
 CI_RUFF="ruff==0.15.8"
 CI_MYPY="mypy==2.3.0"
 CI_COV="pytest-cov==7.1.0"
+CI_RADON="radon==6.0.1"
 
 # QUARANTINE — integration-tier modules that need live Supabase / network.
 # Byte-for-byte the workflow's --ignore list, and every entry must exist
@@ -103,10 +104,10 @@ if [ "$DO_SETUP" = 1 ]; then
   bold "→ installing the CI pins"
   if command -v uv >/dev/null 2>&1; then
     uv pip install --python "$PY" -q \
-      -r requirements.txt pytest "$CI_COV" "$CI_RUFF" "$CI_MYPY" || exit 2
+      -r requirements.txt pytest "$CI_COV" "$CI_RUFF" "$CI_MYPY" "$CI_RADON" || exit 2
   else
     "$PY" -m pip install -q --upgrade pip || exit 2
-    "$PY" -m pip install -q -r requirements.txt pytest "$CI_COV" "$CI_RUFF" "$CI_MYPY" || exit 2
+    "$PY" -m pip install -q -r requirements.txt pytest "$CI_COV" "$CI_RUFF" "$CI_MYPY" "$CI_RADON" || exit 2
   fi
 fi
 
@@ -145,6 +146,7 @@ step "Verify migration manifest" "$PY" scripts/migrate.py verify --verbose
 step "Migration runner unit tests" "$PY" -m unittest test_migrations -v
 step "Ruff (lint)" "$VENV/bin/ruff" check .
 step "Mypy (type-check)" "$VENV/bin/mypy" .
+step "Complexity ratchet" "$PY" scripts/complexity_ratchet.py
 
 # Minimal placeholder env, same as the workflow: enough that import-time
 # guards don't hard-crash, and useless for reaching anything real.
