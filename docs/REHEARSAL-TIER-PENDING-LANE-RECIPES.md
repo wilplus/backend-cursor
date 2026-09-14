@@ -112,9 +112,36 @@ reports 7/9 there, and the second failure is not a fixture problem:
 
 So from 0326 onward `missing_service_rpc_grant_count` is permanently 1 and
 `test_missing_service_execute_and_client_execute_both_block` sees 2 where it
-expects 1. The deliberate revocation is correct; the required-RPC list is stale
-with respect to it. **That is a separate decision, not a lane recipe** — it
-means the deployed canary readiness audit reports one false missing grant.
+expects 1. For the lane recipe, that is the whole point: **build the canary
+lane at @0325 and it does not arise.**
+
+**The founder list is NOT stale — it is scoped, and that scoping is tested.**
+An earlier draft of this note called it stale. That was wrong, and the
+correction matters because "fix the list" would delete a deliberate
+distinction:
+
+- `tests/test_mlc3_founder_canary_readiness.py:806` carries explicit
+  `d4_successors` and `superseded` sets and asserts
+  `called - d4_successors == registered - superseded` — i.e. it requires v1 to
+  stay in the founder list and the D4 successors to stay out.
+- `tests/test_mlc3_general_service_readiness.py::test_readiness_registry_covers_d4_and_closes_superseded_writers`
+  asserts no duplicate function name in `_REQUIRED_RPCS`.
+
+Swapping v1 for v2 in the founder list was tried and fails both
+(`assert 63 == 62`), because `check_mlc3_general_service_readiness.py` derives
+its lists from the founder ones and already adds v2 to required and v1 to
+forbidden. The two scripts describe two different deployment surfaces:
+**founder canary = pre-D4, general service = post-D4.**
+
+What is real is smaller and is an operator trap, not a defect: hand-running
+`scripts/check_mlc3_founder_canary_readiness.py` against a database that has
+0326 applied reports one missing service grant that is expected and correct.
+Post-0326 the script to run is `scripts/check_mlc3_general_service_readiness.py`.
+Nothing runs the founder readiness check automatically — the founder-canary
+cron (`bin/railway-mlc3-founder-canary-monitor.sh`) runs
+`scripts/monitor_mlc3_founder_canary.py`, which performs no RPC-grant checking
+at all, and the readiness script is imported only by its general-service
+counterpart.
 
 ## Lane 2 — general-user service D4 → 34/34
 
