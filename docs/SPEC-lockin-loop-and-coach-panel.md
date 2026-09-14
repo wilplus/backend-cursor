@@ -5,7 +5,7 @@ families, and blindness boundary superseded by the founder's 2026-08-26 lock.
 The current rules below and `CANONICAL_PRODUCT_CONTRACT.md` win over historical
 quotes retained elsewhere.
 
-**Companions:** `docs/DEBUG-HANDOFF-2026-08-10.md` (verified system maps §6 —
+**Companions:** `docs/handoffs/DEBUG-HANDOFF-2026-08-10.md` (verified system maps §6 —
 trust those over memory), `docs/SPEC-parts-locking-and-layers.md` (R1–R7,
 composition/accentuation), Appendix H (manager engine, `BUDGET_CEILING = 3`).
 

@@ -109,15 +109,33 @@ jobs:
           # Supabase / network. They fail in CI for environmental
           # reasons, not real regressions. Run them locally against a
           # real env, or wire secrets + stubs later to un-quarantine.
+          #
+          # Every entry here MUST exist: test_local_ci_mirror.py fails on
+          # a phantom (2026-09-14, audit Q-T3 — four of the six entries
+          # named files deleted months earlier, and the two print scripts
+          # that were listed as tests now live under scripts/).
           pytest \
-            --ignore=test_admin_student_profile_regressions.py \
-            --ignore=test_guest_funnel.py \
-            --ignore=test_homework_regressions.py \
-            --ignore=test_score_unification.py \
-            --ignore=test_sentry.py \
             --ignore=test_auth_request.py \
             -p no:cacheprovider \
             -q
+
+      # The PostgreSQL rehearsal tier (tests/*_postgres.py) runs against a
+      # disposable cluster the script builds on the runner (ubuntu-latest
+      # ships postgresql-16). It is REQUIRED when the diff touches a
+      # migration or an MLC-3 storage path (scripts/rehearsal_trigger.sh —
+      # the same decision the local gate makes) and otherwise not run.
+      # Bound to the change, not to discipline (audit Q-T2, 2026-09-14).
+      - name: Rehearsal tier (PostgreSQL)
+        env:
+          REHEARSAL_PYTHON: python
+        run: |
+          git fetch -q --depth=1 origin main
+          if scripts/rehearsal_trigger.sh --quiet; then
+            echo "REQUIRED: $(scripts/rehearsal_trigger.sh --why)"
+            scripts/rehearsal_tier.sh
+          else
+            echo "not run: $(scripts/rehearsal_trigger.sh --why)"
+          fi
 
   # ── The behavioral gates: live-model probes ───────────────────────────
   #

@@ -1,5 +1,7 @@
 # Migrations — how schema changes reach a database
 
+> **Rehearsal tier (2026-09-14).** Any change under `migrations/` requires the PostgreSQL rehearsal tier to run before the gate is green — `scripts/rehearsal_trigger.sh` decides, `scripts/rehearsal_tier.sh` runs it, on both the local gate and CI. See [`REHEARSAL-TIER.md`](REHEARSAL-TIER.md).
+
 **Status:** shipped 2026-08-03. Replaces "apply by hand, then grep Railway
 logs for Postgres error codes to find out what you missed."
 

@@ -15,10 +15,15 @@ from services.prompts import registry
 
 
 class TestPromptRegistry(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Discovery + hashing walks and imports every prompt module; do it
+        # once per class instead of once per test (audit Q-T11).
+        cls.manifest = registry.manifest()
+
     def test_manifest_builds(self):
         """Discovery + hashing works and yields at least one prompt."""
-        m = registry.manifest()
-        self.assertTrue(m, "no prompt modules discovered in services/prompts/")
+        self.assertTrue(self.manifest, "no prompt modules discovered in services/prompts/")
 
     def test_lockfile_matches_code(self):
         """prompts.lock.json is in sync with the prompt modules.
@@ -41,7 +46,7 @@ class TestPromptRegistry(unittest.TestCase):
     def test_prompt_ids_are_namespaced(self):
         """Every id is '<surface>.<part>' so eval datasets, llm.chat log
         lines, and llm_usage cost rows key on the same surface name."""
-        for pid in registry.manifest():
+        for pid in self.manifest:
             surface, _, part = pid.partition(".")
             self.assertTrue(surface and part,
                             f"prompt id {pid!r} is not '<surface>.<part>'")

@@ -1,0 +1,32 @@
+Clone found (python)
+ - v2/coach_guidance_delivery.py [118:76 - 142:32] (25 lines, 134 tokens)
+   v2/coach_guidance_delivery.py [669:72 - 691:36]
+Clone found (python)
+ - v2/explore_ideal_text.py [2440:56 - 2460:48] (21 lines, 110 tokens)
+   v2/explore_ideal_text.py [2782:60 - 2802:52]
+Clone found (python)
+ - v2/mlc3_first_client_service.py [391:14 - 411:13] (21 lines, 114 tokens)
+   v2/mlc3_first_client_service.py [491:33 - 511:13]
+Clone found (python)
+ - assignment_email.py [177:37 - 194:12] (18 lines, 140 tokens)
+   assignment_email.py [285:32 - 302:12]
+Clone found (python)
+ - coach_video_storage.py [103:5 - 126:4] (24 lines, 122 tokens)
+   user_media_storage.py [146:5 - 169:4]
+Clone found (python)
+ - mlc2_confidence.py [31:1 - 48:34] (18 lines, 138 tokens)
+   mlc2_confidence_producer.py [31:1 - 48:34]
+Clone found (python)
+ - mlc2_confidence_readiness.py [31:53 - 53:4] (23 lines, 113 tokens)
+   mlc3_founder_canary_readiness.py [51:63 - 73:4]
+┌────────┬────────────────┬─────────────┬──────────────┬──────────────┬──────────────────┬───────────────────┐
+│ Format │ Files analyzed │ Total lines │ Total tokens │ Clones found │ Duplicated lines │ Duplicated tokens │
+├────────┼────────────────┼─────────────┼──────────────┼──────────────┼──────────────────┼───────────────────┤
+│ python │ 307            │ 124461      │ 738256       │ 7            │ 143 (0.11%)      │ 871 (0.12%)       │
+├────────┼────────────────┼─────────────┼──────────────┼──────────────┼──────────────────┼───────────────────┤
+│ Total: │ 307            │ 124461      │ 738256       │ 7            │ 143 (0.11%)      │ 871 (0.12%)       │
+└────────┴────────────────┴─────────────┴──────────────┴──────────────┴──────────────────┴───────────────────┘
+Found 7 clones.
+JSON report saved to /tmp/claude-0/-home-user/051ca8c4-d1f3-5dee-ba2b-dc15e95979f4/scratchpad/audit/jscpd_be/jscpd-report.json
+time: 220.748ms
+EXIT 0

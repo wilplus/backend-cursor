@@ -20,10 +20,11 @@ Run: python3 -m unittest test_snippet_table_name
 from __future__ import annotations
 
 import ast
-import pathlib
 import unittest
 
-ROOT = pathlib.Path(__file__).parent
+from tests import repo_scan
+
+ROOT = repo_scan.ROOT
 LEGACY = "charisma_snippets"
 
 # Source that talks to the database at runtime. Tests are excluded on
@@ -33,10 +34,9 @@ SOURCE_DIRS = ("services", "routes", "utils", "scripts")
 
 
 def _source_files():
+    # One walk per session, shared with the other fence modules (audit Q-T11).
     for d in SOURCE_DIRS:
-        for py in (ROOT / d).rglob("*.py"):
-            if "__pycache__" not in str(py):
-                yield py
+        yield from repo_scan.python_files(d)
 
 
 class TestTableNameIsCentralised(unittest.TestCase):
@@ -44,7 +44,7 @@ class TestTableNameIsCentralised(unittest.TestCase):
         """`.table("charisma_snippets")` must not exist outside the constant."""
         offenders = []
         for py in _source_files():
-            tree = ast.parse(py.read_text(encoding="utf-8"))
+            tree = repo_scan.parse(py)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
@@ -85,7 +85,7 @@ class TestTableNameIsCentralised(unittest.TestCase):
         """
         prefixed = set()
         for py in _source_files():
-            tree = ast.parse(py.read_text(encoding="utf-8"))
+            tree = repo_scan.parse(py)
             for node in ast.walk(tree):
                 if isinstance(node, ast.Constant) and isinstance(node.value, str):
                     if f"{LEGACY}/" in node.value:
@@ -199,7 +199,7 @@ class TestEveryWriterProcessProbes(unittest.TestCase):
 
     def test_app_and_worker_both_call_the_probe(self):
         for entry in ("app.py", "worker.py"):
-            tree = ast.parse((ROOT / entry).read_text(encoding="utf-8"))
+            tree = repo_scan.parse(ROOT / entry)
             imports_probe = any(
                 isinstance(n, ast.ImportFrom)
                 and (n.module or "").endswith("snippet_tables")

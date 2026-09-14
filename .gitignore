@@ -29,3 +29,6 @@ exports/*.pdf
 # The CI mirror venv (scripts/local_ci.sh). Built from requirements.txt +
 # the pinned tools; reproducible, so committing it would only ever go stale.
 .venv-ci/
+# also the bare name: a symlink named .venv-ci (committed by accident in #490)
+# is not matched by the directory pattern above
+.venv-ci

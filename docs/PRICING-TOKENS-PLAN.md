@@ -682,7 +682,7 @@ was specified and never wired.
     FE wallet in #198 / #201.
 
 **Settled 2026-07-31 alongside the plan-change endpoints**
-([BE→FE answer](BE-ANSWER-plan-checkout-2026-07-31.md)):
+([BE→FE answer](handoffs/BE-ANSWER-plan-checkout-2026-07-31.md)):
 
 13. **Mid-period DOWNGRADE, and the balance above the new cap.** The tier changes at once; the
     BALANCE IS NEVER TRUNCATED MID-PERIOD. A Max user with 1.4M who drops to Starter keeps all
