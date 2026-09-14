@@ -5,6 +5,9 @@ from services.take_feedback_policy_v3 import (
     dark_enabled,
 )
 from config import Config
+from pathlib import Path
+from services.db import DatabaseService
+from tests.fakes import FakeSupabaseClient
 
 
 def _piece(index, slide, words, score):
@@ -267,3 +270,57 @@ def test_dark_activation_is_fail_closed_and_founder_exact(monkeypatch):
     assert dark_enabled("someone-else") is False
     monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_MODE", "enabled")
     assert dark_enabled("founder") is False
+
+# ── merged from tests/test_take_feedback_policy_v3_integration.py (audit Q-T9) ──
+
+ROUTE = Path("services/ideal_text_changes.py").read_text()
+LEGACY_MIGRATION = Path("migrations/add_take_feedback_policy_v3_shadow.sql").read_text()
+MIGRATION = Path(
+    "migrations/add_take_feedback_policy_universal_v3_transition.sql"
+).read_text()
+
+
+def test_shadow_is_wired_but_cannot_become_the_serving_path():
+    assert "dark_enabled(_v3_principal_id)" in ROUTE
+    assert "record_take_feedback_policy_v3_shadow" in ROUTE
+    assert "serves_user_feedback" in MIGRATION
+    assert "CHECK (rendered_exposure_id IS NULL)" in LEGACY_MIGRATION
+    assert "CHECK (dataset_eligible = FALSE)" in LEGACY_MIGRATION
+    assert "acquisition_principal_id" in MIGRATION
+    assert "take_row.owner_principal_id IS DISTINCT FROM" in MIGRATION
+    assert "take_row.recording_1_id IS DISTINCT FROM p_recording_id" in MIGRATION
+    assert "LEFT JOIN public.snippets" in MIGRATION
+    assert "GRANT SELECT ON TABLE" in MIGRATION
+    assert "GRANT ALL ON TABLE" not in LEGACY_MIGRATION
+    assert "incompatible_detector_version" in MIGRATION
+    assert "voice-confidence-universal-v3" in MIGRATION
+    assert "AND NULLIF(block ->> 'selected_candidate_id', '') IS NULL" in MIGRATION
+
+
+def test_database_adapter_uses_the_service_only_atomic_rpc():
+    client = FakeSupabaseClient(rpc_rows={
+        "record_take_feedback_policy_v3_shadow_v3": [{
+            "outcome": "stored",
+            "frame_hash": "a" * 64,
+        }],
+    })
+    database = DatabaseService.__new__(DatabaseService)
+    database.client = client
+    result = database.record_take_feedback_policy_v3_shadow(
+        arc_id="arc",
+        take_session_id="11111111-1111-4111-8111-111111111111",
+        recording_id="44444444-4444-4444-8444-444444444444",
+        acquisition_principal_id="33333333-3333-4333-8333-333333333333",
+        owner_user_id="22222222-2222-4222-8222-222222222222",
+        take_index=2,
+        policy_version="take-feedback-policy-v3-universal-dark-v3",
+        frame={"serves_user_feedback": False, "dataset_eligible": False},
+        frame_hash="a" * 64,
+    )
+    assert result["outcome"] == "stored"
+    assert client.tables == {}
+    assert "record_take_feedback_policy_v3_shadow_v3" in client.rpcs
+    payload = client.rpcs["record_take_feedback_policy_v3_shadow_v3"].payload
+    assert payload["p_recording_id"] == (
+        "44444444-4444-4444-8444-444444444444"
+    )

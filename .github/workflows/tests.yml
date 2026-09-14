@@ -87,7 +87,7 @@ jobs:
         run: python scripts/migrate.py verify --verbose
 
       - name: Migration runner unit tests
-        run: python -m unittest test_migrations -v
+        run: python -m unittest tests.test_migrations -v
 
       - name: Ruff (lint)
         run: ruff check .

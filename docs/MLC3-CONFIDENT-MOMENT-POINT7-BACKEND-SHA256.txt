@@ -61,9 +61,9 @@ dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_q
 a32a213e6d2dd0c20a0bc4d9daee5985802eee650334996268b9797225e61b10  services/mlc3_general_service_monitor.py
 07d39f109ec55b8db5eb59fa8d4358b0c2ec94b3c408ce375d2140fb887cbc33  services/pipeline_jobs.py
 969647d87ca6be07b395d3be3a70ba5a0b5dedb82a5d90159729ac19807ffe12  services/rooting_coverage.py
-9c62027810dde624befd20442b212ecbe1cf6d6e78455b517321b2ce37cd31bd  test_acoustic_kpi.py
-601d7f1743f90575af0716fbd596bef3f699fac909805831562ca03d4a4aeeb9  test_ideal_text_parts.py
-60788df944f5aea4602d00c9a045b95e93a6ace502029063e0d6c80fbd5940c7  test_user_ideal_edit.py
+9c62027810dde624befd20442b212ecbe1cf6d6e78455b517321b2ce37cd31bd  tests/test_acoustic_kpi.py
+601d7f1743f90575af0716fbd596bef3f699fac909805831562ca03d4a4aeeb9  tests/test_ideal_text_parts.py
+60788df944f5aea4602d00c9a045b95e93a6ace502029063e0d6c80fbd5940c7  tests/test_user_ideal_edit.py
 a4bfdffa958538a137d6b58b57c49ecc11d95401663d5f6b162c90decb8f7f0e  tests/test_confident_moment_bundle.py
 d54bfcf21c5d446cbf0243830e305eb5d42bf510a6d1ca46e8c4ccada79d0f5d  tests/test_confident_moment_bundle_routes.py
 ac2d91c6b987275fd06838f26926324f7bf6947fc297eec23793c1d3c6812aec  tests/test_confident_moment_bundle_security.py
@@ -156,3 +156,11 @@ after Phase 6 (#499); the drift is Phase 6b's alone:
 
 `services/confident_moment_bundle_repository.py`, migration 0327 and every
 other entry are untouched.
+
+## Path update 2026-09-14 — audit Q-T9 (backend)
+
+`test_acoustic_kpi.py`, `test_ideal_text_parts.py` and `test_user_ideal_edit.py`
+moved from the repository root to `tests/` with every other root test
+module (audit Q-T9). Their bytes are unchanged — the three checksums above
+are the ones frozen at the base commit; only the paths are new. Every
+other entry is untouched.

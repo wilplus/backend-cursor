@@ -143,7 +143,7 @@ step() {                                        # step <name> <cmd...>
 }
 
 step "Verify migration manifest" "$PY" scripts/migrate.py verify --verbose
-step "Migration runner unit tests" "$PY" -m unittest test_migrations -v
+step "Migration runner unit tests" "$PY" -m unittest tests.test_migrations -v
 step "Ruff (lint)" "$VENV/bin/ruff" check .
 step "Mypy (type-check)" "$VENV/bin/mypy" .
 step "Complexity ratchet" "$PY" scripts/complexity_ratchet.py
