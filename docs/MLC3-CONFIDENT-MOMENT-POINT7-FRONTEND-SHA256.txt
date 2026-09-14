@@ -20,12 +20,12 @@ b8bd7090e780443e0f2930e8ea4a1dcf44b694da2f57ce88b061fa4ae0af25aa  src/components
 51c5a5381da7beb88e77f105fe00a83f4f46fcee12b7034f1c41dc59ff2f19e1  src/components/willab/ConfidentMomentCoachingBundle.tsx
 3dac745c79400f46c0e6a1390eb229d83216643119249a18a6b9761c8e3bdbf8  src/components/willab/ConfidentMomentExercisePanel.tsx
 1af9ced00f934077d70d0427e2d9039e6ee55d164b305157e6fd2748cb6662f0  src/components/willab/DeckLockMark.tsx
-6c2ca01fcd7f0ea6cf1a84f462894dd532d182b5f57dc6160207868dc72d4455  src/components/willab/IdealTextOverlay.tsx
-944fec573a6d9ca14673136af67b25a49524ad02c0f53233fe05196e459a6a11  src/components/willab/IdealTextReadout.tsx
-2664acd67cb5dc4da79a39904c40ea66479da2312245f061dfac3aef4f03fb4d  src/components/willab/TranscriptReviewDeck.tsx
+0c98cb41cfaf03de3f66cfa9d4ad8275fc81c54d6cdb2b824e6f203c701f66b5  src/components/willab/IdealTextOverlay.tsx
+421eb9b46f3016ab6f3563562859d3ac20826456e7bb72de7caa103109748fc2  src/components/willab/IdealTextReadout.tsx
+c777da0b15bd284e73dceff7b7b4b26811da0aa013376f24e661e83d57c468f2  src/components/willab/TranscriptReviewDeck.tsx
 c1e5f728b54578d9f63a2be3ec3d8c19ad2787809ab6ec84b87983266bb3ac46  src/components/willab/confidentMomentBundleBoundary.test.ts
 51255ace021b5548142fac2715bea0a2eed88ceca9ab57440651b28884aec649  src/components/willab/confidentMomentUserMediaBoundary.test.ts
-565b5cb21a598d5836b6bdf896e3387792fd7b2c4ce8f4de7284325e2e07ac58  src/components/willab/deckSurface.test.ts
+c611797da743daf9eb283ee5149ef6b4b05ad5802c96839da10437d2de013626  src/components/willab/deckSurface.test.ts
 bb3d9771972f40b182427d61a127e370a1e75ef7c581be27351257e6331fa6dc  src/components/willab/noTopBarEditing.test.ts
 74980d7b9816913e8d223a39f6c599a88034aa766bd3cd227498d0dce35473fe  src/components/willab/useConfidentMomentBundle.ts
 e69b4c02a37f729a10e3b49dfa005fbd290ad3e9d8071aaa775dac8e139270fa  src/lib/willab/rootPhraseLayer.test.ts
@@ -38,3 +38,30 @@ a5a2c6aa6919687660b9c13fb3d6d37fcf130b14c863eefdd628496ca77525fb  src/services/a
 9d4c684dda570ab370e0484c1ebcb5335caad421a85e01d39881743eb222f405  src/services/api/idealText.ts
 54a85852dc919b29769dda7ef667e65fe73bb263dfc1bafb6568f3c85cd2050b  src/services/api/mlc3FirstClient.ts
 ```
+
+## Re-freeze 2026-09-14 — post-audit remediation, Phase 5 (frontend)
+
+Re-frozen by the remediation programme's rule ("if a change touches a reviewed
+executable file, re-freeze the hashes and say so"). The packet's own rule
+("repeat both reviews") is the founder's to apply. Thirty of the thirty-four
+entries above verify unchanged against frontend-cursor `main` after Phase 4
+and the Phase 5 branch (`claude/gallant-gates-di7r7f`); the drift is Phase
+5's alone:
+
+- `src/components/willab/IdealTextOverlay.tsx`,
+  `src/components/willab/IdealTextReadout.tsx` — audit Q-C6 (option b): the
+  three cloned decision handlers (decide, undo, apply style) moved to
+  `src/lib/willab/idealTextDecisions.ts`, one function each; the surfaces
+  keep only what differs. One deliberate behaviour change: the Overlay's
+  decide now sends `source: "coach_revision"` on the feedback POST like the
+  Readout already did, so a coach revision is stored as a new ledger
+  decision, never as a mutation of the machine's earlier one.
+- `src/components/willab/TranscriptReviewDeck.tsx`,
+  `src/components/willab/deckSurface.test.ts` — audit Q-C5 (option a): one
+  `ChunkState` per chunk, computed once in `src/lib/willab/deckChunks.ts`;
+  the deck builds the states and passes one to the chunk modal in place of
+  seven props; two source fences in the test re-pointed at the same facts
+  in their new home.
+
+Every other entry, the BFF routes and the Confident Moment bundle surfaces
+included, is untouched.
