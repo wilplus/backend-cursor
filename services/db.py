@@ -7103,8 +7103,12 @@ class DatabaseService:
             if "ideal_text_document_" in low and (
                     "does not exist" in low or "pgrst" in low):
                 return None
-            logger.warning("ideal-text document snapshot read failed: %s",
-                           error)
+            # Same swallow as the core reads below: a broken snapshot read and
+            # an arc with no snapshot both leave as `None`.
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade(
+                "ideal_text_snapshot_read_failed", exc=error,
+                arc_id=arc_id, error=error)
             return None
 
     def get_ideal_text_document_core(
@@ -7128,7 +7132,17 @@ class DatabaseService:
             if "read_ideal_text_document_core_v1" in low and (
                     "does not exist" in low or "pgrst" in low):
                 return None
-            logger.warning("ideal-text core RPC read failed: %s", error)
+            # The last read standing: when this one fails the arc has no
+            # readable document at all, and `None` is indistinguishable from
+            # the honest "this arc has no Ideal Text yet" — the core GET turns
+            # both into `404 IDEAL_TEXT_DOCUMENT_PENDING, state=pending`. So a
+            # total read outage is reported to the user as "not ready yet" and
+            # to us as nothing. Keep the return (the recording loop must not
+            # break on a read fault); report the fault.
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade(
+                "ideal_text_core_read_failed", exc=error,
+                arc_id=arc_id, error=error)
             return None
 
     def get_ideal_text_document_core_v2(
@@ -7169,6 +7183,17 @@ class DatabaseService:
             logger.warning(
                 "ideal-text core v2 read failed arc=%s: %s: %s",
                 arc_id, type(error).__name__, error, exc_info=True)
+            # ...and make that fallback COUNTABLE. The log line above is
+            # written to a stream nobody watches, so the v2 read could degrade
+            # to v1 for every arc in production — exactly what happened on
+            # 2026-09-15 — and no signal would leave the box. Falling back is
+            # correct; falling back silently, forever, is the failure mode.
+            # `observe_f1_degrade` is the existing channel for precisely this
+            # shape (see its module docstring); the Ideal Text read had simply
+            # never been wired into it.
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade(
+                "ideal_text_core_v2_read_failed", exc=error, arc_id=arc_id)
             return self._ideal_text_core_v1_fallback(arc_id, actor_id)
 
     def _ideal_text_core_v1_fallback(
@@ -13750,6 +13775,57 @@ class DatabaseService:
         except Exception as e:
             logger.warning("list_diagnostic_exercises failed: %s", e)
             return []
+
+    def list_speaking_errors(self, active_only: bool = True) -> list[dict]:
+        """The speaking error library (migrations/add_speaking_error_library).
+
+        An EMPTY list means "no library available" — a pending migration, or a
+        read that failed — and callers must treat it as "do not filter" rather
+        than "no error is detectable". Reading it the other way would silently
+        drop every problem tag and quietly undo exercise matching.
+
+        `active_only=False` is for the authoring surface, which must be able to
+        see a retired entry in order to bring it back.
+        """
+        try:
+            query = self.client.table("speaking_error").select("*")
+            if active_only:
+                query = query.eq("active", True)
+            return query.order("error_id").execute().data or []
+        except Exception as e:
+            logger.warning("list_speaking_errors failed: %s", e)
+            return []
+
+    def get_speaking_error(self, error_id: str) -> Optional[dict]:
+        if not error_id:
+            return None
+        try:
+            res = (self.client.table("speaking_error").select("*")
+                   .eq("error_id", str(error_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_speaking_error failed id=%s: %s", error_id, e)
+            return None
+
+    def upsert_speaking_error(self, row: dict) -> Optional[dict]:
+        """Write one library entry.
+
+        The caller owns the rule that this may only ever write `observed`
+        entries — an upsert that carried `status` would otherwise demote a
+        detected error and silently stop it routing exercises.
+        """
+        if not isinstance(row, dict) or not row.get("error_id"):
+            return None
+        payload = dict(row)
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (self.client.table("speaking_error")
+                   .upsert(payload, on_conflict="error_id").execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("upsert_speaking_error failed id=%s: %s",
+                           row.get("error_id"), e)
+            return None
 
     def upsert_diagnostic_exercise(self, row: dict) -> Optional[dict]:
         if not isinstance(row, dict) or not row.get("exercise_id"):

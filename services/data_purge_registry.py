@@ -954,6 +954,12 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "admin_notifications", "arc_invite_codes", "casual_voice_benchmarks",
     "chat_question_pool", "coach_video_assets",
     "dad_jokes", "diagnostic_exercise",
+    # The speaking error LIBRARY — names and written definitions of speech
+    # patterns, beside diagnostic_exercise for the same reason: it is product
+    # vocabulary, not anybody's recording. A row never says that a pattern
+    # occurred in a particular take, so there is nothing here to purge when a
+    # person asks to be deleted.
+    "speaking_error",
     "model_training_runs", "post_recording_questions",
     "pre_recording_questions", "professional_notes_specific_questions",
     "reference_distribution", "runtime_config", "slide_ab_verdicts",

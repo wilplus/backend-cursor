@@ -22,6 +22,14 @@ The password is compared with hmac.compare_digest and is never logged.
   POST /v2/internal/journal/posts/publish | unpublish
   POST /v2/internal/journal/reorder
   POST /v2/internal/journal/media/presign
+  POST /v2/internal/journal/diagnostic-exercises/list | save
+  POST /v2/internal/journal/speaking-errors/list | save
+
+The last pair authors the SPEAKING ERROR LIBRARY, which is not journal content
+but shares this gate and this CMS page. It writes `observed` entries only: a
+coach names and defines a pattern, and making that name findable in audio is a
+detector, which is code. See the endpoints for the two refusals that keep the
+seam honest.
 
 Auth note: this app has no blanket before_request — auth is per-route via
 decorators — so "public" here simply means no decorator, and admin means the
@@ -849,3 +857,54 @@ def journal_image_delete():
     if not image_id:
         return _invalid("id: required")
     return jsonify({"deleted": bool(db.delete_journal_post_image(image_id))}), 200
+
+
+# ── THE SPEAKING ERROR LIBRARY — naming, never detection ───────────────────
+#
+# Founder 2026-09-15: a coach should be able to add a pattern's NAME the moment
+# they notice it, without waiting for a deploy. The seam that makes that safe
+# is `status`: this surface writes `observed` entries only. A coach names and
+# defines; making a name findable in audio is a detector, which is code, and
+# arrives with the migration that adds it.
+#
+# Two rules below are not paperwork:
+#   * refusing `detected` keeps a name from claiming a capability nothing has;
+#   * refusing to edit an already-detected entry stops an upsert demoting it to
+#     `observed`, which would silently stop it routing exercises with no error
+#     anywhere. That is the failure this whole library exists to prevent.
+
+
+@journal_bp.route("/v2/internal/journal/speaking-errors/list",
+                  methods=["POST"])
+def journal_admin_list_speaking_errors():
+    """The whole library, retired entries included. Body { password }."""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    return jsonify({"errors": db.list_speaking_errors(active_only=False)}), 200
+
+
+@journal_bp.route("/v2/internal/journal/speaking-errors/save",
+                  methods=["POST"])
+def journal_admin_save_speaking_error():
+    """Name and define one observed speaking error.
+
+    Thin on purpose: the check-then-write lives in
+    services/speaking_error_library.py, which owns both halves and the two
+    refusals that keep naming from becoming a claim about detection.
+    200 { error } · 400 · 401 · 409 · 503"""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    from services.speaking_error_library import (
+        LibraryRefusal, save_observed_error,
+    )
+    try:
+        saved = save_observed_error(db, _body())
+    except LibraryRefusal as refusal:
+        return _invalid(refusal.message, code=refusal.code,
+                        status=refusal.status)
+    if not saved:
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not save the error"}), 500
+    return jsonify({"error": saved}), 200

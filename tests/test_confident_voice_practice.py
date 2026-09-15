@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 import pathlib
 import unittest
 
@@ -351,3 +352,264 @@ class PersistenceAndJourneyFenceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ObservedProblemTagsTests(unittest.TestCase):
+    """The clip's problems reach matching (2026-09-15, founder: wire the tags).
+
+    Before this, eligibility measured six acoustic signals, used them to decide
+    whether to offer an exercise at all, and then threw them away. Matching saw
+    only how confident the clip sounded, so a speaker whose endings collapse
+    could not be routed to the exercise that treats collapsing endings — the
+    catalogue's own `acoustic_problem_tags` column was written by an admin and
+    read by nothing.
+    """
+
+    def test_only_the_signals_that_fired_become_tags(self):
+        tags = cvp.observed_problem_tags({"signals": {
+            "compressed_ending": True,
+            "reduced_word_separation": False,
+            "insufficient_pauses": True,
+        }})
+        self.assertEqual(tags, frozenset({"ending_compression", "rushing"}))
+
+    def test_an_unknown_signal_name_invents_no_tag(self):
+        # A signal added in code must not conjure a name the catalogue cannot
+        # claim; it would rank nothing and fail silently.
+        self.assertEqual(
+            cvp.observed_problem_tags({"signals": {"brand_new_signal": True}}),
+            frozenset(),
+        )
+
+    def test_pace_is_never_a_tag_because_every_eligible_clip_has_it(self):
+        # pace_high is REQUIRED for eligibility, so as a tag it would mark
+        # every clip `rushing` and discriminate between none of them.
+        verdict = cvp.exercise_eligibility(_snippet(), session_median_wpm=150)
+        self.assertTrue(verdict["pace_high"])
+        self.assertNotIn("pace_high", cvp._SIGNAL_PROBLEM_TAGS)
+
+    def test_malformed_verdicts_are_silent_rather_than_fatal(self):
+        for bad in (None, {}, {"signals": "nope"}, {"signals": None}):
+            self.assertEqual(cvp.observed_problem_tags(bad), frozenset())
+
+    def test_overlap_counts_what_the_exercise_claims_to_treat(self):
+        observed = frozenset({"ending_compression", "rushing"})
+        treats_it = {"acoustic_problem_tags": ["ending_compression"]}
+        treats_something_else = {"acoustic_problem_tags": ["word_compression"]}
+        self.assertEqual(cvp.problem_tag_overlap(observed, treats_it), 1)
+        self.assertEqual(
+            cvp.problem_tag_overlap(observed, treats_something_else), 0)
+        # A tagless row scores zero rather than erroring — that is what keeps
+        # this inert for a catalogue that carries no tags.
+        self.assertEqual(cvp.problem_tag_overlap(observed, {}), 0)
+
+
+class ExerciseRankingTests(unittest.TestCase):
+    def _exercise(self, exercise_id, patterns, tags=None, editorial=0):
+        return {
+            "exercise_id": exercise_id,
+            "supported_confidence_patterns": patterns,
+            "acoustic_problem_tags": list(tags or []),
+            "matching_criteria": {"editorial_priority": editorial},
+        }
+
+    def test_treating_the_actual_problem_beats_suiting_the_confidence_level(self):
+        # `near_confident` is distance 0 from the first exercise and distance 1
+        # from the second, so before the tags were wired the first always won.
+        exact_pattern = self._exercise("suits-the-level", ["near_confident"])
+        treats_problem = self._exercise(
+            "treats-the-problem", ["confident"], ["ending_compression"])
+        ranked = cvp.rank_exercises_for_pattern(
+            "near_confident",
+            [exact_pattern, treats_problem],
+            observed_tags=frozenset({"ending_compression"}),
+        )
+        self.assertEqual(ranked[0][3]["exercise_id"], "treats-the-problem")
+
+    def test_without_tags_the_original_confidence_order_is_untouched(self):
+        # The inertness guarantee: a catalogue with no tags ranks exactly as it
+        # did before this change, so shipping it changes nothing on its own.
+        near = self._exercise("near", ["near_confident"])
+        far = self._exercise("far", ["confident"])
+        for observed in (None, frozenset()):
+            ranked = cvp.rank_exercises_for_pattern(
+                "near_confident", [far, near], observed_tags=observed)
+            self.assertEqual(
+                [row[3]["exercise_id"] for row in ranked], ["near", "far"])
+
+    def test_more_of_the_clip_s_problems_treated_wins(self):
+        one = self._exercise("one", ["near_confident"], ["rushing"])
+        both = self._exercise(
+            "both", ["near_confident"], ["rushing", "ending_compression"])
+        ranked = cvp.rank_exercises_for_pattern(
+            "near_confident", [one, both],
+            observed_tags=frozenset({"rushing", "ending_compression"}),
+        )
+        self.assertEqual(ranked[0][3]["exercise_id"], "both")
+
+    def test_the_offer_and_the_start_route_rank_identically(self):
+        """The invariant that makes this safe to ship.
+
+        `attach_exercise_offer` chooses the exercise; the practice-start route
+        re-ranks through `rank_exercises_for_pattern` and rejects the offer as
+        EXERCISE_OFFER_STALE if it does not come first. Ranking by different
+        rules in the two places would reject a freshly offered exercise the
+        moment a speaker tapped it — so both must weigh the tags the same way.
+        """
+        observed = frozenset({"ending_compression"})
+        suits_level = self._exercise("suits-the-level", ["near_confident"])
+        treats_problem = self._exercise(
+            "treats-the-problem", ["confident"], ["ending_compression"])
+        exercises = [suits_level, treats_problem]
+
+        # What the start route computes.
+        start_best = cvp.rank_exercises_for_pattern(
+            "near_confident", exercises, observed_tags=observed,
+        )[0][3]["exercise_id"]
+
+        # What the offer path computes, using its own sort key shape.
+        offer_ranked = sorted(
+            (
+                -cvp.problem_tag_overlap(observed, exercise),
+                cvp.confidence_pattern_distance(
+                    "near_confident",
+                    exercise.get("supported_confidence_patterns"),
+                ),
+                -int(exercise["matching_criteria"]["editorial_priority"]),
+                -3,
+                str(exercise["exercise_id"]),
+            )
+            for exercise in exercises
+        )
+        self.assertEqual(offer_ranked[0][4], start_best)
+
+
+class SpeakingErrorLibraryTests(unittest.TestCase):
+    """The library and the matcher must not drift apart (founder 2026-09-15).
+
+    "we have the library of the errors so we can recognise them and we have the
+    exercise matching algorithm and they should go hand in hand."
+
+    These read the migration directly rather than a database, so drift is
+    caught in the unit tier at the moment it is introduced.
+    """
+
+    @staticmethod
+    def _migration() -> str:
+        return (pathlib.Path(__file__).resolve().parents[1]
+                / "migrations" / "add_speaking_error_library.sql").read_text()
+
+    def _seeded(self) -> dict[str, str]:
+        """Every seeded error id mapped to its status.
+
+        Split on a `)` that OWNS its line: the definitions themselves contain
+        `(pause_ratio < 0.08),` inline, so splitting on `),` anywhere cuts a
+        row in half and reports its status as whatever precedes the threshold.
+        """
+        sql = self._migration()
+        body = sql[sql.index("INSERT INTO public.speaking_error"):]
+        out: dict[str, str] = {}
+        for block in re.split(r"\n\),?\n", body):
+            found = re.search(r"^\s*'([a-z0-9_]+)',\s*$", block, re.MULTILINE)
+            if not found:
+                continue
+            out[found.group(1)] = (
+                "detected" if "'detected'," in block else "observed"
+            )
+        return out
+
+    def test_every_name_the_matcher_maps_exists_in_the_library(self):
+        # The drift guard. A tag the code can produce but the library does not
+        # define is a measured state with no written definition — the exact
+        # defect the CONSTRUCT fence exists to prevent.
+        mapped = {
+            tag
+            for tags in cvp._SIGNAL_PROBLEM_TAGS.values()
+            for tag in tags
+        }
+        seeded = self._seeded()
+        self.assertTrue(seeded, "no seeded errors parsed from the migration")
+        missing = mapped - set(seeded)
+        self.assertEqual(missing, set(), f"undefined in the library: {missing}")
+
+    def test_every_name_the_matcher_maps_is_marked_detected(self):
+        # `observed` means a human named it and no code can find it. A name the
+        # matcher can produce is by definition detectable, so the two states
+        # would contradict each other.
+        seeded = self._seeded()
+        for tags in cvp._SIGNAL_PROBLEM_TAGS.values():
+            for tag in tags:
+                self.assertEqual(seeded.get(tag), "detected", tag)
+
+    def test_the_library_refuses_a_detected_row_with_no_detector(self):
+        # Structural, not aspirational: the database rejects the claim, so
+        # nobody has to remember the rule at review time.
+        sql = self._migration()
+        self.assertIn("speaking_error_detected_needs_detector", sql)
+        self.assertIn("status <> 'detected' OR detector_ref IS NOT NULL", sql)
+
+    def test_the_library_refuses_an_id_that_could_never_match(self):
+        # Matching is string overlap: `word compression` would match nothing,
+        # raise nothing and route nothing. Unrepresentable is the only safe
+        # answer to a silent failure.
+        self.assertIn("speaking_error_id_shape", self._migration())
+        self.assertIn("'^[a-z][a-z0-9_]{1,62}$'", self._migration())
+
+    def test_every_seeded_error_carries_a_definition_and_one_question(self):
+        sql = self._migration()
+        self.assertIn("definition    TEXT NOT NULL", sql)
+        self.assertIn("asks          TEXT NOT NULL", sql)
+
+    def test_the_migration_is_idempotent_and_rls_guarded(self):
+        sql = self._migration()
+        self.assertIn("CREATE TABLE IF NOT EXISTS public.speaking_error", sql)
+        self.assertIn("ON CONFLICT (error_id) DO NOTHING", sql)
+        self.assertIn("ENABLE ROW LEVEL SECURITY", sql)
+
+    def test_it_is_registered_to_run(self):
+        manifest = (pathlib.Path(__file__).resolve().parents[1]
+                    / "migrations" / "manifest.txt").read_text()
+        self.assertIn("add_speaking_error_library.sql", manifest)
+
+
+class VocabularyFilterTests(unittest.TestCase):
+    class _Db:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def list_speaking_errors(self):
+            return self.rows
+
+    def test_only_detected_entries_enter_the_vocabulary(self):
+        database = self._Db([
+            {"error_id": "ending_compression", "status": "detected"},
+            {"error_id": "trailing_mumble", "status": "observed"},
+        ])
+        self.assertEqual(
+            cvp.detected_problem_vocabulary(database),
+            frozenset({"ending_compression"}),
+        )
+
+    def test_a_name_the_library_does_not_call_detectable_is_dropped(self):
+        verdict = {"signals": {"compressed_ending": True,
+                               "insufficient_pauses": True}}
+        self.assertEqual(
+            cvp.observed_problem_tags(
+                verdict, vocabulary=frozenset({"ending_compression"})),
+            frozenset({"ending_compression"}),
+        )
+
+    def test_an_unavailable_library_does_not_erase_every_tag(self):
+        # The dangerous misreading: empty means "no library", never "nothing is
+        # detectable". Filtering on empty would silently undo matching the
+        # moment a read failed or a migration lagged.
+        verdict = {"signals": {"compressed_ending": True}}
+        for empty in (None, frozenset(), set(), []):
+            self.assertEqual(
+                cvp.observed_problem_tags(verdict, vocabulary=empty),
+                frozenset({"ending_compression"}),
+            )
+        self.assertEqual(
+            cvp.detected_problem_vocabulary(self._Db([])), frozenset())
+        self.assertEqual(
+            cvp.detected_problem_vocabulary(object()), frozenset())

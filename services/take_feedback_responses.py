@@ -12,7 +12,15 @@ RESPONSES = {
     "rewrite_clarity": {
         "apply_suggestion", "edit_myself", "keep_wording",
     },
-    "great_formulation": {"useful", "not_useful", "not_sure"},
+    # `acknowledged` (0333): the praise screen reads "Good job" and offers one
+    # Continue rather than a rating. The write still has to happen — it is what
+    # marks the item decided, and without it praise is re-offered every time
+    # the paragraph is opened — so Continue records an acknowledgement instead
+    # of a verdict. `useful` / `not_useful` stay for the historical rows and
+    # for any surface that still rates.
+    "great_formulation": {
+        "useful", "not_useful", "not_sure", "acknowledged",
+    },
 }
 
 

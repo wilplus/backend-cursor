@@ -410,3 +410,148 @@ def test_enrichment_rejects_snapshot_that_turns_stale_during_readers(
     assert b"must-not-leave-server" not in response.data
     assert database.get_ideal_text_document_core.call_count == 2
     prepared.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+#  A DEGRADED read must not be a SILENT one (2026-09-15)
+#
+#  The cold-open read is built to never 500: when the v2 RPC or its validator
+#  fails, the arc is served the pre-#490 v1 document, and when that is missing
+#  too the route answers `404 IDEAL_TEXT_DOCUMENT_PENDING, state=pending`.
+#  Both are the right wire behaviour — a read fault must not take the recording
+#  loop down with it.
+#
+#  What was missing is the other half. The fallbacks were recorded with
+#  `logger.warning` into a stream nobody watches, so on 2026-09-15 every core
+#  read in production degraded and the only signal that reached a human was the
+#  founder opening the app. These tests pin the fallbacks as COUNTABLE, and pin
+#  the two expected quiet paths as quiet, so the signal keeps meaning something.
+# ---------------------------------------------------------------------------
+
+
+def _db_with_client(client):
+    """A DatabaseService bound to `client`, skipping the real connect()."""
+    from services.db import DatabaseService
+
+    service = DatabaseService.__new__(DatabaseService)
+    service.client = client
+    return service
+
+
+def _rpc_router(handlers):
+    """A client whose `.rpc(name, ...).execute()` is routed by RPC name.
+
+    An `Exception` value is raised from `execute()`; anything else is returned
+    as `.data`. Routing by name matters here: the v2 read falls back to the v1
+    read inside its own except block, so a client that failed both would make a
+    one-event assertion pass for the wrong reason.
+    """
+    client = Mock()
+
+    def _rpc(name, _args=None):
+        holder = Mock()
+        outcome = handlers.get(name)
+        if isinstance(outcome, Exception):
+            holder.execute.side_effect = outcome
+        else:
+            holder.execute.return_value = Mock(data=outcome)
+        return holder
+
+    client.rpc.side_effect = _rpc
+    return client
+
+
+@pytest.fixture
+def observed(monkeypatch):
+    """Collect what the read path reports, instead of sending it to Sentry."""
+    events: list[tuple[str, dict]] = []
+    from services import f1_observability
+
+    monkeypatch.setattr(
+        f1_observability, "observe_f1_degrade",
+        lambda reason, **kw: events.append((reason, kw)))
+    return events
+
+
+def test_a_failing_v2_read_reports_before_it_falls_back(observed):
+    # The shape production raised: an error from INSIDE the function body, so
+    # it carries neither the function name nor a PGRST code and does not match
+    # the quiet "not deployed yet" branch below.
+    boom = Exception("{'code': 'P0002', 'message': 'query returned no rows'}")
+    database = _db_with_client(_rpc_router({
+        "read_ideal_text_document_core_v2": boom,
+        "read_ideal_text_document_core_v1": [],
+    }))
+
+    # Unchanged on the wire: still no exception, still a falsy document.
+    assert database.get_ideal_text_document_core_v2("arc-1", "actor-1") is None
+
+    # Changed for us: the degrade is now an event with the arc on it, so one
+    # bad arc and a product-wide outage no longer look identical.
+    assert [r for r, _ in observed] == ["ideal_text_core_v2_read_failed"]
+    assert observed[0][1]["exc"] is boom
+    assert observed[0][1]["arc_id"] == "arc-1"
+
+
+def test_the_last_read_standing_reports_when_it_fails_too(observed):
+    boom = Exception("connection reset by peer")
+    database = _db_with_client(_rpc_router({
+        "read_ideal_text_document_core_v1": boom,
+    }))
+
+    assert database.get_ideal_text_document_core("arc-1", "actor-1") is None
+    assert [r for r, _ in observed] == ["ideal_text_core_read_failed"]
+
+
+def test_both_reads_failing_is_distinguishable_from_one(observed):
+    # v2 degrading to v1 is survivable; v2 AND v1 failing is the arc being
+    # unreadable. They must not arrive as the same single event.
+    database = _db_with_client(_rpc_router({
+        "read_ideal_text_document_core_v2": Exception("boom v2"),
+        "read_ideal_text_document_core_v1": Exception("boom v1"),
+    }))
+
+    assert database.get_ideal_text_document_core_v2("arc-1", "actor-1") is None
+    assert [r for r, _ in observed] == [
+        # The v2 degrade is reported BEFORE the fallback is attempted, so it
+        # is recorded whether or not the fallback goes on to succeed.
+        "ideal_text_core_v2_read_failed",
+        "ideal_text_core_read_failed",
+    ]
+
+
+def test_an_arc_with_no_document_yet_raises_no_alarm(observed):
+    # The counterweight. If an honest empty arc reported, the signal would fire
+    # on every cold open of a new project and be worth nothing.
+    database = _db_with_client(_rpc_router({
+        "read_ideal_text_document_core_v2": None,
+        "read_ideal_text_document_core_v1": [],
+    }))
+
+    assert database.get_ideal_text_document_core_v2("arc-1", "actor-1") is None
+    assert observed == []
+
+
+def test_an_rpc_not_deployed_yet_still_degrades_quietly(observed):
+    # Code ships before or after its migration depending on the deploy, so
+    # "the function is not in the schema cache" is an expected state during a
+    # rollout, not a fault worth waking anyone for.
+    absent = Exception(
+        "{'code': 'PGRST202', 'message': 'Could not find the function "
+        "public.read_ideal_text_document_core_v2 in the schema cache'}")
+    database = _db_with_client(_rpc_router({
+        "read_ideal_text_document_core_v2": absent,
+        "read_ideal_text_document_core_v1": [],
+    }))
+
+    assert database.get_ideal_text_document_core_v2("arc-1", "actor-1") is None
+    assert observed == []
+
+
+def test_a_broken_snapshot_read_reports_too(observed):
+    client = Mock()
+    client.table.side_effect = Exception("connection reset by peer")
+    database = _db_with_client(client)
+
+    assert database.get_ideal_text_document_snapshot("arc-1", "actor-1") is None
+    assert [r for r, _ in observed] == ["ideal_text_snapshot_read_failed"]
