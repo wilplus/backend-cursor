@@ -234,5 +234,107 @@ class RouteSweepTests(unittest.TestCase):
         )
 
 
+class DeployedNeverReRaisesTests(unittest.TestCase):
+    """A deploy must not be able to lose its error net to an env var.
+
+    Flask resolves DEBUG from FLASK_DEBUG at construction, not only from
+    `flask run --debug`. While `app.debug` was part of the propagation test,
+    one stray variable on a production host did two things silently: removed
+    this net, and replaced the sanitized envelope with Flask's HTML page —
+    tracebacks, absolute paths and any secret echoed in the exception text,
+    straight to the browser, with no `ref` for support to join on.
+
+    That is the leak the module docstring exists to prevent, so it is pinned
+    here rather than left to a code comment.
+    """
+
+    def _app(self, *, debug, deployed, testing=False, propagate=None):
+        from unittest.mock import patch
+        app = Flask(__name__)
+        app.debug = debug
+        app.testing = testing
+        if propagate is not None:
+            app.config["PROPAGATE_EXCEPTIONS"] = propagate
+        with patch("utils.errors._is_deployed", return_value=deployed):
+            register_error_handlers(app)
+
+        @app.route("/boom")
+        def boom():
+            raise RuntimeError('File "/app/x.py": key sk-proj-LEAKME12345')
+
+        return app, patch("utils.errors._is_deployed", return_value=deployed)
+
+    def test_a_deployed_app_with_debug_on_still_answers_json(self):
+        app, deployed = self._app(debug=True, deployed=True)
+        with deployed:
+            res = app.test_client().get("/boom")
+        self.assertEqual(res.status_code, 500)
+        body = res.get_json()
+        self.assertEqual(body["code"], "INTERNAL_ERROR")
+        self.assertTrue(body.get("ref"), "support needs a ref to join on")
+
+    def test_a_deployed_app_with_debug_on_leaks_nothing(self):
+        app, deployed = self._app(debug=True, deployed=True)
+        with deployed:
+            res = app.test_client().get("/boom")
+        blob = res.get_data(as_text=True)
+        self.assertNotIn("sk-proj-LEAKME12345", blob)
+        self.assertNotIn("/app/x.py", blob)
+        self.assertNotIn("Traceback", blob)
+
+    def test_a_local_debug_app_still_re_raises(self):
+        """`flask run --debug` keeps the interactive traceback — the raise IS
+        the feature there, and this change must not take it away."""
+        app, deployed = self._app(debug=True, deployed=False)
+        with deployed, self.assertRaises(RuntimeError):
+            app.test_client().get("/boom")
+
+    def test_testing_still_re_raises_even_when_deployed(self):
+        """A test that swallows its own exceptions reports green while broken."""
+        app, deployed = self._app(debug=False, deployed=True, testing=True)
+        with deployed, self.assertRaises(RuntimeError):
+            app.test_client().get("/boom")
+
+    def test_an_explicit_setting_still_wins_on_a_deploy(self):
+        """The escape hatch stays, but it has to be typed on purpose."""
+        app, deployed = self._app(debug=False, deployed=True, propagate=True)
+        with deployed, self.assertRaises(RuntimeError):
+            app.test_client().get("/boom")
+
+    def test_is_deployed_never_raises(self):
+        """It runs while the app is being built; a config problem must not be
+        the reason the net fails to arm."""
+        from unittest.mock import patch
+        import utils.errors as errors
+        with patch.dict("sys.modules", {"config": None}):
+            self.assertIs(errors._is_deployed(), False)
+
+    def test_is_deployed_actually_reads_the_real_config(self):
+        """The defensive `except` above is a trap, so this closes it.
+
+        A broken import inside `_is_deployed` is swallowed and returns False —
+        which reads as "not deployed" and silently restores the exact hole this
+        class exists to close. The first version of this code had that bug
+        (`from config import config`, which does not exist); every test above
+        passed, because they patch `_is_deployed` itself. mypy caught it, not
+        the suite.
+
+        So: exercise the real import, against the real Config, and assert the
+        value actually tracks the environment.
+        """
+        import importlib
+        import os
+        from unittest.mock import patch
+        import utils.errors as errors
+
+        for env, expected in (("production", True), ("staging", True),
+                              ("development", False)):
+            with patch.dict(os.environ, {"ENV": env}):
+                importlib.reload(importlib.import_module("config"))
+                self.assertIs(
+                    errors._is_deployed(), expected,
+                    f"ENV={env} should report deployed={expected}")
+
+
 if __name__ == "__main__":
     unittest.main()

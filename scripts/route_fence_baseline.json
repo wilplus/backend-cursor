@@ -347,10 +347,6 @@
     "lines": 116,
     "db_calls": 0
   },
-  "routes/v2/lab_recording.py:v2_lab_presentation_extract": {
-    "lines": 82,
-    "db_calls": 0
-  },
   "routes/v2/lab_recording.py:v2_retry_recording_ideal_text": {
     "lines": 77,
     "db_calls": 2
