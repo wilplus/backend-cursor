@@ -494,6 +494,8 @@ class AdminGateTests(_RouteCase):
         ("journal_admin_unpublish", ()),
         ("journal_admin_reorder", ()),
         ("journal_admin_presign", ()),
+        ("journal_admin_list_speaking_errors", ()),
+        ("journal_admin_save_speaking_error", ()),
     )
 
     def test_every_admin_endpoint_401s_on_wrong_password(self):
@@ -966,3 +968,115 @@ class IsolationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── THE SPEAKING ERROR LIBRARY — naming, never detection ───────────────────
+
+class _FakeErrorLibrary:
+    """Records calls; returns one canned existing row."""
+
+    def __init__(self, existing=None):
+        self.existing = existing
+        self.saved: list[dict] = []
+        self.listed: list[bool] = []
+
+    def list_speaking_errors(self, active_only: bool = True):
+        self.listed.append(active_only)
+        return [self.existing] if self.existing else []
+
+    def get_speaking_error(self, error_id: str):
+        if self.existing and self.existing.get("error_id") == error_id:
+            return self.existing
+        return None
+
+    def upsert_speaking_error(self, row: dict):
+        self.saved.append(row)
+        return row
+
+
+class SpeakingErrorLibraryRouteTests(_RouteCase):
+    """Founder 2026-09-15: a coach names a pattern the moment they notice it,
+    without waiting for a deploy — but naming is not detecting."""
+
+    GOOD = {
+        "password": PW,
+        "error_id": "trailing_mumble",
+        "label": "Trailing mumble",
+        "definition": "The last words of a sentence lose volume and "
+                      "articulation while the pace stays even.",
+        "asks": "Did the speaker carry the end of the sentence?",
+        "observed_by": "coach",
+    }
+
+    def test_a_coach_can_name_and_define_a_new_pattern(self):
+        fake = _FakeErrorLibrary()
+        with patch.object(jroutes, "db", fake):
+            body, status = self._post(
+                jroutes.journal_admin_save_speaking_error, dict(self.GOOD))
+        self.assertEqual(status, 200)
+        self.assertEqual(fake.saved[0]["error_id"], "trailing_mumble")
+        # Whatever they send, it lands as observed.
+        self.assertEqual(fake.saved[0]["status"], "observed")
+
+    def test_this_surface_cannot_claim_a_pattern_is_detected(self):
+        # `detected` means code can find it in audio. Nothing typed into a form
+        # can make that true, and a name claiming it would route exercises off
+        # a capability that does not exist.
+        fake = _FakeErrorLibrary()
+        with patch.object(jroutes, "db", fake):
+            body, status = self._post(
+                jroutes.journal_admin_save_speaking_error,
+                {**self.GOOD, "status": "detected"})
+        self.assertEqual(status, 400)
+        self.assertIn("detector", body["error"])
+        self.assertEqual(fake.saved, [])
+
+    def test_an_already_detected_entry_cannot_be_demoted_by_a_save(self):
+        # THE DANGEROUS ONE. `upsert` would overwrite status, so re-saving
+        # `ending_compression` from this form would flip it to observed and
+        # silently stop it routing exercises — no error anywhere, matching
+        # simply stops working. Refuse instead.
+        fake = _FakeErrorLibrary(existing={
+            "error_id": "ending_compression", "status": "detected"})
+        with patch.object(jroutes, "db", fake):
+            body, status = self._post(
+                jroutes.journal_admin_save_speaking_error,
+                {**self.GOOD, "error_id": "ending_compression"})
+        self.assertEqual(status, 409)
+        self.assertEqual(body["code"], "ALREADY_DETECTED")
+        self.assertEqual(fake.saved, [])
+
+    def test_an_id_that_could_never_match_is_refused(self):
+        # Matching is string overlap: a space or a capital matches nothing,
+        # raises nothing and routes nothing.
+        fake = _FakeErrorLibrary()
+        for bad in ("trailing mumble", "TrailingMumble", "2_fast", "", "x"):
+            with patch.object(jroutes, "db", fake):
+                _, status = self._post(
+                    jroutes.journal_admin_save_speaking_error,
+                    {**self.GOOD, "error_id": bad})
+            self.assertEqual(status, 400, bad)
+        self.assertEqual(fake.saved, [])
+
+    def test_a_name_with_no_definition_is_refused(self):
+        # The construct fence, at the point of entry: a measured state with no
+        # written definition is the defect that retired charisma.
+        fake = _FakeErrorLibrary()
+        for missing in ("label", "definition", "asks"):
+            with patch.object(jroutes, "db", fake):
+                _, status = self._post(
+                    jroutes.journal_admin_save_speaking_error,
+                    {**self.GOOD, missing: "  "})
+            self.assertEqual(status, 400, missing)
+        self.assertEqual(fake.saved, [])
+
+    def test_the_authoring_list_shows_retired_entries_too(self):
+        # An authoring surface that cannot see a retired entry cannot bring it
+        # back.
+        fake = _FakeErrorLibrary(existing={"error_id": "x", "active": False})
+        with patch.object(jroutes, "db", fake):
+            body, status = self._post(
+                jroutes.journal_admin_list_speaking_errors, {"password": PW})
+        self.assertEqual(status, 200)
+        self.assertEqual(fake.listed, [False])
+        self.assertEqual(body["errors"][0]["error_id"], "x")

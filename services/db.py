@@ -13776,21 +13776,56 @@ class DatabaseService:
             logger.warning("list_diagnostic_exercises failed: %s", e)
             return []
 
-    def list_speaking_errors(self) -> list[dict]:
+    def list_speaking_errors(self, active_only: bool = True) -> list[dict]:
         """The speaking error library (migrations/add_speaking_error_library).
 
         An EMPTY list means "no library available" — a pending migration, or a
         read that failed — and callers must treat it as "do not filter" rather
         than "no error is detectable". Reading it the other way would silently
         drop every problem tag and quietly undo exercise matching.
+
+        `active_only=False` is for the authoring surface, which must be able to
+        see a retired entry in order to bring it back.
         """
         try:
-            res = (self.client.table("speaking_error").select("*")
-                   .eq("active", True).order("error_id").execute())
-            return res.data or []
+            query = self.client.table("speaking_error").select("*")
+            if active_only:
+                query = query.eq("active", True)
+            return query.order("error_id").execute().data or []
         except Exception as e:
             logger.warning("list_speaking_errors failed: %s", e)
             return []
+
+    def get_speaking_error(self, error_id: str) -> Optional[dict]:
+        if not error_id:
+            return None
+        try:
+            res = (self.client.table("speaking_error").select("*")
+                   .eq("error_id", str(error_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_speaking_error failed id=%s: %s", error_id, e)
+            return None
+
+    def upsert_speaking_error(self, row: dict) -> Optional[dict]:
+        """Write one library entry.
+
+        The caller owns the rule that this may only ever write `observed`
+        entries — an upsert that carried `status` would otherwise demote a
+        detected error and silently stop it routing exercises.
+        """
+        if not isinstance(row, dict) or not row.get("error_id"):
+            return None
+        payload = dict(row)
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            res = (self.client.table("speaking_error")
+                   .upsert(payload, on_conflict="error_id").execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("upsert_speaking_error failed id=%s: %s",
+                           row.get("error_id"), e)
+            return None
 
     def upsert_diagnostic_exercise(self, row: dict) -> Optional[dict]:
         if not isinstance(row, dict) or not row.get("exercise_id"):
