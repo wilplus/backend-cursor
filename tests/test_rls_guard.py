@@ -273,5 +273,91 @@ class ReportContentTests(unittest.TestCase):
         init.assert_not_called()
 
 
+class AnonExecutableByDesignTests(unittest.TestCase):
+    """The allowlist, and the reasons it cannot become a place to hide things.
+
+    It exists because the guard had no answer for the PostgREST pre-request
+    hook: the fix it printed (REVOKE ... FROM anon) would have taken every
+    signed-out request down, so the line was unactionable and red on every
+    boot. A permanently-red security check is one people stop reading, and this
+    is the only control on the direct-PostgREST path.
+
+    So the allowlist buys green — and these tests are the price: it may only
+    ever shrink, every entry must say what breaks, and nothing on it disappears
+    from the output.
+    """
+
+    HOOK = "willab_pre_request()"
+
+    def test_the_exact_set_is_pinned_so_nothing_is_added_quietly(self):
+        """Change this test deliberately or not at all. It may only shrink."""
+        import rls_guard
+        self.assertEqual(set(rls_guard.ANON_EXECUTABLE_BY_DESIGN), {self.HOOK})
+
+    def test_every_entry_says_what_revoking_would_break(self):
+        """A reason is the whole point — 'accepted risk' is not one."""
+        import rls_guard
+        for name, reason in rls_guard.ANON_EXECUTABLE_BY_DESIGN.items():
+            self.assertGreater(len(reason), 120, f"{name}: reason too thin")
+            self.assertTrue(
+                any(w in reason.lower() for w in ("break", "fail", "raise")),
+                f"{name}: the reason must name the breakage, not the verdict")
+
+    def test_an_allowlisted_function_is_not_a_finding(self):
+        code, out = run_main([], conn=FakeConn(functions=[self.HOOK]))
+        self.assertEqual(code, 0)
+        self.assertIn("OK", out)
+        self.assertNotIn("EXPOSURE FOUND", out)
+        self.assertIn("1 anon-callable by design", out)
+
+    def test_strict_stays_green_for_an_allowlisted_function(self):
+        """The whole point: the boot line and CI both go quiet, legitimately."""
+        code, _ = run_main(["--strict"], conn=FakeConn(functions=[self.HOOK]))
+        self.assertEqual(code, 0)
+
+    def test_anything_not_on_the_list_is_still_a_finding(self):
+        code, out = run_main(
+            ["--strict"], conn=FakeConn(functions=[self.HOOK, "leaky(x text)"]))
+        self.assertEqual(code, 1)
+        self.assertIn("EXPOSURE FOUND", out)
+        self.assertIn("leaky(x text)", out)
+        self.assertIn("1 public function(s) anon can EXECUTE", out)
+
+    def test_an_allowlisted_entry_stays_visible_beside_real_findings(self):
+        """Triaged, not hidden — it still prints, just not as an exposure."""
+        _, out = run_main([], conn=FakeConn(functions=[self.HOOK, "leaky(x text)"]))
+        self.assertIn("BY DESIGN", out)
+        self.assertIn(self.HOOK, out)
+
+    def test_a_stale_entry_cannot_launder_a_real_finding(self):
+        """Matching is by exact identity signature against what THIS database
+        has. An allowlisted name that is absent simply never appears, so the
+        list cannot pre-authorise a function that does not exist yet."""
+        _, out = run_main([], conn=FakeConn(functions=[]))
+        self.assertNotIn("by design", out)
+        code, out = run_main(
+            ["--strict"], conn=FakeConn(functions=["willab_pre_request(text)"]))
+        self.assertEqual(code, 1, "a different signature is a different function")
+        self.assertIn("EXPOSURE FOUND", out)
+
+    def test_json_separates_findings_from_by_design(self):
+        _, out = run_main(["--json"], conn=FakeConn(functions=[self.HOOK]))
+        payload = json.loads(out)
+        self.assertIs(payload["ok"], True)
+        self.assertEqual(payload["functions"], [])
+        self.assertEqual(payload["by_design"], [self.HOOK])
+
+    def test_by_design_never_pages_sentry(self):
+        """Waking someone for a thing that is working as intended is how alerts
+        get muted."""
+        import rls_guard
+        import sentry_sdk
+        with patch.dict(os.environ, {"SENTRY_DSN": "https://k@example.test/1"}), \
+             patch.object(sentry_sdk, "init") as init:
+            rls_guard._tell_sentry({"tables": [], "functions": [],
+                                    "by_design": [self.HOOK], "anon_role": True})
+        init.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
