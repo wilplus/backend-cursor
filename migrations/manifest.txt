@@ -364,3 +364,5 @@
 0326	add_mlc3_general_user_service_d4.sql
 0327	add_confident_moment_coaching_bundle_v1.sql
 0328	fix_ideal_text_core_v2_optional_overlay_degradation.sql
+0329	fix_ideal_text_core_v2_part_revision_id_transport.sql
+0330	fix_ideal_text_core_v2_owner_edit_empty_state.sql
