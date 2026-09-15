@@ -61,3 +61,30 @@ def test_no_later_migration_creates_drops_or_renames_a_pinned_name():
         "a migration re-defines, drops or renames a pinned playback RPC; "
         "the production timeout hook names it literally — update the hook "
         f"first, then this test: {offenders}")
+
+
+ATTESTATION = (
+    ROOT / "docs"
+    / "MLC3-CONFIDENT-MOMENT-D49-SECTION-5-ACTIVATION-ATTESTATION.md"
+)
+
+
+def test_the_attestation_records_exactly_the_pinned_paths():
+    """The deployed hook's record must match the names pinned above.
+
+    The hook itself lives in the production database, not in this repository,
+    so the attestation's "What was deployed" block is the only checked-in
+    statement of which paths are actually bounded. If it and this list
+    disagree, one of them is lying about production — and the whole point of
+    the pin is that the three names have a single source of truth.
+    """
+    block = ATTESTATION.read_text().split("## What was deployed", 1)
+    assert len(block) == 2, (
+        "the attestation no longer has a 'What was deployed' section; the "
+        "record of which paths production bounds has gone missing")
+    recorded = set(re.findall(
+        r"/rpc/([a-z0-9_]+)", block[1].split("\n## ", 1)[0]))
+    assert recorded == set(PINNED_RPC_NAMES), (
+        "the attestation's deployed-hook block and this pinned list disagree "
+        "about which paths production bounds; update the hook first, re-take "
+        f"the attestation, then this list: {sorted(recorded ^ PINNED_RPC_NAMES)}")
