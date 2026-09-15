@@ -17,7 +17,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 import sentry_sdk
 from flask import jsonify, request
@@ -103,6 +103,58 @@ def _parse_lab_vocabulary(raw):
     return [t.strip() for t in s.split(",") if t.strip()]
 
 
+def _store_presentation_pdf(pdf_bytes: bytes) -> Optional[str]:
+    """Store the served deck PDF; return a browser-fetchable URL.
+
+    Prefers the stable public URL (it persists for history scroll-back) and
+    falls back to a presigned GET only when the public base isn't configured.
+
+    RESOLVES THE BUCKET RATHER THAN HARDCODING IT, which is the whole reason
+    this is a function. Until #484 (2026-09-09) the R2 branch of
+    ``put_coach_object_bytes`` ignored its ``bucket`` argument outright::
+
+        b = r2_bucket_name()                          # before #484
+        b = (bucket or "").strip() or r2_bucket_name()  # after
+
+    so the literal ``"coach_feedback_videos"`` that used to sit at this call
+    site was inert. #484 made the caller's string authoritative, to enable the
+    lab-audio bucket split — and at that moment the literal quietly became a
+    REAL bucket name. Wherever ``R2_BUCKET_NAME`` names something else (config's
+    own example is the hyphenated ``coach-feedback-videos``, R2 names taking no
+    underscores), the write targets a bucket that does not exist.
+
+    The module already states this contract on the READ side:
+    ``presigned_get_coach_object_r2`` raises MLC3_R2_COACH_MEDIA_BUCKET_MISMATCH
+    unless the caller's bucket equals ``require_coach_video_r2()``
+    (= ``R2_BUCKET_NAME``). The write side simply had no equivalent guard, so a
+    stale literal failed loudly on read and silently on write.
+
+    ``r2_bucket_name()`` is the single source of truth — ``R2_BUCKET_NAME`` when
+    set, else ``COACH_FEEDBACK_VIDEO_BUCKET``. That makes this identical to the
+    old literal everywhere the literal was already right, and correct where it
+    was not.
+
+    On failure it names the bucket it tried before re-raising: the caller's 502
+    log never said which one, which is exactly the fact needed to tell a
+    misconfigured bucket apart from a storage outage.
+    """
+    from services.coach_video_storage import (
+        coach_media_public_url, presigned_get_coach_object,
+        put_coach_object_bytes, r2_bucket_name,
+    )
+
+    bucket = r2_bucket_name()
+    key = f"willab_presentations/{uuid.uuid4().hex}.pdf"
+    try:
+        put_coach_object_bytes(bucket, key, pdf_bytes, "application/pdf")
+    except Exception:
+        logger.error("presentation store target bucket=%r key=%r", bucket, key)
+        raise
+    return coach_media_public_url(key) or presigned_get_coach_object(
+        bucket, key, expires_in=604800,
+    )
+
+
 @v2_bp.route("/lab/presentation/extract", methods=["POST"])
 @heavy_limit
 @optional_auth
@@ -156,26 +208,11 @@ def v2_lab_presentation_extract():
             logger.error("presentation extract failed: %s", pe, exc_info=True)
             return jsonify({"code": "UNPARSEABLE", "error": "Could not parse the file."}), 422
 
-        # Store the served PDF; return a browser-fetchable URL. Prefer the
-        # stable public URL (persists for history scroll-back); fall back to a
-        # presigned GET only if the public base isn't configured.
-        from services.coach_video_storage import (
-            put_coach_object_bytes, coach_media_public_url,
-        )
-        key = f"willab_presentations/{uuid.uuid4().hex}.pdf"
         try:
-            put_coach_object_bytes(
-                "coach_feedback_videos", key, parsed["pdf_bytes"], "application/pdf",
-            )
+            presentation_ref = _store_presentation_pdf(parsed["pdf_bytes"])
         except Exception as se:
             logger.error("presentation store failed: %s", se, exc_info=True)
             return jsonify({"code": "V2_ERROR", "error": "Could not store the presentation."}), 502
-        presentation_ref = coach_media_public_url(key)
-        if not presentation_ref:
-            from services.coach_video_storage import presigned_get_coach_object
-            presentation_ref = presigned_get_coach_object(
-                "coach_feedback_videos", key, expires_in=604800,
-            )
         slides = parsed["slides"]
         return jsonify({
             "slides": slides,
