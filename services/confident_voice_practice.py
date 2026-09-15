@@ -295,6 +295,74 @@ _PATTERN_ORDINAL = {
 }
 
 
+"""The controlled problem vocabulary the exercise catalogue already speaks
+(``diagnostic_exercise.acoustic_problem_tags``), mapped from the signals
+eligibility already measures.
+
+Until 2026-09-15 this column was written by an administrator and read by
+nothing: eligibility computed six acoustic signals, used them to decide
+whether to offer an exercise AT ALL, and then discarded them. Matching saw
+only how confident the clip sounded, so nothing could route a speaker whose
+endings collapse to the exercise that treats collapsing endings.
+
+The mapping is deliberately many-to-one. Six measured signals, three names,
+because three is what the catalogue can currently claim. Widening the
+vocabulary is a catalogue change and belongs with the error-library table,
+not here — a name invented in this file would match no exercise row and
+silently rank nothing.
+
+``pace_high`` is deliberately absent. It is REQUIRED for eligibility, so it is
+true for every clip that reaches matching; as a tag it would mark all of them
+``rushing`` and discriminate between none of them.
+"""
+_SIGNAL_PROBLEM_TAGS: dict[str, tuple[str, ...]] = {
+    "reduced_word_separation": ("word_compression",),
+    "dense_articulation": ("word_compression",),
+    "reduced_intelligibility": ("word_compression",),
+    "compressed_ending": ("ending_compression",),
+    "insufficient_pauses": ("rushing",),
+    "irregular_rushed_pacing": ("rushing",),
+}
+
+
+def observed_problem_tags(verdict: Any) -> frozenset[str]:
+    """The catalogue's names for the problems that ACTUALLY fired on this clip.
+
+    Internal routing only. These names never reach a user payload, and they are
+    a detector verdict — never a coach judgement, never a training label.
+    Unknown signal names are ignored rather than guessed at, so adding a signal
+    in code cannot accidentally invent a tag no exercise can claim.
+    """
+    if not isinstance(verdict, dict):
+        return frozenset()
+    signals = verdict.get("signals")
+    if not isinstance(signals, dict):
+        return frozenset()
+    tags: set[str] = set()
+    for name, fired in signals.items():
+        if fired:
+            tags.update(_SIGNAL_PROBLEM_TAGS.get(str(name), ()))
+    return frozenset(tags)
+
+
+def problem_tag_overlap(observed: Any, exercise: Any) -> int:
+    """How many of the clip's observed problems this exercise claims to treat.
+
+    Zero when either side is silent, which is what keeps this change inert for
+    a catalogue that carries no tags: every exercise scores 0 and the original
+    confidence-distance order is preserved exactly.
+    """
+    if not observed or not isinstance(exercise, dict):
+        return 0
+    claimed = exercise.get("acoustic_problem_tags")
+    if not isinstance(claimed, list):
+        return 0
+    return sum(
+        1 for tag in set(claimed)
+        if isinstance(tag, str) and tag in observed
+    )
+
+
 def confidence_pattern_distance(pattern: str, supported: Any) -> Optional[int]:
     """Deterministic proximity used only to route an eligible exercise.
 
@@ -313,9 +381,20 @@ def confidence_pattern_distance(pattern: str, supported: Any) -> Optional[int]:
 
 
 def rank_exercises_for_pattern(
-    pattern: str, exercises: list[dict]
+    pattern: str, exercises: list[dict], *, observed_tags: Any = None,
 ) -> list[tuple[int, int, str, dict]]:
-    """Complete deterministic order for already reviewed active exercises."""
+    """Complete deterministic order for already reviewed active exercises.
+
+    ``observed_tags`` is the clip's fired problems (``observed_problem_tags``).
+    It orders the result but does NOT enter the returned tuples, so the shape
+    this returns is unchanged for every caller.
+
+    Passing it is not optional in spirit: this ordering must agree with
+    ``attach_exercise_offer`` below, because the practice-start route re-ranks
+    here to decide whether an offer has gone stale. Rank by a different rule in
+    one place and a freshly offered exercise is rejected the moment a speaker
+    taps it.
+    """
     ranked: list[tuple[int, int, str, dict]] = []
     for exercise in exercises:
         distance = confidence_pattern_distance(
@@ -335,7 +414,29 @@ def rank_exercises_for_pattern(
             str(exercise.get("exercise_id") or ""),
             exercise,
         ))
-    return sorted(ranked, key=lambda item: item[:3])
+    return sorted(
+        ranked,
+        key=lambda item: (
+            -problem_tag_overlap(observed_tags, item[3]),
+            *item[:3],
+        ),
+    )
+
+
+def reviewed_active_exercises(database: Any) -> list[dict]:
+    """Every catalogue row whose assets are live, in catalogue order.
+
+    `get_active_diagnostic_exercise` is the gate: the row must be `active`, and
+    must carry both an explanation video and a journal post that is actually
+    published. A row that names assets it does not have never reaches matching.
+    """
+    out: list[dict] = []
+    for row in database.list_diagnostic_exercises() or []:
+        active = database.get_active_diagnostic_exercise(
+            str(row.get("exercise_id") or ""))
+        if active:
+            out.append(active)
+    return out
 
 
 def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
@@ -383,8 +484,9 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     by_id = {str(row.get("id")): row for row in snippets}
     take_rows = database.get_snippets_by_session(take_session_id) or []
     median_wpm = _median_wpm(take_rows)
+    # (-tag overlap, confidence distance, -editorial, -priority, id, …)
     ranked: list[
-        tuple[int, int, int, str, int, dict, dict, dict, dict]
+        tuple[int, int, int, int, str, int, dict, dict, dict, dict]
     ] = []
     for index, row in enumerate(candidates):
         snippet = by_id.get(str(row.get("snippet_id")))
@@ -412,6 +514,12 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
             semantic_or_structural_problem=verbal_problem,
         )
         if verdict.get("eligible"):
+            # WHAT WENT WRONG, not just how confident it sounded. The overlap
+            # leads the sort key, so an exercise that treats this clip's actual
+            # problems beats one that merely suits its confidence level. With a
+            # tagless catalogue every overlap is 0 and the original order
+            # stands untouched.
+            observed_tags = observed_problem_tags(verdict)
             for exercise in exercises:
                 distance = confidence_pattern_distance(
                     str(verdict.get("pattern") or ""),
@@ -426,6 +534,7 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
                     else 0
                 )
                 ranked.append((
+                    -problem_tag_overlap(observed_tags, exercise),
                     distance,
                     -editorial,
                     -int(verdict.get("priority") or 0),
@@ -438,7 +547,7 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
                 ))
     if not ranked:
         return rows
-    _, _, _, _, _, chosen, snippet, verdict, exercise = min(ranked)
+    _, _, _, _, _, _, chosen, snippet, verdict, exercise = min(ranked)
     intro = (exercise.get("confident_introduction_copy")
              if verdict.get("pattern") == "confident" else
              exercise.get("introduction_copy"))

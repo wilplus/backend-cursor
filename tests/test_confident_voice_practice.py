@@ -351,3 +351,133 @@ class PersistenceAndJourneyFenceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ObservedProblemTagsTests(unittest.TestCase):
+    """The clip's problems reach matching (2026-09-15, founder: wire the tags).
+
+    Before this, eligibility measured six acoustic signals, used them to decide
+    whether to offer an exercise at all, and then threw them away. Matching saw
+    only how confident the clip sounded, so a speaker whose endings collapse
+    could not be routed to the exercise that treats collapsing endings — the
+    catalogue's own `acoustic_problem_tags` column was written by an admin and
+    read by nothing.
+    """
+
+    def test_only_the_signals_that_fired_become_tags(self):
+        tags = cvp.observed_problem_tags({"signals": {
+            "compressed_ending": True,
+            "reduced_word_separation": False,
+            "insufficient_pauses": True,
+        }})
+        self.assertEqual(tags, frozenset({"ending_compression", "rushing"}))
+
+    def test_an_unknown_signal_name_invents_no_tag(self):
+        # A signal added in code must not conjure a name the catalogue cannot
+        # claim; it would rank nothing and fail silently.
+        self.assertEqual(
+            cvp.observed_problem_tags({"signals": {"brand_new_signal": True}}),
+            frozenset(),
+        )
+
+    def test_pace_is_never_a_tag_because_every_eligible_clip_has_it(self):
+        # pace_high is REQUIRED for eligibility, so as a tag it would mark
+        # every clip `rushing` and discriminate between none of them.
+        verdict = cvp.exercise_eligibility(_snippet(), session_median_wpm=150)
+        self.assertTrue(verdict["pace_high"])
+        self.assertNotIn("pace_high", cvp._SIGNAL_PROBLEM_TAGS)
+
+    def test_malformed_verdicts_are_silent_rather_than_fatal(self):
+        for bad in (None, {}, {"signals": "nope"}, {"signals": None}):
+            self.assertEqual(cvp.observed_problem_tags(bad), frozenset())
+
+    def test_overlap_counts_what_the_exercise_claims_to_treat(self):
+        observed = frozenset({"ending_compression", "rushing"})
+        treats_it = {"acoustic_problem_tags": ["ending_compression"]}
+        treats_something_else = {"acoustic_problem_tags": ["word_compression"]}
+        self.assertEqual(cvp.problem_tag_overlap(observed, treats_it), 1)
+        self.assertEqual(
+            cvp.problem_tag_overlap(observed, treats_something_else), 0)
+        # A tagless row scores zero rather than erroring — that is what keeps
+        # this inert for a catalogue that carries no tags.
+        self.assertEqual(cvp.problem_tag_overlap(observed, {}), 0)
+
+
+class ExerciseRankingTests(unittest.TestCase):
+    def _exercise(self, exercise_id, patterns, tags=None, editorial=0):
+        return {
+            "exercise_id": exercise_id,
+            "supported_confidence_patterns": patterns,
+            "acoustic_problem_tags": list(tags or []),
+            "matching_criteria": {"editorial_priority": editorial},
+        }
+
+    def test_treating_the_actual_problem_beats_suiting_the_confidence_level(self):
+        # `near_confident` is distance 0 from the first exercise and distance 1
+        # from the second, so before the tags were wired the first always won.
+        exact_pattern = self._exercise("suits-the-level", ["near_confident"])
+        treats_problem = self._exercise(
+            "treats-the-problem", ["confident"], ["ending_compression"])
+        ranked = cvp.rank_exercises_for_pattern(
+            "near_confident",
+            [exact_pattern, treats_problem],
+            observed_tags=frozenset({"ending_compression"}),
+        )
+        self.assertEqual(ranked[0][3]["exercise_id"], "treats-the-problem")
+
+    def test_without_tags_the_original_confidence_order_is_untouched(self):
+        # The inertness guarantee: a catalogue with no tags ranks exactly as it
+        # did before this change, so shipping it changes nothing on its own.
+        near = self._exercise("near", ["near_confident"])
+        far = self._exercise("far", ["confident"])
+        for observed in (None, frozenset()):
+            ranked = cvp.rank_exercises_for_pattern(
+                "near_confident", [far, near], observed_tags=observed)
+            self.assertEqual(
+                [row[3]["exercise_id"] for row in ranked], ["near", "far"])
+
+    def test_more_of_the_clip_s_problems_treated_wins(self):
+        one = self._exercise("one", ["near_confident"], ["rushing"])
+        both = self._exercise(
+            "both", ["near_confident"], ["rushing", "ending_compression"])
+        ranked = cvp.rank_exercises_for_pattern(
+            "near_confident", [one, both],
+            observed_tags=frozenset({"rushing", "ending_compression"}),
+        )
+        self.assertEqual(ranked[0][3]["exercise_id"], "both")
+
+    def test_the_offer_and_the_start_route_rank_identically(self):
+        """The invariant that makes this safe to ship.
+
+        `attach_exercise_offer` chooses the exercise; the practice-start route
+        re-ranks through `rank_exercises_for_pattern` and rejects the offer as
+        EXERCISE_OFFER_STALE if it does not come first. Ranking by different
+        rules in the two places would reject a freshly offered exercise the
+        moment a speaker tapped it — so both must weigh the tags the same way.
+        """
+        observed = frozenset({"ending_compression"})
+        suits_level = self._exercise("suits-the-level", ["near_confident"])
+        treats_problem = self._exercise(
+            "treats-the-problem", ["confident"], ["ending_compression"])
+        exercises = [suits_level, treats_problem]
+
+        # What the start route computes.
+        start_best = cvp.rank_exercises_for_pattern(
+            "near_confident", exercises, observed_tags=observed,
+        )[0][3]["exercise_id"]
+
+        # What the offer path computes, using its own sort key shape.
+        offer_ranked = sorted(
+            (
+                -cvp.problem_tag_overlap(observed, exercise),
+                cvp.confidence_pattern_distance(
+                    "near_confident",
+                    exercise.get("supported_confidence_patterns"),
+                ),
+                -int(exercise["matching_criteria"]["editorial_priority"]),
+                -3,
+                str(exercise["exercise_id"]),
+            )
+            for exercise in exercises
+        )
+        self.assertEqual(offer_ranked[0][4], start_best)

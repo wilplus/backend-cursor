@@ -1683,16 +1683,16 @@ def v2_start_confident_voice_practice(snippet_id):
         if not verdict.get("eligible"):
             return jsonify({"code": "NOT_ELIGIBLE",
                             "error": "This moment does not match the exercise."}), 409
-        from services.confident_voice_practice import rank_exercises_for_pattern
-        reviewed_exercises = []
-        for row in db.list_diagnostic_exercises() or []:
-            active = db.get_active_diagnostic_exercise(
-                str(row.get("exercise_id") or "")
-            )
-            if active:
-                reviewed_exercises.append(active)
+        # `observed_tags` keeps this ordering identical to the one the offer
+        # was attached with; ranking by a different rule here would reject a
+        # freshly offered exercise as stale the moment a speaker tapped it.
+        from services.confident_voice_practice import (
+            observed_problem_tags, rank_exercises_for_pattern,
+            reviewed_active_exercises)
         ranked_exercises = rank_exercises_for_pattern(
-            str(verdict.get("pattern") or ""), reviewed_exercises
+            str(verdict.get("pattern") or ""),
+            reviewed_active_exercises(db),
+            observed_tags=observed_problem_tags(verdict),
         )
         if not ranked_exercises:
             return jsonify({"code": "NOT_ELIGIBLE",
