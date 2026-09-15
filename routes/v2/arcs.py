@@ -26,15 +26,12 @@ import re
 import sentry_sdk
 from flask import jsonify, request
 
-from auth import optional_auth, require_auth
+from auth import require_auth
 from config import Config
 from routes.admin import is_admin, is_coach
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _resolve_snippet_audio_url
 from services.db import db
-from services.create_take import session_owned_by_principal
-from services.project_ownership import GUEST_OWNER_HEADER
-from services.project_repository import ProjectRepository
 from services.token_prices import price_of as _price_of
 
 logger = logging.getLogger(__name__)
@@ -381,170 +378,6 @@ def v2_voice_album():
                      exc_info=True)
         sentry_sdk.capture_exception(error)
         return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
-
-
-@v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
-@require_auth
-def v2_explore_arc_best_presentation(arc_id):
-    """Best-Presentation (willab Prompt D) — REPLACES the audit. After the arc's
-    3 takes, the user's strongest-supported delivery of each slide is lightly
-    stitched into 'ideal presentation' text, with coach-confirmed markers.
-
-    SCORE-FREE (AC-9). Ownership: the arc must contain a session owned by the
-    caller, else 404. Not-ready (<3 takes) still returns 200 with populated
-    slides + progress.takes_remaining — the FE drives its 'need 3 takes' notice
-    off ready / takes_remaining (not off a 404 or an empty body).
-
-    Founder 2026-07-06: 402 gates this endpoint (paid deliverable). PAST the
-    gate, ``coach_finalized`` is a SEPARATE, harder gate on CONTENT — the raw
-    auto-assembled draft is NEVER served to the student; every slide's `text`
-    is "" until the coach has corrected EVERY slide (build_best_presentation
-    handles this transparently), regardless of payment. The FE shows "still
-    being prepared by your coach" when paid but not yet coach_finalized —
-    distinct from the 402 paywall.
-
-    Response 200 {
-        arc_id, ready, coach_finalized, presentation_ref,
-        progress: { takes_done, takes_target, takes_remaining, ready },
-        slides: [ { index, title, body, text, audio_ref,
-                    start_offset_ms, duration_ms, take_index,
-                    coach_edited, edited } ]
-    }
-             404 NOT_FOUND · 500 V2_ERROR
-    """
-    try:
-        from services.slide_selection import build_best_presentation
-        if request.args.get("source") == "deck-ref-fallback":
-            # Retirement watch (founder 2026-09-14): the FE's third deck-ref
-            # source (useArcDeckRef) marks its GET. A day of logs with no hit
-            # retires the fallback, then this route.
-            logger.warning("deck_ref_fallback arc=%s", arc_id)
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        # Single-deliverable (founder 2026-07-17): the best presentation is
-        # free — no paywall. (audit_paid stays true for FE back-compat.)
-        return jsonify({
-            "arc_id": arc_id, "audit_paid": True,
-            **build_best_presentation(arc_id),
-        }), 200
-    except Exception as e:
-        logger.error("explore/arc best-presentation failed arc=%s: %s", arc_id,
-                     e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to build best presentation",
-        }), 500
-
-
-@v2_bp.route("/explore/arc/<arc_id>/best-presentation/slides/<int:index>",
-             methods=["PUT"])
-@require_auth
-def v2_explore_arc_edit_slide(arc_id, index):
-    """Save the user's edited best-presentation text for one slide (Prompt D —
-    the pencil). Overrides the composed text + sticks across recompositions.
-    Ownership-checked.
-
-    Rich formatting (backlog 1.7, founder 2026-07-11): the FE's ideal-text
-    editor persists a tiny marker subset — **bold**, *italic*, __underline__,
-    ==highlight== — INSIDE this same text field. The markers pass through as
-    plain text (they degrade readably on every other surface); raw HTML tags
-    are stripped server-side so markup can never round-trip into a renderer.
-
-    Body: { "text": str }.  200 { ok, arc_id, index } · 400 · 404 · 500
-    """
-    try:
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        body = request.get_json(silent=True) or {}
-        text = (body.get("text") or "").strip() if isinstance(body.get("text"), str) else ""
-        # Strip HTML tags (keep the marker subset — it's plain text). Length
-        # is checked AFTER stripping so tags can't smuggle past the cap.
-        text = re.sub(r"<[^>]*>", "", text).strip()
-        if not text:
-            return jsonify({"code": "INVALID_INPUT", "error": "text is required"}), 400
-        if len(text) > 2000:
-            return jsonify({"code": "INVALID_INPUT", "error": "text too long"}), 400
-        ok = db.upsert_best_presentation_edit(arc_id, index, text, request.user_id)
-        if not ok:
-            return jsonify({"code": "V2_ERROR", "error": "Could not save the edit"}), 500
-        return jsonify({"ok": True, "arc_id": arc_id, "index": index}), 200
-    except Exception as e:
-        logger.error("explore/arc edit-slide failed arc=%s idx=%s: %s",
-                     arc_id, index, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to save edit"}), 500
-
-
-@v2_bp.route("/explore/arc/<arc_id>/progress", methods=["GET"])
-@optional_auth
-def v2_explore_arc_progress(arc_id):
-    """Cheap poll for the 'X takes to your ideal presentation' bar (Prompt D §5).
-
-    coach_finalized (backlog 4.2, 2026-07-11): whether the coach has corrected
-    EVERY slide of the ideal text — at 3/3 takes with coach_finalized=false the
-    FE shows "Now we are waiting for the coach to assemble your speech!".
-    Computed cheaply here (one edits read + the deck size from the sessions
-    already loaded), mirroring services/slide_selection.py's definition —
-    the ideal-text payload stays the authoritative gate.
-
-    GUEST-capable: the matching signed Guest ID may read the Project's progress
-    before signup. A bare Project UUID is never authorization; account-owned
-    Projects remain owner-only with the same 404 no-existence-leak behavior.
-
-    Response 200 { arc_id, takes_done, takes_target, takes_remaining, ready,
-                   coach_finalized }
-             · 404 · 500
-    """
-    try:
-        from services.slide_selection import presentation_progress
-        sessions = db.get_arc_sessions(arc_id)
-        if not sessions:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        _caller = getattr(request, "user_id", None)
-        _first = sessions[0]
-        if not session_owned_by_principal(
-            _first,
-            repository=ProjectRepository(db),
-            user_id=_caller,
-            guest_token=request.headers.get(GUEST_OWNER_HEADER),
-        ):
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        _principal_id = str(_first.get("owner_principal_id") or "")
-        if _principal_id and any(
-            str(s.get("owner_principal_id") or "") != _principal_id
-            for s in sessions
-        ):
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        # Canonical deck size = the most-complete deck across takes (same
-        # rule as compose); deckless arcs (no deck) are never "finalized".
-        _n_slides = 0
-        for _s in sessions:
-            _ctx = _s.get("intake_context") if isinstance(
-                _s.get("intake_context"), dict) else {}
-            _n_slides = max(_n_slides, len((_ctx or {}).get("slides") or []))
-        _coach_finalized = False
-        if _n_slides:
-            _edits = db.get_coach_best_presentation_edits(arc_id) or {}
-            _coach_finalized = all(
-                isinstance(_edits.get(i), str) and _edits[i].strip()
-                for i in range(_n_slides)
-            )
-        from services.slide_selection import spoken_arc_sessions
-        return jsonify({
-            # SPOKEN takes only (2026-07-15) — a read never inflates N/3.
-            "arc_id": arc_id,
-            **presentation_progress(len(spoken_arc_sessions(sessions))),
-            "coach_finalized": _coach_finalized,
-        }), 200
-    except Exception as e:
-        logger.error("explore/arc progress failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to load progress",
-        }), 500
 
 
 @v2_bp.route("/explore/arc/<arc_id>/take-comparison", methods=["GET"])

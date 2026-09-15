@@ -103,10 +103,6 @@
     "lines": 48,
     "db_calls": 2
   },
-  "routes/v2/arcs.py:v2_explore_arc_progress": {
-    "lines": 66,
-    "db_calls": 2
-  },
   "routes/v2/coach.py:_coach_inline_canonical_queue_rows": {
     "lines": 89,
     "db_calls": 0

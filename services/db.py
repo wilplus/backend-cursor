@@ -10360,40 +10360,6 @@ class DatabaseService:
                            arc_id, e)
             return {}
 
-    def upsert_best_presentation_edit(
-        self, arc_id: str, slide_index: int, text: str,
-        user_id: Optional[str] = None,
-    ) -> bool:
-        """Save the user's edited text for one best-presentation slide (Prompt
-        D). Upserts on (arc_id, slide_index). Best-effort; missing table →
-        False, non-fatal."""
-        if not arc_id or not isinstance(slide_index, int) or not text:
-            return False
-        from datetime import datetime, timezone
-        row = {
-            "arc_id": arc_id, "slide_index": slide_index, "text": text,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        if user_id:
-            row["user_id"] = user_id
-        try:
-            self.client.table("best_presentation_edits").upsert(
-                row, on_conflict="arc_id,slide_index",
-            ).execute()
-            return True
-        except Exception as e:
-            err_low = str(e).lower()
-            if "best_presentation_edits" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                logger.warning(
-                    "upsert_best_presentation_edit: table missing (run "
-                    "migrations/add_best_presentation_edits.sql) arc=%s", arc_id,
-                )
-                return False
-            logger.error("upsert_best_presentation_edit failed arc=%s: %s",
-                         arc_id, e)
-            return False
 
     def get_user_transcript_edits(self, session_id: Optional[str]) -> list:
         """The user's own transcript corrections for a session (founder

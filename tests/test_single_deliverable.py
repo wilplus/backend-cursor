@@ -863,28 +863,14 @@ class SeamSmoothingContractPinTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class PaywallRetirementTests(unittest.TestCase):
-    """The $25 arc model is retired: best-presentation, breakthroughs, game,
-    and every take's feedback are unconditionally free — no 402, no paywall,
-    no locked takes. (/unlock is a 410 tombstone.)"""
+    """The $25 arc model is retired: breakthroughs, game, and every take's
+    feedback are unconditionally free — no 402, no paywall, no locked takes.
+    (/unlock is a 410 tombstone; the best-presentation route itself was
+    deleted on 2026-09-16, audit Q-T4.)"""
 
     def setUp(self):
         self.app = Flask(__name__)
 
-    def _best_presentation(self):
-        with self.app.test_request_context():
-            request.user_id = UID
-            with patch("routes.v2.arcs._arc_owned_by_caller",
-                              return_value=(True, [])), \
-                 patch("services.slide_selection.build_best_presentation",
-                       return_value={"ready": True, "slides": []}):
-                out = v2_arcs.v2_explore_arc_best_presentation.__wrapped__(ARC)
-        resp, status = out if isinstance(out, tuple) else (out, 200)
-        return resp.get_json(), status
-
-    def test_best_presentation_free(self):
-        body, status = self._best_presentation()
-        self.assertEqual(status, 200)
-        self.assertTrue(body.get("audit_paid"))
 
     def _feedback(self):
         spoken = [{"id": "s1", "take_index": 1},

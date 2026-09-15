@@ -20,7 +20,6 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes.v2 import arcs as v2_arcs
     from routes.v2 import coach as v2_coach
     from services.db import db
     _IMPORT_ERROR = None
@@ -247,74 +246,6 @@ class ReviewStateTests(unittest.TestCase):
         self.assertEqual(states["s2"], "reviewed")   # saved = reviewed
         self.assertEqual(states["s3"], "to_review")
         self.assertEqual(body["ideal_ready_arc_ids"], [ARC])
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class GuestProgressTests(unittest.TestCase):
-    """GET /explore/arc/<id>/progress — guest-capable with a signed Guest ID."""
-
-    def _call(self, sessions, caller=None, guest=None):
-        app = Flask(__name__)
-        headers = ({"X-Willab-Guest-Owner": guest.token} if guest else None)
-        with app.test_request_context(headers=headers):
-            request.user_id = caller
-            with patch.object(db, "get_arc_sessions",
-                              return_value=sessions), \
-                 patch.object(db, "get_coach_best_presentation_edits",
-                              return_value={}), \
-                 patch.object(
-                     db,
-                     "get_owner_principal",
-                     return_value=(
-                         {
-                             "id": guest.principal_id,
-                             "user_id": None,
-                             "guest_secret_hash": guest.secret_hash,
-                         }
-                         if guest else None
-                     ),
-                 ):
-                resp, status = v2_arcs.v2_explore_arc_progress.__wrapped__(ARC)
-                return resp.get_json(), status
-
-    def test_guest_reads_fully_unclaimed_arc(self):
-        from services.project_ownership import issue_guest_owner
-
-        guest = issue_guest_owner()
-        unclaimed = [
-            dict(
-                _spoken(i),
-                user_id=None,
-                owner_principal_id=guest.principal_id,
-            )
-            for i in (1, 2)
-        ]
-        body, status = self._call(unclaimed, caller=None, guest=guest)
-        self.assertEqual(status, 200)
-        self.assertEqual(body["takes_done"], 2)
-
-    def test_bare_project_id_is_not_guest_authorization(self):
-        unclaimed = [
-            dict(
-                _spoken(1),
-                user_id=None,
-                owner_principal_id="33333333-3333-4333-8333-333333333333",
-            )
-        ]
-        _, status = self._call(unclaimed, caller=None)
-        self.assertEqual(status, 404)
-
-    def test_claimed_arc_hidden_from_guest_and_stranger(self):
-        claimed = [_spoken(1)]  # user_id u1
-        _, s_guest = self._call(claimed, caller=None)
-        _, s_other = self._call(claimed, caller="intruder")
-        self.assertEqual((s_guest, s_other), (404, 404))
-
-    def test_owner_still_reads_and_reads_dont_count(self):
-        body, status = self._call([_spoken(1), _spoken(2), _read("s1")],
-                                  caller="u1")
-        self.assertEqual(status, 200)
-        self.assertEqual(body["takes_done"], 2)   # spoken-only
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

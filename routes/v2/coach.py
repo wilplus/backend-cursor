@@ -1649,29 +1649,6 @@ def v2_coach_session_video(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to store coach video"}), 500
 
 
-@v2_bp.route("/coach/arc/<arc_id>/best-presentation", methods=["GET"])
-@require_admin_or_coach
-def v2_coach_arc_best_presentation(arc_id):
-    """The coach's own preview of the auto-assembled draft + their own
-    corrections so far. Ungated by ownership/payment — coach-only auth is the
-    gate. Response shape matches the student route, plus always-populated
-    `text` regardless of coach_finalized.
-    """
-    try:
-        from services.slide_selection import build_best_presentation
-        return jsonify({
-            "arc_id": arc_id,
-            **build_best_presentation(arc_id, coach_view=True),
-        }), 200
-    except Exception as e:
-        logger.error("coach/arc best-presentation failed arc=%s: %s", arc_id,
-                     e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to load best presentation",
-        }), 500
-
-
 # ── willab — coach-owned ideal-text correction (founder 2026-07-06) ─────
 #
 # The coach's OWN editing surface: always shows the CURRENT draft (auto, or

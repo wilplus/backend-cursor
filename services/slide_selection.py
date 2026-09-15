@@ -4,9 +4,12 @@ Renamed from ``services/best_presentation.py`` (audit Q-T4, Phase 6, commit
 1 of 2; zero behaviour change). L1 retired the Best Presentation ARTIFACT,
 not this mechanism: selecting the best take per slide is F1 piece (b), and
 the readers below (the arc's spoken sessions, the per-slide picks) are live
-Ideal Text infrastructure. The composition of the retired artifact
-(``build_best_presentation`` and its prompt) leaves in commit 2, once nothing
-in production calls its route.
+Ideal Text infrastructure. Commit 2 (2026-09-16) deleted the artifact's
+routes (the student and coach GETs, the per-slide PUT, the progress poll)
+and the FE surface. The composition (``build_best_presentation`` and its
+prompt) stays: the Ideal Text AUTO draft (services/ideal_text_block.py) and
+the ideal-text report (services/ideal_text_report.py) call it. It is now an
+internal step of building the canonical document, not a served artifact.
 
 Original header follows.
 
