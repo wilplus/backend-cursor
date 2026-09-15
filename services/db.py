@@ -7157,7 +7157,19 @@ class DatabaseService:
             if "read_ideal_text_document_core_v2" in low and (
                     "does not exist" in low or "pgrst" in low):
                 return None
-            raise
+            # The cold-open read degrades to "pending" (the 404 the FE already
+            # renders) instead of a 500 that takes the Ideal Text surface
+            # down. The v1 read behaved this way; the v2 read introduced in
+            # #490 re-raised, and its RPC raises (STRICT selects, explicit
+            # RAISE) for any arc without the Point-7 rows — every older arc —
+            # so every core read went 500 in production on 2026-09-15 (LIVE
+            # LOOP incident). Nothing forbidden is ever served: a validator
+            # rejection lands here as pending too. The exception stays in the
+            # log with its traceback so the cause is never hidden.
+            logger.warning(
+                "ideal-text core v2 read degraded to pending arc=%s: %s: %s",
+                arc_id, type(error).__name__, error, exc_info=True)
+            return None
 
     def set_session_analysis_state(self, *args, **kwargs):
         return self.takes.set_session_analysis_state(*args, **kwargs)

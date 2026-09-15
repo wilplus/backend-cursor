@@ -53,7 +53,7 @@ dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confi
 794c3d04c55016987c75dc9bdc7bab64ded34a14a7a6e3ee832b6b22f32b9568  services/confident_moment_user_media.py
 09ac4873e142bd68c682abaf28acb15e4fb0a445aab749ad8b28b47020b1df22  services/data_purge.py
 5ff3880f55da07671775de92e279e13e0dca96b615329632b6d6cd88096cbbb9  services/data_purge_registry.py
-559914b63cf148c2d71c7232f818bfb33df0589a9977813cdb223b229a5e46ac  services/db.py
+13f78444796ac9f97eb45b0cddee58f84e77628d591e2bb03e5364c6b630cbdf  services/db.py
 b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedback_data_contract.py
 35955687744b693dfb26fe79b79767c54c3a851dabfba4c015790c4537c459c7  services/feedback_language.py
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
@@ -164,3 +164,19 @@ moved from the repository root to `tests/` with every other root test
 module (audit Q-T9). Their bytes are unchanged — the three checksums above
 are the ones frozen at the base commit; only the paths are new. Every
 other entry is untouched.
+
+## Re-freeze 2026-09-15 — live-loop incident fix (backend)
+
+Re-frozen by the same rule. The drift is one method:
+
+- `services/db.py` — `get_ideal_text_document_core_v2` no longer re-raises
+  what `read_ideal_text_document_core_v2` or the validator raises; it logs
+  the exception with its traceback and returns `None`, which the core GET
+  renders as the 404 "pending" the frontend already handles. This restores
+  the v1 read's contract. The RPC raises (STRICT selects, explicit RAISE)
+  for any arc without the Point-7 rows, so since #490 every such read was a
+  500 in production; on 2026-09-15 that took the Ideal Text surface down.
+  The validator is unchanged: nothing it rejects is ever served.
+
+`services/confident_moment_bundle_repository.py`, migration 0327 and every
+other entry are untouched.
