@@ -35,14 +35,8 @@ from services.rate_limits import heavy_limit, llm_limit, whisper_limit
 # Module scope on purpose: `except DeadlineExceeded` in the upload routes
 # must resolve even when the failure happens BEFORE the try body reaches
 # its own imports — otherwise the handler NameErrors while handling.
-from services.upload_guard import (
-    DeadlineExceeded, UploadTooLarge, deadline_for, read_capped,
-)
 from routes.v2.common import (
     _COACH_PSEUDONYM_SALT,
-    _LAB_MAX_AUDIO_MB,
-    _PRESENTATION_MAX_MB,
-    _VIDEO_UPLOAD_EXTS,
     _is_valid_uuid,
 )
 from services.db import db
@@ -519,185 +513,6 @@ def v2_coach_student_audit_send(user_id):
         logger.error("coach/student-audit send failed user=%s err=%s", user_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to send audit"}), 500
-
-
-@v2_bp.route("/coach/annotation-uploads", methods=["POST"])
-@phase2_learning_disabled
-@whisper_limit
-@require_admin_or_coach
-def v2_coach_annotation_upload():
-    """ANNOTATION MODE (Stage 4 / T4, founder 2026-07-23): the coach
-    uploads an audio file and gets it chopped straight into labelable
-    snippets — WITHOUT any ideal-text assembly — to bank key-moment
-    annotations toward the 1,000-annotation goal.
-
-    Reuses the shipped machinery (guardrail: no new chunker, no new UI):
-      * the same ≤200-char punctuation-aware cutter (process_lab_recording);
-      * the same coach review queue + snippet-review UI
-        (source='audit_upload' → send_lab_recording_to_coach flips it to
-        pending_admin_review; the queue row carries annotation_mode=true
-        so the FE labels it).
-    NO arc, NO version, NO master document — the assembly block the
-    student POST runs is simply never called here.
-
-    Multipart: audio_file (required) · label (optional, the coach's
-    reference title). Audio only — video is refused (AUDIO_ONLY).
-
-    201 { session_id, n_snippets, annotation_mode:true } · 400 · 413 ·
-    415 · 422 (no speech) · 500
-    """
-    try:
-        if "audio_file" not in request.files:
-            return jsonify({"code": "AUDIO_FILE_REQUIRED",
-                            "error": "audio_file is required"}), 400
-        audio_file = request.files.get("audio_file")
-        max_bytes = _LAB_MAX_AUDIO_MB * 1024 * 1024
-        if (request.content_length or 0) > max_bytes:
-            return jsonify({"code": "FILE_TOO_LARGE",
-                            "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
-        # Bounded read + wall-clock budget — same guards as the student
-        # lab POST (P0 audit 2026-08-03).
-        deadline = deadline_for("annotation-upload")
-        try:
-            file_bytes = read_capped(audio_file, max_bytes)
-        except UploadTooLarge:
-            return jsonify({"code": "FILE_TOO_LARGE",
-                            "error": f"exceeds {_LAB_MAX_AUDIO_MB}MB"}), 413
-        if not file_bytes:
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "audio_file is empty"}), 400
-        # Audio only (guardrail: keep video blocked) — same gate as the
-        # student POST.
-        _up_ct = (audio_file.mimetype or "").strip().lower()
-        _up_ext = os.path.splitext(
-            audio_file.filename or "")[1].lower().lstrip(".")
-        if _up_ct.startswith("video/") or _up_ext in _VIDEO_UPLOAD_EXTS:
-            return jsonify({
-                "code": "AUDIO_ONLY",
-                "error": "Upload an audio file — video isn't supported.",
-            }), 415
-
-        # Min-content gate — a silent file has nothing to annotate.
-        from services.min_content_gate import evaluate_min_content_bytes
-        gate = evaluate_min_content_bytes(file_bytes)
-        if not gate["ok"]:
-            return jsonify({
-                "code": "RECORDING_REJECTED",
-                "error": "No speech detected — try another file.",
-                "gate": gate,
-            }), 422
-
-        coach_id = getattr(request, "user_id", None)
-        session_id = str(uuid.uuid4())
-        recording_id = str(uuid.uuid4())
-        ext = os.path.splitext(audio_file.filename or "")[1] or ".webm"
-        key = f"willab_annotation/{session_id}/audio_{uuid.uuid4().hex}{ext}"
-        content_type = (audio_file.mimetype
-                        or "audio/webm").strip() or "audio/webm"
-        # Coach-uploaded, but still a person's recorded voice — same
-        # bucket as student takes, not the coach media bucket.
-        from services.lab_audio_storage import (
-            lab_audio_public_url, put_lab_audio_bytes,
-        )
-        deadline.check("store")
-        try:
-            bucket = put_lab_audio_bytes(key, file_bytes, content_type)
-        except Exception as _up_err:
-            logger.error("annotation upload: store failed: %s", _up_err,
-                         exc_info=True)
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Failed to store audio"}), 500
-        parent_url = lab_audio_public_url(key) or f"s3://{bucket}/{key}"
-
-        # The RECORDINGS row — REQUIRED before any snippet insert:
-        # charisma_snippets.recording_id is a NOT NULL FK, and
-        # process_lab_recording inserts one snippet per piece against it.
-        # Without this row every insert fails the FK SILENTLY (bulk +
-        # per-row both swallow) → zero snippets → the feature banks
-        # nothing while returning 201 (review 2026-07-23; the student
-        # path creates this row too). user_id stays NULL — an annotation
-        # upload is training data, not a student's speaker baseline; the
-        # coach is recorded in intake_context, NOT as the session owner,
-        # so they never appear as a phantom student in the roster.
-        _rec_payload = {
-            "id": recording_id, "user_id": None,
-            "session_v2_id": session_id,
-            "storage_path": key, "audio_url": parent_url,
-            "duration": gate.get("duration_sec"),
-            "recording_origin": "willab_lab",
-        }
-        try:
-            db.create_recording(_rec_payload)
-        except Exception as _ce:
-            _e = str(_ce).lower()
-            if "recording_origin" in _e or "pgrst204" in _e:
-                db.create_recording({k: v for k, v in _rec_payload.items()
-                                     if k != "recording_origin"})
-            else:
-                logger.error("annotation upload: create_recording failed: "
-                             "%s", _ce, exc_info=True)
-                return jsonify({"code": "V2_ERROR",
-                                "error": "Failed to store audio"}), 500
-
-        # The session: source='audit_upload' (queue entry) + the
-        # annotation_mode marker; user_id stays NULL (see above); NO arc.
-        _label = (request.form.get("label") or "").strip()[:200] or None
-        if not db.v2_get_session_by_id(session_id):
-            db.v2_create_internal_session(session_id)
-        db.set_session_source(session_id, "audit_upload")
-        db.set_session_intake_context(session_id, {
-            "topic": _label or "Annotation",
-            "annotation_mode": True,
-            "uploaded_by_coach": str(coach_id) if coach_id else None,
-        })
-        try:
-            db.v2_set_session_recording(session_id, recording_id)
-        except Exception as _le:
-            logger.warning("annotation upload: link recording failed "
-                           "sid=%s: %s (non-fatal)", session_id, _le)
-
-        # Snippets ONLY — the same cutter, no assembly (the student
-        # POST's arc/ideal-text block is never invoked here).
-        from services.lab_recording import process_lab_recording
-        deadline.check("analyze")
-        readout = process_lab_recording(
-            session_id=session_id,
-            user_id=None,
-            recording_id=recording_id,
-            audio_bytes=file_bytes,
-            filename=audio_file.filename or "annotation.webm",
-            session_context={"topic": _label or "Annotation",
-                             "annotation_mode": True},
-            parent_audio_url=parent_url,
-            recording_kind="spoken",
-        )
-        _n = len(readout.get("snippets") or [])
-
-        # Into the coach queue — flip the status DIRECTLY (the same flip
-        # send_lab_recording_to_coach performs) rather than via that
-        # helper, which would also fire the student "session ready"
-        # admin email on a coach self-upload (review 2026-07-23).
-        try:
-            db.v2_update_session_status_unscoped(
-                session_id, "pending_admin_review")
-        except Exception as _qe:
-            logger.warning("annotation upload: queue flip failed sid=%s: "
-                           "%s", session_id, _qe)
-
-        return jsonify({"session_id": session_id, "n_snippets": _n,
-                        "annotation_mode": True}), 201
-    except DeadlineExceeded as de:
-        logger.warning("annotation upload deadline: %s", de)
-        return jsonify({
-            "code": "PROCESSING_TIMEOUT",
-            "error": "That upload is taking longer than expected — "
-                     "it's still processing, check back shortly.",
-        }), 504
-    except Exception as e:
-        logger.error("annotation upload failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Failed to process the upload"}), 500
 
 
 @v2_bp.route("/coach/queue", methods=["GET"])
@@ -1752,7 +1567,6 @@ def v2_coach_session_video(session_id):
     from services.coach_video_storage import (
         coach_media_public_url, put_coach_object_bytes,
     )
-    import os
 
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -1833,84 +1647,6 @@ def v2_coach_session_video(session_id):
         logger.error("coach/session-video failed sid=%s err=%s", session_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to store coach video"}), 500
-
-
-@v2_bp.route("/coach/audits", methods=["POST"])
-@require_admin_or_coach
-def v2_coach_create_audit():
-    """willab Audit Delivery (Prompt C §3 C1) — a coach uploads a PDF audit for
-    a user. Stores the PDF in R2, records the row, and emails the user a link.
-
-    multipart/form-data:
-      pdf_file   (required) the audit PDF
-      user_id    (required) the user it's for
-      name       (required) e.g. "Speaking Impact Audit, Booksy pitch"
-      audit_date (optional) ISO timestamp; defaults to now()
-
-    201 { id, name, audit_date, email_sent }
-    400 INVALID_INPUT · 413 FILE_TOO_LARGE · 415 UNSUPPORTED_TYPE · 502 V2_ERROR
-    """
-    try:
-        form = request.form or {}
-        target_user = (form.get("user_id") or "").strip()
-        name = (form.get("name") or "").strip()
-        audit_date = (form.get("audit_date") or "").strip() or None
-        if not _is_valid_uuid(target_user):
-            return jsonify({"code": "INVALID_INPUT", "error": "user_id must be a UUID"}), 400
-        if not name:
-            return jsonify({"code": "INVALID_INPUT", "error": "name is required"}), 400
-
-        f = request.files.get("pdf_file")
-        if f is None or not (f.filename or "").strip():
-            return jsonify({"code": "INVALID_INPUT", "error": "pdf_file is required"}), 400
-        ext = os.path.splitext(secure_filename(f.filename or ""))[1].lower()
-        if ext != ".pdf":
-            return jsonify({
-                "code": "UNSUPPORTED_TYPE",
-                "error": "Upload a PDF. (Export to PDF first.)",
-            }), 415
-        data = f.read() or b""
-        if not data:
-            return jsonify({"code": "INVALID_INPUT", "error": "pdf_file is empty"}), 400
-        if len(data) > _PRESENTATION_MAX_MB * 1024 * 1024:
-            return jsonify({
-                "code": "FILE_TOO_LARGE",
-                "error": f"PDF is over {_PRESENTATION_MAX_MB} MB — export a lighter file and try again.",
-                "limit_mb": _PRESENTATION_MAX_MB,
-            }), 413
-
-        from services.coach_video_storage import put_coach_object_bytes
-        key = f"willab_audits/{uuid.uuid4().hex}.pdf"
-        try:
-            put_coach_object_bytes("coach_feedback_videos", key, data, "application/pdf")
-        except Exception as se:
-            logger.error("audit store failed user=%s: %s", target_user, se, exc_info=True)
-            return jsonify({"code": "V2_ERROR", "error": "Could not store the audit."}), 502
-
-        row = db.insert_user_audit(target_user, name, key, audit_date)
-        if not row:
-            return jsonify({"code": "V2_ERROR", "error": "Could not record the audit."}), 502
-
-        # Notify the user (best-effort — the upload already succeeded).
-        email_sent = False
-        try:
-            from services.audit_email import send_audit_ready_email
-            email_sent = send_audit_ready_email(target_user)
-        except Exception as ee:
-            logger.warning("audit: email dispatch failed user=%s: %s", target_user, ee)
-
-        logger.info("audit: uploaded user=%s id=%s email_sent=%s",
-                    target_user, row.get("id"), email_sent)
-        return jsonify({
-            "id": row.get("id"),
-            "name": row.get("name"),
-            "audit_date": row.get("audit_date"),
-            "email_sent": email_sent,
-        }), 201
-    except Exception as e:
-        logger.error("coach/audits POST failed: %s", e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to upload audit"}), 500
 
 
 @v2_bp.route("/coach/arc/<arc_id>/best-presentation", methods=["GET"])

@@ -2263,7 +2263,7 @@ class IsolationTests(unittest.TestCase):
         banned = ("best_presentation", "ideal_text", "charisma_snippets",
                   "lab_recording", "moment_suggestions", "say_it_stronger",
                   "delivery_stars", "power_score", "slide_word_split",
-                  "cross_take_selection", "coaching_state_machine")
+                  "cross_take_selection")
         for module in (lp, lstore, lengine, lchat, lroutes, importer,
                        lreminders, lremhook):
             src = inspect.getsource(module)

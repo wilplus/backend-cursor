@@ -66,11 +66,8 @@ list cannot accidentally take out a surface nobody thought about.
 Decorated today (see `test_rate_limits.CoveredRoutesTests`, which fails if
 one is dropped):
 
-- **Whisper** — `POST /v2/lab/recordings`, `POST /v2/coach/annotation-uploads`,
-  `POST /v2/coach/training-imports`
-- **LLM** — `/v2/chat/query`, `/v2/chat/snippet-followup`, `/v2/coaching/turn`,
-  `/v2/coaching/state-machine/turn`, `/v2/coaching/start`,
-  `/v2/coaching/intro-bubble`, `/v2/user/chat/first-question`,
+- **Whisper** — `POST /v2/lab/recordings`, `POST /v2/coach/training-imports`
+- **LLM** — `/v2/chat/query`, `/v2/user/chat/first-question`,
   `/v2/user/coaching/self-rating`, `/v2/onboarding/opener/{start,next}`,
   `/v2/coach/snippets/<id>/say-it-stronger`,
   `/v2/admin/users/<id>/directives-queue/suggest`,

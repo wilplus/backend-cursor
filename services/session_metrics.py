@@ -291,8 +291,8 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
     # global_fillers stays a COUNT. Three consumers require that and would
     # break silently otherwise: metrics_v2.normalize_fillers thresholds on
     # absolute counts (<=3 -> 1.0, so any rate reads as perfect and the KPI
-    # filler component maxes out for everyone); coaching_state_machine passes
-    # it as `current_fillers`; and openai_service renders it into user-facing
+    # filler component maxes out for everyone); and openai_service renders
+    # it into user-facing
     # copy as "used N filler words".
     global_fillers = sum(fillers_list) if fillers_list else None
 

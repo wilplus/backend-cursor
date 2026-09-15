@@ -11,6 +11,11 @@ Covers the genuinely-new BE behavior:
     everywhere.
 
 Run: python3 -m unittest tests.test_wave2_be
+
+Subjects (audit Q-T9, 2026-09-15): the 15-credit lazy grant, the
+min-content constants, and the /user/credits, /config/recording and
+/coach/students routes. Kept under the delivery name because the file
+carries several subjects; split it when one of them grows.
 """
 from __future__ import annotations
 

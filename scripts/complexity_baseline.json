@@ -5,7 +5,6 @@
   "routes/life_routes.py:life_day_update": 28,
   "routes/v2/admin.py:_validate_question_pool_body": 27,
   "routes/v2/coach.py:_save_coach_snippet_lanes": 31,
-  "routes/v2/coach.py:v2_coach_annotation_upload": 34,
   "routes/v2/coach.py:v2_coach_arc_review_state": 38,
   "routes/v2/coach.py:v2_coach_confidence_queue": 62,
   "routes/v2/coach.py:v2_coach_confident_voice_practice": 47,

@@ -26,67 +26,30 @@ is not a decision; removing the arithmetic is.
 This suite is the ratchet. It replaces test_acoustic_targets_held.py, which
 asserted the OPPOSITE (that the feature existed but was dark).
 
+2026-09-15 (audit Q-A6): the coaching state machine itself was deleted with
+the coaching lane, so the STEP 8/9 wording assertions went with it. What is
+left to ratchet is the route module (no sign-off flag, no arithmetic) and the
+prompt registry (no entry pointing at the deleted surface).
+
 Run: python3 -m unittest tests.test_acoustic_targets_deleted
 """
 from __future__ import annotations
 
 import pathlib
-import re
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SM = (ROOT / "services" / "coaching_state_machine.py").read_text()
 COACHING = (ROOT / "routes" / "v2" / "coaching.py").read_text()
 
 
 class TestTheMachineryIsGone(unittest.TestCase):
 
-    def test_the_target_arithmetic_is_deleted(self):
-        for symbol in ("compute_acoustic_targets",
-                       "_format_acoustic_targets_for_prompt",
-                       "_IDEAL_WPM_MIN", "_IDEAL_WPM_MAX",
-                       "_TARGET_FILLERS_PER_MIN"):
-            self.assertNotIn(symbol, SM, f"{symbol} is back")
-
-    def test_the_card_trigger_is_not_in_the_schema(self):
-        """The model cannot emit a trigger the enum does not contain."""
-        self.assertNotIn("show_acoustic_targets_card", SM)
 
     def test_no_sign_off_flag_survives(self):
         """A flag is not a decision. If this reappears, the feature is one
         boolean away from shipping again."""
         self.assertNotIn("_ACOUSTIC_TARGETS_SIGNED_OFF", COACHING)
         self.assertNotIn("compute_acoustic_targets", COACHING)
-
-
-class TestStep8SaysNothingNumeric(unittest.TestCase):
-
-    def test_the_prompt_never_asks_for_verbatim_numbers(self):
-        """The exact instruction that made this a verdict surface."""
-        self.assertNotIn("keep the NUMBERS verbatim", SM)
-
-    def test_the_seed_carries_no_digit(self):
-        """The surviving phrasing seed is the one STEP 8 has actually emitted
-        since 2026-06-01 — qualitative, no figure, no comparison."""
-        seed = re.search(r"_NEXT_TAKE_SEED = \(\n(.*?)\n\)", SM, re.DOTALL)
-        self.assertIsNotNone(seed, "_NEXT_TAKE_SEED not found")
-        text = seed.group(1)
-        self.assertFalse(any(c.isdigit() for c in text),
-                         f"the seed contains a figure: {text}")
-        for word in ("WPM", "dB", "filler words under"):
-            self.assertNotIn(word, text)
-
-    def test_step_8_and_9_forbid_figures_explicitly(self):
-        """Deleting the arithmetic is not enough on its own — the model could
-        still invent numbers. Both steps must say not to."""
-        step8 = SM[SM.index("STEP 8"):SM.index("STEP 9 — THE RE-RECORD ASK")]
-        self.assertIn("NO figure", step8)
-        step9 = SM[SM.index("STEP 9 — THE RE-RECORD ASK"):]
-        self.assertIn("NO figure", step9[:2000])
-
-    def test_step_9_no_longer_quotes_a_target(self):
-        """STEP 9 used to say: aim for X WPM ... under N fillers."""
-        self.assertNotIn("aim for X WPM", SM)
 
 
 class TestTheRegistryDoesNotStillPointAtIt(unittest.TestCase):

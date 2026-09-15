@@ -7,6 +7,11 @@ the pure assembly + master_doc logic run without the venv. Route tests mirror
 the test_coach_session harness (skip locally without flask, run in CI).
 
 Run: python3 -m unittest tests.test_wave3_be
+
+Subjects (audit Q-T9, 2026-09-15): user-audit assembly, the
+suggested_action contract, the recording-progress and coach-student-detail
+routes, the audit send gate and the recut guard. Kept under the delivery
+name because of the module-level stubs every subject shares.
 """
 from __future__ import annotations
 

@@ -1,17 +1,10 @@
 """Regression tests for the in-app recording prompts.
 
-Two surfaces ship the "record here" gesture and both used to break:
+One surface ships the "record here" gesture and it used to break
+(the second, the state-machine coaching chat, was deleted on 2026-09-15
+with the coaching lane — audit Q-A6 — and its STEP 9 tests with it):
 
-  1. The coaching state-machine chat. After the user walked through
-     the Director's Script, the chat ended without
-     ever inviting them to record a fresh take — even though the
-     POST /v2/coaching/trial-recording endpoint was wired and ready to
-     accept that take. STEP 8 has been split into a BRIDGE (the
-     next-take framing, end=false) and a new STEP 9 (the re-record ask,
-     trigger=show_trial_recording_mic). This file's first test class
-     locks the prompt + schema in.
-
-  2. The Lounge FAQ chat (services/master_doc_rag). RULE H used to
+  The Lounge FAQ chat (services/master_doc_rag). RULE H used to
      bundle "microphone hardware" into the hard-decline list, so the
      LLM responded to "can I just record here?" with the camera-decline
      template — even though the chat endpoint accepts a multipart
@@ -22,26 +15,12 @@ Two surfaces ship the "record here" gesture and both used to break:
      tests verify it stays false even when the model returns true, and
      that the answer never borrows the camera-decline language.
 
-Tests are pure-Python: the state-machine tests work against the
-prompt builder + schema directly (no LLM call), and the RAG tests
+Tests are pure-Python: the RAG tests
 inject a fake OpenAIService whose client returns a canned structured
 response. No network, no env vars.
 """
 import json
 import unittest
-
-try:
-    from services.coaching_state_machine import (
-        STATE_MACHINE_RESPONSE_SCHEMA,
-        build_state_machine_system_prompt,
-        parse_state_machine_response,
-    )
-    _STATE_MACHINE_IMPORT_ERROR = None
-except Exception as import_err:  # pragma: no cover - env/bootstrap guard
-    STATE_MACHINE_RESPONSE_SCHEMA = None
-    build_state_machine_system_prompt = None
-    parse_state_machine_response = None
-    _STATE_MACHINE_IMPORT_ERROR = import_err
 
 # master_doc_rag itself imports lazily; the dependency the tests
 # actually need is services.openai_service, which pulls in the
@@ -73,134 +52,6 @@ _FAKE_SCRIPT = [
     {"position": 5, "text": "What would you do differently?"},
 ]
 _FAKE_COACHING_ID = "22222222-2222-4222-8222-222222222222"
-
-
-@unittest.skipIf(
-    _STATE_MACHINE_IMPORT_ERROR is not None,
-    "state-machine tests require services.coaching_state_machine: "
-    f"{_STATE_MACHINE_IMPORT_ERROR}",
-)
-class TestStateMachineStep9(unittest.TestCase):
-    """The 9-step prompt must reach a re-record ask the frontend can
-    wire up to /v2/coaching/trial-recording."""
-
-    def test_schema_allows_step_9(self):
-        """The structured-output schema must let the LLM emit step=9.
-
-        Without this, the LLM cannot legally return the new terminal
-        step and the response is rejected at parse time.
-        """
-        step_spec = STATE_MACHINE_RESPONSE_SCHEMA["schema"]["properties"]["step"]
-        self.assertEqual(step_spec["minimum"], 1)
-        self.assertEqual(step_spec["maximum"], 9)
-
-    def test_schema_lists_show_trial_recording_mic_trigger(self):
-        """The triggers enum must include the new mic-unlock value."""
-        triggers_spec = (
-            STATE_MACHINE_RESPONSE_SCHEMA["schema"]["properties"]["triggers"]
-        )
-        enum_values = triggers_spec["items"]["enum"]
-        self.assertIn("show_trial_recording_mic", enum_values)
-
-    def test_schema_exposes_trial_recording_object(self):
-        """The trial_recording passthrough must be on the schema with
-        the coaching_id + prompt_text shape the frontend expects."""
-        props = STATE_MACHINE_RESPONSE_SCHEMA["schema"]["properties"]
-        self.assertIn("trial_recording", props)
-        tr_props = props["trial_recording"]["properties"]
-        self.assertIn("coaching_id", tr_props)
-        self.assertIn("prompt_text", tr_props)
-        self.assertFalse(
-            props["trial_recording"].get("additionalProperties", True),
-            "trial_recording must be a closed object — additionalProperties=False",
-        )
-
-    def test_prompt_describes_step_9_and_emits_mic_trigger(self):
-        """The system prompt must instruct the model on STEP 9 and
-        tell it to set show_trial_recording_mic in triggers there."""
-        prompt = build_state_machine_system_prompt(
-            snippet=_FAKE_SNIPPET,
-            director_script_questions=_FAKE_SCRIPT,
-            user_first_name="Artur",
-            coaching_id=_FAKE_COACHING_ID,
-        )
-        self.assertIn("STEP 9", prompt)
-        self.assertIn("show_trial_recording_mic", prompt)
-        # The trigger must be wired to STEP 9 specifically, not just
-        # mentioned somewhere — guard against the trigger landing in
-        # STEP 8 by accident.
-        step_9_block = prompt.split("STEP 9", 1)[1]
-        self.assertIn("show_trial_recording_mic", step_9_block)
-        self.assertIn("trial_recording", step_9_block)
-
-    def test_prompt_makes_step_8_a_bridge_not_a_close(self):
-        """STEP 8 (the next-take bridge) must hand off to STEP 9 — it is
-        no longer the terminal step."""
-        prompt = build_state_machine_system_prompt(
-            snippet=_FAKE_SNIPPET,
-            director_script_questions=_FAKE_SCRIPT,
-            coaching_id=_FAKE_COACHING_ID,
-        )
-        # Split on the section header literal so we don't pick up an
-        # incidental "STEP 8" reference inside an earlier step's
-        # fallback instructions.
-        step_8_marker = "STEP 8 — THE NEXT-TAKE BRIDGE"
-        step_9_marker = "STEP 9 — THE RE-RECORD ASK"
-        self.assertIn(step_8_marker, prompt)
-        self.assertIn(step_9_marker, prompt)
-        step_8_block = (
-            prompt.split(step_8_marker, 1)[1].split(step_9_marker, 1)[0]
-        )
-        # end=false on the bridge.
-        self.assertIn("end=false", step_8_block)
-        # STEP 8 emits no affordance. It used to emit
-        # show_acoustic_targets_card; the numeric targets were deleted
-        # 2026-08-06 (founder) and the card went with them. The block
-        # still carries an explicit "Do NOT emit show_trial_recording_mic
-        # here" prohibition for the LLM, so we can't just substring-match
-        # the trigger string — we look at the triggers= line.
-        self.assertIn("triggers=['none']", step_8_block)
-        self.assertNotIn(
-            "triggers=['show_trial_recording_mic']", step_8_block
-        )
-
-    def test_prompt_threads_coaching_id_for_step_9_payload(self):
-        """The builder must echo coaching_id into the prompt so the
-        LLM can pass it through on trial_recording.coaching_id."""
-        prompt = build_state_machine_system_prompt(
-            snippet=_FAKE_SNIPPET,
-            director_script_questions=_FAKE_SCRIPT,
-            coaching_id=_FAKE_COACHING_ID,
-        )
-        self.assertIn(_FAKE_COACHING_ID, prompt)
-
-    def test_parse_accepts_step_9_with_mic_trigger(self):
-        """parse_state_machine_response must accept a well-formed
-        STEP 9 turn so the route handler doesn't drop it as
-        malformed."""
-        raw = json.dumps({
-            "narration": (
-                "Beautiful — now let's hear it again. Tap the mic "
-                "and re-do that moment with a steadier tempo."
-            ),
-            "step": 9,
-            "current_question_position": None,
-            "triggers": ["show_trial_recording_mic"],
-            "end": False,
-            "trial_recording": {
-                "coaching_id": _FAKE_COACHING_ID,
-                "prompt_text": (
-                    "Re-record that moment aiming for 135 WPM."
-                ),
-            },
-        })
-        parsed = parse_state_machine_response(raw)
-        self.assertIsNotNone(parsed)
-        self.assertEqual(parsed["step"], 9)
-        self.assertIn("show_trial_recording_mic", parsed["triggers"])
-        self.assertEqual(
-            parsed["trial_recording"]["coaching_id"], _FAKE_COACHING_ID
-        )
 
 
 # ── Fake OpenAI plumbing for master_doc_rag tests ────────────────────

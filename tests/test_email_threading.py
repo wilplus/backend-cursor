@@ -10,8 +10,6 @@ Covers:
     None) sends unthreaded without crashing, never raises on send failure
   - send_publish_results_email: stable subject, per-user thread headers,
     List-Unsubscribe preserved alongside them
-  - send_audit_ready_email: per-user thread headers (+ the config-module
-    AttributeError bugfix — the send now actually goes out)
   - user_audit.send_user_audit_email: stable subject + thread headers
   - send_email_resend forwards the threading headers verbatim
   - dead EmailService methods removed
@@ -257,37 +255,6 @@ class PublishResultsEmailTests(unittest.TestCase):
         self.assertEqual(
             headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click",
         )
-
-
-class AuditReadyEmailTests(unittest.TestCase):
-    """BE-3c — audit-ready mail. Also pins the config-module bugfix:
-    before, ``config.PUBLIC_FRONTEND_URL`` raised AttributeError (class
-    attribute read off the module) and every send returned False."""
-
-    def test_headers_and_send(self):
-        from config import Config
-        from services import audit_email as mod
-        with patch("services.email_service.send_email_resend",
-                   return_value={"status": "sent", "sent": True}) as mock_send, \
-             patch.object(Config, "SEND_EMAILS", True), \
-             patch.object(Config, "PUBLIC_FRONTEND_URL", "https://app.x.com"), \
-             patch.object(Config, "RESEND_FROM_EMAIL", "Artur <hello@x.com>"):
-            ok = mod.send_audit_ready_email("u-9", user_email="student@x.com")
-        self.assertTrue(ok)
-        kwargs = mock_send.call_args.kwargs
-        self.assertEqual(kwargs["subject"], "Your audit is ready")
-        ref = "<willab-user-u-9@willpowerlab.com>"
-        self.assertEqual(kwargs["headers"]["References"], ref)
-        self.assertEqual(kwargs["headers"]["In-Reply-To"], ref)
-        # Branded-from preserved.
-        self.assertEqual(kwargs["from_addr"], "WillpowerLab <hello@x.com>")
-
-    def test_never_raises_on_failure(self):
-        from services import audit_email as mod
-        with patch("services.email_service.send_email_resend",
-                   side_effect=Exception("boom")):
-            ok = mod.send_audit_ready_email("u-9", user_email="student@x.com")
-        self.assertFalse(ok)
 
 
 class UserAuditSendTests(unittest.TestCase):
