@@ -7147,7 +7147,7 @@ class DatabaseService:
             if isinstance(data, list):
                 data = data[0] if data else None
             if data is None:
-                return None
+                return self._ideal_text_core_v1_fallback(arc_id, actor_id)
             from services.confident_moment_bundle import (
                 validate_ideal_text_core_v2,
             )
@@ -7156,20 +7156,53 @@ class DatabaseService:
             low = str(error).lower()
             if "read_ideal_text_document_core_v2" in low and (
                     "does not exist" in low or "pgrst" in low):
-                return None
-            # The cold-open read degrades to "pending" (the 404 the FE already
-            # renders) instead of a 500 that takes the Ideal Text surface
-            # down. The v1 read behaved this way; the v2 read introduced in
-            # #490 re-raised, and its RPC raises (STRICT selects, explicit
-            # RAISE) for any arc without the Point-7 rows — every older arc —
-            # so every core read went 500 in production on 2026-09-15 (LIVE
-            # LOOP incident). Nothing forbidden is ever served: a validator
-            # rejection lands here as pending too. The exception stays in the
-            # log with its traceback so the cause is never hidden.
+                return self._ideal_text_core_v1_fallback(arc_id, actor_id)
+            # Never a 500 on the cold-open read. The v2 read introduced in #490
+            # re-raised whatever its RPC or validator raised, and the RPC
+            # raises (STRICT selects, explicit RAISE) for any arc without the
+            # Point-7 rows — every older arc — so on 2026-09-15 every core
+            # read in production was a 500 and the Ideal Text surface was
+            # down (LIVE LOOP incident). The exception stays in the log with
+            # its traceback, and the arc is served the way it was before #490:
+            # the v1 read below, or "pending" when there is no document at
+            # all. Nothing the v2 validator rejects is ever served as v2.
             logger.warning(
-                "ideal-text core v2 read degraded to pending arc=%s: %s: %s",
+                "ideal-text core v2 read failed arc=%s: %s: %s",
                 arc_id, type(error).__name__, error, exc_info=True)
+            return self._ideal_text_core_v1_fallback(arc_id, actor_id)
+
+    def _ideal_text_core_v1_fallback(
+        self, arc_id: str, actor_id: str,
+    ) -> Optional[dict]:
+        """The pre-#490 cold-open document for an arc the v2 read cannot serve.
+
+        ``read_ideal_text_document_core_v1`` still exists and returns the head
+        snapshot for arcs that predate the Point-7 rows. It is served in the
+        v2 envelope shape with an ``unavailable`` overlay (no owner-edit text,
+        no Confident Moment summary), which is exactly what the core GET
+        served before #490 plus the fields the FE mapper treats as optional.
+        ``None`` when there is no document either way — the 404 "pending".
+        """
+        snapshot = self.get_ideal_text_document_core(arc_id, actor_id)
+        if not isinstance(snapshot, dict) or not snapshot.get("payload"):
             return None
+        logger.info(
+            "ideal-text core served by the v1 fallback arc=%s snapshot=%s",
+            arc_id, snapshot.get("id"))
+        return {
+            "ideal_text_core_read_contract_version":
+                "ideal-text-document-core-v1-fallback",
+            "snapshot": snapshot,
+            "dynamic_overlay": {
+                "owner_edit": None,
+                "confident_moment_summary": None,
+                "confident_moment_summary_status": {
+                    "state": "unavailable",
+                    "code": "core_v2_unavailable",
+                    "retryable": False,
+                },
+            },
+        }
 
     def set_session_analysis_state(self, *args, **kwargs):
         return self.takes.set_session_analysis_state(*args, **kwargs)
