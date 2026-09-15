@@ -35,6 +35,12 @@ _DECISION_MAP = {
     ("great_formulation", "useful"): "useful",
     ("great_formulation", "not_useful"): "not_useful",
     ("great_formulation", "not_sure"): "not_sure",
+    # ("great_formulation", "acknowledged") is ABSENT ON PURPOSE (0333), the
+    # same way `edit_myself` is. praise_helpfulness holds a judgement on a
+    # scale; "I read this" is not a point on that scale, and recording it as
+    # one would corrupt the only table whose values are supposed to mean
+    # something. The owner self-report still lands — this map only decides
+    # whether a CANONICAL judgement is also produced, and here none should be.
     ("rewrite_clarity", "apply_suggestion"): "accept_proposed",
     ("rewrite_clarity", "keep_wording"): "keep_original",
 }
