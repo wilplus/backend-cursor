@@ -237,18 +237,52 @@ def safe_error(code: str, status: int = 500, *,
                                  ref=ref, extra=extra)), status
 
 
+def _is_deployed() -> bool:
+    """Is this a real deploy (production or staging) rather than a dev box?
+
+    Imported lazily and defensively: this module is installed onto the app
+    during import of ``app.py``, and a config problem must never be the reason
+    the error net fails to arm. Unknown means "not deployed", which only ever
+    restores the previous behaviour.
+    """
+    try:
+        from config import Config  # noqa: PLC0415
+
+        cfg = Config()
+        return bool(cfg.is_production or cfg.is_staging)
+    except Exception:  # noqa: BLE001 — see docstring
+        return False
+
+
 def _should_propagate(app) -> bool:
-    """Mirror Flask's own PROPAGATE_EXCEPTIONS resolution.
+    """Mirror Flask's PROPAGATE_EXCEPTIONS resolution — except on a deploy.
 
     Registering a catch-all ``Exception`` handler would otherwise swallow
     exceptions in tests and in ``flask run --debug``, where the raise IS
     the feature. We keep that behaviour and only sanitize where it
     matters: a real request on a real deploy.
+
+    ``app.debug`` USED TO BE PART OF THAT TEST, AND THAT WAS A HOLE.
+    Flask resolves ``DEBUG`` from the ``FLASK_DEBUG`` environment variable at
+    construction (``flask/sansio/app.py`` — ``defaults["DEBUG"] =
+    get_debug_flag()``), so it is not only set by ``flask run --debug`` on
+    somebody's laptop. One stray variable on a production host silently did two
+    things at once: removed this entire error net, and replaced the sanitized
+    envelope with Flask's HTML error page — the exact leak the module docstring
+    at the top of this file exists to prevent, and no ``ref`` for support to
+    join on either.
+
+    A deployed process therefore never re-raises, whatever DEBUG says. The
+    escape hatch is still there and still explicit: set PROPAGATE_EXCEPTIONS.
     """
     propagate = app.config.get("PROPAGATE_EXCEPTIONS")
-    if propagate is None:
-        return bool(app.testing or app.debug)
-    return bool(propagate)
+    if propagate is not None:
+        return bool(propagate)
+    if app.testing:
+        return True
+    if _is_deployed():
+        return False
+    return bool(app.debug)
 
 
 def register_error_handlers(app) -> None:
@@ -292,6 +326,16 @@ def register_error_handlers(app) -> None:
                      _req_path(), scrub(e), exc_info=True)
         _capture(e, ref, {"path": _req_path()})
         return _json(error_payload("INTERNAL_ERROR", 500, exc=e, ref=ref)), 500
+
+    # Say out loud, on every boot, whether the net is actually armed. Whether
+    # an uncaught exception reaches the browser as a sanitized envelope or as
+    # an HTML page was previously invisible until someone hit a 500 and had to
+    # infer it from what was MISSING in the log — which is how the 2026-09-15
+    # incident was diagnosed. One line removes the guesswork permanently.
+    logger.info(
+        "errors: JSON net armed (re_raises_uncaught=%s, debug=%s, deployed=%s)",
+        _should_propagate(app), bool(app.debug), _is_deployed(),
+    )
 
 
 def _json(body: dict):
