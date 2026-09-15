@@ -152,6 +152,15 @@ CREATE TABLE public.ideal_text_document_snapshots (
     payload_sha256 TEXT NOT NULL,
     payload JSONB NOT NULL,
     enrichment_seed JSONB NOT NULL DEFAULT '{}'::jsonb,
+    -- Not decoration, and not optional (added 2026-09-15). This fixture runs
+    -- BEFORE migrations/add_ideal_text_core_snapshot.sql, whose CREATE TABLE
+    -- IF NOT EXISTS then no-ops -- so whatever this table omits is missing from
+    -- every rehearsal lane, permanently. read_ideal_text_document_core_v2
+    -- builds its snapshot envelope from s.supersedes_id, so without this column
+    -- that function raised `record "s" has no field "supersedes_id"` for EVERY
+    -- arc and no database-backed test could execute the F1 cold-open read at
+    -- all. That is why the 2026-09-15 LIVE LOOP incident shipped unseen.
+    supersedes_id UUID NULL REFERENCES public.ideal_text_document_snapshots(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
 CREATE TABLE public.ideal_text_document_heads (
