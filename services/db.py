@@ -7103,8 +7103,12 @@ class DatabaseService:
             if "ideal_text_document_" in low and (
                     "does not exist" in low or "pgrst" in low):
                 return None
-            logger.warning("ideal-text document snapshot read failed: %s",
-                           error)
+            # Same swallow as the core reads below: a broken snapshot read and
+            # an arc with no snapshot both leave as `None`.
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade(
+                "ideal_text_snapshot_read_failed", exc=error,
+                arc_id=arc_id, error=error)
             return None
 
     def get_ideal_text_document_core(
@@ -7128,7 +7132,17 @@ class DatabaseService:
             if "read_ideal_text_document_core_v1" in low and (
                     "does not exist" in low or "pgrst" in low):
                 return None
-            logger.warning("ideal-text core RPC read failed: %s", error)
+            # The last read standing: when this one fails the arc has no
+            # readable document at all, and `None` is indistinguishable from
+            # the honest "this arc has no Ideal Text yet" — the core GET turns
+            # both into `404 IDEAL_TEXT_DOCUMENT_PENDING, state=pending`. So a
+            # total read outage is reported to the user as "not ready yet" and
+            # to us as nothing. Keep the return (the recording loop must not
+            # break on a read fault); report the fault.
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade(
+                "ideal_text_core_read_failed", exc=error,
+                arc_id=arc_id, error=error)
             return None
 
     def get_ideal_text_document_core_v2(
@@ -7169,6 +7183,17 @@ class DatabaseService:
             logger.warning(
                 "ideal-text core v2 read failed arc=%s: %s: %s",
                 arc_id, type(error).__name__, error, exc_info=True)
+            # ...and make that fallback COUNTABLE. The log line above is
+            # written to a stream nobody watches, so the v2 read could degrade
+            # to v1 for every arc in production — exactly what happened on
+            # 2026-09-15 — and no signal would leave the box. Falling back is
+            # correct; falling back silently, forever, is the failure mode.
+            # `observe_f1_degrade` is the existing channel for precisely this
+            # shape (see its module docstring); the Ideal Text read had simply
+            # never been wired into it.
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade(
+                "ideal_text_core_v2_read_failed", exc=error, arc_id=arc_id)
             return self._ideal_text_core_v1_fallback(arc_id, actor_id)
 
     def _ideal_text_core_v1_fallback(
