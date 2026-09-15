@@ -135,10 +135,6 @@
     "lines": 52,
     "db_calls": 2
   },
-  "routes/v2/coach.py:v2_coach_annotation_upload": {
-    "lines": 173,
-    "db_calls": 8
-  },
   "routes/v2/coach.py:v2_coach_approve_ideal_text": {
     "lines": 78,
     "db_calls": 4
@@ -228,7 +224,7 @@
     "db_calls": 5
   },
   "routes/v2/coach.py:v2_coach_session_video": {
-    "lines": 99,
+    "lines": 98,
     "db_calls": 4
   },
   "routes/v2/coach.py:v2_coach_student_detail": {

@@ -8,8 +8,8 @@ voice-analysis topic using whatever the document actually says.
 
 Why a dedicated service
 -----------------------
-The state-machine coaching chat (services/coaching_state_machine)
-is for guiding a user through a snippet review. This module is the
+The retired state-machine coaching chat guided a user through a
+snippet review (deleted 2026-09-15, audit Q-A6). This module is the
 parallel "what does this product even do?" Q&A surface — same
 chat shape from the user's perspective, but a totally different
 prompt with hard ground-truth.

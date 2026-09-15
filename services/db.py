@@ -2760,8 +2760,9 @@ class DatabaseService:
     # `payload` holds storage paths and upload flags; `result` holds pipeline
     # output. The panel needs neither, and the smallest safe projection is the
     # one that cannot leak a field nobody reviewed. A future `select("*")`
-    # here would silently widen an admin surface — test_pipeline_admin asserts
-    # on the RETURNED KEYS so that change fails a test rather than shipping.
+    # here would silently widen an admin surface. (The admin pipeline panel
+    # that read it was deleted on 2026-09-15, audit Q-A7; the projection
+    # stays the smallest safe one for any future reader.)
     _ADMIN_JOB_FIELDS = (
         "id, kind, status, stage, percent, message, error, attempts, "
         "max_attempts, user_id, session_id, enqueued_at, started_at, "
@@ -10915,34 +10916,6 @@ class DatabaseService:
     # Coach-curated PDF audits, one row per uploaded PDF. Distinct from the
     # lab Readout ('audit_upload' sessions) — see migrations/add_user_audits.sql.
 
-    def insert_user_audit(
-        self, user_id: str, name: str, storage_path: str,
-        audit_date: Optional[str] = None,
-    ) -> Optional[dict]:
-        """Record an uploaded audit PDF for a user. Returns the row (with id)
-        or None on failure. audit_date defaults to now() server-side."""
-        if not user_id or not name or not storage_path:
-            return None
-        row = {
-            "user_id": user_id, "name": name, "storage_path": storage_path,
-        }
-        if audit_date:
-            row["audit_date"] = audit_date
-        try:
-            res = self.client.table("user_audits").insert(row).execute()
-            return (res.data or [None])[0]
-        except Exception as e:
-            err_low = str(e).lower()
-            if "user_audits" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                logger.warning(
-                    "insert_user_audit: table missing (run "
-                    "migrations/add_user_audits.sql) user=%s", user_id,
-                )
-                return None
-            logger.error("insert_user_audit failed user=%s: %s", user_id, e)
-            return None
 
     def list_user_audits(self, user_id: str) -> list[dict]:
         """A user's audits, newest first. [] on missing table / none / error."""

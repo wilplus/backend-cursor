@@ -41,11 +41,6 @@
       "module": "coach_comment_drafter",
       "sha256": "0108028681ea0abb05aab915fa13ab9529636b66e4ca878c527aef14da19ef0d"
     },
-    "coaching_state_machine.system": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "144ba1bdd4a589f3bc6cbefc5f3f6d2771fb663bd1766607d2b19499ba6a1336"
-    },
     "community_content.preamble": {
       "kind": "source_ref",
       "module": "pending",

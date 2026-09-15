@@ -56,11 +56,6 @@ REGISTER = {
     #    callers and were deleted, and their entries with them) ──
     "legacy_openai.whisper_priming": SourceRef(_OAI, "OpenAIService.transcribe_audio"),
 
-    # ── 9-step structured coaching chat (founder-signed copy contract; its
-    #    route left with the coaching lane, audit Q-A6) ──
-    "coaching_state_machine.system": SourceRef(
-        "services/coaching_state_machine.py", "build_state_machine_system_prompt"),
-
     # ── Life Panel engine ──
     "life_case.system": SourceRef(_LIFE, "_CASE_SYSTEM"),
     "life_wins.system": SourceRef(_LIFE, "_WINS_SYSTEM"),
