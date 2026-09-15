@@ -367,3 +367,4 @@
 0329	fix_ideal_text_core_v2_part_revision_id_transport.sql
 0330	fix_ideal_text_core_v2_owner_edit_empty_state.sql
 0331	fix_claim_guest_owner_pgcrypto_search_path.sql
+0332	add_speaking_error_library.sql

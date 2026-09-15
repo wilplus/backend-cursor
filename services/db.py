@@ -13776,6 +13776,22 @@ class DatabaseService:
             logger.warning("list_diagnostic_exercises failed: %s", e)
             return []
 
+    def list_speaking_errors(self) -> list[dict]:
+        """The speaking error library (migrations/add_speaking_error_library).
+
+        An EMPTY list means "no library available" — a pending migration, or a
+        read that failed — and callers must treat it as "do not filter" rather
+        than "no error is detectable". Reading it the other way would silently
+        drop every problem tag and quietly undo exercise matching.
+        """
+        try:
+            res = (self.client.table("speaking_error").select("*")
+                   .eq("active", True).order("error_id").execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_speaking_errors failed: %s", e)
+            return []
+
     def upsert_diagnostic_exercise(self, row: dict) -> Optional[dict]:
         if not isinstance(row, dict) or not row.get("exercise_id"):
             return None

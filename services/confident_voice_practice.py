@@ -325,13 +325,41 @@ _SIGNAL_PROBLEM_TAGS: dict[str, tuple[str, ...]] = {
 }
 
 
-def observed_problem_tags(verdict: Any) -> frozenset[str]:
-    """The catalogue's names for the problems that ACTUALLY fired on this clip.
+def detected_problem_vocabulary(database: Any) -> frozenset[str]:
+    """The error ids the library says code can ACTUALLY detect.
+
+    An empty result means the library is unavailable — migration not yet
+    applied, or the read failed — and every caller must then skip filtering
+    rather than conclude that nothing is detectable. Read the other way, a
+    pending migration would drop every tag and silently undo matching.
+    """
+    if not hasattr(database, "list_speaking_errors"):
+        return frozenset()
+    rows = database.list_speaking_errors() or []
+    return frozenset(
+        str(row.get("error_id"))
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("status") == "detected"
+        and row.get("error_id")
+    )
+
+
+def observed_problem_tags(
+    verdict: Any, *, vocabulary: Any = None,
+) -> frozenset[str]:
+    """The library's names for the problems that ACTUALLY fired on this clip.
 
     Internal routing only. These names never reach a user payload, and they are
     a detector verdict — never a coach judgement, never a training label.
     Unknown signal names are ignored rather than guessed at, so adding a signal
-    in code cannot accidentally invent a tag no exercise can claim.
+    in code cannot invent a tag no exercise can claim.
+
+    ``vocabulary`` is the library's ``detected`` set. When supplied, a tag this
+    file maps but the library does not call detectable is dropped: the library
+    is the authority on what counts as a recognised error, and code claiming
+    otherwise is drift. When it is empty the filter is skipped entirely, so a
+    pending migration degrades to the pre-library behaviour.
     """
     if not isinstance(verdict, dict):
         return frozenset()
@@ -342,6 +370,8 @@ def observed_problem_tags(verdict: Any) -> frozenset[str]:
     for name, fired in signals.items():
         if fired:
             tags.update(_SIGNAL_PROBLEM_TAGS.get(str(name), ()))
+    if vocabulary:
+        tags &= set(vocabulary)
     return frozenset(tags)
 
 
@@ -439,6 +469,26 @@ def reviewed_active_exercises(database: Any) -> list[dict]:
     return out
 
 
+def rank_exercises_for_clip(
+    verdict: Any, database: Any,
+) -> list[tuple[int, int, str, dict]]:
+    """THE one composition both ranking paths use.
+
+    The offer path chooses an exercise; the practice-start route re-ranks and
+    rejects the offer as EXERCISE_OFFER_STALE if a different one now comes
+    first. Composing the pattern, the catalogue and the problem vocabulary in
+    two places is how those two silently drift into disagreeing — so they
+    compose here, once.
+    """
+    return rank_exercises_for_pattern(
+        str(verdict.get("pattern") or "") if isinstance(verdict, dict) else "",
+        reviewed_active_exercises(database),
+        observed_tags=observed_problem_tags(
+            verdict, vocabulary=detected_problem_vocabulary(database),
+        ),
+    )
+
+
 def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
                           database: Any) -> list[dict]:
     """Attach at most one active exercise after Feedback Manager selection."""
@@ -484,6 +534,8 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     by_id = {str(row.get("id")): row for row in snippets}
     take_rows = database.get_snippets_by_session(take_session_id) or []
     median_wpm = _median_wpm(take_rows)
+    # Read the library ONCE for the whole take, not per candidate clip.
+    vocabulary = detected_problem_vocabulary(database)
     # (-tag overlap, confidence distance, -editorial, -priority, id, …)
     ranked: list[
         tuple[int, int, int, int, str, int, dict, dict, dict, dict]
@@ -519,7 +571,8 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
             # problems beats one that merely suits its confidence level. With a
             # tagless catalogue every overlap is 0 and the original order
             # stands untouched.
-            observed_tags = observed_problem_tags(verdict)
+            observed_tags = observed_problem_tags(
+                verdict, vocabulary=vocabulary)
             for exercise in exercises:
                 distance = confidence_pattern_distance(
                     str(verdict.get("pattern") or ""),

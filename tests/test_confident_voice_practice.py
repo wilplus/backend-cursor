@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 import pathlib
 import unittest
 
@@ -481,3 +482,134 @@ class ExerciseRankingTests(unittest.TestCase):
             for exercise in exercises
         )
         self.assertEqual(offer_ranked[0][4], start_best)
+
+
+class SpeakingErrorLibraryTests(unittest.TestCase):
+    """The library and the matcher must not drift apart (founder 2026-09-15).
+
+    "we have the library of the errors so we can recognise them and we have the
+    exercise matching algorithm and they should go hand in hand."
+
+    These read the migration directly rather than a database, so drift is
+    caught in the unit tier at the moment it is introduced.
+    """
+
+    @staticmethod
+    def _migration() -> str:
+        return (pathlib.Path(__file__).resolve().parents[1]
+                / "migrations" / "add_speaking_error_library.sql").read_text()
+
+    def _seeded(self) -> dict[str, str]:
+        """Every seeded error id mapped to its status.
+
+        Split on a `)` that OWNS its line: the definitions themselves contain
+        `(pause_ratio < 0.08),` inline, so splitting on `),` anywhere cuts a
+        row in half and reports its status as whatever precedes the threshold.
+        """
+        sql = self._migration()
+        body = sql[sql.index("INSERT INTO public.speaking_error"):]
+        out: dict[str, str] = {}
+        for block in re.split(r"\n\),?\n", body):
+            found = re.search(r"^\s*'([a-z0-9_]+)',\s*$", block, re.MULTILINE)
+            if not found:
+                continue
+            out[found.group(1)] = (
+                "detected" if "'detected'," in block else "observed"
+            )
+        return out
+
+    def test_every_name_the_matcher_maps_exists_in_the_library(self):
+        # The drift guard. A tag the code can produce but the library does not
+        # define is a measured state with no written definition — the exact
+        # defect the CONSTRUCT fence exists to prevent.
+        mapped = {
+            tag
+            for tags in cvp._SIGNAL_PROBLEM_TAGS.values()
+            for tag in tags
+        }
+        seeded = self._seeded()
+        self.assertTrue(seeded, "no seeded errors parsed from the migration")
+        missing = mapped - set(seeded)
+        self.assertEqual(missing, set(), f"undefined in the library: {missing}")
+
+    def test_every_name_the_matcher_maps_is_marked_detected(self):
+        # `observed` means a human named it and no code can find it. A name the
+        # matcher can produce is by definition detectable, so the two states
+        # would contradict each other.
+        seeded = self._seeded()
+        for tags in cvp._SIGNAL_PROBLEM_TAGS.values():
+            for tag in tags:
+                self.assertEqual(seeded.get(tag), "detected", tag)
+
+    def test_the_library_refuses_a_detected_row_with_no_detector(self):
+        # Structural, not aspirational: the database rejects the claim, so
+        # nobody has to remember the rule at review time.
+        sql = self._migration()
+        self.assertIn("speaking_error_detected_needs_detector", sql)
+        self.assertIn("status <> 'detected' OR detector_ref IS NOT NULL", sql)
+
+    def test_the_library_refuses_an_id_that_could_never_match(self):
+        # Matching is string overlap: `word compression` would match nothing,
+        # raise nothing and route nothing. Unrepresentable is the only safe
+        # answer to a silent failure.
+        self.assertIn("speaking_error_id_shape", self._migration())
+        self.assertIn("'^[a-z][a-z0-9_]{1,62}$'", self._migration())
+
+    def test_every_seeded_error_carries_a_definition_and_one_question(self):
+        sql = self._migration()
+        self.assertIn("definition    TEXT NOT NULL", sql)
+        self.assertIn("asks          TEXT NOT NULL", sql)
+
+    def test_the_migration_is_idempotent_and_rls_guarded(self):
+        sql = self._migration()
+        self.assertIn("CREATE TABLE IF NOT EXISTS public.speaking_error", sql)
+        self.assertIn("ON CONFLICT (error_id) DO NOTHING", sql)
+        self.assertIn("ENABLE ROW LEVEL SECURITY", sql)
+
+    def test_it_is_registered_to_run(self):
+        manifest = (pathlib.Path(__file__).resolve().parents[1]
+                    / "migrations" / "manifest.txt").read_text()
+        self.assertIn("add_speaking_error_library.sql", manifest)
+
+
+class VocabularyFilterTests(unittest.TestCase):
+    class _Db:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def list_speaking_errors(self):
+            return self.rows
+
+    def test_only_detected_entries_enter_the_vocabulary(self):
+        database = self._Db([
+            {"error_id": "ending_compression", "status": "detected"},
+            {"error_id": "trailing_mumble", "status": "observed"},
+        ])
+        self.assertEqual(
+            cvp.detected_problem_vocabulary(database),
+            frozenset({"ending_compression"}),
+        )
+
+    def test_a_name_the_library_does_not_call_detectable_is_dropped(self):
+        verdict = {"signals": {"compressed_ending": True,
+                               "insufficient_pauses": True}}
+        self.assertEqual(
+            cvp.observed_problem_tags(
+                verdict, vocabulary=frozenset({"ending_compression"})),
+            frozenset({"ending_compression"}),
+        )
+
+    def test_an_unavailable_library_does_not_erase_every_tag(self):
+        # The dangerous misreading: empty means "no library", never "nothing is
+        # detectable". Filtering on empty would silently undo matching the
+        # moment a read failed or a migration lagged.
+        verdict = {"signals": {"compressed_ending": True}}
+        for empty in (None, frozenset(), set(), []):
+            self.assertEqual(
+                cvp.observed_problem_tags(verdict, vocabulary=empty),
+                frozenset({"ending_compression"}),
+            )
+        self.assertEqual(
+            cvp.detected_problem_vocabulary(self._Db([])), frozenset())
+        self.assertEqual(
+            cvp.detected_problem_vocabulary(object()), frozenset())
