@@ -257,3 +257,45 @@ are grandfathered in a frozen allowlist there — they are covered in production
 by the sweep, the gap is in the *files* — and that list may only ever shrink.
 The function rule has no allowlist and never should: it arrived with the first
 function in the repo.
+
+### One narrow exception, and it is NOT to the rule above (2026-09-15)
+
+The sentence immediately above still stands exactly as written: **the migration
+rule in `test_migration_security_rules.py` has no allowlist.** Every new
+function still has to REVOKE, and nothing here relaxes that.
+
+What gained an allowlist is the *other* mechanism — the deploy-time reporter
+`scripts/rls_guard.py`, which reads the live database on boot. One function
+legitimately must stay anon-executable:
+
+`public.willab_pre_request()` is PostgREST's `db-pre-request` hook (D49 §5,
+deployed 2026-09-15), bound with
+`ALTER ROLE authenticator SET pgrst.db_pre_request`. PostgREST runs it **after**
+switching to the JWT role, so every role it impersonates needs EXECUTE. That
+was measured, not assumed — instrumented in production, the hook logged
+`current_user=service_role session_user=authenticator`.
+
+So revoking it from `anon` does not quietly disable the hook. It makes the
+pre-request function *raise*, and every request from that role fails. The
+guard's own printed fix —
+`REVOKE ALL ON FUNCTION ... FROM PUBLIC, anon, authenticated` — would have
+caused an outage on the signed-out surface.
+
+**Why an allowlist rather than living with the red line.** For two days the
+guard reported this as an EXPOSURE on every boot with no action available.
+A security check that is permanently red for a reason nobody can act on is one
+people stop reading, and this guard is the only control on the direct-PostgREST
+path — so teaching that habit is the larger risk. The entry is triaged, not
+hidden: it still prints (`1 anon-callable by design`) and still appears in
+`--json`.
+
+The constraints that keep it from becoming a dumping ground, all pinned by
+`tests/test_rls_guard.py`: the exact set is asserted, so nothing is added
+quietly; every entry must state what breaks, not merely that it was accepted;
+matching is by exact identity signature against what the database actually has,
+so a stale entry cannot pre-authorise a function that does not exist;
+by-design entries never reach Sentry; and **the list may only ever shrink.**
+
+The companion finding from the same boot log, `public.pre_request()`, is NOT
+allowlisted. It was a copy of an example that matches no real RPC path, it is
+bound to nothing, it carried the `<default: PUBLIC>` grant, and it is dropped.

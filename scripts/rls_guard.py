@@ -108,6 +108,41 @@ SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
 
 SQL_ROLE_EXISTS = "SELECT 1 FROM pg_roles WHERE rolname = %s"
 
+# ── Anon-executable BY DESIGN ──────────────────────────────────────────────
+# Not "findings we decided to live with". An entry here means REVOKING IT
+# BREAKS SOMETHING, and says what. Everything else stays a finding.
+#
+# This exists because the alternative is worse. Before it, the guard reported
+# the PostgREST pre-request hook as an exposure on every single boot, and there
+# was no way to answer it: the fix line it prints (REVOKE ... FROM PUBLIC, anon,
+# authenticated) would have caused an outage. A guard that is permanently red
+# for a reason nobody can act on is a guard people stop reading — and this one
+# is the only control on the direct-PostgREST path, so teaching that habit is
+# the real risk.
+#
+# RULES. The key is the exact identity signature the query above produces
+# (`proname(identity args)`). The value is why a revoke is not available —
+# a mechanism, not a judgement. THE LIST MAY ONLY EVER SHRINK; adding to it is
+# a deliberate, reviewed decision and test_rls_guard.py pins the exact set so
+# a new entry cannot arrive quietly. Entries stay visible in the OK line and in
+# --json, so nothing here is hidden — it is triaged.
+ANON_EXECUTABLE_BY_DESIGN: dict[str, str] = {
+    "willab_pre_request()": (
+        "PostgREST's db-pre-request hook (D49 §5 activation attestation, "
+        "deployed 2026-09-15), bound via "
+        "ALTER ROLE authenticator SET pgrst.db_pre_request. PostgREST runs it "
+        "AFTER switching to the JWT role, so every role it impersonates needs "
+        "EXECUTE. Measured in production rather than assumed: the hook logged "
+        "current_user=service_role session_user=authenticator. Revoking from "
+        "anon therefore does NOT quietly disable the hook — it makes the "
+        "pre-request function raise, and every request from that role fails. "
+        "The function reads no data and writes none: it sets a 500ms "
+        "statement_timeout on three exact RPC paths and returns void, so an "
+        "anon caller invoking it directly can only tighten a timeout on their "
+        "own transaction."
+    ),
+}
+
 
 def _scalars(conn, sql: str) -> list[str]:
     with conn.cursor() as cur:
@@ -116,27 +151,46 @@ def _scalars(conn, sql: str) -> list[str]:
 
 
 def audit(conn) -> dict:
-    """Return {tables: [...], functions: [...], anon_role: bool}. Never raises
-    for a missing `anon` role — a plain Postgres (local dev, CI container) has
-    no Supabase roles, and has_function_privilege would abort the whole check
-    with 42704 rather than report anything."""
+    """Return {tables, functions, by_design, anon_role}. Never raises for a
+    missing `anon` role — a plain Postgres (local dev, CI container) has no
+    Supabase roles, and has_function_privilege would abort the whole check with
+    42704 rather than report anything.
+
+    `functions` is the finding list; `by_design` holds the ANON_EXECUTABLE_BY_
+    DESIGN entries that are actually present in THIS database. Splitting at the
+    audit rather than at the report keeps a justified entry out of the exposure
+    count and out of Sentry, while `by_design` keeps it on the record — and an
+    allowlist entry that matches nothing here simply never appears, so a stale
+    one cannot launder a real finding under a name that no longer exists.
+    """
     with conn.cursor() as cur:
         cur.execute(SQL_ROLE_EXISTS, ("anon",))
         anon_exists = cur.fetchone() is not None
 
+    callable_by_anon = (_scalars(conn, SQL_FUNCTIONS_ANON_CAN_EXECUTE)
+                        if anon_exists else [])
     return {
         "tables": _scalars(conn, SQL_TABLES_WITHOUT_RLS),
-        "functions": (_scalars(conn, SQL_FUNCTIONS_ANON_CAN_EXECUTE)
-                      if anon_exists else []),
+        "functions": [f for f in callable_by_anon
+                      if f not in ANON_EXECUTABLE_BY_DESIGN],
+        "by_design": [f for f in callable_by_anon
+                      if f in ANON_EXECUTABLE_BY_DESIGN],
         "anon_role": anon_exists,
     }
+
+
+def _by_design_note(found: dict) -> str:
+    """Kept on the OK line so a justified entry is triaged, never hidden."""
+    n = len(found.get("by_design", []))
+    return f" ({n} anon-callable by design)" if n else ""
 
 
 def report(found: dict) -> str:
     tables, functions = found["tables"], found["functions"]
     if not tables and not functions:
         note = "" if found["anon_role"] else " (no `anon` role — functions not checked)"
-        return f"[rls-guard] OK — no public table without RLS, no anon-callable function{note}"
+        return ("[rls-guard] OK — no public table without RLS, no anon-callable "
+                f"function{note}{_by_design_note(found)}")
 
     lines = [
         "[rls-guard] EXPOSURE FOUND — the anon key from the browser bundle can "
@@ -153,6 +207,10 @@ def report(found: dict) -> str:
         lines += [f"    - {f}" for f in functions]
         lines.append("    fix: REVOKE ALL ON FUNCTION public.<name>(<types>) FROM PUBLIC, anon, authenticated;")
         lines.append("    or re-run migrations/lock_down_public_function_grants.sql.")
+    if found.get("by_design"):
+        lines.append(f"  {len(found['by_design'])} anon-callable BY DESIGN — "
+                     "not a finding, revoking these breaks something:")
+        lines += [f"    - {f}" for f in found["by_design"]]
     lines.append("  context: docs/RLS-AUDIT.md")
     return "\n".join(lines)
 
