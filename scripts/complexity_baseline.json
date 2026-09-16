@@ -58,7 +58,6 @@
   "services/ideal_text_variants.py:block_variants_payload": 27,
   "services/ideal_text_variants.py:capture_user_edit_variants": 36,
   "services/intervention_candidates.py:select": 56,
-  "services/journal.py:validate_post_body": 61,
   "services/lab_send.py:send_lab_recording_to_coach": 36,
   "services/learning_exposures.py:prepare_feedback_presentations": 40,
   "services/life_engine.py:compare_to_strategy": 31,
