@@ -52,8 +52,11 @@ class _Auth:
 
 class _Db:
     def __init__(self, *, principal="owner-principal", insert_ok=True,
-                 register_ok=True):
+                 register_ok=True, project_principal="project-principal"):
         self.principal = principal
+        # projects.owner_principal_id is NOT NULL, so the project's answer is
+        # always there; the take's copy is the one that is usually missing.
+        self.project_principal = project_principal
         self.insert_ok = insert_ok
         self.register_ok = register_ok
         self.registered: list[dict] = []
@@ -61,7 +64,14 @@ class _Db:
         self.attempts: list[dict] = []
 
     def v2_get_session_by_id(self, session_id):
-        return {"id": session_id, "owner_principal_id": self.principal}
+        return {
+            "id": session_id,
+            "owner_principal_id": self.principal,
+            "project_id": "33333333-3333-4333-8333-333333333333",
+        }
+
+    def get_project_owner_principal(self, project_id):
+        return self.project_principal
 
     def insert_confident_voice_practice_attempt(self, row):
         if not self.insert_ok:
@@ -115,9 +125,25 @@ class RecordPracticeAttemptTests(unittest.TestCase):
         self.assertIsNone(_record(db))
         self.assertEqual(db.deleted, ["attempt-1"])
 
-    def test_no_principal_refuses_before_anything_is_written(self):
-        # No principal → no FK → no registry row → unreachable audio.
+    def test_it_falls_back_to_the_project_when_the_take_has_no_owner(self):
+        # THE 95% CASE, measured on production 2026-09-16: 348 of 367 user
+        # takes have a NULL v2_sessions.owner_principal_id. That column is a
+        # denormalised copy; projects.owner_principal_id is NOT NULL and is
+        # what the recording path has always resolved from. Reading only the
+        # copy meant refusing to save a retake for almost every speaker — the
+        # refusal working exactly as designed, on an answer that was never
+        # authoritative.
         db = _Db(principal="")
+        saved = _record(db)
+        self.assertIsNotNone(saved)
+        self.assertEqual(
+            db.registered[0]["acquisition_principal_id"], "project-principal")
+
+    def test_no_principal_anywhere_still_refuses_before_anything_is_written(self):
+        # The honest floor: when neither the take nor its project can name an
+        # owner, there is no FK, so no registry row, so audio the purge cannot
+        # reach. Refuse before writing.
+        db = _Db(principal="", project_principal="")
         self.assertIsNone(_record(db))
         self.assertEqual(db.attempts, [])
         self.assertEqual(db.registered, [])

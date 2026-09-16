@@ -51,6 +51,20 @@ def resolve_practice_principal(database: Any, practice: Any) -> str:
     the SAME principal — two resolutions that drift would register a recording
     against one identity and permit it against another, and the purge would
     then miss it for the owner who actually asked.
+
+    IT READS THE PROJECT, NOT JUST THE TAKE (2026-09-16). This asked
+    v2_sessions.owner_principal_id and stopped there, and on production that
+    column is NULL for 348 of 367 user takes — so practice would have refused
+    to save a retake for 95% of speakers, the refusal working exactly as
+    designed on an answer that was never authoritative.
+
+    projects.owner_principal_id is NOT NULL; the take's column is a
+    denormalised copy that most rows never got. The recording path has always
+    resolved from the project (routes/v2/lab_recording.py hands
+    upload.project.principal.id to the same service), so reading the project
+    here is not a fallback bolted on — it is reading the same source the rest
+    of the pipeline already trusts. The take's own column is kept as the first
+    look because when it IS set it is the cheapest correct answer.
     """
     from services.processing_authorization import ProcessingAuthorizationService
 
@@ -60,6 +74,9 @@ def resolve_practice_principal(database: Any, practice: Any) -> str:
         return ""
     session = database.v2_get_session_by_id(take_id) or {}
     owner = str(session.get("owner_principal_id") or "")
+    if not owner:
+        owner = database.get_project_owner_principal(
+            str(session.get("project_id") or ""))
     authorization = ProcessingAuthorizationService(database)
     if not authorization.enforced:
         return owner
