@@ -58,6 +58,7 @@ from migrate import (  # noqa: E402
     looks_idempotent,
     next_version,
     strip_sql_comments,
+    unbalanced_delimiters,
     wants_no_transaction,
 )
 
@@ -827,6 +828,102 @@ class DoctorTests(unittest.TestCase):
         self.assertTrue(body.startswith("WITH claimed"), body[:60])
         self.assertEqual(body.count(";"), 1, "more than one statement")
         self.assertTrue(body.endswith(";"))
+
+
+class DelimiterDamageTests(unittest.TestCase):
+    """A migration whose parentheses do not close blocks EVERY deploy.
+
+    0333 shipped on 2026-09-15 with a copy-paste that left a GRANT's argument
+    list open. Postgres refused it at the next statement and the pre-deploy
+    command failed on every deploy for the next day — and because the runner
+    stops at the first failure, 0334 and 0335 behind it were never attempted
+    either. Nothing in this repository would have caught it: `verify` checked
+    structure and never the SQL, and the rehearsal tier applies a curated
+    list of files that a new migration does not join.
+
+    The exact shape that shipped, reproduced here so the gate is tested
+    against the real defect rather than an invented one.
+    """
+
+    SHIPPED_DAMAGE = """
+REVOKE ALL ON FUNCTION public.f(TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.f(
+REVOKE ALL ON FUNCTION public.f(TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.f(TEXT) TO service_role;
+"""
+
+    def test_it_catches_the_defect_that_shipped(self):
+        found = unbalanced_delimiters(self.SHIPPED_DAMAGE)
+        self.assertTrue(found, "the 0333 shape must be refused")
+        # It names where the paren was OPENED, not where the parser gave up.
+        # Postgres pointed at line 4; the damage is on line 3.
+        self.assertIn("from line 3", found[0])
+
+    def test_every_migration_on_disk_is_balanced(self):
+        for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            with self.subTest(path.name):
+                self.assertEqual(
+                    unbalanced_delimiters(path.read_text(errors="ignore")), [],
+                )
+
+    def test_verify_refuses_a_damaged_file(self):
+        """The gate, not just the function: `verify` must exit non-zero."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "migrations").mkdir()
+            (root / "migrations" / "0001_ok.sql").write_text(
+                "CREATE TABLE IF NOT EXISTS t(id INT);\n")
+            (root / "migrations" / "0002_bad.sql").write_text(self.SHIPPED_DAMAGE)
+            (root / "migrations" / "manifest.txt").write_text(
+                "0001\t0001_ok.sql\n0002\t0002_bad.sql\n")
+            (root / "migrations" / "create_schema_migrations.sql").write_text(
+                "SELECT 1;\n")
+            original_dir, original_manifest, original_ledger = (
+                migrate.MIGRATIONS_DIR, migrate.MANIFEST_PATH,
+                migrate.LEDGER_SQL_PATH)
+            migrate.MIGRATIONS_DIR = root / "migrations"
+            migrate.MANIFEST_PATH = root / "migrations" / "manifest.txt"
+            migrate.LEDGER_SQL_PATH = (
+                root / "migrations" / "create_schema_migrations.sql")
+            try:
+                code, out = run_cli(["verify"])
+            finally:
+                (migrate.MIGRATIONS_DIR, migrate.MANIFEST_PATH,
+                 migrate.LEDGER_SQL_PATH) = (
+                    original_dir, original_manifest, original_ledger)
+            self.assertEqual(code, EXIT_FAILURE, out)
+            self.assertIn("0002_bad.sql", out)
+
+    def test_it_does_not_mistake_quoted_text_for_structure(self):
+        """The false-positive direction. A gate that cries wolf gets bypassed.
+
+        Every one of these contains an unmatched paren, semicolon or `--`
+        inside something the scanner must treat as opaque.
+        """
+        for label, sql in (
+            ("string", "SELECT 'a ( b ; c' AS x;"),
+            ("escaped quote", "SELECT 'it''s ( fine' AS x;"),
+            ("identifier", 'SELECT 1 AS "weird ( name";'),
+            ("line comment", "SELECT 1; -- a ( trailing note\n"),
+            ("block comment", "/* a ( note ; here */ SELECT 1;"),
+            ("nested block comment", "/* outer /* inner ( */ still */ SELECT 1;"),
+            ("dollar body", "CREATE FUNCTION f() RETURNS void LANGUAGE plpgsql"
+                            " AS $$ BEGIN RAISE NOTICE '('; END; $$;"),
+            ("tagged dollar body", "DO $guard$ BEGIN IF (1=1) THEN NULL;"
+                                   " END IF; END $guard$;"),
+            ("positional parameter", "SELECT $1 WHERE $2 = $3;"),
+        ):
+            with self.subTest(label):
+                self.assertEqual(unbalanced_delimiters(sql), [], label)
+
+    def test_it_catches_the_other_shapes_of_the_same_damage(self):
+        for label, sql in (
+            ("never closed at all", "CREATE TABLE t(id INT;\n"),
+            ("one too many closes", "SELECT (1));"),
+            ("unterminated dollar body", "DO $$ BEGIN NULL; END;"),
+        ):
+            with self.subTest(label):
+                self.assertTrue(unbalanced_delimiters(sql), label)
 
 
 if __name__ == "__main__":
