@@ -13924,6 +13924,25 @@ class DatabaseService:
                 attempt_id, e)
             return None
 
+    def get_processing_purpose(self, purpose_id: str) -> Optional[dict]:
+        """One row from the purpose registry, or None.
+
+        None means "could not establish", NOT "not operational" — the two are
+        different and the caller must fail closed on both. Raising would turn
+        a registry blip into a 500 on a route that has a perfectly good
+        "not available yet" answer already."""
+        if not purpose_id:
+            return None
+        try:
+            res = (self.client.table("processing_purpose_registry")
+                   .select("id,phase,operational,authorizes_processing")
+                   .eq("id", str(purpose_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_processing_purpose failed id=%s: %s",
+                           purpose_id, e)
+            return None
+
     def list_closed_practices_before(
         self, cutoff_iso: str, limit: int = 50,
     ) -> list[dict]:
