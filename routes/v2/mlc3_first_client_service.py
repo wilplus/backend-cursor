@@ -119,6 +119,43 @@ def _event_payload(value: Any) -> dict[str, Any]:
     return value
 
 
+def _record_service_event(
+    entity_id: str, *, id_field: str, id_param: str, rpc: Any,
+    error_label: str, extra_params: dict[str, Any] | None = None,
+) -> tuple[Any, str]:
+    """Shared body of the offer/practice client-event RPCs (audit C.7 dedup).
+
+    Both call sites validate event_kind against the same allowlist
+    (``_OFFER_EVENTS`` and ``_PRACTICE_EVENTS`` are literally the same set),
+    build an identical event-payload envelope, and differ only in which
+    entity id key/RPC they use and whether ``p_attempt_id`` is present.
+    """
+    body = _body()
+    event_kind = str(body.get("event_kind") or "")
+    if event_kind not in _OFFER_EVENTS:
+        raise ValueError(f"event_kind is not a client {error_label} event")
+    row = rpc({
+        id_param: _uuid(entity_id, id_field),
+        "p_acquisition_principal_id": _principal_id(),
+        "p_recipient_user_id": _uuid(
+            getattr(request, "user_id", None), "owner_user_id"
+        ),
+        **(extra_params or {}),
+        "p_event_kind": event_kind,
+        "p_render_instance_id": _uuid(
+            body.get("render_instance_id"), "render_instance_id"
+        ),
+        "p_content_identity_sha256": _sha256(
+            body.get("content_identity_sha256"),
+            "content_identity_sha256",
+        ),
+        "p_event_payload": _event_payload(body.get("event_payload")),
+        "p_occurred_at": _rpc_time(body.get("occurred_at"), "occurred_at"),
+        "p_idempotency_key": _idempotency_key(),
+    })
+    return row, event_kind
+
+
 def _offer_public_payload(offer: dict, version: dict | None = None) -> dict:
     payload = {
         "id": str(offer["id"]),
@@ -379,28 +416,13 @@ def v2_mlc3_exercise_offer_playback(offer_id: str):
 @mlc3_service_required
 def v2_mlc3_exercise_offer_event(offer_id: str):
     try:
-        body = _body()
-        event_kind = str(body.get("event_kind") or "")
-        if event_kind not in _OFFER_EVENTS:
-            raise ValueError("event_kind is not a client offer event")
-        row = db.record_exercise_offer_service_event({
-            "p_offer_id": _uuid(offer_id, "offer_id"),
-            "p_acquisition_principal_id": _principal_id(),
-            "p_recipient_user_id": _uuid(
-                getattr(request, "user_id", None), "owner_user_id"
-            ),
-            "p_event_kind": event_kind,
-            "p_render_instance_id": _uuid(
-                body.get("render_instance_id"), "render_instance_id"
-            ),
-            "p_content_identity_sha256": _sha256(
-                body.get("content_identity_sha256"),
-                "content_identity_sha256",
-            ),
-            "p_event_payload": _event_payload(body.get("event_payload")),
-            "p_occurred_at": _rpc_time(body.get("occurred_at"), "occurred_at"),
-            "p_idempotency_key": _idempotency_key(),
-        })
+        row, event_kind = _record_service_event(
+            offer_id,
+            id_field="offer_id",
+            id_param="p_offer_id",
+            rpc=db.record_exercise_offer_service_event,
+            error_label="offer",
+        )
         if row is None:
             return _service_unavailable()
         return jsonify({"event_id": row["id"], "event_kind": event_kind}), 201
@@ -478,29 +500,14 @@ def v2_mlc3_get_practice_session(session_id: str):
 @mlc3_service_required
 def v2_mlc3_practice_event(session_id: str):
     try:
-        body = _body()
-        event_kind = str(body.get("event_kind") or "")
-        if event_kind not in _PRACTICE_EVENTS:
-            raise ValueError("event_kind is not a client practice event")
-        row = db.record_exercise_practice_service_event({
-            "p_session_id": _uuid(session_id, "session_id"),
-            "p_acquisition_principal_id": _principal_id(),
-            "p_recipient_user_id": _uuid(
-                getattr(request, "user_id", None), "owner_user_id"
-            ),
-            "p_attempt_id": None,
-            "p_event_kind": event_kind,
-            "p_render_instance_id": _uuid(
-                body.get("render_instance_id"), "render_instance_id"
-            ),
-            "p_content_identity_sha256": _sha256(
-                body.get("content_identity_sha256"),
-                "content_identity_sha256",
-            ),
-            "p_event_payload": _event_payload(body.get("event_payload")),
-            "p_occurred_at": _rpc_time(body.get("occurred_at"), "occurred_at"),
-            "p_idempotency_key": _idempotency_key(),
-        })
+        row, event_kind = _record_service_event(
+            session_id,
+            id_field="session_id",
+            id_param="p_session_id",
+            rpc=db.record_exercise_practice_service_event,
+            extra_params={"p_attempt_id": None},
+            error_label="practice",
+        )
         if row is None:
             return _service_unavailable()
         return jsonify({"event_id": row["id"], "event_kind": event_kind}), 201

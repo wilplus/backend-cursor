@@ -71,15 +71,31 @@ def _clean_attestation(form: Any) -> bool:
     return str(form.get("independent_clean_media") or "").lower() == "true"
 
 
-def _store_inline_general_media(
+def _store_inline_coach_media(
     *,
     video: Any,
     reviewer: str,
     reveal_access_id: str,
     authorization_snapshot_id: str,
     idempotency: str,
-) -> str:
-    """Store one case-scoped general-guidance video behind the D5 boundary."""
+    seed_prefix: str = "coach-inline-general",
+    key_prefix: str = "mlc3-coach-inline-general",
+    purpose_id: str = "coach_review",
+    content_authority: str = "case-scoped-coach-general-guidance",
+    provenance_class: str = "user_scoped",
+    error_prefix: str = "COACH_INLINE_GENERAL",
+) -> tuple[Any, dict[str, Any], str]:
+    """Store one inline coach video behind the D5 boundary.
+
+    Shared by the case-scoped general-guidance upload and the personalized
+    exercise-draft upload: identical reserve/upload-event/finalize/bind RPC
+    sequence, differing only in the object-key namespace and the
+    purpose/content-authority/provenance literals each caller passes.
+    Returns ``(stored, finalized, media_binding_id)`` — both callers derived
+    ``media_binding_id`` from ``finalized`` identically, so it is computed
+    once here; ``stored``/``finalized`` remain for whatever else each caller
+    needs, exactly as before this was shared.
+    """
     body = video.read(Config.MLC3_PILOT_MAX_VIDEO_MB * 1024 * 1024 + 1)
     content_type = require_video_upload(
         body=body,
@@ -89,10 +105,10 @@ def _store_inline_general_media(
     bucket = require_coach_video_r2()
     object_id = str(uuid.uuid5(
         uuid.NAMESPACE_URL,
-        f"coach-inline-general:{reviewer}:{reveal_access_id}:{idempotency}",
+        f"{seed_prefix}:{reviewer}:{reveal_access_id}:{idempotency}",
     ))
     object_key = (
-        f"mlc3-coach-inline-general/{reviewer}/{object_id}"
+        f"{key_prefix}/{reviewer}/{object_id}"
         f"{_extension(video.filename or '', content_type)}"
     )
     finalized: dict[str, Any] = {}
@@ -103,7 +119,7 @@ def _store_inline_general_media(
             "p_reveal_access_id": reveal_access_id,
             "p_reviewer_principal_id": reviewer,
             "p_authorization_snapshot_id": authorization_snapshot_id,
-            "p_purpose_id": "coach_review",
+            "p_purpose_id": purpose_id,
             "p_bucket": bucket,
             "p_object_key": object_key,
             "p_intended_exact_bytes_sha256": media["exact_bytes_sha256"],
@@ -115,7 +131,7 @@ def _store_inline_general_media(
             "p_idempotency_key": f"{idempotency}:upload",
         })
         if not row:
-            raise RuntimeError("COACH_INLINE_GENERAL_UPLOAD_RESERVE_FAILED")
+            raise RuntimeError(f"{error_prefix}_UPLOAD_RESERVE_FAILED")
         upload_context.update(row)
         return ReservedObject(
             recovery_id=str(row["id"]),
@@ -139,7 +155,7 @@ def _store_inline_general_media(
             "p_idempotency_key": f"{idempotency}:{kind}",
         })
         if not row:
-            raise RuntimeError("COACH_INLINE_GENERAL_UPLOAD_EVENT_FAILED")
+            raise RuntimeError(f"{error_prefix}_UPLOAD_EVENT_FAILED")
 
     def finalize(**media: Any) -> str:
         reserved = media["recovery"]
@@ -151,24 +167,24 @@ def _store_inline_general_media(
             "p_content_type": reserved.content_type,
             "p_verification_method": media["verification_method"],
             "p_verified_at": datetime.now(UTC).isoformat(),
-            "p_content_authority": "case-scoped-coach-general-guidance",
+            "p_content_authority": content_authority,
             "p_created_by": reviewer,
         })
         if not media_row:
-            raise RuntimeError("COACH_INLINE_GENERAL_MEDIA_REGISTER_FAILED")
+            raise RuntimeError(f"{error_prefix}_MEDIA_REGISTER_FAILED")
         media_object_id = _uuid(media_row.get("id"), "media_object_id")
         upload_event("finalized", reserved, media_object_id)
-        principal_id = _uuid(
+        acquisition_principal_id = _uuid(
             upload_context.get("acquisition_principal_id"),
             "acquisition_principal_id",
         )
         binding = db.register_coach_inline_media({
             "p_media_object_id": media_object_id,
-            "p_acquisition_principal_id": principal_id,
+            "p_acquisition_principal_id": acquisition_principal_id,
             "p_authorization_snapshot_id": authorization_snapshot_id,
-            "p_purpose_id": "coach_review",
-            "p_provenance_class": "user_scoped",
-            "p_source_acquisition_principal_id": principal_id,
+            "p_purpose_id": purpose_id,
+            "p_provenance_class": provenance_class,
+            "p_source_acquisition_principal_id": acquisition_principal_id,
             "p_independent_media_review_id": None,
             "p_upload_authorization_id": reserved.recovery_id,
             "p_language_policy_version": _INLINE_POLICY,
@@ -178,11 +194,11 @@ def _store_inline_general_media(
             "p_idempotency_key": f"{idempotency}:media-binding",
         })
         if not binding:
-            raise RuntimeError("COACH_INLINE_GENERAL_MEDIA_BIND_FAILED")
+            raise RuntimeError(f"{error_prefix}_MEDIA_BIND_FAILED")
         finalized.update(binding)
         return media_object_id
 
-    store_exact_object(
+    stored = store_exact_object(
         body=body,
         content_type=content_type,
         reserve=reserve,
@@ -195,7 +211,8 @@ def _store_inline_general_media(
             "write_acknowledged", reserved
         ),
     )
-    return _uuid(finalized.get("id"), "media_binding_id")
+    media_binding_id = _uuid(finalized.get("id"), "media_binding_id")
+    return stored, finalized, media_binding_id
 
 
 @v2_bp.get("/coach/guidance/batches/<arc_id>")
@@ -429,7 +446,7 @@ def v2_coach_guidance_attachment():
         media_binding_id = None
         finalized: dict[str, Any] = {}
         if video is not None and inline_general:
-            media_binding_id = _store_inline_general_media(
+            _stored, _finalized, media_binding_id = _store_inline_coach_media(
                 video=video,
                 reviewer=reviewer,
                 reveal_access_id=reveal_access_id,
@@ -654,120 +671,19 @@ def v2_coach_inline_exercise_draft():
             or video is None
         ):
             raise ValueError("draft fields invalid")
-        body = video.read(Config.MLC3_PILOT_MAX_VIDEO_MB * 1024 * 1024 + 1)
-        content_type = require_video_upload(
-            body=body,
-            content_type=video.mimetype or "",
-            max_bytes=Config.MLC3_PILOT_MAX_VIDEO_MB * 1024 * 1024,
+        stored, finalized, binding_id = _store_inline_coach_media(
+            video=video,
+            reviewer=reviewer,
+            reveal_access_id=reveal_access_id,
+            authorization_snapshot_id=authorization_snapshot_id,
+            idempotency=idempotency,
+            seed_prefix="coach-inline",
+            key_prefix="mlc3-coach-inline",
+            purpose_id="personalized_exercise_recommendation",
+            content_authority="user-source-dependent-coach-draft",
+            provenance_class="user_source_dependent",
+            error_prefix="COACH_INLINE",
         )
-        bucket = require_coach_video_r2()
-        object_id = str(uuid.uuid5(
-            uuid.NAMESPACE_URL,
-            f"coach-inline:{reviewer}:{reveal_access_id}:{idempotency}",
-        ))
-        object_key = (
-            f"mlc3-coach-inline/{reviewer}/{object_id}"
-            f"{_extension(video.filename or '', content_type)}"
-        )
-        finalized: dict[str, Any] = {}
-        upload_context: dict[str, Any] = {}
-
-        def reserve(**media: Any) -> ReservedObject:
-            row = db.reserve_coach_inline_upload({
-                "p_reveal_access_id": reveal_access_id,
-                "p_reviewer_principal_id": reviewer,
-                "p_authorization_snapshot_id": authorization_snapshot_id,
-                "p_purpose_id": "personalized_exercise_recommendation",
-                "p_bucket": bucket,
-                "p_object_key": object_key,
-                "p_intended_exact_bytes_sha256": media["exact_bytes_sha256"],
-                "p_intended_byte_size": media["byte_size"],
-                "p_content_type": media["content_type"],
-                "p_expires_at": (
-                    datetime.now(UTC) + timedelta(minutes=15)
-                ).isoformat(),
-                "p_idempotency_key": f"{idempotency}:upload",
-            })
-            if not row:
-                raise RuntimeError("COACH_INLINE_UPLOAD_RESERVE_FAILED")
-            upload_context.update(row)
-            return ReservedObject(
-                recovery_id=str(row["id"]),
-                bucket=str(row["bucket"]),
-                object_key=str(row["object_key"]),
-                exact_bytes_sha256=str(row["intended_exact_bytes_sha256"]),
-                byte_size=int(row["intended_byte_size"]),
-                content_type=str(row["content_type"]),
-            )
-
-        def upload_event(
-            kind: str, reserved: ReservedObject, media_object_id: str | None = None,
-        ) -> None:
-            row = db.record_coach_inline_upload_event({
-                "p_upload_permit_id": reserved.recovery_id,
-                "p_reviewer_principal_id": reviewer,
-                "p_event_kind": kind,
-                "p_media_object_id": media_object_id,
-                "p_idempotency_key": f"{idempotency}:{kind}",
-            })
-            if not row:
-                raise RuntimeError("COACH_INLINE_UPLOAD_EVENT_FAILED")
-
-        def finalize(**media: Any) -> str:
-            reserved = media["recovery"]
-            media_row = db.register_exercise_media_object({
-                "p_bucket": reserved.bucket,
-                "p_object_key": reserved.object_key,
-                "p_exact_bytes_sha256": reserved.exact_bytes_sha256,
-                "p_byte_size": reserved.byte_size,
-                "p_content_type": reserved.content_type,
-                "p_verification_method": media["verification_method"],
-                "p_verified_at": datetime.now(UTC).isoformat(),
-                "p_content_authority": "user-source-dependent-coach-draft",
-                "p_created_by": reviewer,
-            })
-            if not media_row:
-                raise RuntimeError("COACH_INLINE_MEDIA_REGISTER_FAILED")
-            media_object_id = _uuid(media_row.get("id"), "media_object_id")
-            upload_event("finalized", reserved, media_object_id)
-            acquisition_principal_id = _uuid(
-                upload_context.get("acquisition_principal_id"),
-                "acquisition_principal_id",
-            )
-            binding = db.register_coach_inline_media({
-                "p_media_object_id": media_object_id,
-                "p_acquisition_principal_id": acquisition_principal_id,
-                "p_authorization_snapshot_id": authorization_snapshot_id,
-                "p_purpose_id": "personalized_exercise_recommendation",
-                "p_provenance_class": "user_source_dependent",
-                "p_source_acquisition_principal_id": acquisition_principal_id,
-                "p_independent_media_review_id": None,
-                "p_upload_authorization_id": reserved.recovery_id,
-                "p_language_policy_version": _INLINE_POLICY,
-                "p_safety_policy_version": _INLINE_POLICY,
-                "p_rights_policy_version": _INLINE_POLICY,
-                "p_content_review_version": _INLINE_POLICY,
-                "p_idempotency_key": f"{idempotency}:media-binding",
-            })
-            if not binding:
-                raise RuntimeError("COACH_INLINE_MEDIA_BIND_FAILED")
-            finalized.update(binding)
-            return media_object_id
-
-        stored = store_exact_object(
-            body=body,
-            content_type=content_type,
-            reserve=reserve,
-            finalize=finalize,
-            storage=CoachVideoR2Storage(),
-            record_write_started=lambda reserved: upload_event(
-                "write_started", reserved
-            ),
-            record_write_acknowledged=lambda reserved: upload_event(
-                "write_acknowledged", reserved
-            ),
-        )
-        binding_id = _uuid(finalized.get("id"), "media_binding_id")
         # The binding RPC derives and enforces the exact acquisition principal;
         # never trust a browser-provided principal. If registration did not
         # return one, the entire request fails closed before an attachment.

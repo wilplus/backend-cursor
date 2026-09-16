@@ -215,11 +215,11 @@
     "lines": 58,
     "db_calls": 2
   },
-  "routes/v2/coach_guidance_delivery.py:_store_inline_general_media": {
-    "lines": 125,
+  "routes/v2/coach_guidance_delivery.py:_store_inline_coach_media": {
+    "lines": 142,
     "db_calls": 4
   },
-  "routes/v2/coach_guidance_delivery.py:_store_inline_general_media.finalize": {
+  "routes/v2/coach_guidance_delivery.py:_store_inline_coach_media.finalize": {
     "lines": 40,
     "db_calls": 2
   },
@@ -232,8 +232,8 @@
     "db_calls": 6
   },
   "routes/v2/coach_guidance_delivery.py:v2_coach_inline_exercise_draft": {
-    "lines": 215,
-    "db_calls": 6
+    "lines": 114,
+    "db_calls": 2
   },
   "routes/v2/coach_guidance_delivery.py:v2_coach_inline_exercise_playback": {
     "lines": 32,
