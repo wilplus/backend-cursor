@@ -47,7 +47,7 @@ dc5fbbcc22b374040e74b800a8733eaeb44a36e2556ba9a5cf4bef3bad9559eb  routes/v2/coac
 bcfc7b89e112d1bcd7bc1ed642064b800d57146971a4245eea3699921e4d526a  routes/v2/confident_moment_bundles.py
 08d49eb1ea86686f5c793f5288b853f7a46f19ed67f8cef7cc03113df5242b90  routes/v2/explore_ideal_text.py
 a4968eb69e4886ef88c7b5e5dbc5cabf2cea1e5b455bdaa2c02be54c538e6dde  scripts/monitor_mlc3_general_service.py
-7e4f842eaa1bbdbbf784eb4777412e4814c7f4c8374200cbdaae42413604b779  services/confident_moment_bundle.py
+5476365940aed6153154865afe5a7461f8b4915ee1a6a23a8badeb25ca943fc2  services/confident_moment_bundle.py
 3a2e0299fa95d1b8e4e38661a786900c0565362d9b4651b97c2f9178d079625b  services/confident_moment_bundle_repository.py
 dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confident_moment_delivery_worker.py
 794c3d04c55016987c75dc9bdc7bab64ded34a14a7a6e3ee832b6b22f32b9568  services/confident_moment_user_media.py
@@ -524,5 +524,53 @@ Verified by execution: targeted tests for every touched surface green
 (776 tests across the Ideal Text / CAS edit surfaces), then
 scripts/local_ci.sh --no-setup green in full (manifest, migration
 runner, ruff, mypy, complexity ratchet, unit tier, F1 coverage floor).
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-16 — services/confident_moment_bundle.py complexity fix
+
+`validate_projection_envelope` (CC 118, transport validation of the
+database-owned Bundle projection envelope) decomposed into 18
+independently-named, independently-testable module-level helpers plus
+one small `_ProjectionSeenIds` bookkeeping class for the eight
+cross-bundle dedup sets. No dead code here (unlike the prior Ideal
+Text edit fix) — every branch was live, so this is a pure decomposition:
+each helper is a verbatim extraction of a contiguous validation block,
+same exact-key sets, same UUID/sha256/enum/cross-consistency checks,
+same `ConfidentMomentProjectionInvalid` messages, same exception types.
+The `resolution_state == "excluded"` early exit that used to be a
+`continue` inside the single big loop is now a `return True` from
+`_validate_feedback_item_exclusion`, checked by the caller's own
+`continue` — same control flow, same items skipped.
+
+This function validates the L3-sensitive part of the transport: the
+exact separation between `output.origin` (machine vs coach),
+`coach_update` (coach lineage identity/dedup), and `owner_decision`
+(routing signal, never a blind label) per Feedback Language item. The
+decomposition does not change what is compared to what — it only names
+each comparison. Final CC: the orchestrator itself is 5; every
+extracted helper is at or under 15 (well inside the complexity
+ratchet's 25 ceiling for new functions).
+
+- `scripts/complexity_baseline.json` — re-frozen: `validate_projection_envelope`
+  drops out of the baseline entirely (CC 118 → 5, no longer needs
+  grandfathering). While re-freezing, also caught and corrected a stale
+  entry left over from the prior Ideal Text edit fix:
+  `v2_explore_put_ideal_user_edit` was still recorded at its old CC 158
+  even though that fix had already brought it to CC 30 — the ratchet's
+  "FAIL when a function drops within its still-grandfathered ceiling"
+  check only fires when a function fully exits grandfathering (CC ≤ 25),
+  so a merely-tightened-but-still-grandfathered entry can go stale
+  silently. `--update` corrected it to 30 in the same pass. No other
+  entries changed.
+- `scripts/route_fence_baseline.json` — untouched (this is a services/
+  file; the route fence only tracks routes/ functions).
+
+Verified by execution: all 52 tests in `tests/test_confident_moment_bundle.py`
+green, plus the other 9 test files referencing this module (166 passed,
+74 rehearsal-tier cases correctly deselected outside the PostgreSQL
+tier), then `scripts/local_ci.sh --no-setup` green in full including the
+PostgreSQL rehearsal tier (required — this file sits on the Confident
+Moment MLC-3 chain).
 
 Every other entry is untouched.

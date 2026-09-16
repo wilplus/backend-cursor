@@ -660,15 +660,21 @@ def validate_coach_update_render_receipt(
             "presentation_id", "rendered_exposure_id",
         ),),
     )
-def validate_projection_envelope(value: Any) -> dict[str, Any]:
-    """Validate and return the exact v2 RPC envelope without enriching it."""
-    envelope = _object(value, "projection envelope")
-    _reject_forbidden_keys(envelope)
-    _exact_keys(
-        envelope,
-        {"bundle_projection", "confident_moment_summary"},
-        "projection envelope",
-    )
+class _ProjectionSeenIds:
+    """Cross-bundle dedup state threaded through one envelope validation pass."""
+
+    def __init__(self) -> None:
+        self.bundles: set[str] = set()
+        self.attachments: set[str] = set()
+        self.candidates: set[str] = set()
+        self.feedback_exposures: set[str] = set()
+        self.revisions: set[str] = set()
+        self.deliveries: set[str] = set()
+        self.presentations: set[str] = set()
+        self.exposures: set[str] = set()
+
+
+def _validate_envelope_versions(envelope: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     projection = _object(envelope["bundle_projection"], "bundle_projection")
     summary = _object(envelope["confident_moment_summary"], "summary")
     _exact_keys(projection, {
@@ -693,6 +699,10 @@ def validate_projection_envelope(value: Any) -> dict[str, Any]:
         _uuid(projection.get(key), key)
     _sha256(projection.get("response_sha256"), "response_sha256")
     _sha256(summary.get("summary_sha256"), "summary_sha256")
+    return projection, summary
+
+
+def _validate_projection_coverage(projection: dict[str, Any]) -> None:
     coverage = _object(projection.get("coverage"), "coverage")
     _exact_keys(coverage, {
         "target_slide_count", "achieved_slide_count", "target_met",
@@ -707,338 +717,433 @@ def validate_projection_envelope(value: Any) -> dict[str, Any]:
         or coverage["target_met"] is not (target > 0 and achieved >= target)
     ):
         raise ConfidentMomentProjectionInvalid("coverage state invalid")
+
+
+def _validate_bundle_identity(
+    bundle: dict[str, Any], seen: _ProjectionSeenIds,
+    previous_bundle_bytes: bytes | None,
+) -> tuple[str, bytes]:
+    bundle_id = _uuid(bundle.get("bundle_id"), "bundle_id")
+    if bundle_id in seen.bundles:
+        raise ConfidentMomentProjectionInvalid("duplicate bundle_id")
+    bundle_bytes = uuid.UUID(bundle_id).bytes
+    if previous_bundle_bytes is not None and bundle_bytes <= previous_bundle_bytes:
+        raise ConfidentMomentProjectionInvalid("Bundle order invalid")
+    seen.bundles.add(bundle_id)
+    return bundle_id, bundle_bytes
+
+
+def _validate_bundle_subject(bundle: dict[str, Any], bundle_id: str) -> tuple[str, str, str]:
+    subject_kind = bundle.get("bundle_subject_kind")
+    if subject_kind not in {"confidence_anchor", "no_anchor_paragraph_trigger"}:
+        raise ConfidentMomentProjectionInvalid("bundle_subject_kind invalid")
+    slide_index = bundle.get("slide_index")
+    block_key = bundle.get("block_key")
+    state_revision = bundle.get("state_revision")
+    if any(
+        not isinstance(item, int) or isinstance(item, bool) or item < 0
+        for item in (slide_index, block_key)
+    ) or not isinstance(state_revision, int) or isinstance(state_revision, bool) or state_revision < 1:
+        raise ConfidentMomentProjectionInvalid("bundle numeric identity invalid")
+    _uuid(bundle.get("paragraph_id"), "paragraph_id")
+    subject = _object(bundle.get("subject"), "subject")
+    _exact_keys(subject, {
+        "candidate_id", "evidence_span_id", "canonical_feedback_presentation_id",
+    }, "subject")
+    subject_candidate = _uuid(subject.get("candidate_id"), "subject.candidate_id")
+    _uuid(subject.get("evidence_span_id"), "subject.evidence_span_id")
+    subject_feedback_exposure_id = _uuid(
+        subject.get("canonical_feedback_presentation_id"),
+        "subject.canonical_feedback_presentation_id",
+    )
+    if subject_candidate != bundle_id:
+        raise ConfidentMomentProjectionInvalid("bundle/subject identity mismatch")
+    return subject_kind, subject_candidate, subject_feedback_exposure_id
+
+
+def _validate_bundle_confidence_anchor(
+    bundle: dict[str, Any], bundle_id: str, subject_kind: str,
+) -> None:
+    anchor = bundle.get("confidence_anchor")
+    if subject_kind == "confidence_anchor":
+        anchor = _object(anchor, "confidence_anchor")
+        _exact_keys(anchor, {
+            "candidate_id", "evidence_span_id", "playback_reference_id",
+        }, "confidence_anchor")
+        if _uuid(anchor.get("candidate_id"), "anchor.candidate_id") != bundle_id:
+            raise ConfidentMomentProjectionInvalid("confidence anchor mismatch")
+        anchor_evidence_id = _uuid(
+            anchor.get("evidence_span_id"), "anchor.evidence_span_id"
+        )
+        subject = bundle["subject"]
+        if anchor_evidence_id != subject["evidence_span_id"]:
+            raise ConfidentMomentProjectionInvalid(
+                "confidence anchor evidence mismatch"
+            )
+        _required_string(anchor.get("playback_reference_id"), "playback_reference_id")
+    elif anchor is not None:
+        raise ConfidentMomentProjectionInvalid("no-anchor bundle has confidence anchor")
+
+
+def _validate_bundle_root(bundle: dict[str, Any], subject_kind: str) -> None:
+    root = _object(bundle.get("root"), "root")
+    _exact_keys(root, {
+        "active_root_action_id", "interaction_state_revision",
+        "is_orange", "is_locked", "can_restore_previous",
+        "restore_product_action_id",
+    }, "root")
+    if any(not isinstance(root[key], bool) for key in (
+        "is_orange", "is_locked", "can_restore_previous",
+    )):
+        raise ConfidentMomentProjectionInvalid("root state invalid")
+    for field in ("active_root_action_id", "restore_product_action_id"):
+        if root.get(field) is not None:
+            _uuid(root[field], f"root.{field}")
+    _bigint_string(
+        root.get("interaction_state_revision"),
+        "root.interaction_state_revision",
+    )
+    if root["can_restore_previous"] is not (
+        root["restore_product_action_id"] is not None
+    ):
+        raise ConfidentMomentProjectionInvalid("root restore state invalid")
+    if root["is_locked"] and not root["is_orange"]:
+        raise ConfidentMomentProjectionInvalid("locked root must be orange")
+    if subject_kind == "no_anchor_paragraph_trigger" and (
+        root["is_orange"] or root["is_locked"] or root["can_restore_previous"]
+    ):
+        raise ConfidentMomentProjectionInvalid("no-anchor bundle has root affordance")
+
+
+def _validate_feedback_item_identity(item: dict[str, Any], seen: _ProjectionSeenIds) -> None:
+    attachment_id = _uuid(
+        item.get("bundle_attachment_id"), "bundle_attachment_id"
+    )
+    if attachment_id in seen.attachments:
+        raise ConfidentMomentProjectionInvalid("duplicate bundle attachment")
+    seen.attachments.add(attachment_id)
+    candidate_id = _uuid(item.get("attached_candidate_id"), "attached_candidate_id")
+    if candidate_id in seen.candidates:
+        raise ConfidentMomentProjectionInvalid("duplicate attached candidate")
+    seen.candidates.add(candidate_id)
+    family = item.get("feedback_family")
+    if family not in {
+        "confident_voice", "rewrite_clarity", "great_formulation",
+    }:
+        raise ConfidentMomentProjectionInvalid("feedback_family invalid")
+    feedback_exposure_id = _uuid(
+        item.get("canonical_feedback_exposure_id"),
+        "canonical_feedback_exposure_id",
+    )
+    if (
+        feedback_exposure_id in seen.feedback_exposures
+        or feedback_exposure_id in seen.presentations
+        or feedback_exposure_id in seen.exposures
+    ):
+        raise ConfidentMomentProjectionInvalid(
+            "duplicate canonical Feedback exposure"
+        )
+    seen.feedback_exposures.add(feedback_exposure_id)
+
+
+def _validate_feedback_item_position(item: dict[str, Any]) -> int:
+    position = item.get("canonical_position")
+    if not isinstance(position, int) or isinstance(position, bool) or position < 1:
+        raise ConfidentMomentProjectionInvalid("canonical_position invalid")
+    return position
+
+
+def _validate_feedback_item_source_passage(item: dict[str, Any]) -> None:
+    source_passage = _object(item.get("source_passage"), "source_passage")
+    _exact_keys(source_passage, {
+        "evidence_span_id", "text", "text_sha256",
+    }, "source_passage")
+    _uuid(source_passage.get("evidence_span_id"), "source_passage.evidence_span_id")
+    _required_string(source_passage.get("text"), "source_passage.text")
+    _sha256(source_passage.get("text_sha256"), "source_passage.text_sha256")
+    if not isinstance(item.get("update_text_available"), bool):
+        raise ConfidentMomentProjectionInvalid("update_text_available invalid")
+    if item.get("coach_authoring_exclusion_reason") not in {
+        None, "source_audio_unavailable",
+    }:
+        raise ConfidentMomentProjectionInvalid(
+            "coach authoring exclusion invalid"
+        )
+
+
+def _validate_feedback_item_exclusion(item: dict[str, Any]) -> bool:
+    """Returns True (after validating shape) when the item is excluded."""
+    resolution = item.get("resolution_state")
+    if resolution == "excluded":
+        if (
+            item.get("output") is not None or item.get("coach_update") is not None
+            or item.get("owner_decision") is not None
+            or item.get("exclusion_reason") not in {
+                "delivery_explicitly_invalidated", "machine_output_invalid",
+            }
+        ):
+            raise ConfidentMomentProjectionInvalid("excluded item shape invalid")
+        return True
+    if item.get("exclusion_reason") is not None:
+        raise ConfidentMomentProjectionInvalid("resolved item has exclusion")
+    return False
+
+
+def _validate_feedback_item_output(item: dict[str, Any], family: Any) -> dict[str, Any]:
+    output = _object(item.get("output"), "output")
+    _exact_keys(
+        output,
+        {"output_kind", "comment_purpose", "text", "origin"},
+        "output",
+    )
+    kind = output.get("output_kind")
+    if kind not in _OUTPUT_KINDS or output.get("origin") not in {"machine", "coach"}:
+        raise ConfidentMomentProjectionInvalid("typed output invalid")
+    _required_string(output.get("text"), "output.text")
+    purpose = output.get("comment_purpose")
+    if (kind == "comment" and purpose not in _COMMENT_PURPOSES) or (
+        kind == "rephrase" and purpose is not None
+    ):
+        raise ConfidentMomentProjectionInvalid("output purpose invalid")
+    if (
+        family == "confident_voice"
+        and (kind, purpose) != ("comment", "confidence_explanation")
+    ) or (
+        family == "great_formulation"
+        and (kind, purpose) != ("comment", "positive_praise")
+    ) or (
+        family == "rewrite_clarity"
+        and (kind, purpose) not in {
+            ("rephrase", None),
+            ("comment", "actionable_observation"),
+        }
+    ):
+        raise ConfidentMomentProjectionInvalid(
+            "Feedback family/output mismatch"
+        )
+    return output
+
+
+def _validate_feedback_item_coach_lineage(
+    item: dict[str, Any], output: dict[str, Any], resolution: str,
+    seen: _ProjectionSeenIds,
+) -> None:
+    coach_update = item.get("coach_update")
+    if resolution == "machine_fallback":
+        if coach_update is not None or output.get("origin") != "machine":
+            raise ConfidentMomentProjectionInvalid("machine fallback shape invalid")
+        return
+    coach_update = _object(coach_update, "coach_update")
+    _exact_keys(coach_update, {
+        "current_revision_id", "revision_sha256", "revision_delivery_id",
+        "delivery_subject_sha256", "presentation_id",
+        "rendered_exposure_id", "unread",
+    }, "coach_update")
+    if output.get("origin") != "coach" or not isinstance(coach_update.get("unread"), bool):
+        raise ConfidentMomentProjectionInvalid("coach update shape invalid")
+    revision_id = _uuid(coach_update.get("current_revision_id"), "current_revision_id")
+    delivery_id = _uuid(coach_update.get("revision_delivery_id"), "revision_delivery_id")
+    presentation_id = _uuid(coach_update.get("presentation_id"), "presentation_id")
+    if presentation_id in seen.feedback_exposures:
+        raise ConfidentMomentProjectionInvalid(
+            "Feedback exposure used as coach presentation"
+        )
+    if revision_id in seen.revisions or delivery_id in seen.deliveries or presentation_id in seen.presentations:
+        raise ConfidentMomentProjectionInvalid("cross-item coach identity reused")
+    seen.revisions.add(revision_id)
+    seen.deliveries.add(delivery_id)
+    seen.presentations.add(presentation_id)
+    _sha256(coach_update.get("revision_sha256"), "revision_sha256")
+    _sha256(coach_update.get("delivery_subject_sha256"), "delivery_subject_sha256")
+    exposure = coach_update.get("rendered_exposure_id")
+    if exposure is not None:
+        exposure = _uuid(exposure, "rendered_exposure_id")
+        if (
+            exposure in seen.exposures
+            or exposure in seen.feedback_exposures
+        ):
+            raise ConfidentMomentProjectionInvalid("cross-item exposure reused")
+        seen.exposures.add(exposure)
+    if coach_update["unread"] is not (exposure is None):
+        raise ConfidentMomentProjectionInvalid("coach unread/exposure mismatch")
+
+
+def _validate_feedback_item_owner_decision(item: dict[str, Any], family: Any) -> None:
+    owner_decision = item.get("owner_decision")
+    if owner_decision is None:
+        return
+    owner_decision = _object(owner_decision, "owner_decision")
+    _exact_keys(owner_decision, {
+        "feedback_family", "response", "decision_id",
+        "owner_response_id", "response_binding_id",
+    }, "owner_decision")
+    if owner_decision.get("feedback_family") != family:
+        raise ConfidentMomentProjectionInvalid(
+            "owner decision family mismatch"
+        )
+    allowed = {
+        "confident_voice": {
+            "yes", "in_between", "no", "not_sure",
+            "audio_unclear",
+        },
+        "rewrite_clarity": {
+            "apply_suggestion", "keep_wording",
+        },
+        "great_formulation": {
+            "useful", "not_useful", "not_sure",
+        },
+    }
+    if owner_decision.get("response") not in allowed[family]:
+        raise ConfidentMomentProjectionInvalid(
+            "owner decision response invalid"
+        )
+    _uuid(owner_decision.get("decision_id"), "owner_decision.decision_id")
+    owner_response_id = owner_decision.get("owner_response_id")
+    response_binding_id = owner_decision.get("response_binding_id")
+    if family == "confident_voice":
+        _uuid(owner_response_id, "owner_decision.owner_response_id")
+        _uuid(response_binding_id, "owner_decision.response_binding_id")
+    elif owner_response_id is not None or response_binding_id is not None:
+        raise ConfidentMomentProjectionInvalid(
+            "non-confidence owner decision has confidence identity"
+        )
+
+
+def _validate_bundle_positions_and_subject(
+    bundle: dict[str, Any], items: list[Any], positions: list[int],
+    subject_candidate: str, subject_feedback_exposure_id: str,
+) -> None:
+    if positions != sorted(positions) or len(positions) != len(set(positions)):
+        raise ConfidentMomentProjectionInvalid("Feedback Language order invalid")
+    subject_items = [
+        item for item in items
+        if item["attached_candidate_id"] == subject_candidate
+    ]
+    if (
+        len(subject_items) != 1
+        or subject_items[0]["canonical_feedback_exposure_id"]
+        != subject_feedback_exposure_id
+    ):
+        raise ConfidentMomentProjectionInvalid(
+            "subject attachment Feedback exposure mismatch"
+        )
+    if bundle.get("exercise", object()) is not None:
+        raise ConfidentMomentProjectionInvalid("exercise must be null")
+
+
+def _validate_projection_bundle(
+    bundle: dict[str, Any], seen: _ProjectionSeenIds,
+    previous_bundle_bytes: bytes | None,
+) -> bytes:
+    _exact_keys(bundle, {
+        "bundle_id", "bundle_subject_kind", "slide_index", "block_key",
+        "paragraph_id", "subject", "confidence_anchor",
+        "feedback_language_items", "exercise", "root", "state_revision",
+    }, "bundle")
+    bundle_id, bundle_bytes = _validate_bundle_identity(bundle, seen, previous_bundle_bytes)
+    subject_kind, subject_candidate, subject_feedback_exposure_id = (
+        _validate_bundle_subject(bundle, bundle_id)
+    )
+    _validate_bundle_confidence_anchor(bundle, bundle_id, subject_kind)
+    _validate_bundle_root(bundle, subject_kind)
+    items = _list(bundle.get("feedback_language_items"), "feedback_language_items")
+    positions: list[int] = []
+    for item in items:
+        item = _object(item, "feedback_language_item")
+        _exact_keys(item, {
+            "bundle_attachment_id", "attached_candidate_id",
+            "feedback_family", "canonical_feedback_exposure_id",
+            "canonical_position", "resolution_state", "exclusion_reason",
+            "source_passage", "update_text_available",
+            "coach_authoring_exclusion_reason", "output", "coach_update",
+            "owner_decision",
+        }, "feedback_language_item")
+        _validate_feedback_item_identity(item, seen)
+        positions.append(_validate_feedback_item_position(item))
+        _validate_feedback_item_source_passage(item)
+        resolution = item.get("resolution_state")
+        if resolution not in _RESOLUTION_STATES:
+            raise ConfidentMomentProjectionInvalid("resolution_state invalid")
+        if _validate_feedback_item_exclusion(item):
+            continue
+        family = item.get("feedback_family")
+        output = _validate_feedback_item_output(item, family)
+        _validate_feedback_item_coach_lineage(item, output, resolution, seen)
+        _validate_feedback_item_owner_decision(item, family)
+    _validate_bundle_positions_and_subject(
+        bundle, items, positions, subject_candidate, subject_feedback_exposure_id,
+    )
+    return bundle_bytes
+
+
+def _validate_summary_cardinality(summary_items: list[Any], bundles: list[Any]) -> None:
+    if len(summary_items) != len(bundles):
+        raise ConfidentMomentProjectionInvalid("summary cardinality invalid")
+
+
+def _validate_summary_item(row: Any, bundle: dict[str, Any]) -> str:
+    row = _object(row, "summary.item")
+    _exact_keys(row, {
+        "bundle_id", "paragraph_id", "slide_index", "block_key",
+        "marker_present", "is_orange", "is_locked",
+        "has_coach_update", "has_unread_coach_update", "state_revision",
+    }, "summary.item")
+    summary_id = _uuid(row.get("bundle_id"), "summary.bundle_id")
+    if (
+        _uuid(row.get("paragraph_id"), "summary.paragraph_id")
+        != bundle["paragraph_id"]
+        or row.get("slide_index") != bundle["slide_index"]
+        or row.get("block_key") != bundle["block_key"]
+        or row.get("marker_present") is not True
+        or row.get("is_orange") is not bundle["root"]["is_orange"]
+        or row.get("is_locked") is not bundle["root"]["is_locked"]
+        or row.get("state_revision") != bundle["state_revision"]
+    ):
+        raise ConfidentMomentProjectionInvalid("summary state mismatch")
+    expected_unread = any(
+        item["resolution_state"] == "coach_revision"
+        and item["coach_update"]["unread"] is True
+        for item in bundle["feedback_language_items"]
+    )
+    if row.get("has_unread_coach_update") is not expected_unread:
+        raise ConfidentMomentProjectionInvalid("summary unread state mismatch")
+    expected_update = any(
+        item["resolution_state"] == "coach_revision"
+        for item in bundle["feedback_language_items"]
+    )
+    if row.get("has_coach_update") is not expected_update or (
+        row.get("has_unread_coach_update") is True
+        and row.get("has_coach_update") is not True
+    ):
+        raise ConfidentMomentProjectionInvalid("summary coach state mismatch")
+    return summary_id
+
+
+def validate_projection_envelope(value: Any) -> dict[str, Any]:
+    """Validate and return the exact v2 RPC envelope without enriching it."""
+    envelope = _object(value, "projection envelope")
+    _reject_forbidden_keys(envelope)
+    _exact_keys(
+        envelope,
+        {"bundle_projection", "confident_moment_summary"},
+        "projection envelope",
+    )
+    projection, summary = _validate_envelope_versions(envelope)
+    _validate_projection_coverage(projection)
     bundles = _list(projection.get("bundles"), "bundles")
-    seen_bundles: set[str] = set()
-    seen_attachments: set[str] = set()
-    seen_candidates: set[str] = set()
-    seen_feedback_exposures: set[str] = set()
-    seen_revisions: set[str] = set()
-    seen_deliveries: set[str] = set()
-    seen_presentations: set[str] = set()
-    seen_exposures: set[str] = set()
+    seen = _ProjectionSeenIds()
     previous_bundle_bytes: bytes | None = None
     for bundle in bundles:
         bundle = _object(bundle, "bundle")
-        _exact_keys(bundle, {
-            "bundle_id", "bundle_subject_kind", "slide_index", "block_key",
-            "paragraph_id", "subject", "confidence_anchor",
-            "feedback_language_items", "exercise", "root", "state_revision",
-        }, "bundle")
-        bundle_id = _uuid(bundle.get("bundle_id"), "bundle_id")
-        if bundle_id in seen_bundles:
-            raise ConfidentMomentProjectionInvalid("duplicate bundle_id")
-        bundle_bytes = uuid.UUID(bundle_id).bytes
-        if previous_bundle_bytes is not None and bundle_bytes <= previous_bundle_bytes:
-            raise ConfidentMomentProjectionInvalid("Bundle order invalid")
-        previous_bundle_bytes = bundle_bytes
-        seen_bundles.add(bundle_id)
-        subject_kind = bundle.get("bundle_subject_kind")
-        if subject_kind not in {"confidence_anchor", "no_anchor_paragraph_trigger"}:
-            raise ConfidentMomentProjectionInvalid("bundle_subject_kind invalid")
-        slide_index = bundle.get("slide_index")
-        block_key = bundle.get("block_key")
-        state_revision = bundle.get("state_revision")
-        if any(
-            not isinstance(item, int) or isinstance(item, bool) or item < 0
-            for item in (slide_index, block_key)
-        ) or not isinstance(state_revision, int) or isinstance(state_revision, bool) or state_revision < 1:
-            raise ConfidentMomentProjectionInvalid("bundle numeric identity invalid")
-        _uuid(bundle.get("paragraph_id"), "paragraph_id")
-        subject = _object(bundle.get("subject"), "subject")
-        _exact_keys(subject, {
-            "candidate_id", "evidence_span_id", "canonical_feedback_presentation_id",
-        }, "subject")
-        subject_candidate = _uuid(subject.get("candidate_id"), "subject.candidate_id")
-        _uuid(subject.get("evidence_span_id"), "subject.evidence_span_id")
-        subject_feedback_exposure_id = _uuid(
-            subject.get("canonical_feedback_presentation_id"),
-            "subject.canonical_feedback_presentation_id",
+        previous_bundle_bytes = _validate_projection_bundle(
+            bundle, seen, previous_bundle_bytes,
         )
-        if subject_candidate != bundle_id:
-            raise ConfidentMomentProjectionInvalid("bundle/subject identity mismatch")
-        anchor = bundle.get("confidence_anchor")
-        if subject_kind == "confidence_anchor":
-            anchor = _object(anchor, "confidence_anchor")
-            _exact_keys(anchor, {
-                "candidate_id", "evidence_span_id", "playback_reference_id",
-            }, "confidence_anchor")
-            if _uuid(anchor.get("candidate_id"), "anchor.candidate_id") != bundle_id:
-                raise ConfidentMomentProjectionInvalid("confidence anchor mismatch")
-            anchor_evidence_id = _uuid(
-                anchor.get("evidence_span_id"), "anchor.evidence_span_id"
-            )
-            if anchor_evidence_id != subject["evidence_span_id"]:
-                raise ConfidentMomentProjectionInvalid(
-                    "confidence anchor evidence mismatch"
-                )
-            _required_string(anchor.get("playback_reference_id"), "playback_reference_id")
-        elif anchor is not None:
-            raise ConfidentMomentProjectionInvalid("no-anchor bundle has confidence anchor")
-        root = _object(bundle.get("root"), "root")
-        _exact_keys(root, {
-            "active_root_action_id", "interaction_state_revision",
-            "is_orange", "is_locked", "can_restore_previous",
-            "restore_product_action_id",
-        }, "root")
-        if any(not isinstance(root[key], bool) for key in (
-            "is_orange", "is_locked", "can_restore_previous",
-        )):
-            raise ConfidentMomentProjectionInvalid("root state invalid")
-        for field in ("active_root_action_id", "restore_product_action_id"):
-            if root.get(field) is not None:
-                _uuid(root[field], f"root.{field}")
-        _bigint_string(
-            root.get("interaction_state_revision"),
-            "root.interaction_state_revision",
-        )
-        if root["can_restore_previous"] is not (
-            root["restore_product_action_id"] is not None
-        ):
-            raise ConfidentMomentProjectionInvalid("root restore state invalid")
-        if root["is_locked"] and not root["is_orange"]:
-            raise ConfidentMomentProjectionInvalid("locked root must be orange")
-        if subject_kind == "no_anchor_paragraph_trigger" and (
-            root["is_orange"] or root["is_locked"] or root["can_restore_previous"]
-        ):
-            raise ConfidentMomentProjectionInvalid("no-anchor bundle has root affordance")
-        items = _list(bundle.get("feedback_language_items"), "feedback_language_items")
-        positions: list[int] = []
-        for item in items:
-            item = _object(item, "feedback_language_item")
-            _exact_keys(item, {
-                "bundle_attachment_id", "attached_candidate_id",
-                "feedback_family", "canonical_feedback_exposure_id",
-                "canonical_position", "resolution_state", "exclusion_reason",
-                "source_passage", "update_text_available",
-                "coach_authoring_exclusion_reason", "output", "coach_update",
-                "owner_decision",
-            }, "feedback_language_item")
-            attachment_id = _uuid(
-                item.get("bundle_attachment_id"), "bundle_attachment_id"
-            )
-            if attachment_id in seen_attachments:
-                raise ConfidentMomentProjectionInvalid("duplicate bundle attachment")
-            seen_attachments.add(attachment_id)
-            candidate_id = _uuid(item.get("attached_candidate_id"), "attached_candidate_id")
-            if candidate_id in seen_candidates:
-                raise ConfidentMomentProjectionInvalid("duplicate attached candidate")
-            seen_candidates.add(candidate_id)
-            family = item.get("feedback_family")
-            if family not in {
-                "confident_voice", "rewrite_clarity", "great_formulation",
-            }:
-                raise ConfidentMomentProjectionInvalid("feedback_family invalid")
-            feedback_exposure_id = _uuid(
-                item.get("canonical_feedback_exposure_id"),
-                "canonical_feedback_exposure_id",
-            )
-            if (
-                feedback_exposure_id in seen_feedback_exposures
-                or feedback_exposure_id in seen_presentations
-                or feedback_exposure_id in seen_exposures
-            ):
-                raise ConfidentMomentProjectionInvalid(
-                    "duplicate canonical Feedback exposure"
-                )
-            seen_feedback_exposures.add(feedback_exposure_id)
-            position = item.get("canonical_position")
-            if not isinstance(position, int) or isinstance(position, bool) or position < 1:
-                raise ConfidentMomentProjectionInvalid("canonical_position invalid")
-            positions.append(position)
-            source_passage = _object(item.get("source_passage"), "source_passage")
-            _exact_keys(source_passage, {
-                "evidence_span_id", "text", "text_sha256",
-            }, "source_passage")
-            _uuid(source_passage.get("evidence_span_id"), "source_passage.evidence_span_id")
-            _required_string(source_passage.get("text"), "source_passage.text")
-            _sha256(source_passage.get("text_sha256"), "source_passage.text_sha256")
-            if not isinstance(item.get("update_text_available"), bool):
-                raise ConfidentMomentProjectionInvalid("update_text_available invalid")
-            if item.get("coach_authoring_exclusion_reason") not in {
-                None, "source_audio_unavailable",
-            }:
-                raise ConfidentMomentProjectionInvalid(
-                    "coach authoring exclusion invalid"
-                )
-            resolution = item.get("resolution_state")
-            if resolution not in _RESOLUTION_STATES:
-                raise ConfidentMomentProjectionInvalid("resolution_state invalid")
-            output = item.get("output")
-            coach_update = item.get("coach_update")
-            owner_decision = item.get("owner_decision")
-            if resolution == "excluded":
-                if (
-                    output is not None or coach_update is not None
-                    or owner_decision is not None
-                    or item.get("exclusion_reason") not in {
-                        "delivery_explicitly_invalidated", "machine_output_invalid",
-                    }
-                ):
-                    raise ConfidentMomentProjectionInvalid("excluded item shape invalid")
-                continue
-            if item.get("exclusion_reason") is not None:
-                raise ConfidentMomentProjectionInvalid("resolved item has exclusion")
-            output = _object(output, "output")
-            _exact_keys(
-                output,
-                {"output_kind", "comment_purpose", "text", "origin"},
-                "output",
-            )
-            kind = output.get("output_kind")
-            if kind not in _OUTPUT_KINDS or output.get("origin") not in {"machine", "coach"}:
-                raise ConfidentMomentProjectionInvalid("typed output invalid")
-            _required_string(output.get("text"), "output.text")
-            purpose = output.get("comment_purpose")
-            if (kind == "comment" and purpose not in _COMMENT_PURPOSES) or (
-                kind == "rephrase" and purpose is not None
-            ):
-                raise ConfidentMomentProjectionInvalid("output purpose invalid")
-            if (
-                family == "confident_voice"
-                and (kind, purpose) != ("comment", "confidence_explanation")
-            ) or (
-                family == "great_formulation"
-                and (kind, purpose) != ("comment", "positive_praise")
-            ) or (
-                family == "rewrite_clarity"
-                and (kind, purpose) not in {
-                    ("rephrase", None),
-                    ("comment", "actionable_observation"),
-                }
-            ):
-                raise ConfidentMomentProjectionInvalid(
-                    "Feedback family/output mismatch"
-                )
-            if resolution == "machine_fallback":
-                if coach_update is not None or output.get("origin") != "machine":
-                    raise ConfidentMomentProjectionInvalid("machine fallback shape invalid")
-            else:
-                coach_update = _object(coach_update, "coach_update")
-                _exact_keys(coach_update, {
-                    "current_revision_id", "revision_sha256", "revision_delivery_id",
-                    "delivery_subject_sha256", "presentation_id",
-                    "rendered_exposure_id", "unread",
-                }, "coach_update")
-                if output.get("origin") != "coach" or not isinstance(coach_update.get("unread"), bool):
-                    raise ConfidentMomentProjectionInvalid("coach update shape invalid")
-                revision_id = _uuid(coach_update.get("current_revision_id"), "current_revision_id")
-                delivery_id = _uuid(coach_update.get("revision_delivery_id"), "revision_delivery_id")
-                presentation_id = _uuid(coach_update.get("presentation_id"), "presentation_id")
-                if presentation_id in seen_feedback_exposures:
-                    raise ConfidentMomentProjectionInvalid(
-                        "Feedback exposure used as coach presentation"
-                    )
-                if revision_id in seen_revisions or delivery_id in seen_deliveries or presentation_id in seen_presentations:
-                    raise ConfidentMomentProjectionInvalid("cross-item coach identity reused")
-                seen_revisions.add(revision_id)
-                seen_deliveries.add(delivery_id)
-                seen_presentations.add(presentation_id)
-                _sha256(coach_update.get("revision_sha256"), "revision_sha256")
-                _sha256(coach_update.get("delivery_subject_sha256"), "delivery_subject_sha256")
-                exposure = coach_update.get("rendered_exposure_id")
-                if exposure is not None:
-                    exposure = _uuid(exposure, "rendered_exposure_id")
-                    if (
-                        exposure in seen_exposures
-                        or exposure in seen_feedback_exposures
-                    ):
-                        raise ConfidentMomentProjectionInvalid("cross-item exposure reused")
-                    seen_exposures.add(exposure)
-                if coach_update["unread"] is not (exposure is None):
-                    raise ConfidentMomentProjectionInvalid("coach unread/exposure mismatch")
-            if owner_decision is not None:
-                owner_decision = _object(owner_decision, "owner_decision")
-                _exact_keys(owner_decision, {
-                    "feedback_family", "response", "decision_id",
-                    "owner_response_id", "response_binding_id",
-                }, "owner_decision")
-                if owner_decision.get("feedback_family") != family:
-                    raise ConfidentMomentProjectionInvalid(
-                        "owner decision family mismatch"
-                    )
-                allowed = {
-                    "confident_voice": {
-                        "yes", "in_between", "no", "not_sure",
-                        "audio_unclear",
-                    },
-                    "rewrite_clarity": {
-                        "apply_suggestion", "keep_wording",
-                    },
-                    "great_formulation": {
-                        "useful", "not_useful", "not_sure",
-                    },
-                }
-                if owner_decision.get("response") not in allowed[family]:
-                    raise ConfidentMomentProjectionInvalid(
-                        "owner decision response invalid"
-                    )
-                _uuid(owner_decision.get("decision_id"), "owner_decision.decision_id")
-                owner_response_id = owner_decision.get("owner_response_id")
-                response_binding_id = owner_decision.get("response_binding_id")
-                if family == "confident_voice":
-                    _uuid(owner_response_id, "owner_decision.owner_response_id")
-                    _uuid(response_binding_id, "owner_decision.response_binding_id")
-                elif owner_response_id is not None or response_binding_id is not None:
-                    raise ConfidentMomentProjectionInvalid(
-                        "non-confidence owner decision has confidence identity"
-                    )
-        if positions != sorted(positions) or len(positions) != len(set(positions)):
-            raise ConfidentMomentProjectionInvalid("Feedback Language order invalid")
-        subject_items = [
-            item for item in items
-            if item["attached_candidate_id"] == subject_candidate
-        ]
-        if (
-            len(subject_items) != 1
-            or subject_items[0]["canonical_feedback_exposure_id"]
-            != subject_feedback_exposure_id
-        ):
-            raise ConfidentMomentProjectionInvalid(
-                "subject attachment Feedback exposure mismatch"
-            )
-        if bundle.get("exercise", object()) is not None:
-            raise ConfidentMomentProjectionInvalid("exercise must be null")
     summary_items = _list(summary.get("items"), "summary.items")
-    if len(summary_items) != len(bundles):
-        raise ConfidentMomentProjectionInvalid("summary cardinality invalid")
-    summary_ids: list[str] = []
-    for index, row in enumerate(summary_items):
-        row = _object(row, "summary.item")
-        _exact_keys(row, {
-            "bundle_id", "paragraph_id", "slide_index", "block_key",
-            "marker_present", "is_orange", "is_locked",
-            "has_coach_update", "has_unread_coach_update", "state_revision",
-        }, "summary.item")
-        bundle = bundles[index]
-        summary_id = _uuid(row.get("bundle_id"), "summary.bundle_id")
-        summary_ids.append(summary_id)
-        if (
-            _uuid(row.get("paragraph_id"), "summary.paragraph_id")
-            != bundle["paragraph_id"]
-            or row.get("slide_index") != bundle["slide_index"]
-            or row.get("block_key") != bundle["block_key"]
-            or row.get("marker_present") is not True
-            or row.get("is_orange") is not bundle["root"]["is_orange"]
-            or row.get("is_locked") is not bundle["root"]["is_locked"]
-            or row.get("state_revision") != bundle["state_revision"]
-        ):
-            raise ConfidentMomentProjectionInvalid("summary state mismatch")
-        expected_unread = any(
-            item["resolution_state"] == "coach_revision"
-            and item["coach_update"]["unread"] is True
-            for item in bundle["feedback_language_items"]
-        )
-        if row.get("has_unread_coach_update") is not expected_unread:
-            raise ConfidentMomentProjectionInvalid("summary unread state mismatch")
-        expected_update = any(
-            item["resolution_state"] == "coach_revision"
-            for item in bundle["feedback_language_items"]
-        )
-        if row.get("has_coach_update") is not expected_update or (
-            row.get("has_unread_coach_update") is True
-            and row.get("has_coach_update") is not True
-        ):
-            raise ConfidentMomentProjectionInvalid("summary coach state mismatch")
+    _validate_summary_cardinality(summary_items, bundles)
+    summary_ids = [
+        _validate_summary_item(row, bundles[index])
+        for index, row in enumerate(summary_items)
+    ]
     if summary_ids != [str(row["bundle_id"]) for row in bundles]:
         raise ConfidentMomentProjectionInvalid("summary bundle order invalid")
     return envelope
