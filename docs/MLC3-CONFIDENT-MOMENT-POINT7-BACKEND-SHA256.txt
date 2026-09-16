@@ -45,7 +45,7 @@ a833c211cf077f294a7973714c065aaa65a1c1aede33c49e4d7ae3debcdc7031  docs/MLC3-CONF
 39b62b500f23732bfbb0326ffe0ae054b9233c1267665a11a9275eb10205bdcb  migrations/add_confident_moment_coaching_bundle_v1.sql
 dc5fbbcc22b374040e74b800a8733eaeb44a36e2556ba9a5cf4bef3bad9559eb  routes/v2/coach_guidance_delivery.py
 bcfc7b89e112d1bcd7bc1ed642064b800d57146971a4245eea3699921e4d526a  routes/v2/confident_moment_bundles.py
-cc570196d01b11d1be5e8a56cc3034011707a85de63035d8d3aa444f18ee9150  routes/v2/explore_ideal_text.py
+08d49eb1ea86686f5c793f5288b853f7a46f19ed67f8cef7cc03113df5242b90  routes/v2/explore_ideal_text.py
 a4968eb69e4886ef88c7b5e5dbc5cabf2cea1e5b455bdaa2c02be54c538e6dde  scripts/monitor_mlc3_general_service.py
 7e4f842eaa1bbdbbf784eb4777412e4814c7f4c8374200cbdaae42413604b779  services/confident_moment_bundle.py
 3a2e0299fa95d1b8e4e38661a786900c0565362d9b4651b97c2f9178d079625b  services/confident_moment_bundle_repository.py
@@ -481,5 +481,48 @@ Verified by execution: targeted tests for every touched surface green
 (865 tests), then scripts/local_ci.sh --no-setup green in full
 (manifest, migration runner, ruff, mypy, complexity ratchet, unit tier,
 F1 coverage floor).
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-16 — post-audit complexity cleanup, v2_explore_put_ideal_user_edit (backend)
+
+Re-frozen by the same rule. One pinned file drifts: Phase 2 of the
+post-audit backlog (backend cyclomatic complexity), the single
+highest-complexity function in the backend
+(`v2_explore_put_ideal_user_edit`, radon CC 158).
+
+Two independent, zero-behavior-change moves:
+
+1. Deleted ~160 lines of dead code. The function's live path (the D22-D24
+   atomic CAS RPC) always returns before reaching the old direct
+   owner-lane/post-RPC-parts implementation retained below it; that block
+   was already commented "unreachable during the pending migration and
+   will be removed when the numbered release is cut" — confirmed
+   unreachable by reading the full function's control flow (no branch
+   anywhere falls through to it). Radon still counts unreachable branches,
+   so deleting it alone took CC from 158 to 111.
+2. Extracted the remaining live validation logic into eight small,
+   independently-named, independently-testable module-level helpers:
+   `_valid_part_id`, `_validate_expected_part_rows`,
+   `_validate_desired_part_rows`, `_validate_current_edit_parts_lineage`,
+   `_validate_cas_pair_and_key`, `_validate_cas_response_envelope`,
+   `_validate_part_revision_ordering`. The route handler now calls each
+   in sequence and returns/raises on their result exactly as the inline
+   code did. Final CC: the handler itself is 30 (down from 158); every
+   extracted helper is at or under 25 (required for new functions under
+   the complexity ratchet).
+
+No table, migration, route, or response shape changes — every error
+code, status, and success payload is byte-identical to before.
+
+- `scripts/route_fence_baseline.json` — re-frozen (down only):
+  `v2_explore_put_ideal_user_edit` shrinks from 403 lines / 2 db calls to
+  113 lines / 1 db call in its grandfathered entry (still over the
+  fence's line threshold, so it stays listed, just smaller).
+
+Verified by execution: targeted tests for every touched surface green
+(776 tests across the Ideal Text / CAS edit surfaces), then
+scripts/local_ci.sh --no-setup green in full (manifest, migration
+runner, ruff, mypy, complexity ratchet, unit tier, F1 coverage floor).
 
 Every other entry is untouched.

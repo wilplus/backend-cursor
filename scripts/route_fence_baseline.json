@@ -288,8 +288,8 @@
     "db_calls": 2
   },
   "routes/v2/explore_ideal_text.py:v2_explore_put_ideal_user_edit": {
-    "lines": 403,
-    "db_calls": 2
+    "lines": 113,
+    "db_calls": 1
   },
   "routes/v2/explore_ideal_text.py:v2_explore_save_ideal_text": {
     "lines": 101,
