@@ -19,6 +19,9 @@ from uuid import UUID
 from services.mlc2_confidence import (
     ConfidenceSamplingFrame,
     Mlc2ConfidenceStore,
+    _sha256,
+    _text,
+    _uuid,
 )
 from services.mlc2_foundation import CanonicalEnvelope, Mlc2ContractError
 
@@ -26,27 +29,6 @@ from services.mlc2_foundation import CanonicalEnvelope, Mlc2ContractError
 PRODUCER_CONTRACT_VERSION = "confidence-producer-v1"
 SOURCE_SCHEMA_VERSION = "confidence-source-audio-v1"
 EVENT_TYPE = "confidence_take_ready"
-
-
-def _uuid(value: Any, field: str) -> str:
-    try:
-        return str(UUID(str(value)))
-    except (TypeError, ValueError, AttributeError) as exc:
-        raise Mlc2ContractError(f"{field} must be a UUID") from exc
-
-
-def _text(value: Any, field: str) -> str:
-    result = str(value or "").strip()
-    if not result:
-        raise Mlc2ContractError(f"{field} is required")
-    return result
-
-
-def _sha256(value: Any, field: str) -> str:
-    result = _text(value, field).lower()
-    if len(result) != 64 or any(ch not in "0123456789abcdef" for ch in result):
-        raise Mlc2ContractError(f"{field} must be lowercase SHA-256 hex")
-    return result
 
 
 def _content_type(filename: str) -> str:
