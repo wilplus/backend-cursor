@@ -189,10 +189,6 @@ REVOKE ALL ON FUNCTION public.record_take_feedback_response_v1(
     TEXT, UUID, UUID, TEXT, TEXT, TEXT, TEXT
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.record_take_feedback_response_v1(
-REVOKE ALL ON FUNCTION public.record_take_feedback_response_v1(
-    TEXT, UUID, UUID, TEXT, TEXT, TEXT, TEXT
-) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.record_take_feedback_response_v1(
     TEXT, UUID, UUID, TEXT, TEXT, TEXT, TEXT
 ) TO service_role;
 
