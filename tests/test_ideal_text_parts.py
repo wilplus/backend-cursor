@@ -735,7 +735,7 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                        return_value=(True, [])), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=_row()), \
                  patch.object(db, "get_ideal_text_parts",
                               return_value=existing or [], create=True), \

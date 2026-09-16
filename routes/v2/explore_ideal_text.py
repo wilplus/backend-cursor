@@ -277,7 +277,7 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
         # the latest transcript describes a different document. That mismatch
         # is what made the FE reject the whole Ideal Text after Take 2.
         try:
-            _ideal_row = db.get_coach_arc_ideal_text(arc_id) or {}
+            _ideal_row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
             _stored_doc = _ideal_row.get("document") or {}
             _stored_paragraphs = _stored_doc.get("paragraphs") or []
             _canonical_body = str(
@@ -798,7 +798,7 @@ def v2_explore_get_ideal_text(arc_id):
 
         def _optional(label, default, reader):
             return _ideal_optional_read(label, default, reader, _deg)
-        row = db.get_coach_arc_ideal_text(arc_id)
+        row = db.ideal_text.get_coach_arc_ideal_text(arc_id)
 
         # ── SINGLE DELIVERABLE (founder re-shape 2026-07-17): the ideal
         # text is FREE in both states — no 402 on this endpoint, ever. The
@@ -1338,7 +1338,7 @@ def v2_explore_decide_prior_take(arc_id):
         from services.ideal_decision_ledger import normalize_phrase
         _v = None
         try:
-            _v = (db.get_coach_arc_ideal_text(arc_id) or {}).get("version")
+            _v = (db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}).get("version")
         except Exception:
             _v = None
         ok = db.upsert_ideal_decision(
@@ -1455,7 +1455,7 @@ def v2_explore_decide_block(arc_id, block_key):
                 from services.arc_notifications import (
                     fire_ideal_version_ready,
                 )
-                _r2 = db.get_coach_arc_ideal_text(arc_id) or {}
+                _r2 = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
                 if _r2.get("version"):
                     fire_ideal_version_ready(
                         db, str(request.user_id), str(arc_id),
@@ -1736,7 +1736,7 @@ def v2_explore_save_ideal_text(arc_id):
                             "error": "Could not resolve every open "
                                      "suggestion — try again."}), 500
 
-        _row = db.get_coach_arc_ideal_text(arc_id) or {}
+        _row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
         _v = _row.get("version")
         if not isinstance(_v, int):
             return jsonify({"code": "NOTHING_TO_SAVE",
@@ -2138,7 +2138,7 @@ def v2_explore_set_part_lock(arc_id, part_id):
             # says is ready.
             from services.intervention_spend import latest_spoken_take_sid
             _lock_review_version = (
-                (db.get_coach_arc_ideal_text(arc_id) or {}).get("version")
+                (db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}).get("version")
             )
             _served = (_tracked_changes_block(
                 arc_id,
@@ -2409,7 +2409,7 @@ def _legacy_user_edit_via_cas(arc_id, body, text, version):
                 "error": "parts do not join to text",
             }), 400
 
-    row = db.get_coach_arc_ideal_text(arc_id) or {}
+    row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
     machine = ((row.get("auto_text") or "").strip()
                or ((row.get("text") or "").strip()
                    if not (row.get("updated_by") or row.get("approved_at"))
@@ -2774,7 +2774,7 @@ def v2_explore_put_ideal_user_edit(arc_id):
 
         # The current version — the edit only sticks against it. A newer
         # version having assembled since → 409 so the FE refetches + re-offers.
-        _row = db.get_coach_arc_ideal_text(arc_id) or {}
+        _row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
         _machine = ((_row.get("auto_text") or "").strip()
                     or ((_row.get("text") or "").strip()
                         if not (_row.get("updated_by")

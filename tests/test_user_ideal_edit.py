@@ -65,7 +65,7 @@ class UserEditPutTests(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(owned, [])), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(db, "compare_and_set_user_ideal_edit",
                               return_value=_cas_result(
@@ -166,7 +166,7 @@ class LedgerInheritanceTests(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(db, "compare_and_set_user_ideal_edit",
                               return_value=_cas_result(row.get("version", 1))), \
@@ -215,7 +215,7 @@ class LedgerInheritanceTests(unittest.TestCase):
             request.user_id = "u1"
             with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(db, "compare_and_set_user_ideal_edit",
                               return_value=_cas_result(2)), \
@@ -242,7 +242,7 @@ class StudentGetDisplayPriorityTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(db, "get_user_ideal_edit",
                               return_value=edit), \
@@ -302,7 +302,7 @@ class PriorEditReofferTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(db, "get_user_ideal_edit",
                               side_effect=_edit_patch), \
@@ -368,7 +368,7 @@ class CoachGetUserEditTests(unittest.TestCase):
                               return_value=sessions), \
                  patch.object(db, "get_user_ideal_edit",
                               return_value=edit) as m_edit, \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=coach_row), \
                  patch("services.ideal_text_block.maybe_assemble_ideal_text",
                        return_value=False), \

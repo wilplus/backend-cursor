@@ -45,7 +45,7 @@ a833c211cf077f294a7973714c065aaa65a1c1aede33c49e4d7ae3debcdc7031  docs/MLC3-CONF
 39b62b500f23732bfbb0326ffe0ae054b9233c1267665a11a9275eb10205bdcb  migrations/add_confident_moment_coaching_bundle_v1.sql
 dc5fbbcc22b374040e74b800a8733eaeb44a36e2556ba9a5cf4bef3bad9559eb  routes/v2/coach_guidance_delivery.py
 bcfc7b89e112d1bcd7bc1ed642064b800d57146971a4245eea3699921e4d526a  routes/v2/confident_moment_bundles.py
-50e24a592d21fd2e5833a351dbea15728bda40af3d8249c1f3f9b9e00ec4b143  routes/v2/explore_ideal_text.py
+3761d44c2d4024a526d2376a4dcf0f1069ff36f1d80a32b4eef2754d1b884804  routes/v2/explore_ideal_text.py
 a4968eb69e4886ef88c7b5e5dbc5cabf2cea1e5b455bdaa2c02be54c538e6dde  scripts/monitor_mlc3_general_service.py
 7e4f842eaa1bbdbbf784eb4777412e4814c7f4c8374200cbdaae42413604b779  services/confident_moment_bundle.py
 3a2e0299fa95d1b8e4e38661a786900c0565362d9b4651b97c2f9178d079625b  services/confident_moment_bundle_repository.py
@@ -53,7 +53,7 @@ dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confi
 794c3d04c55016987c75dc9bdc7bab64ded34a14a7a6e3ee832b6b22f32b9568  services/confident_moment_user_media.py
 09ac4873e142bd68c682abaf28acb15e4fb0a445aab749ad8b28b47020b1df22  services/data_purge.py
 5ff3880f55da07671775de92e279e13e0dca96b615329632b6d6cd88096cbbb9  services/data_purge_registry.py
-b44b1f1ac62e3eef139c0e093ad43bdace0f8777017b0eecf5bc453e3817da34  services/db.py
+d5d088c7d658991ed0666bba7691bb1c9da2f1a37e4b8e6dbc1e605ebc89c085  services/db.py
 b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedback_data_contract.py
 35955687744b693dfb26fe79b79767c54c3a851dabfba4c015790c4537c459c7  services/feedback_language.py
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
@@ -62,8 +62,8 @@ a32a213e6d2dd0c20a0bc4d9daee5985802eee650334996268b9797225e61b10  services/mlc3_
 016be24b04a8715fa57f88d4d19c9638535eb08cc6ccc4a563ae29bb13be25e3  services/pipeline_jobs.py
 969647d87ca6be07b395d3be3a70ba5a0b5dedb82a5d90159729ac19807ffe12  services/rooting_coverage.py
 9c62027810dde624befd20442b212ecbe1cf6d6e78455b517321b2ce37cd31bd  tests/test_acoustic_kpi.py
-601d7f1743f90575af0716fbd596bef3f699fac909805831562ca03d4a4aeeb9  tests/test_ideal_text_parts.py
-60788df944f5aea4602d00c9a045b95e93a6ace502029063e0d6c80fbd5940c7  tests/test_user_ideal_edit.py
+caef0a4d2a64dbfb95709850d31861c83b24c65acae9a24d70a3c6280a4db7c7  tests/test_ideal_text_parts.py
+355bec9423b267fdce473b4f77b3d64c2f65ee3359cc97d2979528b39f9f11e0  tests/test_user_ideal_edit.py
 a4bfdffa958538a137d6b58b57c49ecc11d95401663d5f6b162c90decb8f7f0e  tests/test_confident_moment_bundle.py
 d54bfcf21c5d446cbf0243830e305eb5d42bf510a6d1ca46e8c4ccada79d0f5d  tests/test_confident_moment_bundle_routes.py
 ac2d91c6b987275fd06838f26926324f7bf6947fc297eec23793c1d3c6812aec  tests/test_confident_moment_bundle_security.py
@@ -247,5 +247,69 @@ separately-verified PR given its size; the other eight are repointed here.
 No table, migration, route, or response shape changes. Verified by
 execution: targeted tests for every touched file green (417 tests across
 the ideal-text surfaces), then the full gate.
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-16 — post-audit glue cleanup, get_coach_arc_ideal_text (backend)
+
+Re-frozen by the same rule. Four pinned files drift, zero-behavior-change
+cleanup: the last of the nine ideal-text-family forwarders, deferred out
+of the previous re-freeze given its size (~20 production call sites,
+~30 test-mock sites).
+
+- `services/db.py` — the `get_coach_arc_ideal_text` forwarder is deleted.
+  Its two internal callers on `DatabaseService` itself
+  (`persist_auto_ideal_text`, `verify_ideal_text`) now call
+  `self.ideal_text.get_coach_arc_ideal_text(...)`.
+- `routes/v2/explore_ideal_text.py` — its eight `db.get_coach_arc_ideal_text(...)`
+  calls now go through `db.ideal_text.`.
+- `routes/v2/arcs.py`, `routes/v2/coach.py`, `routes/v2/lab_recording.py`,
+  `routes/v2/user_sessions.py`, `services/arc_notifications.py`,
+  `services/ideal_text_block.py`, `services/ideal_text_changes.py`,
+  `services/ideal_text_confirmation.py`,
+  `services/ideal_text_core_snapshot.py`, `services/part_acoustics.py`,
+  `services/swap_detector.py`, `services/take_review.py` — their calls to
+  the same method now go through `db.ideal_text.` / `database.ideal_text.`
+  / `self.db.ideal_text.` (not pinned files; changed alongside, not listed
+  above). `services/ideal_text_block.py`'s defensive
+  `getattr(database, "get_coach_arc_ideal_text", None)` indirection now
+  nests through a `getattr(database, "ideal_text", None)` lookup first,
+  the same pattern used for `services/pipeline_jobs.py` in the recordings
+  family's re-freeze.
+- Nine test fixtures (`tests/test_eager_ideal_text.py`,
+  `tests/test_ideal_bubble_backfill.py` — two fake classes,
+  `tests/test_ideal_text_changes.py`, `tests/test_moment_suggestions.py`,
+  `tests/test_pipeline_degradation.py`, `tests/test_take_review.py`) each
+  have their own hand-rolled fake DB class implementing this method
+  directly on itself; each gained a one-line `ideal_text` property
+  returning `self`. Three `SimpleNamespace(...,
+  get_coach_arc_ideal_text=lambda a: row)` fakes
+  (`tests/test_instant_ideal_text.py`, two in
+  `tests/test_single_deliverable.py`) nest the lambda under a
+  `SimpleNamespace(ideal_text=...)` instead. `patch.object(db,
+  "get_coach_arc_ideal_text", ...)` / `patch.object(v2_db, ...)` /
+  `patch.object(route.db, ...)` test sites across eleven files — including
+  the two pinned `tests/test_ideal_text_parts.py` and
+  `tests/test_user_ideal_edit.py` — move to patching `db.ideal_text` /
+  `v2_db.ideal_text` / `route.db.ideal_text` instead. Mock-based
+  `database.get_coach_arc_ideal_text.return_value` / `.side_effect` sites
+  in `tests/test_ideal_text_block.py` and
+  `tests/test_ideal_text_confirmation.py` move to
+  `database.ideal_text.get_coach_arc_ideal_text.*`.
+- `scripts/route_fence_baseline.json` — re-frozen (down only) in the same
+  commit: several `routes/v2/coach.py` and
+  `routes/v2/explore_ideal_text.py` functions count fewer direct
+  `db.<method>()` calls now that this call routes through `db.ideal_text`,
+  and `routes/v2/explore_ideal_text.py:v2_explore_decide_prior_take` /
+  `routes/v2/lab_recording.py:v2_retry_recording_ideal_text` dropped out
+  of the baseline entirely (now within both thresholds).
+
+The recordings, ideal-text and takes families are now the only remaining
+`services/db.py` forwarder groups; this closes the ideal-text family
+(nine of nine methods repointed across two PRs).
+
+No table, migration, route, or response shape changes. Verified by
+execution: targeted tests for every touched surface green (621 tests
+across the ideal-text/coach/arc surfaces), then the full gate.
 
 Every other entry is untouched.

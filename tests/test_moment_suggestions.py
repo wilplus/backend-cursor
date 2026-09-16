@@ -600,7 +600,7 @@ class StudentGetStarTests(unittest.TestCase):
                               return_value=(True, [])), \
                  patch("routes.v2.explore_ideal_text._moment_suggestions_enabled",
                               return_value=stars), \
-                 patch.object(v2_db, "get_coach_arc_ideal_text",
+                 patch.object(v2_db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(v2_db, "get_user_ideal_edit",
                               return_value=edit), \
@@ -1450,6 +1450,12 @@ class VersionSnapshotWriteTests(unittest.TestCase):
 
         def get_coach_arc_ideal_text(self, arc_id):
             return {"arc_id": arc_id, "version": 4}
+
+        @property
+        def ideal_text(self):
+            # audit Q-A2: production now calls database.ideal_text.<method>();
+            # this fake implements those methods directly on itself.
+            return self
 
         def upsert_moment_suggestion(self, *a, **_kw):
             return True

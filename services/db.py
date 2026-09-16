@@ -7223,9 +7223,6 @@ class DatabaseService:
     def set_session_feedback_saved(self, *args, **kwargs):
         return self.takes.set_session_feedback_saved(*args, **kwargs)
 
-    def get_coach_arc_ideal_text(self, *args, **kwargs):
-        return self.ideal_text.get_coach_arc_ideal_text(*args, **kwargs)
-
     def persist_auto_ideal_text(self, arc_id: str, text: str,
                                 *, take_count: Optional[int] = None,
                                 document: Optional[dict] = None) -> bool:
@@ -7249,7 +7246,7 @@ class DatabaseService:
         if not arc_id or not isinstance(text, str) or not text.strip():
             return False
         try:
-            row = self.get_coach_arc_ideal_text(arc_id)
+            row = self.ideal_text.get_coach_arc_ideal_text(arc_id)
             coach_owned = bool(
                 row and (row.get("updated_by") or row.get("approved_at")))
             _now = datetime.now(timezone.utc).isoformat()
@@ -8188,7 +8185,7 @@ class DatabaseService:
         if not arc_id:
             return None
         try:
-            row = self.get_coach_arc_ideal_text(arc_id)
+            row = self.ideal_text.get_coach_arc_ideal_text(arc_id)
             if not row:
                 return None
             coach_owned = bool(row.get("updated_by") or row.get("approved_at"))

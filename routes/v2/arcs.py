@@ -1147,7 +1147,7 @@ def v2_explore_arc_feedback(arc_id):
                 "key_moments": _take_key_moments(
                     sid, [str(r.get("id")) for r in read_rows if r.get("id")]),
             })
-        ideal = db.get_coach_arc_ideal_text(arc_id)
+        ideal = db.ideal_text.get_coach_arc_ideal_text(arc_id)
         if takes:
             # Once per arc, and only when there is feedback to read. Fail-open
             # by construction — the charge result is not consulted.

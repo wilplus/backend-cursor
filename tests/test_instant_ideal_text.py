@@ -79,7 +79,7 @@ class PersistAutoIdealDualWriteTests(unittest.TestCase):
         client = self._Client(auto_cols=auto_cols)
         fake = SimpleNamespace(
             client=client,
-            get_coach_arc_ideal_text=lambda a: row,
+            ideal_text=SimpleNamespace(get_coach_arc_ideal_text=lambda a: row),
         )
         ok = DatabaseService.persist_auto_ideal_text(fake, ARC, text)
         return ok, client.upserts

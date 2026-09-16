@@ -131,7 +131,7 @@ class _FeedbackHarness(unittest.TestCase):
                                   for i in ids}), \
                  patch.object(db, "get_user_transcript_edits",
                               return_value=[]), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=None), \
                  patch.object(db, "v2_get_student_details",
                               return_value={"credits": 7}):
@@ -237,7 +237,7 @@ class IdealTextRoutesTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(db, "get_arc_sessions",
                               return_value=_sessions()), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value={"text": "coach block",
                                             "updated_by": "coach1",
                                             "approved_at": None}):
@@ -256,7 +256,7 @@ class IdealTextRoutesTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(db, "get_arc_sessions",
                               return_value=_sessions()), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=None), \
                  patch("services.ideal_text_block.maybe_assemble_ideal_text",
                        return_value=True), \
@@ -273,7 +273,7 @@ class IdealTextRoutesTests(unittest.TestCase):
     def test_approve_persists_auto_when_no_block_saved(self):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(db, "get_coach_arc_ideal_text",
+            with patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=None), \
                  patch("services.ideal_text_block.assemble_ideal_text_block",
                        return_value={"text": "auto block",
@@ -289,7 +289,7 @@ class IdealTextRoutesTests(unittest.TestCase):
     def test_approve_409_when_nothing_assembled(self):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(db, "get_coach_arc_ideal_text",
+            with patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=None), \
                  patch("services.ideal_text_block.assemble_ideal_text_block",
                        return_value={"text": "", "key_moments": [],
@@ -509,7 +509,7 @@ class IdealTextRetryRouteTests(unittest.TestCase):
             request.user_id = session["user_id"]
             with patch.object(route, "_owned_recording_session",
                               return_value=session), \
-                 patch.object(route.db, "get_coach_arc_ideal_text",
+                 patch.object(route.db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=None), \
                  patch(
                      "services.pipeline_jobs.enqueue_ideal_text_retry_job",

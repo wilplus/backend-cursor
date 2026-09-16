@@ -824,7 +824,7 @@ def v2_retry_recording_ideal_text(session_id):
     from services.ideal_text_confirmation import confirmed_ideal_text
 
     confirmed = confirmed_ideal_text(
-        db.get_coach_arc_ideal_text(str(arc_id)))
+        db.ideal_text.get_coach_arc_ideal_text(str(arc_id)))
     if confirmed:
         db.set_session_analysis_state(session_id, "ready")
         if session.get("user_id"):

@@ -87,7 +87,7 @@ class CanonicalPersistenceTests(unittest.TestCase):
         from services.ideal_text_block import maybe_assemble_ideal_text
 
         database = MagicMock()
-        database.get_coach_arc_ideal_text.return_value = {
+        database.ideal_text.get_coach_arc_ideal_text.return_value = {
             "auto_text": "The Take 1 Ideal Text",
             "version": 1,
         }

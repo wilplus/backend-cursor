@@ -44,6 +44,12 @@ class _ReviewDb:
     def get_coach_arc_ideal_text(self, arc_id):
         return dict(self.ideal) if arc_id == "arc-1" else None
 
+    @property
+    def ideal_text(self):
+        # audit Q-A2: production now calls database.ideal_text.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def get_user_ideal_edit(self, arc_id, user_id):
         return dict(self.edit) if self.edit else None
 

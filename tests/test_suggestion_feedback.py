@@ -204,7 +204,7 @@ class LedgerHookTests(unittest.TestCase):
                                   "snippet_id": SNIP, "kind": "replace",
                                   "trigger": trigger,
                                   "replacement_text": "smoother"}}), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value={"version": 3}), \
                  patch.object(db, "upsert_ideal_decision",
                               return_value=True) as m_up, \
@@ -347,7 +347,7 @@ class DocumentTargetTests(unittest.TestCase):
                                   "snippet_id": SNIP, "kind": "replace",
                                   "trigger": "polish",
                                   "replacement_text": "smoother"}}), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value={"version": 2}), \
                  patch("routes.v2.user_sessions._document_phrase_for",
                               side_effect=lambda a, sn, fallback=None:

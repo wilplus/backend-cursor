@@ -223,7 +223,7 @@ def offer_for_take(arc_id: Any, user_id: Any, session_id: Any, *,
                     if isinstance(p, dict) and "locked_at" in p))
             return 0
 
-        row = database.get_coach_arc_ideal_text(str(arc_id)) or {}
+        row = database.ideal_text.get_coach_arc_ideal_text(str(arc_id)) or {}
         doc_pieces = ((row.get("document") or {}).get("pieces")
                       if isinstance(row.get("document"), dict) else None)
         doc_scored = _with_metrics(doc_pieces, arc_id, database)
