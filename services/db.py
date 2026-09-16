@@ -726,22 +726,13 @@ class DatabaseService:
                 return row
         return None
 
-    def v2_update_session(self, *args, **kwargs):
-        return self.takes.v2_update_session(*args, **kwargs)
-
-    def v2_delete_session(self, *args, **kwargs):
-        return self.takes.v2_delete_session(*args, **kwargs)
-
-    def v2_get_incomplete_sessions_older_than(self, *args, **kwargs):
-        return self.takes.v2_get_incomplete_sessions_older_than(*args, **kwargs)
-
     def v2_cleanup_incomplete_sessions(self, hours: float = 1.0, dry_run: bool = False) -> Tuple[int, List[str]]:
         """
         Delete incomplete v2_sessions (status != 'completed') older than hours.
         Uses v2_delete_session per row so recordings get session_v2_id set to NULL and v2_reports CASCADE.
         Returns (deleted_count, list of deleted session ids). Default 1 hour.
         """
-        sessions = self.v2_get_incomplete_sessions_older_than(hours)
+        sessions = self.takes.v2_get_incomplete_sessions_older_than(hours)
         ids = [s["id"] for s in sessions]
         if dry_run:
             return len(ids), ids
@@ -751,7 +742,7 @@ class DatabaseService:
             user_id = s.get("user_id")
             if session_id and user_id:
                 try:
-                    if self.v2_delete_session(session_id, user_id):
+                    if self.takes.v2_delete_session(session_id, user_id):
                         deleted_ids.append(session_id)
                 except Exception as e:
                     sentry_sdk.capture_exception(e)
@@ -759,12 +750,6 @@ class DatabaseService:
 
     def v2_get_session(self, *args, **kwargs):
         return self.takes.v2_get_session(*args, **kwargs)
-
-    def v2_update_session_status_unscoped(self, *args, **kwargs):
-        return self.takes.v2_update_session_status_unscoped(*args, **kwargs)
-
-    def v2_mark_session_pending_review(self, *args, **kwargs):
-        return self.takes.v2_mark_session_pending_review(*args, **kwargs)
 
     def claim_coach_review(
         self, session_id: str, actor_user_id: str, *, actor_is_admin: bool = False,
@@ -917,15 +902,6 @@ class DatabaseService:
         # as no comment (PostgREST's NOT NULL filter doesn't catch this).
         return [r for r in rows if (r.get("admin_comment") or "").strip()]
 
-    def v2_publish_session_results(self, *args, **kwargs):
-        return self.takes.v2_publish_session_results(*args, **kwargs)
-
-    def v2_get_latest_published_session_for_user(self, *args, **kwargs):
-        return self.takes.v2_get_latest_published_session_for_user(*args, **kwargs)
-
-    def v2_get_latest_session_for_user(self, *args, **kwargs):
-        return self.takes.v2_get_latest_session_for_user(*args, **kwargs)
-
     def v2_count_session_snippets(self, session_id: str) -> dict:
         """Count snippets for a session, split by review state.
 
@@ -974,9 +950,6 @@ class DatabaseService:
     # ------------------------------------------------------------------
     # End coaching sessions
     # ------------------------------------------------------------------
-
-    def v2_get_published_sessions_for_user(self, *args, **kwargs):
-        return self.takes.v2_get_published_sessions_for_user(*args, **kwargs)
 
 
     # ------------------------------------------------------------------
@@ -1041,20 +1014,8 @@ class DatabaseService:
         )
         return result.data[0] if result.data else None
 
-    def v2_get_last_completed_session(self, *args, **kwargs):
-        return self.takes.v2_get_last_completed_session(*args, **kwargs)
-
-    def v2_get_latest_session_id_for_user(self, *args, **kwargs):
-        return self.takes.v2_get_latest_session_id_for_user(*args, **kwargs)
-
-    def v2_mark_tutor_feedback_sent(self, *args, **kwargs):
-        return self.takes.v2_mark_tutor_feedback_sent(*args, **kwargs)
-
 
     # ---------- Sniper adaptive (user_sniper_profile, session_sniper_metrics) ----------
-
-    def _session_homework_recording_words_per_minute(self, *args, **kwargs):
-        return self.takes._session_homework_recording_words_per_minute(*args, **kwargs)
 
     # ---------- Homework tasks (per-student public.tasks; pool public.tasks_pool) ----------
     DEFAULT_STUDENT_TASK_TEXT = "Do you think you are a good communicator? Why?"
@@ -1274,18 +1235,6 @@ class DatabaseService:
             rows = [r for r in rows if str(r.get("id")) not in excluded]
         return rows
 
-    def v2_find_session_by_upload_key(self, *args, **kwargs):
-        return self.takes.v2_find_session_by_upload_key(*args, **kwargs)
-
-    def v2_set_session_upload_key(self, *args, **kwargs):
-        return self.takes.v2_set_session_upload_key(*args, **kwargs)
-
-    def v2_create_recording_session(self, *args, **kwargs):
-        return self.takes.v2_create_recording_session(*args, **kwargs)
-
-    def v2_create_internal_session(self, *args, **kwargs):
-        return self.takes.v2_create_internal_session(*args, **kwargs)
-
     # ── Canonical owner / project compatibility repository ─────────────
 
     def get_owner_principal(self, principal_id: str) -> Optional[dict]:
@@ -1458,9 +1407,6 @@ class DatabaseService:
                            project_id, e)
             return None
 
-    def next_project_take_index(self, *args, **kwargs):
-        return self.takes.next_project_take_index(*args, **kwargs)
-
     def bind_take_to_project(
         self,
         take_id: str,
@@ -1506,15 +1452,6 @@ class DatabaseService:
                 e,
             )
             return None
-
-    def get_project_take_by_upload_key(self, *args, **kwargs):
-        return self.takes.get_project_take_by_upload_key(*args, **kwargs)
-
-    def get_project_take_for_owner(self, *args, **kwargs):
-        return self.takes.get_project_take_for_owner(*args, **kwargs)
-
-    def v2_set_session_recording(self, *args, **kwargs):
-        return self.takes.v2_set_session_recording(*args, **kwargs)
 
     # Context fields: context_short (session summary), context_long (report text), coach_notes (speaker_profile). See docs/CONTEXT-FIELDS.md.
 
@@ -1873,9 +1810,6 @@ class DatabaseService:
         if existing is None:
             logger.info("v2_ensure_credits_initialized: granted %d user=%s", grant, user_id)
         return seed
-
-    def list_coach_students(self, *args, **kwargs):
-        return self.takes.list_coach_students(*args, **kwargs)
 
     def v2_list_user_lab_sessions(self, *args, **kwargs):
         return self.takes.v2_list_user_lab_sessions(*args, **kwargs)
@@ -2811,9 +2745,6 @@ class DatabaseService:
             logger.warning("list_recent_finished_processing_jobs: %s", e)
             return []
 
-    def list_orphaned_processing_sessions(self, *args, **kwargs):
-        return self.takes.list_orphaned_processing_sessions(*args, **kwargs)
-
     def create_model_training_run(
         self,
         *,
@@ -2930,9 +2861,6 @@ class DatabaseService:
                 logger.warning("runtime_config table missing; run migrations/add_runtime_model_config.sql")
                 return None
             raise
-
-    def v2_get_last_completed_session_full(self, *args, **kwargs):
-        return self.takes.v2_get_last_completed_session_full(*args, **kwargs)
 
     def v2_list_all_auth_user_ids(self, cap: int = 2000) -> List[str]:
         """Paginate GoTrue admin users; return ids (up to cap). Same pool as admin student list."""
@@ -3174,9 +3102,6 @@ class DatabaseService:
                 return 0
             logger.warning("insert_candidate_windows failed: %s", e)
             return 0
-
-    def stamp_review_opened(self, *args, **kwargs):
-        return self.takes.stamp_review_opened(*args, **kwargs)
 
     def insert_rejected_take(
         self, *, reason: str | None,
@@ -3910,12 +3835,6 @@ class DatabaseService:
                 return s
         return None
 
-    def set_session_conversation_summary(self, *args, **kwargs):
-        return self.takes.set_session_conversation_summary(*args, **kwargs)
-
-    def get_session_conversation_summary(self, *args, **kwargs):
-        return self.takes.get_session_conversation_summary(*args, **kwargs)
-
     # ── Casual Voice Benchmarks (Phase Stress-Contrast / BE-3) ──────
     #
     # Silent acoustic snapshots of the user speaking casually during
@@ -4371,15 +4290,6 @@ class DatabaseService:
             "intent_tag": row.get("intent_tag"),
             "question": row.get("question"),
         }
-
-    def set_session_predictions(self, *args, **kwargs):
-        return self.takes.set_session_predictions(*args, **kwargs)
-
-    def set_session_final_next_questions(self, *args, **kwargs):
-        return self.takes.set_session_final_next_questions(*args, **kwargs)
-
-    def get_session_predictions(self, *args, **kwargs):
-        return self.takes.get_session_predictions(*args, **kwargs)
 
     def insert_admin_annotation_log(
         self,
@@ -6623,30 +6533,6 @@ class DatabaseService:
     # Session-level global metrics & AI alignment
     # ------------------------------------------------------------------
 
-    def update_session_global_metrics(self, *args, **kwargs):
-        return self.takes.update_session_global_metrics(*args, **kwargs)
-
-    def update_session_ai_alignment(self, *args, **kwargs):
-        return self.takes.update_session_ai_alignment(*args, **kwargs)
-
-    def get_next_session_icebreaker_row(self, *args, **kwargs):
-        return self.takes.get_next_session_icebreaker_row(*args, **kwargs)
-
-    def set_next_session_icebreaker_ai_draft(self, *args, **kwargs):
-        return self.takes.set_next_session_icebreaker_ai_draft(*args, **kwargs)
-
-    def update_next_session_icebreaker_editable(self, *args, **kwargs):
-        return self.takes.update_next_session_icebreaker_editable(*args, **kwargs)
-
-    def set_next_session_icebreaker_generation_error(self, *args, **kwargs):
-        return self.takes.set_next_session_icebreaker_generation_error(*args, **kwargs)
-
-    def clear_next_session_icebreaker_generation_error(self, *args, **kwargs):
-        return self.takes.clear_next_session_icebreaker_generation_error(*args, **kwargs)
-
-    def get_next_session_id_for(self, *args, **kwargs):
-        return self.takes.get_next_session_id_for(*args, **kwargs)
-
     # ── Ticket 2 — Dad-joke onboarding opener ───────────────────────
     #
     # Two reads: one random pick (for /start), one by-id lookup (for
@@ -6969,15 +6855,6 @@ class DatabaseService:
 
     # ── willab beta — Lab session source + history ──────────────────
 
-    def set_session_user_id(self, *args, **kwargs):
-        return self.takes.set_session_user_id(*args, **kwargs)
-
-    def set_session_arc(self, *args, **kwargs):
-        return self.takes.set_session_arc(*args, **kwargs)
-
-    def set_session_recording_kind(self, *args, **kwargs):
-        return self.takes.set_session_recording_kind(*args, **kwargs)
-
     # ── willab — delivery layer (founder 2026-07-15) ────────────────────
     # Async analysis state · per-take coach Save · the one-block ideal text
     # · the user's notebook copy. See migrations/add_analysis_state.sql,
@@ -7219,9 +7096,6 @@ class DatabaseService:
 
     def set_session_analysis_state(self, *args, **kwargs):
         return self.takes.set_session_analysis_state(*args, **kwargs)
-
-    def set_session_feedback_saved(self, *args, **kwargs):
-        return self.takes.set_session_feedback_saved(*args, **kwargs)
 
     def persist_auto_ideal_text(self, arc_id: str, text: str,
                                 *, take_count: Optional[int] = None,
@@ -10246,12 +10120,6 @@ class DatabaseService:
     #  (coach_arc_ideal_text); the readers below stay: compose still
     #  folds edits saved before the switch.)
 
-    def count_arc_sessions(self, *args, **kwargs):
-        return self.takes.count_arc_sessions(*args, **kwargs)
-
-    def get_arc_take_count(self, *args, **kwargs):
-        return self.takes.get_arc_take_count(*args, **kwargs)
-
     def insert_recording_feeling(
         self, *, session_id: str, feeling: str,
         user_id: Optional[str] = None, recording_id: Optional[str] = None,
@@ -10569,14 +10437,8 @@ class DatabaseService:
             logger.warning("get_feelings_by_sessions failed: %s", e)
             return []
 
-    def get_read_sessions_for(self, *args, **kwargs):
-        return self.takes.get_read_sessions_for(*args, **kwargs)
-
     def get_arc_sessions(self, *args, **kwargs):
         return self.takes.get_arc_sessions(*args, **kwargs)
-
-    def list_user_arc_sessions(self, *args, **kwargs):
-        return self.takes.list_user_arc_sessions(*args, **kwargs)
 
     # ── willab — arc batch delivery (founder 2026-07-13) ────────────────
     #
@@ -10935,9 +10797,6 @@ class DatabaseService:
                 return self.get_arc_invite_code(code)
             logger.warning("create_arc_invite_code failed code=%s: %s", code, e)
             return None
-
-    def set_session_presentation_duration(self, *args, **kwargs):
-        return self.takes.set_session_presentation_duration(*args, **kwargs)
 
     # ── willab — Audit Delivery (Prompt C §2/§3) ───────────────────────
     #
@@ -11879,15 +11738,6 @@ class DatabaseService:
                 logger.warning(
                     "list_pending_confidence_rereviews failed: %s", e)
             return []
-    def find_training_import_by_key(self, *args, **kwargs):
-        return self.takes.find_training_import_by_key(*args, **kwargs)
-
-    def list_training_import_sessions(self, *args, **kwargs):
-        return self.takes.list_training_import_sessions(*args, **kwargs)
-
-    def set_session_source(self, *args, **kwargs):
-        return self.takes.set_session_source(*args, **kwargs)
-
     def list_user_lab_sessions(self, *args, **kwargs):
         return self.takes.list_user_lab_sessions(*args, **kwargs)
 
@@ -12226,9 +12076,6 @@ class DatabaseService:
             return []
     # ── Canonical take-level coach review summary ────────────────────────
 
-    def set_session_coach_overall_message(self, *args, **kwargs):
-        return self.takes.set_session_coach_overall_message(*args, **kwargs)
-
     # ── willab beta — coach per-snippet DRAFT store (E1 / §B.3, USER lane) ─
 
     def upsert_coach_snippet_draft(
@@ -12339,15 +12186,6 @@ class DatabaseService:
                 "get_coach_snippet_drafts failed sid=%s err=%s", session_id, e,
             )
             return []
-
-    def set_session_coach_video_ref(self, *args, **kwargs):
-        return self.takes.set_session_coach_video_ref(*args, **kwargs)
-
-    def set_session_boundary_metrics(self, *args, **kwargs):
-        return self.takes.set_session_boundary_metrics(*args, **kwargs)
-
-    def set_session_slide_transcripts(self, *args, **kwargs):
-        return self.takes.set_session_slide_transcripts(*args, **kwargs)
 
     def get_session_slide_transcripts(self, *args, **kwargs):
         return self.takes.get_session_slide_transcripts(*args, **kwargs)
@@ -12795,12 +12633,6 @@ class DatabaseService:
                 user_id, e,
             )
             return False
-
-    def set_session_drift_flag(self, *args, **kwargs):
-        return self.takes.set_session_drift_flag(*args, **kwargs)
-
-    def update_session_stickiness(self, *args, **kwargs):
-        return self.takes.update_session_stickiness(*args, **kwargs)
 
     # ------------------------------------------------------------------
     # User settings (LLM instructions)
@@ -13279,9 +13111,6 @@ class DatabaseService:
             )
             return False
 
-    def list_sessions_for_user_admin(self, *args, **kwargs):
-        return self.takes.list_sessions_for_user_admin(*args, **kwargs)
-
     def list_snippets_for_sessions(
         self,
         session_ids: List[str],
@@ -13372,9 +13201,6 @@ class DatabaseService:
         except Exception as e:
             logger.error("update_turn_question_text failed for turn_id=%s: %s", turn_id, e)
             return None
-
-    def get_session_with_global_metrics(self, *args, **kwargs):
-        return self.takes.get_session_with_global_metrics(*args, **kwargs)
 
     # ------------------------------------------------------------------
     # Legal + runtime consent

@@ -77,7 +77,7 @@ class V2UpdateSessionStatusUnscopedTests(unittest.TestCase):
     def test_payload_is_status_only(self):
         cap = {}
         svc = self._svc(cap, [{"id": "sid-123", "status": "pending_admin_review"}])
-        out = svc.v2_update_session_status_unscoped("sid-123", "pending_admin_review")
+        out = svc.takes.v2_update_session_status_unscoped("sid-123", "pending_admin_review")
         self.assertEqual(cap["table"], "v2_sessions")
         self.assertEqual(
             cap["update"], {"status": "pending_admin_review"},
@@ -92,7 +92,7 @@ class V2UpdateSessionStatusUnscopedTests(unittest.TestCase):
         cap = {}
         svc = self._svc(cap, [])
         self.assertIsNone(
-            svc.v2_update_session_status_unscoped("missing", "pending_admin_review")
+            svc.takes.v2_update_session_status_unscoped("missing", "pending_admin_review")
         )
 
 

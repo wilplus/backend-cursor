@@ -298,13 +298,13 @@ class GeneratorStructuralTests(unittest.TestCase):
                 },
             ],
         ), patch.object(
-            db, "clear_next_session_icebreaker_generation_error",
+            db.takes, "clear_next_session_icebreaker_generation_error",
             return_value=True,
         ), patch.object(
             mod, "_llm_generate_question",
             return_value="What changed about the demo since then?",
         ), patch.object(
-            db, "set_next_session_icebreaker_ai_draft",
+            db.takes, "set_next_session_icebreaker_ai_draft",
             return_value=True,
         ):
             out = mod.generate_next_session_icebreaker(
@@ -327,7 +327,7 @@ class GeneratorStructuralTests(unittest.TestCase):
                 {"transcript": "   ", "admin_comment": "  "},
             ],
         ), patch.object(
-            db, "set_next_session_icebreaker_generation_error",
+            db.takes, "set_next_session_icebreaker_generation_error",
             return_value=True,
         ) as mock_err_set:
             out = mod.generate_next_session_icebreaker("sid-x")
@@ -355,7 +355,7 @@ class GeneratorStructuralTests(unittest.TestCase):
         ), patch.object(
             mod, "_llm_generate_question", return_value=None,
         ), patch.object(
-            db, "set_next_session_icebreaker_generation_error",
+            db.takes, "set_next_session_icebreaker_generation_error",
             return_value=True,
         ) as mock_err_set:
             out = mod.generate_next_session_icebreaker("sid-x")
@@ -405,7 +405,7 @@ class GeneratorStructuralTests(unittest.TestCase):
         ), patch.object(
             mod, "_llm_generate_question", return_value=overflow,
         ), patch.object(
-            db, "set_next_session_icebreaker_ai_draft",
+            db.takes, "set_next_session_icebreaker_ai_draft",
             return_value=True,
         ):
             out = mod.generate_next_session_icebreaker("sid-x")

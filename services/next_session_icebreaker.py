@@ -139,7 +139,7 @@ def generate_next_session_icebreaker(
     # the new attempt's outcome (success or fresh failure tag).
     if overwrite:
         try:
-            db.clear_next_session_icebreaker_generation_error(session_id)
+            db.takes.clear_next_session_icebreaker_generation_error(session_id)
         except Exception:
             pass  # best-effort; not load-bearing
 
@@ -175,7 +175,7 @@ def generate_next_session_icebreaker(
 
     now_iso = datetime.now(timezone.utc).isoformat()
     try:
-        db.set_next_session_icebreaker_ai_draft(
+        db.takes.set_next_session_icebreaker_ai_draft(
             session_id=session_id,
             ai_draft=question,
             generated_at=now_iso,
@@ -307,7 +307,7 @@ def _has_usable_signal(snippets: list[dict]) -> bool:
 def _mark_generation_error(session_id: str, error_tag: str) -> None:
     """Best-effort write of the generation_error column. Never raises."""
     try:
-        db.set_next_session_icebreaker_generation_error(
+        db.takes.set_next_session_icebreaker_generation_error(
             session_id=session_id,
             error_tag=error_tag,
         )

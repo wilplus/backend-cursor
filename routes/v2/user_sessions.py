@@ -128,7 +128,7 @@ def v2_user_sessions_current():
     """
     try:
         user_id = request.user_id
-        session = db.v2_get_latest_session_for_user(user_id)
+        session = db.takes.v2_get_latest_session_for_user(user_id)
 
         if not session:
             return jsonify({
@@ -359,7 +359,7 @@ def _user_presentation_groups(user_id: str) -> dict:
 def _hard_delete_session_for_user(user_id: str, session_id: str) -> None:
     """Durably delete one historical take through the owner-scoped adapter."""
     try:
-        db.v2_delete_session(session_id, user_id)
+        db.takes.v2_delete_session(session_id, user_id)
     except Exception as e:
         logger.warning("presentation delete: session delete failed sid=%s err=%s", session_id, e)
 
@@ -1100,7 +1100,7 @@ def v2_user_list_trainings():
     """
     try:
         from services.slide_selection import TAKES_TARGET
-        rows = db.list_user_arc_sessions(request.user_id) or []
+        rows = db.takes.list_user_arc_sessions(request.user_id) or []
         by_arc: dict = {}
         for r in rows:
             _aid = r.get("arc_id")

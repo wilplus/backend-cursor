@@ -236,7 +236,7 @@ def _snippet_owner_map(session_id):
         if s.get("id"):
             owners[str(s.get("id"))] = str(session_id)
     try:
-        for r in (db.get_read_sessions_for(session_id) or []):
+        for r in (db.takes.get_read_sessions_for(session_id) or []):
             rid = str(r.get("id"))
             for s in (db.get_snippets_by_session(rid) or []):
                 if s.get("id"):
@@ -274,7 +274,7 @@ def v2_coach_students():
             offset = max(0, int(request.args.get("offset", 0)))
         except (TypeError, ValueError):
             offset = 0
-        rows = db.list_coach_students(limit=limit, offset=offset) or []
+        rows = db.takes.list_coach_students(limit=limit, offset=offset) or []
         out = []
         for r in rows:
             uid = r.get("user_id")
@@ -705,7 +705,7 @@ def v2_coach_get_session(session_id):
         read_sessions = []
         try:
             read_sessions = [
-                r for r in (db.get_read_sessions_for(session_id) or [])
+                r for r in (db.takes.get_read_sessions_for(session_id) or [])
                 if isinstance(r, dict) and r.get("id")
             ]
         except Exception as _rl_err:
@@ -728,7 +728,7 @@ def v2_coach_get_session(session_id):
                     session_id, _rid, _rf_err)
                 continue
             try:
-                db.stamp_review_opened(_rid)
+                db.takes.stamp_review_opened(_rid)
             except Exception:
                 pass
             snippets.extend(_r_snips)
@@ -1612,7 +1612,7 @@ def v2_coach_session_video(session_id):
         if _idem:
             _existing = db.get_coach_video_asset_by_idempotency_key(_idem)
             if _existing and _existing.get("video_ref"):
-                db.set_session_coach_video_ref(session_id, _existing["video_ref"])
+                db.takes.set_session_coach_video_ref(session_id, _existing["video_ref"])
                 return jsonify({
                     "status": "ok", "session_id": session_id,
                     "video_ref": _existing["video_ref"], "deduped": True,
@@ -1633,7 +1633,7 @@ def v2_coach_session_video(session_id):
             return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to upload video to storage."}), 502
 
         video_ref = coach_media_public_url(storage_key)
-        db.set_session_coach_video_ref(session_id, video_ref)
+        db.takes.set_session_coach_video_ref(session_id, video_ref)
         logger.info("coach video stored sid=%s key=%s", session_id, storage_key)
 
         # Phase 1 stores the coach's product video only.  The former
@@ -2028,7 +2028,7 @@ def v2_coach_save_feedback(session_id):
                 return jsonify({
                     "code": "INVALID_INPUT", "error": str(error),
                 }), 422
-            if not db.set_session_coach_overall_message(
+            if not db.takes.set_session_coach_overall_message(
                 session_id, overall_message,
             ):
                 return jsonify({
@@ -2070,7 +2070,7 @@ def v2_coach_save_feedback(session_id):
                     return _lane_err
                 _n_saved += 1
 
-        if not db.set_session_feedback_saved(session_id):
+        if not db.takes.set_session_feedback_saved(session_id):
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
         return jsonify({"saved": True, "session_id": session_id,
@@ -2777,7 +2777,7 @@ def v2_coach_list_training_imports():
         if not proficient:
             return _rater_language_error("profile_required")
 
-        rows = db.list_training_import_sessions(
+        rows = db.takes.list_training_import_sessions(
             user_id=(request.args.get("user_id") or None)) or []
         include_archived = (request.args.get("include_archived") or "") in (
             "1", "true", "yes")

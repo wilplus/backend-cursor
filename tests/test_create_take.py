@@ -40,6 +40,12 @@ class FakeDatabase:
     def get_project_take_by_upload_key(self, project_id, upload_key):
         return self.duplicate
 
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls database.takes.<method>(); this
+        # fake implements those methods directly on itself.
+        return self
+
     def bind_take_to_project(self, take_id, project_id, owner_principal_id):
         self.bound = (take_id, project_id, owner_principal_id)
         return 3

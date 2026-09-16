@@ -79,7 +79,7 @@ class UserTrainingsTests(unittest.TestCase):
              "intake_context": {"topic": "No-deck story"},
              "results_published_at": None},
         ]
-        with patch.object(db, "list_user_arc_sessions",
+        with patch.object(db.takes, "list_user_arc_sessions",
                           return_value=rows), \
              patch.object(db, "list_arc_batch_deliveries",
                           return_value={"a2": {
@@ -110,7 +110,7 @@ class UserTrainingsTests(unittest.TestCase):
         self.assertEqual(trainings[0]["arc_id"], "a2")
 
     def test_no_arcs_empty_list(self):
-        with patch.object(db, "list_user_arc_sessions", return_value=[]), \
+        with patch.object(db.takes, "list_user_arc_sessions", return_value=[]), \
              patch.object(db, "list_arc_batch_deliveries",
                           return_value={}):
             body, status = self._call()
@@ -125,7 +125,7 @@ class UserTrainingsTests(unittest.TestCase):
                                "slides": [{"title": "A"}, {"title": "B"}]},
             "results_published_at": None,
         }]
-        with patch.object(db, "list_user_arc_sessions",
+        with patch.object(db.takes, "list_user_arc_sessions",
                           return_value=rows), \
              patch.object(db, "list_arc_batch_deliveries",
                           return_value={}), \

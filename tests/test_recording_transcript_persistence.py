@@ -36,7 +36,7 @@ class RecordingTranscriptPersistenceTests(unittest.TestCase):
 
         persist_recording_transcript(_state(), database=database)
 
-        persisted = database.set_session_slide_transcripts.call_args.args[1]
+        persisted = database.takes.set_session_slide_transcripts.call_args.args[1]
         self.assertEqual(persisted[0]["transcript"], "Hello")
 
     @patch(
@@ -51,8 +51,8 @@ class RecordingTranscriptPersistenceTests(unittest.TestCase):
             database=database,
         )
 
-        database.set_session_slide_transcripts.assert_called_once()
-        database.set_session_boundary_metrics.assert_called_once_with(
+        database.takes.set_session_slide_transcripts.assert_called_once()
+        database.takes.set_session_boundary_metrics.assert_called_once_with(
             "session-1",
             {"words_at_risk": 1},
         )
@@ -60,7 +60,7 @@ class RecordingTranscriptPersistenceTests(unittest.TestCase):
     @patch("services.f1_observability.observe_f1_degrade")
     def test_persistence_failure_is_observed_and_never_raised(self, observe):
         database = MagicMock()
-        database.set_session_slide_transcripts.side_effect = RuntimeError("down")
+        database.takes.set_session_slide_transcripts.side_effect = RuntimeError("down")
 
         persist_recording_transcript(_state(), database=database)
 

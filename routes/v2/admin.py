@@ -690,7 +690,7 @@ def v2_admin_get_session(session_id):
         }
     """
     try:
-        session = db.get_session_with_global_metrics(session_id)
+        session = db.takes.get_session_with_global_metrics(session_id)
         if not session:
             return jsonify({
                 "code": "SESSION_NOT_FOUND",
@@ -887,7 +887,7 @@ def _build_icebreaker_response(
         (row.get("next_session_icebreaker_ai_draft") or "").strip()
     )
     if ai_draft_present and owner_id:
-        next_session_id = db.get_next_session_id_for(
+        next_session_id = db.takes.get_next_session_id_for(
             user_id=str(owner_id),
             after_session_id=session_id,
         )
@@ -945,7 +945,7 @@ def v2_admin_get_next_session_icebreaker(session_id):
         }), 400
 
     try:
-        row = db.get_next_session_icebreaker_row(session_id)
+        row = db.takes.get_next_session_icebreaker_row(session_id)
         if not row:
             return jsonify({
                 "code": "SESSION_NOT_FOUND",
@@ -1028,7 +1028,7 @@ def v2_admin_update_next_session_icebreaker(session_id):
             status_value = "pending"
             current_value = cleaned
 
-        row_before = db.get_next_session_icebreaker_row(session_id)
+        row_before = db.takes.get_next_session_icebreaker_row(session_id)
         if not row_before:
             return jsonify({
                 "code": "SESSION_NOT_FOUND",
@@ -1036,7 +1036,7 @@ def v2_admin_update_next_session_icebreaker(session_id):
             }), 404
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        ok = db.update_next_session_icebreaker_editable(
+        ok = db.takes.update_next_session_icebreaker_editable(
             session_id=session_id,
             current=current_value,
             edited_at=now_iso,
@@ -1057,7 +1057,7 @@ def v2_admin_update_next_session_icebreaker(session_id):
 
         # Re-read so the response carries the freshly persisted
         # values (no client/server drift on the timestamp).
-        row_after = db.get_next_session_icebreaker_row(session_id) or row_before
+        row_after = db.takes.get_next_session_icebreaker_row(session_id) or row_before
         return jsonify(
             _build_icebreaker_response(session_id, row_after),
         ), 200
@@ -1118,7 +1118,7 @@ def v2_admin_regenerate_next_session_icebreaker(session_id):
         # on the way IN — so a slow (or hanging) LLM call still counts
         # against the limit and an admin mashing the button during one
         # can't queue up parallel duplicates.
-        row_before = db.get_next_session_icebreaker_row(session_id)
+        row_before = db.takes.get_next_session_icebreaker_row(session_id)
         if not row_before:
             return jsonify({
                 "code": "SESSION_NOT_FOUND",
@@ -1136,7 +1136,7 @@ def v2_admin_regenerate_next_session_icebreaker(session_id):
             # generator already wrote the generation_error tag.
             # Re-read so the response surfaces it.
             row_after = (
-                db.get_next_session_icebreaker_row(session_id)
+                db.takes.get_next_session_icebreaker_row(session_id)
                 or row_before
             )
             payload = _build_icebreaker_response(session_id, row_after)
@@ -1149,7 +1149,7 @@ def v2_admin_regenerate_next_session_icebreaker(session_id):
             return jsonify(payload), 502
 
         row_after = (
-            db.get_next_session_icebreaker_row(session_id)
+            db.takes.get_next_session_icebreaker_row(session_id)
             or row_before
         )
         logger.info(

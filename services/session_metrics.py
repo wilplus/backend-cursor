@@ -368,7 +368,7 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
             "energy_missing": global_energy is None,
         }
 
-    db.update_session_global_metrics(
+    db.takes.update_session_global_metrics(
         session_id=session_id,
         global_wpm=global_wpm,
         global_fillers=global_fillers,
@@ -404,7 +404,7 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
             classifier_confidence=avg_confidence,
         )
         needs_review = bool(drift_diag.get("needs_admin_review"))
-        db.set_session_drift_flag(
+        db.takes.set_session_drift_flag(
             session_id=session_id,
             needs_review=needs_review,
             diagnostic=drift_diag,
