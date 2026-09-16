@@ -187,6 +187,16 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "derived_feedback", 60),
     PurgeDependency("practice_attempt", "confident_voice_practice_attempt",
                     "id", "practice_attempt", "delete", "derived_feedback", 60),
+    # Where a practice recording lives in the bucket. `delete`, not `retain`
+    # like its sibling processing_audio_objects: the row has an ON DELETE
+    # CASCADE to confident_voice_practice_attempt, so declaring it retained
+    # would be a claim the schema silently overrules at order 60. Ordered just
+    # ahead of that family so the explicit delete is the mechanism and the
+    # cascade is only the backstop. The BYTES are erased separately and first
+    # — resolve_targets runs every storage target before any dependency row.
+    PurgeDependency("practice_object_metadata", "processing_practice_objects",
+                    "acquisition_principal_id", "principal", "delete",
+                    "database_row", 55),
     PurgeDependency("user_audits", "user_audits", "user_id", "user", "delete",
                     "database_row", 60),
     PurgeDependency("uploaded_files", "user_uploaded_files", "user_id", "user",

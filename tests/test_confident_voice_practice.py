@@ -289,7 +289,17 @@ class PersistenceAndJourneyFenceTests(unittest.TestCase):
         self.assertRegex(migration, r"'hear-every-word-v1'[\s\S]+?FALSE,\s+1")
         route = (self.ROOT / "routes/journal.py").read_text()
         self.assertIn("journal/diagnostic-exercises/save", route)
-        self.assertIn("post.get(\"status\") != \"published\"", route)
+        # The draft rule moved out of the route on 2026-09-16, when the
+        # catalogue became dynamic and the route shrank to a thin caller. The
+        # RULE is unchanged — an exercise cannot go live on an unpublished
+        # post — so the fence follows it to where it now lives rather than
+        # being dropped.
+        catalogue = (
+            self.ROOT / "services/diagnostic_exercise_catalogue.py"
+        ).read_text()
+        self.assertIn("post.get(\"status\") != \"published\"", catalogue)
+        self.assertIn("publish the post before switching the exercise on",
+                      catalogue)
 
     def test_keep_route_has_no_presentation_or_voice_album_writer(self):
         source = (self.ROOT / "routes/v2/user_sessions.py").read_text()
