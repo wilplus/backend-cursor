@@ -43,7 +43,7 @@ cfdd6ebdba6e2640bab604a66e16b549f9b7b1afa0bbf3d20cd09c13aae0d972  docs/MLC3-CONF
 e637c3b25b77f24444b38ef7ad628890abf248869337a6ddc50c2d81090d0509  docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D48.md
 a833c211cf077f294a7973714c065aaa65a1c1aede33c49e4d7ae3debcdc7031  docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-LOCK-CLOSURE-D49.md
 39b62b500f23732bfbb0326ffe0ae054b9233c1267665a11a9275eb10205bdcb  migrations/add_confident_moment_coaching_bundle_v1.sql
-dc5fbbcc22b374040e74b800a8733eaeb44a36e2556ba9a5cf4bef3bad9559eb  routes/v2/coach_guidance_delivery.py
+35839afa6a3ce778eb59d8077286f7495afb60549fbf8859cc72ffbe5cf51567  routes/v2/coach_guidance_delivery.py
 bcfc7b89e112d1bcd7bc1ed642064b800d57146971a4245eea3699921e4d526a  routes/v2/confident_moment_bundles.py
 e4062aa198fcc24a640868005e2be3bde5933a9de024aa0f39fd9bc8dc6e4cfc  routes/v2/explore_ideal_text.py
 a4968eb69e4886ef88c7b5e5dbc5cabf2cea1e5b455bdaa2c02be54c538e6dde  scripts/monitor_mlc3_general_service.py
@@ -632,5 +632,49 @@ Verified by execution: `tests/test_feedback_data_contract.py` and
 touched files) green, `tests/test_route_fence.py` unaffected, then
 `scripts/local_ci.sh --no-setup` green in full (rehearsal tier not
 required — no migration or MLC-3 storage path changed).
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-16 — routes/v2/coach_guidance_delivery.py in-file dedup (audit C.7)
+
+`_store_inline_general_media` (the general-guidance inline-media upload
+body: reserve/upload-event/finalize against R2, then
+`store_exact_object`) was byte-for-byte duplicated (~115 lines) inside
+`v2_coach_inline_exercise_draft`. Renamed to `_store_inline_coach_media`,
+parametrized (`seed_prefix`, `key_prefix`, `purpose_id`,
+`content_authority`, `provenance_class`, `error_prefix`, all defaulted to
+the original general-guidance literals) and returns
+`(stored, finalized, media_binding_id)` — `media_binding_id` is computed
+once inside the shared function since both callers derived it identically
+via `_uuid(finalized.get("id"), "media_binding_id")`. Both call sites now
+call the shared function; `v2_coach_inline_exercise_draft`'s downstream
+use of `finalized`/`stored`/`binding_id` is unchanged. A third,
+non-identical inline-upload copy in `v2_coach_guidance_attachment`'s
+non-`inline_general` branch (different RPCs:
+`reserve_coach_guidance_service_upload` /
+`record_coach_guidance_service_upload_event` /
+`finalize_coach_guidance_service_media`) was deliberately left alone —
+unifying it would require passing RPC function references, a materially
+larger change than the confirmed clone warranted.
+
+- `scripts/route_fence_baseline.json` — re-frozen: the renamed helper
+  grows 125→142 lines (same 4 db calls, parametrization only) and
+  `v2_coach_inline_exercise_draft` shrinks 215→114 lines / 6→2 db calls.
+  `v2_coach_guidance_attachment` is unchanged at 269 lines / 7 db calls
+  (the shared function's 3-tuple return keeps that call site at its
+  original 8 lines).
+- `scripts/complexity_baseline.json` — no change needed.
+
+Verified by execution: `tests/test_mlc3_coach_inline_authoring_d5.py`,
+`tests/test_mlc3_first_client_service_d2.py`,
+`tests/test_coach_guidance_delivery_d3.py`,
+`tests/test_confident_moment_coaching_bundle_postgres.py`,
+`tests/test_confident_moment_transport_d25.py`,
+`tests/test_mlc3_general_user_service_d4.py` (97 passed, 74 deselected —
+postgres rehearsal tier), `python scripts/route_fence.py`,
+`python scripts/complexity_ratchet.py`,
+`vulture routes/v2/coach_guidance_delivery.py --min-confidence 80`
+(clean), `ruff check`, `mypy`, then `scripts/local_ci.sh --no-setup`
+green in full.
 
 Every other entry is untouched.
