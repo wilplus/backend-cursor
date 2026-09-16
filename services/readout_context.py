@@ -133,7 +133,7 @@ def _attach_piece_instant_chunks(
 
 def _load_intake_context(database: Any, session_id: str) -> dict:
     try:
-        context = database.get_session_intake_context(session_id) or {}
+        context = database.takes.get_session_intake_context(session_id) or {}
     except Exception:
         return {}
     return context if isinstance(context, dict) else {}
@@ -172,7 +172,7 @@ def _map_snippets_to_slides(
 
 def _persisted_slide_transcripts(database: Any, session_id: str) -> Any:
     try:
-        return database.get_session_slide_transcripts(session_id)
+        return database.takes.get_session_slide_transcripts(session_id)
     except Exception:
         return None
 
@@ -275,7 +275,7 @@ def _attach_deckless_context(
     edits_by_chunk: dict,
 ) -> None:
     try:
-        slide_transcripts = database.get_session_slide_transcripts(session_id)
+        slide_transcripts = database.takes.get_session_slide_transcripts(session_id)
         if not slide_transcripts:
             return
         full_transcript = " ".join(

@@ -691,7 +691,7 @@ class ManualProcessingRetryTests(unittest.TestCase):
                           return_value=True) as reset, \
              patch.object(pipeline_jobs.job_queue, "enqueue",
                           return_value=True) as enqueue, \
-             patch.object(pipeline_jobs.db, "set_session_analysis_state") \
+             patch.object(pipeline_jobs.db.takes, "set_session_analysis_state") \
                           as state, \
              patch.object(pipeline_jobs.db, "get_processing_job",
                           return_value=reopened):

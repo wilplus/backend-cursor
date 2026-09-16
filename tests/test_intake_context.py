@@ -298,7 +298,7 @@ class SnapshotHelperTests(unittest.TestCase):
         from services import intake_context as mod
         from services.db import db
         with patch.object(
-            db, "get_session_intake_context", return_value=None,
+            db.takes, "get_session_intake_context", return_value=None,
         ):
             out = mod.snapshot_intake_context("sid-x")
         self.assertIsNone(out)
@@ -318,7 +318,7 @@ class SnapshotHelperTests(unittest.TestCase):
             "another": 42,
         }
         with patch.object(
-            db, "get_session_intake_context", return_value=poisoned,
+            db.takes, "get_session_intake_context", return_value=poisoned,
         ):
             out = mod.snapshot_intake_context("sid-x")
         self.assertEqual(set(out.keys()), {
@@ -337,7 +337,7 @@ class SnapshotHelperTests(unittest.TestCase):
         from services import intake_context as mod
         from services.db import db
         with patch.object(
-            db, "get_session_intake_context", return_value={"topic": "x"},
+            db.takes, "get_session_intake_context", return_value={"topic": "x"},
         ):
             out = mod.snapshot_intake_context("sid-x")
         self.assertEqual(out, {

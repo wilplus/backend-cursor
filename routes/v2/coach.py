@@ -158,7 +158,7 @@ def _confidence_queue_selection(session_id, session, snippets):
     records = selection_records(selected)
     if records:
         # Freeze the cohort and its selection provenance on first build.
-        db.set_session_intake_context(
+        db.takes.set_session_intake_context(
             str(session_id), {**ctx, "label_queue_selection": records})
     return selected
 
@@ -2861,7 +2861,7 @@ def v2_coach_archive_training_import(session_id):
             sess.get("intake_context"), dict) else {}
         stamp = datetime.now(timezone.utc).isoformat()
         ctx["archived_at"] = stamp
-        if not db.set_session_intake_context(str(session_id), ctx):
+        if not db.takes.set_session_intake_context(str(session_id), ctx):
             return jsonify({"code": "SERVER_ERROR",
                             "error": "could not archive the import"}), 500
         return jsonify({"archived": True, "session_id": str(session_id),
@@ -2893,7 +2893,7 @@ def v2_coach_restore_training_import(session_id):
         ctx = sess.get("intake_context") if isinstance(
             sess.get("intake_context"), dict) else {}
         if ctx.pop("archived_at", None) is not None:
-            if not db.set_session_intake_context(str(session_id), ctx):
+            if not db.takes.set_session_intake_context(str(session_id), ctx):
                 return jsonify({
                     "code": "SERVER_ERROR",
                     "error": "could not restore the import"}), 500
@@ -3488,7 +3488,7 @@ def v2_coach_ab_pairs(arc_id):
                 slides = ctx.get("slides") or []
             takes.append({
                 "session_id": sid,
-                "slide_transcripts": db.get_session_slide_transcripts(sid),
+                "slide_transcripts": db.takes.get_session_slide_transcripts(sid),
                 "audio_ref": resolve_playable_ref(row.get("audio_path")),
             })
         if not slides:
@@ -3544,7 +3544,7 @@ def v2_coach_ab_verdict(arc_id):
         # The words as the rater read them, pulled from the same persisted
         # per-slide transcript the pair was built from.
         def _text(session_id):
-            for t in (db.get_session_slide_transcripts(session_id) or []):
+            for t in (db.takes.get_session_slide_transcripts(session_id) or []):
                 if isinstance(t, dict) and t.get("index") == resolved["slide_index"]:
                     return t.get("transcript") or ""
             return None

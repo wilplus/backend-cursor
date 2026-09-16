@@ -53,13 +53,13 @@ dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confi
 794c3d04c55016987c75dc9bdc7bab64ded34a14a7a6e3ee832b6b22f32b9568  services/confident_moment_user_media.py
 09ac4873e142bd68c682abaf28acb15e4fb0a445aab749ad8b28b47020b1df22  services/data_purge.py
 5ff3880f55da07671775de92e279e13e0dca96b615329632b6d6cd88096cbbb9  services/data_purge_registry.py
-21bf15d206309996ba9e0f33991f861385afb74534121a929ab33be00a658186  services/db.py
+00f4a42e9c486d2ade9934244c142b332d259b08f5c4f1e08e460fc5b1c1b62a  services/db.py
 b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedback_data_contract.py
 35955687744b693dfb26fe79b79767c54c3a851dabfba4c015790c4537c459c7  services/feedback_language.py
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
 588e9a03b11dfa6ff1f92e8535f4f45a3eb0032c52081ba4579a2d7e855c73a3  services/mlc3_first_client_feedback.py
 a32a213e6d2dd0c20a0bc4d9daee5985802eee650334996268b9797225e61b10  services/mlc3_general_service_monitor.py
-8b1f48bf9018792133f1ca320f7ffab5e0cc7ae117af5feb08d66b501ffb2a7e  services/pipeline_jobs.py
+6e9894c610fb64f3b00652a171ea698907562a0352614023048374e2c8e8af68  services/pipeline_jobs.py
 969647d87ca6be07b395d3be3a70ba5a0b5dedb82a5d90159729ac19807ffe12  services/rooting_coverage.py
 9c62027810dde624befd20442b212ecbe1cf6d6e78455b517321b2ce37cd31bd  tests/test_acoustic_kpi.py
 caef0a4d2a64dbfb95709850d31861c83b24c65acae9a24d70a3c6280a4db7c7  tests/test_ideal_text_parts.py
@@ -369,6 +369,59 @@ deferred to their own, separately-verified PRs given their size.
   `routes/v2/coach.py:v2_coach_students` dropped out of the baseline
   entirely (now within both thresholds) now that its call routes through
   `db.takes`.
+
+No table, migration, route, or response shape changes.
+
+Verified by execution: targeted tests for every touched surface green,
+then scripts/local_ci.sh --no-setup green in full (manifest, migration
+runner, ruff, mypy, complexity ratchet, unit tier, F1 coverage floor).
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-16 — post-audit glue cleanup, takes family batch B (backend)
+
+Re-frozen by the same rule. Two pinned files drift, zero-behavior-change
+cleanup: batch B of the takes-family wrapper cleanup (batch A in the
+previous entry), the four moderate-traffic methods
+(`get_session_intake_context`, `get_session_slide_transcripts`,
+`set_session_intake_context`, `set_session_analysis_state`). Four
+very-high-traffic methods (`list_user_lab_sessions`,
+`v2_list_user_lab_sessions`, `get_arc_sessions`, `v2_get_session`) remain
+deferred to their own PR.
+
+- `services/db.py` — 4 takes-family forwarders deleted (66 total; 62 now
+  repointed across the recordings, ideal-text and takes-batch-A/B work).
+- `routes/v2/coach.py`, `routes/v2/lab_recording.py`,
+  `routes/v2/user_sessions.py`, `services/ideal_text_confirmation.py`,
+  `services/intake_context.py`, `services/lab_analysis_dispatch.py`,
+  `services/lab_recording_persistence.py`, `services/readout_context.py`,
+  `services/training_import.py` — call sites repointed to
+  `db.takes.<method>()` / `database.takes.<method>()` (only
+  `services/pipeline_jobs.py` is itself pinned; the rest changed
+  alongside, not listed above — `services/pipeline_jobs.py` had no new
+  call sites in this batch but its hash still needed re-freezing after
+  batch A, confirmed unchanged by this batch).
+- Two hand-rolled test fake DB classes already carrying a `takes`
+  property (from batch A) needed no further change; a chained-call
+  pattern (`self._svc(cap).set_session_analysis_state(...)`, including a
+  backslash-continued multi-line form) in
+  `tests/test_analysis_state_broadcast.py` — a factory call followed
+  directly by the method, not a simple `obj.method()` — was the one
+  genuinely new call shape this batch surfaced; it now reads
+  `self._svc(cap).takes.set_session_analysis_state(...)`. Mock-based
+  `database.<method>` sites in `tests/test_ideal_text_confirmation.py`,
+  `tests/test_readout_context.py`, `tests/test_lab_analysis_dispatch.py`
+  and `tests/test_lab_recording_persistence.py` move to
+  `database.takes.<method>`. `patch.object(db, "<method>", ...)` sites
+  (including several split across multiple lines) in
+  `tests/test_intake_context.py`, `tests/test_transcript_edit_route.py`,
+  `tests/test_pieces_slide_stickiness.py` and
+  `tests/test_processing_jobs.py` move to patching `db.takes` /
+  `pipeline_jobs.db.takes`.
+- `scripts/route_fence_baseline.json` — re-frozen (down only): three
+  `routes/v2/coach.py` functions
+  (`v2_coach_archive_training_import`, `v2_coach_restore_training_import`,
+  `v2_coach_ab_verdict`) dropped out of the baseline entirely.
 
 No table, migration, route, or response shape changes.
 

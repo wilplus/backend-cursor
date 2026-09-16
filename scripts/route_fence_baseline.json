@@ -125,11 +125,7 @@
   },
   "routes/v2/coach.py:v2_coach_ab_pairs": {
     "lines": 68,
-    "db_calls": 4
-  },
-  "routes/v2/coach.py:v2_coach_ab_verdict": {
-    "lines": 52,
-    "db_calls": 2
+    "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_approve_ideal_text": {
     "lines": 78,
@@ -142,10 +138,6 @@
   "routes/v2/coach.py:v2_coach_arc_stars": {
     "lines": 78,
     "db_calls": 4
-  },
-  "routes/v2/coach.py:v2_coach_archive_training_import": {
-    "lines": 39,
-    "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_audit_data": {
     "lines": 53,
@@ -206,10 +198,6 @@
   "routes/v2/coach.py:v2_coach_queue": {
     "lines": 58,
     "db_calls": 3
-  },
-  "routes/v2/coach.py:v2_coach_restore_training_import": {
-    "lines": 28,
-    "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_save_feedback": {
     "lines": 96,
@@ -417,11 +405,11 @@
   },
   "routes/v2/user_sessions.py:v2_user_put_session_intake_context": {
     "lines": 81,
-    "db_calls": 2
+    "db_calls": 1
   },
   "routes/v2/user_sessions.py:v2_user_put_transcript_edit": {
     "lines": 125,
-    "db_calls": 4
+    "db_calls": 3
   },
   "routes/v2/user_sessions.py:v2_user_sessions_current": {
     "lines": 87,

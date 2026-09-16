@@ -59,7 +59,7 @@ class TranscriptEditRouteTests(unittest.TestCase):
                          lambda sid: self._session),
             patch.object(db, "get_snippet_by_id",
                          lambda sid: self._snippet_row),
-            patch.object(db, "get_session_slide_transcripts",
+            patch.object(db.takes, "get_session_slide_transcripts",
                          lambda sid: self._stx),
             patch.object(db, "upsert_user_transcript_edit", _upsert),
         ]

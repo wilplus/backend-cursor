@@ -99,7 +99,7 @@ class AnalysisDispatchTests(unittest.TestCase):
             enqueue.call_args.kwargs["canonical_attempt_registered"], True,
         )
         worker.assert_not_called()
-        database.set_session_analysis_state.assert_called_once_with(
+        database.takes.set_session_analysis_state.assert_called_once_with(
             "session-1",
             "processing",
         )
@@ -177,7 +177,7 @@ class AnalysisDispatchTests(unittest.TestCase):
         target()
         worker.assert_called_once()
         self.assertEqual(
-            database.set_session_analysis_state.call_args_list[-1].args,
+            database.takes.set_session_analysis_state.call_args_list[-1].args,
             ("session-1", "ready"),
         )
 
@@ -202,7 +202,7 @@ class AnalysisDispatchTests(unittest.TestCase):
 
     def test_synchronous_take_one_timeout_is_not_reported_as_success(self):
         database = _database()
-        database.set_session_analysis_state.return_value = True
+        database.takes.set_session_analysis_state.return_value = True
         inputs = AnalysisInputs(**{**_inputs().__dict__, "take_index": 1})
         with patch(
             "services.analysis_worker.run_full_analysis",

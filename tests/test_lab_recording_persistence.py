@@ -90,7 +90,7 @@ class SessionMetadataTests(unittest.TestCase):
             database=database,
         )
         self.assertEqual(context["named_emotion"], "excited")
-        database.set_session_intake_context.assert_called_once_with(
+        database.takes.set_session_intake_context.assert_called_once_with(
             "session-1",
             context,
         )

@@ -389,7 +389,7 @@ def snapshot_intake_context(session_id: str) -> Optional[dict[str, Any]]:
     """
     from services.db import db
 
-    raw = db.get_session_intake_context(session_id)
+    raw = db.takes.get_session_intake_context(session_id)
     if not raw:
         return None
     # Return the canonical 3-key shape so consumers don't have to

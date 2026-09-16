@@ -826,7 +826,7 @@ def v2_retry_recording_ideal_text(session_id):
     confirmed = confirmed_ideal_text(
         db.ideal_text.get_coach_arc_ideal_text(str(arc_id)))
     if confirmed:
-        db.set_session_analysis_state(session_id, "ready")
+        db.takes.set_session_analysis_state(session_id, "ready")
         if session.get("user_id"):
             try:
                 from services.arc_notifications import fire_ideal_version_ready

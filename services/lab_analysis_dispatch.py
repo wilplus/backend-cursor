@@ -241,7 +241,7 @@ def dispatch_recording_analysis(
                 processing_job_id=job_id,
                 input_provenance=lifecycle_input,
             )
-            database.set_session_analysis_state(inputs.session_id, "processing")
+            database.takes.set_session_analysis_state(inputs.session_id, "processing")
             return PendingAnalysis(_processing_payload(
                 inputs,
                 job_id=job_id,
@@ -262,7 +262,7 @@ def dispatch_recording_analysis(
             attempt_count=1,
             input_provenance=lifecycle_input,
         )
-        database.set_session_analysis_state(inputs.session_id, "processing")
+        database.takes.set_session_analysis_state(inputs.session_id, "processing")
 
         def analysis_daemon():
             try:
@@ -275,7 +275,7 @@ def dispatch_recording_analysis(
                     confidence_producer_manifest=producer_manifest,
                 )
                 sync_phase1("completed")
-                database.set_session_analysis_state(inputs.session_id, "ready")
+                database.takes.set_session_analysis_state(inputs.session_id, "ready")
             except IdealTextUnconfirmedError as exc:
                 log.error(
                     "lab: Take 1 Ideal Text unconfirmed sid=%s: %s",
@@ -303,7 +303,7 @@ def dispatch_recording_analysis(
                         error=exc,
                     )
                 finally:
-                    database.set_session_analysis_state(
+                    database.takes.set_session_analysis_state(
                         inputs.session_id,
                         "failed",
                         str(exc),
@@ -349,7 +349,7 @@ def dispatch_recording_analysis(
                 error=exc,
             )
         finally:
-            database.set_session_analysis_state(
+            database.takes.set_session_analysis_state(
                 inputs.session_id,
                 "failed",
                 str(exc),

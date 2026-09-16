@@ -306,7 +306,7 @@ def v2_user_put_session_intake_context(session_id):
                 "error": "Session not found",
             }), 404
 
-        ok = db.set_session_intake_context(session_id, ctx)
+        ok = db.takes.set_session_intake_context(session_id, ctx)
         if not ok:
             return jsonify({
                 "code": "V2_ERROR",
@@ -701,7 +701,7 @@ def v2_user_put_transcript_edit(session_id):
         else:
             # SAME helper the readout fold uses — the two counts can't drift.
             from services.slide_word_split import deckless_chunks_from_stx
-            _stx = db.get_session_slide_transcripts(session_id) or []
+            _stx = db.takes.get_session_slide_transcripts(session_id) or []
             n_chunks = len(deckless_chunks_from_stx(_stx))
             if chunk_index >= n_chunks:
                 return jsonify({

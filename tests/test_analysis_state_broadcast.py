@@ -155,7 +155,7 @@ class DbFlipBroadcastTests(unittest.TestCase):
                 "services.realtime_notify.broadcast_analysis_state"
             ) as bc:
                 cap = {}
-                out = self._svc(cap).set_session_analysis_state("sid-1", state)
+                out = self._svc(cap).takes.set_session_analysis_state("sid-1", state)
                 self.assertTrue(out)
                 self.assertEqual(cap["table"], "v2_sessions")
                 self.assertEqual(cap["eq"], [("id", "sid-1")])
@@ -167,7 +167,7 @@ class DbFlipBroadcastTests(unittest.TestCase):
         ) as bc:
             cap = {}
             out = self._svc(cap, fail=Exception("boom")).\
-                set_session_analysis_state("sid-1", "ready")
+                takes.set_session_analysis_state("sid-1", "ready")
             self.assertFalse(out)
             bc.assert_not_called()
 
@@ -179,7 +179,7 @@ class DbFlipBroadcastTests(unittest.TestCase):
             cap = {}
             out = self._svc(
                 cap, fail=Exception("could not find the 'analysis_state' column"),
-            ).set_session_analysis_state("sid-1", "ready")
+            ).takes.set_session_analysis_state("sid-1", "ready")
             self.assertFalse(out)
             bc.assert_not_called()
 
@@ -189,7 +189,7 @@ class DbFlipBroadcastTests(unittest.TestCase):
             side_effect=RuntimeError("notifier exploded"),
         ):
             cap = {}
-            out = self._svc(cap).set_session_analysis_state("sid-1", "ready")
+            out = self._svc(cap).takes.set_session_analysis_state("sid-1", "ready")
             self.assertTrue(out, "a landed write must report True even if "
                                  "the best-effort notifier breaks")
             self.assertEqual(cap["update"], {"analysis_state": "ready"})
@@ -199,7 +199,7 @@ class DbFlipBroadcastTests(unittest.TestCase):
             "services.realtime_notify.broadcast_analysis_state"
         ) as bc:
             cap = {}
-            out = self._svc(cap).set_session_analysis_state("sid-1", "bogus")
+            out = self._svc(cap).takes.set_session_analysis_state("sid-1", "bogus")
             self.assertFalse(out)
             self.assertNotIn("update", cap)
             bc.assert_not_called()
