@@ -134,6 +134,109 @@ def destructive_statements(sql: str) -> list[str]:
     return [label for pattern, label in _DESTRUCTIVE_PATTERNS if pattern.search(body)]
 
 
+#: A dollar-quote opener: `$$` or `$tag$`. Deliberately NOT `$1` — positional
+#: parameters appear all over these files and are not quotes.
+_DOLLAR_TAG = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)?\$")
+
+
+def unbalanced_delimiters(sql: str) -> list[str]:
+    """Statement boundaries reached with parentheses still open.
+
+    WHY THIS EXISTS (2026-09-16). 0333 shipped with a copy-paste that left a
+    GRANT's argument list open:
+
+        GRANT EXECUTE ON FUNCTION public.record_take_feedback_response_v1(
+        REVOKE ALL ON FUNCTION public.record_take_feedback_response_v1(
+
+    Postgres refused it at the NEXT statement — "syntax error at or near
+    ALL" — and every deploy died in the pre-deploy command for days, because
+    a failed migration at the head of the queue blocks every one behind it.
+    Nothing in this repository would have caught it: `verify` checked
+    structure and never the SQL, and the rehearsal tier applies a curated
+    list of files that a new migration does not join.
+
+    This is not a SQL parser and does not pretend to be one; it will not
+    catch a misspelled keyword. It catches the delimiter damage that a bad
+    merge or a truncated paste actually produces, which is the class that
+    bit us, and it reports where the paren was OPENED rather than where the
+    parser gave up — for 0333, line 191 instead of Postgres's 192.
+
+    A single-pass scanner rather than a regex, because the answer depends on
+    knowing whether a character is inside a comment, a string, a quoted
+    identifier or a dollar-quoted body. strip_sql_comments cannot be reused:
+    it is regex-based and would happily strip a `--` living inside a string.
+    """
+    problems: list[str] = []
+    opened: list[int] = []
+    i, n, depth, line = 0, len(sql), 0, 1
+    while i < n:
+        ch = sql[i]
+        if ch == "\n":
+            line += 1
+            i += 1
+            continue
+        if sql.startswith("--", i):
+            j = sql.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if sql.startswith("/*", i):
+            # PostgreSQL block comments nest, unlike C's.
+            nest, i = 1, i + 2
+            while i < n and nest:
+                if sql.startswith("/*", i):
+                    nest, i = nest + 1, i + 2
+                elif sql.startswith("*/", i):
+                    nest, i = nest - 1, i + 2
+                else:
+                    line += sql[i] == "\n"
+                    i += 1
+            continue
+        if ch in "'\"":
+            # '' and "" are escaped quotes, not a close followed by an open.
+            quote, i = ch, i + 1
+            while i < n:
+                if sql[i] == quote:
+                    if i + 1 < n and sql[i + 1] == quote:
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                line += sql[i] == "\n"
+                i += 1
+            continue
+        if ch == "$":
+            match = _DOLLAR_TAG.match(sql, i)
+            if match:
+                tag = match.group(0)
+                end = sql.find(tag, match.end())
+                if end < 0:
+                    problems.append(
+                        f"line {line}: dollar quote {tag} is never closed")
+                    return problems
+                line += sql.count("\n", i, end + len(tag))
+                i = end + len(tag)
+                continue
+        if ch == "(":
+            depth += 1
+            opened.append(line)
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                problems.append(f"line {line}: unmatched ')'")
+                return problems
+            opened.pop()
+        elif ch == ";" and depth != 0:
+            problems.append(
+                f"line {line}: statement ends here with {depth} '(' still "
+                f"open, from line {opened[0]}")
+            return problems
+        i += 1
+    if depth != 0:
+        problems.append(
+            f"end of file: {depth} '(' never closed, from line {opened[0]}")
+    return problems
+
+
 def looks_idempotent(sql: str) -> bool:
     """Heuristic: does this file use any re-runnable guard?
 
@@ -496,6 +599,11 @@ def cmd_verify(args) -> int:
             continue
         if not sql.strip():
             warnings.append(f"{migration.filename}: file is empty")
+        # A problem, not a warning: this file cannot be applied, and because
+        # the runner stops at the first failure it blocks every migration
+        # behind it too.
+        for damage in unbalanced_delimiters(sql):
+            problems.append(f"{migration.filename}: {damage}")
         kinds = destructive_statements(sql)
         if kinds:
             destructive.append((migration.version, migration.filename, kinds))
