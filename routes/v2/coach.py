@@ -4032,3 +4032,73 @@ def v2_coach_publish_analysis(arc_id):
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to publish the analysis",
         }), 500
+
+
+# ── THE SPEAKING ERROR LIBRARY ────────────────────────────────────────────
+#
+# Naming a speaking pattern is a coach's job and must not wait for a deploy;
+# DETECTING one is code and cannot happen without one. `status` is the seam
+# between those two rates of change (migrations/add_speaking_error_library),
+# and this pair is the coach's side of it.
+#
+# WHY THIS EXISTS WHEN routes/journal.py ALREADY WRITES THE SAME TABLE. That
+# pair is gated on the shared JOURNAL_ADMIN_PASSWORD, which a coach does not
+# have — they sign in with a coach account. A write surface the intended
+# author cannot reach is not a write surface. Both call the SAME service, so
+# the two refusals it owns (no `detected` claim; no demotion of an entry that
+# is already detected) hold identically no matter which door was used.
+#
+# PROVENANCE (L3). A row here is a NAME and a DEFINITION. It is never evidence
+# that the pattern occurred in any particular recording, which is why nothing
+# in this pair accepts a snippet, a session, or a take. `observed_by` is
+# authorship and is taken from the AUTHENTICATED caller rather than the body:
+# a self-declared author is not provenance, and the body is the one part of
+# this request the caller fully controls.
+
+
+@v2_bp.route("/coach/speaking-errors", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_list_speaking_errors():
+    """The whole library, retired entries included, so an author can see what
+    already exists before naming something twice. 200 { errors } · 403 · 500"""
+    try:
+        return jsonify(
+            {"errors": db.list_speaking_errors(active_only=False)}), 200
+    except Exception as e:
+        logger.error("coach/speaking-errors GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to read the error library"}), 500
+
+
+@v2_bp.route("/coach/speaking-errors", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_save_speaking_error():
+    """Name and define one OBSERVED speaking error.
+
+    Thin on purpose: the check-then-write lives in
+    services/speaking_error_library.py, which owns both halves and both
+    refusals. 200 { error } · 400 · 403 · 409 · 500
+    """
+    from services.speaking_error_library import (
+        LibraryRefusal, save_observed_error,
+    )
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "body must be an object"}), 400
+    try:
+        saved = save_observed_error(
+            db, {**body, "observed_by": str(request.user_id or "")})
+    except LibraryRefusal as refusal:
+        return jsonify({"code": refusal.code,
+                        "error": refusal.message}), refusal.status
+    except Exception as e:
+        logger.error("coach/speaking-errors POST failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the error"}), 500
+    if not saved:
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not save the error"}), 500
+    return jsonify({"error": saved}), 200
