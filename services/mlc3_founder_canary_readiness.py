@@ -262,15 +262,13 @@ def validate_r2_smoke_manifest(
     return seen == set(expected)
 
 
-def validate_deployment_attestation(
+def _valid_attestation_envelope(
     manifest: Mapping[str, Any], *, backend_commit: str,
     frontend_commit: str, trusted_public_key_pem: bytes,
     trusted_issuer: str, trusted_key_id: str,
-    founder_principal_id: str,
-    monitor_code_sha256: str,
-    now: datetime | None = None,
+    founder_principal_id: str, monitor_code_sha256: str,
+    now: datetime | None,
 ) -> bool:
-    """Validate production-bound Railway and Vercel disabled-gate evidence."""
     evidence_sha = str(manifest.get("evidence_sha256") or "").lower()
     if (
         manifest.get("contract_version") != DEPLOYMENT_ATTESTATION_VERSION
@@ -289,16 +287,12 @@ def validate_deployment_attestation(
         or not _verify_ed25519_manifest(manifest, trusted_public_key_pem)
     ):
         return False
-    railway = manifest.get("railway")
-    vercel = manifest.get("vercel")
-    if not isinstance(railway, Mapping) or not isinstance(vercel, Mapping):
-        return False
-    railway_export = railway.get("authenticated_provider_export")
-    vercel_export = vercel.get("authenticated_provider_export")
-    if not isinstance(railway_export, Mapping) or not isinstance(
-        vercel_export, Mapping,
-    ):
-        return False
+    return True
+
+
+def _valid_attestation_railway_export(
+    railway: Mapping[str, Any], railway_export: Mapping[str, Any],
+) -> list[Any] | None:
     services = railway_export.get("services")
     if (
         railway.get("provider_export_sha256") != _value_sha256(railway_export)
@@ -309,7 +303,38 @@ def validate_deployment_attestation(
         or not isinstance(services, list) or not services
         or railway_export.get("observed_service_count") != len(services)
     ):
+        return None
+    return services
+
+
+def _valid_attestation_monitor_config(
+    monitor_config: Any, *, founder_principal_id: str, monitor_code_sha256: str,
+) -> bool:
+    if (
+        not isinstance(monitor_config, Mapping)
+        or monitor_config.get("schedule") != "*/5 * * * *"
+        or monitor_config.get("start_command")
+        != "bin/railway-mlc3-founder-canary-monitor.sh"
+        or monitor_config.get("founder_principal_id")
+        != founder_principal_id
+        or monitor_config.get("expected_contract_state") != "disabled"
+        or monitor_config.get("monitor_contract_version")
+        != "mlc3-founder-canary-monitor-v1"
+        or monitor_config.get("monitor_code_sha256")
+        != monitor_code_sha256
+        or monitor_config.get("start_command_sha256")
+        != sha256(
+            b"bin/railway-mlc3-founder-canary-monitor.sh"
+        ).hexdigest()
+    ):
         return False
+    return True
+
+
+def _valid_attestation_service_roster(
+    services: list[Any], *, backend_commit: str, founder_principal_id: str,
+    monitor_code_sha256: str,
+) -> dict[str, str] | None:
     backend_gates = {
         "MLC3_PILOT_ENABLED", "MLC3_COACH_INLINE_AUTHORING_ENABLED",
         "MLC2_DATASET_RELEASES_ENABLED", "MLC2_TRAINING_ENABLED",
@@ -320,7 +345,7 @@ def validate_deployment_attestation(
     service_roles: dict[str, str] = {}
     for service in services:
         if not isinstance(service, Mapping):
-            return False
+            return None
         service_id = str(service.get("service_id") or "")
         gates = service.get("effective_gates")
         if (
@@ -331,7 +356,7 @@ def validate_deployment_attestation(
             or set(gates) != backend_gates
             or any(value is not False for value in gates.values())
         ):
-            return False
+            return None
         config_identity = {
             "service_id": service_id,
             "deployment_id": service.get("deployment_id"),
@@ -342,47 +367,29 @@ def validate_deployment_attestation(
         role = str(service.get("role") or "")
         if role == "monitor":
             monitor_config = service.get("monitor_config")
-            if (
-                not isinstance(monitor_config, Mapping)
-                or monitor_config.get("schedule") != "*/5 * * * *"
-                or monitor_config.get("start_command")
-                != "bin/railway-mlc3-founder-canary-monitor.sh"
-                or monitor_config.get("founder_principal_id")
-                != founder_principal_id
-                or monitor_config.get("expected_contract_state") != "disabled"
-                or monitor_config.get("monitor_contract_version")
-                != "mlc3-founder-canary-monitor-v1"
-                or monitor_config.get("monitor_code_sha256")
-                != monitor_code_sha256
-                or monitor_config.get("start_command_sha256")
-                != sha256(
-                    b"bin/railway-mlc3-founder-canary-monitor.sh"
-                ).hexdigest()
+            if not _valid_attestation_monitor_config(
+                monitor_config, founder_principal_id=founder_principal_id,
+                monitor_code_sha256=monitor_code_sha256,
             ):
-                return False
+                return None
             config_identity["monitor_config"] = monitor_config
         expected_config_sha = _value_sha256(config_identity)
         if service.get("config_sha256") != expected_config_sha:
-            return False
+            return None
         seen_services.add(service_id)
         if role not in {"web", "worker", "monitor"}:
-            return False
+            return None
         seen_roles.add(role)
         service_roles[service_id] = role
     if seen_roles != {"web", "worker", "monitor"}:
-        return False
-    inventory = sorted(services, key=lambda row: str(row.get("service_id")))
-    if railway_export.get("service_inventory_sha256") != _value_sha256(inventory):
-        return False
-    frontend_gates = vercel_export.get("effective_build_gates")
-    expected_build_sha = _value_sha256({
-        "deployment_id": vercel_export.get("deployment_id"),
-        "commit_sha": vercel_export.get("commit_sha"),
-        "effective_build_gates": frontend_gates,
-    })
-    monitoring = manifest.get("monitoring")
-    emergency = manifest.get("emergency_disable_rehearsal")
-    if not isinstance(monitoring, Mapping) or not isinstance(emergency, Mapping):
+        return None
+    return service_roles
+
+
+def _valid_attestation_monitoring(
+    monitoring: Any, *, service_roles: dict[str, str], now: datetime | None,
+) -> bool:
+    if not isinstance(monitoring, Mapping):
         return False
     required_signals = {
         "service_contract_or_allowlist_violation",
@@ -393,7 +400,7 @@ def validate_deployment_attestation(
         "unresolved_practice_media_write",
         "unresolved_coach_media_write",
     }
-    monitor_valid = bool(
+    return bool(
         monitoring.get("contract_version") == MONITORING_EVIDENCE_VERSION
         and service_roles.get(str(monitoring.get("monitor_service_id") or ""))
         == "monitor"
@@ -408,6 +415,54 @@ def validate_deployment_attestation(
         and _valid_sha256(monitoring.get("operations_receipt_sha256"))
         and _fresh_timestamp(monitoring.get("verified_at"), now)
     )
+
+
+def _valid_attestation_emergency_attempt(
+    attempt: Any, expected_number: int, *,
+    previous_completed_at: datetime | None,
+    previous_after: Mapping[str, Any] | None,
+    operation_ids: set[str],
+    expected_disabled_targets: Mapping[str, Any],
+    now: datetime | None,
+) -> tuple[str, Mapping[str, Any], datetime] | None:
+    if not isinstance(attempt, Mapping):
+        return None
+    before = attempt.get("before_states")
+    after = attempt.get("after_states")
+    operation_id = str(attempt.get("operation_id") or "")
+    started_at = _parse_timestamp(attempt.get("started_at"))
+    completed_at = _parse_timestamp(attempt.get("completed_at"))
+    result_payload = {
+        key: value for key, value in attempt.items()
+        if key != "result_sha256"
+    }
+    if (
+        attempt.get("attempt_number") != expected_number
+        or not _valid_uuid(operation_id)
+        or operation_id in operation_ids
+        or not _fresh_timestamp(attempt.get("started_at"), now)
+        or not _fresh_timestamp(attempt.get("completed_at"), now)
+        or started_at is None or completed_at is None
+        or started_at > completed_at
+        or (previous_completed_at is not None
+            and previous_completed_at > started_at)
+        or not isinstance(before, Mapping)
+        or set(before) != set(expected_disabled_targets)
+        or after != expected_disabled_targets
+        or not _valid_sha256(attempt.get("result_sha256"))
+        or attempt.get("result_sha256") != _value_sha256(result_payload)
+        or attempt.get("completed") is not True
+        or (expected_number == 2 and before != previous_after)
+    ):
+        return None
+    return operation_id, after, completed_at
+
+
+def _valid_attestation_emergency_disable(
+    emergency: Any, *, now: datetime | None,
+) -> bool:
+    if not isinstance(emergency, Mapping):
+        return False
     expected_disabled_targets = {
         "database_contract_state": "disabled",
         "MLC3_PILOT_ENABLED": False,
@@ -423,42 +478,20 @@ def validate_deployment_attestation(
     operation_ids: set[str] = set()
     if attempts_valid:
         for expected_number, attempt in enumerate(attempts, start=1):
-            if not isinstance(attempt, Mapping):
+            result = _valid_attestation_emergency_attempt(
+                attempt, expected_number,
+                previous_completed_at=previous_completed_at,
+                previous_after=previous_after,
+                operation_ids=operation_ids,
+                expected_disabled_targets=expected_disabled_targets,
+                now=now,
+            )
+            if result is None:
                 attempts_valid = False
                 break
-            before = attempt.get("before_states")
-            after = attempt.get("after_states")
-            operation_id = str(attempt.get("operation_id") or "")
-            started_at = _parse_timestamp(attempt.get("started_at"))
-            completed_at = _parse_timestamp(attempt.get("completed_at"))
-            result_payload = {
-                key: value for key, value in attempt.items()
-                if key != "result_sha256"
-            }
-            if (
-                attempt.get("attempt_number") != expected_number
-                or not _valid_uuid(operation_id)
-                or operation_id in operation_ids
-                or not _fresh_timestamp(attempt.get("started_at"), now)
-                or not _fresh_timestamp(attempt.get("completed_at"), now)
-                or started_at is None or completed_at is None
-                or started_at > completed_at
-                or (previous_completed_at is not None
-                    and previous_completed_at > started_at)
-                or not isinstance(before, Mapping)
-                or set(before) != set(expected_disabled_targets)
-                or after != expected_disabled_targets
-                or not _valid_sha256(attempt.get("result_sha256"))
-                or attempt.get("result_sha256") != _value_sha256(result_payload)
-                or attempt.get("completed") is not True
-                or (expected_number == 2 and before != previous_after)
-            ):
-                attempts_valid = False
-                break
+            operation_id, previous_after, previous_completed_at = result
             operation_ids.add(operation_id)
-            previous_after = after
-            previous_completed_at = completed_at
-    emergency_valid = bool(
+    return bool(
         emergency.get("contract_version")
         == EMERGENCY_DISABLE_EVIDENCE_VERSION
         and emergency.get("mode") == "idempotent_disabled_rehearsal"
@@ -469,6 +502,18 @@ def validate_deployment_attestation(
         and _valid_sha256(emergency.get("rollback_command_sha256"))
         and _fresh_timestamp(emergency.get("verified_at"), now)
     )
+
+
+def _valid_attestation_vercel_export(
+    vercel: Mapping[str, Any], vercel_export: Mapping[str, Any], *,
+    frontend_commit: str,
+) -> bool:
+    frontend_gates = vercel_export.get("effective_build_gates")
+    expected_build_sha = _value_sha256({
+        "deployment_id": vercel_export.get("deployment_id"),
+        "commit_sha": vercel_export.get("commit_sha"),
+        "effective_build_gates": frontend_gates,
+    })
     return bool(
         vercel.get("provider_export_sha256") == _value_sha256(vercel_export)
         and vercel_export.get("source") == "vercel_authenticated_api"
@@ -483,8 +528,59 @@ def validate_deployment_attestation(
             "NEXT_PUBLIC_MLC3_COACH_INLINE_AUTHORING_ENABLED",
         }
         and all(value is False for value in frontend_gates.values())
-        and monitor_valid
-        and emergency_valid
+    )
+
+
+def validate_deployment_attestation(
+    manifest: Mapping[str, Any], *, backend_commit: str,
+    frontend_commit: str, trusted_public_key_pem: bytes,
+    trusted_issuer: str, trusted_key_id: str,
+    founder_principal_id: str,
+    monitor_code_sha256: str,
+    now: datetime | None = None,
+) -> bool:
+    """Validate production-bound Railway and Vercel disabled-gate evidence."""
+    if not _valid_attestation_envelope(
+        manifest, backend_commit=backend_commit, frontend_commit=frontend_commit,
+        trusted_public_key_pem=trusted_public_key_pem,
+        trusted_issuer=trusted_issuer, trusted_key_id=trusted_key_id,
+        founder_principal_id=founder_principal_id,
+        monitor_code_sha256=monitor_code_sha256, now=now,
+    ):
+        return False
+    railway = manifest.get("railway")
+    vercel = manifest.get("vercel")
+    if not isinstance(railway, Mapping) or not isinstance(vercel, Mapping):
+        return False
+    railway_export = railway.get("authenticated_provider_export")
+    vercel_export = vercel.get("authenticated_provider_export")
+    if not isinstance(railway_export, Mapping) or not isinstance(
+        vercel_export, Mapping,
+    ):
+        return False
+    services = _valid_attestation_railway_export(railway, railway_export)
+    if services is None:
+        return False
+    service_roles = _valid_attestation_service_roster(
+        services, backend_commit=backend_commit,
+        founder_principal_id=founder_principal_id,
+        monitor_code_sha256=monitor_code_sha256,
+    )
+    if service_roles is None:
+        return False
+    inventory = sorted(services, key=lambda row: str(row.get("service_id")))
+    if railway_export.get("service_inventory_sha256") != _value_sha256(inventory):
+        return False
+    if not _valid_attestation_monitoring(
+        manifest.get("monitoring"), service_roles=service_roles, now=now,
+    ):
+        return False
+    if not _valid_attestation_emergency_disable(
+        manifest.get("emergency_disable_rehearsal"), now=now,
+    ):
+        return False
+    return _valid_attestation_vercel_export(
+        vercel, vercel_export, frontend_commit=frontend_commit,
     )
 
 

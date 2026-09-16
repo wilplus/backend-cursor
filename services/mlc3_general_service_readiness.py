@@ -138,15 +138,12 @@ def _valid_emergency_disable(value: object, now: datetime | None) -> bool:
     return True
 
 
-def validate_general_deployment_attestation(
+def _valid_general_attestation_envelope(
     manifest: Mapping[str, Any], *, backend_commit: str,
     frontend_commit: str, monitor_code_sha256: str,
-    trusted_public_key_pem: bytes,
-    trusted_issuer: str = TRUSTED_ATTESTATION_ISSUER,
-    trusted_key_id: str = TRUSTED_ATTESTATION_KEY_ID,
-    now: datetime | None = None,
+    trusted_public_key_pem: bytes, trusted_issuer: str,
+    trusted_key_id: str, now: datetime | None,
 ) -> bool:
-    """Validate exact disabled Railway/Vercel, monitor, and rollback proof."""
     if (
         manifest.get("contract_version") != DEPLOYMENT_EVIDENCE_VERSION
         or manifest.get("environment") != "production"
@@ -162,10 +159,10 @@ def validate_general_deployment_attestation(
         or not _verify_ed25519_manifest(manifest, trusted_public_key_pem)
     ):
         return False
-    railway = manifest.get("railway_authenticated_provider_export")
-    vercel = manifest.get("vercel_authenticated_provider_export")
-    if not isinstance(railway, Mapping) or not isinstance(vercel, Mapping):
-        return False
+    return True
+
+
+def _valid_general_railway_services(railway: Mapping[str, Any]) -> list[Any] | None:
     services = railway.get("services")
     if (
         railway.get("source") != "railway_authenticated_api"
@@ -177,12 +174,37 @@ def validate_general_deployment_attestation(
         or railway.get("service_inventory_sha256")
         != _value_sha256(sorted(services, key=lambda row: row.get("service_id", "")))
     ):
+        return None
+    return services
+
+
+def _valid_general_monitor_config(config: Any, *, monitor_code_sha256: str) -> bool:
+    if (
+        not isinstance(config, Mapping)
+        or config.get("schedule") != "*/5 * * * *"
+        or config.get("start_command")
+        != "bin/railway-mlc3-general-service-monitor.sh"
+        or config.get("expected_rollout_state") != "disabled"
+        or config.get("monitor_contract_version")
+        != "mlc3-general-service-monitor-v1"
+        or config.get("monitor_code_sha256") != monitor_code_sha256
+        or config.get("start_command_sha256")
+        != sha256(
+            b"bin/railway-mlc3-general-service-monitor.sh"
+        ).hexdigest()
+    ):
         return False
+    return True
+
+
+def _valid_general_service_roster(
+    services: list[Any], *, backend_commit: str, monitor_code_sha256: str,
+) -> str | None:
     roles: set[str] = set()
     monitor_service_id = ""
     for service in services:
         if not isinstance(service, Mapping):
-            return False
+            return None
         role = str(service.get("role") or "")
         gates = service.get("effective_gates")
         if (
@@ -191,7 +213,7 @@ def validate_general_deployment_attestation(
             or service.get("commit_sha") != backend_commit
             or not _exact_disabled_gates(gates, _BACKEND_GATES)
         ):
-            return False
+            return None
         identity = {
             "service_id": service.get("service_id"),
             "deployment_id": service.get("deployment_id"),
@@ -201,28 +223,23 @@ def validate_general_deployment_attestation(
         }
         if role == "monitor":
             config = service.get("monitor_config")
-            if (
-                not isinstance(config, Mapping)
-                or config.get("schedule") != "*/5 * * * *"
-                or config.get("start_command")
-                != "bin/railway-mlc3-general-service-monitor.sh"
-                or config.get("expected_rollout_state") != "disabled"
-                or config.get("monitor_contract_version")
-                != "mlc3-general-service-monitor-v1"
-                or config.get("monitor_code_sha256") != monitor_code_sha256
-                or config.get("start_command_sha256")
-                != sha256(
-                    b"bin/railway-mlc3-general-service-monitor.sh"
-                ).hexdigest()
+            if not _valid_general_monitor_config(
+                config, monitor_code_sha256=monitor_code_sha256,
             ):
-                return False
+                return None
             identity["monitor_config"] = config
             monitor_service_id = str(service.get("service_id"))
         if service.get("config_sha256") != _value_sha256(identity):
-            return False
+            return None
         roles.add(role)
     if roles != {"web", "worker", "monitor"}:
-        return False
+        return None
+    return monitor_service_id
+
+
+def _valid_general_vercel_build(
+    vercel: Mapping[str, Any], *, frontend_commit: str,
+) -> bool:
     frontend_gates = vercel.get("effective_build_gates")
     build_identity = {
         "deployment_id": vercel.get("deployment_id"),
@@ -238,7 +255,12 @@ def validate_general_deployment_attestation(
         or vercel.get("build_config_sha256") != _value_sha256(build_identity)
     ):
         return False
-    monitoring = manifest.get("monitoring")
+    return True
+
+
+def _valid_general_monitoring(
+    monitoring: Any, *, monitor_service_id: str, now: datetime | None,
+) -> bool:
     if (
         not isinstance(monitoring, Mapping)
         or monitoring.get("contract_version") != MONITORING_EVIDENCE_VERSION
@@ -251,6 +273,44 @@ def validate_general_deployment_attestation(
         or not monitoring.get("operations_receipt_id")
         or not _valid_sha256(monitoring.get("operations_receipt_sha256"))
         or not _fresh_timestamp(monitoring.get("verified_at"), now)
+    ):
+        return False
+    return True
+
+
+def validate_general_deployment_attestation(
+    manifest: Mapping[str, Any], *, backend_commit: str,
+    frontend_commit: str, monitor_code_sha256: str,
+    trusted_public_key_pem: bytes,
+    trusted_issuer: str = TRUSTED_ATTESTATION_ISSUER,
+    trusted_key_id: str = TRUSTED_ATTESTATION_KEY_ID,
+    now: datetime | None = None,
+) -> bool:
+    """Validate exact disabled Railway/Vercel, monitor, and rollback proof."""
+    if not _valid_general_attestation_envelope(
+        manifest, backend_commit=backend_commit, frontend_commit=frontend_commit,
+        monitor_code_sha256=monitor_code_sha256,
+        trusted_public_key_pem=trusted_public_key_pem,
+        trusted_issuer=trusted_issuer, trusted_key_id=trusted_key_id, now=now,
+    ):
+        return False
+    railway = manifest.get("railway_authenticated_provider_export")
+    vercel = manifest.get("vercel_authenticated_provider_export")
+    if not isinstance(railway, Mapping) or not isinstance(vercel, Mapping):
+        return False
+    services = _valid_general_railway_services(railway)
+    if services is None:
+        return False
+    monitor_service_id = _valid_general_service_roster(
+        services, backend_commit=backend_commit,
+        monitor_code_sha256=monitor_code_sha256,
+    )
+    if monitor_service_id is None:
+        return False
+    if not _valid_general_vercel_build(vercel, frontend_commit=frontend_commit):
+        return False
+    if not _valid_general_monitoring(
+        manifest.get("monitoring"), monitor_service_id=monitor_service_id, now=now,
     ):
         return False
     return _valid_emergency_disable(

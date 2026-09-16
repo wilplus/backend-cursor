@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Mapping
-from uuid import UUID
 
 from services.mlc2_confidence_cutover import DARK, resolve_confidence_cutover
+from services.mlc3_founder_canary_readiness import _count, _valid_uuid
 
 
 READINESS_CONTRACT_VERSION = "mlc2-confidence-canary-readiness-v1"
@@ -31,23 +31,6 @@ class ConfidenceCanaryReadinessReport:
             "warning_codes": list(self.warning_codes),
             "evidence": self.evidence,
         }
-
-
-def _count(health: Mapping[str, Any], key: str) -> int:
-    value = health.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, str)):
-        return -1
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return -1
-
-
-def _valid_uuid(value: Any) -> bool:
-    try:
-        return bool(UUID(str(value)))
-    except (TypeError, ValueError, AttributeError):
-        return False
 
 
 def assess_confidence_canary_readiness(
