@@ -268,6 +268,116 @@ def paragraphs(body: Any) -> list[str]:
 
 # ── the CMS write contract ────────────────────────────────────────────────
 
+def _validate_post_identity_fields(src: dict, out: dict, partial: bool) -> None:
+    # title FIRST: the slug can fall back to it, and validating title first
+    # means a create that forgot the title says so, instead of blaming the
+    # slug it could not derive.
+    if "title" in src or not partial:
+        title = _norm_text(src.get("title"), "title", _MAX_TITLE_LEN,
+                           allow_empty=partial)
+        if not partial and not title:
+            raise JournalError("title: required")
+        if title is not None:
+            out["title"] = title
+
+    # slug — required on create; validated whenever supplied.
+    if "slug" in src or not partial:
+        slug = _norm_text(src.get("slug"), "slug", _MAX_SLUG_LEN)
+        if slug is None and not partial:
+            # Fall back to the title so a create can omit the slug.
+            slug = slugify(out.get("title")) or None
+        if slug is None:
+            raise JournalError("slug: required")
+        slug = slug.lower()
+        if not _SLUG_RE.match(slug):
+            raise JournalError(
+                "slug: use lowercase letters, numbers and single dashes"
+            )
+        out["slug"] = slug
+
+
+def _validate_post_summary_fields(src: dict, out: dict, partial: bool) -> None:
+    if "excerpt" in src or not partial:
+        out["excerpt"] = _norm_text(
+            src.get("excerpt"), "excerpt", _MAX_EXCERPT_LEN) or ""
+
+    if "category" in src or not partial:
+        out["category"] = _norm_choice(
+            src.get("category"), "category", CATEGORIES) or "others"
+
+    if "read_time_min" in src or not partial:
+        out["read_time_min"] = _norm_int(
+            src.get("read_time_min"), "read_time_min",
+            _MIN_READ_TIME, _MAX_READ_TIME) or _MIN_READ_TIME
+
+
+def _validate_post_media_fields(src: dict, out: dict, partial: bool) -> None:
+    if "cover_kind" in src or not partial:
+        out["cover_kind"] = _norm_choice(
+            src.get("cover_kind"), "cover_kind", COVER_KINDS) or "image"
+
+    for key in ("cover_image_url", "media_url", "author_avatar_url",
+                "og_image_url"):
+        if key in src or not partial:
+            out[key] = _norm_url(src.get(key), key)
+
+    if "cover_alt" in src or not partial:
+        out["cover_alt"] = _norm_text(
+            src.get("cover_alt"), "cover_alt", _MAX_ALT_LEN)
+
+    if "media_duration_sec" in src or not partial:
+        out["media_duration_sec"] = _norm_int(
+            src.get("media_duration_sec"), "media_duration_sec",
+            0, _MAX_DURATION_SEC)
+
+
+def _validate_post_content_fields(src: dict, out: dict, partial: bool) -> None:
+    if "body" in src or not partial:
+        out["body"] = normalize_body(src.get("body"))
+
+    if "author_name" in src or not partial:
+        out["author_name"] = _norm_text(
+            src.get("author_name"), "author_name",
+            _MAX_AUTHOR_LEN) or "Willpower Lab"
+
+    if "status" in src or not partial:
+        out["status"] = _norm_choice(
+            src.get("status"), "status", STATUSES) or "draft"
+
+
+def _validate_post_publish_date(src: dict, out: dict, existing: Any) -> None:
+    if "published_at" in src:
+        out["published_at"] = _norm_timestamp(
+            src.get("published_at"), "published_at")
+
+    # A post that becomes published MUST carry a display date. The dedicated
+    # publish route stamps one, but `status` is writable here too (the editor's
+    # own status control), and a published row with published_at = NULL sorts
+    # FIRST under Postgres's default NULLS FIRST on DESC — it would pin itself
+    # to the top of the public index permanently. Stamp only when nothing else
+    # supplies a date; an author-set date is never overwritten.
+    if out.get("status") == "published" and not out.get("published_at"):
+        if not (existing or {}).get("published_at"):
+            out["published_at"] = datetime.now(timezone.utc).isoformat()
+
+
+def _validate_post_ordering_and_meta_fields(
+    src: dict, out: dict, partial: bool,
+) -> None:
+    if "sort_order" in src or not partial:
+        out["sort_order"] = _norm_int(
+            src.get("sort_order"), "sort_order", -100_000, 100_000) or 0
+
+    if "meta_title" in src or not partial:
+        out["meta_title"] = _norm_text(
+            src.get("meta_title"), "meta_title", _MAX_META_TITLE_LEN)
+
+    if "meta_description" in src or not partial:
+        out["meta_description"] = _norm_text(
+            src.get("meta_description"), "meta_description",
+            _MAX_META_DESC_LEN)
+
+
 def validate_post_body(body: Any, *, partial: bool = False,
                        existing: Any = None) -> dict:
     """Validate a CMS create/update payload → the cleaned column dict.
@@ -301,104 +411,12 @@ def validate_post_body(body: Any, *, partial: bool = False,
 
     out: dict[str, Any] = {}
 
-    def present(key: str) -> bool:
-        return key in src
-
-    # title FIRST: the slug can fall back to it, and validating title first
-    # means a create that forgot the title says so, instead of blaming the
-    # slug it could not derive.
-    if present("title") or not partial:
-        title = _norm_text(src.get("title"), "title", _MAX_TITLE_LEN,
-                           allow_empty=partial)
-        if not partial and not title:
-            raise JournalError("title: required")
-        if title is not None:
-            out["title"] = title
-
-    # slug — required on create; validated whenever supplied.
-    if present("slug") or not partial:
-        slug = _norm_text(src.get("slug"), "slug", _MAX_SLUG_LEN)
-        if slug is None and not partial:
-            # Fall back to the title so a create can omit the slug.
-            slug = slugify(out.get("title")) or None
-        if slug is None:
-            raise JournalError("slug: required")
-        slug = slug.lower()
-        if not _SLUG_RE.match(slug):
-            raise JournalError(
-                "slug: use lowercase letters, numbers and single dashes"
-            )
-        out["slug"] = slug
-
-    if present("excerpt") or not partial:
-        out["excerpt"] = _norm_text(
-            src.get("excerpt"), "excerpt", _MAX_EXCERPT_LEN) or ""
-
-    if present("category") or not partial:
-        out["category"] = _norm_choice(
-            src.get("category"), "category", CATEGORIES) or "others"
-
-    if present("read_time_min") or not partial:
-        out["read_time_min"] = _norm_int(
-            src.get("read_time_min"), "read_time_min",
-            _MIN_READ_TIME, _MAX_READ_TIME) or _MIN_READ_TIME
-
-    if present("cover_kind") or not partial:
-        out["cover_kind"] = _norm_choice(
-            src.get("cover_kind"), "cover_kind", COVER_KINDS) or "image"
-
-    for key in ("cover_image_url", "media_url", "author_avatar_url",
-                "og_image_url"):
-        if present(key) or not partial:
-            out[key] = _norm_url(src.get(key), key)
-
-    if present("cover_alt") or not partial:
-        out["cover_alt"] = _norm_text(
-            src.get("cover_alt"), "cover_alt", _MAX_ALT_LEN)
-
-    if present("media_duration_sec") or not partial:
-        out["media_duration_sec"] = _norm_int(
-            src.get("media_duration_sec"), "media_duration_sec",
-            0, _MAX_DURATION_SEC)
-
-    if present("body") or not partial:
-        out["body"] = normalize_body(src.get("body"))
-
-    if present("author_name") or not partial:
-        out["author_name"] = _norm_text(
-            src.get("author_name"), "author_name",
-            _MAX_AUTHOR_LEN) or "Willpower Lab"
-
-    if present("status") or not partial:
-        out["status"] = _norm_choice(
-            src.get("status"), "status", STATUSES) or "draft"
-
-    if present("published_at"):
-        out["published_at"] = _norm_timestamp(
-            src.get("published_at"), "published_at")
-
-    # A post that becomes published MUST carry a display date. The dedicated
-    # publish route stamps one, but `status` is writable here too (the editor's
-    # own status control), and a published row with published_at = NULL sorts
-    # FIRST under Postgres's default NULLS FIRST on DESC — it would pin itself
-    # to the top of the public index permanently. Stamp only when nothing else
-    # supplies a date; an author-set date is never overwritten.
-    if out.get("status") == "published" and not out.get("published_at"):
-        if not (existing or {}).get("published_at"):
-            out["published_at"] = datetime.now(timezone.utc).isoformat()
-
-    if present("sort_order") or not partial:
-        out["sort_order"] = _norm_int(
-            src.get("sort_order"), "sort_order", -100_000, 100_000) or 0
-
-    if present("meta_title") or not partial:
-        out["meta_title"] = _norm_text(
-            src.get("meta_title"), "meta_title", _MAX_META_TITLE_LEN)
-
-    if present("meta_description") or not partial:
-        out["meta_description"] = _norm_text(
-            src.get("meta_description"), "meta_description",
-            _MAX_META_DESC_LEN)
+    _validate_post_identity_fields(src, out, partial)
+    _validate_post_summary_fields(src, out, partial)
+    _validate_post_media_fields(src, out, partial)
+    _validate_post_content_fields(src, out, partial)
+    _validate_post_publish_date(src, out, existing)
+    _validate_post_ordering_and_meta_fields(src, out, partial)
 
     # A video/audio cover with no media file has nothing to play. Checked
     # against the MERGED view on a partial update (the caller passes the
