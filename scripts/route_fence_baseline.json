@@ -19,10 +19,6 @@
     "lines": 24,
     "db_calls": 2
   },
-  "routes/journal.py:journal_admin_save_diagnostic_exercise": {
-    "lines": 51,
-    "db_calls": 2
-  },
   "routes/journal.py:journal_admin_unpublish": {
     "lines": 17,
     "db_calls": 2
@@ -424,8 +420,8 @@
     "db_calls": 3
   },
   "routes/v2/user_sessions.py:v2_start_confident_voice_practice": {
-    "lines": 136,
-    "db_calls": 9
+    "lines": 130,
+    "db_calls": 7
   },
   "routes/v2/user_sessions.py:v2_user_get_session_readout": {
     "lines": 108,
