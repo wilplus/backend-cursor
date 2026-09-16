@@ -261,6 +261,12 @@ class _PoolAuditDB:
         self.blocks_written.append((block_key, fields))
         return True
 
+    @property
+    def ideal_text(self):
+        # audit Q-A2: production now calls database.ideal_text.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def list_ideal_text_blocks(self, arc_id):
         return []
 

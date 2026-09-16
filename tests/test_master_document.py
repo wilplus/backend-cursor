@@ -35,6 +35,12 @@ class _Db:
         self.blocks_fail = blocks_fail
         self.writes = []
 
+    @property
+    def ideal_text(self):
+        # audit Q-A2: production now calls database.ideal_text.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def get_arc_sessions(self, arc_id):
         return self.sessions
 

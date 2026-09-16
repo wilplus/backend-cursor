@@ -133,7 +133,7 @@
   },
   "routes/v2/coach.py:v2_coach_approve_ideal_text": {
     "lines": 78,
-    "db_calls": 4
+    "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_arc_review_state": {
     "lines": 177,
@@ -157,7 +157,7 @@
   },
   "routes/v2/coach.py:v2_coach_confidence_queue": {
     "lines": 308,
-    "db_calls": 10
+    "db_calls": 8
   },
   "routes/v2/coach.py:v2_coach_confident_voice_practice": {
     "lines": 148,
@@ -181,7 +181,7 @@
   },
   "routes/v2/coach.py:v2_coach_put_confidence_label": {
     "lines": 244,
-    "db_calls": 8
+    "db_calls": 7
   },
   "routes/v2/coach.py:v2_coach_put_moment_reference": {
     "lines": 65,
@@ -285,10 +285,6 @@
   },
   "routes/v2/explore_ideal_text.py:_ideal_piece_provenance": {
     "lines": 216,
-    "db_calls": 3
-  },
-  "routes/v2/explore_ideal_text.py:_ideal_save_state": {
-    "lines": 29,
     "db_calls": 2
   },
   "routes/v2/explore_ideal_text.py:_legacy_user_edit_via_cas": {
@@ -329,7 +325,7 @@
   },
   "routes/v2/explore_ideal_text.py:v2_explore_save_ideal_text": {
     "lines": 101,
-    "db_calls": 4
+    "db_calls": 2
   },
   "routes/v2/explore_ideal_text.py:v2_explore_set_part_lock": {
     "lines": 208,

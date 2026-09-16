@@ -278,7 +278,7 @@ class IdealTextRoutesTests(unittest.TestCase):
                  patch("services.ideal_text_block.assemble_ideal_text_block",
                        return_value={"text": "auto block",
                                      "key_moments": [], "ready": True}), \
-                 patch.object(db, "upsert_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "upsert_coach_arc_ideal_text",
                               return_value=True) as m_up:
                 resp, status = v2_coach.v2_coach_approve_ideal_text.__wrapped__(ARC)
         self.assertEqual(status, 200)
@@ -305,7 +305,7 @@ class IdealTextRoutesTests(unittest.TestCase):
                               lambda a: (True, _sessions())), \
                  patch.object(db, "upsert_user_arc_ideal_notes",
                               return_value=True) as m_notes, \
-                 patch.object(db, "upsert_coach_arc_ideal_text") as m_canon:
+                 patch.object(db.ideal_text, "upsert_coach_arc_ideal_text") as m_canon:
                 resp, status = v2_explore_ideal_text.v2_explore_put_ideal_notes.__wrapped__(ARC)
         self.assertEqual(status, 200)
         m_notes.assert_called_once_with(ARC, "u1", "my edited copy")

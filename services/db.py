@@ -7226,9 +7226,6 @@ class DatabaseService:
     def get_coach_arc_ideal_text(self, *args, **kwargs):
         return self.ideal_text.get_coach_arc_ideal_text(*args, **kwargs)
 
-    def upsert_coach_arc_ideal_text(self, *args, **kwargs):
-        return self.ideal_text.upsert_coach_arc_ideal_text(*args, **kwargs)
-
     def persist_auto_ideal_text(self, arc_id: str, text: str,
                                 *, take_count: Optional[int] = None,
                                 document: Optional[dict] = None) -> bool:
@@ -7987,9 +7984,6 @@ class DatabaseService:
                 skip_error,
             )
             return None
-
-    def get_canonical_confidence_evidence(self, *args, **kwargs):
-        return self.ideal_text.get_canonical_confidence_evidence(*args, **kwargs)
 
     def record_canonical_coach_confidence_judgment(
         self, *, evidence_span_id: str, coach_id: str, value: str,
@@ -9915,18 +9909,6 @@ class DatabaseService:
     # All best-effort; list returns None on FAILURE ([] only on a real
     # empty read) — the read-fail ≠ empty lesson.
 
-    def list_ideal_text_blocks(self, *args, **kwargs):
-        return self.ideal_text.list_ideal_text_blocks(*args, **kwargs)
-
-    def get_ideal_text_block(self, *args, **kwargs):
-        return self.ideal_text.get_ideal_text_block(*args, **kwargs)
-
-    def upsert_ideal_text_block(self, *args, **kwargs):
-        return self.ideal_text.upsert_ideal_text_block(*args, **kwargs)
-
-    def delete_ideal_text_block(self, *args, **kwargs):
-        return self.ideal_text.delete_ideal_text_block(*args, **kwargs)
-
     def get_snippets_by_ids(self, snippet_ids: Any) -> list:
         """Bulk snippet read — ONE query instead of a round trip per
         piece (review 2026-07-22 perf finding). Carries `metrics` (the
@@ -9960,12 +9942,6 @@ class DatabaseService:
             logger.warning("get_snippets_by_ids failed (%d ids): %s",
                            len(ids), e)
             return []
-
-    def insert_ideal_text_save(self, *args, **kwargs):
-        return self.ideal_text.insert_ideal_text_save(*args, **kwargs)
-
-    def get_latest_ideal_text_save(self, *args, **kwargs):
-        return self.ideal_text.get_latest_ideal_text_save(*args, **kwargs)
 
     # ── variant pool + compositions (founder 2026-08-03) ─────────────
     # See services/ideal_text_variants.py + add_ideal_text_variant_pool

@@ -228,7 +228,7 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
 
     if _living_transcript_enabled() and master_document_enabled():
         rows = sorted(
-            (r for r in (db.list_ideal_text_blocks(str(arc_id)) or [])
+            (r for r in (db.ideal_text.list_ideal_text_blocks(str(arc_id)) or [])
              if r.get("active", True) and r.get("status") != "candidate"),
             key=lambda r: r.get("block_key") or 0)
         if rows:
@@ -1678,7 +1678,7 @@ def v2_explore_save_ideal_text(arc_id):
         # READ must not freeze over unknown state, and a failed resolve
         # must not stamp a save that still has hidden pending offers
         # (review findings #8/#11/#18).
-        rows = db.list_ideal_text_blocks(str(arc_id))
+        rows = db.ideal_text.list_ideal_text_blocks(str(arc_id))
         if rows is None:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not read the document — "
@@ -1741,7 +1741,7 @@ def v2_explore_save_ideal_text(arc_id):
         if not isinstance(_v, int):
             return jsonify({"code": "NOTHING_TO_SAVE",
                             "error": "No ideal text to save yet."}), 409
-        ok = db.insert_ideal_text_save(str(arc_id), _v)
+        ok = db.ideal_text.insert_ideal_text_save(str(arc_id), _v)
         if not ok:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
@@ -1762,14 +1762,14 @@ def _ideal_save_state(arc_id, current_version) -> dict:
         from services.master_document import master_document_enabled
         if not master_document_enabled():
             return {}
-        row = db.get_latest_ideal_text_save(str(arc_id))
+        row = db.ideal_text.get_latest_ideal_text_save(str(arc_id))
         if not row:
             return {}
         _pending = False
         try:
             _pending = any(
                 r.get("status") in ("pending_upgrade", "candidate")
-                for r in (db.list_ideal_text_blocks(str(arc_id)) or []))
+                for r in (db.ideal_text.list_ideal_text_blocks(str(arc_id)) or []))
         except Exception:
             _pending = False
         return {
