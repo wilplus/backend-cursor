@@ -17,17 +17,12 @@ from typing import Any, Dict, List, Optional  # noqa: F401
 
 import sentry_sdk  # noqa: F401
 
+from services.table_repository import TableRepository
+
 logger = logging.getLogger(__name__)
 
 
-class RecordingRepository:
-    def __init__(self, database: Any) -> None:
-        self.database = database
-
-    @property
-    def client(self) -> Any:
-        return self.database.client
-
+class RecordingRepository(TableRepository):
     def create_recording(self, data: dict):
         """Create a recording record"""
         result = self.client.table("recordings")\

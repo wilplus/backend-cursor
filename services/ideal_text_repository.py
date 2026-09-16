@@ -17,17 +17,12 @@ from typing import Any, Dict, List, Optional  # noqa: F401
 
 import sentry_sdk  # noqa: F401
 
+from services.table_repository import TableRepository
+
 logger = logging.getLogger(__name__)
 
 
-class IdealTextRepository:
-    def __init__(self, database: Any) -> None:
-        self.database = database
-
-    @property
-    def client(self) -> Any:
-        return self.database.client
-
+class IdealTextRepository(TableRepository):
     def get_coach_arc_ideal_text(self, arc_id: Optional[str]) -> Optional[dict]:
         """The coach's one-block ideal text row for an arc, or None (no row /
         missing table / error → the caller falls back to the auto draft)."""

@@ -36,6 +36,7 @@ import logging
 import mimetypes
 from typing import Any, Optional
 
+from services.r2_client import build_r2_client, clamp_ttl
 
 logger = logging.getLogger(__name__)
 
@@ -146,24 +147,12 @@ def _client():
     global _s3_client
     if _s3_client is not None:
         return _s3_client
-    import boto3
-    from botocore.config import Config as BotoConfig
-
-    c = _config()
-    account = (c.R2_ACCOUNT_ID or "").strip()
-    _s3_client = boto3.client(
-        "s3",
-        endpoint_url=f"https://{account}.r2.cloudflarestorage.com",
-        aws_access_key_id=(c.R2_ACCESS_KEY_ID or "").strip(),
-        aws_secret_access_key=(c.R2_SECRET_ACCESS_KEY or "").strip(),
-        config=BotoConfig(signature_version="s3v4"),
-        region_name="auto",
-    )
+    _s3_client = build_r2_client(_config())
     return _s3_client
 
 
 def _clamp_ttl(expires_in: int) -> int:
-    return max(60, min(int(expires_in), 604800))
+    return clamp_ttl(expires_in)
 
 
 def put_user_media_bytes(
