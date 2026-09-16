@@ -54,7 +54,7 @@ dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confi
 09ac4873e142bd68c682abaf28acb15e4fb0a445aab749ad8b28b47020b1df22  services/data_purge.py
 5ff3880f55da07671775de92e279e13e0dca96b615329632b6d6cd88096cbbb9  services/data_purge_registry.py
 ab25afecab235eabf97488fa5bf954698d0660bad932dcbb6cdfe1e7105ad069  services/db.py
-b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedback_data_contract.py
+b3a4984d1d63c79810b6cbc3f6d278e5209950ef1d7027292fbc5f16aef98e94  services/feedback_data_contract.py
 35955687744b693dfb26fe79b79767c54c3a851dabfba4c015790c4537c459c7  services/feedback_language.py
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
 588e9a03b11dfa6ff1f92e8535f4f45a3eb0032c52081ba4579a2d7e855c73a3  services/mlc3_first_client_feedback.py
@@ -572,5 +572,38 @@ green, plus the other 9 test files referencing this module (166 passed,
 tier), then `scripts/local_ci.sh --no-setup` green in full including the
 PostgreSQL rehearsal tier (required — this file sits on the Confident
 Moment MLC-3 chain).
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-16 — services/feedback_data_contract.py complexity fix
+
+`build_feedback_exposure_bundle` (CC 85, the canonical dual-write builder
+for one Take's Feedback exposure/candidate-set transaction) decomposed
+into 8 helpers: `_valid_feedback_bundle_identity`,
+`_valid_feedback_bundle_keys`, `_feedback_candidate_machine_prediction`,
+`_feedback_candidate_acoustic_snapshot`, `_canonical_feedback_candidate`,
+`_valid_feedback_bundle_selection`, `_feedback_bundle_generation_runs`.
+Pure decomposition, no dead code — every branch was live. Each helper is
+a verbatim extraction of one contiguous block; the per-candidate loop's
+`continue` (skip a malformed raw candidate, keep processing the rest)
+becomes `_canonical_feedback_candidate` returning `None` for the caller
+to skip, exactly the same skip semantics. Final CC: orchestrator 17,
+helpers ≤17.
+
+`(services/take_feedback_policy_v3_service.py:prepare_v3_service_inventory`,
+CC 74, is not itself pinned in this manifest but was fixed in the same
+PR — see its own module docstring/tests for that half.)
+
+- `scripts/complexity_baseline.json` — re-frozen: both target entries
+  (`build_feedback_exposure_bundle` and
+  `take_feedback_policy_v3_service.py:prepare_v3_service_inventory`)
+  drop out entirely (no longer need grandfathering); no other entries
+  changed.
+
+Verified by execution: `tests/test_feedback_data_contract.py` and
+`tests/test_mlc3_first_client_feedback.py` (11 tests covering both
+touched files) green, `tests/test_route_fence.py` unaffected, then
+`scripts/local_ci.sh --no-setup` green in full (rehearsal tier not
+required — no migration or MLC-3 storage path changed).
 
 Every other entry is untouched.
