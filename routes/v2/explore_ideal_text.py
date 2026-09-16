@@ -2490,6 +2490,208 @@ def _legacy_user_edit_via_cas(arc_id, body, text, version):
                     "version": current}), 200
 
 
+def _validate_cas_pair_and_key(body):
+    """CAS-mode expected_user_text_revision/sha256 pair + idempotency_key.
+
+    Returns (expected_revision, expected_hash, operation_key, error) where
+    ``error`` is a Flask error tuple, or None when the body validates."""
+    expected_revision = None
+    raw_revision = body.get("expected_user_text_revision")
+    expected_hash = body.get("expected_user_text_sha256")
+    if raw_revision is not None:
+        if not isinstance(raw_revision, str) or not re.fullmatch(
+            r"[1-9][0-9]*", raw_revision
+        ):
+            return None, None, None, (jsonify({
+                "code": "INVALID_INPUT",
+                "error": "revision must be a bigint string"}), 400)
+        expected_revision = int(raw_revision)
+        if expected_revision > 9223372036854775807:
+            return None, None, None, (jsonify({
+                "code": "INVALID_INPUT",
+                "error": "revision exceeds bigint"}), 400)
+    if (expected_revision is None) is not (expected_hash is None):
+        return None, None, None, (jsonify({
+            "code": "INVALID_INPUT", "error": "CAS pair invalid"}), 400)
+    if expected_hash is not None and (
+        not isinstance(expected_hash, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)
+    ):
+        return None, None, None, (jsonify({
+            "code": "INVALID_INPUT", "error": "hash invalid"}), 400)
+    operation_key = body.get("idempotency_key")
+    if not isinstance(operation_key, str) or not operation_key.strip() or len(operation_key) > 200:
+        return None, None, None, (jsonify({
+            "code": "INVALID_INPUT",
+            "error": "idempotency_key invalid"}), 400)
+    return expected_revision, expected_hash, operation_key, None
+
+
+def _valid_part_id(value):
+    """Is ``value`` a canonical (lowercase, unpadded) UUID string?"""
+    try:
+        return str(uuid.UUID(value)) == value
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def _validate_expected_part_rows(expected_parts):
+    """One row per expected_parts entry: shape, part_id, lock/hash state,
+    and its optional revision head. Returns a Flask error tuple, or None
+    when every row validates."""
+    for position, row in enumerate(expected_parts):
+        if not isinstance(row, dict) or set(row) != {
+            "position", "part_id", "text_sha256", "locked",
+            "current_part_revision_id",
+        } or row.get("position") != position:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "expected part invalid"}), 400
+        if not _valid_part_id(row.get("part_id")):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "part_id invalid"}), 400
+        if not isinstance(row.get("locked"), bool) or not isinstance(row.get("text_sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", row["text_sha256"]):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "expected part state invalid"}), 400
+        head = row.get("current_part_revision_id")
+        if head is not None and (
+            not isinstance(head, str) or not re.fullmatch(r"[1-9][0-9]*", head)
+        ):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "part revision invalid"}), 400
+    return None
+
+
+def _validate_desired_part_rows(desired_parts):
+    """One row per desired_parts entry: shape and part_id. Returns a
+    Flask error tuple, or None when every row validates."""
+    for position, row in enumerate(desired_parts):
+        if not isinstance(row, dict) or set(row) != {
+            "position", "part_id", "text",
+        } or row.get("position") != position or not isinstance(row.get("text"), str):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "desired part invalid"}), 400
+        if not _valid_part_id(row.get("part_id")):
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "part_id invalid"}), 400
+    return None
+
+
+def _validate_current_edit_parts_lineage(parts_lineage):
+    """CAS-mode parts lineage shape (expected_parts/desired_parts row
+    validation). Returns a Flask error tuple, or None when valid."""
+    if not isinstance(parts_lineage, dict) or set(parts_lineage) != {
+        "expected_parts", "desired_parts",
+    }:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "parts lineage invalid"}), 400
+    expected_parts = parts_lineage.get("expected_parts")
+    desired_parts = parts_lineage.get("desired_parts")
+    if not isinstance(expected_parts, list) or not isinstance(desired_parts, list):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "parts arrays required"}), 400
+    error = _validate_expected_part_rows(expected_parts)
+    if error is not None:
+        return error
+    error = _validate_desired_part_rows(desired_parts)
+    if error is not None:
+        return error
+    if len({row["part_id"] for row in expected_parts}) != len(expected_parts) or len({row["part_id"] for row in desired_parts}) != len(desired_parts):
+        return jsonify({"code": "INVALID_INPUT", "error": "duplicate part"}), 400
+    return None
+
+
+def _validate_cas_response_envelope(result, arc_id, version, is_current,
+                                    expected_revision):
+    """The CAS RPC's top-level response contract. Raises TypeError on any
+    violation; returns nothing when valid."""
+    if not isinstance(result, dict):
+        raise TypeError("invalid Ideal Text CAS response")
+    required = {
+        "ideal_text_user_edit_contract_version", "saved", "arc_id",
+        "source_document_version", "previous_user_text_revision",
+        "result_user_text_revision", "result_user_text_sha256",
+        "desired_parts_lineage_sha256", "part_revisions", "dataset_eligible",
+    }
+    if set(result) != required or result.get("ideal_text_user_edit_contract_version") != "ideal-text-user-edit-cas-v2" or result.get("saved") is not True or result.get("arc_id") != str(arc_id) or result.get("dataset_eligible") is not False:
+        raise TypeError("invalid Ideal Text CAS response shape")
+    if result.get("source_document_version") != version:
+        raise TypeError("invalid Ideal Text CAS source version")
+    for field in ("result_user_text_revision",):
+        if not isinstance(result.get(field), str) or not re.fullmatch(r"[1-9][0-9]*", result[field]) or int(result[field]) > 9223372036854775807:
+            raise TypeError("invalid Ideal Text CAS bigint")
+    if result.get("previous_user_text_revision") is not None and (
+        not isinstance(result["previous_user_text_revision"], str)
+        or not re.fullmatch(r"[1-9][0-9]*", result["previous_user_text_revision"])
+        or int(result["previous_user_text_revision"]) > 9223372036854775807
+    ):
+        raise TypeError("invalid previous Ideal Text CAS bigint")
+    expected_wire_revision = (
+        None if expected_revision is None else str(expected_revision)
+    )
+    if is_current and result.get(
+        "previous_user_text_revision"
+    ) != expected_wire_revision:
+        raise TypeError("Ideal Text CAS previous revision mismatch")
+    for field in ("result_user_text_sha256", "desired_parts_lineage_sha256"):
+        if not isinstance(result.get(field), str) or not re.fullmatch(
+            r"[0-9a-f]{64}", result[field]
+        ):
+            raise TypeError("invalid Ideal Text CAS hash")
+
+
+def _validate_part_revision_ordering(part_revisions):
+    """Every returned part revision names a real action against a unique
+    part, with positions consistent with that action and a strictly
+    increasing removed-last/position/part_id order. Raises TypeError on
+    any violation; returns nothing when valid."""
+    allowed_actions = {
+        "owner_part_created", "owner_part_text_updated",
+        "owner_part_reordered", "owner_part_text_updated_and_reordered",
+        "owner_part_removed",
+    }
+    seen_parts = set()
+    prior_order = None
+    for row in part_revisions:
+        if not isinstance(row, dict) or set(row) != {
+            "part_id", "revision_id", "action", "previous_position",
+            "result_position",
+        }:
+            raise TypeError("invalid part revision shape")
+        try:
+            part_id = str(uuid.UUID(row.get("part_id")))
+        except (TypeError, ValueError, AttributeError) as error:
+            raise TypeError("invalid part revision identity") from error
+        if part_id != row.get("part_id") or part_id in seen_parts:
+            raise TypeError("invalid part revision identity")
+        seen_parts.add(part_id)
+        revision_id = row.get("revision_id")
+        if not isinstance(revision_id, str) or not re.fullmatch(
+            r"[1-9][0-9]*", revision_id
+        ) or int(revision_id) > 9223372036854775807:
+            raise TypeError("invalid part revision bigint")
+        action = row.get("action")
+        previous_position = row.get("previous_position")
+        result_position = row.get("result_position")
+        if action not in allowed_actions:
+            raise TypeError("invalid part revision action")
+        if action == "owner_part_created":
+            valid_positions = previous_position is None and type(result_position) is int and result_position >= 0
+        elif action == "owner_part_removed":
+            valid_positions = result_position is None and type(previous_position) is int and previous_position >= 0
+        else:
+            valid_positions = type(previous_position) is int and previous_position >= 0 and type(result_position) is int and result_position >= 0
+        if not valid_positions:
+            raise TypeError("invalid part revision positions")
+        order = (
+            1 if action == "owner_part_removed" else 0,
+            previous_position if result_position is None else result_position,
+            uuid.UUID(part_id).bytes,
+        )
+        if prior_order is not None and order <= prior_order:
+            raise TypeError("invalid part revision order")
+        prior_order = order
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/user-edit", methods=["PUT"])
 @require_auth
 def v2_explore_put_ideal_user_edit(arc_id):
@@ -2512,10 +2714,9 @@ def v2_explore_put_ideal_user_edit(arc_id):
         owned, _sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        # D22-D24: this endpoint is now one database-owned text/parts/revision
-        # transaction.  The historical implementation remains below only as
-        # context during this unnumbered migration and is unreachable; no
-        # direct owner-lane or post-RPC part write is performed.
+        # D22-D24: this endpoint is one database-owned text/parts/revision
+        # transaction; no direct owner-lane or post-RPC part write happens
+        # here.
         body = request.get_json(silent=True) or {}
         if not isinstance(body, dict):
             return jsonify({"code": "INVALID_INPUT", "error": "object required"}), 400
@@ -2566,64 +2767,13 @@ def v2_explore_put_ideal_user_edit(arc_id):
         operation_key = None
         parts_lineage = body.get("parts")
         if is_current:
-            raw_revision = body.get("expected_user_text_revision")
-            expected_hash = body.get("expected_user_text_sha256")
-            if raw_revision is not None:
-                if not isinstance(raw_revision, str) or not re.fullmatch(
-                    r"[1-9][0-9]*", raw_revision
-                ):
-                    return jsonify({"code": "INVALID_INPUT", "error": "revision must be a bigint string"}), 400
-                expected_revision = int(raw_revision)
-                if expected_revision > 9223372036854775807:
-                    return jsonify({"code": "INVALID_INPUT", "error": "revision exceeds bigint"}), 400
-            if (expected_revision is None) is not (expected_hash is None):
-                return jsonify({"code": "INVALID_INPUT", "error": "CAS pair invalid"}), 400
-            if expected_hash is not None and (
-                not isinstance(expected_hash, str)
-                or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)
-            ):
-                return jsonify({"code": "INVALID_INPUT", "error": "hash invalid"}), 400
-            operation_key = body.get("idempotency_key")
-            if not isinstance(operation_key, str) or not operation_key.strip() or len(operation_key) > 200:
-                return jsonify({"code": "INVALID_INPUT", "error": "idempotency_key invalid"}), 400
-            if not isinstance(parts_lineage, dict) or set(parts_lineage) != {
-                "expected_parts", "desired_parts",
-            }:
-                return jsonify({"code": "INVALID_INPUT", "error": "parts lineage invalid"}), 400
-            expected_parts = parts_lineage.get("expected_parts")
-            desired_parts = parts_lineage.get("desired_parts")
-            if not isinstance(expected_parts, list) or not isinstance(desired_parts, list):
-                return jsonify({"code": "INVALID_INPUT", "error": "parts arrays required"}), 400
-            for position, row in enumerate(expected_parts):
-                if not isinstance(row, dict) or set(row) != {
-                    "position", "part_id", "text_sha256", "locked",
-                    "current_part_revision_id",
-                } or row.get("position") != position:
-                    return jsonify({"code": "INVALID_INPUT", "error": "expected part invalid"}), 400
-                try:
-                    if str(uuid.UUID(row.get("part_id"))) != row.get("part_id"):
-                        raise ValueError
-                except (TypeError, ValueError, AttributeError):
-                    return jsonify({"code": "INVALID_INPUT", "error": "part_id invalid"}), 400
-                if not isinstance(row.get("locked"), bool) or not isinstance(row.get("text_sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", row["text_sha256"]):
-                    return jsonify({"code": "INVALID_INPUT", "error": "expected part state invalid"}), 400
-                head = row.get("current_part_revision_id")
-                if head is not None and (
-                    not isinstance(head, str) or not re.fullmatch(r"[1-9][0-9]*", head)
-                ):
-                    return jsonify({"code": "INVALID_INPUT", "error": "part revision invalid"}), 400
-            for position, row in enumerate(desired_parts):
-                if not isinstance(row, dict) or set(row) != {
-                    "position", "part_id", "text",
-                } or row.get("position") != position or not isinstance(row.get("text"), str):
-                    return jsonify({"code": "INVALID_INPUT", "error": "desired part invalid"}), 400
-                try:
-                    if str(uuid.UUID(row.get("part_id"))) != row.get("part_id"):
-                        raise ValueError
-                except (TypeError, ValueError, AttributeError):
-                    return jsonify({"code": "INVALID_INPUT", "error": "part_id invalid"}), 400
-            if len({row["part_id"] for row in expected_parts}) != len(expected_parts) or len({row["part_id"] for row in desired_parts}) != len(desired_parts):
-                return jsonify({"code": "INVALID_INPUT", "error": "duplicate part"}), 400
+            expected_revision, expected_hash, operation_key, cas_error = (
+                _validate_cas_pair_and_key(body))
+            if cas_error is not None:
+                return cas_error
+            parts_error = _validate_current_edit_parts_lineage(parts_lineage)
+            if parts_error is not None:
+                return parts_error
         elif parts_lineage is not None and not isinstance(parts_lineage, list):
             return jsonify({"code": "INVALID_INPUT", "error": "legacy parts invalid"}), 400
 
@@ -2642,254 +2792,16 @@ def v2_explore_put_ideal_user_edit(arc_id):
             if code.startswith("IDEAL_TEXT_"):
                 return jsonify({"code": code}), 409
             raise
-        if not isinstance(result, dict):
-            raise TypeError("invalid Ideal Text CAS response")
-        required = {
-            "ideal_text_user_edit_contract_version", "saved", "arc_id",
-            "source_document_version", "previous_user_text_revision",
-            "result_user_text_revision", "result_user_text_sha256",
-            "desired_parts_lineage_sha256", "part_revisions", "dataset_eligible",
-        }
-        if set(result) != required or result.get("ideal_text_user_edit_contract_version") != "ideal-text-user-edit-cas-v2" or result.get("saved") is not True or result.get("arc_id") != str(arc_id) or result.get("dataset_eligible") is not False:
-            raise TypeError("invalid Ideal Text CAS response shape")
-        if result.get("source_document_version") != _v:
-            raise TypeError("invalid Ideal Text CAS source version")
-        for field in ("result_user_text_revision",):
-            if not isinstance(result.get(field), str) or not re.fullmatch(r"[1-9][0-9]*", result[field]) or int(result[field]) > 9223372036854775807:
-                raise TypeError("invalid Ideal Text CAS bigint")
-        if result.get("previous_user_text_revision") is not None and (
-            not isinstance(result["previous_user_text_revision"], str)
-            or not re.fullmatch(r"[1-9][0-9]*", result["previous_user_text_revision"])
-            or int(result["previous_user_text_revision"]) > 9223372036854775807
-        ):
-            raise TypeError("invalid previous Ideal Text CAS bigint")
-        expected_wire_revision = (
-            None if expected_revision is None else str(expected_revision)
-        )
-        if is_current and result.get(
-            "previous_user_text_revision"
-        ) != expected_wire_revision:
-            raise TypeError("Ideal Text CAS previous revision mismatch")
-        for field in ("result_user_text_sha256", "desired_parts_lineage_sha256"):
-            if not isinstance(result.get(field), str) or not re.fullmatch(
-                r"[0-9a-f]{64}", result[field]
-            ):
-                raise TypeError("invalid Ideal Text CAS hash")
+        _validate_cas_response_envelope(result, arc_id, _v, is_current,
+                                        expected_revision)
         part_revisions = result.get("part_revisions")
         if not isinstance(part_revisions, list):
             raise TypeError("invalid part revision inventory")
-        allowed_actions = {
-            "owner_part_created", "owner_part_text_updated",
-            "owner_part_reordered", "owner_part_text_updated_and_reordered",
-            "owner_part_removed",
-        }
-        seen_parts = set()
-        prior_order = None
-        for row in part_revisions:
-            if not isinstance(row, dict) or set(row) != {
-                "part_id", "revision_id", "action", "previous_position",
-                "result_position",
-            }:
-                raise TypeError("invalid part revision shape")
-            try:
-                part_id = str(uuid.UUID(row.get("part_id")))
-            except (TypeError, ValueError, AttributeError) as error:
-                raise TypeError("invalid part revision identity") from error
-            if part_id != row.get("part_id") or part_id in seen_parts:
-                raise TypeError("invalid part revision identity")
-            seen_parts.add(part_id)
-            revision_id = row.get("revision_id")
-            if not isinstance(revision_id, str) or not re.fullmatch(
-                r"[1-9][0-9]*", revision_id
-            ) or int(revision_id) > 9223372036854775807:
-                raise TypeError("invalid part revision bigint")
-            action = row.get("action")
-            previous_position = row.get("previous_position")
-            result_position = row.get("result_position")
-            if action not in allowed_actions:
-                raise TypeError("invalid part revision action")
-            if action == "owner_part_created":
-                valid_positions = previous_position is None and type(result_position) is int and result_position >= 0
-            elif action == "owner_part_removed":
-                valid_positions = result_position is None and type(previous_position) is int and previous_position >= 0
-            else:
-                valid_positions = type(previous_position) is int and previous_position >= 0 and type(result_position) is int and result_position >= 0
-            if not valid_positions:
-                raise TypeError("invalid part revision positions")
-            order = (
-                1 if action == "owner_part_removed" else 0,
-                previous_position if result_position is None else result_position,
-                uuid.UUID(part_id).bytes,
-            )
-            if prior_order is not None and order <= prior_order:
-                raise TypeError("invalid part revision order")
-            prior_order = order
+        _validate_part_revision_ordering(part_revisions)
         if body.get("reapplied") is True:
             logger.info("ideal_edit.reapplied arc=%s version=%s chars=%d", arc_id, _v, len(text))
         _publish_ideal_text_core(arc_id, str(request.user_id))
         return jsonify(result), 200
-
-        # Retained historical context below is unreachable during the pending
-        # migration and will be removed when the numbered release is cut.
-
-        # ── PARTS (SPEC-parts-locking-and-layers §3.1, Step 0). OPTIONAL: an
-        # absent key is today's behaviour byte for byte. Present, it carries
-        # the document's IDENTITY — the stable ids a lock will hang on in
-        # PR 3 — and `text` must be its join.
-        #
-        # REFUSED, NEVER REPAIRED, and never accepted in part. Storing parts
-        # that disagree with the stored text would leave an identity map
-        # pointing at words the student is not looking at, and a lock set
-        # against it would guard the wrong paragraph. That is unrecoverable
-        # once written, because a wrong anchor is indistinguishable from a
-        # right one afterwards — the same argument that refuses a mis-pointed
-        # tracked change (#219) rather than nudging it into place.
-        #
-        # Each part is stripped with the SAME expression as `text`, on the
-        # adjacent line, because the two must survive identically or the join
-        # check fails on a document that is actually fine. ──
-        _parts = None
-        if "parts" in body:
-            from services.ideal_text_parts import (
-                InvalidParts, agrees_with_text, validate,
-            )
-            _raw = body.get("parts")
-            if isinstance(_raw, list):
-                _raw = [
-                    {**p, "text": re.sub(r"<[^>]*>", "", p.get("text"))}
-                    if isinstance(p, dict) and isinstance(p.get("text"), str)
-                    else p
-                    for p in _raw
-                ]
-            try:
-                _parts = validate(_raw)
-            except InvalidParts as e:
-                return jsonify({"code": "INVALID_INPUT",
-                                "error": str(e)}), 400
-            if not agrees_with_text(_parts, text):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "parts do not join to text",
-                }), 400
-
-        # The current version — the edit only sticks against it. A newer
-        # version having assembled since → 409 so the FE refetches + re-offers.
-        _row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
-        _machine = ((_row.get("auto_text") or "").strip()
-                    or ((_row.get("text") or "").strip()
-                        if not (_row.get("updated_by")
-                                or _row.get("approved_at")) else ""))
-        current = _row.get("version") or (1 if _machine else None)
-        if not isinstance(current, int):
-            return jsonify({"code": "NOTHING_TO_EDIT",
-                            "error": "No ideal text to edit yet."}), 409
-        if _v != current:
-            return jsonify({
-                "code": "VERSION_SUPERSEDED",
-                "current_version": current,
-            }), 409
-
-        ok = False  # retired D21 direct owner-lane writer
-        if not ok:
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not save"}), 500
-        # Identity follows the words, and only AFTER they landed. Writing
-        # parts first would leave ids for a document that failed to save.
-        # Best-effort in the other direction: the words are what matter, so a
-        # parts write that fails does not fail the edit — the GET then omits
-        # the key, the FE re-mints, and the next save stores them.
-        #
-        # EXPLICIT VERSION STATE (founder 2026-08-26): editing and locking are
-        # separate. A current client sends `locked` on every Paragraph; false
-        # reopens the same identity after its words change, true preserves the
-        # original commit timestamp. Older clients omit the field, so omission
-        # preserves the stored lock instead of silently changing it. The whole
-        # write is version-gated above, preventing stale state from reopening a
-        # newer document.
-        if _parts is not None:
-            try:
-                _prev_lk = {
-                    str(r.get("id")): r.get("locked_at")
-                    for r in (db.get_ideal_text_parts(
-                        arc_id, str(request.user_id), with_lock=True) or [])
-                    if isinstance(r, dict) and r.get("locked_at")}
-            except Exception:
-                _prev_lk = {}
-            _rows = []
-            for p in _parts:
-                _previous_lock = _prev_lk.get(p["id"])
-                if "locked" not in p:
-                    _locked_at = _previous_lock
-                elif p.get("locked"):
-                    _locked_at = (_previous_lock
-                                  or datetime.now(timezone.utc).isoformat())
-                else:
-                    _locked_at = None
-                _rows.append({**p, "locked_at": _locked_at})
-            if False:  # retired D22 post-RPC parts writer
-                logger.warning("ideal parts not stored arc=%s", arc_id)
-        # RE-APPLY TELEMETRY (founder 2026-07-28): one log line per
-        # successful one-click re-apply of a superseded edit — the
-        # decision metric for the PARKED versioning change (how often do
-        # users re-apply an addition a new take dropped?). Log-only:
-        # never persisted, never surfaced; only boolean true counts.
-        if body.get("reapplied") is True:
-            logger.info("ideal_edit.reapplied arc=%s version=%s chars=%d",
-                        arc_id, current, len(text))
-        # ── EDIT INHERITANCE (founder 2026-07-20, rule 4b): decompose the
-        # edit into phrase decisions on the ledger (source='user_edit',
-        # approved) so the NEXT version bakes the student's wording
-        # forward — their edit is never reversed by a new take. The base
-        # is the version's served base (verified snapshot when current,
-        # else the machine copy); a wholesale rewrite decomposes to
-        # nothing and simply stays the wholesale edit. Best-effort. ──
-        try:
-            _vv = _row.get("verified_version")
-            _vtext = (_row.get("verified_text") or "").strip()
-            _base = _vtext if (_vv == current and _vtext) else _machine
-            if _base:
-                from services.protected_phrases import (
-                    record_user_edit_decisions,
-                )
-                record_user_edit_decisions(
-                    db, arc_id, base_text=_base, user_text=text,
-                    version=current)
-        except Exception as _led_err:
-            logger.warning("ideal user-edit: ledger failed arc=%s: %s",
-                           arc_id, _led_err)
-        # ── VARIANT CAPTURE (founder 2026-08-03, fear #1): under the
-        # master model the edit ALSO lands BLOCK-LEVEL in the variant
-        # pool (source='user_edit') — a first-class picker citizen a new
-        # take can never supersede, beside the whole-blob lane above.
-        # Only when the base the student edited against IS the master
-        # text (a verified snapshot that diverged would make the diff
-        # attribute coach changes to the student). Best-effort. ──
-        try:
-            from services.master_document import (
-                assemble_master_document, master_document_enabled,
-            )
-            if master_document_enabled():
-                _m = assemble_master_document(arc_id, database=db)
-                _mtext = (_m.get("text") or "")
-                _vbase = ((_row.get("verified_text") or "").strip()
-                          if _row.get("verified_version") == current
-                          else "") or _machine
-                if _m.get("ready") and _mtext and _vbase and \
-                        re.sub(r"\s+", " ", _mtext).strip().lower() == \
-                        re.sub(r"\s+", " ", _vbase).strip().lower():
-                    from services.ideal_text_variants import (
-                        capture_user_edit_variants,
-                    )
-                    capture_user_edit_variants(
-                        db, str(arc_id), str(request.user_id), _mtext,
-                        ((_m.get("document") or {}).get("pieces") or []),
-                        text)
-        except Exception as _var_err:
-            logger.warning("ideal user-edit: variant capture failed "
-                           "arc=%s: %s", arc_id, _var_err)
-        _publish_ideal_text_core(arc_id, str(request.user_id))
-        return jsonify({"saved": True, "arc_id": arc_id,
-                        "version": current}), 200
     except Exception as e:
         logger.error("ideal user-edit PUT failed arc=%s: %s", arc_id, e,
                      exc_info=True)
