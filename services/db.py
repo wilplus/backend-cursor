@@ -1390,6 +1390,32 @@ class DatabaseService:
                            payload.get("id"), e)
             return None
 
+    def get_project_owner_principal(self, project_id: str) -> str:
+        """The project's owner principal — the AUTHORITATIVE one.
+
+        projects.owner_principal_id is NOT NULL, so a project always has one.
+        v2_sessions.owner_principal_id is a nullable denormalised copy and is
+        absent on most rows, which is why anything needing a take's owner must
+        be able to fall back here rather than trusting the copy. The recording
+        path has always resolved from the project (routes/v2/lab_recording.py
+        passes upload.project.principal.id); this lets the practice path read
+        the same source.
+
+        Deliberately NOT get_project_for_owner: that one takes the owner as an
+        argument, which is the answer, not the question."""
+        if not project_id:
+            return ""
+        try:
+            result = (self.client.table("projects")
+                      .select("owner_principal_id")
+                      .eq("id", str(project_id)).limit(1).execute())
+            row = (result.data or [None])[0]
+            return str((row or {}).get("owner_principal_id") or "")
+        except Exception as e:
+            logger.warning("get_project_owner_principal failed project=%s: %s",
+                           project_id, e)
+            return ""
+
     def get_project_for_owner(
         self, project_id: str, owner_principal_id: str,
     ) -> Optional[dict]:
