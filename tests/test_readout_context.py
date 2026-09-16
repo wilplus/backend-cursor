@@ -38,8 +38,8 @@ class ReadoutContextTests(unittest.TestCase):
 
     def _database(self, context=None, transcripts=None):
         database = MagicMock()
-        database.get_session_intake_context.return_value = context or {}
-        database.get_session_slide_transcripts.return_value = transcripts
+        database.takes.get_session_intake_context.return_value = context or {}
+        database.takes.get_session_slide_transcripts.return_value = transcripts
         return database
 
     def test_canonical_pieces_are_deduplicated_and_outrank_context_chunks(self):
@@ -193,8 +193,8 @@ class ReadoutContextTests(unittest.TestCase):
 
     def test_context_lookup_failure_is_non_fatal(self):
         database = self._database()
-        database.get_session_intake_context.side_effect = RuntimeError("down")
-        database.get_session_slide_transcripts.side_effect = RuntimeError("down")
+        database.takes.get_session_intake_context.side_effect = RuntimeError("down")
+        database.takes.get_session_slide_transcripts.side_effect = RuntimeError("down")
         result = {}
 
         attach_readout_context(

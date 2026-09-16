@@ -260,8 +260,8 @@ class UserReadoutFenceTests(unittest.TestCase):
         from services.db import db
         with patch.object(db, "get_snippets_by_session", return_value=rows), \
              patch.object(db, "v2_get_session_by_id", return_value={}), \
-             patch.object(db, "get_session_intake_context", return_value={}), \
-             patch.object(db, "get_session_slide_transcripts",
+             patch.object(db.takes, "get_session_intake_context", return_value={}), \
+             patch.object(db.takes, "get_session_slide_transcripts",
                           return_value=None), \
              patch.object(db, "get_user_transcript_edits", return_value=[]), \
              patch.object(db, "get_suggestion_feedback_by_session",

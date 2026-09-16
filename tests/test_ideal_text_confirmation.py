@@ -177,7 +177,7 @@ class IdealTextConfirmationTests(unittest.TestCase):
 
     def test_terminal_state_and_card_are_take_one_only(self):
         database = Mock()
-        database.set_session_analysis_state.return_value = True
+        database.takes.set_session_analysis_state.return_value = True
         with patch(
             "services.arc_notifications.fire_ideal_text_unconfirmed"
         ) as fire:
@@ -189,7 +189,7 @@ class IdealTextConfirmationTests(unittest.TestCase):
                 take_index=1,
                 error="timed out",
             ))
-        database.set_session_analysis_state.assert_called_once_with(
+        database.takes.set_session_analysis_state.assert_called_once_with(
             SID,
             confirmation.FAILED_IDEAL_TEXT_UNCONFIRMED,
             "timed out",
@@ -205,14 +205,14 @@ class IdealTextConfirmationTests(unittest.TestCase):
             arc_id="arc-1",
             take_index=2,
         ))
-        database.set_session_analysis_state.assert_not_called()
+        database.takes.set_session_analysis_state.assert_not_called()
 
 
 class IdealTextRetryJobTests(unittest.TestCase):
     def test_retry_job_payload_has_no_audio_or_transcription_inputs(self):
         database = Mock()
         database.create_processing_job.return_value = {"id": "job-1"}
-        database.set_session_analysis_state.return_value = True
+        database.takes.set_session_analysis_state.return_value = True
         with patch.object(pipeline_jobs, "db", database), patch.object(
             pipeline_jobs.job_queue, "queue_configured", return_value=True
         ), patch.object(

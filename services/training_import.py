@@ -337,7 +337,7 @@ def prepare_training_import(
         session_context["duration_sec"] = round(duration_sec, 1)
     try:
         database.takes.v2_create_internal_session(session_id)
-        database.set_session_intake_context(session_id, session_context)
+        database.takes.set_session_intake_context(session_id, session_context)
         # THE MARKER IS NOT OPTIONAL — fail loudly if it doesn't land.
         #
         # This silently returned False for every import until 2026-07-29:
@@ -370,7 +370,7 @@ def prepare_training_import(
         # The job state the FE polls (reuses the async-analysis lane the live
         # path already has: processing → ready | failed).
         try:
-            database.set_session_analysis_state(session_id, "processing")
+            database.takes.set_session_analysis_state(session_id, "processing")
         except Exception:
             pass
         try:
@@ -477,7 +477,7 @@ def run_training_import_analysis(
         logger.error("training_import: analysis failed for %s: %s",
                      filename, e, exc_info=True)
         try:
-            database.set_session_analysis_state(
+            database.takes.set_session_analysis_state(
                 session_id, "failed", error=str(e)[:400])
         except Exception:
             pass
@@ -500,7 +500,7 @@ def run_training_import_analysis(
         queue_ids = [str(p.get("id")) for p in picked if p.get("id")]
         records = selection_records(picked)
         if records:
-            database.set_session_intake_context(
+            database.takes.set_session_intake_context(
                 session_id, {
                     **session_context,
                     "label_queue_selection": records,
@@ -546,7 +546,7 @@ def run_training_import_analysis(
             filename, _reason, prepared.get("duration_sec"),
         )
         try:
-            database.set_session_analysis_state(
+            database.takes.set_session_analysis_state(
                 session_id, "failed", error=f"{_reason}: {_detail}")
         except Exception:
             pass
@@ -560,7 +560,7 @@ def run_training_import_analysis(
         }
 
     try:
-        database.set_session_analysis_state(session_id, "ready")
+        database.takes.set_session_analysis_state(session_id, "ready")
     except Exception:
         pass
 

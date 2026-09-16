@@ -7094,9 +7094,6 @@ class DatabaseService:
             },
         }
 
-    def set_session_analysis_state(self, *args, **kwargs):
-        return self.takes.set_session_analysis_state(*args, **kwargs)
-
     def persist_auto_ideal_text(self, arc_id: str, text: str,
                                 *, take_count: Optional[int] = None,
                                 document: Optional[dict] = None) -> bool:
@@ -12187,9 +12184,6 @@ class DatabaseService:
             )
             return []
 
-    def get_session_slide_transcripts(self, *args, **kwargs):
-        return self.takes.get_session_slide_transcripts(*args, **kwargs)
-
     # ── willab beta — user profile (design §2 / contract §3.1) ──────
     #
     # One-time self-declared {domain, goal} on user_settings (co-located
@@ -12637,12 +12631,6 @@ class DatabaseService:
     # ------------------------------------------------------------------
     # User settings (LLM instructions)
     # ------------------------------------------------------------------
-
-    def get_session_intake_context(self, *args, **kwargs):
-        return self.takes.get_session_intake_context(*args, **kwargs)
-
-    def set_session_intake_context(self, *args, **kwargs):
-        return self.takes.set_session_intake_context(*args, **kwargs)
 
     def get_user_settings(self, user_id: str) -> Optional[dict]:
         """Get user_settings row (custom LLM instructions, etc)."""

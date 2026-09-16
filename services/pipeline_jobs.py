@@ -362,7 +362,7 @@ def enqueue_ideal_text_retry_job(
             job_id, "failed", error="enqueue failed (broker unreachable)",
         )
         return None
-    db.set_session_analysis_state(str(session_id), "processing")
+    db.takes.set_session_analysis_state(str(session_id), "processing")
     return row
 
 
@@ -409,7 +409,7 @@ def retry_failed_session_job(session_id: str, user_id: str = "") -> Optional[dic
                 "sid=%s", session_id,
             )
         return None
-    db.set_session_analysis_state(str(session_id), "processing")
+    db.takes.set_session_analysis_state(str(session_id), "processing")
     return db.get_processing_job(job_id) or {**job, "status": "pending"}
 
 
@@ -481,7 +481,7 @@ def _fail_terminal(job: Dict[str, Any], error: str) -> None:
     sid = job.get("session_id")
     if sid:
         try:
-            db.set_session_analysis_state(str(sid), "failed", error)
+            db.takes.set_session_analysis_state(str(sid), "failed", error)
         except Exception as e:
             logger.warning("pipeline_jobs: analysis_state failed-write "
                            "sid=%s: %s", sid, e)
@@ -842,7 +842,7 @@ def run_processing_job(job_id: str) -> None:
             jid, "failed", error=f"Phase-1 job sync failed: {sync_error}",
         )
         if claimed.get("session_id"):
-            db.set_session_analysis_state(
+            db.takes.set_session_analysis_state(
                 str(claimed["session_id"]), "failed", str(sync_error),
             )
         return
@@ -867,7 +867,7 @@ def run_processing_job(job_id: str) -> None:
     # still gets the right state from here. Idempotent.
     if claimed.get("session_id"):
         try:
-            db.set_session_analysis_state(
+            db.takes.set_session_analysis_state(
                 str(claimed["session_id"]), "processing")
         except Exception as se:
             logger.warning("pipeline_jobs: processing-state write sid=%s: %s",
@@ -895,7 +895,7 @@ def run_processing_job(job_id: str) -> None:
                 )
         sid = claimed.get("session_id")
         if sid:
-            db.set_session_analysis_state(str(sid), "ready")
+            db.takes.set_session_analysis_state(str(sid), "ready")
         logger.info("pipeline_jobs: job %s completed (attempt %d)",
                     jid, claimed.get("attempts"))
     except IdealTextUnconfirmedError as ideal_err:
@@ -1068,7 +1068,7 @@ def sweep_orphaned_sessions(max_rows: int = 100) -> int:
         if not sid:
             continue
         try:
-            db.set_session_analysis_state(
+            db.takes.set_session_analysis_state(
                 sid, "failed",
                 "analysis was interrupted and could not be resumed — "
                 "please record again",

@@ -155,7 +155,7 @@ def mark_ideal_text_unconfirmed(
     ):
         return False
     detail = str(error or "Ideal Text was not confirmed")[:500]
-    state_written = bool(database.set_session_analysis_state(
+    state_written = bool(database.takes.set_session_analysis_state(
         str(session_id), FAILED_IDEAL_TEXT_UNCONFIRMED, detail,
     ))
     if user_id:

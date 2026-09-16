@@ -165,7 +165,7 @@ def persist_session_metadata(
 ) -> None:
     """Persist context, origin, duration, and owner."""
     session_context.update(flow_tags)
-    database.set_session_intake_context(session_id, session_context)
+    database.takes.set_session_intake_context(session_id, session_context)
     database.takes.set_session_source(session_id, "audit_upload")
     database.takes.set_session_presentation_duration(session_id, duration_seconds)
     if user_id:
