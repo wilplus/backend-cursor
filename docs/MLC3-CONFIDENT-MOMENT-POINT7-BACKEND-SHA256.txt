@@ -53,13 +53,13 @@ dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confi
 794c3d04c55016987c75dc9bdc7bab64ded34a14a7a6e3ee832b6b22f32b9568  services/confident_moment_user_media.py
 09ac4873e142bd68c682abaf28acb15e4fb0a445aab749ad8b28b47020b1df22  services/data_purge.py
 5ff3880f55da07671775de92e279e13e0dca96b615329632b6d6cd88096cbbb9  services/data_purge_registry.py
-ce9f254ccc1256f8b1ce722d1eeacfb76968acfaa8ef8faa2bfa06ca7332f302  services/db.py
+6db294b25955279bb964f02a4e4cd40deff3a78b70c06afb5fce6ecdd489fc33  services/db.py
 b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedback_data_contract.py
 35955687744b693dfb26fe79b79767c54c3a851dabfba4c015790c4537c459c7  services/feedback_language.py
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
 588e9a03b11dfa6ff1f92e8535f4f45a3eb0032c52081ba4579a2d7e855c73a3  services/mlc3_first_client_feedback.py
 a32a213e6d2dd0c20a0bc4d9daee5985802eee650334996268b9797225e61b10  services/mlc3_general_service_monitor.py
-07d39f109ec55b8db5eb59fa8d4358b0c2ec94b3c408ce375d2140fb887cbc33  services/pipeline_jobs.py
+016be24b04a8715fa57f88d4d19c9638535eb08cc6ccc4a563ae29bb13be25e3  services/pipeline_jobs.py
 969647d87ca6be07b395d3be3a70ba5a0b5dedb82a5d90159729ac19807ffe12  services/rooting_coverage.py
 9c62027810dde624befd20442b212ecbe1cf6d6e78455b517321b2ce37cd31bd  tests/test_acoustic_kpi.py
 601d7f1743f90575af0716fbd596bef3f699fac909805831562ca03d4a4aeeb9  tests/test_ideal_text_parts.py
@@ -182,3 +182,34 @@ Re-frozen by the same rule. The drift is one method:
 
 `services/confident_moment_bundle_repository.py`, migration 0327 and every
 other entry are untouched.
+
+## Re-freeze 2026-09-16 — post-audit glue cleanup, wrapper repointing (backend)
+
+Re-frozen by the same rule. Two pinned files drift, both zero-behavior-
+change cleanup: the audit's Q-A2 continuation, repointing `services/db.py`'s
+one-line pass-through wrappers at the F1 repositories they already
+delegate to, instead of keeping the forwarder.
+
+- `services/db.py` — the `create_recording`, `update_recording`,
+  `get_user_recordings`, `get_user_recording_history` and
+  `get_recording_attempt` forwarders are deleted. `update_recording` and
+  `get_user_recording_history` had zero callers anywhere (production,
+  scripts or tests) even before this change — both they and their
+  now-orphaned bodies in `services/recording_repository.py` are deleted
+  outright, not repointed. The other three had real callers, repointed
+  below.
+- `services/pipeline_jobs.py` — `db.get_recording_attempt(...)` becomes
+  `db.recordings.get_recording_attempt(...)`; the defensive
+  `getattr(db, "get_recording_attempt", None)` compatibility lookup in
+  `_has_canonical_attempt` now reads `getattr(getattr(db, "recordings",
+  None), "get_recording_attempt", None)`.
+- `routes/user.py`, `services/training_import.py`,
+  `services/lab_recording_persistence.py` — their `db.`/`database.` calls
+  now go through `.recordings.` directly (not pinned files; changed
+  alongside, not listed above).
+
+No table, migration, route, or response shape changes. Verified by
+execution: targeted tests for every touched file green, then the full
+gate.
+
+Every other entry is untouched.

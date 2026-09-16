@@ -84,7 +84,7 @@ def get_recordings():
         offset = request.args.get("offset", default=0, type=int)
         
         # Get recordings with pagination info
-        result = db.get_user_recordings(user_id, limit=limit, offset=offset)
+        result = db.recordings.get_user_recordings(user_id, limit=limit, offset=offset)
         
         # Return in format expected by frontend
         return jsonify({
