@@ -1802,9 +1802,9 @@ def v2_add_confident_voice_practice_attempt(practice_id):
                             "error": "That recording was too short. Try again."}), 422
         mime = (upload.mimetype or "audio/webm").split(";", 1)[0]
         ext = ".webm" if "webm" in mime else ".m4a" if "mp4" in mime else ".wav"
-        from services.snippet_transcription import transcribe_snippet_bytes
-        transcription = transcribe_snippet_bytes(
-            audio_bytes, hint_filename=f"practice{ext}")
+        from services.practice_transcription import transcribe_practice_attempt
+        transcription = transcribe_practice_attempt(
+            db, practice, audio_bytes, hint_filename=f"practice{ext}")
         if not transcription or not transcription.get("transcript"):
             return jsonify({"code": "TRANSCRIPTION_FAILED",
                             "error": "We couldn't hear that clearly. Try again."}), 422

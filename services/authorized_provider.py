@@ -151,6 +151,54 @@ class AuthorizedProviderAdapter:
             )
             raise
 
+    def transcribe_snippet(
+        self, audio_bytes: bytes, hint_filename: str, *,
+        language_hint: str | None = None,
+    ) -> dict | None:
+        """Permitted wrapper around the SNIPPET transcription contract.
+
+        Deliberately not ``transcribe_audio`` above, even though both end at
+        Whisper. That method normalizes each word to ``{word, start, end}``;
+        the snippet contract also carries the word's recognition
+        ``confidence``, and that field is read by the ``reduced_intelligibility``
+        signal and by the practice attempt comparison. Routing a snippet caller
+        through the general method would keep the permit and silently drop it:
+        the comparison would still render, with one of its inputs permanently
+        absent and nothing to say so.
+        """
+        permit = self.authorization.issue_provider_permit(
+            acquisition_principal_id=self.coordinates.acquisition_principal_id,
+            take_id=self.coordinates.take_id,
+            recording_id=self.coordinates.recording_id,
+            provider="openai",
+            operation_kind="transcription",
+            minimum_data_manifest={
+                "content": ["audio_bytes", "language_hint"],
+                "purpose": "transcription_feedback",
+            },
+            idempotency_key=(
+                f"openai:snippet-transcription:{self.coordinates.take_id}:"
+                f"{self.coordinates.recording_id}:{uuid.uuid4()}"
+            ),
+        )
+        permit_id = str((permit or {}).get("permit_id") or "") or None
+        self.authorization.record_provider_event(permit_id, "started")
+        try:
+            from services.snippet_transcription import transcribe_snippet_bytes
+
+            result = transcribe_snippet_bytes(
+                audio_bytes, hint_filename, language_hint=language_hint,
+            )
+        except Exception as error:
+            self.authorization.record_provider_event(
+                permit_id, "failed", error_code=type(error).__name__,
+            )
+            raise
+        self.authorization.record_provider_event(
+            permit_id, "completed", metadata={"result_kind": "transcription"},
+        )
+        return result
+
     def authorize_operation(
         self, operation_kind: str, *, manifest: Mapping[str, Any],
         idempotency_key: str,
