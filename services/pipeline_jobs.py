@@ -85,7 +85,8 @@ def _has_canonical_attempt(job: Dict[str, Any]) -> bool:
     # row.  Resolve those already-durable jobs against the database: a real
     # canary Attempt remains strict; a job with no Attempt resumes the legacy
     # product path.  New jobs never enter this compatibility branch.
-    getter = getattr(db, "get_recording_attempt", None)
+    recordings = getattr(db, "recordings", None)
+    getter = getattr(recordings, "get_recording_attempt", None)
     session_id = str(job.get("session_id") or payload.get("session_id") or "")
     if not session_id or not callable(getter):
         return False
@@ -335,7 +336,7 @@ def enqueue_ideal_text_retry_job(
         "arc_id": str(arc_id),
         "take_index": 1,
     }
-    canonical_attempt = db.get_recording_attempt(str(session_id))
+    canonical_attempt = db.recordings.get_recording_attempt(str(session_id))
     if (isinstance(canonical_attempt, dict)
             and canonical_attempt.get("id")):
         payload["lifecycle_contract_version"] = TAKE_LIFECYCLE_CONTRACT

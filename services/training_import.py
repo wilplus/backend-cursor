@@ -399,7 +399,7 @@ def prepare_training_import(
         ),
     }
     try:
-        database.create_recording(rec_payload)
+        database.recordings.create_recording(rec_payload)
     except Exception as ce:
         # Pre-migration envs lack recording_origin / source_metadata — the
         # import is still worth having, just without provenance columns.
@@ -412,7 +412,7 @@ def prepare_training_import(
                 "importing without them",
             )
             try:
-                database.create_recording({
+                database.recordings.create_recording({
                     k: v for k, v in rec_payload.items()
                     if k not in ("recording_origin", "source_metadata")
                 })

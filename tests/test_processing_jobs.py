@@ -174,6 +174,11 @@ class _FakeDb:
         self.snippet_deletes = []
         self.draft_deletes = []
         self.stale_rows = []
+        # audit Q-A1 step 2 / Q-A2: the real db.py routes this through the
+        # recordings repository now; tests set the lambda on the same path.
+        self.recordings = types.SimpleNamespace(
+            get_recording_attempt=lambda _sid: None,
+        )
 
     def get_processing_job(self, job_id):
         return self.job
@@ -302,7 +307,7 @@ class RunProcessingJobGuardTests(unittest.TestCase):
             pj.TAKE_LIFECYCLE_CONTRACT
         )
         fake_db = _FakeDb(job=job)
-        fake_db.get_recording_attempt = lambda _sid: None
+        fake_db.recordings.get_recording_attempt = lambda _sid: None
 
         db, _ = self._run(fake_db)
 
@@ -593,7 +598,7 @@ class EnqueueSessionRecordingJobTests(unittest.TestCase):
 
     def test_pre_hotfix_job_without_attempt_uses_legacy_path(self):
         fake_db = _FakeDb()
-        fake_db.get_recording_attempt = lambda _sid: None
+        fake_db.recordings.get_recording_attempt = lambda _sid: None
         job = _job()
         job["payload"]["lifecycle_contract_version"] = (
             pj.TAKE_LIFECYCLE_CONTRACT
@@ -603,7 +608,7 @@ class EnqueueSessionRecordingJobTests(unittest.TestCase):
 
     def test_pre_hotfix_job_with_real_attempt_stays_canonical(self):
         fake_db = _FakeDb()
-        fake_db.get_recording_attempt = lambda _sid: {"id": _SID}
+        fake_db.recordings.get_recording_attempt = lambda _sid: {"id": _SID}
         job = _job()
         job["payload"]["lifecycle_contract_version"] = (
             pj.TAKE_LIFECYCLE_CONTRACT

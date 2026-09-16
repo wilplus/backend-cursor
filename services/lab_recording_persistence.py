@@ -214,11 +214,11 @@ def persist_recording_row(
         "recording_origin": "willab_lab",
     }
     try:
-        database.create_recording(payload)
+        database.recordings.create_recording(payload)
     except Exception as exc:
         error = str(exc).lower()
         if "recording_origin" in error or "pgrst204" in error:
-            database.create_recording({
+            database.recordings.create_recording({
                 key: value
                 for key, value in payload.items()
                 if key != "recording_origin"

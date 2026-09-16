@@ -36,47 +36,6 @@ class RecordingRepository:
         
         return result.data[0] if result.data else None
 
-    def update_recording(self, recording_id: str, data: dict):
-        """Update a recording record"""
-        try:
-            result = self.client.table("recordings")\
-                .update(data)\
-                .eq("id", recording_id)\
-                .execute()
-
-            return result.data[0] if result.data else None
-        except Exception as e:
-            err_low = str(e).lower()
-            # PostgREST PGRST204: column absent from schema cache / table (e.g. task_id before migration).
-            if (
-                "task_id" in data
-                and (
-                    "pgrst204" in err_low
-                    or "could not find the 'task_id' column" in err_low
-                    or ("task_id" in err_low and "schema" in err_low)
-                )
-            ):
-                retry_payload = {k: v for k, v in data.items() if k != "task_id"}
-                try:
-                    result = self.client.table("recordings")\
-                        .update(retry_payload)\
-                        .eq("id", recording_id)\
-                        .execute()
-                    logger.warning(
-                        "update_recording: recordings.task_id not in schema; updated without task_id recording_id=%s",
-                        recording_id,
-                    )
-                    return result.data[0] if result.data else None
-                except Exception as e2:
-                    sentry_sdk.capture_exception(e2)
-                    raise e2
-
-            sentry_sdk.capture_exception(e)
-            error_msg = str(e)
-            if "column" in error_msg.lower() and "does not exist" in error_msg.lower():
-                raise Exception(f"Database schema error: {error_msg}. Please ensure all required columns exist in the recordings table.")
-            raise
-
     def get_user_recordings(self, user_id: str, limit: int = 10, offset: int = 0):
         """Get recordings for a user with pagination"""
         # Get paginated recordings with count
@@ -107,20 +66,6 @@ class RecordingRepository:
             "limit": limit,
             "offset": offset
         }
-
-    def get_user_recording_history(self, user_id: str, exclude_recording_id: Optional[str] = None, limit: int = 10):
-        """Get user's recording history for progress tracking (v2: recordings only)."""
-        query = (
-            self.client.table("recordings")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("created_at", desc=True)
-            .limit(limit)
-        )
-        if exclude_recording_id:
-            query = query.neq("id", exclude_recording_id)
-        result = query.execute()
-        return result.data if result.data else []
 
     def get_recording_attempt(self, attempt_id: str) -> Optional[dict]:
         """Read the canonical Attempt coordinates for parity-gated workers."""

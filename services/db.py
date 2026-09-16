@@ -391,12 +391,6 @@ class DatabaseService:
         msg = str(err).lower()
         return ("42p01" in msg) or ("does not exist" in msg) or ("undefined_table" in msg)
 
-    def create_recording(self, *args, **kwargs):
-        return self.recordings.create_recording(*args, **kwargs)
-    
-    def update_recording(self, *args, **kwargs):
-        return self.recordings.update_recording(*args, **kwargs)
-
     def set_recording_transcription_language_if_missing(
         self,
         recording_id: str,
@@ -448,9 +442,6 @@ class DatabaseService:
         
         return result.data[0] if result.data else None
 
-    def get_user_recordings(self, *args, **kwargs):
-        return self.recordings.get_user_recordings(*args, **kwargs)
-    
     def get_user_admin_context(self, user_id: str):
         """Return admin context for report generation. V2: no professional_notes tables; minimal dict.
 
@@ -466,9 +457,6 @@ class DatabaseService:
             "max_words": 120,
             "specific_questions": [],
         }
-    
-    def get_user_recording_history(self, *args, **kwargs):
-        return self.recordings.get_user_recording_history(*args, **kwargs)
     
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         """Create a signed URL for a file in Supabase Storage"""
@@ -7596,9 +7584,6 @@ class DatabaseService:
                 attempt_id, error,
             )
             return None
-
-    def get_recording_attempt(self, *args, **kwargs):
-        return self.recordings.get_recording_attempt(*args, **kwargs)
 
     def record_processing_transition(
         self, *, recording_attempt_id: str,

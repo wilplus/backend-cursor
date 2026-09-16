@@ -121,7 +121,7 @@ class RecordingRowTests(unittest.TestCase):
         database = Mock()
         result = self._persist(database)
         self.assertEqual(result.duration_seconds, 13)
-        payload = database.create_recording.call_args.args[0]
+        payload = database.recordings.create_recording.call_args.args[0]
         self.assertEqual(payload["recording_origin"], "willab_lab")
         self.assertEqual(payload["duration"], 13)
         database.insert_recording_feeling.assert_called_once()
@@ -132,22 +132,22 @@ class RecordingRowTests(unittest.TestCase):
 
     def test_old_schema_retries_without_recording_origin(self):
         database = Mock()
-        database.create_recording.side_effect = [
+        database.recordings.create_recording.side_effect = [
             RuntimeError("PGRST204 recording_origin missing"),
             None,
         ]
         self._persist(database)
-        self.assertEqual(database.create_recording.call_count, 2)
-        fallback = database.create_recording.call_args_list[1].args[0]
+        self.assertEqual(database.recordings.create_recording.call_count, 2)
+        fallback = database.recordings.create_recording.call_args_list[1].args[0]
         self.assertNotIn("recording_origin", fallback)
 
     def test_unrelated_recording_write_failure_does_not_use_fallback(self):
         database = Mock()
-        database.create_recording.side_effect = RuntimeError("database down")
+        database.recordings.create_recording.side_effect = RuntimeError("database down")
         with self.assertRaises(RecordingPersistenceError) as raised:
             self._persist(database)
         self.assertEqual(raised.exception.message, "Failed to create recording")
-        self.assertEqual(database.create_recording.call_count, 1)
+        self.assertEqual(database.recordings.create_recording.call_count, 1)
 
 
 if __name__ == "__main__":
