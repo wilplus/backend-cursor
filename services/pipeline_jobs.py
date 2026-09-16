@@ -1020,6 +1020,22 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
         logger.warning(
             "pipeline_jobs: Ideal Text publication sweep failed: %s", e)
         counts["ideal_text_publications_requeued"] = 0
+    try:
+        # The 30-day practice promise. Unlike the sweeps above it is not
+        # recovery work — nothing is stuck. It is the only thing in the system
+        # that deletes a recording because we SAID we would not keep it, so a
+        # release where this never runs is a broken promise, not a backlog.
+        from services.practice_retention import sweep_practice_retention
+
+        retention = sweep_practice_retention(
+            database=db, limit=min(max_rows, 50))
+        counts.update({
+            f"practice_retention_{key}": value
+            for key, value in retention.items()
+        })
+    except Exception as e:
+        logger.warning("pipeline_jobs: practice retention sweep failed: %s", e)
+        counts["practice_retention_attempts"] = 0
     return counts
 
 

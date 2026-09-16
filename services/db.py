@@ -13924,6 +13924,141 @@ class DatabaseService:
                 attempt_id, e)
             return None
 
+    def list_closed_practices_before(
+        self, cutoff_iso: str, limit: int = 50,
+    ) -> list[dict]:
+        """Practices that closed before `cutoff_iso` — the retention sweep's
+        candidates. Open practices are never returned: the speaker is still
+        using them.
+
+        Keyed on `closed_at`, NOT `updated_at`: the promise is measured from
+        when the practice ended, and `updated_at` moves whenever anything
+        touches the row — a coach attaching an explanation video to a finished
+        practice would otherwise restart the speaker's 30-day clock. A NULL
+        `closed_at` simply does not match, which is the safe direction: a row
+        whose clock we cannot read is kept, not guessed at."""
+        try:
+            res = (self.client.table("confident_voice_practice")
+                   .select("id,status,selected_attempt_id,closed_at")
+                   .neq("status", "open").lt("closed_at", str(cutoff_iso))
+                   .order("closed_at").limit(int(limit)).execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_closed_practices_before failed: %s", e)
+            return []
+
+    def list_album_practice_attempt_ids(
+        self, attempt_ids: List[str],
+    ) -> list[str]:
+        """Which of THESE attempts the Voice Album admitted.
+
+        Album membership is Machine Yes + User Yes + Coach Yes about THE EXACT
+        recording; deleting the clip would leave the Album listing something
+        that no longer exists.
+
+        Asked about a bounded set of ids rather than read whole. voice_album_
+        practice has no practice_id column, so the obvious query is an
+        unfiltered select of the entire table — which a default row cap can
+        silently truncate, and a truncated protected set UNDER-protects, which
+        is the one direction this must never fail in. Restricting to the
+        attempts the sweep is actually holding makes truncation impossible.
+
+        RAISES on failure. The caller must not treat a failed read as "protect
+        nothing": that would widen what gets deleted at the worst moment."""
+        wanted = [str(item) for item in (attempt_ids or []) if item]
+        if not wanted:
+            return []
+        try:
+            res = (self.client.table("voice_album_practice")
+                   .select("practice_attempt_id")
+                   .in_("practice_attempt_id", wanted).execute())
+            return [str(row.get("practice_attempt_id"))
+                    for row in (res.data or [])
+                    if row.get("practice_attempt_id")]
+        except Exception as e:
+            logger.warning("list_album_practice_attempt_ids failed n=%s: %s",
+                           len(wanted), e)
+            raise
+
+    def delete_practice_audio_object(self, attempt_id: str) -> bool:
+        """Delete one practice recording from storage and stamp its registry
+        row. Returns False when the object is still out there, so the caller
+        keeps the attempt row rather than orphaning the file."""
+        if not attempt_id:
+            return False
+        try:
+            found = (self.client.table("processing_practice_objects")
+                     .select("id,bucket,object_key,storage_provider,"
+                             "exact_bytes_sha256,deleted_at")
+                     .eq("practice_attempt_id", str(attempt_id))
+                     .limit(1).execute())
+            row = (found.data or [None])[0]
+            if not row:
+                return False
+            if row.get("deleted_at") is None:
+                from services.lab_audio_storage import (
+                    delete_verified_lab_audio_object,
+                )
+                # Byte-hash verified against the exact coordinates before
+                # deletion: the sweep must never remove an object that is not
+                # the one the registry recorded.
+                if not delete_verified_lab_audio_object(
+                        str(row.get("object_key") or ""),
+                        bucket=str(row.get("bucket") or ""),
+                        storage_provider=str(row.get("storage_provider") or "r2"),
+                        expected_sha256=str(row.get("exact_bytes_sha256") or "")):
+                    return False
+                # An explicit timestamp, not the string "now()": that goes over
+                # the wire as a literal for PostgREST to cast, and this is a
+                # deletion path where a cast error would strand the registry
+                # row un-stamped while the object is already gone. Mirrors the
+                # other deleted_at write in this file.
+                from datetime import datetime, timezone
+                (self.client.table("processing_practice_objects")
+                 .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
+                 .eq("id", row["id"]).execute())
+            return True
+        except Exception as e:
+            logger.warning("delete_practice_audio_object failed a=%s: %s",
+                           attempt_id, e)
+            return False
+
+    def delete_confident_voice_practice_attempt(self, attempt_id: str) -> bool:
+        """Undo one attempt. Used only when its audio could not be registered
+        (services/practice_audio_objects.py) — an attempt whose recording the
+        purge cannot reach must not survive."""
+        if not attempt_id:
+            return False
+        try:
+            (self.client.table("confident_voice_practice_attempt")
+             .delete().eq("id", str(attempt_id)).execute())
+            return True
+        except Exception as e:
+            logger.warning(
+                "delete_confident_voice_practice_attempt failed id=%s: %s",
+                attempt_id, e)
+            return False
+
+    def insert_practice_audio_object(self, row: dict) -> Optional[dict]:
+        """Register one stored practice recording so the purge can reach it.
+
+        Without a row here the file is invisible to data_purge: storage
+        deletion only ever acts on processing_audio_objects,
+        processing_orphan_objects and this table, so an unregistered upload
+        survives its owner asking to be deleted.
+        """
+        if not isinstance(row, dict):
+            return None
+        try:
+            res = (self.client.table("processing_practice_objects")
+                   .insert(row).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning(
+                "insert_practice_audio_object failed attempt=%s: %s",
+                row.get("practice_attempt_id"), e)
+            return None
+
     def insert_confident_voice_practice_attempt(
         self, row: dict,
     ) -> Optional[dict]:

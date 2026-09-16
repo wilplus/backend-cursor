@@ -1878,11 +1878,11 @@ def v2_add_confident_voice_practice_attempt(practice_id):
         key = (f"confidence-practice/{request.user_id}/{practice_id}/"
                f"{attempt_index}-{uuid.uuid4().hex}{ext}")
         from services.lab_audio_storage import (
-            lab_audio_public_url, put_lab_audio_bytes, target_bucket,
-        )
+            lab_audio_public_url, put_lab_audio_bytes, target_bucket)
         bucket = put_lab_audio_bytes(key, audio_bytes, mime)
         audio_ref = lab_audio_public_url(key) or f"s3://{bucket or target_bucket()}/{key}"
-        inserted = db.insert_confident_voice_practice_attempt({
+        from services.practice_audio_objects import record_practice_attempt
+        inserted = record_practice_attempt(db, {
             "practice_id": str(practice_id),
             "attempt_index": attempt_index,
             "storage_path": key,
@@ -1895,7 +1895,7 @@ def v2_add_confident_voice_practice_attempt(practice_id):
             "comparison": comparison,
             "assessment_key": "recorded_for_comparison",
             "machine_confidence_decision": None,
-        })
+        }, practice=practice, bucket=bucket, audio_bytes=audio_bytes)
         if not inserted:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save that attempt."}), 500

@@ -405,7 +405,7 @@
   },
   "routes/v2/user_sessions.py:v2_add_confident_voice_practice_attempt": {
     "lines": 141,
-    "db_calls": 6
+    "db_calls": 5
   },
   "routes/v2/user_sessions.py:v2_complete_confident_voice_practice": {
     "lines": 52,
