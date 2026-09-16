@@ -45,7 +45,7 @@ a833c211cf077f294a7973714c065aaa65a1c1aede33c49e4d7ae3debcdc7031  docs/MLC3-CONF
 39b62b500f23732bfbb0326ffe0ae054b9233c1267665a11a9275eb10205bdcb  migrations/add_confident_moment_coaching_bundle_v1.sql
 dc5fbbcc22b374040e74b800a8733eaeb44a36e2556ba9a5cf4bef3bad9559eb  routes/v2/coach_guidance_delivery.py
 bcfc7b89e112d1bcd7bc1ed642064b800d57146971a4245eea3699921e4d526a  routes/v2/confident_moment_bundles.py
-08d49eb1ea86686f5c793f5288b853f7a46f19ed67f8cef7cc03113df5242b90  routes/v2/explore_ideal_text.py
+e4062aa198fcc24a640868005e2be3bde5933a9de024aa0f39fd9bc8dc6e4cfc  routes/v2/explore_ideal_text.py
 a4968eb69e4886ef88c7b5e5dbc5cabf2cea1e5b455bdaa2c02be54c538e6dde  scripts/monitor_mlc3_general_service.py
 5476365940aed6153154865afe5a7461f8b4915ee1a6a23a8badeb25ca943fc2  services/confident_moment_bundle.py
 3a2e0299fa95d1b8e4e38661a786900c0565362d9b4651b97c2f9178d079625b  services/confident_moment_bundle_repository.py
@@ -524,6 +524,33 @@ Verified by execution: targeted tests for every touched surface green
 (776 tests across the Ideal Text / CAS edit surfaces), then
 scripts/local_ci.sh --no-setup green in full (manifest, migration
 runner, ruff, mypy, complexity ratchet, unit tier, F1 coverage floor).
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-16 — routes/v2/explore_ideal_text.py complexity/fence fix
+
+`_ideal_piece_provenance` (CC 65, 216 lines, the per-piece slide-provenance
+mirror of maybe_assemble_ideal_text's source choice) decomposed into 8
+helpers along its existing four-lane structure (skeleton / canonical /
+compat / legacy-cache), each lane becoming its own function returning the
+found list or `None` to fall through to the next lane exactly as the
+original's early-returns did. Pure decomposition, no dead code, no
+comparison inverted; every founder-decision comment moved with its code.
+Final CC: orchestrator 7, helpers ≤15. Also dropped out of
+`scripts/route_fence_baseline.json` entirely (216 lines / 1 db call →
+well under the 80-line fence).
+
+(`routes/v2/coach.py:v2_coach_get_session` and
+`:v2_coach_confidence_queue`, CC 66/62, were fixed in the same PR — see
+their own module for detail. `coach.py` is not itself pinned in this
+manifest.)
+
+Verified by execution: `tests/test_reread_fold.py`,
+`tests/test_coach_session.py`, `tests/test_mlc3_coach_inline_authoring_d5.py`,
+`tests/test_ideal_text_slide_linkage.py` (66 tests covering both touched
+files) green, `tests/test_route_fence.py` green after re-freezing, then
+`scripts/local_ci.sh --no-setup` green in full (rehearsal tier not
+required — no migration or MLC-3 storage path changed).
 
 Every other entry is untouched.
 

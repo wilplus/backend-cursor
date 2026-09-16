@@ -193,199 +193,188 @@ def _instant_ideal_enabled() -> bool:
     return bool(config.INSTANT_IDEAL_TEXT_ENABLED)
 
 
-def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
-    """The machine assembly's per-piece slide identity, in served order —
-    mirrors maybe_assemble_ideal_text's source choice WITHOUT re-running
-    any composition on the student GET:
+def _snip_slide(snip):
+    # The cutter's own bucket (the slide on screen when the words
+    # were spoken) — same read master_document keys its skeleton on.
+    m = (snip or {}).get("metrics")
+    piece = m.get("piece") if isinstance(m, dict) else None
+    si = piece.get("slide_index") if isinstance(piece, dict) else None
+    return si if isinstance(si, int) and not isinstance(si, bool) \
+        else None
 
-      * master flag: the skeleton blocks own the cutter's slide_index;
-      * living transcript: the take's pieces, slide from the cutter's
-        metrics.piece.slide_index bucket;
-      * legacy: the persisted best-presentation compose cache — the very
-        picks auto_text's paragraphs were joined from. No cache row →
-        no attachment; the composer (its LLM pass included) NEVER runs
-        on this GET.
 
-    ONE ENTRY PER SERVED PARAGRAPH, because that is what the caller aligns
-    it against. `deckless_ok` gates the LEGACY lane only — see the comment
-    at that branch.
+def _ideal_piece_provenance_skeleton(arc_id):
+    rows = sorted(
+        (r for r in (db.ideal_text.list_ideal_text_blocks(str(arc_id)) or [])
+         if r.get("active", True) and r.get("status") != "candidate"),
+        key=lambda r: r.get("block_key") or 0)
+    if not rows:
+        return None
+    # ONE ROW PER SERVED PARAGRAPH, not per block (SPEC §11.1).
+    # Since the cap, a block packs into one OR MORE "\n\n"
+    # paragraphs, so a per-block list under-counts and the
+    # caller's count-zip drops every slide attachment. Mirror the
+    # assembly's packing exactly — same pure packer, same cap,
+    # same strip-empty filter, over the same rows — WITHOUT
+    # re-running any composition on the student GET. A block with
+    # no incumbent text contributes no paragraph in the assembly,
+    # so it contributes no row here either.
+    from services.slide_word_split import PARAGRAPH_CAP_CHARS
+    from services.transcript_document import pack_items
+    out = []
+    for r in rows:
+        items = []
+        for p in (r.get("incumbent_pieces") or []):
+            _t = (p.get("text") or "").strip()
+            if _t:
+                items.append((p, _t))
+        for pack in pack_items(items, PARAGRAPH_CAP_CHARS):
+            out.append({
+                "slide_index": r.get("slide_index"),
+                # The KEYED pill→picker join (FE picker handoff
+                # 2026-08-03): the FE deep-links a paragraph's
+                # pill into the variants sheet by block_key —
+                # never by index-zipping two lists that merely
+                # happen to be sorted the same way. Sibling
+                # paragraphs of one block share its key.
+                "block_key": r.get("block_key"),
+                "snippet_id": pack[0][0].get("snippet_id"),
+                "take_session_id": r.get("incumbent_take_session_id"),
+                "take_index": r.get("incumbent_take_index"),
+                "status": r.get("status") or "settled",
+                "challenger": r.get("challenger_take_index"),
+            })
+    return out or None
 
-    Each entry: {slide_index, snippet_id, take_session_id, take_index,
-    status, challenger}. Best-effort; [] when nothing is provable."""
-    from services.ideal_text_block import (
-        _living_transcript_enabled, _polish_as_suggestions_enabled,
+
+def _ideal_piece_provenance_from_stored_paragraphs(_stored_paragraphs, _same_body):
+    if not (_stored_paragraphs and _same_body):
+        return None
+    return [{
+        "slide_index": p.get("slide_index"),
+        "snippet_id": p.get("snippet_id"),
+        "take_session_id": p.get("take_session_id"),
+        "take_index": p.get("take_index"),
+        "status": "settled",
+        "challenger": None,
+    } for p in _stored_paragraphs if isinstance(p, dict)]
+
+
+def _ideal_piece_provenance_from_relocated_pieces(
+    _stored_pieces, _same_body, served_text,
+):
+    if not (_stored_pieces and _same_body
+            and isinstance(served_text, str) and served_text):
+        return None
+    from services.transcript_document import (
+        paragraph_spans, relocate_pieces,
     )
-    from services.master_document import master_document_enabled
-
-    def _snip_slide(snip):
-        # The cutter's own bucket (the slide on screen when the words
-        # were spoken) — same read master_document keys its skeleton on.
-        m = (snip or {}).get("metrics")
-        piece = m.get("piece") if isinstance(m, dict) else None
-        si = piece.get("slide_index") if isinstance(piece, dict) else None
-        return si if isinstance(si, int) and not isinstance(si, bool) \
-            else None
-
-    if _living_transcript_enabled() and master_document_enabled():
-        rows = sorted(
-            (r for r in (db.ideal_text.list_ideal_text_blocks(str(arc_id)) or [])
-             if r.get("active", True) and r.get("status") != "candidate"),
-            key=lambda r: r.get("block_key") or 0)
-        if rows:
-            # ONE ROW PER SERVED PARAGRAPH, not per block (SPEC §11.1).
-            # Since the cap, a block packs into one OR MORE "\n\n"
-            # paragraphs, so a per-block list under-counts and the
-            # caller's count-zip drops every slide attachment. Mirror the
-            # assembly's packing exactly — same pure packer, same cap,
-            # same strip-empty filter, over the same rows — WITHOUT
-            # re-running any composition on the student GET. A block with
-            # no incumbent text contributes no paragraph in the assembly,
-            # so it contributes no row here either.
-            from services.slide_word_split import PARAGRAPH_CAP_CHARS
-            from services.transcript_document import pack_items
-            out = []
-            for r in rows:
-                items = []
-                for p in (r.get("incumbent_pieces") or []):
-                    _t = (p.get("text") or "").strip()
-                    if _t:
-                        items.append((p, _t))
-                for pack in pack_items(items, PARAGRAPH_CAP_CHARS):
-                    out.append({
-                        "slide_index": r.get("slide_index"),
-                        # The KEYED pill→picker join (FE picker handoff
-                        # 2026-08-03): the FE deep-links a paragraph's
-                        # pill into the variants sheet by block_key —
-                        # never by index-zipping two lists that merely
-                        # happen to be sorted the same way. Sibling
-                        # paragraphs of one block share its key.
-                        "block_key": r.get("block_key"),
-                        "snippet_id": pack[0][0].get("snippet_id"),
-                        "take_session_id": r.get("incumbent_take_session_id"),
-                        "take_index": r.get("incumbent_take_index"),
-                        "status": r.get("status") or "settled",
-                        "challenger": r.get("challenger_take_index"),
-                    })
-            if out:
-                return out
-        # No skeleton yet → the living-transcript document, exactly the
-        # fallback the assembly itself makes.
-    if _living_transcript_enabled():
-        # CANONICAL SOURCE FIRST. Take 1's document provenance is persisted in
-        # the same database write as its text. Later Takes advance the REVIEW
-        # version without replacing those words, so rebuilding provenance from
-        # the latest transcript describes a different document. That mismatch
-        # is what made the FE reject the whole Ideal Text after Take 2.
-        try:
-            _ideal_row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
-            _stored_doc = _ideal_row.get("document") or {}
-            _stored_paragraphs = _stored_doc.get("paragraphs") or []
-            _canonical_body = str(
-                _ideal_row.get("auto_text") or _ideal_row.get("text") or "")
-            try:
-                from services.ideal_text_block import (
-                    sanitize_markers, strip_moment_markers,
-                )
-                _canonical_body = sanitize_markers(
-                    strip_moment_markers(_canonical_body))
-            except Exception:
-                _canonical_body = _canonical_body.strip()
-            _same_body = (
-                not isinstance(served_text, str)
-                or not served_text
-                or served_text.strip() == _canonical_body.strip()
-            )
-            if _stored_paragraphs and _same_body:
-                return [{
-                    "slide_index": p.get("slide_index"),
-                    "snippet_id": p.get("snippet_id"),
-                    "take_session_id": p.get("take_session_id"),
-                    "take_index": p.get("take_index"),
-                    "status": "settled",
-                    "challenger": None,
-                } for p in _stored_paragraphs if isinstance(p, dict)]
-            # Compatibility for canonical rows persisted between the document
-            # column migration and this paragraph-grain fix. They have exact
-            # canonical snippet pieces but no paragraph list. Re-anchor those
-            # pieces to the currently served body, then derive one provenance
-            # row per actual paragraph. Every paragraph must be covered; a
-            # partial map falls through to the unlinked compatibility path.
-            _stored_pieces = _stored_doc.get("pieces") or []
-            if (_stored_pieces and _same_body
-                    and isinstance(served_text, str) and served_text):
-                from services.transcript_document import (
-                    paragraph_spans, relocate_pieces,
-                )
-                _located = relocate_pieces(
-                    served_text, _stored_pieces, paragraph_fallback=True)
-                _derived = []
-                for _lo, _hi in paragraph_spans(served_text):
-                    _piece = next((p for p in _located
-                                   if isinstance(p.get("start"), int)
-                                   and isinstance(p.get("end"), int)
-                                   and p["start"] < _hi
-                                   and p["end"] > _lo), None)
-                    if _piece is None:
-                        _derived = []
-                        break
-                    _derived.append({
-                        "slide_index": _piece.get("slide_index"),
-                        "snippet_id": _piece.get("snippet_id"),
-                        "take_session_id": _piece.get("take_session_id"),
-                        "take_index": _piece.get("take_index"),
-                        "status": "settled",
-                        "challenger": None,
-                    })
-                if _derived:
-                    return _derived
-        except Exception as _stored_doc_err:
-            logger.warning(
-                "stored ideal-text provenance failed arc=%s: %s",
-                arc_id, _stored_doc_err)
-        # Compatibility only: rows created before document provenance was
-        # added have no canonical map. The latest transcript remains the best
-        # available structural source, but the FE now treats any mismatch as
-        # optional metadata failure and still renders the text unlinked.
-        from services.transcript_document import build_transcript_document
-        doc = build_transcript_document(arc_id, database=db)
-        # ONE ROW PER PARAGRAPH (founder 2026-08-11). The consumer aligns
-        # this list against the served text's "\n\n" paragraphs by LENGTH,
-        # and `pieces` is per SNIPPET — so on any take where a slide held
-        # more than one piece the counts disagreed, the alignment test
-        # failed, and every slide attachment was dropped. `paragraphs` is
-        # cut the same way the text is, by construction.
-        rows = (doc or {}).get("paragraphs") or []
-        if not rows:
-            return []
-        sid = doc.get("take_session_id")
-        snips = {str(s.get("id")): s
-                 for s in (db.get_snippets_by_session(sid) or [])} \
-            if sid else {}
-        return [{
-            # The document already resolved this (coach correction first,
-            # then the cutter's bucket); `_snip_slide` stays as the floor
-            # for a row that predates the field.
-            "slide_index": (
-                p.get("slide_index")
-                if isinstance(p.get("slide_index"), int)
-                and not isinstance(p.get("slide_index"), bool)
-                else _snip_slide(snips.get(str(p.get("snippet_id"))))
-            ),
-            "snippet_id": p.get("snippet_id"),
-            "take_session_id": p.get("take_session_id"),
-            "take_index": p.get("take_index"),
+    _located = relocate_pieces(
+        served_text, _stored_pieces, paragraph_fallback=True)
+    _derived = []
+    for _lo, _hi in paragraph_spans(served_text):
+        _piece = next((p for p in _located
+                       if isinstance(p.get("start"), int)
+                       and isinstance(p.get("end"), int)
+                       and p["start"] < _hi
+                       and p["end"] > _lo), None)
+        if _piece is None:
+            _derived = []
+            break
+        _derived.append({
+            "slide_index": _piece.get("slide_index"),
+            "snippet_id": _piece.get("snippet_id"),
+            "take_session_id": _piece.get("take_session_id"),
+            "take_index": _piece.get("take_index"),
             "status": "settled",
             "challenger": None,
-        } for p in rows]
-    # LEGACY compose cache — and the ONLY lane the deckless guard belongs
-    # to. This one keys its picks by SECTION index, which is not a deck page,
-    # so without an uploaded deck it must not attach. The two lanes above
-    # read the CUTTER's own bucket (the slide that was on screen when the
-    # words were spoken), which is a real page whether or not a PDF was ever
-    # uploaded — and applying the guard to all three is what made the
-    # built-in mock deck attach nothing at all (founder 2026-08-11).
-    if not deckless_ok:
+        })
+    return _derived or None
+
+
+def _ideal_piece_provenance_canonical(arc_id, served_text):
+    # CANONICAL SOURCE FIRST. Take 1's document provenance is persisted in
+    # the same database write as its text. Later Takes advance the REVIEW
+    # version without replacing those words, so rebuilding provenance from
+    # the latest transcript describes a different document. That mismatch
+    # is what made the FE reject the whole Ideal Text after Take 2.
+    try:
+        _ideal_row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
+        _stored_doc = _ideal_row.get("document") or {}
+        _stored_paragraphs = _stored_doc.get("paragraphs") or []
+        _canonical_body = str(
+            _ideal_row.get("auto_text") or _ideal_row.get("text") or "")
+        try:
+            from services.ideal_text_block import (
+                sanitize_markers, strip_moment_markers,
+            )
+            _canonical_body = sanitize_markers(
+                strip_moment_markers(_canonical_body))
+        except Exception:
+            _canonical_body = _canonical_body.strip()
+        _same_body = (
+            not isinstance(served_text, str)
+            or not served_text
+            or served_text.strip() == _canonical_body.strip()
+        )
+        exact = _ideal_piece_provenance_from_stored_paragraphs(
+            _stored_paragraphs, _same_body)
+        if exact is not None:
+            return exact
+        # Compatibility for canonical rows persisted between the document
+        # column migration and this paragraph-grain fix. They have exact
+        # canonical snippet pieces but no paragraph list. Re-anchor those
+        # pieces to the currently served body, then derive one provenance
+        # row per actual paragraph. Every paragraph must be covered; a
+        # partial map falls through to the unlinked compatibility path.
+        _stored_pieces = _stored_doc.get("pieces") or []
+        relocated = _ideal_piece_provenance_from_relocated_pieces(
+            _stored_pieces, _same_body, served_text)
+        if relocated:
+            return relocated
+    except Exception as _stored_doc_err:
+        logger.warning(
+            "stored ideal-text provenance failed arc=%s: %s",
+            arc_id, _stored_doc_err)
+    return None
+
+
+def _ideal_piece_provenance_compat(arc_id):
+    from services.transcript_document import build_transcript_document
+    doc = build_transcript_document(arc_id, database=db)
+    # ONE ROW PER PARAGRAPH (founder 2026-08-11). The consumer aligns
+    # this list against the served text's "\n\n" paragraphs by LENGTH,
+    # and `pieces` is per SNIPPET — so on any take where a slide held
+    # more than one piece the counts disagreed, the alignment test
+    # failed, and every slide attachment was dropped. `paragraphs` is
+    # cut the same way the text is, by construction.
+    rows = (doc or {}).get("paragraphs") or []
+    if not rows:
         return []
+    sid = doc.get("take_session_id")
+    snips = {str(s.get("id")): s
+             for s in (db.get_snippets_by_session(sid) or [])} \
+        if sid else {}
+    return [{
+        # The document already resolved this (coach correction first,
+        # then the cutter's bucket); `_snip_slide` stays as the floor
+        # for a row that predates the field.
+        "slide_index": (
+            p.get("slide_index")
+            if isinstance(p.get("slide_index"), int)
+            and not isinstance(p.get("slide_index"), bool)
+            else _snip_slide(snips.get(str(p.get("snippet_id"))))
+        ),
+        "snippet_id": p.get("snippet_id"),
+        "take_session_id": p.get("take_session_id"),
+        "take_index": p.get("take_index"),
+        "status": "settled",
+        "challenger": None,
+    } for p in rows]
+
+
+def _ideal_piece_provenance_legacy_cache(arc_id):
+    from services.ideal_text_block import _polish_as_suggestions_enabled
     _get_cache = getattr(db, "get_best_presentation_cache", None)
     cached = _get_cache(arc_id) if callable(_get_cache) else None
     slides = ((cached or {}).get("payload") or {}).get("slides") or []
@@ -409,6 +398,55 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
             "challenger": None,
         })
     return out
+
+
+def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
+    """The machine assembly's per-piece slide identity, in served order —
+    mirrors maybe_assemble_ideal_text's source choice WITHOUT re-running
+    any composition on the student GET:
+
+      * master flag: the skeleton blocks own the cutter's slide_index;
+      * living transcript: the take's pieces, slide from the cutter's
+        metrics.piece.slide_index bucket;
+      * legacy: the persisted best-presentation compose cache — the very
+        picks auto_text's paragraphs were joined from. No cache row →
+        no attachment; the composer (its LLM pass included) NEVER runs
+        on this GET.
+
+    ONE ENTRY PER SERVED PARAGRAPH, because that is what the caller aligns
+    it against. `deckless_ok` gates the LEGACY lane only — see the comment
+    at that branch.
+
+    Each entry: {slide_index, snippet_id, take_session_id, take_index,
+    status, challenger}. Best-effort; [] when nothing is provable."""
+    from services.ideal_text_block import _living_transcript_enabled
+    from services.master_document import master_document_enabled
+
+    if _living_transcript_enabled() and master_document_enabled():
+        skeleton = _ideal_piece_provenance_skeleton(arc_id)
+        if skeleton:
+            return skeleton
+        # No skeleton yet → the living-transcript document, exactly the
+        # fallback the assembly itself makes.
+    if _living_transcript_enabled():
+        canonical = _ideal_piece_provenance_canonical(arc_id, served_text)
+        if canonical:
+            return canonical
+        # Compatibility only: rows created before document provenance was
+        # added have no canonical map. The latest transcript remains the best
+        # available structural source, but the FE now treats any mismatch as
+        # optional metadata failure and still renders the text unlinked.
+        return _ideal_piece_provenance_compat(arc_id)
+    # LEGACY compose cache — and the ONLY lane the deckless guard belongs
+    # to. This one keys its picks by SECTION index, which is not a deck page,
+    # so without an uploaded deck it must not attach. The two lanes above
+    # read the CUTTER's own bucket (the slide that was on screen when the
+    # words were spoken), which is a real page whether or not a PDF was ever
+    # uploaded — and applying the guard to all three is what made the
+    # built-in mock deck attach nothing at all (founder 2026-08-11).
+    if not deckless_ok:
+        return []
+    return _ideal_piece_provenance_legacy_cache(arc_id)
 
 
 def _ideal_text_pieces(arc_id, served_text, presentation_ref, user_id=None):

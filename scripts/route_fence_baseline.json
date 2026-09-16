@@ -140,8 +140,8 @@
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_confidence_queue": {
-    "lines": 308,
-    "db_calls": 8
+    "lines": 95,
+    "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_confident_voice_practice": {
     "lines": 148,
@@ -156,8 +156,8 @@
     "db_calls": 1
   },
   "routes/v2/coach.py:v2_coach_get_session": {
-    "lines": 264,
-    "db_calls": 5
+    "lines": 88,
+    "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_list_training_imports": {
     "lines": 82,
@@ -254,10 +254,6 @@
   "routes/v2/explore_ideal_text.py:_confidence_review_status_map": {
     "lines": 58,
     "db_calls": 3
-  },
-  "routes/v2/explore_ideal_text.py:_ideal_piece_provenance": {
-    "lines": 216,
-    "db_calls": 1
   },
   "routes/v2/explore_ideal_text.py:_legacy_user_edit_via_cas": {
     "lines": 105,
