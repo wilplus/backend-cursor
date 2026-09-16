@@ -231,7 +231,7 @@ def build_transcript_document(arc_id: Any, *, database=None,
                 take_index = None
         else:
             spoken = spoken_arc_sessions(
-                database.get_arc_sessions(arc_id) or [])
+                database.takes.get_arc_sessions(arc_id) or [])
             if not spoken:
                 return None
             # The LATEST spoken take IS the current document (decision #4).

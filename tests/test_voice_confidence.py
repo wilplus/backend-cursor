@@ -296,7 +296,7 @@ class TestBaselineResolution(unittest.TestCase):
     def test_cross_take_history_wins_over_within_take(self):
         from services.voice_confidence import resolve_confidence_baseline
         db = MagicMock()
-        db.v2_list_user_lab_sessions.return_value = [{"id": "s1"}]
+        db.takes.v2_list_user_lab_sessions.return_value = [{"id": "s1"}]
         db.get_snippets_by_session.return_value = [
             {"metrics": _with(f0_sd=float(i), dynamic_db=float(i))}
             for i in range(10)
@@ -309,7 +309,7 @@ class TestBaselineResolution(unittest.TestCase):
     def test_db_failure_falls_back_never_raises(self):
         from services.voice_confidence import resolve_confidence_baseline
         db = MagicMock()
-        db.v2_list_user_lab_sessions.side_effect = RuntimeError("boom")
+        db.takes.v2_list_user_lab_sessions.side_effect = RuntimeError("boom")
         six = [_with(f0_sd=float(i), dynamic_db=float(i)) for i in range(6)]
         base, kind = resolve_confidence_baseline("u1", six, database=db)
         self.assertEqual(kind, "take")

@@ -364,7 +364,7 @@ class CoachGetUserEditTests(unittest.TestCase):
     def _get(self, *, sessions, edit, coach_row):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(db, "get_arc_sessions",
+            with patch.object(db.takes, "get_arc_sessions",
                               return_value=sessions), \
                  patch.object(db, "get_user_ideal_edit",
                               return_value=edit) as m_edit, \

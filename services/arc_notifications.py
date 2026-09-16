@@ -66,7 +66,7 @@ def _arc_owner_and_topic(db, arc_id: str) -> tuple[Optional[str], int, Any]:
     from services.slide_selection import spoken_arc_sessions
     # SPOKEN takes only (2026-07-15) — a read never counts toward the ≥3
     # lifecycle trigger.
-    sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id))
+    sessions = spoken_arc_sessions(db.takes.get_arc_sessions(arc_id))
     owner = None
     topic = None
     for s in sessions:
@@ -161,7 +161,7 @@ def fire_voice_album_ready(db, user_id: Any, arc_id: Any) -> bool:
     # first clip days later, so every reconciliation may call this helper.
     try:
         entries = db.list_voice_album(str(arc_id)) or []
-        sessions = db.get_arc_sessions(str(arc_id)) or []
+        sessions = db.takes.get_arc_sessions(str(arc_id)) or []
         completed = [
             row for row in sessions
             if row.get("recording_kind") != "read"
@@ -541,7 +541,7 @@ def backfill_ideal_bubbles(db, user_id: Any, arc_id: Any) -> int:
         try:
             from services.slide_selection import spoken_arc_sessions
             _n_spoken = len(spoken_arc_sessions(
-                db.get_arc_sessions(arc_id)))
+                db.takes.get_arc_sessions(arc_id)))
         except Exception:
             _n_spoken = None
         if fire_ideal_version_ready(db, user_id, arc_id, version,

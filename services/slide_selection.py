@@ -509,7 +509,7 @@ def build_best_presentation(
     # readiness nor feed the candidate pool — one filter at the load point so
     # progress, corrections, the cache signature, candidates, and finalize all
     # inherit it.
-    sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id)) if arc_id else []
+    sessions = spoken_arc_sessions(db.takes.get_arc_sessions(arc_id)) if arc_id else []
     progress = presentation_progress(len(sessions))
 
     # Coach transcript corrections (Engine 2, founder 2026-07-11): the

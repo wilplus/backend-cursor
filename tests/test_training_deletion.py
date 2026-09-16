@@ -63,7 +63,7 @@ class PresentationDeleteCompleteSetTests(unittest.TestCase):
         ]
         self._deleted = []
         self._p = [
-            patch.object(db, "v2_list_user_lab_sessions",
+            patch.object(db.takes, "v2_list_user_lab_sessions",
                          lambda uid, **kw: list(self._sessions)),
             patch("routes.v2.user_sessions._hard_delete_session_for_user",
                          lambda uid, sid: self._deleted.append(sid)),

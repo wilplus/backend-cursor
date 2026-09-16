@@ -51,7 +51,7 @@ class UserAuditAssemblyTests(unittest.TestCase):
     def _configure(self, *, recorded, sessions):
         from services.db import db
         db.v2_get_cumulative_recorded_seconds.return_value = recorded
-        db.v2_list_user_lab_sessions.return_value = sessions
+        db.takes.v2_list_user_lab_sessions.return_value = sessions
         by_id = {str(row.get("id")): row for row in sessions}
         db.v2_get_session_by_id.side_effect = lambda sid: by_id.get(str(sid))
         db.get_coach_snippet_drafts.side_effect = lambda sid: (
@@ -184,9 +184,9 @@ class CoachStudentDetailRouteTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
         self._o1 = getattr(db, "get_user_profile", None)
-        self._o2 = getattr(db, "v2_list_user_lab_sessions", None)
+        self._o2 = getattr(db.takes, "v2_list_user_lab_sessions", None)
         db.get_user_profile = lambda uid: {"domain": "sales", "goal": "win deals"}
-        db.v2_list_user_lab_sessions = lambda uid: [
+        db.takes.v2_list_user_lab_sessions = lambda uid: [
             {"id": "s1", "intake_context": {"topic": "pitch"},
              "created_at": "2026-06-01", "status": "pending_admin_review",
              "results_published_at": None},
@@ -196,7 +196,7 @@ class CoachStudentDetailRouteTests(unittest.TestCase):
         if self._o1 is not None:
             db.get_user_profile = self._o1
         if self._o2 is not None:
-            db.v2_list_user_lab_sessions = self._o2
+            db.takes.v2_list_user_lab_sessions = self._o2
 
     def test_drilldown_pseudonymized_no_pii(self):
         with self.app.test_request_context():
@@ -213,7 +213,7 @@ class CoachStudentDetailRouteTests(unittest.TestCase):
             self.assertNotIn(UID, str(data.get("pseudonym")))
 
     def test_unknown_id_returns_404(self):
-        db.v2_list_user_lab_sessions = lambda uid: []
+        db.takes.v2_list_user_lab_sessions = lambda uid: []
         db.get_user_profile = lambda uid: {}
         with self.app.test_request_context():
             request.user_id = "coach-1"

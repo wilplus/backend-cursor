@@ -349,7 +349,7 @@ class DrilldownFoldTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(db, "get_user_profile",
                               return_value={"domain": "d", "goal": "g"}), \
-                 patch.object(db, "v2_list_user_lab_sessions",
+                 patch.object(db.takes, "v2_list_user_lab_sessions",
                               return_value=rows), \
                  patch.object(db, "get_feelings_by_sessions",
                               return_value=[]), \
@@ -375,6 +375,12 @@ class CrossTakeSpokenOnlyTests(unittest.TestCase):
                 {"id": "s2", "take_index": 2, "recording_kind": "spoken",
                  "paired_session_id": None},
             ]
+
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
 
         def get_snippets_by_session(self, sid):
             return []

@@ -325,7 +325,7 @@ def _run_full_analysis_impl(
                             spoken_arc_sessions,
                         )
                         return len(spoken_arc_sessions(
-                            db.get_arc_sessions(arc_id)))
+                            db.takes.get_arc_sessions(arc_id)))
                     _n_spoken = _deg.run("spoken_take_count",
                                          _spoken_take_count, None)
                     fire_ideal_version_ready(

@@ -227,7 +227,7 @@ def v2_explore_arc_moments(arc_id):
     """
     try:
         from services.cross_take_selection import select_cross_take
-        sessions = db.get_arc_sessions(arc_id)
+        sessions = db.takes.get_arc_sessions(arc_id)
         owned = any(
             str(s.get("user_id")) == str(request.user_id) for s in sessions
         )
@@ -249,7 +249,7 @@ def v2_explore_arc_moments(arc_id):
 def _arc_owned_by_caller(arc_id):
     """True iff the arc has a session owned by request.user_id. Returns
     (owned, sessions) so callers reuse the read."""
-    sessions = db.get_arc_sessions(arc_id)
+    sessions = db.takes.get_arc_sessions(arc_id)
     owned = any(
         str(s.get("user_id")) == str(request.user_id) for s in sessions
     )
@@ -364,7 +364,7 @@ def v2_explore_arc_voice_album(arc_id):
 def v2_voice_album():
     """The signed-in user's canonical cross-project Voice Album."""
     try:
-        sessions = db.v2_list_user_lab_sessions(str(request.user_id)) or []
+        sessions = db.takes.v2_list_user_lab_sessions(str(request.user_id)) or []
         by_arc: dict = {}
         for session in sessions:
             arc_id = str(session.get("arc_id") or "")
@@ -499,7 +499,7 @@ def v2_explore_arc_progress(arc_id):
     """
     try:
         from services.slide_selection import presentation_progress
-        sessions = db.get_arc_sessions(arc_id)
+        sessions = db.takes.get_arc_sessions(arc_id)
         if not sessions:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         _caller = getattr(request, "user_id", None)

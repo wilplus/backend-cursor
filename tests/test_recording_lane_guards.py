@@ -242,6 +242,12 @@ class _PoolAuditDB:
     def get_arc_sessions(self, arc_id):
         return list(self.sessions)
 
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls db.takes.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def get_snippets_by_session(self, sid):
         return list(self.snips.get(sid, []))
 

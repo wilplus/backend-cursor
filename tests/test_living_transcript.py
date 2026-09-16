@@ -164,6 +164,12 @@ class DocumentBuildTests(unittest.TestCase):
                 return self._sessions
             return [{"id": T1, "take_index": 1, "recording_kind": "spoken"}]
 
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
+
         def get_snippets_by_session(self, sid):
             return self._snips
 
@@ -1272,7 +1278,7 @@ class ServeChangesTests(unittest.TestCase):
              "transcript": "And then we shipped it fast.",
              "metrics": {"piece": {"slide_index": 0}}}]
         with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)), \
-             patch.object(db, "get_arc_sessions",
+             patch.object(db.takes, "get_arc_sessions",
                           return_value=[{"id": T1, "take_index": 1,
                                          "recording_kind": "spoken"}]), \
              patch.object(db, "get_snippets_by_session",
@@ -1306,7 +1312,7 @@ class ServeChangesTests(unittest.TestCase):
 
     def test_broken_document_degrades_to_absent(self):
         with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
-             patch.object(db, "get_arc_sessions",
+             patch.object(db.takes, "get_arc_sessions",
                           side_effect=RuntimeError("boom")):
             self.assertEqual(v2_explore_ideal_text._tracked_changes_block(ARC, self.DOC), {})
 
@@ -1315,7 +1321,7 @@ class ServeChangesTests(unittest.TestCase):
         reported in `degraded`, never dropped without a trace. The V3
         shadow read fails here; the changes are still served."""
         with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
-             patch.object(db, "get_arc_sessions",
+             patch.object(db.takes, "get_arc_sessions",
                           return_value=[{"id": T1, "take_index": 1,
                                          "recording_kind": "spoken"}]), \
              patch.object(db, "get_snippets_by_session", return_value=[

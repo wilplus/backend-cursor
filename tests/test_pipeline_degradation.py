@@ -169,6 +169,12 @@ class _AssemblerDb:
         self._maybe("get_arc_sessions")
         return [{"id": SID, "take_index": 1, "recording_kind": "spoken"}]
 
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls db.takes.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def get_coach_arc_ideal_text(self, arc_id):
         return None
 

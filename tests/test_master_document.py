@@ -44,6 +44,12 @@ class _Db:
     def get_arc_sessions(self, arc_id):
         return self.sessions
 
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls db.takes.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def v2_get_session_by_id(self, sid):
         for s in self.sessions:
             if str(s.get("id")) == str(sid):

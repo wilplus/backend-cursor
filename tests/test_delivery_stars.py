@@ -206,6 +206,12 @@ class BaselineResolutionTests(unittest.TestCase):
         def v2_list_user_lab_sessions(self, uid, limit=5):
             return [{"id": "h1"}] if self._hist else []
 
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
+
         def get_snippets_by_session(self, sid):
             return [{"metrics": m} for m in self._hist]
 

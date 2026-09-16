@@ -335,7 +335,7 @@ def publish_for_arc(database: Any, arc_id: str,
                     enqueue_on_failure: bool = True) -> dict | None:
     """Publish one immutable head; retry once if a source mutates mid-build."""
     try:
-        sessions = database.get_arc_sessions(arc_id) or []
+        sessions = database.takes.get_arc_sessions(arc_id) or []
         spoken = _completed_spoken(sessions)
         if not spoken:
             return None

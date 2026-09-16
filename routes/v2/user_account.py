@@ -622,7 +622,7 @@ def v2_user_last_setup():
       200 { available: false }   — no prior session
     """
     try:
-        sessions = db.v2_list_user_lab_sessions(str(request.user_id), limit=1) or []
+        sessions = db.takes.v2_list_user_lab_sessions(str(request.user_id), limit=1) or []
         if not sessions:
             return jsonify({"available": False}), 200
         ctx = sessions[0].get("intake_context")

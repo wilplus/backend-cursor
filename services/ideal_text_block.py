@@ -482,7 +482,7 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         from services.slide_selection import (
             TAKES_TARGET, spoken_arc_sessions,
         )
-        spoken = spoken_arc_sessions(database.get_arc_sessions(arc_id))
+        spoken = spoken_arc_sessions(database.takes.get_arc_sessions(arc_id))
         source_take_count = len(spoken)
         if source_session_id:
             # Artifact-only Take 1 retry: pin the source to THIS accepted

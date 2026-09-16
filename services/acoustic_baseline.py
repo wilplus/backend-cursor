@@ -242,7 +242,7 @@ def _build_user_stats(user_id: Any, *, database=None) -> tuple:
     try:
         if database is None:
             from services.db import db as database
-        sessions = database.v2_list_user_lab_sessions(
+        sessions = database.takes.v2_list_user_lab_sessions(
             str(user_id), limit=_BASELINE_MAX_SESSIONS,
         ) or []
         pool: list = []
@@ -311,7 +311,7 @@ def resolve_for_take(user_id: Any, *, recording_kind: str = "spoken",
         if isinstance(row, dict):
             fresh = as_baseline(row.get("features"))
             if fresh:
-                sessions = database.v2_list_user_lab_sessions(
+                sessions = database.takes.v2_list_user_lab_sessions(
                     str(user_id), limit=_max_sessions()) or []
                 if _newer_than(row.get("computed_at"),
                                sessions) < REFRESH_EVERY_TAKES:

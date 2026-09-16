@@ -155,7 +155,7 @@ def select_take_level(
     # Spoken takes only (founder 2026-07-16): a mid-take RE-READ is part of
     # its take, never a competing take in the moments view.
     from services.slide_selection import spoken_arc_sessions
-    sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id)) \
+    sessions = spoken_arc_sessions(db.takes.get_arc_sessions(arc_id)) \
         if arc_id else []
     from services.power_phrase_ranking import power_score
 
@@ -200,7 +200,7 @@ def select_cross_take(
     and the SAME payload contract (only `granularity` flips to "line")."""
     db = database if database is not None else _default_db()
     from services.slide_selection import spoken_arc_sessions
-    sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id)) \
+    sessions = spoken_arc_sessions(db.takes.get_arc_sessions(arc_id)) \
         if arc_id else []
     granularity = preflight_granularity(sessions)
     if granularity == "line":  # pragma: no cover - gated off until §5.0 passes

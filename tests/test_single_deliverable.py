@@ -234,7 +234,7 @@ class VerifyRouteTests(unittest.TestCase):
     def _post(self, *, sessions, outcome, row):
         with self.app.test_request_context(json={}):
             request.user_id = "coach1"
-            with patch.object(db, "get_arc_sessions",
+            with patch.object(db.takes, "get_arc_sessions",
                               return_value=sessions), \
                  patch.object(db, "verify_ideal_text",
                               return_value=outcome), \
@@ -797,7 +797,7 @@ class LegacyRetirementTests(unittest.TestCase):
         have already done."""
         with self.app.test_request_context(json={}):
             request.user_id = "coach1"
-            with patch.object(db, "get_arc_sessions", return_value=[]):
+            with patch.object(db.takes, "get_arc_sessions", return_value=[]):
                 out = v2_coach.v2_coach_publish_analysis.__wrapped__(ARC)
             resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertNotEqual(status, 410)

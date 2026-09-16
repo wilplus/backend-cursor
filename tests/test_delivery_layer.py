@@ -235,7 +235,7 @@ class IdealTextRoutesTests(unittest.TestCase):
         # (updated_by NULL would be the eager MACHINE draft → "machine").
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(db, "get_arc_sessions",
+            with patch.object(db.takes, "get_arc_sessions",
                               return_value=_sessions()), \
                  patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value={"text": "coach block",
@@ -254,7 +254,7 @@ class IdealTextRoutesTests(unittest.TestCase):
         # serves (and eager-persists for next open) — the panel is never dead.
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(db, "get_arc_sessions",
+            with patch.object(db.takes, "get_arc_sessions",
                               return_value=_sessions()), \
                  patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=None), \

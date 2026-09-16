@@ -168,7 +168,7 @@ def _build_take_comparison(session_id, this_agg) -> Optional[str]:
         topic = (ctx or {}).get("topic")
         if not uid:
             return None
-        prior = db.v2_list_user_lab_sessions(uid, limit=20) or []
+        prior = db.takes.v2_list_user_lab_sessions(uid, limit=20) or []
         cands = [
             s for s in prior
             if (s.get("created_at") or "") < created and str(s.get("id")) != str(session_id)

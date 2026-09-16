@@ -228,7 +228,7 @@ def resolve_confidence_baseline(
                 from services.db import db as database
             hist: list = []
             try:
-                sessions = database.v2_list_user_lab_sessions(
+                sessions = database.takes.v2_list_user_lab_sessions(
                     str(user_id), limit=_BASELINE_MAX_SESSIONS) or []
                 for s in sessions:
                     sid = str(s.get("id") or "")

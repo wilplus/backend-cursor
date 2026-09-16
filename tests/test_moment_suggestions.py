@@ -1317,6 +1317,12 @@ class GenerationRecurrenceProtectionTests(unittest.TestCase):
                      "recording_kind": "spoken"}
                     for i in range(len(self._takes))]
 
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
+
         def get_snippets_by_session(self, sid):
             i = int(sid[1:])
             return [{"transcript": self._takes[i]}]
@@ -1375,6 +1381,12 @@ class PolishRecurrenceProtectionTests(unittest.TestCase):
                      "recording_kind": "spoken"}
                     for i in range(len(self._takes))]
 
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
+
         def get_snippets_by_session(self, sid):
             i = int(sid[1:])
             return [{"transcript": self._takes[i]}]
@@ -1432,6 +1444,12 @@ class VersionSnapshotWriteTests(unittest.TestCase):
         def get_arc_sessions(self, arc_id):
             return [{"id": "t0", "take_index": 1,
                      "recording_kind": "spoken"}]
+
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
 
         def get_snippets_by_session(self, sid):
             return [{"transcript": "a line"}]

@@ -67,7 +67,7 @@ def _piece_rows(database, user_id: str, max_sessions: int) -> tuple:
     Each row is (snippet_id, metrics_dict). Snippets with no metrics blob are
     dropped here; there is nothing to re-stamp on them."""
     rows: list = []
-    sessions = database.v2_list_user_lab_sessions(
+    sessions = database.takes.v2_list_user_lab_sessions(
         user_id, limit=max_sessions) or []
     for s in sessions:
         sid = str(s.get("id") or "")

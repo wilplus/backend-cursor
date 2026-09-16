@@ -1835,7 +1835,7 @@ def _previous_spoken_session(arc_id, current_session_id):
     first take. Best-effort."""
     try:
         from services.slide_selection import spoken_arc_sessions
-        spoken = spoken_arc_sessions(db.get_arc_sessions(arc_id) or [])
+        spoken = spoken_arc_sessions(db.takes.get_arc_sessions(arc_id) or [])
         spoken.sort(key=lambda s: (s.get("take_index") or 0,
                                    s.get("created_at") or ""))
         ids = [str(s.get("id")) for s in spoken if s.get("id")]
