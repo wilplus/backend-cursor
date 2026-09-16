@@ -12,9 +12,9 @@ d556379d4b6095a7ad5ff4309e55f99ea18d01fd6240955a33044a247b893804  src/app/api/v2
 6298580b2205bdc80e59fe1b770b2250bd43f2c41880bd0353d6b6e25aa40fe8  src/app/api/v2/user/confident-moment-bundles/[bundleId]/render/route.ts
 9d9ef8bfe329df95697525476f4af1c531d73b9f4e40ebbca14d63eb535fff12  src/app/api/v2/user/confident-moment-bundles/[bundleId]/root-actions/route.ts
 48268a89c61c09737932e99ed467d8864ff0be387b919acec9e62280249c6d44  src/app/api/v2/user/mlc3/confident-moment-exercise/[bundleId]/[attachmentId]/route.ts
-08c6513ab097c65686c3a0787294a77dea27f2b0ce1b63b45b75893f642e14e1  src/components/willab/CoachConfidentMomentComposer.test.tsx
+9bae9460c6fcc983431ce454910d811ba68b799b16bfdfaf46d7214e4c7896d6  src/components/willab/CoachConfidentMomentComposer.test.tsx
 7cda135338866c28087d3b0a290ece9ae3169c2a1bee0dd98734958628601896  src/components/willab/CoachConfidentMomentComposer.tsx
-bc7b0dec8a320af977c60b38fa314ca3c4a77f9aa0eca30bb8c010e69ad38e00  src/components/willab/CoachFeedbackLanguageEditor.test.tsx
+aef6a1651670e634544a1c3d0acc7ee8a717060344b1bff3423d9777eb014c45  src/components/willab/CoachFeedbackLanguageEditor.test.tsx
 b2b705a338bf71d7f115de522f21bcaa789d8197448c82dd6c1148c73d91e284  src/components/willab/CoachFeedbackLanguageEditor.tsx
 b8bd7090e780443e0f2930e8ea4a1dcf44b694da2f57ce88b061fa4ae0af25aa  src/components/willab/CoachStarVerdictOverlay.tsx
 51c5a5381da7beb88e77f105fe00a83f4f46fcee12b7034f1c41dc59ff2f19e1  src/components/willab/ConfidentMomentCoachingBundle.tsx
@@ -65,3 +65,34 @@ and the Phase 5 branch (`claude/gallant-gates-di7r7f`); the drift is Phase
 
 Every other entry, the BFF routes and the Confident Moment bundle surfaces
 included, is untouched.
+
+## Re-freeze 2026-09-16 — test-quality audit fix (frontend)
+
+Re-frozen for the same rule. Two of the thirty-four entries drift, both
+test-only, zero production code touched:
+
+- `src/components/willab/CoachConfidentMomentComposer.test.tsx`,
+  `src/components/willab/CoachFeedbackLanguageEditor.test.tsx` — both
+  previously only `readFileSync`'d the component/service source and
+  asserted substring containment; neither ever rendered the component or
+  ran the code it named. Rewritten to mount the real component (React
+  `createRoot`, the codebase's existing no-Testing-Library idiom) and drive
+  it like a user/coach would: the composer's gate (flag, `revealed`, an
+  authorized target) is exercised through all five branches by rendering,
+  not grepping; its overlay open/close (including a real `popstate` firing
+  `useBackDismiss`) is exercised for real; the editor's Save path is driven
+  with a typed value and a mocked `publishCoachFeedbackLanguage` (the one
+  collaborator boundary — that function's own request-shape contract is
+  already pinned for real in `coachGuidanceDelivery.test.ts`, untouched
+  here), proving the CURRENT head state travels on submit and rolls
+  forward from the response for the next save, and that a failed save
+  surfaces inline. Two assertions in the composer file that are genuinely
+  about a DIFFERENT file's own source (`CoachStarVerdictOverlay.tsx`'s JSX
+  order, the BFF route's exact path — already pinned again by
+  `bffEnvelopes.contract.test.ts`) are kept as explicit, labeled source
+  checks, since mounting this composer alone cannot exercise another
+  component's render tree. Teeth-checked: reverting the composer's gate
+  condition to skip the flag check fails the new gate test; restored.
+
+Every other entry, including both components' own `.tsx` source and
+`coachGuidanceDelivery.ts`/`.test.ts`, is untouched.
