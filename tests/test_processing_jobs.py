@@ -225,6 +225,12 @@ class _FakeDb:
         # (test_orphan_sweep_and_concurrency); nothing here exercises it.
         return []
 
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls db.takes.<method>(); this fake
+        # implements those methods directly on itself.
+        return self
+
 
 class _FakeQueue:
     def __init__(self, ok=True):

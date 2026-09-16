@@ -26,7 +26,7 @@ def _persist_boundary_metrics(
             slides,
         )
         if metrics:
-            database.set_session_boundary_metrics(state.session_id, metrics)
+            database.takes.set_session_boundary_metrics(state.session_id, metrics)
     except Exception as error:
         log.warning(
             "boundary metrics failed sid=%s: %s",
@@ -50,7 +50,7 @@ def _persist_deck_transcript(
         slides,
     )
     if any((item.get("transcript") or "").strip() for item in transcript):
-        database.set_session_slide_transcripts(state.session_id, transcript)
+        database.takes.set_session_slide_transcripts(state.session_id, transcript)
     _persist_boundary_metrics(
         state,
         slides,
@@ -76,7 +76,7 @@ def persist_recording_transcript(
                 log=log,
             )
         elif not slides:
-            database.set_session_slide_transcripts(
+            database.takes.set_session_slide_transcripts(
                 state.session_id,
                 list(state.canonical_pieces),
             )

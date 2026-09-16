@@ -64,7 +64,7 @@ def test_take_lookup_requires_take_project_and_owner_coordinates_together():
          "owner_principal_id": "owner-a"},
     ])
 
-    assert service.get_project_take_for_owner(
+    assert service.takes.get_project_take_for_owner(
         "project-a", "take-a", "owner-b") is None
     assert query.table_name == "v2_sessions"
     assert query.filters == [

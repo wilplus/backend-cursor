@@ -115,7 +115,7 @@ def store_recording_audio(
     )
 
     try:
-        database.v2_create_recording_session(
+        database.takes.v2_create_recording_session(
             session_id,
             owner_principal_id=owner_principal_id,
             user_id=user_id,
@@ -139,7 +139,7 @@ def store_recording_audio(
         except Exception:
             pass
         raise RecordingPersistenceError("Failed to create session") from exc
-    database.v2_set_session_upload_key(session_id, upload_key)
+    database.takes.v2_set_session_upload_key(session_id, upload_key)
 
     return StoredRecording(
         session_id=session_id,
@@ -166,10 +166,10 @@ def persist_session_metadata(
     """Persist context, origin, duration, and owner."""
     session_context.update(flow_tags)
     database.set_session_intake_context(session_id, session_context)
-    database.set_session_source(session_id, "audit_upload")
-    database.set_session_presentation_duration(session_id, duration_seconds)
+    database.takes.set_session_source(session_id, "audit_upload")
+    database.takes.set_session_presentation_duration(session_id, duration_seconds)
     if user_id:
-        database.set_session_user_id(session_id, user_id)
+        database.takes.set_session_user_id(session_id, user_id)
 
 
 def persist_recording_row(
@@ -233,7 +233,7 @@ def persist_recording_row(
                 "Failed to create recording"
             ) from exc
     try:
-        database.v2_set_session_recording(session_id, recording_id)
+        database.takes.v2_set_session_recording(session_id, recording_id)
     except Exception as exc:
         log.warning("lab: link recording failed (non-fatal): %s", exc)
     return RecordingRow(duration, user_id)

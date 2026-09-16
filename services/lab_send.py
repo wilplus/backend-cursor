@@ -137,7 +137,7 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
 
     # Flip into the coach review queue (the success signal).
     try:
-        flipped = db.v2_mark_session_pending_review(session_id)
+        flipped = db.takes.v2_mark_session_pending_review(session_id)
         ok = bool(flipped)
     except Exception as e:
         logger.error("lab_send: status flip failed sid=%s err=%s", session_id, e)

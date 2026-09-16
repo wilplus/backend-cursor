@@ -201,9 +201,9 @@ class ConfigRecordingRouteTests(unittest.TestCase):
 class CoachStudentsRouteTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
-        self._orig_list = getattr(db, "list_coach_students", None)
+        self._orig_list = getattr(db.takes, "list_coach_students", None)
         self._orig_prof = getattr(db, "get_user_profile", None)
-        db.list_coach_students = lambda **k: [
+        db.takes.list_coach_students = lambda **k: [
             {"user_id": "secret-uid-123", "last_active": "2026-06-08T10:00:00Z",
              "session_count": 7},
         ]
@@ -211,7 +211,7 @@ class CoachStudentsRouteTests(unittest.TestCase):
 
     def tearDown(self):
         if self._orig_list is not None:
-            db.list_coach_students = self._orig_list
+            db.takes.list_coach_students = self._orig_list
         if self._orig_prof is not None:
             db.get_user_profile = self._orig_prof
 

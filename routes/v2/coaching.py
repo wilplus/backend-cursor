@@ -96,7 +96,7 @@ def v2_chat_session_state():
     """
     try:
         user_id = request.user_id
-        session = db.v2_get_latest_session_for_user(user_id)
+        session = db.takes.v2_get_latest_session_for_user(user_id)
 
         if not session:
             return jsonify({

@@ -102,7 +102,7 @@ class OrphanQueryTests(unittest.TestCase):
             "v2_sessions": [{"id": _SID, "analysis_state": "processing"}],
             "processing_jobs": [],
         })
-        out = svc.list_orphaned_processing_sessions()
+        out = svc.takes.list_orphaned_processing_sessions()
         self.assertEqual([r["id"] for r in out], [_SID])
         # Only 'processing' sessions older than the cutoff are candidates.
         sess_call = calls[0]
@@ -115,7 +115,7 @@ class OrphanQueryTests(unittest.TestCase):
             "v2_sessions": [{"id": _SID, "analysis_state": "processing"}],
             "processing_jobs": [{"session_id": _SID, "status": "processing"}],
         })
-        self.assertEqual(svc.list_orphaned_processing_sessions(), [])
+        self.assertEqual(svc.takes.list_orphaned_processing_sessions(), [])
 
     def test_only_the_unprotected_one_is_returned(self):
         svc, _ = self._svc({
@@ -125,7 +125,7 @@ class OrphanQueryTests(unittest.TestCase):
             ],
             "processing_jobs": [{"session_id": _SID, "status": "pending"}],
         })
-        out = svc.list_orphaned_processing_sessions()
+        out = svc.takes.list_orphaned_processing_sessions()
         self.assertEqual([r["id"] for r in out], [_SID2])
 
     def test_guard_query_failure_fails_closed(self):
@@ -135,11 +135,11 @@ class OrphanQueryTests(unittest.TestCase):
             "v2_sessions": [{"id": _SID, "analysis_state": "processing"}],
             "processing_jobs": RuntimeError("postgrest down"),
         })
-        self.assertEqual(svc.list_orphaned_processing_sessions(), [])
+        self.assertEqual(svc.takes.list_orphaned_processing_sessions(), [])
 
     def test_no_candidates_skips_the_guard_query(self):
         svc, calls = self._svc({"v2_sessions": [], "processing_jobs": []})
-        self.assertEqual(svc.list_orphaned_processing_sessions(), [])
+        self.assertEqual(svc.takes.list_orphaned_processing_sessions(), [])
         self.assertEqual([c["table"] for c in calls], ["v2_sessions"])
 
 
@@ -155,6 +155,12 @@ class _FakeDb:
     def set_session_analysis_state(self, sid, state, error=None):
         self.states.append((sid, state, error))
         return True
+
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls db.takes.<method>(); this fake
+        # implements those methods directly on itself.
+        return self
 
     def list_stale_processing_jobs(self, stale_minutes=15, max_rows=100):
         return []

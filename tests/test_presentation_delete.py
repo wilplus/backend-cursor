@@ -69,8 +69,10 @@ class PresentationDeleteTests(unittest.TestCase):
             setattr(target, attr, orig)
 
     def _patch_db(self, attr, fn):
-        self.originals[f"db:{attr}"] = (db, attr, getattr(db, attr, None))
-        setattr(db, attr, fn)
+        # audit Q-A2: takes-family methods now live on db.takes, not db.
+        target = db.takes if hasattr(db.takes, attr) else db
+        self.originals[f"db:{attr}"] = (target, attr, getattr(target, attr, None))
+        setattr(target, attr, fn)
 
     def _pid(self, n_takes):
         """The presentation_id of the group with exactly n_takes sessions."""

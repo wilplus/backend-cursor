@@ -45,7 +45,7 @@ class SendTests(unittest.TestCase):
         from services.db import db
         session = {"user_id": "u1", **session}
         with patch.object(db, "v2_get_session_by_id", return_value=session), \
-             patch.object(db, "v2_mark_session_pending_review",
+             patch.object(db.takes, "v2_mark_session_pending_review",
                           return_value=({"id": "s"} if flip_ok else None)), \
              patch.object(db, "refund_coach_review_credit",
                           return_value=True) as mock_refund, \
@@ -112,7 +112,7 @@ class SendTests(unittest.TestCase):
         with patch.object(db, "v2_get_session_by_id",
                           return_value={"id": "s", "user_id": "u1",
                                         "status": "readout_ready"}), \
-             patch.object(db, "v2_mark_session_pending_review",
+             patch.object(db.takes, "v2_mark_session_pending_review",
                           return_value={"id": "s"}), \
              patch.object(db, "get_snippets_by_session", return_value=[]), \
              patch.object(mod, "_reserve_review_credit",

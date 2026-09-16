@@ -128,8 +128,8 @@ class CoachGetFoldTests(unittest.TestCase):
                  patch.object(db, "claim_coach_review",
                               return_value={"assigned_to": "coach1",
                                             "claimed": True}), \
-                 patch.object(db, "stamp_review_opened") as m_open, \
-                 patch.object(db, "get_read_sessions_for",
+                 patch.object(db.takes, "stamp_review_opened") as m_open, \
+                 patch.object(db.takes, "get_read_sessions_for",
                               return_value=read_sessions), \
                  patch.object(db, "get_coach_snippet_drafts",
                               return_value=[]), \
@@ -223,7 +223,7 @@ class SnippetWriteRoutingTests(unittest.TestCase):
                  patch.object(db, "get_snippets_by_session",
                               side_effect=lambda sid: self._snips.get(
                                   str(sid), [])), \
-                 patch.object(db, "get_read_sessions_for",
+                 patch.object(db.takes, "get_read_sessions_for",
                               return_value=[{"id": READ}]), \
                  patch.object(db, "get_coach_snippet_drafts",
                               return_value=[]), \
@@ -271,11 +271,11 @@ class SaveFeedbackRoutingTests(unittest.TestCase):
                  patch.object(db, "get_snippets_by_session",
                               side_effect=lambda sid: snips.get(
                                   str(sid), [])), \
-                 patch.object(db, "get_read_sessions_for",
+                 patch.object(db.takes, "get_read_sessions_for",
                               return_value=[{"id": READ}]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes, \
-                 patch.object(db, "set_session_feedback_saved",
+                 patch.object(db.takes, "set_session_feedback_saved",
                               return_value=True) as m_save:
                 resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(SPOKEN)
         self.assertEqual(status, 200)
@@ -295,7 +295,7 @@ class SaveFeedbackRoutingTests(unittest.TestCase):
                               return_value=_session_row()), \
                  patch.object(db, "get_snippets_by_session",
                               return_value=[{"id": PSNIP1}]), \
-                 patch.object(db, "get_read_sessions_for",
+                 patch.object(db.takes, "get_read_sessions_for",
                               return_value=[]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes") as m_lanes:
                 resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(SPOKEN)
@@ -401,7 +401,7 @@ class LabSendEmailGateTests(unittest.TestCase):
         from services.lab_send import send_lab_recording_to_coach
         with patch.object(db, "v2_get_session_by_id",
                           return_value=session_row), \
-             patch.object(db, "v2_mark_session_pending_review",
+             patch.object(db.takes, "v2_mark_session_pending_review",
                           return_value=True), \
              patch.object(db, "get_snippets_by_session",
                           return_value=[]), \

@@ -58,24 +58,24 @@ class SetSessionRecordingKindTests(unittest.TestCase):
 
     def test_read_tags_kind_and_pairs(self):
         svc, fake = self._svc()
-        self.assertTrue(svc.set_session_recording_kind("s2", "read", "s1"))
+        self.assertTrue(svc.takes.set_session_recording_kind("s2", "read", "s1"))
         self.assertEqual(fake.payload,
                          {"recording_kind": "read", "paired_session_id": "s1"})
         self.assertEqual(fake.filter, ("id", "s2"))
 
     def test_spoken_tags_kind_only(self):
         svc, fake = self._svc()
-        self.assertTrue(svc.set_session_recording_kind("s1", "spoken"))
+        self.assertTrue(svc.takes.set_session_recording_kind("s1", "spoken"))
         self.assertEqual(fake.payload, {"recording_kind": "spoken"})
 
     def test_bad_kind_is_false_no_write(self):
         svc, fake = self._svc()
-        self.assertFalse(svc.set_session_recording_kind("s1", "sung"))
+        self.assertFalse(svc.takes.set_session_recording_kind("s1", "sung"))
         self.assertIsNone(fake.payload)
 
     def test_missing_column_degrades_false_not_raise(self):
         svc, _ = self._svc(raise_missing=True)
-        self.assertFalse(svc.set_session_recording_kind("s2", "read", "s1"))
+        self.assertFalse(svc.takes.set_session_recording_kind("s2", "read", "s1"))
 
 
 class _FakeCountClient:
@@ -122,7 +122,7 @@ class CountArcSpokenOnlyTests(unittest.TestCase):
 
     def test_filters_out_reads_via_paired_null(self):
         svc, fake = self._svc(2)
-        n = svc.count_arc_sessions("arc1", exclude_session_id="cur")
+        n = svc.takes.count_arc_sessions("arc1", exclude_session_id="cur")
         self.assertEqual(n, 2)
         self.assertIn(("is", "paired_session_id", "null"), fake.filters)
         self.assertIn(("neq", "id", "cur"), fake.filters)

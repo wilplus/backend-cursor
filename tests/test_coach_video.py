@@ -74,8 +74,10 @@ class CoachVideoTests(unittest.TestCase):
         return created
 
     def _patch_db(self, attr, fn):
-        self.originals[f"db:{attr}"] = (db, attr, getattr(db, attr, None))
-        setattr(db, attr, fn)
+        # audit Q-A2: takes-family methods now live on db.takes, not db.
+        target = db.takes if hasattr(db.takes, attr) else db
+        self.originals[f"db:{attr}"] = (target, attr, getattr(target, attr, None))
+        setattr(target, attr, fn)
 
     def _fake_put(self, bucket, key, data, content_type):
         self.stored["key"] = key

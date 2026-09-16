@@ -337,9 +337,9 @@ class SavePublishTests(unittest.TestCase):
                               return_value=[{"id": snip}]), \
                  patch("routes.v2.coach._save_coach_snippet_lanes",
                               return_value=None) as m_lanes, \
-                 patch.object(db, "set_session_coach_overall_message",
+                 patch.object(db.takes, "set_session_coach_overall_message",
                               return_value=True) as m_summary, \
-                 patch.object(db, "set_session_feedback_saved",
+                 patch.object(db.takes, "set_session_feedback_saved",
                               return_value=True) as m_save:
                 resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(sid)
         self.assertEqual(status, 200)
@@ -364,7 +364,7 @@ class SavePublishTests(unittest.TestCase):
             with patch.object(db, "v2_get_session_by_id",
                               return_value={"id": sid}), \
                  patch("routes.v2.coach._save_coach_snippet_lanes") as m_lanes, \
-                 patch.object(db, "set_session_feedback_saved",
+                 patch.object(db.takes, "set_session_feedback_saved",
                               return_value=True) as m_save:
                 resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(sid)
         self.assertEqual(status, 200)

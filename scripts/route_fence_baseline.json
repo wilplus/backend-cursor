@@ -65,15 +65,15 @@
   },
   "routes/v2/admin.py:v2_admin_get_session": {
     "lines": 221,
-    "db_calls": 2
+    "db_calls": 1
   },
   "routes/v2/admin.py:v2_admin_regenerate_next_session_icebreaker": {
     "lines": 89,
-    "db_calls": 3
+    "db_calls": 0
   },
   "routes/v2/admin.py:v2_admin_update_next_session_icebreaker": {
     "lines": 99,
-    "db_calls": 3
+    "db_calls": 0
   },
   "routes/v2/admin.py:v2_admin_update_snippet_coaching_rationale": {
     "lines": 181,
@@ -121,7 +121,7 @@
   },
   "routes/v2/coach.py:_snippet_owner_map": {
     "lines": 22,
-    "db_calls": 3
+    "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_ab_pairs": {
     "lines": 68,
@@ -173,11 +173,11 @@
   },
   "routes/v2/coach.py:v2_coach_get_session": {
     "lines": 264,
-    "db_calls": 7
+    "db_calls": 5
   },
   "routes/v2/coach.py:v2_coach_list_training_imports": {
     "lines": 82,
-    "db_calls": 4
+    "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_put_confidence_label": {
     "lines": 244,
@@ -213,7 +213,7 @@
   },
   "routes/v2/coach.py:v2_coach_save_feedback": {
     "lines": 96,
-    "db_calls": 3
+    "db_calls": 1
   },
   "routes/v2/coach.py:v2_coach_session_recut": {
     "lines": 138,
@@ -221,15 +221,11 @@
   },
   "routes/v2/coach.py:v2_coach_session_video": {
     "lines": 98,
-    "db_calls": 4
+    "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_student_detail": {
     "lines": 94,
     "db_calls": 3
-  },
-  "routes/v2/coach.py:v2_coach_students": {
-    "lines": 39,
-    "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_training_import": {
     "lines": 142,
@@ -273,7 +269,7 @@
   },
   "routes/v2/coaching.py:v2_chat_session_state": {
     "lines": 138,
-    "db_calls": 2
+    "db_calls": 1
   },
   "routes/v2/confident_moment_bundles.py:record_confident_moment_root_action": {
     "lines": 130,
@@ -417,7 +413,7 @@
   },
   "routes/v2/user_sessions.py:v2_user_list_trainings": {
     "lines": 96,
-    "db_calls": 3
+    "db_calls": 2
   },
   "routes/v2/user_sessions.py:v2_user_put_session_intake_context": {
     "lines": 81,
@@ -429,7 +425,7 @@
   },
   "routes/v2/user_sessions.py:v2_user_sessions_current": {
     "lines": 87,
-    "db_calls": 2
+    "db_calls": 1
   },
   "routes/v2/user_sessions.py:v2_user_snippet_confidence_review": {
     "lines": 69,

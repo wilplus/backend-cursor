@@ -263,7 +263,7 @@ def prepare_training_import(
     idem = (str(idempotency_key).strip() if idempotency_key else "")
     if idem:
         try:
-            existing = database.find_training_import_by_key(idem)
+            existing = database.takes.find_training_import_by_key(idem)
             if existing:
                 ctx = existing.get("intake_context") or {}
                 from services.confidence_labels import stored_selection_records
@@ -336,7 +336,7 @@ def prepare_training_import(
     if duration_sec:
         session_context["duration_sec"] = round(duration_sec, 1)
     try:
-        database.v2_create_internal_session(session_id)
+        database.takes.v2_create_internal_session(session_id)
         database.set_session_intake_context(session_id, session_context)
         # THE MARKER IS NOT OPTIONAL — fail loudly if it doesn't land.
         #
@@ -352,7 +352,7 @@ def prepare_training_import(
         # marker is simultaneously the index key and the isolation that keeps
         # a many-voice corpus out of one speaker's baseline. Better to refuse
         # the import and name the migration than to write an orphan.
-        if not database.set_session_source(session_id, IMPORT_SOURCE):
+        if not database.takes.set_session_source(session_id, IMPORT_SOURCE):
             logger.error(
                 "training_import: could not mark session %s as %s — "
                 "refusing the import rather than orphaning it",
@@ -365,8 +365,8 @@ def prepare_training_import(
                 "session_id": session_id,
             }
         if user_id:
-            database.set_session_user_id(session_id, str(user_id))
-        database.set_session_arc(session_id, arc_id, 1)
+            database.takes.set_session_user_id(session_id, str(user_id))
+        database.takes.set_session_arc(session_id, arc_id, 1)
         # The job state the FE polls (reuses the async-analysis lane the live
         # path already has: processing → ready | failed).
         try:
@@ -374,7 +374,7 @@ def prepare_training_import(
         except Exception:
             pass
         try:
-            database.set_session_presentation_duration(session_id, duration_sec)
+            database.takes.set_session_presentation_duration(session_id, duration_sec)
         except Exception:
             pass   # duration is metadata, never a reason to lose the import
     except Exception as e:
@@ -423,7 +423,7 @@ def prepare_training_import(
             logger.error("training_import: create_recording failed: %s", ce)
             return {"ok": False, "reason": "recording_failed", "detail": str(ce)}
     try:
-        database.v2_set_session_recording(session_id, recording_id)
+        database.takes.v2_set_session_recording(session_id, recording_id)
     except Exception as le:
         logger.warning("training_import: link recording failed: %s", le)
 

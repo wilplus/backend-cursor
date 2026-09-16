@@ -101,7 +101,7 @@ class ProjectRepository:
     def project_take_by_idempotency_key(
         self, project_id: str, idempotency_key: str,
     ) -> dict | None:
-        return self.database.get_project_take_by_upload_key(
+        return self.database.takes.get_project_take_by_upload_key(
             str(project_id), str(idempotency_key))
 
     def project_takes(self, project_id: str) -> list[dict]:
@@ -113,7 +113,7 @@ class ProjectRepository:
         take_id: str,
         principal_id: str,
     ) -> dict:
-        row = self.database.get_project_take_for_owner(
+        row = self.database.takes.get_project_take_for_owner(
             str(project_id), str(take_id), str(principal_id))
         if not row:
             raise ProjectOwnershipError("take not found")

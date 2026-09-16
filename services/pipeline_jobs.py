@@ -1061,7 +1061,7 @@ def sweep_orphaned_sessions(max_rows: int = 100) -> int:
     makes the FE stop polling and offer a re-record. Returns the count.
     """
     n = 0
-    for row in db.list_orphaned_processing_sessions(
+    for row in db.takes.list_orphaned_processing_sessions(
         stale_minutes=orphan_stale_minutes(), max_rows=max_rows,
     ):
         sid = str(row.get("id") or "")

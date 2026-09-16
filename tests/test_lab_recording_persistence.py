@@ -48,12 +48,12 @@ class ParentAudioStorageTests(unittest.TestCase):
             )
         deadline.check.assert_called_once_with("store")
         self.assertEqual(result.audio_url, "https://audio")
-        database.v2_create_recording_session.assert_called_once_with(
+        database.takes.v2_create_recording_session.assert_called_once_with(
             result.session_id,
             owner_principal_id="owner-1",
             user_id="user-1",
         )
-        database.v2_set_session_upload_key.assert_called_once_with(
+        database.takes.v2_set_session_upload_key.assert_called_once_with(
             result.session_id,
             "upload-1",
         )
@@ -94,7 +94,7 @@ class SessionMetadataTests(unittest.TestCase):
             "session-1",
             context,
         )
-        database.set_session_user_id.assert_called_once_with(
+        database.takes.set_session_user_id.assert_called_once_with(
             "session-1",
             "user-1",
         )
@@ -125,7 +125,7 @@ class RecordingRowTests(unittest.TestCase):
         self.assertEqual(payload["recording_origin"], "willab_lab")
         self.assertEqual(payload["duration"], 13)
         database.insert_recording_feeling.assert_called_once()
-        database.v2_set_session_recording.assert_called_once_with(
+        database.takes.v2_set_session_recording.assert_called_once_with(
             "session-1",
             "recording-1",
         )

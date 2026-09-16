@@ -72,7 +72,7 @@ def update_summary_sync(
         )
         return previous_summary
 
-    persisted = db.set_session_conversation_summary(session_id, new_summary)
+    persisted = db.takes.set_session_conversation_summary(session_id, new_summary)
     if persisted is None:
         logger.warning(
             "conversation_summary: persist failed sid=%s — "

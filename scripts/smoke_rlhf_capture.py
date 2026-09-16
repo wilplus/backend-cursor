@@ -581,7 +581,7 @@ def run_smoke_test(
         rlhf_rows_written = 0
 
         try:
-            published_row = db.v2_publish_session_results(pick["session_id"])
+            published_row = db.takes.v2_publish_session_results(pick["session_id"])
             if published_row:
                 _ok("v2_publish_session_results", "results_published_at stamped")
             else:
@@ -592,14 +592,14 @@ def run_smoke_test(
             fail_count += 1
 
         try:
-            db.v2_update_session_status_unscoped(pick["session_id"], "completed")
+            db.takes.v2_update_session_status_unscoped(pick["session_id"], "completed")
             _ok("status flip", "set to 'completed'")
         except Exception as e:
             _fail("status flip", f"raised: {e}")
             fail_count += 1
 
         try:
-            db.set_session_final_next_questions(
+            db.takes.set_session_final_next_questions(
                 pick["session_id"], test_questions,
             )
             _ok("set_session_final_next_questions", "array persisted")
