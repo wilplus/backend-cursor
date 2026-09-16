@@ -45,7 +45,7 @@ a833c211cf077f294a7973714c065aaa65a1c1aede33c49e4d7ae3debcdc7031  docs/MLC3-CONF
 39b62b500f23732bfbb0326ffe0ae054b9233c1267665a11a9275eb10205bdcb  migrations/add_confident_moment_coaching_bundle_v1.sql
 dc5fbbcc22b374040e74b800a8733eaeb44a36e2556ba9a5cf4bef3bad9559eb  routes/v2/coach_guidance_delivery.py
 bcfc7b89e112d1bcd7bc1ed642064b800d57146971a4245eea3699921e4d526a  routes/v2/confident_moment_bundles.py
-836975fa5e1fc46653d4a7a789a58e850c97cfc6420bec29ffb12c7b4be17fe6  routes/v2/explore_ideal_text.py
+50e24a592d21fd2e5833a351dbea15728bda40af3d8249c1f3f9b9e00ec4b143  routes/v2/explore_ideal_text.py
 a4968eb69e4886ef88c7b5e5dbc5cabf2cea1e5b455bdaa2c02be54c538e6dde  scripts/monitor_mlc3_general_service.py
 7e4f842eaa1bbdbbf784eb4777412e4814c7f4c8374200cbdaae42413604b779  services/confident_moment_bundle.py
 3a2e0299fa95d1b8e4e38661a786900c0565362d9b4651b97c2f9178d079625b  services/confident_moment_bundle_repository.py
@@ -53,7 +53,7 @@ dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confi
 794c3d04c55016987c75dc9bdc7bab64ded34a14a7a6e3ee832b6b22f32b9568  services/confident_moment_user_media.py
 09ac4873e142bd68c682abaf28acb15e4fb0a445aab749ad8b28b47020b1df22  services/data_purge.py
 5ff3880f55da07671775de92e279e13e0dca96b615329632b6d6cd88096cbbb9  services/data_purge_registry.py
-6db294b25955279bb964f02a4e4cd40deff3a78b70c06afb5fce6ecdd489fc33  services/db.py
+b44b1f1ac62e3eef139c0e093ad43bdace0f8777017b0eecf5bc453e3817da34  services/db.py
 b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedback_data_contract.py
 35955687744b693dfb26fe79b79767c54c3a851dabfba4c015790c4537c459c7  services/feedback_language.py
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
@@ -211,5 +211,41 @@ delegate to, instead of keeping the forwarder.
 No table, migration, route, or response shape changes. Verified by
 execution: targeted tests for every touched file green, then the full
 gate.
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-16 — post-audit glue cleanup, ideal-text family wrapper repointing (backend)
+
+Re-frozen by the same rule. Two pinned files drift, both zero-behavior-
+change cleanup: the second of three families in the audit's Q-A2
+continuation. `get_coach_arc_ideal_text` (by far the largest caller
+surface of the nine ideal-text-family forwarders — dozens of call sites
+across the Ideal Text read/write routes) is deferred to its own,
+separately-verified PR given its size; the other eight are repointed here.
+
+- `services/db.py` — `delete_ideal_text_block`, `get_canonical_confidence_
+  evidence`, `get_ideal_text_block`, `get_latest_ideal_text_save`,
+  `insert_ideal_text_save`, `list_ideal_text_blocks`,
+  `upsert_coach_arc_ideal_text` and `upsert_ideal_text_block` forwarders
+  are deleted. `get_coach_arc_ideal_text`'s own forwarder stays for now.
+- `routes/v2/explore_ideal_text.py` — its `db.list_ideal_text_blocks(...)`,
+  `db.insert_ideal_text_save(...)` and `db.get_latest_ideal_text_save(...)`
+  calls now go through `db.ideal_text.`.
+- `routes/v2/coach.py`, `services/master_document.py`,
+  `services/ideal_text_variants.py` — their calls to the other five
+  methods now go through `db.ideal_text.` / `database.ideal_text.` (not
+  pinned files; changed alongside, not listed above).
+- Two test fixtures (`tests/test_master_document.py`,
+  `tests/test_ideal_text_variants.py`) each have their own hand-rolled
+  `_Db` fake implementing these methods directly on itself; both gained a
+  one-line `ideal_text` property returning `self`, so the repointed
+  production calls resolve to the exact same fake methods. Two
+  `patch.object(db, "upsert_coach_arc_ideal_text", ...)` /
+  `patch.object(v2_db, ...)` test sites move to patching
+  `db.ideal_text` / `v2_db.ideal_text` instead.
+
+No table, migration, route, or response shape changes. Verified by
+execution: targeted tests for every touched file green (417 tests across
+the ideal-text surfaces), then the full gate.
 
 Every other entry is untouched.

@@ -166,7 +166,7 @@ def snapshot_composition(database, arc_id: Any, *, reason: str,
     skipped rather than blocking the snapshot. Returns the revision, or
     None (pre-migration / nothing to snapshot) — never raises."""
     try:
-        rows = database.list_ideal_text_blocks(str(arc_id))
+        rows = database.ideal_text.list_ideal_text_blocks(str(arc_id))
         if not rows:
             return None
         pool = database.list_ideal_text_block_variants(str(arc_id)) or []
@@ -321,7 +321,7 @@ def block_variants_payload(database, arc_id: Any) -> Optional[dict]:
     AC-9: provenance and text only — no scores, no ranking numbers, no
     why vocabulary. None only when the BLOCK read fails (read-fail ≠
     empty)."""
-    rows = database.list_ideal_text_blocks(str(arc_id))
+    rows = database.ideal_text.list_ideal_text_blocks(str(arc_id))
     if rows is None:
         return None
     pool = database.list_ideal_text_block_variants(str(arc_id)) or []
@@ -392,7 +392,7 @@ def select_block_variant(database, arc_id: Any, block_key: Any,
 
     Returns (ok, error_code): NOT_FOUND / NOT_PENDING (candidate block)
     / WRITE_FAILED, mirroring decide_block for the route to map."""
-    row = database.get_ideal_text_block(str(arc_id), int(block_key))
+    row = database.ideal_text.get_ideal_text_block(str(arc_id), int(block_key))
     if not row:
         return (False, "NOT_FOUND")
     if row.get("status") == "candidate":
@@ -443,7 +443,7 @@ def select_block_variant(database, arc_id: Any, block_key: Any,
         "challenger_pieces": None,
         "challenger_why": None,
     })
-    ok = database.upsert_ideal_text_block(str(arc_id), int(block_key),
+    ok = database.ideal_text.upsert_ideal_text_block(str(arc_id), int(block_key),
                                           fields)
     if not ok:
         return (False, "WRITE_FAILED")
@@ -473,7 +473,7 @@ def restore_revision(database, arc_id: Any, revision: Any,
         key = sel.get("block_key")
         var = database.get_ideal_text_block_variant(
             str(arc_id), sel.get("variant_id"))
-        row = database.get_ideal_text_block(str(arc_id), key) \
+        row = database.ideal_text.get_ideal_text_block(str(arc_id), key) \
             if isinstance(key, int) else None
         if not var or not row or row.get("status") == "candidate" \
                 or var.get("block_key") != key:
@@ -506,7 +506,7 @@ def restore_revision(database, arc_id: Any, revision: Any,
             "challenger_pieces": None,
             "challenger_why": None,
         })
-        ok = database.upsert_ideal_text_block(str(arc_id), int(key), fields)
+        ok = database.ideal_text.upsert_ideal_text_block(str(arc_id), int(key), fields)
         any_write = any_write or ok
         all_ok = all_ok and ok
     if not any_write:

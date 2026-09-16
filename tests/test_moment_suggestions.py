@@ -621,7 +621,7 @@ class StudentGetStarTests(unittest.TestCase):
                               return_value=(feedback or [])), \
                  patch.object(v2_db, "get_user_arc_ideal_notes",
                               return_value=None), \
-                 patch.object(v2_db, "upsert_coach_arc_ideal_text") as m_can, \
+                 patch.object(v2_db.ideal_text, "upsert_coach_arc_ideal_text") as m_can, \
                  patch.object(v2_db, "persist_auto_ideal_text") as m_auto:
                 out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)

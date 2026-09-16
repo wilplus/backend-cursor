@@ -176,7 +176,7 @@ def build_skeleton(arc_id: Any, database) -> list:
                 "challenger_pieces": None,
                 "challenger_why": None,
             }
-            if database.upsert_ideal_text_block(str(arc_id), i * _KEY_STEP,
+            if database.ideal_text.upsert_ideal_text_block(str(arc_id), i * _KEY_STEP,
                                                 fields):
                 rows.append({"arc_id": str(arc_id),
                              "block_key": i * _KEY_STEP, **fields,
@@ -219,7 +219,7 @@ def assemble_master_document(arc_id: str, *, database=None) -> dict:
     # put the take-1 LLM chunking pass on the student GET). The skeleton
     # is no longer built by the runtime. Historical rows can still be read;
     # without them the caller falls back to the canonical Ideal Text path.
-    rows = database.list_ideal_text_blocks(str(arc_id))
+    rows = database.ideal_text.list_ideal_text_blocks(str(arc_id))
     if not rows:
         return empty
 
@@ -363,7 +363,7 @@ def upgrade_changes(arc_id: Any, served_text: str, database) -> list:
     is not a span-anchored edit, and forcing it into that shape produced an
     anchor pointing at no text. They are their own lane now: `block_additions`.
     """
-    rows = database.list_ideal_text_blocks(str(arc_id))
+    rows = database.ideal_text.list_ideal_text_blocks(str(arc_id))
     if not rows:
         return []
     out, cursor = [], 0
@@ -452,7 +452,7 @@ def block_additions(arc_id: Any, served_text: str, database) -> list:
 
     Pure given db rows; [] on anything missing.
     """
-    rows = database.list_ideal_text_blocks(str(arc_id))
+    rows = database.ideal_text.list_ideal_text_blocks(str(arc_id))
     if not rows:
         return []
     doc = served_text if isinstance(served_text, str) else ""
@@ -488,7 +488,7 @@ def decide_block(arc_id: Any, block_key: Any, action: str,
     (candidate → active); keep → remembered in the rejected list, offer
     cleared. Returns (ok, error_code): error codes NOT_PENDING /
     STALE_OFFER / NOT_FOUND for the route to map."""
-    row = database.get_ideal_text_block(str(arc_id), int(block_key))
+    row = database.ideal_text.get_ideal_text_block(str(arc_id), int(block_key))
     if not row:
         return (False, "NOT_FOUND")
     status = row.get("status")
@@ -521,7 +521,7 @@ def decide_block(arc_id: Any, block_key: Any, action: str,
                 "challenger_pieces": None,
                 "challenger_why": None,
             }
-        ok = database.upsert_ideal_text_block(str(arc_id), int(block_key),
+        ok = database.ideal_text.upsert_ideal_text_block(str(arc_id), int(block_key),
                                               fields)
         if ok and action == "accept":
             # DUAL-WRITE (2026-08-03): an accepted upgrade is a new
@@ -540,7 +540,7 @@ def decide_block(arc_id: Any, block_key: Any, action: str,
         if str(challenger_session_echo or "") != offered:
             return (False, "STALE_OFFER")
         if action == "accept":
-            ok = database.upsert_ideal_text_block(
+            ok = database.ideal_text.upsert_ideal_text_block(
                 str(arc_id), int(block_key),
                 {"status": "settled", "active": True})
             if ok:
@@ -557,6 +557,6 @@ def decide_block(arc_id: Any, block_key: Any, action: str,
         # candidate became an invisible ghost that swallowed later takes'
         # material forever (review finding #2). The same material said
         # again in a future take may honestly be offered again.
-        ok = database.delete_ideal_text_block(str(arc_id), int(block_key))
+        ok = database.ideal_text.delete_ideal_text_block(str(arc_id), int(block_key))
         return (bool(ok), None if ok else "WRITE_FAILED")
     return (False, "NOT_PENDING")

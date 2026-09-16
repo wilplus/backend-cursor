@@ -48,6 +48,12 @@ class _Db:
         self.blocks_fail = False
         self.writes = []
 
+    @property
+    def ideal_text(self):
+        # audit Q-A2: production now calls database.ideal_text.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     # blocks (same shapes as test_master_document's fake)
     def list_ideal_text_blocks(self, arc_id):
         if self.blocks_fail:

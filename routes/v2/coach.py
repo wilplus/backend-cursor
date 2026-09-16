@@ -1799,7 +1799,7 @@ def v2_coach_put_ideal_text(arc_id):
         if len(text) > 20000:
             return jsonify({"code": "INVALID_INPUT",
                             "error": "text too long"}), 400
-        ok = db.upsert_coach_arc_ideal_text(
+        ok = db.ideal_text.upsert_coach_arc_ideal_text(
             arc_id, text, str(request.user_id))
         if not ok:
             return jsonify({"code": "V2_ERROR",
@@ -1920,7 +1920,7 @@ def v2_coach_approve_ideal_text(arc_id):
                     "error": "Nothing to approve — the arc has no "
                              "assembled ideal text yet.",
                 }), 409
-        ok = db.upsert_coach_arc_ideal_text(
+        ok = db.ideal_text.upsert_coach_arc_ideal_text(
             arc_id, text, str(request.user_id), approve=True)
         if not ok:
             return jsonify({"code": "V2_ERROR",
@@ -3112,7 +3112,7 @@ def v2_coach_confidence_queue(session_id):
                             "yes", "in_between", "no", "not_sure",
                             "audio_unclear"):
                         _canonical_evidence = (
-                            db.get_canonical_confidence_evidence(
+                            db.ideal_text.get_canonical_confidence_evidence(
                                 take_id=str(session_id),
                                 snippet_id=str(r["snippet_id"]),
                             )
@@ -3226,7 +3226,7 @@ def v2_coach_confidence_queue(session_id):
             opaque_rows = []
             for row in visible_rows:
                 try:
-                    evidence = db.get_canonical_confidence_evidence(
+                    evidence = db.ideal_text.get_canonical_confidence_evidence(
                         take_id=str(session_id),
                         snippet_id=str(row.get("snippet_id") or ""),
                     )
@@ -3807,7 +3807,7 @@ def v2_coach_put_confidence_label(snippet_id):
                 content_hash,
             )
 
-            canonical_evidence = db.get_canonical_confidence_evidence(
+            canonical_evidence = db.ideal_text.get_canonical_confidence_evidence(
                 take_id=str(session_id), snippet_id=str(snippet_id),
             )
             if canonical_evidence is not None:
