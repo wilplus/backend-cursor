@@ -36,17 +36,29 @@ def operational_purpose_disabled(purpose_id: str):
     Keeping the decision at the route boundary prevents dormant handlers from
     downloading audio or reaching a provider before the purpose has its own
     reviewed authorization, retention, deletion and rights controls.
+
+    Until 2026-09-16 this returned 410 unconditionally — it named a registry
+    purpose but never read it, so the switch and the fact it claimed to
+    reflect were kept in step by hand. It now ASKS, which is what the
+    paragraph above always said it did. An unreadable registry, a missing row,
+    a phase-2 purpose or `operational = false` are all a closed door; only an
+    explicit phase-1 operational row opens it. Flipping the row to false is
+    therefore a working emergency stop that needs no deploy.
     """
     def decorate(function):
         @wraps(function)
-        def disabled(*args, **kwargs):
+        def gated(*args, **kwargs):
+            from services.processing_purposes import purpose_is_operational
+
+            if purpose_is_operational(purpose_id):
+                return function(*args, **kwargs)
             return jsonify({
                 "code": "PURPOSE_NOT_OPERATIONAL",
                 "error": "This feature is not available yet.",
                 "purpose": purpose_id,
             }), 410
 
-        return disabled
+        return gated
 
     return decorate
 

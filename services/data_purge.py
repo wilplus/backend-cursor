@@ -319,6 +319,45 @@ class DataPurgeOrchestrator:
             metadata,
         )
 
+    def _practice_targets(
+        self,
+        graph: SubjectGraph,
+        existing_relations: frozenset[str],
+    ) -> list[PurgeTarget]:
+        """Practice recordings (0334).
+
+        Its own method because _storage_targets is grandfathered by the
+        complexity ratchet and may only come down — but also because this is a
+        third registry with its own reason to exist: processing_audio_objects
+        requires a recording_attempt_id and a practice attempt is not a Take.
+
+        Without this, a purged speaker's practice ROWS were deleted and their
+        recordings stayed in the bucket with nothing pointing at them.
+        """
+        targets: list[PurgeTarget] = []
+        rows = self._rows(
+            "processing_practice_objects",
+            "id,storage_provider,bucket,object_key,exact_bytes_sha256,deleted_at",
+            selector="acquisition_principal_id", values=graph.principal_ids,
+            existing_relations=existing_relations,
+        )
+        for row in rows:
+            provider = str(row.get("storage_provider") or "")
+            already_purged = row.get("deleted_at") is not None
+            targets.append(PurgeTarget(
+                "r2_object" if provider == "r2" else "supabase_object",
+                f"practice-object:{row.get('id')}",
+                0 if already_purged else 1, {
+                    "provider": provider,
+                    "bucket": str(row.get("bucket") or ""),
+                    "key": str(row.get("object_key") or ""),
+                    "sha256": str(row.get("exact_bytes_sha256") or ""),
+                    "source_relation": "processing_practice_objects",
+                    "source_id": str(row.get("id") or ""),
+                    "already_purged": already_purged,
+                }))
+        return targets
+
     def _storage_targets(
         self,
         graph: SubjectGraph,
@@ -371,6 +410,8 @@ class DataPurgeOrchestrator:
                 "source_id": str(row.get("id") or ""),
                 "already_purged": already_purged,
             }))
+        targets.extend(self._practice_targets(graph, existing_relations))
+
         orphans = self._rows(
             "processing_orphan_objects",
             "id,storage_provider,bucket,object_key,exact_bytes_sha256,status",

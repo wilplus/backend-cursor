@@ -83,8 +83,41 @@ def test_exercise_surface_is_registry_only_and_fail_closed():
     marker = '@operational_purpose_disabled("personalized_exercise_recommendation")'
     assert user_routes.count(marker) == 4
     assert coach_routes.count(marker) == 1
+    # The purpose was born phase2 here and was moved to phase1 by 0335, once
+    # its deletion and retention controls actually existed. Both halves are
+    # asserted so the history stays legible: this file's INSERT is not a
+    # statement about what is true today.
     assert "personalized_exercise_recommendation', 'phase2'" in MIGRATION
     assert "PHASE2_PURPOSE_FORBIDDEN" in MIGRATION
+    reclassification = (
+        ROOT / "migrations" / "enable_practice_phase1_purpose.sql"
+    ).read_text()
+    assert "phase = 'phase1'" in reclassification
+    assert "WHERE id = 'personalized_exercise_recommendation';" in reclassification
+    # Pooled learning is what must NOT have moved.
+    assert "POOLED_LEARNING_MUST_REMAIN_PHASE2" in reclassification
+
+
+def test_the_operational_guard_reads_the_registry_rather_than_hardcoding():
+    """Fail-closed now rests on the guard ASKING, so pin that it asks.
+
+    It returned 410 unconditionally until 2026-09-16 while naming a registry
+    purpose it never read. With the purpose reclassified, a guard that still
+    hardcoded its answer would hold the doors shut on a ready system — and,
+    worse, could be opened by deleting a line rather than by the registry row
+    the database itself consults.
+    """
+    guard = (ROOT / "routes" / "phase2_guard.py").read_text()
+    body = guard[guard.index("def operational_purpose_disabled"):]
+    assert "purpose_is_operational(purpose_id)" in body
+    assert "return function(*args, **kwargs)" in body
+
+    service = (ROOT / "services" / "processing_purposes.py").read_text()
+    # Every one of these is a closed door; only an explicit phase-1,
+    # operational, authorizing row opens it.
+    assert 'row.get("phase") == "phase1"' in service
+    assert 'row.get("operational") is True' in service
+    assert 'row.get("authorizes_processing") is True' in service
 
 
 def test_retired_learning_tables_are_write_blocked_but_not_dropped():

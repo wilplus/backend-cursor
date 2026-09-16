@@ -1,6 +1,5 @@
 {
   "routes/internal_webhooks.py:internal_copilot_video_retrain": 32,
-  "routes/journal.py:journal_admin_save_diagnostic_exercise": 26,
   "routes/journal.py:journal_image_generate": 30,
   "routes/life_routes.py:life_day_update": 28,
   "routes/v2/admin.py:_validate_question_pool_body": 27,
@@ -26,7 +25,7 @@
   "routes/v2/explore_ideal_text.py:v2_explore_set_part_root": 41,
   "routes/v2/user_sessions.py:v2_add_confident_voice_practice_attempt": 38,
   "routes/v2/user_sessions.py:v2_post_take_feedback_response": 43,
-  "routes/v2/user_sessions.py:v2_start_confident_voice_practice": 53,
+  "routes/v2/user_sessions.py:v2_start_confident_voice_practice": 48,
   "routes/v2/user_sessions.py:v2_user_list_trainings": 30,
   "routes/v2/user_sessions.py:v2_user_put_transcript_edit": 30,
   "routes/v2/user_sessions.py:v2_user_suggestion_feedback": 51,
