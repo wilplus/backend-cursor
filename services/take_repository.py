@@ -17,17 +17,12 @@ from typing import Any, Dict, List, Optional  # noqa: F401
 
 import sentry_sdk  # noqa: F401
 
+from services.table_repository import TableRepository
+
 logger = logging.getLogger(__name__)
 
 
-class TakeRepository:
-    def __init__(self, database: Any) -> None:
-        self.database = database
-
-    @property
-    def client(self) -> Any:
-        return self.database.client
-
+class TakeRepository(TableRepository):
     def v2_update_session(self, session_id: str, user_id: str, data: dict):
         """Update v2 session; verify user_id."""
         result = self.client.table("v2_sessions").update(data).eq("id", session_id).eq("user_id", user_id).execute()

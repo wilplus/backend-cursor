@@ -96,13 +96,29 @@ def test_only_services_db_constructs_a_client(constructions):
 
 
 def test_the_repositories_read_the_client_through_the_service():
+    import inspect
+
+    from services.table_repository import TableRepository
+
+    base_source = inspect.getsource(TableRepository)
+    assert "def client(self)" in base_source and "return self.database.client" in base_source, (
+        "TableRepository must define client(self) reading self.database.client"
+    )
     for rel in REPOSITORIES:
         tree = try_parse(ROOT / rel)
         assert tree is not None, rel
         assert _client_constructions(tree) == 0, f"{rel} constructs a client"
         source = (ROOT / rel).read_text()
-        assert "def client(self)" in source and "return self.database.client" in source, (
-            f"{rel} must read the client through the injected database service"
+        defines_directly = (
+            "def client(self)" in source and "return self.database.client" in source
+        )
+        inherits_table_repository = (
+            "from services.table_repository import TableRepository" in source
+            and "(TableRepository)" in source
+        )
+        assert defines_directly or inherits_table_repository, (
+            f"{rel} must read the client through the injected database service, "
+            "either directly or by inheriting services.table_repository.TableRepository"
         )
         assert "from services.db import" not in source and "import services.db" not in source, (
             f"{rel} must not import services.db (the service imports the repository)"
