@@ -318,27 +318,19 @@ def _exact_transcript_evidence(
     }
 
 
-def build_feedback_exposure_bundle(
-    *, session: Any, transcript_document: Any, served_text: Any,
-    candidates: Iterable[Any], selected_keys: Any,
-    manager_rules_version: str, model_version: Optional[str] = None,
-    prompt_version: Optional[str] = None,
-    experiment_assignment: Optional[dict] = None,
-    commit: Optional[str] = None,
-    document_snapshot_id: Optional[str] = None,
-    document_surface_sha256: Optional[str] = None,
-) -> Optional[dict]:
-    """Build one deterministic complete selection/exposure transaction."""
-    if not isinstance(session, dict) or not isinstance(transcript_document, dict):
-        return None
+def _valid_feedback_bundle_identity(session: dict) -> Optional[tuple]:
     project_id = str(session.get("project_id") or "")
     owner_id = str(session.get("owner_principal_id") or "")
     take_id = str(session.get("id") or "")
     take_index = _int(session.get("take_index"))
     if not project_id or not owner_id or not take_id or not take_index:
         return None
-    if not isinstance(served_text, str) or not served_text:
-        return None
+    return project_id, owner_id, take_id, take_index
+
+
+def _valid_feedback_bundle_keys(
+    selected_keys: Any, manager_rules_version: str,
+) -> Optional[tuple]:
     keys = [dict(key) for key in selected_keys if isinstance(key, dict)] \
         if isinstance(selected_keys, list) else []
     service_v3 = manager_rules_version == "take-feedback-policy-v3-serving-v1"
@@ -358,151 +350,171 @@ def build_feedback_exposure_bundle(
             return None
     elif len(keys) != 3 or selected_families != _FAMILIES:
         return None
+    return keys, service_v3
 
-    candidate_inputs = [
-        row for row in (candidates or []) if isinstance(row, dict)
-    ]
 
-    commit_value = commit or code_commit()
-    transcript = _transcript_snapshot(
-        project_id=project_id,
-        take_id=take_id,
-        document=transcript_document,
-        take_index=take_index,
-        commit=commit_value,
-    )
-    if transcript is None:
+def _feedback_candidate_machine_prediction(
+    raw: dict, *, evidence: dict, family: str,
+    model_version: Optional[str], prompt_version: Optional[str],
+) -> Optional[dict]:
+    raw_prediction = raw.get("machine_prediction")
+    if not isinstance(raw_prediction, dict):
         return None
+    prediction_model = str(
+        raw_prediction.get("model_version")
+        or raw.get("model_version") or model_version or ""
+    )
+    if not prediction_model:
+        return None
+    prediction_output = (
+        raw_prediction.get("complete_output")
+        if isinstance(raw_prediction.get("complete_output"), dict)
+        else dict(raw_prediction)
+    )
+    prediction_input_hash = content_hash({
+        "evidence_hash": evidence["evidence_hash"],
+        "task_type": evidence["task_type"],
+        "model_version": prediction_model,
+        "complete_output": prediction_output,
+    })
+    return {
+        "id": _stable_uuid(
+            "machine-prediction", prediction_input_hash),
+        "task_type": str(
+            raw_prediction.get("task_type")
+            or evidence["task_type"]),
+        "surface": str(
+            raw_prediction.get("surface") or family),
+        "classification": raw_prediction.get("classification"),
+        "score": raw_prediction.get("score"),
+        "model_version": prediction_model,
+        "rule_version": (
+            raw_prediction.get("rule_version")
+            or raw.get("rule_version")),
+        "threshold_version": (
+            raw_prediction.get("threshold_version")
+            or THRESHOLD_VERSION),
+        "feature_schema_version": (
+            raw_prediction.get("feature_schema_version")
+            or FEATURE_SCHEMA_VERSION),
+        "speaker_baseline_version": (
+            raw_prediction.get("speaker_baseline_version")
+            or SPEAKER_BASELINE_VERSION),
+        "prompt_version": (
+            raw_prediction.get("prompt_version")
+            or raw.get("prompt_version") or prompt_version),
+        "input_hash": prediction_input_hash,
+        "complete_output": prediction_output,
+    }
 
-    canonical_candidates: list[dict] = []
-    for raw in candidate_inputs:
-        family = str(raw.get("feedback_family") or "")
-        candidate_key = str(raw.get("id") or "")
-        if family not in _FAMILIES or not candidate_key:
-            continue
-        evidence = _exact_transcript_evidence(
-            family=family,
-            row=raw,
-            document=transcript_document,
-            transcript=transcript,
-            served_text=served_text,
-            document_snapshot_id=document_snapshot_id,
-            document_surface_sha256=document_surface_sha256,
-        )
-        if evidence is None:
-            continue
-        fallback = bool((raw.get("_manager_evidence") or {}).get("fallback")) \
-            if isinstance(raw.get("_manager_evidence"), dict) else False
-        eligible = bool(evidence.pop("target_matches_transcript")) and not fallback
-        candidate_id = _stable_uuid(
-            "candidate", take_id, manager_rules_version, candidate_key,
-        )
-        generated_output = {
-            "quote": raw.get("quote"),
-            "proposed_text": raw.get("proposed_text"),
-            "why_key": raw.get("why_key"),
-            "device": raw.get("device"),
-            "tentative": bool(raw.get("tentative")),
-        }
-        canonical_candidate = {
-            "id": candidate_id,
-            "exposure_id": _stable_uuid("exposure", candidate_id),
-            "candidate_key": candidate_key,
-            "feedback_family": family,
-            "lane": family,
-            "candidate_score": raw.get("candidate_score"),
-            "rank_evidence": {
-                "manager_evidence": raw.get("_manager_evidence") or {},
-                "rank_key": raw.get("rank_key") or [],
-                "cue_keys": raw.get("cue_keys") or [],
-            },
-            "generated_output": generated_output,
-            "detector_version": raw.get("detector_version"),
-            "rule_version": raw.get("rule_version"),
-            "model_version": raw.get("model_version"),
-            "prompt_version": raw.get("prompt_version"),
-            # A live product exposure is not a dataset release.  V3 service
-            # records therefore remain structurally ineligible even where
-            # their exact transcript target is valid.
-            "training_eligible": eligible and not service_v3,
-            "ineligibility_reason": (
-                "service_product_evidence_only" if service_v3
-                else None if eligible
-                else "fallback_or_source_target_mismatch"
-            ),
-            "evidence": evidence,
-        }
-        raw_prediction = raw.get("machine_prediction")
-        if isinstance(raw_prediction, dict):
-            prediction_model = str(
-                raw_prediction.get("model_version")
-                or raw.get("model_version") or model_version or ""
-            )
-            if prediction_model:
-                prediction_output = (
-                    raw_prediction.get("complete_output")
-                    if isinstance(raw_prediction.get("complete_output"), dict)
-                    else dict(raw_prediction)
-                )
-                prediction_input_hash = content_hash({
-                    "evidence_hash": evidence["evidence_hash"],
-                    "task_type": evidence["task_type"],
-                    "model_version": prediction_model,
-                    "complete_output": prediction_output,
-                })
-                canonical_candidate["machine_prediction"] = {
-                    "id": _stable_uuid(
-                        "machine-prediction", prediction_input_hash),
-                    "task_type": str(
-                        raw_prediction.get("task_type")
-                        or evidence["task_type"]),
-                    "surface": str(
-                        raw_prediction.get("surface") or family),
-                    "classification": raw_prediction.get("classification"),
-                    "score": raw_prediction.get("score"),
-                    "model_version": prediction_model,
-                    "rule_version": (
-                        raw_prediction.get("rule_version")
-                        or raw.get("rule_version")),
-                    "threshold_version": (
-                        raw_prediction.get("threshold_version")
-                        or THRESHOLD_VERSION),
-                    "feature_schema_version": (
-                        raw_prediction.get("feature_schema_version")
-                        or FEATURE_SCHEMA_VERSION),
-                    "speaker_baseline_version": (
-                        raw_prediction.get("speaker_baseline_version")
-                        or SPEAKER_BASELINE_VERSION),
-                    "prompt_version": (
-                        raw_prediction.get("prompt_version")
-                        or raw.get("prompt_version") or prompt_version),
-                    "input_hash": prediction_input_hash,
-                    "complete_output": prediction_output,
-                }
-        raw_features = raw.get("acoustic_feature_snapshot")
-        if (isinstance(raw_features, dict)
-                and isinstance(raw_features.get("features"), dict)):
-            feature_schema = str(
-                raw_features.get("feature_schema_version")
-                or FEATURE_SCHEMA_VERSION)
-            baseline_version = str(
-                raw_features.get("speaker_baseline_version")
-                or SPEAKER_BASELINE_VERSION)
-            feature_input_hash = content_hash({
-                "evidence_hash": evidence["evidence_hash"],
-                "feature_schema_version": feature_schema,
-                "speaker_baseline_version": baseline_version,
-                "features": raw_features["features"],
-            })
-            canonical_candidate["acoustic_feature_snapshot"] = {
-                "id": _stable_uuid(
-                    "acoustic-feature-snapshot", feature_input_hash),
-                "feature_schema_version": feature_schema,
-                "speaker_baseline_version": baseline_version,
-                "features": raw_features["features"],
-                "input_hash": feature_input_hash,
-            }
-        canonical_candidates.append(canonical_candidate)
+
+def _feedback_candidate_acoustic_snapshot(
+    raw: dict, *, evidence: dict,
+) -> Optional[dict]:
+    raw_features = raw.get("acoustic_feature_snapshot")
+    if not (isinstance(raw_features, dict)
+            and isinstance(raw_features.get("features"), dict)):
+        return None
+    feature_schema = str(
+        raw_features.get("feature_schema_version")
+        or FEATURE_SCHEMA_VERSION)
+    baseline_version = str(
+        raw_features.get("speaker_baseline_version")
+        or SPEAKER_BASELINE_VERSION)
+    feature_input_hash = content_hash({
+        "evidence_hash": evidence["evidence_hash"],
+        "feature_schema_version": feature_schema,
+        "speaker_baseline_version": baseline_version,
+        "features": raw_features["features"],
+    })
+    return {
+        "id": _stable_uuid(
+            "acoustic-feature-snapshot", feature_input_hash),
+        "feature_schema_version": feature_schema,
+        "speaker_baseline_version": baseline_version,
+        "features": raw_features["features"],
+        "input_hash": feature_input_hash,
+    }
+
+
+def _canonical_feedback_candidate(
+    raw: dict, *, take_id: str, manager_rules_version: str, service_v3: bool,
+    transcript_document: dict, transcript: dict, served_text: str,
+    document_snapshot_id: Optional[str], document_surface_sha256: Optional[str],
+    model_version: Optional[str], prompt_version: Optional[str],
+) -> Optional[dict]:
+    family = str(raw.get("feedback_family") or "")
+    candidate_key = str(raw.get("id") or "")
+    if family not in _FAMILIES or not candidate_key:
+        return None
+    evidence = _exact_transcript_evidence(
+        family=family,
+        row=raw,
+        document=transcript_document,
+        transcript=transcript,
+        served_text=served_text,
+        document_snapshot_id=document_snapshot_id,
+        document_surface_sha256=document_surface_sha256,
+    )
+    if evidence is None:
+        return None
+    fallback = bool((raw.get("_manager_evidence") or {}).get("fallback")) \
+        if isinstance(raw.get("_manager_evidence"), dict) else False
+    eligible = bool(evidence.pop("target_matches_transcript")) and not fallback
+    candidate_id = _stable_uuid(
+        "candidate", take_id, manager_rules_version, candidate_key,
+    )
+    generated_output = {
+        "quote": raw.get("quote"),
+        "proposed_text": raw.get("proposed_text"),
+        "why_key": raw.get("why_key"),
+        "device": raw.get("device"),
+        "tentative": bool(raw.get("tentative")),
+    }
+    canonical_candidate = {
+        "id": candidate_id,
+        "exposure_id": _stable_uuid("exposure", candidate_id),
+        "candidate_key": candidate_key,
+        "feedback_family": family,
+        "lane": family,
+        "candidate_score": raw.get("candidate_score"),
+        "rank_evidence": {
+            "manager_evidence": raw.get("_manager_evidence") or {},
+            "rank_key": raw.get("rank_key") or [],
+            "cue_keys": raw.get("cue_keys") or [],
+        },
+        "generated_output": generated_output,
+        "detector_version": raw.get("detector_version"),
+        "rule_version": raw.get("rule_version"),
+        "model_version": raw.get("model_version"),
+        "prompt_version": raw.get("prompt_version"),
+        # A live product exposure is not a dataset release.  V3 service
+        # records therefore remain structurally ineligible even where
+        # their exact transcript target is valid.
+        "training_eligible": eligible and not service_v3,
+        "ineligibility_reason": (
+            "service_product_evidence_only" if service_v3
+            else None if eligible
+            else "fallback_or_source_target_mismatch"
+        ),
+        "evidence": evidence,
+    }
+    prediction = _feedback_candidate_machine_prediction(
+        raw, evidence=evidence, family=family, model_version=model_version,
+        prompt_version=prompt_version,
+    )
+    if prediction is not None:
+        canonical_candidate["machine_prediction"] = prediction
+    snapshot = _feedback_candidate_acoustic_snapshot(raw, evidence=evidence)
+    if snapshot is not None:
+        canonical_candidate["acoustic_feature_snapshot"] = snapshot
+    return canonical_candidate
+
+
+def _valid_feedback_bundle_selection(
+    canonical_candidates: list[dict], keys: list[dict], *,
+    service_v3: bool, candidate_inputs: list[dict],
+) -> bool:
     available = {
         (row["candidate_key"], row["feedback_family"])
         for row in canonical_candidates
@@ -511,22 +523,18 @@ def build_feedback_exposure_bundle(
         (str(key.get("id")), str(key.get("feedback_family"))) not in available
         for key in keys
     ):
-        return None
+        return False
     if service_v3 and len(canonical_candidates) != len(candidate_inputs):
         # Complete inventory is a service invariant.  A malformed excluded
         # candidate cannot disappear merely because it was never selectable.
-        return None
+        return False
+    return True
 
-    versions = {
-        "taxonomy_version": TAXONOMY_VERSION,
-        "selector_version": SELECTOR_VERSION,
-        "manager_rules_version": manager_rules_version,
-        "threshold_version": THRESHOLD_VERSION,
-        "model_version": model_version,
-        "prompt_version": prompt_version,
-        "feature_schema_version": FEATURE_SCHEMA_VERSION,
-        "speaker_baseline_version": SPEAKER_BASELINE_VERSION,
-    }
+
+def _feedback_bundle_generation_runs(
+    canonical_candidates: list[dict], *,
+    model_version: Optional[str], prompt_version: Optional[str],
+) -> list[dict]:
     generation_runs: list[dict] = []
     for candidate in canonical_candidates:
         family = candidate["feedback_family"]
@@ -564,6 +572,81 @@ def build_feedback_exposure_bundle(
             "input_hash": generation_input_hash,
             "complete_output": output,
         })
+    return generation_runs
+
+
+def build_feedback_exposure_bundle(
+    *, session: Any, transcript_document: Any, served_text: Any,
+    candidates: Iterable[Any], selected_keys: Any,
+    manager_rules_version: str, model_version: Optional[str] = None,
+    prompt_version: Optional[str] = None,
+    experiment_assignment: Optional[dict] = None,
+    commit: Optional[str] = None,
+    document_snapshot_id: Optional[str] = None,
+    document_surface_sha256: Optional[str] = None,
+) -> Optional[dict]:
+    """Build one deterministic complete selection/exposure transaction."""
+    if not isinstance(session, dict) or not isinstance(transcript_document, dict):
+        return None
+    identity = _valid_feedback_bundle_identity(session)
+    if identity is None:
+        return None
+    project_id, owner_id, take_id, take_index = identity
+    if not isinstance(served_text, str) or not served_text:
+        return None
+    key_selection = _valid_feedback_bundle_keys(selected_keys, manager_rules_version)
+    if key_selection is None:
+        return None
+    keys, service_v3 = key_selection
+
+    candidate_inputs = [
+        row for row in (candidates or []) if isinstance(row, dict)
+    ]
+
+    commit_value = commit or code_commit()
+    transcript = _transcript_snapshot(
+        project_id=project_id,
+        take_id=take_id,
+        document=transcript_document,
+        take_index=take_index,
+        commit=commit_value,
+    )
+    if transcript is None:
+        return None
+
+    canonical_candidates: list[dict] = []
+    for raw in candidate_inputs:
+        candidate = _canonical_feedback_candidate(
+            raw, take_id=take_id, manager_rules_version=manager_rules_version,
+            service_v3=service_v3, transcript_document=transcript_document,
+            transcript=transcript, served_text=served_text,
+            document_snapshot_id=document_snapshot_id,
+            document_surface_sha256=document_surface_sha256,
+            model_version=model_version, prompt_version=prompt_version,
+        )
+        if candidate is not None:
+            canonical_candidates.append(candidate)
+
+    if not _valid_feedback_bundle_selection(
+        canonical_candidates, keys, service_v3=service_v3,
+        candidate_inputs=candidate_inputs,
+    ):
+        return None
+
+    versions = {
+        "taxonomy_version": TAXONOMY_VERSION,
+        "selector_version": SELECTOR_VERSION,
+        "manager_rules_version": manager_rules_version,
+        "threshold_version": THRESHOLD_VERSION,
+        "model_version": model_version,
+        "prompt_version": prompt_version,
+        "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "speaker_baseline_version": SPEAKER_BASELINE_VERSION,
+    }
+    generation_runs = _feedback_bundle_generation_runs(
+        canonical_candidates, model_version=model_version,
+        prompt_version=prompt_version,
+    )
     input_payload = {
         "take_id": take_id,
         "transcript_hash": transcript["transcript_hash"],
