@@ -347,7 +347,7 @@ def _with_metrics(pieces: Any, arc_id: Any, database) -> list:
         from services.slide_selection import spoken_arc_sessions
         sess_ids = [
             s.get("id")
-            for s in spoken_arc_sessions(database.get_arc_sessions(arc_id))
+            for s in spoken_arc_sessions(database.takes.get_arc_sessions(arc_id))
             if isinstance(s, dict) and s.get("id")
         ]
         by_session = (database.get_snippets_by_sessions(sess_ids) or {}

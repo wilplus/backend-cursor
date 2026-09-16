@@ -199,7 +199,7 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
         # can save a draft judgment while still working, and none of it exists
         # for the student until the review is released.
         coach_ok: dict = {}   # snippet_id -> take_session_id
-        for sess in (database.get_arc_sessions(arc_id) or []):
+        for sess in (database.takes.get_arc_sessions(arc_id) or []):
             if not sess.get("results_published_at"):
                 continue
             sid = str(sess.get("id") or "")

@@ -105,7 +105,7 @@ class ProjectRepository:
             str(project_id), str(idempotency_key))
 
     def project_takes(self, project_id: str) -> list[dict]:
-        return self.database.get_arc_sessions(str(project_id)) or []
+        return self.database.takes.get_arc_sessions(str(project_id)) or []
 
     def require_owned_take(
         self,

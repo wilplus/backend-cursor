@@ -206,6 +206,12 @@ class BubbleCarriesItsOwnNameTests(unittest.TestCase):
                 raise RuntimeError("db down")
             return list(self._sessions)
 
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
+
         def insert_lounge_messages(self, user_id, messages):
             self.rows.extend(messages)
             return list(messages)

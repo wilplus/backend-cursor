@@ -312,7 +312,7 @@ def v2_coach_student_detail(user_id):
         return jsonify({"code": "INVALID_INPUT", "error": "user_id must be a UUID"}), 400
     try:
         prof = db.get_user_profile(user_id) or {}
-        rows = db.v2_list_user_lab_sessions(user_id) or []
+        rows = db.takes.v2_list_user_lab_sessions(user_id) or []
         # Unknown id → 404. A real roster student always has >=1 Lab session;
         # 404 only when there's no footprint at all (no sessions AND no profile)
         # so a transient sessions-read hiccup can't false-404 a known student.
@@ -421,7 +421,7 @@ def v2_coach_audit_data(user_id):
         from services.feeling_performance import (
             correlate_feeling_performance, session_performance,
         )
-        rows = db.v2_list_user_lab_sessions(user_id) or []
+        rows = db.takes.v2_list_user_lab_sessions(user_id) or []
         feel_by_session = {}
         for _fr in db.get_feelings_by_sessions([s.get("id") for s in rows]):
             feel_by_session.setdefault(_fr.get("session_id"), _fr.get("feeling"))
@@ -1715,7 +1715,7 @@ def v2_coach_get_ideal_text(arc_id):
         from services.slide_selection import (
             TAKES_TARGET, spoken_arc_sessions,
         )
-        _arc_sessions = db.get_arc_sessions(arc_id)
+        _arc_sessions = db.takes.get_arc_sessions(arc_id)
         _spoken_n = len(spoken_arc_sessions(_arc_sessions))
         _counts = {"takes_done": min(_spoken_n, TAKES_TARGET),
                    "takes_target": TAKES_TARGET}
@@ -1831,7 +1831,7 @@ def v2_coach_verify_ideal_text(arc_id):
     409 NOTHING_TO_VERIFY · 404 · 500
     """
     try:
-        sessions = db.get_arc_sessions(arc_id)
+        sessions = db.takes.get_arc_sessions(arc_id)
         if not sessions:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         outcome = db.verify_ideal_text(arc_id, str(request.user_id))
@@ -1944,7 +1944,7 @@ def v2_coach_approve_ideal_text(arc_id):
             _arc_uuid = str(arc_id) if _re.match(
                 r"^[0-9a-fA-F-]{36}$", str(arc_id)) else None
             if not db.has_ideal_text_annotations(_arc_uuid):
-                _sessions = db.get_arc_sessions(arc_id) or []
+                _sessions = db.takes.get_arc_sessions(arc_id) or []
                 _owner = next((s.get("user_id") for s in _sessions
                                if s.get("user_id")), None)
                 _pre = row or {}
@@ -2107,7 +2107,7 @@ def v2_coach_arc_review_state(arc_id):
     404 · 500
     """
     try:
-        sessions = db.get_arc_sessions(arc_id)
+        sessions = db.takes.get_arc_sessions(arc_id)
         if not sessions:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         spoken, reads = _spoken_takes_and_reads(sessions)
@@ -2289,7 +2289,7 @@ def v2_coach_arc_stars(arc_id):
     404 · 500
     """
     try:
-        sessions = db.get_arc_sessions(arc_id)
+        sessions = db.takes.get_arc_sessions(arc_id)
         if not sessions:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
 
@@ -3472,7 +3472,7 @@ def v2_coach_ab_pairs(arc_id):
         from services.ab_slide_pairs import build_pairs
         from services.audio_ref_resolver import resolve_playable_ref
         from services.slide_selection import spoken_arc_sessions
-        sessions = spoken_arc_sessions(db.get_arc_sessions(arc_id) or [])
+        sessions = spoken_arc_sessions(db.takes.get_arc_sessions(arc_id) or [])
         if len(sessions) < 2:
             return jsonify({"arc_id": arc_id, "pairs": [],
                             "reason": "needs at least two spoken takes"}), 200
@@ -3976,7 +3976,7 @@ def v2_coach_put_star_text(snippet_id):
 def v2_coach_publish_analysis(arc_id):
     """Publish complete saved take snapshots as one atomic revision batch."""
     try:
-        sessions = db.get_arc_sessions(arc_id)
+        sessions = db.takes.get_arc_sessions(arc_id)
         if not sessions:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
         spoken, _reads = _spoken_takes_and_reads(sessions)

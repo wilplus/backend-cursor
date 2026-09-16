@@ -189,14 +189,14 @@ class LastSetupRouteTests(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
-        self._o = getattr(db, "v2_list_user_lab_sessions", None)
+        self._o = getattr(db.takes, "v2_list_user_lab_sessions", None)
 
     def tearDown(self):
         if self._o is not None:
-            db.v2_list_user_lab_sessions = self._o
+            db.takes.v2_list_user_lab_sessions = self._o
 
     def _get(self, sessions):
-        db.v2_list_user_lab_sessions = lambda uid, **k: sessions
+        db.takes.v2_list_user_lab_sessions = lambda uid, **k: sessions
         with self.app.test_request_context():
             request.user_id = "u1"
             resp, status = v2_user_account.v2_user_last_setup.__wrapped__()

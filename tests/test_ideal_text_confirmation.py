@@ -67,7 +67,7 @@ class IdealTextConfirmationTests(unittest.TestCase):
 
         database = Mock()
         database.ideal_text.get_coach_arc_ideal_text.return_value = None
-        database.get_arc_sessions.return_value = [
+        database.takes.get_arc_sessions.return_value = [
             {"id": SID, "take_index": 1, "recording_kind": "spoken"},
             {"id": "later", "take_index": 2, "recording_kind": "spoken"},
         ]

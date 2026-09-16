@@ -119,7 +119,7 @@ def build_take_comparison(arc_id: Optional[str], *, database=None) -> dict:
     comparison is None until both takes exist.
     """
     db = database if database is not None else _default_db()
-    sessions = db.get_arc_sessions(arc_id) if arc_id else []
+    sessions = db.takes.get_arc_sessions(arc_id) if arc_id else []
 
     # Order by take_index, keep the first two takes (take 1 vs take 2).
     def _ti(s):

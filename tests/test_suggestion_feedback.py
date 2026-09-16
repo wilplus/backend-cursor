@@ -287,7 +287,7 @@ class DocumentPhraseKeyTests(unittest.TestCase):
     def test_key_is_the_smoothed_document_phrase_not_the_raw_words(self):
         with self.app.test_request_context():
             with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
-                 patch.object(db, "get_arc_sessions",
+                 patch.object(db.takes, "get_arc_sessions",
                               return_value=[{"id": SESS, "take_index": 1,
                                              "recording_kind": "spoken"}]), \
                  patch.object(db, "get_snippets_by_session",
@@ -314,7 +314,7 @@ class DocumentPhraseKeyTests(unittest.TestCase):
     def test_build_failure_falls_back_never_raises(self):
         with self.app.test_request_context():
             with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
-                 patch.object(db, "get_arc_sessions",
+                 patch.object(db.takes, "get_arc_sessions",
                               side_effect=RuntimeError("boom")):
                 out = v2_user_sessions._document_phrase_for(self.ARC, SNIP,
                                               fallback=self.RAW)

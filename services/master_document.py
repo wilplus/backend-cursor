@@ -102,7 +102,7 @@ def build_skeleton(arc_id: Any, database) -> list:
     try:
         from services.slide_selection import spoken_arc_sessions
         from services.transcript_document import build_transcript_document
-        spoken = spoken_arc_sessions(database.get_arc_sessions(arc_id) or [])
+        spoken = spoken_arc_sessions(database.takes.get_arc_sessions(arc_id) or [])
         if not spoken:
             return []
         spoken.sort(key=lambda s: (s.get("take_index") or 0,

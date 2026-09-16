@@ -40,7 +40,7 @@ def assemble_user_audit(user_id: str) -> dict:
         logger.warning("assemble_user_audit: recorded-secs failed user=%s err=%s", user_id, e)
 
     try:
-        sessions_raw = db.v2_list_user_lab_sessions(user_id) or []
+        sessions_raw = db.takes.v2_list_user_lab_sessions(user_id) or []
     except Exception:
         sessions_raw = []
     sessions: list[dict] = []

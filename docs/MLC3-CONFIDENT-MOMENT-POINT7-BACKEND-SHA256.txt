@@ -45,7 +45,7 @@ a833c211cf077f294a7973714c065aaa65a1c1aede33c49e4d7ae3debcdc7031  docs/MLC3-CONF
 39b62b500f23732bfbb0326ffe0ae054b9233c1267665a11a9275eb10205bdcb  migrations/add_confident_moment_coaching_bundle_v1.sql
 dc5fbbcc22b374040e74b800a8733eaeb44a36e2556ba9a5cf4bef3bad9559eb  routes/v2/coach_guidance_delivery.py
 bcfc7b89e112d1bcd7bc1ed642064b800d57146971a4245eea3699921e4d526a  routes/v2/confident_moment_bundles.py
-3761d44c2d4024a526d2376a4dcf0f1069ff36f1d80a32b4eef2754d1b884804  routes/v2/explore_ideal_text.py
+cc570196d01b11d1be5e8a56cc3034011707a85de63035d8d3aa444f18ee9150  routes/v2/explore_ideal_text.py
 a4968eb69e4886ef88c7b5e5dbc5cabf2cea1e5b455bdaa2c02be54c538e6dde  scripts/monitor_mlc3_general_service.py
 7e4f842eaa1bbdbbf784eb4777412e4814c7f4c8374200cbdaae42413604b779  services/confident_moment_bundle.py
 3a2e0299fa95d1b8e4e38661a786900c0565362d9b4651b97c2f9178d079625b  services/confident_moment_bundle_repository.py
@@ -53,7 +53,7 @@ dc6a7d5643a21b90e7c19fd9be15926ca9da225e5260049f132d384b4da2aa0f  services/confi
 794c3d04c55016987c75dc9bdc7bab64ded34a14a7a6e3ee832b6b22f32b9568  services/confident_moment_user_media.py
 09ac4873e142bd68c682abaf28acb15e4fb0a445aab749ad8b28b47020b1df22  services/data_purge.py
 5ff3880f55da07671775de92e279e13e0dca96b615329632b6d6cd88096cbbb9  services/data_purge_registry.py
-00f4a42e9c486d2ade9934244c142b332d259b08f5c4f1e08e460fc5b1c1b62a  services/db.py
+ab25afecab235eabf97488fa5bf954698d0660bad932dcbb6cdfe1e7105ad069  services/db.py
 b40ae9301c2e2712248c4b77314cff27c7342362f7e929cab3edf6b2fe48abb3  services/feedback_data_contract.py
 35955687744b693dfb26fe79b79767c54c3a851dabfba4c015790c4537c459c7  services/feedback_language.py
 dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_queue.py
@@ -61,9 +61,9 @@ dd6f5eb8b632d5f17e0b9d5915409be75e6802f2f3cffc955afe4f3bc1afdeaa  services/job_q
 a32a213e6d2dd0c20a0bc4d9daee5985802eee650334996268b9797225e61b10  services/mlc3_general_service_monitor.py
 6e9894c610fb64f3b00652a171ea698907562a0352614023048374e2c8e8af68  services/pipeline_jobs.py
 969647d87ca6be07b395d3be3a70ba5a0b5dedb82a5d90159729ac19807ffe12  services/rooting_coverage.py
-9c62027810dde624befd20442b212ecbe1cf6d6e78455b517321b2ce37cd31bd  tests/test_acoustic_kpi.py
+8022605ce71926ede78eb546159879143326635835008839976b087b90f2b74f  tests/test_acoustic_kpi.py
 caef0a4d2a64dbfb95709850d31861c83b24c65acae9a24d70a3c6280a4db7c7  tests/test_ideal_text_parts.py
-355bec9423b267fdce473b4f77b3d64c2f65ee3359cc97d2979528b39f9f11e0  tests/test_user_ideal_edit.py
+7fbf28eb5bf4f764034575309183e06cca24a28caa00a2786d3b6ffb979879ec  tests/test_user_ideal_edit.py
 a4bfdffa958538a137d6b58b57c49ecc11d95401663d5f6b162c90decb8f7f0e  tests/test_confident_moment_bundle.py
 d54bfcf21c5d446cbf0243830e305eb5d42bf510a6d1ca46e8c4ccada79d0f5d  tests/test_confident_moment_bundle_routes.py
 ac2d91c6b987275fd06838f26926324f7bf6947fc297eec23793c1d3c6812aec  tests/test_confident_moment_bundle_security.py
@@ -71,7 +71,7 @@ e1d4ac7f2b92c0049fa3d62f6b740338452ab95de1cb3d180c5feabb42b292d7  tests/test_con
 5e448ef42d2250dc98bda01cdd72bdbdc34b88ab283cb8725535dd7bcc0b9dab  tests/test_confident_moment_delivery_d37.py
 db67fa593b54ccf89476f38fca1431461f2e7b3b04549301f30e9bb9294fc1c7  tests/test_confident_moment_transport_d25.py
 2770045773416a54a4269897e2a9c32c90fd0625c43721ddec212087b6dbcf52  tests/test_confident_moment_user_media.py
-3e4514a4812afd0b5e64af22fd390f42e613e6651adeb69d3b7a21eb0369eabf  tests/test_ideal_text_cold_open.py
+0430a5068776f1806dc1ecc073b1a2071ff3250e5ba9c3190390e062ced8a402  tests/test_ideal_text_cold_open.py
 f4a54c1e0a9dcbdd2c87d7dab154785a9a5926aef41bad8e34c5e3d5d4856f00  tests/test_mlc3_first_client_feedback.py
 9d2231724e1b0fe08e5f194a36bbcb1d19254e18db5e63789e4da65ed541c31f  tests/test_mlc3_general_user_service_d4_postgres.py
 a467eac99adafc5252dbb9ece243153fe905ea0cb58206893d85d3e87a9d1ddc  tests/test_mlc3_general_service_monitor.py
@@ -428,5 +428,58 @@ No table, migration, route, or response shape changes.
 Verified by execution: targeted tests for every touched surface green,
 then scripts/local_ci.sh --no-setup green in full (manifest, migration
 runner, ruff, mypy, complexity ratchet, unit tier, F1 coverage floor).
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-16 — post-audit glue cleanup, takes family batch C, closes the family (backend)
+
+Re-frozen by the same rule. Five pinned files drift, zero-behavior-change
+cleanup: batch C of the takes-family wrapper cleanup (batches A and B in
+the two previous entries) — the four very-high-traffic methods
+(`get_arc_sessions`, `v2_get_session`, `list_user_lab_sessions`,
+`v2_list_user_lab_sessions`). This closes the takes family (66 of 66
+methods repointed) and with it the whole post-audit `services/db.py`
+Q-A2 forwarder cleanup across all three families (recordings,
+ideal-text, takes).
+
+- `services/db.py` — the last 4 takes-family forwarders deleted. Two
+  internal callers on `DatabaseService` itself
+  (`v2_get_session_by_id`, a helper inside `v2_cleanup_incomplete_sessions`'s
+  neighbourhood computing recorded seconds) now call
+  `self.takes.v2_get_session(...)` / `self.takes.v2_list_user_lab_sessions(...)`.
+- 26 production files (`routes/v2/arcs.py`, `routes/v2/coach.py`,
+  `routes/v2/explore_ideal_text.py`, `routes/v2/user_account.py`,
+  `routes/v2/user_sessions.py`, and 21 `services/`/`scripts/` files
+  spanning the ideal-text, master-document, voice-confidence, acoustic
+  and take-comparison surfaces) — call sites repointed to
+  `db.takes.<method>()` / `database.takes.<method>()`. Only
+  `services/db.py` and `routes/v2/explore_ideal_text.py` are themselves
+  pinned; the rest changed alongside, not listed above.
+- Given `get_arc_sessions` is the single most-used takes-family method
+  (~45 references), this batch surfaced ~30 hand-rolled test fake DB
+  classes implementing it (or `v2_list_user_lab_sessions`) directly on
+  themselves; each gained a one-line `takes` property returning `self`
+  (added via a small AST-based script that located every class defining
+  either method and skipped classes that already carried the property
+  from an earlier family's cleanup). `patch.object(db, "<method>", ...)`
+  sites (several split across multiple lines) across eleven test files
+  move to patching `db.takes`. Mock-based `database.<method>.return_value`
+  / `.side_effect` sites in `test_ideal_text_confirmation.py`,
+  `test_wave3_be.py` and `test_voice_confidence.py` move to
+  `database.takes.<method>.*`. Two `getattr(db, "v2_list_user_lab_sessions",
+  ...)` / direct-assignment save-restore pairs
+  (`test_wave3_be.py`, `test_slide_deck_capture.py`) move to `db.takes`.
+- `scripts/route_fence_baseline.json` — re-frozen (down only): three
+  functions (`routes/v2/arcs.py:v2_explore_arc_progress`,
+  `routes/v2/coach.py:v2_coach_verify_ideal_text`,
+  `routes/v2/coach.py:v2_coach_approve_ideal_text`) dropped out of the
+  baseline entirely.
+
+No table, migration, route, or response shape changes.
+
+Verified by execution: targeted tests for every touched surface green
+(865 tests), then scripts/local_ci.sh --no-setup green in full
+(manifest, migration runner, ruff, mypy, complexity ratchet, unit tier,
+F1 coverage floor).
 
 Every other entry is untouched.

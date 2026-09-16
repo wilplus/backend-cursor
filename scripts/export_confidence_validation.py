@@ -50,7 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def _rows_for_user(database, user_id: str, max_sessions: int) -> list:
     """Every stamped piece across the user's recent lab sessions."""
     rows: list = []
-    sessions = database.v2_list_user_lab_sessions(
+    sessions = database.takes.v2_list_user_lab_sessions(
         user_id, limit=max_sessions) or []
     for s in sessions:
         sid = str(s.get("id") or "")

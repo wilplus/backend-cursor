@@ -25,6 +25,12 @@ class _FakeDB:
     def get_arc_sessions(self, arc_id):
         return list(self._sessions)
 
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls db.takes.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def get_arc_purchase(self, arc_id):
         return self._purchase
 
@@ -163,6 +169,12 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
                 {"id": f"take-{index}", "analysis_state": "ready"}
                 for index in range(1, 4)
             ]
+
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
 
         def insert_lounge_messages(self, user_id, messages):
             for m in messages:

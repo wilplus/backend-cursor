@@ -73,6 +73,12 @@ class EagerAssemblyTests(unittest.TestCase):
             def get_arc_sessions(self, a):
                 return sessions
 
+            @property
+            def takes(self):
+                # audit Q-A2: production now calls db.takes.<method>();
+                # this fake implements those methods directly on itself.
+                return self
+
             def get_coach_arc_ideal_text(self, a):
                 return existing_row
 
@@ -162,7 +168,7 @@ class CoachIdealGetStatesTests(unittest.TestCase):
     def _get(self, sessions, row=None, auto=None):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(db, "get_arc_sessions",
+            with patch.object(db.takes, "get_arc_sessions",
                               return_value=sessions), \
                  patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
@@ -238,7 +244,7 @@ class ReviewStateTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(db, "get_user_profile",
                               return_value={"domain": "d", "goal": "g"}), \
-                 patch.object(db, "v2_list_user_lab_sessions",
+                 patch.object(db.takes, "v2_list_user_lab_sessions",
                               return_value=rows), \
                  patch.object(db, "get_feelings_by_sessions",
                               return_value=[]), \
@@ -265,7 +271,7 @@ class GuestProgressTests(unittest.TestCase):
         headers = ({"X-Willab-Guest-Owner": guest.token} if guest else None)
         with app.test_request_context(headers=headers):
             request.user_id = caller
-            with patch.object(db, "get_arc_sessions",
+            with patch.object(db.takes, "get_arc_sessions",
                               return_value=sessions), \
                  patch.object(db, "get_coach_best_presentation_edits",
                               return_value={}), \
@@ -342,7 +348,7 @@ class ArcReviewStateTests(unittest.TestCase):
     def _get(self, sessions, ideal_row=None):
         with self.app.test_request_context():
             request.user_id = "coach1"
-            with patch.object(db, "get_arc_sessions",
+            with patch.object(db.takes, "get_arc_sessions",
                               return_value=sessions), \
                  patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=ideal_row):
@@ -472,7 +478,7 @@ class PublishAnalysisAtomicTests(unittest.TestCase):
                 jsonify({"takes": published}) if publish_status == 200
                 else jsonify({"code": "PUBLISH_FAILED", "error": "invalid"})
             )
-            with patch.object(db, "get_arc_sessions",
+            with patch.object(db.takes, "get_arc_sessions",
                               return_value=sessions), \
                  patch("routes.v2.canonical_publish.publish_complete_reviews",
                        return_value=(response, publish_status)) as publish:

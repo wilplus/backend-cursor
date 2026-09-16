@@ -338,7 +338,7 @@ def _user_presentation_groups(user_id: str) -> dict:
     owner migrates or deletes them.
     """
     groups: dict = {}
-    for session in (db.v2_list_user_lab_sessions(user_id) or []):
+    for session in (db.takes.v2_list_user_lab_sessions(user_id) or []):
         sid = str(session.get("id") or "")
         if not sid:
             continue
@@ -373,7 +373,7 @@ def _user_presentation_sessions_all(user_id: str, presentation_id: str) -> list:
     if not pid:
         return []
     matches = []
-    for s in (db.v2_list_user_lab_sessions(user_id) or []):
+    for s in (db.takes.v2_list_user_lab_sessions(user_id) or []):
         ctx = s.get("intake_context") if isinstance(
             s.get("intake_context"), dict) else {}
         # Same key the grouping uses — a delete set derived differently from
@@ -933,7 +933,7 @@ def v2_user_suggestion_feedback(snippet_id):
                     # as SPEC §6's ground truth. Best-effort.
                     from services.intervention_spend import spend, unspend
                     _star_key = f"star:{target}:{snippet_id}"
-                    _arc_sessions = db.get_arc_sessions(_arc) or []
+                    _arc_sessions = db.takes.get_arc_sessions(_arc) or []
                     # THE STYLE LANE (slice 2, founder 2026-08-11): a post-
                     # lock bold decision rides OUTSIDE the ≤3 — the FE marks
                     # it and the row lands with lane:style, which
@@ -1014,7 +1014,7 @@ def v2_user_list_readouts():
       state ∈ readout_ready | review_pending | insights_ready
     """
     try:
-        rows = db.list_user_lab_sessions(request.user_id)
+        rows = db.takes.list_user_lab_sessions(request.user_id)
         out: list = []
         for r in rows:
             ctx = r.get("intake_context") if isinstance(r.get("intake_context"), dict) else {}
@@ -1068,7 +1068,7 @@ def _build_user_session_status(user_id):
         audit_paid = True
     else:
         try:
-            latest = db.v2_list_user_lab_sessions(str(user_id), limit=1) or []
+            latest = db.takes.v2_list_user_lab_sessions(str(user_id), limit=1) or []
         except Exception:
             latest = []
         arc_id = latest[0].get("arc_id") if latest else None
@@ -1516,7 +1516,7 @@ def v2_post_take_feedback_response(take_session_id):
         spend(
             db,
             arc_id,
-            db.get_arc_sessions(arc_id) or [],
+            db.takes.get_arc_sessions(arc_id) or [],
             change_key=f"feedback:{row['feedback_family']}:{row['feedback_id']}",
             decision=("approved" if row["response"] in (
                 "yes", "apply_suggestion", "useful") else "disregarded"),

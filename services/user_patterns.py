@@ -180,7 +180,7 @@ def build_user_patterns(user_id: Any, database=None) -> list:
     try:
         if database is None:
             from services.db import db as database
-        sessions = (database.v2_list_user_lab_sessions(
+        sessions = (database.takes.v2_list_user_lab_sessions(
             str(user_id), limit=_MAX_SESSIONS) or [])
         moments: list = []
         for sess in sessions:

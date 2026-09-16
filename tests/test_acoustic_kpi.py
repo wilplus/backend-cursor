@@ -405,6 +405,12 @@ class BaselineFreshnessTests(unittest.TestCase):
             def v2_list_user_lab_sessions(self, uid, *, limit=5):
                 return [{"created_at": "2026-08-12T09:00:00"}]   # naive, older
 
+            @property
+            def takes(self):
+                # audit Q-A2: production now calls db.takes.<method>();
+                # this fake implements those methods directly on itself.
+                return self
+
             def get_snippets_by_session(self, sid):   # pragma: no cover
                 raise AssertionError("rebuilt when it should have reused")
 
@@ -436,6 +442,12 @@ class BaselineFreshnessTests(unittest.TestCase):
                 calls.append("sessions")
                 return [{"created_at": "2026-08-12T11:00:00Z"}]
 
+            @property
+            def takes(self):
+                # audit Q-A2: production now calls db.takes.<method>();
+                # this fake implements those methods directly on itself.
+                return self
+
             def get_snippets_by_session(self, sid):    # pragma: no cover
                 calls.append("snippets")
                 return []
@@ -460,6 +472,12 @@ class BaselineFreshnessTests(unittest.TestCase):
                         {"id": "s2", "created_at": "2026-08-12T11:00:00Z"},
                         {"id": "s3", "created_at": "2026-08-12T12:00:00Z"}]
 
+            @property
+            def takes(self):
+                # audit Q-A2: production now calls db.takes.<method>();
+                # this fake implements those methods directly on itself.
+                return self
+
             def get_snippets_by_session(self, sid):
                 calls.append("snippets")
                 return []
@@ -474,6 +492,12 @@ class BaselineFreshnessTests(unittest.TestCase):
 
             def v2_list_user_lab_sessions(self, uid, *, limit=5):
                 return []
+
+            @property
+            def takes(self):
+                # audit Q-A2: production now calls db.takes.<method>();
+                # this fake implements those methods directly on itself.
+                return self
 
             def get_snippets_by_session(self, sid):    # pragma: no cover
                 return []

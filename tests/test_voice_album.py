@@ -42,6 +42,12 @@ class _Db:
     def get_arc_sessions(self, arc_id):
         return self.sessions
 
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls db.takes.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def get_snippets_by_session(self, sid):
         return self.snips.get(sid, [])
 
@@ -172,6 +178,12 @@ class EntryRuleTests(unittest.TestCase):
         class _Boom(_Db):
             def get_arc_sessions(self, arc_id):
                 raise RuntimeError("db down")
+
+            @property
+            def takes(self):
+                # audit Q-A2: production now calls db.takes.<method>();
+                # this fake implements those methods directly on itself.
+                return self
         self.assertEqual(refresh_voice_album(ARC, database=_Boom(
             routes=[{"response": "yes", "snippet_id": "sn1"}],
             suggestions={"sn1": {"kind": "emphasize"}})), 0)
@@ -216,7 +228,7 @@ class VoiceAlbumReadTests(unittest.TestCase):
         app = Flask(__name__)
         with app.test_request_context():
             request.user_id = uid
-            with patch.object(db, "get_arc_sessions",
+            with patch.object(db.takes, "get_arc_sessions",
                               return_value=sessions), \
                  patch.object(db, "list_voice_album",
                               return_value=entries, create=True), \

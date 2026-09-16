@@ -307,6 +307,12 @@ def test_publisher_retries_one_generation_race(monkeypatch):
                 "recording_kind": "spoken", "user_id": "actor-1",
             }]
 
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
+
         def get_ideal_text_document_generation(self, _arc_id):
             return next(self.generations)
 

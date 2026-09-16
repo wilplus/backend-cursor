@@ -219,7 +219,7 @@ class _ChangesRun:
         # only after that snippet's take has been published.
         self.released_verdicts = released_user_verdicts(
             self.verdicts, self.pieces,
-            db.get_arc_sessions(self.arc_id) or [])
+            db.takes.get_arc_sessions(self.arc_id) or [])
         self.user_sugs = filter_user_suggestions(
             self.sugs, self.released_verdicts)
 

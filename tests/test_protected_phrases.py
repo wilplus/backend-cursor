@@ -53,6 +53,12 @@ class CollectTakeTextsTests(unittest.TestCase):
                 {"id": "t2", "take_index": 2, "recording_kind": "spoken"},
             ]
 
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
+
         def get_snippets_by_session(self, sid):
             return {"t1": [{"transcript": "Hello  WORLD"},
                            {"transcript": "part two"}],

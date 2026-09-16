@@ -218,6 +218,12 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
             def get_arc_sessions(self, arc_id):
                 return []
 
+            @property
+            def takes(self):
+                # audit Q-A2: production now calls db.takes.<method>();
+                # this fake implements those methods directly on itself.
+                return self
+
         self.assertTrue(fire_ideal_version_ready(
             _Db(), "user-1", "arc-1", 2))
         message = captured["messages"][0]

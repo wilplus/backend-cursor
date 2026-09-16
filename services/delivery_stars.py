@@ -117,7 +117,7 @@ def resolve_delivery_baseline(user_id: Any, current_piece_metrics: Any, *,
                 from services.db import db as database
             hist: list = []
             try:
-                sessions = database.v2_list_user_lab_sessions(
+                sessions = database.takes.v2_list_user_lab_sessions(
                     str(user_id), limit=5) or []
                 for s in sessions:
                     sid = str(s.get("id") or "")

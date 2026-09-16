@@ -88,6 +88,12 @@ class PolishPersistTests(unittest.TestCase):
             return [{"id": "s1", "user_id": "u1", "recording_kind": "spoken",
                      "paired_session_id": None}]
 
+        @property
+        def takes(self):
+            # audit Q-A2: production now calls db.takes.<method>();
+            # this fake implements those methods directly on itself.
+            return self
+
         def get_moment_suggestions_by_arc(self, a):
             return self.existing
 

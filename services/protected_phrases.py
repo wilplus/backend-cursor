@@ -66,7 +66,7 @@ def collect_take_texts(database, arc_id: Any) -> list:
         return []
     try:
         from services.slide_selection import spoken_arc_sessions
-        sessions = spoken_arc_sessions(database.get_arc_sessions(arc_id))
+        sessions = spoken_arc_sessions(database.takes.get_arc_sessions(arc_id))
         texts = []
         for s in sessions:
             sid = str(s.get("id") or "")

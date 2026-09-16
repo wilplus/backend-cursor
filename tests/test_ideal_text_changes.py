@@ -51,6 +51,12 @@ class FakeDB:
         self._maybe_boom("get_arc_sessions")
         return [{"id": T1, "take_index": 1, "recording_kind": "spoken"}]
 
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls db.takes.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def get_snippets_by_session(self, session_id):
         self._maybe_boom("get_snippets_by_session")
         return self.snippets

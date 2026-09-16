@@ -43,6 +43,12 @@ class _Db:
     def get_arc_sessions(self, arc_id):
         return [{"id": T1, "take_index": 1, "recording_kind": "spoken"}]
 
+    @property
+    def takes(self):
+        # audit Q-A2: production now calls db.takes.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def get_snippets_by_session(self, sid):
         return self._snips
 

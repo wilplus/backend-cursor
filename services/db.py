@@ -748,9 +748,6 @@ class DatabaseService:
                     sentry_sdk.capture_exception(e)
         return len(deleted_ids), deleted_ids
 
-    def v2_get_session(self, *args, **kwargs):
-        return self.takes.v2_get_session(*args, **kwargs)
-
     def claim_coach_review(
         self, session_id: str, actor_user_id: str, *, actor_is_admin: bool = False,
     ) -> Optional[dict]:
@@ -861,7 +858,7 @@ class DatabaseService:
 
     def v2_get_session_by_id(self, session_id: str):
         """Get v2 session by id only (no user filter). For debugging 404: check if session exists and which user_id owns it."""
-        return self.v2_get_session(session_id, None)
+        return self.takes.v2_get_session(session_id, None)
 
     def v2_get_charisma_snippet_for_user(self, snippet_id: str, user_id: str) -> Optional[dict]:
         """Fetch a charisma_snippets row, scoped to the authenticated owner."""
@@ -1811,9 +1808,6 @@ class DatabaseService:
             logger.info("v2_ensure_credits_initialized: granted %d user=%s", grant, user_id)
         return seed
 
-    def v2_list_user_lab_sessions(self, *args, **kwargs):
-        return self.takes.v2_list_user_lab_sessions(*args, **kwargs)
-
     def v2_get_cumulative_recorded_seconds(self, user_id: str) -> int:
         """Sum of the user's Lab recording durations (seconds) — the
         recording-progress signal (BE-1 / S2). Sums recordings.duration over
@@ -1824,7 +1818,7 @@ class DatabaseService:
         if not user_id:
             return 0
         try:
-            sessions = self.v2_list_user_lab_sessions(user_id)
+            sessions = self.takes.v2_list_user_lab_sessions(user_id)
             rec_ids = [
                 s.get("recording_1_id") for s in sessions if s.get("recording_1_id")
             ]
@@ -10434,9 +10428,6 @@ class DatabaseService:
             logger.warning("get_feelings_by_sessions failed: %s", e)
             return []
 
-    def get_arc_sessions(self, *args, **kwargs):
-        return self.takes.get_arc_sessions(*args, **kwargs)
-
     # ── willab — arc batch delivery (founder 2026-07-13) ────────────────
     #
     # arc_batch_deliveries: one row per arc, stamped by the coach's explicit
@@ -11735,9 +11726,6 @@ class DatabaseService:
                 logger.warning(
                     "list_pending_confidence_rereviews failed: %s", e)
             return []
-    def list_user_lab_sessions(self, *args, **kwargs):
-        return self.takes.list_user_lab_sessions(*args, **kwargs)
-
     # ── Coach star verdicts (founder 2026-07-27) ───────────────────────
     # The DECISION-layer correction corpus for the voice-text analytics: did
     # this star deserve to fire, and as this kind? Separate from
