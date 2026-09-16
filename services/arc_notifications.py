@@ -528,7 +528,7 @@ def backfill_ideal_bubbles(db, user_id: Any, arc_id: Any) -> int:
     if not user_id or not arc_id:
         return 0
     try:
-        row = db.get_coach_arc_ideal_text(arc_id) or {}
+        row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
         _coach_owned = bool(row.get("updated_by") or row.get("approved_at"))
         _machine = ((row.get("auto_text") or "").strip()
                     or ((row.get("text") or "").strip()

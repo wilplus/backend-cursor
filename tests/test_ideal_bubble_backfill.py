@@ -30,6 +30,12 @@ class _Db:
     def get_coach_arc_ideal_text(self, arc_id):
         return self.row
 
+    @property
+    def ideal_text(self):
+        # audit Q-A2: production now calls database.ideal_text.<method>();
+        # this fake implements those methods directly on itself.
+        return self
+
     def insert_lounge_messages(self, uid, msgs):
         self.inserted.extend(msgs)
         return msgs
@@ -97,6 +103,10 @@ class BackfillTests(unittest.TestCase):
         class _Boom:
             def get_coach_arc_ideal_text(self, a):
                 raise RuntimeError("db down")
+
+            @property
+            def ideal_text(self):
+                return self
         self.assertEqual(backfill_ideal_bubbles(_Boom(), UID, ARC), 0)
 
     def test_dropped_insert_counts_honestly(self):

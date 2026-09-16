@@ -76,6 +76,13 @@ class EagerAssemblyTests(unittest.TestCase):
             def get_coach_arc_ideal_text(self, a):
                 return existing_row
 
+            @property
+            def ideal_text(self):
+                # audit Q-A2: production now calls
+                # database.ideal_text.<method>(); this fake implements
+                # those methods directly on itself.
+                return self
+
             def persist_auto_ideal_text(self, a, text, *, take_count=None,
                                         document=None):
                 # `document` is the piece provenance the real writer
@@ -157,7 +164,7 @@ class CoachIdealGetStatesTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(db, "get_arc_sessions",
                               return_value=sessions), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch("services.ideal_text_block.maybe_assemble_ideal_text",
                        return_value=False), \
@@ -235,7 +242,7 @@ class ReviewStateTests(unittest.TestCase):
                               return_value=rows), \
                  patch.object(db, "get_feelings_by_sessions",
                               return_value=[]), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value={"text": "machine draft",
                                             "updated_by": None,
                                             "approved_at": None}):
@@ -337,7 +344,7 @@ class ArcReviewStateTests(unittest.TestCase):
             request.user_id = "coach1"
             with patch.object(db, "get_arc_sessions",
                               return_value=sessions), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=ideal_row):
                 out = v2_coach.v2_coach_arc_review_state.__wrapped__(ARC)
                 resp, status = out if isinstance(out, tuple) else (out, 200)

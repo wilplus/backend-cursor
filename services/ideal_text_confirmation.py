@@ -61,7 +61,7 @@ def wait_for_ideal_text_confirmation(
     interval = max(0.001, float(poll_seconds))
     while True:
         confirmed = confirmed_ideal_text(
-            database.get_coach_arc_ideal_text(str(arc_id))
+            database.ideal_text.get_coach_arc_ideal_text(str(arc_id))
         )
         if confirmed is not None:
             return confirmed

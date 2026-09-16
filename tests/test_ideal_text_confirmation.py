@@ -41,7 +41,7 @@ class _Clock:
 class IdealTextConfirmationTests(unittest.TestCase):
     def test_builder_forwards_exact_take_one_session_provenance(self):
         database = Mock()
-        database.get_coach_arc_ideal_text.return_value = {
+        database.ideal_text.get_coach_arc_ideal_text.return_value = {
             "auto_text": "Persisted document",
         }
         with patch(
@@ -66,7 +66,7 @@ class IdealTextConfirmationTests(unittest.TestCase):
         from services import ideal_text_block
 
         database = Mock()
-        database.get_coach_arc_ideal_text.return_value = None
+        database.ideal_text.get_coach_arc_ideal_text.return_value = None
         database.get_arc_sessions.return_value = [
             {"id": SID, "take_index": 1, "recording_kind": "spoken"},
             {"id": "later", "take_index": 2, "recording_kind": "spoken"},
@@ -103,7 +103,7 @@ class IdealTextConfirmationTests(unittest.TestCase):
 
     def test_requires_nonempty_text_read_back_from_database(self):
         database = Mock()
-        database.get_coach_arc_ideal_text.side_effect = [
+        database.ideal_text.get_coach_arc_ideal_text.side_effect = [
             None,
             {"arc_id": "arc-1", "auto_text": "  "},
             {"arc_id": "arc-1", "auto_text": "Persisted document"},
@@ -122,7 +122,7 @@ class IdealTextConfirmationTests(unittest.TestCase):
 
     def test_exact_120_second_boundary_raises_typed_terminal_error(self):
         database = Mock()
-        database.get_coach_arc_ideal_text.return_value = None
+        database.ideal_text.get_coach_arc_ideal_text.return_value = None
         clock = _Clock()
         with self.assertRaises(confirmation.IdealTextUnconfirmedError):
             confirmation.wait_for_ideal_text_confirmation(
@@ -138,7 +138,7 @@ class IdealTextConfirmationTests(unittest.TestCase):
 
     def test_generation_call_is_inside_the_timeout_boundary(self):
         database = Mock()
-        database.get_coach_arc_ideal_text.return_value = None
+        database.ideal_text.get_coach_arc_ideal_text.return_value = None
         release = threading.Event()
         with patch(
             "services.ideal_text_block.maybe_assemble_ideal_text",
@@ -158,7 +158,7 @@ class IdealTextConfirmationTests(unittest.TestCase):
     def test_database_confirmation_read_is_inside_the_timeout_boundary(self):
         database = Mock()
         release = threading.Event()
-        database.get_coach_arc_ideal_text.side_effect = \
+        database.ideal_text.get_coach_arc_ideal_text.side_effect = \
             lambda *_args, **_kwargs: release.wait(1)
         with patch(
             "services.ideal_text_block.maybe_assemble_ideal_text",

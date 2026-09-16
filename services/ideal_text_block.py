@@ -434,7 +434,7 @@ def _snapshot_version(database, arc_id, text) -> None:
     readable after later versions supersede it (the GET's ?version form
     serves it). Sanitized at write time — AC-9/CONSTRUCT hold in storage,
     not just at serve. Pre-migration → no history, today's behavior."""
-    _row_now = database.get_coach_arc_ideal_text(arc_id) or {}
+    _row_now = database.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
     _v_now = _row_now.get("version") or 1
     _sugs_now = database.get_moment_suggestions_by_arc(arc_id) or {}
     database.upsert_ideal_text_version(
@@ -469,7 +469,9 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
     try:
         if database is None:
             from services.db import db as database
-        get_existing = getattr(database, "get_coach_arc_ideal_text", None)
+        _ideal_text_repo = getattr(database, "ideal_text", None)
+        get_existing = getattr(_ideal_text_repo,
+                               "get_coach_arc_ideal_text", None)
         existing = get_existing(arc_id) if callable(get_existing) else None
         existing = existing or {}
         if str(existing.get("auto_text") or existing.get("text") or "").strip():

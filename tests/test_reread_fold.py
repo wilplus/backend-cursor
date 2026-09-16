@@ -353,7 +353,7 @@ class DrilldownFoldTests(unittest.TestCase):
                               return_value=rows), \
                  patch.object(db, "get_feelings_by_sessions",
                               return_value=[]), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=None):
                 resp, status = v2_coach.v2_coach_student_detail.__wrapped__(uid)
         self.assertEqual(status, 200)

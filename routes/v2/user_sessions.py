@@ -864,7 +864,7 @@ def v2_user_suggestion_feedback(snippet_id):
                                 or {}).get(str(snippet_id))
                     _ver = None
                     try:
-                        _ver = (db.get_coach_arc_ideal_text(_arc)
+                        _ver = (db.ideal_text.get_coach_arc_ideal_text(_arc)
                                 or {}).get("version")
                     except Exception:
                         _ver = None

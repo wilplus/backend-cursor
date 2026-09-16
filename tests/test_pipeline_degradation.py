@@ -145,7 +145,7 @@ def test_the_builder_forwards_a_log_only_when_it_has_one():
     from unittest.mock import Mock
     from services import ideal_text_confirmation as confirmation
     database = Mock()
-    database.get_coach_arc_ideal_text.return_value = {"auto_text": "doc"}
+    database.ideal_text.get_coach_arc_ideal_text.return_value = {"auto_text": "doc"}
     log = DegradationLog("take_analysis")
     with patch("services.ideal_text_block.maybe_assemble_ideal_text",
                return_value=True) as assemble:
@@ -171,6 +171,12 @@ class _AssemblerDb:
 
     def get_coach_arc_ideal_text(self, arc_id):
         return None
+
+    @property
+    def ideal_text(self):
+        # audit Q-A2: production now calls database.ideal_text.<method>();
+        # this fake implements those methods directly on itself.
+        return self
 
     def persist_auto_ideal_text(self, arc_id, text, *, take_count=None,
                                 document=None):

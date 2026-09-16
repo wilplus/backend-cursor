@@ -256,7 +256,7 @@ class DecideEndpointTests(unittest.TestCase):
             with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)), \
                  patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(owned, [])), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value={"version": 3}), \
                  patch.object(db, "upsert_ideal_decision",
                               return_value=True) as m_led:

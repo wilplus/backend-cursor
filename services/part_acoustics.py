@@ -427,7 +427,7 @@ def fold_session(arc_id: Any, user_id: Any, session_id: Any, *,
                 "part_acoustics: fold skipped — no stored parts arc=%s "
                 "(document never opened)", arc_id)
             return {}
-        row = database.get_coach_arc_ideal_text(str(arc_id)) or {}
+        row = database.ideal_text.get_coach_arc_ideal_text(str(arc_id)) or {}
         doc = row.get("document") if isinstance(row, dict) else None
         pieces = (doc or {}).get("pieces") if isinstance(doc, dict) else None
         if not pieces:

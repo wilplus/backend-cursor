@@ -70,7 +70,7 @@ def finalize_later_take_review(
             take_session_id, "only a spoken Take has a review version")
 
     before = confirmed_ideal_text(
-        database.get_coach_arc_ideal_text(str(arc_id)))
+        database.ideal_text.get_coach_arc_ideal_text(str(arc_id)))
     if before is None:
         raise TakeReviewFinalizationError(
             take_session_id, "canonical Ideal Text is missing")
@@ -111,7 +111,7 @@ def finalize_later_take_review(
             take_session_id, "database finalizer returned no confirmation")
 
     after = confirmed_ideal_text(
-        database.get_coach_arc_ideal_text(str(arc_id)))
+        database.ideal_text.get_coach_arc_ideal_text(str(arc_id)))
     current_version = _take_number((after or {}).get("version"))
     if after is None or current_version is None or current_version < index:
         raise TakeReviewFinalizationError(

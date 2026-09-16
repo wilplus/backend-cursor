@@ -204,7 +204,7 @@ def build_snapshot(
     persist a newly composed part list because it runs only while publishing;
     the GET path never calls it.
     """
-    row = database.get_coach_arc_ideal_text(arc_id) or {}
+    row = database.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
     source = resolve_ideal_text_source(row)
     if not source.machine_text:
         raise ValueError("IDEAL_TEXT_DOCUMENT_PENDING")

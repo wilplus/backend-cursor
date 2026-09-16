@@ -196,7 +196,7 @@ class _ChangesRun:
         # route must come from the document actually being served — never
         # from whichever transcript happened to be latest when this GET ran.
         from services.transcript_document import relocate_pieces
-        _canonical_row = self.db.get_coach_arc_ideal_text(self.arc_id) or {}
+        _canonical_row = self.db.ideal_text.get_coach_arc_ideal_text(self.arc_id) or {}
         _canonical_document = _canonical_row.get("document") or {}
         self.canonical_pieces = relocate_pieces(
             self.served_text,

@@ -69,7 +69,7 @@ class SlideLinkageTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(db, "get_user_ideal_edit",
                               return_value=edit), \
@@ -300,7 +300,7 @@ class ComposeFailureFallbackTests(unittest.TestCase):
                        return_value={}), \
                  patch("routes.v2.explore_ideal_text."
                        "_tracked_changes_block", return_value={}), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(db, "get_user_ideal_edit",
                               return_value=None), \

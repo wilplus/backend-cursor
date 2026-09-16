@@ -72,6 +72,13 @@ class FakeDB:
         self._maybe_boom("get_coach_arc_ideal_text")
         return {}
 
+    @property
+    def ideal_text(self):
+        # audit Q-A2: production now calls db.ideal_text.<method>(); this
+        # fake implements those methods (and the boom/call tracking) on
+        # itself, so the same instance serves both call shapes.
+        return self
+
     def get_star_verdicts_by_snippet_ids(self, ids):
         return {}
 

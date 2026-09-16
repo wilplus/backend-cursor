@@ -372,7 +372,7 @@ def v2_coach_student_detail(user_id):
         _ideal_ready_arcs = []
         for _aid in {s.get("arc_id") for s in sessions if s.get("arc_id")}:
             try:
-                _row = db.get_coach_arc_ideal_text(_aid)
+                _row = db.ideal_text.get_coach_arc_ideal_text(_aid)
                 if _row and (_row.get("text") or "").strip() \
                         and not _row.get("approved_at"):
                     _ideal_ready_arcs.append(str(_aid))
@@ -760,7 +760,7 @@ def v2_coach_get_session(session_id):
         _arc_ideal_ready = False
         if _context_unlocked and session.get("arc_id"):
             try:
-                _it_row = db.get_coach_arc_ideal_text(session.get("arc_id"))
+                _it_row = db.ideal_text.get_coach_arc_ideal_text(session.get("arc_id"))
                 _arc_ideal_ready = bool(
                     _it_row and (_it_row.get("text") or "").strip()
                     and not _it_row.get("approved_at"))
@@ -1727,7 +1727,7 @@ def v2_coach_get_ideal_text(arc_id):
              if s.get("user_id")), None)
         _user_edit = db.get_user_ideal_edit(arc_id, _owner) if _owner else None
 
-        row = db.get_coach_arc_ideal_text(arc_id)
+        row = db.ideal_text.get_coach_arc_ideal_text(arc_id)
         if row and (row.get("text") or "").strip():
             text = row["text"]
             return jsonify({
@@ -1840,7 +1840,7 @@ def v2_coach_verify_ideal_text(arc_id):
                 "code": "NOTHING_TO_VERIFY",
                 "error": "No ideal-text version to verify yet.",
             }), 409
-        row = db.get_coach_arc_ideal_text(arc_id) or {}
+        row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
         version = row.get("version") or 1
         if outcome == "already":
             from services.ideal_text_core_snapshot import publish_for_arc
@@ -1908,7 +1908,7 @@ def v2_coach_approve_ideal_text(arc_id):
     approved in one deterministic action (review-without-edit approval).
     200 {ok, approved:true} · 409 IDEAL_TEXT_EMPTY · 500"""
     try:
-        row = db.get_coach_arc_ideal_text(arc_id)
+        row = db.ideal_text.get_coach_arc_ideal_text(arc_id)
         text = (row or {}).get("text") or ""
         if not text.strip():
             from services.ideal_text_block import assemble_ideal_text_block
@@ -2159,7 +2159,7 @@ def v2_coach_arc_review_state(arc_id):
             })
 
         from services.slide_selection import TAKES_TARGET
-        row = db.get_coach_arc_ideal_text(arc_id) or {}
+        row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
         _ideal_text = (row.get("text") or "").strip()
         _approved = bool(row.get("approved_at"))
         ideal = {

@@ -123,8 +123,9 @@ class VersionBumpTests(unittest.TestCase):
 
     def _persist(self, row, text, missing=(), take_count=None):
         client = _Client(missing=missing)
-        fake = SimpleNamespace(client=client,
-                               get_coach_arc_ideal_text=lambda a: row)
+        fake = SimpleNamespace(
+            client=client,
+            ideal_text=SimpleNamespace(get_coach_arc_ideal_text=lambda a: row))
         ok = DatabaseService.persist_auto_ideal_text(
             fake, ARC, text, take_count=take_count)
         return ok, client.upserts
@@ -189,8 +190,9 @@ class VerifyDbTests(unittest.TestCase):
 
     def _verify(self, row):
         client = _Client()
-        fake = SimpleNamespace(client=client,
-                               get_coach_arc_ideal_text=lambda a: row)
+        fake = SimpleNamespace(
+            client=client,
+            ideal_text=SimpleNamespace(get_coach_arc_ideal_text=lambda a: row))
         out = DatabaseService.verify_ideal_text(fake, ARC, "coach1")
         return out, client.upserts
 
@@ -236,7 +238,7 @@ class VerifyRouteTests(unittest.TestCase):
                               return_value=sessions), \
                  patch.object(db, "verify_ideal_text",
                               return_value=outcome), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch("services.arc_notifications.fire_ideal_verified") \
                     as m_fire:
@@ -287,7 +289,7 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
                               return_value=entitled_moments), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value=(expl or {})), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(db, "get_user_arc_ideal_notes",
                               return_value="notes"):
@@ -396,7 +398,7 @@ class CrucialBubbleFieldTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=row), \
                  patch.object(db, "get_user_arc_ideal_notes",
                               return_value=None):
@@ -507,7 +509,7 @@ class HistoricalVersionTests(unittest.TestCase):
                  patch("routes.v2.explore_ideal_text._moments_entitled", return_value=False), \
                  patch("routes.v2.explore_ideal_text._moment_explanations_map",
                               return_value={}), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=(row or _row(version=3))), \
                  patch.object(db, "get_user_arc_ideal_notes",
                               return_value=None), \
@@ -899,7 +901,7 @@ class PaywallRetirementTests(unittest.TestCase):
                               side_effect=lambda sid: f"text-{sid}"), \
                  patch("routes.v2.arcs._take_key_moments",
                               side_effect=lambda sid, rids: []), \
-                 patch.object(db, "get_coach_arc_ideal_text",
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value={}):
                 out = v2_arcs.v2_explore_arc_feedback.__wrapped__(ARC)
         resp, status = out if isinstance(out, tuple) else (out, 200)
