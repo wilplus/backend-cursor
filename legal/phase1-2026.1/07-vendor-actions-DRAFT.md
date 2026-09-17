@@ -7,7 +7,11 @@ the one with a lead time, so start it first.
 
 ## 1. OpenAI — TWO separate things
 
-These are different routes and people conflate them.
+These are different routes and people conflate them. **If the dashboard route
+below cannot be found, skip the hunt and email `support@openai.com` cc
+`privacy@openai.com` asking for both the DPA link and the retention answer in
+one message.** That is faster than navigating their settings and it creates a
+written record, which is what document 06 actually needs.
 
 ### 1a. The DPA — self-serve, five minutes
 
@@ -61,18 +65,28 @@ the critical path.
 
 ---
 
-## 2. Railway — start this one first
+## 2. Railway — self-serve, three minutes
 
-Not self-serve. Request via support or legal. Longest lead time of the five.
+**`railway.com/legal/dpa`** — execute it there directly. (An earlier draft of
+this document said Railway was not self-serve and would be the slowest of the
+five. That was wrong.)
 
-> We are a customer running production workloads on Railway and process personal
-> data of EU and US individuals. Please provide your Data Processing Agreement
-> for signature, together with your current sub-processor list and the transfer
-> mechanism you rely on for EU-to-US transfers (Data Privacy Framework
-> certification or Standard Contractual Clauses). If you are DPF-certified,
-> please confirm the certification name we should reference.
+Then take two documents from **`trust.railway.com`**: the current sub-processor
+list — Railway runs on Google Cloud, with Cloudflare and Stripe underneath, and
+counsel will want to see who sits behind the name in Privacy §5 — and whatever
+they publish on EU-to-US transfers. Railway's primary processing is in the
+United States, so that is the transfer mechanism for the hosting layer.
 
-The same text works for **Supabase** and your **email provider**.
+## 2b. Where a vendor has no self-serve DPA
+
+Text that works for any of them:
+
+> We are a customer processing personal data of EU and US individuals on your
+> platform. Please provide your Data Processing Agreement for signature,
+> together with your current sub-processor list and the transfer mechanism you
+> rely on for EU-to-US transfers (Data Privacy Framework certification or
+> Standard Contractual Clauses). If you are DPF-certified, please confirm the
+> certification name we should reference.
 
 ## 3. Cloudflare
 
@@ -106,7 +120,7 @@ what, if anything, we need to sign — see document 01 §2.
 |---|---|---|---|
 | OpenAI | DPA | self-serve dashboard | ☐ |
 | OpenAI | ZDR + retention answer in writing | contact-sales | ☐ ← blocks doc 06 |
-| Railway | DPA + transfer mechanism | support/legal | ☐ |
+| Railway | DPA + sub-processors + transfers | railway.com/legal/dpa (self-serve) | ☐ |
 | Supabase | DPA + project region | dashboard/legal | ☐ |
 | Cloudflare | Confirm DPA applies, file a copy | account terms | ☐ |
 | Email provider | DPA | provider | ☐ |
