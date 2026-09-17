@@ -40,45 +40,82 @@ been satisfied".
 
 ## 2. Rules to seed
 
-One row per rule in `data_retention_rules`, all `active = true`, all pointing at
-this document's artifact id.
+**Corrected 2026-09-17. The first draft of this section was wrong** and would
+have failed silently. It listed nine `evidence_category` values — `r2_object`,
+`transcript`, `cache`, `coach_packet` and so on. Those are
+`data_purge_targets.target_kind` values. The column this table feeds is matched
+against `PurgeDependency.retention_category` (`services/data_purge.py:231`),
+whose vocabulary has five values and shares none of them. Seeding the original
+table would have written twelve active rows resolving nothing, left all sixteen
+retain-dependencies on `RETENTION_RULE_UNRESOLVED`, and — because
+`resolve_targets` is all-or-nothing — deleted nothing for anyone, while the
+table looked populated and the control version named a real document. Exactly
+the paper-only claim this boundary exists to prevent. Found by engineering
+before it shipped.
 
-| `rule_code` | `evidence_category` | `retention_until_rule` |
-|---|---|---|
-| `audio-object-12m-v1` | `r2_object`, `supabase_object` | `last_use + 12 months` |
-| `voice-measurement-12m-v1` | `database_row` (the `voice_confidence` stamp) | `source_audio_retention` |
-| `transcript-until-erasure-v1` | `transcript` | `account_deletion` |
-| `derived-content-until-erasure-v1` | `derived_feedback` | `account_deletion` |
-| `practice-attempt-30d-v1` | `database_row`, `r2_object` (practice) | `practice_closed + 30 days` |
-| `orphan-object-24h-v1` | `r2_object`, `supabase_object` (unreferenced) | `upload + 24 hours` |
-| `technical-log-90d-v1` | `cache` | `created + 90 days` |
-| `provider-operation-with-parent-v1` | `provider_operation` | `parent_recording_retention` |
-| `coach-packet-with-parent-v1` | `coach_packet` | `parent_recording_retention`, or immediately on withdrawal of coach consent |
-| `processing-queue-with-parent-v1` | `processing_queue` | `parent_recording_retention` |
-| `authorization-evidence-v1` | `database_row` (append-only evidence) | `accountability_need_ends` |
+**The conceptual mistake underneath it:** not every category in §1 needs a
+retention rule. §1 is the *published* schedule — what users are told about their
+recordings and transcripts. Those are `delete` dispositions: the purge deletes
+them and no rule is consulted. A retention rule is only needed where a
+dependency is marked `retain`, meaning it deliberately survives an erasure
+request. There are sixteen of those, in five categories, and they are all
+accountability evidence rather than user content.
 
-**`dataset_lineage` and `model_lineage` get no rule.** No Phase-2 processing is
-authorised, so neither should ever appear as a purge target. If one does, that
-is a bug and the fail-closed path is the correct outcome.
+§1 and §2 therefore describe different things and that is correct. §1 is the
+promise to users; §2 is the set of records that outlive the promise, and why.
 
-**`unknown` gets no rule, deliberately.** An unmatched target must reach
-`review_required` and wait for a person. A catch-all rule here would silently
-convert "we do not know what this is" into "we have handled it", which is the
-exact failure the boundary was built to prevent.
+| `rule_code` | `evidence_category` | `retention_until_rule` | What it covers |
+|---|---|---|---|
+| `authorization-evidence-v1` | `authorization_evidence` | `accountability_need_ends` | Acceptance receipts, authorization snapshots, legacy consent rows (4) |
+| `deletion-evidence-v1` | `deletion_evidence` | `accountability_need_ends` | Audio object metadata and its deletion events, recording boundary, service blocks, owner identity and claim events (7) |
+| `processor-evidence-v1` | `processor_evidence` | `accountability_need_ends` | Provider permits and terminal operation events (2) |
+| `transparency-evidence-v1` | `transparency_evidence` | `accountability_need_ends` | AI-notice exposure records (1) |
+| `financial-evidence-v1` | `financial_evidence` | **see §3** | `token_ledger`, `llm_usage` (2) |
 
-## 3. Two implementation notes for the seeding migration
+Four of the five hold records whose entire purpose is to prove something
+happened — that processing was authorised, that a deletion was performed, what
+was sent to a provider, that the AI notice was shown. Retaining them past an
+erasure request is the Article 17(3) / Article 5(2) accountability argument, and
+they hold identifiers, timestamps and hashes rather than content.
+`accountability_need_ends` is the right rule for all four.
 
-**Voice measurements are a field-level redaction, not a row delete.** The
-`voice_confidence` stamp lives in the `metrics` JSONB on snippet rows that also
-carry transcript text — and transcripts live until account deletion. So at
-12 months the key must be stripped from the blob while the row survives.
-`data_purge_targets.target_kind` has no natural value for this;
-`database_row` with the JSONB path in `target_ref` is the closest fit. Flag the
-approach before building it.
+## 3. The financial_evidence rule needs a decision, not a default
 
-**Destruction must be evidenced, not assumed.** Each destruction writes a
-`data_purge_events` row with an `evidence_sha256`. BIPA §15(a) asks for
-guidelines you follow, and an audit trail is what shows you followed them.
+An earlier draft of this document carried a `billing-record-5y-v1` rule
+justified by Polish accounting law. **That justification is gone** — the service
+is free and takes no payment, so there are no accounting records.
+
+But the category has not gone. Its two dependencies are `token_ledger` and
+`llm_usage`: internal records of model usage and cost, per user, which exist
+whether or not anyone pays. They are marked `retain`, so today they survive an
+erasure request.
+
+**For a free service, retaining per-user usage ledgers after someone has asked
+to be erased is the weakest position in this schedule.** There is no accounting
+obligation to point at, and "we want our own cost history" is a thin answer to
+Article 17. Three options, for counsel rather than engineering:
+
+1. **Detach rather than retain.** Strip the user reference and keep the usage
+   row as an anonymous cost record. No longer personal data, so Article 17 stops
+   applying. Cleanest answer if the rows are only needed in aggregate.
+2. **Retain for a bounded period**, e.g. 12 months, aligned with audio, on a
+   legitimate-interest basis for cost accounting and abuse investigation.
+3. **Change the disposition to `delete`.** A code change in
+   `services/data_purge_registry.py`, not a schedule change. Correct if nothing
+   actually needs those rows after the user is gone.
+
+Engineering's read is that option 1 is most likely right, but it is a code
+change either way and should not be guessed at in a published schedule.
+**Until this is decided, `financial-evidence-v1` should carry option 2's bounded
+period as the conservative placeholder, marked unapproved.**
+
+## 3b. Two categories this document originally missed
+
+`deletion_evidence` and `transparency_evidence` had no rule at all in the first
+draft, because that draft was written against the wrong column. Both cover
+append-only evidence tables, so `accountability_need_ends` follows by analogy
+with `authorization_evidence`. **The founder must confirm them** — they are
+proposed, not approved, and they are marked as such in the seeding migration.
 
 ## 4. Provider-held copies
 
