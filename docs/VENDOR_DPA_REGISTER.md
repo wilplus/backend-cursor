@@ -24,17 +24,22 @@ established in the EU. No DPO has been appointed — see the open question below
 reference into accepted terms, no signature needed · `REQUESTED` asked, awaiting
 reply · `TODO` not started
 
+**Documents live in [`compliance/dpa/`](compliance/dpa/)** — filename convention
+and capture rules in that folder's README. Every file there has a row here;
+a row whose Evidence file is empty means the document has not been captured
+yet, and one marked ⚠️ means the row was written before the file arrived.
+
 ## Register
 
 | Vendor | Role | What it holds | DPA | Date | Transfer basis | Region | Evidence file |
 |---|---|---|---|---|---|---|---|
-| OpenAI | Processor | API inputs/outputs: audio, transcripts, feedback text | REQUESTED | 2026-09-17 | SCCs; EU contracting entity to be confirmed | US | |
-| Cloudflare (R2) | Processor | The voice/video objects themselves | BY-REF | 2026-09-17 | SCCs | **EEUR** (Eastern Europe) location hint on all buckets; default jurisdiction, not EU-pinned | |
-| Supabase | Processor | Accounts, transcripts, feedback, auth | BY-REF | 2026-09-17 | SCCs + UK addendum (in DPA); data at rest in EU | **eu-west-1** — West EU (Ireland), confirmed 2026-09-17 | |
-| Railway | Processor | Compute + Redis queue payloads | REQUESTED | 2026-09-17 | | | |
-| Resend | Processor | Email addresses + rendered session-result content | TODO | | | | |
-| Sentry | Processor | Error telemetry (PII suppressed — see below) | SIGNED — DPA v5.1.0 | 2026-09-17 | EU storage region; SCCs in DPA | **European Union (EU)** | `Sentry_DPA_2026-09-17.pdf` |
-| Vercel | Processor | Frontend hosting + internal email render endpoint | BY-REF | 2026-09-17 | SCCs deemed signed on acceptance of ToS | US | `Vercel_DPA_2026-09-17.pdf` |
+| OpenAI | Processor | API inputs/outputs: audio, transcripts, feedback text | BY-REF — effective 2026-01-01 | 2026-09-17 | SCCs; DPA instructs **OpenAI Ireland Limited** to process EEA/Swiss data | US | `compliance/dpa/OpenAI_DPA_2026-09-17.pdf` |
+| Cloudflare (R2) | Processor | The voice/video objects themselves | BY-REF | 2026-09-17 | SCCs | **EEUR** (Eastern Europe) location hint on all buckets; default jurisdiction, not EU-pinned | `compliance/dpa/Cloudflare_DPA_2026-09-17.pdf` |
+| Supabase | Processor | Accounts, transcripts, feedback, auth | BY-REF | 2026-09-17 | SCCs + UK addendum (in DPA); data at rest in EU | **eu-west-1** — West EU (Ireland), confirmed 2026-09-17 | `compliance/dpa/Supabase_DPA_2026-09-17.pdf` (vendor Version 1, 2026-08-01) |
+| Railway | Processor | Compute + Redis queue payloads | REQUESTED — **needs DocuSign**, see below | 2026-09-17 | SCCs in DPA | | `compliance/dpa/Railway_DPA_2026-09-17.pdf` |
+| Resend | Processor | Email addresses + rendered session-result content | BY-REF | 2026-09-17 | SCCs deemed entered into and incorporated by reference | | `compliance/dpa/Resend_DPA_2026-09-17.pdf` (vendor last update 2026-08-27) |
+| Sentry | Processor | Error telemetry (PII suppressed — see below) | SIGNED — DPA v5.1.0 | 2026-09-17 | EU storage region; SCCs in DPA | **European Union (EU)** | ⚠️ `Sentry_DPA_2026-09-17.pdf` — **not yet committed**, file not supplied |
+| Vercel | Processor | Frontend hosting + internal email render endpoint | BY-REF | 2026-09-17 | SCCs deemed signed on acceptance of ToS | US | `compliance/dpa/Vercel_DPA_2026-09-17.pdf` |
 | Stripe | Independent controller (payments) | Card/payment data | N/A — controller | | Stripe's own terms | | |
 
 ## Processing surface — OpenAI (code-derived, 2026-09-17)
@@ -82,10 +87,15 @@ ISO 27001:2022 certificate. Filed alongside the DPAs.
 
 ## Requests in flight
 
-| Vendor | Sent | To | Asked for |
-|---|---|---|---|
-| Railway | 2026-09-17 | support/legal | DPA, sub-processor list, region availability |
-| OpenAI | 2026-09-17 | privacy@openai.com | DPA execution route, confirmation that OpenAI Ireland Limited is the EU contracting entity, retention period on current plan, sub-processor list; also ask whether EU project residency is available on our plan |
+| Vendor | Sent | To | Asked for | Still blocking? |
+|---|---|---|---|---|
+| Railway | 2026-09-17 | support/legal | DPA, sub-processor list, region availability | **YES — action is ours.** The DPA is captured and read: it is NOT in force by reference. "Customer must complete the information requested and submit the DocuSign form available here. This DPA will become legally binding upon Company's execution in the signature block below." Submitting that form is the whole remaining step. The same document also says it "supplements the Terms of Service", which reads like incorporation and is not — that phrase describes its relationship to the TOS, not its execution |
+| OpenAI | 2026-09-17 | privacy@openai.com | DPA execution route, confirmation that OpenAI Ireland Limited is the EU contracting entity, retention period on current plan, sub-processor list; also ask whether EU project residency is available on our plan | **Partly resolved from the DPA text itself.** No execution route is needed — the DPA "supplements, and is incorporated into the OpenAI Services Agreement", effective 2026-01-01, with no signature block. It also instructs **OpenAI Ireland Limited** to process EEA/Swiss data, which is evidence toward the EU-entity question but not a statement of which entity contracts with us — counsel should read §1 rather than take this row for it. Still open: retention period in writing, sub-processor list, EU project residency |
+
+**Not blocking any more:** Resend. Its DPA states the signature blocks "are
+provided for reference purposes only" and that it "becomes legally binding upon
+Customer's acceptance of the [Agreement]" — in force by reference, nothing to
+send.
 
 ## Standing risk — production stack on free/hobby tiers
 
