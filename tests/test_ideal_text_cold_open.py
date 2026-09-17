@@ -561,3 +561,64 @@ def test_a_broken_snapshot_read_reports_too(observed):
 
     assert database.get_ideal_text_document_snapshot("arc-1", "actor-1") is None
     assert [r for r, _ in observed] == ["ideal_text_snapshot_read_failed"]
+
+
+def test_THE_LOCK_DEFECT_slides_survive_a_snapshot_with_no_parts_list():
+    """A lock must not cost every paragraph its slide.
+
+    Founder 2026-09-17, with a screenshot whose kicker read "YOUR TALK" on a
+    deck that had slides a moment earlier: "after the lock the different text
+    shows ... something without the slide, entirely wrong".
+
+    THE CHAIN. A lock recomposes the served text, so `aligned` fails — the
+    words are no longer the machine's original. The carry by `part_id` is
+    next and needs a parts list, but `build_snapshot` drops `served_parts` to
+    None whenever they do not agree with the composed text, so `part_rows`
+    arrives EMPTY. `ordinal_adoption` then could not fire either, because it
+    demanded `bool(part_rows)` — and every paragraph published with
+    slide_index None. `groupChunksBySlide` fails on the first of those
+    (missing_parent_slide) and collapses the whole deck into one untitled
+    section with no slide picture.
+
+    And it did not recover: that snapshot is now the one without parts, so
+    the next publication had nothing to carry from either.
+
+    `bool(part_rows)` was never what made the branch sound. The proof is
+    about PARAGRAPHS — the edit surface mutates slots in place and cannot
+    insert, delete, split, merge or reorder them — so on equal counts slot N
+    is still the same Slide-bounded Paragraph, with or without ids to hand.
+    """
+    pieces = core._exact_pieces(  # noqa: SLF001 - pure contract test
+        {
+            "auto_text": "Original one.\n\nOriginal two.\n\nOriginal three.",
+            "document": {"paragraphs": [
+                {"slide_index": 0, "snippet_id": "s-1"},
+                {"slide_index": 1, "snippet_id": "s-2"},
+                {"slide_index": 1, "snippet_id": "s-3"},
+            ]},
+        },
+        # What the lock composed — same three slots, one of them settled.
+        "Original one.\n\nThe locked wording.\n\nOriginal three.",
+        None,          # served_parts was dropped: this is the whole defect
+        previous_payload=None,   # ...and there is nothing to carry from
+    )
+    assert [piece["slide_index"] for piece in pieces] == [0, 1, 1]
+    # The snippet lineage rides along with the slide it proves.
+    assert [piece["snippet_id"] for piece in pieces] == ["s-1", "s-2", "s-3"]
+
+
+def test_a_paragraph_count_that_changed_still_refuses_to_guess():
+    """The widening is bounded: equal counts are still the whole proof."""
+    pieces = core._exact_pieces(  # noqa: SLF001 - pure contract test
+        {
+            "auto_text": "Original one.\n\nOriginal two.\n\nOriginal three.",
+            "document": {"paragraphs": [
+                {"slide_index": 0}, {"slide_index": 1}, {"slide_index": 1},
+            ]},
+        },
+        # Three paragraphs became two: the slots no longer line up, so
+        # position means nothing and the unlinked view is the honest answer.
+        "Original one.\n\nTwo and three, merged.",
+        None,
+    )
+    assert [piece["slide_index"] for piece in pieces] == [None, None]
