@@ -361,26 +361,39 @@ and must not.*
     high-risk under Annex III:   [ ] no      [ ] yes — point ____
     prohibited under Article 5:  [ ] no      [ ] yes — point ____
 
-### Before signing `emotion_intention_inference: false`
+### Before signing `emotion_intention_inference: false` — status
 
 The determination in §7.2 rests on the framing that the composite measures how a
-delivery *sounds* rather than how a speaker *feels*. Two things in the code
-currently say the opposite, and they should be changed first so the signature
-describes the system as it is:
+delivery *sounds* rather than how a speaker *feels*. Two things in the code said
+the opposite. **Both have since been changed** (commit `81369c0`, 2026-09-17):
 
-1. **Rename the `band()` labels.** `doubtful` and `unconfident` are predicates
-   about a person. Delivery-signal terms (describing the audio, not the speaker)
-   would match the framing the determination relies on. Internal-only change; no
-   user-visible effect; `_RANKABLE_VERSIONS` and the version stamp already exist
-   to manage the transition.
-2. **Rewrite the module docstring's construct sentence.** "Locating the moment on
-   a confidence SPECTRUM" should say what is actually being characterised.
+1. ~~Rename the `band()` labels.~~ **Done.** `confident` / `close_to_confident` /
+   `neutral` / `unconfident` / `doubtful` are now `delivery_signal_high` /
+   `_mid_high` / `_neutral` / `_mid_low` / `_low`. Internal only; no user-visible
+   effect. A normalizer maps the historical values, because the old strings are
+   persisted in existing rows and three modules read them —
+   `label_quorum.machine_proposal` string-matched all five and would otherwise
+   have silently started returning "no opinion".
+2. ~~Rewrite the module docstring's construct sentence.~~ **Done.** The scale now
+   describes the audio, and the docstring states expressly that whether a
+   listener would call a reading *confident* is a separate qualitative judgement
+   the module does not make.
 
-Neither of these is cosmetic. Under the CONSTRUCT fence every measured state
-must trace to one written operational definition asking exactly one thing, and
-right now the module's definition and the product's framing are not the same
-definition. That divergence is the same defect that retired the charisma
-construct on 2026-08-13.
+### ⚠️ Counsel must be told this plainly
+
+**Those labels were renamed *because* this question was raised, on 2026-09-17,
+after the analysis in §7 was written.** They were not always so named. A rename
+made in support of a determination is a different thing from one that predates
+the question, and counsel should weigh it knowing which it is. It is recorded
+here rather than left to be discovered.
+
+**The rename removes a contradiction. It does not answer the question.** The
+strongest argument for inclusion is untouched by it: the composite is z-scored
+**against the individual speaker's own baseline**, which makes the output a
+statement about *this person relative to their own norm* rather than a property
+of an audio file in the abstract. Renaming the output does not change what is
+computed. A vocabulary that matched the framing was a precondition for the
+framing being honest, not evidence that the framing is correct.
 
 ### If the determination is `true`
 

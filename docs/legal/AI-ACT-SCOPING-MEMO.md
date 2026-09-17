@@ -102,8 +102,14 @@ system inferring something from biometric data. Whether that something is an
 emotions or intentions of natural persons on the basis of their biometric data."*
 
 ### 4.1 For inclusion
-- The internal documentation describes the output as locating a moment on a
+- The internal documentation described the output as locating a moment on a
   spectrum from **"doubtful"** to **"confident"**. Those read as affective states.
+  **Disclosure:** on 2026-09-17, after this question was raised, those five
+  labels were renamed to neutral delivery-signal terms (`delivery_signal_high`
+  through `_low`) and the docstring was rewritten. The change is internal, alters
+  no computed value, and is recorded rather than presented as pre-existing —
+  please weigh it as a change made in response to the question, not as evidence
+  that predates it.
 - The z-scoring is **against the individual's own baseline**, so the output is
   expressly a statement about *this speaker relative to their own norm* — not a
   property of an audio file in the abstract. This is, I think, our weakest point,
