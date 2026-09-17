@@ -18,7 +18,7 @@ reply · `TODO` not started
 |---|---|---|---|---|---|---|---|
 | OpenAI | Processor | API inputs/outputs: audio, transcripts, feedback text | REQUESTED | 2026-09-17 | SCCs; EU contracting entity to be confirmed | US | |
 | Cloudflare (R2) | Processor | The voice/video objects themselves | TODO | | SCCs | default jurisdiction — **not EU-pinned** | |
-| Supabase | Processor | Accounts, transcripts, feedback, auth | TODO | | Data at rest in EU | **EU** (confirmed 2026-09-17; exact identifier TBC) | |
+| Supabase | Processor | Accounts, transcripts, feedback, auth | TODO | | Data at rest in EU | **eu-west-1** — West EU (Ireland), confirmed 2026-09-17 | |
 | Railway | Processor | Compute + Redis queue payloads | REQUESTED | 2026-09-17 | | | |
 | Resend | Processor | Email addresses + rendered session-result content | TODO | | | | |
 | Sentry | Processor | Error telemetry (PII suppressed — see below) | TODO | | | | |
@@ -67,8 +67,8 @@ org level 2026-09-17.
 
 1. ~~Supabase region unverified.~~ **RESOLVED 2026-09-17** — project is in an EU
    region, so the "EU region hosting" claim in the sub-processor table and § 12
-   Security is accurate and needs no correction. Record the exact region
-   identifier when convenient.
+   Security is accurate and needs no correction. Region is `eu-west-1`
+   (West EU, Ireland).
 2. **R2 buckets are not EU-jurisdiction.** `services/r2_client.py` builds the
    default endpoint `https://{account}.r2.cloudflarestorage.com`. Jurisdiction is
    fixed at bucket creation and cannot be changed in place. Voice recordings are
@@ -77,7 +77,15 @@ org level 2026-09-17.
    (complimentary-tokens enrolment) until 2026-09-17 while the privacy policy
    stated inputs/outputs were not used for training. Disabling is forward-only.
    Start date unestablished — audit logging was not on.
-4. **Retention rules may be unenforced.** `services/data_purge.py:231` resolves
+4. **No database backups (Art. 32 resilience gap).** The Supabase project is on
+   the Free plan and the dashboard reports "Last backup: No backups"
+   (observed 2026-09-17). Art. 32(1)(c) requires the ability to restore
+   availability and access to personal data in a timely manner after an
+   incident. The production database holds accounts, transcripts and feedback.
+   A paid plan enables automated backups; this is also likely a precondition
+   for self-serve DPA signing.
+
+5. **Retention rules may be unenforced.** `services/data_purge.py:231` resolves
    rules from the `data_retention_rules` table and no-ops with
    `RETENTION_RULE_UNRESOLVED` when a category has none;
    `scripts/run_phase1_data_purge.py:48` gates execution on
