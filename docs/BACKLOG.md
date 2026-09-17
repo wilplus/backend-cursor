@@ -279,7 +279,7 @@ reverse: obligations that bind us whether or not anything is written, and
 nothing is written.** None of them lives in Terms or Privacy — each needs its
 own artefact.
 
-**L-9 — Data Protection Impact Assessment (GDPR Art. 35)** · Ops · ⛔ None exists
+**L-9 — Data Protection Impact Assessment (GDPR Art. 35)** · Ops · 🟡 DRAFTED 2026-09-17 → `docs/legal/DPIA-2026-09-17.md` (6 open questions block adoption)
 > As the controller, I need to have assessed the risk before the processing
 > runs, not after.
 
@@ -295,7 +295,7 @@ starts, so if it is required it is already late. It also feeds L-11 and the
 open Art. 9 question directly — do this one first, because its output decides
 what the other two say.
 
-**L-10 — Records of processing activities (GDPR Art. 30)** · Ops · ⛔ None exists
+**L-10 — Records of processing activities (GDPR Art. 30)** · Ops · 🟡 DRAFTED 2026-09-17 → `docs/legal/ROPA-ART30.md` (awaiting founder adoption)
 > As the controller, I need a written record of what we process and why.
 
 **Document: NONE — a standalone processing register**, internal, produced on
@@ -308,7 +308,7 @@ lapses when processing is other than occasional, or involves special-category
 data. Recording every user continuously is not occasional. Cheap to produce
 once — mostly assembling what Privacy §2, §9 and §10 already say.
 
-**L-11 — EU AI Act, emotion recognition** · Ops · ⛔ Unassessed
+**L-11 — EU AI Act, emotion recognition** · Ops · 🟡 ASSESSED 2026-09-17 → `docs/legal/AI-ACT-SCOPING-MEMO.md`. **Escalated: founder confirms live B2B interest, so Art 5(1)(f) is active not theoretical.** Key finding: AI Act Art 3(34) drops the unique-ID limb GDPR Art 4(14) requires, so the Privacy §3 reasoning does NOT carry across. Counsel opinion pending
 > As the operator, I need to know which AI Act duties attach to inferring a
 > speaker's state from their voice.
 

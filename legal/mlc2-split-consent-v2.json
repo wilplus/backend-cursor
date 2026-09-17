@@ -1,0 +1,77 @@
+{
+  "schema_version": "mlc2-product-legal-approval-v2",
+  "approval_reference": "WILLAB-MLC2-CONSENT-SPLIT-PENDING",
+  "consent_policy_version": "mlc2-split-consent-v2",
+  "supersedes": "mlc2-bundled-consent-v1",
+  "terms_version": "1.3",
+  "privacy_policy_version": "1.3",
+  "approving_authority": "PENDING — requires founder adoption and counsel review",
+  "approved_at": null,
+  "active_from": null,
+  "status": "DRAFT — NOT ACTIVE. This artifact configures policy only and never creates consent for a user.",
+  "jurisdictions": [
+    "PL",
+    "EU",
+    "EEA"
+  ],
+  "remediation_note": "Replaces mlc2-bundled-consent-v1, which bundled personalized coaching with pooled model improvement and made both required for service. That construction is assessed as invalid under GDPR Art 4(11) and Art 7(4), read with Recital 43: consent is presumed not freely given where separate consent is not possible for separate operations, or where performance of a contract is conditional on consent not necessary for that performance. Pooled model improvement is not necessary to coach an individual user. Because the bundle was invalid, consent failed for BOTH purposes including the recording itself, for which Privacy v1.2 s3 expressly declined to rely on Art 6(1)(b). See docs/legal/DPIA-2026-09-17.md RISK-1.",
+  "bundled_ui": false,
+  "grants": [
+    {
+      "grant_id": "recording_and_coaching",
+      "purposes": [
+        "voice_recording",
+        "transcription",
+        "delivery_analysis",
+        "personalized_coaching"
+      ],
+      "article_6_basis": "6(1)(b)",
+      "article_6_rationale": "This IS the contracted service. Consent was the wrong instrument: it is revocable in a way that makes the service undeliverable, and presenting a mandatory operation as a choice is itself a transparency defect. Art 6(1)(b) is both more honest and more robust.",
+      "article_9_treatment": "9(2)(a)_explicit_consent_overlay_for_incidental_special_category_content",
+      "article_9_rationale": "Voice analysed for delivery rather than identification is not Art 4(14) biometric data. Art 9 is not triggered by the processing itself. The explicit consent overlay is retained as a cautious posture for special-category content a user may incidentally disclose in a practice presentation.",
+      "required_for_service": true,
+      "refusable_without_losing_service": false,
+      "copy": "Recording and coaching\n\nTo coach you, WillpowerLab records your voice, transcribes what you said, and analyses how you delivered it — pace, pauses, pitch range, loudness, filler words and structure. We use that to build your Ideal Text and to choose what feedback to give you.\n\nThis is the service itself. It is what you are signing up for, and we cannot provide it without doing this.\n\nThese measurements are internal. We never show you a score, a rating, a percentage or a verdict, and we never rank you against anyone else. What you see is a qualitative read: which version of a passage worked best, and coaching notes about it.\n\nWe do not infer, and do not attempt to infer, your health, personality, ethnicity or any comparable characteristic about you as a person.\n\nI understand that WillpowerLab records and analyses my voice in order to coach me.",
+      "copy_sha256": "9fb9597456286546420e74eb111a80b4e3628479ed00b496b33ddc211bac66fe",
+      "primary_action": "Agree and continue",
+      "secondary_action": "Cancel",
+      "checkbox_preselected": false
+    },
+    {
+      "grant_id": "pooled_model_improvement",
+      "purposes": [
+        "model_evaluation",
+        "model_training",
+        "model_improvement"
+      ],
+      "article_6_basis": "6(1)(a)",
+      "article_6_rationale": "Genuinely optional, genuinely severable, and refusal carries no service detriment. This is what makes the consent freely given under Art 4(11).",
+      "article_9_treatment": "9(2)(a)_when_special_category",
+      "required_for_service": false,
+      "refusable_without_losing_service": true,
+      "service_detriment_on_refusal": "none",
+      "copy": "Help improve WillpowerLab's models — optional\n\nSeparately, and only if you want to, you can let us use your recordings, transcripts, measurements and coach corrections to evaluate, train and improve the models that power WillpowerLab. Your data may sit in datasets alongside data from other users.\n\nThis is entirely your choice. Saying no costs you nothing — you keep full access to recording, coaching, Ideal Text and feedback, exactly as if you had said yes.\n\nYou can change your mind at any time in Account → Data & consent. We stop including your data in new training from that moment. Where a contribution has already been incorporated into a trained model, that model is not retrained solely on that basis — we say so plainly so it is not a surprise.\n\nYes, you may use my practice data to improve WillpowerLab's models.",
+      "copy_sha256": "f23ae48f6bae3cef7656b34c56aaff0ef5c025c51789a92d817bd436179f2d65",
+      "primary_action": "Yes, use my data",
+      "secondary_action": "No thanks",
+      "checkbox_preselected": false,
+      "withdrawal_surface": "Account -> Data & consent",
+      "withdrawal_effect": "Excluded from all new training runs from the moment of withdrawal. Service access unaffected."
+    }
+  ],
+  "ui_requirements": [
+    "The two grants are presented as separate, independently answerable controls.",
+    "Neither checkbox is pre-selected (EDPB 05/2020: silence, pre-ticked boxes and inactivity are not consent).",
+    "Refusing pooled_model_improvement must not block, degrade, delay or nag. No dark patterns, no repeated re-prompting, no visual asymmetry that makes 'No thanks' harder to find than 'Yes'.",
+    "Withdrawal must be as easy as giving consent (Art 7(3)) — same number of clicks from the account menu.",
+    "Each grant is recorded as its own row in user_consents with its own policy version, so the ledger can prove which purposes a given user actually accepted."
+  ],
+  "engineering_requirements": [
+    "Add a per-user model_improvement_consent flag; there is currently no such flag (backlog L-1).",
+    "Every training, dataset and corpus read path must filter on that flag. An objection honoured by hand cannot be relied on within Art 12(3)'s one month.",
+    "Gate the delivery-signal inference on the consent the policy actually describes, or amend the policy. Today VOICE_CONFIDENCE_ENABLED defaults ON while the policy says opt-in and off by default (DPIA RISK-2).",
+    "Backfill: any user who accepted mlc2-bundled-consent-v1 must be treated as NOT having validly consented to pooled model improvement until they answer the split prompt."
+  ],
+  "r2_object_key": "mlc2/legal/mlc2-split-consent-v2.json",
+  "activation_note": "DRAFT. Do not activate until: (1) the founder adopts it, (2) the Privacy Policy and Terms are revised to v1.3 to match, and (3) the model_improvement_consent flag and its filtering are shipped. Activating the artifact before the flag exists would republish a promise the system cannot keep — the exact defect Epic L records."
+}

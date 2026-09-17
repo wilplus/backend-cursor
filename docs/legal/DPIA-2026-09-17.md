@@ -1,0 +1,413 @@
+# Data Protection Impact Assessment
+
+**Controller:** Artur Willoński, operating as "WillpowerLab" — Poland (EU)
+**Processing assessed:** voice recording, transcription, delivery-signal inference, and model improvement in the WillpowerLab speech-coaching service
+**Assessment date:** 2026-09-17 · **Version:** 0.1 DRAFT — not yet adopted
+**Status:** ⛔ Prepared by AI counsel-support. **Requires founder adoption and Polish counsel review before it is relied upon.**
+**Supervisory authority:** Urząd Ochrony Danych Osobowych (UODO)
+**Legal basis for this document:** GDPR Art 35
+
+---
+
+## 0. Why this DPIA exists, and the fact that it is late
+
+Art 35(1) requires a DPIA **prior to** processing. Recording and inference have
+been running in production since before this date. **This DPIA is therefore
+late, and that is itself a compliance finding** — recorded here rather than
+hidden, because a regulator will establish the date from the repository history
+in minutes and the candour is worth more than the concealment.
+
+Mitigating facts to be confirmed (see §8 OPEN-1): the founder's position as of
+2026-09-17 is that the service has **no active user base beyond the operator and
+a small number of test/pilot accounts**. If confirmed, the number of data
+subjects affected by the delay is very small, which bears directly on Art 83(2)(a)
+(nature, gravity and duration) and 83(2)(k). **This must be verified against
+`user_consents` before the DPIA is adopted — the whole risk assessment scales
+off that number.**
+
+---
+
+## 1. Art 35(3) — why a DPIA is mandatory here
+
+Not discretionary. The processing meets several independent triggers:
+
+| Trigger | Source | Met? |
+|---|---|---|
+| Systematic and extensive evaluation of personal aspects by automated processing | Art 35(3)(a) | **Yes** — delivery profiling across repeated takes, per speaker, normalised to that speaker's own baseline |
+| Processing of special-category data on a large scale | Art 35(3)(b) | Contested — see §4. Controller adopts a cautious posture |
+| Evaluation or scoring | WP248 rev.01 criterion 1 | **Yes** |
+| Systematic monitoring | WP248 criterion 3 | **Yes** — every take recorded and analysed |
+| Innovative use of new technology | WP248 criterion 7 | **Yes** — acoustic state inference |
+| Data concerning vulnerable subjects (employee/employer imbalance) | WP248 criterion 6 | **Conditional** — see §5, B2B exposure |
+
+WP248 recommends a DPIA where **two** criteria are met. Four are met
+unconditionally. There is no reasonable argument that a DPIA is not required.
+
+---
+
+## 2. Art 35(7)(a) — Systematic description of the processing
+
+### 2.1 Nature and scope
+
+A user records spoken "takes" against slides in their browser. Audio is uploaded
+to object storage, transcribed, segmented per slide, and analysed. The system
+generates a canonical "Ideal Text" and evidence-backed coaching feedback. A
+human coach may review recordings asynchronously. Users may opt in to share
+extracts with other users for blind peer rating.
+
+### 2.2 Categories of data subject
+
+1. **Users** (speakers) — the primary subjects.
+2. **Coaches** — their labels and corrections are personal data about them.
+3. **Peer raters** — their perceptual judgements are personal data about them.
+4. **Incidental third parties** — any person whose voice or personal data appears
+   in a user's recorded content. Terms §8 places the obligation on the user to
+   obtain consent. **This transfers responsibility but does not eliminate
+   controller risk** — see §6 RISK-7.
+
+### 2.3 Categories of personal data
+
+| Category | Examples | Storage |
+|---|---|---|
+| Account | email, display name, hashed password, IP, device/browser, auth metadata | Supabase (EU) |
+| Voice | raw audio of every take and re-read | Cloudflare R2 |
+| Text | transcripts, AI coaching notes, Ideal Text versions, user transcript edits | Supabase |
+| Derived measurements | `f0_mean`, `f0_sd`, `dynamic_db`, `pause_ratio`, `wpm`, `f0_mid_end_delta`, intensity envelope; the `voice_confidence` composite; `power_score` | Supabase |
+| Self-report | `named_emotion` from a closed vocabulary incl. *nervous, tense, overwhelmed, doubtful* | Supabase |
+| Ratings and labels | coach labels (`training_labels`), blind peer labels (`snippet_peer_labels`), shadow model outputs (`shadow_predictions`) | Supabase |
+| Usage | feature logs, timestamps, diagnostics | Supabase, Sentry |
+| Payment | transaction status, card last-4, billing country, subscription status | Stripe (Stripe holds card data) |
+
+**~69 tables** carry or reference personal data. The Art 30 record
+(`docs/legal/ROPA-ART30.md`) is the authoritative inventory.
+
+### 2.4 Purposes and lawful bases
+
+| Purpose | Art 6 basis | Assessment |
+|---|---|---|
+| Account administration, payments | 6(1)(b) contract | Sound |
+| Recording, transcription, personalised coaching | 6(1)(a) consent | **Defective — see §6 RISK-1.** Should be 6(1)(b): it *is* the contracted service |
+| Delivery-signal inference (`voice_confidence`) | 6(1)(a) consent | **Defective** and **misdescribed** — see §6 RISK-2 |
+| Pooled model improvement / training | 6(1)(a) consent | **Defective** — bundled, hence not freely given |
+| Human coach review | 6(1)(a) consent | Sound in principle; DPA with non-operator coaches must be verified |
+| Peer sharing of extracts | 6(1)(a) consent | Sound in principle; per-recording revocation published but unbuilt (L-2) |
+| Security, abuse prevention, reliability | 6(1)(f) legitimate interests | Sound; LIA should be recorded |
+| Accounting/tax retention | 6(1)(c) legal obligation | Sound (Polish accounting law) |
+
+### 2.5 Recipients and transfers
+
+Supabase (EU hosting), Railway, Vercel, Cloudflare R2, OpenAI (US), Stripe,
+Sentry, Resend. Privacy §9 asserts a DPA and a transfer safeguard for each.
+**As of this date those assertions are unverified (backlog L-6) and at least one
+— OpenAI zero-data-retention — is not a default and requires a per-organisation
+approved application.** See §6 RISK-8.
+
+### 2.6 Automated decision-making (Art 22)
+
+The controller's published position (Privacy §11) is that coaching output is
+advisory and produces no legal or similarly significant effects. **This
+assessment agrees — conditionally.** The condition is that the output is never
+used to assess a person for employment, admission or comparable purposes. That
+condition is currently held by a contract term (Terms §7) with **no technical
+enforcement**. See §5.
+
+---
+
+## 3. Art 35(7)(b) — Necessity and proportionality
+
+| Purpose | Necessary? | Proportionate? | Finding |
+|---|---|---|---|
+| Recording and transcription | Yes — it is the service | Yes | OK |
+| Per-slide segmentation, Ideal Text | Yes | Yes | OK |
+| Delivery-signal inference | Arguably — it powers Manager feedback selection | **Questionable in current form** | The speaker-relative baseline exceeds what coaching requires; see §4.3 |
+| Pooled model improvement | **No** — the service functions without it for any individual user | Not assessed as proportionate while mandatory | **Must be severable.** This is the core of RISK-1 |
+| Indefinite audio retention | No | **No** | Founder has nonetheless elected life-of-account; see §6 RISK-5 |
+
+**Data minimisation (Art 5(1)(c)) finding:** the pipeline computes and persists
+`voice_confidence` for every take by default (`services/voice_confidence.py:177`,
+`VOICE_CONFIDENCE_ENABLED` defaults to `"1"`) while the composite does **not**
+feed ranking by default (`:169`). The service therefore computes and stores a
+delivery-state inference it does not currently use. That is data the controller
+does not need, generated without a matching disclosure. Either gate the
+computation on the same consent the policy describes, or stop persisting it
+until ranking is enabled.
+
+---
+
+## 4. The Article 9 question
+
+### 4.1 The controller's published position
+Privacy §3: voice is processed to analyse delivery, not to uniquely identify;
+no voiceprints; therefore Art 9 is not triggered by the processing itself, but a
+cautious Art 9(2)(a) posture is adopted in case.
+
+### 4.2 Assessment
+**The core reasoning is correct.** Art 4(14) defines biometric data by reference
+to processing "for the purpose of uniquely identifying a natural person."
+WillpowerLab does not identify; it measures delivery. Recital 51 supports the
+purpose-limb reading. Voice recordings are not *per se* Art 9 data.
+
+Two residual routes into Art 9 remain open:
+1. **Content.** A user may disclose health, religious, political or sexual-life
+   information in a practice presentation. This is unsolicited and incidental,
+   but it is foreseeable. The cautious 9(2)(a) posture covers it.
+2. **Inference.** If a delivery signal were ever treated as indicating a
+   psychological or health state, that inference would be Art 9 data about
+   mental health. The construct fence and AC-9 are the controls that keep this
+   closed. **They must hold.**
+
+### 4.3 ⚠️ The AI Act does not follow this reasoning — the critical carry-over error
+**AI Act Art 3(34) defines "biometric data" WITHOUT the unique-identification
+limb** that GDPR Art 4(14) requires. Pitch, loudness dynamics, speech rate and
+pause structure are physiological and behavioural characteristics derived by
+specific technical processing. **Under the AI Act this is biometric data, even
+though under GDPR it is not.**
+
+Any conclusion of the form "we do not do voice ID, therefore we are outside the
+biometric regime" is **valid for GDPR and invalid for the AI Act.** This is the
+single most consequential legal point in this assessment and is the subject of
+the counsel memo at `docs/legal/AI-ACT-SCOPING-MEMO.md`.
+
+---
+
+## 5. AI Act interaction — assessed here because it drives the GDPR risk
+
+`services/voice_confidence.py` infers a position on a **confidence↔doubt
+spectrum** from acoustic features, z-scored **against the individual speaker's
+own baseline**. On the AI Act's broader biometric definition this is capable of
+meeting Art 3(39) "emotion recognition system."
+
+**Assessment: more likely than not in scope. Not free from doubt.** Full
+argument in the counsel memo. Two consequences:
+
+- **Art 5(1)(f) — prohibited in workplace and education.** Applicable since
+  2 Feb 2025. **The founder has confirmed that B2B interest already exists.**
+  This moves the risk from theoretical to active. Terms §7 bans employer and
+  institutional use, which is real mitigation on the "intended purpose" limb,
+  but it is **contractual only — nothing in the code prevents a company buying
+  seats or a coach assigning takes to employees.**
+- **Annex III(1)(c) — high-risk otherwise.** The Art 6(3) "no significant risk"
+  derogation is unavailable because its final subparagraph makes any Annex III
+  system always high-risk where it performs **profiling**, which this does.
+
+**Date caveat:** the Annex III application date (2 Aug 2026) may have been
+altered by the Commission's Digital Omnibus proposal. **Counsel must confirm the
+position as at the date of reading.** This DPIA does not assume either answer.
+
+---
+
+## 6. Art 35(7)(c)+(d) — Risk register and measures
+
+Likelihood × severity, scored on the assumption in §0 that the active user base
+is very small. **Rescore on launch.**
+
+---
+
+### 🔴 RISK-1 — The bundled consent is not validly given
+**Art 4(11), 7(4), Recital 43. Severity: HIGH. Likelihood: HIGH.**
+
+`legal/mlc2-bundled-consent-v1.json` sets `bundled_ui: true`,
+`required_for_service: true`, and bundles *personalised coaching* with *pooled
+model improvement*. Onboarding copy: "Using WillpowerLab requires participation
+in both forms of learning."
+
+Recital 43 presumes consent is **not** freely given where separate consent is
+not possible for separate operations, or where contract performance is made
+conditional on consent that is not necessary for it. Pooled model improvement is
+not necessary to coach this user.
+
+**Consequence if invalid, and it is under-appreciated: the consent fails for
+BOTH purposes, including the recording itself.** Privacy §3 expressly declines
+to rely on 6(1)(b) for recording. There is no fallback basis, so the primary
+processing activity of the service would be unlawful.
+
+**Measures:**
+- M1.1 Split into two grants: coaching, and pooled improvement. (`legal/mlc2-split-consent-v2.json`, drafted, awaiting adoption)
+- M1.2 Re-base recording and personalised coaching on **Art 6(1)(b)** — it is the contracted service, and consent is the wrong instrument for it.
+- M1.3 Make pooled improvement genuinely refusable with **no loss of service**.
+- M1.4 Retain Art 9(2)(a) explicit consent as the cautious overlay for incidental special-category content.
+- M1.5 Ship the exclusion flag so an objection can be honoured within Art 12(3)'s month (closes backlog L-1).
+
+---
+
+### 🔴 RISK-2 — Published copy contradicts the code
+**Art 5(1)(a) fairness and transparency; Art 13. Severity: MEDIUM-HIGH. Likelihood: HIGH.**
+
+Privacy §6 and Terms §7 both state the voice inference "is opt-in and off by
+default." `services/voice_confidence.py:177` defaults `VOICE_CONFIDENCE_ENABLED`
+to `"1"` — on — and it is an environment variable, not a per-user consent flag.
+No per-user opt-in for the §6 inference exists. What defaults off is
+`VOICE_CONFIDENCE_RANKING_ENABLED` (`:169`), a different question.
+
+It also contradicts §3 and §5 of the same document, which state the consent
+covering the inference is **required** to use the service. The inference cannot
+simultaneously be mandatory and opt-in.
+
+**Measures:**
+- M2.1 Amend both documents to describe what the system does. (Drafted; awaiting founder sign-off under the LIVE LOOP fence.)
+- M2.2 *Or* build a genuine per-user flag and gate computation on it. Preferred if the inference is to remain consent-based.
+- M2.3 Confirm the production value of `VOICE_CONFIDENCE_ENABLED` on every Railway service **from the boot log, not the dashboard** (CONFIG-FIRST rule, `docs/MIGRATIONS.md`).
+
+---
+
+### 🔴 RISK-3 — AI Act emotion-recognition exposure, with live B2B interest
+**AI Act Art 5(1)(f) / Annex III(1)(c). Severity: SEVERE. Likelihood: MEDIUM.**
+
+Ceiling of €35m or 7% of worldwide turnover for an Art 5 breach. For an
+unregistered sole trader the practical ceiling is lower, but a prohibition
+finding is existential to the product regardless of the fine.
+
+**Measures:**
+- M3.1 Counsel opinion on Art 3(39) scope. (Memo drafted.)
+- M3.2 **Technical** enforcement of the B2C fence: no team plans, no seat purchasing, no employer dashboards, no organisational billing. Contract terms alone do not discharge Art 5.
+- M3.3 If any company has already used the service, establish dates and scope — this determines whether there is a historical breach to remediate. **OPEN-2.**
+- M3.4 Consider removing the **speaker-relative baseline**, the design feature that most strongly characterises the output as a claim about a person rather than about audio. Accepted cost: measurable loss of F1 accuracy (the source literature normalises within-speaker).
+- M3.5 Keep the blind shadow model (`mlc2_confidence_blind.py`) strictly off-product. A learned classifier of human confidence judgements is the least defensible artefact in the system.
+- M3.6 Preserve and extend the existing AI notice receipt path (`routes/v2/processing_authorization.py`) — it already discharges much of Art 50(3).
+
+---
+
+### 🟠 RISK-4 — Data-subject rights cannot be served
+**Arts 15, 17, 20, 12(3). Severity: MEDIUM-HIGH. Likelihood: HIGH.**
+
+No account-deletion route and no user data export exist (backlog L-3, L-4).
+`/v2/processing-authorization/data-export` exports **authorisation evidence**,
+not the subject's personal data, and does not discharge Art 15 or 20. Every
+request is therefore manual across ~69 tables plus R2 objects, against a
+one-month deadline. A single unanswered erasure request is the most common route
+to a UODO complaint for an operator this size.
+
+**Measures:** M4.1 build `DELETE /v2/account`; M4.2 build `GET /v2/account/export`
+returning a structured machine-readable archive; M4.3 document the manual
+fallback until they ship.
+
+---
+
+### 🟠 RISK-5 — Storage limitation: indefinite audio retention
+**Art 5(1)(e). Severity: MEDIUM. Likelihood: HIGH.**
+
+Privacy §10's Voice Data criterion resolves to "as long as consent is active" —
+indefinite in practice. No purge job exists in any Railway cron.
+
+**⚠️ Founder decision, 2026-09-17: retention is set to LIFE OF ACCOUNT, purged
+on account closure.** This assessment advised a fixed maximum (90 days) and the
+founder elected otherwise. The decision is recorded here because Art 5(2)
+accountability requires the reasoning to be visible, and because this DPIA is the
+document that must carry the justification.
+
+**Residual risk accepted by the controller.** It is real: an ever-growing store
+of every user's voice increases breach severity monotonically and offers no
+storage-limitation answer beyond "the user can close their account." Counsel
+should be asked specifically whether this position is defensible.
+
+**Measures:**
+- M5.1 Build the purge-on-closure job — **this now depends on M4.1, so L-4 and L-5 merge into one deliverable.** Without deletion there is no retention limit at all, only an intention.
+- M5.2 Record in §10 the concrete criterion actually implemented (Art 13(2)(a)).
+- M5.3 Revisit at launch, and again at any material growth in user numbers.
+
+---
+
+### 🟡 RISK-6 — Coach review is a real disclosure
+**Arts 5(1)(f), 28, 32. Severity: MEDIUM. Likelihood: LOW-MEDIUM.**
+
+A human coach hears the user's unedited voice. Privacy §8 promises confidentiality
+obligations and a written DPA where the coach is not the operator. Verify the DPA
+exists before any non-operator coach is granted access; `coach_users` exists as a
+table, so the path is live.
+
+---
+
+### 🟡 RISK-7 — Third-party voices in user content
+**Art 5(1)(a); Art 14. Severity: LOW-MEDIUM. Likelihood: LOW.**
+
+Terms §8 places the obligation on the user. Sound contractually, but the
+controller still processes the third party's data and Art 14 notice is
+impracticable. Mitigated by the single-speaker practice format. Monitor.
+
+---
+
+### 🟡 RISK-8 — Sub-processor assertions unverified
+**Arts 28, 44-49. Severity: MEDIUM. Likelihood: MEDIUM.**
+
+Privacy §9 asserts DPAs and transfer safeguards for eight sub-processors; none
+verified (L-6). Privacy §5 asserts OpenAI zero data retention. **ZDR is not a
+default** — it requires an approved per-organisation application. If it is not in
+force, §5 is false and OpenAI's standard abuse-monitoring retention applies to
+every transcript and every piece of audio sent.
+
+**Measures:** M8.1 download and file every DPA; M8.2 obtain written confirmation
+of OpenAI ZDR scope; M8.3 record SCC module and transfer impact assessment for
+each non-EEA recipient; M8.4 correct §9 for anything that turns out not to be in
+place.
+
+---
+
+### 🟡 RISK-9 — Retired demographic-routing rows retained
+**Art 5(1)(b), 5(1)(e). Severity: LOW. Likelihood: MEDIUM.**
+
+Sex-routing and challenge/threat rows are retired as executable behaviour and
+retained as audit-only. Inferring sex from pitch would have been **biometric
+categorisation** — AI Act Annex III(1)(b) high-risk, though *not* an Art 5(1)(g)
+prohibited category, since biological sex is not among the inference categories
+that provision lists. Retirement was the correct call.
+
+The retained rows now have no current processing purpose. "Audit-only" is a
+legitimate purpose **if documented with an end date**; undocumented, it is simply
+data that was not deleted.
+
+**Measures:** M9.1 record the audit purpose and a deletion date in the Art 30
+record; M9.2 execute the previously-authorised previewed retention operation.
+
+---
+
+## 7. Art 35(11) — Review
+
+Reviewed on any of: adoption of the split consent; a change to
+`voice_confidence` scope or the baseline design; **first B2B enquiry converting
+to use**; counsel's Art 3(39) opinion; first 100 active users; any personal data
+breach; any change to the sub-processor list.
+
+**Art 36(1) prior consultation with UODO** is not currently indicated, on the
+basis that the measures above reduce residual risk below the "high risk
+notwithstanding measures" threshold. **Revisit if counsel concludes the AI Act
+prohibition is engaged**, or if the founder elects to proceed with B2B.
+
+---
+
+## 8. Open questions blocking adoption
+
+| # | Question | Blocks | Owner |
+|---|---|---|---|
+| **OPEN-1** | How many real user accounts exist, and how many accepted `mlc2-bundled-consent-v1`? The whole risk scale depends on it | §0, all severity scores | Engineering — query in the brief |
+| **OPEN-2** | Has any company or institution *already* used the service? Dates and scope? | RISK-3, counsel memo | Founder |
+| **OPEN-3** | Is `VOICE_CONFIDENCE_ENABLED` unset (=on) on every Railway service in prod? | RISK-2 | Engineering |
+| **OPEN-4** | Is OpenAI zero data retention actually approved for the org? | RISK-8 | Founder |
+| **OPEN-5** | Is there a signed DPA with any non-operator coach? | RISK-6 | Founder |
+| **OPEN-6** | Is the life-of-account retention position defensible under Art 5(1)(e)? | RISK-5 | Counsel |
+
+---
+
+## 9. Conclusion
+
+The processing is **lawful in design and defective in execution**. The
+architecture shows genuine data-protection thought — the AC-9 fence, the blind
+coach wall, the provenance separation in L3, the honest Art 9 analysis in
+Privacy §3, and the AI notice receipt path are all real controls that most
+services this size do not have.
+
+Three things must change before the service takes on users at any scale:
+
+1. **The bundled consent must be split** (RISK-1). It is the one defect capable
+   of rendering the core processing unlawful.
+2. **The published copy must match the code** (RISK-2).
+3. **The AI Act scope question must be answered by counsel** (RISK-3), and the
+   B2C fence must be enforced in code and not only in the Terms.
+
+Subject to those, and to the open questions in §8, residual risk is assessed as
+**acceptable** — with the explicit exception of the retention position at RISK-5,
+which the controller has elected against advice and which counsel should test.
+
+---
+
+*Prepared as counsel-support. Not legal advice and not privileged. Requires
+review by a Polish qualified lawyer before adoption.*
