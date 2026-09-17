@@ -17,7 +17,7 @@ reply · `TODO` not started
 | Vendor | Role | What it holds | DPA | Date | Transfer basis | Region | Evidence file |
 |---|---|---|---|---|---|---|---|
 | OpenAI | Processor | API inputs/outputs: audio, transcripts, feedback text | REQUESTED | 2026-09-17 | SCCs; EU contracting entity to be confirmed | US | |
-| Cloudflare (R2) | Processor | The voice/video objects themselves | TODO | | SCCs | default jurisdiction — **not EU-pinned** | |
+| Cloudflare (R2) | Processor | The voice/video objects themselves | BY-REF | 2026-09-17 | SCCs | **EEUR** (Eastern Europe) location hint on all buckets; default jurisdiction, not EU-pinned | |
 | Supabase | Processor | Accounts, transcripts, feedback, auth | BY-REF | 2026-09-17 | SCCs + UK addendum (in DPA); data at rest in EU | **eu-west-1** — West EU (Ireland), confirmed 2026-09-17 | |
 | Railway | Processor | Compute + Redis queue payloads | REQUESTED | 2026-09-17 | | | |
 | Resend | Processor | Email addresses + rendered session-result content | TODO | | | | |
@@ -75,10 +75,16 @@ DPA itself (requested 2026-09-17) and, optionally, EU project residency.
    (West EU, Ireland). DPA at supabase.com/legal/dpa takes effect on acceptance
    of the terms and incorporates the SCCs and the UK addendum; a Transfer Impact
    Assessment is published alongside it. Save both as dated PDFs.
-2. **R2 buckets are not EU-jurisdiction.** `services/r2_client.py` builds the
-   default endpoint `https://{account}.r2.cloudflarestorage.com`. Jurisdiction is
-   fixed at bucket creation and cannot be changed in place. Voice recordings are
-   therefore not EU-pinned.
+2. **R2 buckets are in Europe but not EU-jurisdiction.** All buckets report the
+   `EEUR` (Eastern Europe) location hint (verified 2026-09-17), so recordings are
+   physically stored in Europe. However `services/r2_client.py` builds the default
+   endpoint `https://{account}.r2.cloudflarestorage.com` rather than the
+   `.eu.r2.cloudflarestorage.com` jurisdiction endpoint, so this is a placement
+   hint and not a contractual restriction. Jurisdiction is fixed at bucket creation
+   and cannot be changed in place. Transfers are covered by the SCCs in
+   Cloudflare's DPA. Priority: low — revisit only if an EU-residency guarantee is
+   required. Open question for Cloudflare: which countries the EEUR region covers,
+   since Eastern Europe includes non-EEA states.
 3. **Historic training exposure.** Optional data sharing with OpenAI was enabled
    (complimentary-tokens enrolment) until 2026-09-17 while the privacy policy
    stated inputs/outputs were not used for training. Disabling is forward-only.
