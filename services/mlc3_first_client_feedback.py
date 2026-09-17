@@ -28,9 +28,15 @@ def _decline(take_id: Any, reason: str) -> list[dict] | None:
     FOUNDER 2026-09-17, after an afternoon of log searches that found
     nothing: "please make the V3 finally work." It could not be made to
     work because it could not be diagnosed — this function is fail-closed
-    by design, with TWELVE separate `return None` exits, and not one of
-    them said anything. The surface simply fell back to v2 and the only
-    evidence was an absence.
+    by design, with a separate `return None` at each of its checks, and not
+    one of them said anything. The surface simply fell back to v2 and the
+    only evidence was an absence.
+
+    Naming them is what found the real defect. `service_enrollment_missing`
+    was the twelfth, and once it started speaking it turned out to be a gate
+    that no user could ever pass — the Phase-2 exercise purpose it demanded
+    is the one the acceptance function refuses to write. It is gone (see
+    `prepare_first_client_feedback`); the remaining eleven are real.
 
     Fail-closed is right and stays. Fail-SILENT is not the same thing and
     was never intended: refusing to serve a candidate you cannot prove is a
@@ -50,6 +56,52 @@ def _decline(take_id: Any, reason: str) -> list[dict] | None:
     # can quietly lose its log again — the exact failure this function exists
     # to prevent.
     return None
+
+
+def _exercise_context_available(
+    database: Any, *, principal_id: str, owner_user_id: str, take_id: str,
+) -> bool:
+    """May this take's Confident Voice rows carry exercise context?
+
+    THIS IS NOT A GATE ON FEEDBACK (founder 2026-09-17, "I want the V3 in all
+    its wholeness", then option A: V3 must not need the exercise purpose).
+
+    `prepare_first_client_feedback` used to `return None` when enrollment
+    failed, which put the whole of V3 — Manager arbitration, the 75-word block
+    partition, every Confident Voice item — behind the MLC-3 EXERCISE service.
+    That gate is unreachable by construction: `ensure_mlc3_service_enrollment_v2`
+    demands a receipt carrying `personalized_exercise_recommendation`, and
+    `accept_phase1_processing_authorization_v1` raises PHASE2_PURPOSE_FORBIDDEN
+    on any policy that lists it. One function requires the purpose, the only
+    function that can write it refuses — so no user could ever satisfy the gate
+    and V3 could never serve anyone.
+
+    Nothing between the caller's entry and its membership freeze needs it. The
+    SQL says so: `record_feedback_v3_service_candidate_set_v1` has no MLC-3
+    check at all, and `freeze_feedback_v3_service_membership_v1` calls
+    `require_mlc3_service_principal_v1` — active service contract plus
+    allowlist, no rollout, no enrollment, no dual-purpose receipt. Only
+    `prepare_feedback_v3_service_context_v1` reaches Phase-2 exercise data, and
+    that one is authorized separately in PostgreSQL anyway.
+
+    So enrollment decides ONE thing: whether a row carries its exercise
+    context. Without it the row still surfaces and the reader falls back to the
+    Confident Voice question, which is the state the frontend already renders
+    (`mapFirstClientService` → null). Standing down from the Phase-2 path when
+    it is unauthorized is the boundary working, not a degradation.
+    """
+    enrollment = database.ensure_service_enrollment(
+        acquisition_principal_id=principal_id,
+        owner_user_id=str(owner_user_id),
+        idempotency_key=f"feedback-entry:{take_id}",
+    )
+    if isinstance(enrollment, dict) and enrollment.get("id"):
+        return True
+    logger.info(
+        "first_client: v3 serving take=%s WITHOUT exercise context "
+        "(reason=service_enrollment_unavailable)", take_id or "?",
+    )
+    return False
 
 
 def _canonical_index(bundle: dict) -> dict[tuple[str, str], dict]:
@@ -83,13 +135,11 @@ def prepare_first_client_feedback(
         or str(owner_user_id or "") != str(take.get("user_id") or owner_user_id)
     ):
         return _decline(take_id, "not_allowlisted_or_identity_incomplete")
-    enrollment = database.ensure_service_enrollment(
-        acquisition_principal_id=principal_id,
-        owner_user_id=str(owner_user_id),
-        idempotency_key=f"feedback-entry:{take_id}",
+    # Enrichment, NOT a gate — see `_exercise_context_available`.
+    exercise_context = _exercise_context_available(
+        database, principal_id=principal_id,
+        owner_user_id=str(owner_user_id), take_id=take_id,
     )
-    if not isinstance(enrollment, dict) or not enrollment.get("id"):
-        return _decline(take_id, "service_enrollment_missing")
     # D20 snapshot-first boundary. Immutable evidence coordinates may only be
     # produced after PostgreSQL identifies the exact current source surface.
     try:
@@ -202,7 +252,7 @@ def prepare_first_client_feedback(
             "feedback_membership_id": str(membership["id"]),
             "feedback_exposure_id": str(exact["exposure_id"]),
         })
-        if family == "confident_voice":
+        if family == "confident_voice" and exercise_context:
             context = database.prepare_feedback_v3_service_context({
                 "p_membership_id": str(membership["id"]),
                 "p_candidate_id": str(exact["id"]),

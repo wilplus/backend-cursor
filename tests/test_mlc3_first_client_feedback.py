@@ -191,3 +191,97 @@ def test_closed_backend_gate_returns_legacy_fallback(monkeypatch):
         served_text=document["text"], snippets=snippets, suggestions={},
         feedback_candidates=[], owner_user_id=USER,
     ) is None
+
+
+class _NoEnrollmentDatabase(_Database):
+    """The live state on 2026-09-17: the exercise enrollment cannot succeed.
+
+    `ensure_mlc3_service_enrollment_v2` demands a receipt carrying
+    `personalized_exercise_recommendation`, and
+    `accept_phase1_processing_authorization_v1` raises
+    PHASE2_PURPOSE_FORBIDDEN on any policy that lists it — so the repository
+    logs a warning and returns None for every principal alive.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.context_calls = 0
+
+    def ensure_service_enrollment(self, **_payload):
+        return None
+
+    def prepare_feedback_v3_service_context(self, payload):
+        self.context_calls += 1
+        return super().prepare_feedback_v3_service_context(payload)
+
+
+def test_feedback_survives_an_unavailable_exercise_enrollment(monkeypatch):
+    """FOUNDER 2026-09-17, option A: V3 must not need the exercise purpose.
+
+    This gate used to return None, putting the whole of V3 — Manager
+    arbitration, the block partition, every Confident Voice item — behind an
+    authorization no user could ever obtain. Feedback now surfaces; only the
+    exercise context stands down.
+    """
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    session, document, snippets = _source()
+    database = _NoEnrollmentDatabase()
+    rows = prepare_first_client_feedback(
+        database=database, session=session, take_document=document,
+        served_text=document["text"], snippets=snippets, suggestions={},
+        feedback_candidates=[], owner_user_id=USER,
+    )
+    assert rows is not None and len(rows) == 1
+    assert rows[0]["feedback_family"] == "confident_voice"
+
+
+def test_the_phase2_exercise_path_is_not_called_without_enrollment(monkeypatch):
+    """The boundary still holds in the other direction: standing down from
+    Phase-2 exercise data is the POINT, not a side effect to be re-added."""
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    session, document, snippets = _source()
+    database = _NoEnrollmentDatabase()
+    rows = prepare_first_client_feedback(
+        database=database, session=session, take_document=document,
+        served_text=document["text"], snippets=snippets, suggestions={},
+        feedback_candidates=[], owner_user_id=USER,
+    )
+    assert database.context_calls == 0
+    assert "mlc3_service" not in (rows or [{}])[0]
+
+
+def test_the_membership_freeze_still_happens_without_enrollment(monkeypatch):
+    """The freeze is what makes a served candidate provable (L2). It is
+    authorized in PostgreSQL by contract + allowlist, NOT by enrollment, so
+    dropping the enrollment gate must not have dropped the freeze with it."""
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    session, document, snippets = _source()
+    database = _NoEnrollmentDatabase()
+    rows = prepare_first_client_feedback(
+        database=database, session=session, take_document=document,
+        served_text=document["text"], snippets=snippets, suggestions={},
+        feedback_candidates=[], owner_user_id=USER,
+    )
+    assert database.membership_payload is not None
+    assert database.membership_payload["p_items"][0]["candidate_id"] == (
+        (rows or [{}])[0]["candidate_id"]
+    )
+    assert (rows or [{}])[0]["feedback_membership_id"] == MEMBERSHIP
+
+
+def test_the_unreachable_gate_does_not_come_back():
+    """A grep, deliberately. The gate read as an ordinary fail-closed check
+    and would be re-added by anyone tidying the twelve exits back to a
+    matching set — its absence is the fix, so the absence is the test."""
+    from pathlib import Path
+
+    source = Path("services/mlc3_first_client_feedback.py").read_text()
+    # The CALL, not the word — the docstring names the retired reason on
+    # purpose, so that the next reader knows why the set is eleven.
+    assert '_decline(take_id, "service_enrollment_missing")' not in source
