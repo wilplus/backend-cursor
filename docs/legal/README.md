@@ -13,6 +13,26 @@ items additionally need Polish counsel. None of it is legal advice.
 | [`EMAILS-TO-SEND.md`](EMAILS-TO-SEND.md) | **L-6**, counsel instruction | 🟢 Ready to send |
 | [`../../legal/mlc2-split-consent-v2.json`](../../legal/mlc2-split-consent-v2.json) | Fixes DPIA RISK-1 | ⛔ DRAFT — do not activate |
 
+## The counsel pack
+
+`counsel-pack/` is the same material restructured for instructing a lawyer:
+**eleven numbered documents plus a cover note.** Send that folder, not this one.
+
+| # | Document |
+|---|---|
+| 00 | Read this first — one page, orients the rest |
+| 01 | Product and processing description (verified against source) |
+| 02 | ⭐ **AI Act Art 3(39) determination** — §7 both sides, **§9 blank for counsel** |
+| 03 | ⭐ **Bundled consent — Art 7(4) analysis** (the triage item) |
+| 04-05 | DPIA and Art 30 record |
+| 06-07 | Published v1.2 copy; consent artifacts in force and proposed |
+| 08-10 | Sub-processors and transfers; DSR readiness; retention position |
+| 11 | ⭐ **Consolidated question schedule**, tiered |
+
+⚠️ **Two figures must be verified before the pack is sent** — how many users
+accepted `mlc2-bundled-consent-v1`, and whether OpenAI ZDR is active. Both are
+flagged in the pack as pending rather than guessed.
+
 ## Read in this order
 
 1. **DPIA** — the keystone. Every other document is downstream of its risk register.

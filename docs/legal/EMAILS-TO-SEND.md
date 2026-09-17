@@ -6,64 +6,85 @@ Two, both ready. Review, adjust the bracketed fields, send.
 
 ## EMAIL 1 — to your Polish counsel 🔴 send first
 
-**To:** [your lawyer]
-**Attach:** `docs/legal/AI-ACT-SCOPING-MEMO.md` (convert to PDF or paste inline)
-**Optionally attach:** `DPIA-2026-09-17.md`, `ROPA-ART30.md`
+**Attach:** the twelve files in `docs/legal/counsel-pack/` (00 through 11).
+**⚠️ Before sending:** run the user-count query (engineering brief WP0) — one
+sentence below depends on the answer.
 
-> **Subject:** AI Act scoping opinion — voice-based confidence feature (WillpowerLab)
+> **Subject:** WillpowerLab — AI Act + GDPR instruction pack. One determination needed.
 >
-> Dear [Name],
+> Hi [name],
 >
-> I need a written scoping opinion on one narrow but urgent question, and I have
-> prepared a memo so that you are not paying to discover the facts.
+> Attached is an instruction pack for a consumer speech-coaching app I operate as
+> a sole trader in Poland. Eleven documents plus a cover note — please read
+> 00-READ-THIS-FIRST first, it's one page and it orients the rest.
 >
-> WillpowerLab is my speech-coaching application. One internal component reads
-> seven acoustic features from a user's recording — pitch range, loudness range,
-> mean pitch, speech rate, pausing, terminal contour and energy contour — and
-> produces a single value placing the moment on a spectrum from *doubtful* to
-> *confident*. The value is never shown to the user. It is used internally to help
-> select which moments become coaching feedback.
+> The core question is whether one component of the product is an "emotion
+> recognition system" under AI Act Art 3(39). Document 02 sets out both sides at
+> §7 and leaves §9 blank for your determination. Everything else waits on it.
 >
-> **My question is whether that is an "emotion recognition system" under Art 3(39)
-> of the AI Act, and what follows if it is.**
+> The short version of my concern: **AI Act Art 3(34) defines "biometric data"
+> without the unique-identification limb that GDPR Art 4(14) requires.** My
+> published policy concludes we are outside the GDPR biometric regime because we
+> do not identify anyone, and I think that is right — but I do not think the
+> conclusion carries across to the AI Act, and if it does not then Art 5(1)(f)
+> and Annex III(1)(c) both come into view. I have live inbound B2B interest I
+> cannot answer until I know.
 >
-> I have become concerned because the AI Act's definition of biometric data at
-> Art 3(34) omits the "unique identification" limb that GDPR Art 4(14) requires.
-> Our privacy policy correctly concludes we are outside the GDPR biometric regime
-> because we do not identify anyone — but I do not think that conclusion travels
-> to the AI Act, and if it does not, then Art 5(1)(f) and Annex III(1)(c) both come
-> into view.
+> One thing I'd like triaged ahead of the rest: my published v1.2 terms rely on a
+> bundled consent that I believe is invalid under Art 7(4). Document 03 sets it
+> out. The consequence I most want checked is not the training purpose but the
+> collateral one — if the bundle falls, consent fails for *both* purposes
+> including the recording itself, and my policy §3 expressly declines Art 6(1)(b)
+> for recording.
 >
-> This has become time-sensitive: **we have live inbound B2B interest, and
-> Art 5(1)(f) prohibits emotion recognition in the workplace.** I need to know
-> whether I can respond to it at all. Our Terms already ban employer and
-> educational use, but I assume a contract term alone does not discharge a
-> prohibition.
+> ⚠️ PICK ONE — delete the other:
 >
-> The attached memo sets out the technical facts precisely, gives the arguments I
-> can see in both directions, and poses four specific questions (§6). I would also
-> value your view on whether either of two design changes — removing the
-> speaker-relative normalisation, or redefining the construct so it describes
-> delivery rather than the speaker — would be a legitimate scoping change or
-> would be seen as formal evasion.
+> **[If the query returns ~0 real users]**
+> > On scale: I should be straight with you, because it affects how much of your
+> > time this deserves. I have now verified that **no real users have accepted
+> > that consent** — the service is pre-launch beyond my own test accounts. So
+> > this is a defect to fix before anyone is affected, not a live exposure. I'd
+> > still like it confirmed, because the remediation is half-built and I don't
+> > want to ship a change to live consent flows on my own reading.
 >
-> One point I would ask you to confirm rather than assume: the current application
-> date for the Annex III high-risk obligations following the Digital Omnibus
-> process. My sequencing changes by about a year depending on the answer.
+> **[If the query returns real users]**
+> > On scale: **[N] users** accepted that consent between [date] and today. That
+> > makes it a current exposure rather than a future one, and Document 03 §7 asks
+> > what is owed to them.
 >
-> For context on scale: I operate as a sole trader under *działalność
-> nieewidencjonowana*, so if the answer is that we fall into the high-risk regime,
-> my realistic options are to redesign the feature out of scope or remove it —
-> not to build a conformity apparatus. Please factor that into your advice rather
-> than treating full compliance as the default recommendation.
+> The documents were drafted by my engineering side with AI assistance, working
+> from the source code. Nothing in them is legal advice and nothing has been
+> reviewed by a lawyer — that's what I'm asking you for. The technical statements
+> in Document 01 are verified against source and carry file references; the legal
+> characterisations throughout are my working assumptions, stated confidently to
+> save your time rather than because they're settled. I can give you repository
+> access if the technical sections need checking.
 >
-> Could you let me know your availability and an estimate? I would also like to
-> raise, separately and if it is within your scope, a draft Art 35 DPIA and an
-> Art 30 record that I would like reviewed before I adopt them.
+> Two things I'd rather hear early than late. If the answer to Document 02 is
+> that we fall into the high-risk regime, please tell me the feature has to go
+> rather than setting out what compliance would require — at my scale that isn't
+> something I can sustain. And if my Art 7(4) analysis is simply wrong, say so;
+> I'd rather stop than ship an unnecessary change.
 >
-> Best regards,
-> Artur Willoński
-> WillpowerLab · contact@willpowerlab.com
+> Document 11 is the consolidated question schedule, tiered. If you answer only
+> Tier 1, the instruction has served its purpose.
+>
+> Could you let me know your availability and an estimate?
+>
+> Artur
+
+### What I changed from your draft, and why
+
+| Your line | Change | Why |
+|---|---|---|
+| "affecting users who already accepted" | **Split into two variants, pick after the query** | It contradicts what you told me — *"there are no new users."* Asserting live affected users to a lawyer sets their urgency and their bill. If it's wrong you pay for triage you don't need; if it's right and you'd said otherwise, worse |
+| — | **Added the Art 3(34) sentence** | Your draft says "the core question is whether X" without saying *why it's a question*. One sentence lets them start thinking before they open an attachment |
+| — | **Added the Art 6(1)(b) collateral point** | Without it, "bundled consent invalid" reads as a training-data problem. The real point is that it takes the recording basis down with it |
+| "Nothing in them is legal advice" | **Kept, and sharpened the provenance split** | Good instinct. Made explicit which parts are verified fact vs. your assumptions — it tells them where to spend attention |
+| — | **Added the commercial constraint** | Otherwise you risk a thorough, expensive compliance roadmap for a regime you've already decided you can't sustain |
+| — | **Added the Tier 1 pointer** | Caps the engagement without capping the advice |
+
+Your structure was better than mine and the pack now matches it.
 
 ---
 
