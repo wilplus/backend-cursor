@@ -35,7 +35,7 @@ A privacy policy does not discharge Art 30. This document does.
 - **Art 6 basis:** 6(1)(b) contract · 6(1)(f) legitimate interests for security
 - **Recipients:** Supabase (auth + DB), Railway, Vercel, Sentry, Resend
 - **Transfers:** Supabase EU region. Railway / Vercel / Sentry / Resend — SCCs where processed outside the EEA
-- **Retention:** life of account, then deletion or anonymisation, subject to legal retention
+- **Retention:** until account deletion (A1 account data). Approved schedule, `06-retention-schedule-v1.0`.
 - **Security:** Art 32 measures at §5
 - **Systems:** `user_settings`, `user_consents`, `user_consent_events`, `coach_users`, `user_audits`
 
@@ -46,7 +46,7 @@ A privacy policy does not discharge Art 30. This document does.
 - **Art 6 basis:** currently 6(1)(a). **⚠️ Under remediation — to be re-based on 6(1)(b), see DPIA RISK-1.** 9(2)(a) as cautious overlay for incidental special-category content
 - **Recipients:** Cloudflare R2 (object storage), OpenAI (transcription/analysis), Railway/worker
 - **Transfers:** Cloudflare — DPA and SCCs. OpenAI — United States, DPA and SCCs, zero-retention API terms (**unverified, DPIA RISK-8**)
-- **Retention:** **life of account, purged on account closure** (founder decision 2026-09-17). Purge job not yet built — DPIA RISK-5
+- **Retention:** **12 months after last use of the recording** (founder-approved schedule, 2026-09-17; supersedes the life-of-account position first recorded here). Rules seeded by a pending migration; the purge job that enforces them is not yet built — DPIA RISK-5 M5.1.
 - **Systems:** R2 buckets; `coaching_attempts`, `reflection_clips`, `rejected_takes`
 
 ### A3 — Transcription and per-slide segmentation
@@ -55,7 +55,7 @@ A privacy policy does not discharge Art 30. This document does.
 - **Art 6 basis:** as A2
 - **Recipients:** OpenAI developer API; Supabase
 - **Transfers:** OpenAI — US, SCCs, ZDR terms
-- **Retention:** life of account
+- **Retention:** until account deletion
 - **Systems:** `user_transcript_edits`, `read_alignments`, `candidate_windows`
 
 ### A4 — Delivery-signal inference ("what we infer from your voice")
@@ -65,8 +65,8 @@ A privacy policy does not discharge Art 30. This document does.
 - **Art 6 basis:** 6(1)(a). **⚠️ Published as "opt-in and off by default"; the code defaults on — DPIA RISK-2**
 - **Recipients:** internal only. Not surfaced to users (AC-9 fence). Not on the coach packet (BLIND COACH fence)
 - **Transfers:** none — computed in-process from metrics already held
-- **Retention:** life of account
-- **⚠️ AI Act note:** these are **biometric data under AI Act Art 3(34)**, which omits GDPR Art 4(14)'s unique-identification limb. Potentially an emotion recognition system under Art 3(39). See `AI-ACT-SCOPING-MEMO.md`
+- **Retention:** until account deletion
+- **⚠️ AI Act note:** the controller adopts, **pending counsel's determination**, the conservative working assumption that these are biometric data under AI Act Art 3(34) — whose text omits GDPR Art 4(14)'s unique-identification limb, though Recital 14 directs that it be read in light of it. Whether the composite is an emotion recognition system under Art 3(39) is **open and contested**; both readings are set out in `legal/phase1-2026.1/02-power-score-classification-v1.0` §7, and the determination belongs there. This record states the working assumption, not a conclusion. See also `AI-ACT-SCOPING-MEMO.md`
 - **Systems:** `services/voice_confidence.py`, `services/acoustic_baseline.py`, `services/part_acoustics.py`, `intervention_decisions`
 
 ### A5 — Coaching feedback generation and Ideal Text
@@ -74,7 +74,7 @@ A privacy policy does not discharge Art 30. This document does.
 - **Categories of data:** transcripts, derived measurements, feedback candidates and decisions, Ideal Text versions
 - **Art 6 basis:** 6(1)(b) contract (the service itself)
 - **Recipients:** OpenAI developer API; Supabase
-- **Retention:** life of account
+- **Retention:** until account deletion
 - **Systems:** `intervention_decisions`, `coaching_attempt_annotations`, `best_presentation_edits`
 
 ### A6 — Self-reported pre-take state
@@ -83,7 +83,7 @@ A privacy policy does not discharge Art 30. This document does.
 - **Art 6 basis:** 6(1)(a)
 - **Recipients:** the reviewing coach (founder decision: it is the user's own self-report, not a machine guess)
 - **Note:** stored verbatim as a validated self-report. Not converted to a psychological state, score, direction or training label. **Not an inference and therefore not in AI Act scope**
-- **Retention:** life of account
+- **Retention:** until account deletion
 - **Systems:** take `intake_context`, `recording_feelings`
 
 ### A7 — Human coach review
@@ -92,7 +92,7 @@ A privacy policy does not discharge Art 30. This document does.
 - **Categories of data:** audio, transcripts, coach corrections, coach labels, adjudications
 - **Art 6 basis:** 6(1)(a) for the user's data; 6(1)(b)/6(1)(f) for the coach relationship
 - **Recipients:** the coach. Where the coach is not the operator, an Art 28 processor or a separate controller — **DPA to be verified, DPIA RISK-6**
-- **Retention:** life of account; labels retained for calibration
+- **Retention:** until account deletion; labels retained for calibration
 - **Systems:** `training_labels`, `recording_reviews`, `recording_review_annotations`, `coach_snippet_drafts`, `coach_best_presentation_edits`
 
 ### A8 — Blind peer rating and community sharing
@@ -110,7 +110,7 @@ A privacy policy does not discharge Art 30. This document does.
 - **Categories of data:** recordings, transcripts, derived measurements, ratings, coach corrections
 - **Art 6 basis:** 6(1)(a). **⚠️ Currently bundled with coaching and mandatory — assessed as invalid, DPIA RISK-1**
 - **Recipients:** internal. **Not** provided to third parties for training their own models. OpenAI API inputs not used for foundation-model training under ZDR terms (**unverified**)
-- **Retention:** life of account; contributions already incorporated into an aggregate model are not reversed by later deletion (disclosed, Privacy §5)
+- **Retention:** n/a — **this activity does not run.** `pooled_model_improvement` is a phase-2 purpose and the database refuses to register any policy carrying one (`PHASE2_PURPOSE_FORBIDDEN`). The v2.0 copy removes the claim that contributions are irreversible, because there are no contributions.
 - **Systems:** `training_labels`, `model_versions`, `shadow_predictions`, `confidence_dataset`
 
 ### A10 — Payments and billing
@@ -119,7 +119,7 @@ A privacy policy does not discharge Art 30. This document does.
 - **Art 6 basis:** 6(1)(b) contract · 6(1)(c) Polish accounting and tax law
 - **Recipients:** Stripe
 - **Transfers:** SCCs
-- **Retention:** as required by Polish accounting and tax law
+- **Retention:** n/a — **this activity does not run.** The service is free and takes no payment (founder decision, 2026-09-17), so there are no billing records and no accounting-law retention. `token_ledger` and `llm_usage` are internal model-cost records, not billing; they sit under `financial_evidence` and their disposition is an open question — document 06 §3.
 - **Systems:** `arc_purchases`, token wallet tables
 
 ### A11 — Service operation, security and diagnostics
@@ -127,7 +127,7 @@ A privacy policy does not discharge Art 30. This document does.
 - **Categories of data:** usage logs, feature events, timestamps, error and diagnostic data, IP
 - **Art 6 basis:** 6(1)(f) legitimate interests. **LIA to be recorded — gap**
 - **Recipients:** Sentry, Railway, Vercel, Supabase
-- **Retention:** rolling, per sub-processor defaults. **To be pinned — gap**
+- **Retention:** security and technical logs, **90 days** (founder-approved schedule). Sub-processor-side retention still to be pinned per vendor — see `07-vendor-actions`.
 - **Systems:** `user_audits`, `session_metrics`, `pipeline_health`, Sentry
 
 ### A12 — Transactional email
