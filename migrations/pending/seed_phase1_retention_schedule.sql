@@ -61,10 +61,13 @@
 -- services/data_purge.py:720) — still delete nothing for anyone, while the
 -- table now looks populated.
 --
--- The five rows below are the complete set of retention_category values in
--- services/data_purge_registry.py::DEPENDENCIES. tests/test_phase1_retention_
--- schedule_seed.py asserts that set against this file, so a sixth category
--- added later fails CI instead of silently reintroducing the same outage.
+-- There are FIVE retention_category values in
+-- services/data_purge_registry.py::DEPENDENCIES. Four are seeded below; the
+-- fifth, financial_evidence, is deliberately left open pending doc 06 §3 and
+-- the reason sits beside the omission. tests/test_phase1_retention_schedule_
+-- seed.py asserts that split against the registry, so a sixth category added
+-- later fails CI instead of silently reintroducing the same outage, and
+-- re-adding a default for financial_evidence fails too.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 DO $$
@@ -134,34 +137,59 @@ BEGIN
         rule_code, evidence_category, retention_until_rule,
         legal_artifact_id, active
     ) VALUES
-        -- APPROVED BY THE FOUNDER 2026-09-17, from doc 06 §2.
+        -- ALL FOUR APPROVED BY THE FOUNDER 2026-09-17, and matching doc 06
+        -- §2 rule-for-rule (rule_code, evidence_category and
+        -- retention_until_rule all verified against that table, as corrected
+        -- in c0d1f70). deletion_evidence and transparency_evidence were
+        -- proposed by analogy in an earlier revision of this file and are now
+        -- confirmed; the "PROPOSED / unapproved" markers are removed.
+        --
+        -- All four hold records whose entire purpose is to prove something
+        -- happened — that processing was authorised, that a deletion was
+        -- performed, what was sent to a provider, that the AI notice was
+        -- shown. Retaining them past an erasure request is the Art 17(3) /
+        -- Art 5(2) accountability argument, and they hold identifiers,
+        -- timestamps and hashes rather than content.
+        --
+        --   authorization_evidence → receipts, authorization snapshots,
+        --                            legacy consent rows (4 deps)
+        --   deletion_evidence      → audio object metadata and its deletion
+        --                            events, recording boundary, service
+        --                            blocks, owner identity and claim
+        --                            events (7 deps)
+        --   processor_evidence     → provider permits and terminal operation
+        --                            events (2 deps)
+        --   transparency_evidence  → AI-notice exposure records (1 dep)
         ('authorization-evidence-v1', 'authorization_evidence',
          'accountability_need_ends', v_artifact_id, true),
-        ('billing-record-5y-v1', 'financial_evidence',
-         'financial_year_end + 5 years', v_artifact_id, true),
-        ('provider-operation-with-parent-v1', 'processor_evidence',
-         'parent_recording_retention', v_artifact_id, true),
-
-        -- ⚠️ PROPOSED, NOT YET APPROVED. Doc 06 §2 gives no rule for these two
-        -- categories, because its table was written against target_kind rather
-        -- than retention_category. Both cover append-only evidence tables whose
-        -- purpose is to prove that something happened — the same shape as
-        -- authorization_evidence — so the same trigger is proposed. THE FOUNDER
-        -- MUST CONFIRM THESE TWO AND DOC 06 §2 MUST BE CORRECTED TO MATCH
-        -- before this file ships; the database and the published schedule
-        -- disagreeing is the exact drift this whole scheme exists to prevent.
-        --
-        --   deletion_evidence   → processing_audio_objects,
-        --                         processing_audio_object_deletion_events,
-        --                         processing_recording_attempts,
-        --                         processing_service_blocks, owner_principals,
-        --                         owner_claim_events
-        --   transparency_evidence → ai_transparency_exposures
         ('deletion-evidence-v1', 'deletion_evidence',
+         'accountability_need_ends', v_artifact_id, true),
+        ('processor-evidence-v1', 'processor_evidence',
          'accountability_need_ends', v_artifact_id, true),
         ('transparency-evidence-v1', 'transparency_evidence',
          'accountability_need_ends', v_artifact_id, true)
     ON CONFLICT (rule_code) DO NOTHING;
+
+    -- ⚠️ financial_evidence IS DELIBERATELY NOT SEEDED, AND THE PURGE STAYS
+    -- BLOCKED UNTIL IT IS DECIDED.
+    --
+    -- An earlier revision of this file seeded 'billing-record-5y-v1' with
+    -- 'financial_year_end + 5 years', justified by Polish accounting law. Doc
+    -- 06 §3 retired that justification: the service is free and takes no
+    -- payment, so there are no accounting records to point at. The category
+    -- has not gone — token_ledger and llm_usage are per-user usage ledgers
+    -- that survive an erasure request today — and §3 puts three options to
+    -- counsel (detach the user reference; bound the period; change the
+    -- disposition to delete). Engineering must not pick one, so nothing is
+    -- seeded here.
+    --
+    -- THE CONSEQUENCE, STATED PLAINLY SO IT IS NOT DISCOVERED LATER:
+    -- resolve_targets is all-or-nothing ("Unknown inventory means zero
+    -- deletion", services/data_purge.py:720). With financial_evidence
+    -- unresolved, its two dependencies land on RETENTION_RULE_UNRESOLVED and
+    -- a full-account purge deletes NOTHING — for anyone. Seeding the four
+    -- rules above is necessary and not yet sufficient. The purge begins
+    -- working when counsel answers §3, not when this file merges.
 
     -- DELIBERATELY ABSENT: dataset_lineage, model_lineage and unknown.
     -- No Phase-2 processing is authorised, so neither lineage kind should ever

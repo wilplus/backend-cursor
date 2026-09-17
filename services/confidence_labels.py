@@ -106,16 +106,40 @@ def _confidence_of(snippet: Any) -> Optional[float]:
 
 
 def band_of(score: Any) -> str:
-    """'confident' | 'neutral' | 'doubtful' | 'unscored'. Internal to
-    selection — never returned to a labeller. Pure."""
+    """Coarse selection bucket for the mixed queue. Pure, never surfaced.
+
+    DELIVERY-SIGNAL TERMS, NOT PREDICATES ABOUT A PERSON (2026-09-17). This
+    returned 'confident' / 'neutral' / 'doubtful' / 'unscored' until this
+    date, for the same reason voice_confidence.band() did, and it was renamed
+    for the same reason — see that module's label block.
+
+    IT WAS RENAMED SECOND, AND THAT ORDER IS THE POINT. band() was renamed
+    because counsel's question named it. Had this one kept returning
+    'doubtful' — in a file called confidence_labels.py, the first place
+    anyone auditing the construct would grep — the first rename would read as
+    document-driven rather than principled: we changed exactly what was asked
+    about and nothing else. That is a worse position than doing all of it or
+    none of it, so the disclosure in
+    legal/phase1-2026.1/02-power-score-classification §9 and
+    docs/legal/AI-ACT-SCOPING-MEMO §4.1 records both, and records that they
+    were renamed in RESPONSE to the question rather than having always read
+    this way.
+
+    CHEAPER THAN band() WAS, AND NO NORMALIZER IS NEEDED. This value is
+    computed in memory from `score` with its own thresholds, consumed by one
+    caller (`mixed_label_queue`) for bucketing, and never persisted, never
+    stamped on a row, never sent anywhere. There is no history carrying the
+    old spellings, so unlike voice_confidence.band() there is nothing to read
+    back and nothing to translate.
+    """
     if not isinstance(score, (int, float)) or isinstance(score, bool):
         return "unscored"
     v = float(score)
     if v >= _CONFIDENT_MIN:
-        return "confident"
+        return "delivery_signal_high"
     if v <= _DOUBTFUL_MAX:
-        return "doubtful"
-    return "neutral"
+        return "delivery_signal_low"
+    return "delivery_signal_neutral"
 
 
 def mixed_label_queue(snippets: Any, *,
@@ -188,7 +212,8 @@ def mixed_label_queue(snippets: Any, *,
         buckets.setdefault(band_of(_confidence_of(row)), []).append(row)
     for bucket in buckets.values():
         bucket.sort(key=lambda row: _key(row, "balance"))
-    band_order = ("confident", "neutral", "doubtful", "unscored")
+    band_order = ("delivery_signal_high", "delivery_signal_neutral",
+                  "delivery_signal_low", "unscored")
     while balance_n > 0 and any(buckets.get(band) for band in band_order):
         for band in band_order:
             if balance_n <= 0:

@@ -379,6 +379,25 @@ the opposite. **Both have since been changed** (commit `81369c0`, 2026-09-17):
    listener would call a reading *confident* is a separate qualitative judgement
    the module does not make.
 
+3. **A third change you did not ask for, disclosed for the same reason.**
+   `services/confidence_labels.py::band_of()` returned `confident` / `neutral` /
+   `doubtful` / `unscored` — the same vocabulary, in the file whose name makes it
+   the first place an auditor of this construct would look. It was renamed on
+   2026-09-17 to `delivery_signal_high` / `_neutral` / `_low`, keeping
+   `unscored`, which describes the absence of a measurement rather than a
+   speaker.
+
+   It is disclosed because the alternative reads badly: had we renamed only the
+   function this document named, we would have changed exactly what was asked
+   about and left the identical vocabulary in place next to it. That is
+   document-driven rather than principled, and it is a worse position than
+   either doing all of it or doing none of it.
+
+   It is a smaller change than item 1. The value is computed in memory from a
+   score, consumed by one caller for queue bucketing, and never persisted,
+   surfaced or transmitted — so unlike `band()` there is no history in the old
+   spellings and no normalizer was required.
+
 ### ⚠️ Counsel must be told this plainly
 
 **Those labels were renamed *because* this question was raised, on 2026-09-17,

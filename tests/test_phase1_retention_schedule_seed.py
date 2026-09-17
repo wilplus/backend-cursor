@@ -70,10 +70,41 @@ class TheSeedMatchesTheRegistry(unittest.TestCase):
             "transparency_evidence",
         })
 
-    def test_every_retained_category_has_a_rule(self):
+    #: Deliberately unseeded pending a counsel decision (doc 06 §3). Named
+    #: here so "missing" and "open" cannot be confused for one another.
+    OPEN = {"financial_evidence"}
+
+    def test_every_retained_category_has_a_rule_except_the_open_one(self):
         seeded_categories = {category for _, category in SEEDED}
-        missing = REQUIRED - seeded_categories
+        missing = REQUIRED - seeded_categories - self.OPEN
         self.assertEqual(missing, set(), f"no retention rule for: {sorted(missing)}")
+
+    def test_financial_evidence_is_still_open_and_still_blocking(self):
+        """It must stay unseeded until counsel answers doc 06 §3.
+
+        The retired justification was Polish accounting law; the service is
+        free and takes no payment, so there are no accounting records. Three
+        options are open (detach the user reference, bound the period, change
+        the disposition) and engineering must not pick one.
+
+        Failing here means someone re-added a default. That is the failure
+        worth catching: a plausible-looking period in a published retention
+        schedule that nobody approved.
+        """
+        seeded_categories = {category for _, category in SEEDED}
+        self.assertNotIn("financial_evidence", seeded_categories)
+        # The CALL, not the word — the file names the retired rule in a
+        # comment explaining why it is gone, which is exactly the context a
+        # future reader needs.
+        self.assertNotIn("('billing-record-5y-v1',", SEED)
+
+    def test_the_file_says_the_purge_stays_blocked(self):
+        """Seeding four of five is necessary and not sufficient, because
+        resolve_targets is all-or-nothing. If that consequence is not written
+        down next to the omission, the next reader sees four green rows and
+        concludes the purge works."""
+        self.assertIn("all-or-nothing", SEED)
+        self.assertIn("deletes NOTHING", SEED)
 
     def test_no_rule_is_seeded_for_a_category_nothing_can_ask_for(self):
         """A rule that resolves nothing is not harmless: it makes the table

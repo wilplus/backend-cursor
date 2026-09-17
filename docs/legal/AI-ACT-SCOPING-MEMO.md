@@ -109,7 +109,12 @@ emotions or intentions of natural persons on the basis of their biometric data."
   through `_low`) and the docstring was rewritten. The change is internal, alters
   no computed value, and is recorded rather than presented as pre-existing —
   please weigh it as a change made in response to the question, not as evidence
-  that predates it.
+  that predates it. **A second function carried the same vocabulary** —
+  `confidence_labels.band_of()`, returning `confident` / `neutral` / `doubtful`
+  for queue selection — and was renamed the same day, for completeness rather
+  than because it was asked about. It is in-memory only, never persisted or
+  surfaced. Both renames are disclosed together so the first does not read as
+  having been the only one worth making.
 - The z-scoring is **against the individual's own baseline**, so the output is
   expressly a statement about *this speaker relative to their own norm* — not a
   property of an audio file in the abstract. This is, I think, our weakest point,
