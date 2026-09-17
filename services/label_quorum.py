@@ -100,6 +100,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from services import voice_confidence
+from services.voice_confidence import normalize_band
+
 logger = logging.getLogger(__name__)
 
 # The ternary answers, mirrored from services.state_ratings (imported lazily
@@ -351,12 +354,18 @@ def machine_proposal(snippet: Any) -> Optional[str]:
         read = snippet.get("voice_confidence")
     if not isinstance(read, dict):
         return None
-    band = read.get("band")
-    if band in ("confident", "close_to_confident"):
+    # THROUGH THE NORMALIZER, NEVER THE RAW STRING (2026-09-17). The band
+    # labels were renamed to delivery-signal terms, and historical rows carry
+    # the old spellings forever. A raw comparison would fall through to the
+    # `return None` below, which reads here as "the machine had no opinion" —
+    # so every pre-rename row would silently drop out of the active-learning
+    # signal without raising, logging, or failing anything.
+    band = normalize_band(read.get("band"))
+    if band in (voice_confidence.BAND_HIGH, voice_confidence.BAND_MID_HIGH):
         return "yes"
-    if band == "neutral":
+    if band == voice_confidence.BAND_NEUTRAL:
         return "in_between"
-    if band in ("unconfident", "doubtful"):
+    if band in (voice_confidence.BAND_MID_LOW, voice_confidence.BAND_LOW):
         return "no"
     return None
 

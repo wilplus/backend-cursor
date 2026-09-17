@@ -1,0 +1,251 @@
+WillpowerLab — Privacy Policy
+Version 2.0. Effective [[FOUNDER: date]].
+
+This policy explains what WillpowerLab does with your personal data, who else
+receives it, how long we keep it, and how you get it deleted.
+
+Version 2.0 replaces version 1.2. Under version 1.2 you had to agree that your
+practice data could be used to train models shared with other users. Version
+2.0 removes that entirely. Your recordings are used to deliver your own
+coaching. They are not pooled with other users' data and they are not used to
+train models.
+
+
+1. WHO IS RESPONSIBLE FOR YOUR DATA
+
+WillpowerLab is operated by an individual based in Poland. The controller of
+the personal data described here is:
+
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)
+
+[[FOUNDER: MUST BE UPDATED ON BUSINESS REGISTRATION — see the note in the
+product legal approval. Taking payment will almost certainly take you past the
+unregistered-activity threshold, and this block must then name the registered
+business, its address and its number.]]
+
+Given the scale of processing we have not appointed a Data Protection Officer,
+which GDPR Article 37 does not require of us. Privacy requests are handled
+directly at the address above.
+
+
+2. WHAT WE COLLECT
+
+Things you give us
+- Your email address and account details.
+- Your slides and presentation materials.
+- Audio recordings of you presenting.
+- Edits you make to your Ideal Text, and your responses to feedback.
+
+Things produced from your recordings
+- Transcripts of what you said.
+- Measurements taken from the sound of your voice: how much your pitch varies,
+  how loud and how varied your delivery is, how fast you speak, how you pause,
+  and how your energy and pitch move across a sentence.
+- Your Ideal Text and your feedback.
+
+Things collected automatically
+- Technical and security logs: IP address, device and browser information,
+  timestamps, and error records.
+- The version of the app you used, the country you told us you live in, and the
+  language your app was set to, recorded as part of your agreement to this
+  policy.
+
+
+3. THE SOUND OF YOUR VOICE
+
+We take measurements from how your voice sounds and compare them against your
+own earlier recordings — never against other people. We use them to help choose
+which of your own sentences to show back to you.
+
+We do not produce a score, a rating, a grade or a verdict about you, and no such
+thing is shown to you, to a coach, or to anyone else. We do not use your voice
+to identify you. We do not infer, record or guess your sex, gender, age, health,
+ethnicity, or any other characteristic about you from the sound of your voice.
+
+If the measurements cannot be taken reliably from a recording, we record that
+they could not be taken. We do not fill in a value.
+
+
+4. WHAT WE USE IT FOR, AND ON WHAT LEGAL BASIS
+
+To provide the service: to store your recording, transcribe it, generate your
+Ideal Text and your feedback, and keep them available to you.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR). This
+processing is what the service is; we cannot provide it without doing this.
+
+To keep the service secure and working: fraud and abuse prevention, debugging,
+protecting the service and its users.
+Legal basis: our legitimate interests (Article 6(1)(f) GDPR).
+
+To meet our legal obligations: for example accounting records, and responding
+to lawful requests.
+Legal basis: legal obligation (Article 6(1)(c) GDPR).
+
+The service is free and we take no payment, so there is no billing data here at
+all. We also do not use anyone's recordings to train models. That second one is
+not a promise we could quietly walk back: our systems refuse to register any
+processing policy that would permit it.
+
+Special categories of data. A recording of you speaking freely may happen to
+reveal something sensitive — a health condition audible in your speech, or
+something you mention while presenting. We do not look for this and we do not
+infer it. Where such information is present, we rely on your explicit consent
+(Article 9(2)(a) GDPR), which you give on the acceptance screen. You can
+withdraw it at any time; doing so means we can no longer process recordings for
+you.
+
+We do not make decisions about you by automated means that produce legal effects
+or similarly significantly affect you.
+
+
+5. WHO ELSE RECEIVES YOUR DATA
+
+AI providers
+
+OpenAI receives:
+- the audio of your recording, in order to transcribe it;
+- parts of your transcript and related text, in order to generate your Ideal
+  Text and your feedback.
+
+OpenAI is the only AI provider that receives your audio or your transcript.
+Each transfer is made under a short-lived internal permit that records which
+operation it was for and the minimum data it was allowed to carry. We do not
+authorise OpenAI to use your content to train its models.
+
+[[FOUNDER: if any further AI provider is added, it must be named here and this
+policy re-versioned before that provider receives anything.]]
+
+Infrastructure providers
+- Cloudflare (R2): storage of your audio recordings.
+- Supabase: our database, and audio storage on a fallback path.
+- Railway: hosting of the application.
+- [[FOUNDER: email provider]]: transactional email.
+
+Human coaches
+Only if you ask for coach review and agree to it separately. A coach who reviews
+your recording does not see the voice measurements described in section 3.
+
+Others
+We share data with professional advisers, and with authorities where the law
+requires it. We do not sell your personal data and we do not share it for
+advertising.
+
+
+6. TRANSFERS OUTSIDE THE EEA
+
+Some of the providers above process data in the United States. Where that
+happens we rely on [[FOUNDER: the specific mechanism for each provider —
+European Commission adequacy decision for the EU-US Data Privacy Framework
+where the provider is certified, otherwise Standard Contractual Clauses with a
+transfer impact assessment]]. You can ask us for a copy of the safeguards in
+place.
+
+
+7. HOW LONG WE KEEP IT
+
+Recordings (audio): 12 months after you last use the recording.
+Transcripts, Ideal Text and feedback: until you delete your account.
+Voice measurements: deleted together with the recording they came from, never
+  kept after it.
+Practice attempts: kept while the practice is open; after that we keep only the
+  attempt you chose and delete the rest after 30 days.
+Uploaded files that never became a recording: deleted after 24 hours.
+Security and technical logs: 90 days.
+Account records: until you delete your account.
+Record of your agreement to this policy: kept for as long as we may need to
+  show that your recordings were processed lawfully, and then deleted.
+
+Our full retention and destruction schedule is published at
+willpowerlab.com/legal/retention.
+
+[[OPEN: OpenAI's own retention window for transcription, and whether our calls
+qualify for zero data retention. Until we have that answer this section
+describes only what WE hold. It must say what the provider holds before this
+policy is published — see section 9.]]
+
+8. YOUR RIGHTS
+
+You have the right to:
+- get a copy of the personal data we hold about you;
+- have inaccurate data corrected;
+- have your data deleted;
+- restrict how we use your data, or object to our using it on the basis of our
+  legitimate interests;
+- receive your data in a portable format;
+- withdraw any consent you have given, at any time, without affecting what we
+  did lawfully before you withdrew it.
+
+To exercise any of these, contact contact@willpowerlab.com. We respond within one
+month. If we need longer because a request is complex, we will tell you within
+that month and explain why.
+
+If you are unhappy with how we handle your data, you can complain to your local
+supervisory authority. In Poland that is the President of the Personal Data
+Protection Office (Prezes Urzędu Ochrony Danych Osobowych), ul. Stawki 2,
+00-193 Warszawa.
+
+
+9. DELETING YOUR DATA — WHAT ACTUALLY HAPPENS
+
+We want to be precise about this rather than reassuring.
+
+When you ask us to delete your data, we build an inventory of everywhere it is:
+database records, stored audio files, transcripts, generated documents, queued
+processing jobs, records of what was sent to providers, and coach copies where
+they exist. We then delete them and record proof of each deletion.
+
+If our process reaches something it cannot resolve on its own, it stops rather
+than guessing, and a person completes it. That is deliberate: it is better for
+the process to halt than to report a deletion it did not actually make. It means
+some deletions are finished by hand. We finish them within the one-month period
+in section 8, and we tell you when it is done.
+
+Two things survive deletion:
+
+- Records that prove your recordings were processed with your agreement. These
+  contain identifiers, timestamps and fingerprints — not your recordings, your
+  transcripts or anything you said. We keep them because they are the evidence
+  that we handled your data lawfully, and we delete them when we no longer need
+  them for that.
+- Anything we must keep by law, for example accounting records.
+
+Audio already sent to a provider is deleted at the provider as part of the same
+process, and we record the outcome.
+
+
+10. SECURITY
+
+Your recordings are stored with access restricted to the systems that need it.
+We verify each stored recording against a fingerprint of its exact bytes so we
+can tell that what we hold is what you uploaded and that nothing has been
+altered. Internal access is limited and logged. Records that prove how your data
+was handled cannot be edited or deleted by the application.
+
+No service is perfectly secure. If a breach affects your rights, we will notify
+you and the supervisory authority as the law requires.
+
+
+11. CHILDREN
+
+The service is for adults aged 18 and over. We do not knowingly collect data
+about anyone under 18. If you believe we hold data about a child, contact us and
+we will delete it.
+
+
+12. CHANGES TO THIS POLICY
+
+When we change this policy we publish a new version with a new version number.
+The exact words of each version are fingerprinted, so you will be asked to
+accept the new version before continuing to use the service, and your record
+shows exactly which version you agreed to and when.
+
+
+13. CONTACT
+
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)

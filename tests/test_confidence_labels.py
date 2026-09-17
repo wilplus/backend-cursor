@@ -88,11 +88,23 @@ class BandTests(unittest.TestCase):
 
     def test_bands(self):
         from services.confidence_labels import band_of
-        self.assertEqual(band_of(0.8), "confident")
-        self.assertEqual(band_of(0.0), "neutral")
-        self.assertEqual(band_of(-0.8), "doubtful")
+        self.assertEqual(band_of(0.8), "delivery_signal_high")
+        self.assertEqual(band_of(0.0), "delivery_signal_neutral")
+        self.assertEqual(band_of(-0.8), "delivery_signal_low")
         self.assertEqual(band_of(None), "unscored")
         self.assertEqual(band_of(True), "unscored")
+
+    def test_no_selection_bucket_is_a_predicate_about_a_person(self):
+        """The same rule voice_confidence holds, held here too.
+
+        'unscored' stays: it describes the absence of a measurement, not a
+        speaker. Renaming it would be cosmetics, not the fix.
+        """
+        from services.confidence_labels import band_of
+        for score in (0.9, 0.0, -0.9, None):
+            label = band_of(score)
+            for banned in ("confident", "doubtful", "unsure", "nervous"):
+                self.assertNotIn(banned, label)
 
 
 class MixedQueueTests(unittest.TestCase):

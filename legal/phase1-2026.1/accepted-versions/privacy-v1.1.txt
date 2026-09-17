@@ -1,0 +1,199 @@
+Privacy Policy
+
+Effective date: 13 August 2026. Version 1.1. Last updated: 13 August 2026.
+
+What changed in version 1.1. We corrected what we say about using your content to improve our models (§5) — the previous version was true but incomplete. New sections explain what we infer from your voice (§6), community sharing and peer review (§7), and human coach review (§8). We added sub-processors that were missing from the list (§9), restated data retention (§10), and added the right to object (§11).
+
+1. Who we are (Data Controller)
+
+This Privacy Policy explains how WillpowerLab ( "WillpowerLab", "we", "us", "our") collects, uses, discloses, and protects your personal data when you use our speech-coaching and presentation-practice application and related services (the "Service").
+
+WillpowerLab is a service operated by an individual (a natural person) based in Poland, currently conducting unregistered business activity ( działalność nieewidencjonowana) below the revenue threshold that requires business registration under Polish law. For the purposes of the EU General Data Protection Regulation (Regulation (EU) 2016/679, "GDPR") and the Polish Act of 10 May 2018 on the Protection of Personal Data, the Data Controller is:
+
+Artur Willoński, operating under the name "WillpowerLab"
+
+Poland, European Union
+
+Contact: contact@willpowerlab.com (a postal contact address is available on request to data subjects and to the supervisory authority)
+
+Given the small scale of processing, we are not required to, and have not, appointed a Data Protection Officer (GDPR Art. 37). The operator handles all privacy requests directly at the email above.
+
+2. Categories of personal data we collect
+
+We collect and process the following categories of personal data:
+
+Account Data: your email address, name (or display name), password (stored in hashed form), and technical identifiers including your IP address, device/browser information, and authentication metadata.
+
+Voice Data: audio recordings of your voice that you create when you record a "take" or re-read within the Service.
+
+Text Data: transcripts automatically generated from your Voice Data, AI-generated coaching notes and analytics (e.g., filler-word and structure analysis), and the evolving "Ideal Text" versions assembled for you.
+
+Derived Measurements: internal measurements computed from your Voice Data and transcripts, described in §6.
+
+Ratings and Labels: where you rate an extract as part of peer review (§7), the judgements you give; and where a coach reviews your content (§8), the corrections and labels they record.
+
+Usage Data: logs of how you interact with the Service (features used, sessions, timestamps, error and diagnostic data) used to operate, secure, and improve the Service.
+
+Payment Data: where you make a purchase, transactions are processed entirely by our third-party payment processor (Stripe). We do not store or have access to your full payment-card number. We receive limited billing metadata (e.g., transaction status, the last four digits of the card, billing country, and your subscription status) necessary to manage your account and comply with applicable obligations.
+
+3. Lawful bases for processing (GDPR Articles 6 and 9)
+
+We rely on the following lawful bases:
+
+Performance of a contract (Article 6(1)(b)). We process your Voice Data, Text Data, and Account Data to deliver the core Service you have requested: recording and transcribing your takes, running AI speech analysis, and assembling and presenting your coaching notes and Ideal Text.
+
+Consent (Article 6(1)(a)). We record your voice and generate speech analytics only after you have given clear, affirmative consent. Consent is also the basis for the inference described in §6, for sharing your extracts with other users (§7), and for human coach review (§8). You may withdraw any consent at any time (see §11); withdrawal does not affect processing carried out before withdrawal.
+
+Legitimate interests (Article 6(1)(f)). We process Usage Data to secure the Service, prevent abuse, and improve reliability, and we process your content to improve our own models as described in §5, where such interests are not overridden by your rights and freedoms. You have the right to object to this processing (see §11).
+
+Legal obligation (Article 6(1)(c)). We process limited billing data to meet applicable Polish accounting and tax obligations.
+
+Special categories of data (Article 9): important characterisation. WillpowerLab processes your voice to analyse speech delivery (pace, fillers, structure, clarity), not to uniquely identify you. We do not create voiceprints or perform biometric identification. On that basis, your Voice Data is processed as ordinary personal data and the special-category regime of Article 9 is, in our assessment, not triggered by the processing itself. However, because voice can be sensitive and because the measurements described in §6 could touch on inferences a user might regard as sensitive (for example, indicators of stress or emotional state), we adopt a cautious posture: to the extent any special-category data within the meaning of Article 9(1) is processed, we do so only on the basis of your explicit consent under Article 9(2)(a).
+
+4. How we use your data (purposes)
+
+We use your data to: create and manage your account; record, transcribe, and analyse your takes; generate coaching notes and assemble Ideal Text; enable peer review and coach review where you have opted in; improve our models as described in §5; process payments and manage your plan; provide support; secure and improve the Service; and comply with legal obligations.
+
+5. How your content improves our models
+
+We do use your content to improve our own models. Recordings, transcripts, derived measurements, ratings, and coach corrections may be used to train and calibrate the analysis and feedback systems that power WillpowerLab. An earlier version of this Policy said only that we do not train public AI foundation models. That was true, but incomplete. This section states the position accurately.
+
+We do not sell your personal data.
+
+We do not provide your content to third parties to train their own general-purpose or foundation models. Your Voice Data and transcripts are sent to OpenAI's developer API for analysis under a commercial API agreement providing for zero data retention, under which API inputs and outputs are not used to train OpenAI's foundation models.
+
+We do not publish your recordings or transcripts.
+
+Aggregate, de-identified measurements may be used for research and for reporting about the Service in general terms.
+
+Deleting your account removes your content. Where a measurement or label derived from your content has already been incorporated into an aggregate model, that model is not retrained solely on that basis. We state this plainly so that it is not a surprise.
+
+You may object to this processing at any time (Art. 21). Write to us at the address in §15 and we will stop using your content to improve our models. Objecting does not affect your ability to use the Service. See §11 for this and your other rights.
+
+6. What we infer from your voice
+
+The Service infers characteristics of speech delivery from your recordings. This inference is opt-in and off by default. What we measure:
+
+Acoustic measurements — variation in pitch, the regularity of your pauses, loudness dynamics, and how much of a take is voiced speech rather than silence.
+
+Verbal measurements — speech rate, filler words, and the structure of what you said.
+
+Derived delivery signals — qualitative readings built from the above, used to compare your takes against your own earlier recordings and to select which version of each part of your speech to assemble into your Ideal Text.
+
+These measurements are internal. They are not shown to you as scores, ratings, percentages, or verdicts, and they are not used to rank you against other users. What you see is a qualitative read: which version of a passage worked best, and coaching notes about it.
+
+We do not infer, and do not attempt to infer, your health, personality, ethnicity, or any comparable characteristic about you as a person. The measurements describe a recording, not a person, and are used for coaching only. See Terms of Service §7 for the prohibition on using the Service to assess employees, candidates, or students.
+
+7. Community sharing and peer review
+
+Parts of the Service involve listening to and rating short speech extracts. This is the one place where your personal data may be disclosed to other users of the Service.
+
+If you share. Sharing is opt-in, per recording, and revocable at any time. If you do not opt in, no other user will ever hear your voice. Extracts are presented to raters without your name — but a voice is inherently identifiable to anyone who knows you, and you should treat sharing as a meaningful disclosure. If you withdraw, the extract is removed from circulation; ratings already given remain in aggregate form, because they cannot be disentangled from the calibration they have already contributed to.
+
+If you rate. The perceptual judgements you give about other people's extracts are personal data about you as well. We retain them, linked to your account, and use them to calibrate the Service's analysis and to assess rater reliability. Raters are bound by the confidentiality obligations in Terms of Service §5.
+
+8. Human coach review
+
+A human coach may listen to your recordings and read your transcripts in order to review, correct, or improve the feedback the Service gives you. Their corrections and labels are retained and used to calibrate our models, as described in §5.
+
+Coaches are bound by confidentiality obligations, and where a coach is not the operator they act under a written data-processing agreement. Human review happens only with your consent, and you can withdraw that consent at any time (see §11); feedback quality may be lower as a result.
+
+9. Sub-processors and international transfers
+
+We use carefully selected third-party service providers ("sub-processors") who process personal data on our behalf under written Data Processing Agreements (DPAs). Where a sub-processor transfers data outside the European Economic Area (EEA), the transfer is governed by appropriate safeguards, primarily the European Commission's Standard Contractual Clauses (SCCs) and, where relevant, supplementary measures.
+
+| Sub-processor
+| Purpose
+| Location / Transfer safeguard
+
+| Supabase
+| Database, authentication, and file storage
+| EU region hosting; DPA in place
+
+| Railway
+| Application backend hosting
+| DPA in place; SCCs where data is processed outside the EEA
+
+| Cloudflare (R2)
+| Object storage for uploaded audio and video
+| DPA and SCCs
+
+| OpenAI (developer API)
+| AI speech analysis and transcription (zero data retention; no foundation-model training)
+| United States; DPA and SCCs; zero-retention API terms
+
+| Stripe
+| Payment processing (PCI-DSS compliant)
+| DPA and SCCs; processes card data as an independent controller/processor as applicable
+
+| Sentry
+| Error monitoring and diagnostics
+| DPA and SCCs
+
+| Resend
+| Transactional and service email
+| DPA and SCCs
+
+We keep an up-to-date list of sub-processors and will update this Policy when it changes materially.
+
+10. Data retention
+
+We retain personal data only for as long as necessary for the purposes described above. Because some of those purposes outlast a single session, the criteria differ by category:
+
+Voice Data (audio files): retained for as long as needed to transcribe and analyse the take, to let you play it back, and — where you have not opted out — for the model improvement described in §5. Deleted on your request, and when you delete the take or your account.
+
+Shared extracts: retained while sharing is active, and removed from circulation when you withdraw sharing.
+
+Text Data (transcripts, coaching notes, Ideal Text): retained for as long as your account remains active, so that your coaching history and Ideal Text remain available to you. Deleted upon account deletion or valid erasure request, subject to any overriding legal retention obligation.
+
+Derived measurements, ratings, and labels: retained while your account is active. Once incorporated into an aggregate model, the model itself is not retrained solely because one contribution was later deleted (§5).
+
+Account Data: retained for the life of your account and deleted (or anonymised) following account closure, subject to legal retention periods.
+
+Payment/billing records: retained for the period required by applicable Polish accounting and tax law.
+
+11. Your rights under the GDPR
+
+Subject to the conditions in the GDPR, you have the right to:
+
+Access: obtain confirmation of whether we process your data and a copy of it (Art. 15).
+
+Rectification: correct inaccurate or incomplete data (Art. 16).
+
+Erasure ("right to be forgotten"): request deletion of your data (Art. 17).
+
+Restriction: request that we limit processing in certain circumstances (Art. 18).
+
+Data portability: receive your data in a structured, commonly used, machine-readable format and transmit it to another controller (Art. 20).
+
+Object: object at any time to processing based on our legitimate interests, including the use of your content to improve our models described in §5 (Art. 21).
+
+Withdraw consent: withdraw any consent at any time, without affecting the lawfulness of prior processing (Art. 7(3)). This includes consent to voice inference (§6), to sharing your extracts (§7), and to human coach review (§8).
+
+Not be subject to solely automated decisions producing legal or similarly significant effects (Art. 22). Our AI analysis is advisory coaching and does not produce such effects; a human remains responsible for any consequential decisions.
+
+To exercise any right, contact us at contact@willpowerlab.com. We respond within one month, as required by the GDPR.
+
+Right to lodge a complaint. You have the right to lodge a complaint with the Polish supervisory authority:
+
+Urząd Ochrony Danych Osobowych (UODO)
+
+ul. Stawki 2, 00-193 Warszawa, Poland
+
+Website: uodo.gov.pl
+
+12. Security
+
+We implement appropriate technical and organisational measures to protect your data, including encryption in transit, row-level access controls on our database, hosting within the EU region for our primary datastore, and the zero-retention API arrangement described above. No system is perfectly secure, but we work to protect your data commensurate with its sensitivity.
+
+13. Children
+
+The Service is not directed to, and may not be used by, persons under the age of 18. We do not knowingly process the personal data of children. If we learn that we have collected such data, we will delete it.
+
+14. Changes to this Policy
+
+We may update this Policy from time to time. We will post the updated version with a new effective date and, for material changes, provide additional notice (e.g., by email or in-app). Continued use of the Service after the effective date constitutes acceptance of the updated Policy.
+
+15. Contact
+
+Questions or requests regarding this Policy or your personal data: contact@willpowerlab.com. WillpowerLab, operated by Artur Willoński, Poland. See also our Terms of Service.

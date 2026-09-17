@@ -174,13 +174,60 @@ class TestSpectrumAndDeadZone(unittest.TestCase):
 
     def test_band_is_the_five_point_spectrum(self):
         from services.voice_confidence import band
-        self.assertEqual(band(0.0), "neutral")
-        self.assertEqual(band(0.2), "close_to_confident")
-        self.assertEqual(band(0.8), "confident")
-        self.assertEqual(band(-0.2), "unconfident")
-        self.assertEqual(band(-0.8), "doubtful")
+        self.assertEqual(band(0.0), "delivery_signal_neutral")
+        self.assertEqual(band(0.2), "delivery_signal_mid_high")
+        self.assertEqual(band(0.8), "delivery_signal_high")
+        self.assertEqual(band(-0.2), "delivery_signal_mid_low")
+        self.assertEqual(band(-0.8), "delivery_signal_low")
         self.assertIsNone(band(None))
         self.assertIsNone(band(True))   # bool is not a score
+
+    def test_no_band_label_is_a_predicate_about_a_person(self):
+        """The reason for the 2026-09-17 rename, held as a rule.
+
+        The AI Act determination
+        (legal/phase1-2026.1/02-power-score-classification-v1.0-DRAFT.md §7.2)
+        rests on the composite characterising how a delivery SOUNDS. A label
+        that names a speaker's state contradicts the document in the source
+        counsel reads.
+        """
+        from services.voice_confidence import BANDS
+        for label in BANDS:
+            for banned in ("confident", "doubtful", "unsure", "nervous",
+                           "anxious", "hesitant", "insecure"):
+                self.assertNotIn(banned, label)
+
+    def test_normalize_band_reads_pre_rename_rows(self):
+        """Nothing re-stamps history, so old spellings are permanent."""
+        from services.voice_confidence import normalize_band
+        self.assertEqual(normalize_band("confident"), "delivery_signal_high")
+        self.assertEqual(normalize_band("close_to_confident"),
+                         "delivery_signal_mid_high")
+        self.assertEqual(normalize_band("neutral"), "delivery_signal_neutral")
+        self.assertEqual(normalize_band("unconfident"),
+                         "delivery_signal_mid_low")
+        self.assertEqual(normalize_band("doubtful"), "delivery_signal_low")
+
+    def test_normalize_band_is_idempotent_on_current_labels(self):
+        from services.voice_confidence import BANDS, normalize_band
+        for label in BANDS:
+            self.assertEqual(normalize_band(label), label)
+
+    def test_normalize_band_keeps_honest_absence_honest(self):
+        """An unrecognised band is None, never coerced into a neighbour —
+        a fabricated band would enter the F2 signal as a real opinion."""
+        from services.voice_confidence import normalize_band
+        for junk in (None, "", "   ", "definitely", 0.4, True, {}, []):
+            self.assertIsNone(normalize_band(junk))
+
+    def test_the_version_stamp_did_not_move_for_a_rename(self):
+        """A bump would break register_phase1_policy_v1 (which hard-requires
+        this exact pipeline_version) AND orphan every stamped row from
+        ranking until backfilled — to rename a string. The maths is
+        unchanged, so the stamp must not move."""
+        from services.voice_confidence import VERSION, _RANKABLE_VERSIONS
+        self.assertEqual(VERSION, "voice-confidence-universal-v3")
+        self.assertIn("voice-confidence-universal-v3", _RANKABLE_VERSIONS)
 
 
 class TestPartialAndMissingData(unittest.TestCase):
@@ -253,9 +300,8 @@ class TestAttach(unittest.TestCase):
             self.assertEqual(read["baseline"], "user")
             self.assertNotIn("sex", read)
             self.assertNotIn("sex_source", read)
-            self.assertIn(read["band"], (
-                "confident", "close_to_confident", "neutral",
-                "unconfident", "doubtful"))
+            from services.voice_confidence import BANDS
+            self.assertIn(read["band"], BANDS)
             self.assertGreaterEqual(read["score"], -1.0)
             self.assertLessEqual(read["score"], 1.0)
 

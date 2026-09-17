@@ -1,0 +1,29 @@
+Before you record
+
+WillpowerLab records your voice, sends the audio to an AI provider to be
+transcribed, and writes your presentation document and your feedback with AI.
+Those documents can be wrong — check anything that matters.
+
+We use your recordings to give you your own coaching. We do not pool them with
+other people's, and we do not use them to train shared models.
+
+Read these three before you agree:
+  Terms of Service
+  Privacy Policy
+  How AI is used here
+
+Where do you live?
+  [ country ]
+
+Tick both to continue:
+
+  [ ] I am 18 or older.
+
+  [ ] I agree that a recording of me speaking may reveal sensitive information
+      about me, and I consent to WillpowerLab processing my recordings where it
+      does. I can withdraw this at any time, which ends my use of recording.
+
+    [ Agree and continue ]        [ Do not agree ]
+
+Agreeing records the exact version of each document above, so you can always
+check what you agreed to. If we change any of them, we will ask you again.

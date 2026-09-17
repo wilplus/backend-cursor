@@ -1,0 +1,79 @@
+Terms of Service
+
+Effective date: 23 July 2026. Version 1.0. Last updated: 23 July 2026.
+
+1. Acceptance of terms and eligibility
+
+These Terms of Service ("Terms") form a binding agreement between you and Artur Willoński, an individual operating the WillpowerLab service as unregistered business activity (działalność nieewidencjonowana) in Poland ("WillpowerLab", "we", "us"). By creating an account or using the Service, you agree to these Terms and to our Privacy Policy.
+
+You must be at least 18 years old and have the legal capacity to enter into a contract. If you use the Service on behalf of an organisation, you represent that you are authorised to bind that organisation.
+
+2. Description of the Service
+
+WillpowerLab provides AI-assisted speech analysis and text-assembly tools for presentation and public-speaking practice. The Service records your voice, generates transcripts, analyses speech delivery (such as flow, filler words, and structure), and assembles evolving "Ideal Text" and coaching notes.
+
+The output is advisory coaching only. It is not professional, medical, legal, psychological, or therapeutic advice, and is not a substitute for a qualified professional. You are responsible for how you use the output. AI-generated transcripts and analysis may contain errors and should not be relied upon as definitive.
+
+3. Your content and intellectual property
+
+You retain 100% ownership of your original speech, your voice recordings, your transcripts, and your final "Ideal Text" compositions ("User Content").
+
+You grant WillpowerLab a limited, non-exclusive, worldwide, royalty-free licence to host, store, process, transcribe, and transform your User Content solely to provide and improve the Service to you (for example, to run analysis, assemble Ideal Text, and enable coach review where applicable). This licence ends when your User Content is deleted, except for processing already carried out and any copies retained to meet legal obligations.
+
+We claim no ownership of your User Content and will not use it to train public AI foundation models (see the Privacy Policy).
+
+Service IP. The Service itself, including our software, models, interfaces, and branding, remains our exclusive property. Nothing in these Terms transfers any of our intellectual property to you.
+
+4. Acceptable use
+
+You agree not to:
+
+upload or record unlawful, infringing, defamatory, or hateful content, or content that violates the rights of others;
+
+upload recordings of third parties without their informed consent, or any recording you are not legally entitled to make or process (you are solely responsible for obtaining any necessary consents for other people's voices);
+
+attempt to reverse-engineer, decompile, scrape, or otherwise extract the AI models, prompts, or underlying systems of the Service;
+
+interfere with, overload, or attempt to gain unauthorised access to the Service or its infrastructure;
+
+use the Service to build a competing product or to develop or train a machine-learning model.
+
+We may suspend or terminate access for violations of this section.
+
+5. Payments, unlocks, and cancellation
+
+The core Service (recording, transcription, your coaching notes, and your evolving Ideal Text) is free to use.
+
+Optional deeper coaching (the highlighted "moments" and their detailed advice) is a paid unlock. Unlocking is priced per presentation, at the price shown at checkout, and entitles you to that presentation's moment-level advice across all of that presentation's takes and versions. Re-recording the same presentation does not require unlocking again; a separate presentation is a separate unlock.
+
+Payments are processed by Stripe. Unlocks are one-time charges per presentation, not a recurring subscription; we do not auto-renew, and we do not store your card details.
+
+EU consumer right of withdrawal. Where you are a consumer, you ordinarily have a 14-day right to withdraw from a distance contract. Because an unlock is digital content supplied immediately, by unlocking you expressly request immediate performance and acknowledge that you thereby lose the 14-day right of withdrawal for the content already supplied, to the extent permitted by law.
+
+Because unlocks are delivered instantly, they are final and non-refundable once applied, except where a refund is required by mandatory consumer law. You may stop buying unlocks or delete your account at any time; that prevents future charges but does not refund unlocks already applied.
+
+6. Account termination
+
+You may delete your account at any time. We may suspend or terminate your account if you breach these Terms, if required by law, or if necessary to protect the Service or other users. On termination, your right to use the Service ends and your User Content is deleted in accordance with the Privacy Policy, subject to legal retention obligations.
+
+7. Warranty disclaimer
+
+To the maximum extent permitted by applicable law, the Service is provided "AS IS" and "AS AVAILABLE", without warranties of any kind, whether express or implied, including as to uninterrupted or error-free operation, 100% uptime, or the accuracy or completeness of AI transcriptions and analysis. Nothing in these Terms excludes or limits any rights you have as a consumer under mandatory Polish or EU law, including statutory conformity guarantees.
+
+8. Limitation of liability
+
+To the maximum extent permitted by applicable law, WillpowerLab (the operator) shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or for loss of profits, data, or goodwill, arising from your use of the Service. Our total aggregate liability arising out of or relating to the Service shall not exceed the greater of (a) the amounts you paid to us in the twelve (12) months preceding the event giving rise to the claim, or (b) EUR 100.
+
+Nothing in these Terms limits liability that cannot be limited by law, including liability for death or personal injury caused by negligence, for intentional misconduct or gross negligence, or under mandatory consumer-protection law.
+
+9. Governing law and jurisdiction
+
+These Terms are governed by the laws of Poland, without regard to conflict-of-laws rules. Disputes shall be subject to the jurisdiction of the Polish courts competent for the operator's place of residence. If you are a consumer, this does not deprive you of the protection of mandatory provisions of the law of your country of habitual residence, and you may also bring proceedings in the courts of that country. Consumers may additionally use the EU Online Dispute Resolution platform at ec.europa.eu/consumers/odr.
+
+10. Changes to these Terms
+
+We may amend these Terms. We will post the updated version with a new effective date and, for material changes, provide reasonable prior notice. Continued use after the effective date constitutes acceptance. If you do not agree, you must stop using the Service and may delete your account.
+
+11. Contact
+
+artur@willonski.com. WillpowerLab, operated by Artur Willoński, Poland.

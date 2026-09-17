@@ -1,0 +1,23 @@
+Privacy Policy
+
+Last updated May 7, 2026
+
+What we collect
+
+Voice recordings you submit, the transcripts derived from them, the acoustic metrics our analysis pipeline produces, and the account information you provide (email, name, optional profile details).
+
+How we use it
+
+To generate your personalised Charisma Snippets, to train the classifier that picks out your charismatic and stress moments, and to send you the email notifications you opted into.
+
+Storage & retention
+
+Recordings are stored in encrypted Supabase storage. You can request deletion of your account and associated recordings at any time by emailing artur@willonski.com.
+
+Third parties
+
+We use Supabase for authentication and storage, Whisper for transcription, and Anthropic / OpenAI for LLM-driven question generation. We do not sell your data.
+
+Contact
+
+Questions? Email artur@willonski.com.

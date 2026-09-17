@@ -1,0 +1,161 @@
+Terms of Service
+
+Effective date: 13 August 2026. Version 1.1. Last updated: 13 August 2026.
+
+What changed in version 1.1. New sections on community sharing and peer review (§5), human coach review (§6), AI transparency and automated decision-making (§7), changes to the Service (§13), and general contract terms (§15). We corrected the statement about how your content is used to improve our models (§4), clarified the restriction on building competing products (§8), and updated our contact address.
+
+1. Acceptance of terms and eligibility
+
+These Terms of Service ("Terms") form a binding agreement between you and Artur Willoński, an individual operating the WillpowerLab service as unregistered business activity (działalność nieewidencjonowana) in Poland ("WillpowerLab", "we", "us"). By creating an account or using the Service, you agree to these Terms and to our Privacy Policy.
+
+You must be at least 18 years old and have the legal capacity to enter into a contract. If you use the Service on behalf of an organisation, you represent that you are authorised to bind that organisation.
+
+2. Description of the Service
+
+WillpowerLab provides AI-assisted speech analysis and text-assembly tools for presentation and public-speaking practice. The Service records your voice, generates transcripts, analyses speech delivery (such as flow, filler words, and structure), and assembles evolving "Ideal Text" and coaching notes.
+
+The output is advisory coaching only. It is not professional, medical, legal, psychological, or therapeutic advice, and is not a substitute for a qualified professional. You are responsible for how you use the output. AI-generated transcripts and analysis may contain errors and should not be relied upon as definitive.
+
+3. Your content and intellectual property
+
+You retain 100% ownership of your original speech, your voice recordings, your transcripts, and your final "Ideal Text" compositions ("User Content").
+
+You grant WillpowerLab a limited, non-exclusive, worldwide, royalty-free licence to host, store, process, transcribe, and transform your User Content solely to provide and improve the Service (for example, to run analysis, assemble Ideal Text, and enable coach review). This licence ends when your User Content is deleted, except for processing already carried out and any copies retained to meet legal obligations.
+
+We claim no ownership of your User Content.
+
+Service IP. The Service itself, including our software, models, interfaces, and branding, remains our exclusive property. Nothing in these Terms transfers any of our intellectual property to you.
+
+4. How your content improves the Service
+
+We do use your content to improve our own models. Specifically, recordings, transcripts, derived measurements, ratings, and coach corrections may be used to train and calibrate the analysis and feedback systems that power WillpowerLab.
+
+We do not sell your content, or provide it to third parties to train their own general-purpose or foundation models.
+
+We do not publish your recordings or transcripts.
+
+Aggregate, de-identified measurements may be used for research and for reporting about the Service in general terms.
+
+Deleting your account removes your content. Where a measurement or label derived from your content has already been incorporated into an aggregate model, that model is not retrained solely on that basis. We explain this at the point of consent so that it is not a surprise.
+
+Your rights over this processing — including your right to object to it — are set out in the Privacy Policy. Exercising them does not affect your ability to use the Service.
+
+5. Community sharing and peer review
+
+Parts of the Service involve listening to and rating short speech extracts.
+
+Rating other people's extracts. You may be shown short extracts from other users who have chosen to share, or from publicly available material we have licensed or are permitted to use. You are asked to give a simple perceptual judgement (for example, whether a speaker sounded confident). Your ratings are used to improve the Service and to calibrate its analysis.
+
+Sharing your own extracts. Sharing is opt-in, per recording, and revocable at any time. If you do not opt in, no other user will ever hear your voice. If you withdraw sharing, the extract is removed from circulation; ratings already given remain in aggregate form.
+
+When you rate, you agree to:
+
+treat what you hear as confidential — do not record, screenshot, transcribe, redistribute, or attempt to identify the speaker;
+
+rate honestly and in good faith;
+
+not use the feature to harass, mock, or disparage any person.
+
+When you share, you acknowledge:
+
+other users will hear your voice;
+
+extracts are presented without your name, but voice is inherently identifiable to anyone who knows you;
+
+you have the right to share everything in the extract, including any third-party voices or confidential material.
+
+Breach of this section may result in immediate suspension.
+
+6. Human review
+
+A human coach may listen to your recordings and read your transcripts in order to review, correct, or improve the feedback the Service gives you. Coaches are bound by confidentiality obligations.
+
+Human review happens only with your consent, and you can withdraw that consent at any time. Feedback quality may be lower as a result.
+
+7. AI transparency and automated decisions
+
+You are interacting with an AI system. Transcripts, measurements, and coaching comments are generated automatically and may be inaccurate.
+
+Comments are AI-generated unless explicitly marked as reviewed by a human.
+
+No decision with legal or similarly significant effects is made about you by automated means. The Service produces advisory coaching only. It does not assess your employability, competence, credit, health, or any comparable matter, and must not be used for those purposes.
+
+Where a human coach has reviewed a piece of feedback, it is marked as such.
+
+The Service infers characteristics of speech delivery from your voice. This inference is opt-in and off by default. See the Privacy Policy for what is inferred and on what legal basis.
+
+The Service must not be used by employers or educational institutions to assess, monitor, rank, or make decisions about employees, candidates, or students. Accounts used this way will be terminated.
+
+8. Acceptable use
+
+You agree not to:
+
+upload or record unlawful, infringing, defamatory, or hateful content, or content that violates the rights of others;
+
+upload recordings of third parties without their informed consent, or any recording you are not legally entitled to make or process (you are solely responsible for obtaining any necessary consents for other people's voices);
+
+attempt to reverse-engineer, decompile, scrape, or otherwise extract the AI models, prompts, or underlying systems of the Service;
+
+attempt to manipulate the Service's analysis, ratings, or feedback through automated input, coordinated rating, or deliberately misleading content;
+
+interfere with, overload, or attempt to gain unauthorised access to the Service or its infrastructure;
+
+extract data from the Service — including other users' content, our outputs, or our measurements — to build a competing product or to develop or train a machine-learning model. This does not restrict what you do with your own User Content, which remains yours.
+
+We may suspend or terminate access for violations of this section.
+
+9. Payments, plans, and cancellation
+
+The Service runs on a token allowance. Recording, transcription, your coaching notes, and your evolving Ideal Text are available on a free allowance; actions that cost us to run — such as generating analysis or delivering coach feedback — draw tokens from your balance at the published rate shown before you commit to the action.
+
+Paid plans are recurring monthly subscriptions. Each paid plan grants a token allowance at the start of every billing period, at the price shown at checkout. Plans renew automatically until you cancel.
+
+Allowances do not roll over. Your allowance is reset to the plan amount at the start of each billing period; any unused balance from the previous period is not carried forward.
+
+Payments are processed by Stripe. We do not store your card details. You may cancel at any time from your account or through the payment portal; cancellation takes effect at the end of the period you have already paid for, and we do not claw back the allowance for that period.
+
+EU consumer right of withdrawal. Where you are a consumer, you ordinarily have a 14-day right to withdraw from a distance contract. Because the Service supplies digital content immediately, by starting a paid period you expressly request immediate performance and acknowledge that you thereby lose the 14-day right of withdrawal for the content already supplied, to the extent permitted by law. Tokens already spent are not refundable, except where a refund is required by mandatory consumer law.
+
+10. Account termination
+
+You may delete your account at any time. We may suspend or terminate your account if you breach these Terms, if required by law, or if necessary to protect the Service or other users.
+
+On termination, your right to use the Service ends and your User Content is deleted in accordance with the Privacy Policy, subject to legal retention obligations. You may export your recordings, transcripts, and Ideal Text before deleting your account.
+
+11. Warranty disclaimer
+
+To the maximum extent permitted by applicable law, the Service is provided "AS IS" and "AS AVAILABLE", without warranties of any kind, whether express or implied, including as to uninterrupted or error-free operation, 100% uptime, or the accuracy or completeness of AI transcriptions and analysis. Nothing in these Terms excludes or limits any rights you have as a consumer under mandatory Polish or EU law, including statutory conformity guarantees.
+
+12. Limitation of liability
+
+To the maximum extent permitted by applicable law, WillpowerLab (the operator) shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or for loss of profits, data, or goodwill, arising from your use of the Service. Our total aggregate liability arising out of or relating to the Service shall not exceed the greater of (a) the amounts you paid to us in the twelve (12) months preceding the event giving rise to the claim, or (b) EUR 100.
+
+Nothing in these Terms limits liability that cannot be limited by law, including liability for death or personal injury caused by negligence, for intentional misconduct or gross negligence, or under mandatory consumer-protection law.
+
+13. Changes to the Service
+
+We may add, change, or remove features. Some features are experimental and may be tested with a subset of users, changed, or withdrawn.
+
+If we discontinue the Service entirely, we will give at least 30 days' notice where reasonably possible and provide a means to export your content. Any paid period you have already been charged for and cannot use will be refunded on a pro rata basis.
+
+14. Governing law and jurisdiction
+
+These Terms are governed by the laws of Poland, without regard to conflict-of-laws rules. Disputes shall be subject to the jurisdiction of the Polish courts competent for the operator's place of residence. If you are a consumer, this does not deprive you of the protection of mandatory provisions of the law of your country of habitual residence, and you may also bring proceedings in the courts of that country.
+
+15. General
+
+Assignment. We may transfer these Terms and our rights under them to a successor in connection with a merger, acquisition, or sale of assets, on notice to you. You may not transfer your account without our consent.
+
+Severability. If any provision is found unenforceable, the remainder stays in force.
+
+Entire agreement. These Terms and the Privacy Policy are the entire agreement between us regarding the Service.
+
+No waiver. Failure to enforce a provision is not a waiver of it.
+
+16. Changes to these Terms
+
+We may amend these Terms. We will post the updated version with a new effective date and, for material changes, provide reasonable prior notice. Continued use after the effective date constitutes acceptance. If you do not agree, you must stop using the Service and may delete your account.
+
+17. Contact
+
+contact@willpowerlab.com. WillpowerLab, operated by Artur Willoński, Poland.

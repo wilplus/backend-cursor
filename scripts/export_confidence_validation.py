@@ -46,6 +46,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from services.voice_confidence import normalize_band  # noqa: E402
+
 
 def _rows_for_user(database, user_id: str, max_sessions: int) -> list:
     """Every stamped piece across the user's recent lab sessions."""
@@ -72,7 +74,11 @@ def _rows_for_user(database, user_id: str, max_sessions: int) -> list:
                 "transcript": (snip.get("transcript")
                                or snip.get("transcript_excerpt") or "").strip(),
                 "score": read.get("score"),
-                "band": read.get("band"),
+                # NORMALIZED AT THE EDGE, once. A sample that straddles the
+                # 2026-09-17 band rename would otherwise stratify into ten
+                # buckets instead of five and under-fill every one of them —
+                # the stratifier below counts by this exact string.
+                "band": normalize_band(read.get("band")),
                 "cues": read.get("cues"),
                 "baseline": read.get("baseline"),
                 "version": read.get("version") or "voice-confidence-v1",
