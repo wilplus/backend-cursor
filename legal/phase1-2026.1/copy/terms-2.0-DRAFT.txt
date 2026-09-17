@@ -81,7 +81,24 @@ Do not use the service to:
 - attempt to extract, reverse engineer or retrain any model we use;
 - probe, scan or interfere with the service's security, or use it in a way that
   degrades it for other people;
-- resell the service or provide it to others as your own.
+- resell the service or provide it to others as your own;
+- deploy it in a workplace or an education institution (see below).
+
+
+NOT FOR EMPLOYERS OR SCHOOLS
+
+WillpowerLab is for individuals practising on their own account.
+
+You may not use it, or require or encourage anyone else to use it, as part of
+employment, recruitment, performance review, or assessment in an education
+institution. No employer, school or other organisation may direct, monitor or
+require anyone's use of the service, and no organisation receives anything the
+service produces about a person.
+
+This is not a formality. The service analyses how a delivery sounds, and the law
+treats that kind of analysis very differently inside a workplace or a classroom
+than it does for someone practising alone. If you want to use WillpowerLab with
+a team, talk to us first.
 
 
 7. YOUR CONTENT IS YOURS

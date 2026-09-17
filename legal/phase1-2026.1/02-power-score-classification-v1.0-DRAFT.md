@@ -309,8 +309,34 @@ code-dependent. Every one of them can be crossed without changing a line of
 code, by selling the same product to an employer or a school.
 
 **This is the single largest live risk in the classification and it must be
-recorded as a condition on the approval, not as an observation.** Concretely:
+recorded as a condition on the approval, not as an observation.**
 
+**Founder confirmation, 2026-09-17: inbound B2B interest exists, but no company
+has used the service.** So Article 5(1)(f) is prospective, not historical — there
+is a fence to hold rather than an exposure to remediate. That is the good
+version of this fact, and it has a short shelf life: the fence has to be real
+before the first employer signs up, not after.
+
+**The fence needs both halves.** The contractual half is the "Not for employers
+or schools" section of the Terms, which prohibits workplace and education
+deployment expressly. The technical half does not exist yet. A prohibition a
+user can ignore by clicking through is evidence of intent, not a control, and
+counsel should say how much weight it can carry on its own.
+
+**One further route to high-risk that does not depend on §7.** Article 6(3)
+allows an Annex III system to escape high-risk classification where it performs
+only a narrow procedural task — but its final subparagraph removes that
+derogation entirely for any system that performs **profiling of natural
+persons**. A per-speaker composite, baselined against that person's own history
+and used to rank what they are shown, should be assessed against the profiling
+definition in Article 4(4) GDPR before anyone relies on the Article 6(3) filter.
+If it is profiling, the filter is unavailable and the only question left is
+whether Annex III point 1(c) is engaged at all — which returns to §7.
+
+Concretely, the deployment conditions:
+
+- the Terms' "Not for employers or schools" section stays in force and is not
+  weakened in any later version;
 - no employer, school or institutional dashboard, and no route by which a third
   party receives a user's reads;
 - no deployment where use is directed, mandated or monitored by an employer or
