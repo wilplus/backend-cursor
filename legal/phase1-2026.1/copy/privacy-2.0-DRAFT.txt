@@ -38,8 +38,6 @@ Things you give us
 - Your slides and presentation materials.
 - Audio recordings of you presenting.
 - Edits you make to your Ideal Text, and your responses to feedback.
-- If you take a paid plan, your billing details go to our seller of record
-  (section 5). We do not see or store your card number.
 
 Things produced from your recordings
 - Transcripts of what you said.
@@ -86,17 +84,10 @@ To meet our legal obligations: for example accounting records, and responding
 to lawful requests.
 Legal basis: legal obligation (Article 6(1)(c) GDPR).
 
-To manage your subscription, if you are on a paid plan: to know which plan you
-are on and to keep the records we are required to keep. The payment itself is
-taken by our seller of record (section 5).
-Legal basis: performance of our contract with you (Article 6(1)(b) GDPR), and
-legal obligation (Article 6(1)(c) GDPR) for the accounting records.
-
-Free and paid accounts are treated identically here. We do not process a free
-user's recordings any differently from a paying user's, and we do not use
-anyone's recordings to train models. That is not a promise we could quietly
-walk back: our systems refuse to register any processing policy that would
-permit it.
+The service is free and we take no payment, so there is no billing data here at
+all. We also do not use anyone's recordings to train models. That second one is
+not a promise we could quietly walk back: our systems refuse to register any
+processing policy that would permit it.
 
 Special categories of data. A recording of you speaking freely may happen to
 reveal something sensitive — a health condition audible in your speech, or
@@ -133,13 +124,6 @@ Infrastructure providers
 - Railway: hosting of the application.
 - [[FOUNDER: email provider]]: transactional email.
 
-Payment
-Paid plans are sold by Paddle as the seller of record.
-They take your payment and handle tax. Because they are the seller rather than
-our supplier, they decide how they use what you give them for that purchase —
-their privacy policy applies to it, not ours. We are told which plan you are on
-and that you paid. We never receive your card number.
-
 Human coaches
 Only if you ask for coach review and agree to it separately. A coach who reviews
 your recording does not see the voice measurements described in section 3.
@@ -170,9 +154,7 @@ Practice attempts: kept while the practice is open; after that we keep only the
   attempt you chose and delete the rest after 30 days.
 Uploaded files that never became a recording: deleted after 24 hours.
 Security and technical logs: 90 days.
-Account and billing records: 5 years from the end of the financial year in
-  which the transaction took place, as Polish accounting and tax law requires.
-  [[FOUNDER: confirm with your accountant.]]
+Account records: until you delete your account.
 Record of your agreement to this policy: kept for as long as we may need to
   show that your recordings were processed lawfully, and then deleted.
 

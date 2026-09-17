@@ -35,11 +35,17 @@ to be read by a user on the acceptance screen.
 
 ## What only the founder can supply
 
-**Settled 2026-09-17:** countries `["pl", "us"]` with Illinois in scope ·
-retention periods (document 06) · freemium, capped on projects not takes · a
-lapsed paid account loses nothing · Paddle as merchant of record · EU prices
-VAT-inclusive, US tax at checkout · *sp. z o.o.* to be formed before the US
-launch.
+**Scope, settled 2026-09-17: Poland only, free, operated by a natural person
+with no entity.** That is a fully compliant configuration — GDPR does not
+require a legal person — and it is what the whole pack is now written against.
+See document 01 §2.
+
+Also settled: retention periods (document 06) · `allowed_countries = ["pl"]`.
+
+**Parked, not cancelled.** The US (document 05), paid plans, and a merchant of
+record all return together, because all three depend on incorporating. Document
+01 §2 names the trigger conditions and explains why incorporating *before* the
+first policy registration is much cheaper than after it.
 
 **Still outstanding.** Each is marked `[[FOUNDER: …]]` at the point of use.
 
@@ -47,19 +53,15 @@ launch.
    person or firm. The `mlc2-bundled-consent-v1.json` precedent recorded the
    founder as the authority "recording the approved counsel determination".
    Document 02 should not be signed that way; see its §9.
-2. **What the paid plans add** over the free plan's one project.
-3. **The email provider's name**, and the transfer mechanism for each vendor
+2. **The email provider's name**, and the transfer mechanism for each vendor
    (document 07 collects these).
-4. **Confirmation of the 5-year accounting retention** with your accountant.
-5. **Sign-off on all four copy documents** (LIVE LOOP fence: user-facing copy is
+3. **Sign-off on all four copy documents** (LIVE LOOP fence: user-facing copy is
    founder-signed before it ships).
-6. **The controller identity**, if the *sp. z o.o.* exists before registration —
-   which is the point of doing it in that order. See Sequencing.
 
 ## What only counsel can supply
 
-EU counsel: the determination in document 02, and review of 01 and 03.
-US counsel: the BIPA determination and the US terms, per document 05.
+EU counsel: the determination in document 02, and review of 01 and 03. US
+counsel is not needed while the service stays in Poland; document 05 is parked.
 
 The determination in document 02. The pack drafts the analysis and lays out the
 facts and the arguments on both sides; it does not reach the conclusion for you.
@@ -133,12 +135,6 @@ against the service layer (`services/processing_authorization.py`) before
 relying on this reading.
 
 ## Sequencing
-
-**0. Form the *sp. z o.o.* first.** Founder decision 2026-09-17. It changes the
-controller identity, and therefore the Privacy Policy, and therefore its hash —
-so a policy registered before the company exists has to be registered again, and
-every user who accepted has to accept again. Formation takes one to two weeks and
-runs in parallel with the engineering. See document 01 §2.
 
 1. Founder fills the remaining `[[FOUNDER: …]]` blanks and signs off the four copy files.
 2. Counsel reviews 01 and 03, and makes the determination in 02.

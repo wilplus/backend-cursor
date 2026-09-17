@@ -14,6 +14,11 @@ recordings are processed to deliver your own coaching, and for nothing else.
 
 1. WHAT THE SERVICE DOES
 
+The service is free. There is no paid plan and we do not take payment. We may
+set fair-use limits so the service stays available to everyone; if we do, we
+will tell you what they are.
+
+
 You record yourself presenting. WillpowerLab transcribes the recording, lines
 the transcript up with your slides, writes an Ideal Text — a presentation
 document built from what you actually said — and gives you feedback after each
@@ -91,8 +96,7 @@ and keep them available to you. That permission is limited to your own service
 and ends when your content is deleted.
 
 We do not use your recordings to train models for anyone else, and we do not
-pool your material with other users' material. This is the same on the free
-plan as on a paid one.
+pool your material with other users' material.
 
 
 8. THE IDEAL TEXT IS YOUR DOCUMENT
@@ -125,45 +129,7 @@ it separately, and we will ask for your agreement before any coach sees your
 material. The recording and feedback loop never waits for a coach.
 
 
-11. FREE AND PAID PLANS
-
-The free plan gives you one project with unlimited attempts inside it. You can
-record, get your Ideal Text and your feedback, and record again — the whole
-loop, not a preview of it. Paid plans add [[FOUNDER: what they add]].
-
-Paid plans are sold by Paddle, who is the seller of
-record for your purchase. Their terms cover the payment; these terms cover the
-service. We never see or store your card number.
-
-In the EU, the price you see is the price you pay, VAT included. In the US, any
-sales tax is added at checkout.
-
-A paid plan renews automatically for the same period until you cancel. We charge
-on the renewal date. You can cancel at any time, and you keep access until the
-end of the period you have already paid for. We do not refund part-periods
-except where the law requires it.
-
-If we change a price, we will tell you before it takes effect and you can cancel
-before it does.
-
-Your right to change your mind. If you are a consumer in the EU you normally
-have 14 days to withdraw from a purchase. Because this is a digital service you
-can use immediately, when you subscribe you are asking us to start it straight
-away and acknowledging that you lose the 14-day withdrawal right once we have.
-If you would rather wait out the 14 days before starting, tell us and we will
-hold your subscription.
-
-If a payment fails we will try again and let you know. If it keeps failing your
-account moves to the free plan.
-
-If your account moves to the free plan, nothing you have made is deleted. You
-keep everything you have already recorded and written, and you can still read
-and edit it. You will not be able to start new projects beyond the free plan's
-limit until you subscribe again. Your material is then kept and deleted on the
-ordinary schedule in our Privacy Policy, the same as everyone else's.
-
-
-12. AVAILABILITY
+11. AVAILABILITY
 
 We work to keep the service running, but we do not promise it will always be
 available or uninterrupted. We may change, suspend or withdraw features. If a
@@ -171,7 +137,7 @@ change materially reduces what you get, we will tell you beforehand where we
 reasonably can.
 
 
-13. SUSPENDING OR ENDING YOUR ACCESS
+12. SUSPENDING OR ENDING YOUR ACCESS
 
 You may stop using the service at any time and ask us to delete your account.
 
@@ -184,7 +150,7 @@ When your access ends, we handle your content as described in the Privacy
 Policy.
 
 
-14. OUR RESPONSIBILITY TO YOU
+13. OUR RESPONSIBILITY TO YOU
 
 We provide the service with reasonable care and skill. We do not exclude or
 limit our liability for death or personal injury caused by our negligence, for
@@ -198,7 +164,7 @@ your relying on AI-generated output without checking it.
 If you are a consumer, nothing in these terms affects your statutory rights.
 
 
-15. CHANGES TO THESE TERMS
+14. CHANGES TO THESE TERMS
 
 We may change these terms. When we do, we publish a new version with a new
 version number, and the new text is what you will be asked to agree to.
@@ -209,7 +175,7 @@ acceptance records which exact version you agreed to and when. You can ask us
 for that record at any time.
 
 
-16. LAW AND DISPUTES
+15. LAW AND DISPUTES
 
 These terms are governed by the law of [[FOUNDER: Poland]], and the courts of
 [[FOUNDER: Poland]] have jurisdiction. If you are a consumer resident in the
@@ -219,7 +185,7 @@ country where you live, and you may bring proceedings there.
 You may also use the European Commission's online dispute resolution platform.
 
 
-17. CONTACT
+16. CONTACT
 
 Artur Willoński, operating under the name "WillpowerLab"
 Poland, European Union

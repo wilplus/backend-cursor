@@ -1,5 +1,15 @@
 # Brief to US counsel — WillpowerLab
 
+> **⏸ PARKED, 2026-09-17.** The founder has scoped the launch to Poland, free,
+> operating as a natural person with no entity. No US users means no BIPA, no
+> CCPA and no US terms, so nothing in this brief is live work.
+>
+> It is kept, not deleted, because the analysis does not go stale — §§1-3 are
+> code facts and §§4-9 are the questions that will still be the right questions
+> whenever the US comes back. **Send it only once a company exists.** Serving
+> Illinois as a natural person means BIPA's per-person statutory damages land on
+> the founder personally, which is exactly what a *sp. z o.o.* is for.
+
 **Purpose:** to instruct US counsel on serving US consumers. This is a brief,
 not a determination. §§1-3 are facts about the product, written by engineering
 and verifiable against the source code. §§4-9 are the questions we need

@@ -1,6 +1,7 @@
 # Vendor actions — who to contact, for what, with the text
 
-Five vendors, six actions. None of them cost money. The OpenAI ZDR request is
+Four vendors, five actions. (A payment provider is not on this list: the
+service is free, so there is nothing to sell and no seller of record.) None of them cost money. The OpenAI ZDR request is
 the one with a lead time, so start it first.
 
 ---
@@ -101,17 +102,6 @@ Ask the DPA question above, and also: **which region is our project in?** If it
 is an EU region, the transfer analysis for our database gets materially simpler
 and the Privacy Policy §6 wording shrinks.
 
-## 5. Merchant of record — NOT a DPA
-
-Do not send them the DPA text above. A merchant of record contracts with the
-user as seller, which makes them an independent controller for the purchase, not
-our processor. Article 28 is the wrong instrument.
-
-What to ask for instead: their standard reseller/MoR agreement, confirmation of
-how they characterise the data relationship, and the URL of the privacy policy
-we should point our users at. Counsel confirms the characterisation and says
-what, if anything, we need to sign — see document 01 §2.
-
 ---
 
 ## Checklist
@@ -124,7 +114,6 @@ what, if anything, we need to sign — see document 01 §2.
 | Supabase | DPA + project region | dashboard/legal | ☐ |
 | Cloudflare | Confirm DPA applies, file a copy | account terms | ☐ |
 | Email provider | DPA | provider | ☐ |
-| Merchant of record | MoR agreement, NOT a DPA | provider | ☐ |
 
 Every executed document gets filed with its date and version. Document 01 §2
 lists them, and counsel will ask to see them before signing.

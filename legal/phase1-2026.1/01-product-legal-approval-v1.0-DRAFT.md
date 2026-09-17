@@ -42,52 +42,48 @@ under the name "WillpowerLab". Contact: `contact@willpowerlab.com`. No DPO
 appointed; Article 37 does not require one at this scale, and this should be
 revisited if processing volume grows materially.
 
-**⚠️ There is no company.** The live Privacy Policy (v1.2) states that
-WillpowerLab operates as *działalność nieewidencjonowana* — unregistered
-business activity below the Polish revenue threshold. Two consequences that
-counsel must address rather than note:
+**There is no company, and for this configuration none is needed.** The live
+Privacy Policy (v1.2) states that WillpowerLab operates as *działalność
+nieewidencjonowana* — unregistered business activity below the Polish revenue
+threshold. Counsel should confirm the following reasoning rather than assume it.
 
-1. **Charging money almost certainly ends it.** The unregistered-activity
-   threshold is a monthly revenue cap tied to the minimum wage, and exceeding it
-   obliges registration within days. The founder has decided on a freemium
-   model, so the first paid subscriptions make this live. Registration is a
-   prerequisite to taking payment, not a follow-up to it.
-2. **The controller is personally liable.** A natural person carries the
-   regulatory and civil exposure himself, with no corporate veil — including the
-   US exposure, where the founder has decided to serve Illinois and BIPA
-   provides a private right of action with statutory damages per person.
-   **Founder decision, 2026-09-17: a *spółka z o.o.* will be formed before the
-   US launch.** Counsel should confirm that sequencing and flag anything that
-   should move with it.
+**No entity is required for the compliance this document approves.** GDPR does
+not require a legal person. Article 4(7) makes a natural person a controller on
+the same terms, the AI Act's provider obligations attach to whoever places the
+system on the market, and every vendor DPA in §2 is executable by an individual.
+The pack names Artur Willoński throughout because that is genuinely who the
+controller is, not as a placeholder for a company.
 
-**Sequencing that follows, and it saves real work.** Registering a business
-changes the controller identity, which changes the Privacy Policy, which changes
-its SHA-256, which makes every existing receipt stale and forces every user to
-accept again. So the order is:
+**Two things a company would buy, neither of which is compliance:**
 
-1. Form the *sp. z o.o.* now, in parallel. Online formation (S24) plus KRS entry
-   runs roughly one to two weeks — about the same as the outstanding engineering,
-   so it is not the critical path unless it is left until last.
-2. Complete the engineering and the legal review.
-3. Register policy `phase1-2026.1` naming **the company**, and launch Poland.
-4. Add the US once US counsel has signed off.
+1. **The ability to take real money.** The unregistered-activity threshold is a
+   monthly revenue cap tied to the minimum wage. Below it, revenue is lawful
+   without registration; above it, registration is obligatory within days.
+2. **A liability shield.** A natural person carries the regulatory and civil
+   exposure personally, with no corporate veil.
 
-Doing step 3 before step 1 means doing it twice. The user-facing copy in this
-pack currently names the natural person, because that is who the controller is
-today; if the company exists before registration, that copy is updated once,
-before the first hash is ever taken, and no user is ever asked twice.
+**Founder decision, 2026-09-17: free service, Poland only, no entity for now.**
+That configuration removes the force of both points. There is no payment, so the
+threshold is not approached. There is no US exposure, so the uncapped personal
+liability that made the veil urgent — Illinois BIPA's private right of action —
+does not arise. The remaining exposure is Polish and EU regulatory exposure for a
+free consumer product operated by an individual, which is the ordinary position
+of every sole operator in the EU.
 
-**Merchant of record, decided 2026-09-17: Paddle.** Confirm the exact
-contracting entity from the signed Paddle agreement — it can differ by region —
-and record it here. Paddle contracts from the UK, which holds a UK adequacy
-decision, so the transfer analysis is straightforward; the characterisation
-question in §2 is unaffected and still needs counsel.
+**This approval is therefore scoped to that configuration**, and §7 condition 1
+is doing more work than before. Registration must be revisited *before*, not
+after, any of:
 
-Every user-facing document in this pack names the natural person, because that
-is who the controller is today. Each carries a marker requiring update on
-registration. Registration changes the controller identity, which changes the
-Privacy Policy, which changes its hash, which forces every user to re-accept —
-so it is cheaper to register before the first policy is registered than after.
+- taking payment of any kind;
+- serving users outside Poland;
+- processing volume growing to a scale where Article 37 might require a DPO.
+
+Each of those changes the controller or the exposure, and the first two change
+the controller identity — which changes the Privacy Policy, which changes its
+SHA-256, which makes every existing receipt stale and asks every user to accept
+again. The cheapest moment to incorporate is before the first policy is
+registered. The second cheapest is never-and-stay-free. Anything between those
+two costs a re-acceptance of every user.
 
 **Processors and sub-processors, as implemented:**
 
@@ -98,7 +94,6 @@ so it is cheaper to register before the first policy is registered than after.
 | Supabase | The database; audio storage in the dev fallback path | `storage_provider = 'supabase'` |
 | Railway | Application hosting (web, worker, cron) | `bin/railway-web.sh` |
 | [[FOUNDER: email provider]] | Transactional email | `services/email_service.py` |
-| [[FOUNDER: merchant of record]] | Billing data for paid plans | not a processor — see below |
 
 `services/authorized_provider.py` is a typed adapter and the protected recording
 modules are test-enforced not to import a provider SDK directly
@@ -107,15 +102,7 @@ Every provider call takes a short-lived database permit naming the operation and
 a minimum data manifest (`processing_provider_permits`), and records a terminal
 outcome event without storing raw user content in the metadata.
 
-**The merchant of record is not a processor.** Paddle, Lemon Squeezy and their
-equivalents contract with the user as seller of record, so for the purchase they
-are an independent controller, not our supplier. That means an Article 28 DPA is
-the wrong instrument: what is needed is a controller-to-controller arrangement,
-and the Privacy Policy must point users at the seller's own policy for their
-payment data. Counsel should confirm the characterisation and say what document
-it needs, if any. Do not tick this off the DPA list by signing the wrong paper.
-
-**Counsel must confirm separately:** a signed DPA with each *processor* above, the
+**Counsel must confirm separately:** a signed DPA with each processor above, the
 transfer mechanism for OpenAI (US — SCCs and/or Data Privacy Framework
 certification), and a transfer impact assessment. This document does not assert
 that any of those are in place.
