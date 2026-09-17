@@ -663,8 +663,20 @@ def v2_user_get_audits():
             key = r.get("storage_path") or ""
             url = coach_media_public_url(key) if key else None
             if not url and key:
+                # RESOLVE, DON'T HARDCODE — the last call site still passing
+                # the literal. #484 made put/presign honour the caller's
+                # bucket string (before it, the R2 branch ignored the argument
+                # and always used r2_bucket_name()), which turned every
+                # remaining literal into a real bucket name overnight. #513
+                # fixed the deck-upload site; this one was missed.
+                #
+                # It matters because R2 bucket names take no underscores, so
+                # "coach_feedback_videos" cannot BE a bucket — config's own
+                # example is the hyphenated "coach-feedback-videos". A
+                # presigned URL built against it points at nothing, and the
+                # audits list hands the user a dead link rather than failing.
                 url = presigned_get_coach_object(
-                    "coach_feedback_videos", key, expires_in=604800,
+                    "", key, expires_in=604800,
                 )
             audits.append({
                 "id": r.get("id"),
