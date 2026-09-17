@@ -18,7 +18,7 @@ reply · `TODO` not started
 |---|---|---|---|---|---|---|---|
 | OpenAI | Processor | API inputs/outputs: audio, transcripts, feedback text | REQUESTED | 2026-09-17 | SCCs; EU contracting entity to be confirmed | US | |
 | Cloudflare (R2) | Processor | The voice/video objects themselves | TODO | | SCCs | default jurisdiction — **not EU-pinned** | |
-| Supabase | Processor | Accounts, transcripts, feedback, auth | TODO | | | **UNVERIFIED — claimed EU** | |
+| Supabase | Processor | Accounts, transcripts, feedback, auth | TODO | | Data at rest in EU | **EU** (confirmed 2026-09-17; exact identifier TBC) | |
 | Railway | Processor | Compute + Redis queue payloads | REQUESTED | 2026-09-17 | | | |
 | Resend | Processor | Email addresses + rendered session-result content | TODO | | | | |
 | Sentry | Processor | Error telemetry (PII suppressed — see below) | TODO | | | | |
@@ -65,9 +65,10 @@ org level 2026-09-17.
 
 ## Open items
 
-1. **Supabase region unverified.** `privacy/page.tsx` claims EU region hosting for
-   the primary datastore in two places (sub-processor table and § 12 Security).
-   Confirm from Project Settings → General → Region, or correct the copy.
+1. ~~Supabase region unverified.~~ **RESOLVED 2026-09-17** — project is in an EU
+   region, so the "EU region hosting" claim in the sub-processor table and § 12
+   Security is accurate and needs no correction. Record the exact region
+   identifier when convenient.
 2. **R2 buckets are not EU-jurisdiction.** `services/r2_client.py` builds the
    default endpoint `https://{account}.r2.cloudflarestorage.com`. Jurisdiction is
    fixed at bucket creation and cannot be changed in place. Voice recordings are
