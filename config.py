@@ -131,6 +131,11 @@ class Config:
     PIPELINE_JOB_STALE_MINUTES = _env_int("PIPELINE_JOB_STALE_MINUTES", 5)
     PIPELINE_JOB_HEARTBEAT_SECONDS = _env_int("PIPELINE_JOB_HEARTBEAT_SECONDS", 60)
     PIPELINE_JOB_MAX_ATTEMPTS = _env_int("PIPELINE_JOB_MAX_ATTEMPTS", 3)
+    # The wall clock on ONE attempt. The heartbeat proves the PROCESS is
+    # alive, never that the job is progressing, so a runner wedged on a
+    # provider socket heartbeats forever and no recovery path can see it.
+    PIPELINE_JOB_MAX_RUNTIME_MINUTES = _env_int(
+        "PIPELINE_JOB_MAX_RUNTIME_MINUTES", 20)
     PIPELINE_ORPHAN_STALE_MINUTES = _env_int("PIPELINE_ORPHAN_STALE_MINUTES", 30)
     PIPELINE_SWEEP_INTERVAL_SECONDS = _env_int("PIPELINE_SWEEP_INTERVAL_SECONDS", 60)
     # Take Feedback V3 dark mode: exact founder principal, explicit "dark".

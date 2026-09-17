@@ -193,6 +193,61 @@ def heartbeat_interval_seconds() -> int:
     return max(10, int(config.PIPELINE_JOB_HEARTBEAT_SECONDS))
 
 
+def max_runtime_minutes() -> int:
+    """The wall clock on ONE attempt, independent of the heartbeat.
+
+    THE HOLE THIS CLOSES (founder 2026-09-17, "it got stale and now it needs
+    to function"). Every recovery path in this module keys off heartbeat
+    silence, and `_Heartbeat` is a daemon thread that writes `heartbeat_at`
+    on a timer whether or not the runner is making progress. So a runner
+    wedged on a socket that never returns — a provider call with no timeout,
+    a hung read — heartbeats forever, and:
+
+      * `list_stale_processing_jobs` never lists it (heartbeat is fresh);
+      * `run_processing_job` re-delivery early-returns ("another worker is
+        live on it");
+      * `sweep_orphaned_sessions` skips the session (it HAS a live job).
+
+    Nothing in the system could ever recover that take. The user sat on
+    "Working on your take" until they gave up. A heartbeat proves the
+    PROCESS is alive; it has never proved the JOB is advancing, and only a
+    wall clock can tell the difference.
+
+    Deliberately generous — several times the real worst case — because the
+    cost of being wrong in one direction (a long take needlessly re-run,
+    bounded by the attempt cap) is much smaller than in the other (a take
+    stranded forever).
+    """
+    return max(stale_minutes() + 1, int(config.PIPELINE_JOB_MAX_RUNTIME_MINUTES))
+
+
+def _started_minutes_ago(job: Dict[str, Any]) -> Optional[float]:
+    """Minutes since this ATTEMPT was claimed, or None when unknowable.
+
+    `claim_processing_job` stamps `started_at` on every claim, so this is
+    per-attempt by construction: a sweeper-recovered job gets a full fresh
+    budget rather than inheriting the wedged attempt's clock.
+    """
+    from datetime import datetime, timezone
+    raw = job.get("started_at")
+    if not raw:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - ts).total_seconds() / 60.0
+
+
+def _over_deadline(job: Dict[str, Any]) -> bool:
+    """True when this attempt has outrun its wall clock. A job with no
+    `started_at` is NOT over deadline — unknown is not expired."""
+    elapsed = _started_minutes_ago(job)
+    return elapsed is not None and elapsed >= max_runtime_minutes()
+
+
 # ── enqueue (web process) ────────────────────────────────────────────────
 
 def _sync_phase1_job(
@@ -454,6 +509,18 @@ def _heartbeat_is_fresh(job: Dict[str, Any]) -> bool:
         ts = ts.replace(tzinfo=timezone.utc)
     return (datetime.now(timezone.utc) - ts) < timedelta(
         minutes=stale_minutes())
+
+
+def _worker_still_plausible(job: Dict[str, Any]) -> bool:
+    """Should a re-delivery stand down and let the running worker finish?
+
+    Fresh heartbeat AND inside the wall clock. The second half is the belt to
+    the sweeper's braces: if the sweeper's release-to-pending lost its CAS but
+    the re-enqueue landed, the row is still 'processing' with the wedged
+    worker's heartbeat still ticking, and a heartbeat-only guard would send
+    this delivery away and re-strand the take.
+    """
+    return _heartbeat_is_fresh(job) and not _over_deadline(job)
 
 
 def _fail_terminal(job: Dict[str, Any], error: str) -> None:
@@ -819,7 +886,7 @@ def run_processing_job(job_id: str) -> None:
         return
     attempts = int(job.get("attempts") or 0)
     max_attempts = int(job.get("max_attempts") or 3)
-    if status == "processing" and _heartbeat_is_fresh(job):
+    if status == "processing" and _worker_still_plausible(job):
         return  # another worker is live on it — let it finish
     if attempts >= max_attempts:
         _fail_terminal_for_job(
@@ -951,25 +1018,45 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
     """Recover jobs the queue lost track of. Safe to run from anywhere,
     any number of times — recovery re-enters run_processing_job, whose
     claim CAS dedups racing runners."""
-    counts = {"requeued": 0, "failed": 0}
+    counts = {"requeued": 0, "failed": 0, "wedged": 0}
     for job in db.list_stale_processing_jobs(
         stale_minutes=stale_minutes(), max_rows=max_rows,
+        max_runtime_minutes=max_runtime_minutes(),
     ):
         jid = str(job.get("id"))
         attempts = int(job.get("attempts") or 0)
         max_attempts = int(job.get("max_attempts") or 3)
+        # A job listed DESPITE a live heartbeat is the wedged case, and it is
+        # worth naming in the log: "stale heartbeat" and "heartbeating but not
+        # advancing" have completely different causes to go looking for.
+        wedged = _over_deadline(job) and _heartbeat_is_fresh(job)
+        if wedged:
+            counts["wedged"] += 1
+            logger.warning(
+                "pipeline_jobs: job %s heartbeating but past its %d-minute "
+                "wall clock (%.1f min on attempt %d) — recovering",
+                jid, max_runtime_minutes(),
+                _started_minutes_ago(job) or 0.0, attempts,
+            )
+        reason = (
+            "worker wedged (past wall clock)" if wedged
+            else "worker lost (stale heartbeat)"
+        )
         if attempts >= max_attempts:
             _fail_terminal_for_job(
                 job,
-                str(job.get("error") or "worker lost; attempt cap reached"),
+                str(job.get("error") or f"{reason}; attempt cap reached"),
             )
             counts["failed"] += 1
             continue
         if str(job.get("status")) == "processing":
-            db.release_processing_job_for_retry(
-                jid, "worker lost (stale heartbeat) — requeued")
+            db.release_processing_job_for_retry(jid, f"{reason} — requeued")
             _sync_phase1_job(
-                job, "pending", error="worker_lost_stale_heartbeat",
+                job, "pending",
+                error=(
+                    "worker_wedged_past_wall_clock" if wedged
+                    else "worker_lost_stale_heartbeat"
+                ),
             )
         if job_queue.enqueue(TASK_PATH, jid):
             counts["requeued"] += 1

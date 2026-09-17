@@ -2645,14 +2645,25 @@ class DatabaseService:
 
     def list_stale_processing_jobs(
         self, stale_minutes: int = 15, max_rows: int = 100,
+        max_runtime_minutes: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Jobs the sweeper should look at: 'processing' rows whose heartbeat
-        is older than the cutoff (worker killed mid-job), plus 'pending' rows
-        untouched for the same window (enqueue lost — e.g. Redis wiped)."""
+        """Jobs the sweeper should look at:
+
+        1. 'processing' rows whose HEARTBEAT is older than the cutoff — the
+           worker was killed mid-job;
+        2. 'pending' rows untouched for the same window — the enqueue was
+           lost (e.g. Redis wiped);
+        3. when `max_runtime_minutes` is given, 'processing' rows that have
+           been running longer than that REGARDLESS of heartbeat.
+
+        (3) is the wedged case and the only one a heartbeat cannot reach:
+        `_Heartbeat` is a timer thread, so a runner blocked forever on a
+        socket keeps the row looking healthy to (1) indefinitely. Without
+        this query such a take is unrecoverable by any code path.
+        """
         from datetime import timedelta
-        cutoff = (
-            datetime.now(timezone.utc) - timedelta(minutes=max(2, stale_minutes))
-        ).isoformat()
+        now = datetime.now(timezone.utc)
+        cutoff = (now - timedelta(minutes=max(2, stale_minutes))).isoformat()
         out: List[Dict[str, Any]] = []
         try:
             res = (
@@ -2678,7 +2689,34 @@ class DatabaseService:
             out.extend(res.data or [])
         except Exception as e:
             logger.warning("list_stale_processing_jobs (pending): %s", e)
-        return out
+        if max_runtime_minutes:
+            deadline = (
+                now - timedelta(minutes=int(max_runtime_minutes))
+            ).isoformat()
+            try:
+                res = (
+                    self.client.table("processing_jobs")
+                    .select("*")
+                    .eq("status", "processing")
+                    .lt("started_at", deadline)
+                    .limit(max_rows)
+                    .execute()
+                )
+                out.extend(res.data or [])
+            except Exception as e:
+                logger.warning("list_stale_processing_jobs (wedged): %s", e)
+        # A long-dead job matches both the heartbeat and the wall-clock query.
+        # De-duplicate here rather than in the sweeper: handling one row twice
+        # would burn two of its three attempts in a single sweep.
+        seen: set = set()
+        unique: List[Dict[str, Any]] = []
+        for row in out:
+            key = str(row.get("id"))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(row)
+        return unique
 
     def list_active_processing_jobs(
         self, max_rows: int = 500,

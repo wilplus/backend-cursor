@@ -162,7 +162,8 @@ class _FakeDb:
         # implements those methods directly on itself.
         return self
 
-    def list_stale_processing_jobs(self, stale_minutes=15, max_rows=100):
+    def list_stale_processing_jobs(self, stale_minutes=15, max_rows=100,
+                                   max_runtime_minutes=None):
         return []
 
 
