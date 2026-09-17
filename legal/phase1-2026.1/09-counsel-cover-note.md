@@ -140,6 +140,28 @@ processing has continued throughout.
   lapse, and what does remediation look like for the 26 — and separately for
   the 41 accounts with no consent record at all?
 
+## One more, found while this pack was being assembled
+
+User recordings have been served over **permanent, unauthenticated URLs**. The
+object storage bucket holding session audio, uploaded Takes, extracted speech
+clips and slide decks is publicly readable, and the application prefers that
+public address over the signed, short-lived one it also implements. Object keys
+embed UUIDs, so nothing is browsable or enumerable — but any single URL, once it
+leaves our systems, grants unrevocable access to that recording indefinitely.
+The condition has held since at least 8 May 2026, the date of the oldest
+recording.
+
+We are remediating it now rather than reporting it as scheduled — signed URLs
+for user content by 19 September 2026, ahead of expected traffic. The full facts,
+including what the near-term fix does **not** close, are DPIA RISK-11.
+
+- **Q-F.** Does the period during which user recordings were retrievable over
+  permanent unauthenticated URLs require assessment or notification under
+  Art 33, given that we have no evidence any URL was accessed by an
+  unauthorised party and no means of obtaining such evidence retrospectively?
+  If assessment is required, what is a reasonable one where access logging was
+  not enabled for the period?
+
 ## Two things we corrected before writing to you
 
 Stated so you are not the one to find them.
