@@ -6,6 +6,18 @@ would ask for. **Keep this in sync with `frontend-cursor/src/app/privacy/page.ts
 
 Last updated: 2026-09-17
 
+## Controller
+
+Artur Willoński, a natural person based in Poland, operating under the name
+WillpowerLab as unregistered business activity (*działalność
+nieewidencjonowana*). Stated at `frontend-cursor/src/app/privacy/page.tsx:68`.
+Contact: contact@willpowerlab.com.
+
+Consequences for this register: DPAs are executed in the controller's own name,
+not a company name; no company registration number exists to supply on vendor
+forms. No Art. 27 EU Representative is required, because the controller is
+established in the EU. No DPO has been appointed — see the open question below.
+
 ## Legend
 
 `SIGNED` executed and countersigned PDF filed · `BY-REF` incorporated by
@@ -87,6 +99,15 @@ Noted 2026-09-17, not a data-protection finding but a continuity one:
 
 The live loop currently depends on services with no contractual obligation
 to keep it running.
+
+## Open questions for legal advice
+
+- Whether Art. 37 requires a DPO. Voice recordings processed for delivery
+  analysis are not biometric data under Art. 9, since they are never used to
+  identify the speaker, but "regular and systematic monitoring on a large scale"
+  is a judgement call worth confirming rather than assuming.
+- Whether the pre-2026-09-17 training-sharing exposure (open item 3) warrants
+  affirmative notice to users or only a corrected policy.
 
 ## Open items
 
