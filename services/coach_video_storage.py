@@ -101,6 +101,71 @@ def coach_media_public_url(storage_key: str) -> Optional[str]:
     return f"{base}/{storage_key.lstrip('/')}"
 
 
+def refreshed_media_url(ref: Optional[str]) -> Optional[str]:
+    """Re-point a STORED media URL that was minted as a presigned GET.
+
+    REPORTED FROM REAL USE 2026-09-16: "slide preview is unavailable again."
+
+    A deck's URL is written once, at upload, and read forever after. The
+    writer picks the durable form when it can::
+
+        return coach_media_public_url(key) or presigned_get_coach_object(
+            bucket, key, expires_in=604800,
+        )
+
+    — but before ``R2_PUBLIC_BASE_URL`` was configured, the fallback was the
+    only branch, and 604800 seconds is SEVEN DAYS. Nothing re-signs it, so
+    every deck uploaded in that window went dark a week later and stayed dark;
+    setting the variable afterwards fixed new uploads and did nothing at all
+    for the rows already written.
+
+    The Ideal Text read is where that bites hardest. It serves "the FIRST
+    non-null presentation_ref across takes in take order" — deliberately, so a
+    deckless retake cannot clobber the deck — which means it serves the OLDEST
+    stored URL, the one most likely to predate the config.
+
+    So: when a stored ref is a presigned R2 GET, take the object key back out
+    of it and re-emit the permanent public URL. Same bytes, same object, same
+    bucket — only the way of addressing them is refreshed. A ref that is
+    already public is returned untouched, and so is anything this cannot read
+    with certainty: a Supabase signed URL (different shape, different signer),
+    a relative or malformed value, or any ref at all when no public base is
+    configured. Never a guess, and never a second lane — the URL it produces
+    is the one ``coach_media_public_url`` would have produced at upload.
+
+    Pure apart from reading config. Repairs on READ, so no backfill runs
+    against rows nobody is looking at.
+    """
+    if not ref or not isinstance(ref, str):
+        return ref
+    raw = ref.strip()
+    if not raw.lower().startswith(("http://", "https://")):
+        return ref
+    try:
+        from urllib.parse import urlsplit
+
+        parts = urlsplit(raw)
+        # The presigned marker. Only SigV4 (what boto3 mints for R2) is
+        # claimed here; Supabase's `?token=` signatures are left alone.
+        query = (parts.query or "").lower()
+        if "x-amz-signature=" not in query:
+            return ref
+        path = (parts.path or "").lstrip("/")
+        if not path:
+            return ref
+        # R2's S3 endpoint is path-style: /<bucket>/<key>. Strip the bucket
+        # only when it really is the leading segment — a key that merely
+        # starts with the same letters must not lose them.
+        bucket = r2_bucket_name()
+        if bucket and path.startswith(bucket + "/"):
+            path = path[len(bucket) + 1:]
+        if not path:
+            return ref
+        return coach_media_public_url(path) or ref
+    except Exception:  # pragma: no cover - a malformed ref stays as it was
+        return ref
+
+
 def _client():
     global _s3_client
     if _s3_client is not None:

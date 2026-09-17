@@ -36,6 +36,7 @@ from services.create_take import session_owned_by_principal
 from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
 from services.token_prices import price_of as _price_of
+from services.coach_video_storage import refreshed_media_url
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -1222,7 +1223,8 @@ def v2_explore_arc_setup(arc_id):
             "strategic_context": ctx.get("strategic_context"),
             "target_length_seconds": ctx.get("target_length_seconds"),
             "slides": ctx.get("slides") or [],
-            "presentation_ref": ctx.get("presentation_ref"),
+            "presentation_ref": refreshed_media_url(
+                ctx.get("presentation_ref")),
         }), 200
     except Exception as e:
         logger.error("arc setup failed arc=%s: %s", arc_id, e,

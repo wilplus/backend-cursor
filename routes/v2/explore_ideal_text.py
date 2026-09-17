@@ -49,6 +49,7 @@ from services.ideal_text_read import (
 )
 from services.rate_limits import llm_limit
 from services.token_prices import price_of as _price_of
+from services.coach_video_storage import refreshed_media_url
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -1170,7 +1171,7 @@ def v2_explore_get_ideal_text(arc_id):
             # The arc's served deck PDF (FE handoff 2026-08-03) — null on
             # a deckless arc; the FE treats anything but a non-empty
             # string as absent.
-            "presentation_ref": _pres_ref or None,
+            "presentation_ref": refreshed_media_url(_pres_ref or None),
             # Slide titles by slide index — what the AUDIENCE saw, which is
             # the one piece of deck context the reader is allowed (it says
             # nothing about which take this is). [] when the arc has no deck;

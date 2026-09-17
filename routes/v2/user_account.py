@@ -19,6 +19,7 @@ from routes.admin import is_coach
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _client_ip_from_request
 from services.db import db
+from services.coach_video_storage import refreshed_media_url
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -634,7 +635,8 @@ def v2_user_last_setup():
             "target_length_seconds": ctx.get("target_length_seconds"),
             "domain_vocabulary": ctx.get("domain_vocabulary") or [],
             "slides": ctx.get("slides") or [],
-            "presentation_ref": ctx.get("presentation_ref"),
+            "presentation_ref": refreshed_media_url(
+                ctx.get("presentation_ref")),
         }), 200
     except Exception as e:
         logger.error("user/last-setup GET failed: %s", e, exc_info=True)
