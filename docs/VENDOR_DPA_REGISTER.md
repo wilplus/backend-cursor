@@ -22,7 +22,7 @@ reply · `TODO` not started
 | Railway | Processor | Compute + Redis queue payloads | REQUESTED | 2026-09-17 | | | |
 | Resend | Processor | Email addresses + rendered session-result content | TODO | | | | |
 | Sentry | Processor | Error telemetry (PII suppressed — see below) | SIGNED — DPA v5.1.0 | 2026-09-17 | EU storage region; SCCs in DPA | **European Union (EU)** | `Sentry_DPA_2026-09-17.pdf` |
-| Vercel | Processor | Frontend hosting + internal email render endpoint | TODO | | | | |
+| Vercel | Processor | Frontend hosting + internal email render endpoint | BY-REF | 2026-09-17 | SCCs deemed signed on acceptance of ToS | US | `Vercel_DPA_2026-09-17.pdf` |
 | Stripe | Independent controller (payments) | Card/payment data | N/A — controller | | Stripe's own terms | | |
 
 ## Processing surface — OpenAI (code-derived, 2026-09-17)
@@ -74,6 +74,19 @@ ISO 27001:2022 certificate. Filed alongside the DPAs.
 |---|---|---|---|
 | Railway | 2026-09-17 | support/legal | DPA, sub-processor list, region availability |
 | OpenAI | 2026-09-17 | privacy@openai.com | DPA execution route, confirmation that OpenAI Ireland Limited is the EU contracting entity, retention period on current plan, sub-processor list; also ask whether EU project residency is available on our plan |
+
+## Standing risk — production stack on free/hobby tiers
+
+Noted 2026-09-17, not a data-protection finding but a continuity one:
+
+| Service | Tier | Exposure |
+|---|---|---|
+| Supabase | Free | No database backups (see open item 4) |
+| Vercel | Hobby | Hobby is for personal, non-commercial use; willpowerlab.com takes payment via Stripe. Suspension would take the frontend down without notice |
+| OpenAI | was on complimentary daily tokens | Ended 2026-09-17 when data sharing was disabled; account now runs on paid credit |
+
+The live loop currently depends on services with no contractual obligation
+to keep it running.
 
 ## Open items
 
