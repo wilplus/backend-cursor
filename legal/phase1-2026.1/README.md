@@ -6,8 +6,8 @@ This pack is the written material needed to register and activate one Phase-1
 processing policy through `register_phase1_policy_v1` / `activate_phase1_policy_v1`
 (`migrations/add_phase1_processing_boundary.sql`, as replaced by
 `migrations/enable_practice_phase1_purpose.sql`). It exists so that when the
-blocker lifts, the only things missing are a counsel signature, four founder
-decisions, and the hashes.
+blocker lifts, the only things missing are a counsel signature, a handful of
+dates, and the hashes.
 
 Read `docs/PHASE1-PROCESSING-RUNBOOK.md` first. This pack supplies the content
 that runbook refuses to let anyone invent in code.
@@ -24,6 +24,9 @@ that runbook refuses to let anyone invent in code.
 | `copy/ai-notice-1.0-DRAFT.txt` | AI notice, full text | `… .ai_notice_copy` |
 | `copy/agreement-1.0-DRAFT.txt` | The "I agree and continue" screen, exact words | `… .agreement_copy` |
 | `04-policy-registration-DRAFT.md` | Versions, countries, per-purpose lawful bases, registry control versions, the RPC payload shape | the `register_phase1_policy_v1` call |
+| `05-us-counsel-brief-DRAFT.md` | Instructions to US counsel: BIPA, CCPA, all-party consent, US terms | — (US counsel's own determination) |
+| `06-retention-schedule-v1.0-DRAFT.md` | The retention and destruction schedule | `… = 'retention_schedule'`, and the rows in `data_retention_rules` |
+| `07-vendor-actions-DRAFT.md` | Who to contact for each DPA, with the text to send | — (executed agreements, filed) |
 
 The four `copy/*.txt` files are deliberately plain text with no front matter,
 headers, or commentary: their **exact bytes** are what gets hashed and what a
@@ -32,23 +35,31 @@ to be read by a user on the acceptance screen.
 
 ## What only the founder can supply
 
-Nothing in this pack invents any of these. Each is marked `[[FOUNDER: …]]` at
-the point of use.
+**Settled 2026-09-17:** countries `["pl", "us"]` with Illinois in scope ·
+retention periods (document 06) · freemium, capped on projects not takes · a
+lapsed paid account loses nothing · Paddle as merchant of record · EU prices
+VAT-inclusive, US tax at checkout · *sp. z o.o.* to be formed before the US
+launch.
 
-1. **Approving authority** for each of the three legal documents — a named
+**Still outstanding.** Each is marked `[[FOUNDER: …]]` at the point of use.
+
+1. **Approving authority and approval date** for each signed document — a named
    person or firm. The `mlc2-bundled-consent-v1.json` precedent recorded the
    founder as the authority "recording the approved counsel determination".
    Document 02 should not be signed that way; see its §9.
-2. **Approval date** for each document.
-3. **Retention periods** for every data category except the two that are already
-   implemented in code (practice attempts, 30 days, `services/practice_retention.py`;
-   orphan objects, 24 hours, `queue_phase1_orphan_audio_v1`). The Privacy Policy
-   leaves these blank on purpose.
-4. **Allowed countries**. `04` recommends `["pl"]` and explains the cost of more.
+2. **What the paid plans add** over the free plan's one project.
+3. **The email provider's name**, and the transfer mechanism for each vendor
+   (document 07 collects these).
+4. **Confirmation of the 5-year accounting retention** with your accountant.
 5. **Sign-off on all four copy documents** (LIVE LOOP fence: user-facing copy is
    founder-signed before it ships).
+6. **The controller identity**, if the *sp. z o.o.* exists before registration —
+   which is the point of doing it in that order. See Sequencing.
 
 ## What only counsel can supply
+
+EU counsel: the determination in document 02, and review of 01 and 03.
+US counsel: the BIPA determination and the US terms, per document 05.
 
 The determination in document 02. The pack drafts the analysis and lays out the
 facts and the arguments on both sides; it does not reach the conclusion for you.
