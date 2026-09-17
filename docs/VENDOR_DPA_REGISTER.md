@@ -16,7 +16,7 @@ reply · `TODO` not started
 
 | Vendor | Role | What it holds | DPA | Date | Transfer basis | Region | Evidence file |
 |---|---|---|---|---|---|---|---|
-| OpenAI | Processor | API inputs/outputs: audio, transcripts, feedback text | TODO | | SCCs (or EU entity if EEA contracting) | US | |
+| OpenAI | Processor | API inputs/outputs: audio, transcripts, feedback text | REQUESTED | 2026-09-17 | SCCs; EU contracting entity to be confirmed | US | |
 | Cloudflare (R2) | Processor | The voice/video objects themselves | TODO | | SCCs | default jurisdiction — **not EU-pinned** | |
 | Supabase | Processor | Accounts, transcripts, feedback, auth | TODO | | | **UNVERIFIED — claimed EU** | |
 | Railway | Processor | Compute + Redis queue payloads | REQUESTED | 2026-09-17 | | | |
@@ -55,6 +55,13 @@ org level 2026-09-17.
 | Sentry — `send_default_pii` | `False` | verified 2026-09-17 | `app.py:42`, `worker.py:119` |
 | Sentry — `max_request_body_size` | `"never"` | verified 2026-09-17 | `app.py:43`, `worker.py:120` |
 | OpenAI — `store` on API calls | never `True`; explicit `False` | verified 2026-09-17 | `services/life_engine.py:243` |
+
+## Requests in flight
+
+| Vendor | Sent | To | Asked for |
+|---|---|---|---|
+| Railway | 2026-09-17 | support/legal | DPA, sub-processor list, region availability |
+| OpenAI | 2026-09-17 | privacy@openai.com | DPA execution route, confirmation that OpenAI Ireland Limited is the EU contracting entity, retention period on current plan, sub-processor list |
 
 ## Open items
 
