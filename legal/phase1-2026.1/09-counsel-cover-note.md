@@ -114,10 +114,31 @@ Art 6(1)(b) contract.
 verified and is not in this pack.** We are telling you rather than estimating,
 because it changes what you are being asked:
 
-**We do not yet know how many users accepted under v1.2.** A query is
-outstanding. What we do know is that the product is not pre-launch: 25 users
-have audio going back to May. Please assume the acceptance count is non-zero
-unless we tell you otherwise, and tell us what remediation that requires.
+**Answered since the last draft: nobody accepted v1.2. Nobody accepted v1.1
+either.** Production holds one terms version, `1.0`, across 26 acceptances
+between 8 May and 16 July 2026. v1.1 was published on 13 August and v1.2 on
+28 August; neither was ever accepted, because the re-prompt that would have
+asked returning users has no client surface — the server computes the signal
+and nothing reads it.
+
+**And the accepted text is not the v1.0 document either.** Every one of the 26
+acceptances predates the commit that published v1.0 by at least eight days.
+The text in force for the whole acceptance window is the one first published on
+7 May 2026, which is roughly one kilobyte per document and whose own source
+carries the note `TODO(content): swap the placeholder copy below for the
+legally-reviewed Terms of Use text once it's finalised`. All versions are
+recovered verbatim in `01-determinations/accepted-versions/`, with hashes and
+commit provenance.
+
+So the position is: 67 accounts, 26 of which accepted a document marked as
+placeholder copy, none of which accepted anything published since, and
+processing has continued throughout.
+
+- **Q-E.** What is our position where users accepted the 7 May text, were then
+  served v1.0, v1.1 and v1.2 without being asked again, and continued to be
+  processed throughout? Does the original acceptance carry forward, does it
+  lapse, and what does remediation look like for the 26 — and separately for
+  the 41 accounts with no consent record at all?
 
 ## Two things we corrected before writing to you
 

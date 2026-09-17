@@ -37,7 +37,8 @@ A privacy policy does not discharge Art 30. This document does.
 - **Transfers:** Supabase EU region. Railway / Vercel / Sentry / Resend — SCCs where processed outside the EEA
 - **Retention:** until account deletion (A1 account data). Approved schedule, `06-retention-schedule-v1.0`.
 - **Security:** Art 32 measures at §5
-- **Systems:** `user_settings`, `user_consents`, `user_consent_events`, `coach_users`, `user_audits`
+- **Systems:** `auth.users` (**the user record** — 67 rows, 2026-09-17), `user_consents`, `user_consent_events`, `coach_users`, `user_audits`, `user_settings`
+- **Correction, 2026-09-17:** this line previously led with `user_settings` as an account system. It is not the user record and must not be read as a user count: it holds **7 rows against 67 accounts**, because a row is written when a user changes a preference, not when an account is created. `auth.users` is the account register. The distinction was found while reconciling a 7-vs-25 discrepancy in the DPIA and is recorded because the wrong table was briefly being used to size the user base.
 
 ### A2 — Voice recording and storage
 - **Purposes:** capture the user's spoken take for transcription, playback, analysis and coaching
