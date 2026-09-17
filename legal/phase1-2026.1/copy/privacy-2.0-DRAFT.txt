@@ -13,13 +13,22 @@ train models.
 
 1. WHO IS RESPONSIBLE FOR YOUR DATA
 
-[[FOUNDER: registered entity name]]
-[[FOUNDER: registered address, company number]]
-Contact for privacy questions: [[FOUNDER: email]]
-[[FOUNDER: data protection officer contact, or delete this line if none is
-appointed]]
+WillpowerLab is operated by an individual based in Poland. The controller of
+the personal data described here is:
 
-We are the controller of the personal data described here.
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)
+
+[[FOUNDER: MUST BE UPDATED ON BUSINESS REGISTRATION — see the note in the
+product legal approval. Taking payment will almost certainly take you past the
+unregistered-activity threshold, and this block must then name the registered
+business, its address and its number.]]
+
+Given the scale of processing we have not appointed a Data Protection Officer,
+which GDPR Article 37 does not require of us. Privacy requests are handled
+directly at the address above.
 
 
 2. WHAT WE COLLECT
@@ -168,7 +177,7 @@ Record of your agreement to this policy: kept for as long as we may need to
   show that your recordings were processed lawfully, and then deleted.
 
 Our full retention and destruction schedule is published at
-[[FOUNDER: URL]].
+willpowerlab.com/legal/retention.
 
 [[OPEN: OpenAI's own retention window for transcription, and whether our calls
 qualify for zero data retention. Until we have that answer this section
@@ -187,7 +196,7 @@ You have the right to:
 - withdraw any consent you have given, at any time, without affecting what we
   did lawfully before you withdrew it.
 
-To exercise any of these, contact [[FOUNDER: email]]. We respond within one
+To exercise any of these, contact contact@willpowerlab.com. We respond within one
 month. If we need longer because a request is complex, we will tell you within
 that month and explain why.
 
@@ -254,6 +263,7 @@ shows exactly which version you agreed to and when.
 
 13. CONTACT
 
-[[FOUNDER: registered entity name]]
-[[FOUNDER: registered address]]
-[[FOUNDER: contact email]]
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)

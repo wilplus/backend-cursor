@@ -1,8 +1,9 @@
 WillpowerLab — Terms of Service
 Version 2.0. Effective [[FOUNDER: date]].
 
-These terms are an agreement between you and [[FOUNDER: registered entity name,
-address, company number]] ("WillpowerLab", "we", "us"). They govern your use of
+These terms are an agreement between you and Artur Willoński, operating under
+the name "WillpowerLab" from Poland ("WillpowerLab", "we", "us"). [[FOUNDER:
+MUST BE UPDATED ON BUSINESS REGISTRATION.]] They govern your use of
 willpowerlab.com and the WillpowerLab application.
 
 Version 2.0 replaces version 1.2. It is not an edit of it. Version 1.2 required
@@ -59,7 +60,7 @@ someone else, you are the one who must have their permission, and you are
 responsible for having it.
 
 If you believe your voice has been recorded and uploaded to WillpowerLab by
-somebody else, contact us at [[FOUNDER: contact email]]. We will act on that
+somebody else, contact us at contact@willpowerlab.com. We will act on that
 report, which includes blocking further processing of the recording and
 deleting the audio.
 
@@ -220,6 +221,7 @@ You may also use the European Commission's online dispute resolution platform.
 
 17. CONTACT
 
-[[FOUNDER: registered entity name]]
-[[FOUNDER: registered address]]
-[[FOUNDER: contact email]]
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)

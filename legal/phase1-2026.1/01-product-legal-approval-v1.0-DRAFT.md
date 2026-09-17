@@ -37,9 +37,33 @@ them.
 
 ## 2. Controller and processors
 
-**Controller:** [[FOUNDER: registered entity name, address, registration number]].
-Data protection contact: [[FOUNDER: email]].
-No DPO appointed / DPO is [[FOUNDER: delete whichever is wrong]].
+**Controller:** Artur Willoński, a natural person resident in Poland, operating
+under the name "WillpowerLab". Contact: `contact@willpowerlab.com`. No DPO
+appointed; Article 37 does not require one at this scale, and this should be
+revisited if processing volume grows materially.
+
+**⚠️ There is no company.** The live Privacy Policy (v1.2) states that
+WillpowerLab operates as *działalność nieewidencjonowana* — unregistered
+business activity below the Polish revenue threshold. Two consequences that
+counsel must address rather than note:
+
+1. **Charging money almost certainly ends it.** The unregistered-activity
+   threshold is a monthly revenue cap tied to the minimum wage, and exceeding it
+   obliges registration within days. The founder has decided on a freemium
+   model, so the first paid subscriptions make this live. Registration is a
+   prerequisite to taking payment, not a follow-up to it.
+2. **The controller is personally liable.** A natural person carries the
+   regulatory and civil exposure himself, with no corporate veil — including the
+   US exposure, where the founder has decided to serve Illinois and BIPA
+   provides a private right of action with statutory damages per person.
+   Counsel should advise on whether a *spółka z o.o.* should be interposed
+   **before** the US launch rather than after it.
+
+Every user-facing document in this pack names the natural person, because that
+is who the controller is today. Each carries a marker requiring update on
+registration. Registration changes the controller identity, which changes the
+Privacy Policy, which changes its hash, which forces every user to re-accept —
+so it is cheaper to register before the first policy is registered than after.
 
 **Processors and sub-processors, as implemented:**
 
