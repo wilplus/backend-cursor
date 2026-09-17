@@ -126,12 +126,16 @@ material. The recording and feedback loop never waits for a coach.
 
 11. FREE AND PAID PLANS
 
-There is a free plan and one or more paid plans. [[FOUNDER: what each plan
-includes, and the limits on the free one.]]
+The free plan gives you one project with unlimited attempts inside it. You can
+record, get your Ideal Text and your feedback, and record again — the whole
+loop, not a preview of it. Paid plans add [[FOUNDER: what they add]].
 
-Prices are shown before you subscribe and include [[FOUNDER: or exclude]] VAT.
-Payment is handled by [[FOUNDER: payment provider]]. We never see or store your
-card number.
+Paid plans are sold by [[FOUNDER: merchant of record]], who is the seller of
+record for your purchase. Their terms cover the payment; these terms cover the
+service. We never see or store your card number.
+
+In the EU, the price you see is the price you pay, VAT included. In the US, any
+sales tax is added at checkout.
 
 A paid plan renews automatically for the same period until you cancel. We charge
 on the renewal date. You can cancel at any time, and you keep access until the
@@ -151,12 +155,11 @@ hold your subscription.
 If a payment fails we will try again and let you know. If it keeps failing your
 account moves to the free plan.
 
-[[FOUNDER: DECIDE — what happens to recordings that exceed the free plan's
-limits when a paid account moves back to free? Options: keep everything and
-block new recordings; keep everything read-only; or delete the excess after a
-notice period. This is a retention decision as much as a product one, and it
-must match the published retention schedule. Do not leave it to whatever the
-code happens to do.]]
+If your account moves to the free plan, nothing you have made is deleted. You
+keep everything you have already recorded and written, and you can still read
+and edit it. You will not be able to start new projects beyond the free plan's
+limit until you subscribe again. Your material is then kept and deleted on the
+ordinary schedule in our Privacy Policy, the same as everyone else's.
 
 
 12. AVAILABILITY

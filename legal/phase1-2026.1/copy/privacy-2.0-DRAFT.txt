@@ -29,8 +29,8 @@ Things you give us
 - Your slides and presentation materials.
 - Audio recordings of you presenting.
 - Edits you make to your Ideal Text, and your responses to feedback.
-- If you take a paid plan, your billing details. These go to our payment
-  provider; we do not see or store your card number.
+- If you take a paid plan, your billing details go to our seller of record
+  (section 5). We do not see or store your card number.
 
 Things produced from your recordings
 - Transcripts of what you said.
@@ -77,11 +77,11 @@ To meet our legal obligations: for example accounting records, and responding
 to lawful requests.
 Legal basis: legal obligation (Article 6(1)(c) GDPR).
 
-To take payment, if you are on a paid plan: to process your subscription and
-keep the records we are required to keep.
-Legal basis: performance of our contract with you (Article 6(1)(b) GDPR) for
-the payment itself, and legal obligation (Article 6(1)(c) GDPR) for the
-accounting records.
+To manage your subscription, if you are on a paid plan: to know which plan you
+are on and to keep the records we are required to keep. The payment itself is
+taken by our seller of record (section 5).
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR), and
+legal obligation (Article 6(1)(c) GDPR) for the accounting records.
 
 Free and paid accounts are treated identically here. We do not process a free
 user's recordings any differently from a paying user's, and we do not use
@@ -122,9 +122,14 @@ Infrastructure providers
 - Cloudflare (R2): storage of your audio recordings.
 - Supabase: our database, and audio storage on a fallback path.
 - Railway: hosting of the application.
-- [[FOUNDER: payment provider]]: payment processing for paid plans. They
-  receive your billing details; we do not.
 - [[FOUNDER: email provider]]: transactional email.
+
+Payment
+Paid plans are sold by [[FOUNDER: merchant of record]] as the seller of record.
+They take your payment and handle tax. Because they are the seller rather than
+our supplier, they decide how they use what you give them for that purchase —
+their privacy policy applies to it, not ours. We are told which plan you are on
+and that you paid. We never receive your card number.
 
 Human coaches
 Only if you ask for coach review and agree to it separately. A coach who reviews

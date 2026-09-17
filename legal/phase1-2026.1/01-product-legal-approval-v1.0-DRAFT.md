@@ -50,6 +50,7 @@ No DPO appointed / DPO is [[FOUNDER: delete whichever is wrong]].
 | Supabase | The database; audio storage in the dev fallback path | `storage_provider = 'supabase'` |
 | Railway | Application hosting (web, worker, cron) | `bin/railway-web.sh` |
 | [[FOUNDER: email provider]] | Transactional email | `services/email_service.py` |
+| [[FOUNDER: merchant of record]] | Billing data for paid plans | not a processor — see below |
 
 `services/authorized_provider.py` is a typed adapter and the protected recording
 modules are test-enforced not to import a provider SDK directly
@@ -58,7 +59,15 @@ Every provider call takes a short-lived database permit naming the operation and
 a minimum data manifest (`processing_provider_permits`), and records a terminal
 outcome event without storing raw user content in the metadata.
 
-**Counsel must confirm separately:** a signed DPA with each party above, the
+**The merchant of record is not a processor.** Paddle, Lemon Squeezy and their
+equivalents contract with the user as seller of record, so for the purchase they
+are an independent controller, not our supplier. That means an Article 28 DPA is
+the wrong instrument: what is needed is a controller-to-controller arrangement,
+and the Privacy Policy must point users at the seller's own policy for their
+payment data. Counsel should confirm the characterisation and say what document
+it needs, if any. Do not tick this off the DPA list by signing the wrong paper.
+
+**Counsel must confirm separately:** a signed DPA with each *processor* above, the
 transfer mechanism for OpenAI (US — SCCs and/or Data Privacy Framework
 certification), and a transfer impact assessment. This document does not assert
 that any of those are in place.
