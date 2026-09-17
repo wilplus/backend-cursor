@@ -1,0 +1,158 @@
+# Vendor / sub-processor register (Art. 28 + Art. 30 support)
+
+Status of processor paperwork and the facts a supervisory authority or customer
+would ask for. **Keep this in sync with `frontend-cursor/src/app/privacy/page.tsx`
+(sub-processor table) — a vendor in one and not the other is a defect.**
+
+Last updated: 2026-09-17
+
+## Controller
+
+Artur Willoński, a natural person based in Poland, operating under the name
+WillpowerLab as unregistered business activity (*działalność
+nieewidencjonowana*). Stated at `frontend-cursor/src/app/privacy/page.tsx:68`.
+Contact: contact@willpowerlab.com.
+
+Consequences for this register: DPAs are executed in the controller's own name,
+not a company name; no company registration number exists to supply on vendor
+forms. No Art. 27 EU Representative is required, because the controller is
+established in the EU. No DPO has been appointed — see the open question below.
+
+## Legend
+
+`SIGNED` executed and countersigned PDF filed · `BY-REF` incorporated by
+reference into accepted terms, no signature needed · `REQUESTED` asked, awaiting
+reply · `TODO` not started
+
+**Documents live in [`compliance/dpa/`](compliance/dpa/)** — filename convention
+and capture rules in that folder's README. Every file there has a row here;
+a row whose Evidence file is empty means the document has not been captured
+yet, and one marked ⚠️ means the row was written before the file arrived.
+
+## Register
+
+| Vendor | Role | What it holds | DPA | Date | Transfer basis | Region | Evidence file |
+|---|---|---|---|---|---|---|---|
+| OpenAI | Processor | API inputs/outputs: audio, transcripts, feedback text | BY-REF — effective 2026-01-01 | 2026-09-17 | SCCs; DPA instructs **OpenAI Ireland Limited** to process EEA/Swiss data | US | `compliance/dpa/OpenAI_DPA_2026-09-17.pdf` |
+| Cloudflare (R2) | Processor | The voice/video objects themselves | BY-REF | 2026-09-17 | SCCs | **EEUR** (Eastern Europe) location hint on all buckets; default jurisdiction, not EU-pinned | `compliance/dpa/Cloudflare_DPA_2026-09-17.pdf` |
+| Supabase | Processor | Accounts, transcripts, feedback, auth | BY-REF | 2026-09-17 | SCCs + UK addendum (in DPA); data at rest in EU | **eu-west-1** — West EU (Ireland), confirmed 2026-09-17 | `compliance/dpa/Supabase_DPA_2026-09-17.pdf` (vendor Version 1, 2026-08-01) |
+| Railway | Processor | Compute + Redis queue payloads | REQUESTED — **needs DocuSign**, see below | 2026-09-17 | SCCs in DPA | | `compliance/dpa/Railway_DPA_2026-09-17.pdf` |
+| Resend | Processor | Email addresses + rendered session-result content | BY-REF | 2026-09-17 | SCCs deemed entered into and incorporated by reference | | `compliance/dpa/Resend_DPA_2026-09-17.pdf` (vendor last update 2026-08-27) |
+| Sentry | Processor | Error telemetry (PII suppressed — see below) | SIGNED — DPA v5.1.0 | 2026-09-17 | EU storage region; SCCs in DPA | **European Union (EU)** | ⚠️ `Sentry_DPA_2026-09-17.pdf` — **not yet committed**, file not supplied |
+| Vercel | Processor | Frontend hosting + internal email render endpoint | BY-REF | 2026-09-17 | SCCs deemed signed on acceptance of ToS | US | `compliance/dpa/Vercel_DPA_2026-09-17.pdf` |
+| Stripe | Independent controller (payments) | Card/payment data | N/A — controller | | Stripe's own terms | | |
+
+## Processing surface — OpenAI (code-derived, 2026-09-17)
+
+The only OpenAI endpoints called from `services/`:
+
+| Call | Purpose | Count |
+|---|---|---|
+| `chat.completions.create` | Ideal Text, Manager feedback, copilot | 6 |
+| `audio.transcriptions.create` | Whisper transcription (F1 core) | 3 |
+| `images.generate` | Journal images (`gpt-image-1`) | 1 |
+| `files.retrieve` / `files.delete` | Fine-tuning file management | 2 |
+
+No Responses API usage; no hosted tools (web search, file search, code
+interpreter, MCP) are invoked. All five hosted-tool permissions disabled at the
+org level 2026-09-17.
+
+## Account configuration evidence
+
+| Control | State | Date | Where |
+|---|---|---|---|
+| OpenAI — share inputs/outputs for training | Disabled | 2026-09-17 | Data controls → Sharing |
+| OpenAI — share evaluation/fine-tuning data | Disabled | 2026-09-17 | Data controls → Sharing |
+| OpenAI — share model feedback | Disabled | 2026-09-17 | Data controls → Sharing |
+| OpenAI — hosted tools (5) | Disabled | 2026-09-17 | Data controls → Hosted tools |
+| OpenAI — container network mode | Disabled | 2026-09-17 | Data controls → Hosted tools |
+| OpenAI — API call logging | Disabled | 2026-09-17 | Data controls → Data retention |
+| OpenAI — audit logging | Enabled | 2026-09-17 | Data controls → Data retention |
+| OpenAI — input/output retention | 30 days, fixed on current plan | 2026-09-17 | Not configurable |
+| OpenAI — project residency | `Global` (not region-pinned) | 2026-09-17 | Project settings → General |
+| Sentry — `send_default_pii` | `False` | verified 2026-09-17 | `app.py:42`, `worker.py:119` |
+| Sentry — `max_request_body_size` | `"never"` | verified 2026-09-17 | `app.py:43`, `worker.py:120` |
+| Sentry — use of aggregated identifying data | Off | 2026-09-17 | Legal & Compliance → Service data usage |
+| Sentry — data storage region | European Union | 2026-09-17 | Legal & Compliance → General |
+| OpenAI — `store` on API calls | never `True`; explicit `False` | verified 2026-09-17 | `services/life_engine.py:243` |
+
+All OpenAI account-side controls are now set. What remains for OpenAI is the
+DPA itself (requested 2026-09-17) and, optionally, EU project residency.
+
+## Vendor assurance evidence held
+
+Sentry (downloaded 2026-09-17): SOC 2 report, penetration test summary
+(Sep 2026), Security Overview, Data Privacy Framework certificate,
+ISO 27001:2022 certificate. Filed alongside the DPAs.
+
+## Requests in flight
+
+| Vendor | Sent | To | Asked for | Still blocking? |
+|---|---|---|---|---|
+| Railway | 2026-09-17 | support/legal | DPA, sub-processor list, region availability | **YES — action is ours.** The DPA is captured and read: it is NOT in force by reference. "Customer must complete the information requested and submit the DocuSign form available here. This DPA will become legally binding upon Company's execution in the signature block below." Submitting that form is the whole remaining step. The same document also says it "supplements the Terms of Service", which reads like incorporation and is not — that phrase describes its relationship to the TOS, not its execution |
+| OpenAI | 2026-09-17 | privacy@openai.com | DPA execution route, confirmation that OpenAI Ireland Limited is the EU contracting entity, retention period on current plan, sub-processor list; also ask whether EU project residency is available on our plan | **Partly resolved from the DPA text itself.** No execution route is needed — the DPA "supplements, and is incorporated into the OpenAI Services Agreement", effective 2026-01-01, with no signature block. It also instructs **OpenAI Ireland Limited** to process EEA/Swiss data, which is evidence toward the EU-entity question but not a statement of which entity contracts with us — counsel should read §1 rather than take this row for it. Still open: retention period in writing, sub-processor list, EU project residency |
+
+**Not blocking any more:** Resend. Its DPA states the signature blocks "are
+provided for reference purposes only" and that it "becomes legally binding upon
+Customer's acceptance of the [Agreement]" — in force by reference, nothing to
+send.
+
+## Standing risk — production stack on free/hobby tiers
+
+Noted 2026-09-17, not a data-protection finding but a continuity one:
+
+| Service | Tier | Exposure |
+|---|---|---|
+| Supabase | Free | No database backups (see open item 4) |
+| Vercel | Hobby | Hobby is for personal, non-commercial use; willpowerlab.com takes payment via Stripe. Suspension would take the frontend down without notice |
+| OpenAI | was on complimentary daily tokens | Ended 2026-09-17 when data sharing was disabled; account now runs on paid credit |
+
+The live loop currently depends on services with no contractual obligation
+to keep it running.
+
+## Open questions for legal advice
+
+- Whether Art. 37 requires a DPO. Voice recordings processed for delivery
+  analysis are not biometric data under Art. 9, since they are never used to
+  identify the speaker, but "regular and systematic monitoring on a large scale"
+  is a judgement call worth confirming rather than assuming.
+- Whether the pre-2026-09-17 training-sharing exposure (open item 3) warrants
+  affirmative notice to users or only a corrected policy.
+
+## Open items
+
+1. ~~Supabase region unverified.~~ **RESOLVED 2026-09-17** — project is in an EU
+   region, so the "EU region hosting" claim in the sub-processor table and § 12
+   Security is accurate and needs no correction. Region is `eu-west-1`
+   (West EU, Ireland). DPA at supabase.com/legal/dpa takes effect on acceptance
+   of the terms and incorporates the SCCs and the UK addendum; a Transfer Impact
+   Assessment is published alongside it. Save both as dated PDFs.
+2. **R2 buckets are in Europe but not EU-jurisdiction.** All buckets report the
+   `EEUR` (Eastern Europe) location hint (verified 2026-09-17), so recordings are
+   physically stored in Europe. However `services/r2_client.py` builds the default
+   endpoint `https://{account}.r2.cloudflarestorage.com` rather than the
+   `.eu.r2.cloudflarestorage.com` jurisdiction endpoint, so this is a placement
+   hint and not a contractual restriction. Jurisdiction is fixed at bucket creation
+   and cannot be changed in place. Transfers are covered by the SCCs in
+   Cloudflare's DPA. Priority: low — revisit only if an EU-residency guarantee is
+   required. Open question for Cloudflare: which countries the EEUR region covers,
+   since Eastern Europe includes non-EEA states.
+3. **Historic training exposure.** Optional data sharing with OpenAI was enabled
+   (complimentary-tokens enrolment) until 2026-09-17 while the privacy policy
+   stated inputs/outputs were not used for training. Disabling is forward-only.
+   Start date unestablished — audit logging was not on.
+4. **No database backups (Art. 32 resilience gap).** The Supabase project is on
+   the Free plan and the dashboard reports "Last backup: No backups"
+   (observed 2026-09-17). Art. 32(1)(c) requires the ability to restore
+   availability and access to personal data in a timely manner after an
+   incident. The production database holds accounts, transcripts and feedback.
+   A paid plan enables automated backups. Founder decision 2026-09-17: remain on
+   the Free plan for now, so the gap must be closed another way — a scheduled
+   `pg_dump` to encrypted off-site storage would satisfy the restore requirement
+   without a plan change. Not yet implemented.
+
+5. **Retention rules may be unenforced.** `services/data_purge.py:231` resolves
+   rules from the `data_retention_rules` table and no-ops with
+   `RETENTION_RULE_UNRESOLVED` when a category has none;
+   `scripts/run_phase1_data_purge.py:48` gates execution on
+   `PHASE1_PURGE_EXECUTION_ENABLED`. Verify both in prod.
