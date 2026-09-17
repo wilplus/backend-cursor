@@ -1414,3 +1414,129 @@ class ProposalNeverPaintsTests(unittest.TestCase):
         self.assertEqual(bake_piece(text, approved),
                          "We started small. Then we "
                          "{{orange:shipped it fast}}.")
+
+
+class SameSlideRoutingTests(unittest.TestCase):
+    """Feedback survives the Ideal Text being a REWRITE of what was said.
+
+    PRODUCTION, 2026-09-17, founder's own arc. The worker generated and
+    stored four suggestions for a take (`moment_suggestion: seen=5
+    stored=4`). Not one reached the screen, because the read path logged:
+
+        relocate_pieces: NO anchor survived — dropping 5 pieces rather
+        than width-guessing them across 1045 chars. No paragraph fallback
+        available: fallback=True paragraphs=8 pieces=5
+
+    The spoken sentences are not in the Ideal Text verbatim — it is a
+    rewrite of them — so text anchoring finds nothing, and the paragraph
+    fallback needs the counts to match, which a rewrite breaks. The join
+    that makes the mapping provable existed and was not being read: which
+    SLIDE each paragraph is about.
+    """
+
+    # Eight paragraphs of Ideal Text across three slides, none of them the
+    # words anyone actually spoke — the shape that broke.
+    DOC = "\n\n".join(f"Rewritten paragraph number {i}." for i in range(8))
+    PARAGRAPH_PROVENANCE = [
+        {"slide_index": 0}, {"slide_index": 0}, {"slide_index": 0},
+        {"slide_index": 1}, {"slide_index": 1},
+        {"slide_index": 2}, {"slide_index": 2}, {"slide_index": 2},
+    ]
+
+    def _regions(self):
+        from services.transcript_document import slide_regions
+        return slide_regions(self.DOC, self.PARAGRAPH_PROVENANCE)
+
+    def test_slide_regions_are_the_hull_of_that_slides_paragraphs(self):
+        regions = self._regions()
+        self.assertEqual(sorted(regions), [0, 1, 2])
+        spans = paragraph_spans(self.DOC)
+        self.assertEqual(regions[0], (spans[0][0], spans[2][1]))
+        self.assertEqual(regions[1], (spans[3][0], spans[4][1]))
+        self.assertEqual(regions[2], (spans[5][0], spans[7][1]))
+
+    def test_a_count_mismatch_proves_nothing_and_routes_nothing(self):
+        from services.transcript_document import slide_regions
+        # Seven rows of provenance for eight paragraphs: the two disagree
+        # about what the paragraphs ARE, so position is a guess again.
+        self.assertEqual(
+            slide_regions(self.DOC, self.PARAGRAPH_PROVENANCE[:7]), {})
+
+    def test_an_unproven_slide_is_never_slide_zero(self):
+        from services.transcript_document import slide_regions
+        rows = [dict(r) for r in self.PARAGRAPH_PROVENANCE]
+        rows[0]["slide_index"] = None
+        rows[1]["slide_index"] = None
+        rows[2]["slide_index"] = None
+        regions = slide_regions(self.DOC, rows)
+        self.assertNotIn(0, regions)
+        self.assertEqual(sorted(regions), [1, 2])
+
+    def test_THE_DEFECT_five_rewritten_pieces_reach_their_slides(self):
+        from services.transcript_document import relocate_pieces
+        pieces = [
+            {"snippet_id": f"s{i}", "text": f"What I actually said, part {i}.",
+             "slide_index": slide}
+            for i, slide in enumerate([0, 0, 1, 2, 2])
+        ]
+        # Before: the refusal, and every card lost.
+        self.assertEqual(
+            relocate_pieces(self.DOC, pieces, paragraph_fallback=True), [])
+        # After: each piece stands on the region its own slide occupies.
+        out = relocate_pieces(self.DOC, pieces, paragraph_fallback=True,
+                              slide_regions=self._regions())
+        self.assertEqual(len(out), 5)
+        regions = self._regions()
+        for piece, expected_slide in zip(out, [0, 0, 1, 2, 2]):
+            self.assertEqual(
+                (piece["start"], piece["end"]), regions[expected_slide])
+            # The text is re-read from the document, so verify_spans holds
+            # and tracked_changes' own words-still-there check passes.
+            self.assertEqual(piece["text"],
+                             self.DOC[piece["start"]:piece["end"]])
+            # ...and the grain says out loud that this is not word-exact, so
+            # composition and accentuation still abstain.
+            self.assertEqual(piece["anchor_grain"], "paragraph")
+
+    def test_a_piece_whose_slide_is_not_in_this_document_is_DROPPED(self):
+        from services.transcript_document import relocate_pieces
+        pieces = [
+            {"snippet_id": "a", "text": "Said on a slide that is here.",
+             "slide_index": 1},
+            {"snippet_id": "b", "text": "Said on slide nine.",
+             "slide_index": 9},
+            {"snippet_id": "c", "text": "Said on no slide at all.",
+             "slide_index": None},
+        ]
+        out = relocate_pieces(self.DOC, pieces, paragraph_fallback=True,
+                              slide_regions=self._regions())
+        self.assertEqual([p["snippet_id"] for p in out], ["a"])
+
+    def test_words_that_DO_survive_still_anchor_to_the_word(self):
+        from services.transcript_document import relocate_pieces
+        # Routing is a fallback, never a downgrade: a piece still present
+        # verbatim keeps its exact span and its word grain.
+        spans = paragraph_spans(self.DOC)
+        pieces = [
+            {"snippet_id": "kept", "text": "Rewritten paragraph number 3.",
+             "slide_index": 1},
+            {"snippet_id": "gone", "text": "Nothing like this is in there.",
+             "slide_index": 2},
+        ]
+        out = relocate_pieces(self.DOC, pieces, paragraph_fallback=True,
+                              slide_regions=self._regions())
+        self.assertEqual((out[0]["start"], out[0]["end"]), spans[3])
+        self.assertEqual(out[0]["anchor_grain"], "word")
+        self.assertEqual(out[1]["anchor_grain"], "paragraph")
+
+    def test_no_slide_table_leaves_the_old_refusal_exactly_as_it_was(self):
+        from services.transcript_document import relocate_pieces
+        pieces = [
+            {"snippet_id": "a", "text": "Not in the document.",
+             "slide_index": 0},
+            {"snippet_id": "b", "text": "Also not in the document.",
+             "slide_index": 1},
+        ]
+        self.assertEqual(
+            relocate_pieces(self.DOC, pieces, paragraph_fallback=True,
+                            slide_regions={}), [])

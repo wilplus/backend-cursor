@@ -80,6 +80,8 @@ class _ChangesRun:
         self.doc: dict = {}
         self.pieces: list = []
         self.canonical_pieces: list = []
+        # {slide_index: (start, end)} over the served text; {} when unprovable.
+        self.slide_regions: dict = {}
         self.sugs: dict = {}
         self.ledger: Any = None
         self.verdicts: dict = {}
@@ -114,8 +116,14 @@ class _ChangesRun:
         self._load_document()
         if not self.doc:
             return {}
-        self._relocate()
+        # CANONICAL PROVENANCE FIRST (order changed 2026-09-17). It builds
+        # the slide table, and `_relocate` now falls back to that table when
+        # the served words have been rewritten. It reads nothing `_relocate`
+        # produces, so the swap is free — and keeping the canonical read in
+        # ONE step keeps it one optional, degradable failure point rather
+        # than two.
         log.run("changes.canonical_provenance", self._canonical_provenance)
+        self._relocate()
         self._suggestions_and_verdicts()
         log.run("changes.applied_map", self._applied_map)
         log.run("changes.emphasis_key_phrases", self._emphasis_key_phrases)
@@ -186,22 +194,51 @@ class _ChangesRun:
         # build_tracked_changes below received nothing to anchor to.
         # Unlocatable pieces now take their paragraph's span, tagged
         # anchor_grain='paragraph' so word-precise consumers decline.
+        # SAME-SLIDE ROUTING is the tier below that (founder 2026-09-17).
+        # The paragraph fallback needs paragraph count == piece count, and a
+        # rewritten Ideal Text breaks that from Take 2 on — eight paragraphs,
+        # five spoken pieces, every card dropped. A piece knows its slide and
+        # `slide_regions` knows where that slide lives in the served text, so
+        # the two join on proven identity at any count.
         self.pieces = relocate_pieces(
             self.served_text, self.doc.get("pieces") or [],
-            paragraph_fallback=True)
+            paragraph_fallback=True,
+            slide_regions=self.slide_regions)
 
     def _canonical_provenance(self) -> None:
         # The canonical Take-1 provenance stays beside the canonical words.
         # Later-Take feedback is evaluated against new audio, but its deck
         # route must come from the document actually being served — never
         # from whichever transcript happened to be latest when this GET ran.
-        from services.transcript_document import relocate_pieces
+        from services.transcript_document import (
+            relocate_pieces, slide_regions,
+        )
         _canonical_row = self.db.ideal_text.get_coach_arc_ideal_text(self.arc_id) or {}
         _canonical_document = _canonical_row.get("document") or {}
+        # THE SLIDE TABLE, from the list that is per PARAGRAPH (founder
+        # 2026-09-17). The canonical document carries `pieces` (per snippet)
+        # AND `paragraphs` (per "\n\n" paragraph, each with its slide).
+        # transcript_document's own contract says those two differ whenever a
+        # slide holds more than one piece, and that "conflating them is what
+        # silently dropped every slide attachment before" — and only the
+        # paragraph list is 1:1 with the document being SERVED, so only it
+        # can place a region in it.
+        #
+        # This is what lets feedback survive the rewrite. Spoken words stop
+        # appearing verbatim in the Ideal Text after Take 1, so anchoring by
+        # text alone goes dark; the slide a piece was spoken on does not
+        # change, and neither does the slide a paragraph is about.
+        #
+        # Built here, beside the read it comes from, so the whole canonical
+        # lookup stays ONE optional step: if it fails, the block degrades
+        # once and both the table and the canonical pieces are simply absent.
+        self.slide_regions = slide_regions(
+            self.served_text, _canonical_document.get("paragraphs"))
         self.canonical_pieces = relocate_pieces(
             self.served_text,
             _canonical_document.get("pieces") or [],
             paragraph_fallback=True,
+            slide_regions=self.slide_regions,
         )
 
     def _suggestions_and_verdicts(self) -> None:

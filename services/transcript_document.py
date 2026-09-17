@@ -445,8 +445,144 @@ def paragraph_spans(text: Any) -> list:
     return out
 
 
+def slide_regions(text: Any, paragraph_rows: Any) -> dict:
+    """``{slide_index: (start, end)}`` over `text`. ``{}`` when unprovable.
+
+    WHAT THIS IS FOR (founder's arc, production 2026-09-17). Feedback is
+    attached to the pieces a speaker SPOKE. To surface a card, the read path
+    must find each spoken piece inside the Ideal Text being served — and the
+    Ideal Text is a rewrite of those words, so from Take 2 on they are
+    routinely not there to find. `relocate_pieces` then refused, correctly,
+    and every card was dropped:
+
+      relocate_pieces: NO anchor survived — dropping 5 pieces rather than
+      width-guessing them across 1045 chars. No paragraph fallback
+      available: fallback=True paragraphs=8 pieces=5
+
+    The refusal is right; what was missing is the join that makes a mapping
+    provable instead of a guess. It already exists and was simply not being
+    read: the canonical document carries BOTH `pieces` (per snippet) and
+    `paragraphs` (per "\\n\\n" paragraph, each with its `slide_index`) — the
+    two lists this module's own docstring warns are different things, and
+    "conflating them is what silently dropped every slide attachment before".
+    The paragraph list is 1:1 with the served document's paragraphs, so it
+    can say which region of the served text speaks to which slide.
+
+    That is the same key `current_take_confident_voice_candidate` already
+    routes cross-take feedback on ("same-slide provenance is the hard
+    boundary"). This makes the one rule available to every lane.
+
+    WHAT KEEPS IT HONEST. Three refusals, each returning less rather than
+    guessing more:
+      · an exact 1:1 count of provenance rows to served paragraphs, or {}.
+        A different count means the two disagree about what the paragraphs
+        ARE, and position becomes a guess again — the same safe-ahead rule
+        the paragraph fallback and the slide zip both follow;
+      · a paragraph with no proven slide contributes nothing. NULL is "not
+        known", never slide 0;
+      · a slide's region is the hull of its OWN paragraphs. It is a
+        construction in the served text's own coordinates, exact there, and
+        never an interpolation across a boundary nobody established.
+
+    Pure."""
+    doc = text if isinstance(text, str) else ""
+    rows = [r for r in (paragraph_rows or []) if isinstance(r, dict)]
+    para = paragraph_spans(doc)
+    if not doc or not rows or len(para) != len(rows):
+        return {}
+    out: dict = {}
+    for (lo, hi), row in zip(para, rows):
+        slide = row.get("slide_index")
+        if isinstance(slide, bool) or not isinstance(slide, int) or slide < 0:
+            continue
+        seen = out.get(slide)
+        out[slide] = (min(seen[0], lo), max(seen[1], hi)) if seen else (lo, hi)
+    return out
+
+
+def _zip_to_paragraphs(doc: str, src: list, found: list, para: list) -> list:
+    """Give each unlocated piece its OWN paragraph's span, on a 1:1 count.
+
+    `relocate_pieces`' second tier, unchanged in behaviour and moved out of
+    it for room at the complexity ratchet (that function is grandfathered
+    and may only come down). The 1:1 count is the proof: the paragraph split
+    is the same `\\n\\n` the parts, the chunks and the provenance all use, so
+    on equal counts paragraph i IS piece i's region — a construction, not an
+    interpolation. What it loses is PRECISION, and `anchor_grain` says so.
+
+    Pure.
+    """
+    zipped: list = []
+    for index, piece in enumerate(src):
+        if found[index] is not None:
+            lo, hi = found[index]
+            zipped.append({**piece, "start": lo, "end": hi,
+                           "anchor_grain": WORD_GRAIN})
+            continue
+        lo, hi = para[index]
+        # Re-read from the document, so `verify_spans` holds and
+        # tracked_changes' own words-still-there check passes.
+        zipped.append({**piece, "start": lo, "end": hi, "text": doc[lo:hi],
+                       "anchor_grain": PARAGRAPH_GRAIN})
+    coarse = sum(1 for q in zipped if q["anchor_grain"] == PARAGRAPH_GRAIN)
+    if coarse:
+        logger.info(
+            "relocate_pieces: %d/%d piece(s) anchored at PARAGRAPH grain "
+            "(cross-take drift or a locked paragraph) — feedback keeps "
+            "flowing, word-precise consumers will decline",
+            coarse, len(zipped))
+    return zipped
+
+
+def _route_to_slides(doc: str, src: list, found: list, regions: Any) -> list:
+    """Anchor each unlocated piece on the region ITS OWN SLIDE occupies.
+
+    The last tier of `relocate_pieces`, and the one that keeps feedback
+    alive once the Ideal Text is a rewrite rather than a copy of the take
+    (see `slide_regions` for the production failure this answers). Located
+    pieces keep their exact span; a piece with no provable slide, or whose
+    slide has no region in this document, is DROPPED. The guard's rule is
+    unchanged — it has one more thing it can prove, not permission to guess.
+
+    Lives outside `relocate_pieces` because that function is grandfathered
+    at the complexity ratchet and may only come down.
+
+    Pure. Returns [] when nothing could be routed, which leaves the caller's
+    existing refusal in charge.
+    """
+    routed: list = []
+    for index, piece in enumerate(src):
+        if found[index] is not None:
+            lo, hi = found[index]
+            routed.append({**piece, "start": lo, "end": hi,
+                           "anchor_grain": WORD_GRAIN})
+            continue
+        slide = piece.get("slide_index")
+        region = (
+            regions.get(slide)
+            if isinstance(slide, int) and not isinstance(slide, bool)
+            else None
+        )
+        if not region or not (0 <= region[0] < region[1] <= len(doc)):
+            continue
+        lo, hi = region
+        # Re-read from the document, so `verify_spans` holds and
+        # tracked_changes' own words-still-there check passes.
+        routed.append({**piece, "start": lo, "end": hi, "text": doc[lo:hi],
+                       "anchor_grain": PARAGRAPH_GRAIN})
+    if routed:
+        logger.info(
+            "relocate_pieces: %d/%d piece(s) routed to their SLIDE's region "
+            "(the words were rewritten; slide provenance held) — %d had no "
+            "provable slide and were dropped",
+            sum(1 for q in routed if q["anchor_grain"] == PARAGRAPH_GRAIN),
+            len(src), len(src) - len(routed))
+    return routed
+
+
 def relocate_pieces(text: Any, pieces: Any, *,
-                    paragraph_fallback: bool = False) -> list:
+                    paragraph_fallback: bool = False,
+                    slide_regions: Any = None) -> list:
     """Re-anchor pieces onto a text that has CHANGED since the build (an
     approved change baked in, a coach correction landed).
 
@@ -535,28 +671,37 @@ def relocate_pieces(text: Any, pieces: Any, *,
     # what the paragraphs are, and then position is a guess again.
     para = paragraph_spans(doc) if paragraph_fallback else []
     if para and len(para) == len(src):
-        zipped: list = []
-        for i, p in enumerate(src):
-            if found[i] is not None:
-                lo, hi = found[i]
-                zipped.append({**p, "start": lo, "end": hi,
-                               "anchor_grain": WORD_GRAIN})
-            else:
-                lo, hi = para[i]
-                # Re-read from the document, so `verify_spans` holds and
-                # tracked_changes' own words-still-there check passes.
-                zipped.append({**p, "start": lo, "end": hi,
-                               "text": doc[lo:hi],
-                               "anchor_grain": PARAGRAPH_GRAIN})
-        _coarse = sum(1 for q in zipped
-                      if q["anchor_grain"] == PARAGRAPH_GRAIN)
-        if _coarse:
-            logger.info(
-                "relocate_pieces: %d/%d piece(s) anchored at PARAGRAPH grain "
-                "(cross-take drift or a locked paragraph) — feedback keeps "
-                "flowing, word-precise consumers will decline",
-                _coarse, len(zipped))
-        return zipped
+        return _zip_to_paragraphs(doc, src, found, para)
+
+    # ── Pass 2b — SAME-SLIDE ROUTING (founder 2026-09-17) ──────────────────
+    #
+    # The 1:1 paragraph fallback above needs the counts to match. They stop
+    # matching the moment the Ideal Text is a rewrite rather than a copy of
+    # the take — eight paragraphs, five spoken pieces — and from there every
+    # later take fell through to the refusal below with its whole feedback
+    # set. The founder's arc had four stored suggestions and showed none.
+    #
+    # `slide_regions` (built above, from provenance the document already
+    # carries) says which region of THIS text speaks to which slide, and a
+    # piece already knows the slide it was spoken on. So the mapping is a
+    # join on proven identity, not an interpolation across a gap: it holds at
+    # any count, and it survives a rewrite, a lock and a user edit, because
+    # none of those change which slide a paragraph is about.
+    #
+    # A piece with no slide, or whose slide has no region in this document,
+    # is DROPPED. The guard's rule is unchanged — it now has one more thing
+    # it can prove, not permission to guess.
+    #
+    # The grain is PARAGRAPH, and that is the honest cost: a slide's region
+    # is wider than the sentence the speaker said, so composition and
+    # accentuation abstain (see the whole-window fallback below) and only
+    # lanes whose span merely POINTS — Confident Voice, advice — surface.
+    # That is also the lane the ladder opens on, so it is the one that had to
+    # come back first.
+    if slide_regions and any(f is None for f in found):
+        routed = _route_to_slides(doc, src, found, slide_regions)
+        if routed:
+            return routed
 
     if len(src) > 1 and not any(f is not None for f in found):
         logger.warning(
