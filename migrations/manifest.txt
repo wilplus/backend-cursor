@@ -371,3 +371,4 @@
 0333	add_acknowledged_praise_response.sql
 0334	add_practice_audio_objects.sql
 0335	enable_practice_phase1_purpose.sql
+0336	restore_service_role_write_on_ideal_text_part.sql
