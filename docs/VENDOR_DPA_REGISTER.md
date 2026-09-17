@@ -21,7 +21,7 @@ reply · `TODO` not started
 | Supabase | Processor | Accounts, transcripts, feedback, auth | BY-REF | 2026-09-17 | SCCs + UK addendum (in DPA); data at rest in EU | **eu-west-1** — West EU (Ireland), confirmed 2026-09-17 | |
 | Railway | Processor | Compute + Redis queue payloads | REQUESTED | 2026-09-17 | | | |
 | Resend | Processor | Email addresses + rendered session-result content | TODO | | | | |
-| Sentry | Processor | Error telemetry (PII suppressed — see below) | TODO | | | | |
+| Sentry | Processor | Error telemetry (PII suppressed — see below) | SIGNED — DPA v5.1.0 | 2026-09-17 | EU storage region; SCCs in DPA | **European Union (EU)** | `Sentry_DPA_2026-09-17.pdf` |
 | Vercel | Processor | Frontend hosting + internal email render endpoint | TODO | | | | |
 | Stripe | Independent controller (payments) | Card/payment data | N/A — controller | | Stripe's own terms | | |
 
@@ -55,10 +55,18 @@ org level 2026-09-17.
 | OpenAI — project residency | `Global` (not region-pinned) | 2026-09-17 | Project settings → General |
 | Sentry — `send_default_pii` | `False` | verified 2026-09-17 | `app.py:42`, `worker.py:119` |
 | Sentry — `max_request_body_size` | `"never"` | verified 2026-09-17 | `app.py:43`, `worker.py:120` |
+| Sentry — use of aggregated identifying data | Off | 2026-09-17 | Legal & Compliance → Service data usage |
+| Sentry — data storage region | European Union | 2026-09-17 | Legal & Compliance → General |
 | OpenAI — `store` on API calls | never `True`; explicit `False` | verified 2026-09-17 | `services/life_engine.py:243` |
 
 All OpenAI account-side controls are now set. What remains for OpenAI is the
 DPA itself (requested 2026-09-17) and, optionally, EU project residency.
+
+## Vendor assurance evidence held
+
+Sentry (downloaded 2026-09-17): SOC 2 report, penetration test summary
+(Sep 2026), Security Overview, Data Privacy Framework certificate,
+ISO 27001:2022 certificate. Filed alongside the DPAs.
 
 ## Requests in flight
 
