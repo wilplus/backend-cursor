@@ -131,7 +131,7 @@ The free plan gives you one project with unlimited attempts inside it. You can
 record, get your Ideal Text and your feedback, and record again — the whole
 loop, not a preview of it. Paid plans add [[FOUNDER: what they add]].
 
-Paid plans are sold by [[FOUNDER: merchant of record]], who is the seller of
+Paid plans are sold by Paddle, who is the seller of
 record for your purchase. Their terms cover the payment; these terms cover the
 service. We never see or store your card number.
 

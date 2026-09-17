@@ -123,7 +123,13 @@ relying on this reading.
 
 ## Sequencing
 
-1. Founder fills the `[[FOUNDER: …]]` blanks and signs off the four copy files.
+**0. Form the *sp. z o.o.* first.** Founder decision 2026-09-17. It changes the
+controller identity, and therefore the Privacy Policy, and therefore its hash —
+so a policy registered before the company exists has to be registered again, and
+every user who accepted has to accept again. Formation takes one to two weeks and
+runs in parallel with the engineering. See document 01 §2.
+
+1. Founder fills the remaining `[[FOUNDER: …]]` blanks and signs off the four copy files.
 2. Counsel reviews 01 and 03, and makes the determination in 02.
 3. Signed PDFs go to storage; only `object_key` + `sha256` reach the database.
 4. Hashes computed from final bytes; `04`'s payload assembled.

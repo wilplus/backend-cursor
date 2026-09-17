@@ -134,7 +134,7 @@ Infrastructure providers
 - [[FOUNDER: email provider]]: transactional email.
 
 Payment
-Paid plans are sold by [[FOUNDER: merchant of record]] as the seller of record.
+Paid plans are sold by Paddle as the seller of record.
 They take your payment and handle tax. Because they are the seller rather than
 our supplier, they decide how they use what you give them for that purchase —
 their privacy policy applies to it, not ours. We are told which plan you are on

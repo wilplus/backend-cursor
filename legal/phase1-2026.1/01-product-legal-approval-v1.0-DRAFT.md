@@ -56,8 +56,32 @@ counsel must address rather than note:
    regulatory and civil exposure himself, with no corporate veil — including the
    US exposure, where the founder has decided to serve Illinois and BIPA
    provides a private right of action with statutory damages per person.
-   Counsel should advise on whether a *spółka z o.o.* should be interposed
-   **before** the US launch rather than after it.
+   **Founder decision, 2026-09-17: a *spółka z o.o.* will be formed before the
+   US launch.** Counsel should confirm that sequencing and flag anything that
+   should move with it.
+
+**Sequencing that follows, and it saves real work.** Registering a business
+changes the controller identity, which changes the Privacy Policy, which changes
+its SHA-256, which makes every existing receipt stale and forces every user to
+accept again. So the order is:
+
+1. Form the *sp. z o.o.* now, in parallel. Online formation (S24) plus KRS entry
+   runs roughly one to two weeks — about the same as the outstanding engineering,
+   so it is not the critical path unless it is left until last.
+2. Complete the engineering and the legal review.
+3. Register policy `phase1-2026.1` naming **the company**, and launch Poland.
+4. Add the US once US counsel has signed off.
+
+Doing step 3 before step 1 means doing it twice. The user-facing copy in this
+pack currently names the natural person, because that is who the controller is
+today; if the company exists before registration, that copy is updated once,
+before the first hash is ever taken, and no user is ever asked twice.
+
+**Merchant of record, decided 2026-09-17: Paddle.** Confirm the exact
+contracting entity from the signed Paddle agreement — it can differ by region —
+and record it here. Paddle contracts from the UK, which holds a UK adequacy
+decision, so the transfer analysis is straightforward; the characterisation
+question in §2 is unaffected and still needs counsel.
 
 Every user-facing document in this pack names the natural person, because that
 is who the controller is today. Each carries a marker requiring update on
