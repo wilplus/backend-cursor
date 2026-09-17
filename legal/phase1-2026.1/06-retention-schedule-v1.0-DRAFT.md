@@ -29,7 +29,7 @@ users, not only by auditors.
 | Practice attempts | 30 days | after the practice closes, keeping only the chosen attempt |
 | Uploaded files that never became a recording | 24 hours | upload |
 | Security and technical logs | 90 days | creation |
-| Account and billing records | [[FOUNDER: TBD — depends on the paid/free decision; normally set by accounting law]] | account closure |
+| Account and billing records | 5 years from the end of the financial year of the transaction (Polish accounting/tax law) [[FOUNDER: confirm with accountant]] | transaction |
 | Authorization evidence | while needed to show processing was lawful | — |
 
 **Voice measurements are never outlived by their source.** They are deleted with
@@ -56,6 +56,7 @@ this document's artifact id.
 | `coach-packet-with-parent-v1` | `coach_packet` | `parent_recording_retention`, or immediately on withdrawal of coach consent |
 | `processing-queue-with-parent-v1` | `processing_queue` | `parent_recording_retention` |
 | `authorization-evidence-v1` | `database_row` (append-only evidence) | `accountability_need_ends` |
+| `billing-record-5y-v1` | `database_row` (billing) | `financial_year_end + 5 years` |
 
 **`dataset_lineage` and `model_lineage` get no rule.** No Phase-2 processing is
 authorised, so neither should ever appear as a purge target. If one does, that

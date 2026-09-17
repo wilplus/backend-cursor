@@ -90,7 +90,8 @@ and keep them available to you. That permission is limited to your own service
 and ends when your content is deleted.
 
 We do not use your recordings to train models for anyone else, and we do not
-pool your material with other users' material.
+pool your material with other users' material. This is the same on the free
+plan as on a paid one.
 
 
 8. THE IDEAL TEXT IS YOUR DOCUMENT
@@ -123,11 +124,39 @@ it separately, and we will ask for your agreement before any coach sees your
 material. The recording and feedback loop never waits for a coach.
 
 
-11. [[FOUNDER: PAYMENT — keep this section only if the service is paid; delete
-it and renumber if it is free. If paid, state: what is charged, how billing
-works, renewal, cancellation, refunds, and the statutory 14-day withdrawal
-right for consumers together with the express request to begin the service
-during that period.]]
+11. FREE AND PAID PLANS
+
+There is a free plan and one or more paid plans. [[FOUNDER: what each plan
+includes, and the limits on the free one.]]
+
+Prices are shown before you subscribe and include [[FOUNDER: or exclude]] VAT.
+Payment is handled by [[FOUNDER: payment provider]]. We never see or store your
+card number.
+
+A paid plan renews automatically for the same period until you cancel. We charge
+on the renewal date. You can cancel at any time, and you keep access until the
+end of the period you have already paid for. We do not refund part-periods
+except where the law requires it.
+
+If we change a price, we will tell you before it takes effect and you can cancel
+before it does.
+
+Your right to change your mind. If you are a consumer in the EU you normally
+have 14 days to withdraw from a purchase. Because this is a digital service you
+can use immediately, when you subscribe you are asking us to start it straight
+away and acknowledging that you lose the 14-day withdrawal right once we have.
+If you would rather wait out the 14 days before starting, tell us and we will
+hold your subscription.
+
+If a payment fails we will try again and let you know. If it keeps failing your
+account moves to the free plan.
+
+[[FOUNDER: DECIDE — what happens to recordings that exceed the free plan's
+limits when a paid account moves back to free? Options: keep everything and
+block new recordings; keep everything read-only; or delete the excess after a
+notice period. This is a retention decision as much as a product one, and it
+must match the published retention schedule. Do not leave it to whatever the
+code happens to do.]]
 
 
 12. AVAILABILITY

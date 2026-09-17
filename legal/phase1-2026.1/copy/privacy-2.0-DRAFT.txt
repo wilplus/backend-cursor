@@ -29,6 +29,8 @@ Things you give us
 - Your slides and presentation materials.
 - Audio recordings of you presenting.
 - Edits you make to your Ideal Text, and your responses to feedback.
+- If you take a paid plan, your billing details. These go to our payment
+  provider; we do not see or store your card number.
 
 Things produced from your recordings
 - Transcripts of what you said.
@@ -75,6 +77,18 @@ To meet our legal obligations: for example accounting records, and responding
 to lawful requests.
 Legal basis: legal obligation (Article 6(1)(c) GDPR).
 
+To take payment, if you are on a paid plan: to process your subscription and
+keep the records we are required to keep.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR) for
+the payment itself, and legal obligation (Article 6(1)(c) GDPR) for the
+accounting records.
+
+Free and paid accounts are treated identically here. We do not process a free
+user's recordings any differently from a paying user's, and we do not use
+anyone's recordings to train models. That is not a promise we could quietly
+walk back: our systems refuse to register any processing policy that would
+permit it.
+
 Special categories of data. A recording of you speaking freely may happen to
 reveal something sensitive — a health condition audible in your speech, or
 something you mention while presenting. We do not look for this and we do not
@@ -108,6 +122,8 @@ Infrastructure providers
 - Cloudflare (R2): storage of your audio recordings.
 - Supabase: our database, and audio storage on a fallback path.
 - Railway: hosting of the application.
+- [[FOUNDER: payment provider]]: payment processing for paid plans. They
+  receive your billing details; we do not.
 - [[FOUNDER: email provider]]: transactional email.
 
 Human coaches
@@ -140,7 +156,9 @@ Practice attempts: kept while the practice is open; after that we keep only the
   attempt you chose and delete the rest after 30 days.
 Uploaded files that never became a recording: deleted after 24 hours.
 Security and technical logs: 90 days.
-Account and billing records: [[FOUNDER: TBD, normally set by accounting law]]
+Account and billing records: 5 years from the end of the financial year in
+  which the transaction took place, as Polish accounting and tax law requires.
+  [[FOUNDER: confirm with your accountant.]]
 Record of your agreement to this policy: kept for as long as we may need to
   show that your recordings were processed lawfully, and then deleted.
 
