@@ -372,3 +372,4 @@
 0334	add_practice_audio_objects.sql
 0335	enable_practice_phase1_purpose.sql
 0336	restore_service_role_write_on_ideal_text_part.sql
+0337	allow_null_ownership_copy_on_learning_presentation.sql
