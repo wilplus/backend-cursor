@@ -62,7 +62,21 @@ sends and requires an exact match against the array. So the frontend's country
 picker and this list must use the same vocabulary, and the schema is indifferent
 to which one.
 
-**Recommendation: ISO 3166-1 alpha-2, lowercase, and start with `["pl"]`.**
+**DECIDED (founder, 2026-09-17): `["pl"]` for v1. The United States arrives on
+a v1.1 policy.** ISO 3166-1 alpha-2, lowercase.
+
+This settles the contradiction between this section and `05-us-counsel-brief`
+§11, which read "We serve Illinois. Not a question." while this section said a
+non-EEA country could not be added without re-versioning documents 01, 02 and
+03. Both statements were true; they could not both be acted on. Poland-first
+means 01, 02 and 03 stay as they are, written against EU law, and the US
+analysis lands on its own policy version rather than forcing a re-version of
+three documents that are not yet signed.
+
+Doc 05 now carries a PARKED banner saying the same thing from the other side,
+and adds the reason that matters more than sequencing: serving Illinois as a
+natural person puts BIPA's per-person statutory damages on the founder
+personally. The US returns with incorporation, not merely with a version bump.
 
 Why one country to begin with: one supervisory authority (UODO), one language of
 counsel, one consumer-law regime, and one set of national rules on age and on
