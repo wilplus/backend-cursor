@@ -127,10 +127,16 @@ purpose. That is a real product cost and it is the founder's decision.
 `operational = true, authorizes_processing = true` with real control versions,
 on founder authorisation. Leaving it out of the policy does not undo that; it
 means no policy currently carries it, so no receipt can authorise processing for
-it. Verify against `routes/phase2_guard.py` and
-`services/processing_purposes.py` what the practice routes do in that state
-before activating — the guard reads the registry, and the registry says
-operational.
+it. The guard reads the registry, and the registry says operational, so verify
+against `routes/phase2_guard.py` and `services/processing_purposes.py` what the
+practice routes do in that state before activating.
+
+What is no longer a risk: **#543 (`c1effd5`) removed V3 Manager arbitration's
+dependency on this purpose.** Confident Voice feedback previously sat behind an
+exercise enrollment that could not be obtained, so holding the purpose out of
+the policy would have taken V3 down with it. It no longer can — the exercise
+context is an enrichment, and an unauthorised exercise path means the bookmark
+shows the Confident Voice question instead of the practice panel.
 
 ### Registry control versions
 
@@ -140,8 +146,8 @@ own CHECK constraint refuses an authorizing purpose with any of them missing.
 
 | `purpose_id` | `capability_version` | `retention_control_version` | `deletion_control_version` | `rights_control_version` |
 |---|---|---|---|---|
-| `recording_voice_processing` | `phase1-recording-intake-v1` | `[[FOUNDER: name it once §7 of the Privacy Policy is filled in]]` | `phase1-purge-audio-objects-v1` | `phase1-subject-rights-v1` |
-| `transcription_feedback` | `phase1-transcription-feedback-v1` | `[[FOUNDER: same]]` | `phase1-purge-derived-content-v1` | `phase1-subject-rights-v1` |
+| `recording_voice_processing` | `phase1-recording-intake-v1` | `phase1-retention-schedule-v1` | `phase1-purge-audio-objects-v1` | `phase1-subject-rights-v1` |
+| `transcription_feedback` | `phase1-transcription-feedback-v1` | `phase1-retention-schedule-v1` | `phase1-purge-derived-content-v1` | `phase1-subject-rights-v1` |
 
 `reviewed_at`: the timestamp of the founder/counsel review that these versions
 record. Not `now()` at registration time — that would assert a review happened
@@ -154,11 +160,12 @@ whole boundary exists to prevent." The same applies here:
 
 - `phase1-purge-audio-objects-v1` names the deletion path completed in
   migration 0312. That exists.
-- The **retention control does not exist yet.** `data_retention_rules` is created
-  but unseeded, and `data_purge.py` has a `RETENTION_RULE_UNRESOLVED` path for
-  exactly that state. A retention control version cannot honestly be declared
-  until the rules are seeded and match the periods published in Privacy Policy
-  §7. **This is the item that blocks registration.**
+- `phase1-retention-schedule-v1` names document 06. Periods were approved by the
+  founder on 2026-09-17 and the schedule is drafted, **but the rules are not yet
+  seeded**: `data_retention_rules` is still empty and `data_purge.py` has a
+  `RETENTION_RULE_UNRESOLVED` path for exactly that state. The control version
+  becomes honest when the seeding migration lands, not when document 06 is
+  written. **Until then this still blocks registration.**
 
 ### The `reviewed_at` trap for an already-operational purpose
 

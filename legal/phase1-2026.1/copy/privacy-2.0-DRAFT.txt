@@ -132,25 +132,25 @@ place.
 
 7. HOW LONG WE KEEP IT
 
-[[FOUNDER: every period below marked TBD must be decided before this policy is
-published. Do not publish a period that is not actually implemented — a stated
-retention period that nothing enforces is a promise we break by default. The
-two marked as implemented are enforced in code today.]]
-
-Recordings (audio): [[FOUNDER: TBD]]
-Transcripts, Ideal Text and feedback: [[FOUNDER: TBD]]
-Voice measurements: [[FOUNDER: TBD]]
+Recordings (audio): 12 months after you last use the recording.
+Transcripts, Ideal Text and feedback: until you delete your account.
+Voice measurements: deleted together with the recording they came from, never
+  kept after it.
 Practice attempts: kept while the practice is open; after that we keep only the
-  attempt you chose and delete the rest after 30 days. (Implemented.)
+  attempt you chose and delete the rest after 30 days.
 Uploaded files that never became a recording: deleted after 24 hours.
-  (Implemented.)
+Security and technical logs: 90 days.
 Account and billing records: [[FOUNDER: TBD, normally set by accounting law]]
-Security and technical logs: [[FOUNDER: TBD]]
 Record of your agreement to this policy: kept for as long as we may need to
   show that your recordings were processed lawfully, and then deleted.
 
-When you delete your account, we delete your content as described in section 9.
+Our full retention and destruction schedule is published at
+[[FOUNDER: URL]].
 
+[[OPEN: OpenAI's own retention window for transcription, and whether our calls
+qualify for zero data retention. Until we have that answer this section
+describes only what WE hold. It must say what the provider holds before this
+policy is published — see section 9.]]
 
 8. YOUR RIGHTS
 
