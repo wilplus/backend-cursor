@@ -49,19 +49,23 @@ org level 2026-09-17.
 | OpenAI — share model feedback | Disabled | 2026-09-17 | Data controls → Sharing |
 | OpenAI — hosted tools (5) | Disabled | 2026-09-17 | Data controls → Hosted tools |
 | OpenAI — container network mode | Disabled | 2026-09-17 | Data controls → Hosted tools |
-| OpenAI — API call logging | TODO → set Disabled | | Data controls → Data retention |
-| OpenAI — audit logging | TODO → enable | | Data controls → Data retention |
+| OpenAI — API call logging | Disabled | 2026-09-17 | Data controls → Data retention |
+| OpenAI — audit logging | Enabled | 2026-09-17 | Data controls → Data retention |
 | OpenAI — input/output retention | 30 days, fixed on current plan | 2026-09-17 | Not configurable |
+| OpenAI — project residency | `Global` (not region-pinned) | 2026-09-17 | Project settings → General |
 | Sentry — `send_default_pii` | `False` | verified 2026-09-17 | `app.py:42`, `worker.py:119` |
 | Sentry — `max_request_body_size` | `"never"` | verified 2026-09-17 | `app.py:43`, `worker.py:120` |
 | OpenAI — `store` on API calls | never `True`; explicit `False` | verified 2026-09-17 | `services/life_engine.py:243` |
+
+All OpenAI account-side controls are now set. What remains for OpenAI is the
+DPA itself (requested 2026-09-17) and, optionally, EU project residency.
 
 ## Requests in flight
 
 | Vendor | Sent | To | Asked for |
 |---|---|---|---|
 | Railway | 2026-09-17 | support/legal | DPA, sub-processor list, region availability |
-| OpenAI | 2026-09-17 | privacy@openai.com | DPA execution route, confirmation that OpenAI Ireland Limited is the EU contracting entity, retention period on current plan, sub-processor list |
+| OpenAI | 2026-09-17 | privacy@openai.com | DPA execution route, confirmation that OpenAI Ireland Limited is the EU contracting entity, retention period on current plan, sub-processor list; also ask whether EU project residency is available on our plan |
 
 ## Open items
 
