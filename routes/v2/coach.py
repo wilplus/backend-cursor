@@ -40,6 +40,7 @@ from routes.v2.common import (
     _is_valid_uuid,
 )
 from services.db import db
+from services.coach_video_storage import refreshed_media_url
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -784,8 +785,9 @@ def _coach_get_session_media_fields(
         # reviewing; per-snippet slide mapping is Phase 2.
         "slides": ((ctx or {}).get("slides") or [])
         if _context_unlocked else [],
-        "presentation_ref": ((ctx or {}).get("presentation_ref") or None)
-        if _context_unlocked else None,
+        "presentation_ref": (refreshed_media_url(
+            (ctx or {}).get("presentation_ref") or None)
+            if _context_unlocked else None),
         # Per-slide coverage ledger (Stickiness #2 (i)) — coach audit.
         "slide_coverage": (readout.get("slide_coverage") or [])
         if _context_unlocked else [],
