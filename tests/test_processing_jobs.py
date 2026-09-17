@@ -216,7 +216,8 @@ class _FakeDb:
         self.draft_deletes.append(sid)
         return 0
 
-    def list_stale_processing_jobs(self, stale_minutes=15, max_rows=100):
+    def list_stale_processing_jobs(self, stale_minutes=15, max_rows=100,
+                                   max_runtime_minutes=None):
         return self.stale_rows
 
     def list_orphaned_processing_sessions(self, stale_minutes=30,
