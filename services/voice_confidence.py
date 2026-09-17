@@ -1,8 +1,24 @@
 """Voice-confidence composite (founder spec 2026-07-27, sourced to Jiang & Pell
 2017, Speech Communication 88:106-126) — the DELIVERY half of the L2 blend.
 
-WHAT IT IS. Per piece, a fixed, acoustic-only composite locating the moment on a
-confidence SPECTRUM: -1.0 (doubtful) … 0.0 (neutral band) … +1.0 (confident).
+WHAT IT IS. Per piece, a fixed, acoustic-only composite characterising HOW A
+DELIVERY SOUNDS. It places the moment on one delivery-signal scale running from
+-1.0 (the cue cluster at its least marked: compressed pitch and loudness range,
+more pausing, slower rate, rising terminal contour) through 0.0 (the neutral
+dead zone) to +1.0 (the cue cluster at its most marked: wide pitch and loudness
+range, less pausing, faster rate, falling terminal contour).
+
+THE SCALE DESCRIBES THE AUDIO, NOT THE SPEAKER (2026-09-17, from
+legal/phase1-2026.1/02-power-score-classification-v1.0-DRAFT.md §9). It makes no
+claim about what a speaker feels, intends, or is: it reports where seven
+measured acoustic cues sit relative to that same speaker's own baseline.
+Whether a listener would call a given reading "confident" is a separate,
+qualitative judgement that this module does not make and must not be read as
+making. Under the CONSTRUCT fence a measured state traces to one written
+operational definition asking exactly one thing — this paragraph is that
+definition, and the band labels below are named to match it rather than to
+contradict it.
+
 Seven cues read off the metrics blob the pipeline already computes, each
 z-scored against the SPEAKER'S OWN baseline (never absolute across
 speakers/rooms — the paper normalizes within-speaker and so do we), signed
@@ -83,6 +99,69 @@ logger = logging.getLogger(__name__)
 # v3 is one universal calculation and is incomparable with retired values.
 VERSION = "voice-confidence-universal-v3"
 _VERSION = VERSION
+
+# ── the five band labels ────────────────────────────────────────────────────
+#
+# DELIVERY-SIGNAL TERMS, NOT PREDICATES ABOUT A PERSON (2026-09-17). These read
+# "confident" / "close_to_confident" / "neutral" / "unconfident" / "doubtful"
+# until this date. `doubtful` and `unconfident` are claims about a speaker's
+# state, and the AI Act determination
+# (legal/phase1-2026.1/02-power-score-classification-v1.0-DRAFT.md §7.2) rests
+# on the opposite framing — that the composite characterises how a delivery
+# SOUNDS. Counsel reading `band() -> "doubtful"` would have been reading the
+# source contradict the document they were being asked to sign.
+#
+# NOT COSMETIC. The CONSTRUCT fence requires every measured state to trace to
+# one written operational definition asking exactly one thing; the module's
+# definition and the product's framing were not the same definition, which is
+# the defect that retired the charisma construct on 2026-08-13.
+#
+# THE VERSION IS DELIBERATELY NOT BUMPED. The score maths is untouched, so old
+# stamps stay comparable and must keep ranking; `register_phase1_policy_v1`
+# also hard-requires pipeline_version = 'voice-confidence-universal-v3'. A bump
+# here would break registration AND orphan every stamped row until backfilled,
+# to rename a string. Old rows keep their old band forever — see
+# `normalize_band`, which is how every reader must compare them.
+BAND_HIGH = "delivery_signal_high"
+BAND_MID_HIGH = "delivery_signal_mid_high"
+BAND_NEUTRAL = "delivery_signal_neutral"
+BAND_MID_LOW = "delivery_signal_mid_low"
+BAND_LOW = "delivery_signal_low"
+
+BANDS = (BAND_HIGH, BAND_MID_HIGH, BAND_NEUTRAL, BAND_MID_LOW, BAND_LOW)
+
+# Persisted history. metrics["voice_confidence"]["band"] carries these strings
+# on every row stamped before the rename, and nothing re-stamps history.
+_RETIRED_BAND_LABELS = {
+    "confident": BAND_HIGH,
+    "close_to_confident": BAND_MID_HIGH,
+    "neutral": BAND_NEUTRAL,
+    "unconfident": BAND_MID_LOW,
+    "doubtful": BAND_LOW,
+}
+
+
+def normalize_band(value: Any) -> Optional[str]:
+    """Any stamped band string — old or new — as the current label.
+
+    EVERY READER GOES THROUGH HERE. Comparing the raw string is the bug this
+    function exists to prevent: `services/label_quorum.py` string-matches the
+    band to produce `confidence_labels.machine_value`, and an unmatched band
+    there returns None, which is indistinguishable from "the machine had no
+    opinion". A rename without this would not raise, would not log, and would
+    not fail a test — it would silently empty the F2 active-learning signal for
+    every historical row.
+
+    `None` for anything unrecognised, which keeps honest absence honest: a
+    band this module never wrote is not quietly coerced into a neighbour.
+    """
+    if not isinstance(value, str):
+        return None
+    label = value.strip()
+    if label in BANDS:
+        return label
+    return _RETIRED_BAND_LABELS.get(label)
+
 
 # Which stamped weightings may enter the RANKING. Only the current one.
 #
@@ -310,8 +389,11 @@ def to_spectrum(z_sum: float) -> float:
 
 
 def band(value: Any) -> Optional[str]:
-    """The internal 5-point spectrum label — confident / close_to_confident /
-    neutral / unconfident / doubtful.
+    """The internal 5-point DELIVERY-SIGNAL label for a scale position.
+
+    It names where the acoustic cue cluster sits, never what the speaker is:
+    `delivery_signal_low` means the cues are at their least marked end, not
+    that anyone was doubtful. See the label block above for why.
 
     AC-9: for the validation harness and logs ONLY. This is a VERDICT; it must
     never reach a user payload (fence-tested)."""
@@ -319,22 +401,24 @@ def band(value: Any) -> Optional[str]:
         return None
     v = float(value)
     if v == 0.0:
-        return "neutral"
+        return BAND_NEUTRAL
     if v >= 0.5:
-        return "confident"
+        return BAND_HIGH
     if v > 0.0:
-        return "close_to_confident"
+        return BAND_MID_HIGH
     if v > -0.5:
-        return "unconfident"
-    return "doubtful"
+        return BAND_MID_LOW
+    return BAND_LOW
 
 
 def read_for_piece(piece_metrics: Any, baseline: Optional[dict],
                    baseline_kind: str = "user") -> Optional[dict]:
     """The stamped blob for ONE piece, or None when unmeasurable::
 
-        {"score": float in [-1, 1],   # + confident, - doubtful, 0 neutral band
-         "band": str,                 # internal label (never surfaced)
+        {"score": float in [-1, 1],   # + / - ends of the delivery-signal
+                                      #   scale, 0 the neutral dead zone
+         "band": str,                 # internal label (never surfaced);
+                                      #   read it through normalize_band
          "baseline": "user" | "take",
          "cues": int,                 # how many of the 7 were measurable
          "version": "voice-confidence-universal-v3"}

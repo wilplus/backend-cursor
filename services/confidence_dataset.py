@@ -27,6 +27,8 @@ import hashlib
 import re
 from typing import Any, Optional
 
+from services.voice_confidence import normalize_band
+
 
 PARTITIONS = ("train", "validation", "test")
 POLICY_VERSION = "speaker-disjoint-v1"
@@ -278,6 +280,10 @@ def split_audit(partitions: Any) -> dict:
                         metrics = row.get("metrics")
                         read = metrics.get("voice_confidence") if isinstance(metrics, dict) else None
                         value = read.get("band") if isinstance(read, dict) else None
+                    # Old and new spellings must land in ONE bucket. Counting
+                    # them separately would read as a coverage gap in the
+                    # partition report and invite a "fix" that isn't one.
+                    value = normalize_band(value) or value
                 label = str(value or "unknown")
                 counts[label] = counts.get(label, 0) + 1
             by_dimension[dimension] = counts

@@ -76,11 +76,43 @@ class TestRule1MachineIsARouter(unittest.TestCase):
     def test_machine_proposal_maps_bands_to_the_ternary(self):
         def snip(band):
             return {"metrics": {"voice_confidence": {"band": band}}}
+        self.assertEqual(
+            lq.machine_proposal(snip("delivery_signal_high")), "yes")
+        self.assertEqual(
+            lq.machine_proposal(snip("delivery_signal_mid_high")), "yes")
+        self.assertEqual(
+            lq.machine_proposal(snip("delivery_signal_neutral")), "in_between")
+        self.assertEqual(
+            lq.machine_proposal(snip("delivery_signal_mid_low")), "no")
+        self.assertEqual(
+            lq.machine_proposal(snip("delivery_signal_low")), "no")
+
+    def test_a_pre_rename_row_still_resolves(self):
+        """THE DANGEROUS ONE (2026-09-17 band rename).
+
+        `machine_proposal` is what stamps `confidence_labels.machine_value`
+        beside a human answer — the whole active-learning signal is "which
+        prediction did this human disagree with". Every row stamped before the
+        rename carries the old band string forever, and nothing re-stamps
+        history. If those fell through to `return None` here, the miss would
+        be indistinguishable from an honest "the machine had no opinion": no
+        exception, no log line, no failing test, and a silently emptied
+        signal. That is why this test asserts the OLD spellings specifically.
+        """
+        def snip(band):
+            return {"metrics": {"voice_confidence": {"band": band}}}
         self.assertEqual(lq.machine_proposal(snip("confident")), "yes")
         self.assertEqual(lq.machine_proposal(snip("close_to_confident")), "yes")
         self.assertEqual(lq.machine_proposal(snip("neutral")), "in_between")
         self.assertEqual(lq.machine_proposal(snip("unconfident")), "no")
         self.assertEqual(lq.machine_proposal(snip("doubtful")), "no")
+
+    def test_an_unknown_band_is_still_an_honest_absence(self):
+        """The normalizer must not turn a band nobody wrote into an opinion."""
+        self.assertIsNone(lq.machine_proposal(
+            {"metrics": {"voice_confidence": {"band": "delivery_signal"}}}))
+        self.assertIsNone(lq.machine_proposal(
+            {"metrics": {"voice_confidence": {"band": "brimming"}}}))
 
     def test_unmeasurable_snippet_proposes_nothing(self):
         # An honest absence, never a fake 'neutral' — a fabricated proposal
