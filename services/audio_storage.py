@@ -42,6 +42,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from services.user_content_keys import is_user_content_key
+
 logger = logging.getLogger(__name__)
 
 _cfg = None
@@ -114,7 +116,15 @@ def audio_public_url(key: str) -> Optional[str]:
     ``R2_AUDIO_PUBLIC_BASE_URL`` isn't configured (dev) — callers fall
     back to the bucket-relative key in that case, and signed-URL
     generation kicks in at read time.
+
+    Also ``None`` for USER CONTENT (DPIA RISK-11). Everything this bucket
+    holds under ``session_recordings/`` and ``guest_funnel/`` is a recording
+    of someone speaking, and a public URL for one is permanent and
+    unauthenticated. Callers take the same fallback they already take in dev,
+    and the read path signs. See services/user_content_keys.py.
     """
+    if is_user_content_key(key):
+        return None
     base = (getattr(_config(), "R2_AUDIO_PUBLIC_BASE_URL", None) or "").strip().rstrip("/")
     if not base:
         return None

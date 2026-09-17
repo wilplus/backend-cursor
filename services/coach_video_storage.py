@@ -14,6 +14,7 @@ import mimetypes
 from typing import Any, Optional
 
 from services.r2_client import build_r2_client, clamp_ttl
+from services.user_content_keys import is_user_content_key
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,22 @@ def r2_bucket_name() -> str:
 
 
 def coach_media_public_url(storage_key: str) -> Optional[str]:
-    """Stable HTTPS URL if R2_PUBLIC_BASE_URL (custom or public dev domain) is set."""
+    """Stable HTTPS URL if R2_PUBLIC_BASE_URL (custom or public dev domain) is set.
+
+    ``None`` for USER CONTENT (DPIA RISK-11) — a public URL is permanent and
+    unauthenticated, so recordings get signed GETs instead. Every caller
+    already handles ``None``: they fall back to an ``s3://bucket/key`` marker,
+    which ``services.audio_ref_resolver.resolve_playable_ref`` signs at read
+    time. That fallback is the path a service without the public base has
+    always taken, so this returns callers to an exercised branch rather than a
+    new one.
+
+    Decks and coach-authored media keep the public URL. That is deliberate:
+    see services/user_content_keys.py for why, and for the 2026-09-16 incident
+    that put decks there.
+    """
+    if is_user_content_key(storage_key):
+        return None
     base = (getattr(_config(), "R2_PUBLIC_BASE_URL", None) or "").strip().rstrip("/")
     if not base:
         return None
