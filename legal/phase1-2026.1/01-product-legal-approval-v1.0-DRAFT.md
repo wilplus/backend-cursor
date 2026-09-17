@@ -93,7 +93,27 @@ two costs a re-acceptance of every user.
 | Cloudflare R2 | The stored audio object | `services/audio_storage.py`, `storage_provider = 'r2'` |
 | Supabase | The database; audio storage in the dev fallback path | `storage_provider = 'supabase'` |
 | Railway | Application hosting (web, worker, cron) | `bin/railway-web.sh` |
-| [[FOUNDER: email provider]] | Transactional email | `services/email_service.py` |
+| Resend | Transactional email | `services/email_service.py` |
+| Sentry | Error telemetry (EU region) | client + server instrumentation |
+| Vercel | Frontend hosting | `frontend-cursor` deployment |
+| Stripe | Independent controller; no DPA to sign | — |
+
+**Corrected 2026-09-17: there are eight vendors, not five.** Sentry, Vercel and
+Stripe were already named to users in the published Privacy Policy with no
+paperwork behind them. Checking `requirements.txt`, `config.py` and `services/`
+against the live policy is what surfaced them. Cloudflare is also not a CDN
+footnote — it is where the **voice recordings themselves** are stored.
+
+**Where the data actually is:** transcripts, accounts and feedback in Supabase
+(Ireland, `eu-west-1`); voice recordings in Cloudflare R2 (Eastern Europe);
+error telemetry in Sentry (EU); transcription and generation at OpenAI (United
+States, SCCs, 30-day retention).
+
+**DPA status:** Sentry signed (v5.1.0, with DPF certificate); Supabase,
+Cloudflare and Vercel in force by reference through accepted terms; Stripe needs
+none; OpenAI, Railway and Resend requested. Four of the five originally listed
+as "requests" needed no signature at all — the work was establishing which, and
+saving dated evidence.
 
 `services/authorized_provider.py` is a typed adapter and the protected recording
 modules are test-enforced not to import a provider SDK directly

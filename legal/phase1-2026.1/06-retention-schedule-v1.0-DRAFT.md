@@ -123,11 +123,19 @@ Audio sent to OpenAI for transcription is covered by the same schedule, and
 deletion at the provider is recorded as a `processing_provider_operations`
 event.
 
-**Open:** OpenAI's own retention window for transcription calls, and whether
-those calls qualify for zero data retention. Until answered, §1 describes what
-*we* hold and cannot describe what the provider holds. **This document must not
-be signed until that answer is in it** — a published destruction schedule that
-is silent about a copy held elsewhere is worse than no schedule.
+**Answered 2026-09-17: 30 days.** OpenAI retains API inputs and outputs for up
+to 30 days for abuse monitoring and then deletes them. Zero data retention was
+not in force on our organisation and had not been applied for, contrary to what
+the published Privacy Policy asserted. Transfers are under SCCs.
+
+So the provider-held copy is bounded at 30 days, which sits inside every period
+in §1 and needs no separate rule. Privacy §7 and §9 now say this rather than
+asserting a zero-retention arrangement that did not exist.
+
+**⚠️ Separately, and more seriously:** the same review found that the OpenAI
+organisation had *data sharing for model training* enabled, which the Privacy
+Policy denied. That is not a retention question and it is not addressed by this
+schedule — see the cover note, which leads with it.
 
 ## 5. Signature
 

@@ -28,18 +28,73 @@ Each signed document becomes an immutable, fingerprinted database record. Once
 registered it can only be superseded by a new version, never edited — please
 draft with that in mind.
 
-## ⚠️ Triage first, please — this is live today
+## 🔴 Read this before anything else
+
+On 17 September 2026 we discovered that **all three data-sharing settings on our
+OpenAI organisation were enabled**, including *"Share inputs and outputs with
+OpenAI… including for improving and training our models"*. They had been
+accepted in exchange for complimentary daily API tokens.
+
+At the same time, our published Privacy Policy told users we **do not** provide
+their content to third parties to train general-purpose or foundation models.
+
+So for a period we cannot currently bound, user voice recordings and transcripts
+may have been shared with OpenAI for model training, while our privacy notice
+said the opposite.
+
+**What we have done:** all three settings are now off. The organisation is
+locked down further than it started — no hosted tools, no API call logging — and
+**audit logging is now enabled**, which it was not before. The privacy copy is
+being corrected.
+
+**Two limits we want to state rather than have you find:**
+
+1. **Disabling is forward-only.** Anything already shared cannot be recalled.
+2. **We do not know when this started**, because audit logging was not enabled
+   at the time. We may not be able to establish it.
+
+**What we need from you, in this order:**
+
+- **Q-A.** Is this a personal data breach under Art 4(12), and is it notifiable
+  to UODO under Art 33 and/or to data subjects under Art 34?
+- **Q-B.** What is our position on processing that had no lawful basis for that
+  purpose, and on a privacy notice that was inaccurate for the period concerned
+  (Art 5(1)(a), Art 13)?
+- **Q-C.** If we cannot establish the start date, what does a reasonable
+  investigation look like and what should we record?
+
+**The severity turns entirely on one unverified number — see the next section.
+If no user ever recorded anything, this is a misconfigured account caught before
+launch. If users did, it is an incident.** We are verifying and will send the
+figure; please do not assume either until we do.
+
+## ⚠️ And the earlier triage item — same caveat applies
 
 Our published v1.2 terms rely on a **bundled consent**: users had to agree that
 their practice data could be used to train models shared with other users, as a
 condition of using the service at all. We assess that as invalid under Art 4(11)
 and Art 7(4) with Recital 43, and — because the bundle was invalid — consent
 arguably failed for **both** purposes, including the recording itself, for which
-v1.2 expressly declined to rely on Art 6(1)(b).
+v1.2 expressly declined to rely on Art 6(1)(b). That collateral effect is the
+part we would most like checked: it is easy to read this as a training-data
+problem when the more serious consequence is that it removes the basis for the
+recording.
 
 `01-product-legal-approval` §3 proposes re-basing the core operations on
-Art 6(1)(b) contract. **What is the remediation for users who already accepted
-under v1.2?** That is a current exposure, not a future one.
+Art 6(1)(b) contract.
+
+**⚠️ We do not yet know how many users accepted under v1.2. The figure is being
+verified and is not in this pack.** We are telling you rather than estimating,
+because it changes what you are being asked:
+
+- **If the number is zero** — which we believe likely, as the product is
+  pre-launch — this is a defect to fix before launch. No remediation, no
+  notification, no urgency. Please do not price it as one.
+- **If it is not zero**, we need remediation advice for those users, and the
+  question becomes time-sensitive.
+
+Please assume the first until we confirm otherwise, and tell us what the second
+would require if it arises.
 
 ## Two things we corrected before writing to you
 
