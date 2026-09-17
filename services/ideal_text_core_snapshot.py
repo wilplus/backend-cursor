@@ -152,11 +152,40 @@ def _exact_pieces(
     # the next snapshot onward `part_id` is carried explicitly and this branch
     # is no longer needed for that document.  Any structural ambiguity fails
     # closed to the unlinked "Your talk" view.
+    #
+    # IT NO LONGER REQUIRES THE PART ROWS (founder 2026-09-17: "after the lock
+    # the different text shows … something without the slide, entirely wrong").
+    # Reported with a deck whose kicker read "YOUR TALK" — the unlinked view —
+    # on a document that had slides a moment earlier.
+    #
+    # The chain: a lock recomposes the served text, so `aligned` fails (the
+    # words are no longer the machine's original). The carry by `part_id` is
+    # next, and it needs a parts list. But `build_snapshot` drops `served_parts`
+    # to None whenever they do not agree with the composed text — so `part_rows`
+    # arrives empty, `bool(part_rows)` is False, and this branch cannot fire
+    # either. Every paragraph is published with slide_index None, and
+    # `groupChunksBySlide` fails on the first one (missing_parent_slide),
+    # collapsing the whole deck into one untitled section with no slide.
+    #
+    # Worse, it is self-perpetuating: that snapshot is now the one WITHOUT
+    # parts, so the next publication has nothing to carry from. A document that
+    # lost its slides this way never got them back.
+    #
+    # `bool(part_rows)` was never load-bearing. The proof this branch rests on
+    # is about PARAGRAPHS — the edit surface mutates slots in place and cannot
+    # insert, delete, split, merge or reorder them, so on equal counts slot N
+    # is still the same Slide-bounded Paragraph. Part rows are how identity is
+    # carried when it IS available; they are not what makes the count a proof.
+    # Requiring them turned "we also have ids" into a precondition for the one
+    # path that exists precisely for when we do not.
+    #
+    # The counts still have to line up — provenance, served paragraphs and the
+    # canonical source all agreeing — and any structural ambiguity still fails
+    # closed to the unlinked view. Nothing is guessed that was not guessed
+    # before; one thing that was provable stops being thrown away.
     ordinal_adoption = (
-        bool(part_rows)
-        and provenance_rows is not None
-        and len(part_rows) == len(paragraphs) == len(source_paragraphs)
-        and len(provenance_rows) == len(paragraphs)
+        provenance_rows is not None
+        and len(provenance_rows) == len(paragraphs) == len(source_paragraphs)
     )
 
     out: list[dict[str, Any]] = []
