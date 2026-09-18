@@ -134,11 +134,27 @@ So the position is: 67 accounts, 26 of which accepted a document marked as
 placeholder copy, none of which accepted anything published since, and
 processing has continued throughout.
 
+**And the accepted text carried a marker saying it was not legally reviewed.**
+The 7 May source file's own docstring, immediately above the component that
+rendered the page, read verbatim:
+
+> `TODO(content): swap the placeholder copy below for the legally-reviewed`
+> `Terms of Use text once it's finalised.`
+
+It was never swapped. That document was live from 2026-05-07, accepted until
+2026-07-16, and processing has continued to today. The marker is recorded in
+`accepted-versions/README.md` rather than inside the recovered `.txt` files,
+deliberately: those files are evidence of **what users saw**, and users never
+saw a source comment. Adding it to them would corrupt the only clean record of
+the published text.
+
 - **Q-E.** What is our position where users accepted the 7 May text, were then
   served v1.0, v1.1 and v1.2 without being asked again, and continued to be
   processed throughout? Does the original acceptance carry forward, does it
   lapse, and what does remediation look like for the 26 — and separately for
-  the 41 accounts with no consent record at all?
+  the 41 accounts with no consent record at all? **Does it change your answer
+  that the accepted document was self-identified by its author as placeholder
+  copy pending legal review?**
 
 ## One more, found while this pack was being assembled
 
