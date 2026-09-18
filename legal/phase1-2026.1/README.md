@@ -35,17 +35,34 @@ to be read by a user on the acceptance screen.
 
 ## What only the founder can supply
 
-**Scope, settled 2026-09-17: Poland only, free, operated by a natural person
-with no entity.** That is a fully compliant configuration — GDPR does not
-require a legal person — and it is what the whole pack is now written against.
-See document 01 §2.
+**Scope, settled 2026-09-17 and CORRECTED 2026-09-18: freemium, EU/EEA,
+operated by a natural person with no entity.** Operating as a natural person is
+a fully compliant configuration — GDPR does not require a legal person. The
+other two halves of the 2026-09-17 settlement were wrong, and the correction is
+sourced in code, not recalled:
 
-Also settled: retention periods (document 06) · `allowed_countries = ["pl"]`.
+- **Not free.** `services/token_prices.py:51` — `TIERS` carries
+  `free` / `practice` / `coaching` / `intensive` at 0 / 12 / 39 / 89 USD
+  (`:53-56`), all four in `SOLD_TIERS` (`:85`), and the backend holds a live
+  Stripe key, so checkout is reachable in production now. **No customer has ever
+  been charged** — the capability is live, the transaction history is empty.
+  Terms §1 was corrected accordingly in `ad43af8`.
+- **Not Poland only.** Documents 01 and 03 are to be scoped for the EU
+  generally. `09-counsel-cover-note.md` states the correction and the three
+  consequences counsel is asked to take into account (the
+  *działalność nieewidencjonowana* revenue threshold, the Consumer Rights
+  Directive, and scope).
 
-**Parked, not cancelled.** The US (document 05), paid plans, and a merchant of
-record all return together, because all three depend on incorporating. Document
-01 §2 names the trigger conditions and explains why incorporating *before* the
-first policy registration is much cheaper than after it.
+So `allowed_countries` is **not** settled at `["pl"]`. It now depends on the
+per-country Art 9(4) conditions the cover note asks counsel for at ask 5, since
+Member States may impose further conditions on biometric processing. Retention
+periods (document 06) are still settled.
+
+**Parked, not cancelled.** The US (document 05) and a merchant of record return
+together with incorporating. Paid plans are no longer on that list — they
+shipped ahead of it, which is what forced this correction. Document 01 §2 names
+the trigger conditions and explains why incorporating *before* the first policy
+registration is much cheaper than after it.
 
 **Still outstanding.** Each is marked `[[FOUNDER: …]]` at the point of use.
 
@@ -60,8 +77,10 @@ first policy registration is much cheaper than after it.
 
 ## What only counsel can supply
 
-EU counsel: the determination in document 02, and review of 01 and 03. US
-counsel is not needed while the service stays in Poland; document 05 is parked.
+EU counsel: the determination in document 02, and review of 01 and 03, scoped
+for the EU/EEA rather than Poland alone (see the correction above). US counsel
+is not needed until we incorporate; document 05 is parked on that, not on
+geography.
 
 The determination in document 02. The pack drafts the analysis and lays out the
 facts and the arguments on both sides; it does not reach the conclusion for you.
@@ -102,7 +121,10 @@ metadata.sex_gender_inference        = false
 metadata.emotion_intention_inference = false
 ```
 
-(`enable_practice_phase1_purpose.sql` lines 205-211 → `POWER_SCORE_CLASSIFICATION_CONFLICT`.)
+(`migrations/enable_practice_phase1_purpose.sql:205-211` →
+`POWER_SCORE_CLASSIFICATION_CONFLICT` is raised at `:211`. The same gate is in the
+superseded `migrations/add_phase1_processing_boundary.sql:1554-1560`; both are
+kept because the boundary migration is the one already applied in production.)
 
 A compliance record whose only registrable value is "no" is a weak control: it
 does not verify the determination, it applies pressure to it. If counsel's

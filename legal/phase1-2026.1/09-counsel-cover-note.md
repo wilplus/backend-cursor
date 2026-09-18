@@ -240,8 +240,10 @@ our position and is untouched by any rename.
 
 ## What we are NOT asking
 
-- **US law.** We serve Poland only. A separate US brief exists and is parked
-  until we incorporate.
+- **US law.** A separate US brief exists (document 05) and is parked until we
+  incorporate. Note this is *not* a statement that we serve Poland only — see
+  the 18 September correction above; it is that the US is out of scope for this
+  instruction.
 - **"How do we achieve full compliance."** We are a sole operator with no
   company and no revenue. If the high-risk regime is engaged, *remove or
   redesign the feature* is a realistic answer and we would rather hear it than a
