@@ -327,7 +327,12 @@ continues.
 
 By signing, the approving authority records that they have reviewed the
 operations in §3 against the code paths cited, and that the lawful-basis mapping
-is correct for [[FOUNDER: jurisdictions]].
+is correct for **Poland, the European Union and the EEA** — the jurisdictions
+this approval is scoped to (§2), and the same set the
+`mlc2-bundled-consent-v1` precedent recorded as `["PL", "EU", "EEA"]`.
+
+The United States is expressly **outside** this signature. Document 05 covers it
+and is parked until incorporation.
 
     Name:      ______________________________
     Firm:      ______________________________
