@@ -324,3 +324,111 @@ def test_database_adapter_uses_the_service_only_atomic_rpc():
     assert payload["p_recording_id"] == (
         "44444444-4444-4444-8444-444444444444"
     )
+
+
+# ── the coverage ladder (founder 2026-09-18, contract 24c / Appendix H.13.1) ──
+
+def test_the_coverage_floor_climbs_then_holds_at_one_hundred():
+    from services.take_feedback_policy_v3 import coverage_floor
+
+    assert coverage_floor(1) == 0.70
+    assert coverage_floor(2) == 0.80
+    assert coverage_floor(3) == 1.00
+    # "3 and after" — a tenth Take is not a relaxation.
+    assert coverage_floor(10) == 1.00
+
+
+def test_junk_take_index_holds_the_strictest_floor():
+    """Fail toward the strict end: an unreadable Take index must not silently
+    buy a 70% floor."""
+    from services.take_feedback_policy_v3 import coverage_floor
+
+    for value in (None, "2", True, 0, -1):
+        assert coverage_floor(value) == 1.00, repr(value)
+
+
+def _blk(slide_index, selected, reason="no_exact_clip_lineage_candidate"):
+    return {
+        "slide_index": slide_index,
+        "selected_candidate_id": selected,
+        "selection_reason": reason if not selected else "relatively_strongest_measured",
+    }
+
+
+def test_the_denominator_is_blocks_not_slides():
+    """THE POINT OF THE RULE. Slides that never formed a block are absent from
+    `blocks` entirely, so they cannot appear in the denominator — which is what
+    makes 100% reachable instead of capped by however many Slides were silent
+    or too short to partition."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    # Ten-slide deck, only four Slides ever produced a block.
+    blocks = [_blk(1, "a"), _blk(2, "b"), _blk(5, "c"), _blk(9, "d")]
+    coverage = _slide_coverage(blocks, 3)
+
+    assert coverage["assessable_slides"] == 4
+    assert coverage["covered_slides"] == 4
+    assert coverage["ratio"] == 1.0
+    assert coverage["meets_floor"] is True
+
+
+def test_an_uncovered_slide_carries_the_reason_it_was_missed():
+    """A shortfall is a defect to investigate, not a licence to pad (24d), and
+    the reason strings are the only thing that makes it diagnosable."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    blocks = [
+        _blk(1, "a"),
+        _blk(2, None, "no_exact_clip_lineage_candidate"),
+        _blk(2, None, "incompatible_detector_version"),
+        _blk(3, None, "no_exact_clip_lineage_candidate"),
+    ]
+    coverage = _slide_coverage(blocks, 1)
+
+    assert coverage["covered_slides"] == 1
+    assert coverage["assessable_slides"] == 3
+    assert coverage["meets_floor"] is False
+    missed = {row["slide_index"]: row for row in coverage["uncovered"]}
+    assert set(missed) == {2, 3}
+    # Both distinct reasons on slide 2 survive, de-duplicated and ordered.
+    assert missed[2]["reasons"] == [
+        "incompatible_detector_version", "no_exact_clip_lineage_candidate",
+    ]
+    assert missed[2]["block_count"] == 2
+
+
+def test_one_covered_block_covers_its_slide():
+    """Coverage counts Slides, not blocks: a long Slide partitioned into four
+    blocks is covered once any of them selects."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    blocks = [_blk(4, None), _blk(4, None), _blk(4, "c"), _blk(4, None)]
+    coverage = _slide_coverage(blocks, 3)
+
+    assert coverage["assessable_slides"] == 1
+    assert coverage["ratio"] == 1.0
+
+
+def test_the_five_slide_failure_is_measured_as_a_failure():
+    """The take that started this: five assessable Slides, one bookmark. Under
+    relative-best that should be near impossible, and the ladder must report it
+    as a flat miss rather than a judgement call."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    blocks = [_blk(i, "a" if i == 1 else None) for i in range(1, 6)]
+    coverage = _slide_coverage(blocks, 1)
+
+    assert coverage["ratio"] == 0.2
+    assert coverage["required_floor"] == 0.70
+    assert coverage["meets_floor"] is False
+    assert len(coverage["uncovered"]) == 4
+
+
+def test_a_document_with_no_blocks_is_not_a_coverage_failure():
+    """Nothing to cover is not the same as failing to cover it; reporting 0%
+    would make an empty recording look like a broken selector."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    coverage = _slide_coverage([], 3)
+    assert coverage["assessable_slides"] == 0
+    assert coverage["meets_floor"] is True

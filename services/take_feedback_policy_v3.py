@@ -31,6 +31,11 @@ SUGGESTION_GENERATOR_CONTRACT_VERSION = "feedback-candidate-generator-v1"
 TARGET_WORDS = 75
 MIN_WORDS = 60
 MAX_WORDS = 90
+
+#: Slide-coverage floor by Take index (founder, 2026-09-18 — contract 24c,
+#: Appendix H.13.1). Take 3 and every Take after it are held at 100%.
+COVERAGE_FLOOR_BY_TAKE: dict[int, float] = {1: 0.70, 2: 0.80}
+COVERAGE_FLOOR_MATURE = 1.00
 _WORD_RE = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)*", re.UNICODE)
 _VERBAL_FAMILIES = {"rewrite_clarity", "great_formulation"}
 _VERSION_KEYS = (
@@ -270,6 +275,74 @@ def _clip_lineage(
         **identity,
         "clip_identity_sha256": hashlib.sha256(encoded).hexdigest(),
     }, None
+
+
+def coverage_floor(take_index: Any) -> float:
+    """The share of assessable Slides this Take is required to cover."""
+    if isinstance(take_index, bool) or not isinstance(take_index, int):
+        return COVERAGE_FLOOR_MATURE
+    return COVERAGE_FLOOR_BY_TAKE.get(take_index, COVERAGE_FLOOR_MATURE)
+
+
+def _slide_coverage(blocks: list[dict], take_index: Any) -> dict:
+    """Which Slides this Take actually covered, and why the rest were missed.
+
+    THE DENOMINATOR IS THE LOAD-BEARING PART (contract 24c, founder
+    2026-09-18). It is Slides that produced **at least one block**, not Slides
+    that carry speech and not every Slide in the deck.
+
+    Measured against every Slide, a deck where four Slides are silent or too
+    short to partition caps coverage at ten-fourteenths forever — 71% — so the
+    80% rung is unreachable and 100% is unreachable by construction, through
+    nobody's fault. Measured against blocks, 100% is reachable, because a valid
+    block always has a relative best. Anything that never formed a block was
+    never assessable, and failing to cover it is not a failure.
+
+    A shortfall is a DEFECT TO INVESTIGATE, never a licence to pad (24d). So
+    every uncovered Slide carries the `selection_reason` of each block on it,
+    which is the only thing that makes a shortfall diagnosable rather than
+    merely visible. Those strings are what tell a candidate-generation gap
+    apart from a policy one.
+
+    Internal only — coverage is an arbitration input and is never surfaced
+    (AC-9, contract 24i).
+    """
+    by_slide: dict[int, list[dict]] = {}
+    for block in blocks:
+        by_slide.setdefault(int(block["slide_index"]), []).append(block)
+
+    covered: list[int] = []
+    uncovered: list[dict] = []
+    for slide_index in sorted(by_slide):
+        slide_blocks = by_slide[slide_index]
+        if any(block.get("selected_candidate_id") for block in slide_blocks):
+            covered.append(slide_index)
+            continue
+        uncovered.append({
+            "slide_index": slide_index,
+            "block_count": len(slide_blocks),
+            "reasons": sorted({
+                str(block.get("selection_reason") or "unknown")
+                for block in slide_blocks
+            }),
+        })
+
+    assessable = len(by_slide)
+    floor = coverage_floor(take_index)
+    # An empty document is not a coverage failure: there was nothing to cover,
+    # and reporting 0% against a 70% floor would make "no speech at all" look
+    # like a broken selector.
+    ratio = (len(covered) / assessable) if assessable else 1.0
+    return {
+        "denominator": "slides_with_at_least_one_valid_block",
+        "assessable_slides": assessable,
+        "covered_slides": len(covered),
+        "covered_slide_indexes": covered,
+        "uncovered": uncovered,
+        "ratio": round(ratio, 4),
+        "required_floor": floor,
+        "meets_floor": ratio + 1e-9 >= floor,
+    }
 
 
 def _confidence_candidate(
@@ -547,6 +620,8 @@ def build_shadow_frame(
                     "block_id": block["block_id"],
                 })
 
+    coverage = _slide_coverage(blocks, take_index)
+
     feedback_rows = list(feedback_candidates or [])
     rewrite_inventory, rewrite_selected, rewrite_exclusions = _verbal_inventory(
         feedback_rows,
@@ -610,6 +685,7 @@ def build_shadow_frame(
             "absolute_confidence_threshold_required": False,
             "missing_or_weak_evidence_language": "tentative",
         },
+        "coverage": coverage,
         "blocks": blocks,
         "selected_confidence": confidence_selections,
         "verbal_lanes": {
