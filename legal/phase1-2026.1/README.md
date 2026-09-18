@@ -35,17 +35,29 @@ to be read by a user on the acceptance screen.
 
 ## What only the founder can supply
 
-**Scope, settled 2026-09-17: Poland only, free, operated by a natural person
-with no entity.** That is a fully compliant configuration — GDPR does not
-require a legal person — and it is what the whole pack is now written against.
-See document 01 §2.
+**Scope, as corrected 2026-09-18: freemium, Poland and intended EU/EEA,
+operated by a natural person with no entity.** A natural person is a fully
+compliant configuration — GDPR does not require a legal person. The earlier
+line here read *"Poland only, free"* and described it as settled; both halves
+were withdrawn on 18 September and the pack is written against the corrected
+version. See document 01 §2.
 
-Also settled: retention periods (document 06) · `allowed_countries = ["pl"]`.
+- **Payment is real but unexercised.** Four sold tiers in
+  `services/token_prices.py:51-57` — free at 12,000 tokens a month, then USD 12,
+  39 and 89 — and **zero charges ever taken**. The capability is live; the
+  transaction history is empty.
+- **`allowed_countries` is NOT settled.** It is `["pl"]` today, and widening it
+  waits on the per-country Art 9(4) conditions counsel is asked for at
+  cover-note ask 5. Document 04 must not harden the list before that answer
+  arrives.
 
-**Parked, not cancelled.** The US (document 05), paid plans, and a merchant of
-record all return together, because all three depend on incorporating. Document
-01 §2 names the trigger conditions and explains why incorporating *before* the
-first policy registration is much cheaper than after it.
+Still settled: retention periods (document 06).
+
+**Parked, not cancelled.** The US (document 05) and a merchant of record return
+together, because both depend on incorporating — with no entity, Illinois BIPA's
+private right of action would land on a natural person. Document 01 §2 names the
+trigger conditions and explains why incorporating *before* the first policy
+registration is much cheaper than after it.
 
 **Still outstanding.** Each is marked `[[FOUNDER: …]]` at the point of use.
 

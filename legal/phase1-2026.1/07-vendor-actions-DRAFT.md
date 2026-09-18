@@ -1,8 +1,16 @@
 # Vendor actions — who to contact, for what, with the text
 
-Four vendors, five actions. (A payment provider is not on this list: the
-service is free, so there is nothing to sell and no seller of record.) None of them cost money. The OpenAI ZDR request is
+Four vendors, five actions. None of them cost money. The OpenAI ZDR request is
 the one with a lead time, so start it first.
+
+**A payment provider is missing from this list and should not be.** The line
+here said one was unnecessary because "the service is free". That is wrong: the
+model is freemium, four sold tiers exist in `services/token_prices.py:51-57`,
+and the checkout surfaces are written. No customer has been charged yet, so no
+payment data has been processed — but the processor paperwork has to exist
+before the first charge, not after it. **Add the payment provider to this list,
+with the same DPA and transfer-mechanism questions as the other four**, and to
+the sub-processor table in document 01 §2.
 
 ---
 

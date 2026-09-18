@@ -17,7 +17,7 @@ authenticated roles have no grant.
 | `terms_version` | `2.0` | Live copy is 1.2. A new major, because 2.0 removes the pooled-training consent rather than amending it. |
 | `privacy_version` | `2.0` | Same reason. |
 | `ai_notice_version` | `1.0` | New document; there is no predecessor. |
-| `allowed_countries` | `["pl"]` | §3 — Poland only |
+| `allowed_countries` | `["pl"]` | Poland for the first registration. **NOT settled** — widening waits on per-country Art 9(4) conditions (cover-note ask 5). Do not harden this list before that answer. |
 | `minimum_age` | `18` | Fixed by CHECK; no other value is accepted. |
 | `created_by` | `Artur Willoński` | The person registering the policy, not the approving authority. |
 | `status` on registration | `approved` | Set by the RPC. `active` comes from `activate_phase1_policy_v1`. |

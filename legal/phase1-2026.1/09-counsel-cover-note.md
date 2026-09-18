@@ -240,12 +240,15 @@ our position and is untouched by any rename.
 
 ## What we are NOT asking
 
-- **US law.** We serve Poland only. A separate US brief exists and is parked
-  until we incorporate.
+- **US law.** We do not serve the United States. A separate US brief exists and
+  is parked until we incorporate: with no entity, Illinois BIPA's private right
+  of action would land on a natural person. We do ask about the **EU/EEA**,
+  which we do intend to serve — see ask 5 on Art 9(4).
 - **"How do we achieve full compliance."** We are a sole operator with no
-  company and no revenue. If the high-risk regime is engaged, *remove or
-  redesign the feature* is a realistic answer and we would rather hear it than a
-  compliance programme we cannot staff.
+  company. The model is freemium and **no customer has ever been charged** — the
+  capability is live, the transaction history is empty. If the high-risk regime
+  is engaged, *remove or redesign the feature* is a realistic answer and we
+  would rather hear it than a compliance programme we cannot staff.
 
 ## Please note about authorship
 

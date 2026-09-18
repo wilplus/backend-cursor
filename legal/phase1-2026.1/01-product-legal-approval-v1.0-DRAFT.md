@@ -62,20 +62,45 @@ controller is, not as a placeholder for a company.
 2. **A liability shield.** A natural person carries the regulatory and civil
    exposure personally, with no corporate veil.
 
-**Founder decision, 2026-09-17: free service, Poland only, no entity for now.**
-That configuration removes the force of both points. There is no payment, so the
-threshold is not approached. There is no US exposure, so the uncapped personal
-liability that made the veil urgent — Illinois BIPA's private right of action —
-does not arise. The remaining exposure is Polish and EU regulatory exposure for a
-free consumer product operated by an individual, which is the ordinary position
-of every sole operator in the EU.
+**Founder decision, 2026-09-17, AS CORRECTED 2026-09-18: freemium, Poland and
+intended EU/EEA, no entity for now.**
 
-**This approval is therefore scoped to that configuration**, and §7 condition 1
-is doing more work than before. Registration must be revisited *before*, not
-after, any of:
+> The paragraph that stood here read *"free service, Poland only, no entity"*
+> and reasoned from it: *"There is no payment, so the threshold is not
+> approached. There is no US exposure."* **Both halves of that premise were
+> withdrawn on 2026-09-18** and the reasoning built on them went with it. It is
+> replaced rather than deleted because a lawyer reading §8 would otherwise be
+> signing over a scoping paragraph this pack's own cover note has retracted.
 
-- taking payment of any kind;
-- serving users outside Poland;
+**Payment.** The model is freemium. `services/token_prices.py:51-57` defines
+four sold tiers — free at 12,000 tokens a month, then USD 12, 39 and 89 —
+and the checkout surfaces are written and gated on `STRIPE_SECRET_KEY`.
+**Zero charges have ever been taken** (verified in Stripe, 2026-09-17). So the
+unregistered-activity threshold is not approached *yet*, but it is approached by
+design rather than avoided by design, and the first paid subscription starts the
+clock. The ⚠️ note below treats condition 1 as a known future event for exactly
+this reason.
+
+**Territory.** The service is offered in Poland and is **intended for the
+EU/EEA**. `allowed_countries` is not settled: it now waits on the per-country
+Art 9(4) conditions counsel is asked for at cover-note ask 5, because Member
+States may impose further conditions on processing biometric data — this
+product's exact category.
+
+**The US remains parked**, and that part of the original reasoning survives:
+with no entity, Illinois BIPA's private right of action would land on a natural
+person, so the uncapped personal exposure that made a liability shield urgent is
+avoided only for as long as the US stays closed. Document 05 is written and
+unsent.
+
+**This approval is therefore scoped to that corrected configuration**, and §7
+condition 1 is doing more work than before. Registration must be revisited
+*before*, not after, any of:
+
+- **taking the first payment** — the capability exists; the transaction history
+  is empty, and those are different facts;
+- serving users outside the EU/EEA;
+- adding a country to `allowed_countries` before its Art 9(4) position is known;
 - processing volume growing to a scale where Article 37 might require a DPO.
 
 > **⚠️ 2026-09-17 — the first condition is now a KNOWN FUTURE EVENT, not a hypothetical.**
