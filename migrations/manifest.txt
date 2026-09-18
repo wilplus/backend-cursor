@@ -373,3 +373,5 @@
 0335	enable_practice_phase1_purpose.sql
 0336	restore_service_role_write_on_ideal_text_part.sql
 0337	allow_null_ownership_copy_on_learning_presentation.sql
+0338	guard_claim_guest_owner_legacy_recording_table.sql
+0339	f1_serving_does_not_require_coach_review.sql
