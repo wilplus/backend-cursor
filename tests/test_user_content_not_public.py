@@ -69,12 +69,18 @@ class ThePredicate(unittest.TestCase):
         ):
             self.assertTrue(is_user_content_key(key), key)
 
-    def test_decks_and_coach_media_are_not(self):
-        """The split is load bearing. Decks went dark for a week in September
-        when they were signed with a 7-day TTL and nothing re-signed them;
-        they stay on the permanent public URL deliberately."""
+    def test_an_uploaded_deck_is_user_content(self):
+        """Added 2026-09-18, a day after the rest. Decks are the prefix the
+        permanent public URL was introduced FOR — they went dark for a week in
+        September when they carried a 7-day signature nothing re-signed. They
+        are only safe to sign once the read path mints a FRESH signature from
+        the key every time, which refreshed_media_url now does."""
+        self.assertTrue(is_user_content_key("willab_presentations/abc.pdf"))
+
+    def test_coach_authored_media_is_not(self):
+        """The split is still load bearing: the coach's own material on
+        surfaces that already gate access keeps the public path."""
         for key in (
-            "willab_presentations/abc.pdf",
             "coach-feedback/abc.webm",
             "copilot/abc.mp4",
             "coach-snippet-breakthrough/abc.webm",
@@ -131,11 +137,16 @@ class TheMintingFunctions(unittest.TestCase):
         self.assertIsNone(self._run(
             coach_media_public_url, "charisma_snippets/s/1_snippet.webm"))
 
-    def test_coach_media_public_url_still_serves_a_deck(self):
+    def test_coach_media_public_url_refuses_a_deck(self):
+        from services.coach_video_storage import coach_media_public_url
+        self.assertIsNone(self._run(
+            coach_media_public_url, "willab_presentations/a.pdf"))
+
+    def test_coach_media_public_url_still_serves_coach_authored_media(self):
         from services.coach_video_storage import coach_media_public_url
         self.assertEqual(
-            self._run(coach_media_public_url, "willab_presentations/a.pdf"),
-            f"{_COACH_BASE}/willab_presentations/a.pdf",
+            self._run(coach_media_public_url, "coach-feedback/a.webm"),
+            f"{_COACH_BASE}/coach-feedback/a.webm",
         )
 
     def test_audio_public_url_refuses_a_session_recording(self):
@@ -153,6 +164,124 @@ class TheMintingFunctions(unittest.TestCase):
         from services.lab_audio_storage import lab_audio_public_url
         self.assertIsNone(self._run(
             lab_audio_public_url, "willab_lab/s/recording_ff.webm"))
+
+
+class TheDeckReadPath(unittest.TestCase):
+    """`refreshed_media_url` serves presentation_ref on four surfaces. It used
+    to turn a stored signature INTO a permanent public URL; it now goes the
+    other way for user content, and re-mints from the key on every read so no
+    stored URL has to stay valid. That is what makes signing decks safe after
+    the 2026-09-16 blackout — the TTL was blamed, but the cause was depending
+    on a stored URL at all."""
+
+    def _refresh(self, ref, *, signed=_SIGNED):
+        from services import coach_video_storage as cvs
+
+        saved = getattr(cvs, "_cfg", None)
+        patches = _cfg()
+        for p in patches:
+            p.start()
+        cvs._cfg = None
+        patches.append(patch.object(
+            cvs, "presigned_get_coach_object",
+            lambda bucket, key, expires_in=0, **kw: signed))
+        patches[-1].start()
+        try:
+            return cvs.refreshed_media_url(ref)
+        finally:
+            for p in patches:
+                p.stop()
+            cvs._cfg = saved
+
+    def test_a_stored_public_deck_url_comes_back_signed(self):
+        """The rows already in the table. No backfill — they are re-addressed
+        on read."""
+        out = self._refresh(f"{_COACH_BASE}/willab_presentations/a.pdf")
+        self.assertEqual(out, _SIGNED)
+
+    def test_a_stored_presigned_deck_url_is_re_signed_not_publicised(self):
+        """This is the exact inversion. The old code took this ref and handed
+        back a permanent public URL."""
+        out = self._refresh(
+            "https://acct.r2.cloudflarestorage.com/coach-feedback-videos/"
+            "willab_presentations/a.pdf?X-Amz-Signature=old")
+        self.assertEqual(out, _SIGNED)
+
+    def test_an_expired_signature_cannot_strand_a_deck(self):
+        """The regression that matters. A week-old stored signature is only
+        ever used to recover the KEY; what comes back is minted now. So a deck
+        cannot go dark because its stored URL aged, which is what happened in
+        September."""
+        stale = ("https://acct.r2.cloudflarestorage.com/coach-feedback-videos/"
+                 "willab_presentations/a.pdf?X-Amz-Signature=expired-weeks-ago")
+        self.assertEqual(self._refresh(stale, signed="FRESH"), "FRESH")
+
+    def test_coach_authored_media_still_gets_the_permanent_public_url(self):
+        """The other half of the split must not move."""
+        out = self._refresh(
+            "https://acct.r2.cloudflarestorage.com/coach-feedback-videos/"
+            "coach-feedback/a.webm?X-Amz-Signature=old")
+        self.assertEqual(out, f"{_COACH_BASE}/coach-feedback/a.webm")
+
+    def test_a_foreign_url_is_left_alone(self):
+        ref = "https://example.org/somebody-elses/deck.pdf"
+        self.assertEqual(self._refresh(ref), ref)
+
+    def test_junk_survives_unchanged(self):
+        for value in (None, "", 42):
+            self.assertEqual(self._refresh(value), value)
+
+
+class TheKeyExtractor(unittest.TestCase):
+    """Four ref shapes written by different code in different months."""
+
+    def _key(self, ref):
+        from services import coach_video_storage as cvs
+
+        saved = getattr(cvs, "_cfg", None)
+        patches = _cfg()
+        for p in patches:
+            p.start()
+        cvs._cfg = None
+        try:
+            return cvs.media_key_from_ref(ref)
+        finally:
+            for p in patches:
+                p.stop()
+            cvs._cfg = saved
+
+    def test_a_presigned_url_loses_its_bucket_segment(self):
+        self.assertEqual(
+            self._key("https://acct.r2.cloudflarestorage.com/"
+                      "coach-feedback-videos/willab_presentations/a.pdf"
+                      "?X-Amz-Signature=x"),
+            "willab_presentations/a.pdf")
+
+    def test_a_public_url_on_our_base(self):
+        self.assertEqual(
+            self._key(f"{_COACH_BASE}/willab_presentations/a.pdf"),
+            "willab_presentations/a.pdf")
+
+    def test_an_s3_marker(self):
+        self.assertEqual(
+            self._key("s3://coach-feedback-videos/willab_presentations/a.pdf"),
+            "willab_presentations/a.pdf")
+
+    def test_a_bare_key(self):
+        self.assertEqual(
+            self._key("willab_presentations/a.pdf"),
+            "willab_presentations/a.pdf")
+
+    def test_a_foreign_url_is_not_ours_to_re_address(self):
+        """Imports store other people's URLs. Guessing a key out of one and
+        signing it against our bucket breaks a working ref."""
+        self.assertIsNone(self._key("https://example.org/a/deck.pdf"))
+
+    def test_a_key_that_merely_starts_like_the_bucket_keeps_its_prefix(self):
+        self.assertEqual(
+            self._key("https://acct.r2.cloudflarestorage.com/"
+                      "coach-feedback-videos-archive/a.pdf?X-Amz-Signature=x"),
+            "coach-feedback-videos-archive/a.pdf")
 
 
 class TheFourSnippetRowShapes(unittest.TestCase):

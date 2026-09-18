@@ -56,6 +56,15 @@ from typing import Any
 #: ``willab_lab/``          uploaded Take audio
 #: ``charisma_snippets/``   extracted clips of user speech (historical prefix)
 #: ``snippets/``            the same, under the post-rename prefix
+#: ``willab_presentations/`` uploaded slide decks
+#:
+#: Decks joined the list 2026-09-18. They were held back a day because they are
+#: the prefix the permanent public URL was introduced FOR: signed with a 7-day
+#: TTL and nothing re-signing them, every deck went dark a week after upload
+#: (reported 2026-09-16). Moving them back onto signed URLs is only safe once
+#: the read path mints a FRESH signature from the object key on every read, so
+#: that no stored URL has to stay valid. ``refreshed_media_url`` now does that,
+#: which retires the incident's root cause rather than avoiding it.
 #:
 #: ``charisma_snippets/`` is the R2 object prefix, NOT the table — the table was
 #: renamed to ``snippets`` (migration 0260) and the object prefix deliberately
@@ -68,6 +77,7 @@ USER_CONTENT_PREFIXES: tuple[str, ...] = (
     "willab_lab/",
     "charisma_snippets/",
     "snippets/",
+    "willab_presentations/",
 )
 
 
