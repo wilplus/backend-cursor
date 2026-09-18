@@ -281,6 +281,80 @@ def _clip_lineage(
 #: (contract 24f). Two, not one — and at most two, never padded to two.
 PRAISE_ANCHOR_LIMIT = 2
 
+#: The practice threshold cuts BELOW neutral (founder, 2026-09-18). The two
+#: bands under it prompt; neutral and above do not.
+#:
+#: Chosen sparing on H.0's asymmetry — offering practice to someone who spoke
+#: well is the false-positive direction, and "when a choice here is arguable,
+#: it goes toward silence". It is a policy dial, not a measured constant, so it
+#: moves on evidence rather than on preference.
+PRACTICE_BANDS = ("delivery_signal_mid_low", "delivery_signal_low")
+
+#: A block whose confidence item was never selected has no delivery read, so
+#: it prompts nothing. Stated once rather than defaulted at each use site.
+_UNROUTED_BLOCK = {
+    "delivery_band": None,
+    "practice_prompt": False,
+    "carries_exercise": False,
+}
+
+
+def _practice_routing(blocks: list[dict]) -> dict:
+    """Which blocks prompt practice, and which single one carries the exercise.
+
+    EVERY block below the neutral band shows "Let's practice". Exactly ONE of
+    them — the weakest — also carries the exercise, because an exercise is work
+    the user has to go and do, and four of them is a to-do list rather than a
+    lesson (contract 24f).
+
+    AC-9, and this is the sharp edge: `services.voice_confidence.band()` warns
+    in its own docstring that the band IS a verdict and must never reach a user
+    payload. So the band stays in this frame, which is the internal policy
+    artifact, and what leaves here is two booleans. A client is told *that*
+    practice is offered, never *how it was scored*.
+    """
+    from services.voice_confidence import band as delivery_band
+
+    below: list[tuple[tuple, dict]] = []
+    routing: dict[str, dict] = {}
+    for block in blocks:
+        selected_id = block.get("selected_candidate_id")
+        if not selected_id:
+            continue
+        chosen = next(
+            (
+                row for row in block.get("confidence_candidates") or []
+                if row.get("candidate_id") == selected_id
+            ),
+            None,
+        )
+        if chosen is None:
+            continue
+        label = delivery_band(chosen.get("machine_score"))
+        entry = {
+            "delivery_band": label,
+            "practice_prompt": label in PRACTICE_BANDS,
+            "carries_exercise": False,
+        }
+        routing[block["block_id"]] = entry
+        if entry["practice_prompt"]:
+            below.append((_confidence_rank(chosen), block))
+
+    # The weakest is the LAST of the shared confidence ordering, not a second
+    # rule — one ranking read from both ends, so "strongest" and "weakest" can
+    # never disagree about the same take.
+    if below:
+        below.sort(key=lambda pair: pair[0])
+        routing[below[-1][1]["block_id"]]["carries_exercise"] = True
+
+    # Applied HERE rather than in the caller. build_shadow_frame is
+    # grandfathered at CC 37 and the ratchet only lets it come down, so a loop
+    # in the caller costs a point it cannot spend — and the routing belongs
+    # beside the rule that computed it anyway.
+    for block in blocks:
+        block.update(routing.get(block["block_id"], _UNROUTED_BLOCK))
+    return routing
+
 
 def _top_confidence_blocks(blocks: list[dict], limit: int) -> list[dict]:
     """The blocks whose selected item ranked highest, best first.
@@ -698,6 +772,7 @@ def build_shadow_frame(
                 })
 
     coverage = _slide_coverage(blocks, take_index)
+    _practice_routing(blocks)
 
     feedback_rows = list(feedback_candidates or [])
     rewrite_inventory, rewrite_ranked, rewrite_exclusions = _verbal_inventory(
@@ -766,6 +841,12 @@ def build_shadow_frame(
             "normal_min_words": MIN_WORDS,
             "normal_max_words": MAX_WORDS,
             "split_only_at_exact_snippet_boundaries": True,
+        },
+        "practice_policy": {
+            "threshold": "below_neutral_delivery_band",
+            "prompt_bands": list(PRACTICE_BANDS),
+            "exercise_budget": 1,
+            "exercise_target": "weakest_prompting_block",
         },
         "confidence_definition": {
             "scope": "relative_within_block",

@@ -555,3 +555,95 @@ def test_an_unselected_block_never_anchors_praise():
         "selected_candidate_id": None, "confidence_candidates": [],
     }]
     assert _top_confidence_blocks(blocks, 2) == []
+
+
+# ── the practice threshold (founder 2026-09-18, contract 24e/24f) ──
+
+def _rblock(block_id, score):
+    return {
+        "block_id": block_id, "slide_index": 0, "start": 0, "end": 10,
+        "selected_candidate_id": f"c-{block_id}",
+        "confidence_candidates": [
+            {"candidate_id": f"c-{block_id}", "machine_score": score, "ordinal": 0},
+        ],
+    }
+
+
+def test_the_threshold_cuts_below_neutral():
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([
+        _rblock("high", 0.8),      # delivery_signal_high
+        _rblock("mid_high", 0.2),  # delivery_signal_mid_high
+        _rblock("neutral", 0.0),   # delivery_signal_neutral — NOT prompted
+        _rblock("mid_low", -0.2),  # below
+        _rblock("low", -0.9),      # below
+    ])
+    assert routing["high"]["practice_prompt"] is False
+    assert routing["mid_high"]["practice_prompt"] is False
+    assert routing["neutral"]["practice_prompt"] is False, (
+        "neutral is AT the threshold, not below it — the cut is 'below neutral'"
+    )
+    assert routing["mid_low"]["practice_prompt"] is True
+    assert routing["low"]["practice_prompt"] is True
+
+
+def test_only_the_weakest_prompting_block_carries_the_exercise():
+    """Every below-neutral block says "Let's practice"; exactly one also gets
+    the drill, because four things to go and record is a to-do list."""
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([
+        _rblock("a", -0.2), _rblock("b", -0.9), _rblock("c", -0.4),
+    ])
+    carrying = [key for key, row in routing.items() if row["carries_exercise"]]
+    assert carrying == ["b"], "the weakest of the prompting blocks"
+    assert all(row["practice_prompt"] for row in routing.values())
+
+
+def test_a_take_with_nothing_below_neutral_offers_no_exercise():
+    """What progress looks like: the drill disappears."""
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([_rblock("a", 0.6), _rblock("b", 0.1)])
+    assert not any(row["carries_exercise"] for row in routing.values())
+    assert not any(row["practice_prompt"] for row in routing.values())
+
+
+def test_an_unselected_block_is_not_routed_at_all():
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([{
+        "block_id": "b", "slide_index": 0, "start": 0, "end": 10,
+        "selected_candidate_id": None, "confidence_candidates": [],
+    }])
+    assert routing == {}
+
+
+def test_strongest_and_weakest_come_from_one_ordering():
+    """Read from both ends of the same ranking, so the two can never disagree
+    about a take — a separate 'weakest' rule could name a block the shared rule
+    ranks above another it called stronger."""
+    from services.take_feedback_policy_v3 import (
+        _practice_routing, _top_confidence_blocks,
+    )
+
+    blocks = [_rblock("worst", -0.9), _rblock("best", 0.9), _rblock("mid", -0.1)]
+    top = _top_confidence_blocks(blocks, 1)
+    routing = _practice_routing(blocks)
+    assert top[0]["block_id"] == "best"
+    assert routing["best"]["carries_exercise"] is False
+    assert routing["worst"]["carries_exercise"] is True
+
+
+def test_the_band_stays_internal_and_the_client_gets_booleans():
+    """AC-9. voice_confidence.band() says in its own docstring that the band is
+    a VERDICT and must never reach a user payload, so what leaves the routing
+    is two booleans plus the label for this internal frame only."""
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([_rblock("a", -0.7)])
+    assert set(routing["a"]) == {
+        "delivery_band", "practice_prompt", "carries_exercise",
+    }
+    assert routing["a"]["practice_prompt"] is True
