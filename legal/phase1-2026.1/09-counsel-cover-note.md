@@ -84,9 +84,45 @@ foundation models.
 | Most recent | 17 September 2026 |
 | Recordings carrying a delivery-signal value | 590, across 4 users |
 
-**This is not a pre-launch defect.** Real users' voice recordings have
-existed continuously for over four months, and the service was still
-recording on the day of discovery.
+**This is not a pre-launch defect.** Voice recordings have existed continuously
+for over four months, and the service was still recording on the day of
+discovery.
+
+> ### ⚠️ Every recording is the founder's own voice — attestation, 2026-09-18
+>
+> **The controller attests that there are no third-party data subjects in the
+> audio.** All 67 accounts were created by him, and every one of the 1,708
+> recordings is his own voice. No member of the public, no tester and no
+> acquaintance has ever recorded on the service. The earlier wording in this
+> section — "real users' voice recordings" — was wrong and is withdrawn.
+>
+> **How the accounts were made, because it explains why email cannot verify
+> this.** He created them himself over the development period, using his own
+> addresses, **new Gmail addresses created for the purpose**, and — with their
+> knowledge — **email addresses belonging to his mother and to a friend**. So an
+> email-domain analysis would show many `gmail.com` rows and several unfamiliar
+> ones and would prove nothing either way. We ran no such query, and we are not
+> offering one as corroboration.
+>
+> **This therefore rests on the controller's own knowledge, and nothing else.**
+> It is stated rather than evidenced, and it is the strongest form available: the
+> person who made every recording is the person attesting to it. No log can
+> establish whose voice is in an audio file. We would rather say that plainly
+> than dress an attestation as a verified fact.
+>
+> **What follows if you accept it.** The only data subject in the audio is the
+> controller. Article 34 has nobody to notify. Q-E becomes the controller
+> consenting to his own processing. RISK-11 exposed his own voice. The OpenAI
+> sharing sent his own recordings. **We ask you to weigh it; we have not
+> re-scored the DPIA on it ourselves**, and the figures above stand unchanged as
+> the worst case.
+>
+> **One thing this does surface, and it is new.** Some accounts carry **email
+> addresses belonging to two identifiable third parties** — his mother and a
+> friend — used with their knowledge. Those addresses are their personal data
+> even though no recording is theirs. It is a much smaller matter than
+> twenty-five people's voices, but it is not nothing, and we would rather raise
+> it than have you find it. **Q-G below.**
 
 ### What we cannot yet establish
 
@@ -252,6 +288,31 @@ including what the near-term fix does **not** close, are DPIA RISK-11.
   unauthorised party and no means of obtaining such evidence retrospectively?
   If assessment is required, what is a reasonable one where access logging was
   not enabled for the period?
+
+- **Q-G. Added 2026-09-18, and it changes the shape of much of the above.** The
+  controller attests that **every recording on the service is his own voice** —
+  see the box in the disclosure section. If you accept that attestation:
+
+  1. **Does it change your answer to Q-A, Q-B, Q-D, Q-E or Q-F?** Our reading is
+     that it removes the third-party data subjects from all of them, leaving the
+     controller as the only person whose voice was affected. We have not
+     re-scored anything on it and would rather you told us what it moves.
+  2. **What weight does an attestation of this kind carry**, given no log can
+     establish whose voice is in an audio file and an email analysis would prove
+     nothing here? Should it be given in a particular form — a dated statement of
+     truth, a witness statement — to be worth anything to a supervisory
+     authority?
+  3. **A smaller matter that came out of the same disclosure.** Some accounts
+     were created using **email addresses belonging to the controller's mother
+     and to a friend**, with their knowledge. Those addresses are the personal
+     data of two identifiable third parties, held in `auth.users`, even though no
+     recording is theirs and neither ever used the service. What is our position
+     on those two addresses — for the OpenAI incident, where an email address is
+     not something we sent to the provider; for the acceptance records at Q-E;
+     and for retention?
+  4. **Is there anything we should do now** to preserve the attestation's value
+     — record it contemporaneously in a particular way, or have it witnessed —
+     before more time passes?
 
 ## Two things we corrected before writing to you
 
