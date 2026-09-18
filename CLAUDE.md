@@ -8,12 +8,18 @@ after Take 1 → evidence-backed Manager Feedback after every Take. Ideal Text i
 the sole canonical presentation document. Later Takes propose improvements but
 never rebuild or silently overwrite it. The load-bearing pieces are per-slide
 transcription, coherent initial Ideal Text with stable Paragraph identity, and
-versioned Manager arbitration. The currently served V2 policy returns exactly
-three evidence-ranked Feedback items. The founder-locked, not-yet-activated V3
-policy partitions each Slide run into deterministic blocks closest to 75 words:
-Take 1 returns one relative-best Confident Voice item per valid block; Take 2+
-adds at most one global actionable improvement and at most one global
-evidence-backed praise. An honest empty rewrite or praise lane shows no card.
+versioned Manager arbitration. **V3 is the served policy** (founder cutover
+2026-09-18; V2 is retained but is no longer a fallback). It partitions each
+Slide run into deterministic blocks closest to 75 words and surfaces exactly
+one relative-best Confident Voice item per valid block on **every** Take,
+Take 1 included (contract 24b). Every item carries the delivery read and the
+tap-to-root phrase step — Emphasis IS that step, not a Feedback family and
+not a budget (24e). On top, each Take carries at most two Praise (on its most
+and second-most Confident items), one exercise (on the weakest item below the
+neutral band), and one rewrite (24f). Of the Slides yielding at least one valid
+block, coverage is ≥70% on Take 1, ≥80% on Take 2 and 100% from Take 3 — a
+target on selection, never a floor on output (24c/24d). An honest empty rewrite
+or praise lane shows no card.
 Weak evidence uses tentative language; it is never invented. The record →
 process → Ideal Text → next-Take loop never waits for a coach or exercise.
 
@@ -32,11 +38,12 @@ eligible pool. Owner answers are routing signals, never blind training labels.
 **L1** Ideal Text is the one persistent, user-controlled document; later Takes
 never rebuild or silently change it, and Best Presentation is retired.
 **L2** Detectors create Candidates and only Manager-approved Candidates surface
-under the active versioned budget. V2 keeps exactly one item from each of three
-families until a separate cutover. V3 uses one relative-best Confident Voice
-item per valid 75-word block; Take 1 has no rewrite/praise, while Take 2+ has at
-most one global rewrite and one global praise. It never invents evidence or
-fills an honest `no_defensible_candidate` lane.
+under the active versioned budget. V3 (served since 2026-09-18) uses one
+relative-best Confident Voice item per valid 75-word block on every Take,
+plus per Take at most two anchored Praise, one exercise and one rewrite (24f).
+V2 kept exactly one item from each of three families and is retained only as
+superseded history — never a silent substitute (24h). Neither invents evidence
+or fills an honest `no_defensible_candidate` lane.
 **L3** Machine prediction, owner routing, blind peer rating, coach judgment, and
 detector verdict remain separate; Album membership requires Machine Yes + User
 Yes + Coach Yes on the exact recording.
