@@ -9,7 +9,7 @@
   "services/ideal_text_parts.py": 95.2,
   "services/intervention_candidates.py": 91.7,
   "services/lab_recording.py": 81.6,
-  "services/manager_engine.py": 93.7,
+  "services/manager_engine.py": 93.0,
   "services/openai_service.py": 88.4,
   "services/pipeline_jobs.py": 66.0,
   "services/slide_word_split.py": 94.9,

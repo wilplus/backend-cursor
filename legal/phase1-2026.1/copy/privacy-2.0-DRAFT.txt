@@ -84,8 +84,9 @@ To meet our legal obligations: for example accounting records, and responding
 to lawful requests.
 Legal basis: legal obligation (Article 6(1)(c) GDPR).
 
-The service is free and we take no payment, so there is no billing data here at
-all. We also do not use anyone's recordings to train models. That second one is
+We do not currently take payment, so we hold no billing data. If that changes,
+we will update this policy first. We also do not use anyone's recordings to
+train models. That second one is
 not a promise we could quietly walk back: our systems refuse to register any
 processing policy that would permit it.
 

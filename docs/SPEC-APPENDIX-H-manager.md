@@ -322,6 +322,128 @@ The decisions log gives it as one table row, and it had two plausible readings:
 
 ---
 
+## H.13 · The V3 coverage ladder — four slots overruled *(founder, 2026-09-18)*
+
+**This section overrules H.1, and narrows H.2, H.6 and H.12. The original
+verdicts are left standing above, unedited**, the same way H.9.1 left §11's text
+visible. They carry real evidence and the reasoning that argued the other way
+should stay readable — otherwise it gets re-derived from scratch in six months
+by someone who finds the citations and assumes nobody had seen them.
+
+### H.13.0 · What changed, in one line
+
+Appendix H was written for a model where **the recording** is the unit of
+feedback and a few notes land on it. V3 made **the slide-bounded block** the
+unit. Four slots were calibrated against the old unit and give the wrong answer
+under the new one.
+
+### H.13.1 · H.1's flat cap is overruled — the coverage ladder replaces it
+
+**H.1 said:** *"Flat cap. Do not scale with length. Default 1, hard ceiling 3."*
+
+**It now reads:** one relative-best Confident Voice item per valid ~75-word
+block, on every Take, with a per-Take coverage floor over **slides that carry
+speech**:
+
+| Take | Coverage of spoken slides |
+|---|---|
+| 1 | ≥ 70% |
+| 2 | ≥ 80% |
+| 3 and after | 100% |
+
+**A skipped slide is not in the denominator.** Ten slides with three passed over
+silently is seven, not ten; otherwise perfect work scores 70% and Take 3 is
+unreachable through no fault of the speaker.
+
+**Founder decision, and it is a departure from the evidence, not a reading of
+it.** H.1's citations — Kulhavy on elaboration, Cowan's chunk ceiling, the
+composition literature's 3–5 — measure what a listener can absorb *per sitting*,
+and that argument is unaffected by changing the unit. The founder's position is
+that per-slide coverage is what the product is for, and that a user who spoke to
+five slides and is shown one moment has been under-served regardless of what the
+uptake literature says about totals. **Recorded as an executive override so that
+nobody later mistakes it for a finding.**
+
+**The consequence H.0 would flag:** more surfaced items is more exposure to the
+false positive H.0 calls the expensive error. The mitigation is H.13.2 — under
+relative-best the claim being made is much weaker, so a wrong one costs less.
+
+### H.13.2 · H.2's PPV floor does not gate Confident Voice
+
+**H.2 stands for every lane that asserts a finding.** It does not apply to
+Confident Voice, because **relative-best does not assert a finding.**
+
+A detector firing says *"this is a problem"* and can be wrong. Relative-best
+says *"of what you said on this slide, this was your strongest moment"* — which
+is true whenever the slide has speech, however unimpressive the moment was. A
+precision floor is the wrong instrument for a claim that cannot be false.
+
+The Actionable Improvement and Praise lanes **keep PPV ≥ 0.70**. They do assert
+findings.
+
+### H.13.3 · H.6's cooldown does not apply to Confident Voice
+
+Cooldown exists because repeating the same corrective note on an already-fixed
+behaviour becomes a crutch — Winstein & Schmidt's faded-feedback result. **A new
+Take is a new performance**, so its relative-best is a fresh observation, not a
+repetition. Nothing is being said twice.
+
+Mechanically the two are also incompatible: Take 1's only lane is Confident
+Voice, so firing it would silence Takes 2 and 3 and make 80% and 100%
+unreachable by construction.
+
+**Cooldown and the mastery gate stay** for Improvement and Praise.
+
+### H.13.4 · γ_control is switched off; the withhold survives with one exception
+
+**γ_control (12%, permanent, per user × lane) is OFF.** With Confident Voice as
+Take 1's only lane, it meant roughly one user in eight received no V3 feedback
+ever — and, being permanent and silent, neither they nor we could distinguish it
+from a product that simply does nothing. That is irreconcilable with the rule in
+H.13.6.
+
+**Intervention randomisation (20%, per session) stays**, because it is different
+in kind: the ladder is measured per Take, so what one Take withholds the next
+covers. **It does not apply to Take 1.** A first experience of the product is
+not a place to spend an experiment, and the arm measures the N → N+1 transition
+anyway, which needs a second Take regardless.
+
+**What this costs, stated plainly:** the between-user question — *does feedback
+do anything at all, or do people improve just by recording more?* — can no
+longer be answered from ambient data. H.11 warns this arm cannot be
+retrofitted. Re-running it later means an opt-in cohort, deliberately
+constructed. The founder has accepted that cost.
+
+### H.13.5 · H.10's "not wired to anything" was already false — corrected
+
+H.10 states the manager is complete and idle. **That was true on 2026-08-06, the
+day it was written, and false four days later.** On 2026-08-10 the wiring landed
+through `services/intervention_candidates.py` (which calls
+`manager_engine.arbitrate()` at :1120 from `ideal_text_changes.py:615`) and the
+science arms were switched on with founder approval. The appendix was never
+updated.
+
+**So the arms have been running in production on real users since August**, and
+the discussion above about switching γ_control off is about live behaviour, not
+a hypothetical. Recorded because a spec that says a component is idle, when it
+is deciding what users see, is worse than one that says nothing.
+
+### H.13.6 · V3 works or it fails visibly — no silent fallback
+
+`prepare_first_client_feedback` had twelve paths that returned `None`, and
+`None` meant *serve the V2 answer instead*. **That is now forbidden.**
+
+A silent policy swap makes a broken V3 indistinguishable from a working one: the
+user sees plausible cards and nobody learns anything failed. It is how a
+production defect survived two days of looking directly at it.
+
+**On any failure** the client retries once automatically, then shows a short
+notice and a retry control. **A feedback failure never blocks recording,
+transcription, Ideal Text, or the next Take** — the live loop is not V3's to
+break.
+
+---
+
 ## H.10 · What is built, and what it does not do
 
 `services/manager_engine.py` is **pure** — no DB, no clock, no randomness of its own. The exploration roll is injected so the policy stays deterministic under test. 38 unit tests pin the derived constants and the invariants that fail silently.

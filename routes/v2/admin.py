@@ -616,29 +616,22 @@ def _resolve_turn_audio_url(snippet: dict) -> str | None:
       2. storage_path signed via audio bucket — only when audio_segment_path
          is missing for legacy / cold-start rows
       3. None
+
+    SIGN, DON'T PUBLICISE (DPIA RISK-11). ``audio_segment_path`` used to be
+    returned RAW, and the rows written before 2026-09-17 hold a full public
+    r2.dev URL there — so returning it unchanged handed out a permanent,
+    unauthenticated link to a recording. The resolver recognises our own
+    public bases and re-signs against the bucket each belongs to, which is
+    what covers the existing rows without a backfill. A foreign https ref
+    (imports store those) still passes through untouched.
+
+    Delegates for the same reason ``_resolve_snippet_audio_url`` does: one
+    copy of the storage decision, so the two surfaces cannot disagree about
+    whether a recording is signed.
     """
-    seg = (snippet.get("audio_segment_path") or "").strip()
-    if seg:
-        return seg
-    storage = (snippet.get("storage_path") or "").strip()
-    if storage and not storage.startswith("charisma_snippets/"):
-        try:
-            from services.audio_storage import audio_public_url
-            url = audio_public_url(storage)
-            if url:
-                return url
-        except Exception as e:
-            logger.warning(
-                "turn audio URL: R2 build failed for %s: %s", storage, e
-            )
-    if storage:
-        try:
-            return db.create_signed_url(
-                config.AUDIO_BUCKET_NAME, storage, config.SIGNED_URL_EXPIRY_SECONDS
-            )
-        except Exception:
-            return None
-    return None
+    from services.snippet_audio_url import resolve_turn_audio_url
+
+    return resolve_turn_audio_url(snippet)
 
 
 @v2_bp.route("/admin/sessions/<session_id>", methods=["GET"])

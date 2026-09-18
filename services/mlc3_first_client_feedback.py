@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from hashlib import sha256
-from typing import Any
+from typing import Any, NamedTuple
 import uuid
 
 from services.coach_guidance_delivery import principal_is_allowlisted
@@ -22,7 +22,41 @@ from services.take_feedback_policy_v3_service import prepare_v3_service_inventor
 logger = logging.getLogger(__name__)
 
 
-def _decline(take_id: Any, reason: str) -> list[dict] | None:
+class V3Unavailable(NamedTuple):
+    """V3 was asked for this Take and could not produce it.
+
+    NOT THE SAME AS "V3 does not apply here" (founder 2026-09-18, contract
+    24h). A user outside the service gets the legacy answer and nothing is
+    wrong; a user inside it whose take V3 could not process has hit a fault,
+    and the old code returned `None` for both — so a broken V3 and a
+    working one looked identical from the outside. That is how a production
+    defect survived two days of being looked at directly.
+
+    `None` now means only "not applicable". Everything past the gate returns
+    one of these, and the caller surfaces it instead of quietly serving V2.
+    """
+
+    reason: str
+
+
+def _not_applicable(take_id: Any, reason: str) -> None:
+    """V3 was never in play for this Take — the legacy answer is correct.
+
+    Kept separate from `_decline` on purpose. Collapsing the two is what made
+    "you are not in the service" indistinguishable from "the service broke",
+    and the whole point of 24h is that those two must never look alike again.
+
+    Returns nothing, so its one call site is a log line plus `return None`
+    rather than the single `return _decline(...)` the failure exits use. Two
+    lines is worth it here: typing it `-> None` is what lets mypy prove no
+    FAILURE path can ever reach this exit by mistake.
+    """
+    logger.info("first_client: v3 not applicable take=%s reason=%s",
+                take_id or "?", reason)
+    return None
+
+
+def _decline(take_id: Any, reason: str) -> V3Unavailable:
     """Say WHY v3 stood down, then stand down.
 
     FOUNDER 2026-09-17, after an afternoon of log searches that found
@@ -49,13 +83,11 @@ def _decline(take_id: Any, reason: str) -> list[dict] | None:
     """
     logger.info("first_client: v3 stood down take=%s reason=%s",
                 take_id or "?", reason)
-    # Typed as the CALLER's return so `return _decline(...)` reads as one
-    # statement at each of the twelve exits. `-> None` made every one of them
-    # a mypy error ("does not return a value"), and splitting them into a log
-    # line plus a bare `return None` is twenty-four lines in which one exit
-    # can quietly lose its log again — the exact failure this function exists
-    # to prevent.
-    return None
+    # Returned, not raised, so `return _decline(...)` stays one statement at
+    # each of the eleven exits. Splitting them into a log line plus a bare
+    # return is twenty-two lines in which one exit can quietly lose its log
+    # again — the exact failure this function exists to prevent.
+    return V3Unavailable(reason)
 
 
 def _exercise_context_available(
@@ -122,8 +154,14 @@ def prepare_first_client_feedback(
     suggestions: Any,
     feedback_candidates: Iterable[Any],
     owner_user_id: str,
-) -> list[dict] | None:
-    """Return exact service rows, or ``None`` to preserve legacy fallback."""
+) -> list[dict] | V3Unavailable | None:
+    """Rows, a typed failure, or ``None`` when V3 does not apply here.
+
+    Three outcomes, not two (contract 24h). ``None`` means this Take is
+    outside the service and the legacy answer is correct. A `V3Unavailable`
+    means V3 owned this Take and could not produce it, which the caller
+    surfaces rather than papering over with V2.
+    """
     take = session if isinstance(session, dict) else {}
     principal_id = str(take.get("owner_principal_id") or "")
     project_id = str(take.get("project_id") or "")
@@ -134,7 +172,8 @@ def prepare_first_client_feedback(
         or not take_id
         or str(owner_user_id or "") != str(take.get("user_id") or owner_user_id)
     ):
-        return _decline(take_id, "not_allowlisted_or_identity_incomplete")
+        _not_applicable(take_id, "not_allowlisted_or_identity_incomplete")
+        return None
     # Enrichment, NOT a gate — see `_exercise_context_available`.
     exercise_context = _exercise_context_available(
         database, principal_id=principal_id,
@@ -283,4 +322,25 @@ def prepare_first_client_feedback(
                     ),
                 }
         visible.append(row)
+    if not visible:
+        # ZERO ROWS IS NOT AN ANSWER, IT IS A STAND-DOWN (founder 2026-09-18:
+        # "it was loading long and then showed no bookmarks on the text ZERO").
+        #
+        # `visible` is built by appending over inventory["visible_rows"]. When
+        # that arrives empty the loop appends nothing and this used to return
+        # `[]` — which is not None, so the caller in ideal_text_changes took it
+        # as a complete V3 result, replaced the working V2 feedback with it and
+        # cleared the styles. The user recorded a Take, waited through every
+        # RPC this function makes, and got nothing at all: strictly worse than
+        # before V3 was activated.
+        #
+        # Under the V3 policy a Take with any valid block yields at least one
+        # Confident Voice item, so an empty inventory means something upstream
+        # produced nothing rather than honestly declining. The "honest empty
+        # lane shows no card" rule in L2 is about the rewrite and praise lanes
+        # inside a populated result — it is not a licence to return an empty
+        # result. Declining here preserves the legacy response, which is the
+        # contract this function's own docstring states, and names the reason
+        # in the log instead of failing silently.
+        return _decline(take_id, "inventory_returned_no_visible_rows")
     return visible

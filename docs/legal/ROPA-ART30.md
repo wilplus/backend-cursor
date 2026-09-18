@@ -28,6 +28,35 @@ A privacy policy does not discharge Art 30. This document does.
 
 ## 1. Processing activities
 
+> **⚠️ Configuration as at 2026-09-18 — the MLC-3 first-client service is ACTIVE.**
+>
+> An Art 30 record that does not describe today's configuration is inaccurate
+> from today, so the activation is recorded here on the day it happened rather
+> than at the next review.
+>
+> | | |
+> |---|---|
+> | Service contract `mlc3-first-client-service-v1` | **activated 2026-09-17**, for technical validation |
+> | `PLF1_PROCESSING_AUTHORIZATION_MODE` | **not enforcing** |
+> | Registered processing policy | **none** |
+> | Principals on `mlc3_service_principal_allowlist` | **one** — the founder's own |
+>
+> **This is not a new category of data subject.** The single allowlisted
+> principal is the founder, who is therefore simultaneously the controller and
+> the only data subject the activation reaches. The risk in practice is
+> negligible.
+>
+> **It is not an exemption, and must not be recorded as one.** There is no
+> "self-processing" carve-out in the GDPR. Art 2(2)(c)'s household exemption
+> covers purely personal or household activity, is read narrowly by the CJEU,
+> and does not reach a business activity — an unregistered business is still a
+> business. Every obligation remains intact on paper; only the practical
+> exposure is small.
+>
+> **What guards it:** nothing automatic yet. The one-principal state is a fact
+> about production data, not something CI can see, so it is presently a promise
+> rather than a gate. See the note at the end of §4.
+
 ### A1 — Account administration and authentication
 - **Purposes:** create and maintain accounts, authenticate, secure access
 - **Categories of subject:** users; coaches
@@ -49,6 +78,8 @@ A privacy policy does not discharge Art 30. This document does.
 - **Transfers:** Cloudflare — DPA and SCCs. OpenAI — United States, DPA and SCCs, zero-retention API terms (**unverified, DPIA RISK-8**)
 - **Retention:** **12 months after last use of the recording** (founder-approved schedule, 2026-09-17; supersedes the life-of-account position first recorded here). Rules seeded by a pending migration; the purge job that enforces them is not yet built — DPIA RISK-5 M5.1.
 - **Systems:** R2 buckets; `coaching_attempts`, `reflection_clips`, `rejected_takes`
+- **Storage location, verified 2026-09-17:** all four Cloudflare R2 buckets — `coach-feedback-videos`, `user-interview-audio`, `willab-journal`, `willab-lab-audio` — report **Eastern Europe (EEUR)** in the Cloudflare console. Recorded as verified rather than assumed: the jurisdiction was an open item in `VENDOR_DPA_REGISTER.md`, and that item closes with the console as its evidence. **There is no undisclosed international transfer of recordings.**
+- **Access control, 2026-09-18 — see DPIA RISK-11.** Recordings were served over permanent, unauthenticated public URLs from at least 2026-05-08. They are now served over short-lived signed URLs, and stored public URLs are re-signed on read. **Residual:** the buckets remain publicly readable, so URLs issued before that date stay valid; closing that needs the private-bucket migration (DPIA M11.4, undated, founder decision).
 
 ### A3 — Transcription and per-slide segmentation
 - **Purposes:** produce an accurate transcript segmented 1:1 per slide
@@ -120,8 +151,43 @@ A privacy policy does not discharge Art 30. This document does.
 - **Art 6 basis:** 6(1)(b) contract · 6(1)(c) Polish accounting and tax law
 - **Recipients:** Stripe
 - **Transfers:** SCCs
-- **Retention:** n/a — **this activity does not run.** The service is free and takes no payment (founder decision, 2026-09-17), so there are no billing records and no accounting-law retention. `token_ledger` and `llm_usage` are internal model-cost records, not billing; they sit under `financial_evidence` and their disposition is an open question — document 06 §3.
+- **Retention:** n/a — **this activity is built but NOT YET RUNNING.** Corrected 2026-09-18; it previously read "does not run", which was an assertion with no evidence behind it and was wrong about the intent.
 - **Systems:** `arc_purchases`, token wallet tables
+
+> **⚠️ 2026-09-18 — corrected, with the evidence this entry previously lacked.**
+>
+> **Freemium is the intended model** (founder, 2026-09-17): free is generous,
+> continued use ultimately requires payment. So this activity is *planned and
+> implemented*, not absent. An Art 30 record must not describe a processing
+> activity as non-existent when it is built and scheduled — "does not run" and
+> "is not running yet" are different statements to a supervisory authority.
+>
+> **How the absence of processing was established, rather than asserted:**
+>
+> | | |
+> |---|---|
+> | Charges taken, ever | **Zero** — verified in the Stripe dashboard, 2026-09-17 |
+> | Payment code | Implemented: credits checkout, tier checkout, arc checkout, webhook |
+> | `STRIPE_SECRET_KEY` in production | **Present on the backend service** until 2026-09-18 — so checkout was live and reachable |
+> | Removed from all services | *[[FOUNDER: date, once verified absent from each boot log]]* |
+>
+> **The key being present is the material fact.** Every payment surface gates
+> on it (`stripe_checkout_credits.py:74`, `tier_checkout.py:94` and `:206`,
+> `arc_checkout.py:53` and `:117`, `internal_webhooks.py:105`), each returning
+> `503 DISABLED` without it. Its presence means a user *could* have been
+> charged, even though none was. That is what makes "does not run" the wrong
+> description and "no charges have been taken" the right one.
+>
+> **Order of operations, founder-stated and now enforced in CI.** Paid launches
+> on a Terms amendment, not a config change: re-version the Terms, obtain
+> sign-off, register the policy, *then* set the key.
+> `tests/test_payment_copy_contract.py` fails if payment config is present
+> while the Terms in force still tell users we do not take payment.
+>
+> **`token_ledger` and `llm_usage`** remain internal model-cost records, not
+> billing. They sit under `financial_evidence`, and their disposition is still
+> the open question in document 06 §3 — which is unchanged by this correction,
+> because zero charges means there are still no accounting records to retain.
 
 ### A11 — Service operation, security and diagnostics
 - **Purposes:** operate, secure, debug and improve reliability
@@ -206,6 +272,36 @@ require the record to be true, not aspirational.
 
 `/v2/processing-authorization/data-export` returns **authorisation evidence**, not
 the subject's personal data. **It does not discharge Art 15 or Art 20.**
+
+> **⚠️ 2026-09-18 — erasure is NON-FUNCTIONAL, and this is a present fact, not a risk.**
+>
+> The purge orchestrator exists but currently deletes **nothing, for anyone**.
+>
+> `resolve_targets` is all-or-nothing by design — *"Unknown inventory means
+> zero deletion"*, `services/data_purge.py:720`. Any dependency that cannot
+> resolve a retention rule aborts the whole run rather than deleting part of an
+> account, which is the correct behaviour: a half-deleted account is worse than
+> an undeleted one, because the subject is told it is done.
+>
+> Five `retention_category` values exist in the registry. Four are seeded by
+> `migrations/pending/seed_phase1_retention_schedule.sql`. The fifth,
+> `financial_evidence`, is deliberately unseeded pending document 06 §3, so its
+> two dependencies land on `RETENTION_RULE_UNRESOLVED` and every purge aborts.
+>
+> **Operational consequence, stated so it is not discovered during a request:**
+> if an Art 17 erasure request arrives before that rule exists, it **cannot** be
+> fulfilled by the orchestrator and must be escalated to manual handling inside
+> the Art 12(3) one-month deadline. Seeding the four rules is necessary and not
+> sufficient — the purge starts working when counsel answers §3, not when that
+> migration merges.
+
+> **On the one-principal allowlist (see the banner at §1).** "Only the founder
+> is allowlisted" is currently a statement about production data, which no test
+> in this repository can observe. It is therefore a promise, not a control. The
+> options for converting it into one are: a check in a production monitor
+> script, or a database constraint that refuses a second principal while no
+> policy is registered. The second fails closed and is the stronger of the two;
+> it is a behaviour change and needs founder authorisation before it ships.
 
 ---
 

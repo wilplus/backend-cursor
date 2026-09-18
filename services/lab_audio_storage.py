@@ -51,6 +51,8 @@ import logging
 import posixpath
 from typing import Optional, Tuple
 
+from services.user_content_keys import is_user_content_key
+
 logger = logging.getLogger(__name__)
 
 _cfg = None
@@ -152,7 +154,15 @@ def lab_audio_public_url(key: str) -> Optional[str]:
     coach base before that — matching wherever the bytes actually are.
     ``None`` when neither base is configured (dev), where callers already
     fall back to an ``s3://`` marker and signed URLs at read time.
+
+    Also ``None`` for USER CONTENT (DPIA RISK-11). Lab audio under
+    ``willab_lab/`` is an uploaded Take — a recording of the user speaking —
+    and a public URL for one is permanent and unauthenticated. This returns
+    callers to the ``s3://`` branch they already take in dev; the read path
+    signs. See services/user_content_keys.py.
     """
+    if is_user_content_key(key):
+        return None
     c = _config()
     if lab_audio_segregated():
         base = (getattr(c, "R2_LAB_AUDIO_PUBLIC_BASE_URL", None) or "").strip()

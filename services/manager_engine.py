@@ -153,13 +153,25 @@ EXPLORATION_RATE = 0.10
 #                   "Did THIS note change take N -> N+1?"
 #   epsilon_explore PER SESSION, which RANK surfaces.
 #                   "Is rank 1 actually the best thing to have said?"
-GAMMA_CONTROL = 0.12              # decisions log: ~10-15%, midpoint
+# gamma_control (a permanent per user-and-lane holdout, 12%) was REMOVED
+# 2026-09-18 (founder — Appendix H.13.4). It ran from 2026-08-10, and deleting
+# rather than zeroing it is safe because NO REAL USER RECORDED IN THAT WINDOW:
+# there is no production period whose withholding this code would be needed to
+# explain, which was the only argument for keeping it dormant.
+#
+# It withheld feedback permanently and silently from ~1 user in 8 on a lane.
+# With Confident Voice as Take 1's only lane that meant no V3 feedback at all,
+# ever, indistinguishable from a product that does nothing — irreconcilable
+# with "V3 works or it fails visibly" (contract 24h).
+#
+# The between-user question it answered — does feedback do anything, or do
+# people improve just by recording more? — now needs a deliberately built
+# opt-in cohort. H.11 warned it cannot be retrofitted; that is accepted.
 INTERVENTION_RANDOMISATION = 0.20  # decisions log: 20%
 
 # Changing either salt RESHUFFLES EVERY ASSIGNMENT and silently splices two
 # incompatible experiments together. Versioned so that is a deliberate act
 # with a name, not an edit.
-CONTROL_SALT = "willab-gamma-v1"
 WITHHOLD_SALT = "willab-withhold-v1"
 EXPLORE_SALT = "willab-explore-v1"
 
@@ -177,30 +189,8 @@ def _stable_fraction(*parts: str, salt: str) -> float:
     return int.from_bytes(digest, "big") / float(1 << 64)
 
 
-def in_control(user_id: str, dimension: str, *,
-               gamma: float = GAMMA_CONTROL) -> bool:
-    """gamma_control — this (user, dimension) pair receives NOTHING, ever.
-
-    PER PAIR, NOT PER USER. A control user still gets normal feedback on
-    every other dimension, so their experience is intact and the comparison
-    is within-person across dimensions as well as between people.
-
-    PERMANENT AND DETERMINISTIC. A per-session coin flip would put the same
-    pair in and out of control and make the comparison meaningless — you
-    would be measuring a user who sometimes got feedback, which is neither
-    arm of the experiment.
-
-    Without this you credit yourself with the practice effect: users improve
-    by recording more, feedback or not, and nothing in the data separates the
-    two.
-    """
-    if not user_id or gamma <= 0:
-        return False
-    return _stable_fraction(user_id, dimension, salt=CONTROL_SALT) < gamma
-
-
 def is_withheld(user_id: str, dimension: str, session_id: str, *,
-                rate: float = INTERVENTION_RANDOMISATION) -> bool:
+                rate: Optional[float] = None) -> bool:
     """Intervention randomisation — a note that WON is deliberately not shown.
 
     WHICH READING, locked by the founder 2026-08-06. The decisions log's
@@ -224,10 +214,12 @@ def is_withheld(user_id: str, dimension: str, session_id: str, *,
     decision; an RNG here would make the arm depend on how many times the
     pipeline happened to run.
     """
-    if not user_id or not session_id or rate <= 0:
+    # Same call-time read as `in_control`, for the same reason.
+    live = INTERVENTION_RANDOMISATION if rate is None else rate
+    if not user_id or not session_id or live <= 0:
         return False
     return _stable_fraction(user_id, dimension, session_id,
-                            salt=WITHHOLD_SALT) < rate
+                            salt=WITHHOLD_SALT) < live
 
 
 def exploration_roll(user_id: str, session_id: str
@@ -508,7 +500,6 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     policy = {
         "control_salt": arms.get("control_salt"),
         "withhold_salt": arms.get("withhold_salt"),
-        "gamma": arms.get("gamma_control"),
         "withhold_rate": arms.get("intervention_randomisation"),
         "exploration_rate": arms.get("epsilon_explore"),
     }
@@ -556,16 +547,6 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
         seen.add(dimension)
         rows.append(row(dimension, ARM_WITHHELD, would=True))
 
-    # CONTROL carries would_have_surfaced=None, not False. The holdout is
-    # removed from the pool BEFORE ranking, so whether it would have won is
-    # genuinely unknown; writing False would assert something never tested.
-    for dimension in result.get("control_held") or ():
-        if dimension in protected:
-            continue
-        if dimension in seen:
-            continue
-        seen.add(dimension)
-        rows.append(row(dimension, ARM_CONTROL))
 
     # BEATEN BY THE BUDGET — considered, ranked, uncollided, and out of room.
     # `would_have_surfaced` is False and that is exact: it lost the slot on
@@ -589,8 +570,41 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     return rows
 
 
+
+def _split_withheld(
+    selected: list, *, protected: Any, user_id: str, session_id: str,
+    take_index: Optional[int],
+) -> tuple[list, list]:
+    """Partition the winners into shown and deliberately withheld.
+
+    TAKE 1 IS EXEMPT (founder 2026-09-18, Appendix H.13.4). A first experience
+    of the product is not a place to spend an experiment, and the arm measures
+    the take N -> N+1 transition anyway, which needs a second take regardless.
+
+    ONLY an explicit 1 exempts. An unknown index withholds as normal, which is
+    the deliberate direction: if it exempted, any caller that forgot to pass
+    the index would silently switch the whole experiment off — and H.12 is
+    explicit that an arm which looks like it is running but is not is worse
+    than one that never ran.
+
+    Extracted from `arbitrate` because that function is grandfathered at CC 57
+    and the ratchet only lets it come down; the exemption is one condition and
+    it could not be spent there.
+    """
+    shown: list = []
+    withheld: list = []
+    for c in selected:
+        if (c.dimension not in protected and take_index != 1
+                and is_withheld(user_id, c.dimension, session_id)):
+            withheld.append(c)
+        else:
+            shown.append(c)
+    return shown, withheld
+
+
 def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
               session_id: str = "",
+              take_index: Optional[int] = None,
               importance: Optional[Callable[[str], float]] = None,
               roll: Optional[Callable[[], float]] = None,
               exploration_rate: float = EXPLORATION_RATE,
@@ -631,18 +645,7 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     #     every other dimension stays intact. Suppressing at the end would
     #     quietly reduce how much feedback control users get overall, which
     #     confounds the very comparison the arm exists to make.
-    control_held: list[Candidate] = []
-    if controls:
-        pool = []
-        for c in everything:
-            if c.dimension not in protected \
-                    and in_control(user.user_id, c.dimension):
-                control_held.append(c)
-                rejected.append((c, "gamma_control"))
-            else:
-                pool.append(c)
-    else:
-        pool = list(everything)
+    pool = list(everything)
 
     # 1 · certainty floor — per-detector PPV, never global accuracy      (H.2)
     live = []
@@ -754,14 +757,10 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     #     suppression with no experiment attached to it.
     withheld: list[Candidate] = []
     if controls and session_id:
-        shown = []
-        for c in selected:
-            if c.dimension not in protected \
-                    and is_withheld(user.user_id, c.dimension, session_id):
-                withheld.append(c)
-            else:
-                shown.append(c)
-        selected = shown
+        selected, withheld = _split_withheld(
+            selected, protected=protected, user_id=user.user_id,
+            session_id=session_id, take_index=take_index,
+        )
 
     return {
         "selected": selected,
@@ -774,7 +773,6 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
         # arms, not just what surfaced — an outcome with no arm attached is
         # an observation, and the whole point of the controls is that these
         # are not observations.
-        "control_held": [c.dimension for c in control_held],
         "withheld": [c.dimension for c in withheld],
         "protected": sorted(protected),
         # RANKED, UNCOLLIDED, AND BEATEN ONLY BY THE BUDGET. These had no arm
@@ -786,10 +784,8 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
         "budget_lost": [c.dimension for c in independent
                         if id(c) not in {id(x) for x in counterfactual}],
         "arms": {
-            "gamma_control": GAMMA_CONTROL,
             "intervention_randomisation": INTERVENTION_RANDOMISATION,
             "epsilon_explore": exploration_rate,
-            "control_salt": CONTROL_SALT,
             "withhold_salt": WITHHOLD_SALT,
         },
     }

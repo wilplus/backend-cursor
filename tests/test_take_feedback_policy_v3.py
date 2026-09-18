@@ -115,15 +115,43 @@ def test_one_relative_best_candidate_per_slide_bounded_75_word_block():
     )
 
 
-def test_take_one_is_confidence_only_and_take_two_selects_global_absolute_lanes():
-    first = _frame(take_index=1)
-    assert first["verbal_lanes"]["enabled"] is False
-    assert first["verbal_lanes"]["rewrite_clarity"]["selected_candidate_id"] is None
+def test_both_verbal_lanes_run_on_take_one():
+    """REVERSED 2026-09-18 (founder — contract 24b). This test previously
+    asserted `enabled is False` on Take 1 and that both lanes selected nothing.
 
-    mature = _frame(take_index=2)
-    assert mature["verbal_lanes"]["enabled"] is True
-    assert mature["verbal_lanes"]["rewrite_clarity"]["selected_candidate_id"] == "best-rewrite"
-    assert mature["verbal_lanes"]["great_formulation"]["selected_candidate_id"] == "best-praise"
+    The old rule made the first Take the one Take whose bookmarks lead
+    nowhere — the worst possible place in the product for that, because it is
+    the only Take every user definitely sees. Rewritten rather than deleted so
+    the reversal is legible in this file's history.
+    """
+    first = _frame(take_index=1)
+    assert first["verbal_lanes"]["enabled"] is True
+    assert first["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == [
+        "best-rewrite",
+    ]
+
+
+def test_the_rewrite_lane_is_capped_at_one():
+    """Capped because, unlike a relative-best read, a rewrite asserts a finding
+    and can be wrong — the expensive error under H.0."""
+    frame = _frame(take_index=2)
+    lane = frame["verbal_lanes"]["rewrite_clarity"]
+    assert lane["budget"] == 1
+    assert len(lane["selected_candidate_ids"]) <= 1
+
+
+def test_praise_anchors_to_the_top_confidence_blocks_and_is_capped_at_two():
+    frame = _frame(take_index=2)
+    lane = frame["verbal_lanes"]["great_formulation"]
+    assert lane["budget"] == 2
+    assert lane["selection_scope"] == "anchored_to_top_confidence_blocks"
+    assert len(lane["selected_candidate_ids"]) <= 2
+    # Every anchor names the block it belongs to — praise never floats free of
+    # a Slide (contract 24f).
+    block_ids = {block["block_id"] for block in frame["blocks"]}
+    for anchor in lane["anchors"]:
+        assert anchor["block_id"] in block_ids
+        assert anchor["candidate_id"] in lane["selected_candidate_ids"]
 
 
 def test_shadow_is_not_delivery_exposure_or_dataset_input_and_hash_is_stable():
@@ -324,3 +352,298 @@ def test_database_adapter_uses_the_service_only_atomic_rpc():
     assert payload["p_recording_id"] == (
         "44444444-4444-4444-8444-444444444444"
     )
+
+
+# ── the coverage ladder (founder 2026-09-18, contract 24c / Appendix H.13.1) ──
+
+def test_the_coverage_floor_climbs_then_holds_at_one_hundred():
+    from services.take_feedback_policy_v3 import coverage_floor
+
+    assert coverage_floor(1) == 0.70
+    assert coverage_floor(2) == 0.80
+    assert coverage_floor(3) == 1.00
+    # "3 and after" — a tenth Take is not a relaxation.
+    assert coverage_floor(10) == 1.00
+
+
+def test_junk_take_index_holds_the_strictest_floor():
+    """Fail toward the strict end: an unreadable Take index must not silently
+    buy a 70% floor."""
+    from services.take_feedback_policy_v3 import coverage_floor
+
+    for value in (None, "2", True, 0, -1):
+        assert coverage_floor(value) == 1.00, repr(value)
+
+
+def _blk(slide_index, selected, reason="no_exact_clip_lineage_candidate"):
+    return {
+        "slide_index": slide_index,
+        "selected_candidate_id": selected,
+        "selection_reason": reason if not selected else "relatively_strongest_measured",
+    }
+
+
+def test_the_denominator_is_blocks_not_slides():
+    """THE POINT OF THE RULE. Slides that never formed a block are absent from
+    `blocks` entirely, so they cannot appear in the denominator — which is what
+    makes 100% reachable instead of capped by however many Slides were silent
+    or too short to partition."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    # Ten-slide deck, only four Slides ever produced a block.
+    blocks = [_blk(1, "a"), _blk(2, "b"), _blk(5, "c"), _blk(9, "d")]
+    coverage = _slide_coverage(blocks, 3)
+
+    assert coverage["assessable_slides"] == 4
+    assert coverage["covered_slides"] == 4
+    assert coverage["ratio"] == 1.0
+    assert coverage["meets_floor"] is True
+
+
+def test_an_uncovered_slide_carries_the_reason_it_was_missed():
+    """A shortfall is a defect to investigate, not a licence to pad (24d), and
+    the reason strings are the only thing that makes it diagnosable."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    blocks = [
+        _blk(1, "a"),
+        _blk(2, None, "no_exact_clip_lineage_candidate"),
+        _blk(2, None, "incompatible_detector_version"),
+        _blk(3, None, "no_exact_clip_lineage_candidate"),
+    ]
+    coverage = _slide_coverage(blocks, 1)
+
+    assert coverage["covered_slides"] == 1
+    assert coverage["assessable_slides"] == 3
+    assert coverage["meets_floor"] is False
+    missed = {row["slide_index"]: row for row in coverage["uncovered"]}
+    assert set(missed) == {2, 3}
+    # Both distinct reasons on slide 2 survive, de-duplicated and ordered.
+    assert missed[2]["reasons"] == [
+        "incompatible_detector_version", "no_exact_clip_lineage_candidate",
+    ]
+    assert missed[2]["block_count"] == 2
+
+
+def test_one_covered_block_covers_its_slide():
+    """Coverage counts Slides, not blocks: a long Slide partitioned into four
+    blocks is covered once any of them selects."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    blocks = [_blk(4, None), _blk(4, None), _blk(4, "c"), _blk(4, None)]
+    coverage = _slide_coverage(blocks, 3)
+
+    assert coverage["assessable_slides"] == 1
+    assert coverage["ratio"] == 1.0
+
+
+def test_the_five_slide_failure_is_measured_as_a_failure():
+    """The take that started this: five assessable Slides, one bookmark. Under
+    relative-best that should be near impossible, and the ladder must report it
+    as a flat miss rather than a judgement call."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    blocks = [_blk(i, "a" if i == 1 else None) for i in range(1, 6)]
+    coverage = _slide_coverage(blocks, 1)
+
+    assert coverage["ratio"] == 0.2
+    assert coverage["required_floor"] == 0.70
+    assert coverage["meets_floor"] is False
+    assert len(coverage["uncovered"]) == 4
+
+
+def test_a_document_with_no_blocks_is_not_a_coverage_failure():
+    """Nothing to cover is not the same as failing to cover it; reporting 0%
+    would make an empty recording look like a broken selector."""
+    from services.take_feedback_policy_v3 import _slide_coverage
+
+    coverage = _slide_coverage([], 3)
+    assert coverage["assessable_slides"] == 0
+    assert coverage["meets_floor"] is True
+
+
+# ── praise anchoring, option (a) (founder 2026-09-18, contract 24f) ──
+
+def _block(block_id, start, end, selected="c1", score=0.9):
+    return {
+        "block_id": block_id, "slide_index": 0, "start": start, "end": end,
+        "selected_candidate_id": selected,
+        "confidence_candidates": [
+            {"candidate_id": selected, "machine_score": score, "ordinal": 0},
+        ],
+    }
+
+
+def test_praise_goes_to_the_two_highest_ranked_blocks():
+    from services.take_feedback_policy_v3 import (
+        PRAISE_ANCHOR_LIMIT, _anchored_praise, _top_confidence_blocks,
+    )
+
+    blocks = [
+        _block("b-low", 0, 100, "c-low", 0.2),
+        _block("b-top", 100, 200, "c-top", 0.9),
+        _block("b-mid", 200, 300, "c-mid", 0.6),
+    ]
+    top = _top_confidence_blocks(blocks, PRAISE_ANCHOR_LIMIT)
+    assert [b["block_id"] for b in top] == ["b-top", "b-mid"]
+
+    ranked = [
+        {"candidate_id": "p-top", "document_span": {"start": 110, "end": 150}},
+        {"candidate_id": "p-mid", "document_span": {"start": 210, "end": 250}},
+        {"candidate_id": "p-low", "document_span": {"start": 10, "end": 50}},
+    ]
+    anchors = _anchored_praise(ranked, top)
+    assert [row["candidate_id"] for row in anchors] == ["p-top", "p-mid"]
+    # The weakest block's praise is NOT surfaced, however good the candidate.
+    assert "p-low" not in {row["candidate_id"] for row in anchors}
+
+
+def test_a_top_block_with_no_praise_inside_it_simply_gets_none():
+    """OPTION (a), and the cost the founder accepted: a green bookmark can
+    carry no praise. Praising the block anyway with the nearest available text
+    would be manufacturing, which L2 and contract 24d forbid."""
+    from services.take_feedback_policy_v3 import _anchored_praise
+
+    top = [_block("b-top", 100, 200), _block("b-two", 200, 300)]
+    # Both candidates sit OUTSIDE either block.
+    ranked = [
+        {"candidate_id": "p-far", "document_span": {"start": 0, "end": 40}},
+        {"candidate_id": "p-far2", "document_span": {"start": 400, "end": 440}},
+    ]
+    assert _anchored_praise(ranked, top) == []
+
+
+def test_best_praise_inside_a_block_wins_because_the_ranking_is_ordered():
+    from services.take_feedback_policy_v3 import _anchored_praise
+
+    top = [_block("b-top", 0, 500)]
+    ranked = [
+        {"candidate_id": "p-best", "document_span": {"start": 10, "end": 40}},
+        {"candidate_id": "p-worse", "document_span": {"start": 60, "end": 90}},
+    ]
+    anchors = _anchored_praise(ranked, top)
+    assert [row["candidate_id"] for row in anchors] == ["p-best"]
+
+
+def test_one_praise_per_block_so_a_single_block_cannot_take_both_slots():
+    from services.take_feedback_policy_v3 import _anchored_praise
+
+    top = [_block("b-top", 0, 500)]
+    ranked = [
+        {"candidate_id": "p-one", "document_span": {"start": 10, "end": 40}},
+        {"candidate_id": "p-two", "document_span": {"start": 60, "end": 90}},
+    ]
+    assert len(_anchored_praise(ranked, top)) == 1
+
+
+def test_a_span_straddling_a_block_boundary_is_not_inside_it():
+    """Containment, not overlap: a candidate half in the block is evidence
+    about words the block does not own."""
+    from services.take_feedback_policy_v3 import _anchored_praise
+
+    top = [_block("b-top", 100, 200)]
+    ranked = [{"candidate_id": "p", "document_span": {"start": 150, "end": 260}}]
+    assert _anchored_praise(ranked, top) == []
+
+
+def test_an_unselected_block_never_anchors_praise():
+    """A block whose confidence item was not selected has no moment to praise."""
+    from services.take_feedback_policy_v3 import _top_confidence_blocks
+
+    blocks = [{
+        "block_id": "b", "slide_index": 0, "start": 0, "end": 100,
+        "selected_candidate_id": None, "confidence_candidates": [],
+    }]
+    assert _top_confidence_blocks(blocks, 2) == []
+
+
+# ── the practice threshold (founder 2026-09-18, contract 24e/24f) ──
+
+def _rblock(block_id, score):
+    return {
+        "block_id": block_id, "slide_index": 0, "start": 0, "end": 10,
+        "selected_candidate_id": f"c-{block_id}",
+        "confidence_candidates": [
+            {"candidate_id": f"c-{block_id}", "machine_score": score, "ordinal": 0},
+        ],
+    }
+
+
+def test_the_threshold_cuts_below_neutral():
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([
+        _rblock("high", 0.8),      # delivery_signal_high
+        _rblock("mid_high", 0.2),  # delivery_signal_mid_high
+        _rblock("neutral", 0.0),   # delivery_signal_neutral — NOT prompted
+        _rblock("mid_low", -0.2),  # below
+        _rblock("low", -0.9),      # below
+    ])
+    assert routing["high"]["practice_prompt"] is False
+    assert routing["mid_high"]["practice_prompt"] is False
+    assert routing["neutral"]["practice_prompt"] is False, (
+        "neutral is AT the threshold, not below it — the cut is 'below neutral'"
+    )
+    assert routing["mid_low"]["practice_prompt"] is True
+    assert routing["low"]["practice_prompt"] is True
+
+
+def test_only_the_weakest_prompting_block_carries_the_exercise():
+    """Every below-neutral block says "Let's practice"; exactly one also gets
+    the drill, because four things to go and record is a to-do list."""
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([
+        _rblock("a", -0.2), _rblock("b", -0.9), _rblock("c", -0.4),
+    ])
+    carrying = [key for key, row in routing.items() if row["carries_exercise"]]
+    assert carrying == ["b"], "the weakest of the prompting blocks"
+    assert all(row["practice_prompt"] for row in routing.values())
+
+
+def test_a_take_with_nothing_below_neutral_offers_no_exercise():
+    """What progress looks like: the drill disappears."""
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([_rblock("a", 0.6), _rblock("b", 0.1)])
+    assert not any(row["carries_exercise"] for row in routing.values())
+    assert not any(row["practice_prompt"] for row in routing.values())
+
+
+def test_an_unselected_block_is_not_routed_at_all():
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([{
+        "block_id": "b", "slide_index": 0, "start": 0, "end": 10,
+        "selected_candidate_id": None, "confidence_candidates": [],
+    }])
+    assert routing == {}
+
+
+def test_strongest_and_weakest_come_from_one_ordering():
+    """Read from both ends of the same ranking, so the two can never disagree
+    about a take — a separate 'weakest' rule could name a block the shared rule
+    ranks above another it called stronger."""
+    from services.take_feedback_policy_v3 import (
+        _practice_routing, _top_confidence_blocks,
+    )
+
+    blocks = [_rblock("worst", -0.9), _rblock("best", 0.9), _rblock("mid", -0.1)]
+    top = _top_confidence_blocks(blocks, 1)
+    routing = _practice_routing(blocks)
+    assert top[0]["block_id"] == "best"
+    assert routing["best"]["carries_exercise"] is False
+    assert routing["worst"]["carries_exercise"] is True
+
+
+def test_the_band_stays_internal_and_the_client_gets_booleans():
+    """AC-9. voice_confidence.band() says in its own docstring that the band is
+    a VERDICT and must never reach a user payload, so what leaves the routing
+    is two booleans plus the label for this internal frame only."""
+    from services.take_feedback_policy_v3 import _practice_routing
+
+    routing = _practice_routing([_rblock("a", -0.7)])
+    assert set(routing["a"]) == {
+        "delivery_band", "practice_prompt", "carries_exercise",
+    }
+    assert routing["a"]["practice_prompt"] is True
