@@ -84,9 +84,45 @@ foundation models.
 | Most recent | 17 September 2026 |
 | Recordings carrying a delivery-signal value | 590, across 4 users |
 
-**This is not a pre-launch defect.** Real users' voice recordings have
-existed continuously for over four months, and the service was still
-recording on the day of discovery.
+**This is not a pre-launch defect.** Voice recordings have existed continuously
+for over four months, and the service was still recording on the day of
+discovery.
+
+> ### ⚠️ Every recording is the founder's own voice — attestation, 2026-09-18
+>
+> **The controller attests that there are no third-party data subjects in the
+> audio.** All 67 accounts were created by him, and every one of the 1,708
+> recordings is his own voice. No member of the public, no tester and no
+> acquaintance has ever recorded on the service. The earlier wording in this
+> section — "real users' voice recordings" — was wrong and is withdrawn.
+>
+> **How the accounts were made, because it explains why email cannot verify
+> this.** He created them himself over the development period, using his own
+> addresses, **new Gmail addresses created for the purpose**, and — with their
+> knowledge — **email addresses belonging to his mother and to a friend**. So an
+> email-domain analysis would show many `gmail.com` rows and several unfamiliar
+> ones and would prove nothing either way. We ran no such query, and we are not
+> offering one as corroboration.
+>
+> **This therefore rests on the controller's own knowledge, and nothing else.**
+> It is stated rather than evidenced, and it is the strongest form available: the
+> person who made every recording is the person attesting to it. No log can
+> establish whose voice is in an audio file. We would rather say that plainly
+> than dress an attestation as a verified fact.
+>
+> **What follows if you accept it.** The only data subject in the audio is the
+> controller. Article 34 has nobody to notify. Q-E becomes the controller
+> consenting to his own processing. RISK-11 exposed his own voice. The OpenAI
+> sharing sent his own recordings. **We ask you to weigh it; we have not
+> re-scored the DPIA on it ourselves**, and the figures above stand unchanged as
+> the worst case.
+>
+> **One thing this does surface, and it is new.** Some accounts carry **email
+> addresses belonging to two identifiable third parties** — his mother and a
+> friend — used with their knowledge. Those addresses are their personal data
+> even though no recording is theirs. It is a much smaller matter than
+> twenty-five people's voices, but it is not nothing, and we would rather raise
+> it than have you find it. **Q-G below.**
 
 ### What we cannot yet establish
 
@@ -96,10 +132,22 @@ was not enabled at the time. We have asked OpenAI whether their own records
 can supply the date. Until they answer, the window is "up to four months"
 and we are not able to narrow it ourselves.
 
-**We also cannot yet state our user count with confidence.** Our settings
-table holds 7 rows while 25 distinct user identifiers have audio. We are
-resolving that discrepancy and will send the figure; please do not rely on
-either number in the meantime.
+**Our user count, resolved 2026-09-18.** An earlier version of this note said
+we could not state it and asked you not to rely on the figures. We can now:
+
+| | |
+|---|---|
+| Accounts (`auth.users`) | **67** |
+| Accounts that ever recorded consent | **26** |
+| **Accounts with no consent record at all** | **41** |
+| Distinct users with audio | 25 |
+| Audio recordings held | 1,708 |
+
+The earlier "7 versus 25" discrepancy was our own error, not a data problem:
+`user_settings` holds 7 rows because a row is written when a user changes a
+preference, not when an account is created. It is not the user register and we
+were briefly sizing the user base with the wrong table. `auth.users` is the
+register, and the number is 67.
 
 ### What we have done
 
@@ -191,6 +239,34 @@ the published text.
   that the accepted document was self-identified by its author as placeholder
   copy pending legal review?**
 
+  **Added 2026-09-18 — the 26 did not all accept the same document.** A
+  production query established that the acceptance window splits across the
+  6 June rebrand:
+
+  | Terms as published | acceptances | users | window |
+  |---|---|---|---|
+  | naming **Willab** | 22 | 22 | 8–16 May |
+  | naming **WillpowerLab** | 4 | 4 | 6 Jun – 16 Jul |
+
+  Two of the four changed lines are operative body text a user read — *"By
+  creating an account or recording a voice sample on Willab/WillpowerLab, you
+  agree to these Terms of Use"* and *"You must be at least 18 years old to use
+  Willab/WillpowerLab"*. **No user accepted both**; these are disjoint groups.
+
+  Three things follow that we would like your view on:
+
+  1. The controller is the same natural person throughout — this was a change of
+     **trading name**, not of legal entity. Is that material for the 22 who only
+     ever agreed to the "Willab" text?
+  2. **Both groups were recorded as `terms_version` 1.0.** Two materially
+     different documents under one label, so the version field is not evidence
+     of what anyone accepted; only the timestamp separates them. Does that
+     create an evidential problem we must remediate, or is the timestamp
+     sufficient?
+  3. One acceptance sits 61 minutes after the rebrand commit reached `main`. We
+     assign it to the later document on the basis that deployment follows push
+     within minutes; we have not yet read the deployment log to confirm it.
+
 ## One more, found while this pack was being assembled
 
 User recordings have been served over **permanent, unauthenticated URLs**. The
@@ -212,6 +288,31 @@ including what the near-term fix does **not** close, are DPIA RISK-11.
   unauthorised party and no means of obtaining such evidence retrospectively?
   If assessment is required, what is a reasonable one where access logging was
   not enabled for the period?
+
+- **Q-G. Added 2026-09-18, and it changes the shape of much of the above.** The
+  controller attests that **every recording on the service is his own voice** —
+  see the box in the disclosure section. If you accept that attestation:
+
+  1. **Does it change your answer to Q-A, Q-B, Q-D, Q-E or Q-F?** Our reading is
+     that it removes the third-party data subjects from all of them, leaving the
+     controller as the only person whose voice was affected. We have not
+     re-scored anything on it and would rather you told us what it moves.
+  2. **What weight does an attestation of this kind carry**, given no log can
+     establish whose voice is in an audio file and an email analysis would prove
+     nothing here? Should it be given in a particular form — a dated statement of
+     truth, a witness statement — to be worth anything to a supervisory
+     authority?
+  3. **A smaller matter that came out of the same disclosure.** Some accounts
+     were created using **email addresses belonging to the controller's mother
+     and to a friend**, with their knowledge. Those addresses are the personal
+     data of two identifiable third parties, held in `auth.users`, even though no
+     recording is theirs and neither ever used the service. What is our position
+     on those two addresses — for the OpenAI incident, where an email address is
+     not something we sent to the provider; for the acceptance records at Q-E;
+     and for retention?
+  4. **Is there anything we should do now** to preserve the attestation's value
+     — record it contemporaneously in a particular way, or have it witnessed —
+     before more time passes?
 
 ## Two things we corrected before writing to you
 
@@ -240,12 +341,15 @@ our position and is untouched by any rename.
 
 ## What we are NOT asking
 
-- **US law.** We serve Poland only. A separate US brief exists and is parked
-  until we incorporate.
+- **US law.** We do not serve the United States. A separate US brief exists and
+  is parked until we incorporate: with no entity, Illinois BIPA's private right
+  of action would land on a natural person. We do ask about the **EU/EEA**,
+  which we do intend to serve — see ask 5 on Art 9(4).
 - **"How do we achieve full compliance."** We are a sole operator with no
-  company and no revenue. If the high-risk regime is engaged, *remove or
-  redesign the feature* is a realistic answer and we would rather hear it than a
-  compliance programme we cannot staff.
+  company. The model is freemium and **no customer has ever been charged** — the
+  capability is live, the transaction history is empty. If the high-risk regime
+  is engaged, *remove or redesign the feature* is a realistic answer and we
+  would rather hear it than a compliance programme we cannot staff.
 
 ## Please note about authorship
 

@@ -36,13 +36,31 @@ different queues and have produced different outcomes.
 
 | # | Date | Channel | Framed as | Asked for | Outcome |
 |---|---|---|---|---|---|
-| 1 | 2026-09-17 | `privacy@openai.com` | Support / general privacy enquiry | DPA execution route, EU contracting entity, retention period, sub-processor list | **Consumer autoresponder.** No human reply. Nothing answered |
+| 1 | 2026-09-17 | `privacy@openai.com` | Support / general privacy enquiry | DPA execution route, EU contracting entity, retention period, sub-processor list | **Replied 2026-09-18 11:50, case 15285167, by a named person ("Alvin, OpenAI Privacy Team").** Answered the DPA-location question by linking the public Data Processing Addendum. **None of the three points for our records was confirmed, and the settings-change history was not addressed at all.** |
 | 2 | *pending* | `privacy@openai.com` + `dsar@openai.com` | **Controller request under Art 28(3)(h)** — subject line says so explicitly | Settings-change timestamps and actor; whether content was used for training; consequences for content already incorporated | *awaiting send by the account owner* |
 
-**Attempt 1 is itself informative.** The published privacy address routed a
-controller enquiry to a consumer autoresponder. That is relevant to whether the
-processor has made an effective channel available under Art 28(3)(h), and it is
-the reason attempt 2 changes both the framing and the address set.
+**Attempt 1 is itself informative, and more so after the reply.** This log
+previously recorded it as an autoresponder with no human reply. That was
+corrected on 2026-09-18: a named member of the privacy team answered under a
+case number and pointed at the **publicly published DPA**, which we already
+held and which the vendor register already records as BY-REF.
+
+**A human read a controller enquiry and returned public documentation.** That is
+a different and more useful fact than an autoresponder: the channel is staffed,
+it was reached, and it produced nothing about our own organisation's records.
+It goes to whether the processor has made an effective channel available under
+Art 28(3)(h), and it is the reason attempt 2 changes both the framing and the
+address set rather than simply re-sending.
+
+**What attempt 1 did establish:** OpenAI's DPA applies by reference and needs no
+execution form — so that question is closed, and `docs/VENDOR_DPA_REGISTER.md`
+was already right. **What it did not touch:** the settings-change date, which is
+the only thing Q-C turns on.
+
+> **Attempt 2 has still not been sent.** It is drafted in full below and needs
+> one substitution. Until it goes, the affected window remains "up to four
+> months" and Q-C stands open on the record — not because the answer is
+> unobtainable, but because the request that would obtain it has not been made.
 
 ## Independent evidence, pursued in parallel
 

@@ -1,8 +1,20 @@
 # Vendor actions — who to contact, for what, with the text
 
-Four vendors, five actions. (A payment provider is not on this list: the
-service is free, so there is nothing to sell and no seller of record.) None of them cost money. The OpenAI ZDR request is
+Four vendors, five actions. None of them cost money. The OpenAI ZDR request is
 the one with a lead time, so start it first.
+
+**On the payment provider.** The line here said one was unnecessary because
+"the service is free". The premise was wrong — the model is freemium, four sold
+tiers exist in `services/token_prices.py:51-57`, and the checkout surfaces are
+written — but the conclusion happens to hold, for a different reason.
+
+For payments **Stripe is an independent controller, not our processor**
+(`docs/VENDOR_DPA_REGISTER.md`). It decides for itself how it uses payment data
+under its own terms, so there is no Article 28 processor relationship to paper
+and **no DPA of ours to chase**. It is a recipient to be **disclosed**, which
+the Privacy Policy now does under Payments.
+
+So: no action on this list. The action was on the policy, and it is done.
 
 ---
 

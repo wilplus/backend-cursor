@@ -17,7 +17,7 @@ authenticated roles have no grant.
 | `terms_version` | `2.0` | Live copy is 1.2. A new major, because 2.0 removes the pooled-training consent rather than amending it. |
 | `privacy_version` | `2.0` | Same reason. |
 | `ai_notice_version` | `1.0` | New document; there is no predecessor. |
-| `allowed_countries` | `["pl"]` | §3 — Poland only |
+| `allowed_countries` | `["pl"]` | Poland for the first registration. **NOT settled** — widening waits on per-country Art 9(4) conditions (cover-note ask 5). Do not harden this list before that answer. |
 | `minimum_age` | `18` | Fixed by CHECK; no other value is accepted. |
 | `created_by` | `Artur Willoński` | The person registering the policy, not the approving authority. |
 | `status` on registration | `approved` | Set by the RPC. `active` comes from `activate_phase1_policy_v1`. |
@@ -319,3 +319,50 @@ jobs behave differently from the web tier.
 
 Items 3 and 4 are engineering work, not paperwork. They are the real critical
 path.
+
+---
+
+## Conditions carried out of the copy files (moved here 2026-09-18)
+
+The four `copy/*.txt` files are rendered to users **verbatim, whitespace and
+all**, and their exact bytes are what the four SHA-256 hashes cover. Anything
+inside them is read by a user. Three internal notes were sitting in them in
+`[[…]]` form and would have been displayed on the acceptance screen and the
+public pages. They are removed from the copy and recorded here instead.
+
+**Nothing in this section is user-facing. Nothing in it may go back into a copy
+file.**
+
+### C1 — Controller identity, on business registration
+
+Terms §1 and Privacy §1 name **Artur Willoński, a natural person operating under
+the name "WillpowerLab"**. That is accurate today and a lawful configuration —
+GDPR does not require a legal person.
+
+**On registering a business, both blocks must name the registered entity, its
+address and its number.** That changes the Privacy Policy, which changes its
+SHA-256, which makes **every existing receipt stale** and asks every user to
+accept again. Document 01 §2 prices this: the cheapest moment to incorporate is
+before the first policy registration; the cost scales with the user count at the
+moment it is made. Taking payment will in all likelihood cross the
+unregistered-activity threshold and force the question.
+
+### C2 — The 14-day withdrawal right, before this version is registered
+
+Terms §2 states the EU/EEA consumer right to withdraw from a paid plan **in
+full**, with no limitation. That is deliberate and currently correct.
+
+A subscription that starts immediately only loses that right where the consumer
+**expressly asks for it to start at once AND acknowledges losing it**. Checkout
+asks neither question today. So **no sentence limiting the withdrawal right may
+appear in the Terms until checkout asks both** — the Terms follow the checkout,
+never the reverse. Counsel confirms the wording (cover-note ask on consumer
+law); engineering adds both to checkout as its own work package.
+
+### C3 — A further AI provider
+
+Privacy §5 names **OpenAI as the only AI provider** that receives audio or
+transcripts. If any other AI provider is added, it must be named there and
+**this policy re-versioned before that provider receives anything**. A new
+provider under an unchanged policy version is a receipt proving agreement to a
+recipient list the user never saw.

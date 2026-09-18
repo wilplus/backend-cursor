@@ -2,14 +2,32 @@
 
     artifact_kind:       retention_schedule
     version:             1.0
-    approving_authority: [[FOUNDER: named person or firm]]
-    approved_at:         [[FOUNDER: ISO-8601 UTC timestamp of signature]]
-    object_key:          [[FOUNDER: storage path of the signed PDF]]
+    approving_authority: Artur Willoński (founder and controller)
+    approved_at:         2026-09-18T00:00:00Z
+    object_key:          phase1-2026.1/legal/retention-schedule-v1.0.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     control_version:     phase1-retention-schedule-v1
 
-**STATUS: DRAFT.** Periods approved by the founder 2026-09-17. Not yet signed,
-not yet seeded.
+**STATUS: FOUNDER-APPROVED 2026-09-18. Not yet signed as a PDF, not yet seeded.**
+
+**Why the founder is the right authority for THIS document and not for 02.**
+A retention schedule is an operational decision about how long the controller
+keeps its own data. The controller is Artur Willoński, so he is the person whose
+decision it records — there is no one else it could be. The periods themselves
+were settled on 2026-09-17 and are unchanged.
+
+Contrast `02-power-score-classification` §9, where the founder must **not** sign:
+that document records a determination about how the AI Act applies to the code,
+which is a qualified legal judgement. The `mlc2-bundled-consent-v1.json`
+precedent recorded the founder as *"recording the approved counsel
+determination"*, and the pack README exists partly to stop that being repeated.
+The distinction is not seniority, it is subject matter.
+
+**What still has to happen before registration.** `approving_authority` and
+`approved_at` are filled, but the artifact the database points at is a **signed
+PDF in storage**. Render this document, sign it, upload it to the `object_key`
+above, and compute `sha256` from the stored bytes. A name in a markdown file is
+a recorded decision; it is not yet the artifact.
 
 This document exists because `data_retention_rules.legal_artifact_id` is
 `NOT NULL` and references `processing_legal_artifacts`. There is no retention

@@ -1,5 +1,5 @@
 WillpowerLab — Privacy Policy
-Version 2.0. Effective [[FOUNDER: date]].
+Version 2.0. Effective 18 September 2026.
 
 This policy explains what WillpowerLab does with your personal data, who else
 receives it, how long we keep it, and how you get it deleted.
@@ -20,11 +20,6 @@ Artur Willoński, operating under the name "WillpowerLab"
 Poland, European Union
 Contact: contact@willpowerlab.com (a postal address is provided on request to
 data subjects and to the supervisory authority)
-
-[[FOUNDER: MUST BE UPDATED ON BUSINESS REGISTRATION — see the note in the
-product legal approval. Taking payment will almost certainly take you past the
-unregistered-activity threshold, and this block must then name the registered
-business, its address and its number.]]
 
 Given the scale of processing we have not appointed a Data Protection Officer,
 which GDPR Article 37 does not require of us. Privacy requests are handled
@@ -116,14 +111,18 @@ Each transfer is made under a short-lived internal permit that records which
 operation it was for and the minimum data it was allowed to carry. We do not
 authorise OpenAI to use your content to train its models.
 
-[[FOUNDER: if any further AI provider is added, it must be named here and this
-policy re-versioned before that provider receives anything.]]
-
 Infrastructure providers
 - Cloudflare (R2): storage of your audio recordings.
 - Supabase: our database, and audio storage on a fallback path.
 - Railway: hosting of the application.
-- [[FOUNDER: email provider]]: transactional email.
+- Resend: transactional email.
+- Vercel: hosting of the website.
+- Sentry: error reports, stored in the European Union.
+
+Payments
+- Stripe, if you take a paid plan. Stripe is not our processor: it decides for
+  itself how it uses payment data, as a controller in its own right, under its
+  own terms. We never see or store your card details.
 
 Human coaches
 Only if you ask for coach review and agree to it separately. A coach who reviews
@@ -137,12 +136,20 @@ advertising.
 
 6. TRANSFERS OUTSIDE THE EEA
 
-Some of the providers above process data in the United States. Where that
-happens we rely on [[FOUNDER: the specific mechanism for each provider —
-European Commission adequacy decision for the EU-US Data Privacy Framework
-where the provider is certified, otherwise Standard Contractual Clauses with a
-transfer impact assessment]]. You can ask us for a copy of the safeguards in
-place.
+Some of the providers above process data in the United States. Every one of
+those transfers is made under the European Commission's Standard Contractual
+Clauses, which each provider's data processing agreement incorporates.
+
+- OpenAI: Standard Contractual Clauses. Its agreement appoints OpenAI Ireland
+  Limited to process data from the EEA and Switzerland.
+- Cloudflare: Standard Contractual Clauses. Our storage carries an Eastern
+  Europe location hint, which is a preference rather than a guarantee.
+- Supabase: Standard Contractual Clauses and a UK addendum. Your data is stored
+  in Ireland.
+- Railway, Resend, Vercel: Standard Contractual Clauses.
+- Sentry: error reports are stored in the European Union.
+
+You can ask us for a copy of the safeguards in place.
 
 
 7. HOW LONG WE KEEP IT
@@ -162,10 +169,10 @@ Record of your agreement to this policy: kept for as long as we may need to
 Our full retention and destruction schedule is published at
 willpowerlab.com/legal/retention.
 
-[[OPEN: OpenAI's own retention window for transcription, and whether our calls
-qualify for zero data retention. Until we have that answer this section
-describes only what WE hold. It must say what the provider holds before this
-policy is published — see section 9.]]
+What OpenAI holds, separately from us
+OpenAI keeps the audio and text sent to its API for up to 30 days, to check for
+abuse, and then deletes it. On our current plan that period cannot be switched
+off. It is not used to train OpenAI's models.
 
 8. YOUR RIGHTS
 

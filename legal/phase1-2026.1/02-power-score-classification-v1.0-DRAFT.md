@@ -2,9 +2,9 @@
 
     artifact_kind:       power_score_classification
     version:             1.0
-    approving_authority: [[FOUNDER: named person or firm]]
-    approved_at:         [[FOUNDER: ISO-8601 UTC timestamp of signature]]
-    object_key:          [[FOUNDER: storage path of the signed PDF]]
+    approving_authority: Artur Willoński (founder and controller) — controller's own determination, NOT counsel-reviewed; see §9 and its condition
+    approved_at:         2026-09-18T00:00:00Z
+    object_key:          phase1-2026.1/legal/power-score-classification-v1.0.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     metadata: {
       "pipeline_version": "voice-confidence-universal-v3",
@@ -292,8 +292,25 @@ attributes". None of those is inferred here, and sex routing is retired (§6).
 
 - **Article 5 prohibitions.** 5(1)(f) prohibits AI systems inferring emotions in
   the areas of workplace and education institutions. If §7 lands on `false`, it
-  does not apply. **If §7 lands on `true`, this is the controlling provision,
-  and it is a prohibition — no compliance programme cures it.**
+  does not apply.
+
+  > **Corrected 2026-09-18.** This bullet previously continued: *"If §7 lands on
+  > `true`, this is the controlling provision, and it is a prohibition — no
+  > compliance programme cures it."* That contradicts the deployment-fence
+  > paragraph eleven lines below in this same section, and engineering's reading
+  > is that the earlier sentence was wrong: **5(1)(f) is scoped to workplace and
+  > education deployment**, so a `true` at §7 does not by itself make the system
+  > prohibited. On the current deployment — individual adults, own account, no
+  > employer or school — `true` engages **Annex III point 1(c)** and the
+  > high-risk regime, and leaves 5(1)(f) as a fence that must be held rather
+  > than a provision already breached.
+  >
+  > **Why this is recorded rather than quietly edited.** As written, `true` read
+  > as unsurvivable, and a determination document whose honest answer looks
+  > fatal exerts pressure on whoever signs §9 to choose `false`. That is the
+  > opposite of what this document is for. The correction is engineering's
+  > reading of the Article's scope, **not a legal conclusion** — counsel should
+  > confirm or reject it, and if the original sentence was right, say so.
 - **Annex III point 1(c)** (emotion recognition): not high-risk if §7 is `false`.
 - **Annex III point 3** (education): not engaged. Self-directed practice by an
   adult on their own account is not determining access to, or evaluating
@@ -355,11 +372,54 @@ applies to the provider regardless and is not addressed here.
 *To be completed by the approving authority. Engineering has not filled this in
 and must not.*
 
-    biometric_identification:    [ ] false   [ ] true
-    sex_gender_inference:        [ ] false   [ ] true
-    emotion_intention_inference: [ ] false   [ ] true
-    high-risk under Annex III:   [ ] no      [ ] yes — point ____
-    prohibited under Article 5:  [ ] no      [ ] yes — point ____
+    biometric_identification:    [x] false   [ ] true
+    sex_gender_inference:        [x] false   [ ] true
+    emotion_intention_inference: [x] false   [ ] true
+    high-risk under Annex III:   [x] no      [ ] yes — point ____
+    prohibited under Article 5:  [x] no      [ ] yes — point ____
+
+**Determined by Artur Willoński, controller, 2026-09-18. Not by counsel.**
+
+**On what it rests, line by line.**
+
+- **`biometric_identification: false`** and **`sex_gender_inference: false`** —
+  on §5 and §6, which are supported by the code and by two live tests. These two
+  are not close calls.
+- **`emotion_intention_inference: false`** — on §7.2's purpose argument: Article
+  3(39) turns on what the system is *for*, and this one is for choosing which of
+  the speaker's own sentences to replay. No state about a person is an output of
+  the system. §7.2 held that `false` was "arguable and may well be correct, but
+  not currently *earned*", and named a fix to make before signature; §9 records
+  that fix as landed 2026-09-17, so the document's own precondition is met.
+- **`prohibited under Article 5: no`** — on §8 as corrected 2026-09-18. Article
+  5(1)(f) is scoped to workplace and education deployment, and this service is
+  individual adults on their own accounts.
+- **`high-risk under Annex III: no`** — follows from the emotion line.
+
+**What this determination does NOT claim.** It is not a legal opinion, it is not
+counsel-reviewed, and §7.2's argument against `false` — that the composite is
+z-scored against the individual speaker's own baseline, which makes the output a
+statement about a person relative to their own norm — is **not** resolved by it.
+The controller has read that argument and considers purpose to be controlling.
+A qualified lawyer may disagree.
+
+> ### ⚖️ The condition this determination is made under
+>
+> **It must be confirmed by counsel before the first third-party user records on
+> the service.**
+>
+> That condition is what makes signing now proportionate rather than reckless.
+> The controller attests that every recording to date is his own voice (see
+> `09-counsel-cover-note.md`), so if this determination is wrong, the only
+> affected data subject is the person who made it. There is no complainant, no
+> damages, and nothing that cannot be corrected by superseding this artifact with
+> a counsel-signed v1.1 — which is what the versioning exists for.
+>
+> **The moment a third party records, that stops being true.** At that point an
+> unreviewed determination is being applied to someone else's voice, and the
+> calculus is completely different. Counsel confirmation is therefore not a
+> nice-to-have deferred indefinitely; it is a precondition on opening the service
+> to anyone else.
 
 ### Before signing `emotion_intention_inference: false` — status
 
