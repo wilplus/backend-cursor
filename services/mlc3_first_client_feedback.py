@@ -283,4 +283,25 @@ def prepare_first_client_feedback(
                     ),
                 }
         visible.append(row)
+    if not visible:
+        # ZERO ROWS IS NOT AN ANSWER, IT IS A STAND-DOWN (founder 2026-09-18:
+        # "it was loading long and then showed no bookmarks on the text ZERO").
+        #
+        # `visible` is built by appending over inventory["visible_rows"]. When
+        # that arrives empty the loop appends nothing and this used to return
+        # `[]` — which is not None, so the caller in ideal_text_changes took it
+        # as a complete V3 result, replaced the working V2 feedback with it and
+        # cleared the styles. The user recorded a Take, waited through every
+        # RPC this function makes, and got nothing at all: strictly worse than
+        # before V3 was activated.
+        #
+        # Under the V3 policy a Take with any valid block yields at least one
+        # Confident Voice item, so an empty inventory means something upstream
+        # produced nothing rather than honestly declining. The "honest empty
+        # lane shows no card" rule in L2 is about the rewrite and praise lanes
+        # inside a populated result — it is not a licence to return an empty
+        # result. Declining here preserves the legacy response, which is the
+        # contract this function's own docstring states, and names the reason
+        # in the log instead of failing silently.
+        return _decline(take_id, "inventory_returned_no_visible_rows")
     return visible

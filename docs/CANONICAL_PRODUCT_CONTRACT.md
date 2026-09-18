@@ -89,17 +89,114 @@ with this contract, this contract wins.
     valid Take: the highest-ranked Confident Voice candidate, the highest-ranked
     actionable verbal/structure improvement, and the highest-ranked
     evidence-backed praise. Families never borrow or surrender V2 slots.
+    **Cutover decided 2026-09-18 (founder): V3 becomes the served policy.** The
+    V2 code is retained but is no longer a fallback — see 24h, which forbids
+    substituting it silently. Removing V2 outright is deliberately deferred
+    until V3 has run clean; deleting it while V3 still has open defects would
+    turn every V3 failure into permanent silence rather than a bad afternoon.
 24a. Under Feedback Policy V3, the Manager deterministically partitions each
     contiguous Slide run at persisted snippet/Paragraph boundaries into blocks
     closest to 75 words, normally 60-90 words. It never cuts words, fabricates
     boundaries, reorders chronology, or crosses a Slide boundary. An indivisible
     short or long Paragraph remains intact with a typed partition exception.
-24b. V3 Take 1 surfaces exactly one relative-best Confident Voice item per valid
-    block and no Actionable Improvement or Praise. V3 Take 2+ surfaces exactly
-    one relative-best Confident Voice item per valid block, plus zero or one
+24b. **(REPLACED 2026-09-18 — founder. Prior text retained at 24b-prior.)** V3
+    surfaces exactly one relative-best Confident Voice item per valid block, on
+    **every** Take including Take 1 — see 24e for what every item carries and
+    24f for the three anchored notes laid on top. There is no whole-Take item
+    cap, and no Improvement or Praise exists independently of the item it is
+    attached to.
+
+24b-prior. *(superseded, kept so the change is legible)* "V3 Take 1 surfaces
+    exactly one relative-best Confident Voice item per valid block and no
+    Actionable Improvement or Praise. V3 Take 2+ surfaces exactly one
+    relative-best Confident Voice item per valid block, plus zero or one
     globally highest-ranked Actionable Improvement and zero or one globally
-    highest-ranked Evidence-backed Praise for the entire Take. V3 therefore has
-    no whole-Take three-item cap.
+    highest-ranked Evidence-backed Praise for the entire Take."
+
+24c. **Coverage ladder.** Of the Slides that yield **at least one valid block**,
+    V3 covers at least **70% on Take 1, 80% on Take 2, and 100% from Take 3**. A
+    Slide is covered when it carries at least one surfaced Confident Voice item.
+    **The denominator is valid blocks, not speech.** A Slide passed over in
+    silence is excluded, and so is one whose speech is too short or too
+    fragmentary to form a block — for the same reason: it was never assessable,
+    so failing to cover it is not a failure. Counting unassessable Slides makes
+    the upper rungs unreachable by construction: fourteen Slides of which ten
+    can be assessed caps coverage at 71% forever, and Take 3 could never be met.
+    With this denominator 100% is reachable, because a valid block always has a
+    relative best.
+
+24d. **Coverage is a target on selection, never a floor on output.** V3 attempts
+    every spoken Slide and selects the relative best available on each. It never
+    invents, pads, or promotes an item to reach a percentage. A Slide with no
+    defensible candidate stays uncovered and records a typed reason, and the
+    shortfall is a defect to investigate rather than a licence to manufacture.
+    This subordinates 24c to clause 25 and to L2, deliberately: a coverage floor
+    that could override the evidence rule would be a licence to fabricate.
+
+24e. **Every item carries the judgement and the rooting step.** A surfaced
+    Confident Voice item always offers its delivery read and the tap-to-root
+    phrase step that follows it. **Emphasis is that step — it is not a Feedback
+    family and carries no budget.** It is how a user works a judgement, not a
+    finding asserted about them, which is why the only Feedback families remain
+    Confident Voice, Actionable Improvement and Evidence-backed Praise. No
+    bookmark is ever empty, because the judgement and the rooting step are
+    always there.
+
+24f. **On top of that, each Take carries a bounded set of anchored notes**,
+    each attached to the item it concerns and never floating free of a Slide:
+    - **at most two Evidence-backed Praise** — on the **most and second-most
+      Confident Voice items of the Take**, ranked on the delivery bands, not on
+      fidelity to the Ideal Text. *At most* two, not always two: clause 25 still
+      governs, so a Take with only one defensible praise candidate surfaces one,
+      and inventing a second to fill the slot is forbidden;
+    - **one exercise** — on the weakest item below the neutral delivery band.
+      Other below-neutral items show **"Let's practice"** without an exercise,
+      because an exercise is work the user must go and do and a list of them is
+      a list nobody starts;
+    - **one Actionable Improvement (rewrite)** — the highest-ranked of the Take.
+      Capped because unlike a relative-best read it asserts a finding and can be
+      wrong, which is the expensive error under H.0.
+    A Take therefore surfaces one item per valid block, of which at most four
+    carry an anchored note. **The three-stage shape in 24e is the architecture,
+    not a guarantee that every judgement carries a Feedback stage** — on a
+    ten-item Take, four carry an anchored note and six carry the delivery read
+    and the rooting step alone. Neither the ranking that selects the two Praise
+    items nor any position among them is ever surfaced (24i).
+
+24f-1. **An accepted rewrite re-anchors.** Accepting an Actionable Improvement
+    changes the wording of the block it sat in, so its bookmark follows the
+    rewritten block rather than the superseded span. A bookmark that cannot
+    re-anchor is removed rather than left pointing at text that no longer
+    exists.
+
+24g. **Bookmark hierarchy.** The exercise item renders **orange and pulsing**;
+    the Take's two most Confident Voice items render **green**, identically —
+    first and second are never distinguished from one another, because a
+    visible ordering is a surfaced ranking; every other item renders
+    **orange**. Colour is never the sole differentiator, and the pulse honours
+    reduced-motion. Coach updates on a locked deck render as a plain orange mark
+    with no pulse, so nothing competes with the exercise for attention.
+
+24g-1. **Document state.** A block holding an unsettled judgement renders in a
+    softened grey; a settled block renders in the ordinary text colour with no
+    mark at all. **Grey applies at block level, never at word level** — blocks
+    tile a Slide contiguously and never cut a word, so no sentence changes
+    colour midway and no gap can appear. There is no third "done" state: the
+    clean text *is* the settled state, and the document empties as the user
+    works rather than accumulating marks. **The two signals are the grey block
+    and the bookmark, and nothing else** — no underline, highlight, or badge on
+    the text. Only the bookmark opens; the text itself is never tappable.
+
+24h. **V3 works or it fails visibly.** V3 never silently substitutes another
+    policy version. On failure the client retries once automatically, then shows
+    a short notice with a retry control. **A feedback failure never blocks
+    recording, transcription, Ideal Text, or the next Take.**
+
+24i. **AC-9 applies to everything this section computes.** Coverage
+    percentages, delivery bands, PPV estimates, priority values and block counts
+    are internal arbitration inputs. None is ever surfaced. "Let's practice"
+    carries no number, band name, comparison to other users, or "below average"
+    phrasing — it is an invitation to act, never a verdict on the speaker.
 25. Each active-policy lane ranks its complete candidate pool and selects its
     best available item, not the first match. Under V3, confidence is relative
     only to the eligible clips inside its block; it is not an objective claim
@@ -109,6 +206,14 @@ with this contract, this contract wins.
     When a valid Take has no honest Improvement or Praise candidate, V3 freezes
     `no_defensible_candidate` for that lane and shows no card. Missing or
     unusable source material remains a separate typed exclusion.
+    **Amended 2026-09-18:** under 24f, Improvement and Praise are anchored to a
+    Confident Voice item rather than being Take-level cards, so "Take-level
+    comparison" now governs *which item wins* the single Praise and the single
+    Improvement, not whether a standalone card appears.
+    `no_defensible_candidate` still applies: when the Take has no honest
+    Improvement or Praise candidate, that note is simply absent. An item without
+    an anchored note is **not** an empty bookmark — per 24e it still carries the
+    delivery read and the rooting step, and it still counts toward coverage.
 26. The complete selected set for the active policy version is frozen before
     exposure. Responding to one item never causes a previously hidden
     replacement to appear.

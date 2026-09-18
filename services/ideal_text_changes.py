@@ -969,7 +969,20 @@ class _ChangesRun:
             feedback_candidates=self.feedback_exposure,
             owner_user_id=str(self.user_id),
         )
-        if _service_rows is not None:
+        # TRUTHINESS, NOT `is not None` — belt to the producer's braces.
+        #
+        # An empty list is not None, so `is not None` accepted `[]` as a
+        # complete V3 result, replaced the working V2 feedback with nothing and
+        # cleared the styles. The founder recorded a Take on 2026-09-18 and got
+        # zero cards after a long wait: worse than the state before V3 was
+        # activated, which is a live-loop regression however good the reason.
+        #
+        # prepare_first_client_feedback now declines instead of returning `[]`,
+        # so this is the second line of defence rather than the fix. It stays
+        # because the failure mode is silent by construction — nothing here can
+        # tell an empty result apart from a deliberate one, and the cost of
+        # being wrong is the user seeing no feedback at all.
+        if _service_rows:
             self.changes = _service_rows
             self.styles = []
 

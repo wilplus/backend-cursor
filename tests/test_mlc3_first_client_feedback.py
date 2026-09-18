@@ -285,3 +285,66 @@ def test_the_unreachable_gate_does_not_come_back():
     # The CALL, not the word — the docstring names the retired reason on
     # purpose, so that the next reader knows why the set is eleven.
     assert '_decline(take_id, "service_enrollment_missing")' not in source
+
+
+def test_an_empty_inventory_declines_instead_of_serving_zero_rows(monkeypatch):
+    """FOUNDER 2026-09-18: "it was loading long and then showed no bookmarks on
+    the text ZERO".
+
+    `visible` is built by appending over inventory["visible_rows"]. An empty
+    inventory appended nothing and the function returned `[]` — which is not
+    None, so `ideal_text_changes` took it for a complete V3 result, replaced
+    the working V2 feedback with it and cleared the styles. The user waited
+    through every RPC this function makes and got nothing: strictly worse than
+    before V3 was activated, which is a live-loop regression.
+
+    `[]` and None must not be the same answer. The empty case declines, the
+    legacy response survives, and the log names the reason.
+    """
+    from config import Config
+    import services.mlc3_first_client_feedback as module
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    session, document, snippets = _source()
+
+    real_inventory = module.prepare_v3_service_inventory
+
+    def _empty(**kwargs):
+        inventory = real_inventory(**kwargs)
+        if inventory is None:
+            return None
+        drained = dict(inventory)
+        drained["visible_rows"] = []
+        return drained
+
+    monkeypatch.setattr(module, "prepare_v3_service_inventory", _empty)
+
+    rows = prepare_first_client_feedback(
+        database=_Database(),
+        session=session,
+        take_document=document,
+        served_text=document["text"],
+        snippets=snippets,
+        suggestions={},
+        feedback_candidates=[],
+        owner_user_id=USER,
+    )
+
+    assert rows is None, (
+        "an empty inventory must stand down to the legacy response, not serve "
+        f"zero cards; got {rows!r}"
+    )
+
+
+def test_the_caller_treats_an_empty_service_result_as_no_result():
+    """The second line of defence, asserted on the source.
+
+    `if _service_rows is not None` accepted `[]`. Nothing at that call site can
+    tell an empty V3 answer from a deliberate one, and the cost of guessing
+    wrong is the user seeing no feedback at all — so it tests truthiness.
+    """
+    from pathlib import Path
+
+    source = Path("services/ideal_text_changes.py").read_text(encoding="utf-8")
+    assert "if _service_rows:" in source
+    assert "if _service_rows is not None:" not in source
