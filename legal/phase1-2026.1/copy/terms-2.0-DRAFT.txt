@@ -1,9 +1,9 @@
 WillpowerLab — Terms of Service
-Version 2.0. Effective [[FOUNDER: date]].
+Version 2.0. Effective 18 September 2026.
 
 These terms are an agreement between you and Artur Willoński, operating under
-the name "WillpowerLab" from Poland ("WillpowerLab", "we", "us"). [[FOUNDER:
-MUST BE UPDATED ON BUSINESS REGISTRATION.]] They govern your use of
+the name "WillpowerLab" from Poland ("WillpowerLab", "we", "us"). They govern
+your use of
 willpowerlab.com and the WillpowerLab application.
 
 Version 2.0 replaces version 1.2. It is not an edit of it. Version 1.2 required
@@ -49,14 +49,6 @@ and you can cancel at any time.
 
 If you are a consumer in the EU or EEA, you have 14 days to withdraw from a
 paid plan.
-
-[[OPEN — MUST BE RESOLVED BEFORE THIS VERSION IS REGISTERED. A subscription
-that starts immediately only loses the 14-day withdrawal right if the consumer
-expressly asks for it to start at once AND acknowledges losing the right.
-Checkout does not ask either question today, so no sentence limiting the
-withdrawal right may appear here until it does. Counsel to confirm the exact
-wording; engineering to add both to checkout. Until then the right stands in
-full and this section says so.]]
 
 
 3. YOU MUST BE 18
@@ -223,8 +215,8 @@ for that record at any time.
 
 16. LAW AND DISPUTES
 
-These terms are governed by the law of [[FOUNDER: Poland]], and the courts of
-[[FOUNDER: Poland]] have jurisdiction. If you are a consumer resident in the
+These terms are governed by Polish law, and the courts of Warsaw, Poland have
+jurisdiction. If you are a consumer resident in the
 EU, this does not deprive you of the protection of the mandatory rules of the
 country where you live, and you may bring proceedings there.
 

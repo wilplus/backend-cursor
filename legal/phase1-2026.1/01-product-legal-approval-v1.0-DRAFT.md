@@ -134,12 +134,19 @@ two costs a re-acceptance of every user.
 
 **Processors and sub-processors, as implemented:**
 
-> **Stripe added 2026-09-18.** It was absent from this table while five service
-> modules integrate it, because the table was written when the pack recorded the
-> service as free. **No customer has been charged, so no payment data has yet
-> been processed** — but a processor that is wired in belongs in the record
-> before the first transaction, not after it. Its DPA and transfer mechanism are
-> outstanding; document 07 carries the action.
+> **Stripe is NOT in this table, and that is the correction (2026-09-18).**
+> It was added here earlier today as a sub-processor. That was wrong, and
+> `docs/VENDOR_DPA_REGISTER.md` already had it right: for payments Stripe is an
+> **independent controller**, not our processor. It decides for itself how it
+> uses payment data — fraud prevention, its own regulatory obligations — under
+> its own terms, so there is no Article 28 processor relationship to paper and
+> no DPA of ours to hold.
+>
+> What that changes: Stripe is a **recipient** to be disclosed, not a processor
+> to be contracted. The Privacy Policy now names it under Payments and says
+> plainly that it is not our processor. **No customer has been charged, so no
+> payment data has yet been processed** — the disclosure is in place before the
+> first transaction rather than after it.
 
 | Party | Receives | Where in code |
 |---|---|---|
@@ -150,7 +157,7 @@ two costs a re-acceptance of every user.
 | Resend | Transactional email | `services/email_service.py` |
 | Sentry | Error telemetry (EU region) | client + server instrumentation |
 | Vercel | Frontend hosting | `frontend-cursor` deployment |
-| Stripe | Payment and subscription data for paid tiers | `services/stripe_checkout_credits.py`, `stripe_checkout_webhook.py`, `stripe_subscription_tiers.py`, `tier_checkout.py`, `routes/internal_webhooks.py` |
+
 | Stripe | Independent controller; no DPA to sign | — |
 
 **Corrected 2026-09-17: there are eight vendors, not five.** Sentry, Vercel and
