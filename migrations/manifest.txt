@@ -375,3 +375,4 @@
 0337	allow_null_ownership_copy_on_learning_presentation.sql
 0338	guard_claim_guest_owner_legacy_recording_table.sql
 0339	f1_serving_does_not_require_coach_review.sql
+0340	add_voice_album_notes.sql

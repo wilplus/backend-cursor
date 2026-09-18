@@ -183,6 +183,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "derived_feedback", 60),
     PurgeDependency("voice_album_routing", "owner_voice_album_routing", "user_id",
                     "user", "delete", "derived_feedback", 60),
+    # The owner's own notes on a moment. Authored by the subject, about their
+    # own recording, read by nobody else — so erasure is a plain delete on the
+    # user key, with no evidence to retain on anyone's behalf.
+    PurgeDependency("voice_album_notes", "voice_album_notes", "owner_user_id",
+                    "user", "delete", "derived_feedback", 60),
     PurgeDependency("practice", "confident_voice_practice", "id", "practice",
                     "delete", "derived_feedback", 60),
     PurgeDependency("practice_attempt", "confident_voice_practice_attempt",
