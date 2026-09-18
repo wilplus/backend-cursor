@@ -11728,9 +11728,17 @@ class DatabaseService:
         response: str, slide_index: Optional[int] = None,
         model_version: Optional[str] = None,
     ) -> bool:
-        """Persist routing only; never write a label or learning corpus."""
+        """Persist routing only; never write a label or learning corpus.
+
+        Accepts the instrument's five states (contract §29) plus the two
+        legacy values, which stay writable only so an older caller is not
+        broken mid-deploy; they are audit-only and no new surface sends them.
+        Widening the column's CHECK is
+        ``migrations/widen_owner_voice_album_routing_to_five_states.sql``.
+        """
+        from services.voice_album_routing import FIVE_STATES
         if (not snippet_id or not owner_user_id or not arc_id
-                or response not in ("yes", "no", "neutral", "unrateable")):
+                or response not in FIVE_STATES + ("neutral", "unrateable")):
             return False
         payload = {
             "snippet_id": str(snippet_id),
