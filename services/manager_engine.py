@@ -153,28 +153,25 @@ EXPLORATION_RATE = 0.10
 #                   "Did THIS note change take N -> N+1?"
 #   epsilon_explore PER SESSION, which RANK surfaces.
 #                   "Is rank 1 actually the best thing to have said?"
-# SWITCHED OFF 2026-09-18 (founder — Appendix H.13.4). The rate is zeroed
-# rather than the arm deleted: `in_control` already returns False at <= 0, so
-# this is one reversible, auditable number instead of a removal that would have
-# to be rebuilt to re-run the experiment.
+# gamma_control (a permanent per user-and-lane holdout, 12%) was REMOVED
+# 2026-09-18 (founder — Appendix H.13.4). It ran from 2026-08-10, and deleting
+# rather than zeroing it is safe because NO REAL USER RECORDED IN THAT WINDOW:
+# there is no production period whose withholding this code would be needed to
+# explain, which was the only argument for keeping it dormant.
 #
-# WHY. gamma_control is permanent and per (user, lane). With Confident Voice as
-# Take 1's only lane it meant roughly one user in eight received no V3 feedback
-# EVER — and, being silent, neither they nor we could tell that apart from a
-# product that simply does nothing. That cannot coexist with "V3 works or it
-# fails visibly" (contract 24h).
+# It withheld feedback permanently and silently from ~1 user in 8 on a lane.
+# With Confident Voice as Take 1's only lane that meant no V3 feedback at all,
+# ever, indistinguishable from a product that does nothing — irreconcilable
+# with "V3 works or it fails visibly" (contract 24h).
 #
-# THE COST, ACCEPTED: the between-user question — does feedback do anything at
-# all, or do people improve just by recording more? — can no longer be answered
-# from ambient data, and H.11 warns this arm cannot be retrofitted. Re-running
-# it means a deliberately constructed opt-in cohort.
-GAMMA_CONTROL = 0.0               # was 0.12 — decisions log: ~10-15%, midpoint
+# The between-user question it answered — does feedback do anything, or do
+# people improve just by recording more? — now needs a deliberately built
+# opt-in cohort. H.11 warned it cannot be retrofitted; that is accepted.
 INTERVENTION_RANDOMISATION = 0.20  # decisions log: 20%
 
 # Changing either salt RESHUFFLES EVERY ASSIGNMENT and silently splices two
 # incompatible experiments together. Versioned so that is a deliberate act
 # with a name, not an edit.
-CONTROL_SALT = "willab-gamma-v1"
 WITHHOLD_SALT = "willab-withhold-v1"
 EXPLORE_SALT = "willab-explore-v1"
 
@@ -190,33 +187,6 @@ def _stable_fraction(*parts: str, salt: str) -> float:
     digest = hashlib.blake2b("\x1f".join((salt,) + parts).encode("utf-8"),
                              digest_size=8).digest()
     return int.from_bytes(digest, "big") / float(1 << 64)
-
-
-def in_control(user_id: str, dimension: str, *,
-               gamma: Optional[float] = None) -> bool:
-    """gamma_control — this (user, dimension) pair receives NOTHING, ever.
-
-    PER PAIR, NOT PER USER. A control user still gets normal feedback on
-    every other dimension, so their experience is intact and the comparison
-    is within-person across dimensions as well as between people.
-
-    PERMANENT AND DETERMINISTIC. A per-session coin flip would put the same
-    pair in and out of control and make the comparison meaningless — you
-    would be measuring a user who sometimes got feedback, which is neither
-    arm of the experiment.
-
-    Without this you credit yourself with the practice effect: users improve
-    by recording more, feedback or not, and nothing in the data separates the
-    two.
-    """
-    # READ AT CALL TIME, not bound as a default. `gamma: float =
-    # GAMMA_CONTROL` captured the value when this module was imported, so
-    # changing the constant afterwards — a test, a future config read — was
-    # silently ignored and the arm kept running at whatever it was at import.
-    rate = GAMMA_CONTROL if gamma is None else gamma
-    if not user_id or rate <= 0:
-        return False
-    return _stable_fraction(user_id, dimension, salt=CONTROL_SALT) < rate
 
 
 def is_withheld(user_id: str, dimension: str, session_id: str, *,
@@ -530,7 +500,6 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     policy = {
         "control_salt": arms.get("control_salt"),
         "withhold_salt": arms.get("withhold_salt"),
-        "gamma": arms.get("gamma_control"),
         "withhold_rate": arms.get("intervention_randomisation"),
         "exploration_rate": arms.get("epsilon_explore"),
     }
@@ -578,16 +547,6 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
         seen.add(dimension)
         rows.append(row(dimension, ARM_WITHHELD, would=True))
 
-    # CONTROL carries would_have_surfaced=None, not False. The holdout is
-    # removed from the pool BEFORE ranking, so whether it would have won is
-    # genuinely unknown; writing False would assert something never tested.
-    for dimension in result.get("control_held") or ():
-        if dimension in protected:
-            continue
-        if dimension in seen:
-            continue
-        seen.add(dimension)
-        rows.append(row(dimension, ARM_CONTROL))
 
     # BEATEN BY THE BUDGET — considered, ranked, uncollided, and out of room.
     # `would_have_surfaced` is False and that is exact: it lost the slot on
@@ -686,18 +645,7 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     #     every other dimension stays intact. Suppressing at the end would
     #     quietly reduce how much feedback control users get overall, which
     #     confounds the very comparison the arm exists to make.
-    control_held: list[Candidate] = []
-    if controls:
-        pool = []
-        for c in everything:
-            if c.dimension not in protected \
-                    and in_control(user.user_id, c.dimension):
-                control_held.append(c)
-                rejected.append((c, "gamma_control"))
-            else:
-                pool.append(c)
-    else:
-        pool = list(everything)
+    pool = list(everything)
 
     # 1 · certainty floor — per-detector PPV, never global accuracy      (H.2)
     live = []
@@ -825,7 +773,6 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
         # arms, not just what surfaced — an outcome with no arm attached is
         # an observation, and the whole point of the controls is that these
         # are not observations.
-        "control_held": [c.dimension for c in control_held],
         "withheld": [c.dimension for c in withheld],
         "protected": sorted(protected),
         # RANKED, UNCOLLIDED, AND BEATEN ONLY BY THE BUDGET. These had no arm
@@ -837,10 +784,8 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
         "budget_lost": [c.dimension for c in independent
                         if id(c) not in {id(x) for x in counterfactual}],
         "arms": {
-            "gamma_control": GAMMA_CONTROL,
             "intervention_randomisation": INTERVENTION_RANDOMISATION,
             "epsilon_explore": exploration_rate,
-            "control_salt": CONTROL_SALT,
             "withhold_salt": WITHHOLD_SALT,
         },
     }

@@ -962,7 +962,6 @@ class TestTheFunnel(unittest.TestCase):
         praise = _change(2, source="structural", kind="advice",
                          start=200, end=208)
         with patch.object(ic, "_controls_enabled", return_value=True), \
-             patch.object(me, "in_control", return_value=True), \
              patch.object(me, "is_withheld", return_value=True):
             out = ic.select(
                 [cv, rewrite, praise],
