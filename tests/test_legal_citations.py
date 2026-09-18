@@ -133,3 +133,83 @@ def test_frontend_citations_name_a_commit():
     assert not unpinned, (
         "frontend citations with a line number but no nearby commit:\n  "
         + "\n  ".join(unpinned))
+
+
+# Commits cited in the pack that live in `wilplus/frontend-cursor`, verified
+# against a FULL clone of it on 2026-09-18 (both clones ship shallow at 50
+# commits, which is why an earlier pass could not resolve any of them and had to
+# say so rather than call them broken). Each is an ancestor of that repo's
+# `main`. Listed explicitly because this repository cannot reach that one: an
+# unlisted hash is therefore treated as a backend hash and must resolve here.
+#
+# Matched by prefix in either direction, because the pack cites the same commit
+# at seven and at eight characters.
+_FRONTEND_COMMITS = (
+    "3202b5a1",  # 2026-05-07  legal pages first ship
+    "9815b7a2",  # 2026-06-06  WillpowerLab rebrand
+    "01026bf0",  # 2026-07-24  Terms + Privacy v1.0
+    "9a5a1a85",  # 2026-08-13  Legal v1.1 (#288)
+    "f97ad632",  # 2026-08-13  v1.1 pages
+    "7a46c279",  # 2026-08-28  v1.2
+    "179600c4",  # 2026-09-17  pages render the stored bytes (#384)
+    "162b340a",  # 2026-09-17  drop the fallback banner (#385)
+    "15d95706",  # 2026-09-17  zero-data-retention + data-sharing correction (#386)
+    "9f740756",  # 2026-09-18  last revision holding "opt-in and off by default"
+    "f4607888",  # 2026-09-18  acceptance screen (#389)
+)
+
+
+def _is_frontend(sha: str) -> bool:
+    return any(sha.startswith(k) or k.startswith(sha) for k in _FRONTEND_COMMITS)
+
+# Backticked hex that is not a commit reference.
+_NOT_A_COMMIT = {"604800"}
+
+_HASH = re.compile(r"`([0-9a-f]{7,40})`")
+
+
+def test_every_cited_commit_is_reachable_from_this_branch():
+    """A squash-merge destroys the working-branch hash the pack was drafted from.
+
+    Two citations were dead when this was written. `81369c0`, named in the AI Act
+    determination §9 as the commit that renamed the band labels — the section
+    counsel reads immediately before ticking `emotion_intention_inference` — was
+    in neither repository; the rename shipped as `e5e02d6`. `8f3e51d7`, named in
+    `accepted-versions/README.md` as the correction of six false statements, is
+    on an unmerged branch and is not the text that went live.
+
+    Both are the same failure: this repository squash-merges, so a hash taken
+    from a branch stops existing the moment the PR lands. A lawyer given the pack
+    cannot resolve one, and nothing in the document says it should not be there.
+    """
+    if os.path.exists(os.path.join(REPO, ".git", "shallow")):
+        import pytest
+        pytest.skip("shallow clone: absent objects would be a false positive")
+
+    import subprocess
+    dead = []
+    for doc, doc_line, sha in {
+        (doc, doc_line, m.group(1))
+        for doc in _pack_docs()
+        for doc_line, text in enumerate(open(doc, encoding="utf-8"), 1)
+        for m in _HASH.finditer(text)
+    }:
+        if _is_frontend(sha) or sha in _NOT_A_COMMIT:
+            continue
+        # A hash may be named precisely to say it is NOT on main — that is the
+        # correction, not the defect. The exemption is earned by the document
+        # saying so at the point of use, not by a list kept here.
+        body = open(doc, encoding="utf-8").readlines()
+        if "not on `main`" in "".join(body[max(0, doc_line - 4):doc_line + 3]):
+            continue
+        where = f"{os.path.relpath(doc, REPO)}:{doc_line} -> {sha}"
+        kind = subprocess.run(["git", "cat-file", "-t", sha], cwd=REPO,
+                              capture_output=True, text=True)
+        if kind.stdout.strip() != "commit":
+            dead.append(f"{where} (no such commit here, and not a listed frontend commit)")
+            continue
+        reachable = subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+                                   cwd=REPO, capture_output=True)
+        if reachable.returncode != 0:
+            dead.append(f"{where} (exists but is not an ancestor of HEAD)")
+    assert not dead, "commits a reader could not resolve:\n  " + "\n  ".join(sorted(dead))
