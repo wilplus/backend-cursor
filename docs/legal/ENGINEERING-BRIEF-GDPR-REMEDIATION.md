@@ -26,9 +26,20 @@ Every severity score in the DPIA assumes the active user base is very small. Con
 -- 1. How many real users, and how many accepted the bundled consent?
 SELECT COUNT(*) AS total_users FROM user_settings;
 
-SELECT consent_policy_version, COUNT(DISTINCT user_id) AS users, 
-       MIN(created_at) AS first, MAX(created_at) AS last
-FROM user_consents GROUP BY 1 ORDER BY 3 DESC;
+-- `terms_version`, NOT `consent_policy_version`. user_consents holds
+-- id, user_id, terms_accepted_at, terms_version, ip_address, user_agent,
+-- created_at, organization_id (add_user_consents_table.sql:13-22,
+-- add_foundation_discriminators.sql:105-111). `consent_policy_version` is an
+-- MLC-2 foundation column (add_mlc2_foundation.sql:231) and naming it here
+-- fails with "column does not exist" before returning a row.
+--
+-- terms_accepted_at and created_at are separate columns and may disagree;
+-- both are reported so a discrepancy is visible rather than averaged away.
+SELECT terms_version, COUNT(*) AS acceptances, COUNT(DISTINCT user_id) AS users,
+       MIN(terms_accepted_at) AS first_accepted,
+       MAX(terms_accepted_at) AS last_accepted,
+       MIN(created_at) AS first_row, MAX(created_at) AS last_row
+FROM user_consents GROUP BY 1 ORDER BY 2 DESC;
 
 -- 2. How much audio is actually retained, and how far back?
 SELECT COUNT(*) AS takes, MIN(created_at) AS oldest
@@ -40,7 +51,9 @@ SELECT COUNT(DISTINCT user_id) FROM intervention_decisions;
 
 ```bash
 # 4. Is the inference actually running in prod? Boot log, NOT the dashboard.
-#    Unset => ON (services/voice_confidence.py:177).
+#    Unset => ON: `os.getenv("VOICE_CONFIDENCE_ENABLED") or "1"` in enabled(),
+#    services/voice_confidence.py:256 (def at :252). The RANKING flag is the
+#    other one and defaults OFF: ranking_enabled(), :248 (def at :243).
 railway logs --service web    | grep -i VOICE_CONFIDENCE
 railway logs --service worker | grep -i VOICE_CONFIDENCE
 ```
