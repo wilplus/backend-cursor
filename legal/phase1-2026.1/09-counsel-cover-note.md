@@ -96,10 +96,22 @@ was not enabled at the time. We have asked OpenAI whether their own records
 can supply the date. Until they answer, the window is "up to four months"
 and we are not able to narrow it ourselves.
 
-**We also cannot yet state our user count with confidence.** Our settings
-table holds 7 rows while 25 distinct user identifiers have audio. We are
-resolving that discrepancy and will send the figure; please do not rely on
-either number in the meantime.
+**Our user count, resolved 2026-09-18.** An earlier version of this note said
+we could not state it and asked you not to rely on the figures. We can now:
+
+| | |
+|---|---|
+| Accounts (`auth.users`) | **67** |
+| Accounts that ever recorded consent | **26** |
+| **Accounts with no consent record at all** | **41** |
+| Distinct users with audio | 25 |
+| Audio recordings held | 1,708 |
+
+The earlier "7 versus 25" discrepancy was our own error, not a data problem:
+`user_settings` holds 7 rows because a row is written when a user changes a
+preference, not when an account is created. It is not the user register and we
+were briefly sizing the user base with the wrong table. `auth.users` is the
+register, and the number is 67.
 
 ### What we have done
 
@@ -190,6 +202,34 @@ the published text.
   the 41 accounts with no consent record at all? **Does it change your answer
   that the accepted document was self-identified by its author as placeholder
   copy pending legal review?**
+
+  **Added 2026-09-18 — the 26 did not all accept the same document.** A
+  production query established that the acceptance window splits across the
+  6 June rebrand:
+
+  | Terms as published | acceptances | users | window |
+  |---|---|---|---|
+  | naming **Willab** | 22 | 22 | 8–16 May |
+  | naming **WillpowerLab** | 4 | 4 | 6 Jun – 16 Jul |
+
+  Two of the four changed lines are operative body text a user read — *"By
+  creating an account or recording a voice sample on Willab/WillpowerLab, you
+  agree to these Terms of Use"* and *"You must be at least 18 years old to use
+  Willab/WillpowerLab"*. **No user accepted both**; these are disjoint groups.
+
+  Three things follow that we would like your view on:
+
+  1. The controller is the same natural person throughout — this was a change of
+     **trading name**, not of legal entity. Is that material for the 22 who only
+     ever agreed to the "Willab" text?
+  2. **Both groups were recorded as `terms_version` 1.0.** Two materially
+     different documents under one label, so the version field is not evidence
+     of what anyone accepted; only the timestamp separates them. Does that
+     create an evidential problem we must remediate, or is the timestamp
+     sufficient?
+  3. One acceptance sits 61 minutes after the rebrand commit reached `main`. We
+     assign it to the later document on the basis that deployment follows push
+     within minutes; we have not yet read the deployment log to confirm it.
 
 ## One more, found while this pack was being assembled
 

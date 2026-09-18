@@ -134,6 +134,13 @@ two costs a re-acceptance of every user.
 
 **Processors and sub-processors, as implemented:**
 
+> **Stripe added 2026-09-18.** It was absent from this table while five service
+> modules integrate it, because the table was written when the pack recorded the
+> service as free. **No customer has been charged, so no payment data has yet
+> been processed** — but a processor that is wired in belongs in the record
+> before the first transaction, not after it. Its DPA and transfer mechanism are
+> outstanding; document 07 carries the action.
+
 | Party | Receives | Where in code |
 |---|---|---|
 | OpenAI | Raw audio bytes (transcription); bounded transcript and prompt context (Ideal Text, Feedback) | `services/authorized_provider.py` — the only provider name in the adapter |
@@ -143,6 +150,7 @@ two costs a re-acceptance of every user.
 | Resend | Transactional email | `services/email_service.py` |
 | Sentry | Error telemetry (EU region) | client + server instrumentation |
 | Vercel | Frontend hosting | `frontend-cursor` deployment |
+| Stripe | Payment and subscription data for paid tiers | `services/stripe_checkout_credits.py`, `stripe_checkout_webhook.py`, `stripe_subscription_tiers.py`, `tier_checkout.py`, `routes/internal_webhooks.py` |
 | Stripe | Independent controller; no DPA to sign | — |
 
 **Corrected 2026-09-17: there are eight vendors, not five.** Sentry, Vercel and

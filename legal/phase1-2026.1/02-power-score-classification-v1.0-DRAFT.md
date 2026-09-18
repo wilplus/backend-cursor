@@ -292,8 +292,25 @@ attributes". None of those is inferred here, and sex routing is retired (§6).
 
 - **Article 5 prohibitions.** 5(1)(f) prohibits AI systems inferring emotions in
   the areas of workplace and education institutions. If §7 lands on `false`, it
-  does not apply. **If §7 lands on `true`, this is the controlling provision,
-  and it is a prohibition — no compliance programme cures it.**
+  does not apply.
+
+  > **Corrected 2026-09-18.** This bullet previously continued: *"If §7 lands on
+  > `true`, this is the controlling provision, and it is a prohibition — no
+  > compliance programme cures it."* That contradicts the deployment-fence
+  > paragraph eleven lines below in this same section, and engineering's reading
+  > is that the earlier sentence was wrong: **5(1)(f) is scoped to workplace and
+  > education deployment**, so a `true` at §7 does not by itself make the system
+  > prohibited. On the current deployment — individual adults, own account, no
+  > employer or school — `true` engages **Annex III point 1(c)** and the
+  > high-risk regime, and leaves 5(1)(f) as a fence that must be held rather
+  > than a provision already breached.
+  >
+  > **Why this is recorded rather than quietly edited.** As written, `true` read
+  > as unsurvivable, and a determination document whose honest answer looks
+  > fatal exerts pressure on whoever signs §9 to choose `false`. That is the
+  > opposite of what this document is for. The correction is engineering's
+  > reading of the Article's scope, **not a legal conclusion** — counsel should
+  > confirm or reject it, and if the original sentence was right, say so.
 - **Annex III point 1(c)** (emotion recognition): not high-risk if §7 is `false`.
 - **Annex III point 3** (education): not engaged. Self-directed practice by an
   adult on their own account is not determining access to, or evaluating
