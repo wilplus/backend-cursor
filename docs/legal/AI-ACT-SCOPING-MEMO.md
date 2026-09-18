@@ -73,6 +73,43 @@ monitor, rank or decide about employees, candidates or students, and provide for
 account termination. **There is currently no technical control enforcing this —
 only the contract term.**
 
+### 2.5 Where each of these statements is in the source
+
+This memo says at the foot that §2 is verified against source. This table is that
+verification, so that the claim can be checked rather than taken. Paths are in
+`wilplus/backend-cursor` unless marked otherwise; line numbers are as at
+2026-09-18 and `tests/test_legal_citations.py` fails the build if any of them
+stops resolving.
+
+| Statement in §2 | Where it is |
+|---|---|
+| The seven features, their directions and their weights | `services/voice_confidence.py:209` — the `_CUES` table. Per-cue direction and the Jiang & Pell reference are in the module docstring, `:38-45`. |
+| The weights are fixed literals, not learned | Same table — the weights are source constants. There is no training path to reach them: every Phase-2 learning route is fail-closed at `routes/phase2_guard.py:15` (`phase2_learning_disabled`, HTTP 410). |
+| Each feature is z-scored against that speaker's own historical baseline | The per-speaker reference is built in `services/acoustic_baseline.py` (`BASELINE_VERSION`, `:47`); the composite consumes it at `services/voice_confidence.py:356`. **This is the fact Q1 and Q4(a) turn on.** |
+| Signed, weighted, summed, squashed through `tanh` with a neutral dead zone; output in [-1.0, +1.0] | `services/voice_confidence.py:230` (`_DEAD_ZONE = 0.25`) and `:385-388` — the dead zone is subtracted from the magnitude before `math.tanh`, so a middling clip returns exactly `0.0`. |
+| Computed and persisted for every take, on by default | `services/voice_confidence.py:252`, `enabled()`. `VOICE_CONFIDENCE_ENABLED` defaults to `"1"` at `:256`. It is an environment kill-switch, **not** a per-user consent flag, and no per-user flag exists. |
+| It feeds feedback ranking only behind a flag that is currently off | `services/voice_confidence.py:243`, `ranking_enabled()`. `VOICE_CONFIDENCE_RANKING_ENABLED` defaults to `"0"` at `:248`. |
+| Never rendered to the user as a number, band, score or badge | The AC-9 product fence. Asserted as a test, not only as a policy: `tests/test_cross_take_selection.py` pins the score-free payload. |
+| Never shown to the human coach | The BLIND COACH fence, recorded at the point of use in `services/moment_confidence.py:21`. |
+| The five band labels were renamed on 2026-09-17 | `services/voice_confidence.py:131` — the renamed `BANDS`, with `_RETIRED_BAND_LABELS` at `:135` mapping the old names forward so no stored value is silently reinterpreted; the block comment above them, from `:103`, records the rename and why it is not cosmetic. The second function is `services/confidence_labels.py:108`, `band_of()`. |
+| Terms §7 prohibits employer and educational use | Live text: `src/app/terms/page.tsx:306` in `wilplus/frontend-cursor` at commit `f460788` — pinned, because that page is edited under this pack. Draft replacement: `legal/phase1-2026.1/copy/terms-2.0-DRAFT.txt:113-117`. |
+| No technical control enforces the §7 prohibition | Stated as an absence, so there is nothing to cite. There is no seat purchasing, team plan or employer surface in the product, but equally no check that would refuse one. |
+
+### 2.6 A correction to §2.3, made while sourcing this memo
+
+§2.3 says we "operate" a blind shadow model that learns from coach answers. That
+is **stronger than what is running.** What exists in code is the blind *packet
+contract* — `services/mlc2_confidence_blind.py`, which validates that a rating
+packet reaches a coach with no machine answer attached. The corpus, dataset,
+training, evaluation and promotion paths that would make it a learning model are
+all fail-closed behind `routes/phase2_guard.py` and return HTTP 410.
+
+So the accurate statement is: **the blind-rating apparatus is built and the
+learning half is disabled.** We have left §2.3 in the memo rather than deleting
+it, because the design intent is real and you should price it — but please
+answer Q1 on the fixed composite as it actually runs, and treat the shadow model
+as a planned capability we are asking about in advance.
+
 ---
 
 ## 3. The issue: "biometric data" is defined differently in the two regimes
@@ -222,11 +259,15 @@ whether that is defensible under Art 5(1)(e).
 - Draft DPIA and draft Art 30 record
 - Published Terms of Service v1.2 and Privacy Policy v1.2 (willpowerlab.com)
 - The consent artifact currently in force, and a proposed replacement
-- Source of the component at issue, with its documentation
+- Source of the component at issue, with its documentation —
+  `services/voice_confidence.py` and `services/acoustic_baseline.py`; §2.5
+  gives the line anchors, and we can grant repository access
 - The internal product fences (no surfaced scores; blind coach) that constrain it
 
 ---
 
 *Prepared with AI counsel-support tooling. The technical statements in §2 are
-verified against source. The legal characterisations in §§3-5 are the client's
+verified against source; §2.5 gives the file and line for each one so you can
+check rather than rely on that sentence, and §2.6 records the one statement that
+did not survive the check. The legal characterisations in §§3-5 are the client's
 working assumptions and are what I am asking you to test.*

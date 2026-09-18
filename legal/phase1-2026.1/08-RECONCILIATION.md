@@ -63,15 +63,28 @@ Credit where it is due — both were verified here before acceptance.
 
 **The live copy contains two false statements.** Confirmed:
 
-- `frontend-cursor/src/app/privacy/page.tsx:302` and `terms/page.tsx:287` say the
-  voice inference is *"opt-in and off by default"*. It is not.
-  `services/voice_confidence.py` `enabled()` returns true when
+Both citations below are **pinned to the commit that held the text**, because
+both statements have since been removed from the live site and a bare line
+number would now resolve to unrelated copy. The convention is the one
+`accepted-versions/README.md` already uses: the file, the line, and the commit.
+
+- `src/app/privacy/page.tsx:307` and `src/app/terms/page.tsx:289`, both at
+  `wilplus/frontend-cursor` commit `9f74075`, say the voice inference is
+  *"opt-in and off by default"*. It is not.
+  `services/voice_confidence.py:256` — `enabled()` — returns true when
   `VOICE_CONFIDENCE_ENABLED` is unset, so computation is **on by default**.
-  (Only *ranking* is off by default, behind a different flag.)
-- `privacy/page.tsx:263` and `:460` assert OpenAI **zero data retention**. ZDR is
-  a per-organisation approved application, not a default. Unless it has been
-  applied for and granted, that statement is false and standard abuse-monitoring
-  retention applies.
+  (Only *ranking* is off by default, behind a different flag:
+  `services/voice_confidence.py:248`, `ranking_enabled()`.)
+  *Removed from the live site in `f460788`.*
+- `src/app/privacy/page.tsx:265` and `:462`, at commit `162b340`, assert OpenAI
+  **zero data retention**. ZDR is a per-organisation approved application, not a
+  default. Unless it has been applied for and granted, that statement is false
+  and standard abuse-monitoring retention applies.
+  *Removed from the live site in `15d9570`.*
+
+Neither removal answers the question the cover note puts to counsel at Q-D —
+whether making a false statement true silently is the same act as disclosing
+that it was false. They are recorded here as corrections, not as closures.
 
 Neither is a drafting quibble. Both are representations to users about what
 happens to their voice.
