@@ -647,3 +647,95 @@ def test_the_band_stays_internal_and_the_client_gets_booleans():
         "delivery_band", "practice_prompt", "carries_exercise",
     }
     assert routing["a"]["practice_prompt"] is True
+
+
+# ── the bookmark reaches the client (founder 2026-09-18, contract 24g) ──
+#
+# "There are no green bookmarks... none of that actually landed." It had not:
+# the ladder was computed on the frame and dropped before the row was built, so
+# the browser received no tier and every bookmark could only be one colour.
+
+
+def test_the_two_most_confident_blocks_are_marked_green():
+    from services.take_feedback_policy_v3 import _mark_top_confidence
+
+    blocks = [
+        _rblock("weak", -0.5), _rblock("best", 0.9),
+        _rblock("second", 0.6), _rblock("middling", 0.1),
+    ]
+    _mark_top_confidence(blocks, 2)
+    green = {b["block_id"] for b in blocks if b["most_confident"]}
+    assert green == {"best", "second"}
+
+
+def test_green_carries_no_position():
+    """First and second render identically (24g) — a visible ordering is a
+    surfaced ranking, so what lands on the block is a boolean and nothing
+    else."""
+    from services.take_feedback_policy_v3 import _mark_top_confidence
+
+    blocks = [_rblock("best", 0.9), _rblock("second", 0.6)]
+    _mark_top_confidence(blocks, 2)
+    for block in blocks:
+        assert block["most_confident"] is True
+        assert "rank" not in block and "position" not in block
+
+
+def test_a_beaten_block_loses_its_green():
+    """Every block is written, not only the winners, so a re-run cannot leave
+    a stale green on a block that has since been outranked."""
+    from services.take_feedback_policy_v3 import _mark_top_confidence
+
+    blocks = [_rblock("was_top", 0.9), _rblock("other", 0.1)]
+    _mark_top_confidence(blocks, 2)
+    assert blocks[0]["most_confident"] is True
+    blocks.append(_rblock("newcomer", 0.95))
+    blocks[0]["confidence_candidates"][0]["machine_score"] = -0.9
+    _mark_top_confidence(blocks, 2)
+    assert blocks[0]["most_confident"] is False
+
+
+def test_the_client_row_gets_a_tier_and_never_the_band_or_the_score():
+    """AC-9 at the boundary. The tier says which bookmark to DRAW; the band and
+    the raw machine score stay on the internal frame and the canonical bundle
+    respectively."""
+    from services.take_feedback_policy_v3_service import (
+        _block_presentation, _presentable,
+    )
+
+    block = {
+        "block_id": "b1", "carries_exercise": False,
+        "most_confident": True, "practice_prompt": False,
+        "delivery_band": "delivery_signal_high",
+    }
+    presentation = _block_presentation(block, "b1")
+    assert presentation["bookmark_tier"] == "most_confident"
+    assert "delivery_band" not in presentation
+
+    visible = _presentable(
+        {"id": "c1", "quote": "words", "candidate_score": 0.87}, presentation,
+    )
+    assert visible["bookmark_tier"] == "most_confident"
+    assert visible["practice_prompt"] is False
+    assert "candidate_score" not in visible, (
+        "a raw machine number in a payload is one render away from being shown"
+    )
+    assert "delivery_band" not in visible
+
+
+def test_the_exercise_outranks_green_on_the_same_block():
+    """One bookmark, one colour. The orange pulsing exercise wins, because it
+    is the single thing on the screen the user is asked to go and do."""
+    from services.take_feedback_policy_v3_service import _block_presentation
+
+    both = {"carries_exercise": True, "most_confident": True}
+    assert _block_presentation(both, "b1")["bookmark_tier"] == "exercise"
+
+
+def test_an_ordinary_block_is_standard():
+    from services.take_feedback_policy_v3_service import _block_presentation
+
+    plain = _block_presentation({}, "b9")
+    assert plain["bookmark_tier"] == "standard"
+    assert plain["practice_prompt"] is False
+    assert plain["block_id"] == "b9"

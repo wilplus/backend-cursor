@@ -383,6 +383,35 @@ def _top_confidence_blocks(blocks: list[dict], limit: int) -> list[dict]:
     return [block for _, block in ranked[:limit]]
 
 
+def _mark_top_confidence(blocks: list[dict], limit: int) -> list[dict]:
+    """`_top_confidence_blocks`, and it writes the answer onto the blocks.
+
+    THE GREEN BOOKMARK (contract 24g). The Take's two most Confident Voice
+    items render green, identically — first and second are never distinguished,
+    because a visible ordering is a surfaced ranking. Which two they are was
+    already computed for praise anchoring and then thrown away, so the client
+    had no way to draw them and every bookmark came out the same colour.
+
+    A FLAG, NOT THE RANK. What lands on the block is a boolean: this item is
+    one of the two, with no position and no score. `_top_confidence_blocks`
+    returns them best-first because praise anchoring needs an order; nothing
+    downstream of here may see it (24i).
+
+    Written here rather than in the caller for the reason `_practice_routing`
+    gives: `build_shadow_frame` is grandfathered at CC 37 and the ratchet only
+    lets it come down, so a loop up there costs a point it cannot spend — and
+    the mark belongs beside the rule that decided it.
+
+    Every block is written, not only the winners, so a re-run cannot leave a
+    stale green on a block that has since been beaten.
+    """
+    top = _top_confidence_blocks(blocks, limit)
+    top_ids = {str(block.get("block_id")) for block in top}
+    for block in blocks:
+        block["most_confident"] = str(block.get("block_id")) in top_ids
+    return top
+
+
 def _anchored_praise(
     ranked_praise: list[dict], top_blocks: list[dict],
 ) -> list[dict]:
@@ -801,7 +830,8 @@ def build_shadow_frame(
         [rewrite_ranked[0]["candidate_id"]] if rewrite_ranked else []
     )
     praise_anchors = _anchored_praise(
-        praise_ranked, _top_confidence_blocks(blocks, PRAISE_ANCHOR_LIMIT),
+        praise_ranked,
+        _mark_top_confidence(blocks, PRAISE_ANCHOR_LIMIT),
     )
     praise_selected_ids = [row["candidate_id"] for row in praise_anchors]
 

@@ -58,10 +58,62 @@ class _V3ServiceInventory:
         self.position = 0
 
 
+def _block_presentation(block: dict, block_id: str) -> dict:
+    """What the client is allowed to know about how to DRAW this block.
+
+    THE LADDER WAS COMPUTED AND THEN THROWN AWAY (founder 2026-09-18: "there
+    are no green bookmarks... none of that actually landed"). `_practice_routing`
+    and `_mark_top_confidence` already decide, per block, which item carries the
+    exercise, which two are the Take's most confident, and which prompt practice
+    — and every one of those decisions stayed on the internal frame. The row the
+    browser received had no tier at all, so every bookmark could only render the
+    same colour and contract 24g was unbuildable.
+
+    AC-9 IS WHY THIS IS A TRANSLATION AND NOT A PASS-THROUGH.
+    `voice_confidence.band()` warns in its own docstring that the band IS a
+    verdict and must never reach a user payload, so `delivery_band` stays on the
+    frame and does not appear here. What crosses is a tier NAME and one boolean:
+    the client is told which bookmark to draw and that practice is offered,
+    never how it was scored, where it ranked, or how it compares.
+
+    `most_confident` deliberately carries no position. First and second are
+    identical green (24g) because a visible ordering is a surfaced ranking.
+    """
+    tier = (
+        "exercise" if block.get("carries_exercise")
+        else "most_confident" if block.get("most_confident")
+        else "standard"
+    )
+    return {
+        "block_id": block_id,
+        "bookmark_tier": tier,
+        # "Let's practice" with no exercise attached — contract 24f: an exercise
+        # is work the user must go and do, and a list of them is a list nobody
+        # starts, so only the weakest below-neutral item carries one.
+        "practice_prompt": bool(block.get("practice_prompt")),
+    }
+
+
+def _presentable(row: dict, presentation: dict) -> dict:
+    """The visible copy of a candidate row: how to draw it, minus the score.
+
+    `candidate_score` is the detector's raw machine number. It belongs in the
+    canonical bundle, which is persisted evidence, and nowhere near a browser —
+    AC-9 bans surfacing scores, and a number that is merely PRESENT in a payload
+    is one render away from being surfaced by someone who assumes anything sent
+    was meant to be shown. The canonical row keeps it; this copy does not.
+    """
+    visible = dict(row)
+    visible.pop("candidate_score", None)
+    visible.update(presentation)
+    return visible
+
+
 def _v3_confidence_candidate_row(
     raw: Any, *, block_id: str, block_position: int, slide_index: int,
     pieces: dict[str, dict], policy: dict, document_text: str,
     confidence_selected: dict[str, str], inventory: _V3ServiceInventory,
+    presentation: dict,
 ) -> bool:
     if not isinstance(raw, dict):
         return False
@@ -123,7 +175,7 @@ def _v3_confidence_candidate_row(
             "feedback_family": "confident_voice",
             "block_id": block_id,
         })
-        inventory.visible.append(dict(row))
+        inventory.visible.append(_presentable(row, presentation))
     inventory.items.append({
         "candidate_key": candidate_key,
         "feedback_family": "confident_voice",
@@ -150,12 +202,14 @@ def _v3_confidence_block(
     slide_index = block.get("slide_index")
     if not block_id or not isinstance(slide_index, int):
         return False
+    presentation = _block_presentation(block, block_id)
     for raw in block.get("confidence_candidates") or []:
         if not _v3_confidence_candidate_row(
             raw, block_id=block_id, block_position=block_position,
             slide_index=slide_index, pieces=pieces, policy=policy,
             document_text=document_text,
             confidence_selected=confidence_selected, inventory=inventory,
+            presentation=presentation,
         ):
             return False
     return True
