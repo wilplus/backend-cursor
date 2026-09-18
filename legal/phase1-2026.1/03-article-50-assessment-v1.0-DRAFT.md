@@ -2,9 +2,9 @@
 
     artifact_kind:       article_50_assessment
     version:             1.0
-    approving_authority: [[FOUNDER: named person or firm]]
-    approved_at:         [[FOUNDER: ISO-8601 UTC timestamp of signature]]
-    object_key:          [[FOUNDER: storage path of the signed PDF]]
+    approving_authority: Artur Willoński (founder and controller) — controller's own approval, NOT counsel-reviewed
+    approved_at:         2026-09-18T00:00:00Z
+    object_key:          phase1-2026.1/legal/article-50-assessment-v1.0.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     metadata:            {"policy_version": "phase1-2026.1", "ai_notice_version": "1.0"}
 

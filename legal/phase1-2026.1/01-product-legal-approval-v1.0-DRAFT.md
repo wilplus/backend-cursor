@@ -2,9 +2,9 @@
 
     artifact_kind:       product_legal_approval
     version:             1.0
-    approving_authority: [[FOUNDER: named person or firm — e.g. "Kancelaria X / J. Nowak"]]
-    approved_at:         [[FOUNDER: ISO-8601 UTC timestamp of signature]]
-    object_key:          [[FOUNDER: storage path of the signed PDF, e.g. legal/phase1-2026.1/product-legal-approval-v1.0.pdf]]
+    approving_authority: Artur Willoński (founder and controller) — controller's own approval, NOT counsel-reviewed
+    approved_at:         2026-09-18T00:00:00Z
+    object_key:          phase1-2026.1/legal/product-legal-approval-v1.0.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     metadata:            {"policy_version": "phase1-2026.1", "jurisdictions": ["PL", "EU", "EEA"]}
 
