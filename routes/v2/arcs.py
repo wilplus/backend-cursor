@@ -510,6 +510,124 @@ def v2_voice_album_moment_history():
         return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
 
 
+@v2_bp.route("/voice-album/practice-queue", methods=["GET"])
+@require_auth
+def v2_voice_album_practice_queue():
+    """Clips still waiting for the owner's Confident Voice answer.
+
+    The "Practice new" half of the Album (founder 2026-09-18): every clip of
+    the caller's the star lane marked confident and the caller has not
+    answered yet, in project order, then Take, then slide.
+
+    Response 200 {"mine": [{snippet_id, arc_id, arc_title, take_session_id,
+    take_index, slide_index, audio_url, start_offset_ms, duration_ms}],
+    "general": [], "general_available": false}.
+
+    ``general`` is the coach-uploaded shared corpus for blind rating — a
+    Phase-2 path, disabled until separately authorized. It reports itself
+    unavailable rather than returning an empty list that reads like "done".
+
+    AC-9: playback and position only. 500 V2_ERROR
+    """
+    try:
+        sessions = db.takes.v2_list_user_lab_sessions(str(request.user_id)) or []
+        by_arc: dict = {}
+        for session in sessions:
+            arc_id = str(session.get("arc_id") or "")
+            if arc_id:
+                by_arc.setdefault(arc_id, []).append(session)
+
+        ordered = sorted(
+            by_arc.items(),
+            key=lambda pair: min(
+                (str(s.get("created_at") or "") for s in pair[1]), default=""),
+        )
+        titles = {arc_id: _arc_topic(arc_sessions)
+                  for arc_id, arc_sessions in ordered}
+
+        from services.voice_album_practice_queue import build_practice_queue
+        mine = build_practice_queue(
+            sessions_by_arc=dict(ordered),
+            titles_by_arc=titles,
+            database=db,
+            resolve_audio=_resolve_snippet_audio_url,
+        )
+        return jsonify({"mine": mine, "general": [],
+                        "general_available": False}), 200
+    except Exception as error:
+        logger.error("voice-album practice-queue failed user=%s: %s",
+                     request.user_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+
+
+@v2_bp.route("/voice-album/practice-answer", methods=["POST"])
+@require_auth
+def v2_voice_album_practice_answer():
+    """The owner's five-state answer on one of their own pending clips.
+
+    Body {"arc_id", "take_session_id", "snippet_id", "response"} where
+    ``response`` is one of yes / in_between / no / not_sure / audio_unclear.
+    Stored WHOLE — none of the five is folded into another on the way in.
+
+    It writes owner ROUTING on the clip, not a response to a Manager card: a
+    card only exists once the Take's review has been opened, and minting one
+    here would change what counts as exposed for the Manager's budget (L2).
+    No training, quorum, calibration, evaluation, SFT or DPO reader consumes
+    the table it lands in (L3).
+
+    Only a ``yes`` can help a moment into the Album, and only alongside the
+    machine and coach legs — the reconciliation below can therefore add a
+    moment but never manufacture one. It is best-effort and never fails the
+    answer (LIVE LOOP).
+
+    400 BAD_REQUEST · 404 NOT_FOUND · 500 V2_ERROR
+    """
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
+    arc_id = str(payload.get("arc_id") or "").strip()
+    session_id = str(payload.get("take_session_id") or "").strip()
+    snippet_id = str(payload.get("snippet_id") or "").strip()
+    if not arc_id or not session_id or not snippet_id:
+        return jsonify({"code": "BAD_REQUEST",
+                        "error": "arc_id, take_session_id and snippet_id "
+                                 "are required"}), 400
+
+    from services.voice_album_routing import five_state_response
+    response, error = five_state_response(payload)
+    if error:
+        return jsonify({"code": "BAD_REQUEST", "error": error}), 400
+
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned or not any(str(s.get("id")) == session_id
+                                for s in sessions):
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "take not found"}), 404
+
+        from services.voice_album_practice_queue import record_practice_answer
+        saved, failure = record_practice_answer(
+            arc_id=arc_id, take_session_id=session_id,
+            snippet_id=snippet_id, response=response,
+            owner_user_id=str(request.user_id), database=db,
+        )
+        if failure == "clip_not_found":
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "clip not found"}), 404
+        if not saved:
+            logger.error("voice_album practice-answer write refused arc=%s "
+                         "(migration missing? migrations/"
+                         "widen_owner_voice_album_routing_to_five_states.sql)",
+                         arc_id)
+            return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+        return jsonify({"saved": True, "response": response}), 201
+    except Exception as error:
+        logger.error("voice-album practice-answer failed arc=%s: %s",
+                     arc_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+
+
 @v2_bp.route("/voice-album/note", methods=["POST"])
 @require_auth
 def v2_voice_album_note():

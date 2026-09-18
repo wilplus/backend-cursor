@@ -6,6 +6,15 @@ from typing import Any, Optional
 
 RESPONSES = ("yes", "no", "neutral", "unrateable")
 
+# The five states the instrument asks for (contract §29). Stored whole: an
+# in-between, a not-sure and an audio-unclear are three different self-reports,
+# and folding any of them into `no` or into each other would destroy exactly
+# the distinction the question exists to capture.
+#
+# Only `yes` ever satisfies the Voice Album's USER leg — the other four are
+# answers, not weaker yeses.
+FIVE_STATES = ("yes", "in_between", "no", "not_sure", "audio_unclear")
+
 
 def validate_owner_voice_album_route(
     payload: Any,
@@ -42,4 +51,19 @@ def routing_response_from_rating(payload: Any) -> tuple[Optional[str], Optional[
     value = payload.get("value")
     if value not in ("yes", "no", "neutral"):
         return None, "value: must be yes, no, or neutral"
+    return value, None
+
+
+def five_state_response(payload: Any) -> tuple[Optional[str], Optional[str]]:
+    """Validate a standalone Confident Voice answer ("Practice new").
+
+    No coercion and no aliasing: the answer is stored as given, or rejected.
+    The legacy `neutral` / `unrateable` values are audit-only and are NOT
+    accepted here, so a new write can never land on a retired vocabulary.
+    """
+    if not isinstance(payload, dict):
+        return None, "body: must be an object"
+    value = payload.get("response")
+    if value not in FIVE_STATES:
+        return None, "response: must be one of " + ", ".join(FIVE_STATES)
     return value, None
