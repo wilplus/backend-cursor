@@ -115,15 +115,43 @@ def test_one_relative_best_candidate_per_slide_bounded_75_word_block():
     )
 
 
-def test_take_one_is_confidence_only_and_take_two_selects_global_absolute_lanes():
-    first = _frame(take_index=1)
-    assert first["verbal_lanes"]["enabled"] is False
-    assert first["verbal_lanes"]["rewrite_clarity"]["selected_candidate_id"] is None
+def test_both_verbal_lanes_run_on_take_one():
+    """REVERSED 2026-09-18 (founder — contract 24b). This test previously
+    asserted `enabled is False` on Take 1 and that both lanes selected nothing.
 
-    mature = _frame(take_index=2)
-    assert mature["verbal_lanes"]["enabled"] is True
-    assert mature["verbal_lanes"]["rewrite_clarity"]["selected_candidate_id"] == "best-rewrite"
-    assert mature["verbal_lanes"]["great_formulation"]["selected_candidate_id"] == "best-praise"
+    The old rule made the first Take the one Take whose bookmarks lead
+    nowhere — the worst possible place in the product for that, because it is
+    the only Take every user definitely sees. Rewritten rather than deleted so
+    the reversal is legible in this file's history.
+    """
+    first = _frame(take_index=1)
+    assert first["verbal_lanes"]["enabled"] is True
+    assert first["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == [
+        "best-rewrite",
+    ]
+
+
+def test_the_rewrite_lane_is_capped_at_one():
+    """Capped because, unlike a relative-best read, a rewrite asserts a finding
+    and can be wrong — the expensive error under H.0."""
+    frame = _frame(take_index=2)
+    lane = frame["verbal_lanes"]["rewrite_clarity"]
+    assert lane["budget"] == 1
+    assert len(lane["selected_candidate_ids"]) <= 1
+
+
+def test_praise_anchors_to_the_top_confidence_blocks_and_is_capped_at_two():
+    frame = _frame(take_index=2)
+    lane = frame["verbal_lanes"]["great_formulation"]
+    assert lane["budget"] == 2
+    assert lane["selection_scope"] == "anchored_to_top_confidence_blocks"
+    assert len(lane["selected_candidate_ids"]) <= 2
+    # Every anchor names the block it belongs to — praise never floats free of
+    # a Slide (contract 24f).
+    block_ids = {block["block_id"] for block in frame["blocks"]}
+    for anchor in lane["anchors"]:
+        assert anchor["block_id"] in block_ids
+        assert anchor["candidate_id"] in lane["selected_candidate_ids"]
 
 
 def test_shadow_is_not_delivery_exposure_or_dataset_input_and_hash_is_stable():
@@ -432,3 +460,98 @@ def test_a_document_with_no_blocks_is_not_a_coverage_failure():
     coverage = _slide_coverage([], 3)
     assert coverage["assessable_slides"] == 0
     assert coverage["meets_floor"] is True
+
+
+# ── praise anchoring, option (a) (founder 2026-09-18, contract 24f) ──
+
+def _block(block_id, start, end, selected="c1", score=0.9):
+    return {
+        "block_id": block_id, "slide_index": 0, "start": start, "end": end,
+        "selected_candidate_id": selected,
+        "confidence_candidates": [
+            {"candidate_id": selected, "machine_score": score, "ordinal": 0},
+        ],
+    }
+
+
+def test_praise_goes_to_the_two_highest_ranked_blocks():
+    from services.take_feedback_policy_v3 import (
+        PRAISE_ANCHOR_LIMIT, _anchored_praise, _top_confidence_blocks,
+    )
+
+    blocks = [
+        _block("b-low", 0, 100, "c-low", 0.2),
+        _block("b-top", 100, 200, "c-top", 0.9),
+        _block("b-mid", 200, 300, "c-mid", 0.6),
+    ]
+    top = _top_confidence_blocks(blocks, PRAISE_ANCHOR_LIMIT)
+    assert [b["block_id"] for b in top] == ["b-top", "b-mid"]
+
+    ranked = [
+        {"candidate_id": "p-top", "document_span": {"start": 110, "end": 150}},
+        {"candidate_id": "p-mid", "document_span": {"start": 210, "end": 250}},
+        {"candidate_id": "p-low", "document_span": {"start": 10, "end": 50}},
+    ]
+    anchors = _anchored_praise(ranked, top)
+    assert [row["candidate_id"] for row in anchors] == ["p-top", "p-mid"]
+    # The weakest block's praise is NOT surfaced, however good the candidate.
+    assert "p-low" not in {row["candidate_id"] for row in anchors}
+
+
+def test_a_top_block_with_no_praise_inside_it_simply_gets_none():
+    """OPTION (a), and the cost the founder accepted: a green bookmark can
+    carry no praise. Praising the block anyway with the nearest available text
+    would be manufacturing, which L2 and contract 24d forbid."""
+    from services.take_feedback_policy_v3 import _anchored_praise
+
+    top = [_block("b-top", 100, 200), _block("b-two", 200, 300)]
+    # Both candidates sit OUTSIDE either block.
+    ranked = [
+        {"candidate_id": "p-far", "document_span": {"start": 0, "end": 40}},
+        {"candidate_id": "p-far2", "document_span": {"start": 400, "end": 440}},
+    ]
+    assert _anchored_praise(ranked, top) == []
+
+
+def test_best_praise_inside_a_block_wins_because_the_ranking_is_ordered():
+    from services.take_feedback_policy_v3 import _anchored_praise
+
+    top = [_block("b-top", 0, 500)]
+    ranked = [
+        {"candidate_id": "p-best", "document_span": {"start": 10, "end": 40}},
+        {"candidate_id": "p-worse", "document_span": {"start": 60, "end": 90}},
+    ]
+    anchors = _anchored_praise(ranked, top)
+    assert [row["candidate_id"] for row in anchors] == ["p-best"]
+
+
+def test_one_praise_per_block_so_a_single_block_cannot_take_both_slots():
+    from services.take_feedback_policy_v3 import _anchored_praise
+
+    top = [_block("b-top", 0, 500)]
+    ranked = [
+        {"candidate_id": "p-one", "document_span": {"start": 10, "end": 40}},
+        {"candidate_id": "p-two", "document_span": {"start": 60, "end": 90}},
+    ]
+    assert len(_anchored_praise(ranked, top)) == 1
+
+
+def test_a_span_straddling_a_block_boundary_is_not_inside_it():
+    """Containment, not overlap: a candidate half in the block is evidence
+    about words the block does not own."""
+    from services.take_feedback_policy_v3 import _anchored_praise
+
+    top = [_block("b-top", 100, 200)]
+    ranked = [{"candidate_id": "p", "document_span": {"start": 150, "end": 260}}]
+    assert _anchored_praise(ranked, top) == []
+
+
+def test_an_unselected_block_never_anchors_praise():
+    """A block whose confidence item was not selected has no moment to praise."""
+    from services.take_feedback_policy_v3 import _top_confidence_blocks
+
+    blocks = [{
+        "block_id": "b", "slide_index": 0, "start": 0, "end": 100,
+        "selected_candidate_id": None, "confidence_candidates": [],
+    }]
+    assert _top_confidence_blocks(blocks, 2) == []

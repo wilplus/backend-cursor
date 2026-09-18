@@ -277,6 +277,80 @@ def _clip_lineage(
     }, None
 
 
+#: Praise anchors to the Take's most and second-most Confident Voice items
+#: (contract 24f). Two, not one — and at most two, never padded to two.
+PRAISE_ANCHOR_LIMIT = 2
+
+
+def _top_confidence_blocks(blocks: list[dict], limit: int) -> list[dict]:
+    """The blocks whose selected item ranked highest, best first.
+
+    Reuses `_confidence_rank`, so "most confident" here means exactly what it
+    means inside a block: measured beats unmeasured, higher score wins, and
+    ordinal then candidate id break ties. One ranking, used at two scales —
+    if these diverged, the item called strongest inside its block could lose
+    the Take-level comparison to one the same rule ranked below it.
+    """
+    ranked: list[tuple[tuple, dict]] = []
+    for block in blocks:
+        selected_id = block.get("selected_candidate_id")
+        if not selected_id:
+            continue
+        chosen = next(
+            (
+                row for row in block.get("confidence_candidates") or []
+                if row.get("candidate_id") == selected_id
+            ),
+            None,
+        )
+        if chosen is not None:
+            ranked.append((_confidence_rank(chosen), block))
+    ranked.sort(key=lambda pair: pair[0])
+    return [block for _, block in ranked[:limit]]
+
+
+def _anchored_praise(
+    ranked_praise: list[dict], top_blocks: list[dict],
+) -> list[dict]:
+    """Praise for the top Confident Voice blocks — option (a), founder.
+
+    A praise candidate qualifies only when its document span falls INSIDE one
+    of those blocks. Praise stays evidence-led: it is the detector's own
+    finding about words the speaker actually said, not a compliment attached
+    to a block because the block ranked well.
+
+    The consequence, accepted deliberately: a green bookmark sometimes carries
+    no praise, because the strongest-sounding block had nothing defensible to
+    praise in it. That is the honest outcome. The alternative — praising the
+    block anyway with whatever text was nearest — is manufacturing, which L2
+    and contract 24d forbid.
+
+    `ranked_praise` arrives best-first, so the first candidate found inside a
+    block is that block's best. One per block, so two blocks yield at most two.
+    """
+    chosen: list[dict] = []
+    used: set[str] = set()
+    for block in top_blocks:
+        start, end = block.get("start"), block.get("end")
+        if not isinstance(start, int) or not isinstance(end, int):
+            continue
+        for item in ranked_praise:
+            candidate_id = str(item.get("candidate_id") or "")
+            span = item.get("document_span")
+            if not candidate_id or candidate_id in used or not isinstance(span, dict):
+                continue
+            if span.get("start") is None or span.get("end") is None:
+                continue
+            if start <= int(span["start"]) and int(span["end"]) <= end:
+                chosen.append({
+                    "block_id": block["block_id"],
+                    "candidate_id": candidate_id,
+                })
+                used.add(candidate_id)
+                break
+    return chosen
+
+
 def coverage_floor(take_index: Any) -> float:
     """The share of assessable Slides this Take is required to cover."""
     if isinstance(take_index, bool) or not isinstance(take_index, int):
@@ -430,7 +504,7 @@ def _verbal_inventory(
     *,
     document_length: int,
     snippet_map: dict[str, dict],
-) -> tuple[list[dict], Optional[str], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     ranked: list[tuple[tuple, dict]] = []
     inventory: list[dict] = []
     exclusions: list[dict] = []
@@ -526,8 +600,11 @@ def _verbal_inventory(
         ranked.append((rank, item))
 
     ranked.sort(key=lambda value: value[0])
-    selected_id = ranked[0][1]["candidate_id"] if ranked else None
-    return inventory, selected_id, exclusions
+    # Return the whole ranking, not just the winner. Praise is no longer a
+    # single global pick: it anchors to the Take's two most Confident Voice
+    # blocks (contract 24f), so the caller has to ask "best praise INSIDE this
+    # block", which the winner alone cannot answer.
+    return inventory, [item for _, item in ranked], exclusions
 
 
 def _unrouted_inventory(candidates: Iterable[Any]) -> list[dict]:
@@ -623,14 +700,14 @@ def build_shadow_frame(
     coverage = _slide_coverage(blocks, take_index)
 
     feedback_rows = list(feedback_candidates or [])
-    rewrite_inventory, rewrite_selected, rewrite_exclusions = _verbal_inventory(
+    rewrite_inventory, rewrite_ranked, rewrite_exclusions = _verbal_inventory(
         feedback_rows,
         "rewrite_clarity",
         take_id,
         document_length=len(document_text),
         snippet_map=snippet_map,
     )
-    praise_inventory, praise_selected, praise_exclusions = _verbal_inventory(
+    praise_inventory, praise_ranked, praise_exclusions = _verbal_inventory(
         feedback_rows,
         "great_formulation",
         take_id,
@@ -640,7 +717,18 @@ def build_shadow_frame(
     exclusions.extend(rewrite_exclusions)
     exclusions.extend(praise_exclusions)
     exclusions.extend(_unrouted_inventory(feedback_rows))
-    mature = take_index >= 2
+
+    # BOTH LANES RUN ON TAKE 1 (contract 24b, founder 2026-09-18). The
+    # `take_index >= 2` gate is gone: it made the first take the one take whose
+    # bookmarks lead nowhere, which is the worst place in the product to have
+    # that happen.
+    rewrite_selected_ids = (
+        [rewrite_ranked[0]["candidate_id"]] if rewrite_ranked else []
+    )
+    praise_anchors = _anchored_praise(
+        praise_ranked, _top_confidence_blocks(blocks, PRAISE_ANCHOR_LIMIT),
+    )
+    praise_selected_ids = [row["candidate_id"] for row in praise_anchors]
 
     generator_versions = sorted({
         version
@@ -689,16 +777,19 @@ def build_shadow_frame(
         "blocks": blocks,
         "selected_confidence": confidence_selections,
         "verbal_lanes": {
-            "enabled": mature,
+            "enabled": True,
             "rewrite_clarity": {
                 "selection_scope": "global_absolute_quality",
+                "budget": 1,
                 "candidates": rewrite_inventory,
-                "selected_candidate_id": rewrite_selected if mature else None,
+                "selected_candidate_ids": rewrite_selected_ids,
             },
             "great_formulation": {
-                "selection_scope": "global_absolute_quality",
+                "selection_scope": "anchored_to_top_confidence_blocks",
+                "budget": PRAISE_ANCHOR_LIMIT,
+                "anchors": praise_anchors,
                 "candidates": praise_inventory,
-                "selected_candidate_id": praise_selected if mature else None,
+                "selected_candidate_ids": praise_selected_ids,
             },
         },
         "excluded_candidates": exclusions,
