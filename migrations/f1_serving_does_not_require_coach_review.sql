@@ -58,6 +58,20 @@ BEGIN
     IF current_setting('transaction_isolation') <> 'read committed' THEN
         RAISE EXCEPTION 'MLC3_SERVICE_REQUIRES_READ_COMMITTED';
     END IF;
+    -- CANONICAL LOCK ORDER: rollout policy, THEN principal (2026-09-18).
+    -- The D2 body this restores took only the principal lock, because before
+    -- D4 there was no rollout-policy lock to order against. Reinstating it
+    -- unchanged put this function alone on principal -> rollout-policy while
+    -- lock_confident_moment_inventory_v1, require_mlc3_service_access_v2 and
+    -- ensure_mlc3_service_enrollment_v2 all take rollout-policy -> principal.
+    --
+    -- The rehearsal lane `d11-legacy-root-order` caught it: it holds
+    -- mlc3-rollout-policy-v2 and asserts activate_synthetic_root_phrase_v1
+    -- blocks on THAT lock and holds nothing else yet. With the inverted order
+    -- the lane wedged rather than failing, which is what an ordering bug looks
+    -- like before it is a production deadlock between a serving read and a
+    -- rollout change.
+    PERFORM pg_advisory_xact_lock(hashtextextended('mlc3-rollout-policy-v2', 0));
     PERFORM pg_advisory_xact_lock(hashtextextended(
         'mlc3-service-principal:' || p_acquisition_principal_id::TEXT, 0
     ));
