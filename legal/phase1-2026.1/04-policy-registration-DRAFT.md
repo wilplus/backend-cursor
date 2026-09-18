@@ -32,10 +32,23 @@ decided once and never drift:
 
 - **UTF-8**, no BOM.
 - **LF** line endings, never CRLF.
-- **Trailing newline: [[FOUNDER/ENG: include it or strip it — pick one]].** The
-  files as committed end with a newline. If the registration script reads the
-  file and strips it, the same script must be what produces the hash the
-  frontend compares against.
+- **Trailing newline: INCLUDED. DECIDED 2026-09-18, and this line does not
+  change again.** The hashed string is the file's bytes exactly as committed,
+  final LF included — nothing is stripped, trimmed or appended anywhere between
+  the file and the RPC.
+
+  Chosen because it is the only rule that needs no code to obey. `sha256sum`,
+  `openssl dgst`, Python's `hashlib.sha256(path.read_bytes())` and a Postgres
+  `sha256(convert_to($1,'UTF8'))` over the same string all agree on it with no
+  preparation step, so there is no stripping helper that one caller can forget
+  and no second implementation to drift. A strip-first rule is one line of code
+  in every place a hash is computed, and the first place that omits it produces
+  a receipt that will not verify.
+
+  All four files end with exactly one LF today, verified 2026-09-18. Keep it
+  that way: an editor configured to trim trailing newlines will silently change
+  a registered policy's hash, and a registered policy can only be superseded,
+  never corrected.
 - **No normalisation of the text itself** — no smart quotes, no whitespace
   collapsing, no template interpolation anywhere between the file and the RPC.
 

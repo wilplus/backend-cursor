@@ -13,7 +13,7 @@ Appears **twice**, identically, in Privacy §6 and Terms §7:
 
 > ❌ "This inference is opt-in and off by default."
 
-**Why it must go.** `services/voice_confidence.py:177` defaults
+**Why it must go.** `services/voice_confidence.py:256` defaults
 `VOICE_CONFIDENCE_ENABLED` to `"1"` — on. It is an environment variable, not a
 per-user consent flag; no per-user opt-in for this inference exists. What
 defaults off is `VOICE_CONFIDENCE_RANKING_ENABLED` (`:169`), which controls

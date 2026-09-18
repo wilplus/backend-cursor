@@ -26,7 +26,7 @@ items additionally need Polish counsel. None of it is legal advice.
   Recital 43. If invalid it fails for *both* purposes, **including the recording
   itself**, for which Privacy §3 expressly declined Art 6(1)(b). No fallback basis.
 - 🔴 **RISK-2** — Privacy §6 and Terms §7 say the voice inference is "opt-in and
-  off by default". `services/voice_confidence.py:177` defaults it **on**, and no
+  off by default". `services/voice_confidence.py:256` defaults it **on**, and no
   per-user flag exists.
 - 🔴 **RISK-3** — `voice_confidence` may be an AI Act emotion recognition system,
   because **Art 3(34) drops the unique-identification limb that GDPR Art 4(14)
