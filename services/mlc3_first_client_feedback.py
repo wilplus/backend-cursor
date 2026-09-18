@@ -56,7 +56,7 @@ def _not_applicable(take_id: Any, reason: str) -> None:
     return None
 
 
-def _decline(take_id: Any, reason: str) -> V3Unavailable:
+def _decline(take_id: Any, reason: str, detail: str = "") -> V3Unavailable:
     """Say WHY v3 stood down, then stand down.
 
     FOUNDER 2026-09-17, after an afternoon of log searches that found
@@ -80,9 +80,24 @@ def _decline(take_id: Any, reason: str) -> V3Unavailable:
     INFO, not WARNING: standing down is the designed behaviour, not a
     fault. `first_client` in the backend log is now a complete account of
     why this take is on v2 rather than v3.
+
+    `detail` CARRIES THE UNDERLYING ERROR, LOG-ONLY (2026-09-18). Naming the
+    exits was half the job: `source_snapshot_rpc_failed` says a PostgreSQL
+    call raised, and a bare `except Exception` then threw away the one thing
+    that identifies WHICH guard raised it. The RPC reaches
+    `require_mlc3_service_access_v2`, which can answer
+    MLC3_ROLLOUT_NOT_ACTIVE, MLC3_CURRENT_ENROLLMENT_REQUIRED,
+    MLC3_COHORT_MEMBERSHIP_REQUIRED or FEEDBACK_V3_SOURCE_SNAPSHOT_INVALID —
+    four different states, four different fixes, one indistinguishable log
+    line. That cost a production day of guessing.
+
+    It stays OUT of `V3Unavailable`: the reason code is what the client is
+    handed, and a database error string is a server diagnostic, not a
+    payload. Nothing here asserts anything about the speaker.
     """
-    logger.info("first_client: v3 stood down take=%s reason=%s",
-                take_id or "?", reason)
+    logger.info("first_client: v3 stood down take=%s reason=%s%s",
+                take_id or "?", reason,
+                f" detail={detail}" if detail else "")
     # Returned, not raised, so `return _decline(...)` stays one statement at
     # each of the eleven exits. Splitting them into a log line plus a bare
     # return is twenty-two lines in which one exit can quietly lose its log
@@ -191,8 +206,8 @@ def prepare_first_client_feedback(
             },
         ).execute()
         source_snapshot = getattr(snapshot_result, "data", snapshot_result)
-    except Exception:
-        return _decline(take_id, "source_snapshot_rpc_failed")
+    except Exception as exc:
+        return _decline(take_id, "source_snapshot_rpc_failed", str(exc))
     if not isinstance(source_snapshot, dict) or set(source_snapshot) != {
         "snapshot_contract_version", "document_snapshot_id",
         "source_generation", "surface", "surface_sha256",

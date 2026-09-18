@@ -406,6 +406,59 @@ def test_the_failure_carries_a_reason_a_person_can_act_on():
     assert failure == ("membership_freeze_failed",)
 
 
+class _SnapshotRpcRaises(_Database):
+    """PostgreSQL refuses the snapshot read, exactly as production did.
+
+    `read_feedback_v3_candidate_source_snapshot_v1` calls
+    `require_mlc3_service_access_v2`, which is the guard that answered
+    MLC3_ROLLOUT_NOT_ACTIVE on 2026-09-18 and took every bookmark off the
+    document with it."""
+
+    def rpc(self, _name, _payload):
+        raise RuntimeError(
+            "{'code': 'P0001', 'message': 'MLC3_ROLLOUT_NOT_ACTIVE'}"
+        )
+
+
+def test_a_refused_snapshot_read_names_the_guard_that_refused_it(
+    monkeypatch, caplog,
+):
+    """THE LOG LINE THAT COST A PRODUCTION DAY (2026-09-18).
+
+    `source_snapshot_rpc_failed` narrowed the fault to one call and then the
+    bare `except Exception` discarded which of its four guards raised —
+    rollout, enrollment, cohort, or an invalid snapshot. Four states, four
+    different fixes, one log line that could not tell them apart."""
+    import logging
+
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    session, document, snippets = _source()
+    with caplog.at_level(logging.INFO,
+                         logger="services.mlc3_first_client_feedback"):
+        out = prepare_first_client_feedback(
+            database=_SnapshotRpcRaises(), session=session,
+            take_document=document, served_text=document["text"],
+            snippets=snippets, suggestions={}, feedback_candidates=[],
+            owner_user_id=USER,
+        )
+    assert out.reason == "source_snapshot_rpc_failed"
+    assert "MLC3_ROLLOUT_NOT_ACTIVE" in caplog.text
+
+
+def test_the_database_error_stays_in_the_log_and_out_of_the_payload():
+    """A reason code is what the client is handed; a PostgreSQL error string
+    is a server diagnostic. `V3Unavailable` has one field on purpose, so the
+    detail cannot ride out to a user surface even by accident."""
+    from services.mlc3_first_client_feedback import V3Unavailable, _decline
+
+    failure = _decline(TAKE, "source_snapshot_rpc_failed", "P0001 ...")
+    assert isinstance(failure, V3Unavailable)
+    assert failure == ("source_snapshot_rpc_failed",)
+    assert len(failure) == 1
+
+
 def test_the_caller_surfaces_the_failure_rather_than_serving_v2():
     """Asserted on the source: a silent policy swap is the thing 24h forbids,
     and nothing at runtime can tell you it happened."""
