@@ -153,7 +153,22 @@ EXPLORATION_RATE = 0.10
 #                   "Did THIS note change take N -> N+1?"
 #   epsilon_explore PER SESSION, which RANK surfaces.
 #                   "Is rank 1 actually the best thing to have said?"
-GAMMA_CONTROL = 0.12              # decisions log: ~10-15%, midpoint
+# SWITCHED OFF 2026-09-18 (founder — Appendix H.13.4). The rate is zeroed
+# rather than the arm deleted: `in_control` already returns False at <= 0, so
+# this is one reversible, auditable number instead of a removal that would have
+# to be rebuilt to re-run the experiment.
+#
+# WHY. gamma_control is permanent and per (user, lane). With Confident Voice as
+# Take 1's only lane it meant roughly one user in eight received no V3 feedback
+# EVER — and, being silent, neither they nor we could tell that apart from a
+# product that simply does nothing. That cannot coexist with "V3 works or it
+# fails visibly" (contract 24h).
+#
+# THE COST, ACCEPTED: the between-user question — does feedback do anything at
+# all, or do people improve just by recording more? — can no longer be answered
+# from ambient data, and H.11 warns this arm cannot be retrofitted. Re-running
+# it means a deliberately constructed opt-in cohort.
+GAMMA_CONTROL = 0.0               # was 0.12 — decisions log: ~10-15%, midpoint
 INTERVENTION_RANDOMISATION = 0.20  # decisions log: 20%
 
 # Changing either salt RESHUFFLES EVERY ASSIGNMENT and silently splices two
@@ -178,7 +193,7 @@ def _stable_fraction(*parts: str, salt: str) -> float:
 
 
 def in_control(user_id: str, dimension: str, *,
-               gamma: float = GAMMA_CONTROL) -> bool:
+               gamma: Optional[float] = None) -> bool:
     """gamma_control — this (user, dimension) pair receives NOTHING, ever.
 
     PER PAIR, NOT PER USER. A control user still gets normal feedback on
@@ -194,13 +209,18 @@ def in_control(user_id: str, dimension: str, *,
     by recording more, feedback or not, and nothing in the data separates the
     two.
     """
-    if not user_id or gamma <= 0:
+    # READ AT CALL TIME, not bound as a default. `gamma: float =
+    # GAMMA_CONTROL` captured the value when this module was imported, so
+    # changing the constant afterwards — a test, a future config read — was
+    # silently ignored and the arm kept running at whatever it was at import.
+    rate = GAMMA_CONTROL if gamma is None else gamma
+    if not user_id or rate <= 0:
         return False
-    return _stable_fraction(user_id, dimension, salt=CONTROL_SALT) < gamma
+    return _stable_fraction(user_id, dimension, salt=CONTROL_SALT) < rate
 
 
 def is_withheld(user_id: str, dimension: str, session_id: str, *,
-                rate: float = INTERVENTION_RANDOMISATION) -> bool:
+                rate: Optional[float] = None) -> bool:
     """Intervention randomisation — a note that WON is deliberately not shown.
 
     WHICH READING, locked by the founder 2026-08-06. The decisions log's
@@ -224,10 +244,12 @@ def is_withheld(user_id: str, dimension: str, session_id: str, *,
     decision; an RNG here would make the arm depend on how many times the
     pipeline happened to run.
     """
-    if not user_id or not session_id or rate <= 0:
+    # Same call-time read as `in_control`, for the same reason.
+    live = INTERVENTION_RANDOMISATION if rate is None else rate
+    if not user_id or not session_id or live <= 0:
         return False
     return _stable_fraction(user_id, dimension, session_id,
-                            salt=WITHHOLD_SALT) < rate
+                            salt=WITHHOLD_SALT) < live
 
 
 def exploration_roll(user_id: str, session_id: str
@@ -589,8 +611,41 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     return rows
 
 
+
+def _split_withheld(
+    selected: list, *, protected: Any, user_id: str, session_id: str,
+    take_index: Optional[int],
+) -> tuple[list, list]:
+    """Partition the winners into shown and deliberately withheld.
+
+    TAKE 1 IS EXEMPT (founder 2026-09-18, Appendix H.13.4). A first experience
+    of the product is not a place to spend an experiment, and the arm measures
+    the take N -> N+1 transition anyway, which needs a second take regardless.
+
+    ONLY an explicit 1 exempts. An unknown index withholds as normal, which is
+    the deliberate direction: if it exempted, any caller that forgot to pass
+    the index would silently switch the whole experiment off — and H.12 is
+    explicit that an arm which looks like it is running but is not is worse
+    than one that never ran.
+
+    Extracted from `arbitrate` because that function is grandfathered at CC 57
+    and the ratchet only lets it come down; the exemption is one condition and
+    it could not be spent there.
+    """
+    shown: list = []
+    withheld: list = []
+    for c in selected:
+        if (c.dimension not in protected and take_index != 1
+                and is_withheld(user_id, c.dimension, session_id)):
+            withheld.append(c)
+        else:
+            shown.append(c)
+    return shown, withheld
+
+
 def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
               session_id: str = "",
+              take_index: Optional[int] = None,
               importance: Optional[Callable[[str], float]] = None,
               roll: Optional[Callable[[], float]] = None,
               exploration_rate: float = EXPLORATION_RATE,
@@ -754,14 +809,10 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     #     suppression with no experiment attached to it.
     withheld: list[Candidate] = []
     if controls and session_id:
-        shown = []
-        for c in selected:
-            if c.dimension not in protected \
-                    and is_withheld(user.user_id, c.dimension, session_id):
-                withheld.append(c)
-            else:
-                shown.append(c)
-        selected = shown
+        selected, withheld = _split_withheld(
+            selected, protected=protected, user_id=user.user_id,
+            session_id=session_id, take_index=take_index,
+        )
 
     return {
         "selected": selected,

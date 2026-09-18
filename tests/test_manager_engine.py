@@ -316,9 +316,26 @@ class TestScienceControls(unittest.TestCase):
     """The two arms that CANNOT be retrofitted. Both must run while the data
     accumulates or the accumulated data cannot answer the question."""
 
+    # gamma_control was switched OFF 2026-09-18 (founder — Appendix H.13.4):
+    # permanent, silent starvation of ~1 user in 8 cannot coexist with "V3
+    # works or it fails visibly". The MECHANISM is unchanged and still has to
+    # work, because H.11 warns the arm cannot be retrofitted and re-running it
+    # later means turning this number back on. So these tests restore the live
+    # rate and go on exercising it.
+    def setUp(self):
+        self._gamma = me.GAMMA_CONTROL
+        me.GAMMA_CONTROL = 0.12
+
+    def tearDown(self):
+        me.GAMMA_CONTROL = self._gamma
+
     def test_the_rates_are_the_decisions_log_values(self):
-        self.assertTrue(0.10 <= me.GAMMA_CONTROL <= 0.15)
+        """The withhold is still live at its decisions-log value. gamma is
+        asserted at MODULE level, outside this class's setUp, because what
+        matters in production is the shipped default — which is now 0.0."""
         self.assertEqual(me.INTERVENTION_RANDOMISATION, 0.20)
+        self.assertTrue(0.10 <= me.GAMMA_CONTROL <= 0.15,
+                        "the mechanism still honours a live rate")
 
     def test_assignment_is_stable_across_processes(self):
         """THE defect that would silently void the experiment. Python's
@@ -481,6 +498,19 @@ class TestArmRows(unittest.TestCase):
     strictly WORSE than not running them: users pay the cost in withheld
     feedback and no causal claim is recoverable."""
 
+    # gamma_control was switched OFF 2026-09-18 (founder — Appendix H.13.4):
+    # permanent, silent starvation of ~1 user in 8 cannot coexist with "V3
+    # works or it fails visibly". The MECHANISM is unchanged and still has to
+    # work, because H.11 warns the arm cannot be retrofitted and re-running it
+    # later means turning this number back on. So these tests restore the live
+    # rate and go on exercising it.
+    def setUp(self):
+        self._gamma = me.GAMMA_CONTROL
+        me.GAMMA_CONTROL = 0.12
+
+    def tearDown(self):
+        me.GAMMA_CONTROL = self._gamma
+
     def _rows(self, dims=("d0", "d1", "d2", "d3"), user="u0", session="s1",
               **kw):
         state = {d: me.APPRENTICE for d in dims}
@@ -606,3 +636,43 @@ class TestStatesAndConstants(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── the science arms after the 2026-09-18 ruling (Appendix H.13.4) ──
+
+def test_gamma_control_is_off_and_nobody_is_permanently_starved():
+    """It gave ~1 user in 8 no feedback on a lane, forever and silently. That
+    cannot coexist with "V3 works or it fails visibly" (contract 24h)."""
+    from services.manager_engine import GAMMA_CONTROL, in_control
+
+    assert GAMMA_CONTROL == 0.0
+    # No user, on any dimension, is in control any more.
+    for n in range(200):
+        assert in_control(f"user-{n}", "confident_voice") is False
+
+
+def test_the_arm_is_zeroed_not_deleted_so_it_can_be_re_run():
+    """Reversible and auditable: the machinery stays, one number changed. H.11
+    warns this arm cannot be retrofitted, so deleting it would mean rebuilding
+    it before the question could ever be asked again."""
+    from services.manager_engine import CONTROL_SALT, in_control
+
+    assert CONTROL_SALT == "willab-gamma-v1"
+    # Pass a rate explicitly and the mechanism still works — it is dormant,
+    # not removed.
+    assert any(
+        in_control(f"user-{n}", "confident_voice", gamma=0.12)
+        for n in range(200)
+    )
+
+
+def test_the_withhold_still_runs_and_is_still_deterministic():
+    """The within-subject arm survives: what one Take withholds, the next
+    covers, because the ladder is measured per Take."""
+    from services.manager_engine import INTERVENTION_RANDOMISATION, is_withheld
+
+    assert INTERVENTION_RANDOMISATION == 0.20
+    first = [is_withheld(f"u{n}", "confident_voice", "s1") for n in range(200)]
+    again = [is_withheld(f"u{n}", "confident_voice", "s1") for n in range(200)]
+    assert first == again, "hashed, not drawn — it must not reshuffle"
+    assert any(first), "the arm is still live"
