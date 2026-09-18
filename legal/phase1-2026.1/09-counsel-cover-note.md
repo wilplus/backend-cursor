@@ -8,11 +8,34 @@ Eleven documents. **Start with `01-determinations/02-power-score-classification`
 
 ## What WillpowerLab is, in four lines
 
-A free consumer speech-coaching web app. A user records themselves rehearsing a
-presentation; a speech model transcribes it; a language model writes a
-presentation document and feedback; the user records again. Operated by **Artur
-Willoński as a natural person** in Poland (unregistered business activity — no
-company), serving **Poland only**, with **no payment of any kind**.
+A **freemium** consumer speech-coaching web app. A user records themselves
+rehearsing a presentation; a speech model transcribes it; a language model
+writes a presentation document and feedback; the user records again. There is a
+free plan (12,000 tokens a month) and three paid plans at USD 12, 39 and 89 a
+month. Operated by **Artur Willoński as a natural person** in Poland
+(unregistered business activity — no company), serving **Poland, and intended
+for the EU/EEA**.
+
+> **Corrected 18 September 2026.** An earlier version of this note told you the
+> service was free with *"no payment of any kind"* and served *"Poland only"*.
+> Both were wrong and both change the analysis. The paid tiers are live in code
+> and the payment key is present in production, so checkout is reachable now —
+> **though no customer has ever been charged.** That distinction matters:
+> the capability is live, the transaction history is empty. Three consequences
+> we need you to take into account:
+>
+> 1. **The unregistered-activity threshold.** *Działalność nieewidencjonowana*
+>    is capped at roughly 75% of the minimum wage in monthly revenue. Paid
+>    subscriptions can cross it, and crossing it forces registration — which
+>    changes the controller block in the Privacy Policy and the party to the
+>    Terms.
+> 2. **Consumer law.** A paid subscription brings the Consumer Rights Directive
+>    with it: pre-contractual information and a 14-day withdrawal right.
+>    Checkout currently asks neither of the two questions that would limit that
+>    right, so the Terms state it in full and mark the gap open.
+> 3. **Scope.** Please scope `01-product-legal-approval` and
+>    `03-article-50-assessment` for the EU generally rather than Poland alone.
+>    It is the same pass; re-opening signed determinations later is not.
 
 ## What we are asking for
 
@@ -23,6 +46,18 @@ company), serving **Poland only**, with **no payment of any kind**.
    `03-article-50-assessment`.**
 3. **Adoption advice on the DPIA and the Article 30 record.**
 4. **Answers to the triage question below.**
+5. **Per-country conditions under GDPR Art 9(4).** Member States may maintain or
+   introduce further conditions on the processing of biometric data, which is
+   our exact category. We need to know which of them do, because that decides
+   which countries may appear in the policy's `allowed_countries` list.
+6. **Consumer-law review of the Terms** now that there are paid plans, and
+   whether the four user-facing documents must be offered in each country's
+   language.
+7. **Confirmation of the one-stop-shop reading.** We believe that as a
+   controller established in Poland, UODO remains our lead supervisory
+   authority for cross-border processing under Art 56, and that serving the
+   EU does not mean answering to 27 authorities. Please confirm rather than
+   let us assume it.
 
 Each signed document becomes an immutable, fingerprinted database record. Once
 registered it can only be superseded by a new version, never edited — please
