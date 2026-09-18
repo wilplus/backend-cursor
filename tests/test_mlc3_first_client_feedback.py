@@ -285,3 +285,186 @@ def test_the_unreachable_gate_does_not_come_back():
     # The CALL, not the word — the docstring names the retired reason on
     # purpose, so that the next reader knows why the set is eleven.
     assert '_decline(take_id, "service_enrollment_missing")' not in source
+
+
+def test_an_empty_inventory_declines_instead_of_serving_zero_rows(monkeypatch):
+    """FOUNDER 2026-09-18: "it was loading long and then showed no bookmarks on
+    the text ZERO".
+
+    `visible` is built by appending over inventory["visible_rows"]. An empty
+    inventory appended nothing and the function returned `[]` — which is not
+    None, so `ideal_text_changes` took it for a complete V3 result, replaced
+    the working V2 feedback with it and cleared the styles. The user waited
+    through every RPC this function makes and got nothing: strictly worse than
+    before V3 was activated, which is a live-loop regression.
+
+    `[]` and None must not be the same answer. The empty case declines, the
+    legacy response survives, and the log names the reason.
+    """
+    from config import Config
+    import services.mlc3_first_client_feedback as module
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    session, document, snippets = _source()
+
+    real_inventory = module.prepare_v3_service_inventory
+
+    def _empty(**kwargs):
+        inventory = real_inventory(**kwargs)
+        if inventory is None:
+            return None
+        drained = dict(inventory)
+        drained["visible_rows"] = []
+        return drained
+
+    monkeypatch.setattr(module, "prepare_v3_service_inventory", _empty)
+
+    rows = prepare_first_client_feedback(
+        database=_Database(),
+        session=session,
+        take_document=document,
+        served_text=document["text"],
+        snippets=snippets,
+        suggestions={},
+        feedback_candidates=[],
+        owner_user_id=USER,
+    )
+
+    # UPDATED 2026-09-18 (contract 24h). This asserted `rows is None` — stand
+    # down to the legacy response — which was right for one day and is now
+    # wrong: an empty inventory is V3 failing on a Take it owns, so it fails
+    # VISIBLY. What has not changed is the thing that mattered: zero cards are
+    # never served as though they were an answer.
+    from services.mlc3_first_client_feedback import V3Unavailable
+
+    assert isinstance(rows, V3Unavailable), (
+        f"an empty inventory is a fault, not an answer; got {rows!r}"
+    )
+    assert rows.reason == "inventory_returned_no_visible_rows"
+
+
+def test_the_caller_treats_an_empty_service_result_as_no_result():
+    """The second line of defence, asserted on the source.
+
+    `if _service_rows is not None` accepted `[]`. Nothing at that call site can
+    tell an empty V3 answer from a deliberate one, and the cost of guessing
+    wrong is the user seeing no feedback at all — so it tests truthiness.
+    """
+    from pathlib import Path
+
+    source = Path("services/ideal_text_changes.py").read_text(encoding="utf-8")
+    assert "if _service_rows:" in source
+    assert "if _service_rows is not None:" not in source
+
+
+# ── no silent fallback (founder 2026-09-18, contract 24h) ──
+
+def test_a_take_outside_the_service_returns_none_not_a_failure(monkeypatch):
+    """The distinction the whole rule rests on. A user V3 does not apply to
+    has NOT hit a fault, and the legacy answer is correct for them."""
+    from config import Config
+    from services.mlc3_first_client_feedback import V3Unavailable
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", False)
+    session, document, snippets = _source()
+    out = prepare_first_client_feedback(
+        database=_Database(), session=session, take_document=document,
+        served_text=document["text"], snippets=snippets, suggestions={},
+        feedback_candidates=[], owner_user_id=USER,
+    )
+    assert out is None
+    assert not isinstance(out, V3Unavailable)
+
+
+def test_a_take_inside_the_service_that_breaks_returns_a_typed_failure(monkeypatch):
+    """Previously indistinguishable from the case above — both were None, so
+    a broken V3 and a working one looked identical from the outside."""
+    from config import Config
+    import services.mlc3_first_client_feedback as module
+    from services.mlc3_first_client_feedback import V3Unavailable
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    monkeypatch.setattr(module, "prepare_v3_service_inventory",
+                        lambda **kwargs: None)
+    session, document, snippets = _source()
+    out = prepare_first_client_feedback(
+        database=_Database(), session=session, take_document=document,
+        served_text=document["text"], snippets=snippets, suggestions={},
+        feedback_candidates=[], owner_user_id=USER,
+    )
+    assert isinstance(out, V3Unavailable)
+    assert out.reason == "service_inventory_unavailable"
+
+
+def test_the_failure_carries_a_reason_a_person_can_act_on():
+    """A reason code, not copy. The client renders its own notice and its own
+    retry; nothing here asserts anything about the speaker (AC-9)."""
+    from services.mlc3_first_client_feedback import V3Unavailable
+
+    failure = V3Unavailable("membership_freeze_failed")
+    assert failure.reason == "membership_freeze_failed"
+    assert failure == ("membership_freeze_failed",)
+
+
+class _SnapshotRpcRaises(_Database):
+    """PostgreSQL refuses the snapshot read, exactly as production did.
+
+    `read_feedback_v3_candidate_source_snapshot_v1` calls
+    `require_mlc3_service_access_v2`, which is the guard that answered
+    MLC3_ROLLOUT_NOT_ACTIVE on 2026-09-18 and took every bookmark off the
+    document with it."""
+
+    def rpc(self, _name, _payload):
+        raise RuntimeError(
+            "{'code': 'P0001', 'message': 'MLC3_ROLLOUT_NOT_ACTIVE'}"
+        )
+
+
+def test_a_refused_snapshot_read_names_the_guard_that_refused_it(
+    monkeypatch, caplog,
+):
+    """THE LOG LINE THAT COST A PRODUCTION DAY (2026-09-18).
+
+    `source_snapshot_rpc_failed` narrowed the fault to one call and then the
+    bare `except Exception` discarded which of its four guards raised —
+    rollout, enrollment, cohort, or an invalid snapshot. Four states, four
+    different fixes, one log line that could not tell them apart."""
+    import logging
+
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    session, document, snippets = _source()
+    with caplog.at_level(logging.INFO,
+                         logger="services.mlc3_first_client_feedback"):
+        out = prepare_first_client_feedback(
+            database=_SnapshotRpcRaises(), session=session,
+            take_document=document, served_text=document["text"],
+            snippets=snippets, suggestions={}, feedback_candidates=[],
+            owner_user_id=USER,
+        )
+    assert out.reason == "source_snapshot_rpc_failed"
+    assert "MLC3_ROLLOUT_NOT_ACTIVE" in caplog.text
+
+
+def test_the_database_error_stays_in_the_log_and_out_of_the_payload():
+    """A reason code is what the client is handed; a PostgreSQL error string
+    is a server diagnostic. `V3Unavailable` has one field on purpose, so the
+    detail cannot ride out to a user surface even by accident."""
+    from services.mlc3_first_client_feedback import V3Unavailable, _decline
+
+    failure = _decline(TAKE, "source_snapshot_rpc_failed", "P0001 ...")
+    assert isinstance(failure, V3Unavailable)
+    assert failure == ("source_snapshot_rpc_failed",)
+    assert len(failure) == 1
+
+
+def test_the_caller_surfaces_the_failure_rather_than_serving_v2():
+    """Asserted on the source: a silent policy swap is the thing 24h forbids,
+    and nothing at runtime can tell you it happened."""
+    from pathlib import Path
+
+    source = Path("services/ideal_text_changes.py").read_text(encoding="utf-8")
+    assert "isinstance(_service_rows, V3Unavailable)" in source
+    assert "self.v3_failure = _service_rows.reason" in source
+    assert '"feedback_status"' in source

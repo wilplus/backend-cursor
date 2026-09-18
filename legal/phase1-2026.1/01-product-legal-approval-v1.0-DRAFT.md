@@ -78,6 +78,28 @@ after, any of:
 - serving users outside Poland;
 - processing volume growing to a scale where Article 37 might require a DPO.
 
+> **⚠️ 2026-09-17 — the first condition is now a KNOWN FUTURE EVENT, not a hypothetical.**
+>
+> The founder has confirmed the model is **freemium**: free is generous, and
+> continued use ultimately requires payment. Payment is therefore planned, and
+> the code is already written — four Stripe-backed surfaces exist, each gated
+> on `STRIPE_SECRET_KEY`. That key was present in production until 2026-09-18,
+> so the trigger was arguably met before anyone noticed; zero charges have ever
+> been taken (verified in Stripe, 2026-09-17), so nothing was processed under
+> it.
+>
+> **The sequencing consequence, stated because it gets more expensive with
+> time and not less.** Registering the policy as a natural person now and
+> incorporating later costs **one forced re-acceptance per user held at that
+> moment**: incorporation changes the controller identity, which changes the
+> Privacy Policy, which changes its SHA-256, which makes every receipt stale.
+> Twenty-six users is a cheap re-acceptance. Post-launch it is not.
+>
+> **No date is recommended here.** Whether to register as a natural person now
+> or incorporate first is a founder decision with tax, liability and cost
+> consequences that sit outside engineering. What engineering can say is that
+> the cost of the choice scales with the user count at the moment it is made.
+
 Each of those changes the controller or the exposure, and the first two change
 the controller identity — which changes the Privacy Policy, which changes its
 SHA-256, which makes every existing receipt stale and asks every user to accept

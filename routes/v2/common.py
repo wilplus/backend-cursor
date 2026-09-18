@@ -35,76 +35,15 @@ def _client_ip_from_request() -> str:
 
 
 def _resolve_snippet_audio_url(snippet: dict) -> str | None:
-    """Pick a playable audio URL from whichever column the writer used.
-
-    The four snippet states we have to play through one <audio> element:
-      - Path A pre-finalize: audio_segment_path = R2 public URL for the
-        per-turn .webm, storage_path NULL.
-      - Path A post-finalize: storage_path = bucket-relative key of the
-        concat'd session full.webm (Supabase Storage). audio_segment_path
-        is left intact (historical record + idempotent re-finalize), but
-        storage_path is what start_offset_ms / duration_ms are RELATIVE TO,
-        so it must win.
-      - Path B (extract_recording_snippets): audio_segment_path = full URL,
-        storage_path NULL.
-      - Path C (the ML snippet generator, DELETED 2026-08-10) and student
-        uploads: storage_path set, audio_segment_path NULL. Path C rows
-        already in the table still read through here, which is why this
-        branch stays.
-
-    Precedence is therefore: storage_path → audio_segment_path → None.
-    Returning None means there's truly nothing playable. Keeping
-    audio_segment_path as the fallback (rather than the primary) is what
-    makes the per-turn → canonical-recording migration safe — the moment
-    finalize_session_recording populates storage_path, the snippet flips
-    from playing its per-turn file to playing a slice of the concat'd
-    session audio, no DB cleanup required.
+    """Delegate. The logic — four historical row shapes and the RISK-11
+    storage decision — lives in services/snippet_audio_url.py, moved there
+    2026-09-17 when the route fence caught this at 88 lines. It was right:
+    routes/v2/admin.py needed the same resolution, and a second copy is how
+    one surface ends up serving a recording public while the other signs it.
     """
-    storage = (snippet.get("storage_path") or "").strip()
-    if storage:
-        # Two classes of storage_path coexist:
-        #   - "session_recordings/<sid>/full.webm" and
-        #     "guest_funnel/<sid>/turn_N.webm" — interview audio in R2,
-        #     served via the audio bucket's public base URL.
-        #   - "charisma_snippets/<uuid>" — student-uploaded clips in
-        #     Supabase Storage, served via signed URLs.
-        # Disambiguate by prefix. Anything that isn't a known
-        # Supabase-only prefix is assumed to be audio-bucket content.
-        is_supabase_prefix = storage.startswith("charisma_snippets/")
-        if not is_supabase_prefix:
-            try:
-                from services.audio_storage import audio_public_url
-                url = audio_public_url(storage)
-                if url:
-                    return url
-            except Exception as e:
-                logger.warning(
-                    "snippet audio URL: R2 audio URL build failed for %s: %s",
-                    storage, e,
-                )
-            # R2_AUDIO_PUBLIC_BASE_URL not set (local dev) — fall through
-            # to the Supabase signed-URL path so dev still works.
-        try:
-            return db.create_signed_url(
-                config.AUDIO_BUCKET_NAME, storage, config.SIGNED_URL_EXPIRY_SECONDS
-            )
-        except Exception as e:
-            logger.warning(
-                "snippet audio URL: signed url failed for %s: %s — falling back",
-                storage, e,
-            )
-            # fall through to audio_segment_path
-    seg = (snippet.get("audio_segment_path") or "").strip()
-    if seg:
-        # A lab writer missing its public-URL env leaves ``s3://bucket/
-        # key`` here (per-service config, the CONFIG-FIRST class). Handing
-        # that to an <audio src> is the dead master/snippet player the
-        # founder hit (2026-08-10) — resolve it the same bucket-
-        # authoritative way #378 fixed the coach queue. http(s) refs pass
-        # through untouched.
-        from services.audio_ref_resolver import resolve_playable_ref
-        return resolve_playable_ref(seg) or seg
-    return None
+    from services.snippet_audio_url import resolve_snippet_audio_url
+
+    return resolve_snippet_audio_url(snippet, database=db, app_config=config)
 
 
 # Shared by _coach_pseudonym (routes/v2/coach.py) and

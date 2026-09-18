@@ -172,7 +172,7 @@ def _v3_snippet_block_index(blocks: list[Any]) -> dict[str, tuple[int, int]]:
 
 
 def _v3_verbal_candidate_row(
-    row_input: Any, *, family: str, lane_selected: str,
+    row_input: Any, *, family: str, lane_selected: frozenset[str],
     raw_by_identity: dict[tuple[str, str], dict],
     pieces: dict[str, dict], snippet_block: dict[str, tuple[int, int]],
     inventory: _V3ServiceInventory,
@@ -190,7 +190,7 @@ def _v3_verbal_candidate_row(
         or row_input.get("eligibility") not in {"eligible", "excluded"}
     ):
         return False
-    is_selected = bool(lane_selected and candidate_key == lane_selected)
+    is_selected = candidate_key in lane_selected
     if is_selected:
         inventory.position += 1
         inventory.selected_ids.add((family, candidate_key))
@@ -222,7 +222,14 @@ def _v3_verbal_lane(
 ) -> bool:
     if not isinstance(lane, dict):
         return False
-    lane_selected = str(lane.get("selected_candidate_id") or "")
+    # A SET, NOT A STRING (contract 24f). Praise anchors to the Take's two
+    # most Confident Voice blocks, so this lane can carry two winners; a
+    # string comparison would have silently marked only the first as selected
+    # and dropped the second on the floor with no error anywhere.
+    lane_selected = frozenset(
+        str(value) for value in (lane.get("selected_candidate_ids") or [])
+        if str(value or "")
+    )
     for row_input in lane.get("candidates") or []:
         if not _v3_verbal_candidate_row(
             row_input, family=family, lane_selected=lane_selected,

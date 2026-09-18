@@ -88,6 +88,36 @@ that Article 50(2) does not attach to it. Counsel should confirm.
 
 **Status: NOT MET.** See §6, gap 1.
 
+### Open item — does the obligation follow the text out of the product?
+
+A user can select the Ideal Text and press Ctrl-C. Whatever marking we apply
+inside the product does not survive that paste.
+
+**The framing we would put to counsel.** The Art 50(2) obligation is on the
+*provider*, to mark the outputs *the AI system produces*. A user copying text
+out of an application is the user's own act, and reading the obligation to
+follow the content through an arbitrary third-party paste target would make it
+unsatisfiable by any provider of generated text. The better view is that it
+does not extend that far. **Counsel should confirm; we do not assume it.**
+
+**The practical consequence, recorded so the answer can be priced.** If the
+clipboard *is* in scope, there is no marking that survives an arbitrary paste
+target — a plain-text field keeps no metadata, and the destination is outside
+our control entirely. The honest options then reduce to two:
+
+1. **Restrict copying** from the generated surfaces. A real product cost on the
+   core loop: the Ideal Text exists to be used in a presentation, and a user
+   who cannot get it out of the app has a worse product. It would also only
+   raise the bar, not close the gap — screenshots and retyping remain.
+2. **Accept a documented gap**, on the reasoning above, and record why.
+
+**Zero-width characters are rejected by name and stay rejected.** Invisible
+watermarking of user-facing text is a covert mark on content the user believes
+is theirs; it survives paste precisely because nobody can see it, corrupts the
+text for any downstream tool, and is the kind of measure that reads badly in
+exactly the forum where it would be examined. It is not on the list above and
+should not be re-proposed as a clever solution to option 1's cost.
+
 ## 4. Article 50(3) — emotion recognition and biometric categorisation
 
 > Deployers of an emotion recognition system or a biometric categorisation

@@ -317,8 +317,12 @@ class TestScienceControls(unittest.TestCase):
     accumulates or the accumulated data cannot answer the question."""
 
     def test_the_rates_are_the_decisions_log_values(self):
-        self.assertTrue(0.10 <= me.GAMMA_CONTROL <= 0.15)
+        """The withhold is still live at its decisions-log value. gamma is
+        asserted at MODULE level, outside this class's setUp, because what
+        matters in production is the shipped default — which is now 0.0."""
         self.assertEqual(me.INTERVENTION_RANDOMISATION, 0.20)
+        # gamma_control was removed 2026-09-18 — see Appendix H.13.4.
+        self.assertFalse(hasattr(me, "GAMMA_CONTROL"))
 
     def test_assignment_is_stable_across_processes(self):
         """THE defect that would silently void the experiment. Python's
@@ -330,27 +334,6 @@ class TestScienceControls(unittest.TestCase):
         self.assertEqual(a, b)
         self.assertNotEqual(a, me._stable_fraction("u1", "wpm", salt="other"))
         self.assertEqual(a, 0.8404391496629088)    # pinned: a change reshuffles
-
-    def test_control_is_per_pair_not_per_user(self):
-        """A control user still gets normal feedback on every OTHER
-        dimension — their experience is intact and the comparison is within
-        person as well as between people."""
-        dims = [f"d{i}" for i in range(6)]
-        held = [d for d in dims if me.in_control("u0", d)]
-        self.assertEqual(held, ["d0"])          # exactly one of six, not all
-        self.assertLess(len(held), len(dims), "a whole user was held out")
-
-    def test_control_is_permanent_not_per_session(self):
-        """A per-session flip would put the same pair in and out of control
-        and measure a user who sometimes got feedback — neither arm."""
-        first = me.in_control("u1", "wpm")
-        for _ in range(50):
-            self.assertEqual(me.in_control("u1", "wpm"), first)
-
-    def test_roughly_the_right_share_is_held(self):
-        n = 20_000
-        held = sum(me.in_control(f"u{i}", "wpm") for i in range(n))
-        self.assertAlmostEqual(held / n, me.GAMMA_CONTROL, delta=0.015)
 
     def test_withhold_is_roughly_the_right_share(self):
         n = 20_000
@@ -370,22 +353,6 @@ class TestScienceControls(unittest.TestCase):
         first = me.is_withheld("u1", "wpm", "s1")
         for _ in range(50):
             self.assertEqual(me.is_withheld("u1", "wpm", "s1"), first)
-
-    def test_a_control_dimension_does_not_consume_a_budget_slot(self):
-        """Removed from the POOL, not suppressed at the end. Suppressing
-        late would quietly give control users less feedback overall, which
-        confounds the comparison the arm exists to make."""
-        dims = [f"d{i}" for i in range(6)]
-        user = me.UserState(user_id="u0",      # u0 holds d0, per the test above
-                            state_by_dimension={d: me.APPRENTICE for d in dims})
-        cands = [_c(d, anchor=(i * 10.0, i * 10.0 + 1), deviation=6.0 - i)
-                 for i, d in enumerate(dims)]
-        out = me.arbitrate(cands, user)
-        held = set(out["control_held"])
-        self.assertTrue(held, "fixture picked no control dimension")
-        self.assertEqual(len(out["selected"]), out["budget"])
-        for d in held:
-            self.assertNotIn(d, [c.dimension for c in out["selected"]])
 
     def test_a_withheld_note_consumes_its_slot(self):
         """UNLIKE control. Backfilling with rank 2 would mean the untreated
@@ -407,29 +374,28 @@ class TestScienceControls(unittest.TestCase):
         """An outcome with no arm attached is an observation, and the whole
         point of the controls is that these are not observations."""
         out = me.arbitrate([_c()], _user(), session_id="s1")
-        self.assertIn("control_held", out)
         self.assertIn("withheld", out)
-        self.assertEqual(out["arms"]["gamma_control"], me.GAMMA_CONTROL)
-        self.assertEqual(out["arms"]["control_salt"], me.CONTROL_SALT)
+        self.assertEqual(out["arms"]["withhold_salt"], me.WITHHOLD_SALT)
+        self.assertEqual(out["arms"]["intervention_randomisation"],
+                         me.INTERVENTION_RANDOMISATION)
+        # The removed arm must not linger in the record either.
+        self.assertNotIn("gamma_control", out["arms"])
 
     def test_controls_can_be_disabled_for_a_deterministic_caller(self):
         user = me.UserState(user_id="u1",
                             state_by_dimension={"wpm": me.APPRENTICE})
         out = me.arbitrate([_c()], user, session_id="s1", controls=False)
-        self.assertEqual(out["control_held"], [])
         self.assertEqual(out["withheld"], [])
 
-    def test_protected_dimension_bypasses_control_and_withhold(self):
+    def test_protected_dimension_bypasses_the_withhold(self):
         user = me.UserState(user_id="u1",
                             state_by_dimension={"required": me.APPRENTICE})
-        with patch.object(me, "in_control", return_value=True), \
-             patch.object(me, "is_withheld", return_value=True):
+        with patch.object(me, "is_withheld", return_value=True):
             out = me.arbitrate(
                 [_c("required")], user, session_id="s1",
                 protected_dimensions={"required"},
             )
         self.assertEqual([c.dimension for c in out["selected"]], ["required"])
-        self.assertEqual(out["control_held"], [])
         self.assertEqual(out["withheld"], [])
         self.assertEqual(out["protected"], ["required"])
 
@@ -437,7 +403,6 @@ class TestScienceControls(unittest.TestCase):
         """Fail OPEN on the controls: an anonymous or unattributed candidate
         must not be silently assigned to a control group whose membership
         can never be recovered."""
-        self.assertFalse(me.in_control("", "wpm"))
         self.assertFalse(me.is_withheld("", "wpm", "s1"))
         self.assertFalse(me.is_withheld("u1", "wpm", ""))
 
@@ -506,17 +471,6 @@ class TestArmRows(unittest.TestCase):
             self.assertEqual(r["surfaced"],
                              r["arm"] in (me.ARM_TREATED, me.ARM_EXPLORE))
 
-    def test_control_records_unknown_not_false(self):
-        """The holdout is removed BEFORE ranking, so whether it would have
-        won is genuinely unknown. Writing False would assert something never
-        tested."""
-        _, rows = self._rows(dims=("d0", "d1", "d2", "d3", "d4", "d5"))
-        control = [r for r in rows if r["arm"] == me.ARM_CONTROL]
-        self.assertTrue(control, "fixture produced no control row")
-        for r in control:
-            self.assertIsNone(r["would_have_surfaced"])
-            self.assertFalse(r["surfaced"])
-
     def test_a_withheld_note_is_recorded_as_having_won(self):
         """The within-subject untreated condition, and the only evidence it
         occurred at all."""
@@ -537,9 +491,7 @@ class TestArmRows(unittest.TestCase):
         re-interpret old rows under a new policy."""
         _, rows = self._rows()
         for r in rows:
-            self.assertEqual(r["control_salt"], me.CONTROL_SALT)
             self.assertEqual(r["withhold_salt"], me.WITHHOLD_SALT)
-            self.assertEqual(r["gamma"], me.GAMMA_CONTROL)
             self.assertEqual(r["withhold_rate"], me.INTERVENTION_RANDOMISATION)
 
     def test_the_arm_shares_come_out_near_the_configured_rates(self):
@@ -550,8 +502,8 @@ class TestArmRows(unittest.TestCase):
             _, rows = self._rows(user=f"u{i}", session=f"s{i}")
             for r in rows:
                 seen[r["arm"]] = seen.get(r["arm"], 0) + 1
-        total = sum(seen.values())
-        self.assertGreater(seen.get(me.ARM_CONTROL, 0) / total, 0.05)
+        self.assertEqual(seen.get(me.ARM_CONTROL, 0), 0,
+                         "gamma_control is removed; no row may claim it")
         self.assertIn(me.ARM_WITHHELD, seen)
         self.assertIn(me.ARM_TREATED, seen)
 
@@ -606,3 +558,17 @@ class TestStatesAndConstants(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── the science arms after the 2026-09-18 ruling (Appendix H.13.4) ──
+
+def test_the_withhold_still_runs_and_is_still_deterministic():
+    """The within-subject arm survives: what one Take withholds, the next
+    covers, because the ladder is measured per Take."""
+    from services.manager_engine import INTERVENTION_RANDOMISATION, is_withheld
+
+    assert INTERVENTION_RANDOMISATION == 0.20
+    first = [is_withheld(f"u{n}", "confident_voice", "s1") for n in range(200)]
+    again = [is_withheld(f"u{n}", "confident_voice", "s1") for n in range(200)]
+    assert first == again, "hashed, not drawn — it must not reshuffle"
+    assert any(first), "the arm is still live"

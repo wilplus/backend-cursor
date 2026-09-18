@@ -13,6 +13,25 @@ The Ideal Text read is where it bites hardest: it serves "the FIRST non-null
 presentation_ref across takes in take order", so it serves the OLDEST stored
 URL — the one most likely to predate the config.
 
+─────────────────────────────────────────────────────────────────────────────
+⚠️ 2026-09-18 — THE CONTRACT INVERTED, AND THE DIAGNOSIS ABOVE WAS HALF RIGHT
+
+The fix recorded above was "make the URL permanent". It worked, and it was the
+wrong cure: it treated the TTL as the fault. The fault was DEPENDING ON A
+STORED URL AT ALL. A permanent URL is simply one that cannot expire because it
+has no protection left — which is how decks ended up reachable by anyone
+holding the link, forever (DPIA RISK-11).
+
+So the direction reversed. A deck ref is now re-signed FRESH on every read,
+from the object KEY recovered out of whatever shape the ref was written in.
+The original bug stays fixed — more completely than before, because nothing
+depends on any stored URL remaining valid — and the deck stops being public.
+
+The tests below that assert "becomes the permanent one" were rewritten rather
+than deleted, so the inversion is visible in this file's history instead of
+looking like the September fix was simply thrown away.
+─────────────────────────────────────────────────────────────────────────────
+
 Run: python3 -m unittest tests.test_refreshed_media_url
 """
 from __future__ import annotations
@@ -58,23 +77,49 @@ def _with_config(**over):
     settings = {"public_base": PUBLIC, "bucket": "willab-media"}
     settings.update(over)
     previous = storage._cfg
+    previous_signer = storage.presigned_get_coach_object
     storage._cfg = _StubConfig(**settings)
+    # Stub the signer rather than letting boto3 mint a real signature: what
+    # these tests assert is WHICH branch ran, not what a signature looks like.
+    storage.presigned_get_coach_object = (
+        lambda bucket, key, expires_in=0, **kw: f"{FRESH}#{key}"
+    )
     try:
         yield
     finally:
         storage._cfg = previous
+        storage.presigned_get_coach_object = previous_signer
+
+
+#: What the stub signer returns, so a test can say "this was signed now".
+FRESH = "https://acct123.r2.cloudflarestorage.com/signed-just-now"
 
 
 class RefreshedMediaUrlTests(unittest.TestCase):
-    def test_repairs_an_expiring_presigned_deck_url(self):
-        """THE BUG: the seven-day link becomes the permanent one."""
-        with _with_config():
-            self.assertEqual(refreshed_media_url(PRESIGNED), f"{PUBLIC}/{KEY}")
+    def test_an_expiring_presigned_deck_url_is_re_signed_fresh(self):
+        """THE BUG, and its second diagnosis.
 
-    def test_leaves_an_already_public_url_untouched(self):
-        already = f"{PUBLIC}/{KEY}"
+        Until 2026-09-18 this asserted that the seven-day link becomes the
+        PERMANENT one. It now asserts a fresh signature: the stored URL is
+        only ever read for its key. The deck still cannot go dark — and it is
+        no longer world-readable to do it."""
         with _with_config():
-            self.assertEqual(refreshed_media_url(already), already)
+            self.assertEqual(refreshed_media_url(PRESIGNED), f"{FRESH}#{KEY}")
+
+    def test_a_long_dead_signature_still_yields_a_working_deck(self):
+        """The regression that matters. Expiry is now structurally impossible
+        for decks, because nothing depends on the stored URL being valid."""
+        dead = PRESIGNED.replace("deadbeef", "expired-months-ago")
+        with _with_config():
+            self.assertEqual(refreshed_media_url(dead), f"{FRESH}#{KEY}")
+
+    def test_an_already_public_deck_url_is_signed_rather_than_passed_through(self):
+        """Inverted 2026-09-18. These are the rows written while decks were
+        served publicly; re-signing them on read is what covers the existing
+        estate without a backfill."""
+        with _with_config():
+            self.assertEqual(
+                refreshed_media_url(f"{PUBLIC}/{KEY}"), f"{FRESH}#{KEY}")
 
     def test_strips_the_bucket_segment_but_only_when_it_is_one(self):
         """Path-style S3 URLs carry /<bucket>/<key>; a KEY that merely starts
@@ -97,11 +142,24 @@ class RefreshedMediaUrlTests(unittest.TestCase):
         with _with_config():
             self.assertEqual(refreshed_media_url(supa), supa)
 
-    def test_returns_the_original_when_no_public_base_is_configured(self):
-        """Never invent a URL. Without a base there is nothing to re-point to,
-        and the expiring link is still better than None."""
+    def test_a_deck_is_signed_even_with_no_public_base_configured(self):
+        """Rewritten 2026-09-18. This used to assert that an unconfigured
+        public base leaves the expiring link alone, because there was nothing
+        to re-point to. Signing needs no public base at all — it works on any
+        bucket in the account — so the deck is now recoverable in exactly the
+        environment where it used to be least recoverable."""
         with _with_config(public_base=""):
-            self.assertEqual(refreshed_media_url(PRESIGNED), PRESIGNED)
+            self.assertEqual(refreshed_media_url(PRESIGNED), f"{FRESH}#{KEY}")
+
+    def test_non_user_content_still_needs_a_public_base_to_be_repaired(self):
+        """The other half of the split is unchanged: never invent a URL, and
+        an expiring link is still better than None."""
+        coach_url = (
+            "https://acct123.r2.cloudflarestorage.com/willab-media/"
+            "coach-feedback/a.webm?X-Amz-Signature=deadbeef"
+        )
+        with _with_config(public_base=""):
+            self.assertEqual(refreshed_media_url(coach_url), coach_url)
 
     def test_passes_through_what_it_cannot_read(self):
         with _with_config():

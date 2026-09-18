@@ -14,11 +14,18 @@ import mimetypes
 from typing import Any, Optional
 
 from services.r2_client import build_r2_client, clamp_ttl
+from services.user_content_keys import is_user_content_key
 
 logger = logging.getLogger(__name__)
 
 _cfg = None
 _s3_client = None
+
+#: TTL for a deck/user-content ref re-signed on read. A week, which is the
+#: clamp maximum — see refreshed_media_url for why it is generous rather than
+#: tight. It is NOT a storage lifetime: the signature is re-minted on every
+#: read, so this only has to outlast a single sitting with the document open.
+_DECK_REF_TTL = 604800
 
 
 def _config():
@@ -94,7 +101,22 @@ def r2_bucket_name() -> str:
 
 
 def coach_media_public_url(storage_key: str) -> Optional[str]:
-    """Stable HTTPS URL if R2_PUBLIC_BASE_URL (custom or public dev domain) is set."""
+    """Stable HTTPS URL if R2_PUBLIC_BASE_URL (custom or public dev domain) is set.
+
+    ``None`` for USER CONTENT (DPIA RISK-11) — a public URL is permanent and
+    unauthenticated, so recordings get signed GETs instead. Every caller
+    already handles ``None``: they fall back to an ``s3://bucket/key`` marker,
+    which ``services.audio_ref_resolver.resolve_playable_ref`` signs at read
+    time. That fallback is the path a service without the public base has
+    always taken, so this returns callers to an exercised branch rather than a
+    new one.
+
+    Decks and coach-authored media keep the public URL. That is deliberate:
+    see services/user_content_keys.py for why, and for the 2026-09-16 incident
+    that put decks there.
+    """
+    if is_user_content_key(storage_key):
+        return None
     base = (getattr(_config(), "R2_PUBLIC_BASE_URL", None) or "").strip().rstrip("/")
     if not base:
         return None
@@ -139,31 +161,109 @@ def refreshed_media_url(ref: Optional[str]) -> Optional[str]:
     if not ref or not isinstance(ref, str):
         return ref
     raw = ref.strip()
-    if not raw.lower().startswith(("http://", "https://")):
-        return ref
     try:
+        key = media_key_from_ref(raw)
+        if key and is_user_content_key(key):
+            # USER CONTENT SIGNS, AND SIGNS FRESH (DPIA RISK-11, decks added
+            # 2026-09-18). A new signature is minted from the KEY on every
+            # read, so nothing depends on a stored URL staying valid — which
+            # is the actual root cause of the September deck blackout, not
+            # the TTL that got blamed for it.
+            #
+            # DECK_REF_TTL rather than the resolver's six hours: PDF.js
+            # streams a document with lazy range requests, so it can ask for
+            # bytes long after the page loaded, and the FE's "Retry loading
+            # slides" button re-fetches the SAME url instead of asking the
+            # API for a fresh ref — so an expired signature is a dead end
+            # until the user reloads the route. A week of headroom on a URL
+            # that is re-minted every read costs nothing and removes that
+            # whole class of report.
+            return presigned_get_coach_object(
+                "", key, expires_in=_DECK_REF_TTL,
+            ) or ref
+        if not raw.lower().startswith(("http://", "https://")):
+            return ref
         from urllib.parse import urlsplit
 
         parts = urlsplit(raw)
         # The presigned marker. Only SigV4 (what boto3 mints for R2) is
         # claimed here; Supabase's `?token=` signatures are left alone.
-        query = (parts.query or "").lower()
-        if "x-amz-signature=" not in query:
+        if "x-amz-signature=" not in (parts.query or "").lower():
             return ref
-        path = (parts.path or "").lstrip("/")
-        if not path:
-            return ref
-        # R2's S3 endpoint is path-style: /<bucket>/<key>. Strip the bucket
-        # only when it really is the leading segment — a key that merely
-        # starts with the same letters must not lose them.
-        bucket = r2_bucket_name()
-        if bucket and path.startswith(bucket + "/"):
-            path = path[len(bucket) + 1:]
+        path = _strip_leading_bucket((parts.path or "").lstrip("/"))
         if not path:
             return ref
         return coach_media_public_url(path) or ref
     except Exception:  # pragma: no cover - a malformed ref stays as it was
         return ref
+
+
+def _strip_leading_bucket(path: str) -> str:
+    """R2's S3 endpoint is path-style: ``/<bucket>/<key>``. Strip the bucket
+    only when it really is the leading segment — a key that merely starts with
+    the same letters must not lose them."""
+    bucket = r2_bucket_name()
+    if bucket and path.startswith(bucket + "/"):
+        return path[len(bucket) + 1:]
+    return path
+
+
+def media_key_from_ref(ref: Any) -> Optional[str]:
+    """The object key behind a stored media ref, whatever shape it was written
+    in. ``None`` when the ref is not ours to re-address.
+
+    Four shapes reach this, and they were written by different code in
+    different months:
+
+    ``https://<s3-endpoint>/<bucket>/<key>?X-Amz-Signature=…``  a presigned GET
+    ``https://<public base>/<key>``                             a public URL
+    ``s3://<bucket>/<key>``                                     the CONFIG-FIRST marker
+    ``<key>``                                                   a bare key
+
+    A FOREIGN https URL returns ``None`` — imports store other people's URLs,
+    and re-addressing one against our bucket breaks it. That is the whole
+    reason this returns ``None`` rather than guessing a key out of any path it
+    is handed.
+    """
+    if not isinstance(ref, str):
+        return None
+    raw = ref.strip()
+    if not raw:
+        return None
+    if raw.startswith("s3://"):
+        rest = raw[len("s3://"):]
+        _, _, key = rest.partition("/")
+        return key or None
+    if not raw.lower().startswith(("http://", "https://")):
+        return raw.lstrip("/") or None
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(raw)
+    path = (parts.path or "").lstrip("/")
+    if not path:
+        return None
+    if "x-amz-signature=" in (parts.query or "").lower():
+        return _strip_leading_bucket(path) or None
+    # A public URL, but only on a base WE mint on. Anything else is foreign.
+    host = f"{parts.scheme}://{parts.netloc}"
+    for base in _our_public_bases():
+        if raw.startswith(base + "/"):
+            return raw[len(base) + 1:].split("?", 1)[0] or None
+        if base == host:
+            return path or None
+    return None
+
+
+def _our_public_bases() -> list:
+    c = _config()
+    bases = []
+    for attr in ("R2_PUBLIC_BASE_URL", "R2_AUDIO_PUBLIC_BASE_URL",
+                 "R2_LAB_AUDIO_PUBLIC_BASE_URL", "R2_JOURNAL_PUBLIC_BASE_URL",
+                 "R2_USER_MEDIA_PUBLIC_BASE_URL"):
+        value = (getattr(c, attr, None) or "").strip().rstrip("/")
+        if value:
+            bases.append(value)
+    return bases
 
 
 def _client():
