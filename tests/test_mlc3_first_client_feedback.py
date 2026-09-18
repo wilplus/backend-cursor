@@ -330,10 +330,17 @@ def test_an_empty_inventory_declines_instead_of_serving_zero_rows(monkeypatch):
         owner_user_id=USER,
     )
 
-    assert rows is None, (
-        "an empty inventory must stand down to the legacy response, not serve "
-        f"zero cards; got {rows!r}"
+    # UPDATED 2026-09-18 (contract 24h). This asserted `rows is None` — stand
+    # down to the legacy response — which was right for one day and is now
+    # wrong: an empty inventory is V3 failing on a Take it owns, so it fails
+    # VISIBLY. What has not changed is the thing that mattered: zero cards are
+    # never served as though they were an answer.
+    from services.mlc3_first_client_feedback import V3Unavailable
+
+    assert isinstance(rows, V3Unavailable), (
+        f"an empty inventory is a fault, not an answer; got {rows!r}"
     )
+    assert rows.reason == "inventory_returned_no_visible_rows"
 
 
 def test_the_caller_treats_an_empty_service_result_as_no_result():
@@ -348,3 +355,63 @@ def test_the_caller_treats_an_empty_service_result_as_no_result():
     source = Path("services/ideal_text_changes.py").read_text(encoding="utf-8")
     assert "if _service_rows:" in source
     assert "if _service_rows is not None:" not in source
+
+
+# ── no silent fallback (founder 2026-09-18, contract 24h) ──
+
+def test_a_take_outside_the_service_returns_none_not_a_failure(monkeypatch):
+    """The distinction the whole rule rests on. A user V3 does not apply to
+    has NOT hit a fault, and the legacy answer is correct for them."""
+    from config import Config
+    from services.mlc3_first_client_feedback import V3Unavailable
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", False)
+    session, document, snippets = _source()
+    out = prepare_first_client_feedback(
+        database=_Database(), session=session, take_document=document,
+        served_text=document["text"], snippets=snippets, suggestions={},
+        feedback_candidates=[], owner_user_id=USER,
+    )
+    assert out is None
+    assert not isinstance(out, V3Unavailable)
+
+
+def test_a_take_inside_the_service_that_breaks_returns_a_typed_failure(monkeypatch):
+    """Previously indistinguishable from the case above — both were None, so
+    a broken V3 and a working one looked identical from the outside."""
+    from config import Config
+    import services.mlc3_first_client_feedback as module
+    from services.mlc3_first_client_feedback import V3Unavailable
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    monkeypatch.setattr(module, "prepare_v3_service_inventory",
+                        lambda **kwargs: None)
+    session, document, snippets = _source()
+    out = prepare_first_client_feedback(
+        database=_Database(), session=session, take_document=document,
+        served_text=document["text"], snippets=snippets, suggestions={},
+        feedback_candidates=[], owner_user_id=USER,
+    )
+    assert isinstance(out, V3Unavailable)
+    assert out.reason == "service_inventory_unavailable"
+
+
+def test_the_failure_carries_a_reason_a_person_can_act_on():
+    """A reason code, not copy. The client renders its own notice and its own
+    retry; nothing here asserts anything about the speaker (AC-9)."""
+    from services.mlc3_first_client_feedback import V3Unavailable
+
+    failure = V3Unavailable("membership_freeze_failed")
+    assert failure.reason == "membership_freeze_failed"
+    assert failure == ("membership_freeze_failed",)
+
+
+def test_the_caller_surfaces_the_failure_rather_than_serving_v2():
+    """Asserted on the source: a silent policy swap is the thing 24h forbids,
+    and nothing at runtime can tell you it happened."""
+    from pathlib import Path
+
+    source = Path("services/ideal_text_changes.py").read_text(encoding="utf-8")
+    assert "isinstance(_service_rows, V3Unavailable)" in source
+    assert "self.v3_failure = _service_rows.reason" in source
+    assert '"feedback_status"' in source

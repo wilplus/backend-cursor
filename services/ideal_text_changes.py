@@ -105,6 +105,9 @@ class _ChangesRun:
         self.styles: list = []
         self.add: dict = {}
         self.arm_sid = ""
+        # Empty unless V3 owned this Take and could not produce it. Never set
+        # for a Take V3 does not apply to — see contract 24h.
+        self.v3_failure: str = ""
 
     # ── stages, in order ────────────────────────────────────────────────
 
@@ -944,6 +947,7 @@ class _ChangesRun:
         # The frontend flag remains presentation-only; both backend and DB
         # authority are independently required by the called service RPCs.
         from services.mlc3_first_client_feedback import (
+            V3Unavailable,
             prepare_first_client_feedback,
         )
         from services.transcript_document import build_transcript_document
@@ -969,20 +973,26 @@ class _ChangesRun:
             feedback_candidates=self.feedback_exposure,
             owner_user_id=str(self.user_id),
         )
-        # TRUTHINESS, NOT `is not None` — belt to the producer's braces.
+        # THREE OUTCOMES, NOT TWO (contract 24h, founder 2026-09-18).
         #
-        # An empty list is not None, so `is not None` accepted `[]` as a
-        # complete V3 result, replaced the working V2 feedback with nothing and
-        # cleared the styles. The founder recorded a Take on 2026-09-18 and got
-        # zero cards after a long wait: worse than the state before V3 was
-        # activated, which is a live-loop regression however good the reason.
+        # A typed failure means V3 owned this Take and could not produce it.
+        # It is recorded and surfaced; it is NOT quietly replaced with the V2
+        # answer, because a silent policy swap makes a broken V3 look exactly
+        # like a working one. That is how a defect survived two days of being
+        # looked at directly.
         #
-        # prepare_first_client_feedback now declines instead of returning `[]`,
-        # so this is the second line of defence rather than the fix. It stays
-        # because the failure mode is silent by construction — nothing here can
-        # tell an empty result apart from a deliberate one, and the cost of
-        # being wrong is the user seeing no feedback at all.
-        if _service_rows:
+        # `None` still means V3 does not apply to this Take at all, and the
+        # legacy answer is correct — a user outside the service has not hit a
+        # fault.
+        #
+        # Truthiness on the rows is the belt to that braces: an empty list is
+        # not None, and `is not None` once accepted `[]` as a complete result,
+        # wiping the working feedback and clearing the styles. Nothing at this
+        # call site can tell an empty result from a deliberate one, and the
+        # cost of guessing wrong is the user seeing nothing at all.
+        if isinstance(_service_rows, V3Unavailable):
+            self.v3_failure = _service_rows.reason
+        elif _service_rows:
             self.changes = _service_rows
             self.styles = []
 
@@ -1008,7 +1018,15 @@ class _ChangesRun:
             if _packets:
                 _visible_row["learning_exposures"] = _packets
         _style = {"style_changes": _styles} if _styles else {}
-        return {"changes": changes, **self.add, **_style}
+        # A failure is reported, never hidden behind a different policy's
+        # answer (contract 24h). The reason is a diagnostic code, not copy:
+        # the client renders its own notice and its own retry, and nothing
+        # about the speaker is asserted here.
+        _v3 = (
+            {"feedback_status": {"state": "failed", "reason": self.v3_failure}}
+            if self.v3_failure else {}
+        )
+        return {"changes": changes, **self.add, **_style, **_v3}
 
 
 def build_changes_block(arc_id, served_text, user_id="", take_session_id="",
