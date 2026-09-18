@@ -31,6 +31,11 @@ SUGGESTION_GENERATOR_CONTRACT_VERSION = "feedback-candidate-generator-v1"
 TARGET_WORDS = 75
 MIN_WORDS = 60
 MAX_WORDS = 90
+
+#: Slide-coverage floor by Take index (founder, 2026-09-18 — contract 24c,
+#: Appendix H.13.1). Take 3 and every Take after it are held at 100%.
+COVERAGE_FLOOR_BY_TAKE: dict[int, float] = {1: 0.70, 2: 0.80}
+COVERAGE_FLOOR_MATURE = 1.00
 _WORD_RE = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)*", re.UNICODE)
 _VERBAL_FAMILIES = {"rewrite_clarity", "great_formulation"}
 _VERSION_KEYS = (
@@ -272,6 +277,222 @@ def _clip_lineage(
     }, None
 
 
+#: Praise anchors to the Take's most and second-most Confident Voice items
+#: (contract 24f). Two, not one — and at most two, never padded to two.
+PRAISE_ANCHOR_LIMIT = 2
+
+#: The practice threshold cuts BELOW neutral (founder, 2026-09-18). The two
+#: bands under it prompt; neutral and above do not.
+#:
+#: Chosen sparing on H.0's asymmetry — offering practice to someone who spoke
+#: well is the false-positive direction, and "when a choice here is arguable,
+#: it goes toward silence". It is a policy dial, not a measured constant, so it
+#: moves on evidence rather than on preference.
+PRACTICE_BANDS = ("delivery_signal_mid_low", "delivery_signal_low")
+
+#: A block whose confidence item was never selected has no delivery read, so
+#: it prompts nothing. Stated once rather than defaulted at each use site.
+_UNROUTED_BLOCK = {
+    "delivery_band": None,
+    "practice_prompt": False,
+    "carries_exercise": False,
+}
+
+
+def _practice_routing(blocks: list[dict]) -> dict:
+    """Which blocks prompt practice, and which single one carries the exercise.
+
+    EVERY block below the neutral band shows "Let's practice". Exactly ONE of
+    them — the weakest — also carries the exercise, because an exercise is work
+    the user has to go and do, and four of them is a to-do list rather than a
+    lesson (contract 24f).
+
+    AC-9, and this is the sharp edge: `services.voice_confidence.band()` warns
+    in its own docstring that the band IS a verdict and must never reach a user
+    payload. So the band stays in this frame, which is the internal policy
+    artifact, and what leaves here is two booleans. A client is told *that*
+    practice is offered, never *how it was scored*.
+    """
+    from services.voice_confidence import band as delivery_band
+
+    below: list[tuple[tuple, dict]] = []
+    routing: dict[str, dict] = {}
+    for block in blocks:
+        selected_id = block.get("selected_candidate_id")
+        if not selected_id:
+            continue
+        chosen = next(
+            (
+                row for row in block.get("confidence_candidates") or []
+                if row.get("candidate_id") == selected_id
+            ),
+            None,
+        )
+        if chosen is None:
+            continue
+        label = delivery_band(chosen.get("machine_score"))
+        entry = {
+            "delivery_band": label,
+            "practice_prompt": label in PRACTICE_BANDS,
+            "carries_exercise": False,
+        }
+        routing[block["block_id"]] = entry
+        if entry["practice_prompt"]:
+            below.append((_confidence_rank(chosen), block))
+
+    # The weakest is the LAST of the shared confidence ordering, not a second
+    # rule — one ranking read from both ends, so "strongest" and "weakest" can
+    # never disagree about the same take.
+    if below:
+        below.sort(key=lambda pair: pair[0])
+        routing[below[-1][1]["block_id"]]["carries_exercise"] = True
+
+    # Applied HERE rather than in the caller. build_shadow_frame is
+    # grandfathered at CC 37 and the ratchet only lets it come down, so a loop
+    # in the caller costs a point it cannot spend — and the routing belongs
+    # beside the rule that computed it anyway.
+    for block in blocks:
+        block.update(routing.get(block["block_id"], _UNROUTED_BLOCK))
+    return routing
+
+
+def _top_confidence_blocks(blocks: list[dict], limit: int) -> list[dict]:
+    """The blocks whose selected item ranked highest, best first.
+
+    Reuses `_confidence_rank`, so "most confident" here means exactly what it
+    means inside a block: measured beats unmeasured, higher score wins, and
+    ordinal then candidate id break ties. One ranking, used at two scales —
+    if these diverged, the item called strongest inside its block could lose
+    the Take-level comparison to one the same rule ranked below it.
+    """
+    ranked: list[tuple[tuple, dict]] = []
+    for block in blocks:
+        selected_id = block.get("selected_candidate_id")
+        if not selected_id:
+            continue
+        chosen = next(
+            (
+                row for row in block.get("confidence_candidates") or []
+                if row.get("candidate_id") == selected_id
+            ),
+            None,
+        )
+        if chosen is not None:
+            ranked.append((_confidence_rank(chosen), block))
+    ranked.sort(key=lambda pair: pair[0])
+    return [block for _, block in ranked[:limit]]
+
+
+def _anchored_praise(
+    ranked_praise: list[dict], top_blocks: list[dict],
+) -> list[dict]:
+    """Praise for the top Confident Voice blocks — option (a), founder.
+
+    A praise candidate qualifies only when its document span falls INSIDE one
+    of those blocks. Praise stays evidence-led: it is the detector's own
+    finding about words the speaker actually said, not a compliment attached
+    to a block because the block ranked well.
+
+    The consequence, accepted deliberately: a green bookmark sometimes carries
+    no praise, because the strongest-sounding block had nothing defensible to
+    praise in it. That is the honest outcome. The alternative — praising the
+    block anyway with whatever text was nearest — is manufacturing, which L2
+    and contract 24d forbid.
+
+    `ranked_praise` arrives best-first, so the first candidate found inside a
+    block is that block's best. One per block, so two blocks yield at most two.
+    """
+    chosen: list[dict] = []
+    used: set[str] = set()
+    for block in top_blocks:
+        start, end = block.get("start"), block.get("end")
+        if not isinstance(start, int) or not isinstance(end, int):
+            continue
+        for item in ranked_praise:
+            candidate_id = str(item.get("candidate_id") or "")
+            span = item.get("document_span")
+            if not candidate_id or candidate_id in used or not isinstance(span, dict):
+                continue
+            if span.get("start") is None or span.get("end") is None:
+                continue
+            if start <= int(span["start"]) and int(span["end"]) <= end:
+                chosen.append({
+                    "block_id": block["block_id"],
+                    "candidate_id": candidate_id,
+                })
+                used.add(candidate_id)
+                break
+    return chosen
+
+
+def coverage_floor(take_index: Any) -> float:
+    """The share of assessable Slides this Take is required to cover."""
+    if isinstance(take_index, bool) or not isinstance(take_index, int):
+        return COVERAGE_FLOOR_MATURE
+    return COVERAGE_FLOOR_BY_TAKE.get(take_index, COVERAGE_FLOOR_MATURE)
+
+
+def _slide_coverage(blocks: list[dict], take_index: Any) -> dict:
+    """Which Slides this Take actually covered, and why the rest were missed.
+
+    THE DENOMINATOR IS THE LOAD-BEARING PART (contract 24c, founder
+    2026-09-18). It is Slides that produced **at least one block**, not Slides
+    that carry speech and not every Slide in the deck.
+
+    Measured against every Slide, a deck where four Slides are silent or too
+    short to partition caps coverage at ten-fourteenths forever — 71% — so the
+    80% rung is unreachable and 100% is unreachable by construction, through
+    nobody's fault. Measured against blocks, 100% is reachable, because a valid
+    block always has a relative best. Anything that never formed a block was
+    never assessable, and failing to cover it is not a failure.
+
+    A shortfall is a DEFECT TO INVESTIGATE, never a licence to pad (24d). So
+    every uncovered Slide carries the `selection_reason` of each block on it,
+    which is the only thing that makes a shortfall diagnosable rather than
+    merely visible. Those strings are what tell a candidate-generation gap
+    apart from a policy one.
+
+    Internal only — coverage is an arbitration input and is never surfaced
+    (AC-9, contract 24i).
+    """
+    by_slide: dict[int, list[dict]] = {}
+    for block in blocks:
+        by_slide.setdefault(int(block["slide_index"]), []).append(block)
+
+    covered: list[int] = []
+    uncovered: list[dict] = []
+    for slide_index in sorted(by_slide):
+        slide_blocks = by_slide[slide_index]
+        if any(block.get("selected_candidate_id") for block in slide_blocks):
+            covered.append(slide_index)
+            continue
+        uncovered.append({
+            "slide_index": slide_index,
+            "block_count": len(slide_blocks),
+            "reasons": sorted({
+                str(block.get("selection_reason") or "unknown")
+                for block in slide_blocks
+            }),
+        })
+
+    assessable = len(by_slide)
+    floor = coverage_floor(take_index)
+    # An empty document is not a coverage failure: there was nothing to cover,
+    # and reporting 0% against a 70% floor would make "no speech at all" look
+    # like a broken selector.
+    ratio = (len(covered) / assessable) if assessable else 1.0
+    return {
+        "denominator": "slides_with_at_least_one_valid_block",
+        "assessable_slides": assessable,
+        "covered_slides": len(covered),
+        "covered_slide_indexes": covered,
+        "uncovered": uncovered,
+        "ratio": round(ratio, 4),
+        "required_floor": floor,
+        "meets_floor": ratio + 1e-9 >= floor,
+    }
+
+
 def _confidence_candidate(
     piece: dict,
     snippet: dict,
@@ -357,7 +578,7 @@ def _verbal_inventory(
     *,
     document_length: int,
     snippet_map: dict[str, dict],
-) -> tuple[list[dict], Optional[str], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     ranked: list[tuple[tuple, dict]] = []
     inventory: list[dict] = []
     exclusions: list[dict] = []
@@ -453,8 +674,11 @@ def _verbal_inventory(
         ranked.append((rank, item))
 
     ranked.sort(key=lambda value: value[0])
-    selected_id = ranked[0][1]["candidate_id"] if ranked else None
-    return inventory, selected_id, exclusions
+    # Return the whole ranking, not just the winner. Praise is no longer a
+    # single global pick: it anchors to the Take's two most Confident Voice
+    # blocks (contract 24f), so the caller has to ask "best praise INSIDE this
+    # block", which the winner alone cannot answer.
+    return inventory, [item for _, item in ranked], exclusions
 
 
 def _unrouted_inventory(candidates: Iterable[Any]) -> list[dict]:
@@ -547,15 +771,18 @@ def build_shadow_frame(
                     "block_id": block["block_id"],
                 })
 
+    coverage = _slide_coverage(blocks, take_index)
+    _practice_routing(blocks)
+
     feedback_rows = list(feedback_candidates or [])
-    rewrite_inventory, rewrite_selected, rewrite_exclusions = _verbal_inventory(
+    rewrite_inventory, rewrite_ranked, rewrite_exclusions = _verbal_inventory(
         feedback_rows,
         "rewrite_clarity",
         take_id,
         document_length=len(document_text),
         snippet_map=snippet_map,
     )
-    praise_inventory, praise_selected, praise_exclusions = _verbal_inventory(
+    praise_inventory, praise_ranked, praise_exclusions = _verbal_inventory(
         feedback_rows,
         "great_formulation",
         take_id,
@@ -565,7 +792,18 @@ def build_shadow_frame(
     exclusions.extend(rewrite_exclusions)
     exclusions.extend(praise_exclusions)
     exclusions.extend(_unrouted_inventory(feedback_rows))
-    mature = take_index >= 2
+
+    # BOTH LANES RUN ON TAKE 1 (contract 24b, founder 2026-09-18). The
+    # `take_index >= 2` gate is gone: it made the first take the one take whose
+    # bookmarks lead nowhere, which is the worst place in the product to have
+    # that happen.
+    rewrite_selected_ids = (
+        [rewrite_ranked[0]["candidate_id"]] if rewrite_ranked else []
+    )
+    praise_anchors = _anchored_praise(
+        praise_ranked, _top_confidence_blocks(blocks, PRAISE_ANCHOR_LIMIT),
+    )
+    praise_selected_ids = [row["candidate_id"] for row in praise_anchors]
 
     generator_versions = sorted({
         version
@@ -604,25 +842,35 @@ def build_shadow_frame(
             "normal_max_words": MAX_WORDS,
             "split_only_at_exact_snippet_boundaries": True,
         },
+        "practice_policy": {
+            "threshold": "below_neutral_delivery_band",
+            "prompt_bands": list(PRACTICE_BANDS),
+            "exercise_budget": 1,
+            "exercise_target": "weakest_prompting_block",
+        },
         "confidence_definition": {
             "scope": "relative_within_block",
             "winner": "highest_ranked_exact_lineage_candidate",
             "absolute_confidence_threshold_required": False,
             "missing_or_weak_evidence_language": "tentative",
         },
+        "coverage": coverage,
         "blocks": blocks,
         "selected_confidence": confidence_selections,
         "verbal_lanes": {
-            "enabled": mature,
+            "enabled": True,
             "rewrite_clarity": {
                 "selection_scope": "global_absolute_quality",
+                "budget": 1,
                 "candidates": rewrite_inventory,
-                "selected_candidate_id": rewrite_selected if mature else None,
+                "selected_candidate_ids": rewrite_selected_ids,
             },
             "great_formulation": {
-                "selection_scope": "global_absolute_quality",
+                "selection_scope": "anchored_to_top_confidence_blocks",
+                "budget": PRAISE_ANCHOR_LIMIT,
+                "anchors": praise_anchors,
                 "candidates": praise_inventory,
-                "selected_candidate_id": praise_selected if mature else None,
+                "selected_candidate_ids": praise_selected_ids,
             },
         },
         "excluded_candidates": exclusions,

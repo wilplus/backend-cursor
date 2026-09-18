@@ -129,6 +129,39 @@ pp.required_for_core_service`. An optional purpose is therefore shown to the
 user and leaves no consent evidence. For `coach_review`, whose basis is consent,
 that is the absence of the lawful basis itself, not a paperwork gap.
 
+### ⚠️ CONDITIONAL DESIGN CONSTRAINT — if OpenAI disclosure needs its own consent
+
+US counsel brief document 05 §4 Q4 asks whether disclosure of recordings to
+OpenAI requires consent separate from the main authorisation. **The answer is
+not given here.** What is recorded here is the schema consequence, because it
+lands on this document's registration design and would otherwise be discovered
+during implementation.
+
+**If the answer is yes, the Phase-1 receipt path cannot carry it.** The same
+mechanical fact above applies: only purposes marked `required_for_core_service`
+produce receipt-purpose rows, so a *separate, optional* consent leaves no
+evidence at all. That leaves exactly two shapes, and both have a cost:
+
+1. **A new purpose marked `required_for_core_service`.** It would then write
+   evidence — but marking a separate consent as required for the core service
+   bundles it back into the main authorisation, which is precisely the Art 7(4)
+   problem DPIA RISK-1 exists to remediate. Trading one defect for the one we
+   are already fixing.
+2. **A second evidence surface**, distinct from the Phase-1 receipt, recording
+   optional consents with their own lineage. Nothing of the kind exists, and it
+   would need its own authorisation boundary, its own retention category and its
+   own place in the purge registry.
+
+**Neither is picked here, and neither should be built before counsel answers.**
+Building shape 2 speculatively is a new evidence surface with no live consumer;
+building shape 1 is a documented regression. The point of recording it now is
+that "yes" is not a copy change — it is a schema change — and the estimate
+should reflect that when the answer arrives.
+
+**Note on document 05.** It is PARKED: the founder's decision is Poland first,
+US on v1.1 (BIPA damages land on the founder personally). This constraint is
+recorded against the question; the brief is not sent.
+
 Marking them required instead would make agreeing to coach review and practice a
 condition of using the product — the Article 7(4) bundling that document 01 §3
 is structured to avoid.

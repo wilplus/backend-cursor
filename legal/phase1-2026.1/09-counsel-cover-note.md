@@ -134,11 +134,49 @@ So the position is: 67 accounts, 26 of which accepted a document marked as
 placeholder copy, none of which accepted anything published since, and
 processing has continued throughout.
 
+**And the accepted text carried a marker saying it was not legally reviewed.**
+The 7 May source file's own docstring, immediately above the component that
+rendered the page, read verbatim:
+
+> `TODO(content): swap the placeholder copy below for the legally-reviewed`
+> `Terms of Use text once it's finalised.`
+
+It was never swapped. That document was live from 2026-05-07, accepted until
+2026-07-16, and processing has continued to today. The marker is recorded in
+`accepted-versions/README.md` rather than inside the recovered `.txt` files,
+deliberately: those files are evidence of **what users saw**, and users never
+saw a source comment. Adding it to them would corrupt the only clean record of
+the published text.
+
 - **Q-E.** What is our position where users accepted the 7 May text, were then
   served v1.0, v1.1 and v1.2 without being asked again, and continued to be
   processed throughout? Does the original acceptance carry forward, does it
   lapse, and what does remediation look like for the 26 — and separately for
-  the 41 accounts with no consent record at all?
+  the 41 accounts with no consent record at all? **Does it change your answer
+  that the accepted document was self-identified by its author as placeholder
+  copy pending legal review?**
+
+## One more, found while this pack was being assembled
+
+User recordings have been served over **permanent, unauthenticated URLs**. The
+object storage bucket holding session audio, uploaded Takes, extracted speech
+clips and slide decks is publicly readable, and the application prefers that
+public address over the signed, short-lived one it also implements. Object keys
+embed UUIDs, so nothing is browsable or enumerable — but any single URL, once it
+leaves our systems, grants unrevocable access to that recording indefinitely.
+The condition has held since at least 8 May 2026, the date of the oldest
+recording.
+
+We are remediating it now rather than reporting it as scheduled — signed URLs
+for user content by 19 September 2026, ahead of expected traffic. The full facts,
+including what the near-term fix does **not** close, are DPIA RISK-11.
+
+- **Q-F.** Does the period during which user recordings were retrievable over
+  permanent unauthenticated URLs require assessment or notification under
+  Art 33, given that we have no evidence any URL was accessed by an
+  unauthorised party and no means of obtaining such evidence retrospectively?
+  If assessment is required, what is a reasonable one where access logging was
+  not enabled for the period?
 
 ## Two things we corrected before writing to you
 

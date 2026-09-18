@@ -181,7 +181,8 @@ LANE_STATE = me.APPRENTICE
 
 
 def _controls_enabled() -> bool:
-    """The three randomisation arms (gamma_control / withhold / explore).
+    """The randomisation arms (withhold / explore). gamma_control was
+    removed 2026-09-18 — Appendix H.13.4.
 
     DEFAULT OFF, and this is a scientific decision rather than a caution.
     Switching them on starts a real experiment whose UNIT IS THE LANE — 12% of
