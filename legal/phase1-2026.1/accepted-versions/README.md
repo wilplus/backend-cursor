@@ -46,11 +46,14 @@ The two body lines are the ones that form the agreement:
 >
 > You must be at least 18 years old to use ~~Willab~~ **WillpowerLab**.
 
-**The acceptance window, 8 May – 16 July 2026, straddles 6 June 2026.** So the 26
-acceptances divide into two groups who read two different Terms, differing in the
-name of the party they were contracting with. How many fall each side is a
-database question this folder cannot answer; it needs a count of `user_consents`
-before and from 2026-06-06.
+**The acceptance window, 8 May – 16 July 2026, straddles 6 June 2026.** So two
+different Terms were live inside it, differing in the name of the party the user
+was contracting with. Whether any acceptance actually fell on the later side is
+**not established here** — if all 26 predate 6 June there is still only one
+accepted document, and the correction is to this file's reasoning rather than to
+the position. It needs a count of `user_consents` before and from 2026-06-06,
+which is a database question this folder cannot answer. Stated as an open split
+rather than a found one.
 
 Both texts are now recorded. Engineering states the split and stops there.
 
@@ -86,8 +89,8 @@ processing is counsel's, and it is question Q-E in
 
 | File | Commit | Commit date | Accepted by | sha256 |
 |---|---|---|---|---|
-| `terms-as-published-2026-05-07.txt` | `3202b5a1` | 2026-05-07 | **those of the 26 who accepted before 2026-06-06** | `d228641e737e97f0a521cad3bb06319b2ab7c01af0e9483654ad5b44d8719ae2` |
-| `terms-as-published-2026-06-06.txt` | `9815b7a2` | 2026-06-06 | **those of the 26 who accepted from 2026-06-06 to 16 Jul** | `ab5e47f765e752a352c55a3c0aa8562ea2b2a53c89558d1c9ea854cb960a2b66` |
+| `terms-as-published-2026-05-07.txt` | `3202b5a1` | 2026-05-07 | **those of the 26 who accepted before 2026-06-06 — count not yet established** | `d228641e737e97f0a521cad3bb06319b2ab7c01af0e9483654ad5b44d8719ae2` |
+| `terms-as-published-2026-06-06.txt` | `9815b7a2` | 2026-06-06 | **any of the 26 who accepted from 2026-06-06 to 16 Jul — count not yet established** | `ab5e47f765e752a352c55a3c0aa8562ea2b2a53c89558d1c9ea854cb960a2b66` |
 | `privacy-as-published-2026-05-07.txt` | `3202b5a1` | 2026-05-07 | **26 users, 8 May – 16 Jul 2026** (unchanged across the rebrand) | `f6ea2f6ac7cb8ed312cee930584b7aed138157642dfa595f042c7488e6ed4030` |
 | `terms-v1.0.txt` | `01026bf0` | 2026-07-24 | nobody | `75e0bf3db04f5986bcdf26bf6b0b6bc4b2794c1d1aff430c8ea0dce246b4ff6d` |
 | `privacy-v1.0.txt` | `01026bf0` | 2026-07-24 | nobody | `f37cd58cdde8d15740949f41e79eea1ab3babd86390dd65965562c1ecb9098e9` |
