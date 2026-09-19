@@ -124,6 +124,44 @@ class ItLeaksNothing(unittest.TestCase):
         self.assertIn("shape=[", line)
         self.assertIn("transcript=o1", line)
 
+    def test_the_error_leads_the_line_and_is_readable_on_a_phone(self):
+        # SECOND CORRECTION TO THIS ORDERING (2026-09-20). #566 promoted the
+        # shape ahead of the take id so a 36-character id could not clip the
+        # answer. Right lesson, too literal: the shape is ~220 characters,
+        # so it clipped `error=` instead -- and a production stand-down was
+        # then read as "the RPC did not raise at all", from a line that had
+        # simply run out of room. A phone log list shows roughly the first
+        # sixty characters, so the error has to start inside them.
+        from services import first_client_repository as repo
+
+        class _Boom:
+            def rpc(self, *_args, **_kwargs):
+                raise RuntimeError("22P02 invalid input syntax for type json")
+
+        instance = repo.FirstClientRepository.__new__(
+            repo.FirstClientRepository)
+        with patch.object(
+            repo.FirstClientRepository, "client",
+            new_callable=PropertyMock, return_value=_Boom(),
+        ), self.assertLogs(
+            "services.first_client_repository", level="WARNING",
+        ) as caught:
+            instance.record_feedback_v3_service_candidate_set({
+                "owner_principal_id": "o", "project_id": "p",
+                "take_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "candidates": [{}], "selected_keys": [{}],
+                "versions": {"v": 1}, "input_hash": "h",
+                "idempotency_key": "feedback-exposure:" + "x" * 130,
+                "transcript": {"text": SECRET},
+            })
+        line = caught.output[0]
+        message = line.split(":", 2)[-1]
+        self.assertLess(message.index("error="), 60)
+        self.assertLess(line.index("error="), line.index("shape=["))
+        self.assertLess(line.index("shape=["), line.index("take="))
+        # And the error itself is the first thing after the label.
+        self.assertIn("error=22P02", line)
+
     def test_the_shape_leads_the_line_not_the_take_id(self):
         # Same ordering lesson as `_decline`: a 36-character id in front of
         # the answer means the line is clipped before anyone reads it.
