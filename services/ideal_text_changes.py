@@ -950,6 +950,7 @@ class _ChangesRun:
             V3Unavailable,
             prepare_first_client_feedback,
         )
+        from services.ideal_text_parts import bind_pieces_to_parts
         from services.transcript_document import build_transcript_document
         db = self.db
         _arm_sid = self.arm_sid
@@ -960,6 +961,26 @@ class _ChangesRun:
             _service_doc = build_transcript_document(
                 self.arc_id, database=db, session_id=_arm_sid,
             )
+        # THE PARAGRAPH EVERY ITEM HANGS ON (2026-09-19). V3's last gate is
+        # `piece_has_no_part_id`, and it had never once been passed: a
+        # transcript piece is written with eleven fields and `part_id` is not
+        # one of them, so every Take since the cutover stood down at the
+        # final check with a full frame behind it. Bound HERE rather than in
+        # `build_transcript_document`, because the binding needs the SERVED
+        # Ideal Text and its parts — which the document builder has no
+        # business knowing about, and this run already holds.
+        #
+        # Relocated against this document's own pieces, not `self.pieces`:
+        # `review_sid` may name a different Take from the one `self.doc` was
+        # built for, and a snippet id from one Take cannot address a piece of
+        # another.
+        _service_doc = bind_pieces_to_parts(
+            _service_doc,
+            served_text=self.served_text,
+            slide_regions=self.slide_regions,
+            parts=self.deps.locked_parts(
+                self.arc_id, str(self.user_id), self.served_text),
+        )
         _service_rows = prepare_first_client_feedback(
             database=self.deps.first_client_repository,
             session=_service_session,

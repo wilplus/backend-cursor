@@ -608,3 +608,101 @@ def serve(rows: Any) -> Optional[list]:
     for i, p in enumerate(out):
         p["ord"] = i
     return out
+
+
+def bind_pieces_to_parts(
+    document: Any, *, served_text: Any, slide_regions: Any, parts: Any,
+) -> Any:
+    """Attach ``part_id`` to every spoken piece that can be PROVEN to belong
+    to one Ideal Text Paragraph.
+
+    WHY THIS EXISTS (production, 2026-09-19). V3's last gate is
+    ``piece_has_no_part_id``, and it had never once been passed:
+    ``build_transcript_document`` writes eleven fields onto a piece and
+    ``part_id`` is not among them, so every Take since the V3 cutover stood
+    down at the final check with a full, healthy frame behind it. Two
+    consumers read this field -- here and
+    ``feedback_data_contract._transcript_paragraphs`` -- and nothing in the
+    codebase produced it.
+
+    The gate is right and stays. ``source_ideal_part_id`` is a required,
+    UUID-validated field of the feedback contract: it is what binds a
+    Confident Voice item to the Paragraph a bookmark hangs on, which is the
+    "stable Paragraph identity" the north star names load-bearing. An item
+    with no part is an item attached to nothing.
+
+    THE RULE (founder, 2026-09-19): SLIDE FIRST, SPAN TO REFINE.
+
+      1. The slide a piece was spoken on does not change, and neither does
+         the slide a Paragraph is about -- the same proven join
+         ``relocate_pieces`` already falls back to. When a slide holds
+         exactly one Paragraph, that is the answer, and it survives any
+         rewrite.
+      2. When a slide holds several, the relocated span picks between them.
+         Exact while the spoken words still appear in the served text.
+      3. When neither proves it, the piece keeps NO part_id and its
+         candidate is honestly rejected. Picking one of several Paragraphs
+         because the speaker was on that slide is a guess, and a bookmark on
+         the wrong Paragraph is worse than no bookmark -- the same "never
+         guess an anchor" rule ``part_at`` follows for a straddling span.
+
+    Pure apart from the relocation it delegates. Returns the document
+    unchanged when there is nothing to bind against, so a missing parts read
+    degrades to exactly today's behaviour rather than to a wrong answer.
+    """
+    doc = document if isinstance(document, dict) else {}
+    pieces = doc.get("pieces")
+    spans = part_spans(parts)
+    if not spans or not isinstance(pieces, list) or not pieces:
+        return document
+    from services.transcript_document import relocate_pieces
+
+    located = {
+        str(row.get("snippet_id")): row
+        for row in relocate_pieces(
+            served_text, pieces,
+            paragraph_fallback=True, slide_regions=slide_regions,
+        ) or []
+        if isinstance(row, dict) and row.get("snippet_id")
+    }
+    regions = slide_regions if isinstance(slide_regions, dict) else {}
+    bound = []
+    for piece in pieces:
+        if not isinstance(piece, dict):
+            bound.append(piece)
+            continue
+        part_id = _part_id_for(
+            piece, located.get(str(piece.get("snippet_id"))), spans, regions,
+        )
+        bound.append({**piece, "part_id": part_id} if part_id else piece)
+    return {**doc, "pieces": bound}
+
+
+def _part_id_for(
+    piece: dict, located: Any, spans: list, regions: dict,
+) -> Optional[str]:
+    """One Paragraph's id, or None when nothing proves which."""
+    region = regions.get(piece.get("slide_index"))
+    on_slide = [
+        part for start, end, part in spans
+        if isinstance(region, (tuple, list)) and len(region) == 2
+        and start >= region[0] and end <= region[1]
+    ]
+    # 1. ONE Paragraph on the slide: proven by identity, rewrite-proof.
+    if len(on_slide) == 1:
+        found = on_slide[0].get("id")
+        return str(found) if isinstance(found, str) and found else None
+    # 2. Several (or no slide region): the relocated span picks between them.
+    if not isinstance(located, dict):
+        return None
+    part = part_at(spans, located.get("start"), located.get("end"))
+    if part is None:
+        return None
+    found = part.get("id")
+    if not isinstance(found, str) or not found:
+        return None
+    # A span that lands outside the slide's own Paragraphs disagrees with the
+    # slide join, and two disagreeing proofs are not a proof.
+    if on_slide and not any(p.get("id") == found for p in on_slide):
+        return None
+    return found
