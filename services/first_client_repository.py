@@ -211,16 +211,31 @@ class FirstClientRepository:
                 )
             return data
         except Exception as error:
-            # SHAPE FIRST, then the error, then the id -- the same ordering
-            # `_decline` learned on 2026-09-19, because a 36-character take id
-            # in front of the answer means the line is clipped before anyone
-            # reads it. Shapes only; see `_payload_shape`.
+            # ERROR FIRST. THE SHAPE WAS THE RIGHT ANSWER TO THE WRONG
+            # QUESTION (2026-09-19, second correction to this one line).
+            #
+            # #566 moved the shape ahead of the take id, because a
+            # 36-character id in front of the answer clips the line before
+            # anyone reads it. That reasoning was sound and the fix was too
+            # literal: the shape it promoted is ~220 characters, so it now
+            # clips the very field it was added to help diagnose. A phone
+            # log list shows roughly the first sixty characters, and on
+            # 2026-09-20 a stand-down was read as "no exception at all"
+            # because the `error=` never came into view -- a wrong
+            # conclusion drawn from a truncated line, which is exactly the
+            # failure this ordering exists to prevent.
+            #
+            # So: the ERROR leads, because it is the answer; the shape
+            # follows, because it is the supporting detail for when the
+            # error is a type complaint; the take id stays last. Shapes
+            # only, never content -- see `_payload_shape`.
             logger.warning(
-                "Feedback V3 service candidate set failed shape=[%s] "
-                "transcript=[%s] error=%s take=%s",
+                "Feedback V3 service candidate set failed error=%s "
+                "shape=[%s] transcript=[%s] take=%s",
+                error,
                 _payload_shape(bundle),
                 _payload_shape(bundle.get("transcript")),
-                error, bundle.get("take_id"),
+                bundle.get("take_id"),
             )
             return None
 
