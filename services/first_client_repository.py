@@ -18,6 +18,39 @@ _SERVICE_OPERATION_MODES = (
 )
 
 
+def _error_head(error: Any) -> str:
+    """``code/message`` from a database error, for the FRONT of the line.
+
+    THIRD CORRECTION TO ONE LOG LINE, and the last layer of the same onion
+    (2026-09-20). #566 put the shape ahead of the take id; #572 put the
+    error ahead of the shape. Both were right and neither was enough,
+    because the error's OWN rendering buries the answer: PostgREST hands
+    back ``{'code': ..., 'details': ..., 'hint': ..., 'message': ...}`` and
+    ``message`` -- the only field naming which guard fired -- sorts last.
+
+    On a phone that reads as ``error={'code': 'P000...`` and stops. P0001
+    is merely "a plpgsql RAISE fired"; there are eight distinct ones in
+    ``record_feedback_v3_service_candidate_set_v1`` alone, and the whole
+    point of naming a condition is to say WHICH.
+
+    So the two fields that answer the question are lifted to the front and
+    the full error still follows. Identifiers and constants: these messages
+    are literals like ``FEEDBACK_V3_SERVICE_SOURCE_NOT_LIVE``. No new
+    exposure either way -- the complete error was already being logged.
+    """
+    fields: dict[str, Any] = {}
+    args = getattr(error, "args", None)
+    if isinstance(args, tuple) and args and isinstance(args[0], dict):
+        fields = args[0]
+    code = fields.get("code") or getattr(error, "code", None)
+    message = fields.get("message") or getattr(error, "message", None)
+    if not code and not message:
+        # Not a structured database error -- the type is the most useful
+        # thing available, and the full error follows on the same line.
+        return type(error).__name__
+    return f"{code or '?'}/{message or '?'}"
+
+
 def _payload_shape(value: Any) -> str:
     """One level of a payload's SHAPE, and never a byte of its content.
 
@@ -230,11 +263,12 @@ class FirstClientRepository:
             # error is a type complaint; the take id stays last. Shapes
             # only, never content -- see `_payload_shape`.
             logger.warning(
-                "Feedback V3 service candidate set failed error=%s "
-                "shape=[%s] transcript=[%s] take=%s",
-                error,
+                "Feedback V3 service candidate set failed %s "
+                "shape=[%s] transcript=[%s] raw=%s take=%s",
+                _error_head(error),
                 _payload_shape(bundle),
                 _payload_shape(bundle.get("transcript")),
+                error,
                 bundle.get("take_id"),
             )
             return None
