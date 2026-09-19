@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import unittest
 from hashlib import sha256
+from unittest.mock import PropertyMock, patch
 
 from services.ideal_text_parts import bind_pieces_to_parts
 
@@ -194,8 +195,45 @@ class _Database:
         }
 
     def record_feedback_v3_service_candidate_set(self, bundle):
+        # THE REAL REPOSITORY METHOD, not a stand-in (2026-09-19). The first
+        # version of this fake returned `{"candidate_set_id": ...}` directly
+        # and so skipped the method entirely -- its required-key check, its
+        # list/dict unwrapping, and its id comparison. That is the same kind
+        # of hole the fixtures in `test_mlc3_first_client_feedback.py` had:
+        # a harness that proves the data is good by not running the code
+        # that judges it. Only the PostgreSQL call below is faked.
         self.bundle = bundle
-        return {"candidate_set_id": bundle["candidate_set_id"]}
+        from services.first_client_repository import FirstClientRepository
+
+        rpc_result = self._candidate_set_rpc_result(bundle)
+
+        class _Client:
+            def rpc(self, _name, _payload):
+                return self
+
+            def execute(self):
+                class _R:
+                    data = rpc_result
+                return _R()
+
+        instance = FirstClientRepository.__new__(FirstClientRepository)
+        with patch.object(FirstClientRepository, "client",
+                          new_callable=PropertyMock,
+                          return_value=_Client()):
+            return instance.record_feedback_v3_service_candidate_set(bundle)
+
+    def _candidate_set_rpc_result(self, bundle):
+        """What PostgreSQL hands back on the happy path.
+
+        Overridden by the subclasses below to model the answers that are
+        NOT exceptions -- the two the caller refuses in silence.
+        """
+        return {
+            "candidate_set_id": bundle["candidate_set_id"],
+            "candidate_count": len(bundle.get("candidates") or []),
+            "selected_count": len(bundle.get("selected_keys") or []),
+            "replayed": False,
+        }
 
     def get_current_ideal_text_document_snapshot(self, _project_id):
         return {"id": SNAPSHOT, "source_take_session_id": TAKE}
@@ -299,6 +337,94 @@ class TheChainProducesFeedback(unittest.TestCase):
                    if r.get("feedback_family") == "confident_voice")
         span = row.get("span") or {}
         self.assertLessEqual(span.get("end", 10 ** 9), len(IDEAL))
+
+
+class _ReturnsNothingUsable(_Database):
+    """PostgreSQL ran the function and handed back no row."""
+
+    def _candidate_set_rpc_result(self, bundle):
+        return None
+
+
+class _ReturnsADifferentSet(_Database):
+    """A row came back, for a different candidate set."""
+
+    def _candidate_set_rpc_result(self, bundle):
+        return {"candidate_set_id": "00000000-0000-4000-8000-00000000dead"}
+
+
+class TheWriteThatSucceedsAndSaysNothing(unittest.TestCase):
+    """PRODUCTION, 2026-09-19, 23:59 — `candidate_set_write_failed` with no
+    `shape=[` line beside it.
+
+    That combination is itself the diagnosis: `shape=[` is logged only when
+    the RPC RAISES, so its absence means PostgreSQL ran the function and
+    returned cleanly. The write then failed on what came back -- and both of
+    the ways that can happen returned None with no log at all, so the log
+    could say only that something went wrong somewhere.
+    """
+
+    def setUp(self) -> None:
+        from config import Config
+        patcher = patch.object(Config, "MLC3_SERVICE_ENABLED", True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_no_usable_row_now_names_itself(self):
+        from services.mlc3_first_client_feedback import V3Unavailable
+        with self.assertLogs(
+            "services.first_client_repository", level="WARNING",
+        ) as caught:
+            result = run_chain(_ReturnsNothingUsable())
+        self.assertIsInstance(result, V3Unavailable)
+        assert isinstance(result, V3Unavailable)
+        self.assertEqual(result.reason, "candidate_set_write_failed")
+        self.assertIn("returned no usable row", caught.output[0])
+        self.assertIn("kind=NoneType", caught.output[0])
+
+    def test_a_different_candidate_set_names_both_ids(self):
+        from services.mlc3_first_client_feedback import V3Unavailable
+        with self.assertLogs(
+            "services.first_client_repository", level="WARNING",
+        ) as caught:
+            result = run_chain(_ReturnsADifferentSet())
+        self.assertIsInstance(result, V3Unavailable)
+        self.assertIn("id mismatch", caught.output[0])
+        self.assertIn("0000dead", caught.output[0])
+
+    def test_the_happy_path_logs_nothing(self):
+        # A diagnostic that fires on success is a diagnostic people filter
+        # out, and then it is not there when it matters.
+        import logging
+        with self.assertNoLogs(
+            "services.first_client_repository", level=logging.WARNING,
+        ):
+            run_chain()
+
+    def test_the_real_repository_method_is_what_runs(self):
+        # THE HOLE THIS CLASS CLOSES. The first version of the fake returned
+        # `{"candidate_set_id": ...}` directly, so the method that judges the
+        # bundle never executed. Proven here by its required-key check: strip
+        # a key and the REAL method must refuse before the RPC, naming the
+        # field. A stand-in would happily return success.
+        class _Incomplete(_Database):
+            def record_feedback_v3_service_candidate_set(self, bundle):
+                return super().record_feedback_v3_service_candidate_set(
+                    {k: v for k, v in bundle.items() if k != "input_hash"})
+
+        with self.assertLogs(
+            "services.first_client_repository", level="WARNING",
+        ) as caught:
+            run_chain(_Incomplete())
+        self.assertIn("missing=input_hash", caught.output[0])
+
+    def test_the_chain_still_produces_rows_through_the_real_method(self):
+        # And the happy path is unchanged by routing through it.
+        from services.mlc3_first_client_feedback import V3Unavailable
+        result = run_chain()
+        self.assertNotIsInstance(result, V3Unavailable)
+        assert result is not None
+        self.assertGreaterEqual(len(result), 1)
 
 
 if __name__ == "__main__":  # pragma: no cover

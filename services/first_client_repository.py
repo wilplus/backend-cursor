@@ -182,8 +182,34 @@ class FirstClientRepository:
             ).execute()
             data = result.data
             if isinstance(data, list):
-                return data[0] if data and isinstance(data[0], dict) else None
-            return data if isinstance(data, dict) else None
+                data = data[0] if data and isinstance(data[0], dict) else None
+            if not isinstance(data, dict):
+                # THE WRITE THAT SUCCEEDED AND SAID NOTHING (2026-09-19).
+                # This returned None with no log, and the caller turns that
+                # into `candidate_set_write_failed` -- indistinguishable,
+                # from the outside, from the RPC raising. So a Take could
+                # stand down having reached PostgreSQL, run the whole
+                # function, come back clean, and leave no trace of what came
+                # back. Fourth shape of the same defect in one day; same
+                # answer. Kind only, never content.
+                logger.warning(
+                    "Feedback V3 service candidate set returned no usable "
+                    "row kind=%s take=%s",
+                    type(result.data).__name__, bundle.get("take_id"),
+                )
+                return None
+            returned = str(data.get("candidate_set_id") or "").strip().lower()
+            sent = str(bundle.get("candidate_set_id") or "").strip().lower()
+            if sent and returned != sent:
+                # The caller refuses on exactly this and could not say why.
+                # Both ids are ours -- `_stable_uuid` output and a UUID
+                # column -- so neither is content.
+                logger.warning(
+                    "Feedback V3 service candidate set id mismatch "
+                    "returned=%s sent=%s take=%s",
+                    returned or "∅", sent, bundle.get("take_id"),
+                )
+            return data
         except Exception as error:
             # SHAPE FIRST, then the error, then the id -- the same ordering
             # `_decline` learned on 2026-09-19, because a 36-character take id
