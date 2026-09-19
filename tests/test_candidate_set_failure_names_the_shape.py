@@ -156,11 +156,91 @@ class ItLeaksNothing(unittest.TestCase):
             })
         line = caught.output[0]
         message = line.split(":", 2)[-1]
-        self.assertLess(message.index("error="), 60)
-        self.assertLess(line.index("error="), line.index("shape=["))
+        self.assertLess(message.index("RuntimeError"), 60)
         self.assertLess(line.index("shape=["), line.index("take="))
-        # And the error itself is the first thing after the label.
-        self.assertIn("error=22P02", line)
+
+
+class TheGuardThatFiredIsTheFirstThingOnTheLine(unittest.TestCase):
+    """THIRD CORRECTION TO ONE LINE (2026-09-20), and the last layer.
+
+    #566 put the shape ahead of the take id. #572 put the error ahead of
+    the shape. Both right, neither enough: PostgREST renders
+    ``{'code': ..., 'details': ..., 'hint': ..., 'message': ...}`` and
+    ``message`` -- the only field naming WHICH guard fired -- sorts last.
+    On a phone that reads ``error={'code': 'P000...`` and stops, and
+    ``P0001`` means only "some plpgsql RAISE fired"; there are eight in
+    this one function.
+    """
+
+    def _line(self, raised: Exception) -> str:
+        from services import first_client_repository as repo
+
+        class _Boom:
+            def rpc(self, *_args, **_kwargs):
+                raise raised
+
+        instance = repo.FirstClientRepository.__new__(
+            repo.FirstClientRepository)
+        with patch.object(
+            repo.FirstClientRepository, "client",
+            new_callable=PropertyMock, return_value=_Boom(),
+        ), self.assertLogs(
+            "services.first_client_repository", level="WARNING",
+        ) as caught:
+            instance.record_feedback_v3_service_candidate_set({
+                "owner_principal_id": "o", "project_id": "p",
+                "take_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "candidates": [{}], "selected_keys": [{}],
+                "versions": {"v": 1}, "input_hash": "h",
+                "idempotency_key": "feedback-exposure:" + "x" * 130,
+                "transcript": {"text": SECRET},
+            })
+        return caught.output[0]
+
+    def test_the_postgres_code_and_message_lead(self):
+        # The exact production shape: a dict in args[0], message last.
+        error = Exception({
+            "code": "P0001",
+            "details": None,
+            "hint": None,
+            "message": "FEEDBACK_V3_SERVICE_SOURCE_NOT_LIVE",
+        })
+        line = self._line(error)
+        body = line.split(":", 2)[-1]
+        self.assertLess(body.index("P0001/FEEDBACK_V3_SERVICE_SOURCE_NOT_LIVE"),
+                        60)
+        self.assertLess(line.index("P0001/"), line.index("shape=["))
+
+    def test_the_full_error_still_follows(self):
+        # The head is a convenience, not a replacement: `details` and `hint`
+        # were what solved the 22P02, so nothing may be dropped.
+        line = self._line(Exception({
+            "code": "22P02", "details": 'Token "feedback" is invalid.',
+            "message": "invalid input syntax for type json",
+        }))
+        self.assertIn("raw=", line)
+        self.assertIn('Token "feedback" is invalid.', line)
+
+    def test_an_error_with_attributes_rather_than_a_dict(self):
+        class _ApiError(Exception):
+            code = "P0001"
+            message = "FEEDBACK_V3_SERVICE_LEDGER_INCOMPLETE"
+
+        self.assertIn("P0001/FEEDBACK_V3_SERVICE_LEDGER_INCOMPLETE",
+                      self._line(_ApiError("boom")))
+
+    def test_a_plain_exception_falls_back_to_its_type(self):
+        # Never blank, and never a guess.
+        self.assertIn("TimeoutError", self._line(TimeoutError("slow")))
+
+    def test_the_head_leaks_no_transcript(self):
+        from services.first_client_repository import _error_head
+        self.assertNotIn(SECRET, _error_head(Exception({
+            "code": "P0001", "message": SECRET[:0] or "GUARD",
+        })))
+        self.assertNotIn(SECRET, self._line(Exception({
+            "code": "P0001", "message": "GUARD",
+        })))
 
     def test_the_shape_leads_the_line_not_the_take_id(self):
         # Same ordering lesson as `_decline`: a 36-character id in front of
