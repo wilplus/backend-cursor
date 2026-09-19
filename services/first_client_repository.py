@@ -18,6 +18,42 @@ _SERVICE_OPERATION_MODES = (
 )
 
 
+def _payload_shape(value: Any) -> str:
+    """One level of a payload's SHAPE, and never a byte of its content.
+
+    WHY SHAPE AND NOT THE PAYLOAD (2026-09-19). The candidate-set write began
+    answering 22P02 `invalid input syntax for type json`, detail
+    `Token "feedback" is invalid` -- which is the JSON lexer reading a bare
+    word and stopping at a `-`, and the only `feedback-` strings in this call
+    are the bundle's own `idempotency_key` (`feedback-exposure:...`) and one
+    SQL literal. So some text is being read as JSON, and the fastest way to
+    find which field is to see which of them is a string that should not be.
+
+    The bundle carries the speaker's transcript. Logging it to diagnose a type
+    error would trade a day of debugging for a permanent copy of someone's
+    words in a log aggregator, so this renders KINDS and LENGTHS only:
+    `o`bject, `a`rray, `s`tring, `b`ool, `n`ull, each with its size. A field
+    that is `s` where the SQL expects an object is the answer, and no content
+    is needed to see it.
+    """
+    if not isinstance(value, dict):
+        return f"<{type(value).__name__}>"
+    def kind(item: Any) -> str:
+        if isinstance(item, bool):
+            return "b"
+        if item is None:
+            return "n"
+        if isinstance(item, dict):
+            return f"o{len(item)}"
+        if isinstance(item, list):
+            return f"a{len(item)}"
+        if isinstance(item, str):
+            return f"s{len(item)}"
+        return type(item).__name__
+    return " ".join(f"{key}={kind(item)}"
+                    for key, item in sorted(value.items()))
+
+
 class FirstClientRepository:
     """RPC/read facade for the gated first-client service."""
 
@@ -122,7 +158,16 @@ class FirstClientRepository:
             "owner_principal_id", "project_id", "take_id", "candidates",
             "selected_keys", "versions", "input_hash", "idempotency_key",
         )
-        if any(not bundle.get(key) for key in required):
+        missing = [key for key in required if not bundle.get(key)]
+        if missing:
+            # NOT SILENT (2026-09-19). This returned None with no log, and the
+            # caller reports `candidate_set_write_failed` for it -- identical
+            # to an RPC error from the outside. Key NAMES only: which field is
+            # empty is the diagnosis, and its value is the speaker's.
+            logger.warning(
+                "Feedback V3 service candidate set incomplete missing=%s "
+                "take=%s", ",".join(missing), bundle.get("take_id"),
+            )
             return None
         try:
             result = self.client.rpc(
@@ -140,9 +185,16 @@ class FirstClientRepository:
                 return data[0] if data and isinstance(data[0], dict) else None
             return data if isinstance(data, dict) else None
         except Exception as error:
+            # SHAPE FIRST, then the error, then the id -- the same ordering
+            # `_decline` learned on 2026-09-19, because a 36-character take id
+            # in front of the answer means the line is clipped before anyone
+            # reads it. Shapes only; see `_payload_shape`.
             logger.warning(
-                "Feedback V3 service candidate set failed take=%s: %s",
-                bundle.get("take_id"), error,
+                "Feedback V3 service candidate set failed shape=[%s] "
+                "transcript=[%s] error=%s take=%s",
+                _payload_shape(bundle),
+                _payload_shape(bundle.get("transcript")),
+                error, bundle.get("take_id"),
             )
             return None
 
