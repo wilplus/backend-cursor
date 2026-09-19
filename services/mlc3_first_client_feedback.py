@@ -34,6 +34,13 @@ class V3Unavailable(NamedTuple):
 
     `None` now means only "not applicable". Everything past the gate returns
     one of these, and the caller surfaces it instead of quietly serving V2.
+
+    ONE FIELD, AND IT STAYS ONE. A second field carrying the named gate out
+    to `feedback_status` was written and removed on 2026-09-19: it would have
+    made the leak of a raw `str(exc)` a matter of convention — pass the right
+    string to the right parameter — where one field makes it impossible. The
+    diagnosis belongs in the log, and the log was made readable instead (see
+    `_decline`).
     """
 
     reason: str
@@ -94,10 +101,27 @@ def _decline(take_id: Any, reason: str, detail: str = "") -> V3Unavailable:
     It stays OUT of `V3Unavailable`: the reason code is what the client is
     handed, and a database error string is a server diagnostic, not a
     payload. Nothing here asserts anything about the speaker.
+
+    SO THE LOG HAS TO BE READABLE, because it is the only copy (2026-09-19).
+    Carrying the named gate out to `feedback_status` instead was written and
+    removed the same day: it would have made the leak of a raw `str(exc)` a
+    matter of passing the right string to the right parameter, where one
+    field on `V3Unavailable` makes it impossible. The fix belongs here.
     """
-    logger.info("first_client: v3 stood down take=%s reason=%s%s",
-                take_id or "?", reason,
-                f" detail={detail}" if detail else "")
+    # MOST SPECIFIC FIRST, WIDEST LAST, and that is not cosmetic. Founder,
+    # 2026-09-19, on the third attempt to read one of these from a phone: a
+    # log list shows roughly the first sixty characters of a message, and a
+    # take id is 36 of them. With the id second, every line clipped before
+    # `reason=` and the whole account might as well not have been written.
+    #
+    # `detail` leads rather than `reason`, which is the second thing this got
+    # wrong: `reason=service_inventory_unavailable` is 36 characters of a
+    # value that six gates share, so leading with it clipped the one field
+    # that says WHICH — the answer arriving just too late to be read.
+    logger.info("first_client: v3 stood down%s reason=%s take=%s",
+                f" detail={detail}" if detail else "",
+                reason,
+                take_id or "?")
     # Returned, not raised, so `return _decline(...)` stays one statement at
     # each of the eleven exits. Splitting them into a log line plus a bare
     # return is twenty-two lines in which one exit can quietly lose its log
