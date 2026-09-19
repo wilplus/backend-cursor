@@ -162,8 +162,7 @@ _FRONTEND_COMMITS = (
     "9f740756",  # 2026-09-18  last revision holding "opt-in and off by default"
     "f4607888",  # 2026-09-18  acceptance screen (#389)
     "c9a42974",  # 2026-09-18  landing; the CTA stops claiming consent (#400)
-    "cf0e5380",  # 2026-09-19  Art 50(2) marking: surfaces, clipboard, docx
-    "e6f41b3c",  # 2026-09-19  Art 50(2) marking: the hand-assembled PDF export
+    "ae212ee9",  # 2026-09-19  Art 50(2) marking of generated text (#406)
 )
 
 
