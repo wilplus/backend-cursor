@@ -5,7 +5,7 @@ branch `main`/PRODUCTION) using `acceptance-window-split.sql` in this directory.
 Read-only; four `SELECT`s.
 
 This file records the output. **It changes no conclusion in the pack** — the
-provenance table in `accepted-versions/README.md` and counsel question Q-E in
+provenance table in `legal/phase1-2026.1/accepted-versions/README.md` and counsel question Q-E in
 `09-counsel-cover-note.md` still say the count is not established, and both are
 on `claude/wonderful-cori-mayrpq`, which has not merged. They are updated from
 this file once it does. The numbers are written down here so they are not
@@ -122,7 +122,7 @@ Neither edit is made here — both files are on `claude/wonderful-cori-mayrpq`,
 which has not merged, and editing them from another branch would collide with
 the branch that owns them.
 
-1. `accepted-versions/README.md` — the provenance table's "count not yet
+1. `legal/phase1-2026.1/accepted-versions/README.md` — the provenance table's "count not yet
    established" cells become 22 and 4, with the note that no user accepted both.
 2. `09-counsel-cover-note.md` Q-E — rewritten for **two** accepted documents
    naming two different counterparties, carrying the `terms_version` = 1.0

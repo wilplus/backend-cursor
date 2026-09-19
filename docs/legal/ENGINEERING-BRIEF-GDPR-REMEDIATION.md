@@ -188,7 +188,7 @@ Supabase dashboards, DNS, and the Railway per-service variables.
 - **Do not** change `services/voice_confidence.py` semantics, remove the
   speaker-relative baseline, or rename the construct. Those are live options in the
   counsel memo (Q4) and F1-CORE surface area. **They wait for the opinion.**
-- **Do not** edit `privacy/page.tsx` or `terms/page.tsx`. Copy is fenced under
+- **Do not** edit `src/app/privacy/page.tsx` or `src/app/terms/page.tsx` (frontend-cursor). Copy is fenced under
   LIVE LOOP; the amendments are drafted at
   `docs/legal/COPY-AMENDMENT-PROPOSAL-v1.3.md` awaiting founder sign-off.
 - **Do not** activate `mlc2-split-consent-v2.json`. It is DRAFT by design.

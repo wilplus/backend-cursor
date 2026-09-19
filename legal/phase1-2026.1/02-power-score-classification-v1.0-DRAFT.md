@@ -430,7 +430,9 @@ A qualified lawyer may disagree.
 
 The determination in §7.2 rests on the framing that the composite measures how a
 delivery *sounds* rather than how a speaker *feels*. Two things in the code said
-the opposite. **Both have since been changed** (commit `81369c0`, 2026-09-17):
+the opposite. **Both have since been changed** (commit `e5e02d6` on `main`,
+2026-09-17, *"Phase-1 legal pack, band-label rename, retention seed and the
+consent-version findings"*, #544):
 
 1. ~~Rename the `band()` labels.~~ **Done.** `confident` / `close_to_confident` /
    `neutral` / `unconfident` / `doubtful` are now `delivery_signal_high` /

@@ -360,10 +360,40 @@ def v2_explore_arc_voice_album(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
 
 
+def _arc_topic(sessions):
+    """The project's display title: the latest Take's intake topic, or None.
+
+    Same rule as /v2/user/trainings on purpose — a project must read by the
+    same name everywhere, and the name is never its identity (the arc id is).
+    """
+    topic = None
+    for session in sorted(sessions or [],
+                          key=lambda s: (s.get("take_index") or 0)):
+        context = session.get("intake_context")
+        context = context if isinstance(context, dict) else {}
+        value = context.get("topic")
+        if isinstance(value, str) and value.strip():
+            topic = value.strip()
+    return topic
+
+
 @v2_bp.route("/voice-album", methods=["GET"])
 @require_auth
 def v2_voice_album():
-    """The signed-in user's canonical cross-project Voice Album."""
+    """The signed-in user's canonical cross-project Voice Album.
+
+    Two shapes of the same rows, because the surface reads them two ways
+    (founder 2026-09-18: "the voices should be stored by project"):
+
+      * ``projects`` — one group per project, each carrying its title and its
+        moments in PRESENTATION order (slide ascending, unplaced last). This
+        is what the Album screen scrolls: a project's moments, then the next
+        project's, in the order the user recorded the projects.
+      * ``entries``  — the flat newest-first list the previous read served.
+        Kept so an older client keeps working through a deploy.
+
+    AC-9 unchanged: position, playback and words only, never a score.
+    """
     try:
         sessions = db.takes.v2_list_user_lab_sessions(str(request.user_id)) or []
         by_arc: dict = {}
@@ -371,14 +401,282 @@ def v2_voice_album():
             arc_id = str(session.get("arc_id") or "")
             if arc_id:
                 by_arc.setdefault(arc_id, []).append(session)
+
+        projects = []
         entries = []
         for arc_id, arc_sessions in by_arc.items():
-            for entry in _serialize_arc_voice_album(arc_id, arc_sessions):
+            serialized = _serialize_arc_voice_album(arc_id, arc_sessions)
+            if not serialized:
+                # A project with no aligned moment is not a silent empty row
+                # in the list — it simply is not in the Album yet.
+                continue
+            created = min(
+                (str(s.get("created_at") or "") for s in arc_sessions),
+                default="",
+            )
+            projects.append({
+                "arc_id": arc_id,
+                "title": _arc_topic(arc_sessions),
+                "created_at": created or None,
+                "entries": serialized,
+            })
+            for entry in serialized:
                 entries.append({"arc_id": arc_id, **entry})
+
+        projects.sort(key=lambda p: str(p.get("created_at") or ""))
         entries.sort(key=lambda item: str(item.get("entered_at") or ""), reverse=True)
-        return jsonify({"entries": entries}), 200
+        return jsonify({"projects": projects, "entries": entries}), 200
     except Exception as error:
         logger.error("voice-album failed user=%s: %s", request.user_id, error,
+                     exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+
+
+def _album_entry_for(arc_id, moment_key):
+    """The Album row behind one moment key, or None when it is not in it.
+
+    The Album is a mirror, so this doubles as the authorization check for the
+    history and note routes: a moment that no longer aligns has no row, and a
+    moment that was never in the Album never had one.
+    """
+    from services.voice_album_history import split_moment_key
+    kind, target = split_moment_key(moment_key)
+    for row in (db.list_voice_album(str(arc_id)) or []):
+        if not isinstance(row, dict):
+            continue
+        if kind == "practice_attempt":
+            if (row.get("source_kind") == "practice_attempt"
+                    and str(row.get("practice_attempt_id") or "") == target):
+                return row
+        elif (row.get("source_kind") != "practice_attempt"
+                and str(row.get("snippet_id") or "") == target):
+            return row
+    return None
+
+
+@v2_bp.route("/voice-album/moment-history", methods=["GET"])
+@require_auth
+def v2_voice_album_moment_history():
+    """Where one Album moment came from (founder 2026-09-18).
+
+    Query: ``arc`` (project id) and ``moment`` (the moment key the Album read
+    served — a snippet id, or ``practice:<attempt_id>``).
+
+    Response 200 {"arc_id", "moment_key", "origin": {take_index, slide_index,
+    at, source}, "events": [...]} in chronological order. Event kinds:
+    ``owner_answer``, ``coach_agreed``, ``exercise`` (with its video and the
+    owner's attempts), ``note``.
+
+    NO score, ratio, confidence value or verdict in any lane (AC-9), and the
+    coach is never named. 400 BAD_REQUEST · 404 NOT_FOUND · 500 V2_ERROR
+    """
+    arc_id = (request.args.get("arc") or "").strip()
+    moment_key = (request.args.get("moment") or "").strip()
+    if not arc_id or not moment_key:
+        return jsonify({"code": "BAD_REQUEST",
+                        "error": "arc and moment are required"}), 400
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "arc not found"}), 404
+        entry = _album_entry_for(arc_id, moment_key)
+        if not entry:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "moment not found"}), 404
+
+        session_id = str(entry.get("take_session_id") or "")
+        session = next(
+            (s for s in sessions if str(s.get("id")) == session_id), {},
+        )
+        entry = dict(entry, published_at=session.get("results_published_at"))
+
+        from services.voice_album_history import build_moment_history
+        history = build_moment_history(
+            arc_id=arc_id,
+            moment_key=moment_key,
+            owner_user_id=str(request.user_id),
+            entry=entry,
+            take_index=session.get("take_index"),
+            database=db,
+            resolve_audio=_resolve_feedback_audio,
+        )
+        return jsonify(history), 200
+    except Exception as error:
+        logger.error("voice-album moment-history failed arc=%s: %s",
+                     arc_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+
+
+@v2_bp.route("/voice-album/practice-queue", methods=["GET"])
+@require_auth
+def v2_voice_album_practice_queue():
+    """Clips still waiting for the owner's Confident Voice answer.
+
+    The "Practice new" half of the Album (founder 2026-09-18): every clip of
+    the caller's the star lane marked confident and the caller has not
+    answered yet, in project order, then Take, then slide.
+
+    Response 200 {"mine": [{snippet_id, arc_id, arc_title, take_session_id,
+    take_index, slide_index, audio_url, start_offset_ms, duration_ms}],
+    "general": [], "general_available": false}.
+
+    ``general`` is the coach-uploaded shared corpus for blind rating — a
+    Phase-2 path, disabled until separately authorized. It reports itself
+    unavailable rather than returning an empty list that reads like "done".
+
+    AC-9: playback and position only. 500 V2_ERROR
+    """
+    try:
+        sessions = db.takes.v2_list_user_lab_sessions(str(request.user_id)) or []
+        by_arc: dict = {}
+        for session in sessions:
+            arc_id = str(session.get("arc_id") or "")
+            if arc_id:
+                by_arc.setdefault(arc_id, []).append(session)
+
+        ordered = sorted(
+            by_arc.items(),
+            key=lambda pair: min(
+                (str(s.get("created_at") or "") for s in pair[1]), default=""),
+        )
+        titles = {arc_id: _arc_topic(arc_sessions)
+                  for arc_id, arc_sessions in ordered}
+
+        from services.voice_album_practice_queue import build_practice_queue
+        mine = build_practice_queue(
+            sessions_by_arc=dict(ordered),
+            titles_by_arc=titles,
+            database=db,
+            resolve_audio=_resolve_snippet_audio_url,
+        )
+        return jsonify({"mine": mine, "general": [],
+                        "general_available": False}), 200
+    except Exception as error:
+        logger.error("voice-album practice-queue failed user=%s: %s",
+                     request.user_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+
+
+@v2_bp.route("/voice-album/practice-answer", methods=["POST"])
+@require_auth
+def v2_voice_album_practice_answer():
+    """The owner's five-state answer on one of their own pending clips.
+
+    Body {"arc_id", "take_session_id", "snippet_id", "response"} where
+    ``response`` is one of yes / in_between / no / not_sure / audio_unclear.
+    Stored WHOLE — none of the five is folded into another on the way in.
+
+    It writes owner ROUTING on the clip, not a response to a Manager card: a
+    card only exists once the Take's review has been opened, and minting one
+    here would change what counts as exposed for the Manager's budget (L2).
+    No training, quorum, calibration, evaluation, SFT or DPO reader consumes
+    the table it lands in (L3).
+
+    Only a ``yes`` can help a moment into the Album, and only alongside the
+    machine and coach legs — the reconciliation below can therefore add a
+    moment but never manufacture one. It is best-effort and never fails the
+    answer (LIVE LOOP).
+
+    400 BAD_REQUEST · 404 NOT_FOUND · 500 V2_ERROR
+    """
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
+    arc_id = str(payload.get("arc_id") or "").strip()
+    session_id = str(payload.get("take_session_id") or "").strip()
+    snippet_id = str(payload.get("snippet_id") or "").strip()
+    if not arc_id or not session_id or not snippet_id:
+        return jsonify({"code": "BAD_REQUEST",
+                        "error": "arc_id, take_session_id and snippet_id "
+                                 "are required"}), 400
+
+    from services.voice_album_routing import five_state_response
+    response, error = five_state_response(payload)
+    if error:
+        return jsonify({"code": "BAD_REQUEST", "error": error}), 400
+
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned or not any(str(s.get("id")) == session_id
+                                for s in sessions):
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "take not found"}), 404
+
+        from services.voice_album_practice_queue import record_practice_answer
+        saved, failure = record_practice_answer(
+            arc_id=arc_id, take_session_id=session_id,
+            snippet_id=snippet_id, response=response,
+            owner_user_id=str(request.user_id), database=db,
+        )
+        if failure == "clip_not_found":
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "clip not found"}), 404
+        if not saved:
+            logger.error("voice_album practice-answer write refused arc=%s "
+                         "(migration missing? migrations/"
+                         "widen_owner_voice_album_routing_to_five_states.sql)",
+                         arc_id)
+            return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+        return jsonify({"saved": True, "response": response}), 201
+    except Exception as error:
+        logger.error("voice-album practice-answer failed arc=%s: %s",
+                     arc_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+
+
+@v2_bp.route("/voice-album/note", methods=["POST"])
+@require_auth
+def v2_voice_album_note():
+    """Append the owner's own note to one Album moment.
+
+    Body {"arc_id", "moment_key", "body"}. The note is personal recall, not a
+    rating: it is stored in its own table, scoped to its writer, and no
+    training, quorum, calibration, evaluation or Album-admission path reads
+    it (L3). Writing one never moves a moment into or out of the Album.
+
+    400 BAD_REQUEST · 404 NOT_FOUND · 500 V2_ERROR
+    """
+    payload = request.get_json(silent=True)
+    payload = payload if isinstance(payload, dict) else {}
+    arc_id = str(payload.get("arc_id") or "").strip()
+    moment_key = str(payload.get("moment_key") or "").strip()
+    body = str(payload.get("body") or "").strip()
+    if not arc_id or not moment_key:
+        return jsonify({"code": "BAD_REQUEST",
+                        "error": "arc_id and moment_key are required"}), 400
+    if not body:
+        return jsonify({"code": "BAD_REQUEST",
+                        "error": "body: write something first"}), 400
+    if len(body) > 2000:
+        return jsonify({"code": "BAD_REQUEST",
+                        "error": "body: too long"}), 400
+    try:
+        owned, _sessions = _arc_owned_by_caller(arc_id)
+        if not owned or not _album_entry_for(arc_id, moment_key):
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "moment not found"}), 404
+        saved = db.insert_voice_album_note(
+            arc_id=arc_id, moment_key=moment_key,
+            owner_user_id=str(request.user_id), body=body,
+        )
+        if not saved:
+            logger.error("voice_album note insert returned nothing arc=%s "
+                         "(migration missing? "
+                         "migrations/add_voice_album_notes.sql)", arc_id)
+            return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+        return jsonify({"note": {
+            "kind": "note",
+            "who": "You",
+            "at": saved.get("created_at"),
+            "body": str(saved.get("body") or ""),
+            "note_id": str(saved.get("id") or "") or None,
+        }}), 201
+    except Exception as error:
+        logger.error("voice-album note failed arc=%s: %s", arc_id, error,
                      exc_info=True)
         sentry_sdk.capture_exception(error)
         return jsonify({"code": "V2_ERROR", "error": "failed"}), 500

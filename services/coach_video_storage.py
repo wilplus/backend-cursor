@@ -178,8 +178,15 @@ def refreshed_media_url(ref: Optional[str]) -> Optional[str]:
             # until the user reloads the route. A week of headroom on a URL
             # that is re-minted every read costs nothing and removes that
             # whole class of report.
+            #
+            # THE BUCKET COMES FROM THE REF, NOT THE DEFAULT (2026-09-18).
+            # Passing "" here signed every ref against the coach bucket, so a
+            # ref minted on any of the four other public bases became a valid
+            # signature over a key that bucket does not hold — a 404 in place
+            # of a URL that had been working. `media_ref_bucket` returns None
+            # when it cannot place the ref, and "" keeps today's default.
             return presigned_get_coach_object(
-                "", key, expires_in=_DECK_REF_TTL,
+                media_ref_bucket(raw) or "", key, expires_in=_DECK_REF_TTL,
             ) or ref
         if not raw.lower().startswith(("http://", "https://")):
             return ref
@@ -254,16 +261,73 @@ def media_key_from_ref(ref: Any) -> Optional[str]:
     return None
 
 
+#: Each public base and the bucket it actually serves. A public development
+#: domain belongs to ONE bucket, so the base a stored ref was minted on is what
+#: names the bucket its key lives in. "" means the coach default, which
+#: `r2_bucket_name()` resolves (R2_BUCKET_NAME, else COACH_FEEDBACK_VIDEO_BUCKET).
+_PUBLIC_BASE_BUCKETS: tuple = (
+    ("R2_PUBLIC_BASE_URL", ""),
+    ("R2_AUDIO_PUBLIC_BASE_URL", "R2_AUDIO_BUCKET_NAME"),
+    ("R2_LAB_AUDIO_PUBLIC_BASE_URL", "R2_LAB_AUDIO_BUCKET"),
+    ("R2_JOURNAL_PUBLIC_BASE_URL", "R2_JOURNAL_BUCKET"),
+    ("R2_USER_MEDIA_PUBLIC_BASE_URL", "R2_USER_MEDIA_BUCKET"),
+)
+
+
 def _our_public_bases() -> list:
     c = _config()
     bases = []
-    for attr in ("R2_PUBLIC_BASE_URL", "R2_AUDIO_PUBLIC_BASE_URL",
-                 "R2_LAB_AUDIO_PUBLIC_BASE_URL", "R2_JOURNAL_PUBLIC_BASE_URL",
-                 "R2_USER_MEDIA_PUBLIC_BASE_URL"):
+    for attr, _bucket_attr in _PUBLIC_BASE_BUCKETS:
         value = (getattr(c, attr, None) or "").strip().rstrip("/")
         if value:
             bases.append(value)
     return bases
+
+
+def media_ref_bucket(ref: Any) -> Optional[str]:
+    """The bucket a stored ref's key lives in, or ``None`` for the default.
+
+    SIGN AGAINST THE RIGHT BUCKET (2026-09-18). `refreshed_media_url` re-signs
+    user content from its KEY, and it was signing every one of them against the
+    coach bucket — because `media_key_from_ref` returns a key and throws the
+    bucket away. A ref minted on the lab-audio, journal or user-media public
+    base names a key that does not exist in the coach bucket, so the refreshed
+    URL is a well-formed signature over nothing and R2 answers 404.
+
+    Five public bases exist and each belongs to exactly one bucket, so the base
+    a ref was written on IS the answer. Path-style presigned refs carry the
+    bucket in the first path segment and are read from there. Anything this
+    cannot place returns ``None``, and the caller keeps the default rather than
+    guessing a bucket.
+    """
+    if not isinstance(ref, str):
+        return None
+    raw = ref.strip()
+    if not raw:
+        return None
+    if raw.startswith("s3://"):
+        bucket, _, _key = raw[len("s3://"):].partition("/")
+        return bucket.strip() or None
+    if not raw.lower().startswith(("http://", "https://")):
+        return None
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(raw)
+    if "x-amz-signature=" in (parts.query or "").lower():
+        # Path-style: /<bucket>/<key>. Only claimed when a key follows, so a
+        # bucket-only URL cannot be mistaken for one.
+        head, sep, _rest = (parts.path or "").lstrip("/").partition("/")
+        return head if sep and head else None
+    c = _config()
+    host = f"{parts.scheme}://{parts.netloc}"
+    for attr, bucket_attr in _PUBLIC_BASE_BUCKETS:
+        base = (getattr(c, attr, None) or "").strip().rstrip("/")
+        if not base or not (raw.startswith(base + "/") or base == host):
+            continue
+        if not bucket_attr:
+            return None     # the coach default; r2_bucket_name() owns it
+        return (getattr(c, bucket_attr, None) or "").strip() or None
+    return None
 
 
 def _client():

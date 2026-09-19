@@ -9327,6 +9327,67 @@ class DatabaseService:
                 arc_id, e)
             return False
 
+    def list_voice_album_notes(
+        self, *, arc_id: str, moment_key: str, owner_user_id: str,
+    ) -> list:
+        """The owner's own notes on one Album moment, oldest first.
+
+        Scoped to the writer on purpose: a note is the user talking to
+        themselves, so it is never served to anyone else — not the coach, not
+        another owner of a shared project. [] pre-migration / on hiccup.
+        """
+        if not arc_id or not moment_key or not owner_user_id:
+            return []
+        try:
+            res = (
+                self.client.table("voice_album_notes")
+                .select("*")
+                .eq("arc_id", str(arc_id))
+                .eq("moment_key", str(moment_key))
+                .eq("owner_user_id", str(owner_user_id))
+                .order("created_at", desc=False)
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            low = str(e).lower()
+            if not ("voice_album_notes" in low
+                    and ("does not exist" in low or "pgrst" in low)):
+                logger.warning("list_voice_album_notes failed arc=%s: %s",
+                               arc_id, e)
+            return []
+
+    def insert_voice_album_note(
+        self, *, arc_id: str, moment_key: str, owner_user_id: str, body: str,
+    ) -> Optional[dict]:
+        """Append one owner note. Returns the stored row, or None on any miss.
+
+        Append-only by design: the note is a record of what the user thought
+        at that point in the moment's life, so a later note is a new row
+        rather than an edit of the last one.
+        """
+        if not arc_id or not moment_key or not owner_user_id:
+            return None
+        text = str(body or "").strip()
+        if not text:
+            return None
+        try:
+            res = (
+                self.client.table("voice_album_notes")
+                .insert({
+                    "arc_id": str(arc_id),
+                    "moment_key": str(moment_key),
+                    "owner_user_id": str(owner_user_id),
+                    "body": text[:2000],
+                })
+                .execute()
+            )
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("insert_voice_album_note failed arc=%s: %s",
+                           arc_id, e)
+            return None
+
     def delete_moment_suggestion(self, snippet_id: Optional[str]) -> bool:
         """Drop one star row — a DISMISSED star must not survive to the
         next serve/anchor pass (founder 2026-07-20 rule 2; the ledger
@@ -11667,9 +11728,17 @@ class DatabaseService:
         response: str, slide_index: Optional[int] = None,
         model_version: Optional[str] = None,
     ) -> bool:
-        """Persist routing only; never write a label or learning corpus."""
+        """Persist routing only; never write a label or learning corpus.
+
+        Accepts the instrument's five states (contract §29) plus the two
+        legacy values, which stay writable only so an older caller is not
+        broken mid-deploy; they are audit-only and no new surface sends them.
+        Widening the column's CHECK is
+        ``migrations/widen_owner_voice_album_routing_to_five_states.sql``.
+        """
+        from services.voice_album_routing import FIVE_STATES
         if (not snippet_id or not owner_user_id or not arc_id
-                or response not in ("yes", "no", "neutral", "unrateable")):
+                or response not in FIVE_STATES + ("neutral", "unrateable")):
             return False
         payload = {
             "snippet_id": str(snippet_id),
