@@ -19,10 +19,10 @@ that runbook refuses to let anyone invent in code.
 | `01-product-legal-approval-v1.0-DRAFT.md` | Lawful-basis determination for every operation performed on a recording | `processing_legal_artifacts.artifact_kind = 'product_legal_approval'` |
 | `02-power-score-classification-v1.0-DRAFT.md` | AI Act determination for what `power_score` and the voice-confidence composite actually compute | `… = 'power_score_classification'` |
 | `03-article-50-assessment-v1.0-DRAFT.md` | Article 50 transparency assessment and compliance record | `… = 'article_50_assessment'` |
-| `copy/terms-2.0-DRAFT.txt` | Terms of Service, full text | `processing_policy_versions.terms_copy` |
-| `copy/privacy-2.0-DRAFT.txt` | Privacy Policy, full text | `… .privacy_copy` |
-| `copy/ai-notice-1.0-DRAFT.txt` | AI notice, full text | `… .ai_notice_copy` |
-| `copy/agreement-1.0-DRAFT.txt` | The "I agree and continue" screen, exact words | `… .agreement_copy` |
+| `copy/terms-2.0.txt` | Terms of Service, full text | `processing_policy_versions.terms_copy` |
+| `copy/privacy-2.0.txt` | Privacy Policy, full text | `… .privacy_copy` |
+| `copy/ai-notice-1.0.txt` | AI notice, full text | `… .ai_notice_copy` |
+| `copy/agreement-1.0.txt` | The "I agree and continue" screen, exact words | `… .agreement_copy` |
 | `04-policy-registration-DRAFT.md` | Versions, countries, per-purpose lawful bases, registry control versions, the RPC payload shape | the `register_phase1_policy_v1` call |
 | `05-us-counsel-brief-DRAFT.md` | Instructions to US counsel: BIPA, CCPA, all-party consent, US terms | — (US counsel's own determination) |
 | `06-retention-schedule-v1.0-DRAFT.md` | The retention and destruction schedule | `… = 'retention_schedule'`, and the rows in `data_retention_rules` |
