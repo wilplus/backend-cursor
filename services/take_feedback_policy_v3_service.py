@@ -109,37 +109,96 @@ def _presentable(row: dict, presentation: dict) -> dict:
     return visible
 
 
+def _row_rejection(
+    raw: dict, *, candidate_key: str, snippet_id: str, source: Any,
+    span: Any, lineage: Any, document_text: str,
+) -> str | None:
+    """Which single condition rejects this candidate row, or None if none does.
+
+    THE CONDITIONS WERE OR-ED INTO TWO `if`s (2026-09-19). Ten reasons shared
+    two exits, both silent, and the caller collapsed all of them into one
+    rejected block. `detail=confidence_block_rejected:1` located the block and
+    then stopped being useful, which is the third time in one day that a typed
+    reason has named a step instead of a condition.
+
+    Split one per line so the log says which. The values carried are
+    identifiers and millisecond offsets -- lineage, not content, and not a
+    score. AC-9 is about what reaches a user; none of this does.
+    """
+    if not candidate_key:
+        return "no_candidate_id"
+    if source is None:
+        return f"snippet_not_in_document:{snippet_id or '∅'}"
+    if not isinstance(span, dict):
+        return "document_span_missing"
+    if not isinstance(lineage, dict):
+        return "clip_identity_missing"
+    if raw.get("eligibility") not in {"eligible", "excluded"}:
+        return f"eligibility_unknown:{raw.get('eligibility')!r}"
+    start, end = span.get("start"), span.get("end")
+    if not isinstance(start, int) or not isinstance(end, int):
+        return "span_bounds_not_integers"
+    if start < 0 or end <= start:
+        return f"span_inverted:{start}..{end}"
+    if end > len(document_text):
+        return f"span_past_document_end:{end}>{len(document_text)}"
+    if str(source.get("recording_id") or "") != str(
+        lineage.get("recording_id") or ""
+    ):
+        return (
+            "recording_id_mismatch:"
+            f"piece={source.get('recording_id')!r}"
+            f",clip={lineage.get('recording_id')!r}"
+        )
+    if source.get("start_offset_ms") != lineage.get("start_offset_ms"):
+        return (
+            "start_offset_mismatch:"
+            f"piece={source.get('start_offset_ms')!r}"
+            f",clip={lineage.get('start_offset_ms')!r}"
+        )
+    if source.get("duration_ms") != lineage.get("duration_ms"):
+        return (
+            "duration_mismatch:"
+            f"piece={source.get('duration_ms')!r}"
+            f",clip={lineage.get('duration_ms')!r}"
+        )
+    if not source.get("part_id"):
+        return "piece_has_no_part_id"
+    return None
+
+
 def _v3_confidence_candidate_row(
     raw: Any, *, block_id: str, block_position: int, slide_index: int,
     pieces: dict[str, dict], policy: dict, document_text: str,
     confidence_selected: dict[str, str], inventory: _V3ServiceInventory,
-    presentation: dict,
+    presentation: dict, detail: list[str] | None = None,
 ) -> bool:
+    def closed(gate: str) -> None:
+        if detail is not None:
+            detail.append(gate)
+
     if not isinstance(raw, dict):
+        closed("candidate_row_not_a_dict")
         return False
     candidate_key = str(raw.get("candidate_id") or "")
     snippet_id = str(raw.get("snippet_id") or "")
     source = pieces.get(snippet_id)
     span = raw.get("document_span")
     lineage = raw.get("clip_identity")
-    if (
-        not candidate_key or not source
-        or not isinstance(span, dict)
-        or not isinstance(lineage, dict)
-        or raw.get("eligibility") not in {"eligible", "excluded"}
-    ):
+    rejection = _row_rejection(
+        raw, candidate_key=candidate_key, snippet_id=snippet_id,
+        source=source, span=span, lineage=lineage,
+        document_text=document_text,
+    )
+    if rejection is not None:
+        closed(rejection)
         return False
+    # `_row_rejection` returning None has already proven both of these are
+    # dicts -- that is most of what it checks. Re-stating it is how the proof
+    # reaches the type checker, which cannot follow it across the call. Same
+    # device `ideal_text_core_snapshot` uses for `provenance_rows`.
+    assert isinstance(span, dict) and isinstance(source, dict)
     start, end = span.get("start"), span.get("end")
-    if (
-        not isinstance(start, int) or not isinstance(end, int)
-        or start < 0 or end <= start or end > len(document_text)
-        or str(source.get("recording_id") or "")
-        != str(lineage.get("recording_id") or "")
-        or source.get("start_offset_ms") != lineage.get("start_offset_ms")
-        or source.get("duration_ms") != lineage.get("duration_ms")
-        or not source.get("part_id")
-    ):
-        return False
     is_selected = candidate_key in confidence_selected
     if is_selected:
         inventory.position += 1
@@ -194,23 +253,40 @@ def _v3_confidence_candidate_row(
 def _v3_confidence_block(
     block: Any, block_position: int, *, pieces: dict[str, dict],
     policy: dict, document_text: str, confidence_selected: dict[str, str],
-    inventory: _V3ServiceInventory,
+    inventory: _V3ServiceInventory, detail: list[str] | None = None,
 ) -> bool:
+    def closed(gate: str) -> None:
+        if detail is not None:
+            detail.append(gate)
+
     if not isinstance(block, dict):
+        closed("block_not_a_dict")
         return False
     block_id = str(block.get("block_id") or "")
     slide_index = block.get("slide_index")
-    if not block_id or not isinstance(slide_index, int):
+    if not block_id:
+        closed("block_has_no_id")
+        return False
+    if not isinstance(slide_index, int):
+        closed(f"block_slide_index_not_an_int:{slide_index!r}")
         return False
     presentation = _block_presentation(block, block_id)
-    for raw in block.get("confidence_candidates") or []:
+    candidates = block.get("confidence_candidates") or []
+    if not candidates:
+        # Not itself a rejection -- an empty block passes below, exactly as it
+        # did before -- but worth naming, because a partition that produced no
+        # candidate at all is a different fault from one whose candidate was
+        # malformed, and the two are indistinguishable downstream.
+        closed(f"block_has_no_candidates:{block_id}")
+    for row_position, raw in enumerate(candidates, 1):
         if not _v3_confidence_candidate_row(
             raw, block_id=block_id, block_position=block_position,
             slide_index=slide_index, pieces=pieces, policy=policy,
             document_text=document_text,
             confidence_selected=confidence_selected, inventory=inventory,
-            presentation=presentation,
+            presentation=presentation, detail=detail,
         ):
+            closed(f"at_candidate:{row_position}")
             return False
     return True
 
@@ -355,7 +431,7 @@ def prepare_v3_service_inventory(
         if not _v3_confidence_block(
             block, block_position, pieces=pieces, policy=policy,
             document_text=document_text, confidence_selected=confidence_selected,
-            inventory=inventory,
+            inventory=inventory, detail=detail,
         ):
             closed(f"confidence_block_rejected:{block_position}")
             return None

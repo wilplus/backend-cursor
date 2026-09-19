@@ -66,7 +66,91 @@ class TestTheGateNamesItself:
             {**VALID_FRAME, "blocks": [{"block_id": "b1"}]}, VALID_DOC,
         )
         assert out is None
-        assert detail == ["confidence_block_rejected:1"]
+        assert detail == [
+            "block_slide_index_not_an_int:None",
+            "confidence_block_rejected:1",
+        ]
+
+
+class TestTheChainReadsInsideOut:
+    """The condition, then where it was, then which gate it closed.
+
+    `detail=confidence_block_rejected:1` located a block and then stopped
+    being useful, because the check under it has ten conditions sharing two
+    silent exits. Production needed a second round trip to get past it, which
+    is the cost this whole mechanism exists to avoid.
+    """
+
+    def test_a_malformed_candidate_names_the_condition_and_its_position(self):
+        out, detail = _prepare(
+            {**VALID_FRAME, "blocks": [
+                {"block_id": "b1", "slide_index": 0,
+                 "confidence_candidates": [{}]},
+            ]},
+            VALID_DOC,
+        )
+        assert out is None
+        assert detail == [
+            "no_candidate_id", "at_candidate:1", "confidence_block_rejected:1",
+        ]
+
+    def test_a_snippet_the_document_does_not_have(self):
+        # The likeliest real fault: a candidate cites a snippet id that is not
+        # among the document's pieces, so its lineage can never be checked.
+        out, detail = _prepare(
+            {**VALID_FRAME, "blocks": [
+                {"block_id": "b1", "slide_index": 0, "confidence_candidates": [
+                    {"candidate_id": "c1", "snippet_id": "missing-snippet"},
+                ]},
+            ]},
+            VALID_DOC,
+        )
+        assert out is None
+        assert detail[0] == "snippet_not_in_document:missing-snippet"
+
+    def test_a_lineage_mismatch_carries_both_sides(self):
+        # A mismatch is only actionable if the log says what disagreed with
+        # what. One value alone cannot be compared to anything.
+        document = {
+            **VALID_DOC,
+            "pieces": [{
+                "snippet_id": "s1", "part_id": "p1",
+                "recording_id": "rec-A", "start_offset_ms": 0,
+                "duration_ms": 1000,
+            }],
+        }
+        out, detail = _prepare(
+            {**VALID_FRAME, "blocks": [
+                {"block_id": "b1", "slide_index": 0, "confidence_candidates": [
+                    {
+                        "candidate_id": "c1", "snippet_id": "s1",
+                        "eligibility": "eligible",
+                        "document_span": {"start": 0, "end": 4},
+                        "clip_identity": {
+                            "recording_id": "rec-B", "start_offset_ms": 0,
+                            "duration_ms": 1000,
+                        },
+                    },
+                ]},
+            ]},
+            document,
+        )
+        assert out is None
+        assert detail[0] == (
+            "recording_id_mismatch:piece='rec-A',clip='rec-B'"
+        )
+
+    def test_an_empty_block_is_named_but_is_not_itself_a_rejection(self):
+        # A partition that produced no candidate at all is a different fault
+        # from one whose candidate was malformed, and downstream they look
+        # identical. It is reported without failing the block.
+        out, detail = _prepare(
+            {**VALID_FRAME, "blocks": [{"block_id": "b1", "slide_index": 0}]},
+            VALID_DOC,
+        )
+        assert out is None  # still fails later, on the verbal lanes
+        assert "block_has_no_candidates:b1" in detail
+        assert not any(d.startswith("confidence_block_rejected") for d in detail)
 
 
 class TestItStaysOptional:
