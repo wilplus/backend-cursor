@@ -8,7 +8,10 @@
     sha256:              [[computed from the signed PDF at registration time]]
     control_version:     phase1-retention-schedule-v1
 
-**STATUS: FOUNDER-APPROVED 2026-09-18. Not yet signed as a PDF, not yet seeded.**
+**STATUS: APPROVED BY THE CONTROLLER 2026-09-18, SIGNED AS A PDF 19 September
+2026. Not yet uploaded, not yet seeded.** The periods in §1 were settled on
+2026-09-17 and are unchanged. §3 was corrected on 2026-09-19 and is the only
+substantive change since approval.
 
 **Why the founder is the right authority for THIS document and not for 02.**
 A retention schedule is an operational decision about how long the controller
@@ -16,18 +19,27 @@ keeps its own data. The controller is Artur Willoński, so he is the person whos
 decision it records — there is no one else it could be. The periods themselves
 were settled on 2026-09-17 and are unchanged.
 
-Contrast `02-power-score-classification` §9, where the founder must **not** sign:
-that document records a determination about how the AI Act applies to the code,
-which is a qualified legal judgement. The `mlc2-bundled-consent-v1.json`
-precedent recorded the founder as *"recording the approved counsel
-determination"*, and the pack README exists partly to stop that being repeated.
-The distinction is not seniority, it is subject matter.
+Contrast `02-power-score-classification` §9. That document records a
+determination about how the AI Act applies to the code — a qualified legal
+judgement, and not the same kind of decision as this one. **On 2026-09-19 the
+founder signed it anyway**, as an interim determination under an explicit
+written condition: counsel must confirm it before any person other than the
+founder records.
 
-**What still has to happen before registration.** `approving_authority` and
-`approved_at` are filled, but the artifact the database points at is a **signed
-PDF in storage**. Render this document, sign it, upload it to the `object_key`
-above, and compute `sha256` from the stored bytes. A name in a markdown file is
-a recorded decision; it is not yet the artifact.
+That is a recorded departure, not the `mlc2-bundled-consent-v1.json` pattern
+the pack README exists to stop. There, the founder was recorded as *"recording
+the approved counsel determination"* when no counsel determination existed —
+the defect was that the artifact misstated **who had decided**. Here 02 names
+the founder as the decider in its `approving_authority` field, in its STATUS
+line and in §9, and names what is missing. The distinction between the two
+documents is still not seniority, it is subject matter; 02 simply says on its
+face that the wrong person signed it, and what has to happen next.
+
+**What still has to happen before registration.** The signed PDF exists as of
+2026-09-19. It must be uploaded to the `object_key` above and its `sha256`
+computed from the stored bytes, under the canonicalisation rule recorded in
+`04-policy-registration`. Until that is done the database has nothing to point
+at: a name in a markdown file is a recorded decision, not the artifact.
 
 This document exists because `data_retention_rules.legal_artifact_id` is
 `NOT NULL` and references `processing_legal_artifacts`. There is no retention
@@ -100,18 +112,33 @@ they hold identifiers, timestamps and hashes rather than content.
 ## 3. The financial_evidence rule needs a decision, not a default
 
 An earlier draft of this document carried a `billing-record-5y-v1` rule
-justified by Polish accounting law. **That justification is gone** — the service
-is free and takes no payment, so there are no accounting records.
+justified by Polish accounting law. A later draft deleted it on the premise
+that the service is free and takes no payment. **Both were wrong, in opposite
+directions.** Corrected 2026-09-19: the model is freemium — Terms §2 sells
+three paid plans in USD — so accounting obligations do exist, but they do not
+reach the rows this category actually holds.
 
-But the category has not gone. Its two dependencies are `token_ledger` and
-`llm_usage`: internal records of model usage and cost, per user, which exist
-whether or not anyone pays. They are marked `retain`, so today they survive an
-erasure request.
+The two have to be split:
 
-**For a free service, retaining per-user usage ledgers after someone has asked
-to be erased is the weakest position in this schedule.** There is no accounting
-obligation to point at, and "we want our own cost history" is a thin answer to
-Article 17. Three options, for counsel rather than engineering:
+- **Invoices and billing records.** Payment is taken by Stripe, which acts as a
+  controller in its own right rather than as our processor, so the card data
+  and the primary payment records sit with Stripe under its own terms. Whatever
+  invoice records WillpowerLab itself holds are accounting records and carry a
+  statutory period this schedule does not set — in Poland, five years from the
+  end of the accounting year (`ustawa o rachunkowości`, art. 74). **Counsel
+  should confirm the period, and whether a seller operating as
+  *działalność nieewidencjonowana* falls inside that regime at all.** No rule
+  in §2 covers these today because no such table exists in our database.
+- **`token_ledger` and `llm_usage`**, the two dependencies actually in this
+  category, are **not** invoices. They are internal records of model usage and
+  cost, per user, written for free and paid users alike. No accounting
+  obligation reaches them. They are marked `retain`, so today they survive an
+  erasure request.
+
+**Retaining per-user usage ledgers after someone has asked to be erased is the
+weakest position in this schedule.** For these two tables there is no
+accounting obligation to point at, and "we want our own cost history" is a thin
+answer to Article 17. Three options, for counsel rather than engineering:
 
 1. **Detach rather than retain.** Strip the user reference and keep the usage
    row as an anonymous cost record. No longer personal data, so Article 17 stops
@@ -157,6 +184,13 @@ schedule — see the cover note, which leads with it.
 
 ## 5. Signature
 
-    Name:      ______________________________
-    Firm:      ______________________________
-    Date:      ______________________________
+By signing, the approving authority records the retention periods in §1 as the
+controller's own operational decision, and acknowledges that §3's
+`financial-evidence-v1` disposition is **not** settled by this signature: it
+carries option 2's bounded period as a conservative placeholder until counsel
+answers, and §3b's two proposed categories still require confirmation.
+
+    Name:      Artur Willoński
+    Firm:      None — natural person, no company (działalność nieewidencjonowana)
+    Date:      19 September 2026
+    Reference: WILLAB-PHASE1-2026.1-RET-2026-09-19

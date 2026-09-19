@@ -3,12 +3,16 @@
     artifact_kind:       article_50_assessment
     version:             1.0
     approving_authority: Artur Willoński (founder and controller) — controller's own approval, NOT counsel-reviewed
-    approved_at:         2026-09-18T00:00:00Z
+    approved_at:         2026-09-19T00:00:00Z
     object_key:          phase1-2026.1/legal/article-50-assessment-v1.0.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     metadata:            {"policy_version": "phase1-2026.1", "ai_notice_version": "1.0"}
 
-**STATUS: DRAFT — NOT APPROVED, NOT SIGNED.**
+**STATUS: APPROVED AND SIGNED BY THE CONTROLLER, 19 September 2026 — NOT
+COUNSEL-REVIEWED.** Signing closes no gaps. §6 lists five; gap 2 has since been
+closed and gap 3 narrowed, both recorded in that table. Gap 1 — Article 50(2)
+marking — is open, and §8 still withholds support for activation because of
+it.
 
 Article 50 of Regulation (EU) 2024/1689 has applied since 2 August 2026. This
 assessment is therefore about an obligation that is already in force, not one
@@ -175,15 +179,18 @@ Open item.
 | # | Gap | Obligation | What is needed |
 |---|---|---|---|
 | 1 | The Ideal Text and Feedback are not marked as artificially generated, in any format | 50(2) | A persistent, visible label on the Ideal Text and Feedback surfaces, **and** a machine-readable marking on any export or copy leaving the product. The visible label alone does not satisfy 50(2) — it requires machine-readable. Decide the mechanism (embedded metadata on export, or an equivalent) and record it here. |
-| 2 | No client surface renders the AI notice or writes `ai_transparency_exposures` | 50(1), 50(5) | The acceptance screen in the frontend. The backend contract exists and is unused. |
-| 3 | Terms and Privacy are rendered from hardcoded React pages (`src/app/terms/page.tsx` v1.2, `src/app/privacy/page.tsx` v1.2), not from the policy record | 50(5) "clear", and the integrity of the whole hashing scheme | The pages must render the exact `terms_copy` / `privacy_copy` returned by `get_phase1_processing_authorization_v1`. While they are hardcoded, the text a user reads and the text whose hash they accept can drift apart silently, and the receipt then proves agreement to words the user never saw. |
+| 2 | ~~No client surface renders the AI notice or writes `ai_transparency_exposures`~~ **CLOSED 2026-09-19** | 50(1), 50(5) | Done. `Phase1AcceptanceFlow.tsx` shows the notice as its own step and writes the exposure **on render, not on submit** (`recordAiNoticeRendered` → `/api/v2/processing-authorization/ai-rendered`, keyed on `ai_notice_version`), so a user who reads it and closes the screen still counts as informed. Shipped to production in frontend #389 (`f4607888`). It is inert until a policy is registered and active. |
+| 3 | **NARROWED 2026-09-19.** The *acceptance* surface now renders the stored copy; the standalone `/terms` and `/privacy` pages (`src/app/terms/page.tsx` v1.2, `src/app/privacy/page.tsx` v1.2) are still hardcoded React | 50(5) "clear", and the integrity of the whole hashing scheme | The receipt-integrity half is fixed: `Phase1AcceptanceFlow.tsx` renders the exact `terms_copy` / `privacy_copy` / `ai_notice_copy` bytes returned by `get_phase1_processing_authorization_v1`, so the text read at the moment of acceptance **is** the text whose hash the receipt names. **Residual:** the two standalone pages can still drift from the registered copy. They are no longer what any receipt is taken against, so this is now a consistency defect rather than a receipt-integrity one — but they must either render the stored copy or be plainly marked as an informational mirror. |
 | 4 | Accessibility conformance not assessed | 50(5) | Assessment against the applicable accessibility requirements. |
 | 5 | Article 4 (AI literacy) measures not documented | Art. 4, in force since 2 Feb 2025 | A short record of the measures taken for staff and contractors who operate the system. Outside Article 50 but adjacent and currently absent. |
 
-Gap 3 is the one to fix first. It is not an Article 50 problem so much as the
-foundation the whole receipt mechanism rests on: `POLICY_COPY_HASH_MISMATCH` and
-`PROCESSING_POLICY_STALE` protect the stored copy against drift, and neither can
-see a separately maintained React page.
+Gap 3 was the one to fix first, and its load-bearing half is fixed. It was
+never really an Article 50 problem: it was the foundation the whole receipt
+mechanism rests on. `POLICY_COPY_HASH_MISMATCH` and `PROCESSING_POLICY_STALE`
+protect the stored copy against drift, and neither can see a separately
+maintained React page — which is exactly why acceptance had to stop happening
+on one. **Gap 1 is now the one to fix first**, because it is the only remaining
+gap this document treats as blocking activation.
 
 ## 7. Change management
 
@@ -204,20 +211,24 @@ or an export/sharing feature that lets generated text leave the product.
 
 ## 8. Conclusion
 
-Articles 50(1), 50(3) and 50(5) are met at the design level, with the backend
-evidence contract implemented and the client surface still to be built (gaps 2
-and 3). Article 50(2) is **not met**: generated text is not marked (gap 1).
-Article 50(4) does not apply.
+Articles 50(1), 50(3) and 50(5) are met. The backend evidence contract is
+implemented and, since frontend #389, the client surface that renders the
+notice and writes the exposure exists (gap 2 closed, gap 3 narrowed to the two
+standalone pages). Article 50(2) is **not met**: generated text carries no
+marking, machine-readable or visible (gap 1). Article 50(4) does not apply.
 
 Per `docs/PHASE1-PROCESSING-RUNBOOK.md`: do not describe the application as
 "fully compliant". This document reports the controls and evidence actually
 verified, and names five that are not.
 
-**This assessment does not support activation until gaps 1, 2 and 3 are closed.**
+**This assessment does not support activation until gap 1 is closed.** Gaps 2
+and 3 no longer block it; gaps 4 and 5 are open items that do not. Gap 1 does,
+because Article 50(2) has applied since 2 August 2026 and the product surfaces
+two kinds of generated text with nothing marking either of them.
 
 ## 9. Signature
 
-    Name:      ______________________________
-    Firm:      ______________________________
-    Date:      ______________________________
-    Reference: ______________________________
+    Name:      Artur Willoński
+    Firm:      None — natural person, no company (działalność nieewidencjonowana)
+    Date:      19 September 2026
+    Reference: WILLAB-PHASE1-2026.1-A50-2026-09-19
