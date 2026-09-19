@@ -18,10 +18,15 @@ not something a user may be shown.
 from services.take_feedback_policy_v3_service import prepare_v3_service_inventory
 
 
-def _prepare(frame, document, candidates=()):
+def _prepare(frame, document, candidates=(), served=None):
     detail: list[str] = []
     out = prepare_v3_service_inventory(
         frame=frame, take_document=document,
+        # This file is about the NAMES of the gates, not about coordinates,
+        # so the served document is the transcript here. The two-document
+        # shape has its own file: test_v3_end_to_end_production_shape.py.
+        served_text=served if served is not None
+        else str((document or {}).get("text") or ""),
         feedback_candidates=candidates, detail=detail,
     )
     return out, detail
@@ -123,6 +128,7 @@ class TestTheChainReadsInsideOut:
             "candidate_id": "c-good", "snippet_id": "s1",
             "eligibility": "eligible",
             "document_span": {"start": 0, "end": 4},
+            "target_span": {"start": 0, "end": 4},
             "clip_identity": {
                 "recording_id": "rec-A", "start_offset_ms": 0,
                 "duration_ms": 1000,
@@ -177,6 +183,7 @@ class TestTheChainReadsInsideOut:
                         "candidate_id": "c1", "snippet_id": "s1",
                         "eligibility": "eligible",
                         "document_span": {"start": 0, "end": 4},
+            "target_span": {"start": 0, "end": 4},
                         "clip_identity": {
                             "recording_id": "rec-B", "start_offset_ms": 0,
                             "duration_ms": 1000,
@@ -210,7 +217,7 @@ class TestItStaysOptional:
         # and a diagnostic that breaks its callers is not worth having.
         assert prepare_v3_service_inventory(
             frame={"policy_version": "nope"}, take_document=VALID_DOC,
-            feedback_candidates=(),
+            served_text="text", feedback_candidates=(),
         ) is None
 
     def test_a_gate_appends_exactly_one_entry(self):
@@ -220,6 +227,6 @@ class TestItStaysOptional:
             detail.clear()
             prepare_v3_service_inventory(
                 frame={"policy_version": "nope"}, take_document=VALID_DOC,
-                feedback_candidates=(), detail=detail,
+                served_text="text", feedback_candidates=(), detail=detail,
             )
             assert len(detail) == 1

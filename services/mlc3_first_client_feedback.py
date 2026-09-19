@@ -315,6 +315,11 @@ def prepare_first_client_feedback(
     inventory = prepare_v3_service_inventory(
         frame=frame,
         take_document=take_document,
+        # REQUIRED, not defaulted. The inventory cannot produce a span the
+        # client may draw on without the document it will be drawn on, and a
+        # default would let a caller silently reproduce the transcript-
+        # coordinate defect this parameter exists to end.
+        served_text=served_text,
         feedback_candidates=feedback_candidates,
         detail=inventory_detail,
     )

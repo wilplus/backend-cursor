@@ -111,7 +111,7 @@ def _presentable(row: dict, presentation: dict) -> dict:
 
 def _row_rejection(
     raw: dict, *, candidate_key: str, snippet_id: str, source: Any,
-    span: Any, lineage: Any, document_text: str,
+    span: Any, lineage: Any, document_text: str, served_text: str,
 ) -> str | None:
     """Which single condition rejects this candidate row, or None if none does.
 
@@ -164,12 +164,29 @@ def _row_rejection(
         )
     if not source.get("part_id"):
         return "piece_has_no_part_id"
+    # THE SPAN THE BOOKMARK IS DRAWN ON, which is not the one measured. The
+    # checks above validate `document_span` against the TRANSCRIPT; these
+    # validate `target_span` against the SERVED Ideal Text. Two documents,
+    # two spans, and conflating them put V3's highlight at transcript
+    # offsets inside a shorter document -- past its end in production, and
+    # silently on the wrong words whenever it happened to fit.
+    target = raw.get("target_span")
+    if not isinstance(target, dict):
+        return "piece_has_no_served_span"
+    t_start, t_end = target.get("start"), target.get("end")
+    if not isinstance(t_start, int) or not isinstance(t_end, int):
+        return "served_span_bounds_not_integers"
+    if t_start < 0 or t_end <= t_start:
+        return f"served_span_inverted:{t_start}..{t_end}"
+    if t_end > len(served_text):
+        return f"served_span_past_document_end:{t_end}>{len(served_text)}"
     return None
 
 
 def _v3_confidence_candidate_row(
     raw: Any, *, block_id: str, block_position: int, slide_index: int,
     pieces: dict[str, dict], policy: dict, document_text: str,
+    served_text: str,
     confidence_selected: dict[str, str], inventory: _V3ServiceInventory,
     presentation: dict, detail: list[str] | None = None,
 ) -> bool:
@@ -188,7 +205,7 @@ def _v3_confidence_candidate_row(
     rejection = _row_rejection(
         raw, candidate_key=candidate_key, snippet_id=snippet_id,
         source=source, span=span, lineage=lineage,
-        document_text=document_text,
+        document_text=document_text, served_text=served_text,
     )
     if rejection is not None:
         closed(rejection)
@@ -198,7 +215,15 @@ def _v3_confidence_candidate_row(
     # reaches the type checker, which cannot follow it across the call. Same
     # device `ideal_text_core_snapshot` uses for `provenance_rows`.
     assert isinstance(span, dict) and isinstance(source, dict)
-    start, end = span.get("start"), span.get("end")
+    # THE SPAN THE CLIENT DRAWS ON IS NOT THE ONE MEASURED (2026-09-19).
+    # `document_span` (validated above against the transcript) locates the
+    # spoken words for the audio and transcript evidence. `span` and `quote`
+    # below are consumed against the SERVED Ideal Text -- by the evidence
+    # contract's target locator and by the client's highlight -- so they
+    # come from `target_span`, which the relocation proved. Filling them
+    # from the transcript put the bookmark on whatever words happened to sit
+    # at those offsets in a shorter document, and usually past its end.
+    assert isinstance(target := raw.get("target_span"), dict)
     is_selected = candidate_key in confidence_selected
     if is_selected:
         inventory.position += 1
@@ -210,8 +235,8 @@ def _v3_confidence_candidate_row(
         "feedback_family": "confident_voice",
         "snippet_id": snippet_id,
         "take_session_id": policy["take_id"],
-        "span": {"start": start, "end": end},
-        "quote": document_text[start:end],
+        "span": {"start": target["start"], "end": target["end"]},
+        "quote": served_text[target["start"]:target["end"]],
         "proposed_text": None,
         "why_key": "confident_voice",
         "tentative": raw.get("selection_language")
@@ -252,7 +277,8 @@ def _v3_confidence_candidate_row(
 
 def _v3_confidence_block(
     block: Any, block_position: int, *, pieces: dict[str, dict],
-    policy: dict, document_text: str, confidence_selected: dict[str, str],
+    policy: dict, document_text: str, served_text: str,
+    confidence_selected: dict[str, str],
     inventory: _V3ServiceInventory, detail: list[str] | None = None,
 ) -> bool:
     def closed(gate: str) -> None:
@@ -282,7 +308,7 @@ def _v3_confidence_block(
         if not _v3_confidence_candidate_row(
             raw, block_id=block_id, block_position=block_position,
             slide_index=slide_index, pieces=pieces, policy=policy,
-            document_text=document_text,
+            document_text=document_text, served_text=served_text,
             confidence_selected=confidence_selected, inventory=inventory,
             presentation=presentation, detail=detail,
         ):
@@ -394,8 +420,8 @@ def _v3_inventory_is_complete(inventory: _V3ServiceInventory) -> bool:
 
 
 def prepare_v3_service_inventory(
-    *, frame: Any, take_document: Any, feedback_candidates: Iterable[Any],
-    detail: list[str] | None = None,
+    *, frame: Any, take_document: Any, served_text: str,
+    feedback_candidates: Iterable[Any], detail: list[str] | None = None,
 ) -> dict | None:
     """Return a fail-closed V3 service inventory or ``None``.
 
@@ -439,7 +465,8 @@ def prepare_v3_service_inventory(
     for block_position, block in enumerate(blocks, 1):
         if not _v3_confidence_block(
             block, block_position, pieces=pieces, policy=policy,
-            document_text=document_text, confidence_selected=confidence_selected,
+            document_text=document_text, served_text=served_text,
+            confidence_selected=confidence_selected,
             inventory=inventory, detail=detail,
         ):
             # Skipped for the same reason a rejected row is: a block we

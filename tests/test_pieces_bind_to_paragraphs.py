@@ -231,6 +231,7 @@ class TheGateNowHasAKey(unittest.TestCase):
             {"candidate_id": "c1", "snippet_id": "s3",
              "eligibility": "eligible",
              "document_span": {"start": 0, "end": 5},
+             "target_span": {"start": 0, "end": 5},
              "clip_identity": {"recording_id": "rec-1",
                                "start_offset_ms": 0, "duration_ms": 1000}},
             candidate_key="c1", snippet_id="s3", source=source,
@@ -238,6 +239,7 @@ class TheGateNowHasAKey(unittest.TestCase):
             lineage={"recording_id": "rec-1",
                      "start_offset_ms": 0, "duration_ms": 1000},
             document_text="some document text",
+            served_text=SERVED,
         ))
 
     def test_the_unbound_piece_still_fails_it(self):
@@ -247,6 +249,7 @@ class TheGateNowHasAKey(unittest.TestCase):
             {"candidate_id": "c1", "snippet_id": "s3",
              "eligibility": "eligible",
              "document_span": {"start": 0, "end": 5},
+             "target_span": {"start": 0, "end": 5},
              "clip_identity": {"recording_id": "rec-1",
                                "start_offset_ms": 0, "duration_ms": 1000}},
             candidate_key="c1", snippet_id="s3",
@@ -255,4 +258,5 @@ class TheGateNowHasAKey(unittest.TestCase):
             lineage={"recording_id": "rec-1",
                      "start_offset_ms": 0, "duration_ms": 1000},
             document_text="some document text",
+            served_text=SERVED,
         ), "piece_has_no_part_id")

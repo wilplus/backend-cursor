@@ -129,6 +129,12 @@ def _piece(raw: Any, ordinal: int) -> Optional[dict]:
         "recording_id": str(row.get("recording_id") or "") or None,
         "start_offset_ms": row.get("start_offset_ms"),
         "duration_ms": row.get("duration_ms"),
+        # The same words' position in the SERVED Ideal Text, when the
+        # relocation could prove one (`bind_pieces_to_parts`). `start`/`end`
+        # above are transcript offsets and address a different document;
+        # only these may be used for a span the client draws on.
+        "served_start": _integer(row.get("served_start")),
+        "served_end": _integer(row.get("served_end")),
     }
 
 
@@ -565,6 +571,17 @@ def _confidence_candidate(
         "take_id": piece["take_id"],
         "slide_index": piece["slide_index"],
         "document_span": {"start": piece["start"], "end": piece["end"]},
+        # TRANSCRIPT above, IDEAL TEXT here, and they are different
+        # documents. `document_span` locates the spoken words for the audio
+        # and transcript evidence; `target_span` is where the bookmark is
+        # drawn. None when the relocation could not prove a position -- the
+        # row is then rejected rather than anchored by guess.
+        "target_span": (
+            {"start": piece["served_start"], "end": piece["served_end"]}
+            if piece.get("served_start") is not None
+            and piece.get("served_end") is not None
+            else None
+        ),
         "word_count": piece["word_count"],
         "clip_identity": clip_identity,
         "eligibility": (
