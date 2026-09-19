@@ -176,6 +176,75 @@ def _exposure_bundle_or_reason(
     return bundle, "", ""
 
 
+def _service_lineage(
+    database: Any, *, bundle: dict, canonical: dict, inventory: dict,
+    source_snapshot: Any, principal_id: str, project_id: str, take_id: str,
+) -> Optional[dict]:
+    """The frozen membership for this Take, or None when it cannot be made.
+
+    THE AUDIT RECORD, WRITTEN BESIDE THE PRODUCT AND NOT IN FRONT OF IT
+    (founder 2026-09-20). These three steps used to be three ``_decline``
+    exits on the critical path, so any one of them emptied the Feedback
+    surface. They are F2 -- the auditable Machine/coach provenance L3
+    protects -- and F1 may not wait on F2 (R12).
+
+    None is an ORDINARY outcome here, not an error: the MLC-3 service
+    rollout is seeded ``disabled`` and every write below refuses with
+    ``MLC3_ROLLOUT_NOT_ACTIVE`` until it is activated. The caller serves the
+    bookmarks without lineage, and the answer route -- which requires
+    ``feedback_membership_id`` as a validated UUID -- refuses anything that
+    would attach an owner answer to an unfrozen exposure.
+
+    Never silent. Each failure names the step, and the repository logs the
+    database guard that caused it.
+    """
+    result = database.record_feedback_v3_service_candidate_set(bundle)
+    if (
+        not isinstance(result, dict)
+        or str(result.get("candidate_set_id") or "")
+        != str(bundle["candidate_set_id"])
+    ):
+        logger.info(
+            "first_client: serving without lineage step=candidate_set "
+            "take=%s", take_id)
+        return None
+
+    items: list[dict] = []
+    for raw in inventory["membership_items"]:
+        row = dict(raw)
+        item = canonical.get((row["feedback_family"], row["candidate_key"]))
+        if item is None:
+            # A membership item with no canonical candidate is OUR bug, not
+            # a rollout state -- the two must not read alike in the log.
+            logger.warning(
+                "first_client: membership item absent from the bundle "
+                "family=%s key=%s take=%s",
+                row.get("feedback_family"), row.get("candidate_key"), take_id)
+            return None
+        row["candidate_id"] = item["id"]
+        items.append(row)
+
+    membership = database.freeze_feedback_v3_service_membership({
+        "p_acquisition_principal_id": principal_id,
+        "p_project_id": project_id,
+        "p_take_id": take_id,
+        "p_candidate_set_id": bundle["candidate_set_id"],
+        "p_document_snapshot_id": str(source_snapshot["document_snapshot_id"]),
+        "p_block_partition_version": inventory["block_partition_version"],
+        "p_items": items,
+        "p_idempotency_key": (
+            f"feedback-v3-service-membership:{bundle['candidate_set_id']}:"
+            f"{source_snapshot['document_snapshot_id']}"
+        ),
+    })
+    if not isinstance(membership, dict) or not membership.get("id"):
+        logger.info(
+            "first_client: serving without lineage step=membership_freeze "
+            "take=%s", take_id)
+        return None
+    return membership
+
+
 def _exercise_context_available(
     database: Any, *, principal_id: str, owner_user_id: str, take_id: str,
 ) -> bool:
@@ -335,37 +404,42 @@ def prepare_first_client_feedback(
     )
     if bundle is None:
         return _decline(take_id, bundle_reason, bundle_detail)
-    candidate_result = database.record_feedback_v3_service_candidate_set(bundle)
-    if (
-        not isinstance(candidate_result, dict)
-        or str(candidate_result.get("candidate_set_id") or "")
-        != str(bundle["candidate_set_id"])
-    ):
-        return _decline(take_id, "candidate_set_write_failed")
     canonical = _canonical_index(bundle)
-    membership_items: list[dict] = []
-    for raw in inventory["membership_items"]:
-        row = dict(raw)
-        item = canonical.get((row["feedback_family"], row["candidate_key"]))
-        if item is None:
-            return _decline(take_id, "membership_candidate_not_in_bundle")
-        row["candidate_id"] = item["id"]
-        membership_items.append(row)
-    membership = database.freeze_feedback_v3_service_membership({
-        "p_acquisition_principal_id": principal_id,
-        "p_project_id": project_id,
-        "p_take_id": take_id,
-        "p_candidate_set_id": bundle["candidate_set_id"],
-        "p_document_snapshot_id": str(source_snapshot["document_snapshot_id"]),
-        "p_block_partition_version": inventory["block_partition_version"],
-        "p_items": membership_items,
-        "p_idempotency_key": (
-            f"feedback-v3-service-membership:{bundle['candidate_set_id']}:"
-            f"{source_snapshot['document_snapshot_id']}"
-        ),
-    })
-    if not isinstance(membership, dict) or not membership.get("id"):
-        return _decline(take_id, "membership_freeze_failed")
+    # THE BOOKMARK DOES NOT WAIT ON THE LEARNING LAYER (founder 2026-09-20:
+    # "this app is for users, not for the founder to record — make it
+    # accessible to users").
+    #
+    # Until now the audit lineage was FATAL: the candidate-set write, the
+    # membership mapping and the membership freeze each ended the Take with
+    # `_decline`. In production that meant one database state --
+    # `P0001 MLC3_ROLLOUT_NOT_ACTIVE`, the MLC-3 service rollout seeded
+    # `disabled` by D4 and never activated -- withheld every bookmark from
+    # every user, on a Take whose frame was complete: eight candidates, five
+    # selected, across three slides.
+    #
+    # That inverts the north star. The lineage is F2 (auditable Machine/
+    # coach provenance); the bookmark and its qualitative read are F1, and
+    # R12 is explicit that F1 must work without the learning layer. A
+    # governance switch for Phase-2 must not be able to empty the Feedback
+    # surface.
+    #
+    # L3 IS NOT WEAKENED, and this is the part that makes it safe rather
+    # than merely convenient. A row served without lineage carries no
+    # `feedback_membership_id`, and the answer route
+    # (`confident_moment_bundles`) requires that field as a validated UUID.
+    # So no owner answer, peer rating or Album claim can attach to an
+    # exposure that was never frozen -- the provenance wall holds by
+    # construction, not by promise. The Confident Voice QUESTION is F2 and
+    # correctly disappears with the lineage; the bookmark it hangs on does
+    # not.
+    #
+    # Best-effort, NOT silent: `_service_lineage` logs every failure with
+    # the guard that caused it.
+    lineage = _service_lineage(
+        database, bundle=bundle, canonical=canonical, inventory=inventory,
+        source_snapshot=source_snapshot, principal_id=principal_id,
+        project_id=project_id, take_id=take_id,
+    )
 
     visible: list[dict] = []
     for raw in inventory["visible_rows"]:
@@ -375,11 +449,20 @@ def prepare_first_client_feedback(
         exact = canonical.get((family, key))
         if exact is None:
             return _decline(take_id, "visible_row_candidate_not_in_bundle")
+        # `candidate_id` and `exposure_id` come from the BUNDLE, which is
+        # computed in-process and always available. Only the membership id
+        # comes from the freeze, so only it can be missing.
         row.update({
             "candidate_id": str(exact["id"]),
-            "feedback_membership_id": str(membership["id"]),
             "feedback_exposure_id": str(exact["exposure_id"]),
         })
+        if lineage is None:
+            # No frozen membership: the bookmark serves, the answer path
+            # refuses, and nothing claims a lineage it does not have.
+            visible.append(row)
+            continue
+        membership = lineage
+        row["feedback_membership_id"] = str(membership["id"])
         if family == "confident_voice" and exercise_context:
             context = database.prepare_feedback_v3_service_context({
                 "p_membership_id": str(membership["id"]),

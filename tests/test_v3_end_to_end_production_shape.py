@@ -370,15 +370,19 @@ class TheWriteThatSucceedsAndSaysNothing(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_no_usable_row_now_names_itself(self):
+    def test_no_usable_row_still_serves_the_bookmark(self):
+        # CHANGED CONTRACT (founder 2026-09-20). This asserted a stand-down
+        # until the audit lineage stopped being fatal. A failed write is F2
+        # losing its record; the speaker still gets the Feedback F1 owes
+        # them, and the repository still says exactly what went wrong.
         from services.mlc3_first_client_feedback import V3Unavailable
         with self.assertLogs(
             "services.first_client_repository", level="WARNING",
         ) as caught:
             result = run_chain(_ReturnsNothingUsable())
-        self.assertIsInstance(result, V3Unavailable)
-        assert isinstance(result, V3Unavailable)
-        self.assertEqual(result.reason, "candidate_set_write_failed")
+        self.assertNotIsInstance(result, V3Unavailable)
+        assert result is not None
+        self.assertGreaterEqual(len(result), 1)
         self.assertIn("returned no usable row", caught.output[0])
         self.assertIn("kind=NoneType", caught.output[0])
 
@@ -388,9 +392,72 @@ class TheWriteThatSucceedsAndSaysNothing(unittest.TestCase):
             "services.first_client_repository", level="WARNING",
         ) as caught:
             result = run_chain(_ReturnsADifferentSet())
-        self.assertIsInstance(result, V3Unavailable)
+        self.assertNotIsInstance(result, V3Unavailable)
         self.assertIn("id mismatch", caught.output[0])
         self.assertIn("0000dead", caught.output[0])
+
+    def test_a_row_without_lineage_carries_no_membership_id(self):
+        # THE LOAD-BEARING HALF OF THE DECISION. L3 is not weakened by
+        # serving without lineage, because the answer route requires
+        # `feedback_membership_id` as a validated UUID. Its ABSENCE is what
+        # stops an owner answer attaching to an exposure nothing froze.
+        rows = run_chain(_ReturnsNothingUsable())
+        assert rows is not None and not isinstance(rows, tuple)
+        for row in rows:
+            self.assertNotIn("feedback_membership_id", row)
+            self.assertNotIn("mlc3_service", row)
+            # The bookmark itself is intact: it is drawn from the bundle,
+            # which is computed in-process and needs no database at all.
+            self.assertTrue(row.get("candidate_id"))
+            self.assertTrue(row.get("feedback_exposure_id"))
+            self.assertTrue(row.get("span"))
+
+    def test_a_healthy_service_still_carries_the_full_lineage(self):
+        # The change must not cost the working case its provenance.
+        rows = run_chain()
+        assert rows is not None
+        self.assertTrue(all(r.get("feedback_membership_id") for r in rows))
+
+    def test_no_canonical_judgment_can_be_claimed_without_lineage(self):
+        """L3, end to end, and the reason serving without lineage is SAFE.
+
+        The whole decision rests on this: an owner answering a bookmark
+        that was never frozen must not produce a canonical MLC-3 judgment.
+        `canonical_feedback_decision` refuses unless all three ids are
+        present, so the absence of `feedback_membership_id` on the row IS
+        the enforcement -- structural, not a convention a later hand can
+        forget. The answer still saves as an ordinary self-report, exactly
+        as it does for a V2 row today.
+        """
+        from services.feedback_data_contract import (
+            canonical_feedback_decision,
+        )
+        rows = run_chain(_ReturnsNothingUsable())
+        assert rows is not None
+        row = rows[0]
+        self.assertIsNone(canonical_feedback_decision(
+            take_id=TAKE, rater_id=USER, feedback_id=str(row["id"]),
+            feedback_family="confident_voice", response="yes",
+            candidate_id=row.get("candidate_id"),
+            feedback_membership_id=row.get("feedback_membership_id"),
+            feedback_exposure_id=row.get("feedback_exposure_id"),
+        ))
+
+    def test_the_same_answer_IS_canonical_once_the_lineage_exists(self):
+        # The mirror, so the test above cannot pass for the wrong reason.
+        from services.feedback_data_contract import (
+            canonical_feedback_decision,
+        )
+        rows = run_chain()
+        assert rows is not None
+        row = rows[0]
+        self.assertIsNotNone(canonical_feedback_decision(
+            take_id=TAKE, rater_id=USER, feedback_id=str(row["id"]),
+            feedback_family="confident_voice", response="yes",
+            candidate_id=row.get("candidate_id"),
+            feedback_membership_id=row.get("feedback_membership_id"),
+            feedback_exposure_id=row.get("feedback_exposure_id"),
+        ))
 
     def test_the_happy_path_logs_nothing(self):
         # A diagnostic that fires on success is a diagnostic people filter
