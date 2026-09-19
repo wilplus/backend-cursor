@@ -379,3 +379,4 @@
 0341	widen_owner_voice_album_routing_to_five_states.sql
 0342	feedback_v3_source_snapshot_takes_a_lock_so_it_is_volatile.sql
 0343	fix_claim_guest_owner_snippets_rename.sql
+0344	fix_candidate_set_advisory_lock_precedence.sql

@@ -760,10 +760,32 @@ def bind_pieces_to_parts(
         if not isinstance(piece, dict):
             bound.append(piece)
             continue
-        part_id = _part_id_for(
-            piece, located.get(str(piece.get("snippet_id"))), spans, regions,
-        )
-        bound.append({**piece, "part_id": part_id} if part_id else piece)
+        row = located.get(str(piece.get("snippet_id")))
+        part_id = _part_id_for(piece, row, spans, regions)
+        # WHERE THESE WORDS LIVE IN THE DOCUMENT ON SCREEN (2026-09-19).
+        #
+        # A piece's `start`/`end` are offsets into the TRANSCRIPT. A bookmark
+        # is drawn on the IDEAL TEXT, and `span` means served-text offsets
+        # everywhere it is consumed -- `current_take_confident_voice_
+        # candidate` fills it from `served_text`, the evidence contract
+        # slices `served_text` with it, and the client highlights it there.
+        # V3 was filling the same key from the transcript, so its bookmark
+        # would have landed on whatever words happened to sit at those
+        # offsets in a different, shorter document.
+        #
+        # The relocation above already answers this exactly -- it is what
+        # `part_at` consumes to pick the Paragraph -- so the answer is
+        # carried rather than recomputed by a second rule that could drift.
+        extra: dict = {}
+        if part_id:
+            extra["part_id"] = part_id
+        if isinstance(row, dict):
+            s, e = row.get("start"), row.get("end")
+            if (isinstance(s, int) and not isinstance(s, bool)
+                    and isinstance(e, int) and not isinstance(e, bool)
+                    and 0 <= s < e):
+                extra.update({"served_start": s, "served_end": e})
+        bound.append({**piece, **extra} if extra else piece)
     placed = sum(1 for piece in bound
                  if isinstance(piece, dict) and piece.get("part_id"))
     # COUNTS, and they are the diagnosis. "Some paragraphs could not be

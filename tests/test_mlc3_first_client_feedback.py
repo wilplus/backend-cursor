@@ -39,6 +39,17 @@ def _source():
             "text": text,
             "start": 0,
             "end": len(text),
+            # THIS FIXTURE'S IDEAL TEXT IS ITS TRANSCRIPT, which is why the
+            # served span equals the document span here and why nothing in
+            # this file could ever have caught the coordinate defect of
+            # 2026-09-19: V3 filled `span` (an Ideal Text offset, drawn on by
+            # the client) from the transcript, and with one document that is
+            # invisible. Fine for what these tests are about -- the 75-word
+            # budget, the service identity, the enrollment fallbacks -- but
+            # the two-document shape lives in
+            # `test_v3_end_to_end_production_shape.py` and belongs there.
+            "served_start": 0,
+            "served_end": len(text),
             "start_offset_ms": 120,
             "duration_ms": 5100,
             "slide_index": 0,
@@ -77,7 +88,8 @@ def test_service_frame_and_bundle_preserve_75_word_budget_without_labels():
         expected_recording_id=RECORDING,
     )
     inventory = prepare_v3_service_inventory(
-        frame=frame, take_document=document, feedback_candidates=[]
+        frame=frame, take_document=document, served_text=document["text"],
+        feedback_candidates=[],
     )
     assert inventory is not None
     assert len(inventory["selected_keys"]) == 1
