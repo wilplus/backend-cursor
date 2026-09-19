@@ -514,19 +514,40 @@ def _canonical_feedback_candidate(
 def _valid_feedback_bundle_selection(
     canonical_candidates: list[dict], keys: list[dict], *,
     service_v3: bool, candidate_inputs: list[dict],
+    detail: Optional[list[str]] = None,
 ) -> bool:
     available = {
         (row["candidate_key"], row["feedback_family"])
         for row in canonical_candidates
     }
-    if any(
-        (str(key.get("id")), str(key.get("feedback_family"))) not in available
+    missing = [
+        f"{str(key.get('feedback_family') or '∅')}"
+        f"/{str(key.get('id') or '∅')}"
         for key in keys
-    ):
+        if (str(key.get("id")), str(key.get("feedback_family")))
+        not in available
+    ]
+    if missing:
+        if detail is not None:
+            detail.append(f"selected_key_not_canonical:{','.join(missing)}")
         return False
     if service_v3 and len(canonical_candidates) != len(candidate_inputs):
         # Complete inventory is a service invariant.  A malformed excluded
         # candidate cannot disappear merely because it was never selectable.
+        #
+        # THE INVARIANT STAYS (2026-09-19). It is tempting to read this as the
+        # same defect #567 fixed -- one unprovable row silencing a whole Take
+        # -- and weaken it. It is not. #567 excluded rows that could not be
+        # PROVEN at the policy layer, before anything was written. This is the
+        # write itself: the bundle is the audit record, and a record that
+        # quietly omits a row it was handed is a record that lies about what
+        # the service considered. The counts say which way it went.
+        if detail is not None:
+            detail.append(
+                "incomplete_inventory:"
+                f"canonical={len(canonical_candidates)}"
+                f",input={len(candidate_inputs)}"
+            )
         return False
     return True
 
@@ -584,18 +605,40 @@ def build_feedback_exposure_bundle(
     commit: Optional[str] = None,
     document_snapshot_id: Optional[str] = None,
     document_surface_sha256: Optional[str] = None,
+    detail: Optional[list[str]] = None,
 ) -> Optional[dict]:
-    """Build one deterministic complete selection/exposure transaction."""
+    """Build one deterministic complete selection/exposure transaction.
+
+    ``detail`` IS THE SAME LESSON, ONE LAYER DOWN (2026-09-19). This function
+    has six ``return None`` exits and the caller turns every one of them --
+    plus its own membership-count check -- into the single reason
+    ``exposure_bundle_membership_count_mismatch``. Seven conditions, one name,
+    and a name that actively misleads: six of them are not a count mismatch at
+    all. ``prepare_v3_service_inventory`` learned this the same day, and the
+    production line that taught it read ``detail=piece_has_no_part_id``.
+
+    Pass a list and each exit appends the gate that closed. Log-only, never
+    surfaced: why a Take has no Confident Voice item is not something AC-9
+    lets us put on screen. Identifiers and counts, never candidate content.
+    """
+    def closed(gate: str) -> None:
+        if detail is not None:
+            detail.append(gate)
+
     if not isinstance(session, dict) or not isinstance(transcript_document, dict):
+        closed("session_or_document_not_a_dict")
         return None
     identity = _valid_feedback_bundle_identity(session)
     if identity is None:
+        closed("take_identity_invalid")
         return None
     project_id, owner_id, take_id, take_index = identity
     if not isinstance(served_text, str) or not served_text:
+        closed("served_text_empty")
         return None
     key_selection = _valid_feedback_bundle_keys(selected_keys, manager_rules_version)
     if key_selection is None:
+        closed("selected_keys_invalid")
         return None
     keys, service_v3 = key_selection
 
@@ -612,6 +655,7 @@ def build_feedback_exposure_bundle(
         commit=commit_value,
     )
     if transcript is None:
+        closed("transcript_snapshot_unbuildable")
         return None
 
     canonical_candidates: list[dict] = []
@@ -626,10 +670,22 @@ def build_feedback_exposure_bundle(
         )
         if candidate is not None:
             canonical_candidates.append(candidate)
+        else:
+            # WHICH ROW, AND WHICH LANE. A candidate canonicalises to None
+            # when its family is unknown, its key is empty, or its exact
+            # transcript evidence cannot be built -- and under the V3
+            # complete-inventory invariant below, ONE of these ends the whole
+            # Take. Naming the row is the difference between "a candidate was
+            # dropped" and a two-hour search for which.
+            closed(
+                "candidate_not_canonical:"
+                f"{str(raw.get('feedback_family') or '∅')}"
+                f"/{str(raw.get('id') or '∅')}"
+            )
 
     if not _valid_feedback_bundle_selection(
         canonical_candidates, keys, service_v3=service_v3,
-        candidate_inputs=candidate_inputs,
+        candidate_inputs=candidate_inputs, detail=detail,
     ):
         return None
 

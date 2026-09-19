@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from hashlib import sha256
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Optional
 import uuid
 
 from services.coach_guidance_delivery import principal_is_allowlisted
@@ -127,6 +127,53 @@ def _decline(take_id: Any, reason: str, detail: str = "") -> V3Unavailable:
     # return is twenty-two lines in which one exit can quietly lose its log
     # again — the exact failure this function exists to prevent.
     return V3Unavailable(reason)
+
+
+def _exposure_bundle_or_reason(
+    *, take: Any, take_document: Any, served_text: Any, inventory: dict,
+    source_snapshot: Any,
+) -> tuple[Optional[dict], str, str]:
+    """The exposure bundle, or the named reason it could not be built.
+
+    TWO REASONS, NOT ONE (2026-09-19).
+    ``exposure_bundle_membership_count_mismatch`` covered SEVEN conditions --
+    the builder's six ``return None`` exits and this count check -- and six of
+    them are not a count mismatch at all, so the one name the log offered
+    pointed at the wrong question. The founder's take reached here the first
+    time V3 ever got past ``service_inventory_unavailable``, and the line said
+    nothing about which gate had closed.
+
+    EXTRACTED rather than inlined, because ``prepare_first_client_feedback``
+    is a grandfathered function on the complexity ratchet and may only come
+    DOWN. Splitting one ``or``-ed condition into two ``if``s in place grew it
+    41 -> 42 and the gate refused it, correctly: the ratchet's whole purpose
+    is to stop that function absorbing one more branch at a time. Lifting the
+    decision out takes it to 40 instead.
+
+    Returns ``(bundle, "", "")`` on success, or ``(None, reason, detail)``.
+    """
+    detail: list[str] = []
+    bundle = build_feedback_exposure_bundle(
+        session=take,
+        transcript_document=take_document,
+        served_text=served_text,
+        candidates=inventory["candidates"],
+        selected_keys=inventory["selected_keys"],
+        manager_rules_version="take-feedback-policy-v3-serving-v1",
+        document_snapshot_id=str(source_snapshot["document_snapshot_id"]),
+        document_surface_sha256=str(source_snapshot["surface_sha256"]),
+        detail=detail,
+    )
+    if bundle is None:
+        return None, "exposure_bundle_unbuildable", "; ".join(detail)
+    built = len(bundle.get("candidates") or [])
+    expected = len(inventory["membership_items"])
+    if built != expected:
+        # The name now means what it says: the bundle really does carry a
+        # different number of candidates than the inventory promised.
+        return (None, "exposure_bundle_membership_count_mismatch",
+                f"bundle={built},membership={expected}")
+    return bundle, "", ""
 
 
 def _exercise_context_available(
@@ -277,20 +324,12 @@ def prepare_first_client_feedback(
         return _decline(
             take_id, "service_inventory_unavailable", "; ".join(inventory_detail)
         )
-    bundle = build_feedback_exposure_bundle(
-        session=take,
-        transcript_document=take_document,
-        served_text=served_text,
-        candidates=inventory["candidates"],
-        selected_keys=inventory["selected_keys"],
-        manager_rules_version="take-feedback-policy-v3-serving-v1",
-        document_snapshot_id=str(source_snapshot["document_snapshot_id"]),
-        document_surface_sha256=str(source_snapshot["surface_sha256"]),
+    bundle, bundle_reason, bundle_detail = _exposure_bundle_or_reason(
+        take=take, take_document=take_document, served_text=served_text,
+        inventory=inventory, source_snapshot=source_snapshot,
     )
-    if bundle is None or len(bundle.get("candidates") or []) != len(
-        inventory["membership_items"]
-    ):
-        return _decline(take_id, "exposure_bundle_membership_count_mismatch")
+    if bundle is None:
+        return _decline(take_id, bundle_reason, bundle_detail)
     candidate_result = database.record_feedback_v3_service_candidate_set(bundle)
     if (
         not isinstance(candidate_result, dict)
