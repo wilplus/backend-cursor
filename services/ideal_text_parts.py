@@ -610,6 +610,83 @@ def serve(rows: Any) -> Optional[list]:
     return out
 
 
+def mint_machine_parts(text: Any) -> Optional[list]:
+    """Identity for the MACHINE's own paragraphs, or None when unprovable.
+
+    THE DOCUMENT THAT NEVER HAD A PARAGRAPH (production, 2026-09-19). The
+    binder above logged ``parts=0 pieces=3``: it was not mis-placing anything,
+    it had NOTHING to place against. Chasing the empty list found one cause and
+    it is not a bug in any single function -- it is a gap in the lifecycle.
+
+    Three writers touch ``ideal_text_part``, and every one of them needs
+    identity to ALREADY exist: the user-edit PUT stores the list the client
+    sent, seed-on-lock adopts the list the client sent, and ``compose_locked``
+    refreshes a list that has stored locks. So a document acquires Paragraph
+    identity only when the student EDITS or LOCKS one, and until they do the
+    table is empty. That is every fresh Take of every project -- ``parts=0``
+    is not an edge case, it is the default state.
+
+    Everything downstream reads as broken in a different way:
+
+      * ``_locked_parts`` returns [], the binder stands down, and V3 rejects
+        every row with ``piece_has_no_part_id`` -- the gate #564 unblocked,
+        blocked again one layer further back.
+      * ``_exact_pieces`` publishes ``part_id: None`` on every piece, so the
+        FE's ``partsFromCorePieces`` declines the whole set (it refuses a
+        partial adoption, correctly) and ``reconcileParts(text, [])`` mints
+        client ids the server has never seen -- #411's regression, still live
+        for any document nobody edited.
+
+    So identity is minted HERE, once, at the publish boundary, and persisted.
+    Then all three existing writers find the list they were written to expect.
+
+    WHY THE SERVER MAY SPLIT *THIS* TEXT. §10.2 forbids a server-side
+    paragraph splitter because the FE's is marker-aware and a rival
+    implementation would drift -- that rule protects USER text. This text is
+    the machine's own assembly, joined by this codebase with "\\n\\n", so
+    splitting it is the inverse of our own ``joined()``. ``compose_locked``
+    already stands on exactly this ground and already mints server ids for
+    machine paragraphs: "identity for machine-authored paragraphs has no
+    client claim at all -- the client has never seen them." On a document with
+    no stored parts, EVERY paragraph is machine-authored.
+
+    REFUSED, NEVER APPROXIMATED. None -- meaning "mint nothing, behave exactly
+    as today" -- whenever the split cannot be proven to be the inverse of the
+    join:
+
+      * a paragraph with unbalanced markers is evidence the split landed
+        inside a token (``_balanced``, the same guard compose uses);
+      * a list that does not ``agrees_with_text`` its own source means the
+        document's whitespace is not what ``joined()`` produces, and stored
+        offsets would point at the wrong words;
+      * the same size ceilings the client's list is held to.
+
+    A false refusal costs one document today's behaviour. A false mint writes
+    an identity map that disagrees with the words on screen, and the module
+    header's rule for that is unambiguous: every lock set against it afterwards
+    would be anchored to the wrong words, unrecoverably.
+
+    Pure: ids are random, nothing else here reads a clock or a database.
+    """
+    body = (text if isinstance(text, str) else "").strip()
+    if not body:
+        return None
+    paragraphs = [p.strip() for p in re.split(r"\n{2,}", body) if p.strip()]
+    if not paragraphs or len(paragraphs) > MAX_PARTS:
+        return None
+    if not all(_balanced(p) for p in paragraphs):
+        return None
+    if len(body) > MAX_DOCUMENT_CHARS:
+        return None
+    out = [{"id": str(uuid.uuid4()), "ord": i, "text": p}
+           for i, p in enumerate(paragraphs)]
+    # The invariant the whole file rests on, checked before anything is
+    # written rather than trusted from the construction above.
+    if not agrees_with_text(out, body):
+        return None
+    return out
+
+
 def bind_pieces_to_parts(
     document: Any, *, served_text: Any, slide_regions: Any, parts: Any,
 ) -> Any:
