@@ -46,7 +46,7 @@ ROOT = Path(__file__).resolve().parents[1]
 #: The Terms as they will ship, used when no policy is registered yet. The
 #: draft is the record until register_phase1_policy_v1 has run; after that the
 #: served policy wins, because that is what users are shown.
-_DRAFT_TERMS = ROOT / "legal" / "phase1-2026.1" / "copy" / "terms-2.0-DRAFT.txt"
+_DRAFT_TERMS = ROOT / "legal" / "phase1-2026.1" / "copy" / "terms-2.0.txt"
 
 #: Claims that the product does not take money. Written as they appear in the
 #: copy, matched against whitespace-normalised text because the .txt files are

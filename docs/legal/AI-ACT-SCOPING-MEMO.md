@@ -92,7 +92,7 @@ stops resolving.
 | Never rendered to the user as a number, band, score or badge | The AC-9 product fence. Asserted as a test, not only as a policy: `tests/test_cross_take_selection.py` pins the score-free payload. |
 | Never shown to the human coach | The BLIND COACH fence, recorded at the point of use in `services/moment_confidence.py:21`. |
 | The five band labels were renamed on 2026-09-17 | `services/voice_confidence.py:131` — the renamed `BANDS`, with `_RETIRED_BAND_LABELS` at `:135` mapping the old names forward so no stored value is silently reinterpreted; the block comment above them, from `:103`, records the rename and why it is not cosmetic. The second function is `services/confidence_labels.py:108`, `band_of()`. |
-| Terms §7 prohibits employer and educational use | Live text: `src/app/terms/page.tsx:306` in `wilplus/frontend-cursor` at commit `f460788` — pinned, because that page is edited under this pack. Draft replacement: `legal/phase1-2026.1/copy/terms-2.0-DRAFT.txt:113-117`. |
+| Terms §7 prohibits employer and educational use | Live text: `src/app/terms/page.tsx:306` in `wilplus/frontend-cursor` at commit `f460788` — pinned, because that page is edited under this pack. Draft replacement: `legal/phase1-2026.1/copy/terms-2.0.txt:113-117`. |
 | No technical control enforces the §7 prohibition | Stated as an absence, so there is nothing to cite. There is no seat purchasing, team plan or employer surface in the product, but equally no check that would refuse one. |
 
 ### 2.6 A correction to §2.3, made while sourcing this memo

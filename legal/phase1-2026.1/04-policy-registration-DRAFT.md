@@ -68,6 +68,51 @@ sha256sum legal/phase1-2026.1/copy/terms-2.0.txt \
 Compute after the founder's final edits and after the `-DRAFT` suffix is
 removed, never before.
 
+### The four hashes — COMPUTED 2026-09-19
+
+Both preconditions are met. The copy is final (zero `[[…]]` blanks; the three
+internal notes that were inside these files moved to the conditions section at
+the foot of this document on 2026-09-18), and the `-DRAFT` suffix came off in
+the same commit that records these values.
+
+Over the file bytes exactly as committed, final LF included, per the rule above:
+
+| file | bytes | `sha256` |
+|---|---:|---|
+| `copy/terms-2.0.txt` | 9,146 | `620148dedc09b94a3e9b75285734686ae35d21b8e3a2532a03a08c291daf294f` |
+| `copy/privacy-2.0.txt` | 10,915 | `8f622637d852e28ae9eff3e1e85a1136a52c2e9bb93478329758d04beab8e972` |
+| `copy/ai-notice-1.0.txt` | 1,804 | `bacdf6c61759ea7a89bb2beb1d20f1616c26e33eaec3ce66ec57dec481665f6b` |
+| `copy/agreement-1.0.txt` | 848 | `89035b5232cc555842469ff2aa2efe20ca726e4a254ee171827e9c572041c0e9` |
+
+```json
+  "terms_copy_sha256": "620148dedc09b94a3e9b75285734686ae35d21b8e3a2532a03a08c291daf294f",
+  "privacy_copy_sha256": "8f622637d852e28ae9eff3e1e85a1136a52c2e9bb93478329758d04beab8e972",
+  "ai_notice_copy_sha256": "bacdf6c61759ea7a89bb2beb1d20f1616c26e33eaec3ce66ec57dec481665f6b",
+  "agreement_copy_sha256": "89035b5232cc555842469ff2aa2efe20ca726e4a254ee171827e9c572041c0e9"
+```
+
+**Verify before registering, not after.** Re-run the `sha256sum` block above and
+compare. If any value differs, something edited a copy file after this line was
+written and the difference must be understood before anything is registered —
+not papered over by updating this table.
+
+For the avoidance of doubt, these are the values the **stripped** rule would
+have produced, recorded once so that a mismatch can be diagnosed rather than
+guessed at: `terms` `2208147…`, `privacy` `b6da8ef…`, `ai-notice` `9533b8d…`,
+`agreement` `5855b4e…`. **If `register_phase1_policy_v1` reports a mismatch and
+the value it computed is one of those four, a caller stripped the trailing
+newline** — fix the caller, never the table.
+
+### A note on the four determination documents' filenames
+
+`01`, `02`, `03` and `06` keep their `-DRAFT.md` source names even though they
+are signed. That is deliberate and not an oversight: what is signed and
+registered is the **PDF at the `object_key`**, whose name has never carried the
+suffix, and each signed PDF's footer cites its markdown source by the path it
+had when it was rendered. Renaming those sources now would break that
+back-reference for no gain. The copy files are different — their *bytes* are
+the registered artifact, so they are named as what they are.
+
 ## 3. Allowed countries
 
 `accept_phase1_processing_authorization_v1` lowercases and trims what the client
@@ -317,21 +362,50 @@ jobs behave differently from the web tier.
 
 ## 7. Blockers before this can be registered
 
-1. Counsel's determination in document 02 §9.
-2. The four `[[FOUNDER: …]]` decisions in the copy documents, including every
-   retention period in Privacy Policy §7.
-3. `data_retention_rules` seeded to match those periods, so the
-   `retention_control_version` above names something real.
-4. Article 50 gaps 1, 2 and 3 from document 03 — in particular the acceptance
-   screen, which does not exist in the frontend today. Without it there is no
-   way for a user to accept, and therefore no receipt and no recording under
-   `enforce`.
-5. The staging rehearsal in `docs/PHASE1-PROCESSING-RUNBOOK.md` §"Required
-   staging verification".
-6. Signed DPAs and a transfer mechanism for every party in document 01 §2.
+Reviewed 2026-09-19. Four of the six are closed; the ones that remain are
+storage, database and paperwork, and none of them is a decision.
 
-Items 3 and 4 are engineering work, not paperwork. They are the real critical
-path.
+1. ~~Counsel's determination in document 02 §9.~~ **Closed as a blocker,
+   carried as a condition.** The founder determined it himself on 2026-09-19 —
+   `false` on all three booleans, not high-risk, not prohibited — recorded in
+   the `approving_authority` field as *not counsel-reviewed*, and subject to one
+   written gate: **counsel must confirm before any person other than the founder
+   records.** Every recording made to date is the founder's own voice, so today
+   the only affected data subject is the person who made the determination. That
+   stops being true the moment someone else records, and **that** is the
+   condition to hold, not registration.
+2. ~~The four `[[FOUNDER: …]]` decisions in the copy documents.~~ **Closed
+   2026-09-18.** Zero blanks remain in `copy/*.txt`; the three internal notes
+   that were sitting inside them moved to the conditions section below, where
+   they cannot be rendered to a user. Hashes are in §2.
+3. `data_retention_rules` seeded to match document 06 §1, so the
+   `retention_control_version` above names something real. **Open.** §3b's two
+   proposed categories (`deletion_evidence`, `transparency_evidence`) still need
+   the founder's confirmation, and `financial-evidence-v1` carries option 2's
+   bounded period as a marked placeholder until counsel answers.
+4. ~~Article 50 gaps 1, 2 and 3 from document 03 — in particular the acceptance
+   screen, which does not exist in the frontend today.~~ **Closed.** The
+   acceptance screen shipped in frontend #389 (`f4607888`) and the Art 50(2)
+   marking in #406 (`ae212ee9`). One decision inside gap 1 is open — whether the
+   `text/plain` clipboard flavour carries a visible marker line — and document
+   03 §8 records why it does not hold activation.
+5. The staging rehearsal in `docs/PHASE1-PROCESSING-RUNBOOK.md` §"Required
+   staging verification". **Open.**
+6. Signed DPAs and a transfer mechanism for every party in document 01 §2.
+   **Open**, and the one outstanding action is the founder's: the Art 28(3)(h)
+   email to OpenAI drafted in `docs/legal/PROCESSOR-CONTACT-LOG.md` as attempt 2
+   and never sent. Stripe is an independent controller for payments, not a
+   processor, so there is no DPA to chase there — a recipient to disclose, which
+   the Privacy Policy now does.
+
+**Plus one that was never on this list and should have been:** all four signed
+PDFs uploaded to their `object_key`s with their fingerprints recorded. Two of
+the four are signed and current; two are being re-signed. See
+[`SIGNED-ARTIFACTS.md`](SIGNED-ARTIFACTS.md), which is the file to check before
+registering anything.
+
+Item 3 is the only remaining engineering work. Items 5, 6 and the uploads are
+sequence, not design.
 
 ---
 

@@ -56,7 +56,7 @@ on the outcome of document 02, except where §5 says so explicitly.
 receiving a written document back is not, without being told, in a position to
 know that a third-party speech model received their audio.
 
-**How we comply.** The AI notice (`copy/ai-notice-1.0-DRAFT.txt`, version 1.0,
+**How we comply.** The AI notice (`copy/ai-notice-1.0.txt`, version 1.0,
 which loses the `-DRAFT` suffix at signature) is
 presented on the acceptance screen, before any recording is possible, and states
 in plain language that recordings are processed by AI, which provider receives
