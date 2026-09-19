@@ -251,7 +251,9 @@ def build_snapshot(
     moment_seeds = extract_key_moments(text_with_moments)
     text = strip_moment_markers(text_with_moments)
 
-    from services.ideal_text_parts import compose_locked, serve
+    from services.ideal_text_parts import (
+        compose_locked, mint_machine_parts, serve,
+    )
     stored_rows = database.get_ideal_text_parts(
         arc_id, actor_id, with_lock=True) or []
     composed = compose_locked(text, stored_rows)
@@ -266,6 +268,39 @@ def build_snapshot(
                  for part in composed["parts"]])
             stored_rows = database.get_ideal_text_parts(
                 arc_id, actor_id, with_lock=True) or []
+    elif not stored_rows:
+        # WHERE A PARAGRAPH IS BORN (production, 2026-09-19: the binder logged
+        # `parts=0 pieces=3` -- nothing to place against, on every take).
+        #
+        # Until now identity arrived only by USER action: the edit PUT and
+        # seed-on-lock store the client's list, and `compose_locked` (the
+        # branch above) refreshes a list that already has locks. A student who
+        # has neither edited nor locked has no Paragraph ids at all, which is
+        # the normal state of a fresh project -- and it costs them the V3
+        # bookmarks (`piece_has_no_part_id` on every row) and the slide join on
+        # the deck (`part_id: None` on every piece below, so the FE's
+        # `partsFromCorePieces` declines the set).
+        #
+        # HERE, and only here, because this runs at a WRITE BOUNDARY: the
+        # function's own contract already says it "may persist a newly composed
+        # part list because it runs only while publishing; the GET path never
+        # calls it". A student GET must still never mint identity.
+        #
+        # ONLY WHEN THE TABLE IS EMPTY. `elif` on the compose branch and
+        # `not stored_rows` together mean this cannot touch a document that has
+        # any identity of its own -- nothing is overwritten, ever, and a
+        # document whose parts merely disagree with the served text keeps them
+        # and keeps today's behaviour. L1 holds by construction too: the words
+        # are not read for this, only split, and `mint_machine_parts` refuses
+        # unless its list joins back to this exact text.
+        minted = mint_machine_parts(text)
+        if minted and database.replace_ideal_text_parts(
+                arc_id, actor_id, minted):
+            stored_rows = database.get_ideal_text_parts(
+                arc_id, actor_id, with_lock=True) or []
+            logger.info(
+                "ideal-text parts minted for a never-edited document "
+                "parts=%d arc=%s", len(minted), arc_id)
     served_parts = serve(stored_rows)
     if served_parts is not None:
         from services.ideal_text_parts import agrees_with_text
