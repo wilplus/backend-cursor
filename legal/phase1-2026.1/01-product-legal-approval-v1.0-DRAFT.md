@@ -3,15 +3,18 @@
     artifact_kind:       product_legal_approval
     version:             1.0
     approving_authority: Artur Willoński (founder and controller) — controller's own approval, NOT counsel-reviewed
-    approved_at:         2026-09-18T00:00:00Z
+    approved_at:         2026-09-19T00:00:00Z
     object_key:          phase1-2026.1/legal/product-legal-approval-v1.0.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     metadata:            {"policy_version": "phase1-2026.1", "jurisdictions": ["PL", "EU", "EEA"]}
 
-**STATUS: DRAFT — NOT APPROVED, NOT SIGNED.** Written by engineering from the
-source code. It is a description of what the system does and a proposed
-lawful-basis mapping for counsel to accept, amend or reject. It is not legal
-advice and it does not become an approval by being committed to the repository.
+**STATUS: APPROVED AND SIGNED BY THE CONTROLLER, 19 September 2026 — NOT
+COUNSEL-REVIEWED.** Drafted by engineering from the source code: a description
+of what the system does and a lawful-basis mapping, approved by the controller
+on his own authority and executed at §8. Controller approval is not counsel
+review, and this document is not legal advice. It goes to counsel with the
+questions in `09-counsel-cover-note.md`, to accept, amend or reject; an
+amendment supersedes this version rather than editing it.
 
 ---
 
@@ -334,7 +337,7 @@ this approval is scoped to (§2), and the same set the
 The United States is expressly **outside** this signature. Document 05 covers it
 and is parked until incorporation.
 
-    Name:      ______________________________
-    Firm:      ______________________________
-    Date:      ______________________________
-    Reference: ______________________________
+    Name:      Artur Willoński
+    Firm:      None — natural person, no company (działalność nieewidencjonowana)
+    Date:      19 September 2026
+    Reference: WILLAB-PHASE1-2026.1-PLA-2026-09-19

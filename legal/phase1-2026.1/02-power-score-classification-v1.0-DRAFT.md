@@ -3,22 +3,27 @@
     artifact_kind:       power_score_classification
     version:             1.0
     approving_authority: Artur Willoński (founder and controller) — controller's own determination, NOT counsel-reviewed; see §9 and its condition
-    approved_at:         2026-09-18T00:00:00Z
+    approved_at:         2026-09-19T00:00:00Z
     object_key:          phase1-2026.1/legal/power-score-classification-v1.0.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     metadata: {
       "pipeline_version": "voice-confidence-universal-v3",
       "biometric_identification": false,
       "sex_gender_inference": false,
-      "emotion_intention_inference": [[COUNSEL — see §9; the registration RPC
-                                       accepts only false]]
+      "emotion_intention_inference": false
     }
 
-**STATUS: DRAFT — NOT APPROVED, NOT SIGNED.** §§2-4 are a factual description of
-the code, written by engineering, and can be checked line by line against the
-cited files. §§5-8 set out the legal questions and the arguments on both sides.
-§9 is where the determination goes and it is deliberately left empty. This
-document does not conclude that the feature is fine.
+**STATUS: DETERMINED AND SIGNED BY THE CONTROLLER, 19 September 2026 — NOT
+COUNSEL-REVIEWED, AND CONDITIONAL.** §§2-4 are a factual description of the
+code, written by engineering, and can be checked line by line against the cited
+files. §§5-8 set out the legal questions and the arguments on both sides. §9
+carries the determination — `false` on all three booleans, not high-risk under
+Annex III, not prohibited under Article 5 — made by the founder as controller
+and not by counsel, subject to the condition recorded there: **counsel must
+confirm it before any person other than the founder records.** Every recording
+made to date is the founder's own voice, so if the determination is wrong
+today, the only affected data subject is the person who made it. That stops
+being true the moment someone else records.
 
 ---
 
@@ -496,10 +501,10 @@ preference:
 
 ### Signature
 
-    Name:      ______________________________
-    Firm:      ______________________________
-    Date:      ______________________________
-    Reference: ______________________________
+    Name:      Artur Willoński
+    Firm:      None — natural person, no company (działalność nieewidencjonowana)
+    Date:      19 September 2026
+    Reference: WILLAB-PHASE1-2026.1-PSC-2026-09-19
 
 *Article and recital numbering above should be verified by counsel against the
 text of Regulation (EU) 2024/1689 as published in the Official Journal. The code

@@ -79,11 +79,11 @@ To meet our legal obligations: for example accounting records, and responding
 to lawful requests.
 Legal basis: legal obligation (Article 6(1)(c) GDPR).
 
-We do not currently take payment, so we hold no billing data. If that changes,
-we will update this policy first. We also do not use anyone's recordings to
-train models. That second one is
-not a promise we could quietly walk back: our systems refuse to register any
-processing policy that would permit it.
+If you take a paid plan, your payment is handled by Stripe. We never see or
+store your card details; we hold the record that a plan is active and the
+invoices we are required to keep. We do not use anyone's recordings to train
+models. That one is not a promise we could quietly walk back: our systems
+refuse to register any processing policy that would permit it.
 
 Special categories of data. A recording of you speaking freely may happen to
 reveal something sensitive — a health condition audible in your speech, or

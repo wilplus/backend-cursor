@@ -161,6 +161,8 @@ _FRONTEND_COMMITS = (
     "15d95706",  # 2026-09-17  zero-data-retention + data-sharing correction (#386)
     "9f740756",  # 2026-09-18  last revision holding "opt-in and off by default"
     "f4607888",  # 2026-09-18  acceptance screen (#389)
+    "c9a42974",  # 2026-09-18  landing; the CTA stops claiming consent (#400)
+    "ae212ee9",  # 2026-09-19  Art 50(2) marking of generated text (#406)
 )
 
 
