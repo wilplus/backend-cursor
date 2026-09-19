@@ -377,3 +377,4 @@
 0339	f1_serving_does_not_require_coach_review.sql
 0340	add_voice_album_notes.sql
 0341	widen_owner_voice_album_routing_to_five_states.sql
+0342	feedback_v3_source_snapshot_takes_a_lock_so_it_is_volatile.sql
