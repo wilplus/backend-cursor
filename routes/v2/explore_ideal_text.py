@@ -535,7 +535,25 @@ def v2_explore_get_ideal_text_core(arc_id):
     """Strict, read-only cold-open document.
 
     This endpoint reads one immutable prepared snapshot.  It does not compose,
-    repair, persist, sign media, aggregate feedback or prepare analytics.
+    repair, persist, aggregate feedback or prepare analytics.
+
+    IT DOES RE-ADDRESS THE DECK (2026-09-19, founder: "no slide preview" /
+    "it was visible for a moment but then gone").  ``publish_for_arc`` bakes
+    ``project.presentation_ref`` into the snapshot as the URL stored at
+    upload, and a snapshot is immutable by design -- so whatever address was
+    current at publish time is served forever.  Since decks became user
+    content (DPIA RISK-11, 2026-09-18) that address is a SIGNATURE, and
+    ``refreshed_media_url`` exists precisely because "nothing depends on a
+    stored URL staying valid".  Every other read of ``presentation_ref``
+    already calls it -- arcs, user_account, coach, and the composing ideal
+    text read below.  This one did not, which is the whole defect: the FE's
+    first load reads the composing lane and sees a signed deck, every poll
+    after reads THIS lane and sees a dead one.
+
+    Re-addressing is not composing.  The stored snapshot, its payload and its
+    ``payload_sha256`` are untouched; only the way this response points at the
+    same bytes is refreshed.  Nothing re-hashes the served body -- enrichment
+    and recording-roots bind on the snapshot id.
     """
     from time import perf_counter
     started = perf_counter()
@@ -560,6 +578,11 @@ def v2_explore_get_ideal_text_core(arc_id):
                 overlay["confident_moment_summary_status"]
             ),
         })
+        # A ref this cannot read with certainty comes back unchanged, and a
+        # missing one stays missing -- so a deckless arc still reports no deck
+        # rather than an address that resolves to nothing.
+        payload["presentation_ref"] = refreshed_media_url(
+            payload.get("presentation_ref")) or None
         response = jsonify(payload)
     elapsed = (perf_counter() - started) * 1000
     response.headers["Cache-Control"] = "private, no-store"
