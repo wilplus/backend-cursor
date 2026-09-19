@@ -12,8 +12,10 @@
 COUNSEL-REVIEWED.** Signing closes no gaps; the work does. Of the five gaps in
 §6, the three this document treated as blocking activation are closed — gap 1
 (Article 50(2) marking) and gap 2 on 2026-09-19, gap 3 narrowed to a residual
-that no receipt depends on. Gaps 4 and 5 are open and do not block. §3 and §8
-record what is still put to counsel rather than settled here.
+that no receipt depends on. Gaps 4 and 5 are open and do not block. **One
+decision inside gap 1 is open and is a founder call: whether the plain-text
+clipboard flavour carries a visible marker line (§3).** §3 and §8 record what
+is still put to counsel rather than settled here.
 
 Article 50 of Regulation (EU) 2024/1689 has applied since 2 August 2026. This
 assessment is therefore about an obligation that is already in force, not one
@@ -110,10 +112,20 @@ before you present"* — satisfies "detectable as artificially generated" for th
 person reading. The wording is the AI notice's own, so the surface and the
 notice do not develop two vocabularies for one fact.
 
-**On the way out.** The marking rides the two export paths the product
-controls: the `text/html` clipboard flavour written by the Copy buttons, and
-the OOXML core properties (`docProps/core.xml`) of the `.docx` export, which is
-where any office suite shows provenance under File → Properties.
+**On the way out.** `docs/AI-CONTENT-MARKING-PROPOSAL.md` §1 enumerated every
+path by which generated text leaves the product. There are four, and all four
+are now accounted for:
+
+| # | Path | Marking |
+|---|---|---|
+| 1 | Copy buttons → clipboard | the `text/html` flavour carries the attributes and the JSON-LD. The `text/plain` flavour does not — see the open item below |
+| 2 | Download as PDF | an XMP packet (`/Type /Metadata`) referenced from the catalogue, carrying `Iptc4xmpExt:DigitalSourceType` as an `rdf:resource`, plus the DocInfo dictionary for readers that ignore XMP |
+| 3 | Download as `.docx` | OOXML core properties (`docProps/core.xml`), where any office suite shows provenance under File → Properties |
+| 4 | GDPR data export (JSON) | **nothing to mark.** `export_authorization_evidence` returns receipt ids, timestamps, country, locale, client version and request states — no Ideal Text, no Feedback, no transcript. Checked rather than assumed, as the proposal asked. There is no other export or download route in the backend |
+
+All three markings are generated from one shared assertion, so the exporters
+cannot drift into three wordings of one claim — which is also what allows C2PA
+to be added beside them later rather than replacing them (proposal §4).
 
 **What is NOT marked, deliberately.** Transcripts — a transcript represents
 what the user actually said, and marking it as artificially generated would be
@@ -132,8 +144,8 @@ That understated it, because the product **ships a Copy button and a `.docx`
 export**. Those are our acts, in our product, and the "it was the user's own
 doing" argument was never available for them. They are now marked.
 
-What genuinely remains outside any marking: a manual selection and Ctrl-C into
-a plain-text field, a screenshot, and retyping.
+What genuinely remains outside any marking: the **`text/plain` clipboard
+flavour**, a screenshot, and retyping.
 
 **The framing we would put to counsel.** The Art 50(2) obligation is on the
 *provider*, to mark the outputs *the AI system produces*. A user copying text
@@ -142,19 +154,31 @@ follow the content through an arbitrary third-party paste target would make it
 unsatisfiable by any provider of generated text. The better view is that it
 does not extend that far. **Counsel should confirm; we do not assume it.**
 
-**The framing we would put to counsel.** The Art 50(2) obligation is on the
-*provider*, to mark the outputs *the AI system produces*. A user manually
-copying text into a plain-text field is the user's own act, and reading the
-obligation to follow the content through an arbitrary third-party paste target
-would make it unsatisfiable by any provider of generated text: a plain-text
-field keeps no metadata of any kind, and the destination is outside our control
-entirely. **We take that position, and counsel should confirm it.**
+**⚠️ The plain-text flavour is an OPEN FOUNDER DECISION, and the two written
+positions disagree.** It is recorded here rather than quietly settled, because
+the implementation took one side of it.
 
-The alternative was considered and rejected: **restricting copying** from the
-generated surfaces would be a real product cost on the core loop — the Ideal
-Text exists to be used in a presentation, and a user who cannot get it out of
-the app has a worse product — and it would raise the bar rather than close the
-gap, since screenshots and retyping remain.
+`docs/AI-CONTENT-MARKING-PROPOSAL.md` §3 recommends **option 1: a visible
+trailing marker line** on the `text/plain` flavour, on the reasoning that it is
+"the only one that is true for every paste", and notes the line is user-facing
+copy needing founder sign-off. The proposal explicitly describes the
+html-only answer as meeting the obligation "for some pastes and not others".
+
+**What shipped is the html-only answer**, on this reasoning: a trailing
+sentence is not *a machine-readable format*, which is what Art 50(2) asks for,
+so it would not convert a non-compliant paste into a compliant one; it would
+appear in the user's own pasted text every time; and the Ideal Text exists to
+be pasted into a presentation, so the cost lands squarely on the core loop.
+Zero-width encoding is rejected by both documents and stays rejected.
+
+**Neither document can settle this and neither should pretend to.** The
+founder decides whether the trailing line ships; counsel confirms whether
+html-only satisfies 50(2) for the clipboard at all. Until both answer, this is
+a known, named, argued gap — not a closed one.
+
+Restricting copying altogether was considered and rejected: a real product cost
+on the core loop, and it would raise the bar rather than close the gap, since
+screenshots and retyping remain.
 
 **Zero-width characters are rejected by name and stay rejected.** Invisible
 watermarking of user-facing text is a covert mark on content the user believes
@@ -219,7 +243,7 @@ Open item.
 
 | # | Gap | Obligation | What is needed |
 |---|---|---|---|
-| 1 | ~~The Ideal Text and Feedback are not marked as artificially generated, in any format~~ **CLOSED 2026-09-19** | 50(2) | Done, and the mechanism is recorded in §3. Both halves are implemented: a persistent visible label on both Ideal Text mounts and on machine-origin Feedback, and a machine-readable marking (`data-ai-generated-source-type` + JSON-LD, IPTC `trainedAlgorithmicMedia`) on the surfaces and on both export paths — the `text/html` clipboard flavour and the `.docx` core properties. One module (`lib/willab/aiGeneratedMark.ts`) is the single source of the vocabulary, and a source-reading test fails if any surface drops the mark or if a transcript gains one. |
+| 1 | The Ideal Text and Feedback were not marked in any format — **substantially closed 2026-09-19, one decision open** | 50(2) | Both halves are implemented and the mechanism is in §3: a persistent visible label on both Ideal Text mounts and on machine-origin Feedback, and a machine-readable IPTC `trainedAlgorithmicMedia` marking on the surfaces and on all three export paths that carry generated text (the fourth carries none). One module (`lib/willab/aiGeneratedMark.ts`) is the single source of the vocabulary; a source-reading test fails if a surface drops the mark or a transcript gains one, and the PDF test walks the produced file's xref to prove the added metadata objects did not corrupt it. **Open:** the `text/plain` clipboard flavour, where the written proposal and the implementation disagree — §3. |
 | 2 | ~~No client surface renders the AI notice or writes `ai_transparency_exposures`~~ **CLOSED 2026-09-19** | 50(1), 50(5) | Done. `Phase1AcceptanceFlow.tsx` shows the notice as its own step and writes the exposure **on render, not on submit** (`recordAiNoticeRendered` → `/api/v2/processing-authorization/ai-rendered`, keyed on `ai_notice_version`), so a user who reads it and closes the screen still counts as informed. Shipped to production in frontend #389 (`f4607888`). It is inert until a policy is registered and active. |
 | 3 | **NARROWED 2026-09-19.** The *acceptance* surface now renders the stored copy; the standalone `/terms` and `/privacy` pages (`src/app/terms/page.tsx` v1.2, `src/app/privacy/page.tsx` v1.2) are still hardcoded React | 50(5) "clear", and the integrity of the whole hashing scheme | The receipt-integrity half is fixed: `Phase1AcceptanceFlow.tsx` renders the exact `terms_copy` / `privacy_copy` / `ai_notice_copy` bytes returned by `get_phase1_processing_authorization_v1`, so the text read at the moment of acceptance **is** the text whose hash the receipt names. **Residual:** the two standalone pages can still drift from the registered copy. They are no longer what any receipt is taken against, so this is now a consistency defect rather than a receipt-integrity one — but they must either render the stored copy or be plainly marked as an informational mirror. |
 | 4 | Accessibility conformance not assessed | 50(5) | Assessment against the applicable accessibility requirements. |
@@ -230,10 +254,11 @@ never really an Article 50 problem: it was the foundation the whole receipt
 mechanism rests on. `POLICY_COPY_HASH_MISMATCH` and `PROCESSING_POLICY_STALE`
 protect the stored copy against drift, and neither can see a separately
 maintained React page — which is exactly why acceptance had to stop happening
-on one. Gap 1 was the last gap this document treated as blocking activation,
-and it closed on 2026-09-19. **Gaps 4 and 5 remain open and neither blocks
-activation**; they are named here so that "open" never quietly becomes
-"forgotten".
+on one. Gap 1's machine-readable obligation was the last thing this document
+treated as blocking activation, and the mechanism landed on 2026-09-19 with one
+decision left inside it (§3, the `text/plain` flavour). **Gaps 4 and 5 remain
+open and neither blocks activation**; they are named here so that "open" never
+quietly becomes "forgotten".
 
 ## 7. Change management
 
@@ -259,9 +284,12 @@ implemented and, since frontend #389, the client surface that renders the
 notice and writes the exposure exists (gap 2 closed, gap 3 narrowed to the two
 standalone pages). **Article 50(2) is met as of 2026-09-19** (gap 1): generated
 text carries a visible label and a machine-readable IPTC `trainedAlgorithmicMedia`
-marking, on the surfaces and on both export paths the product controls, with
-the residual — manual plain-text paste, screenshots, retyping — argued in §3
-and put to counsel rather than assumed away. Article 50(4) does not apply.
+marking, on the surfaces and on all three export paths that carry generated
+text; the fourth was checked and carries none. One decision inside it is open
+and named: the `text/plain` clipboard flavour, where the written proposal
+recommends a visible trailing line and the implementation did not ship one
+(§3). Screenshots and retyping remain outside any marking, argued in §3 rather
+than assumed away. Article 50(4) does not apply.
 
 Per `docs/PHASE1-PROCESSING-RUNBOOK.md`: do not describe the application as
 "fully compliant". This document reports the controls and evidence actually
@@ -269,7 +297,9 @@ verified, and names five that are not.
 
 **This assessment no longer withholds support for activation.** Every gap it
 treated as blocking — 1, 2 and 3 — is closed or reduced to a residual argued on
-the record. Gaps 4 (accessibility conformance) and 5 (the Article 4 AI-literacy
+the record. The open `text/plain` decision in §3 does not hold activation: it
+is a question about how much further to go on one paste target, not about
+whether the obligation is addressed. Gaps 4 (accessibility conformance) and 5 (the Article 4 AI-literacy
 record) are open and are not blocking; they are tracked, not waived.
 
 Two things this document does **not** say, and should not be read as saying.

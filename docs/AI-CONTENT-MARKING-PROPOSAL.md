@@ -1,10 +1,34 @@
 # Marking AI-generated output — mechanism proposal (Article 50(2))
 
-**Status: PROPOSAL. Nothing here is built.** Task 5 of the Phase-1 compliance
-brief asks for the mechanism to be proposed before it is implemented, because
-the wrong choice here is expensive to reverse: a marking scheme that ships into
-users' exported files cannot be quietly changed afterwards without invalidating
-every file already in the world.
+**Status: BUILT 2026-09-19, except one decision — see the box below.** This
+was written as a proposal, and it is kept as written rather than rewritten into
+a description, because what it got right and wrong is the useful part of the
+record.
+
+> **What shipped, against this proposal:**
+> - §2 Layer A — **done** for DOCX (core properties) and PDF (XMP packet
+>   referenced from the catalogue + DocInfo). §1 path 4, the JSON data export,
+>   was read through as §5 asked and carries **no** Article 50 content:
+>   `export_authorization_evidence` returns receipt ids, timestamps and request
+>   states, nothing generated.
+> - §2 Layer B — **half done.** The `text/html` flavour ships. The
+>   `text/plain` trailing marker line that §3 recommends as option 1 **did
+>   not**, and that disagreement is live: see
+>   `legal/phase1-2026.1/03-article-50-assessment` §3, which records both
+>   positions rather than picking one. **Founder call.**
+> - §6 visible label — **done**, wording closest to candidate B, taken from
+>   `copy/ai-notice-1.0.txt` so the surface and the notice share one vocabulary.
+> - §4 C2PA — still not proposed, and the shared-assertion module exists so it
+>   can be added beside this rather than replacing it.
+> - §1 got the export inventory right and it was worth having: an
+>   implementation that had only looked at the code would have marked two paths
+>   and missed the hand-assembled PDF exporter entirely.
+
+Task 5 of the Phase-1 compliance brief asks for the mechanism to be proposed
+before it is implemented, because the wrong choice here is expensive to
+reverse: a marking scheme that ships into users' exported files cannot be
+quietly changed afterwards without invalidating every file already in the
+world.
 
 Source: `legal/phase1-2026.1/03-article-50-assessment-v1.0-DRAFT.md` §3 and §6
 gap 1.
