@@ -240,13 +240,19 @@ def prepare_first_client_feedback(
         take_index=take.get("take_index"),
         expected_recording_id=take.get("recording_1_id"),
     )
+    inventory_detail: list[str] = []
     inventory = prepare_v3_service_inventory(
         frame=frame,
         take_document=take_document,
         feedback_candidates=feedback_candidates,
+        detail=inventory_detail,
     )
     if inventory is None:
-        return _decline(take_id, "service_inventory_unavailable")
+        # Six gates share this one reason. `detail` names which closed — the
+        # same fix `_decline` itself is, applied one layer down.
+        return _decline(
+            take_id, "service_inventory_unavailable", "; ".join(inventory_detail)
+        )
     bundle = build_feedback_exposure_bundle(
         session=take,
         transcript_document=take_document,

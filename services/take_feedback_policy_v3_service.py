@@ -310,6 +310,7 @@ def _v3_inventory_is_complete(inventory: _V3ServiceInventory) -> bool:
 
 def prepare_v3_service_inventory(
     *, frame: Any, take_document: Any, feedback_candidates: Iterable[Any],
+    detail: list[str] | None = None,
 ) -> dict | None:
     """Return a fail-closed V3 service inventory or ``None``.
 
@@ -317,9 +318,24 @@ def prepare_v3_service_inventory(
     An excluded detector version remains a typed inventory row, but malformed
     clip/Paragraph lineage blocks the whole service freeze rather than hiding
     the invalid item inside an exclusion.
+
+    ``detail`` IS THE SAME LESSON AS ``_decline`` (2026-09-19). This function
+    has six separate ``return None`` exits and the caller turns every one of
+    them into the single reason ``service_inventory_unavailable``. That is
+    fail-closed, which is right, and fail-SILENT, which is not: on 2026-09-19 a
+    V3 stand-down had to be chased through four database queries and a live RPC
+    call before it named itself, and this function would have hidden the next
+    one exactly as well. Pass a list and each exit appends the gate that closed.
+    Log-only, never surfaced: the reason a Take has no Confident Voice item is
+    not something AC-9 lets us put on screen.
     """
+    def closed(gate: str) -> None:
+        if detail is not None:
+            detail.append(gate)
+
     frame_data = _valid_v3_policy_frame(frame, take_document)
     if frame_data is None:
+        closed("policy_frame_invalid")
         return None
     policy, document, document_text = frame_data
     pieces = _source_parts(document)
@@ -332,6 +348,7 @@ def prepare_v3_service_inventory(
     }
     blocks = policy.get("blocks")
     if not isinstance(blocks, list) or not blocks:
+        closed("no_blocks_in_policy")
         return None
 
     for block_position, block in enumerate(blocks, 1):
@@ -340,10 +357,12 @@ def prepare_v3_service_inventory(
             document_text=document_text, confidence_selected=confidence_selected,
             inventory=inventory,
         ):
+            closed(f"confidence_block_rejected:{block_position}")
             return None
 
     verbal = policy.get("verbal_lanes")
     if not isinstance(verbal, dict):
+        closed("no_verbal_lanes")
         return None
     snippet_block = _v3_snippet_block_index(blocks)
     for family in ("rewrite_clarity", "great_formulation"):
@@ -351,9 +370,16 @@ def prepare_v3_service_inventory(
             verbal.get(family), family=family, raw_by_identity=raw_by_identity,
             pieces=pieces, snippet_block=snippet_block, inventory=inventory,
         ):
+            closed(f"verbal_lane_rejected:{family}")
             return None
 
     if not _v3_inventory_is_complete(inventory):
+        closed(
+            "inventory_incomplete:"
+            f"selected={len(inventory.selected)}"
+            f",candidates={len(inventory.candidates)}"
+            f",items={len(inventory.items)}"
+        )
         return None
     return {
         "candidates": inventory.candidates,
