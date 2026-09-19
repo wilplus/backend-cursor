@@ -59,17 +59,23 @@ class TestTheGateNamesItself:
         assert out is None
         assert detail == ["no_blocks_in_policy"]
 
-    def test_a_rejected_confidence_block_carries_its_position(self):
+    def test_an_unreadable_block_carries_its_position(self):
         # The position is what makes the log actionable: with ten blocks,
         # "one of them was malformed" is not a finding.
+        #
+        # EXCLUDED, NOT FATAL (founder 2026-09-19). This block contributes
+        # nothing and the pass carries on; the Take then declines only
+        # because nothing provable survived it, which is a different and
+        # honest reason.
         out, detail = _prepare(
             {**VALID_FRAME, "blocks": [{"block_id": "b1"}]}, VALID_DOC,
         )
         assert out is None
-        assert detail == [
+        assert detail[:2] == [
             "block_slide_index_not_an_int:None",
-            "confidence_block_rejected:1",
+            "confidence_block_excluded:1",
         ]
+        assert detail[-1].startswith("inventory_incomplete:")
 
 
 class TestTheChainReadsInsideOut:
@@ -90,9 +96,54 @@ class TestTheChainReadsInsideOut:
             VALID_DOC,
         )
         assert out is None
-        assert detail == [
-            "no_candidate_id", "at_candidate:1", "confidence_block_rejected:1",
-        ]
+        assert detail[:2] == ["no_candidate_id", "excluded_candidate:1"]
+        # ONE UNPROVABLE ROW NO LONGER SILENCES THE TAKE (founder
+        # 2026-09-19). It used to read `at_candidate:1;
+        # confidence_block_rejected:1` and abort the whole inventory, so a
+        # single Paragraph that could not be placed cost every other slide
+        # its item. The row is still never served -- the safety property is
+        # untouched -- and the Take declines here only because this was the
+        # ONLY candidate, leaving nothing provable behind.
+        assert detail[-1].startswith("inventory_incomplete:")
+        assert not any(d.startswith("confidence_block_rejected") for d in detail)
+
+    def test_a_provable_row_survives_an_unprovable_one_beside_it(self):
+        # The whole point of the change, asserted where it can fail: a block
+        # holding one bad candidate and one good one must still yield the
+        # good one rather than nothing at all.
+        document = {
+            **VALID_DOC,
+            "pieces": [{
+                "snippet_id": "s1", "part_id": "p1",
+                "recording_id": "rec-A", "start_offset_ms": 0,
+                "duration_ms": 1000,
+            }],
+        }
+        good = {
+            "candidate_id": "c-good", "snippet_id": "s1",
+            "eligibility": "eligible",
+            "document_span": {"start": 0, "end": 4},
+            "clip_identity": {
+                "recording_id": "rec-A", "start_offset_ms": 0,
+                "duration_ms": 1000,
+            },
+        }
+        out, detail = _prepare(
+            {**VALID_FRAME,
+             "selected_confidence": [
+                 {"candidate_id": "c-good", "block_id": "b1"},
+             ],
+             "blocks": [
+                 {"block_id": "b1", "slide_index": 0,
+                  "confidence_candidates": [{}, good]},
+             ]},
+            document,
+        )
+        assert "no_candidate_id" in detail
+        assert "excluded_candidate:1" in detail
+        # The good row reached the inventory rather than dying beside it.
+        assert out is not None
+        assert [row["id"] for row in out["visible_rows"]] == ["c-good"]
 
     def test_a_snippet_the_document_does_not_have(self):
         # The likeliest real fault: a candidate cites a snippet id that is not

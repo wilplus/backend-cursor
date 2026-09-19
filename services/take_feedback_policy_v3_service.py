@@ -286,8 +286,17 @@ def _v3_confidence_block(
             confidence_selected=confidence_selected, inventory=inventory,
             presentation=presentation, detail=detail,
         ):
-            closed(f"at_candidate:{row_position}")
-            return False
+            # EXCLUDED, NOT FATAL (founder 2026-09-19). This used to return
+            # False, which aborted the block, which aborted the whole
+            # inventory -- so ONE candidate whose Paragraph could not be
+            # proven silenced every other slide's item for that Take. The
+            # safety property is unchanged: a row we cannot prove is still
+            # never served. What changes is the blast radius, which was never
+            # the point. Contract 24c: coverage is a target on selection,
+            # never a floor on output, and an honest empty lane shows no card
+            # -- not an empty Take.
+            closed(f"excluded_candidate:{row_position}")
+            continue
     return True
 
 
@@ -433,22 +442,37 @@ def prepare_v3_service_inventory(
             document_text=document_text, confidence_selected=confidence_selected,
             inventory=inventory, detail=detail,
         ):
-            closed(f"confidence_block_rejected:{block_position}")
-            return None
+            # Skipped for the same reason a rejected row is: a block we
+            # cannot read contributes nothing, and contributing nothing must
+            # not mean silencing the blocks we can.
+            closed(f"confidence_block_excluded:{block_position}")
+            continue
 
     verbal = policy.get("verbal_lanes")
     if not isinstance(verbal, dict):
+        # An absent verbal block is an empty rewrite and praise lane, which
+        # 24f already allows to show no card. Withholding Confident Voice
+        # over it would be the same over-reach as aborting on one unprovable
+        # row. Named, then carried on from.
         closed("no_verbal_lanes")
-        return None
+        verbal = {}
     snippet_block = _v3_snippet_block_index(blocks)
     for family in ("rewrite_clarity", "great_formulation"):
         if not _v3_verbal_lane(
             verbal.get(family), family=family, raw_by_identity=raw_by_identity,
             pieces=pieces, snippet_block=snippet_block, inventory=inventory,
         ):
-            closed(f"verbal_lane_rejected:{family}")
-            return None
+            # 24f: at most one rewrite and two praise, and an honest empty
+            # lane shows no card. A lane that cannot be proven is an empty
+            # lane, not a reason to withhold Confident Voice.
+            closed(f"verbal_lane_excluded:{family}")
+            continue
 
+    # THE ONE REMAINING FAIL-CLOSED GATE, and it is the right one: everything
+    # above now excludes what it cannot prove and keeps what it can, so
+    # reaching here with an incomplete inventory means nothing provable
+    # survived. That is an honest decline; aborting because a single row was
+    # unprovable was not.
     if not _v3_inventory_is_complete(inventory):
         closed(
             "inventory_incomplete:"

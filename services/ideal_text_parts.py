@@ -654,6 +654,18 @@ def bind_pieces_to_parts(
     pieces = doc.get("pieces")
     spans = part_spans(parts)
     if not spans or not isinstance(pieces, list) or not pieces:
+        # NAMED, NOT SILENT (2026-09-19). Returning the document untouched
+        # here degrades to "no piece has a part_id", which downstream is
+        # indistinguishable from "every piece was unprovable" -- and the two
+        # need completely different fixes. `locked_parts` returns [] by
+        # design when the stored parts no longer join to the served text, so
+        # `parts=0` is a real and likely answer, not a defensive branch.
+        logger.info(
+            "piece->part binding skipped parts=%d pieces=%s take=%s",
+            len(spans),
+            len(pieces) if isinstance(pieces, list) else "none",
+            doc.get("take_session_id"),
+        )
         return document
     from services.transcript_document import relocate_pieces
 
@@ -675,6 +687,16 @@ def bind_pieces_to_parts(
             piece, located.get(str(piece.get("snippet_id"))), spans, regions,
         )
         bound.append({**piece, "part_id": part_id} if part_id else piece)
+    placed = sum(1 for piece in bound
+                 if isinstance(piece, dict) and piece.get("part_id"))
+    # COUNTS, and they are the diagnosis. "Some paragraphs could not be
+    # placed" and "there was nothing to place them against" both surfaced as
+    # `piece_has_no_part_id` downstream; only this line tells them apart.
+    # Identifiers and counts, never content.
+    logger.info(
+        "piece->part binding placed=%d/%d parts=%d take=%s",
+        placed, len(bound), len(spans), doc.get("take_session_id"),
+    )
     return {**doc, "pieces": bound}
 
 
