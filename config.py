@@ -123,6 +123,16 @@ class Config:
     MOMENT_SUGGESTIONS_ENABLED = _env_flag("MOMENT_SUGGESTIONS_ENABLED", "0")
     POLISH_AS_SUGGESTIONS_ENABLED = _env_flag("POLISH_AS_SUGGESTIONS_ENABLED", "0")
     LIVING_TRANSCRIPT_ENABLED = _env_flag("LIVING_TRANSCRIPT_ENABLED", "0")
+    # OFF, and the default is the decision. #580 put the whole Manager
+    # pipeline inside `publish_for_arc`, which `maybe_assemble_ideal_text`
+    # calls while creating a Take 1 document. Publication went from about a
+    # second to tens of seconds, and a take whose publication never landed
+    # terminates as "we processed your take, but couldn't create your Ideal
+    # Text" — F1 piece (b), broken by an optimisation for the marks that hang
+    # off it. The speed-up is not worth the document. Turn it on again only
+    # once the bake runs where it cannot delay creation (task #43).
+    IDEAL_TEXT_FEEDBACK_BAKE_ENABLED = _env_flag(
+        "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0")
     MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
     COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
     SENTENCE_BOUNDARY_SPLIT_ENABLED = _env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1")

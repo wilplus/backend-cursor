@@ -18,6 +18,19 @@ import pytest
 from services import ideal_text_core_snapshot as core
 from services import ideal_text_feedback_bake as bake
 
+
+@pytest.fixture(autouse=True)
+def _bake_on(monkeypatch):
+    """The bake ships OFF (2026-09-20) because it delayed Take 1 document
+    creation. These tests are about what it does WHEN ON, so they turn it on
+    explicitly — and `test_the_flag_is_off_by_default` below holds the
+    shipped default, which is the part that protects the live loop.
+
+    Patched on the SERVICE's own predicate, not on `Config`: other modules
+    reload `config`, so patching the class passes this file in isolation and
+    fails it in the full suite. It did."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+
 ARC = "arc-1"
 ACTOR = "actor-1"
 SNAPSHOT = "11111111-1111-4111-8111-111111111111"
@@ -351,3 +364,71 @@ def test_no_bake_means_the_read_computes_live(monkeypatch):
     _block_returns(monkeypatch, BLOCK)
     assert bake.changes_block_for(
         ServingDatabase(None), ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
+
+
+# ── the flag, and why its default is the point ─────────────────────────────
+
+
+def test_the_flag_is_off_by_default():
+    """FOUNDER, 2026-09-20: "We processed your take, but couldn't create your
+    Ideal Text."
+
+    #580 put the whole Manager pipeline inside `publish_for_arc`, which
+    `maybe_assemble_ideal_text` calls WHILE A TAKE 1 DOCUMENT IS BEING MADE.
+    In production, publication went from about a second to tens of seconds —
+    two takes landed their snapshot 22s and 42s after their job had already
+    finished, and one never landed at all.
+
+    An optimisation for the marks that hang off the document is not allowed
+    to cost the document. This default is that ruling, and it is the assertion
+    that keeps it: the speed-up returns only when the bake runs where it
+    cannot delay creation (task #43).
+    """
+    # Read the SHIPPED declaration, not the live attribute: the autouse
+    # fixture above turns the flag on for every other test in this file, and
+    # a default test that the fixture can satisfy is a default test that
+    # proves nothing.
+    import inspect
+
+    import config
+
+    source = inspect.getsource(config)
+    assert 'IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0"' in source, (
+        "the shipped default must be off")
+    assert config._env_flag("IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0") is False
+
+
+def test_switched_off_it_computes_nothing_and_stores_nothing(monkeypatch):
+    """Not merely "stores nothing" — it must not RUN. The cost being removed
+    is the Manager pipeline itself, so a version that computed and then
+    discarded would fix nothing."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: False)
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the Manager must not run with the bake off")
+
+    import routes.v2.explore_ideal_text as route
+    monkeypatch.setattr(route, "_tracked_changes_block", never)
+    database = RecordingDatabase()
+    assert bake.bake_for_snapshot(database, ARC, ACTOR, PUBLISHED) is False
+    assert database.writes == []
+
+
+def test_the_read_still_answers_with_the_bake_off(monkeypatch):
+    """Turning it off costs the speed-up and nothing else: with no stored
+    row the read computes live, which is what every reader did before any of
+    this existed."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: False)
+    _block_returns(monkeypatch, BLOCK)
+    assert bake.changes_block_for(
+        ServingDatabase(None), ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
+
+
+def test_publishing_is_untouched_with_the_bake_off(monkeypatch):
+    """The publish must still publish. That is the whole point of the
+    default."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: False)
+    order: list[str] = []
+    database = _publish_fake(monkeypatch, order)
+    assert core.publish_for_arc(database, ARC, ACTOR) == PUBLISHED
+    assert order == ["publish"]
