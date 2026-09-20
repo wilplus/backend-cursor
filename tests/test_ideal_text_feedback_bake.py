@@ -422,13 +422,21 @@ CORE = {
 
 
 class ServingDatabase:
-    def __init__(self, baked):
+    def __init__(self, baked, stored=True):
         self.baked = baked
+        self.stored = stored
         self.reads: list[tuple] = []
+        self.writes: list[tuple] = []
 
     def read_ideal_text_feedback_bake(self, arc_id, actor_id, snapshot_id):
         self.reads.append((arc_id, actor_id, snapshot_id))
         return self.baked
+
+    def write_ideal_text_feedback_bake(
+        self, arc_id, actor_id, snapshot_id, payload,
+    ):
+        self.writes.append((arc_id, actor_id, snapshot_id, payload))
+        return self.stored
 
 
 def test_a_fresh_bake_is_served_without_running_the_manager(monkeypatch):
@@ -650,3 +658,156 @@ def test_with_the_bake_on_a_stored_row_is_still_served(monkeypatch):
     assert bake.changes_block_for(
         database, ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
     assert database.reads == [(ARC, ACTOR, SNAPSHOT)]
+
+
+# ── #589: the writer and the reader disagreed about what a bake IS ─────────
+#
+# FOUNDER, 2026-09-20, hours after #587 turned the flag back on: "now there
+# are no bookmarks again; they disappeared".
+#
+# #583 taught the WRITER that `{"changes": []}` is not a bake. The reader
+# kept `if isinstance(baked, dict) and baked` — the same wrong test #583 had
+# just replaced — and served empty blocks happily. The asymmetry was
+# invisible while the flag was off, because the read never ran.
+#
+# #585 said this would happen, in as many words: "a row written in the window
+# between #580 and those fixes is still sitting in the table... Turning a
+# writer off does nothing about what it already wrote." #587 turned the flag
+# on without clearing them.
+#
+# The parametrized miss test above could never have caught it: every value in
+# its list is FALSY, and the whole defect is a value that is truthy and
+# empty.
+
+
+@pytest.mark.parametrize("poisoned", [
+    {"changes": []},
+    {"changes": [], "style_changes": [], "key_points": []},
+    {"changes": [], "is_saved": False},
+    {"style_changes": [{"id": "s1"}]},   # lanes, but no marks
+    {"is_saved": True},
+])
+def test_a_stored_row_with_no_marks_is_not_served(monkeypatch, poisoned):
+    """Each of these is truthy. Not one of them is a bake.
+
+    Serving any of them is "no bookmarks" for the life of the snapshot —
+    which is exactly what the founder saw, three separate times.
+    """
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    _block_returns(monkeypatch, BLOCK)
+    database = ServingDatabase(poisoned)
+    assert bake.changes_block_for(
+        database, ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
+
+
+def test_the_writer_and_the_reader_ask_the_SAME_question(monkeypatch):
+    """The structural fix, and the only one that stops this recurring.
+
+    Two guards that must agree are two guards that will eventually disagree —
+    they already did, for two releases, while three separate fixes aimed at
+    this exact bug went past it. `is_a_bake` is asked by both sides, so the
+    question cannot be answered differently in two places.
+    """
+    import inspect
+    source = inspect.getsource(bake)
+    assert source.count("def is_a_bake") == 1
+    # The writer's guard and the reader's guard, both delegating.
+    assert source.count("is_a_bake(") >= 3
+
+
+# ── backfill on read: the fix has to REPAIR, not merely stop serving ───────
+
+
+def test_a_live_computation_is_kept_so_nobody_pays_for_it_twice(monkeypatch):
+    """The end-of-run job bakes a document from its NEXT take onward.
+
+    Every document that already exists would otherwise compute live forever,
+    because nothing on the read path ever wrote — including the one the
+    founder was looking at when the marks vanished.
+    """
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    _block_returns(monkeypatch, BLOCK)
+    database = ServingDatabase(None)
+    assert bake.changes_block_for(
+        database, ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
+    assert database.writes == [(ARC, ACTOR, SNAPSHOT, BLOCK)]
+
+
+def test_the_backfill_OVERWRITES_a_poisoned_row(monkeypatch):
+    """This is what makes it a repair rather than an avoidance.
+
+    The write is an upsert keyed on (arc_id, actor_id), so the good block
+    replaces the empty one. The first open after this ships fixes the
+    document permanently; the second open is fast.
+    """
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    _block_returns(monkeypatch, BLOCK)
+    database = ServingDatabase({"changes": [], "style_changes": []})
+    assert bake.changes_block_for(
+        database, ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
+    assert database.writes == [(ARC, ACTOR, SNAPSHOT, BLOCK)]
+
+
+def test_the_backfill_runs_no_second_manager_pass(monkeypatch):
+    """The mistake #580 made, and the one thing this must not repeat.
+
+    The block being stored is the one the reader HAS ALREADY COMPUTED, so the
+    backfill costs one insert, not another 20-40 seconds.
+    """
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    calls: list[int] = []
+
+    import routes.v2.explore_ideal_text as route
+    monkeypatch.setattr(route, "_tracked_changes_block",
+                        lambda *a, **k: (calls.append(1), BLOCK)[1])
+    database = ServingDatabase(None)
+    bake.changes_block_for(database, ARC, ACTOR, SNAPSHOT, CORE)
+    assert len(calls) == 1
+
+
+def test_an_honestly_empty_document_stores_nothing(monkeypatch):
+    """Same rule as the writer's. A document with genuinely nothing to say
+    pays one live computation per open, which is the right side to err on:
+    a wasted computation costs a moment, a stored emptiness costs the surface.
+    """
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    _block_returns(monkeypatch, {"changes": []})
+    database = ServingDatabase(None)
+    bake.changes_block_for(database, ARC, ACTOR, SNAPSHOT, CORE)
+    assert database.writes == []
+
+
+def test_the_backfill_needs_a_snapshot_to_bind_to(monkeypatch):
+    """A block stored against no document is a block served for the wrong
+    one. The read degrades to live rather than binding to nothing."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    _block_returns(monkeypatch, BLOCK)
+    database = ServingDatabase(None)
+    assert bake.changes_block_for(database, ARC, ACTOR, "", CORE) == BLOCK
+    assert database.writes == []
+
+
+def test_the_flag_gates_the_backfill_too(monkeypatch):
+    """Off must mean NOTHING — no read, no write, no row appearing while the
+    feature is supposed to be rolled back. That is what #585 established and
+    what makes the flag worth having."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: False)
+    _block_returns(monkeypatch, BLOCK)
+    database = ServingDatabase(None)
+    assert bake.changes_block_for(
+        database, ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
+    assert database.reads == []
+    assert database.writes == []
+
+
+def test_a_backfill_that_explodes_still_answers_the_reader(monkeypatch):
+    """The block is the product; storing it is an optimisation over it."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    _block_returns(monkeypatch, BLOCK)
+
+    class Exploding(ServingDatabase):
+        def write_ideal_text_feedback_bake(self, *_a, **_k):
+            raise RuntimeError("storage is down")
+
+    assert bake.changes_block_for(
+        Exploding(None), ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
