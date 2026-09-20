@@ -206,13 +206,20 @@ def test_closed_backend_gate_returns_legacy_fallback(monkeypatch):
 
 
 class _NoEnrollmentDatabase(_Database):
-    """The live state on 2026-09-17: the exercise enrollment cannot succeed.
+    """A principal the exercise enrollment will not serve.
 
-    `ensure_mlc3_service_enrollment_v2` demands a receipt carrying
-    `personalized_exercise_recommendation`, and
-    `accept_phase1_processing_authorization_v1` raises
-    PHASE2_PURPOSE_FORBIDDEN on any policy that lists it — so the repository
-    logs a warning and returns None for every principal alive.
+    On 2026-09-17 this was EVERY principal alive: enrollment resolves a
+    receipt carrying `personalized_exercise_recommendation`, that purpose was
+    registered `phase2`, and `accept_phase1_processing_authorization_v1`
+    refuses any policy listing one — so the purpose could never be recorded
+    and the receipt could never exist.
+
+    That deadlock is gone (0335 reclassified the purpose on 2026-09-16; the
+    active policy has carried it since 09-20), and this fixture is not. A
+    principal can still be unenrolled for half a dozen ordinary reasons — no
+    receipt yet, a service block, a pending purge, an inactive rollout,
+    cohort membership — and V3 must survive all of them the same way. What is
+    under test is the stand-down, never the reason for it.
     """
 
     def __init__(self):
@@ -232,8 +239,13 @@ def test_feedback_survives_an_unavailable_exercise_enrollment(monkeypatch):
 
     This gate used to return None, putting the whole of V3 — Manager
     arbitration, the block partition, every Confident Voice item — behind an
-    authorization no user could ever obtain. Feedback now surfaces; only the
-    exercise context stands down.
+    authorization that, at the time, no user could obtain. Feedback now
+    surfaces; only the exercise context stands down.
+
+    The ruling outlives the deadlock that provoked it. Enrollment is
+    satisfiable today, and it must STILL not be able to empty the Feedback
+    surface: F1 does not wait on the learning layer (R12), and a governance
+    switch is exactly the kind of thing that flips back.
     """
     from config import Config
 
