@@ -123,16 +123,30 @@ class Config:
     MOMENT_SUGGESTIONS_ENABLED = _env_flag("MOMENT_SUGGESTIONS_ENABLED", "0")
     POLISH_AS_SUGGESTIONS_ENABLED = _env_flag("POLISH_AS_SUGGESTIONS_ENABLED", "0")
     LIVING_TRANSCRIPT_ENABLED = _env_flag("LIVING_TRANSCRIPT_ENABLED", "0")
-    # OFF, and the default is the decision. #580 put the whole Manager
-    # pipeline inside `publish_for_arc`, which `maybe_assemble_ideal_text`
-    # calls while creating a Take 1 document. Publication went from about a
-    # second to tens of seconds, and a take whose publication never landed
-    # terminates as "we processed your take, but couldn't create your Ideal
-    # Text" — F1 piece (b), broken by an optimisation for the marks that hang
-    # off it. The speed-up is not worth the document. Turn it on again only
-    # once the bake runs where it cannot delay creation (task #43).
+    # ON since #587, and the condition the previous default named has been
+    # met rather than argued away.
+    #
+    # It was off because #580 put the whole Manager pipeline inside
+    # `publish_for_arc`, which `maybe_assemble_ideal_text` calls while
+    # creating a Take 1 document: publication went from about a second to
+    # tens of seconds, and a take whose publication never landed terminated
+    # as "we processed your take, but couldn't create your Ideal Text" — F1
+    # piece (b), lost to an optimisation for the marks that hang off it. The
+    # old comment here said "turn it on again only once the bake runs where
+    # it cannot delay creation (task #43)".
+    #
+    # #587 is that. The bake is no longer reachable from `publish_for_arc` at
+    # all — it is a queued job asked for on the last line of the analysis run
+    # — so the failure this flag was switched off to stop is now impossible
+    # by construction, not merely unlikely. That is the difference between
+    # meeting the condition and deciding the risk has passed.
+    #
+    # Defaulted in code rather than set per service on purpose: the worker
+    # writes the bake and the web process reads it, and a flag that is true
+    # on one and false on the other is the CONFIG-FIRST failure in miniature.
+    # One default cannot disagree with itself.
     IDEAL_TEXT_FEEDBACK_BAKE_ENABLED = _env_flag(
-        "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0")
+        "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1")
     MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
     COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
     SENTENCE_BOUNDARY_SPLIT_ENABLED = _env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1")

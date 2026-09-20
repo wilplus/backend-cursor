@@ -9,9 +9,15 @@ The bookmarks were never stored. ``document_layers`` ran the whole ~20-stage
 Manager pipeline on every GET, so they were COMPUTED when the document opened
 rather than read, and no client retry budget can make a computation instant.
 
-This module runs that same computation once, during processing, while the
-speaker is already on the wait screen — and stores the result against the
-immutable snapshot it was computed over. The read then serves it.
+This module runs that same computation once, as its own queued job at the end
+of the analysis run, and stores the result against the immutable snapshot it
+was computed over. The read then serves it.
+
+WHERE IT RUNS IS THE WHOLE DESIGN, and getting it wrong is what broke
+production once already. It is not on the publish (#580: seven callers,
+including Take 1 document creation, paid a 20-40s Manager run) and it is not
+on the wait screen (that only moves the delay). It is after the run returns,
+on the queue, where the only thing it can make slower is itself.
 
 THREE THINGS IT DELIBERATELY IS NOT.
 
@@ -33,6 +39,8 @@ import logging
 from typing import Any, Mapping
 
 logger = logging.getLogger(__name__)
+
+BAKE_TASK_PATH = "services.ideal_text_feedback_bake.run_pending_bake"
 
 
 def _bake_enabled() -> bool:
@@ -106,10 +114,88 @@ def changes_block_for(
         review_version=core.get("version"))
 
 
+def enqueue_bake(arc_id: Any, actor_id: Any, recording_kind: Any) -> bool:
+    """Ask for one bake, off the critical path. Never raises, never waits.
+
+    THE WHOLE POINT OF #43 IS THIS FUNCTION'S RETURN BEING INSTANT. The bake
+    computes the Manager over the whole document, which measurably takes 20 to
+    40 seconds; the only safe way to spend that is where nothing is waiting.
+    A queued job is the one placement that is true of. The two alternatives
+    were both worse:
+
+    * inside the run, synchronously — honest, but it adds those seconds to the
+      wait screen, so the speaker waits either way and we have moved the delay
+      rather than removed it;
+    * a detached thread — which is precisely the bug #586 fixed. Work with
+      nobody listening finishes anyway and its side effects land unobserved.
+
+    A false return is not a failure. No broker (dev, tests, a Redis outage)
+    means no bake, and every reader computes live exactly as it did before any
+    of this existed.
+
+    EVERY CONDITION LIVES HERE rather than at the call site, including the
+    spoken-take one, which the worker knows and this module does not. The
+    caller is a single unbranched line at the end of the analysis run: partly
+    because that function is grandfathered against the complexity ratchet at
+    CC 31, and mostly because "is this worth baking" is one question and
+    answering half of it in the worker is how the halves drift apart.
+
+    ONLY A SPOKEN TAKE. A re-read is not a take (founder bug 2026-07-20) and
+    produces no new feedback to bake; a practice clip is not this document at
+    all. Baking on either would spend the Manager to store what is already
+    stored, and on a document neither of them changed.
+    """
+    if recording_kind != "spoken":
+        return False
+    arc = str(arc_id or "")
+    actor = str(actor_id or "")
+    if not _bake_enabled() or not arc or not actor:
+        return False
+    try:
+        from services import job_queue
+        if not job_queue.queue_configured():
+            return False
+        return job_queue.enqueue(
+            BAKE_TASK_PATH, arc, actor,
+            # One pending bake per document. A second take landing while the
+            # first bake is queued replaces it rather than stacking, and the
+            # job reads the head when it runs, so the survivor is always the
+            # one that bakes the current document.
+            rq_job_id=f"ideal-text-bake:{arc_id}:{actor_id}",
+        )
+    except Exception as error:
+        logger.warning("ideal-text feedback bake not enqueued arc=%s: %s",
+                       arc_id, error)
+        return False
+
+
+def run_pending_bake(arc_id: str, actor_id: str) -> None:
+    """RQ entry point. Bakes the head as it stands when the job runs.
+
+    It reads the head rather than trusting a snapshot id handed over the wire,
+    for the same reason `run_pending_publication` re-reads the generation: by
+    the time a queued job runs the document may have moved, and a bake for a
+    superseded snapshot is dead on arrival — `read_ideal_text_feedback_bake`
+    would decline it on snapshot id at every future read.
+
+    It never raises. A failed RQ job is a red mark on a dashboard for work
+    that is optional by construction.
+    """
+    try:
+        from services.db import db
+        head = db.get_ideal_text_document_snapshot(str(arc_id), str(actor_id))
+        if head is None:
+            return
+        bake_for_snapshot(db, str(arc_id), str(actor_id), head)
+    except Exception as error:
+        logger.warning("ideal-text feedback bake job failed arc=%s: %s",
+                       arc_id, error)
+
+
 def bake_for_snapshot(
     database: Any, arc_id: str, actor_id: str, published: Any,
 ) -> bool:
-    """Compute and store the feedback block for one freshly published head.
+    """Compute and store the feedback block for one published head.
 
     Call this AFTER the publish, never before. V3's source-snapshot RPC binds
     on ``surface = served_text`` against the CURRENT published snapshot, so a
@@ -117,23 +203,12 @@ def bake_for_snapshot(
     (``source_snapshot_does_not_match_served_text``) — the bake would store an
     empty answer and the user would see no bookmarks at all, which is the
     exact defect this exists to end.
+
+    Since #587 the only production caller is :func:`run_pending_bake`, which
+    reaches here from the queue at the end of an analysis run. It is no longer
+    reachable from `publish_for_arc`, and that is deliberate — see the note
+    left at the line it used to occupy.
     """
-    # OFF BY DEFAULT since 2026-09-20, and the default is the decision.
-    #
-    # This runs the whole Manager pipeline, and `publish_for_arc` is called
-    # by `maybe_assemble_ideal_text` WHILE A TAKE 1 DOCUMENT IS BEING CREATED.
-    # In production, publication went from about a second to tens of seconds,
-    # and a take whose publication never landed terminated as "we processed
-    # your take, but couldn't create your Ideal Text" — F1 piece (b), broken
-    # by an optimisation for the marks that hang off it.
-    #
-    # The read side stays exactly as it is: `changes_block_for` finds no row
-    # and computes live, which is what every reader did before any of this.
-    # So switching this off costs nothing but the speed-up it was meant to
-    # buy, and buys back a document that reliably gets made.
-    #
-    # It comes back on when the bake runs somewhere it cannot delay creation
-    # (task #43), not before.
     if not _bake_enabled():
         return False
     snapshot_id = _snapshot_id_of(published)
