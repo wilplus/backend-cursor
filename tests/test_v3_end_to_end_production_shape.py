@@ -251,7 +251,7 @@ class _Database:
         }
 
 
-def run_chain(database=None):
+def run_chain(database=None, document=None):
     """Drive the live entry point once. Returns whatever it returns."""
     from services.mlc3_first_client_feedback import (
         prepare_first_client_feedback,
@@ -259,7 +259,7 @@ def run_chain(database=None):
     return prepare_first_client_feedback(
         database=database if database is not None else _Database(),
         session=_session(),
-        take_document=_bound_document(),
+        take_document=document if document is not None else _bound_document(),
         served_text=IDEAL,
         snippets=_snippets(),
         suggestions={},
@@ -496,3 +496,64 @@ class TheWriteThatSucceedsAndSaysNothing(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ASuccessfulTakeSaysSo(unittest.TestCase):
+    """FOUNDER, 2026-09-20: "How do we know it works? I ask."
+
+    A fair question, and until this the honest answer was "we don't, we
+    know it did not fail". Every log in `prepare_first_client_feedback`
+    fired on a refusal; a Take that served left `stood down` absent and
+    nothing in its place. Absence is weak evidence — it reads the same as a
+    log list scrolled to the wrong place, or a search string that did not
+    match, which is exactly how an hour went missing on `shape=[`.
+    """
+
+    def setUp(self) -> None:
+        from config import Config
+        patcher = patch.object(Config, "MLC3_SERVICE_ENABLED", True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_it_logs_the_item_count_on_success(self):
+        with self.assertLogs(
+            "services.mlc3_first_client_feedback", level="INFO",
+        ) as caught:
+            rows = run_chain()
+        assert rows is not None
+        line = next(entry for entry in caught.output if "v3 served" in entry)
+        self.assertIn(f"items={len(rows)}", line)
+        self.assertIn("lineage=yes", line)
+
+    def test_it_distinguishes_a_take_served_without_its_audit_record(self):
+        # The ordinary reading while the MLC-3 rollout is inactive: the
+        # bookmark served, the F2 lineage did not. Worth telling apart at a
+        # glance from a fully healthy Take.
+        with self.assertLogs(
+            "services.mlc3_first_client_feedback", level="INFO",
+        ) as caught:
+            run_chain(_ReturnsNothingUsable())
+        line = next(entry for entry in caught.output if "v3 served" in entry)
+        self.assertIn("lineage=none", line)
+
+    def test_a_stand_down_still_logs_no_success_line(self):
+        # The two must never both appear for one Take, or the log stops
+        # being readable as an account of what happened.
+        from services.mlc3_first_client_feedback import V3Unavailable
+        with self.assertLogs(
+            "services.mlc3_first_client_feedback", level="INFO",
+        ) as caught:
+            result = run_chain(_Database(), document={"text": SPOKEN,
+                                                      "paragraphs": []})
+        if isinstance(result, V3Unavailable):
+            self.assertFalse(any("v3 served" in e for e in caught.output))
+
+    def test_the_line_carries_no_candidate_content(self):
+        spoken = SPOKEN
+        with self.assertLogs(
+            "services.mlc3_first_client_feedback", level="INFO",
+        ) as caught:
+            run_chain()
+        line = next(entry for entry in caught.output if "v3 served" in entry)
+        self.assertNotIn(spoken, line)
+        self.assertNotIn(IDEAL, line)
