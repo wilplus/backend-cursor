@@ -713,15 +713,14 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
         }
 
     def document_layers_section():
-        result = {
-            "prior_edit": seed.get("prior_edit")
-            if isinstance(seed, dict) else None,
-        }
+        prior = seed.get("prior_edit") if isinstance(seed, dict) else None
+        result = {"prior_edit": prior}
         result.update(_ideal_save_state(arc_id, core.get("version")))
-        result.update(_tracked_changes_block(
-            arc_id, str(core.get("text") or ""), actor_id,
-            str(core.get("latest_take_session_id") or ""),
-            review_version=core.get("version")))
+        # The publish-boundary bake when it is provably the same answer,
+        # else computed live — see `services.ideal_text_feedback_bake`.
+        from services.ideal_text_feedback_bake import changes_block_for
+        result.update(changes_block_for(db, arc_id, actor_id, snapshot_id,
+                                        core))
         return result
 
     def learning_section():

@@ -144,6 +144,16 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("ideal_document_generation",
                     "ideal_text_document_generations", "arc_id", "project",
                     "delete", "processing_queue", 55),
+    # The Manager's block, materialised at the publish boundary so the
+    # bookmarks arrive with the words (founder 2026-09-20). It holds this
+    # speaker's own feedback over their own transcript, so it is subject data
+    # and it deletes with the project like the snapshot it points at — BEFORE
+    # that snapshot (53.5), because its FK is restrictive in the same way the
+    # head's is. Derived, never evidence: it is one stored copy of a
+    # computation the pipeline can make again from the snapshot, which is why
+    # it is a `cache` kind and losing it costs only one recomputation.
+    PurgeDependency("ideal_feedback_bake", "ideal_text_feedback_bakes",
+                    "arc_id", "project", "delete", "cache", 53),
     PurgeDependency("ideal_block_variants", "ideal_text_block_variants", "arc_id",
                     "project", "delete", "derived_feedback", 55),
     PurgeDependency("coach_ideal", "coach_arc_ideal_text", "arc_id", "project",

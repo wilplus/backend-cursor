@@ -380,3 +380,4 @@
 0342	feedback_v3_source_snapshot_takes_a_lock_so_it_is_volatile.sql
 0343	fix_claim_guest_owner_snippets_rename.sql
 0344	fix_candidate_set_advisory_lock_precedence.sql
+0345	add_ideal_text_feedback_bake.sql
