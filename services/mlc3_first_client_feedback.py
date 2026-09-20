@@ -515,4 +515,26 @@ def prepare_first_client_feedback(
         # contract this function's own docstring states, and names the reason
         # in the log instead of failing silently.
         return _decline(take_id, "inventory_returned_no_visible_rows")
+    # THE LINE THAT SAYS IT WORKED (founder 2026-09-20: "How do we know it
+    # works? I ask.").
+    #
+    # Every other log in this function fires on FAILURE. A Take that
+    # succeeded left `stood down` absent and put nothing in its place, so
+    # the only available proof was the absence of an error — which is
+    # weaker evidence than a presence, and indistinguishable from a log
+    # list scrolled to the wrong place or a search string that did not
+    # match. The one positive line this module had
+    # (`v3 serving ... WITHOUT exercise context`) fires only in the
+    # degraded case, so the better the system got the quieter it became.
+    #
+    # Counts and lineage state only: no candidate text, no score, nothing
+    # that reaches a user. `lineage=none` is the ordinary reading while the
+    # MLC-3 rollout is inactive — the bookmark served, its F2 audit record
+    # did not — and it is worth seeing at a glance which of the two
+    # happened.
+    logger.info(
+        "first_client: v3 served items=%d lineage=%s take=%s",
+        len(visible), "yes" if lineage is not None else "none",
+        take_id or "?",
+    )
     return visible
