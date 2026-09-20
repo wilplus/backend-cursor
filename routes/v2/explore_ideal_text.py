@@ -635,7 +635,8 @@ def v2_explore_get_recording_roots(arc_id):
 def v2_explore_get_ideal_text_enrichment(arc_id):
     """Optional sections bound to one immutable document snapshot."""
     from time import perf_counter
-    from services.ideal_text_enrichment import run_sections
+    from services.ideal_text_enrichment import (
+        COLD_OPEN_BUDGET_SECONDS, FOCUSED_RETRY_BUDGET_SECONDS, run_sections)
     started = perf_counter()
     owned, sessions = _arc_owned_by_caller(arc_id)
     if not owned:
@@ -768,11 +769,10 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
         },
         "learning": learning_section,
     }
-    # The first enrichment read keeps the cold-open budget tight.  A client
-    # retry names only the sections that reported retryable; give that focused
-    # request enough time to finish the Manager/database work instead of
-    # repeatedly detaching the same reader at the two-second boundary.
-    enrichment_timeout = 8.0 if requested_raw else 2.0
+    # Budgets and the reasoning behind them live with `run_sections`.
+    enrichment_timeout = (
+        FOCUSED_RETRY_BUDGET_SECONDS if requested_raw
+        else COLD_OPEN_BUDGET_SECONDS)
     sections, timings = run_sections({
         name: reader for name, reader in readers.items()
         if name in requested_sections
