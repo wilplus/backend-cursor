@@ -622,3 +622,43 @@ def test_a_paragraph_count_that_changed_still_refuses_to_guess():
         None,
     )
     assert [piece["slide_index"] for piece in pieces] == [None, None]
+
+
+def test_the_focused_retry_gets_time_to_finish_the_manager():
+    """FOUNDER 2026-09-20: "no bookmarks" — on a document whose Manager work
+    had provably succeeded.
+
+    The deck was drawing its reserved slots on every paragraph, which the
+    frontend only does while the server is STILL answering `retryable`. It
+    answered that eight times across ninety seconds, because the focused
+    retry had eight seconds to do work that measurably takes twenty to forty
+    (production publication ran 22s and 42s when this same block was briefly
+    computed inside `publish_for_arc`).
+
+    `run_sections` cannot kill a running thread, so each detached reader then
+    FINISHED and claimed its feedback set with nobody listening — which is
+    why a set existed for a take that showed nothing.
+    """
+    from services.ideal_text_enrichment import (
+        COLD_OPEN_BUDGET_SECONDS,
+        FOCUSED_RETRY_BUDGET_SECONDS,
+    )
+
+    # The first paint must not wait: a section that cannot answer fast says
+    # `retryable` and the words go on screen without it.
+    assert COLD_OPEN_BUDGET_SECONDS <= 2.0
+    # A retry shorter than the Manager's own runtime detaches the reader every
+    # time, and the marks never arrive.
+    assert FOCUSED_RETRY_BUDGET_SECONDS >= 20.0
+    # Longer than a normal request ceiling trades one silent failure for
+    # another; past this the answer is task #43, not a bigger number.
+    assert FOCUSED_RETRY_BUDGET_SECONDS <= 45.0
+
+
+def test_the_route_reads_those_budgets_rather_than_its_own_numbers():
+    """One place to change, and a literal in the route would silently win."""
+    from pathlib import Path
+
+    source = Path("routes/v2/explore_ideal_text.py").read_text()
+    assert "FOCUSED_RETRY_BUDGET_SECONDS if requested_raw" in source
+    assert "enrichment_timeout = 8.0" not in source
