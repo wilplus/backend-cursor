@@ -111,11 +111,31 @@ def bake_for_snapshot(
         logger.warning("ideal-text feedback bake compute failed arc=%s: %s",
                        arc_id, error)
         return False
-    if not isinstance(block, dict) or not block:
-        # An empty block is a legitimate answer for a document with nothing
-        # to say, but it is ALSO what a silent failure looks like, and the two
-        # are not worth telling apart here: storing nothing costs one live
-        # computation and storing a wrong nothing costs the user their marks.
+    if not isinstance(block, dict) or not block.get("changes"):
+        # AN EMPTY LANE IS NOT A BAKE (founder, 2026-09-20, on the first take
+        # after this shipped: "I just recorded and none of the bookmarks
+        # appeared").
+        #
+        # `not block` was the wrong guard and it cost him his marks.
+        # `build_changes_block` returns `{"changes": [], ...}` when the
+        # Manager has nothing to say AT THIS MOMENT — a truthy dict with
+        # nothing in it — and this moment is during assembly:
+        # `ideal_text_confirmation` runs at analysis_worker.py:282, BEFORE the
+        # pipeline's own feedback stages at 288 and 299. So on a fresh take
+        # the bake routinely computes an empty block, stored it, and every
+        # read afterwards served "no bookmarks" for the life of the snapshot.
+        # The fix for marks that arrived late became marks that never arrived.
+        #
+        # Requiring a non-empty `changes` lane makes the failure mode the old
+        # behaviour: nothing stored, so the read computes live later — after
+        # the pipeline has finished — exactly as it did before this existed.
+        # The speed-up survives wherever the bake genuinely has items, which
+        # is every publish that happens at the END of a run.
+        #
+        # A document with honestly nothing to say therefore pays one live
+        # computation per open. That is the right side to err on: a wasted
+        # computation costs a moment, a wrongly-stored emptiness costs the
+        # whole surface.
         return False
     stored = database.write_ideal_text_feedback_bake(
         str(arc_id), str(actor_id), snapshot_id, block)
