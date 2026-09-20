@@ -36,7 +36,7 @@ untouched (L1); the Manager still arbitrates (L2); no provenance moves (L3).
 from __future__ import annotations
 
 import logging
-from typing import Any, Mapping
+from typing import Any, Mapping, TypeGuard
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,36 @@ def _bake_enabled() -> bool:
     """
     from config import Config
     return bool(Config().IDEAL_TEXT_FEEDBACK_BAKE_ENABLED)
+
+
+def is_a_bake(block: Any) -> TypeGuard[dict]:
+    """Is this block worth storing, and worth serving once stored?
+
+    A `TypeGuard`, not a plain bool, so the narrowing the inline
+    `isinstance(baked, dict) and baked` used to give the reader survives the
+    move into a function. Factoring a check out and losing its type
+    information is how a shared predicate becomes the thing people work
+    around instead of calling.
+
+    ONE PREDICATE FOR BOTH SIDES, and the reason is #589.
+
+    `build_changes_block` returns `{"changes": [], "style_changes": [], ...}`
+    when the Manager has nothing to say AT THIS MOMENT — a TRUTHY dict with
+    nothing in it. #583 learned that on the writer and guarded it there. The
+    reader kept `if isinstance(baked, dict) and baked`, which is the same
+    wrong test #583 had just replaced, and it served empty blocks happily.
+
+    That asymmetry was invisible while the flag was off, because the read
+    never happened. Turning the flag on in #587 woke it up and the founder
+    lost his bookmarks for the third time: "now there are no bookmarks again;
+    they disappeared".
+
+    So the question is asked in exactly one place. A writer and a reader that
+    disagree about what a stored value MEANS is not a bug either of them can
+    be inspected and found guilty of — which is precisely why it survived two
+    rounds of fixes aimed at it.
+    """
+    return isinstance(block, dict) and bool(block.get("changes"))
 
 
 def _snapshot_id_of(result: Any) -> str:
@@ -100,18 +130,63 @@ def changes_block_for(
     # this read is concerned: it computes live, which is what every reader
     # did before #580. That also makes the flag a true rollback rather than
     # a half one, and means a poisoned row cannot outlive the feature.
+    #
+    # AND AN EMPTY STORED BLOCK IS NOT A BAKE EITHER (#589). `is_a_bake` is
+    # the writer's own guard, asked here as well, because the two sides
+    # disagreeing about what a stored row means is what cost the founder his
+    # bookmarks a third time. A row with no marks now falls through to the
+    # live computation exactly as a missing row does.
     baked = (
         database.read_ideal_text_feedback_bake(
             str(arc_id), str(actor_id), str(document_snapshot_id or ""))
         if _bake_enabled() else None
     )
-    if isinstance(baked, dict) and baked:
+    if is_a_bake(baked):
         return baked
     from routes.v2.explore_ideal_text import _tracked_changes_block
-    return _tracked_changes_block(
+    block = _tracked_changes_block(
         str(arc_id), str(core.get("text") or ""), str(actor_id),
         str(core.get("latest_take_session_id") or ""),
         review_version=core.get("version"))
+    _backfill(database, arc_id, actor_id, document_snapshot_id, block)
+    return block
+
+
+def _backfill(
+    database: Any, arc_id: str, actor_id: str, document_snapshot_id: str,
+    block: Any,
+) -> None:
+    """Keep the block this reader just paid for, so nobody pays again.
+
+    BACKFILL ON READ (#589), and it is what turns the fix into a repair.
+
+    The end-of-run job bakes a document from its NEXT take onward. Every
+    document that already exists — including the one the founder was looking
+    at when the marks vanished — has either no row or a poisoned one from the
+    #580 window, and would keep computing live forever because nothing on the
+    read path ever wrote.
+
+    The write is an upsert keyed on (arc_id, actor_id), so this OVERWRITES a
+    poisoned row with a real one. The first open after this ships repairs the
+    document permanently; the second is fast. That is the difference between
+    ignoring bad data and getting rid of it.
+
+    THE COMPUTATION IS ALREADY DONE. This adds one insert to a response that
+    has just run the whole Manager — not a second Manager run, which is the
+    mistake #580 made. And it is gated on the same flag, so the flag stays a
+    true rollback: off means no read, no write, nothing stored.
+
+    Best-effort in every direction. A failed backfill costs the next reader
+    one live computation, which is what every reader did before any of this.
+    """
+    if not _bake_enabled() or not document_snapshot_id or not is_a_bake(block):
+        return
+    try:
+        database.write_ideal_text_feedback_bake(
+            str(arc_id), str(actor_id), str(document_snapshot_id), block)
+    except Exception as error:
+        logger.warning("ideal-text feedback backfill failed arc=%s: %s",
+                       arc_id, error)
 
 
 def enqueue_bake(arc_id: Any, actor_id: Any, recording_kind: Any) -> bool:
@@ -236,7 +311,7 @@ def bake_for_snapshot(
         logger.warning("ideal-text feedback bake compute failed arc=%s: %s",
                        arc_id, error)
         return False
-    if not isinstance(block, dict) or not block.get("changes"):
+    if not is_a_bake(block):
         # AN EMPTY LANE IS NOT A BAKE (founder, 2026-09-20, on the first take
         # after this shipped: "I just recorded and none of the bookmarks
         # appeared").
