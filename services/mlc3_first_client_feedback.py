@@ -75,9 +75,11 @@ def _decline(take_id: Any, reason: str, detail: str = "") -> V3Unavailable:
 
     Naming them is what found the real defect. `service_enrollment_missing`
     was the twelfth, and once it started speaking it turned out to be a gate
-    that no user could ever pass — the Phase-2 exercise purpose it demanded
-    is the one the acceptance function refuses to write. It is gone (see
-    `prepare_first_client_feedback`); the remaining eleven are real.
+    no user could pass AT THAT TIME: the exercise purpose it demanded was
+    registered `phase2`, and the acceptance function refuses those. It is
+    gone as a gate (see `prepare_first_client_feedback`) and the deadlock
+    behind it was dissolved on 2026-09-16 and 09-20 — the full account is in
+    `_exercise_context_available`. The remaining eleven are real.
 
     Fail-closed is right and stays. Fail-SILENT is not the same thing and
     was never intended: refusing to serve a candidate you cannot prove is a
@@ -256,12 +258,33 @@ def _exercise_context_available(
     `prepare_first_client_feedback` used to `return None` when enrollment
     failed, which put the whole of V3 — Manager arbitration, the 75-word block
     partition, every Confident Voice item — behind the MLC-3 EXERCISE service.
-    That gate is unreachable by construction: `ensure_mlc3_service_enrollment_v2`
-    demands a receipt carrying `personalized_exercise_recommendation`, and
-    `accept_phase1_processing_authorization_v1` raises PHASE2_PURPOSE_FORBIDDEN
-    on any policy that lists it. One function requires the purpose, the only
-    function that can write it refuses — so no user could ever satisfy the gate
-    and V3 could never serve anyone.
+
+    THE DEADLOCK THAT MADE THAT FATAL IS HISTORY, AND SAYING SO MATTERS.
+    `ensure_mlc3_service_enrollment_v2` resolves a receipt carrying BOTH
+    `personalized_exercise_recommendation` and `coach_review`
+    (`resolve_mlc3_dual_purpose_receipt_v2`), and the first of those was
+    registered `phase2`, which `accept_phase1_processing_authorization_v1`
+    refuses outright. One function demanded a purpose the only function that
+    could record it would not write, so no user could enrol and V3 served
+    nobody. That is what this docstring described, in the present tense, from
+    2026-09-17 — and it stopped being true the next day:
+
+      · 0335 `enable_practice_phase1_purpose` (founder, 2026-09-16)
+        reclassified the purpose to `phase1` once the deletion, retention and
+        rights controls the registry demands actually existed, and rewrote
+        both refusing functions to ASK THE REGISTRY rather than carry a
+        hardcoded phase-2 list. `pooled_model_improvement` is still refused.
+      · `phase1-2026-09-20` was published and activated carrying all five
+        purposes, these two among them, and MLC-3 reached general
+        availability as rollout revision 2.
+
+    So enrollment is satisfiable now: it needs the speaker to hold an accepted
+    receipt for the active policy. It can still FAIL — no receipt yet, a
+    service block, a pending purge, an inactive rollout or contract, an
+    ambiguous principal, cohort membership — which is why the stand-down below
+    stays exactly as it is. It is no longer unsatisfiable by construction, and
+    a comment claiming otherwise sends the next reader looking for a lock that
+    is already open.
 
     Nothing between the caller's entry and its membership freeze needs it. The
     SQL says so: `record_feedback_v3_service_candidate_set_v1` has no MLC-3
