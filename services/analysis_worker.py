@@ -426,6 +426,43 @@ def _run_full_analysis_impl(
                     session_id, arc_id, _review["version"])
                 _deg.note("review_version_card", "card_not_persisted")
         _deg.run("review_version_card", _review_version_card)
+
+    # THE BOOKMARKS, ASKED FOR AT THE LAST POSSIBLE MOMENT (founder
+    # 2026-09-20: "there need to be bookmarks right away the moment we see
+    # it. Otherwise, that makes no sense because people will quit").
+    #
+    # DEAD LAST, below the terminal boundary and below the version card, and
+    # every line of distance is deliberate. Everything above this point is
+    # something the speaker is waiting on; this is the first thing that is
+    # not. `enqueue_bake` hands the work to the queue and returns, so the run
+    # ends when it would have ended and the wait screen closes when it would
+    # have closed.
+    #
+    # HERE RATHER THAN AT THE PUBLISH is the entire content of task #43. The
+    # Manager needs 20-40 seconds over a real document and it must be spent
+    # where nobody is holding a request open — not on `publish_for_arc`,
+    # which Take 1 creation and the cold-open GET both call.
+    #
+    # It also has to be here rather than earlier in this function: the bake
+    # computes the feedback block, and the stages that produce the evidence it
+    # arbitrates over run above. A bake asked for at the assembly — which is
+    # what #580 effectively did — computes an empty lane on a fresh take,
+    # because `ideal_text_confirmation` runs before the feedback stages do.
+    #
+    # Not wrapped in `_deg`, and unconditional on purpose — twice over.
+    #
+    # There is nothing to degrade: `enqueue_bake` cannot raise, and a false
+    # return means the next reader computes live, which is what every reader
+    # did before this existed.
+    #
+    # And every condition worth applying — a spoken take, a real arc, a real
+    # actor, the flag — lives inside `enqueue_bake`, so this call site has no
+    # branch in it at all. That is not only to keep this function off the
+    # complexity ratchet it is already grandfathered against: whether a bake
+    # is worth making is the bake's own question, and answering half of it
+    # here is how the two halves drift.
+    from services.ideal_text_feedback_bake import enqueue_bake
+    enqueue_bake(arc_id, user_id, recording_kind)
     return readout_local, sent_local
 
 

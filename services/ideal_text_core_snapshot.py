@@ -429,23 +429,28 @@ def publish_for_arc(database: Any, arc_id: str,
                 enrichment_seed=seed, source_generation=generation,
                 **lineage)
             if result is not None:
-                # THE BOOKMARKS, COMPUTED HERE INSTEAD OF ON THE READ
-                # (founder 2026-09-20: "there need to be bookmarks right away
-                # the moment we see it"). AFTER the publish, never before:
-                # V3 binds on `surface = served_text` against the CURRENT
-                # published snapshot, so a block computed a moment earlier is
-                # a block V3 declines. Best-effort in its own try — a bake
-                # that cannot be made costs the next reader one live
-                # computation, and must never cost anyone their document.
-                try:
-                    from services.ideal_text_feedback_bake import (
-                        bake_for_snapshot,
-                    )
-                    bake_for_snapshot(database, str(arc_id), actor, result)
-                except Exception as bake_error:
-                    logger.warning(
-                        "ideal-text feedback bake skipped arc=%s: %s",
-                        arc_id, bake_error)
+                # NO BAKE HERE, and the absence is the fix (#587, task #43).
+                #
+                # #580 computed the bookmarks on this line, which reads as the
+                # obvious place: the snapshot has just been published and its
+                # id is in hand. It was the worst place in the codebase.
+                # SEVEN callers reach `publish_for_arc` — the cold-open GET,
+                # two coach routes, block mutation, the later-take finalizer,
+                # the RQ publisher and the backfill script — so a 20-40s
+                # Manager run hung here is paid by all of them, including the
+                # cold open the bake exists to make fast.
+                #
+                # Worst of all it is on Take 1 document creation, via
+                # `maybe_assemble_ideal_text`. Publication went from about a
+                # second to 22 and 42, and a take whose publication never
+                # landed terminated as "we processed your take, but couldn't
+                # create your Ideal Text" — F1 piece (b), lost to an
+                # optimisation for the marks that hang off it.
+                #
+                # The bake now runs as its own queued job at the end of the
+                # analysis run, where no request and no take is waiting on it
+                # — see `services.ideal_text_feedback_bake.enqueue_bake`.
+                # This function's job is to publish a head, and only that.
                 return result
         raise ValueError("IDEAL_TEXT_DOCUMENT_SOURCE_STALE")
     except Exception as error:

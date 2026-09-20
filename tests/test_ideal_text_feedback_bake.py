@@ -8,8 +8,16 @@ quit."
 They were never stored. ``document_layers`` ran the whole Manager pipeline on
 every GET, so the marks were COMPUTED at open time and kept missing their
 budget. These tests hold the two properties that make moving that computation
-safe: it happens AFTER the snapshot is published, and it can fail in every
+safe: it is computed over the PUBLISHED head, and it can fail in every
 direction without costing anyone their document.
+
+WHERE it runs moved on 2026-09-20 (#587, task #43) and the tests moved with
+it. #580 computed the bake inside ``publish_for_arc``, which seven callers
+share — including Take 1 document creation, which it broke. It is now a
+queued job asked for on the last line of the analysis run. The section on
+the ordering below therefore asserts the OPPOSITE of what it used to: that
+the publish does not bake, and that the job reads the head instead of being
+handed a snapshot that may since have moved.
 """
 from __future__ import annotations
 
@@ -21,10 +29,12 @@ from services import ideal_text_feedback_bake as bake
 
 @pytest.fixture(autouse=True)
 def _bake_on(monkeypatch):
-    """The bake ships OFF (2026-09-20) because it delayed Take 1 document
-    creation. These tests are about what it does WHEN ON, so they turn it on
-    explicitly — and `test_the_flag_is_off_by_default` below holds the
-    shipped default, which is the part that protects the live loop.
+    """Pin the flag ON regardless of what ships, so every test below is about
+    the bake's BEHAVIOUR rather than about today's default. The default has
+    already moved twice — off on 2026-09-20 after #580 delayed Take 1
+    document creation, back on in #587 once the bake left the publish path —
+    and these tests should not have to move with it. The default itself is
+    asserted in exactly one place, against the source.
 
     Patched on the SERVICE's own predicate, not on `Config`: other modules
     reload `config`, so patching the class passes this file in isolation and
@@ -211,35 +221,194 @@ def _publish_fake(monkeypatch, order):
     return FakeDatabase()
 
 
-def test_the_bake_runs_AFTER_the_publish(monkeypatch):
-    """Not a style preference — V3 declines outright if this is reversed.
+def test_publishing_a_head_does_not_bake(monkeypatch):
+    """THE #587 INVARIANT, and the reason it is asserted rather than assumed.
 
-    `read_feedback_v3_candidate_source_snapshot_v1` binds on
-    `surface = served_text` against the CURRENT published snapshot. A block
-    computed a moment before publication is one V3 refuses with
-    `source_snapshot_does_not_match_served_text`, so the bake would store an
-    empty answer and the user would see no bookmarks at all — the exact
-    defect this feature exists to end.
+    `publish_for_arc` is reached by the cold-open GET, two coach routes,
+    block mutation, the later-take finalizer, the RQ publisher and the
+    backfill script — and, through `maybe_assemble_ideal_text`, by Take 1
+    document creation. Hanging a 20-40s Manager run there is what turned a
+    one-second publication into 22 and 42 seconds and terminated a take as
+    "we processed your take, but couldn't create your Ideal Text".
+
+    Putting the bake back on this line is the single easiest way to
+    reintroduce that incident, and it looks entirely reasonable while you are
+    doing it: the snapshot is published and its id is right there. So the
+    absence is a test, with the flag ON, where a naive restoration fails.
     """
     order: list[str] = []
     _block_returns(monkeypatch, BLOCK)
     database = _publish_fake(monkeypatch, order)
     assert core.publish_for_arc(database, ARC, ACTOR) == PUBLISHED
-    assert order == ["publish", "bake"]
+    assert order == ["publish"]
 
 
-def test_a_bake_that_explodes_does_not_cost_the_publish(monkeypatch):
-    """The document is F1 and the bake is an optimisation over it. A failure
-    to make one must never be able to fail the thing it optimises."""
-    order: list[str] = []
-    database = _publish_fake(monkeypatch, order)
+def test_the_job_bakes_the_head_as_it_stands_when_it_runs(monkeypatch):
+    """Not a style preference — V3 declines outright if this is wrong.
+
+    `read_feedback_v3_candidate_source_snapshot_v1` binds on
+    `surface = served_text` against the CURRENT published snapshot. A block
+    computed over anything else is one V3 refuses with
+    `source_snapshot_does_not_match_served_text`, so the bake would store an
+    empty answer and the user would see no bookmarks at all — the exact
+    defect this feature exists to end.
+
+    On the publish path that was guaranteed by ordering. From a queue it is
+    guaranteed by READING: the job asks the database for the head at the
+    moment it runs, rather than trusting an id handed to it when it was
+    enqueued, which by then may be a snapshot the document has moved past.
+    """
+    seen: list[tuple] = []
+
+    class HeadDatabase(RecordingDatabase):
+        def get_ideal_text_document_snapshot(self, arc_id, actor_id,
+                                             snapshot_id=None):
+            seen.append((arc_id, actor_id, snapshot_id))
+            return PUBLISHED
+
+    database = HeadDatabase()
+    _block_returns(monkeypatch, BLOCK)
+    monkeypatch.setattr("services.db.db", database, raising=False)
+    bake.run_pending_bake(ARC, ACTOR)
+    assert seen == [(ARC, ACTOR, None)], "the head, not a remembered id"
+    assert database.writes == [(ARC, ACTOR, SNAPSHOT, BLOCK)]
+
+
+def test_a_document_with_no_head_yet_bakes_nothing(monkeypatch):
+    """A queued job can outrun its document — there is nothing to compute a
+    block over, and asking the Manager anyway is how an empty lane gets
+    stored for the life of a snapshot that does not exist yet."""
+    class NoHead(RecordingDatabase):
+        def get_ideal_text_document_snapshot(self, *_args, **_kwargs):
+            return None
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the Manager must not run without a head")
+
+    import routes.v2.explore_ideal_text as route
+    monkeypatch.setattr(route, "_tracked_changes_block", never)
+    database = NoHead()
+    monkeypatch.setattr("services.db.db", database, raising=False)
+    bake.run_pending_bake(ARC, ACTOR)
+    assert database.writes == []
+
+
+def test_a_job_that_explodes_is_named_and_swallowed(monkeypatch, caplog):
+    """A failed RQ job is a red mark on a dashboard for work that is optional
+    by construction. It must log and return, never raise."""
+    class Exploding(RecordingDatabase):
+        def get_ideal_text_document_snapshot(self, *_args, **_kwargs):
+            raise RuntimeError("database is down")
+
+    monkeypatch.setattr("services.db.db", Exploding(), raising=False)
+    with caplog.at_level("WARNING"):
+        bake.run_pending_bake(ARC, ACTOR)
+    assert "bake job failed" in caplog.text
+
+
+# ── asking for the bake: instant, optional, and one per document ───────────
+
+
+def _queue(monkeypatch, *, configured=True, accepted=True):
+    calls: list[tuple] = []
+    from services import job_queue
+    monkeypatch.setattr(job_queue, "queue_configured", lambda: configured)
+
+    def _enqueue(func_path, *args, **kwargs):
+        calls.append((func_path, args, kwargs.get("rq_job_id")))
+        return accepted
+
+    monkeypatch.setattr(job_queue, "enqueue", _enqueue)
+    return calls
+
+
+def test_asking_for_a_bake_queues_the_job_and_returns(monkeypatch):
+    calls = _queue(monkeypatch)
+    assert bake.enqueue_bake(ARC, ACTOR, "spoken") is True
+    assert calls == [(
+        bake.BAKE_TASK_PATH, (ARC, ACTOR), f"ideal-text-bake:{ARC}:{ACTOR}",
+    )]
+
+
+@pytest.mark.parametrize("kind", ["read", "practice", "", None])
+def test_only_a_spoken_take_is_worth_baking(monkeypatch, kind):
+    """"Only a spoken take is a real take" (founder bug 2026-07-20).
+
+    A re-read produces no new feedback and a practice clip is not this
+    document at all, so a bake on either spends the whole Manager to store
+    what is already stored — over a document neither of them changed.
+    """
+    calls = _queue(monkeypatch)
+    assert bake.enqueue_bake(ARC, ACTOR, kind) is False
+    assert calls == []
+
+
+def test_the_call_site_may_pass_the_worker_s_raw_values(monkeypatch):
+    """The caller is one unbranched line, so it hands over whatever it holds
+    — and in the worker `arc_id` and `user_id` are Optional. `str(None)` is
+    the truthy string "None", so a naive guard here would queue a job for an
+    arc that does not exist."""
+    calls = _queue(monkeypatch)
+    assert bake.enqueue_bake(None, ACTOR, "spoken") is False
+    assert bake.enqueue_bake(ARC, None, "spoken") is False
+    assert calls == []
+
+
+def test_the_manager_does_not_run_on_the_asking_side(monkeypatch):
+    """The entire value of #43 is that this call is instant.
+
+    A version that computed here and queued the storing would move nothing:
+    the 20-40 seconds are the Manager, and the caller is the last line of the
+    analysis run.
+    """
+    _queue(monkeypatch)
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the Manager must not run on the enqueue")
+
+    import routes.v2.explore_ideal_text as route
+    monkeypatch.setattr(route, "_tracked_changes_block", never)
+    bake.enqueue_bake(ARC, ACTOR, "spoken")
+
+
+def test_no_broker_means_no_bake_and_no_complaint(monkeypatch):
+    """Dev, tests and a Redis outage all land here. The read computes live,
+    which is what every reader did before any of this existed."""
+    calls = _queue(monkeypatch, configured=False)
+    assert bake.enqueue_bake(ARC, ACTOR, "spoken") is False
+    assert calls == []
+
+
+def test_a_broker_that_raises_does_not_reach_the_caller(monkeypatch):
+    """Its caller is the last line of the analysis run and is deliberately
+    NOT wrapped in a degradation guard, because this function cannot raise.
+    That claim is only true if it is tested."""
+    from services import job_queue
+    monkeypatch.setattr(job_queue, "queue_configured", lambda: True)
 
     def boom(*_args, **_kwargs):
-        raise RuntimeError("bake is down")
+        raise RuntimeError("redis is gone")
 
-    monkeypatch.setattr(bake, "bake_for_snapshot", boom)
-    assert core.publish_for_arc(database, ARC, ACTOR) == PUBLISHED
-    assert order == ["publish"]
+    monkeypatch.setattr(job_queue, "enqueue", boom)
+    assert bake.enqueue_bake(ARC, ACTOR, "spoken") is False
+
+
+@pytest.mark.parametrize(("arc_id", "actor_id"), [
+    ("", ACTOR), (ARC, ""), ("", ""),
+])
+def test_an_incomplete_identity_queues_nothing(monkeypatch, arc_id, actor_id):
+    calls = _queue(monkeypatch)
+    assert bake.enqueue_bake(arc_id, actor_id, "spoken") is False
+    assert calls == []
+
+
+def test_the_flag_gates_the_asking_too(monkeypatch):
+    """Off must mean no job exists, not a job that runs and declines. A queue
+    full of work that will refuse itself is not a switched-off feature."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: False)
+    calls = _queue(monkeypatch)
+    assert bake.enqueue_bake(ARC, ACTOR, "spoken") is False
+    assert calls == []
 
 
 # ── serving it: the fast path may only be taken when it is safe ────────────
@@ -322,11 +491,16 @@ def test_a_missing_snapshot_id_still_answers_rather_than_raising(monkeypatch):
 #
 # `build_changes_block` returns `{"changes": [], ...}` when the Manager has
 # nothing to say at that moment — a TRUTHY dict with nothing in it. The guard
-# was `not block`, which does not catch it. And the moment the bake runs is
-# during assembly: `ideal_text_confirmation` is called at
-# analysis_worker.py:282, BEFORE the pipeline's feedback stages at 288 and
-# 299. So a fresh take routinely baked an empty block, stored it, and every
-# read afterwards served "no bookmarks" for the life of that snapshot.
+# was `not block`, which does not catch it. And the moment the bake ran was
+# during assembly: `build_initial_ideal_text_from_stored_artifacts` is called
+# BEFORE the pipeline's feedback stages, so a fresh take routinely baked an
+# empty block, stored it, and every read afterwards served "no bookmarks" for
+# the life of that snapshot.
+#
+# #587 removed the cause — the bake now runs after those stages — and this
+# guard stays anyway. It is the difference between a document that honestly
+# has nothing to say and a computation that has not happened yet, and only
+# one of the two is safe to store.
 
 
 @pytest.mark.parametrize("block", [
@@ -349,9 +523,11 @@ def test_a_block_with_no_marks_is_never_stored(monkeypatch, block):
 
 
 def test_a_block_with_marks_is_still_stored(monkeypatch):
-    """The guard tightened; it did not turn the feature off. A publish that
-    happens at the END of a run — where the Manager has really finished — bakes
-    exactly as before."""
+    """The guard tightened; it did not turn the feature off. A bake run at
+    the END of the analysis run — where the Manager has really finished and
+    has something to say — stores exactly as designed. Since #587 that is the
+    only moment it runs at, which is why the empty case above became rare
+    rather than routine."""
     _block_returns(monkeypatch, BLOCK)
     database = RecordingDatabase()
     assert bake.bake_for_snapshot(database, ARC, ACTOR, PUBLISHED) is True
@@ -369,7 +545,7 @@ def test_no_bake_means_the_read_computes_live(monkeypatch):
 # ── the flag, and why its default is the point ─────────────────────────────
 
 
-def test_the_flag_is_off_by_default():
+def test_the_flag_is_on_by_default_now_that_the_bake_is_off_the_publish():
     """FOUNDER, 2026-09-20: "We processed your take, but couldn't create your
     Ideal Text."
 
@@ -377,25 +553,32 @@ def test_the_flag_is_off_by_default():
     `maybe_assemble_ideal_text` calls WHILE A TAKE 1 DOCUMENT IS BEING MADE.
     In production, publication went from about a second to tens of seconds —
     two takes landed their snapshot 22s and 42s after their job had already
-    finished, and one never landed at all.
+    finished, and one never landed at all. #584 switched the flag off and its
+    comment named the condition for switching it back: "only once the bake
+    runs where it cannot delay creation (task #43)".
 
-    An optimisation for the marks that hang off the document is not allowed
-    to cost the document. This default is that ruling, and it is the assertion
-    that keeps it: the speed-up returns only when the bake runs where it
-    cannot delay creation (task #43).
+    #587 met that condition rather than arguing it away. The bake is not
+    reachable from `publish_for_arc` at all — `test_publishing_a_head_does_
+    not_bake` above is the assertion — so the failure this flag was turned
+    off to stop cannot occur, instead of being unlikely to.
+
+    This test is paired with that one on purpose. Between them, the default
+    may only be on while the publish path is clean: restoring the bake to the
+    publish fails the other test, and the two cannot be satisfied at once by
+    anything except the shipped arrangement.
     """
     # Read the SHIPPED declaration, not the live attribute: the autouse
-    # fixture above turns the flag on for every other test in this file, and
-    # a default test that the fixture can satisfy is a default test that
-    # proves nothing.
+    # fixture above sets the flag for every other test in this file, and a
+    # default test that the fixture can satisfy is a default test that proves
+    # nothing.
     import inspect
 
     import config
 
     source = inspect.getsource(config)
-    assert 'IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0"' in source, (
-        "the shipped default must be off")
-    assert config._env_flag("IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0") is False
+    assert 'IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1"' in source, (
+        "the shipped default must be on")
+    assert config._env_flag("IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1") is True
 
 
 def test_switched_off_it_computes_nothing_and_stores_nothing(monkeypatch):
@@ -425,8 +608,14 @@ def test_the_read_still_answers_with_the_bake_off(monkeypatch):
 
 
 def test_publishing_is_untouched_with_the_bake_off(monkeypatch):
-    """The publish must still publish. That is the whole point of the
-    default."""
+    """The publish must still publish, with the flag in either position.
+
+    Since #587 the publish does not bake either way, so this reads as a
+    tautology — and it is kept precisely because it did not used to be. It
+    is the OFF half of the pair with `test_publishing_a_head_does_not_bake`:
+    whichever way a future change reaches for the publish path, one of the
+    two fails.
+    """
     monkeypatch.setattr(bake, "_bake_enabled", lambda: False)
     order: list[str] = []
     database = _publish_fake(monkeypatch, order)
