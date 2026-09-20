@@ -429,6 +429,23 @@ def publish_for_arc(database: Any, arc_id: str,
                 enrichment_seed=seed, source_generation=generation,
                 **lineage)
             if result is not None:
+                # THE BOOKMARKS, COMPUTED HERE INSTEAD OF ON THE READ
+                # (founder 2026-09-20: "there need to be bookmarks right away
+                # the moment we see it"). AFTER the publish, never before:
+                # V3 binds on `surface = served_text` against the CURRENT
+                # published snapshot, so a block computed a moment earlier is
+                # a block V3 declines. Best-effort in its own try — a bake
+                # that cannot be made costs the next reader one live
+                # computation, and must never cost anyone their document.
+                try:
+                    from services.ideal_text_feedback_bake import (
+                        bake_for_snapshot,
+                    )
+                    bake_for_snapshot(database, str(arc_id), actor, result)
+                except Exception as bake_error:
+                    logger.warning(
+                        "ideal-text feedback bake skipped arc=%s: %s",
+                        arc_id, bake_error)
                 return result
         raise ValueError("IDEAL_TEXT_DOCUMENT_SOURCE_STALE")
     except Exception as error:

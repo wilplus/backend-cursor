@@ -6976,6 +6976,69 @@ class DatabaseService:
             logger.warning("ideal-text generation read failed: %s", error)
             return None
 
+    def write_ideal_text_feedback_bake(
+        self, arc_id: str, actor_id: str, document_snapshot_id: str,
+        payload: dict,
+    ) -> bool:
+        """Store the Manager's block against one immutable document.
+
+        Best-effort by contract: a failure here costs the next reader one live
+        computation, which is what every reader did before this existed. It
+        must never be able to fail a publish.
+        """
+        if not arc_id or not actor_id or not document_snapshot_id:
+            return False
+        if not isinstance(payload, dict):
+            return False
+        try:
+            result = self.client.rpc(
+                "write_ideal_text_feedback_bake_v1", {
+                    "p_arc_id": str(arc_id),
+                    "p_actor_id": str(actor_id),
+                    "p_document_snapshot_id": str(document_snapshot_id),
+                    "p_payload": payload,
+                }).execute()
+            return isinstance(result.data, dict)
+        except Exception as error:
+            logger.warning("ideal-text feedback bake write failed arc=%s: %s",
+                           arc_id, error)
+            return False
+
+    def read_ideal_text_feedback_bake(
+        self, arc_id: str, actor_id: str, document_snapshot_id: str,
+    ) -> Optional[dict]:
+        """The stored block for this exact document, or None.
+
+        None means "compute it live" in every case — absent function, absent
+        row, wrong snapshot, or a mutable-feedback write since the bake. The
+        freshness rule lives in SQL (see the migration) so it cannot drift
+        from the writer.
+        """
+        if not arc_id or not actor_id or not document_snapshot_id:
+            return None
+        try:
+            result = self.client.rpc(
+                "read_ideal_text_feedback_bake_v1", {
+                    "p_arc_id": str(arc_id),
+                    "p_actor_id": str(actor_id),
+                    "p_document_snapshot_id": str(document_snapshot_id),
+                }).execute()
+            data = result.data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            if not isinstance(data, dict):
+                return None
+            payload = data.get("payload")
+            return payload if isinstance(payload, dict) else None
+        except Exception as error:
+            low = str(error).lower()
+            if "read_ideal_text_feedback_bake_v1" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                return None
+            logger.warning("ideal-text feedback bake read failed arc=%s: %s",
+                           arc_id, error)
+            return None
+
     def list_pending_ideal_text_document_publications(
         self, limit: int = 100,
     ) -> list[dict]:
