@@ -268,3 +268,107 @@ def test_every_former_swallow_all_runs_through_the_log(stage):
     # Named in a `log.run(...)` call, never called bare.
     bare = f"self.{stage}()"
     assert bare not in src, f"{stage} is called outside the log"
+
+
+# ── THE CLIP UNDER A V3 ROW (founder 2026-09-20) ──────────────────────────
+#
+# "there is no playback on the overlay so you cannot play the confident
+#  moment and actually see whether it sounded confident or not. there is
+#  nothing at the bottom."
+#
+# `_praise_playback` attaches the recording. It runs early, because
+# `_feedback_set_and_fallbacks` classifies through `feedback_family_of`,
+# which will only call a row Confident Voice once it has a playable excerpt.
+# Then `_first_client_feedback` REPLACES `self.changes` wholesale with V3's
+# rows — and every clip attached upstream went out with the list it was
+# attached to. Since the V3 cutover, not one served Confident Voice item had
+# a recording under it.
+#
+# The product's own rule, stated twice in the source: the claim is about how
+# it SOUNDED, and it is the only claim this product makes that the student
+# cannot check by reading.
+
+
+def _run_for_playback(deps):
+    from services.ideal_text_changes import _ChangesRun
+    return _ChangesRun(ARC, DOC, "user-1", T1, 1, deps,
+                       DegradationLog("ideal_text"))
+
+
+def _v3_row(snippet_id):
+    """The shape `take_feedback_policy_v3_service` actually emits."""
+    return {
+        "id": f"cand:{snippet_id}",
+        "kind": "bold",
+        "source": "confident_voice",
+        "feedback_family": "confident_voice",
+        "snippet_id": snippet_id,
+        "take_session_id": T1,
+        "span": {"start": 0, "end": 17},
+        "quote": "We started small.",
+    }
+
+
+def test_a_v3_confident_voice_row_gets_its_recording():
+    clip = {"snippet_audio_ref": "https://audio/take-1.m4a",
+            "start_offset_ms": 0, "duration_ms": 1700}
+    db = FakeDB()
+    run = _run_for_playback(_deps(db, playback_map=lambda ids: {S1: clip}))
+    run.changes = [_v3_row(S1)]
+    run._praise_playback()
+    assert run.changes[0]["snippet_audio_ref"] == "https://audio/take-1.m4a"
+    assert run.changes[0]["start_offset_ms"] == 0
+    assert run.changes[0]["duration_ms"] == 1700
+
+
+def test_a_v3_row_with_no_clip_still_surfaces_rather_than_vanishing():
+    # 24b puts one relative-best item on every valid block of every Take.
+    # A missing recording is a missing player, never a missing bookmark —
+    # the FE renders the card without the audio block.
+    db = FakeDB()
+    run = _run_for_playback(_deps(db, playback_map=lambda ids: {}))
+    run.changes = [_v3_row(S1)]
+    run._praise_playback()
+    assert len(run.changes) == 1
+    assert "snippet_audio_ref" not in run.changes[0]
+
+
+def test_the_replacement_flag_is_what_re_arms_the_attach():
+    db = FakeDB()
+    run = _run_for_playback(_deps(db))
+    # Nothing has replaced the rows yet, so the second attach must not run:
+    # a Take V3 does not own pays nothing for this fix.
+    assert run.v3_replaced_changes is False
+
+
+def test_playback_is_attached_on_BOTH_sides_of_the_v3_replacement():
+    """The ordering contract, stated so it cannot silently regress.
+
+    Both readers are right and they disagree about when: V2 needs the clip
+    BEFORE `_feedback_set_and_fallbacks` classifies, V3 needs it AFTER
+    `_first_client_feedback` replaces. Moving the stage fixes one and breaks
+    the other, which is why it runs twice.
+    """
+    import ast
+    import inspect
+    import textwrap
+    from services.ideal_text_changes import _ChangesRun
+    tree = ast.parse(textwrap.dedent(inspect.getsource(_ChangesRun.execute)))
+    calls = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            fn = node.func
+            if isinstance(fn, ast.Attribute) and fn.attr == "run":
+                calls.append((node.lineno, node.args[1].attr))
+            elif (isinstance(fn, ast.Attribute)
+                  and isinstance(fn.value, ast.Name)
+                  and fn.value.id == "self"):
+                calls.append((node.lineno, fn.attr))
+    order = [name for _, name in sorted(calls)]
+    playbacks = [i for i, name in enumerate(order)
+                 if name == "_praise_playback"]
+    assert len(playbacks) == 2, "the attach must run on both sides"
+    assert playbacks[0] < order.index("_feedback_set_and_fallbacks"), \
+        "V2 classifies on the clip; the first attach must precede it"
+    assert playbacks[1] > order.index("_first_client_feedback"), \
+        "V3 replaces the rows; the second attach must follow it"
