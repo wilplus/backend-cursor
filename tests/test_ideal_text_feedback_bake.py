@@ -300,3 +300,54 @@ def test_a_missing_snapshot_id_still_answers_rather_than_raising(monkeypatch):
     _block_returns(monkeypatch, BLOCK)
     assert bake.changes_block_for(
         ServingDatabase(None), ARC, ACTOR, "", CORE) == BLOCK
+
+
+# ── the regression this feature caused on its first real take ──────────────
+#
+# FOUNDER, 2026-09-20, minutes after #580 shipped: "I just recorded and none
+# of the bookmarks appeared."
+#
+# `build_changes_block` returns `{"changes": [], ...}` when the Manager has
+# nothing to say at that moment — a TRUTHY dict with nothing in it. The guard
+# was `not block`, which does not catch it. And the moment the bake runs is
+# during assembly: `ideal_text_confirmation` is called at
+# analysis_worker.py:282, BEFORE the pipeline's feedback stages at 288 and
+# 299. So a fresh take routinely baked an empty block, stored it, and every
+# read afterwards served "no bookmarks" for the life of that snapshot.
+
+
+@pytest.mark.parametrize("block", [
+    {"changes": []},
+    {"changes": [], "style_changes": [], "key_points": []},
+    {"changes": [], "is_saved": False, "additions": []},
+    {"style_changes": [{"id": "s1"}]},   # lanes, but no marks
+    {"is_saved": True},
+])
+def test_a_block_with_no_marks_is_never_stored(monkeypatch, block):
+    """Each of these is truthy. Not one of them is a bake.
+
+    Storing any of them serves "no bookmarks" until the next snapshot, which
+    is the exact defect this whole feature exists to end.
+    """
+    _block_returns(monkeypatch, block)
+    database = RecordingDatabase()
+    assert bake.bake_for_snapshot(database, ARC, ACTOR, PUBLISHED) is False
+    assert database.writes == []
+
+
+def test_a_block_with_marks_is_still_stored(monkeypatch):
+    """The guard tightened; it did not turn the feature off. A publish that
+    happens at the END of a run — where the Manager has really finished — bakes
+    exactly as before."""
+    _block_returns(monkeypatch, BLOCK)
+    database = RecordingDatabase()
+    assert bake.bake_for_snapshot(database, ARC, ACTOR, PUBLISHED) is True
+    assert database.writes == [(ARC, ACTOR, SNAPSHOT, BLOCK)]
+
+
+def test_no_bake_means_the_read_computes_live(monkeypatch):
+    """The whole safety argument in one line: when nothing was stored, the
+    read does what every read did before any of this existed."""
+    _block_returns(monkeypatch, BLOCK)
+    assert bake.changes_block_for(
+        ServingDatabase(None), ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
