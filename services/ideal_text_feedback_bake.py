@@ -35,6 +35,20 @@ from typing import Any, Mapping
 logger = logging.getLogger(__name__)
 
 
+def _bake_enabled() -> bool:
+    """Is the publish-boundary bake switched on?
+
+    A named predicate, like `_living_transcript_enabled` and
+    `_suggestions_enabled` next door, rather than a `Config()` read at the
+    call site. That is not style: other modules reload `config`, so a late
+    `from config import Config` can resolve to a different class object than
+    the one a caller or a test is holding — which is exactly how this failed
+    in the full suite while passing on its own.
+    """
+    from config import Config
+    return bool(Config().IDEAL_TEXT_FEEDBACK_BAKE_ENABLED)
+
+
 def _snapshot_id_of(result: Any) -> str:
     """The published snapshot's id, or "" when the shape is not one."""
     if not isinstance(result, Mapping):
@@ -86,6 +100,24 @@ def bake_for_snapshot(
     empty answer and the user would see no bookmarks at all, which is the
     exact defect this exists to end.
     """
+    # OFF BY DEFAULT since 2026-09-20, and the default is the decision.
+    #
+    # This runs the whole Manager pipeline, and `publish_for_arc` is called
+    # by `maybe_assemble_ideal_text` WHILE A TAKE 1 DOCUMENT IS BEING CREATED.
+    # In production, publication went from about a second to tens of seconds,
+    # and a take whose publication never landed terminated as "we processed
+    # your take, but couldn't create your Ideal Text" — F1 piece (b), broken
+    # by an optimisation for the marks that hang off it.
+    #
+    # The read side stays exactly as it is: `changes_block_for` finds no row
+    # and computes live, which is what every reader did before any of this.
+    # So switching this off costs nothing but the speed-up it was meant to
+    # buy, and buys back a document that reliably gets made.
+    #
+    # It comes back on when the bake runs somewhere it cannot delay creation
+    # (task #43), not before.
+    if not _bake_enabled():
+        return False
     snapshot_id = _snapshot_id_of(published)
     if not arc_id or not actor_id or not snapshot_id:
         return False
