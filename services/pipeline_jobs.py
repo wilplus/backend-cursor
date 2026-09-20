@@ -648,11 +648,30 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
         _stage_session_getter(str(payload.get("session_id") or "")) or {}
         if callable(_stage_session_getter) else {}
     )
+
+    def _progress(stage: str, percent: int, message: Optional[str]) -> None:
+        db.update_processing_job(job_id, {
+            "stage": stage, "percent": max(0, min(100, int(percent))),
+            "message": message,
+        })
+
+    # THE STAGE LEDGER ALSO MOVES THE BAR (founder 2026-09-19: "there is no
+    # continuity there and it feels like it's stale").
+    #
+    # This run reported five points across its whole length, and the widest
+    # gap — 15 to 55 — is `process_lab_recording`, the longest part of it.
+    # The recorder is already called at the real boundaries inside that gap
+    # (`alignment`, `feature_extraction`) for the provenance ledger, and the
+    # speaker was never told about any of them. One set of boundaries now
+    # serves both, so the bar cannot claim a sequence the ledger denies.
+    # Positions live in `services/processing_progress`; a stage with none
+    # reports nothing rather than guessing.
     _stage_recorder = recorder_for_take(
         database=db,
         session=_stage_session,
         attempt_count=int(job.get("attempts") or 1),
         processing_job_id=job_id,
+        progress=_progress,
         input_provenance={
             "kind": job.get("kind"),
             "session_id": payload.get("session_id"),
@@ -716,12 +735,6 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
         )
         if not audio_bytes:
             raise RuntimeError("audio object empty or missing in storage")
-
-    def _progress(stage: str, percent: int, message: Optional[str]) -> None:
-        db.update_processing_job(job_id, {
-            "stage": stage, "percent": max(0, min(100, int(percent))),
-            "message": message,
-        })
 
     # Every best-effort stage of the run names itself here when it falls
     # back (audit Q-C1); the job row carries the list, so the polled status
