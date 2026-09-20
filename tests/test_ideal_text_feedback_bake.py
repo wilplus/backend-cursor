@@ -432,3 +432,32 @@ def test_publishing_is_untouched_with_the_bake_off(monkeypatch):
     database = _publish_fake(monkeypatch, order)
     assert core.publish_for_arc(database, ARC, ACTOR) == PUBLISHED
     assert order == ["publish"]
+
+
+def test_with_the_bake_off_a_stored_row_is_not_even_read(monkeypatch):
+    """FOUNDER, after #584 had already switched the bake off: "No bookmarks."
+
+    #584 gated the WRITER and left the READER open, so a row stored during
+    the window when #580 was live kept being served. Turning a writer off
+    does nothing about what it already wrote; a switch that silences the
+    cause and keeps serving its damage is not a switch.
+
+    With the flag off the stored answer does not exist as far as the read is
+    concerned — not "is read and ignored", not read at all.
+    """
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: False)
+    _block_returns(monkeypatch, BLOCK)
+    poisoned = ServingDatabase({"changes": [], "style_changes": []})
+    assert bake.changes_block_for(
+        poisoned, ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
+    assert poisoned.reads == [], "the bake table must not be touched"
+
+
+def test_with_the_bake_on_a_stored_row_is_still_served(monkeypatch):
+    """The gate is a rollback, not a removal. With the flag on, the stored
+    block is served exactly as designed."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    database = ServingDatabase(BLOCK)
+    assert bake.changes_block_for(
+        database, ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
+    assert database.reads == [(ARC, ACTOR, SNAPSHOT)]

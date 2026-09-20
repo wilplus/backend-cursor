@@ -77,8 +77,26 @@ def changes_block_for(
     falls through to the live computation, which is what every reader did
     before this existed, so the fast path can only be taken when it is safe.
     """
-    baked = database.read_ideal_text_feedback_bake(
-        str(arc_id), str(actor_id), str(document_snapshot_id or ""))
+    # THE FLAG GATES THE READ TOO, and leaving it off the read was the defect
+    # that kept the regression alive after #584 (founder: "No bookmarks",
+    # after the bake was already switched off).
+    #
+    # #583 stopped new empty blocks being stored and #584 stopped the bake
+    # running at all — but a row written in the window between #580 and those
+    # fixes is still sitting in the table, and this function was still
+    # serving it. Turning a writer off does nothing about what it already
+    # wrote. A switch that silences the cause and keeps serving its damage is
+    # not a switch.
+    #
+    # So when the bake is off, the stored answer does not exist as far as
+    # this read is concerned: it computes live, which is what every reader
+    # did before #580. That also makes the flag a true rollback rather than
+    # a half one, and means a poisoned row cannot outlive the feature.
+    baked = (
+        database.read_ideal_text_feedback_bake(
+            str(arc_id), str(actor_id), str(document_snapshot_id or ""))
+        if _bake_enabled() else None
+    )
     if isinstance(baked, dict) and baked:
         return baked
     from routes.v2.explore_ideal_text import _tracked_changes_block
