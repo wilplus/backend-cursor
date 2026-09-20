@@ -108,6 +108,9 @@ class _ChangesRun:
         # Empty unless V3 owned this Take and could not produce it. Never set
         # for a Take V3 does not apply to — see contract 24h.
         self.v3_failure: str = ""
+        # True once V3 has REPLACED `self.changes` with its own rows. The
+        # playback attach has to run again when it does — see `execute`.
+        self.v3_replaced_changes = False
 
     # ── stages, in order ────────────────────────────────────────────────
 
@@ -158,6 +161,34 @@ class _ChangesRun:
             log.run("changes.canonical_dual_write",
                     self._canonical_dual_write)
         log.run("changes.first_client_feedback", self._first_client_feedback)
+        # HEAR IT, ON THE ROWS THAT ACTUALLY SURFACE (founder 2026-09-20:
+        # "there is no playback on the overlay so you cannot play the
+        # confident moment and actually see whether it sounded confident or
+        # not. there is nothing at the bottom").
+        #
+        # `_praise_playback` above ran at its original place in this pipeline,
+        # twenty-odd stages up, because `_feedback_set_and_fallbacks` reads
+        # `snippet_audio_ref` through `feedback_family_of` and must keep
+        # seeing it. But `_first_client_feedback` REPLACES `self.changes`
+        # wholesale, so since the V3 cutover every clip attached up there was
+        # thrown away with the V2 rows it was attached to, and not one served
+        # Confident Voice item has ever carried a recording.
+        #
+        # That is not a missing nicety. The founder's own 2026-08-15 ruling,
+        # quoted in `_praise_playback`: the claim is about how it SOUNDED,
+        # and it is the only claim this product makes that the student cannot
+        # check by reading. `feedback_family_of` states the same rule as a
+        # gate -- Confident Voice "requires a playable, bounded recording
+        # excerpt before it may surface" -- and V3 stamps its own
+        # `feedback_family` directly, so it never passed that gate at all.
+        #
+        # Run again rather than moved, because both readers are right: V2
+        # needs it before classification, V3 needs it after replacement. The
+        # attach is idempotent -- it updates rows from a snippet_id map -- so
+        # the only cost is one extra batched read, and only on a Take V3
+        # actually owned.
+        if self.v3_replaced_changes:
+            log.run("changes.praise_playback_v3", self._praise_playback)
         return self._finish()
 
     def _load_document(self) -> None:
@@ -1016,6 +1047,9 @@ class _ChangesRun:
         elif _service_rows:
             self.changes = _service_rows
             self.styles = []
+            # The clips attached upstream belonged to the rows just discarded.
+            # `execute` re-attaches them to these — see the note at that call.
+            self.v3_replaced_changes = True
 
     def _finish(self) -> dict:
         from services.take_feedback_manager import strip_internal_evidence
