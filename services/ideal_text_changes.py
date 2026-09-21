@@ -100,6 +100,8 @@ class _ChangesRun:
         self.learning_presentations: dict[str, list[dict]] = {}
         self.feedback_response_count = 0
         self.response_rows: list = []
+        # Item ids the owner already answered on this Take (self-reports).
+        self.responded_ids: set[str] = set()
         self.session: Any = None
         self.sel: dict = {}
         self.styles: list = []
@@ -152,6 +154,9 @@ class _ChangesRun:
         if early is not None:
             return early
         log.run("changes.first_client_feedback", self._first_client_feedback)
+        if self.v3_replaced_changes:
+            log.run("changes.answered_service_items",
+                    self._drop_answered_service_items)
         # FREEZE WHAT ACTUALLY SERVED (founder 2026-09-21: "we have to make
         # the users act upon it to close the UX loop").
         #
@@ -618,10 +623,74 @@ class _ChangesRun:
             str(row.get("feedback_id")) for row in self.response_rows
             if isinstance(row, dict) and row.get("feedback_id")
         }
+        self.responded_ids = _responded_ids
         self.feedback_response_count = len(_responded_ids)
         if _responded_ids:
             self.changes = [row for row in self.changes
                             if str(row.get("id") or "") not in _responded_ids]
+
+    def _drop_answered_service_items(self) -> None:
+        """A V3 bookmark the owner answered is decided, like any other lane's.
+
+        FOUNDER 2026-09-21, project j, Take 1: Yes on the Confident Voice
+        bookmark, the phrase chosen, then "Decide every suggestion on this
+        chunk first" on Lock and on Keep evolving alike — a 409 from the part
+        lock, every time.
+
+        THE INVARIANT THE LOCK GATE RELIES ON is that a change still on screen
+        IS an undecided one: "every lane already drops what the student
+        decided" (`v2_explore_set_part_lock`). `_immutable_membership` keeps
+        that promise for V2 by removing every row whose id carries a
+        self-report — and then `_first_client_feedback` REPLACES `changes`
+        with V3's rows, rebuilt from the policy frame with no knowledge of
+        any answer. So an answered V3 item came back on every read, the gate
+        counted it as pending, and no paragraph carrying a V3 bookmark could
+        ever be locked or kept evolving.
+
+        Two places an answer can live, both honoured:
+        · the legacy route (`record_take_feedback_response_v1`, 0346) writes
+          `take_feedback_self_report`, keyed by the item id;
+        · the service route (`record_feedback_v3_service_response_v1`) writes
+          `feedback_v3_owner_responses`, keyed by membership and candidate,
+          which the served row carries under `mlc3_service`.
+
+        Drops only; never invents, never reorders (L2). A failed read of the
+        service responses degrades to "not answered", which is the state the
+        gate was already in.
+        """
+        if not self.changes:
+            return
+        answered_keys: set[tuple[str, str]] = set()
+        membership_ids = sorted({
+            str(row["mlc3_service"]["membership_id"])
+            for row in self.changes
+            if isinstance(row.get("mlc3_service"), dict)
+            and row["mlc3_service"].get("membership_id")
+        })
+        if membership_ids:
+            answered_keys = {
+                (str(key.get("membership_id")), str(key.get("candidate_id")))
+                for key in (self.db.list_feedback_v3_owner_response_keys(
+                    membership_ids) or [])
+                if isinstance(key, dict)
+            }
+
+        def _answered(row: dict) -> bool:
+            if str(row.get("id") or "") in self.responded_ids:
+                return True
+            service = row.get("mlc3_service")
+            return (
+                isinstance(service, dict)
+                and (str(service.get("membership_id")),
+                     str(service.get("candidate_id"))) in answered_keys
+            )
+
+        kept = [row for row in self.changes if not _answered(row)]
+        if len(kept) != len(self.changes):
+            logger.info(
+                "answered service items dropped arc=%s take=%s dropped=%d",
+                self.arc_id, self.arm_sid, len(self.changes) - len(kept))
+        self.changes = kept
 
     def _decision_backfill(self) -> None:
         # DECISION BACKFILL-ON-READ. A compatibility response may have

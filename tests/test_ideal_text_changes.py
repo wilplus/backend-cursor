@@ -435,3 +435,102 @@ def test_a_v2_take_is_still_filtered_to_its_frozen_set():
     run.v3_replaced_changes = False
     run._claim_or_filter()
     assert [row["id"] for row in run.changes] == ["v2-cv"]
+
+
+# ---------------------------------------------------------------------------
+#  AN ANSWERED V3 BOOKMARK IS DECIDED (founder 2026-09-21, project j).
+#
+#  The lock gate trusts one invariant: a change still served IS undecided,
+#  because every lane drops what the student decided. `_immutable_membership`
+#  honours it for V2; `_first_client_feedback` then replaces the rows with
+#  V3's, rebuilt with no knowledge of any answer. So Yes, phrase chosen, then
+#  "Decide every suggestion on this chunk first" — on Lock and on Keep
+#  evolving alike, forever.
+# ---------------------------------------------------------------------------
+
+S2 = "22222222-2222-4222-8222-222222222222"
+S3 = "33333333-3333-4333-8333-333333333333"
+
+
+def _service_row(snippet_id, membership_id, candidate_id):
+    return {
+        **_v3_row(snippet_id),
+        "mlc3_service": {
+            "membership_id": membership_id, "candidate_id": candidate_id,
+        },
+    }
+
+
+class _AnsweredDB(FakeDB):
+    def __init__(self, owner_keys=None, fail=False):
+        self.owner_keys = owner_keys or []
+        self.fail = fail
+        self.asked = []
+
+    def list_feedback_v3_owner_response_keys(self, membership_ids):
+        self.asked.append(list(membership_ids))
+        if self.fail:
+            raise RuntimeError("owner responses unreachable")
+        return self.owner_keys
+
+
+def test_a_v3_item_answered_on_the_legacy_route_is_no_longer_served():
+    db = _AnsweredDB()
+    run = _run_for_playback(_deps(db))
+    run.changes = [_v3_row(S1), _v3_row(S2)]
+    run.v3_replaced_changes = True
+    run.responded_ids = {f"cand:{S1}"}
+    run._drop_answered_service_items()
+    assert [row["id"] for row in run.changes] == [f"cand:{S2}"]
+    # No served row carried service fields, so nothing was asked of the
+    # service tables.
+    assert db.asked == []
+
+
+def test_a_v3_item_answered_on_the_service_route_is_no_longer_served():
+    db = _AnsweredDB(owner_keys=[
+        {"membership_id": "m-1", "candidate_id": "c-1"},
+    ])
+    run = _run_for_playback(_deps(db))
+    run.changes = [
+        _service_row(S1, "m-1", "c-1"),
+        _service_row(S2, "m-1", "c-2"),
+        _v3_row(S3),
+    ]
+    run.v3_replaced_changes = True
+    run._drop_answered_service_items()
+    assert [row["id"] for row in run.changes] == [f"cand:{S2}", f"cand:{S3}"]
+    assert db.asked == [["m-1"]]
+
+
+def test_an_unanswered_take_serves_every_v3_row_unchanged():
+    db = _AnsweredDB()
+    run = _run_for_playback(_deps(db))
+    rows = [_service_row(S1, "m-1", "c-1"), _v3_row(S2)]
+    run.changes = list(rows)
+    run.v3_replaced_changes = True
+    run._drop_answered_service_items()
+    assert run.changes == rows
+
+
+def test_a_failed_service_read_degrades_to_not_answered_not_to_blank():
+    db = _AnsweredDB(fail=True)
+    run = _run_for_playback(_deps(db))
+    run.changes = [_service_row(S1, "m-1", "c-1")]
+    run.v3_replaced_changes = True
+    run.log.run("changes.answered_service_items",
+                run._drop_answered_service_items)
+    assert [row["id"] for row in run.changes] == [f"cand:{S1}"]
+    assert any("answered_service_items" in str(entry)
+               for entry in run.log.payload().get("degraded", []))
+
+
+def test_execute_drops_answered_items_only_after_v3_replaced_the_rows():
+    """The stage is keyed on the replacement, so a V2 Take (where
+    `_immutable_membership` already did the dropping) is untouched."""
+    import inspect
+    from services.ideal_text_changes import _ChangesRun
+    source = inspect.getsource(_ChangesRun.execute)
+    assert "if self.v3_replaced_changes:" in source
+    assert source.index("changes.first_client_feedback") < source.index(
+        "changes.answered_service_items") < source.index("_claim_or_filter")
