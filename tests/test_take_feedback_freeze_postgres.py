@@ -254,3 +254,72 @@ def test_the_first_answer_stands_and_a_contradicting_one_conflicts(db):
         )
         rows = cur.fetchall()
     assert rows == [("yes",)]
+
+
+# ---------------------------------------------------------------------------
+#  THE EXPOSURE RECORD (0349). Beside the frozen selection sits the record of
+#  the complete ranking that was shown, `take_feedback_exposure`. Its inline
+#  CHECK was V2's exactly-three, the third copy of that rule and the one
+#  nobody listed: on 2026-09-21, minutes after the bookmarks came back,
+#  every V3 open logged 23514 on this table and the audit of what was ranked
+#  behind the bookmarks did not exist.
+# ---------------------------------------------------------------------------
+
+def exposure(db, arc_id: str, session_id: str, keys: list[dict],
+             *, review_version: int = 1) -> None:
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO public.take_feedback_exposure("
+            "arc_id, take_session_id, review_version, policy_version, "
+            "candidate_set, selected_keys) VALUES (%s,%s,%s,%s,%s,%s)",
+            (arc_id, session_id, review_version, "take-feedback-policy-v3",
+             Json([dict(key, selected=True) for key in keys]), Json(keys)),
+        )
+
+
+def exposures(db, session_id: str) -> int:
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM public.take_feedback_exposure "
+            "WHERE take_session_id = %s", (session_id,))
+        return int(cur.fetchone()[0])
+
+
+def test_the_exposure_record_takes_a_v3_selection(db):
+    arc = f"arc-{uuid4()}"
+    session_id = take(db, arc)
+    exposure(db, arc, session_id, V3_SET)
+    assert exposures(db, session_id) == 1
+
+
+def test_the_exposure_record_still_takes_v2s_three(db):
+    arc = f"arc-{uuid4()}"
+    session_id = take(db, arc)
+    exposure(db, arc, session_id, [
+        {"id": "cv", "feedback_family": "confident_voice"},
+        {"id": "rw", "feedback_family": "rewrite_clarity"},
+        {"id": "gf", "feedback_family": "great_formulation"},
+    ])
+    assert exposures(db, session_id) == 1
+
+
+def test_an_exposure_without_confident_voice_is_refused(db):
+    arc = f"arc-{uuid4()}"
+    session_id = take(db, arc)
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        exposure(db, arc, session_id, [
+            {"id": "rw", "feedback_family": "rewrite_clarity"},
+            {"id": "gf", "feedback_family": "great_formulation"},
+        ])
+    assert exposures(db, session_id) == 0
+
+
+def test_the_exposure_ceiling_is_the_frozen_set_s_ceiling(db):
+    arc = f"arc-{uuid4()}"
+    session_id = take(db, arc)
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        exposure(db, arc, session_id, [
+            {"id": f"cv-{n}", "feedback_family": "confident_voice"}
+            for n in range(65)
+        ])
+    assert exposures(db, session_id) == 0
