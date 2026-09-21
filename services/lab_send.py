@@ -171,14 +171,15 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
     try:
         flipped = db.takes.v2_mark_session_pending_review(session_id)
         ok = bool(flipped)
-        if not ok:
-            logger.error("lab_send: status flip returned no row sid=%s",
-                         session_id)
     except Exception as e:
         logger.error("lab_send: status flip failed sid=%s err=%s", session_id, e)
         ok = False
 
     if not ok:
+        # The flip either raised (logged above) or returned no row; either
+        # way the hand-off did not land, and this line says so once.
+        logger.error("lab_send: hand-off not queued sid=%s user=%s",
+                     session_id, user_id)
         if permit_id:
             try:
                 adapter.authorization.record_provider_event(
