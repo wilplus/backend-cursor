@@ -29,14 +29,41 @@ _ALREADY_SENT_STATUSES = {"pending_admin_review", "completed"}
 _ALREADY_REVIEW_STATES = {"queued", "in_review", "published", "revised"}
 
 
+#: Charge outcomes that mean the ledger could not RECORD the review, as
+#: opposed to the account not AFFORDING it. Only these stop the hand-off.
+_UNRECORDED = frozenset({"account_unavailable", "write_failed", "cas_contention"})
+
+
 def _reserve_review_credit(user_id: str, session_id: str):
+    """Record the review against the account; never refuse it for the price.
+
+    FOUNDER 2026-09-21: "just make everyone receive the coach human feedback
+    … it depends on the coach if they send it or not, but the architecture
+    should allow the full experience." Until then this function refused the
+    hand-off whenever the charge came back ``ok=False`` — a free tier has
+    zero coach reviews, so ``coach_cap_reached`` fired on every automatic
+    delivery, the route answered 500 "could not be sent, please retry", and
+    not one line of log said why. That was the day's silent 500.
+
+    Now the charge is soft here exactly as it is on the F1 path (fence §6.1):
+    the ledger records what it can, the balance floors at zero, and the Take
+    goes to the coach regardless of tier or balance. What still stops the
+    hand-off is a charge the ledger could not RECORD (no account, a failed
+    write, a lost CAS) — the reasons the old ``unsafe_success`` guard named —
+    because a review nobody can account for is the one case the founder did
+    not ask for. Every outcome is logged; nothing here is silent any more.
+    """
     from services.token_account import charge
 
     result = charge(user_id, "coach_feedback", ref_id=session_id)
-    unsafe_success = result.reason in {
-        "account_unavailable", "write_failed", "cas_contention",
-    }
-    return result if result.ok and not unsafe_success else None
+    if result.reason in _UNRECORDED:
+        logger.warning("lab_send: review credit unrecorded sid=%s user=%s "
+                       "reason=%s", session_id, user_id, result.reason)
+        return None
+    if not result.ok:
+        logger.info("lab_send: review admitted past the price sid=%s "
+                    "user=%s reason=%s", session_id, user_id, result.reason)
+    return result
 
 
 def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
@@ -61,12 +88,15 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
         logger.warning("lab_send: session load failed sid=%s err=%s", session_id, e)
         return {"ok": False, "already_sent": False, "status": None}
     if not session:
+        logger.warning("lab_send: session not found sid=%s", session_id)
         return {"ok": False, "already_sent": False, "status": None}
 
     # A guest may use the complete immediate machine-feedback journey, but
     # professional review belongs only to a verified account.  Never infer or
     # claim an owner here.
     if str(session.get("user_id") or "") != str(user_id):
+        logger.warning("lab_send: owner required sid=%s caller=%s",
+                       session_id, user_id)
         return {
             "ok": False,
             "already_sent": False,
@@ -128,6 +158,8 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
     # is per Take, so retries never double-consume a slot.
     credit = _reserve_review_credit(str(user_id), str(session_id))
     if credit is None:
+        logger.error("lab_send: review credit unavailable sid=%s user=%s",
+                     session_id, user_id)
         return {
             "ok": False,
             "already_sent": False,
@@ -139,6 +171,9 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
     try:
         flipped = db.takes.v2_mark_session_pending_review(session_id)
         ok = bool(flipped)
+        if not ok:
+            logger.error("lab_send: status flip returned no row sid=%s",
+                         session_id)
     except Exception as e:
         logger.error("lab_send: status flip failed sid=%s err=%s", session_id, e)
         ok = False
