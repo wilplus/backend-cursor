@@ -438,14 +438,15 @@ def test_a_v2_take_is_still_filtered_to_its_frozen_set():
 
 
 # ---------------------------------------------------------------------------
-#  AN ANSWERED V3 BOOKMARK IS DECIDED (founder 2026-09-21, project j).
+#  AN ANSWERED V3 BOOKMARK IS SERVED WITH ITS DECISION (founder 2026-09-21).
 #
-#  The lock gate trusts one invariant: a change still served IS undecided,
-#  because every lane drops what the student decided. `_immutable_membership`
-#  honours it for V2; `_first_client_feedback` then replaces the rows with
-#  V3's, rebuilt with no knowledge of any answer. So Yes, phrase chosen, then
-#  "Decide every suggestion on this chunk first" — on Lock and on Keep
-#  evolving alike, forever.
+#  Two readers trust one row. The lock gate: a change still served is
+#  undecided. The page: an undecided item colours the mark, an approved or
+#  dismissed one does not (24g-1). V2 kept both true by dropping answered
+#  rows; V3 rebuilt its rows after that drop, so an answered item came back
+#  undecided — the lock refused, the mark stayed lit. #602 dropped V3's rows
+#  too, and the ladder behind an answered bookmark vanished with them
+#  ("bookmarks are gone again"). Now the row stays and carries its status.
 # ---------------------------------------------------------------------------
 
 S2 = "22222222-2222-4222-8222-222222222222"
@@ -474,22 +475,39 @@ class _AnsweredDB(FakeDB):
         return self.owner_keys
 
 
-def test_a_v3_item_answered_on_the_legacy_route_is_no_longer_served():
+def _statuses(run):
+    return [(row["id"], row.get("status")) for row in run.changes]
+
+
+def test_a_yes_on_the_legacy_route_marks_the_row_approved_and_keeps_it():
     db = _AnsweredDB()
     run = _run_for_playback(_deps(db))
     run.changes = [_v3_row(S1), _v3_row(S2)]
     run.v3_replaced_changes = True
     run.responded_ids = {f"cand:{S1}"}
-    run._drop_answered_service_items()
-    assert [row["id"] for row in run.changes] == [f"cand:{S2}"]
+    run.responses_by_id = {f"cand:{S1}": "yes"}
+    run._mark_answered_service_items()
+    assert _statuses(run) == [(f"cand:{S1}", "approved"), (f"cand:{S2}", None)]
     # No served row carried service fields, so nothing was asked of the
     # service tables.
     assert db.asked == []
 
 
-def test_a_v3_item_answered_on_the_service_route_is_no_longer_served():
+def test_any_other_answer_marks_the_row_dismissed_and_keeps_it():
+    db = _AnsweredDB()
+    run = _run_for_playback(_deps(db))
+    run.changes = [_v3_row(S1)]
+    run.v3_replaced_changes = True
+    run.responded_ids = {f"cand:{S1}"}
+    run.responses_by_id = {f"cand:{S1}": "audio_unclear"}
+    run._mark_answered_service_items()
+    assert _statuses(run) == [(f"cand:{S1}", "dismissed")]
+
+
+def test_an_answer_on_the_service_route_marks_by_membership_and_candidate():
     db = _AnsweredDB(owner_keys=[
-        {"membership_id": "m-1", "candidate_id": "c-1"},
+        {"membership_id": "m-1", "candidate_id": "c-1",
+         "response": "confident_yes"},
     ])
     run = _run_for_playback(_deps(db))
     run.changes = [
@@ -498,18 +516,20 @@ def test_a_v3_item_answered_on_the_service_route_is_no_longer_served():
         _v3_row(S3),
     ]
     run.v3_replaced_changes = True
-    run._drop_answered_service_items()
-    assert [row["id"] for row in run.changes] == [f"cand:{S2}", f"cand:{S3}"]
+    run._mark_answered_service_items()
+    assert _statuses(run) == [
+        (f"cand:{S1}", "approved"), (f"cand:{S2}", None), (f"cand:{S3}", None),
+    ]
     assert db.asked == [["m-1"]]
 
 
-def test_an_unanswered_take_serves_every_v3_row_unchanged():
+def test_an_unanswered_take_serves_every_v3_row_untouched():
     db = _AnsweredDB()
     run = _run_for_playback(_deps(db))
     rows = [_service_row(S1, "m-1", "c-1"), _v3_row(S2)]
-    run.changes = list(rows)
+    run.changes = [dict(row) for row in rows]
     run.v3_replaced_changes = True
-    run._drop_answered_service_items()
+    run._mark_answered_service_items()
     assert run.changes == rows
 
 
@@ -519,13 +539,30 @@ def test_a_failed_service_read_degrades_to_not_answered_not_to_blank():
     run.changes = [_service_row(S1, "m-1", "c-1")]
     run.v3_replaced_changes = True
     run.log.run("changes.answered_service_items",
-                run._drop_answered_service_items)
-    assert [row["id"] for row in run.changes] == [f"cand:{S1}"]
+                run._mark_answered_service_items)
+    assert _statuses(run) == [(f"cand:{S1}", None)]
     assert any("answered_service_items" in str(entry)
                for entry in run.log.payload().get("degraded", []))
 
 
-def test_execute_drops_answered_items_only_after_v3_replaced_the_rows():
+def test_the_lock_gate_and_the_page_share_one_undecided_rule():
+    from services.ideal_text_changes import decided_status, undecided
+    rows = [
+        {"id": "a", "status": "approved"},
+        {"id": "b", "status": "dismissed"},
+        {"id": "c", "status": "pending"},
+        {"id": "d"},
+    ]
+    assert [row["id"] for row in undecided(rows)] == ["c", "d"]
+    for answer in ("yes", "confident_yes", "apply_suggestion", "useful"):
+        assert decided_status(answer) == "approved"
+    for answer in ("no", "in_between", "not_sure", "audio_unclear",
+                   "confident_no", "confident_audio_unclear", "keep_wording",
+                   "not_useful", "acknowledged", ""):
+        assert decided_status(answer) == "dismissed"
+
+
+def test_execute_marks_answered_items_only_after_v3_replaced_the_rows():
     """The stage is keyed on the replacement, so a V2 Take (where
     `_immutable_membership` already did the dropping) is untouched."""
     import inspect

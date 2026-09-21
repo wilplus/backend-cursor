@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
 from typing import Any, Callable, Optional
 
 from services.degradation import DegradationLog
@@ -50,6 +51,33 @@ class ChangesDeps:
     locked_parts: Callable[[str, str, str], list]
     with_evidence_coordinates: Callable[..., list]
     record_arms: Callable[[Any, str, str], None]
+
+
+#: The answers that mean "yes, keep going" on each family — the legacy
+#: route's vocabulary (0346) and the service route's five-state one. Every
+#: other answer has been dealt with too, but it closes the item ("dismissed"
+#: on the page, 24g-1) instead of opening the rest of the ladder.
+_APPROVING_ANSWERS = frozenset({
+    "yes", "confident_yes",            # Confident Voice
+    "apply_suggestion",                # rewrite
+    "useful",                          # praise
+})
+
+
+def decided_status(answer: str) -> str:
+    """"approved" for a Yes-shaped answer, "dismissed" for every other."""
+    return "approved" if str(answer or "") in _APPROVING_ANSWERS else "dismissed"
+
+
+def undecided(rows: Iterable[Mapping[str, Any]]) -> list:
+    """The served rows that still wait for the speaker (24g-1 / lock gate R3).
+
+    ONE RULE FOR BOTH READERS. The page colours a mark only for a row whose
+    status is neither "approved" nor "dismissed"; the lock gate refuses a
+    part only for such rows. They must never disagree, so they share this.
+    """
+    return [row for row in rows
+            if str(row.get("status") or "") not in ("approved", "dismissed")]
 
 
 class _ChangesRun:
@@ -100,8 +128,10 @@ class _ChangesRun:
         self.learning_presentations: dict[str, list[dict]] = {}
         self.feedback_response_count = 0
         self.response_rows: list = []
-        # Item ids the owner already answered on this Take (self-reports).
+        # Item ids the owner already answered on this Take (self-reports),
+        # and the answer each one carries.
         self.responded_ids: set[str] = set()
+        self.responses_by_id: dict[str, str] = {}
         self.session: Any = None
         self.sel: dict = {}
         self.styles: list = []
@@ -156,7 +186,7 @@ class _ChangesRun:
         log.run("changes.first_client_feedback", self._first_client_feedback)
         if self.v3_replaced_changes:
             log.run("changes.answered_service_items",
-                    self._drop_answered_service_items)
+                    self._mark_answered_service_items)
         # FREEZE WHAT ACTUALLY SERVED (founder 2026-09-21: "we have to make
         # the users act upon it to close the UX loop").
         #
@@ -624,28 +654,44 @@ class _ChangesRun:
             if isinstance(row, dict) and row.get("feedback_id")
         }
         self.responded_ids = _responded_ids
+        self.responses_by_id = {
+            str(row.get("feedback_id")): str(row.get("response") or "")
+            for row in self.response_rows
+            if isinstance(row, dict) and row.get("feedback_id")
+        }
         self.feedback_response_count = len(_responded_ids)
         if _responded_ids:
             self.changes = [row for row in self.changes
                             if str(row.get("id") or "") not in _responded_ids]
 
-    def _drop_answered_service_items(self) -> None:
-        """A V3 bookmark the owner answered is decided, like any other lane's.
+    def _mark_answered_service_items(self) -> None:
+        """A V3 bookmark the owner answered is served WITH its decision.
 
         FOUNDER 2026-09-21, project j, Take 1: Yes on the Confident Voice
         bookmark, the phrase chosen, then "Decide every suggestion on this
         chunk first" on Lock and on Keep evolving alike — a 409 from the part
-        lock, every time.
+        lock, every time. And, the same evening: "bookmarks are gone again …
+        sometimes they do appear but then a while later they are gone; we
+        should not be circling around this crucial feature."
 
-        THE INVARIANT THE LOCK GATE RELIES ON is that a change still on screen
-        IS an undecided one: "every lane already drops what the student
-        decided" (`v2_explore_set_part_lock`). `_immutable_membership` keeps
-        that promise for V2 by removing every row whose id carries a
-        self-report — and then `_first_client_feedback` REPLACES `changes`
-        with V3's rows, rebuilt from the policy frame with no knowledge of
-        any answer. So an answered V3 item came back on every read, the gate
-        counted it as pending, and no paragraph carrying a V3 bookmark could
-        ever be locked or kept evolving.
+        THE TWO FACTS THAT HAVE TO AGREE. The lock gate trusts that a change
+        still served IS undecided ("every lane already drops what the student
+        decided" — `v2_explore_set_part_lock`). The page trusts the same row
+        for what to draw: an undecided item colours the mark, an approved or
+        dismissed one has been dealt with and does not (24g-1). V2 served
+        both facts by DROPPING answered rows in `_immutable_membership`.
+        `_first_client_feedback` then REPLACES `changes` with V3's rows,
+        rebuilt from the policy frame with no knowledge of any answer — so an
+        answered V3 item came back as undecided on every read: the gate
+        refused the lock, and the mark stayed lit.
+
+        #602 fixed that by dropping, V2's way. Dropping is the wrong shape for
+        V3: its items are the ladder (judgement → praise → exercise → emphasis
+        → lock), and a row that vanishes the moment it is answered takes the
+        rest of the ladder with it on the next read. So the row STAYS and
+        carries its decision: `status` is "approved" for a Yes-shaped answer
+        and "dismissed" for every other, the two states the page already
+        models and the lock gate now reads. One row, one truth, both readers.
 
         Two places an answer can live, both honoured:
         · the legacy route (`record_take_feedback_response_v1`, 0346) writes
@@ -654,13 +700,13 @@ class _ChangesRun:
           `feedback_v3_owner_responses`, keyed by membership and candidate,
           which the served row carries under `mlc3_service`.
 
-        Drops only; never invents, never reorders (L2). A failed read of the
-        service responses degrades to "not answered", which is the state the
-        gate was already in.
+        Marks only; never invents, drops or reorders (L2). A failed read of
+        the service responses degrades to "not answered", which is the state
+        the gate was already in.
         """
         if not self.changes:
             return
-        answered_keys: set[tuple[str, str]] = set()
+        answered_keys: dict[tuple[str, str], str] = {}
         membership_ids = sorted({
             str(row["mlc3_service"]["membership_id"])
             for row in self.changes
@@ -669,28 +715,34 @@ class _ChangesRun:
         })
         if membership_ids:
             answered_keys = {
-                (str(key.get("membership_id")), str(key.get("candidate_id")))
+                (str(key.get("membership_id")), str(key.get("candidate_id"))):
+                    str(key.get("response") or "")
                 for key in (self.db.list_feedback_v3_owner_response_keys(
                     membership_ids) or [])
                 if isinstance(key, dict)
             }
 
-        def _answered(row: dict) -> bool:
-            if str(row.get("id") or "") in self.responded_ids:
-                return True
+        def _answer(row: dict) -> Optional[str]:
+            item_id = str(row.get("id") or "")
+            if item_id in self.responded_ids:
+                return self.responses_by_id.get(item_id, "")
             service = row.get("mlc3_service")
-            return (
-                isinstance(service, dict)
-                and (str(service.get("membership_id")),
-                     str(service.get("candidate_id"))) in answered_keys
-            )
+            if isinstance(service, dict):
+                return answered_keys.get((str(service.get("membership_id")),
+                                          str(service.get("candidate_id"))))
+            return None
 
-        kept = [row for row in self.changes if not _answered(row)]
-        if len(kept) != len(self.changes):
+        marked = 0
+        for row in self.changes:
+            answer = _answer(row)
+            if answer is None:
+                continue
+            row["status"] = decided_status(answer)
+            marked += 1
+        if marked:
             logger.info(
-                "answered service items dropped arc=%s take=%s dropped=%d",
-                self.arc_id, self.arm_sid, len(self.changes) - len(kept))
-        self.changes = kept
+                "answered service items marked arc=%s take=%s marked=%d",
+                self.arc_id, self.arm_sid, marked)
 
     def _decision_backfill(self) -> None:
         # DECISION BACKFILL-ON-READ. A compatibility response may have

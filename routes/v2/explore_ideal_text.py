@@ -38,6 +38,7 @@ from routes.v2.arcs import (
     _reassemble_after_decision,
 )
 from routes.v2.blueprint import v2_bp
+from services.ideal_text_changes import undecided
 from services.db import db, first_client_repository
 from services.ideal_text_read import (
     decorate_key_moments,
@@ -2213,7 +2214,7 @@ def v2_explore_set_part_lock(arc_id, part_id):
                 (s for s in part_spans(parts) if s[2]["id"] == target["id"]),
                 (None, None, None))
             _pending = [
-                c for c in _served
+                c for c in undecided(_served)
                 if _lo is not None
                 and c.get("span", {}).get("start", -1) >= _lo
                 and c.get("span", {}).get("end", -1) <= _hi
