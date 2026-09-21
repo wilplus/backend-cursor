@@ -123,30 +123,39 @@ class Config:
     MOMENT_SUGGESTIONS_ENABLED = _env_flag("MOMENT_SUGGESTIONS_ENABLED", "0")
     POLISH_AS_SUGGESTIONS_ENABLED = _env_flag("POLISH_AS_SUGGESTIONS_ENABLED", "0")
     LIVING_TRANSCRIPT_ENABLED = _env_flag("LIVING_TRANSCRIPT_ENABLED", "0")
-    # ON since #587, and the condition the previous default named has been
-    # met rather than argued away.
+    # OFF, 2026-09-21 (#594), and this time the default is a retirement
+    # rather than a pause.
     #
-    # It was off because #580 put the whole Manager pipeline inside
-    # `publish_for_arc`, which `maybe_assemble_ideal_text` calls while
-    # creating a Take 1 document: publication went from about a second to
-    # tens of seconds, and a take whose publication never landed terminated
-    # as "we processed your take, but couldn't create your Ideal Text" — F1
-    # piece (b), lost to an optimisation for the marks that hang off it. The
-    # old comment here said "turn it on again only once the bake runs where
-    # it cannot delay creation (task #43)".
+    # The bake has now cost, in three days: a blank bookmark surface twice
+    # (#580's empty lane, #589's reader/writer disagreement), six-hour
+    # expired clip URLs served as live ones (#590), and a saturated worker
+    # queue that put every speaker's Take behind a forty-second Manager run
+    # (#593). It has bought one instant second-open.
     #
-    # #587 is that. The bake is no longer reachable from `publish_for_arc` at
-    # all — it is a queued job asked for on the last line of the analysis run
-    # — so the failure this flag was switched off to stop is now impossible
-    # by construction, not merely unlikely. That is the difference between
-    # meeting the condition and deciding the risk has passed.
+    # Each fix was correct and each was found by the founder in production
+    # rather than by me before shipping. That is the argument: not that the
+    # feature cannot work, but that its cost has been paid four times by the
+    # person it was supposed to help.
+    #
+    # WITH IT OFF, `changes_block_for` computes live on every read — what
+    # every reader did before #580, with the thirty-second focused-retry
+    # budget #586 gave it. That is the arrangement the founder confirmed
+    # working on 2026-09-20 ("Book marks are here!!!").
+    #
+    # It also drains the backlog: a `run_pending_bake` job already sitting
+    # in Redis still runs, but `bake_for_snapshot` reads this flag first and
+    # returns in milliseconds instead of running the Manager. Turning it off
+    # is therefore the fastest way to clear a queue the bake itself jammed.
     #
     # Defaulted in code rather than set per service on purpose: the worker
     # writes the bake and the web process reads it, and a flag that is true
     # on one and false on the other is the CONFIG-FIRST failure in miniature.
     # One default cannot disagree with itself.
+    #
+    # Before it goes on again it needs a queue that cannot delay a Take, and
+    # evidence gathered before the founder sees it rather than after.
     IDEAL_TEXT_FEEDBACK_BAKE_ENABLED = _env_flag(
-        "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1")
+        "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0")
     MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
     COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
     SENTENCE_BOUNDARY_SPLIT_ENABLED = _env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1")
