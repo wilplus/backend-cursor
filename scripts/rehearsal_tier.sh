@@ -208,14 +208,15 @@ relax_append_only willab_ga_template
 # blocked on, and three merges argued about it from reading alone. Its own
 # chain, not a clone: these migrations predate the MLC-3 fork and the lanes
 # above carry triggers they never expected.
-echo "→ building the freeze/answer chain (prerequisites → 0308 → 0310 → 0333 → 0339 → 0346 → 0347)"
+echo "→ building the freeze/answer chain (prerequisites → 0308 → 0310 → 0333 → 0339 → 0346 → 0347 → 0349)"
 FREEZE=willab_freeze_rehearsal
 "${PSQL[@]}" -d postgres -c "CREATE DATABASE $FREEZE" >/dev/null
 sql_file $FREEZE tests/integration/take_feedback_freeze_prerequisites.sql
 for m in add_take_review_lifecycle add_feedback_manager_and_part_commits \
          add_atomic_take_feedback_response add_acknowledged_praise_response \
          answer_a_v3_item_against_the_freeze_that_served_it \
-         the_frozen_set_records_the_policy_that_served; do
+         the_frozen_set_records_the_policy_that_served \
+         the_exposure_record_takes_the_v3_selection; do
   sql_file $FREEZE migrations/$m.sql; sql_file $FREEZE migrations/$m.sql
 done
 

@@ -49,7 +49,9 @@ class TheFixIsRegistered(unittest.TestCase):
         # makes the manifest the difference between shipped and inert.
         lines = _sql(MANIFEST).splitlines()
         self.assertIn(f"0348\t{FIX.name}", lines)
-        self.assertEqual(lines[-1], f"0348\t{FIX.name}")
+        self.assertLess(
+            lines.index("0347\tthe_frozen_set_records_the_policy_that_served.sql"),
+            lines.index(f"0348\t{FIX.name}"))
 
     def test_it_repairs_in_place_rather_than_re_creating_the_function(self):
         # D4 rewrote this body to swap the resolver and 0344 parenthesised
