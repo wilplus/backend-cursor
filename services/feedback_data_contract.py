@@ -552,6 +552,51 @@ def _valid_feedback_bundle_selection(
     return True
 
 
+def _seal_candidate_identities(
+    canonical_candidates: list, *, take_id: str, manager_rules_version: str,
+    transcript_hash: str,
+) -> None:
+    """Give every candidate an id that is unique to THIS candidate set.
+
+    PRODUCTION, 2026-09-21, minutes after the lineage write first succeeded:
+
+        Feedback V3 service candidate set failed 23505/duplicate key value
+        violates unique constraint "feedback_candidates_pkey"
+        Key (id)=(cf0f0f8b-...) already exists.
+
+    A candidate's id was `uuid5(take, rules, candidate_key)` — stable across
+    every candidate set of the Take. The candidate SET's id and idempotency
+    key hash the whole input, so the moment anything about the inventory
+    changes (the speaker edits the words, a clip's evidence moves), a new
+    set is recorded — carrying the same candidate ids as the old one, into
+    a table whose primary key is that id. The second set could never be
+    written, and V3 served "without lineage" from then on.
+
+    So the id is sealed against the inventory it belongs to: the same take,
+    rules, transcript and candidate content produce the same ids on every
+    read (the replay branch keys on exactly that idempotency, and stays
+    idempotent), and a changed inventory produces ids of its own. The
+    exposure id follows the candidate id as before. Nothing about a
+    candidate's evidence, key, family or content is touched (L2/L3).
+    """
+    inventory = content_hash({
+        "take_id": take_id,
+        "transcript_hash": transcript_hash,
+        "candidates": [
+            {key: value for key, value in candidate.items()
+             if key not in ("id", "exposure_id")}
+            for candidate in canonical_candidates
+        ],
+    })
+    for candidate in canonical_candidates:
+        candidate_id = _stable_uuid(
+            "candidate", take_id, manager_rules_version, inventory,
+            candidate["candidate_key"],
+        )
+        candidate["id"] = candidate_id
+        candidate["exposure_id"] = _stable_uuid("exposure", candidate_id)
+
+
 def _feedback_bundle_generation_runs(
     canonical_candidates: list[dict], *,
     model_version: Optional[str], prompt_version: Optional[str],
@@ -688,6 +733,11 @@ def build_feedback_exposure_bundle(
         candidate_inputs=candidate_inputs, detail=detail,
     ):
         return None
+    _seal_candidate_identities(
+        canonical_candidates, take_id=take_id,
+        manager_rules_version=manager_rules_version,
+        transcript_hash=str(transcript["transcript_hash"]),
+    )
 
     versions = {
         "taxonomy_version": TAXONOMY_VERSION,
