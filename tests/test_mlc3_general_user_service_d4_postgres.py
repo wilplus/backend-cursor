@@ -1376,3 +1376,227 @@ def test_upload_capacity_is_serialized_and_replay_does_not_reserve_twice(db):
     monitor = service_json_rpc(db, "get_mlc3_general_service_monitor_v1")
     assert monitor["active_uploads"] == 2
     assert monitor["maximum_active_uploads_per_principal"] == 2
+
+
+# ---------------------------------------------------------------------------
+#  THE CANDIDATE-SET WRITE, CALLED FOR REAL (0348).
+#
+#  PRODUCTION, 2026-09-21: with 0344's parenthesis in place the write got
+#  past its lock for the first time and then raised 42702 on the first
+#  `WHERE row.candidate_set_id = candidate_set_id` — a bare name that is both
+#  the PL/pgSQL variable and a column of `row`. No test had ever CALLED this
+#  function: the D2 module writes candidate_sets rows by hand, and its only
+#  other mention is the privilege check. It lives here, not in D2, because
+#  this clone carries the lineage tables and the D4-rewritten body that
+#  production runs.
+# ---------------------------------------------------------------------------
+
+MIGRATIONS = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "migrations")
+CANDIDATE_SET_WRITER = (
+    "public.record_feedback_v3_service_candidate_set_v1(uuid,uuid,uuid,jsonb)"
+)
+PRAGMA = "#variable_conflict use_variable\n"
+
+
+def _apply_migration(db, migration: str) -> None:
+    with open(os.path.join(MIGRATIONS, migration), encoding="utf-8") as fh:
+        text = fh.read()
+    # No parameters: the file carries RAISE format strings with `%`.
+    with db.cursor() as cursor:
+        cursor.execute(text)
+
+
+def _installed_writer(db) -> str:
+    return one(db, "SELECT pg_get_functiondef(to_regprocedure(%s)) AS d",
+               (CANDIDATE_SET_WRITER,))["d"]
+
+
+def _as_d2_plus_0344_installed_it(db) -> None:
+    """Re-install the writer without 0348's pragma: the shape production ran
+    on 2026-09-21. 0344 goes first so the reproduction reaches the ambiguous
+    comparison instead of dying at the lock."""
+    _apply_migration(db, "fix_candidate_set_advisory_lock_precedence.sql")
+    definition = _installed_writer(db)
+    stripped = definition.replace(PRAGMA, "")
+    if stripped != definition:
+        with db.cursor() as cursor:
+            cursor.execute(stripped)
+
+
+def _v3_bundle(context) -> dict:
+    """The smallest bundle the writer accepts: one transcript version, one
+    slide, one paragraph, one Confident Voice candidate on the fixture's
+    snippet, selected."""
+    text = "We finish this phrase with steady deliberate pacing."
+    candidate_key = "candidate-" + context["snippet"]
+    return {
+        "candidate_set_id": str(uuid4()),
+        "owner_principal_id": context["owner"],
+        "project_id": context["project"],
+        "take_id": context["take"],
+        "idempotency_key": f"v3-candidate-set:{context['take']}:{uuid4()}",
+        "input_hash": "1" * 64,
+        "code_commit": "rehearsal",
+        "experiment_assignment": {},
+        "versions": {
+            "taxonomy_version": "feedback-v3",
+            "selector_version": "selector-v1",
+            "manager_rules_version": "take-feedback-policy-v3-serving-v1",
+            "threshold_version": "threshold-v1",
+        },
+        "transcript": {
+            "id": str(uuid4()),
+            "version": 1,
+            "source_kind": "automatic",
+            "text": text,
+            "transcript_hash": "2" * 64,
+            "input_hash": "3" * 64,
+            "slides": [{"id": str(uuid4()), "slide_index": 0}],
+            "paragraphs": [{
+                "id": str(uuid4()), "paragraph_index": 0, "slide_index": 0,
+                "text": text, "start_char": 0, "end_char": len(text),
+            }],
+        },
+        "selected_keys": [
+            {"id": candidate_key, "feedback_family": "confident_voice"},
+        ],
+        "candidates": [{
+            "id": str(uuid4()),
+            "exposure_id": str(uuid4()),
+            "candidate_key": candidate_key,
+            "feedback_family": "confident_voice",
+            "lane": "vocal",
+            "training_eligible": False,
+            "ineligibility_reason": "service_product_evidence_only",
+            "generated_output": {"quote": text},
+            "evidence": {
+                "id": str(uuid4()),
+                "recording_id": context["recording"],
+                "legacy_piece_id": context["snippet"],
+                "evidence_kind": "audio_and_transcript",
+                "task_type": "confidence_classification",
+                "start_ms": 1250,
+                "end_ms": 3650,
+                "slide_index": 0,
+                "paragraph_index": 0,
+                "exact_text": text,
+                "evidence_hash": str(uuid4()),
+                "input_hash": "4" * 64,
+            },
+        }],
+    }
+
+
+# The lane lays its lineage tables down as NARROW copies (the `paragraphs`
+# copy is one column), so the writer's inserts cannot run against them as
+# they stand. These are the released columns and unique keys the writer
+# touches, added as nullable trailing columns the way the lane itself adds
+# released shapes; the clone is rolled back after the test.
+_LINEAGE_WIDENING = (
+    "ALTER TABLE public.paragraphs"
+    " ADD COLUMN IF NOT EXISTS owner_principal_id UUID,"
+    " ADD COLUMN IF NOT EXISTS project_id UUID,"
+    " ADD COLUMN IF NOT EXISTS take_id UUID,"
+    " ADD COLUMN IF NOT EXISTS transcript_version_id UUID,"
+    " ADD COLUMN IF NOT EXISTS slide_id UUID,"
+    " ADD COLUMN IF NOT EXISTS paragraph_index INTEGER,"
+    " ADD COLUMN IF NOT EXISTS source_ideal_part_id UUID,"
+    " ADD COLUMN IF NOT EXISTS paragraph_text TEXT,"
+    " ADD COLUMN IF NOT EXISTS start_char INTEGER,"
+    " ADD COLUMN IF NOT EXISTS end_char INTEGER",
+    "CREATE UNIQUE INDEX IF NOT EXISTS rehearsal_paragraphs_version_index"
+    " ON public.paragraphs (transcript_version_id, paragraph_index)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS rehearsal_slides_version_index"
+    " ON public.slides (transcript_version_id, slide_index)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS rehearsal_transcript_take_version"
+    " ON public.transcript_versions (take_id, version)",
+    "ALTER TABLE public.evidence_spans"
+    " ADD COLUMN IF NOT EXISTS transcript_version_id UUID,"
+    " ADD COLUMN IF NOT EXISTS slide_id UUID,"
+    " ADD COLUMN IF NOT EXISTS paragraph_id UUID,"
+    " ADD COLUMN IF NOT EXISTS target_locator JSONB",
+    "CREATE UNIQUE INDEX IF NOT EXISTS rehearsal_evidence_hash"
+    " ON public.evidence_spans (evidence_hash)",
+    "ALTER TABLE public.candidate_sets"
+    " ADD COLUMN IF NOT EXISTS model_version TEXT,"
+    " ADD COLUMN IF NOT EXISTS prompt_version TEXT,"
+    " ADD COLUMN IF NOT EXISTS feature_schema_version TEXT,"
+    " ADD COLUMN IF NOT EXISTS speaker_baseline_version TEXT,"
+    " ADD COLUMN IF NOT EXISTS experiment_assignment JSONB",
+    "ALTER TABLE public.feedback_candidates"
+    " ADD COLUMN IF NOT EXISTS candidate_score DOUBLE PRECISION,"
+    " ADD COLUMN IF NOT EXISTS detector_version TEXT,"
+    " ADD COLUMN IF NOT EXISTS rule_version TEXT,"
+    " ADD COLUMN IF NOT EXISTS model_version TEXT,"
+    " ADD COLUMN IF NOT EXISTS prompt_version TEXT,"
+    " ADD COLUMN IF NOT EXISTS training_eligible BOOLEAN,"
+    " ADD COLUMN IF NOT EXISTS ineligibility_reason TEXT",
+)
+
+
+def _enrolled_context(db):
+    for statement in _LINEAGE_WIDENING:
+        rows(db, statement)
+    context = make_context(db)
+    user_id, _rollout = _activate_ga(db, context)
+    rows(db, "UPDATE processing_authorization_snapshots "
+             "SET source_recording_id=%s WHERE id=%s",
+         (context["recording"], context["snapshot"]))
+    rows(db, "UPDATE processing_recording_attempts "
+             "SET authorization_snapshot_id=%s WHERE id=%s",
+         (context["snapshot"], context["take"]))
+    service_rpc(db, "ensure_mlc3_service_enrollment_v2",
+                context["owner"], user_id, "general-flow-entry")
+    return context
+
+
+def test_the_candidate_set_writer_resolves_its_own_variable(db):
+    context = _enrolled_context(db)
+    bundle = _v3_bundle(context)
+    call = (
+        "record_feedback_v3_service_candidate_set_v1",
+        context["owner"], context["project"], context["take"], Json(bundle),
+    )
+
+    # THE REPRODUCTION. As production had it on 2026-09-21: past the lock,
+    # through every insert, refused on the first count.
+    _as_d2_plus_0344_installed_it(db)
+    with db.cursor() as cursor:
+        cursor.execute("SAVEPOINT reproduction")
+        cursor.execute("SET ROLE service_role")
+        with pytest.raises(psycopg2.errors.AmbiguousColumn) as refused:
+            cursor.execute(
+                "SELECT public.record_feedback_v3_service_candidate_set_v1"
+                "(%s,%s,%s,%s)", call[1:])
+        cursor.execute("ROLLBACK TO SAVEPOINT reproduction")
+        cursor.execute("RESET ROLE")
+    assert "row.candidate_set_id = candidate_set_id" in str(refused.value)
+    assert one(db, "SELECT count(*) AS n FROM candidate_sets WHERE id=%s",
+               (bundle["candidate_set_id"],))["n"] == 0
+
+    # THE FIX, applied twice: the second run must find the pragma and stop.
+    _apply_migration(db, "the_candidate_set_writer_resolves_its_own_variable.sql")
+    _apply_migration(db, "the_candidate_set_writer_resolves_its_own_variable.sql")
+    definition = _installed_writer(db)
+    assert definition.count(PRAGMA) == 1
+    # D4's resolver swap and 0344's parenthesis both survive the repair.
+    assert "require_mlc3_service_access_v2" in definition
+    assert "(p_bundle->>'idempotency_key'), 0" in definition
+
+    receipt = service_json_rpc(db, *call)
+    assert receipt == {
+        "candidate_set_id": bundle["candidate_set_id"],
+        "candidate_count": 1,
+        "selected_count": 1,
+        "replayed": False,
+    }
+    assert one(db, "SELECT training_eligible, ineligibility_reason "
+                   "FROM feedback_candidates WHERE candidate_set_id=%s",
+               (bundle["candidate_set_id"],)) == {
+        "training_eligible": False,
+        "ineligibility_reason": "service_product_evidence_only",
+    }
+
+    # The replay branch carries the same comparison twice; it resolves too.
+    assert service_json_rpc(db, *call) == {**receipt, "replayed": True}

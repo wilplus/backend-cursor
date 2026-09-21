@@ -383,3 +383,4 @@
 0345	add_ideal_text_feedback_bake.sql
 0346	answer_a_v3_item_against_the_freeze_that_served_it.sql
 0347	the_frozen_set_records_the_policy_that_served.sql
+0348	the_candidate_set_writer_resolves_its_own_variable.sql
