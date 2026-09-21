@@ -715,6 +715,114 @@ def test_the_writer_and_the_reader_ask_the_SAME_question(monkeypatch):
     assert source.count("is_a_bake(") >= 3
 
 
+# ── #590: a cache may keep what is expensive, never what is perishable ─────
+#
+# FOUNDER, 2026-09-21: "audio unavailable" on a bookmark whose four marks
+# were all correct, with a 403 from R2 underneath it. The signed URL in the
+# failing request carried `X-Amz-Date=20260920T185620Z` — the exact second
+# the bake row was written — and `X-Amz-Expires=21600`. Six hours.
+#
+# `_praise_playback` attaches `snippet_audio_ref` from `_moment_playback_map`,
+# which SIGNS a URL. #587 stored that block and #589 made the storing
+# permanent, so every Confident Voice clip 403s six hours after any bake, for
+# the life of the snapshot — and it is the one claim this product makes that
+# the speaker cannot check by reading.
+#
+# Nothing above caught it because every test asserted the block's STRUCTURE.
+# Four rows, right snapshot, right ids — all true, all still true when the
+# card cannot play.
+
+
+CLIP = "https://example.invalid/clip.webm?X-Amz-Expires=21600&sig=old"
+FRESH = "https://example.invalid/clip.webm?X-Amz-Expires=21600&sig=new"
+
+PLAYABLE = {
+    "changes": [{
+        "id": "cand-1", "source": "confident_voice",
+        "take_session_id": TAKE, "snippet_id": "snip-1",
+        "snippet_audio_ref": CLIP,
+        "start_offset_ms": 100, "duration_ms": 4000,
+    }],
+    "style_changes": [],
+}
+
+
+def _playback_returns(monkeypatch, value):
+    import routes.v2.arcs as arcs
+    monkeypatch.setattr(arcs, "_moment_playback_map",
+                        lambda *_a, **_k: value)
+
+
+def test_a_stored_clip_url_is_re_signed_before_it_is_served(monkeypatch):
+    """The regression, stated as the thing that went wrong."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    _playback_returns(monkeypatch, {"snip-1": {
+        "snippet_audio_ref": FRESH,
+        "start_offset_ms": 100, "duration_ms": 4000,
+    }})
+    served = bake.changes_block_for(
+        ServingDatabase(PLAYABLE), ARC, ACTOR, SNAPSHOT, CORE)
+    assert served["changes"][0]["snippet_audio_ref"] == FRESH
+
+
+def test_the_expensive_part_is_still_served_from_storage(monkeypatch):
+    """Re-signing must not become re-computing. The Manager stays skipped —
+    that is the entire point of the bake, and a fix that quietly gave it back
+    would leave the founder's original complaint unanswered."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    _playback_returns(monkeypatch, {"snip-1": {"snippet_audio_ref": FRESH}})
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the Manager must not run on a bake hit")
+
+    import routes.v2.explore_ideal_text as route
+    monkeypatch.setattr(route, "_tracked_changes_block", never)
+    bake.changes_block_for(ServingDatabase(PLAYABLE), ARC, ACTOR, SNAPSHOT, CORE)
+
+
+def test_a_block_with_no_clips_asks_for_no_signatures(monkeypatch):
+    """A rewrite or praise lane carries no recording. Signing for it would be
+    a database round trip bought for nothing on every cold open."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    asked: list = []
+    import routes.v2.arcs as arcs
+    monkeypatch.setattr(arcs, "_moment_playback_map",
+                        lambda ids, *_a: (asked.append(ids), {})[1])
+    bake.changes_block_for(ServingDatabase(BLOCK), ARC, ACTOR, SNAPSHOT, CORE)
+    assert asked == []
+
+
+def test_a_refresh_that_fails_still_serves_the_marks(monkeypatch):
+    """A stale URL is a card that cannot play; no card at all is worse. The
+    bookmarks are F1 and the clip is the evidence hanging off them."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("storage is down")
+
+    import routes.v2.arcs as arcs
+    monkeypatch.setattr(arcs, "_moment_playback_map", boom)
+    served = bake.changes_block_for(
+        ServingDatabase(PLAYABLE), ARC, ACTOR, SNAPSHOT, CORE)
+    assert len(served["changes"]) == 1
+
+
+def test_a_clip_the_refresh_cannot_find_is_left_alone(monkeypatch):
+    """Better a URL that may still be in date than a field silently emptied."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    _playback_returns(monkeypatch, {})
+    served = bake.changes_block_for(
+        ServingDatabase(PLAYABLE), ARC, ACTOR, SNAPSHOT, CORE)
+    assert served["changes"][0]["snippet_audio_ref"] == CLIP
+
+
+def test_no_perishable_field_is_left_unlisted():
+    """The rule is the list. A future field signed the same way and not added
+    here is this bug again, and it would take another six hours to notice."""
+    assert bake._PERISHABLE == (
+        "snippet_audio_ref", "start_offset_ms", "duration_ms")
+
+
 # ── backfill on read: the fix has to REPAIR, not merely stop serving ───────
 
 
