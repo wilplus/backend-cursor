@@ -147,7 +147,22 @@ def _change(item_id, family, *, source="wording", kind="replace"):
 
 
 class FeedbackSetTests(unittest.TestCase):
-    def test_three_whole_take_keys_include_confident_voice(self):
+    def test_every_served_item_is_keyed_not_just_the_first_three(self):
+        """THE CAP WAS V2's BUDGET, AND IT SILENTLY ATE V3's SET (0347).
+
+        `selected_keys` used to stop at `MAX_FEEDBACK_PER_TAKE`, so a fourth
+        item was dropped before it could be frozen. V3 routinely serves six
+        to ten — one relative-best Confident Voice item per valid 75-word
+        block, plus up to two Praise, one exercise and one rewrite (24f) — so
+        the truncation alone would have made the freeze a partial record of
+        what the speaker saw, and every answer to a dropped item would still
+        have been refused.
+
+        The keys are now a faithful record of the served selection. The
+        BUDGET is the Manager's (L2); `MAX_SELECTED_KEYS` above is a storage
+        ceiling against a fault, not a product rule, and sits far above any
+        real Take.
+        """
         rows = [
             _change("cv", "confident_voice", source="confident_voice", kind="bold"),
             _change("great", "great_formulation", source="structural", kind="advice"),
@@ -155,7 +170,46 @@ class FeedbackSetTests(unittest.TestCase):
             _change("fourth", "rewrite_clarity"),
         ]
         keys = selected_keys(rows)
-        self.assertEqual([key["id"] for key in keys], ["cv", "great", "rewrite"])
+        self.assertEqual(
+            [key["id"] for key in keys],
+            ["cv", "great", "rewrite", "fourth"],
+        )
+
+    def test_a_set_is_claimable_when_it_carries_confident_voice(self):
+        """The one V2 requirement that survived.
+
+        Confident Voice is the evaluation this product exists to make, and
+        it must never be silently replaced by a third rewrite — the reason
+        the old three-family rule existed. 24b guarantees V3 produces one per
+        valid block, so keeping it costs V3 nothing.
+        """
+        from services.take_feedback_set import is_claimable_set
+
+        v3_shaped = selected_keys([
+            _change("cv-1", "confident_voice", source="confident_voice", kind="bold"),
+            _change("cv-2", "confident_voice", source="confident_voice", kind="bold"),
+            _change("cv-3", "confident_voice", source="confident_voice", kind="bold"),
+            _change("praise", "great_formulation", source="structural", kind="advice"),
+            _change("rewrite", "rewrite_clarity"),
+        ])
+        self.assertTrue(is_claimable_set(v3_shaped))
+
+        # V2's own shape still claims — this widened the rule, it did not
+        # swap one narrow rule for another.
+        self.assertTrue(is_claimable_set(selected_keys([
+            _change("cv", "confident_voice", source="confident_voice", kind="bold"),
+            _change("great", "great_formulation", source="structural", kind="advice"),
+            _change("rewrite", "rewrite_clarity"),
+        ])))
+
+        # No Confident Voice item: the Take's evaluation is missing, and a
+        # set that froze anyway would record a screen the product never
+        # meant to show.
+        self.assertFalse(is_claimable_set(selected_keys([
+            _change("great", "great_formulation", source="structural", kind="advice"),
+            _change("rewrite", "rewrite_clarity"),
+        ])))
+        self.assertFalse(is_claimable_set([]))
 
     def test_decided_member_disappears_without_replacement(self):
         frozen = selected_keys([

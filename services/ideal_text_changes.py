@@ -151,6 +151,32 @@ class _ChangesRun:
         early = self._span_checks()
         if early is not None:
             return early
+        log.run("changes.first_client_feedback", self._first_client_feedback)
+        # FREEZE WHAT ACTUALLY SERVED (founder 2026-09-21: "we have to make
+        # the users act upon it to close the UX loop").
+        #
+        # The claim used to run ABOVE this line, so it recorded V2's three
+        # items and `_first_client_feedback` then replaced the served rows
+        # with V3's. The freeze therefore described a selection the speaker
+        # never saw, and `record_take_feedback_response_v1` correctly refused
+        # every answer to the items that WERE on screen: "feedback item is not
+        # in this Take's frozen set", on every V3 Take since the cutover.
+        #
+        # Moved rather than duplicated. `claim_ideal_text_feedback_set_v1` is
+        # insert-once per (arc, take), so a second claim cannot correct a
+        # first — the only way to freeze the right set is to not freeze the
+        # wrong one first.
+        #
+        # SAFE BECAUSE V3 READS NONE OF IT. `_first_client_feedback` depends
+        # on the document, the snippets, `self.user_sugs` and
+        # `self.feedback_exposure`, all settled well above; it never touches
+        # `self.feedback_set` or the selected keys. And when V3 does not apply,
+        # `self.changes` is still V2's, so the claim freezes exactly what it
+        # always did.
+        #
+        # The dual-write moves with it because it reads `self.feedback_set`,
+        # and reading it before the claim would have written the canonical
+        # provenance of a set that did not exist yet.
         self._claim_or_filter()
         from services.take_lifecycle import (
             confidence_prior_learning_writes_enabled,
@@ -160,7 +186,6 @@ class _ChangesRun:
                 and confidence_prior_learning_writes_enabled()):
             log.run("changes.canonical_dual_write",
                     self._canonical_dual_write)
-        log.run("changes.first_client_feedback", self._first_client_feedback)
         # HEAR IT, ON THE ROWS THAT ACTUALLY SURFACE (founder 2026-09-20:
         # "there is no playback on the overlay so you cannot play the
         # confident moment and actually see whether it sounded confident or
@@ -770,7 +795,7 @@ class _ChangesRun:
         # by a third rewrite. On a concurrent first open, the database
         # returns the one winner and this response immediately conforms.
         from services.take_feedback_set import (
-            claim_feedback_set, filter_to_selected, has_required_families,
+            claim_feedback_set, filter_to_selected, is_claimable_set,
             selected_keys,
         )
         db = self.db
@@ -791,7 +816,7 @@ class _ChangesRun:
             if (not isinstance(_take_index, int)
                     or isinstance(_take_index, bool)
                     or _version_int != _take_index
-                    or not has_required_families(_keys)):
+                    or not is_claimable_set(_keys)):
                 logger.error(
                     "feedback set not claimable arc=%s take=%s index=%s "
                     "version=%s families=%s",

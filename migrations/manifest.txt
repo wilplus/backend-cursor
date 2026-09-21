@@ -382,3 +382,4 @@
 0344	fix_candidate_set_advisory_lock_precedence.sql
 0345	add_ideal_text_feedback_bake.sql
 0346	answer_a_v3_item_against_the_freeze_that_served_it.sql
+0347	the_frozen_set_records_the_policy_that_served.sql
