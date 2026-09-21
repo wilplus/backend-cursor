@@ -385,3 +385,4 @@
 0347	the_frozen_set_records_the_policy_that_served.sql
 0348	the_candidate_set_writer_resolves_its_own_variable.sql
 0349	the_exposure_record_takes_the_v3_selection.sql
+0350	fix_ideal_text_core_v2_summary_key.sql
