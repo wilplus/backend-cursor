@@ -141,5 +141,50 @@ class SendTests(unittest.TestCase):
         notify.assert_not_called()
 
 
+class ReviewCreditTests(unittest.TestCase):
+    """Everyone receives the coach hand-off (founder 2026-09-21).
+
+    The free tier allows zero coach reviews, so the automatic delivery hit
+    `coach_cap_reached` on every open, the route answered 500 "please retry",
+    and nothing was logged. The price no longer refuses a review; only a
+    charge the ledger could not record does.
+    """
+
+    def _reserve(self, reason, ok):
+        from services import lab_send as mod
+        from services.token_account import ChargeResult
+        outcome = ChargeResult(ok, 0, 0, reason, "coach_feedback")
+        with patch("services.token_account.charge",
+                   return_value=outcome) as charge:
+            result = mod._reserve_review_credit("u1", "s")
+        charge.assert_called_once_with("u1", "coach_feedback", ref_id="s")
+        return result
+
+    def test_a_capped_tier_is_still_admitted(self):
+        self.assertIsNotNone(self._reserve("coach_cap_reached", False))
+
+    def test_an_empty_balance_is_still_admitted(self):
+        self.assertIsNotNone(self._reserve("insufficient", False))
+
+    def test_a_paid_review_is_admitted_as_before(self):
+        self.assertIsNotNone(self._reserve("", True))
+
+    def test_an_unrecordable_charge_still_stops_the_hand_off(self):
+        for reason in ("account_unavailable", "write_failed", "cas_contention"):
+            with self.subTest(reason=reason):
+                self.assertIsNone(self._reserve(reason, True))
+
+    def test_every_refusal_names_itself(self):
+        from services import lab_send as mod
+        with self.assertLogs(mod.logger, level="INFO") as captured:
+            self._reserve("coach_cap_reached", False)
+            self._reserve("write_failed", True)
+        joined = "\n".join(captured.output)
+        self.assertIn("admitted past the price", joined)
+        self.assertIn("coach_cap_reached", joined)
+        self.assertIn("unrecorded", joined)
+        self.assertIn("write_failed", joined)
+
+
 if __name__ == "__main__":
     unittest.main()
