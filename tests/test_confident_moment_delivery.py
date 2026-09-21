@@ -270,3 +270,35 @@ def test_materializer_rejects_cross_state_or_expanded_response(monkeypatch, muta
     monkeypatch.setattr(db, "client", client)
     with pytest.raises(TypeError):
         worker.materialize_confident_moment_delivery(U1)
+
+
+def test_a_take_with_no_bundles_yet_is_a_valid_available_summary():
+    """The zero-bundle Take 1 shape the projection builds for a fresh V3 Take:
+    `available`, with an empty item list. Once 0350 reads the right key, this
+    is what production serves on every cold open."""
+    from services.confident_moment_bundle import BUNDLE_CORE_SUMMARY_VERSION
+    value = _core()
+    value["dynamic_overlay"]["confident_moment_summary_status"] = {
+        "state": "available", "code": None, "retryable": False,
+    }
+    value["dynamic_overlay"]["confident_moment_summary"] = {
+        "contract_version": BUNDLE_CORE_SUMMARY_VERSION,
+        "document_snapshot_id": U1,
+        "items": [],
+        "summary_sha256": H,
+    }
+    assert validate_ideal_text_core_v2(value) is value
+
+
+def test_available_with_no_summary_is_still_refused():
+    """The production symptom of 2026-09-21, pinned as a refusal: `available`
+    carrying nothing is impossible under the contract and must never be
+    accepted, however the SQL comes to produce it."""
+    value = _core()
+    value["dynamic_overlay"]["confident_moment_summary_status"] = {
+        "state": "available", "code": None, "retryable": False,
+    }
+    value["dynamic_overlay"]["confident_moment_summary"] = None
+    with pytest.raises(ConfidentMomentProjectionInvalid,
+                       match="available summary state invalid"):
+        validate_ideal_text_core_v2(value)

@@ -212,3 +212,33 @@ def test_the_live_definition_is_manifested_after_the_one_it_corrects() -> None:
         "the winning CREATE OR REPLACE must be applied after the definition it "
         "replaces"
     )
+
+
+def test_the_read_extracts_the_key_the_projection_returns() -> None:
+    """THE ONE TOKEN (0350). The projection returns `confident_moment_summary`;
+    the read asked for `summary`, got NULL, called it `available`, and the
+    validator threw the whole v2 envelope away on every V3 Take since GA."""
+    import re
+    origin = ORIGIN.read_text()
+    returned = re.search(
+        r"RETURN jsonb_build_object\('bundle_projection',body,'([a-z_]+)',summary\);",
+        origin,
+    )
+    assert returned is not None, "the projection's return shape moved"
+    key = returned.group(1)
+    assert key == "confident_moment_summary"
+    body = _strip_comments(_body())
+    assert f"source_take_session_id)->'{key}'" in body
+    assert "->'summary'" not in body
+
+
+def test_a_null_summary_is_reported_unavailable_not_available() -> None:
+    """The guard that keeps the SQL consistent with the validator: whatever
+    shape the projection returns in future, a NULL summary degrades to
+    `unavailable` with `owner_edit` intact, never to an `available` the
+    reader must refuse."""
+    handler = _overlay_handler(_strip_comments(_body()))
+    assert "IF summary IS NULL THEN" in handler
+    unavailable = handler.index("'state','unavailable'")
+    available = handler.index("'state','available'")
+    assert unavailable < available
