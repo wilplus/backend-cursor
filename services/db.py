@@ -8153,6 +8153,27 @@ class DatabaseService:
                 logger.warning("take feedback self-report read failed: %s", e)
             return []
 
+    def list_feedback_v3_owner_response_keys(
+        self, membership_ids: list,
+    ) -> list:
+        """(membership_id, candidate_id) pairs the owner answered via the
+        MLC-3 service route. Read-only; an empty list on any failure so the
+        caller degrades to "not answered"."""
+        ids = [str(value) for value in (membership_ids or []) if value]
+        if not ids:
+            return []
+        try:
+            result = (self.client.table("feedback_v3_owner_responses")
+                      .select("membership_id,candidate_id")
+                      .in_("membership_id", ids)
+                      .execute())
+        except Exception as error:
+            logger.warning("feedback v3 owner responses read failed: %s",
+                           error)
+            return []
+        rows = result.data if isinstance(result.data, list) else []
+        return [row for row in rows if isinstance(row, dict)]
+
     def list_take_feedback_self_reports_by_snippet(
         self, snippet_id: str,
     ) -> list:
