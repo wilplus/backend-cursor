@@ -357,3 +357,72 @@ def test_paragraph_and_root_decisions_are_exact_and_idempotent():
         revision_coordinate="legacy-revision-9",
     )
     assert skipped["idempotency_key"].startswith("root-phrase-skip:")
+
+
+# ---------------------------------------------------------------------------
+#  A CANDIDATE'S ID BELONGS TO ITS SET (2026-09-21).
+#
+#  Minutes after the lineage write first succeeded, the next open logged
+#  23505 on feedback_candidates_pkey: the speaker's edits changed the
+#  inventory, a second candidate set was recorded for the Take, and it carried
+#  the same candidate ids as the first. Ids are now sealed to the inventory:
+#  same content → same ids (replay stays idempotent), changed content → ids
+#  of its own.
+# ---------------------------------------------------------------------------
+
+def _v3_bundle(rows, text):
+    session, document, _text, _rows, _keys = _fixture()
+    return build_feedback_exposure_bundle(
+        session=session,
+        transcript_document=document,
+        served_text=text,
+        candidates=rows,
+        selected_keys=[
+            {"id": "confidence-1", "feedback_family": "confident_voice"},
+            {"id": "praise-1", "feedback_family": "great_formulation"},
+        ],
+        manager_rules_version="take-feedback-policy-v3-serving-v1",
+        commit="abc123",
+    )
+
+
+def test_the_same_inventory_yields_the_same_ids_on_every_read():
+    _s, _d, text, rows, _k = _fixture()
+    first = _v3_bundle(rows, text)
+    second = _v3_bundle(rows, text)
+    assert first is not None and second is not None
+    assert [c["id"] for c in first["candidates"]] == \
+        [c["id"] for c in second["candidates"]]
+    assert [c["exposure_id"] for c in first["candidates"]] == \
+        [c["exposure_id"] for c in second["candidates"]]
+    assert first["candidate_set_id"] == second["candidate_set_id"]
+    assert first["idempotency_key"] == second["idempotency_key"]
+
+
+def test_a_changed_inventory_yields_ids_of_its_own():
+    _s, _d, text, rows, _k = _fixture()
+    first = _v3_bundle(rows, text)
+    changed = [dict(row) for row in rows]
+    changed[1]["proposed_text"] = "We shipped it on Friday."
+    second = _v3_bundle(changed, text)
+    assert first is not None and second is not None
+    assert second["candidate_set_id"] != first["candidate_set_id"]
+    # Every candidate key is the same, and not one id survives: the second
+    # set can be written beside the first without a primary-key collision.
+    assert [c["candidate_key"] for c in first["candidates"]] == \
+        [c["candidate_key"] for c in second["candidates"]]
+    assert not set(c["id"] for c in first["candidates"]) & \
+        set(c["id"] for c in second["candidates"])
+    assert not set(c["exposure_id"] for c in first["candidates"]) & \
+        set(c["exposure_id"] for c in second["candidates"])
+
+
+def test_candidate_ids_are_still_uuids_the_writer_accepts():
+    import uuid
+    _s, _d, text, rows, _k = _fixture()
+    bundle = _v3_bundle(rows, text)
+    assert bundle is not None
+    for candidate in bundle["candidates"]:
+        assert uuid.UUID(candidate["id"]).version == 5
+        assert uuid.UUID(candidate["exposure_id"]).version == 5
+        assert candidate["exposure_id"] != candidate["id"]
