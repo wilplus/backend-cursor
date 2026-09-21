@@ -553,32 +553,33 @@ def test_no_bake_means_the_read_computes_live(monkeypatch):
 # ── the flag, and why its default is the point ─────────────────────────────
 
 
-def test_the_flag_is_off_by_default_because_the_bake_is_retired():
-    """OFF, 2026-09-21 (#594), and this time as a retirement not a pause.
+def test_the_flag_is_on_by_default_because_the_defects_are_fixed():
+    """ON since #595, on evidence rather than on hope.
 
-    The bake cost, in three days: a blank bookmark surface twice (#580's
-    empty lane, #589's reader/writer disagreement), six-hour expired clip
-    URLs served as live ones (#590), and a worker queue that put every
-    speaker's Take behind a forty-second Manager run (#593). It bought one
-    instant second-open.
+    The bake caused three real defects and one imagined one. The three are
+    fixed, and each is pinned by a test above that fails without its fix:
 
-    Each fix was correct. Each was found by the founder in production rather
-    than before shipping. That is the argument — not that the feature cannot
-    work, but that its cost was paid four times by the person it was meant
-    to help.
+      #583  an empty lane stored as a bake, served as "no bookmarks"
+            -> the writer requires a non-empty `changes`
+      #589  the READER kept the guard #583 had just replaced, so the same
+            empty block was served anyway -> `is_a_bake`, asked by both
+      #590  a stored six-hour signed clip URL served long after it died
+            -> `_with_fresh_playback` re-signs on every serve
 
-    WITH IT OFF, `changes_block_for` computes live on every read: what every
-    reader did before #580, with #586's thirty-second focused-retry budget.
-    That is the arrangement the founder confirmed working on 2026-09-20
-    ("Book marks are here!!!").
+    The fourth was mine. #593 and #594 blamed a saturated worker queue for
+    processing the founder called stale; `processing_jobs` then showed
+    `waited_s` of two to three seconds on every row across both days. There
+    was never a jam — the wait was a frontend marker that never cleared
+    (frontend #421) — and I turned a feature off on evidence I had not
+    checked, then wrote the reasoning into this docstring as if I had.
 
-    Everything else in this file still describes the feature's behaviour and
-    still passes, because the autouse fixture pins the flag on. The feature
-    is intact and switched off — the two are different things, and this test
-    is the one place the difference is recorded.
+    FOUNDER, on being shown that: "if baking was not the reason, please
+    bring it back."
 
-    Before it ships on again it needs a queue that cannot delay a Take
-    (#593), and evidence gathered before the founder sees it.
+    This test moves with the shipped default, which has now changed four
+    times. That is the point of it being the ONE place the default is
+    asserted: everything else in this file pins behaviour, which has not
+    moved at all.
     """
     # Read the SHIPPED declaration, not the live attribute: the autouse
     # fixture above sets the flag for every other test in this file, and a
@@ -589,9 +590,9 @@ def test_the_flag_is_off_by_default_because_the_bake_is_retired():
     import config
 
     source = inspect.getsource(config)
-    assert 'IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0"' in source, (
-        "the shipped default must be off")
-    assert config._env_flag("IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0") is False
+    assert 'IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1"' in source, (
+        "the shipped default must be on")
+    assert config._env_flag("IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1") is True
 
 
 def test_switched_off_it_computes_nothing_and_stores_nothing(monkeypatch):
@@ -929,30 +930,32 @@ def test_a_backfill_that_explodes_still_answers_the_reader(monkeypatch):
 # ── #593: there is one queue, and the loop is in it ────────────────────────
 
 
-def test_the_analysis_run_does_not_enqueue_a_bake():
-    """FOUNDER, minutes after recording: "lots of processing is stale. Or
-    taking very long."
+def test_the_analysis_run_pre_warms_the_bake():
+    """The pre-warm is what makes the FIRST open fast, and it is back (#595).
 
-    `job_queue.queue_name()` returns "pipeline" for EVERYTHING, so a bake
-    enqueued at the end of a run lands in the same line as
-    `run_processing_job` — and it runs the whole Manager, twenty to forty
-    seconds, once per Take. With a couple of worker slots the work a speaker
-    is waiting on queues behind the optimisation meant to make it feel
-    faster.
+    Without it the backfill still stores what the first reader computes, so
+    the second open is instant — but somebody pays full price for the first,
+    which is the wait the whole feature exists to remove.
 
-    #587 moved the bake off the request path for exactly this reason and
-    then put it where it competed with the loop instead. "Where nothing is
-    waiting on it" was true of the HTTP response and false of the worker.
+    #593 removed this line on a queue jam that never happened. I read "lots
+    of processing is stale" as a backend problem; `processing_jobs` then
+    showed `waited_s` of two to three seconds on every row across both days.
+    The wait was a frontend marker that never cleared (frontend #421).
 
-    Asserted against the source because the cost is not visible in any unit
-    test: the enqueue returns instantly and truthfully, and only a saturated
-    production queue shows what it did.
+    ONE QUEUE IS STILL TRUE — see `test_the_queue_is_shared_which_is_why`
+    below — and it is the honest caveat rather than the reason to stay away.
+    At one speaker a bake costs three seconds of queue wait, measured. With
+    several recording at once the answer is PIPELINE_QUEUE_NAME and a worker
+    of its own, not deleting the only thing that warms the first open.
+
+    Asserted against the source because the cost is invisible in a unit
+    test: the enqueue returns instantly and truthfully either way.
     """
     import inspect
 
     from services import analysis_worker
 
-    assert "enqueue_bake(" not in inspect.getsource(analysis_worker)
+    assert "enqueue_bake(" in inspect.getsource(analysis_worker)
 
 
 def test_the_queue_is_shared_which_is_why(monkeypatch):

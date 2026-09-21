@@ -461,30 +461,35 @@ def _run_full_analysis_impl(
     # complexity ratchet it is already grandfathered against: whether a bake
     # is worth making is the bake's own question, and answering half of it
     # here is how the two halves drift.
-    # NOT ASKED FOR HERE ANY MORE (#593). THERE IS ONE QUEUE.
+    # THE BOOKMARKS, ASKED FOR AT THE LAST POSSIBLE MOMENT (founder
+    # 2026-09-20: "there need to be bookmarks right away the moment we see
+    # it. Otherwise, that makes no sense because people will quit").
     #
-    # FOUNDER, minutes after recording: "lots of processing is stale. Or
-    # taking very long."
+    # DEAD LAST, below the terminal boundary and below the version card.
+    # Everything above this point is something the speaker is waiting on;
+    # this is the first thing that is not. `enqueue_bake` hands the work to
+    # the queue and returns, so the run ends when it would have ended.
     #
-    # `job_queue.queue_name()` returns "pipeline" for everything, so the bake
-    # enqueued on this line landed in the SAME line as `run_processing_job` —
-    # and it runs the whole Manager, twenty to forty seconds, once per Take.
-    # With a couple of worker slots, the work a speaker is waiting on queues
-    # behind the optimisation meant to make it feel faster.
+    # REINSTATED (#595) after #593 removed it on a queue jam that never
+    # happened. `processing_jobs` shows `waited_s` of two to three seconds on
+    # every row across both days — the stale wait the founder reported was a
+    # frontend marker that never cleared (frontend #421), not this line.
     #
-    # #587 moved the bake off the request path for exactly this reason and
-    # then put it somewhere it competed with the loop instead. "Where nothing
-    # is waiting on it" was true of the HTTP response and false of the worker,
-    # and I did not check which queue it would land in.
+    # ONE QUEUE IS STILL TRUE, and it is the honest caveat rather than the
+    # reason to stay away. `job_queue.queue_name()` serves everything, so a
+    # bake does sit in the same line as `run_processing_job`. At one speaker
+    # that costs three seconds of wait, measured. With several recording at
+    # once a forty-second bake ahead of a take would delay it, and the answer
+    # then is PIPELINE_QUEUE_NAME and a worker of its own — not deleting the
+    # pre-warm, which is the only thing that makes the FIRST open fast.
     #
-    # THE FEATURE SURVIVES WITHOUT IT. #589's backfill-on-read stores the
-    # block the first reader computes, so the second open is still instant.
-    # All that is lost is pre-warming the first one — which is where things
-    # stood before #587, and which #586 already gave thirty seconds.
-    #
-    # `enqueue_bake` and `run_pending_bake` stay, tested and uncalled, for
-    # when bakes have a queue of their own that cannot delay a Take. Wiring
-    # them back to this line without that queue reintroduces this exactly.
+    # Not wrapped in `_deg`, and unbranched: `enqueue_bake` cannot raise, a
+    # false return means the next reader computes live, and every condition
+    # worth applying — spoken take, real arc, real actor, the flag — lives
+    # inside it, because whether a bake is worth making is the bake's own
+    # question.
+    from services.ideal_text_feedback_bake import enqueue_bake
+    enqueue_bake(arc_id, user_id, recording_kind)
     return readout_local, sent_local
 
 
