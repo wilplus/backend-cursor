@@ -142,7 +142,7 @@ def changes_block_for(
         if _bake_enabled() else None
     )
     if is_a_bake(baked):
-        return baked
+        return _with_fresh_playback(baked)
     from routes.v2.explore_ideal_text import _tracked_changes_block
     block = _tracked_changes_block(
         str(arc_id), str(core.get("text") or ""), str(actor_id),
@@ -150,6 +150,73 @@ def changes_block_for(
         review_version=core.get("version"))
     _backfill(database, arc_id, actor_id, document_snapshot_id, block)
     return block
+
+
+#: Fields inside one `changes` row that are a SIGNATURE, not an answer, and so
+#: may never be served from storage. `_moment_playback_map` signs
+#: `snippet_audio_ref` with a six-hour expiry; the offsets ride along with it
+#: and are re-read from the same row, so they travel together.
+_PERISHABLE = ("snippet_audio_ref", "start_offset_ms", "duration_ms")
+
+
+def _with_fresh_playback(block: dict) -> dict:
+    """Re-sign the clip URLs in a stored block. Never serve a stored one.
+
+    FOUNDER, 2026-09-21: "audio unavailable" on a bookmark whose four marks
+    were all correct, with a 403 from R2 underneath it.
+
+    THE BAKE STORED A SIGNATURE. `_praise_playback` attaches
+    `snippet_audio_ref` from `_moment_playback_map`, which signs a URL valid
+    for six hours (`X-Amz-Expires=21600`). #587 stored that block and #589
+    made the storing permanent, so six hours after any bake every Confident
+    Voice clip 403s for the life of the snapshot — and Confident Voice is the
+    one claim this product makes that the speaker cannot check by reading.
+
+    This repo already knew. `v2_explore_get_ideal_text_enrichment` carries a
+    comment reading "nothing depends on a stored URL staying valid", about
+    exactly this class of bug, in the file the bake calls into. It was read
+    during #587 and filed as an unrelated sense of the word "bake".
+
+    SO THE RULE IS STRUCTURAL, not a patch: the cache keeps what is expensive
+    (twenty to forty seconds of Manager) and never what is perishable. A
+    failure here returns the block untouched rather than nothing — a stale
+    URL is a card that cannot play, which is bad; no card at all is worse.
+    """
+    rows = block.get("changes")
+    if not isinstance(rows, list):
+        return block
+    wanted = sorted({
+        str(row["take_session_id"]) for row in rows
+        if isinstance(row, dict) and row.get("take_session_id")
+        and any(row.get(field) for field in _PERISHABLE)
+    })
+    if not wanted:
+        return block
+    try:
+        from routes.v2.arcs import _moment_playback_map
+        playback = _moment_playback_map(wanted) or {}
+    except Exception as error:
+        logger.warning("ideal-text bake playback refresh failed: %s", error)
+        return block
+    # A COPY, NOT AN UPDATE IN PLACE. Today's caller hands over a dict the
+    # RPC just built, so mutating it would be harmless — and the first test
+    # written against this function still tripped over it, because a shared
+    # fixture came back re-signed from an earlier case. A helper that edits
+    # its argument is a hazard whose safety depends on every future caller
+    # knowing that; the copy costs one shallow dict per row.
+    out: list[Any] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            out.append(row)
+            continue
+        fresh = playback.get(str(row.get("snippet_id") or ""))
+        if isinstance(fresh, dict) and fresh.get("snippet_audio_ref"):
+            out.append({**row, **fresh})
+        else:
+            out.append(row)
+    refreshed = dict(block)
+    refreshed["changes"] = out
+    return refreshed
 
 
 def _backfill(
