@@ -42,6 +42,31 @@ def queue_name() -> str:
     return (os.getenv("PIPELINE_QUEUE_NAME") or "pipeline").strip() or "pipeline"
 
 
+def bake_queue_name() -> str:
+    """Where Ideal Text bakes queue — the pipeline's line unless told other.
+
+    ONE QUEUE WAS THE CAVEAT ON #595. A bake runs the whole Manager, twenty
+    to forty seconds, and `queue_name()` serves everything — so it sits in
+    the same line as `run_processing_job`. At one speaker that costs three
+    seconds of wait, measured in `processing_jobs`. With several recording at
+    once a bake ahead of a take would delay the thing its speaker is watching,
+    and the pre-warm would be buying one person's first open with another
+    person's wait.
+
+    FALLING BACK TO THE PIPELINE QUEUE IS DELIBERATE. Unset, this returns
+    exactly what #595 ships, so merging changes nothing and the config leads
+    the cutover rather than trailing it (CONFIG-FIRST). Set BAKE_QUEUE_NAME on
+    the web and worker services and point a worker at it, and bakes move
+    without a second deploy.
+
+    If the variable is set but nothing consumes that queue, bakes simply never
+    run: `changes_block_for` computes live and the backfill stores the result,
+    so the cost is the first open, never a missing bookmark.
+    """
+    from config import Config
+    return Config.BAKE_QUEUE_NAME or queue_name()
+
+
 def job_timeout_seconds() -> int:
     raw = (os.getenv("PIPELINE_JOB_TIMEOUT_SECONDS") or "").strip()
     try:
@@ -217,21 +242,26 @@ def reset_connections() -> None:
     _redis_conns.clear()
 
 
-def get_queue():
-    """RQ Queue on the shared connection, or None."""
+def get_queue(name: Optional[str] = None):
+    """RQ Queue on the shared connection, or None.
+
+    `name` defaults to the pipeline queue, so every existing caller keeps the
+    queue it has always had. Only the bake asks for another (#596).
+    """
     conn = get_redis()
     if conn is None:
         return None
     try:
         from rq import Queue
-        return Queue(queue_name(), connection=conn)
+        return Queue(name or queue_name(), connection=conn)
     except Exception as e:
         logger.warning("job_queue: rq unavailable: %s", e)
         return None
 
 
 def enqueue(func_path: str, *args: Any, delay_seconds: int = 0,
-            rq_job_id: Optional[str] = None) -> bool:
+            rq_job_id: Optional[str] = None,
+            queue: Optional[str] = None) -> bool:
     """Enqueue a dotted-path callable. True on success, False on ANY failure
     (caller falls back — never raises into the upload route).
 
@@ -239,7 +269,7 @@ def enqueue(func_path: str, *args: Any, delay_seconds: int = 0,
     the WEB process never imports the worker's task module (keeps the
     upload route's import graph light and one-directional).
     """
-    q = get_queue()
+    q = get_queue(queue)
     if q is None:
         return False
     try:

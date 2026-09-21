@@ -6,6 +6,27 @@
 # Variables: same env group as the web service PLUS REDIS_URL (from the
 # Railway Redis plugin) and PIPELINE_QUEUE_ENABLED=1.
 #
+# THE SAME ENTRYPOINT SERVES A SECOND, SIDE-LANE SERVICE (#596). An Ideal
+# Text bake runs the whole Manager for twenty to forty seconds, and one
+# queue used to serve everything — so a bake sat in the same line as a
+# speaker's take. At one speaker that costs three seconds of queue wait
+# (measured in processing_jobs); with several recording at once it would
+# cost one person's take to warm another person's first open.
+#
+#   Bake service:  New service → same repo → Start Command as above, then
+#                  WORKER_QUEUE=ideal-text-bakes   (this container's lane)
+#                  WORKER_COUNT is ignored here — a side lane runs one slot
+#   Web + worker:  BAKE_QUEUE_NAME=ideal-text-bakes  (where bakes are SENT)
+#
+# Both names must match. Unset, everything falls back to the pipeline queue
+# and behaves exactly as it did before — so the variables can be set before
+# or after this ships (CONFIG-FIRST), and a bake service that does not exist
+# yet costs only the first open, never a bookmark.
+#
+# The side lane skips the librosa JIT and the pipeline sweeps: it decodes no
+# audio. ffmpeg below is located anyway, because one entrypoint serving two
+# roles is worth more than a branch that has to stay correct.
+#
 # Same ffmpeg-location dance as bin/railway-web.sh: Nixpacks installs
 # ffmpeg via Nix or apt, the runtime PATH often omits both, and without
 # FFMPEG_PATH the audio pipeline silently falls back to imageio-ffmpeg.
