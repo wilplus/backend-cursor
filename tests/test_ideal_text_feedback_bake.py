@@ -919,3 +919,40 @@ def test_a_backfill_that_explodes_still_answers_the_reader(monkeypatch):
 
     assert bake.changes_block_for(
         Exploding(None), ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
+
+
+# ── #593: there is one queue, and the loop is in it ────────────────────────
+
+
+def test_the_analysis_run_does_not_enqueue_a_bake():
+    """FOUNDER, minutes after recording: "lots of processing is stale. Or
+    taking very long."
+
+    `job_queue.queue_name()` returns "pipeline" for EVERYTHING, so a bake
+    enqueued at the end of a run lands in the same line as
+    `run_processing_job` — and it runs the whole Manager, twenty to forty
+    seconds, once per Take. With a couple of worker slots the work a speaker
+    is waiting on queues behind the optimisation meant to make it feel
+    faster.
+
+    #587 moved the bake off the request path for exactly this reason and
+    then put it where it competed with the loop instead. "Where nothing is
+    waiting on it" was true of the HTTP response and false of the worker.
+
+    Asserted against the source because the cost is not visible in any unit
+    test: the enqueue returns instantly and truthfully, and only a saturated
+    production queue shows what it did.
+    """
+    import inspect
+
+    from services import analysis_worker
+
+    assert "enqueue_bake(" not in inspect.getsource(analysis_worker)
+
+
+def test_the_queue_is_shared_which_is_why(monkeypatch):
+    """The fact the fix rests on. If bakes ever get their own queue this
+    fails, and re-wiring the run becomes the right thing to do again."""
+    from services import job_queue
+
+    assert job_queue.queue_name() == "pipeline"
