@@ -160,6 +160,16 @@ class Config:
     # this variable in Railway, which is the other half of the same argument.
     IDEAL_TEXT_FEEDBACK_BAKE_ENABLED = _env_flag(
         "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1")
+    # WHERE BAKES QUEUE, and where a worker container listens (#596).
+    #
+    # Blank means "the pipeline queue" for both, so unset they behave exactly
+    # as before and this ships without needing the config to land first
+    # (CONFIG-FIRST: the config leads the cutover, the code never assumes it
+    # already happened). Set BAKE_QUEUE_NAME on web+worker and WORKER_QUEUE on
+    # a second worker service, matching, and a forty-second Manager run stops
+    # sitting in the line a speaker is waiting in.
+    BAKE_QUEUE_NAME = (os.getenv("BAKE_QUEUE_NAME") or "").strip()
+    WORKER_QUEUE = (os.getenv("WORKER_QUEUE") or "").strip()
     MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
     COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
     SENTENCE_BOUNDARY_SPLIT_ENABLED = _env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1")

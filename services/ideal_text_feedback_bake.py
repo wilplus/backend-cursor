@@ -299,6 +299,11 @@ def enqueue_bake(arc_id: Any, actor_id: Any, recording_kind: Any) -> bool:
             return False
         return job_queue.enqueue(
             BAKE_TASK_PATH, arc, actor,
+            # A LANE OF ITS OWN WHEN THERE IS ONE (#596). `bake_queue_name`
+            # falls back to the pipeline queue, so unset this is exactly what
+            # #595 shipped; set, the forty-second Manager run stops sitting in
+            # the line a speaker is waiting in.
+            queue=job_queue.bake_queue_name(),
             # One pending bake per document. A second take landing while the
             # first bake is queued replaces it rather than stacking, and the
             # job reads the head when it runs, so the survivor is always the

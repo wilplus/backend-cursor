@@ -81,6 +81,47 @@ def _enforce_secrets() -> None:
         logger.warning("snippet table probe failed: %s", e)
 
 
+def served_queue() -> str:
+    """Which queue THIS container serves (WORKER_QUEUE).
+
+    Default: the pipeline queue, so the existing worker service is unchanged
+    by this variable never being set.
+
+    ONE CONTAINER, TWO ROLES (#596). A bake runs the whole Manager for twenty
+    to forty seconds and used to sit in the same line as `run_processing_job`
+    — at one speaker that costs three seconds of queue wait, measured, and
+    with several recording at once it would cost one person's take to warm
+    another person's first open.
+
+    A second Railway service running THIS SAME entrypoint with
+    WORKER_QUEUE=<the bake queue> drains that lane instead. Reusing the
+    entrypoint rather than writing a slim one is deliberate: fork-safe Redis
+    and Supabase resets, the signal handling that keeps a deploy from
+    SIGKILLing a live horse, Sentry, the boot secret audit — all of that was
+    learned here the hard way, and a second implementation would relearn it.
+    """
+    from config import Config
+    return Config.WORKER_QUEUE or _pipeline_queue_name()
+
+
+def _pipeline_queue_name() -> str:
+    from services import job_queue
+    return job_queue.queue_name()
+
+
+def serves_pipeline() -> bool:
+    """Is this container the recording pipeline, or a side lane?
+
+    A bake decodes no audio and sweeps no recording jobs, so a side-lane
+    container skips the librosa JIT (~27s per deploy, and the resident memory
+    that comes with it) and the pipeline sweeps. Both are correctness-neutral
+    — the sweeps are idempotent and the JIT is a speed-up — but paying them in
+    a container that will never transcribe is waste, and a sweep chain started
+    from two services is two things to reason about instead of one.
+    """
+    return served_queue() == _pipeline_queue_name()
+
+
 def worker_count() -> int:
     """How many jobs this container processes at once (WORKER_COUNT).
 
@@ -197,7 +238,13 @@ def main() -> int:
         logger.error("redis ping failed: %s", e)
         return 1
 
-    _warm_analysis_stack()
+    if serves_pipeline():
+        _warm_analysis_stack()
+    else:
+        logger.info(
+            "side lane '%s': skipping the audio warmup and the pipeline "
+            "sweeps — this container decodes no audio", served_queue())
+        return _run_side_lane(conn)
 
     # Recover whatever the previous deploy orphaned, then keep a sweep
     # chain alive through the queue itself.
@@ -248,22 +295,40 @@ def main() -> int:
     slots = worker_count()
     if slots == 1:
         logger.info("worker starting on queue '%s' (1 slot, job timeout %ss)",
-                    job_queue.queue_name(), job_queue.job_timeout_seconds())
+                    served_queue(), job_queue.job_timeout_seconds())
         _run_worker_loop(conn, with_scheduler=True)
         return 0
 
     logger.info("worker starting on queue '%s' (%d slots, job timeout %ss)",
-                job_queue.queue_name(), slots,
+                served_queue(), slots,
                 job_queue.job_timeout_seconds())
     return _run_worker_pool(slots)
+
+
+def _run_side_lane(conn) -> int:
+    """Serve a non-pipeline queue in one slot, with no scheduler.
+
+    One slot because a bake is the only thing queued here and a second
+    concurrent Manager run on one container buys nothing. No scheduler
+    because `enqueue_in` is the pipeline's (delayed retries, the sweep
+    chain) and rq only needs one scheduler per queue.
+    """
+    logger.info("worker starting on queue '%s' (side lane, 1 slot, job "
+                "timeout %ss)", served_queue(), _job_timeout())
+    _run_worker_loop(conn, with_scheduler=False)
+    return 0
+
+
+def _job_timeout() -> int:
+    from services import job_queue
+    return job_queue.job_timeout_seconds()
 
 
 def _run_worker_loop(conn, *, with_scheduler: bool) -> None:
     """Block in one rq worker. Never returns until the worker stops."""
     from rq import Queue, Worker
 
-    from services import job_queue
-    q = Queue(job_queue.queue_name(), connection=conn)
+    q = Queue(served_queue(), connection=conn)
     # with_scheduler: serves enqueue_in (delayed retries + the sweep chain).
     # rq guards it with a lock, so it is safe on every slot — but only slot 0
     # asks for it, since one scheduler is all the queue needs.

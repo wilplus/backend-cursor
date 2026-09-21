@@ -964,3 +964,69 @@ def test_the_queue_is_shared_which_is_why(monkeypatch):
     from services import job_queue
 
     assert job_queue.queue_name() == "pipeline"
+
+
+# ── #596: the bake gets a lane of its own, when there is one to give ───────
+
+
+def _set_queue_config(monkeypatch, *, bake="", worker=""):
+    """Patch `Config`, not the environment.
+
+    Config reads env ONCE at import into class attributes, so `setenv` after
+    that changes nothing — which is exactly the convention the F1 flag block
+    documents ("Tests toggle them with patch.object(Config, NAME, …)"), and
+    exactly the trap a test that sets the variable would fall into silently.
+    """
+    from config import Config
+
+    monkeypatch.setattr(Config, "BAKE_QUEUE_NAME", bake, raising=False)
+    monkeypatch.setattr(Config, "WORKER_QUEUE", worker, raising=False)
+
+
+def test_the_bake_queue_falls_back_to_the_pipeline(monkeypatch):
+    """Unset, this changes nothing — which is what makes it safe to merge
+    before the worker service exists. CONFIG-FIRST: the config leads the
+    cutover, the code does not assume it has already happened."""
+    from services import job_queue
+
+    _set_queue_config(monkeypatch)
+    assert job_queue.bake_queue_name() == job_queue.queue_name()
+
+
+def test_a_named_bake_queue_is_used(monkeypatch):
+    from services import job_queue
+
+    _set_queue_config(monkeypatch, bake="ideal-text-bakes")
+    assert job_queue.bake_queue_name() == "ideal-text-bakes"
+    assert job_queue.queue_name() != "ideal-text-bakes"
+
+
+def test_the_bake_is_enqueued_onto_its_own_queue(monkeypatch):
+    """The point of the whole change: a forty-second Manager run must not sit
+    in the line a speaker is waiting in."""
+    _set_queue_config(monkeypatch, bake="ideal-text-bakes")
+    from services import job_queue
+
+    monkeypatch.setattr(job_queue, "queue_configured", lambda: True)
+    seen: list = []
+    monkeypatch.setattr(
+        job_queue, "enqueue",
+        lambda path, *a, **k: (seen.append(k.get("queue")), True)[1])
+    bake.enqueue_bake(ARC, ACTOR, "spoken")
+    assert seen == ["ideal-text-bakes"]
+
+
+def test_a_side_lane_worker_serves_that_queue_and_skips_the_audio(monkeypatch):
+    """A bake decodes no audio, so the side lane pays neither the librosa JIT
+    nor the pipeline sweeps. Both are correctness-neutral; paying them in a
+    container that will never transcribe is waste, and a sweep chain started
+    from two services is two things to reason about instead of one."""
+    import worker as worker_entry
+
+    _set_queue_config(monkeypatch, worker="ideal-text-bakes")
+    assert worker_entry.served_queue() == "ideal-text-bakes"
+    assert worker_entry.serves_pipeline() is False
+
+    _set_queue_config(monkeypatch)
+    assert worker_entry.served_queue() == worker_entry._pipeline_queue_name()
+    assert worker_entry.serves_pipeline() is True
