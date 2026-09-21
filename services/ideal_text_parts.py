@@ -827,3 +827,46 @@ def _part_id_for(
     if on_slide and not any(p.get("id") == found for p in on_slide):
         return None
     return found
+
+
+def generated_paragraphs(text: Any) -> set[str]:
+    """The machine's own paragraphs, as a set of stripped strings.
+
+    The same scanner `mint_machine_parts` uses (blank-line separated, stripped),
+    so a paragraph the speaker never touched compares equal to the one the
+    machine wrote. Membership rather than position: a split, a merge or a
+    reorder by the speaker must not make every following paragraph read as
+    edited."""
+    if not isinstance(text, str) or not text.strip():
+        return set()
+    return {p.strip() for p in re.split(r"\n{2,}", text) if p.strip()}
+
+
+def mark_edited(parts: Any, generated_text: Any) -> Any:
+    """Flag every served part whose words are not the machine's (founder
+    2026-09-21: an edit alone makes a paragraph reviewed — "not untouched").
+
+    THE PAGE CANNOT SEE AN EDIT ON ITS OWN. It has the parts as they are now;
+    only the server also has the head snapshot the generation wrote. So the
+    comparison happens here, on every read, and rides on the parts block as
+    one boolean per part: `edited`. Nothing is written; the flag is derived,
+    so it is right on the first read after the edit and stays right after a
+    reload. No generated text (a document with no head snapshot, a failed
+    read) → no flags, which is the state the page was in before.
+
+    Marker-aware only as far as the machine is: the generation carries no
+    `**` emphasis, and a paragraph the speaker only emphasised keeps the same
+    words, so the comparison strips the markers before it looks."""
+    if not isinstance(parts, list):
+        return parts
+    machine = generated_paragraphs(generated_text)
+    if not machine:
+        return parts
+    out = []
+    for part in parts:
+        if not isinstance(part, dict):
+            out.append(part)
+            continue
+        words = re.sub(r"\*\*", "", str(part.get("text") or "")).strip()
+        out.append({**part, "edited": words not in machine})
+    return out

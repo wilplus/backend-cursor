@@ -1323,3 +1323,95 @@ class TestPinnedParts(unittest.TestCase):
         self.assertIsNone(pinned_parts(None))
         self.assertIsNone(pinned_parts(
             [{"id": _id(), "ord": 0, "text": "Open.", "locked_at": None}]))
+
+
+# ---------------------------------------------------------------------------
+#  AN EDIT ALONE MAKES A PARAGRAPH REVIEWED (founder 2026-09-21).
+#
+#  The page shows an untouched paragraph grey with no mark, and counts an
+#  answered bookmark, a rooting phrase or a lock cycle as a review. It cannot
+#  see an edit on its own — only the server also holds the generation's head
+#  snapshot — so the comparison rides on the parts block as one boolean.
+# ---------------------------------------------------------------------------
+
+class TheEditedFlag(unittest.TestCase):
+
+    def test_a_paragraph_the_speaker_never_touched_is_not_edited(self):
+        from services.ideal_text_parts import mark_edited
+        generated = "We started small.\n\nThen we grew."
+        served = [{"id": "a", "ord": 0, "text": "We started small."},
+                  {"id": "b", "ord": 1, "text": "Then we grew."}]
+        out = mark_edited(served, generated)
+        self.assertEqual([p["edited"] for p in out], [False, False])
+
+    def test_changed_words_are_edited_and_only_those(self):
+        from services.ideal_text_parts import mark_edited
+        generated = "We started small.\n\nThen we grew."
+        served = [{"id": "a", "ord": 0, "text": "We started in a garage."},
+                  {"id": "b", "ord": 1, "text": "Then we grew."}]
+        out = mark_edited(served, generated)
+        self.assertEqual([p["edited"] for p in out], [True, False])
+
+    def test_emphasis_alone_is_not_an_edit(self):
+        # A rooting phrase styles words already there; the words are the
+        # machine's, so the paragraph is reviewed by the phrase, not by an
+        # edit — and it must not read as both.
+        from services.ideal_text_parts import mark_edited
+        out = mark_edited([{"id": "a", "ord": 0,
+                            "text": "We **started** small."}],
+                          "We started small.")
+        self.assertEqual(out[0]["edited"], False)
+
+    def test_a_reorder_or_merge_does_not_edit_every_following_paragraph(self):
+        from services.ideal_text_parts import mark_edited
+        generated = "One.\n\nTwo.\n\nThree."
+        served = [{"id": "b", "ord": 0, "text": "Two."},
+                  {"id": "a", "ord": 1, "text": "One."},
+                  {"id": "c", "ord": 2, "text": "Three. And more."}]
+        out = mark_edited(served, generated)
+        self.assertEqual([p["edited"] for p in out], [False, False, True])
+
+    def test_no_generated_text_means_no_flag_at_all(self):
+        from services.ideal_text_parts import mark_edited
+        served = [{"id": "a", "ord": 0, "text": "Anything."}]
+        for generated in (None, "", "   "):
+            out = mark_edited(served, generated)
+            self.assertEqual(out, served)
+            self.assertNotIn("edited", out[0])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class TheGetCarriesTheEditedFlag(unittest.TestCase):
+
+    def setUp(self):
+        self.app = Flask(__name__)
+
+    def _block(self, rows, text, snapshot):
+        with self.app.test_request_context():
+            request.user_id = "u1"
+            reader = (patch.object(db, "get_ideal_text_document_snapshot",
+                                   side_effect=snapshot, create=True)
+                      if callable(snapshot) else
+                      patch.object(db, "get_ideal_text_document_snapshot",
+                                   return_value=snapshot, create=True))
+            with patch.object(db, "get_ideal_text_parts",
+                              return_value=rows, create=True), reader:
+                return v2_explore_ideal_text._ideal_parts_block(ARC, "u1", text)
+
+    def test_the_served_parts_say_which_paragraph_was_edited(self):
+        a, b = _id(), _id()
+        out = self._block(
+            [{"id": a, "ord": 0, "text": "one"},
+             {"id": b, "ord": 1, "text": "two"}],
+            "one\n\ntwo",
+            {"payload": {"text": "one\n\nTWO"}},
+        )
+        self.assertEqual([p["edited"] for p in out["parts"]], [False, True])
+
+    def test_a_failed_snapshot_read_serves_the_parts_without_the_flag(self):
+        a = _id()
+        def _boom(*args, **kwargs):
+            raise RuntimeError("snapshots unreachable")
+        out = self._block([{"id": a, "ord": 0, "text": "one"}], "one", _boom)
+        self.assertEqual([p["id"] for p in out["parts"]], [a])
+        self.assertNotIn("edited", out["parts"][0])
