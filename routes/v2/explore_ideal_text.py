@@ -38,6 +38,7 @@ from routes.v2.arcs import (
     _reassemble_after_decision,
 )
 from routes.v2.blueprint import v2_bp
+from services.ideal_text_changes import undecided
 from services.db import db, first_client_repository
 from services.ideal_text_read import (
     decorate_key_moments,
@@ -2212,10 +2213,6 @@ def v2_explore_set_part_lock(arc_id, part_id):
             _lo, _hi, _ = next(
                 (s for s in part_spans(parts) if s[2]["id"] == target["id"]),
                 (None, None, None))
-            # ONE RULE WITH THE PAGE (24g-1): a row the speaker already
-            # answered is served with its decision and is not pending here,
-            # exactly as it does not colour the mark there.
-            from services.ideal_text_changes import undecided
             _pending = [
                 c for c in undecided(_served)
                 if _lo is not None
