@@ -2212,8 +2212,12 @@ def v2_explore_set_part_lock(arc_id, part_id):
             _lo, _hi, _ = next(
                 (s for s in part_spans(parts) if s[2]["id"] == target["id"]),
                 (None, None, None))
+            # ONE RULE WITH THE PAGE (24g-1): a row the speaker already
+            # answered is served with its decision and is not pending here,
+            # exactly as it does not colour the mark there.
+            from services.ideal_text_changes import undecided
             _pending = [
-                c for c in _served
+                c for c in undecided(_served)
                 if _lo is not None
                 and c.get("span", {}).get("start", -1) >= _lo
                 and c.get("span", {}).get("end", -1) <= _hi

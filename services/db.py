@@ -8156,15 +8156,15 @@ class DatabaseService:
     def list_feedback_v3_owner_response_keys(
         self, membership_ids: list,
     ) -> list:
-        """(membership_id, candidate_id) pairs the owner answered via the
-        MLC-3 service route. Read-only; an empty list on any failure so the
-        caller degrades to "not answered"."""
+        """(membership_id, candidate_id, response) rows the owner answered
+        via the MLC-3 service route. Read-only; an empty list on any failure
+        so the caller degrades to "not answered"."""
         ids = [str(value) for value in (membership_ids or []) if value]
         if not ids:
             return []
         try:
             result = (self.client.table("feedback_v3_owner_responses")
-                      .select("membership_id,candidate_id")
+                      .select("membership_id,candidate_id,response")
                       .in_("membership_id", ids)
                       .execute())
         except Exception as error:
