@@ -799,7 +799,25 @@ class _ChangesRun:
             selected_keys,
         )
         db = self.db
-        if self.feedback_set is not None:
+        # A SUPERSEDED SET CANNOT FILTER THE ROWS THAT SUPERSEDED IT (#592).
+        #
+        # This branch narrows the served rows to the ones already frozen, so
+        # accepting item one can never reveal item four. It is correct — and
+        # it became a trap the moment #591 moved this stage below
+        # `_first_client_feedback`, because `load_feedback_set` runs up at
+        # `_feedback_set_and_fallbacks`, long before V3 selects.
+        #
+        # So on any Take frozen BEFORE #591 — every document already opened —
+        # `self.changes` is V3's rows and `selected_keys` is V2's three. They
+        # share no identity, `filter_to_selected` returns [], and the whole
+        # bookmark surface goes blank. That is the founder's original
+        # complaint, reintroduced by the fix for the one after it.
+        #
+        # The claim is insert-once per (arc, take), so those Takes keep V2's
+        # frozen set forever and their answers cannot be validated. That is
+        # the situation they were already in; it is not made worse by serving
+        # the marks. Serving nothing would be.
+        if self.feedback_set is not None and not self.v3_replaced_changes:
             self.changes = filter_to_selected(
                 self.changes, self.feedback_set["selected_keys"])
             self.styles = filter_to_selected(

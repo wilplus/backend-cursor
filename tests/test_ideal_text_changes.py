@@ -372,3 +372,66 @@ def test_playback_is_attached_on_BOTH_sides_of_the_v3_replacement():
         "V2 classifies on the clip; the first attach must precede it"
     assert playbacks[1] > order.index("_first_client_feedback"), \
         "V3 replaces the rows; the second attach must follow it"
+
+
+# ── #592: a superseded set must not filter the rows that superseded it ─────
+
+
+def _v2_frozen_set():
+    """V2's three, as every Take frozen before #591 still holds them."""
+    return {
+        "arc_id": ARC,
+        "take_session_id": T1,
+        "selected_keys": [
+            {"id": "v2-cv", "kind": "bold", "source": "confident_voice",
+             "feedback_family": "confident_voice"},
+            {"id": "v2-rw", "kind": "replace", "source": "wording",
+             "feedback_family": "rewrite_clarity"},
+            {"id": "v2-gf", "kind": "advice", "source": "structural",
+             "feedback_family": "great_formulation"},
+        ],
+    }
+
+
+def test_a_v2_freeze_does_not_blank_the_v3_rows_it_predates():
+    """THE REGRESSION #591 SHIPPED, caught the same afternoon.
+
+    `load_feedback_set` runs at `_feedback_set_and_fallbacks`, long before
+    V3 selects. #591 moved the claim BELOW `_first_client_feedback`, so on
+    every Take frozen earlier the served rows are V3's while the frozen keys
+    are V2's three. They share no identity, `filter_to_selected` returns [],
+    and the entire bookmark surface goes blank — the founder's original
+    complaint, reintroduced by the fix for the one after it.
+
+    Those Takes keep V2's set forever (the claim is insert-once) and their
+    answers stay unvalidatable. That is where they already were. Serving
+    them no marks at all would be strictly worse.
+    """
+    db = FakeDB()
+    run = _run_for_playback(_deps(db))
+    run.feedback_set = _v2_frozen_set()
+    run.changes = [_v3_row(S1)]
+    run.v3_replaced_changes = True
+    run._claim_or_filter()
+    assert [row["id"] for row in run.changes] == [f"cand:{S1}"]
+
+
+def test_a_v2_take_is_still_filtered_to_its_frozen_set():
+    """The guard this branch exists for, unchanged where it still applies.
+
+    When V3 did not replace the rows, the served payload is V2's and the
+    frozen set describes it exactly — so accepting item one must still never
+    reveal item four.
+    """
+    db = FakeDB()
+    run = _run_for_playback(_deps(db))
+    run.feedback_set = _v2_frozen_set()
+    run.changes = [
+        {"id": "v2-cv", "kind": "bold", "source": "confident_voice",
+         "feedback_family": "confident_voice"},
+        {"id": "v2-unfrozen", "kind": "replace", "source": "wording",
+         "feedback_family": "rewrite_clarity"},
+    ]
+    run.v3_replaced_changes = False
+    run._claim_or_filter()
+    assert [row["id"] for row in run.changes] == ["v2-cv"]
