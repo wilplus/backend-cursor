@@ -123,39 +123,43 @@ class Config:
     MOMENT_SUGGESTIONS_ENABLED = _env_flag("MOMENT_SUGGESTIONS_ENABLED", "0")
     POLISH_AS_SUGGESTIONS_ENABLED = _env_flag("POLISH_AS_SUGGESTIONS_ENABLED", "0")
     LIVING_TRANSCRIPT_ENABLED = _env_flag("LIVING_TRANSCRIPT_ENABLED", "0")
-    # OFF, 2026-09-21 (#594), and this time the default is a retirement
-    # rather than a pause.
+    # ON since #595, on evidence rather than on hope this time.
     #
-    # The bake has now cost, in three days: a blank bookmark surface twice
-    # (#580's empty lane, #589's reader/writer disagreement), six-hour
-    # expired clip URLs served as live ones (#590), and a saturated worker
-    # queue that put every speaker's Take behind a forty-second Manager run
-    # (#593). It has bought one instant second-open.
+    # The bake caused three real defects and one imagined one. The three are
+    # fixed and each is pinned by a test that fails without its fix:
     #
-    # Each fix was correct and each was found by the founder in production
-    # rather than by me before shipping. That is the argument: not that the
-    # feature cannot work, but that its cost has been paid four times by the
-    # person it was supposed to help.
+    #   #583  an empty lane stored as a bake, served as "no bookmarks"
+    #         -> the writer requires a non-empty `changes`
+    #   #589  the READER kept the guard #583 had just replaced, so the same
+    #         empty block was served anyway -> `is_a_bake`, asked by both
+    #   #590  a stored six-hour signed clip URL served long after it died
+    #         -> `_with_fresh_playback` re-signs on every serve
     #
-    # WITH IT OFF, `changes_block_for` computes live on every read — what
-    # every reader did before #580, with the thirty-second focused-retry
-    # budget #586 gave it. That is the arrangement the founder confirmed
-    # working on 2026-09-20 ("Book marks are here!!!").
+    # The fourth was mine. #593 and #594 blamed a saturated worker queue for
+    # processing the founder called stale. `processing_jobs` then showed
+    # `waited_s` of 2 to 3 seconds on every row, today and yesterday: there
+    # was never a jam. The wait was a frontend marker that never cleared
+    # (frontend #421), and I turned a feature off on evidence I had not
+    # checked.
     #
-    # It also drains the backlog: a `run_pending_bake` job already sitting
-    # in Redis still runs, but `bake_for_snapshot` reads this flag first and
-    # returns in milliseconds instead of running the Manager. Turning it off
-    # is therefore the fastest way to clear a queue the bake itself jammed.
+    # FOUNDER, on being shown that: "if baking was not the reason, please
+    # bring it back. So that we have it faster than 30 seconds, we have it
+    # 17 seconds."
+    #
+    # WHAT IS STILL TRUE FROM #593. One queue serves everything
+    # (`job_queue.queue_name()`), so a bake really does sit in the same line
+    # as `run_processing_job`. At one speaker that costs nothing — the
+    # measured wait is three seconds. With several recording at once a
+    # forty-second bake ahead of a take would delay it, and the fix then is
+    # a queue of its own via PIPELINE_QUEUE_NAME, not this flag.
     #
     # Defaulted in code rather than set per service on purpose: the worker
     # writes the bake and the web process reads it, and a flag that is true
     # on one and false on the other is the CONFIG-FIRST failure in miniature.
-    # One default cannot disagree with itself.
-    #
-    # Before it goes on again it needs a queue that cannot delay a Take, and
-    # evidence gathered before the founder sees it rather than after.
+    # One default cannot disagree with itself — and the founder does not have
+    # this variable in Railway, which is the other half of the same argument.
     IDEAL_TEXT_FEEDBACK_BAKE_ENABLED = _env_flag(
-        "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0")
+        "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1")
     MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
     COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
     SENTENCE_BOUNDARY_SPLIT_ENABLED = _env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1")
