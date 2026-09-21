@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import wraps
 from flask import jsonify, request
 
+import auth
 from auth import optional_auth
 from routes.v2.blueprint import v2_bp
 from services.create_take import CreateTakeError, resolve_owner_principal
@@ -28,15 +29,52 @@ _CORE_SERVICE_PREFIXES = (
 )
 
 
+def _request_user_id() -> str | None:
+    """The bearer's user, whether or not a view decorator has run yet.
+
+    FOUNDER'S EVENING, 2026-09-21. `request.user_id` is set by the view's own
+    `@optional_auth` / `@require_auth` decorator — and a `before_request` hook
+    runs BEFORE the view, decorators included. So the gate below read
+    `request.user_id` as None on every request, treated every signed-in user
+    as an anonymous caller with no guest token, and the moment
+    PLF1_PROCESSING_AUTHORIZATION_MODE=enforce was set, every core route
+    (/v2/projects, /v2/explore/…/ideal-text/core, /v2/chat/session-state, …)
+    answered 401 "A verified owner is required." to a perfectly signed-in
+    founder. The same blind spot hits `phase1_provider_route` when it wraps a
+    view from outside its auth decorator (/chat/query).
+
+    Reading the token here is the same verification `optional_auth` does,
+    through the same function, so the two can never disagree about who is
+    calling. An already-decorated view keeps its own answer.
+    """
+    already = getattr(request, "user_id", None)
+    if already:
+        return str(already)
+    header = request.headers.get("Authorization") or ""
+    if not header.startswith("Bearer "):
+        return None
+    token = header[len("Bearer "):].strip()
+    if not token:
+        return None
+    try:
+        # Looked up on the module at call time, not bound at import: the
+        # test seam swaps `auth.verify_supabase_token`, and so must this.
+        payload = auth.verify_supabase_token(token)
+    except Exception:
+        return None
+    return str(payload.get("sub") or "") or None
+
+
 def _principal_id() -> str:
+    user_id = _request_user_id()
     principal = resolve_owner_principal(
         ProjectRepository(db),
-        user_id=getattr(request, "user_id", None),
+        user_id=user_id,
         guest_token=request.headers.get(GUEST_OWNER_HEADER),
     )
     return ProcessingAuthorizationService(db).resolve_acquisition_principal(
         principal.id,
-        user_id=str(getattr(request, "user_id", "") or "") or None,
+        user_id=user_id,
     )
 
 
