@@ -553,27 +553,32 @@ def test_no_bake_means_the_read_computes_live(monkeypatch):
 # ── the flag, and why its default is the point ─────────────────────────────
 
 
-def test_the_flag_is_on_by_default_now_that_the_bake_is_off_the_publish():
-    """FOUNDER, 2026-09-20: "We processed your take, but couldn't create your
-    Ideal Text."
+def test_the_flag_is_off_by_default_because_the_bake_is_retired():
+    """OFF, 2026-09-21 (#594), and this time as a retirement not a pause.
 
-    #580 put the whole Manager pipeline inside `publish_for_arc`, which
-    `maybe_assemble_ideal_text` calls WHILE A TAKE 1 DOCUMENT IS BEING MADE.
-    In production, publication went from about a second to tens of seconds —
-    two takes landed their snapshot 22s and 42s after their job had already
-    finished, and one never landed at all. #584 switched the flag off and its
-    comment named the condition for switching it back: "only once the bake
-    runs where it cannot delay creation (task #43)".
+    The bake cost, in three days: a blank bookmark surface twice (#580's
+    empty lane, #589's reader/writer disagreement), six-hour expired clip
+    URLs served as live ones (#590), and a worker queue that put every
+    speaker's Take behind a forty-second Manager run (#593). It bought one
+    instant second-open.
 
-    #587 met that condition rather than arguing it away. The bake is not
-    reachable from `publish_for_arc` at all — `test_publishing_a_head_does_
-    not_bake` above is the assertion — so the failure this flag was turned
-    off to stop cannot occur, instead of being unlikely to.
+    Each fix was correct. Each was found by the founder in production rather
+    than before shipping. That is the argument — not that the feature cannot
+    work, but that its cost was paid four times by the person it was meant
+    to help.
 
-    This test is paired with that one on purpose. Between them, the default
-    may only be on while the publish path is clean: restoring the bake to the
-    publish fails the other test, and the two cannot be satisfied at once by
-    anything except the shipped arrangement.
+    WITH IT OFF, `changes_block_for` computes live on every read: what every
+    reader did before #580, with #586's thirty-second focused-retry budget.
+    That is the arrangement the founder confirmed working on 2026-09-20
+    ("Book marks are here!!!").
+
+    Everything else in this file still describes the feature's behaviour and
+    still passes, because the autouse fixture pins the flag on. The feature
+    is intact and switched off — the two are different things, and this test
+    is the one place the difference is recorded.
+
+    Before it ships on again it needs a queue that cannot delay a Take
+    (#593), and evidence gathered before the founder sees it.
     """
     # Read the SHIPPED declaration, not the live attribute: the autouse
     # fixture above sets the flag for every other test in this file, and a
@@ -584,9 +589,9 @@ def test_the_flag_is_on_by_default_now_that_the_bake_is_off_the_publish():
     import config
 
     source = inspect.getsource(config)
-    assert 'IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1"' in source, (
-        "the shipped default must be on")
-    assert config._env_flag("IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "1") is True
+    assert 'IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0"' in source, (
+        "the shipped default must be off")
+    assert config._env_flag("IDEAL_TEXT_FEEDBACK_BAKE_ENABLED", "0") is False
 
 
 def test_switched_off_it_computes_nothing_and_stores_nothing(monkeypatch):
