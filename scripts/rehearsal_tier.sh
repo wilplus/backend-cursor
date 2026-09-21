@@ -201,6 +201,24 @@ relax_append_only() {  # relax_append_only <db>
 clone willab_ga_template willab_confident_moment_narrow_0326
 relax_append_only willab_ga_template
 
+# freeze: the two functions that decide whether a speaker's judgement is
+# ACCEPTED — claim_ideal_text_feedback_set_v1 (what was served) and
+# record_take_feedback_response_v1 (was this item served). No lane installed
+# either, so the tier ran green while testing none of the path the founder was
+# blocked on, and three merges argued about it from reading alone. Its own
+# chain, not a clone: these migrations predate the MLC-3 fork and the lanes
+# above carry triggers they never expected.
+echo "→ building the freeze/answer chain (prerequisites → 0308 → 0310 → 0333 → 0339 → 0346 → 0347)"
+FREEZE=willab_freeze_rehearsal
+"${PSQL[@]}" -d postgres -c "CREATE DATABASE $FREEZE" >/dev/null
+sql_file $FREEZE tests/integration/take_feedback_freeze_prerequisites.sql
+for m in add_take_review_lifecycle add_feedback_manager_and_part_commits \
+         add_atomic_take_feedback_response add_acknowledged_praise_response \
+         answer_a_v3_item_against_the_freeze_that_served_it \
+         the_frozen_set_records_the_policy_that_served; do
+  sql_file $FREEZE migrations/$m.sql; sql_file $FREEZE migrations/$m.sql
+done
+
 # lane name | DSN variable | database | modules
 LANES=(
   "m33|MLC3_REHEARSAL_DSN|willab_m33_rehearsal|tests/test_mlc3_dark_assignments_postgres.py tests/test_mlc3_n1_source_pattern_postgres.py tests/test_rooting_phrase_qualification_postgres.py"
@@ -210,6 +228,7 @@ LANES=(
   "confident-moment released|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_released|tests/test_confident_moment_production_fixtures.py"
   "canary|MLC3_CANARY_READINESS_REHEARSAL_DSN|willab_d3_canary|tests/test_mlc3_founder_canary_readiness_postgres.py"
   "d4|MLC3_GENERAL_USER_REHEARSAL_DSN|willab_ga_template|tests/test_mlc3_general_user_service_d4_postgres.py"
+  "freeze|TAKE_FEEDBACK_FREEZE_REHEARSAL_DSN|willab_freeze_rehearsal|tests/test_take_feedback_freeze_postgres.py"
 )
 # Suites with no GREEN recipe. Reported NOT RUN, never skipped, never run as
 # "expected to fail"; see docs/REHEARSAL-TIER.md "Pending lanes".
