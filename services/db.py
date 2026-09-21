@@ -259,6 +259,26 @@ def _free_credit_grant() -> int:
         return 25
 
 
+def _freezable_selection(selected_keys: Any) -> bool:
+    """The shape `claim_ideal_text_feedback_set_v1` accepts, checked here too.
+
+    One to sixty-four identities, at least one of them Confident Voice. Not
+    a budget: V2 froze exactly three, V3 freezes one per valid block plus
+    its anchored items (24f), and the Manager decides which. A guard that
+    re-litigates the budget is a second arbiter, and a silent one.
+    """
+    from services.take_feedback_set import MAX_SELECTED_KEYS
+    if not isinstance(selected_keys, list):
+        return False
+    if not 1 <= len(selected_keys) <= MAX_SELECTED_KEYS:
+        return False
+    return any(
+        isinstance(key, dict)
+        and str(key.get("feedback_family")) == "confident_voice"
+        for key in selected_keys
+    )
+
+
 class DatabaseService:
     def __init__(self):
         self.client: Client = self._build_supabase_client()
@@ -7429,18 +7449,20 @@ class DatabaseService:
         selected_keys: list,
     ) -> Optional[dict]:
         """Insert-once Manager selection; a racing caller receives the winner."""
+        # THE CLIENT-SIDE COPY OF THE FREEZE RULE, and the one 0347 missed
+        # (founder 2026-09-21: "still no bookmarks", V3 served items=4, then
+        # "feedback set claim failed"). The migration and
+        # `services.take_feedback_set` moved to V3's rule — a bounded set
+        # that carries a Confident Voice item — while this guard still
+        # demanded V2's exactly-three-families, returned None without a word,
+        # and the caller wiped every bookmark V3 had just built. It mirrors
+        # `claim_ideal_text_feedback_set_v1` now, and the Manager alone owns
+        # the budget (L2).
         if (not arc_id or not owner_user_id or not take_session_id
                 or isinstance(take_index, bool)
                 or not isinstance(take_index, int) or take_index < 1
                 or review_version != take_index
-                or not isinstance(selected_keys, list)
-                or len(selected_keys) != 3
-                or {
-                    str(key.get("feedback_family"))
-                    for key in selected_keys if isinstance(key, dict)
-                } != {
-                    "confident_voice", "rewrite_clarity", "great_formulation",
-                }):
+                or not _freezable_selection(selected_keys)):
             return None
         result = self.client.rpc("claim_ideal_text_feedback_set_v1", {
             "p_arc_id": str(arc_id),
@@ -7477,8 +7499,7 @@ class DatabaseService:
         """Insert the complete ranking exposure once; never update history."""
         if (not arc_id or not take_session_id or not policy_version
                 or not isinstance(candidate_set, list)
-                or not isinstance(selected_keys, list)
-                or len(selected_keys) != 3):
+                or not _freezable_selection(selected_keys)):
             return False
         try:
             self.client.table("take_feedback_exposure").upsert({
