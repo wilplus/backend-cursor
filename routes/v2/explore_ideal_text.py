@@ -1848,6 +1848,20 @@ def _ideal_save_state(arc_id, current_version) -> dict:
         return {}
 
 
+def _generated_text(arc_id, user_id) -> "str | None":
+    """The words the machine wrote for this document: the head snapshot's
+    payload text. None when there is no snapshot or the read fails, and the
+    parts block then carries no `edited` flags (see `mark_edited`)."""
+    try:
+        snapshot = db.get_ideal_text_document_snapshot(arc_id, user_id)
+        payload = (snapshot or {}).get("payload")
+        text = (payload or {}).get("text") if isinstance(payload, dict) else None
+        return text if isinstance(text, str) else None
+    except Exception as error:
+        logger.warning("generated text unavailable arc=%s: %s", arc_id, error)
+        return None
+
+
 def _ideal_parts_block(arc_id, user_id, served_text) -> dict:
     """`{"parts": [...]}` for the student GET, or `{}` (the key ABSENT).
 
@@ -1867,11 +1881,14 @@ def _ideal_parts_block(arc_id, user_id, served_text) -> dict:
     pre-migration payload exactly.
     """
     try:
-        from services.ideal_text_parts import agrees_with_text, serve
+        from services.ideal_text_parts import (
+            agrees_with_text, mark_edited, serve,
+        )
         parts = serve(db.get_ideal_text_parts(arc_id, user_id,
                                               with_lock=True))
         if parts is None:
             return {}
+        parts = mark_edited(parts, _generated_text(arc_id, user_id))
         if not agrees_with_text(parts, served_text):
             # Dropping OPEN parts here is routine staleness. Dropping a
             # LOCK is not — every lock on this document just went invisible
