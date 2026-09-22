@@ -219,3 +219,46 @@ still passes `surface="moment_suggestion"` into `chat_complete`, which is
 harmless (unknown surface → caller's default) but reads as if a contract still
 exists; and `ml_finetuning_export`/`ml_dpo_export` still carry no producing-model
 identity, which is E-5's other half and Workstream 6's.
+
+### 2026-09-22 · WS1 follow-up · ws1-ungated-promotion · #615
+
+Closes the open founder question in the entry above. Appended rather than
+edited into it, per the rule at the top of this file.
+
+**Closed:** none new
+**Contract lines flipped:** none
+**Contract lines added:** none
+**Broke and fixed:** none
+**Open for the founder:** none — the question above is answered.
+
+**The answer.** The founder ran the query on the `willpowerlab` Supabase
+project, branch `main` (PRODUCTION), on 2026-09-22:
+
+```sql
+SELECT key, value, updated_at
+  FROM runtime_config
+ WHERE key LIKE 'openai_surface_model_%'
+    OR key IN ('openai_chat_model', 'openai_copilot_model');
+```
+
+`Success. No rows returned` — **0 rows.**
+
+**What that means for the merge.** No model has ever been promoted into
+production `runtime_config`, so every read on that path was already falling
+through to the caller's own default. WS1 is therefore **behaviourally inert
+for users**: the same model answers before and after. What merges is the
+locks, on a door nobody had yet walked through.
+
+Two details worth having on the record, because the next session will want
+them and they are not re-derivable later:
+
+- The query SUCCEEDED rather than erroring, so `public.runtime_config`
+  exists in production and 0051 has run there. Migration 0352's
+  graceful-degradation branch (`to_regclass IS NULL`) will NOT be taken on
+  the production lane; the trigger installs for real on the next boot.
+- 0 rows is a statement about now, not about history. Nothing in the repo
+  writes those keys except `scripts/promote_openai_model.py`, and a
+  promotion would have left `updated_at` behind, so "never promoted" is the
+  fair reading — but it is an inference, not a proof.
+
+Still not merged. The founder merges.
