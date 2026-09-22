@@ -237,6 +237,23 @@ for m in add_ideal_text_core_snapshot fix_ideal_text_core_pgcrypto_search_path \
   sql_file $BAKE migrations/$m.sql; sql_file $BAKE migrations/$m.sql
 done
 
+# model-gate: the table a promoted model name lands in, and the trigger that
+# decides whether it may land at all. Its own two-file chain because
+# `runtime_config` predates every fork above it (0051) and the guard needs
+# nothing else — no fixture, no principal, no take. What it proves is the
+# thing a Python test cannot: that the DATABASE refuses the write, which is
+# the half of LEGACY-1 a psql session holding the service-role key can reach.
+echo "→ building the model-gate chain (0051 → 0352)"
+MODELGATE=willab_model_gate_rehearsal
+"${PSQL[@]}" -d postgres -c "CREATE DATABASE $MODELGATE" >/dev/null
+for role in anon authenticated service_role; do
+  "${PSQL[@]}" -d "$MODELGATE" \
+    -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='$role') THEN CREATE ROLE $role NOLOGIN; END IF; END \$\$" >/dev/null
+done
+for m in add_runtime_model_config guard_runtime_config_model_keys; do
+  sql_file $MODELGATE migrations/$m.sql; sql_file $MODELGATE migrations/$m.sql
+done
+
 # lane name | DSN variable | database | modules
 LANES=(
   "m33|MLC3_REHEARSAL_DSN|willab_m33_rehearsal|tests/test_mlc3_dark_assignments_postgres.py tests/test_mlc3_n1_source_pattern_postgres.py tests/test_rooting_phrase_qualification_postgres.py"
@@ -248,6 +265,7 @@ LANES=(
   "d4|MLC3_GENERAL_USER_REHEARSAL_DSN|willab_ga_template|tests/test_mlc3_general_user_service_d4_postgres.py"
   "freeze|TAKE_FEEDBACK_FREEZE_REHEARSAL_DSN|willab_freeze_rehearsal|tests/test_take_feedback_freeze_postgres.py"
   "bake|IDEAL_TEXT_FEEDBACK_BAKE_REHEARSAL_DSN|willab_bake_rehearsal|tests/test_ideal_text_feedback_bake_postgres.py"
+  "model-gate|RUNTIME_MODEL_GATE_REHEARSAL_DSN|willab_model_gate_rehearsal|tests/test_runtime_config_model_guard_postgres.py"
 )
 # Suites with no GREEN recipe. Reported NOT RUN, never skipped, never run as
 # "expected to fail"; see docs/REHEARSAL-TIER.md "Pending lanes".

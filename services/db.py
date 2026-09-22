@@ -2940,6 +2940,55 @@ class DatabaseService:
                 return None
             raise
 
+    def promote_runtime_surface_model(
+        self,
+        *,
+        key: str,
+        value: str,
+        updated_by: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Write one runtime_config MODEL key, through the only door there is.
+
+        LEGACY-1 / R-13 (audit 2026-09-22). Migration 0352 put a BEFORE
+        INSERT OR UPDATE trigger on `runtime_config` that refuses a write to
+        any `openai_surface_model_%`, `openai_chat_model` or
+        `openai_copilot_model` row unless the transaction carries a GUC only
+        `promote_runtime_surface_model_v1` sets. `upsert_runtime_config`
+        above therefore no longer reaches these keys, by design: a table this
+        table's writes can change the words in a speaker's Ideal Text should
+        not have a generic writer.
+
+        Returns None when the RPC is absent (a database that has not taken
+        0352 yet) so the caller can name the migration; PostgREST reports
+        that as PGRST202 rather than as a missing relation, so both shapes
+        are matched. Every other failure — the guard refusing, a malformed
+        prompt binding — is raised, because a promotion that silently did
+        nothing is the failure mode this whole change exists to remove.
+        """
+        try:
+            res = self.client.rpc(
+                "promote_runtime_surface_model_v1",
+                {
+                    "p_key": key,
+                    "p_value": value,
+                    "p_updated_by": updated_by,
+                    "p_metadata": metadata or {},
+                },
+            ).execute()
+        except Exception as e:
+            text = str(e).lower()
+            if self._is_relation_missing_error(e) or "pgrst202" in text or (
+                "could not find the function" in text
+            ):
+                logger.warning(
+                    "promote_runtime_surface_model_v1 missing; run "
+                    "migrations/guard_runtime_config_model_keys.sql",
+                )
+                return None
+            raise
+        return res.data if isinstance(res.data, dict) else None
+
     def v2_list_all_auth_user_ids(self, cap: int = 2000) -> List[str]:
         """Paginate GoTrue admin users; return ids (up to cap). Same pool as admin student list."""
         try:

@@ -76,13 +76,14 @@ Run it rather than trust this table — it is a convenience, and it goes stale:
 | the computation window reaches the writer | green | — |
 | the page offers exactly the five owner states | green | — |
 | each of the five states routes as itself | **xfail** | F-4 |
-| a promoted model cannot reach the document without a gate | **xfail** | LEGACY-1 |
+| a promoted model cannot reach the document without a gate | green | — |
 | a later Take proposes and never applies | green | — |
 | the words a speaker waits on name work, not judgement | green | — |
 
-Three open, ten held. The three are the audit findings that touch what a
-speaker sees; every other finding has its own regression test in its own file
-and does not appear here.
+One open, twelve held — and the table still undercounts, because #613 and
+#614 added two green lines without an entry here. F-4 is the last of the
+three the audit found against what a speaker sees; every other finding has
+its own regression test in its own file and does not appear here.
 
 ---
 
@@ -146,7 +147,123 @@ Two settings the code depends on: `IDEAL_TEXT_FEEDBACK_BAKE_ENABLED` must be
 `1` on the backend **and** the worker service, confirmed from each boot log
 rather than the panel.
 
-### 2026-09-22 · WS2 · ws2-lineage-or-nothing · #(pending)
+### 2026-09-22 · WS1 · ws1-ungated-promotion · #(pending)
+
+**Closed:** LEGACY-1, J1-2, E-6, H-1, J1-3, R-13; E-5 in part
+**Contract lines flipped:** `test_a_promoted_model_cannot_reach_the_document_without_a_gate` xfail → passing
+**Contract lines added:** none
+**Broke and fixed:** none in the contract. Three tests OUTSIDE it asserted the
+defect and were rewritten to assert the decision instead — see the coupling
+note below, it is the useful part of this entry.
+**Open for the founder:** does any row exist today in production
+`runtime_config` under `openai_surface_model_%`, `openai_chat_model` or
+`openai_copilot_model`? One SELECT. If one does, this pull request STOPS
+SERVING IT on the next boot, which is the fix working — but it is a live
+change of which model answers, and the founder should know before the merge,
+not after.
+
+Contract baseline before 13 passed / 3 xfailed, after 14 passed / 2 xfailed.
+R-4 and F-4 are untouched and still belong to their owners.
+
+**What was open.** `runtime_config` has no RLS, no trigger and `GRANT ALL` to
+`service_role` — which the backend client itself holds. Five of its keys were
+read straight into the `model` argument of a chat completion, and two of those
+five compose the Take-1 Ideal Text (`surface="best_presentation"`) and every
+Say It Stronger card. One INSERT changed the words in a speaker's document
+within the sixty-second cache, with `MLC2_PROMOTION_ENABLED` still false.
+None of the three MLC2_* constants was read by anything but the readiness
+evaluators.
+
+**The gate is in four places** because the hole is reachable from four:
+`services/runtime_model_gate.py` (the allowlist and the one gate),
+`ml_surface_contracts.resolve_surface_model` (the read is fenced, not
+removed), `services/llm.py` (the assertion that the gate ran, immediately
+before the provider call), and migration **0352** (the table refuses, because
+a Python gate cannot bind a psql session). Promotion additionally binds the
+model to the `prompts.lock.json` digest it was evaluated under (H-1), and the
+export and fine-tune scripts refuse while their own constants are false.
+
+**A coupling nobody had written down.** `evaluation_model_override` — the
+ContextVar the golden evaluations use — resolves to a model that is not the
+caller's default, so the obvious gate ("the served model differs from the
+default, was promotion enabled?") silently breaks the evaluation path, which
+is the very thing the founder opens the gate ON. The gate exempts an active
+override explicitly. Anyone adding a second model source here has to do the
+same, or promotion becomes unreachable.
+
+**Three tests asserted the defect.** `test_ml_dpo_loop`'s eval-override case
+asserted that a stored row IS served; it now asserts both postures. Its two
+`moment_suggestion` cases treated a canonically rejected alias as trainable.
+`test_coach_comment_drafter::test_surface_promoted_model_is_used` asserted a
+promoted model reaching a user-facing generator with the gate shut; it now
+opens the gate first. All four patch
+`services.runtime_model_gate.promotion_is_enabled` rather than a `Config`
+attribute: something in the suite reloads `config`, so
+`scripts.promote_openai_model.Config` and a test module's `Config` are not
+always the same class object, and a `patch.object` on the wrong one passes
+for the wrong reason. Use that seam.
+
+**New rehearsal lane.** `model-gate` (`RUNTIME_MODEL_GATE_REHEARSAL_DSN`,
+`willab_model_gate_rehearsal`), its own two-file chain 0051 → 0352, each
+applied twice. `tests/test_runtime_config_model_guard_postgres.py`, 20 cases,
+executes the trigger rather than string-asserting the migration.
+
+**No Railway variable is required.** Every constant this reads is a Python
+constant in `config.py`, not an environment variable, and all three ship
+false. The boot line that would prove a gate flag's effective value is
+Workstream 2's (J1-4/B-1) and is deliberately not duplicated here.
+
+**Noticed, not fixed** (they belong to other workstreams): `db.py`'s
+`upsert_runtime_config` is now unreachable for model keys and its callers are
+zero — a deletion candidate for whoever does Q-A1; `services/moment_suggestions.py`
+still passes `surface="moment_suggestion"` into `chat_complete`, which is
+harmless (unknown surface → caller's default) but reads as if a contract still
+exists; and `ml_finetuning_export`/`ml_dpo_export` still carry no producing-model
+identity, which is E-5's other half and Workstream 6's.
+
+### 2026-09-22 · WS1 follow-up · ws1-ungated-promotion · #615
+
+Closes the open founder question in the entry above. Appended rather than
+edited into it, per the rule at the top of this file.
+
+**Closed:** none new
+**Contract lines flipped:** none
+**Contract lines added:** none
+**Broke and fixed:** none
+**Open for the founder:** none — the question above is answered.
+
+**The answer.** The founder ran the query on the `willpowerlab` Supabase
+project, branch `main` (PRODUCTION), on 2026-09-22:
+
+```sql
+SELECT key, value, updated_at
+  FROM runtime_config
+ WHERE key LIKE 'openai_surface_model_%'
+    OR key IN ('openai_chat_model', 'openai_copilot_model');
+```
+
+`Success. No rows returned` — **0 rows.**
+
+**What that means for the merge.** No model has ever been promoted into
+production `runtime_config`, so every read on that path was already falling
+through to the caller's own default. WS1 is therefore **behaviourally inert
+for users**: the same model answers before and after. What merges is the
+locks, on a door nobody had yet walked through.
+
+Two details worth having on the record, because the next session will want
+them and they are not re-derivable later:
+
+- The query SUCCEEDED rather than erroring, so `public.runtime_config`
+  exists in production and 0051 has run there. Migration 0352's
+  graceful-degradation branch (`to_regclass IS NULL`) will NOT be taken on
+  the production lane; the trigger installs for real on the next boot.
+- 0 rows is a statement about now, not about history. Nothing in the repo
+  writes those keys except `scripts/promote_openai_model.py`, and a
+  promotion would have left `updated_at` behind, so "never promoted" is the
+  fair reading — but it is an inference, not a proof.
+
+Still not merged. The founder merges.
+### 2026-09-22 · WS2 · ws2-lineage-or-nothing · #616
 
 **Closed:** R-4, A-2, A-1's write half, B-1, J1-4
 **Contract lines flipped:** `test_a_take_frozen_under_the_old_policy_still_shows_its_bookmarks` xfail → passing
@@ -159,9 +276,16 @@ is the most useful line here.
 this. It is not in this PR. Also one TODO for copy, named below.
 
 Branched from `ec82a73`, not the audit's pin. Contract baseline before
-15 passed / 3 xfailed, after 16 passed / 2 xfailed. LEGACY-1's line is still
-xfail here because WS1 is a separate branch; when both merge, main gets
-17 / 1 and only F-4 is left.
+15 passed / 3 xfailed, after 16 passed / 2 xfailed on this branch alone.
+WS1 merged as #615 while this was open, so `origin/main` was merged in here
+and the two flips compose: **17 passed / 1 xfailed**, and F-4 is the only
+line left open.
+
+The two entries above and below each other conflicted in this file — both
+appended, both flipped a row in the convenience table. Resolved by keeping
+both verbatim in merge order and editing neither. The `#(pending)` in WS1's
+entry is stale and stays stale; that is what "never edit an earlier entry"
+costs, and it is cheaper than the alternative.
 
 **A-1 IS HALF DONE AND THAT IS DELIBERATE.** The audit's first prescribed
 change is "a lineage RPC failure returns `V3Unavailable` instead of serving

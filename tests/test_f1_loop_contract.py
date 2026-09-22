@@ -43,6 +43,7 @@ from __future__ import annotations
 import sys
 import types
 import unittest
+import unittest.mock
 from unittest.mock import Mock
 
 import pytest
@@ -369,28 +370,46 @@ def test_each_of_the_five_states_routes_as_itself():
 # ══════════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "LEGACY-1 (audit, blocker): the promotion script writes a model name "
-        "into runtime_config and `llm.py` serves it on the very next request "
-        "for Take 1 Ideal Text and Say It Stronger, with a 60-second cache "
-        "and no gate reading MLC2_PROMOTION_ENABLED. A script can therefore "
-        "change the words in a speaker's document with nobody deciding. "
-        "Owner: the workstream that closes LEGACY-1. Flip this to a plain "
-        "test when it does."
-    ),
-)
 def test_a_promoted_model_cannot_reach_the_document_without_a_gate():
-    """The only finding in the audit that can silently alter F1 output."""
+    """The only finding in the audit that can silently alter F1 output.
+
+    Closed by WS1 (ws1-ungated-promotion): the promotion script refuses
+    before any write while `MLC2_PROMOTION_ENABLED` is false,
+    `resolve_surface_model` returns the caller's own default rather than the
+    stored row, `llm.chat_complete` asserts the gate ran before the provider
+    call, and migration 0352 makes the table itself refuse an ungated write.
+    Was xfail(strict) from 2026-09-22 until then.
+    """
     import inspect
 
-    from services import llm
+    from services import llm, ml_surface_contracts
+    from services.runtime_model_gate import MODEL_CONFIG_KEYS
 
-    source = inspect.getsource(llm)
-    assert "MLC2_PROMOTION_ENABLED" in source, (
+    # 1. The serving path consults the gate, where a reader will meet it.
+    assert "MLC2_PROMOTION_ENABLED" in inspect.getsource(llm), (
         "the serving path never consults the promotion gate"
     )
+
+    # 2. And it is a consult, not a comment: a stored model is withheld.
+    ml_surface_contracts.clear_runtime_model_cache()
+    try:
+        with unittest.mock.patch(
+            "services.runtime_model_gate.promotion_is_enabled",
+            return_value=False,
+        ):
+            served = ml_surface_contracts.resolve_surface_model(
+                "best_presentation", "gpt-4o-mini",
+                config_getter=lambda key: "ft:a-model-nobody-approved",
+            )
+        assert served == "gpt-4o-mini", (
+            f"an unapproved model reached the Ideal Text composition: {served}"
+        )
+    finally:
+        ml_surface_contracts.clear_runtime_model_cache()
+
+    # 3. Every key that can name a model is enumerated, so a new one cannot
+    #    be read into the serving path without this test being updated.
+    assert "openai_surface_model_ideal_text" in MODEL_CONFIG_KEYS
 
 
 class TheDocumentIsTheSpeakersOwn(unittest.TestCase):

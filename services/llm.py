@@ -61,6 +61,44 @@ class LLMResult:
     total_tokens: Optional[int]
 
 
+def _model_the_promotion_gate_allows(
+    surface: str, resolved: str, default: str,
+) -> str:
+    """The last thing between a promoted model and a speaker's document.
+
+    LEGACY-1 (audit 2026-09-22). `resolve_surface_model` is the gate and this
+    is not a second one; it is the assertion that the gate ran. `chat_complete`
+    chooses the model that writes the Take-1 Ideal Text and every Say It
+    Stronger card, and the whole finding was that you could read that function
+    end to end without meeting the promotion flag once. Extracted rather than
+    inlined because `chat_complete` is a grandfathered-complexity function that
+    may only come down.
+
+    Falls back rather than raising: a mis-set gate must not take the live loop
+    down, and the caller's own default is always a served model.
+    """
+    if resolved == default:
+        return resolved
+
+    from services.ml_surface_contracts import active_evaluation_override
+    from services.runtime_model_gate import promotion_is_enabled
+
+    # A golden evaluation is not a promotion: it runs the candidate through
+    # this very adapter, in-process, to decide whether the gate should open at
+    # all. Gating it would make promotion unreachable.
+    if active_evaluation_override(surface) == resolved:
+        return resolved
+    if promotion_is_enabled():
+        return resolved
+
+    logger.error(
+        "llm.chat surface=%s promoted_model_withheld "
+        "MLC2_PROMOTION_ENABLED=false model=%s served=%s",
+        surface, resolved, default,
+    )
+    return default
+
+
 def chat_complete(
     *,
     spec: LLMSpec,
@@ -144,7 +182,9 @@ def chat_complete(
 
     response_format = response_format_override or spec.response_format
     from services.ml_surface_contracts import resolve_surface_model
-    model = resolve_surface_model(surface, spec.model)
+    model = _model_the_promotion_gate_allows(
+        surface, resolve_surface_model(surface, spec.model), spec.model,
+    )
     create_kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages_override or [

@@ -203,8 +203,28 @@ class Config:
         "PIPELINE_JOB_MAX_RUNTIME_MINUTES", 20)
     PIPELINE_ORPHAN_STALE_MINUTES = _env_int("PIPELINE_ORPHAN_STALE_MINUTES", 30)
     PIPELINE_SWEEP_INTERVAL_SECONDS = _env_int("PIPELINE_SWEEP_INTERVAL_SECONDS", 60)
-    # Take Feedback V3 dark mode: exact founder principal, explicit "dark".
-    TAKE_FEEDBACK_POLICY_V3_MODE = (os.getenv("TAKE_FEEDBACK_POLICY_V3_MODE") or "off").strip()
+    # TAKE FEEDBACK V3 SHADOW-WRITE MODE. J1-3 (audit 2026-09-22): the old
+    # comment here read "Take Feedback V3 dark mode", which made this look
+    # like the switch between the V2 and V3 policies. IT IS NOT, and an
+    # operator who set it to "off" during an incident expecting V2 back would
+    # have got V3 anyway.
+    #
+    # What it actually gates, through its one reader
+    # `take_feedback_policy_v3.dark_enabled`, is a founder-scoped SHADOW
+    # FRAME WRITE (`take_feedback_policy_v3_shadow_frames`, dataset_eligible
+    # false by CHECK). It cannot add, remove or change one row a speaker sees.
+    #
+    # The flag that decides whether V3 serves is MLC3_SERVICE_ENABLED, via
+    # `coach_guidance_delivery.runtime_is_enabled`. Kept under the old
+    # variable name because it is set on live Railway services; renaming the
+    # environment variable is a config-first cutover, not a comment fix.
+    # `tests/test_take_feedback_policy_selection.py` holds both halves.
+    TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE = (
+        os.getenv("TAKE_FEEDBACK_POLICY_V3_MODE") or "off"
+    ).strip()
+    # Compatibility alias for the existing readers and tests. Same value, and
+    # the name above is the one to use.
+    TAKE_FEEDBACK_POLICY_V3_MODE = TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE
     TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID = (
         os.getenv("TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID") or ""
     ).strip()

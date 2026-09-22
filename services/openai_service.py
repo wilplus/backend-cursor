@@ -51,7 +51,19 @@ class OpenAIService:
         if cached and (now - cached[0]) < 60:
             return cached[1]
         key = "openai_copilot_model" if purpose == "copilot" else "openai_chat_model"
-        model = (db.get_runtime_config(key) or env_fallback or base_default).strip()
+        # R-13 (Job 1 review 2026-09-22). SAME CLASS AS LEGACY-1, WITHOUT THE
+        # LEARNING LANE. These two keys live in the same service-role-writable,
+        # RLS-less `runtime_config` table as the surface keys, and a value in
+        # either was served to every chat and copilot call with no flag, no
+        # evaluation and no provenance. This repository contains no writer for
+        # them, which is precisely why nothing would have noticed a row.
+        #
+        # The gate is shared with the promoted surfaces so there is one answer
+        # to "can a database row change which model runs", not two.
+        from services.runtime_model_gate import resolve_gated_model
+
+        promoted = resolve_gated_model(key, read=db.get_runtime_config)
+        model = (promoted or env_fallback or base_default).strip()
         self._model_cache[purpose] = (now, model)
         return model
     
