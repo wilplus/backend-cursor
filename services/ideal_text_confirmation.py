@@ -23,11 +23,14 @@ IDEAL_TEXT_UNCONFIRMED_BODY = (
 
 
 class IdealTextUnconfirmedError(RuntimeError):
-    """The Take 1 document did not become durably observable in time."""
+    """The document did not become durably observable in time."""
 
     def __init__(self, arc_id: str):
+        # Take-agnostic since Option A (2026-09-22): a later Take recovering
+        # a Project that never had a document raises this too, and naming
+        # Take 1 in its message sent readers looking at the wrong recording.
         super().__init__(
-            "Take 1 Ideal Text was not confirmed in the database within "
+            "The Ideal Text was not confirmed in the database within "
             "120 seconds"
         )
         self.arc_id = str(arc_id)
@@ -44,6 +47,49 @@ def confirmed_ideal_text(row: Any) -> Optional[dict]:
         return None
     text = str(row.get("auto_text") or row.get("text") or "").strip()
     return row if text else None
+
+
+def take_creates_ideal_text(
+    database: Any, arc_id: Any, take_index: Any,
+) -> bool:
+    """Is this the Take that creates the Project's one canonical document?
+
+    FOUNDER DECISION, 2026-09-22 (Option A). A Project whose Take 1 never
+    confirmed an Ideal Text could never recover: only Take 1 was allowed to
+    create the document, Take 1 was over, and every later Take was refused
+    for the document's absence — correctly, by a rule that then had no way
+    back. One real Project sat like that for eleven days.
+
+    So the question stops being "which Take is this" and becomes "does this
+    Project still have no document". Take 1 answers yes as it always did; a
+    later Take answers yes ONLY when a database read proves nothing is there.
+
+    THAT READ IS THE L1 GUARD, and it is the whole reason this is safe. L1
+    says a later Take may never rebuild or silently overwrite the canonical
+    words. This cannot: the one path to True for a later Take requires the
+    canonical row to be absent or empty, so there are no words to overwrite.
+    It fills a hole; it never replaces anything. A Project with a document —
+    machine-made, user-edited or coach-written — takes the False branch on
+    every Take for the rest of its life.
+
+    Conservative on failure, in the direction that protects the document: a
+    read that raises answers False, which is exactly today's behaviour for
+    every Take after the first.
+    """
+    if isinstance(take_index, bool) or not isinstance(take_index, int):
+        return False
+    if take_index < 1:
+        return False
+    if take_index == 1:
+        return True
+    if not arc_id:
+        return False
+    try:
+        existing = confirmed_ideal_text(
+            database.ideal_text.get_coach_arc_ideal_text(str(arc_id)))
+    except Exception:
+        return False
+    return existing is None
 
 
 def wait_for_ideal_text_confirmation(
@@ -146,12 +192,19 @@ def mark_ideal_text_unconfirmed(
     take_index: Any,
     error: Any = None,
 ) -> bool:
-    """Persist the exact Take 1 terminal state and its idempotent Lounge card."""
+    """Persist the exact terminal state and its idempotent Lounge card.
+
+    Any Take that was CREATING the document can land here, not only Take 1
+    (2026-09-22). The state means "we processed your take, but couldn't
+    create your Ideal Text", and that sentence is equally true of the Take 3
+    that found the Project still had none.
+    """
     if (
         not session_id
         or not arc_id
         or isinstance(take_index, bool)
-        or take_index != 1
+        or not isinstance(take_index, int)
+        or take_index < 1
     ):
         return False
     detail = str(error or "Ideal Text was not confirmed")[:500]
