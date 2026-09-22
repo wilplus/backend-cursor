@@ -238,6 +238,22 @@ def main() -> int:
         logger.error("redis ping failed: %s", e)
         return 1
 
+    # CONFIG-FIRST (docs/MIGRATIONS.md), and the worker needs it MORE than
+    # the web service does. This is the container that computes and STORES
+    # the bookmark set at the end of a run. With the flag off here and on
+    # over there, the app looks healthy while every open recomputes from
+    # scratch, because nothing was ever stored to serve.
+    #
+    # It was missing until 2026-09-22: the line went into `app.py`, which
+    # this process never imports, so the one service whose setting is
+    # invisible from outside was also the one that could not report it.
+    try:
+        from services.ideal_text_feedback_bake import _bake_enabled
+        logger.info("stored bookmark set is %s",
+                    "ON" if _bake_enabled() else "OFF")
+    except Exception as e:
+        logger.warning("stored bookmark set unreadable: %s", e)
+
     if serves_pipeline():
         _warm_analysis_stack()
     else:
