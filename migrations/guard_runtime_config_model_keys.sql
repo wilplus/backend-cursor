@@ -159,7 +159,7 @@ BEGIN
     -- Transaction-local, and the only place it is ever set.
     PERFORM set_config('willab.runtime_model_promotion', p_key, true);
 
-    INSERT INTO public.runtime_config AS rc (key, value, updated_at, updated_by, metadata)
+    INSERT INTO public.runtime_config (key, value, updated_at, updated_by, metadata)
     VALUES (p_key, btrim(p_value), now(), NULLIF(btrim(COALESCE(p_updated_by, '')), ''),
             COALESCE(p_metadata, '{}'::jsonb))
     ON CONFLICT (key) DO UPDATE

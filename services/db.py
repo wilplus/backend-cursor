@@ -2960,7 +2960,11 @@ class DatabaseService:
         not have a generic writer.
 
         Returns None when the RPC is absent (a database that has not taken
-        0352 yet), so a caller can say so rather than crash.
+        0352 yet) so the caller can name the migration; PostgREST reports
+        that as PGRST202 rather than as a missing relation, so both shapes
+        are matched. Every other failure — the guard refusing, a malformed
+        prompt binding — is raised, because a promotion that silently did
+        nothing is the failure mode this whole change exists to remove.
         """
         try:
             res = self.client.rpc(
@@ -2973,7 +2977,10 @@ class DatabaseService:
                 },
             ).execute()
         except Exception as e:
-            if self._is_relation_missing_error(e):
+            text = str(e).lower()
+            if self._is_relation_missing_error(e) or "pgrst202" in text or (
+                "could not find the function" in text
+            ):
                 logger.warning(
                     "promote_runtime_surface_model_v1 missing; run "
                     "migrations/guard_runtime_config_model_keys.sql",
