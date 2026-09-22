@@ -660,5 +660,40 @@ def test_the_route_reads_those_budgets_rather_than_its_own_numbers():
     from pathlib import Path
 
     source = Path("routes/v2/explore_ideal_text.py").read_text()
-    assert "FOCUSED_RETRY_BUDGET_SECONDS if requested_raw" in source
+    assert "enrichment_timeout = budget_for(requested_sections)" in source
     assert "enrichment_timeout = 8.0" not in source
+
+
+def test_the_budget_is_earned_by_the_slow_section_not_by_asking_at_all():
+    """FOUNDER 2026-09-22: "can you do something to make loading of the
+    bookmarks faster? cause it is really long."
+
+    The rule used to be "named any section at all → long budget", so a first
+    open — which names none — got two seconds for work that measurably takes
+    four and a half. It could not succeed. The page spent two seconds failing
+    and then asked again, and the speaker paid a whole round trip for a
+    certainty.
+
+    Deciding by WHICH sections are asked for lets one open ask in two lanes:
+    the marks with room to finish, everything else still tight. One response
+    has one deadline, so two deadlines needs two responses.
+    """
+    from services.ideal_text_enrichment import (
+        COLD_OPEN_BUDGET_SECONDS,
+        FOCUSED_RETRY_BUDGET_SECONDS,
+        SLOW_SECTIONS,
+        budget_for,
+    )
+
+    assert "document_layers" in SLOW_SECTIONS
+
+    # The marks lane, on a FIRST open, gets room immediately.
+    assert budget_for(["document_layers"]) == FOCUSED_RETRY_BUDGET_SECONDS
+    # Everything the page draws around them stays tight, however it is asked.
+    assert budget_for(
+        ["feedback", "notes", "history", "journey", "entitlement", "learning"],
+    ) == COLD_OPEN_BUDGET_SECONDS
+    assert budget_for([]) == COLD_OPEN_BUDGET_SECONDS
+    # One slow section in the set is enough to earn the long budget for it.
+    assert budget_for(["feedback", "document_layers"]) == (
+        FOCUSED_RETRY_BUDGET_SECONDS)

@@ -637,7 +637,7 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
     """Optional sections bound to one immutable document snapshot."""
     from time import perf_counter
     from services.ideal_text_enrichment import (
-        COLD_OPEN_BUDGET_SECONDS, FOCUSED_RETRY_BUDGET_SECONDS, run_sections)
+        budget_for, run_sections)
     started = perf_counter()
     owned, sessions = _arc_owned_by_caller(arc_id)
     if not owned:
@@ -770,10 +770,9 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
         },
         "learning": learning_section,
     }
-    # Budgets and the reasoning behind them live with `run_sections`.
-    enrichment_timeout = (
-        FOCUSED_RETRY_BUDGET_SECONDS if requested_raw
-        else COLD_OPEN_BUDGET_SECONDS)
+    # Budgets live with `run_sections`. The long one is earned by asking for
+    # the SLOW section, not by naming any section at all.
+    enrichment_timeout = budget_for(requested_sections)
     sections, timings = run_sections({
         name: reader for name, reader in readers.items()
         if name in requested_sections
