@@ -143,7 +143,16 @@ def changes_block_for(
         if _bake_enabled() else None
     )
     if is_a_bake(baked):
+        logger.info("ideal-text bookmarks served from storage arc=%s", arc_id)
         return _with_fresh_playback(baked)
+    # A MISS IS NOT A FAILURE, but it IS the four and a half seconds the
+    # speaker waits, so it says which kind it is. Off means the flag; absent
+    # means nothing was ever stored for this document; stale means an answer
+    # retired it, which is correct and expected right after one.
+    logger.info("ideal-text bookmarks computed live arc=%s reason=%s", arc_id,
+                "flag_off" if not _bake_enabled()
+                else "absent_or_stale" if baked is None
+                else "stored_block_was_empty")
     from routes.v2.explore_ideal_text import _tracked_changes_block
     # THE CLOCK STARTS BEFORE THE MANAGER, not at the write (0351). An answer
     # committed while this runs was not seen by it, and a row dated at the

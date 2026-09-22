@@ -325,6 +325,16 @@ def _startup_cleanup():
                 _logger.info("Startup: pipeline job sweep %s", counts)
     except Exception as exc:
         _logger.warning("Startup pipeline-job sweep skipped: %s", exc)
+    # CONFIG-FIRST (docs/MIGRATIONS.md): the panel shows what was typed, the
+    # log shows what the process READ. The stored bookmark set is per-service
+    # and its absence is invisible from the outside — a web container with it
+    # on and a worker with it off looks healthy and silently stores nothing.
+    try:
+        from services.ideal_text_feedback_bake import _bake_enabled
+        _logger.info("Startup: stored bookmark set is %s",
+                     "ON" if _bake_enabled() else "OFF")
+    except Exception as exc:
+        _logger.warning("Startup: stored bookmark set unreadable: %s", exc)
 
 
 with app.app_context():

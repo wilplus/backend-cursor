@@ -4,7 +4,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 
 #  HOW LONG A SECTION GETS, AND WHY THESE TWO NUMBERS DIFFER SO MUCH
@@ -38,6 +38,34 @@ from typing import Any, Callable, Mapping
 #  at the end of the pipeline, where no request is waiting on it (task #43).
 COLD_OPEN_BUDGET_SECONDS = 2.0
 FOCUSED_RETRY_BUDGET_SECONDS = 30.0
+
+#: The sections whose work is measurably slower than the cold open allows, and
+#: which therefore earn the long budget WHENEVER they are asked for — not only
+#: on a retry (founder 2026-09-22: "can you do something to make loading of the
+#: bookmarks faster? cause it is really long").
+#:
+#: THE SECOND ROUND TRIP WAS PURE WASTE. The budget used to be chosen by
+#: whether the caller named any sections at all, so a first open asked for
+#: everything, spent two seconds, gave up on the Manager, and only then asked
+#: again with room to finish. The Manager measurably takes about four and a
+#: half seconds, so the speaker paid two seconds of certain failure plus a
+#: hop before the real work even started.
+#:
+#: Choosing by WHICH sections are asked for lets the page open two lanes at
+#: once: the marks on their own with the long budget, and everything the page
+#: renders around them on the tight one. Neither can hold the other up, which
+#: the single-response shape could never express — one response has one
+#: deadline.
+SLOW_SECTIONS = frozenset({"document_layers"})
+
+
+def budget_for(requested: Iterable[str]) -> float:
+    """How long this request may spend, decided by what it asks for."""
+    return (
+        FOCUSED_RETRY_BUDGET_SECONDS
+        if SLOW_SECTIONS & set(requested)
+        else COLD_OPEN_BUDGET_SECONDS
+    )
 
 
 @dataclass(frozen=True)
