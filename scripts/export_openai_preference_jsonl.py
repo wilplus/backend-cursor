@@ -33,6 +33,7 @@ from services.ml_dpo_export import (  # noqa: E402
     split_train_val,
 )
 from services.ml_dpo_release import write_release_manifest  # noqa: E402
+from config import Config  # noqa: E402
 from services.ml_surface_contracts import contract_for_surface  # noqa: E402
 
 
@@ -70,6 +71,20 @@ def main() -> None:
     parser.add_argument("--max-similarity", type=float, default=0.985, help="Skip if texts are too similar (0..1)")
     parser.add_argument("--enrich-sessions", action="store_true", help="Include non-scored session context in prompt")
     args = parser.parse_args()
+
+    # J1-2 (audit 2026-09-22). MLC2_DATASET_RELEASES_ENABLED ENFORCES SOMETHING NOW.
+    #
+    # This script writes a dataset release out of the legacy
+    # annotation corpus, which is what a fine-tune is then trained on. The constant that
+    # documented the lane as switched off was read only by the readiness
+    # evaluators, so nothing stopped the run. Checked before any argument
+    # that costs money or touches a provider.
+    if not Config.MLC2_DATASET_RELEASES_ENABLED:
+        raise SystemExit(
+            "MLC2_DATASET_RELEASES_ENABLED is false; this lane is dark. "
+            "Opening it is a founder decision taken in the activation "
+            "runbook, not a flag flipped at run time."
+        )
 
     contract = contract_for_surface(args.surface)
 

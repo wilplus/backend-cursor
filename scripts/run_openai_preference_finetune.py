@@ -126,6 +126,20 @@ def main() -> None:
     parser.add_argument("--poll-interval-sec", type=int, default=30, help="Polling interval")
     args = parser.parse_args()
 
+    # J1-2 (audit 2026-09-22). MLC2_TRAINING_ENABLED ENFORCES SOMETHING NOW.
+    #
+    # This script starts a real OpenAI fine-tune job on subject text
+    # with nothing but an API key and a manifest. The constant that
+    # documented the lane as switched off was read only by the readiness
+    # evaluators, so nothing stopped the run. Checked before any argument
+    # that costs money or touches a provider.
+    if not Config.MLC2_TRAINING_ENABLED:
+        raise SystemExit(
+            "MLC2_TRAINING_ENABLED is false; this lane is dark. "
+            "Opening it is a founder decision taken in the activation "
+            "runbook, not a flag flipped at run time."
+        )
+
     contract = contract_for_surface(args.surface)
 
     cfg = Config()
