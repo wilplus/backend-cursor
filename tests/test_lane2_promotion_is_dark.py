@@ -16,7 +16,6 @@ lane to stand down.
 """
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -71,18 +70,21 @@ class PromotionRefusesWhileTheGateIsShut(unittest.TestCase):
                 "--model-id", "ft:gpt-4.1-mini:org:proj:abc123",
                 "--evaluation-report", str(report),
             ]
-            with mock.patch.object(Config, "MLC2_PROMOTION_ENABLED", False), \
-                 mock.patch("services.db.db.upsert_runtime_config") as spy, \
+            with mock.patch.object(promote.Config, "MLC2_PROMOTION_ENABLED", False), \
+                 mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
+                 mock.patch("services.db.db.upsert_runtime_config") as legacy, \
                  mock.patch("sys.argv", argv):
                 with self.assertRaises(SystemExit) as caught:
                     promote.main()
 
         self.assertIn("MLC2_PROMOTION_ENABLED", str(caught.exception))
         spy.assert_not_called()
+        legacy.assert_not_called()
 
     def test_resolve_surface_model_ignores_runtime_config_when_promotion_disabled(self):
         """The serving half. A row already in the table is not served."""
-        with mock.patch.object(Config, "MLC2_PROMOTION_ENABLED", False):
+        with mock.patch("services.runtime_model_gate.promotion_is_enabled",
+                        return_value=False):
             resolved = resolve_surface_model(
                 "best_presentation",
                 "gpt-4o-mini",
@@ -117,7 +119,7 @@ class TrainingAndExportRefuseWhileTheirGatesAreShut(unittest.TestCase):
             "--val-file", "exports/val.jsonl",
             "--manifest", "exports/rel.json",
         ]
-        with mock.patch.object(Config, "MLC2_TRAINING_ENABLED", False), \
+        with mock.patch.object(finetune.Config, "MLC2_TRAINING_ENABLED", False), \
              mock.patch("sys.argv", argv):
             with self.assertRaises(SystemExit) as caught:
                 finetune.main()
@@ -133,7 +135,7 @@ class TrainingAndExportRefuseWhileTheirGatesAreShut(unittest.TestCase):
             "--val-out", "exports/val.jsonl",
             "--manifest-out", "exports/rel.json",
         ]
-        with mock.patch.object(Config, "MLC2_DATASET_RELEASES_ENABLED", False), \
+        with mock.patch.object(export.Config, "MLC2_DATASET_RELEASES_ENABLED", False), \
              mock.patch("sys.argv", argv):
             with self.assertRaises(SystemExit) as caught:
                 export.main()

@@ -85,24 +85,51 @@ class SurfaceContractTests(unittest.TestCase):
             contract_for_surface("copilot")
 
     def test_eval_override_is_scoped_and_does_not_touch_runtime_config(self):
-        clear_runtime_model_cache()
+        """The override is process-local, and it outranks the stored row.
+
+        LEGACY-1 changed the second half of this: outside the override, the
+        stored row is served only when the founder has opened the promotion
+        gate. Both postures are asserted, because "the gate is shut" and "the
+        gate is open" must each do exactly one thing.
+        """
+        from unittest.mock import patch
+
+        from config import Config
+
         calls: list[str] = []
         def get(key: str) -> str:
             calls.append(key)
             return "ft:promoted"
-        with evaluation_model_override("ideal_text", "ft:candidate"):
+
+        # A golden evaluation runs with the gate still SHUT — passing it is
+        # what the gate is opened on — so the override must win there.
+        clear_runtime_model_cache()
+        with patch.object(Config, "MLC2_PROMOTION_ENABLED", False):
+            with evaluation_model_override("ideal_text", "ft:candidate"):
+                self.assertEqual(
+                    resolve_surface_model(
+                        "best_presentation", "base", config_getter=get,
+                    ),
+                    "ft:candidate",
+                )
+            # Outside it: the row is inert and is not even read.
             self.assertEqual(
                 resolve_surface_model(
                     "best_presentation", "base", config_getter=get,
                 ),
-                "ft:candidate",
+                "base",
             )
-        self.assertEqual(
-            resolve_surface_model(
-                "best_presentation", "base", config_getter=get,
-            ),
-            "ft:promoted",
-        )
+        self.assertEqual(calls, [])
+
+        # With the gate open, the promoted model is served as before.
+        clear_runtime_model_cache()
+        with patch.object(Config, "MLC2_PROMOTION_ENABLED", True):
+            self.assertEqual(
+                resolve_surface_model(
+                    "best_presentation", "base", config_getter=get,
+                ),
+                "ft:promoted",
+            )
         self.assertEqual(calls, ["openai_surface_model_ideal_text"])
 
     def test_unregistered_surface_cannot_receive_promoted_model(self):

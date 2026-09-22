@@ -22,7 +22,6 @@ import pathlib
 import unittest
 from unittest import mock
 
-from config import Config
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 
@@ -78,7 +77,8 @@ class ReadingAModelKeyIsGated(unittest.TestCase):
         """R-13's own regression: the copilot/chat keys obey the same gate."""
         from services.openai_service import OpenAIService
 
-        with mock.patch.object(Config, "MLC2_PROMOTION_ENABLED", False), \
+        with mock.patch("services.runtime_model_gate.promotion_is_enabled",
+                        return_value=False), \
              mock.patch("services.db.db.get_runtime_config",
                         return_value="ft:gpt-4.1-mini:org:proj:smuggled"), \
              mock.patch("services.llm_client.build_openai_client", return_value=None):

@@ -19,7 +19,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from config import Config
 from services.ml_dpo_release import write_evaluation_report
 from services.ml_surface_contracts import SURFACES, contract_for_surface
 
@@ -75,8 +74,8 @@ class PromotionRecordsThePromptItWasGatedUnder(unittest.TestCase):
 
             # A stale or absent hash is refused, before any write.
             for argv in (base, base + ["--prompt-hash", "0" * 64]):
-                with mock.patch.object(Config, "MLC2_PROMOTION_ENABLED", True), \
-                     mock.patch("services.db.db.upsert_runtime_config") as spy, \
+                with mock.patch.object(promote.Config, "MLC2_PROMOTION_ENABLED", True), \
+                     mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
                      mock.patch("sys.argv", argv):
                     with self.assertRaises(SystemExit):
                         promote.main()
@@ -84,8 +83,8 @@ class PromotionRecordsThePromptItWasGatedUnder(unittest.TestCase):
 
             # The current hash is accepted, and stored beside the model id.
             argv = base + ["--prompt-hash", correct]
-            with mock.patch.object(Config, "MLC2_PROMOTION_ENABLED", True), \
-                 mock.patch("services.db.db.upsert_runtime_config") as spy, \
+            with mock.patch.object(promote.Config, "MLC2_PROMOTION_ENABLED", True), \
+                 mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
                  mock.patch("sys.argv", argv):
                 spy.return_value = {"key": "openai_surface_model_say_it_stronger"}
                 promote.main()
