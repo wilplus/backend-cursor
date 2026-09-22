@@ -253,6 +253,16 @@ def main() -> int:
                     "ON" if _bake_enabled() else "OFF")
     except Exception as e:
         logger.warning("stored bookmark set unreadable: %s", e)
+    # CONFIG-FIRST for the gate flags (J1-4/B-1, audit 2026-09-22). The
+    # worker needs this more than the web service, not less: it is the
+    # container that WRITES the lineage, and its Phase-1 mode is invisible
+    # from outside — the web one at least answers on a route. Same words as
+    # app.py so one filter finds both.
+    try:
+        from services.gate_flags import gate_summary
+        logger.info("gate flags %s", gate_summary())
+    except Exception as e:
+        logger.warning("gate flags unreadable: %s", e)
 
     if serves_pipeline():
         _warm_analysis_stack()

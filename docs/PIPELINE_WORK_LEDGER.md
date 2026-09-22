@@ -66,7 +66,7 @@ Run it rather than trust this table — it is a convenience, and it goes stale:
 
 | Contract line | State | Owner |
 |---|---|---|
-| a Take frozen under the old policy still shows its bookmarks | **xfail** | R-4 |
+| a Take frozen under the old policy still shows its bookmarks | green | — |
 | a Take frozen under its own policy is still filtered to it | green | — |
 | every answer decides an item one way or the other | green | — |
 | the lock gate asks the page's own question | green | — |
@@ -80,9 +80,10 @@ Run it rather than trust this table — it is a convenience, and it goes stale:
 | a later Take proposes and never applies | green | — |
 | the words a speaker waits on name work, not judgement | green | — |
 
-Two open, eleven held. The two are the audit findings that touch what a
-speaker sees; every other finding has its own regression test in its own file
-and does not appear here.
+One open, twelve held — and the table still undercounts, because #613 and
+#614 added two green lines without an entry here. F-4 is the last of the
+three the audit found against what a speaker sees; every other finding has
+its own regression test in its own file and does not appear here.
 
 ---
 
@@ -262,3 +263,91 @@ them and they are not re-derivable later:
   fair reading — but it is an inference, not a proof.
 
 Still not merged. The founder merges.
+### 2026-09-22 · WS2 · ws2-lineage-or-nothing · #616
+
+**Closed:** R-4, A-2, A-1's write half, B-1, J1-4
+**Contract lines flipped:** `test_a_take_frozen_under_the_old_policy_still_shows_its_bookmarks` xfail → passing
+**Contract lines added:** none
+**Broke and fixed:** nothing in the contract. I broke five unrelated tests in
+`tests/test_ideal_text_changes.py` on the way and fixed them — see below, it
+is the most useful line here.
+**Open for the founder:** A-1's SERVE half. The audit asks for it, your
+2026-09-20 decision forbids it, and the order of work sequences it after
+this. It is not in this PR. Also one TODO for copy, named below.
+
+Branched from `ec82a73`, not the audit's pin. Contract baseline before
+15 passed / 3 xfailed, after 16 passed / 2 xfailed on this branch alone.
+WS1 merged as #615 while this was open, so `origin/main` was merged in here
+and the two flips compose: **17 passed / 1 xfailed**, and F-4 is the only
+line left open.
+
+The two entries above and below each other conflicted in this file — both
+appended, both flipped a row in the convenience table. Resolved by keeping
+both verbatim in merge order and editing neither. The `#(pending)` in WS1's
+entry is stale and stays stale; that is what "never edit an earlier entry"
+costs, and it is cheaper than the alternative.
+
+**A-1 IS HALF DONE AND THAT IS DELIBERATE.** The audit's first prescribed
+change is "a lineage RPC failure returns `V3Unavailable` instead of serving
+without lineage", and it names the test that pins today's behaviour as
+wrong. But that behaviour is a founder decision recorded in
+`mlc3_first_client_feedback.py:431-460` and dated 2026-09-20: the lineage
+was FATAL until then, and one database state (`MLC3_ROLLOUT_NOT_ACTIVE`)
+therefore withheld every bookmark from every user on Takes whose frames were
+complete. The test the audit wants changed is labelled `# CHANGED CONTRACT
+(founder 2026-09-20)` and `# THE LOAD-BEARING HALF OF THE DECISION`.
+
+The auditor saw that rationale — it predates the audit's own pin — and rated
+it a blocker anyway; Job 1 re-verified and agreed. So this is a real
+disagreement between the audit and a founder decision, not a missed detail,
+and only the founder settles it. The order of work already sequences it
+("A-1's write first and only then the tightening of its serve"), so this PR
+does the write and leaves the serve alone. A-3's
+`processing_boundary_not_enforced` refusal is held for the same reason: it
+is the same tightening under another name, and inert anyway now that
+`PLF1_PROCESSING_AUTHORIZATION_MODE=enforce` is confirmed on every service.
+
+**R-4's named test already existed and proved nothing.** It ran with
+`arm_sid` unset, which makes the `elif` false as well, so it only ever
+showed that the FIRST branch is skipped and never reached the one that does
+the damage. A student GET always sets `arm_sid`. Strengthened onto the live
+path rather than duplicated. If you find another test whose name matches a
+finding, check what it actually drives before trusting it.
+
+**The coupling worth writing down.** `v3_replaced_changes` is the wrong
+question for the superseded branch. It says which policy produced the rows;
+what the branch needs is whether the frozen set ADDRESSES them. And a
+predicate for "addresses" must use the same identity rule as
+`filter_to_selected` — `(id, kind, source, feedback_family)`, all four
+non-empty. My first cut compared ids alone, which would have passed rows the
+filter then dropped for a differing `kind`: the original defect wearing a new
+predicate. `frozen_set_addresses` therefore lives in `take_feedback_set`
+beside the filter, not in the caller.
+
+**What I broke and fixed.** A scripted edit rewrote a helper's DEFINITION as
+well as its call sites, so `def _r4_v3_row()` became `def _v3_row(S1)` and
+shadowed the module's real `_v3_row` for every test in the file. Five
+unrelated tests went red; ruff did not flag the redefinition. They pass on
+`origin/main`, which is how I found it — when a test you did not touch goes
+red, stash and compare before assuming it was already broken.
+
+**Two fences caught me, and both are better for it.** Reading `os.environ`
+in `services/gate_flags.py` broke the Q-A5 rule, so the live read is one
+narrow `Config.current_env(names)` that takes a list and returns values and
+cannot become a general escape hatch. And `log.note` on the predating-freeze
+path would have put a marker in the response's `degraded` list, which the
+frontend shows — on a response where nothing degraded for the speaker. It
+logs instead.
+
+**One TODO for you, in the code at `ideal_text_changes.py`.** A Take whose
+freeze predates its rows now SHOWS its bookmarks, but
+`record_take_feedback_response_v1` will refuse every answer to them
+("feedback item is not in this Take's frozen set"). That is pre-existing and
+this change does not widen it, but a speaker tapping a mark that silently
+does nothing deserves to be told something. What it says is copy, and copy
+needs your sign-off.
+
+**Noticed, not fixed:** `#613` and `#614` merged without ledger entries, so
+the contract table above was two lines stale before I touched it (their two
+new lines are green and unrecorded). Not mine to write for them, but worth
+knowing that this file undercounts.

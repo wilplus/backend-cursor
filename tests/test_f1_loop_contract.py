@@ -135,19 +135,6 @@ def _run(db):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "R-4 (audit, 2026-09-22): on a Take frozen under V2 before the V3 "
-        "cutover, `_claim_or_filter` skips the superseded-set branch, falls "
-        "into the elif, re-claims the insert-once V2 row, and then filters "
-        "the served V3 rows to V2's three keys — which share no identity. "
-        "The served bookmarks are blanked on EVERY read, not intermittently. "
-        "The existing guard test passes only because it leaves `arm_sid` "
-        "empty, which makes the elif false as well. Owner: the workstream "
-        "that closes R-4. Flip this to a plain test when it does."
-    ),
-)
 def test_a_take_frozen_under_the_old_policy_still_shows_its_bookmarks():
     """THE ONE THE FOUNDER HAS FELT ALL WEEK.
 
@@ -158,6 +145,14 @@ def test_a_take_frozen_under_the_old_policy_still_shows_its_bookmarks():
     Serving those Takes no marks at all is strictly worse than serving marks
     whose answers cannot be validated: they were already in the second
     situation, and the first is a blank page.
+
+    Closed by WS2 (ws2-lineage-or-nothing). `_claim_or_filter` decides the
+    superseded branch by whether the frozen set ADDRESSES the served rows —
+    `take_feedback_set.frozen_set_addresses`, the same identity rule
+    `filter_to_selected` uses — instead of by the `v3_replaced_changes`
+    flag. A set that names none of them predates them, so the rows serve
+    whole and nothing re-claims the insert-once row. Was xfail(strict) from
+    2026-09-22 until then.
     """
     db = _ContractDb()
     run = _run(db)
