@@ -66,11 +66,13 @@ class RecordingDatabase:
     def __init__(self, stored=True):
         self.stored = stored
         self.writes: list[tuple] = []
+        self.windows: list[int] = []
 
     def write_ideal_text_feedback_bake(
-        self, arc_id, actor_id, snapshot_id, payload,
+        self, arc_id, actor_id, snapshot_id, payload, computed_over_ms=0,
     ):
         self.writes.append((arc_id, actor_id, snapshot_id, payload))
+        self.windows.append(computed_over_ms)
         return self.stored
 
 
@@ -427,15 +429,17 @@ class ServingDatabase:
         self.stored = stored
         self.reads: list[tuple] = []
         self.writes: list[tuple] = []
+        self.windows: list[int] = []
 
     def read_ideal_text_feedback_bake(self, arc_id, actor_id, snapshot_id):
         self.reads.append((arc_id, actor_id, snapshot_id))
         return self.baked
 
     def write_ideal_text_feedback_bake(
-        self, arc_id, actor_id, snapshot_id, payload,
+        self, arc_id, actor_id, snapshot_id, payload, computed_over_ms=0,
     ):
         self.writes.append((arc_id, actor_id, snapshot_id, payload))
+        self.windows.append(computed_over_ms)
         return self.stored
 
 
@@ -912,6 +916,41 @@ def test_the_flag_gates_the_backfill_too(monkeypatch):
         database, ARC, ACTOR, SNAPSHOT, CORE) == BLOCK
     assert database.reads == []
     assert database.writes == []
+
+
+# ── the bake is dated from when its computation STARTED (0351) ─────────────
+
+
+def test_the_writer_is_told_how_long_the_manager_took(monkeypatch):
+    """The window is measured around the Manager, not guessed at the write.
+
+    The stored row is dated from the START of it, because an answer committed
+    while the Manager ran was never seen by the block it produced. A bake
+    dated at the write outlives that answer and puts a judged bookmark back
+    on the page — the reload inconsistency, told as a race.
+    """
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    ticks = iter([100.0, 100.4])
+
+    import routes.v2.explore_ideal_text as route
+    monkeypatch.setattr(bake, "perf_counter", lambda: next(ticks))
+    monkeypatch.setattr(route, "_tracked_changes_block",
+                        lambda *a, **k: BLOCK)
+    database = ServingDatabase(None)
+    bake.changes_block_for(database, ARC, ACTOR, SNAPSHOT, CORE)
+    assert database.windows == [400]
+
+
+def test_the_queued_job_measures_its_own_window_too(monkeypatch):
+    """The end-of-run job runs the same Manager over the same seconds, and
+    the founder can answer a Take-1 bookmark while it is still running."""
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    ticks = iter([10.0, 32.0])
+    monkeypatch.setattr(bake, "perf_counter", lambda: next(ticks))
+    _block_returns(monkeypatch, BLOCK)
+    database = RecordingDatabase()
+    assert bake.bake_for_snapshot(database, ARC, ACTOR, PUBLISHED) is True
+    assert database.windows == [22_000]
 
 
 def test_a_backfill_that_explodes_still_answers_the_reader(monkeypatch):

@@ -6998,9 +6998,17 @@ class DatabaseService:
 
     def write_ideal_text_feedback_bake(
         self, arc_id: str, actor_id: str, document_snapshot_id: str,
-        payload: dict,
+        payload: dict, computed_over_ms: int = 0,
     ) -> bool:
         """Store the Manager's block against one immutable document.
+
+        ``computed_over_ms`` is how long the computation this block came out
+        of actually took, measured by the caller. The row is dated from the
+        START of that window (0351), because an answer committed while the
+        Manager was running was NOT seen by it — and a bake dated at the write
+        would outlive that answer and put a decided bookmark back on the page.
+        Measured on the caller's own monotonic clock and sent as a duration,
+        so no two machines' wall clocks are ever compared.
 
         Best-effort by contract: a failure here costs the next reader one live
         computation, which is what every reader did before this existed. It
@@ -7017,6 +7025,7 @@ class DatabaseService:
                     "p_actor_id": str(actor_id),
                     "p_document_snapshot_id": str(document_snapshot_id),
                     "p_payload": payload,
+                    "p_computed_over_ms": max(int(computed_over_ms or 0), 0),
                 }).execute()
             return isinstance(result.data, dict)
         except Exception as error:

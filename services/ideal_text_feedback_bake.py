@@ -36,6 +36,7 @@ untouched (L1); the Manager still arbitrates (L2); no provenance moves (L3).
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from typing import Any, Mapping, TypeGuard
 
 logger = logging.getLogger(__name__)
@@ -144,11 +145,16 @@ def changes_block_for(
     if is_a_bake(baked):
         return _with_fresh_playback(baked)
     from routes.v2.explore_ideal_text import _tracked_changes_block
+    # THE CLOCK STARTS BEFORE THE MANAGER, not at the write (0351). An answer
+    # committed while this runs was not seen by it, and a row dated at the
+    # write would outlive that answer and serve a decided bookmark back.
+    _started = perf_counter()
     block = _tracked_changes_block(
         str(arc_id), str(core.get("text") or ""), str(actor_id),
         str(core.get("latest_take_session_id") or ""),
         review_version=core.get("version"))
-    _backfill(database, arc_id, actor_id, document_snapshot_id, block)
+    _backfill(database, arc_id, actor_id, document_snapshot_id, block,
+              int((perf_counter() - _started) * 1000))
     return block
 
 
@@ -221,7 +227,7 @@ def _with_fresh_playback(block: dict) -> dict:
 
 def _backfill(
     database: Any, arc_id: str, actor_id: str, document_snapshot_id: str,
-    block: Any,
+    block: Any, computed_over_ms: int = 0,
 ) -> None:
     """Keep the block this reader just paid for, so nobody pays again.
 
@@ -250,7 +256,8 @@ def _backfill(
         return
     try:
         database.write_ideal_text_feedback_bake(
-            str(arc_id), str(actor_id), str(document_snapshot_id), block)
+            str(arc_id), str(actor_id), str(document_snapshot_id), block,
+            computed_over_ms)
     except Exception as error:
         logger.warning("ideal-text feedback backfill failed arc=%s: %s",
                        arc_id, error)
@@ -375,10 +382,12 @@ def bake_for_snapshot(
         # two would drift. It touches no Flask request state, so it runs just
         # as well inside the worker as inside a GET.
         from routes.v2.explore_ideal_text import _tracked_changes_block
+        started = perf_counter()
         block = _tracked_changes_block(
             str(arc_id), served_text, str(actor_id), take_session_id,
             review_version=version,
         )
+        computed_over_ms = int((perf_counter() - started) * 1000)
     except Exception as error:
         logger.warning("ideal-text feedback bake compute failed arc=%s: %s",
                        arc_id, error)
@@ -410,7 +419,7 @@ def bake_for_snapshot(
         # whole surface.
         return False
     stored = database.write_ideal_text_feedback_bake(
-        str(arc_id), str(actor_id), snapshot_id, block)
+        str(arc_id), str(actor_id), snapshot_id, block, computed_over_ms)
     if stored:
         logger.info(
             "ideal-text feedback baked arc=%s snapshot=%s changes=%d "
