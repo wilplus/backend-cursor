@@ -450,3 +450,54 @@ class NoScoreReachesTheSpeaker(unittest.TestCase):
         for banned in ("charisma", "stress score", "power_score ="):
             with self.subTest(banned=banned):
                 self.assertNotIn(f'"{banned}"', source)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  8. EVERY SERVICE THAT CAN DROP A WRITE SAYS WHAT IT READ
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class EveryServiceReportsItsOwnConfig(unittest.TestCase):
+    """CONFIG-FIRST, as a test rather than a habit.
+
+    Railway variables are per service, and the worst case is a WRITER
+    service missing one: the app looks healthy while background work
+    silently drops what it should be saving. The rule says verify from each
+    service's boot log rather than the panel, which only works if each
+    service actually prints it.
+
+    It did not. The founder searched the worker's log for the line on
+    2026-09-22 and found nothing, because the line lived in `app.py` and the
+    worker runs `worker.py`. The one service whose setting is invisible from
+    outside was the one that could not report it.
+    """
+
+    ENTRYPOINTS = ("app.py", "worker.py")
+
+    def test_both_entrypoints_report_the_stored_bookmark_set(self):
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parent.parent
+        for name in self.ENTRYPOINTS:
+            with self.subTest(entrypoint=name):
+                body = (root / name).read_text(encoding="utf-8")
+                self.assertIn("stored bookmark set is", body)
+                self.assertIn("_bake_enabled", body)
+
+    def test_they_say_it_in_the_same_words(self):
+        """One search across both services, or the check is two checks and
+        somebody runs only the easy one."""
+        import pathlib
+        import re
+
+        root = pathlib.Path(__file__).resolve().parent.parent
+        phrasings = set()
+        for name in self.ENTRYPOINTS:
+            body = (root / name).read_text(encoding="utf-8")
+            # Line-scoped: a comment two paragraphs away must not be read
+            # as one enormous string literal.
+            phrasings.update(re.findall(
+                r'"([^"\n]*stored bookmark set[^"\n]*)"', body))
+        self.assertEqual(len(phrasings), 2, phrasings)  # the ON/OFF line
+                                                        # and the unreadable
+                                                        # one, once each

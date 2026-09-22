@@ -331,10 +331,10 @@ def _startup_cleanup():
     # on and a worker with it off looks healthy and silently stores nothing.
     try:
         from services.ideal_text_feedback_bake import _bake_enabled
-        _logger.info("Startup: stored bookmark set is %s",
+        _logger.info("stored bookmark set is %s",
                      "ON" if _bake_enabled() else "OFF")
     except Exception as exc:
-        _logger.warning("Startup: stored bookmark set unreadable: %s", exc)
+        _logger.warning("stored bookmark set unreadable: %s", exc)
 
 
 with app.app_context():
