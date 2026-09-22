@@ -232,7 +232,7 @@
     "db_calls": 6
   },
   "routes/v2/coach_guidance_delivery.py:v2_coach_inline_exercise_draft": {
-    "lines": 114,
+    "lines": 108,
     "db_calls": 2
   },
   "routes/v2/coach_guidance_delivery.py:v2_coach_inline_exercise_playback": {
@@ -272,7 +272,7 @@
     "db_calls": 4
   },
   "routes/v2/explore_ideal_text.py:v2_explore_get_ideal_text_enrichment": {
-    "lines": 172,
+    "lines": 171,
     "db_calls": 5
   },
   "routes/v2/explore_ideal_text.py:v2_explore_get_recording_roots": {

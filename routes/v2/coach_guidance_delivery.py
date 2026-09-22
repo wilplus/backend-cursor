@@ -78,23 +78,23 @@ def _store_inline_coach_media(
     reveal_access_id: str,
     authorization_snapshot_id: str,
     idempotency: str,
-    seed_prefix: str = "coach-inline-general",
-    key_prefix: str = "mlc3-coach-inline-general",
-    purpose_id: str = "coach_review",
-    content_authority: str = "case-scoped-coach-general-guidance",
-    provenance_class: str = "user_scoped",
-    error_prefix: str = "COACH_INLINE_GENERAL",
+    seed_prefix: str,
+    key_prefix: str,
+    purpose_id: str,
+    content_authority: str,
+    provenance_class: str,
+    error_prefix: str,
 ) -> tuple[Any, dict[str, Any], str]:
     """Store one inline coach video behind the D5 boundary.
 
-    Shared by the case-scoped general-guidance upload and the personalized
-    exercise-draft upload: identical reserve/upload-event/finalize/bind RPC
-    sequence, differing only in the object-key namespace and the
-    purpose/content-authority/provenance literals each caller passes.
-    Returns ``(stored, finalized, media_binding_id)`` — both callers derived
-    ``media_binding_id`` from ``finalized`` identically, so it is computed
-    once here; ``stored``/``finalized`` remain for whatever else each caller
-    needs, exactly as before this was shared.
+    Shared by the two wrappers below (general-guidance, exercise-draft):
+    identical reserve/upload-event/finalize/bind RPC sequence, differing
+    only in the object-key namespace and the purpose/content-authority/
+    provenance literals each wrapper passes. Returns ``(stored, finalized,
+    media_binding_id)`` — both callers derived ``media_binding_id`` from
+    ``finalized`` identically, so it is computed once here; ``stored``/
+    ``finalized`` remain for whatever else each caller needs, exactly as
+    before this was shared.
     """
     body = video.read(Config.MLC3_PILOT_MAX_VIDEO_MB * 1024 * 1024 + 1)
     content_type = require_video_upload(
@@ -213,6 +213,54 @@ def _store_inline_coach_media(
     )
     media_binding_id = _uuid(finalized.get("id"), "media_binding_id")
     return stored, finalized, media_binding_id
+
+
+def _store_inline_general_guidance_media(
+    *,
+    video: Any,
+    reviewer: str,
+    reveal_access_id: str,
+    authorization_snapshot_id: str,
+    idempotency: str,
+) -> tuple[Any, dict[str, Any], str]:
+    """The case-scoped general-guidance inline upload's own D5 media store."""
+    return _store_inline_coach_media(
+        video=video,
+        reviewer=reviewer,
+        reveal_access_id=reveal_access_id,
+        authorization_snapshot_id=authorization_snapshot_id,
+        idempotency=idempotency,
+        seed_prefix="coach-inline-general",
+        key_prefix="mlc3-coach-inline-general",
+        purpose_id="coach_review",
+        content_authority="case-scoped-coach-general-guidance",
+        provenance_class="user_scoped",
+        error_prefix="COACH_INLINE_GENERAL",
+    )
+
+
+def _store_inline_exercise_draft_media(
+    *,
+    video: Any,
+    reviewer: str,
+    reveal_access_id: str,
+    authorization_snapshot_id: str,
+    idempotency: str,
+) -> tuple[Any, dict[str, Any], str]:
+    """The personalized exercise-draft inline upload's own D5 media store."""
+    return _store_inline_coach_media(
+        video=video,
+        reviewer=reviewer,
+        reveal_access_id=reveal_access_id,
+        authorization_snapshot_id=authorization_snapshot_id,
+        idempotency=idempotency,
+        seed_prefix="coach-inline",
+        key_prefix="mlc3-coach-inline",
+        purpose_id="personalized_exercise_recommendation",
+        content_authority="user-source-dependent-coach-draft",
+        provenance_class="user_source_dependent",
+        error_prefix="COACH_INLINE",
+    )
 
 
 @v2_bp.get("/coach/guidance/batches/<arc_id>")
@@ -446,7 +494,7 @@ def v2_coach_guidance_attachment():
         media_binding_id = None
         finalized: dict[str, Any] = {}
         if video is not None and inline_general:
-            _stored, _finalized, media_binding_id = _store_inline_coach_media(
+            _stored, _finalized, media_binding_id = _store_inline_general_guidance_media(
                 video=video,
                 reviewer=reviewer,
                 reveal_access_id=reveal_access_id,
@@ -671,18 +719,12 @@ def v2_coach_inline_exercise_draft():
             or video is None
         ):
             raise ValueError("draft fields invalid")
-        stored, finalized, binding_id = _store_inline_coach_media(
+        stored, finalized, binding_id = _store_inline_exercise_draft_media(
             video=video,
             reviewer=reviewer,
             reveal_access_id=reveal_access_id,
             authorization_snapshot_id=authorization_snapshot_id,
             idempotency=idempotency,
-            seed_prefix="coach-inline",
-            key_prefix="mlc3-coach-inline",
-            purpose_id="personalized_exercise_recommendation",
-            content_authority="user-source-dependent-coach-draft",
-            provenance_class="user_source_dependent",
-            error_prefix="COACH_INLINE",
         )
         # The binding RPC derives and enforces the exact acquisition principal;
         # never trust a browser-provided principal. If registration did not

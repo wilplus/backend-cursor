@@ -256,16 +256,22 @@ def test_route_upload_is_r2_only_and_durable_before_write():
     # The exercise-draft route shares its upload path with the general-guidance
     # route (_store_inline_coach_media, audit C.7 dedup) rather than repeating
     # the reserve/write/finalize sequence inline; assert the invariant against
-    # that shared function's body, and that the route actually calls it.
+    # that shared function's body, and that the route actually calls it —
+    # through its own purpose-named wrapper (_store_inline_exercise_draft_media,
+    # audit C.7 follow-up: no caller selects the seed/key/purpose/authority/
+    # provenance/error literals itself, or relies on a hidden default).
     assert "require_coach_video_r2()" in ROUTE
     assert "reserve_coach_inline_upload" in ROUTE
     helper_start = ROUTE.index("def _store_inline_coach_media")
     assert ROUTE.index("reserve_coach_inline_upload", helper_start) < ROUTE.index(
         "store_exact_object", helper_start
     )
-    assert "_store_inline_coach_media(" in ROUTE[
+    assert "_store_inline_exercise_draft_media(" in ROUTE[
         ROUTE.index("def v2_coach_inline_exercise_draft"):
     ]
+    wrapper_start = ROUTE.index("def _store_inline_exercise_draft_media")
+    wrapper_body = ROUTE[wrapper_start:ROUTE.index("def ", wrapper_start + 1)]
+    assert "_store_inline_coach_media(" in wrapper_body
     assert "write_started" in ROUTE
     assert "write_acknowledged" in ROUTE
     assert '"finalized"' in ROUTE
