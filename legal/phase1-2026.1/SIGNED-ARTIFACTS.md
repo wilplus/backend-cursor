@@ -16,17 +16,35 @@ unsigned render is never the right value.
 | # | `object_key` | signed | `sha256` of the signed PDF |
 |---|---|---|---|
 | 01 | `phase1-2026.1/legal/product-legal-approval-v1.0.pdf` | 2026-09-19 | `2ca882c4314d7e1b805940c0f5af50b7736b7b2cfa5dc63704a4fb0c99784a6b` |
-| 02 | `phase1-2026.1/legal/power-score-classification-v1.0.pdf` | **pending re-signature** | — |
-| 03 | `phase1-2026.1/legal/article-50-assessment-v1.0.pdf` | **pending re-signature** | — |
+| 02 | `phase1-2026.1/legal/power-score-classification-v1.0.pdf` | 2026-09-22 | `9e31dd4105a2dcb1394c6bf22b700ca418df9b9b123cdd837df06af3cbdfbdc5` |
+| 03 | `phase1-2026.1/legal/article-50-assessment-v1.0.pdf` | 2026-09-22 | `f79a5114e0047ca8b15a60b77023cde5bab79669f510120a8166f82359d70fc3` |
 | 06 | `phase1-2026.1/legal/retention-schedule-v1.0.pdf` | 2026-09-19 | `73d078ea110c4419fc1c8b5322f90881716e66141cac5fa3a4221f0aa72a0c69` |
 
 `01` and `06` were rendered at `4e92203` and their markdown is byte-identical at
 `6f7ded6`, so those signatures stand and nothing about them needs redoing.
 
-**Nothing may be registered until all four rows carry a hash.** Two are blank
-and that is the honest state.
+`02` and `03` were rendered at `8ddaab2` by `scripts/render_doc_pdf.py` and
+signed on 2026-09-22 at 21:02:08 UTC. Both signatures are PAdES
+(`/SubFilter /ETSI.CAdES.detached`), and in each case the unsigned render is a
+**byte-identical prefix** of the signed file — so what was signed is exactly
+what was rendered, with the signature appended and nothing altered beneath it.
 
-## Why 02 and 03 are being re-signed
+**All four rows now carry a hash.** That removes the blocker `04` §5 names, and
+it removes only that one. Two things it does NOT do, both worth saying here
+because this table is what people check:
+
+- **It does not make either determination counsel-reviewed.** Both `02` and `03`
+  still say so on their own first page. The re-signature fixed a citation and a
+  path count; it changed no determination.
+- **It does not clear `02`'s own condition**, which is the operative one now:
+  the determination is *"conditional on counsel confirming before any person
+  other than the founder records."* Registering the policy and letting a
+  non-founder record are different acts, and only the first is unblocked.
+
+The signed PDFs still have to reach `object_key` in storage. A hash recorded
+here against a file nobody uploaded is a claim, not a record.
+
+## Why 02 and 03 were re-signed (closed 2026-09-22)
 
 Neither is a change of substance to what the founder decided. Both are
 corrections that would have made a signed document say something untrue.
