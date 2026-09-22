@@ -72,8 +72,23 @@ def finalize_later_take_review(
     before = confirmed_ideal_text(
         database.ideal_text.get_coach_arc_ideal_text(str(arc_id)))
     if before is None:
-        raise TakeReviewFinalizationError(
-            take_session_id, "canonical Ideal Text is missing")
+        # SINCE OPTION A (2026-09-22) THIS MEANS THE CREATION JUST FAILED,
+        # not that a later Take is forbidden from having one. The worker now
+        # builds the document in this same run whenever the Project has none,
+        # so reaching here with nothing means that build did not stick.
+        #
+        # Raising the creation failure rather than a generic finalization
+        # error is what unsticks the screen. A `TakeReviewFinalizationError`
+        # is an ordinary RuntimeError to the queue, so it burned three
+        # attempts re-running the WHOLE pipeline — re-transcribing the audio
+        # each time — for a fault no retry can fix, and the Take sat on
+        # "processing" throughout. `IdealTextUnconfirmedError` is already a
+        # terminal outcome everywhere: it is never retried, it writes
+        # `failed_ideal_text_unconfirmed`, and it shows the speaker the one
+        # true sentence — we processed your take, but couldn't create your
+        # Ideal Text — with a retry that rebuilds only the document.
+        from services.ideal_text_confirmation import IdealTextUnconfirmedError
+        raise IdealTextUnconfirmedError(str(arc_id))
     old_version = _take_number(before.get("version")) or 1
     owner_edit_before = database.get_user_ideal_edit(
         str(arc_id), str(owner_user_id))

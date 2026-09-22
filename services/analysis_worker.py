@@ -272,11 +272,21 @@ def _run_full_analysis_impl(
         # as a take. "Only a spoken take is a real take" is now enforced
         # here, not just in the counters.
         if arc_id and recording_kind == "spoken":
-            _initial_take = (
-                isinstance(take_index, int)
-                and not isinstance(take_index, bool)
-                and take_index == 1
+            # WHICH TAKE CREATES THE DOCUMENT (founder decision 2026-09-22,
+            # Option A). Take 1 always does. A later Take does only when a
+            # database read proves the Project still has none — which is the
+            # L1 guard itself, since a Take that creates nothing over nothing
+            # cannot overwrite words that do not exist. `take_creates_
+            # ideal_text` carries the full argument.
+            from services.ideal_text_confirmation import (
+                take_creates_ideal_text,
             )
+            _initial_take = take_creates_ideal_text(db, arc_id, take_index)
+            if _initial_take and take_index != 1:
+                logger.warning(
+                    "lab: project has no Ideal Text at take %s — this take "
+                    "creates it arc=%s sid=%s", take_index, arc_id, session_id,
+                )
             _confirmed_row = None
             try:
                 from services.ideal_text_confirmation import (

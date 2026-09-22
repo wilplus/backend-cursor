@@ -368,19 +368,28 @@ def enqueue_ideal_text_retry_job(
     arc_id: str,
     take_index: int,
 ) -> Optional[Dict[str, Any]]:
-    """Enqueue Take 1 document generation from stored analysis artifacts.
+    """Enqueue document generation from stored analysis artifacts.
 
     The deliberately tiny payload is the architectural boundary: it has no
     bucket, storage key, recording id, filename, or audio bytes, so this job
     cannot upload, download, or transcribe the take. Repeated taps collapse on
     one active dedup key; a later tap after terminal failure creates one fresh
     attempt without touching the original full-pipeline job.
+
+    NOT TAKE 1 BY NAME since Option A (2026-09-22). Whichever Take was
+    creating the document may retry creating it — otherwise the recovery
+    path hands a later Take the same dead end the option exists to remove:
+    a terminal card offering a retry that the queue refuses. The caller has
+    already established that the Project has no document; the assembler
+    itself is idempotent and returns the existing canonical row untouched
+    if one appeared meanwhile.
     """
     if (
         not session_id
         or not arc_id
         or isinstance(take_index, bool)
-        or take_index != 1
+        or not isinstance(take_index, int)
+        or take_index < 1
         or not job_queue.queue_configured()
     ):
         return None
@@ -389,7 +398,7 @@ def enqueue_ideal_text_retry_job(
         "session_id": str(session_id),
         "user_id": str(user_id) if user_id else None,
         "arc_id": str(arc_id),
-        "take_index": 1,
+        "take_index": int(take_index),
     }
     canonical_attempt = db.recordings.get_recording_attempt(str(session_id))
     if (isinstance(canonical_attempt, dict)
@@ -786,16 +795,18 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _run_ideal_text_retry(job: Dict[str, Any]) -> Dict[str, Any]:
-    """Regenerate only Take 1's document from persisted transcript artifacts."""
+    """Regenerate only the Project's document from persisted transcript
+    artifacts. Whichever Take was creating it may run this (Option A,
+    2026-09-22); it still never re-enters audio, upload or transcription."""
     job_id = str(job.get("id"))
     payload = dict(job.get("payload") or {})
     session_id = str(payload.get("session_id") or "")
     arc_id = str(payload.get("arc_id") or "")
     take_index = payload.get("take_index")
     if (not session_id or not arc_id or isinstance(take_index, bool)
-            or take_index != 1):
+            or not isinstance(take_index, int) or take_index < 1):
         raise ConfigMismatchError(
-            "ideal-text retry requires one Take 1 session and project"
+            "ideal-text retry requires one spoken Take session and project"
         )
     db.update_processing_job(job_id, {
         "stage": "ideal_text", "percent": 90,

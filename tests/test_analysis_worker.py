@@ -175,7 +175,12 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
             _SID,
         )
 
-    def test_later_take_never_calls_initial_document_builder(self):
+    def _later_take_with_document(self, existing):
+        """Run one Take 2 and report whether it called the document builder.
+
+        `existing` is what `coach_arc_ideal_text` holds for the Project —
+        the single fact that now decides.
+        """
         captured = {}
         with patch.dict(sys.modules, {
             "services.lab_recording": self._fake_lab_module(captured),
@@ -183,19 +188,43 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
             "services.ideal_text_confirmation."
             "build_initial_ideal_text_from_stored_artifacts",
         ) as build:
-            aw.run_full_analysis(
-                session_id=_SID,
-                user_id=None,
-                recording_id=_REC,
-                audio_bytes=b"x",
-                filename="lab.webm",
-                session_context=None,
-                parent_audio_url="https://a",
-                recording_kind="spoken",
-                arc_id="arc-1",
-                take_index=2,
-            )
+            # The real predicate runs; only what the database holds is
+            # faked, so this exercises the rule rather than restating it.
+            with patch(
+                "services.ideal_text_confirmation.confirmed_ideal_text",
+                side_effect=lambda row: existing,
+            ):
+                aw.run_full_analysis(
+                    session_id=_SID,
+                    user_id=None,
+                    recording_id=_REC,
+                    audio_bytes=b"x",
+                    filename="lab.webm",
+                    session_context=None,
+                    parent_audio_url="https://a",
+                    recording_kind="spoken",
+                    arc_id="arc-1",
+                    take_index=2,
+                )
+        return build
+
+    def test_a_later_take_never_rebuilds_a_document_that_exists(self):
+        """THE L1 PROOF AT THE WORKER (Option A, founder 2026-09-22).
+
+        A later Take may now create the document, but only into a hole.
+        Where the Project has canonical words, the builder is not called —
+        which is the whole of L1 as this file can state it.
+        """
+        build = self._later_take_with_document({"auto_text": "Canonical"})
         build.assert_not_called()
+
+    def test_a_later_take_DOES_create_a_document_that_is_missing(self):
+        """The case that was impossible before, and left one real Project
+        showing "processing" for eleven days: Take 1 never confirmed an
+        Ideal Text, only Take 1 could create one, and Take 1 was over."""
+        build = self._later_take_with_document(None)
+        build.assert_called_once()
+        self.assertEqual(build.call_args.kwargs["source_session_id"], _SID)
 
     def test_later_take_result_fires_only_after_the_full_worker(self):
         src = inspect.getsource(aw.run_full_analysis)

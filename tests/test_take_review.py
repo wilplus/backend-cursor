@@ -9,6 +9,7 @@ from services.take_feedback_set import (
     filter_to_selected,
     selected_keys,
 )
+from services.ideal_text_confirmation import IdealTextUnconfirmedError
 from services.take_review import (
     TakeReviewFinalizationError,
     finalize_later_take_review,
@@ -108,11 +109,28 @@ class TakeReviewFinalizationTests(unittest.TestCase):
                 take_index=2,
             )
 
-    def test_requires_existing_canonical_text(self):
+    def test_a_missing_document_here_is_a_CREATION_failure_now(self):
+        """WHAT THIS REFUSAL MEANS CHANGED (Option A, founder 2026-09-22).
+
+        It used to mean "a later Take may not have an Ideal Text", and it
+        was a dead end: only Take 1 could ever create one. The worker now
+        builds the document in this same run whenever the Project has none,
+        so reaching here with nothing means that build did not stick.
+
+        The type is what unsticks the screen. `TakeReviewFinalizationError`
+        is an ordinary RuntimeError to the queue, so it burned three
+        attempts re-running the whole pipeline — re-transcribing the audio
+        each time — for a fault no retry can fix, and the Take sat on
+        "processing" throughout. That is exactly what the founder found on a
+        Project eleven days after its Take 1 failed.
+        `IdealTextUnconfirmedError` is terminal everywhere: never retried,
+        writes `failed_ideal_text_unconfirmed`, and shows the one true
+        sentence with a retry that rebuilds only the document.
+        """
         database = _ReviewDb()
         database.ideal["auto_text"] = ""
         database.ideal["text"] = ""
-        with self.assertRaises(TakeReviewFinalizationError):
+        with self.assertRaises(IdealTextUnconfirmedError):
             finalize_later_take_review(
                 database,
                 arc_id="arc-1",
@@ -120,6 +138,23 @@ class TakeReviewFinalizationTests(unittest.TestCase):
                 take_session_id="take-2",
                 take_index=2,
             )
+
+    def test_it_is_not_reported_as_an_ordinary_finalization_fault(self):
+        # The two are deliberately different outcomes, so a test that only
+        # asked "did it raise" would not notice the type going back.
+        database = _ReviewDb()
+        database.ideal["auto_text"] = ""
+        database.ideal["text"] = ""
+        try:
+            finalize_later_take_review(
+                database, arc_id="arc-1", owner_user_id="user-1",
+                take_session_id="take-2", take_index=2,
+            )
+        except IdealTextUnconfirmedError as raised:
+            self.assertNotIsInstance(raised, TakeReviewFinalizationError)
+            self.assertEqual(raised.arc_id, "arc-1")
+        else:  # pragma: no cover - the assertion above owns the outcome
+            self.fail("a missing document must not pass finalization")
 
     def test_success_requires_snapshot_readback(self):
         database = _ReviewDb()

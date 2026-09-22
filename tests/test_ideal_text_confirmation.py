@@ -175,7 +175,7 @@ class IdealTextConfirmationTests(unittest.TestCase):
         release.set()
         self.assertLess(elapsed, 0.2)
 
-    def test_terminal_state_and_card_are_take_one_only(self):
+    def test_terminal_state_and_card_name_the_creating_take(self):
         database = Mock()
         database.takes.set_session_analysis_state.return_value = True
         with patch(
@@ -197,13 +197,18 @@ class IdealTextConfirmationTests(unittest.TestCase):
         fire.assert_called_once_with(
             database, "user-1", "arc-1", SID, 1)
 
+        # NO LONGER TAKE 1 ONLY (Option A, 2026-09-22). A later Take that
+        # found the Project with no document is creating it, so the same
+        # terminal state and the same sentence are the true ones for it.
+        # What still writes nothing is a value that is not a Take at all,
+        # asserted in `TheTerminalStateBelongsToWhicheverTakeWasCreating`.
         database.reset_mock()
         self.assertFalse(confirmation.mark_ideal_text_unconfirmed(
             database,
             session_id=SID,
             user_id="user-1",
             arc_id="arc-1",
-            take_index=2,
+            take_index=0,
         ))
         database.takes.set_session_analysis_state.assert_not_called()
 
@@ -309,3 +314,151 @@ class IdealTextRetryJobTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WhichTakeCreatesTheDocumentTests(unittest.TestCase):
+    """Option A, the founder's decision of 2026-09-22.
+
+    A Project whose Take 1 never confirmed an Ideal Text could never recover:
+    only Take 1 was allowed to create one, Take 1 was over, and every later
+    Take was refused for the document's absence. One real Project sat like
+    that for eleven days, showing "processing" the whole time.
+
+    The question is now "does this Project still have no document" rather
+    than "which Take is this" — and the read that answers it IS the L1
+    guard, because the only path to yes for a later Take requires the
+    canonical row to be absent.
+    """
+
+    @staticmethod
+    def _db(row):
+        database = Mock()
+        database.ideal_text.get_coach_arc_ideal_text.return_value = row
+        return database
+
+    def test_take_one_creates_it_as_it_always_did(self):
+        database = self._db(None)
+        self.assertTrue(
+            confirmation.take_creates_ideal_text(database, "arc-1", 1))
+        # And without even asking: Take 1 is the creator by definition, so
+        # a database that is down cannot stop it.
+        database.ideal_text.get_coach_arc_ideal_text.assert_not_called()
+
+    def test_a_later_take_creates_it_when_the_project_has_none(self):
+        # THE RECOVERY. This is the case that was impossible before.
+        self.assertTrue(confirmation.take_creates_ideal_text(
+            self._db(None), "arc-1", 3))
+
+    def test_a_later_take_creates_it_when_the_row_is_empty(self):
+        # A row with no words is not a document — the same rule
+        # `confirmed_ideal_text` has always applied.
+        self.assertTrue(confirmation.take_creates_ideal_text(
+            self._db({"auto_text": "   ", "text": ""}), "arc-1", 2))
+
+    def test_a_later_take_NEVER_creates_it_when_one_exists(self):
+        """THE L1 PROOF, and the reason this change is safe at all.
+
+        L1 says a later Take may never rebuild or silently overwrite the
+        canonical words. This says it in the one place that decides: a
+        Project that has a document answers no, for every Take, forever.
+        """
+        for row in (
+            {"auto_text": "Machine-made words"},
+            {"text": "Coach-written words"},
+            {"auto_text": "", "text": "The words the speaker edited"},
+        ):
+            with self.subTest(row=row):
+                self.assertFalse(confirmation.take_creates_ideal_text(
+                    self._db(row), "arc-1", 4))
+
+    def test_a_read_that_fails_protects_the_document(self):
+        # Conservative in the direction that cannot destroy anything: an
+        # unreadable row answers no, which is exactly the behaviour every
+        # later Take had before this existed.
+        database = Mock()
+        database.ideal_text.get_coach_arc_ideal_text.side_effect = \
+            RuntimeError("database is down")
+        self.assertFalse(
+            confirmation.take_creates_ideal_text(database, "arc-1", 2))
+
+    def test_a_take_with_no_project_creates_nothing(self):
+        self.assertFalse(
+            confirmation.take_creates_ideal_text(self._db(None), "", 2))
+
+    def test_nonsense_take_indexes_create_nothing(self):
+        for index in (0, -1, None, "1", True, False, 1.0):
+            with self.subTest(index=index):
+                self.assertFalse(confirmation.take_creates_ideal_text(
+                    self._db(None), "arc-1", index))
+
+
+class TheTerminalStateBelongsToWhicheverTakeWasCreatingTests(unittest.TestCase):
+    """"We processed your take, but couldn't create your Ideal Text" is as
+    true of the Take 3 that found the Project had none as it is of Take 1."""
+
+    def test_a_recovering_later_take_gets_the_same_terminal_state(self):
+        database = Mock()
+        database.takes.set_session_analysis_state.return_value = True
+        self.assertTrue(confirmation.mark_ideal_text_unconfirmed(
+            database, session_id=SID, user_id="user-1", arc_id="arc-1",
+            take_index=3,
+        ))
+        state = database.takes.set_session_analysis_state.call_args.args
+        self.assertEqual(state[1], confirmation.FAILED_IDEAL_TEXT_UNCONFIRMED)
+
+    def test_take_one_is_unchanged(self):
+        database = Mock()
+        database.takes.set_session_analysis_state.return_value = True
+        self.assertTrue(confirmation.mark_ideal_text_unconfirmed(
+            database, session_id=SID, user_id="user-1", arc_id="arc-1",
+            take_index=1,
+        ))
+
+    def test_a_take_with_no_index_still_writes_nothing(self):
+        database = Mock()
+        for index in (0, None, True, "2"):
+            with self.subTest(index=index):
+                self.assertFalse(confirmation.mark_ideal_text_unconfirmed(
+                    database, session_id=SID, user_id="u", arc_id="arc-1",
+                    take_index=index,
+                ))
+        database.takes.set_session_analysis_state.assert_not_called()
+
+
+class TheRetryFollowsTheCreatingTakeTests(unittest.TestCase):
+    """Without this the recovery path rebuilds the dead end it removes: a
+    terminal card offering a retry that the queue refuses."""
+
+    def test_a_later_take_may_retry_creating_the_document(self):
+        database = Mock()
+        database.create_processing_job.return_value = {"id": "job-9"}
+        with patch.object(pipeline_jobs, "db", database), patch.object(
+            pipeline_jobs.job_queue, "queue_configured", return_value=True
+        ), patch.object(
+            pipeline_jobs.job_queue, "enqueue", return_value=True
+        ):
+            job = pipeline_jobs.enqueue_ideal_text_retry_job(
+                session_id=SID, user_id="user-1", arc_id="arc-1", take_index=3,
+            )
+        self.assertEqual(job, {"id": "job-9"})
+        payload = database.create_processing_job.call_args.kwargs["payload"]
+        self.assertEqual(payload["take_index"], 3)
+        # Still no way back into audio, upload or transcription.
+        self.assertTrue({
+            "audio_bytes", "bucket", "storage_key", "recording_id",
+            "filename", "transcript",
+        }.isdisjoint(payload))
+
+    def test_a_take_index_that_is_not_a_take_still_queues_nothing(self):
+        database = Mock()
+        with patch.object(pipeline_jobs, "db", database), patch.object(
+            pipeline_jobs.job_queue, "queue_configured", return_value=True
+        ):
+            for index in (0, -2, None, True, "1"):
+                with self.subTest(index=index):
+                    self.assertIsNone(
+                        pipeline_jobs.enqueue_ideal_text_retry_job(
+                            session_id=SID, user_id="u", arc_id="arc-1",
+                            take_index=index,
+                        ))
+        database.create_processing_job.assert_not_called()

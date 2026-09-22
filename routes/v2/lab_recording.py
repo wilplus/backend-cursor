@@ -795,11 +795,11 @@ def v2_retry_recording_processing(session_id):
     "/lab/recordings/<session_id>/retry-ideal-text", methods=["POST"])
 @optional_auth
 def v2_retry_recording_ideal_text(session_id):
-    """Retry only Take 1 document creation from stored analysis artifacts.
+    """Retry document creation from stored analysis artifacts.
 
-    This endpoint cannot re-upload or re-transcribe: its durable job payload
-    contains session/project identity only and runs the Ideal Text assembler
-    directly against persisted snippets/transcript rows.
+    Cannot re-upload or re-transcribe: the durable job payload carries
+    session/project identity only. Whichever Take was creating the document
+    may retry it (Option A); the confirmed-document branch is the L1 guard.
     """
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT",
@@ -814,11 +814,12 @@ def v2_retry_recording_ideal_text(session_id):
         return jsonify({"code": error.code, "error": error.message}), error.status
     arc_id = session.get("arc_id")
     take_index = session.get("take_index")
-    if (not arc_id or isinstance(take_index, bool) or take_index != 1
+    if (not arc_id or isinstance(take_index, bool)
+            or not isinstance(take_index, int) or take_index < 1
             or session.get("recording_kind") == "read"):
         return jsonify({
             "code": "IDEAL_TEXT_RETRY_UNAVAILABLE",
-            "error": "Ideal Text retry is available for Take 1 only",
+            "error": "Ideal Text retry is available for a spoken Take only",
         }), 409
 
     from services.ideal_text_confirmation import confirmed_ideal_text
@@ -836,7 +837,8 @@ def v2_retry_recording_ideal_text(session_id):
                     session.get("user_id"),
                     arc_id,
                     confirmed.get("version") or 1,
-                    spoken_take_count=1,
+                    # 1 is right only on Take 1; a recovery omits the nudge.
+                    **({"spoken_take_count": 1} if take_index == 1 else {}),
                 )
             except Exception:
                 pass
@@ -859,7 +861,7 @@ def v2_retry_recording_ideal_text(session_id):
         session_id=session_id,
         user_id=session.get("user_id"),
         arc_id=str(arc_id),
-        take_index=1,
+        take_index=int(take_index),
     )
     if not job:
         return jsonify({
