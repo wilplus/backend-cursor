@@ -406,11 +406,23 @@ def test_a_v2_freeze_does_not_blank_the_v3_rows_it_predates():
     Those Takes keep V2's set forever (the claim is insert-once) and their
     answers stay unvalidatable. That is where they already were. Serving
     them no marks at all would be strictly worse.
+
+    ON THE LIVE PATH (R-4, audit 2026-09-22). This test shipped with
+    `arm_sid` unset, which makes the `elif` false as well — so it proved
+    only that the FIRST branch is skipped, and never reached the one that
+    does the damage. A student GET always sets `arm_sid`, and with it set
+    the run falls into the claim branch, re-claims the insert-once V2 row
+    and filters V3's rows to V2's keys. The surface goes blank on every
+    read. That is the founder's disappearing bookmarks.
     """
-    db = FakeDB()
-    run = _run_for_playback(_deps(db))
+    db = _R4Db()
+    run = _r4_run(db)
+    run.arm_sid = T1                      # the live path always sets this
+    run.take_contract_on = True
     run.feedback_set = _v2_frozen_set()
     run.changes = [_v3_row(S1)]
+    run.styles = []
+    run.feedback_exposure = []
     run.v3_replaced_changes = True
     run._claim_or_filter()
     assert [row["id"] for row in run.changes] == [f"cand:{S1}"]
@@ -571,3 +583,98 @@ def test_execute_marks_answered_items_only_after_v3_replaced_the_rows():
     assert "if self.v3_replaced_changes:" in source
     assert source.index("changes.first_client_feedback") < source.index(
         "changes.answered_service_items") < source.index("_claim_or_filter")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  R-4 — a freeze from the old policy does not blank the rows it predates
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class _R4Db:
+    """The two reads and the one write `_claim_or_filter` makes."""
+
+    def __init__(self):
+        self.exposures: list[dict] = []
+        self.claims = 0
+
+    def v2_get_session_by_id(self, sid):
+        return {"id": T1, "take_index": 1} if sid == T1 else {}
+
+    def insert_take_feedback_exposure(self, **kwargs):
+        self.exposures.append(kwargs)
+        return True
+
+    def __getattr__(self, name):
+        def _missing(*a, **k):
+            raise AttributeError(f"_R4Db has no {name}")
+        return _missing
+
+
+def _r4_run(db):
+    return _ChangesRun(
+        ARC, "Our approach is different, and that matters.", "user-1", T1, 1,
+        ChangesDeps(
+            database=db,
+            first_client_repository=None,
+            applied_map=lambda ids: {},
+            playback_map=lambda ids: {},
+            previous_spoken_session=lambda arc_id, sid: None,
+            locked_parts=lambda arc_id, user_id, text: [],
+            with_evidence_coordinates=lambda rows, **k: rows,
+            record_arms=lambda result, sid, uid: None,
+        ),
+        DegradationLog("ideal_text"),
+    )
+
+
+def test_the_predating_freeze_is_not_overwritten_by_the_rows_it_predates():
+    """The other half of R-4's rule, and the reason it is safe.
+
+    The claim is insert-once per (arc, take). Those Takes keep V2's frozen
+    set forever and their answers cannot be validated — that is the
+    situation they were already in. Serving the marks must not try to
+    correct it by writing a second freeze, which the database would refuse
+    anyway and which would make this read pretend to a history it does not
+    have.
+    """
+    db = _R4Db()
+    run = _r4_run(db)
+    run.arm_sid = T1
+    run.take_contract_on = True
+    frozen = _v2_frozen_set()
+    run.feedback_set = frozen
+    run.changes = [_v3_row(S1)]
+    run.styles = []
+    run.feedback_exposure = []
+    run.v3_replaced_changes = True
+
+    with patch("services.take_feedback_set.claim_feedback_set") as claim:
+        run._claim_or_filter()
+
+    claim.assert_not_called()
+    assert run.feedback_set is frozen
+    assert db.exposures == []
+
+
+def test_a_freeze_that_does_address_the_served_rows_still_filters():
+    """The #592 guard, under the V3 flag. It must not be lost.
+
+    When the frozen set IS the one that froze these rows, accepting item one
+    may never reveal item four — even though V3 replaced `changes`.
+    """
+    db = _R4Db()
+    run = _r4_run(db)
+    run.arm_sid = T1
+    run.take_contract_on = True
+    kept = _v3_row(S1)
+    hidden = _v3_row(S2)
+    run.feedback_set = {"selected_keys": [{"id": kept["id"],
+                                           "feedback_family": "confident_voice"}]}
+    run.changes = [kept, hidden]
+    run.styles = []
+    run.feedback_exposure = []
+    run.v3_replaced_changes = True
+
+    run._claim_or_filter()
+
+    assert [row["id"] for row in run.changes] == [kept["id"]]
