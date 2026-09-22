@@ -43,7 +43,7 @@ cfdd6ebdba6e2640bab604a66e16b549f9b7b1afa0bbf3d20cd09c13aae0d972  docs/MLC3-CONF
 e637c3b25b77f24444b38ef7ad628890abf248869337a6ddc50c2d81090d0509  docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D48.md
 a833c211cf077f294a7973714c065aaa65a1c1aede33c49e4d7ae3debcdc7031  docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-LOCK-CLOSURE-D49.md
 39b62b500f23732bfbb0326ffe0ae054b9233c1267665a11a9275eb10205bdcb  migrations/add_confident_moment_coaching_bundle_v1.sql
-35839afa6a3ce778eb59d8077286f7495afb60549fbf8859cc72ffbe5cf51567  routes/v2/coach_guidance_delivery.py
+020863883a93e29decd0d6f61efbe9c4c5dba2e84ede86efc6cbe20875013ed4  routes/v2/coach_guidance_delivery.py
 bcfc7b89e112d1bcd7bc1ed642064b800d57146971a4245eea3699921e4d526a  routes/v2/confident_moment_bundles.py
 e4062aa198fcc24a640868005e2be3bde5933a9de024aa0f39fd9bc8dc6e4cfc  routes/v2/explore_ideal_text.py
 a4968eb69e4886ef88c7b5e5dbc5cabf2cea1e5b455bdaa2c02be54c538e6dde  scripts/monitor_mlc3_general_service.py
@@ -664,6 +664,59 @@ larger change than the confirmed clone warranted.
   (the shared function's 3-tuple return keeps that call site at its
   original 8 lines).
 - `scripts/complexity_baseline.json` — no change needed.
+
+Verified by execution: `tests/test_mlc3_coach_inline_authoring_d5.py`,
+`tests/test_mlc3_first_client_service_d2.py`,
+`tests/test_coach_guidance_delivery_d3.py`,
+`tests/test_confident_moment_coaching_bundle_postgres.py`,
+`tests/test_confident_moment_transport_d25.py`,
+`tests/test_mlc3_general_user_service_d4.py` (97 passed, 74 deselected —
+postgres rehearsal tier), `python scripts/route_fence.py`,
+`python scripts/complexity_ratchet.py`,
+`vulture routes/v2/coach_guidance_delivery.py --min-confidence 80`
+(clean), `ruff check`, `mypy`, then `scripts/local_ci.sh --no-setup`
+green in full.
+
+Every other entry is untouched.
+
+## Re-freeze 2026-09-22 — routes/v2/coach_guidance_delivery.py: named wrappers over the shared inline-media store
+
+Post-audit follow-up (independent adversarial code-quality review of the
+2026-09-16 dedup): `_store_inline_coach_media` took 6 keyword parameters
+(`seed_prefix`/`key_prefix`/`purpose_id`/`content_authority`/
+`provenance_class`/`error_prefix`) with defaults matching the
+general-guidance caller's literals — so that caller passed none of them
+and got its shape by relying on the defaults silently matching, while the
+exercise-draft caller passed all 6 explicitly. Split into two thin
+purpose-named wrappers, `_store_inline_general_guidance_media` and
+`_store_inline_exercise_draft_media`, each with no parameters beyond the
+5 always-required ones (`video`/`reviewer`/`reveal_access_id`/
+`authorization_snapshot_id`/`idempotency`) and its own literals hard-coded
+once. `_store_inline_coach_media` itself is unchanged except the 6
+literal params lost their defaults (now always passed explicitly by the
+two wrappers, never implied). Both route call sites now call their own
+wrapper instead of the shared function directly. Pure relocation: the
+literal values passed for each upload flavor are byte-identical to what
+each caller passed (or defaulted to) before.
+
+- `scripts/route_fence_baseline.json` — re-frozen: `_store_inline_coach_media`
+  unchanged at 142 lines / 4 db calls (the two new wrapper functions are
+  under the fence's 80-line/1-db-call threshold, so neither needs
+  grandfathering); `v2_coach_inline_exercise_draft` shrinks 114→108 lines
+  (its call site dropped from 11 lines with 6 literal kwargs to 5 lines
+  with none). `v2_explore_get_ideal_text_enrichment` also shrinks 172→171
+  in this same `--update` run — that is unrelated prior drift from other
+  merged work on `main` since this file's last touch, captured by the
+  ratchet's down-only policy, not a change made here.
+- `scripts/complexity_baseline.json` — no change needed.
+
+`tests/test_mlc3_coach_inline_authoring_d5.py::test_route_upload_is_r2_only_and_durable_before_write`
+asserted `_store_inline_coach_media(` appears directly in
+`v2_coach_inline_exercise_draft`'s own source region — updated to check
+for `_store_inline_exercise_draft_media(` there instead, plus a new
+assertion that wrapper's own body calls `_store_inline_coach_media(`;
+same invariant (the route's upload path is R2-only and durable-before-write
+through the shared helper), reached through one more named indirection.
 
 Verified by execution: `tests/test_mlc3_coach_inline_authoring_d5.py`,
 `tests/test_mlc3_first_client_service_d2.py`,
