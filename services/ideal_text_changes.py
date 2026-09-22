@@ -916,8 +916,8 @@ class _ChangesRun:
         # by a third rewrite. On a concurrent first open, the database
         # returns the one winner and this response immediately conforms.
         from services.take_feedback_set import (
-            claim_feedback_set, filter_to_selected, is_claimable_set,
-            selected_keys,
+            claim_feedback_set, filter_to_selected, frozen_set_addresses,
+            is_claimable_set, selected_keys,
         )
         db = self.db
         # A SUPERSEDED SET CANNOT FILTER THE ROWS THAT SUPERSEDED IT (#592).
@@ -938,11 +938,61 @@ class _ChangesRun:
         # frozen set forever and their answers cannot be validated. That is
         # the situation they were already in; it is not made worse by serving
         # the marks. Serving nothing would be.
-        if self.feedback_set is not None and not self.v3_replaced_changes:
+        #
+        # R-4 (audit 2026-09-22). THE PARAGRAPH ABOVE DESCRIBED THE BUG AND
+        # THE CODE DID NOT IMPLEMENT ITS OWN REMEDY. It says serving nothing
+        # would be worse than serving marks whose answers cannot be
+        # validated, and then `v3_replaced_changes` sent exactly those Takes
+        # into the `elif`, which re-claimed the insert-once V2 row and
+        # filtered V3's rows to V2's keys — blank, on every read. The
+        # founder's "bookmarks are gone again ... sometimes they do appear
+        # but then a while later they are gone", with a mechanism at last.
+        #
+        # THE FLAG WAS THE WRONG QUESTION. `v3_replaced_changes` says which
+        # policy produced the rows; what this branch needs to know is
+        # whether the frozen set ADDRESSES them. A set that names none of
+        # the served rows cannot be the set that froze them — it predates
+        # them — and it can neither filter them nor be corrected, because
+        # the claim is insert-once per (arc, take).
+        #
+        # Deciding by identity keeps #592 intact in both directions: when
+        # the frozen set does address the rows it still narrows them, so
+        # accepting item one can never reveal item four, whether or not V3
+        # replaced `changes`.
+        _served_rows = [*self.changes, *self.styles]
+        _frozen_addresses_served = (
+            self.feedback_set is not None
+            and frozen_set_addresses(
+                _served_rows, self.feedback_set["selected_keys"])
+        )
+        if self.feedback_set is not None and _frozen_addresses_served:
             self.changes = filter_to_selected(
                 self.changes, self.feedback_set["selected_keys"])
             self.styles = filter_to_selected(
                 self.styles, self.feedback_set["selected_keys"])
+        elif self.feedback_set is not None and _served_rows:
+            # The freeze predates these rows. Serve them whole, claim
+            # nothing, and say so once — this Take's answers stay
+            # unvalidatable, which is where it already was.
+            # LOGGED, NOT MARKED DEGRADED. `log.note` puts a marker in the
+            # response's `degraded` list, which the frontend shows — and
+            # from the speaker's side nothing here went wrong: they get the
+            # bookmarks this branch exists to serve.
+            #
+            # TODO(founder): what these Takes cannot do is ACCEPT an answer.
+            # `record_take_feedback_response_v1` will refuse every one of
+            # them ("feedback item is not in this Take's frozen set"),
+            # because the frozen set is V2's and the marks are V3's. That is
+            # pre-existing and this change does not widen it, but a speaker
+            # tapping a mark that silently does nothing deserves to be told
+            # something. What that says is copy, and copy needs sign-off.
+            logger.warning(
+                "feedback set predates the served rows arc=%s take=%s "
+                "frozen=%d served=%d — serving unfiltered, answers will be "
+                "refused by the freeze",
+                self.arc_id, self.arm_sid,
+                len(self.feedback_set["selected_keys"]), len(_served_rows),
+            )
         elif self.take_contract_on and self.arm_sid:
             self.session = db.v2_get_session_by_id(self.arm_sid) or {}
             _take_index = self.session.get("take_index")
@@ -981,12 +1031,44 @@ class _ChangesRun:
                                   "claim_failed")
                     self.changes, self.styles = [], []
                 else:
-                    from services.take_feedback_manager import POLICY_VERSION
+                    # A-2 AND A-1's WRITE HALF (audit 2026-09-22). THE
+                    # DURABLE RECORD NAMES THE POLICY THAT ACTUALLY SERVED,
+                    # AND LISTS WHAT WAS ACTUALLY ON THE SCREEN.
+                    #
+                    # This row was stamped `take-feedback-manager-v2` on
+                    # every Take, and its candidate set was
+                    # `self.feedback_exposure` — the snapshot taken up in
+                    # `_select()`, BEFORE `_first_client_feedback` replaced
+                    # the rows. V2 ids are `confident-voice:{sid}`; V3 ids
+                    # are `relative-confidence:{take}:{snippet}`. They share
+                    # no identity, so the stored pool never held one id the
+                    # speaker saw.
+                    #
+                    # That is A-2. It is also the whole of A-1's WRITE half
+                    # for a Take whose canonical lineage could not be
+                    # frozen: this row is the record that a bookmark was
+                    # served, and a record listing the wrong candidates is
+                    # not a record of anything.
+                    #
+                    # Taken here rather than by moving `_select`'s snapshot:
+                    # the V2 pool is still the right answer when V3 did not
+                    # serve, and this is the one place that knows which did.
+                    from services.take_feedback_manager import (
+                        POLICY_VERSION, exposure_snapshot,
+                    )
+                    if self.v3_replaced_changes:
+                        from services.take_feedback_policy_v3 import (
+                            POLICY_VERSION as _SERVED_POLICY,
+                        )
+                        _candidate_set = exposure_snapshot(_combined)
+                    else:
+                        _SERVED_POLICY = POLICY_VERSION
+                        _candidate_set = self.feedback_exposure
                     _selected_ids = {
                         str(key.get("id") or "")
                         for key in self.feedback_set["selected_keys"]
                     }
-                    for _snapshot_row in self.feedback_exposure:
+                    for _snapshot_row in _candidate_set:
                         _snapshot_row["selected"] = (
                             str(_snapshot_row.get("id") or "")
                             in _selected_ids
@@ -995,8 +1077,8 @@ class _ChangesRun:
                         arc_id=str(self.arc_id),
                         take_session_id=self.arm_sid,
                         review_version=_version_int,
-                        policy_version=POLICY_VERSION,
-                        candidate_set=self.feedback_exposure,
+                        policy_version=_SERVED_POLICY,
+                        candidate_set=_candidate_set,
                         selected_keys=self.feedback_set["selected_keys"],
                     )
                     self.changes = filter_to_selected(

@@ -171,6 +171,34 @@ def filter_to_selected(changes: Iterable[Any], keys: Any) -> list[dict]:
     ]
 
 
+def frozen_set_addresses(changes: Iterable[Any], keys: Any) -> bool:
+    """True when a frozen set names at least one of the rows being served.
+
+    R-4 (audit 2026-09-22). A set that addresses NONE of the served rows
+    cannot be the set that froze them — it predates them. Every document
+    opened before the 2026-09-18 cutover carries V2's three keys, and V3's
+    rows share no identity with them, so filtering blanks the surface and
+    the insert-once claim can never correct it.
+
+    It asks with `_identity_tuple`, the same rule `filter_to_selected` uses,
+    and that is the whole point of it living here: a caller that decided
+    "addresses" on ids alone would pass rows the filter then dropped for a
+    differing `kind` or `source`, which is the original defect wearing a
+    new predicate.
+    """
+    allowed = {
+        identity for identity in (
+            _identity_tuple(key) for key in sanitize_selected_keys(keys))
+        if identity is not None
+    }
+    if not allowed:
+        return False
+    return any(
+        _identity_tuple(row) in allowed
+        for row in changes if isinstance(row, dict)
+    )
+
+
 def filter_candidates_to_selected(
     changes: Iterable[Any], keys: Any,
 ) -> list[dict]:

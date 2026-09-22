@@ -83,6 +83,24 @@ def _merge_cors_origins() -> list:
 
 
 class Config:
+    @staticmethod
+    def current_env(names) -> dict[str, str]:
+        """The values these variables hold RIGHT NOW, stripped.
+
+        Every attribute on this class resolves once, at import. That is
+        correct for configuration and wrong for the CONFIG-FIRST boot
+        summary (J1-4), whose whole job is to report what the process has at
+        the moment it prints — in a worker, that is long after this module
+        was first imported.
+
+        Deliberately narrow: it takes a list of NAMES and returns their
+        values, so it cannot become a general escape hatch from the rule
+        that `os.environ` is read here and in `services/secrets.py` and
+        nowhere else (audit Q-A5, `tests/test_config_reads_fence.py`).
+        Its one caller is `services/gate_flags.py`.
+        """
+        return {name: (os.getenv(name) or "").strip() for name in names}
+
     ENV = os.getenv("ENV", "development")
     # When true, coach receives email at ADMIN_EMAIL when a student completes homework; assignment emails are sent. Set SEND_EMAILS=true to receive reports.
     SEND_EMAILS = os.getenv("SEND_EMAILS", "false").lower() == "true"

@@ -335,6 +335,15 @@ def _startup_cleanup():
                      "ON" if _bake_enabled() else "OFF")
     except Exception as exc:
         _logger.warning("stored bookmark set unreadable: %s", exc)
+    # CONFIG-FIRST for the gate flags (J1-4/B-1, audit 2026-09-22). Same
+    # rule as the stored bookmark set above and deliberately the same
+    # words, so ONE log filter across both services answers the question
+    # instead of two searches where somebody runs only the easy one.
+    try:
+        from services.gate_flags import gate_summary
+        _logger.info("gate flags %s", gate_summary())
+    except Exception as exc:
+        _logger.warning("gate flags unreadable: %s", exc)
 
 
 with app.app_context():

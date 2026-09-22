@@ -31,6 +31,13 @@
 # ffmpeg via Nix or apt, the runtime PATH often omits both, and without
 # FFMPEG_PATH the audio pipeline silently falls back to imageio-ffmpeg.
 
+# ── The Phase-1 mode, before anything else can fail (B-1) ──────────────
+# Unconditional and first: the case worth reporting is the container where
+# this is MISSING, and a guarded echo is silent for exactly that one. The
+# Python boot line (services/gate_flags.py) says it again with the rest of
+# the gates — this one survives a boot that dies before the interpreter.
+echo "[startup] PLF1_PROCESSING_AUTHORIZATION_MODE=${PLF1_PROCESSING_AUTHORIZATION_MODE:-(unset)}"
+
 # ── Locate ffmpeg ──────────────────────────────────────────────────────
 FFMPEG_FOUND=""
 for candidate in \

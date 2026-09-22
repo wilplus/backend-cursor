@@ -668,8 +668,9 @@ def test_a_freeze_that_does_address_the_served_rows_still_filters():
     run.take_contract_on = True
     kept = _v3_row(S1)
     hidden = _v3_row(S2)
-    run.feedback_set = {"selected_keys": [{"id": kept["id"],
-                                           "feedback_family": "confident_voice"}]}
+    # A real claim stores the whole row as the key; identity is
+    # (id, kind, source, feedback_family), not the id alone.
+    run.feedback_set = {"selected_keys": [dict(kept)]}
     run.changes = [kept, hidden]
     run.styles = []
     run.feedback_exposure = []
