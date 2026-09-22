@@ -33,6 +33,34 @@ class SurfaceContractTests(unittest.TestCase):
     def tearDown(self) -> None:
         clear_runtime_model_cache()
 
+    def test_rejected_canonical_alias_is_not_a_trainable_surface(self):
+        """E-6: two registries disagreed and the legacy one was wired.
+
+        ``ml_learning_surface_aliases`` records ``moment_suggestion`` as
+        ambiguous legacy vocabulary that may not receive canonical writes,
+        while ``SURFACES`` still offered it as something to export, fine-tune,
+        promote and serve. One of the two has to be the authority.
+        """
+        from services.mlc2_foundation import REJECTED_LEARNING_ALIASES
+
+        for alias in REJECTED_LEARNING_ALIASES:
+            with self.subTest(alias=alias):
+                with self.assertRaises(ValueError):
+                    contract_for_surface(alias)
+
+    def test_every_trainable_surface_maps_to_an_accepted_alias(self):
+        """The four-id map must be a subset of what the DB registry takes."""
+        from services.mlc2_foundation import (
+            LEARNING_SURFACE_ALIASES,
+            REJECTED_LEARNING_ALIASES,
+        )
+        from services.ml_surface_contracts import SURFACES
+
+        for surface_id in SURFACES:
+            with self.subTest(surface=surface_id):
+                self.assertNotIn(surface_id, REJECTED_LEARNING_ALIASES)
+                self.assertIn(surface_id, LEARNING_SURFACE_ALIASES)
+
     def test_annotation_fields_and_runtime_alias_share_one_surface(self):
         self.assertEqual(
             surface_for_annotation_field("ideal_text_sentence"), "ideal_text",
@@ -128,7 +156,6 @@ class DpoCorpusTests(unittest.TestCase):
     def test_surface_field_sets_are_not_overlapping(self):
         surfaces = (
             "say_it_stronger",
-            "moment_suggestion",
             "ideal_text",
             "coach_comment_draft",
         )
@@ -188,10 +215,10 @@ class ImmutableReleaseTests(unittest.TestCase):
             root = Path(raw)
             good = root / "good.json"
             write_evaluation_report(good, {
-                "surface": "moment_suggestion",
-                "golden_eval_surface": "moment_suggestion",
+                "surface": "say_it_stronger",
+                "golden_eval_surface": "say_it_stronger",
                 "candidate_model_id": "ft:one",
-                "dataset_release_id": "dpo-moment_suggestion-abc",
+                "dataset_release_id": "dpo-say_it_stronger-abc",
                 "evaluated_at": "2026-08-26T10:00:00+00:00",
                 "passed": True,
             })
@@ -201,7 +228,7 @@ class ImmutableReleaseTests(unittest.TestCase):
 
             failed = root / "failed.json"
             write_evaluation_report(failed, {
-                "surface": "moment_suggestion",
+                "surface": "say_it_stronger",
                 "candidate_model_id": "ft:two",
                 "passed": False,
             })
