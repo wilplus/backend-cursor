@@ -1,5 +1,63 @@
 # willab backlog — status as of 2026-07-23
 
+> **2026-09-21 — founder session notes (V3 cutover day).** Kept at the top so
+> it can be read at any time. Everything below this block is the 2026-07-23
+> backlog and is stale where the two disagree.
+
+## 2026-09-21 — what shipped today (all squash-merged on local gate evidence)
+
+| PR | What it fixed |
+|---|---|
+| backend #598 | Phase-1 gate could not see the signed-in user (the 401 storm under `enforce`) |
+| backend #599 | Freeze guard demanded V2's three items; every V3 freeze failed and blanked the bookmarks |
+| backend #600 | Migration 0348: ambiguous `candidate_set_id`; V3 lineage never recorded |
+| backend #601 | Migration 0349: exposure record's CHECK still demanded three items |
+| backend #602, #603 | Answered bookmark counted as undecided (409 on Lock); now served with `status`, one `undecided()` rule for page and lock gate |
+| backend #604 | Coach hand-off queued for everyone (tier cap no longer refuses); every silent exit logs |
+| backend #605 | Migration 0350: v2 core read asked the projection for `summary` instead of `confident_moment_summary`; owner edit state was dropping off the cold open since GA (2026-09-20) |
+| backend #606 | Parts block serves `edited` per paragraph (compared against the generation's head snapshot) |
+| backend #607 | Candidate ids sealed to their inventory (23505 on a second candidate set) |
+| frontend #423, #424 | V3 judgement instant acceptance; exercise on its own rung; superseded pre-#591 Takes read-only |
+| frontend #426 | Stale "didn't go through" red note re-checks the server |
+| frontend #428 | Bookmarks no longer wait on the F2 `learning` section |
+| frontend #429 | The judgement flips the row on the click (no reload) |
+| frontend #430 | Untouched is the fourth paragraph state (grey, no mark) |
+| frontend #431 | An edit alone makes a paragraph reviewed |
+
+**Rules the founder confirmed today (product contract, surfaced state):**
+- A paragraph has four states: **untouched** (grey, no mark) → **waiting** (grey, coloured bookmark) → **reviewed** (full text) → **locked** (lock mark, orange rooting phrase). Grey means waiting or untouched; reviewed text is never grey. This overrides the 2026-09-18 "no third state" rule.
+- Reviewed means any of: an answered bookmark (Yes or otherwise), a rooting phrase, a lock cycle, an edit of the words.
+- An answered bookmark becomes plain text; orange only where a rooting phrase was locked in.
+- Every Take is queued for the coach; the coach decides whether to send.
+- MLC-2 Confidence canary stays **dark** for now (Decision A: remain dark). The ML engineer's readiness acceptance is **unknown**.
+
+## 2026-09-21 — what is left, and why
+
+**1. Exercise rung (F2, MLC-3).** Every open logs `FEEDBACK_V3_SERVICE_N1_CONTEXT_NOT_READY` four times. The exercise offer needs the N1 source-pattern context, which needs the canonical rows the data-foundation canary writes — and the canary gate accepts only the principal of `artur@willonski.com` (principal `fb73d272-…`). Today's testing ran on `a.willonski@gmail.com` (principal `9f4e75b8-…`), which is outside it. Next: test the exercise chain logged in as `artur@willonski.com`; if the context is still "not ready" there, trace `prepare_feedback_v3_service_context_v1`.
+
+**2. Learning receipts and canonical dual-write (F2).** `learning presentation ownership rejected` and `canonical feedback bundle unavailable` on every open: same cause, the account is outside the canary. No user impact. Noisy logs.
+
+**3. Confidence producer activation (MLC-2).** One constant in code (`MLC2_CONFIDENCE_CUTOVER_MODE = "dark"`), permanent once flipped (rollback only to `killed`). Thirteen preconditions in `docs/work-items/mlc2-confidence-founder-canary-activation-runbook.md`, including the ML/data readiness acceptance (unknown) and consent for the canary account. Founder: stay dark.
+
+**4. The reserved bookmark slot (faint circle after a paragraph).** The page holds a slot while the server says a feedback section is still `retryable`; if the server keeps saying so after the retry budget, the slot stays until reload. Needs the console output of the enrichment `feedback` / `document_layers` sections on project j to decide whether the server or the page is wrong.
+
+**5. Founder UX items (raised 2026-09-21, not started):**
+- Trackpad scrolling sometimes stalls on the Ideal Text (mouse is fine).
+- Faster processing + Ideal Text build, and one unified waiting screen with progress. (A progress percentage of *processing* is not a score on the speaker; the copy still needs founder sign-off.)
+- No staggered load: text, bottom CTA and bookmarks appear together.
+- Instant interactions: Lock, tap-save, Confident Voice answer, and the paragraph state after the sheet closes must change without lag. Note: the Manager runs live on every open (2–40 s); the feedback bake (`IDEAL_TEXT_FEEDBACK_BAKE_ENABLED`) exists to cache it — confirm it is on in production and serving.
+
+**6. Possibly forgotten, still important:**
+- `token_charge()` RPC "not installed" in production (log: run `migrations/add_token_charge_rpc.sql`) — the coach charge runs the legacy non-atomic path.
+- Railway cron **AI pipeline** shows "Last run failed" (seen 2026-09-21); morning/evening/weekly/monthly push crons were red earlier. Not investigated.
+- A processing failure at 14:32 UTC on 2026-09-21: "Take review was not finalized: canonical Ideal Text is missing" — project unknown, not traced.
+- GitHub Actions minutes are exhausted; every merge today rests on `scripts/local_ci.sh` evidence (documented in each squash commit).
+- Which account is the founder's test account: the canary is configured for `artur@willonski.com`; the Gmail login is a second, ordinary account.
+- `blocks/variants` 404 on every open is the picker's feature flag being off (harmless console noise).
+- Frontend sheet collapses to a few pixels when the viewport is very short (DevTools open); the tappable words hide inside a scroll area.
+- DPO / regression training remains Phase 2: dataset release, training and promotion flags are `False` and each needs its own authorization; Confident Voice trains only on blind coach labels; DPO pairs come from coach rewrites (contract 35k).
+
+
 **Theme: human feedback on how you present — for $5 each.**
 
 The versioning engine is now built (was the cluster the founder re-described
