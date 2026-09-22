@@ -220,6 +220,23 @@ for m in add_take_review_lifecycle add_feedback_manager_and_part_commits \
   sql_file $FREEZE migrations/$m.sql; sql_file $FREEZE migrations/$m.sql
 done
 
+# bake: the stored bookmark set and the rule that decides whether it is still
+# true. 0345 shipped that rule with no lane at all, and the two writers it
+# forgot (both answer routes) went unnoticed until the founder's bookmarks
+# came back after a reload on an item he had already judged. Its own chain
+# from the core-snapshot prerequisites, because the bake binds to a published
+# snapshot and to nothing else in the MLC-3 fork.
+echo "→ building the bake chain (core-snapshot prerequisites → 0290 → bake prerequisites → 0345 → 0351)"
+BAKE=willab_bake_rehearsal
+"${PSQL[@]}" -d postgres -c "CREATE DATABASE $BAKE" >/dev/null
+sql_file $BAKE tests/integration/ideal_text_core_snapshot_prerequisites.sql
+sql_file $BAKE tests/integration/ideal_text_feedback_bake_prerequisites.sql
+for m in add_ideal_text_core_snapshot fix_ideal_text_core_pgcrypto_search_path \
+         add_ideal_text_feedback_bake \
+         the_bake_knows_about_answers_and_its_own_start; do
+  sql_file $BAKE migrations/$m.sql; sql_file $BAKE migrations/$m.sql
+done
+
 # lane name | DSN variable | database | modules
 LANES=(
   "m33|MLC3_REHEARSAL_DSN|willab_m33_rehearsal|tests/test_mlc3_dark_assignments_postgres.py tests/test_mlc3_n1_source_pattern_postgres.py tests/test_rooting_phrase_qualification_postgres.py"
@@ -230,6 +247,7 @@ LANES=(
   "canary|MLC3_CANARY_READINESS_REHEARSAL_DSN|willab_d3_canary|tests/test_mlc3_founder_canary_readiness_postgres.py"
   "d4|MLC3_GENERAL_USER_REHEARSAL_DSN|willab_ga_template|tests/test_mlc3_general_user_service_d4_postgres.py"
   "freeze|TAKE_FEEDBACK_FREEZE_REHEARSAL_DSN|willab_freeze_rehearsal|tests/test_take_feedback_freeze_postgres.py"
+  "bake|IDEAL_TEXT_FEEDBACK_BAKE_REHEARSAL_DSN|willab_bake_rehearsal|tests/test_ideal_text_feedback_bake_postgres.py"
 )
 # Suites with no GREEN recipe. Reported NOT RUN, never skipped, never run as
 # "expected to fail"; see docs/REHEARSAL-TIER.md "Pending lanes".
