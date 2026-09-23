@@ -449,3 +449,60 @@ do not activate the policy. Exact Product/legal artifacts, retention/deletion
 readiness, staging proof and explicit production authorization are still
 required. The destructive historical cleanup migration remains outside the
 manifest until separately authorized.
+
+---
+
+## M · Coach review is core to the service (founder 2026-09-23)
+
+**The ruling, verbatim.**
+
+> Coach review is core to the product. A user who refuses to allow a human to
+> listen to their recordings cannot use WillpowerLab. This reverses the
+> assumption in doc 01 §3 and §6, which placed `coach_review` on consent and
+> held it out of v1 because it was treated as optional. Consequence: coach
+> review moves to Art 6(1)(b) contract basis, the Terms must describe it, and
+> the Art 9 element stays separate. Put to counsel 2026-09-23.
+>
+> — Artur Willoński, founder and controller
+
+**M1 · This supersedes doc 01 §3 row 8 and §6.** Document 01 was signed on
+2026-09-19, so those sections are not edited — they stand as the position held
+on that date, and a v1.1 carries the new one. `coach_review` becomes
+Art 6(1)(b) contract, `required_for_core_service TRUE`. The Article 7(4)
+objection that governed the old structure does not reach it: 7(4) is about
+consent, and this is not consent.
+
+**M2 · "Agree or leave" is the intended offer and is lawful for a contract.**
+It is not lawful for consent, which is why the basis is the load-bearing part
+of the ruling rather than a formality.
+
+**M3 · What the ruling does NOT decide, and needs a second ruling of the same
+kind.** `resolve_mlc3_dual_purpose_receipt_v2` gates the MLC-3 general-user
+service on the receipt naming BOTH `coach_review` and
+`personalized_exercise_recommendation`. The ruling settles the first. The
+second is untouched: doc 01 §3 row 9 already places practice on 6(1)(b)
+contract — the BASIS was never in question for it — but §6 held it out of v1,
+and §6's reason (an optional purpose leaves no receipt evidence) is moot for
+anything marked required. So the open question is narrow: **is practice
+capture and comparison part of the service, or optional?** Until that is
+answered, the MLC-3 gate still cannot resolve.
+
+**M4 · The Terms currently describe a different product.**
+`legal/phase1-2026.1/copy/terms-2.0.txt` lists "no coach reviews" for the Free
+and Practice plans. Read beside M1 that is a contradiction, and it is the piece
+counsel will weigh. The reconciliation put to the founder: separate *a human
+may listen* (every plan, part of the service) from *you receive N coach
+reviews* (a tiered deliverable). Not yet confirmed; the Terms are not rewritten
+until it is.
+
+**M5 · Article 9 stays separate and cannot be contract.** One consent element
+therefore remains in the flow. If refusing it also means leaving, Art 7(4)
+applies to that element alone. Doc 01 §3 already offered counsel the
+alternative position — that Article 9 is not engaged at all — and that question
+is now more load-bearing, not less.
+
+**M6 · The optional-consent writer keeps its purpose.** Migration 0356's
+`accept_phase1_processing_authorization_v2` was built for purposes a person can
+decline. After this ruling that is no longer `coach_review`; it is pooled model
+improvement, which must stay declinable and can never ride on a contract. It is
+not retired.
