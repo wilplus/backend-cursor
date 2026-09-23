@@ -43,6 +43,13 @@ GATE_FLAGS: tuple[str, ...] = (
     "MLC3_COACH_INLINE_AUTHORING_ENABLED",
     "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED",
     "MLC2_CONFIDENCE_MONITORING_ENABLED",
+    # Last, and the one this line matters most for after the Phase-1 boundary:
+    # it decides which Confident Voice item is SELECTED, and the selection is
+    # then FROZEN with the Take. Two services holding different values do not
+    # produce an error or a degraded response — they produce two well-formed
+    # items, one frozen and the other served, with nothing anywhere saying
+    # they disagreed (contract 24j).
+    "REASONABLE_CONFIDENCE_ENABLED",
 )
 
 #: Reported as set/unset, never by value. Extend this rather than adding a
