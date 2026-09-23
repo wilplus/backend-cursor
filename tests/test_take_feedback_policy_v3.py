@@ -713,7 +713,11 @@ def test_the_client_row_gets_a_tier_and_never_the_band_or_the_score():
     assert "delivery_band" not in presentation
 
     visible = _presentable(
-        {"id": "c1", "quote": "words", "candidate_score": 0.87}, presentation,
+        {
+            "id": "c1", "quote": "words", "candidate_score": 0.87,
+            "reason_tier": "not", "reason_degraded": True,
+        },
+        presentation,
     )
     assert visible["bookmark_tier"] == "most_confident"
     assert visible["practice_prompt"] is False
@@ -721,6 +725,12 @@ def test_the_client_row_gets_a_tier_and_never_the_band_or_the_score():
         "a raw machine number in a payload is one render away from being shown"
     )
     assert "delivery_band" not in visible
+    # 24j. Not a number, but "not" is a verdict about what the words did, and
+    # it is the ordering input — a client holding it could reconstruct the
+    # ranking. It rides the internal row; the visible copy is drawn by
+    # `bookmark_tier` and `why_key`, which are signed keys.
+    assert "reason_tier" not in visible
+    assert "reason_degraded" not in visible
 
 
 def test_the_exercise_outranks_green_on_the_same_block():
