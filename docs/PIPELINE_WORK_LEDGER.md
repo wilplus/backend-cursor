@@ -737,3 +737,49 @@ update entirely. **A setup step behind a reuse check is a setup step that does
 not run.** Guarantees go before the early return, not after it. Same shape as
 R-2's constant `identity_hash`: both only worked on a database nobody had
 touched.
+
+---
+
+### 2026-09-23 · the acceptance writer becomes v2 · p11b-optional-consent · #(pending)
+
+**Closed:** step 3's backend half. `ProcessingAuthorizationService.accept` now
+calls `accept_phase1_processing_authorization_v2` and passes
+`p_optional_purposes`. The migration that defines v2 is on this same branch
+and in `manifest.txt`, so `MIGRATE_ON_BOOT=1` applies it during container start
+before the app process reads the new code — one boot does the whole cutover,
+which is the CONFIG-FIRST shape.
+
+**Safe before any optional purpose exists.** v2's own comment says it: an empty
+array "behaves exactly as v1 does". So this can merge and deploy while the live
+policy still marks everything required, and nothing changes until the policy is
+republished.
+
+**Absence is not refusal, but a malformed choice is.** A client that has never
+heard of `optional_purposes` sends no field and must keep working exactly as it
+did — that is an empty choice, not an error. A field of the wrong shape IS an
+error (422 OPTIONAL_PURPOSES_INVALID), because recording consent from a payload
+we could not parse is worse than refusing to record it.
+
+**Shape here, membership at the RPC.** This layer judges only that the value is
+a list of non-empty strings. Whether a named purpose is in the active policy,
+and whether it may be optional at all, is v2's to decide — it raises
+PROCESSING_OPTIONAL_PURPOSE_INVALID. A test asserts that an unknown purpose
+passes shape and reaches the RPC, which is the point: validating membership in
+two places is how the two drift apart and one starts quietly allowing
+something.
+
+**Not deduplicated, not reordered.** v2 canonicalises (btrim, DISTINCT, ORDER
+BY) and the evidence hash is computed over that canonical form. Doing it twice,
+differently, is how a receipt ends up hashing something other than what it
+stored.
+
+**Contract lines added:** `tests/test_optional_purposes_payload.py`, 18 cases.
+Three of them exist for a failure that would not be loud:
+`test_it_no_longer_calls_v1` fails if the RPC name reverts, because under v1
+every acceptance would keep succeeding while every optional yes was silently
+dropped — no error, no log, and a receipt that says the person chose nothing.
+`test_the_array_is_passed` covers the same failure by the other route: v2 with
+the argument omitted defaults to an empty array and loses the answer just as
+quietly.
+
+**Baseline:** 17 passed, 1 xfailed (F-4) — unchanged.
