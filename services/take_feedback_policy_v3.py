@@ -9,11 +9,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from services.feedback_data_contract import FEATURE_SCHEMA_VERSION
+from services.reasonable_confidence import selection_summary
 from services.take_feedback_manager import (
     EVIDENCE_SCHEMA_VERSION as MANAGER_EVIDENCE_SCHEMA_VERSION,
     POLICY_VERSION as MANAGER_RULES_VERSION,
@@ -22,6 +24,7 @@ from services.voice_confidence import VERSION as CONFIDENCE_DETECTOR_VERSION
 from config import Config
 
 config = Config()
+logger = logging.getLogger(__name__)
 
 
 POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
@@ -842,6 +845,13 @@ def build_shadow_frame(
                     "reason": row["exclusion_reason"],
                     "block_id": block["block_id"],
                 })
+
+    # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
+    # does is internal ordering that leaves no trace: the failure it can have
+    # is quiet, not loud. One aggregate line per Take, counts only, computed
+    # by a function that cannot raise — a log line is never worth a failed
+    # Take (live loop).
+    logger.info("reason layer take=%s %s", take_id, selection_summary(blocks))
 
     coverage = _slide_coverage(blocks, take_index)
     _practice_routing(blocks)
