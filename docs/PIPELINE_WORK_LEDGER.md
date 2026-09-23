@@ -783,3 +783,14 @@ the argument omitted defaults to an empty array and loses the answer just as
 quietly.
 
 **Baseline:** 17 passed, 1 xfailed (F-4) — unchanged.
+
+**Follow-up, same workstream.** The gate came back RED on
+`test_d11_runtime_rpc_caller_registry_is_exact`: a registry pinning exactly
+which service file may call which watched RPC, and the move from v1 to v2 was
+not declared in it. That is the registry working — a new RPC call from a
+service has to be stated, not slipped in. Declared, and v1 left in the WATCHED
+set although nothing calls it any more, so a reintroduced v1 call would appear
+as an unexpected entry. Worth the extra line: that regression is silent, since
+every acceptance would keep succeeding while every optional yes was dropped.
+Rehearsal tier was GREEN across all ten lanes on the same run; only the unit
+tier failed.
