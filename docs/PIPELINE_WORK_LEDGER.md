@@ -429,6 +429,56 @@ pre-reload class while `enabled()` — importing inside the function — reads t
 post-reload one. The helper looks the class up at call time. If you write a
 test that patches a `Config` attribute, run the whole tier, never just your file.
 
+### 2026-09-23 · WS0 · claude/dazzling-johnson-excc8e · #(pending)
+
+**Closed:** none (observability for 24j, which shipped in #624 the same day)
+**Contract lines flipped:** none
+**Contract lines added:** `TestTheOnlyPlaceTheLayerIsObservable` in
+`tests/test_reasonable_confidence.py`
+**Broke and fixed:** none
+**Open for the founder:** none. This is additive and carries no flag — the line
+is emitted whether the reason layer is on or off, and says which.
+
+**Why an observability change earned priority over the quality lever.** 24j is
+live for every user with no canary, which was the right call (there are no
+users to protect with a small blast radius, and rollback is one variable). But
+it means the ONLY defence left is noticing, and the failure 24j can actually
+have is not loud. It cannot crash — it is a sorting rule — and it cannot empty
+a block, because the bottom tier is never empty. What it can do is be quietly
+mediocre: if the words read badly, nothing errors, the bookmarks are simply on
+worse moments, for everyone, looking entirely normal. Nothing anywhere recorded
+that the layer had ranked anything at all.
+
+**One aggregate line per Take, not one per block.** `selection_summary` in
+`services/reasonable_confidence.py`:
+
+    reason layer take=<id> enabled=1 selected=12 covered=2 partial=1 not=9
+                           unmeasured=0 degraded=11
+
+Two numbers in that line answer the question the whole rollout rests on.
+`not=9` says the gate is barely gating — nine of twelve winners carried nothing
+of their slide. `degraded=11` says eleven of those verdicts came from word
+overlap rather than entailment, which is the `piece_llm_budget()` ceiling
+showing up as data instead of as an argument. The founder has parked that
+ceiling deliberately; this is how it will be re-read when he unparks it.
+
+**`enabled=` is on the line for a reason.** Without it the log is ambiguous:
+an all-`covered` Take could mean the layer worked, or that it was off and the
+delivery read happened to agree. It also gives a second, cheaper answer to
+"did the flag actually reach this service" than reading three boot logs — the
+service that processed the Take says so on every Take.
+
+**It cannot raise, and that is asserted.** It runs on the live path purely to
+produce a log line, and a log line is never worth a failed Take. The test hands
+it nine shapes of junk — `None`, a string, a list of `None`, a block whose
+candidates are not a list — and asserts a `str` comes back every time.
+
+**Counts only.** No quote, no transcript, no score. AC-9 proper is about what
+reaches a speaker and a deploy log is not that surface (`_row_rejection` in
+`take_feedback_policy_v3_service.py` says the same of its own values), but a
+log is also not a place to put someone's words, so a test asserts a `quote` on
+the row does not appear in the line.
+
 ---
 
 ### 2026-09-23 · P1 · p1-signed-urls-user-voice · #(pending)
