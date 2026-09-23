@@ -846,6 +846,14 @@ def build_shadow_frame(
     coverage = _slide_coverage(blocks, take_index)
     _practice_routing(blocks)
 
+    # 24j card 2. Records which reason tier won each block and how many came
+    # from word overlap rather than entailment. Side effect only: it returns
+    # None, adds nothing to the frame, and the tier names never leave the
+    # server log (AC-9 — see the function's own note).
+    from services.f1_observability import observe_reason_tiers
+
+    observe_reason_tiers(take_id, take_index, blocks)
+
     feedback_rows = list(feedback_candidates or [])
     rewrite_inventory, rewrite_ranked, rewrite_exclusions = _verbal_inventory(
         feedback_rows,

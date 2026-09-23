@@ -25,6 +25,74 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+def observe_reason_tiers(
+    take_id: str, take_index: Any, blocks: Any,
+) -> None:
+    """One line per Take: which reason tier won each block, and how coarse.
+
+    24j card 2. The reason layer sits behind ``REASONABLE_CONFIDENCE_ENABLED``
+    (default OFF) and cannot be turned on responsibly while the DEGRADED RATE
+    is unmeasurable — `reason_tier` is derived from true entailment only for
+    the LLM-budget subset, and from word overlap for the rest. Word overlap is
+    exactly the "keyword matching" the product does not want to be, so the
+    share of Takes whose verdicts came from it is the number that decides
+    whether the layer is ready. Today nothing records it.
+
+    Deliberately logged whether or not the flag is on: measuring BEFORE the
+    cutover is the entire point, and with the flag off `ordering_rank` returns
+    a constant so these tiers are observed without influencing any ordering.
+
+    ⚠ AC-9. Tier names and `degraded` are verdicts about what the words did —
+    `"not"` says the speaker missed the slide's point — and are exactly the
+    kind of thing AC-9 bans from reaching a person. They go to the server log
+    and nowhere else. This function returns None, is called for its side
+    effect only, and must never be wired into a payload, a response or the
+    FE. `tests/test_reason_tier_observability.py` fails if the frame grows a
+    key because of it.
+
+    Pure observation: never raises, never mutates ``blocks``, never changes a
+    caller's result.
+    """
+    try:
+        counts = {"covered": 0, "partial": 0, "not": 0, "unmeasured": 0}
+        degraded = 0
+        selected_total = 0
+        rows = blocks if isinstance(blocks, list) else []
+
+        for block in rows:
+            if not isinstance(block, dict):
+                continue
+            selected_id = block.get("selected_candidate_id")
+            if not selected_id:
+                continue
+            candidates = block.get("confidence_candidates")
+            chosen = next(
+                (
+                    row for row in (candidates or [])
+                    if isinstance(row, dict)
+                    and row.get("candidate_id") == selected_id
+                ),
+                None,
+            )
+            if chosen is None:
+                continue
+            selected_total += 1
+            tier = chosen.get("reason_tier")
+            counts[tier if tier in counts else "unmeasured"] += 1
+            if chosen.get("reason_degraded"):
+                degraded += 1
+
+        logger.info(
+            "f1.reason_tiers take=%s take_index=%s blocks=%d selected=%d "
+            "covered=%d partial=%d not=%d unmeasured=%d degraded=%d",
+            take_id, take_index, len(rows), selected_total,
+            counts["covered"], counts["partial"], counts["not"],
+            counts["unmeasured"], degraded,
+        )
+    except Exception:
+        pass
+
+
 def observe_f1_degrade(
     reason: str, *, exc: Optional[BaseException] = None, **context: Any,
 ) -> None:
