@@ -351,3 +351,80 @@ needs your sign-off.
 the contract table above was two lines stale before I touched it (their two
 new lines are green and unrecorded). Not mine to write for them, but worth
 knowing that this file undercounts.
+
+### 2026-09-23 · WS0 · claude/dazzling-johnson-excc8e · #(pending)
+
+**Closed:** none (product work, contract 24j)
+**Contract lines flipped:** none
+**Contract lines added:** `tests/test_reasonable_confidence.py` in full; two
+assertions on `test_the_client_row_gets_a_tier_and_never_the_band_or_the_score`
+**Broke and fixed:** none red, but see the AC-9 note below — I wrote the leak
+and caught it before the gate, not after.
+**Open for the founder:** `REASONABLE_CONFIDENCE_ENABLED` is unset everywhere
+and this ships OFF, so merging changes nothing a speaker sees. Turning it on
+is a separate decision on a separate day, and it must be set on **web, worker
+and cron** together (CONFIG-FIRST): a worker that ranks one way while the web
+service ranks another would freeze one order and serve the other.
+
+**What this is.** Contract 24j, signed in session: a Confident Voice item is a
+moment where *the words carried the point they were meant to carry, and the
+delivery sounded more assured than that speaker's own norm*. Until now only
+the second half decided. `services/reasonable_confidence.py` reads the first
+half back and puts it in front of the second, **sequenced, never blended**.
+
+**The design note worth carrying.** A weighted blend of "sounded assured" and
+"made the point" would have broken the CONSTRUCT fence — 0.4 could be fine
+delivery of nothing or a mumbled bullseye, so the measured state would ask two
+things at once, the exact defect that retired charisma on 2026-08-13. Ordering
+does not have that problem: the tier decides WHICH candidates compete,
+`voice_confidence` still decides which of them wins, and it still answers its
+one question about delivery. **Selection criteria are not measurements**, which
+is also why `conf-q-v2` in `services/state_ratings.py` is untouched and must
+stay untouched — the rater is asked about the clip they are shown, and that
+stays true when a tier chose the clip.
+
+**No new parameter, and that surprised me.** `on_slide_score` returns
+`max(_STRENGTH)` over the slide's claims and `_STRENGTH` is
+`{covered: 1.0, partial: 0.5, not: 0.0}`, so the stored composite already IS
+the verdict. There was no continuum to cut, no λ and no threshold — the module
+reads three names back out. If you are about to add a weight here, read
+`slide_alignment.py` first and check you are not calibrating something that is
+already categorical.
+
+**I told the founder change 1 needed a new measurement path. It did not.**
+`compute_piece_slide_scores` already scores EVERY piece against its slide; only
+the `piece_llm_budget()` subset (16) gets true entailment, and the rest get
+`_lexical_verdict`, which is word overlap. So the tier exists for every
+candidate today. What remains is a QUALITY question, not an availability one,
+and it is why the tier carries `reason_degraded`: a coarse read still orders —
+it beats no read — but nothing downstream may mistake it for the measured kind.
+Word overlap is precisely the keyword matching this product does not want to
+be, so the flag travels with the verdict rather than being dropped at the door.
+
+**The AC-9 leak I wrote and then caught.** `_presentable` in
+`take_feedback_policy_v3_service.py` is a DENYLIST — `dict(row)` minus
+`candidate_score` — so every new key on the served row rides the browser
+payload by default. `reason_tier` would have. It is not a number, but `"not"`
+is a verdict about what the speaker's words did, and it is the ordering input,
+so a client holding it could reconstruct the ranking the tier decided. It now
+leaves by the same door as the score. **If you add a field to that row that
+says something ABOUT the speaker, add it to that pop on the same day.**
+
+**Nothing was deleted, on purpose and twice over.** The bottom tier is never
+empty, so 24b still puts exactly one item on every valid block, and a candidate
+with no slide read at all sorts LAST rather than being excluded — excluding
+could empty a block. Deleting the weak end was rejected because 24f's exercise
+fires on the weakest item below the neutral band, and because the owner is only
+ever asked about what surfaces: surface one end of the range and you collect
+judgements from one end of it, which is not a corpus you can later learn
+confidence from.
+
+**Two things went red on the way and both are couplings worth knowing.**
+(1) `services/reasonable_confidence.py` read `os.getenv` directly and the Q-A5
+config fence failed the whole tier for it — the flag now lives in `Config` and
+`enabled()` reads it there. (2) The tests then passed alone and FAILED in the
+full run: four modules in this suite reload `config`, which builds a new class
+object, so a module-level `from config import Config` in a test holds the
+pre-reload class while `enabled()` — importing inside the function — reads the
+post-reload one. The helper looks the class up at call time. If you write a
+test that patches a `Config` attribute, run the whole tier, never just your file.

@@ -536,10 +536,12 @@ def _confidence_candidate(
     expected_take_id: str,
     expected_recording_id: str,
 ) -> dict:
+    from services.reasonable_confidence import reason_tier
     from services.voice_confidence import stamped_score
 
     metrics = snippet.get("metrics") if isinstance(snippet, dict) else None
     metrics = metrics if isinstance(metrics, dict) else {}
+    _reason_tier, _reason_degraded = reason_tier(metrics)
     stamped = metrics.get("voice_confidence")
     stamped = stamped if isinstance(stamped, dict) else {}
     observed_version = str(stamped.get("version") or "") or None
@@ -591,6 +593,15 @@ def _confidence_candidate(
         "exclusion_reason": exclusion_reason,
         "machine_score": score,
         "machine_version": observed_version,
+        # THE REASON LAYER (24j). What the words did, read back from the slide
+        # score already stored on this piece. `None` means the piece carries no
+        # usable slide read at all, which sorts last rather than being excluded
+        # — excluding could empty a block, and 24b says every valid block
+        # yields one. `reason_degraded` marks a verdict that came from word
+        # overlap rather than entailment, so nothing downstream mistakes the
+        # coarse read for the measured one.
+        "reason_tier": _reason_tier,
+        "reason_degraded": _reason_degraded,
         "suggestion_provenance": _versions(suggestion),
         "ordinal": piece["ordinal"],
         "selection_language": (
@@ -602,6 +613,20 @@ def _confidence_candidate(
 
 
 def _confidence_rank(candidate: dict) -> tuple:
+    """Sort key for the candidates inside one block. Lower wins.
+
+    THE REASON LAYER LEADS (24j, founder 2026-09-23): what the words did
+    outranks how the delivery sounded, and the delivery read then orders
+    candidates only WITHIN a tier. Sequenced, never blended — see
+    `services/reasonable_confidence.py` for why that distinction is the whole
+    design rather than a detail of it.
+
+    `ordering_rank` returns one constant for every candidate while the flag is
+    off, so this tuple is byte-for-byte what it was until the layer is turned
+    on deliberately.
+    """
+    from services.reasonable_confidence import ordering_rank
+
     score = candidate.get("machine_score")
     measured = isinstance(score, (int, float)) and not isinstance(score, bool)
     numeric_score = (
@@ -610,6 +635,7 @@ def _confidence_rank(candidate: dict) -> tuple:
         else 0.0
     )
     return (
+        ordering_rank(candidate),
         0 if measured else 1,
         -numeric_score if measured else 0.0,
         int(candidate.get("ordinal") or 0),
