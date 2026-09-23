@@ -92,22 +92,37 @@
 -- that never surfaces. Remove coach_review and the delivery channel, the
 -- corrected transcript and the segmentation ground truth go with it.
 --
--- personalized_exercise_recommendation is not. FIVE routes are gated by
--- @operational_purpose_disabled("personalized_exercise_recommendation") and
--- every one of them returns 410 PURPOSE_NOT_OPERATIONAL today:
+-- personalized_exercise_recommendation is not necessary, and the basis for
+-- saying so is the founder's ruling, NOT the state of the routes.
 --
---   POST /coach/sessions/{sid}/snippets/{id}/confident-voice-practice
---   POST /user/snippets/{id}/confidence-practice
---   GET  /user/confidence-practice/{id}
---   POST /user/confidence-practice/{id}/attempts
---   POST /user/confidence-practice/{id}/complete
+-- ⚠ CORRECTION 2026-09-23. An earlier draft of this header claimed the five
+-- practice routes "every one of them returns 410 PURPOSE_NOT_OPERATIONAL
+-- today" and rested the necessity test on that. THAT WAS FALSE. The routes
+-- are gated by @operational_purpose_disabled(...), which since 0335 ASKS the
+-- registry rather than refusing unconditionally, and production answers yes:
 --
--- The record → transcript → Ideal Text → Feedback loop runs to completion
--- with all five closed. That is the EDPB necessity test answered by the
--- running system rather than by argument: a purpose the service demonstrably
--- operates without cannot be necessary for the performance of the contract.
--- CLAUDE.md states the same rule from the product side — "the loop never
--- waits for a coach or exercise."
+--   personalized_exercise_recommendation | phase1 | operational=true |
+--   authorizes_processing=true | confident-voice-practice-v1 | 2026-09-16
+--
+-- Their only other guard is @require_auth. Practice is LIVE in production.
+-- The claim was made by reading the decorator and assuming its answer — the
+-- precise failure 0335 rewrote the guard to prevent.
+--
+-- Necessity therefore rests where it belongs: on the founder's ruling that
+-- the step is skippable ("you can always leave the app and not do it, you can
+-- skip it"), and on the locked contract in CLAUDE.md — "the record → process
+-- → Ideal Text → next-Take loop never waits for a coach or exercise." A step
+-- the product is built never to wait for is not necessary to perform the
+-- contract, whether or not its routes happen to be serving.
+--
+-- ⚠ AND NOTE WHAT THAT MEANS FOR THIS PUBLISH. Practice works today BECAUSE
+-- of the defect this file removes: the live policy marks it
+-- required_for_core_service, and accept_v1 writes receipt rows only WHERE
+-- required_for_core_service, so every receipt carries it and every permit
+-- issues. After this file publishes, practice is optional — a new user who
+-- does not tick the box genuinely has it off. Receipts already issued stay
+-- valid until re-acceptance. This is a real behaviour change, not a no-op,
+-- and it is the correct one: it is what "refusable" means.
 --
 -- ══════════════════════════════════════════════════════════════════════════
 -- ⚠ ORDERING. DO NOT RUN THIS BEFORE accept_v2 IS DEPLOYED.

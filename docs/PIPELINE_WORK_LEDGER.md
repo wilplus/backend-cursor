@@ -616,3 +616,66 @@ is a screen change and not a schema one.
 **Contract lines:** none flipped. `tests/test_phase1_policy_unbundled.py`
 stays at 15 cases, all passing; only the two purpose constants moved.
 Baseline 17 passed, 1 xfailed (F-4) — unchanged.
+
+---
+
+### 2026-09-23 · CORRECTION · practice was never closed · p11-unbundle-the-policy · #(pending)
+
+**I got a fact wrong and it reached a legal document. This entry corrects it;
+the entries above stand as written.**
+
+**What I claimed.** That all five practice routes return 410
+PURPOSE_NOT_OPERATIONAL, and that the record → transcript → Ideal Text →
+Feedback loop "runs to completion with all five closed" — offered as the EDPB
+necessity test answered by the running system. It went into the script header,
+the ledger entry above, and two artifacts shown to the founder.
+
+**What is true.** The founder read production:
+
+    personalized_exercise_recommendation | phase1 | operational=true |
+    authorizes_processing=true | confident-voice-practice-v1 | 2026-09-16
+
+`@operational_purpose_disabled` has ASKED the registry since 0335 rather than
+refusing unconditionally — that is the whole point of that migration — and the
+only other guard on those routes is `@require_auth`. **Practice is live in
+production.** I read the decorator, saw it could return 410, and assumed the
+answer without reading the row. 0335 exists precisely to stop the switch and
+the fact it claims to reflect being two different things kept in step by hand;
+I did by hand exactly what it removed.
+
+**coach_review was wrong in the other direction.** Migration 0339 states as a
+production fact that it is `operational=false, authorizes_processing=false`,
+and I raised it as a blocker that would make every acceptance raise
+PROCESSING_PURPOSE_NOT_OPERATIONAL. Production says otherwise: all five
+purposes are operational with every control version set, four of them switched
+in one batch at 2026-09-19 23:58:51 — the day after 0339 was written and the
+day before the policy was published. 0339's comment is stale, not wrong when
+written. A migration comment is a snapshot, and I read it as current state.
+
+**What changed in the script.** The necessity argument no longer rests on the
+routes. It rests where it belongs: the founder's ruling that the step is
+skippable, and the locked contract line "the loop never waits for a coach or
+exercise". A step the product is built never to wait for is not necessary to
+perform the contract, whether or not its routes are serving. The false
+sentence is replaced by a CORRECTION block that states what was claimed and
+why it was wrong, because a legal artifact should carry its own errata.
+
+**A consequence this surfaced, which is not an error but is load-bearing.**
+Practice works today BECAUSE of the defect this file removes: the live policy
+marks it `required_for_core_service`, and accept_v1 writes receipt rows only
+`WHERE pp.required_for_core_service`, so every receipt carries practice and
+every permit issues. After this publishes, practice is optional and a user who
+does not tick the box genuinely has it off. Receipts already issued stay valid
+until re-acceptance. That is a real behaviour change, and it is the correct
+one — it is what "refusable" means.
+
+**Contract lines:** none flipped. 15 cases still pass. Baseline 17 passed,
+1 xfailed (F-4) — unchanged.
+
+**Verified on the way, no change needed.** privacy-2.0 §5's claim that OpenAI
+is the only AI provider receiving audio or transcript is TRUE:
+`services/authorized_provider.py` is the single typed adapter and every permit
+it issues is hard-coded `provider="openai"`. §4's claim that the system
+refuses to register a policy permitting training is also true and stronger
+than stated — `PHASE2_PURPOSE_FORBIDDEN` fires at acceptance, and
+`pooled_model_improvement` is registered phase2.
