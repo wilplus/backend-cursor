@@ -308,6 +308,8 @@ hard migrations/speaker_identity_the_table_accepts.sql
 # 0356 adds accept_phase1_processing_authorization_v2 beside v1, which
 # add_phase1_processing_boundary.sql defines and 0335 last replaced.
 hard migrations/a_receipt_can_record_an_optional_yes.sql
+# 0357 replaces get_phase1_processing_authorization_v1, from the boundary file.
+hard migrations/status_knows_a_reacceptance.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.

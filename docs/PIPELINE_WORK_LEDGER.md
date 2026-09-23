@@ -660,3 +660,57 @@ update entirely. **A setup step behind a reuse check is a setup step that does
 not run.** Guarantees go before the early return, not after it. Same shape as
 R-2's constant `identity_hash`: both only worked on a database nobody had
 touched.
+
+---
+
+### 2026-09-23 · P10 (part 1 of 3) · p10-reacceptance-signal · #(pending)
+
+**Closed:** the backend half of P10. The surface itself is parts 2 and 3, and
+part 3 needs a founder decision — see below.
+**Contract lines flipped / added:** none. Baseline 17 passed, 1 xfailed (F-4).
+**Broke and fixed:** none.
+**Open for the founder:** one, and it is a gap between a locked decision and
+the code as it stands.
+
+**What was missing.** `get_phase1_processing_authorization_v1` looks up the
+receipt for the ACTIVE policy. A receipt against an older policy does not match
+that lookup, so it answers `PROCESSING_AUTHORIZATION_REQUIRED` — the same
+answer it gives someone who has never accepted anything. Two different people,
+one answer. `Phase1AcceptanceGate` therefore could only ever show the
+first-time screen, to both.
+
+That bites the moment counsel returns revised Terms: every existing speaker
+goes stale at once and every one of them meets a screen written for a stranger.
+
+0357 adds two keys — `reacceptance_required` and `accepted_policy_version` —
+and touches `authorized` and `code` not at all. A reader that ignores both is
+still correct, which is why it is a CREATE OR REPLACE of v1 rather than a v2:
+adding keys to a JSONB return breaks nobody. The extra read happens only when
+the active policy has no receipt, so the ordinary authorized path does no more
+work than before. A blocked principal reports `reacceptance_required = false`,
+because someone under a service block is not being asked for anything and
+offering them the screen would be an invitation to a door that stays shut.
+
+**P10.3 IS NOT SATISFIED BY THE CURRENT FRONTEND, AND THAT IS A REAL GAP.**
+The locked decision says: *while stale, reading and exporting still work,
+recording does not.* In `frontend-cursor`, `Phase1AcceptanceGate` wraps
+`authorizedShell`, which wraps the **Lounge** — where a speaker reads their
+Ideal Text and their history. So a stale speaker today cannot read their own
+document either. The gate blocks the surface, not the recording.
+
+That is pre-existing and harmless so far, because no policy has ever changed
+under a real user. It stops being harmless the day one does. Fixing it means
+moving the gate from the surface to the record action, which restructures the
+main product surface — too large to fold into a signal PR, and the founder
+should see the choice before I do it.
+
+**Remaining parts of P10, in order:**
+  2. the versioned re-acceptance copy module (P10.4), pending founder sign-off
+     on the wording;
+  3. move the gate so reading survives a stale receipt (P10.3) — needs the
+     founder's go, per above.
+
+**And a note for whoever builds part 2:** 41 existing accounts have no consent
+record at all. They are founder-created test accounts, there is nothing to
+remediate, and they will correctly show `reacceptance_required = false` — the
+first-time screen, which is right for them. Do not let them look like a bug.
