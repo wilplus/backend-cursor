@@ -478,3 +478,47 @@ reaches a speaker and a deploy log is not that surface (`_row_rejection` in
 `take_feedback_policy_v3_service.py` says the same of its own values), but a
 log is also not a place to put someone's words, so a test asserts a `quote` on
 the row does not appear in the line.
+
+---
+
+### 2026-09-23 · the retention promises have no executor · retention-promises-have-no-executor · #(pending)
+
+**Handoff §1.4, picked up.** It asks whether the retention rules run and says
+the answer is one query in production. The query is necessary but not
+sufficient: the code answers a larger question without production at all.
+
+**There is no scheduled retention executor. Not disabled — absent.** The only
+purge entrypoint is `scripts/run_phase1_data_purge.py`: one named request,
+preview by default, gated on `PHASE1_PURGE_EXECUTION_ENABLED`. That is the
+erasure-request path. Nothing runs on a timer, so a zero from
+`SELECT count(*) FROM data_purge_events` would not mean "not fired yet".
+
+**Two corrections to the handoff, offered as it was written.** There is no
+purge cron — the five are annotation-export, devbugs, drift, life-reminders
+and mlc2-confidence-readiness, so §1.3's observability gap is real but is not
+why retention does not run. And `data_retention_rules` is not the
+timed-deletion table: its four rules are evidence categories, all
+`accountability_need_ends`, deciding what SURVIVES an erasure request under
+Art 17(3). `RETENTION_RULE_UNRESOLVED` means "this evidence category has no
+retention decision", not "the sweeper found nothing".
+
+**The seed is held back correctly.** It needs the object_key and sha256 of a
+signed retention schedule that is not signed; inventing them would assert a
+document exists, in an append-only table. Its header also explains why a
+migration that RAISED on placeholders would be worse — under MIGRATE_ON_BOOT a
+raising migration fails container start.
+
+**What it means for #622, which is why this was worth stopping for.** The copy
+about to be published makes FOUR timed promises with no executor (recordings 12
+months, practice attempts 30 days, uploads 24 hours, logs 90 days). The live
+2026-09-20 copy makes ONE. Publishing as written multiplies an unkept promise
+by four. §7 also cites willpowerlab.com/legal/retention, and there is no
+`src/app/legal/` directory — a 404 in a published privacy policy. §9 names two
+survivors of deletion while `token_ledger` and `llm_usage` also survive, which
+the seed file says itself.
+
+**Nothing changed.** No copy, no manifest entry, no invented schedule, no
+executor built. The handoff says report rather than quietly edit, and the copy
+is hashed. The decision is the founder's, and option 2 — say what the system
+does — costs nothing only while #622 remains unrun. After it runs, changing §7
+needs a new policy version and re-acceptance by everyone.
