@@ -351,3 +351,69 @@ needs your sign-off.
 the contract table above was two lines stale before I touched it (their two
 new lines are green and unrecorded). Not mine to write for them, but worth
 knowing that this file undercounts.
+
+---
+
+### 2026-09-23 · P11 · p11-unbundle-the-policy · #(pending)
+
+**Closed:** P11 — the script exists and is verified. It is NOT run; running it
+is the founder's act and it has a cost, below.
+**Contract lines flipped / added:** none. Baseline 17 passed, 1 xfailed (F-4).
+**Broke and fixed:** none.
+**Open for the founder:** one, and it is the whole point of the entry.
+
+**What is live and wrong.** `scripts/phase1_policy_publish.sql` ran in
+production on 2026-09-20 and published all five purposes with
+`lawful_basis_code 'consent'` AND `required_for_core_service TRUE` — including
+coach_review, individual_learning_profile and
+personalized_exercise_recommendation — with an agreement sentence bundling
+coach review into one tick. Doc 01 §3 assesses that exact structure as invalid
+under Art 4(11) and Art 7(4) with Recital 43; §6 says those three were held out
+of v1 for precisely this reason. Zero non-founder users have accepted.
+
+**THE THING P11 ASKED ME TO LOOK FOR, AND I FOUND IT.** Step 1 said: report
+any place the determination and the schema cannot both be satisfied rather
+than picking one. Here it is.
+
+`resolve_mlc3_dual_purpose_receipt_v2` (add_mlc3_general_user_service_d4,
+603-622) gates the ENTIRE MLC-3 general-user service on the receipt carrying
+BOTH `personalized_exercise_recommendation` AND `coach_review`. And
+`accept_phase1_processing_authorization_v1` writes receipt purpose rows only
+`WHERE pp.required_for_core_service` — still true at current main (boundary
+line 692; 0335 kept it at line 152). Doc 01 §6 predicted this in the abstract.
+
+Put together: **the only way MLC-3 works today is if those two purposes are
+marked required — which is the bundling doc 01 calls invalid.** The unlawful
+structure is not a slip in the publish script. The exercise service depends on
+it. That is a harder fact than the audit or doc 01 knew, and it means P11
+cannot be "just run".
+
+**So publishing the new script, on its own, means:** recording, transcription,
+Ideal Text and Feedback keep working on the contract basis, lawfully (F1
+safe); coach delivery is refused; and the MLC-3 general-user service refuses
+every principal, because the dual-purpose receipt can never resolve. Doc 01 §6
+named the first two costs and called it the founder's call. What has changed is
+that MLC-3 GA now sits behind it too.
+
+**The schema change, proposed not built** (step 3 said propose):
+`accept_phase1_processing_authorization_v2(..., p_optional_purposes TEXT[])` —
+a NEW function beside v1, never a replacement; writes rows for every required
+purpose as today PLUS each optional purpose the caller names; raises if a
+named purpose is absent from the policy or IS required, so the array can only
+record a real separable choice. With it, the two purposes return as
+`required_for_core_service FALSE` with their own consent, the dual-purpose
+gate resolves for people who opted in, and someone who declines coach review
+can still record. That is doc 01 §6's v1.1. **Not built here because it
+changes how consent is recorded for real people and deserves its own review.**
+
+**Copy is held for sign-off.** Three of the four documents change wording,
+because the policy they describe changes — the privacy copy can no longer say
+a coach may listen. Drafted, mirrored into
+`legal/phase1-2026.1/copy/*-unbundled-2026-09-23.txt`, and published by nobody
+until the founder runs the script.
+
+**A drift that had already happened.** `copy/agreement-1.0.txt` on disk says a
+coach is asked for separately; the bytes published on 09-20 bundle it. The
+file and the receipt disagreed. `tests/test_phase1_policy_unbundled.py` now
+fails if the script and the mirrored files diverge again, and if a consent
+policy ever reaches `migrations/manifest.txt`.

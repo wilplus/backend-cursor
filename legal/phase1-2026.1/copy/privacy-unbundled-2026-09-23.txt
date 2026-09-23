@@ -1,0 +1,11 @@
+WillpowerLab — Privacy
+
+What we collect: the audio you record, the transcript made from it, the slides you upload, and the document built from your talk.
+
+Who can hear your recording: automated processing only, to transcribe it and produce your feedback. No person at WillpowerLab listens to your recordings as part of the service.
+
+If we ever offer human coach review, we will ask you for that separately, and you will be able to say no and carry on using everything else.
+
+How long we keep it: your recordings and everything derived from them stay while your account is open. Practice attempts you did not keep are deleted after 30 days. Deleting your account deletes all of it.
+
+Your rights: you can see what we hold, correct it, export it, and have it deleted. Deletion reaches the stored audio files, not only the database rows.

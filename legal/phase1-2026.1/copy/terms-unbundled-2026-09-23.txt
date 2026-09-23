@@ -1,0 +1,9 @@
+WillpowerLab — Terms
+
+You record yourself presenting. We turn the recording into a transcript, build a written version of your talk that you own and control, and give you feedback on how you delivered it.
+
+What you keep: the written document is yours. You can edit it, lock parts of it so nothing changes them, and delete it. Deleting your account deletes your recordings and everything derived from them.
+
+What we do not do: we do not sell your recordings, and we do not use them to train models for anyone else's benefit.
+
+You must be 18 or over to use WillpowerLab.
