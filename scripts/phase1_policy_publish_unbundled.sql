@@ -43,6 +43,35 @@
 -- purpose object, and STEP 5 asserts the optional lane is non-empty, which is
 -- the half a count can never express.
 --
+-- ── §7 DECIDED BY THE FOUNDER, 2026-09-23: SAY WHAT THE SYSTEM DOES ─────
+--
+-- The v3.0 copy promised deletion at 12 months, 30 days, 24 hours and 90 days,
+-- and cited willpowerlab.com/legal/retention for the full schedule. Neither
+-- survived contact with the code:
+--
+--   * there is NO scheduled retention executor. Not disabled — absent. The
+--     only purge entrypoint is scripts/run_phase1_data_purge.py: one named
+--     request, preview by default, gated on PHASE1_PURGE_EXECUTION_ENABLED.
+--     That is the erasure path. Nothing runs on a timer.
+--   * data_retention_rules is not the timed-deletion table either. Its four
+--     rules are evidence categories, all 'accountability_need_ends', deciding
+--     what SURVIVES an erasure request under Art 17(3).
+--   * migrations/pending/seed_phase1_retention_schedule.sql is deliberately
+--     out of manifest.txt, because it needs the hash of a retention schedule
+--     that is not signed.
+--   * there is no src/app/legal/ directory in frontend-cursor, so the cited
+--     page is a 404.
+--
+-- Publishing those four periods would have taken ONE unkept promise (the live
+-- 09-20 copy's 30-day practice attempts) to FOUR, plus a dead link. §7 now
+-- describes deletion on request and on account closure, which are real and
+-- performed, and says plainly why no periods are quoted yet. When the schedule
+-- exists it arrives as a new policy version that people accept.
+--
+-- The decision was cheap only because this file had not run. Afterwards it
+-- would have needed a new version and re-acceptance by everyone. Full finding:
+-- docs/RETENTION-PROMISES-HAVE-NO-EXECUTOR.md.
+--
 -- ⚠ TODO(founder) — THE PRICING TABLE in Terms §2 carries their placeholder
 -- of "1 coach review" on Free and Practice. Set the real numbers. Only
 -- "greater than zero on every plan" is load-bearing, because that is what
@@ -755,20 +784,23 @@ You can ask us for a copy of the safeguards in place.
 
 7. HOW LONG WE KEEP IT
 
-Recordings (audio): 12 months after you last use the recording.
-Transcripts, Ideal Text and feedback: until you delete your account.
-Voice measurements: deleted together with the recording they came from, never
-  kept after it.
-Practice attempts: kept while the practice is open; after that we keep only the
-  attempt you chose and delete the rest after 30 days.
-Uploaded files that never became a recording: deleted after 24 hours.
-Security and technical logs: 90 days.
-Account records: until you delete your account.
-Record of your agreement to this policy: kept for as long as we may need to
-  show that your recordings were processed lawfully, and then deleted.
+We keep what you give us for as long as your account is open. When you ask us
+to delete something, or when you delete your account, we delete it — section 9
+describes what that involves and what survives it.
 
-Our full retention and destruction schedule is published at
-willpowerlab.com/legal/retention.
+Recordings, transcripts, Ideal Text, feedback, voice measurements, practice
+attempts and account records: kept while your account is open, and deleted
+when you ask or when you close it. Voice measurements are deleted together with
+the recording they came from and are never kept after it.
+
+Record of your agreement to this policy: kept for as long as we may need it to
+show that your recordings were processed lawfully, and then deleted.
+
+We are not quoting fixed retention periods here. A period in a privacy policy
+is a promise that something is deleted on a clock. We would rather tell you
+what we actually do than name a number we do not yet enforce. When the
+automatic schedule is in place we will publish it, and you will be asked to
+accept the version that describes it.
 
 What OpenAI holds, separately from us
 OpenAI keeps the audio and text sent to its API for up to 30 days, to check for

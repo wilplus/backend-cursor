@@ -879,3 +879,12 @@ a founder decision, not a quiet patch on a consent path.
 **Mirrors renamed** to `legal/phase1-2026.1/copy/*-3.1.txt`, matching the
 document version instead of the publish date, so the lineage from their 3.0 is
 visible. Contract lines: 15 cases, all passing. Baseline 17 passed, 1 xfailed.
+
+**§7 decided, same day.** Founder chose "say what the system does" over
+publishing the four periods. The copy now describes deletion on request and on
+account closure — both real and performed — and states plainly that no fixed
+periods are quoted because none are enforced yet. The four periods and the
+willpowerlab.com/legal/retention link are gone. This was free only because the
+script had not run; afterwards it would have cost a new policy version and
+re-acceptance by every user. The live 09-20 copy carries one unkept promise
+(30-day practice attempts); publishing as drafted would have made it four.

@@ -192,20 +192,23 @@ You can ask us for a copy of the safeguards in place.
 
 7. HOW LONG WE KEEP IT
 
-Recordings (audio): 12 months after you last use the recording.
-Transcripts, Ideal Text and feedback: until you delete your account.
-Voice measurements: deleted together with the recording they came from, never
-  kept after it.
-Practice attempts: kept while the practice is open; after that we keep only the
-  attempt you chose and delete the rest after 30 days.
-Uploaded files that never became a recording: deleted after 24 hours.
-Security and technical logs: 90 days.
-Account records: until you delete your account.
-Record of your agreement to this policy: kept for as long as we may need to
-  show that your recordings were processed lawfully, and then deleted.
+We keep what you give us for as long as your account is open. When you ask us
+to delete something, or when you delete your account, we delete it — section 9
+describes what that involves and what survives it.
 
-Our full retention and destruction schedule is published at
-willpowerlab.com/legal/retention.
+Recordings, transcripts, Ideal Text, feedback, voice measurements, practice
+attempts and account records: kept while your account is open, and deleted
+when you ask or when you close it. Voice measurements are deleted together with
+the recording they came from and are never kept after it.
+
+Record of your agreement to this policy: kept for as long as we may need it to
+show that your recordings were processed lawfully, and then deleted.
+
+We are not quoting fixed retention periods here. A period in a privacy policy
+is a promise that something is deleted on a clock. We would rather tell you
+what we actually do than name a number we do not yet enforce. When the
+automatic schedule is in place we will publish it, and you will be asked to
+accept the version that describes it.
 
 What OpenAI holds, separately from us
 OpenAI keeps the audio and text sent to its API for up to 30 days, to check for
