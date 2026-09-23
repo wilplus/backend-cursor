@@ -30,9 +30,11 @@ So: user recordings sign, everything else keeps the public path it has.
 
 WHY A SEPARATE MODULE RATHER THAN A CONSTANT IN ONE OF THEM.
 
-Three storage modules mint public URLs — ``coach_video_storage``,
-``audio_storage`` and ``lab_audio_storage`` — for three buckets, and a key can
-be written by one and read through another. If they disagree about what counts
+Four storage modules mint public URLs — ``coach_video_storage``,
+``audio_storage``, ``lab_audio_storage`` and ``user_media_storage`` — for four
+buckets, and a key can be written by one and read through another. (This
+paragraph said THREE until 2026-09-23; ``user_media_storage`` was the one it
+missed, and it was missing the check too.) If they disagree about what counts
 as user content, a recording is signed on one surface and public on another,
 which is the same as not signing it. One list, imported by all three.
 
@@ -71,6 +73,26 @@ from typing import Any
 #: was not, because existing rows carry existing keys and rewriting 382 objects
 #: buys nothing. Both spellings are listed so a future writer using the new one
 #: is covered on the day it lands rather than the day someone notices.
+#:
+#: ``casual_voice/`` joined 2026-09-23 (P1). It was missed when this list was
+#: written, and the miss is instructive: ``audio_public_url``'s own docstring
+#: says "everything this bucket holds under ``session_recordings/`` and
+#: ``guest_funnel/`` is a recording of someone speaking" — but
+#: ``casual_voice_analytics`` writes ``casual_voice/<user>/<row>.webm`` through
+#: ``put_audio_bytes`` into that SAME bucket. The sentence described the list,
+#: not the bucket, and a third prefix of retained user voice sat outside it
+#: getting permanent public URLs. Which is the exposure this module exists to
+#: stop.
+#:
+#: ``mlc3-practice/`` joined the same day, and it is the better argument for
+#: the test than ``casual_voice/`` is: nobody found it by reading. It is a
+#: speaker re-recording a passage they were given to practise
+#: (``practice_attempt_orchestrator``), and
+#: ``tests/test_object_key_prefixes_are_classified.py`` surfaced it on its
+#: first run, from a list nobody had to maintain. That test now fails when any
+#: newly-written object key is classified neither way, which is the only way
+#: FAIL TOWARD SIGNING can hold: a prefix that never reaches the question
+#: cannot fail toward anything.
 USER_CONTENT_PREFIXES: tuple[str, ...] = (
     "session_recordings/",
     "guest_funnel/",
@@ -78,6 +100,31 @@ USER_CONTENT_PREFIXES: tuple[str, ...] = (
     "charisma_snippets/",
     "snippets/",
     "willab_presentations/",
+    "casual_voice/",
+    "mlc3-practice/",
+)
+
+#: Object-key prefixes this codebase writes that are deliberately NOT user
+#: content, each with the reason. Listed rather than assumed, because the whole
+#: defect this module addresses was a prefix nobody had classified either way.
+#:
+#: ``journal/``   media attached to a Journal post — material the author
+#:                publishes on purpose, on a surface built to show it, not a
+#:                recording captured while someone practises.
+#: ``coach-feedback/`` and ``copilot/``
+#:                coach-authored media on a surface that already gates access,
+#:                per the split described above.
+NON_USER_CONTENT_PREFIXES: tuple[str, ...] = (
+    "journal/",
+    "coach-feedback/",
+    "copilot/",
+)
+
+#: Every prefix above, so a test can assert that a newly-written object key is
+#: classified one way or the other before it ships. FAIL TOWARD SIGNING means
+#: nothing if a prefix can simply never reach the question.
+CLASSIFIED_PREFIXES: tuple[str, ...] = (
+    USER_CONTENT_PREFIXES + NON_USER_CONTENT_PREFIXES
 )
 
 
