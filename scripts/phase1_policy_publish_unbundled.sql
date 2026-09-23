@@ -72,10 +72,22 @@
 -- would have needed a new version and re-acceptance by everyone. Full finding:
 -- docs/RETENTION-PROMISES-HAVE-NO-EXECUTOR.md.
 --
--- ⚠ TODO(founder) — THE PRICING TABLE in Terms §2 carries their placeholder
--- of "1 coach review" on Free and Practice. Set the real numbers. Only
--- "greater than zero on every plan" is load-bearing, because that is what
--- keeps the table from reading as "nobody listens to you".
+-- ── THE PRICING TABLE, CONFIRMED BY THE FOUNDER 2026-09-23 ──────────────
+--
+-- Terms §2 stands as drafted: Free and Practice 1 coach review each, Coaching
+-- 3, Intensive 8, with the token allowances and prices unchanged. Asked
+-- directly, the founder confirmed the numbers rather than replacing them.
+--
+-- The load-bearing part is not which numbers they are — it is that none of
+-- them is ZERO. The earlier draft gave Free and Practice none, which would
+-- have made counsel's premise false for half the plans: coach review sits on
+-- Art 6(1)(b) because WillpowerLab is ONE hybrid service in which a person
+-- listening is how the service is performed, and a plan that delivers no
+-- reviews is not that service. The product changed rather than the argument.
+--
+-- A plan's number is how many reviews are SENT BACK, never whether anyone
+-- listens. Terms §11 and privacy §5 both say so, because "no coach reviews"
+-- read as "nobody hears me" is the misreading this table invites.
 --
 -- ── REWRITTEN 2026-09-23 AFTER THE FOUNDER'S COACH-REVIEW RULING ────────
 --

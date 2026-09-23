@@ -888,3 +888,12 @@ willpowerlab.com/legal/retention link are gone. This was free only because the
 script had not run; afterwards it would have cost a new policy version and
 re-acceptance by every user. The live 09-20 copy carries one unkept promise
 (30-day practice attempts); publishing as drafted would have made it four.
+
+**Pricing table confirmed, same day.** Asked directly, the founder kept Terms
+§2 as drafted — Free and Practice 1 coach review each, Coaching 3, Intensive 8,
+tokens and prices unchanged. The numbers themselves are a business call; what
+is load-bearing is that none is ZERO. The earlier draft gave Free and Practice
+none, which would have made counsel's premise false for half the plans, since
+coach review sits on Art 6(1)(b) precisely because this is ONE hybrid service
+in which a person listening is how it is performed. The product changed rather
+than the argument. **#622 now carries no founder TODO.**
