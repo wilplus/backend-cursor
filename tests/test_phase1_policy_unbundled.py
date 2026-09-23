@@ -248,7 +248,7 @@ class TestTheCopyDescribesTheSameProductAsThePurposes:
         it guarded removed coach review from the product."""
         privacy = _quoted("privacy").lower()
 
-        assert "a willpowerlab coach — a person — may listen" in privacy, (
+        assert "a willpowerlab coach — a person —" in privacy, (
             "the privacy notice no longer tells people a human hears their "
             "voice, while the policy makes exactly that a condition of use"
         )

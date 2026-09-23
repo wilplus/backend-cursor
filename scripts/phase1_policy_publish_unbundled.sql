@@ -205,38 +205,554 @@
 -- legal/phase1-2026.1/copy/*-unbundled-2026-09-23.txt so the files and the
 -- published bytes agree.
 
+-- ⚠ THE EFFECTIVE DATE IS WRITTEN INTO THE COPY. Both documents say
+-- "Version 2.1. Effective 23 September 2026." If you run this on a later day
+-- that sentence is wrong on the day it binds. Change the date in the terms and
+-- privacy blocks below, re-run the mirror sync, and publish — the
+-- sha256s recompute themselves from the text, so only the date needs touching.
+-- tests/test_phase1_policy_unbundled.py fails if the mirrors drift.
+
 -- ── STEP 1 · register ───────────────────────────────────────────────────
 
 WITH c AS (SELECT
-$terms$WillpowerLab — Terms
+$terms$WillpowerLab — Terms of Service
+Version 2.1. Effective 23 September 2026.
 
-You record yourself presenting. We turn the recording into a transcript, build a written version of your talk that you own and control, and give you feedback on how you delivered it.
+These terms are an agreement between you and Artur Willoński, operating under
+the name "WillpowerLab" from Poland ("WillpowerLab", "we", "us"). They govern
+your use of
+willpowerlab.com and the WillpowerLab application.
 
-Coach review is part of the service. A WillpowerLab coach — a person — listens to recordings in order to check and correct the feedback you were given. This is not something you can switch off: if you are not willing to have a person hear your recordings, WillpowerLab is not for you. How many coach reviews are sent back to you depends on your plan. A plan that includes no coach reviews does not mean nobody listens.
+Version 2.1 replaces version 1.2. It is not an edit of it. Version 1.2 required
+you to agree that your practice data could be used to train models shared with
+other users. This version does not ask for that and does not permit it. Under
+these terms your recordings are processed to deliver your own coaching. If that
+changes, it changes in a new version you are asked to accept — see section 15.
 
-Practice is optional. After feedback you may be offered a short exercise and the chance to re-record a fragment. You can skip it, and skipping it changes nothing else about your account.
 
-What you keep: the written document is yours. You can edit it, lock parts of it so nothing changes them, and delete it. Deleting your account deletes your recordings and everything derived from them.
+1. WHAT THE SERVICE DOES
 
-What we do not do: we do not sell your recordings, and we do not use them to train models for anyone else's benefit.
+You record yourself presenting. WillpowerLab transcribes the recording, lines
+the transcript up with your slides, writes an Ideal Text — a presentation
+document built from what you actually said — and gives you feedback after each
+attempt.
 
-You must be 18 or over to use WillpowerLab.$terms$ AS terms,
+The transcription and the written documents are produced by artificial
+intelligence. Your audio is sent to a third-party AI provider to be
+transcribed. The AI notice tells you who receives it and what happens to it,
+and the Privacy Policy sets out the detail.
 
-$privacy$WillpowerLab — Privacy
 
-What we collect: the audio you record, the transcript made from it, the slides you upload, and the document built from your talk.
+2. WHAT IT COSTS
 
-Who can hear your recording:
- · automated processing, to transcribe it and produce your feedback;
- · a WillpowerLab coach — a person — may listen to a recording in order to review the feedback you were given.
+There is a free plan and there are paid plans. You can use the free plan for as
+long as you like without paying.
 
-That second one is a human being hearing your voice. We are telling you plainly because it is the kind of thing people assume does not happen. It is part of the service, not an extra: agreeing to the Terms is agreeing to this, and there is no version of WillpowerLab without it.
+Work in the app is measured in tokens. Each plan gives you an allowance of them
+for the month. The allowance is SET at the start of each month rather than
+added to what you had, so unused tokens do not carry over.
 
-Practice is separate, and optional. If you turn it on, we use your recording to choose a short exercise that fits it, we keep the fragment you re-record, and we remember what you have been working on so later exercises suit you better. If you leave it off, none of that is processed and everything else works exactly the same. You can change your mind at any time.
+  Free         12,000 tokens a month     no coach reviews      no charge
+  Practice    150,000 tokens a month     no coach reviews      USD 12 a month
+  Coaching    150,000 tokens a month     3 coach reviews       USD 39 a month
+  Intensive   400,000 tokens a month     8 coach reviews       USD 89 a month
 
-How long we keep it: your recordings and everything derived from them stay while your account is open. Practice attempts you did not keep are deleted after 30 days. Deleting your account deletes all of it.
+Reviews by a human coach are a separate limit from tokens, and the tighter of
+the two applies: you can have tokens left and no reviews left.
 
-Your rights: you can see what we hold, correct it, export it, and have it deleted. Deletion reaches the stored audio files, not only the database rows.$privacy$ AS privacy,
+That limit is about reviews sent back to you. It is not about whether anyone
+listens. Coach review is part of the service on every plan, including Free —
+see section 11.
+
+The price and what it includes are shown before you pay. We will tell you
+before any price changes. Payments are taken by our payment provider; we do not
+see or store your card details. A paid plan renews each month until you cancel,
+and you can cancel at any time.
+
+If you are a consumer in the EU or EEA, you have 14 days to withdraw from a
+paid plan.
+
+
+3. YOU MUST BE 18
+
+The service is for adults. You must be 18 or older to use it. When you accept
+these terms you confirm that you are. We do not knowingly provide the service
+to anyone under 18, and we will close an account if we learn that its holder is
+under 18.
+
+
+4. WHERE THE SERVICE IS AVAILABLE
+
+We offer the service only in the countries listed on the acceptance screen. If
+you are not resident in one of them, you cannot accept these terms and we
+cannot provide the service to you.
+
+
+5. YOUR ACCOUNT
+
+You may start using the service before creating an account. If you later create
+one, the work you have already done moves with you.
+
+Keep your login details to yourself. You are responsible for what happens under
+your account. Tell us promptly if you think someone else has access to it.
+
+
+6. RECORDING OTHER PEOPLE
+
+You may record your own voice. You may not use WillpowerLab to record anyone
+else without their knowledge and their agreement.
+
+This matters more here than in most products, because a recording of a person's
+voice is their personal data and we process it on your say-so. If you record
+someone else, you are the one who must have their permission, and you are
+responsible for having it.
+
+If you believe your voice has been recorded and uploaded to WillpowerLab by
+somebody else, contact us at contact@willpowerlab.com. We will act on that
+report, which includes blocking further processing of the recording and
+deleting the audio.
+
+
+7. WHAT YOU MAY NOT DO
+
+Do not use the service to:
+
+- record a person who has not agreed to it;
+- upload material you have no right to upload;
+- upload content that is unlawful, or that harasses, threatens or defames
+  someone;
+- attempt to extract, reverse engineer or retrain any model we use;
+- probe, scan or interfere with the service's security, or use it in a way that
+  degrades it for other people;
+- resell the service or provide it to others as your own;
+- deploy it in a workplace or an education institution (see below).
+
+
+NOT FOR EMPLOYERS OR SCHOOLS
+
+WillpowerLab is for individuals practising on their own account.
+
+You may not use it, or require or encourage anyone else to use it, as part of
+employment, recruitment, performance review, or assessment in an education
+institution. No employer, school or other organisation may direct, monitor or
+require anyone's use of the service, and no organisation receives anything the
+service produces about a person.
+
+This is not a formality. The service analyses how a delivery sounds, and the law
+treats that kind of analysis very differently inside a workplace or a classroom
+than it does for someone practising alone. If you want to use WillpowerLab with
+a team, talk to us first.
+
+
+8. YOUR CONTENT IS YOURS
+
+You keep every right you already have in your recordings, your slides, your
+transcripts and the documents the service produces for you.
+
+You give us permission to process that material only so far as it takes to give
+you the service: to store it, transcribe it, send the necessary parts to the
+providers named in the Privacy Policy, generate your documents and feedback,
+and keep them available to you. That permission is limited to your own service
+and ends when your content is deleted.
+
+Under these terms we do not use your recordings to train models for anyone
+else, and we do not pool your material with other users' material. Any change
+to that comes as a new version you are asked to accept.
+
+
+9. THE IDEAL TEXT IS YOUR DOCUMENT
+
+The Ideal Text is a single, persistent document that belongs to you. Your first
+attempt creates it. Later attempts may propose improvements, and you decide
+whether to take them. We do not rewrite or replace your Ideal Text behind your
+back, and we do not overwrite it with a later transcript.
+
+
+10. WHAT AI-GENERATED OUTPUT IS AND IS NOT
+
+The transcript, the Ideal Text and the feedback are generated by AI. They can
+be wrong. A transcript can mishear a word. A generated document can misstate
+something you said. Feedback can be off the mark.
+
+Check anything that matters before you rely on it. You are responsible for what
+you present.
+
+The service is practice tooling. It is not professional, medical, psychological
+or career advice, and it is not an assessment of you as a person. It does not
+score you, rate you, or produce a verdict about you, and nothing it produces is
+a measurement of your ability.
+
+
+11. HUMAN COACHES
+
+Coach review is part of the service. A WillpowerLab coach — a person — listens
+to recordings in order to check and correct the feedback you were given. It is
+not something you can switch off: if you are not willing to have a person hear
+your recordings, WillpowerLab is not for you.
+
+How many coach reviews are sent back to you depends on your plan. A plan that
+includes no coach reviews does not mean nobody listens.
+
+The recording and feedback loop never waits for a coach. Review happens
+afterwards, so you already have your feedback before any coach opens it.
+
+
+12. AVAILABILITY
+
+We work to keep the service running, but we do not promise it will always be
+available or uninterrupted. We may change, suspend or withdraw features. If a
+change materially reduces what you get, we will tell you beforehand where we
+reasonably can.
+
+
+13. SUSPENDING OR ENDING YOUR ACCESS
+
+You may stop using the service at any time and ask us to delete your account.
+
+We may suspend or end your access if you break these terms, if we must to
+comply with the law, or if keeping your access open would put other people or
+the service at risk. Where it is practical and lawful to do so, we will tell
+you why.
+
+When your access ends, we handle your content as described in the Privacy
+Policy.
+
+
+14. OUR RESPONSIBILITY TO YOU
+
+We provide the service with reasonable care and skill. We do not exclude or
+limit our liability for death or personal injury caused by our negligence, for
+fraud, or for anything else that cannot be excluded or limited under the law
+that applies to you.
+
+Subject to that: we are not liable for loss that was not reasonably
+foreseeable, for lost profits or lost opportunities, or for the consequences of
+your relying on AI-generated output without checking it.
+
+If you are a consumer, nothing in these terms affects your statutory rights.
+
+
+15. CHANGES TO THESE TERMS
+
+We may change these terms. When we do, we publish a new version with a new
+version number, and the new text is what you will be asked to agree to.
+
+Because the exact words of each version are fingerprinted, a change means you
+are asked to accept the new version before you carry on using the service. Your
+acceptance records which exact version you agreed to and when. You can ask us
+for that record at any time.
+
+
+16. LAW AND DISPUTES
+
+These terms are governed by Polish law, and the courts of Warsaw, Poland have
+jurisdiction. If you are a consumer resident in the
+EU, this does not deprive you of the protection of the mandatory rules of the
+country where you live, and you may bring proceedings there.
+
+You may also use the European Commission's online dispute resolution platform.
+
+
+17. CONTACT
+
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)
+$terms$ AS terms,
+
+$privacy$WillpowerLab — Privacy Policy
+Version 2.1. Effective 23 September 2026.
+
+This policy explains what WillpowerLab does with your personal data, who else
+receives it, how long we keep it, and how you get it deleted.
+
+Version 2.1 replaces version 1.2. Under version 1.2 you had to agree that your
+practice data could be used to train models shared with other users. This
+version does not ask for that. Under this version your recordings are used to
+deliver your own coaching: they are not pooled with other users' data and they
+are not used to train models. If that ever changes, it changes in a new version
+of this policy, which you will be asked to accept before it applies to you —
+see section 12.
+
+
+1. WHO IS RESPONSIBLE FOR YOUR DATA
+
+WillpowerLab is operated by an individual based in Poland. The controller of
+the personal data described here is:
+
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)
+
+The lead supervisory authority under Article 56 GDPR is the President of the
+Personal Data Protection Office (UODO), ul. Stawki 2, 00-193 Warsaw, Poland.
+
+Given the scale of processing we have not appointed a Data Protection Officer,
+which GDPR Article 37 does not require of us. Privacy requests are handled
+directly at the address above.
+
+
+2. WHAT WE COLLECT
+
+Things you give us
+- Your email address and account details.
+- Your slides and presentation materials.
+- Audio recordings of you presenting.
+- Edits you make to your Ideal Text, and your responses to feedback.
+
+Things produced from your recordings
+- Transcripts of what you said.
+- Measurements taken from the sound of your voice: how much your pitch varies,
+  how loud and how varied your delivery is, how fast you speak, how you pause,
+  and how your energy and pitch move across a sentence.
+- Your Ideal Text and your feedback.
+
+Things collected automatically
+- Technical and security logs: IP address, device and browser information,
+  timestamps, and error records.
+- The version of the app you used, the country you told us you live in, and the
+  language your app was set to, recorded as part of your agreement to this
+  policy.
+
+
+3. THE SOUND OF YOUR VOICE
+
+We take measurements from how your voice sounds and compare them against your
+own earlier recordings — never against other people. We use them to help choose
+which of your own sentences to show back to you.
+
+We do not produce a score, a rating, a grade or a verdict about you, and no such
+thing is shown to you, to a coach, or to anyone else. We do not use your voice
+to identify you. We do not infer, record or guess your sex, gender, age, health,
+ethnicity, or any other characteristic about you from the sound of your voice.
+
+If the measurements cannot be taken reliably from a recording, we record that
+they could not be taken. We do not fill in a value.
+
+
+4. WHAT WE USE IT FOR, AND ON WHAT LEGAL BASIS
+
+To provide the service: to store your recording, transcribe it, generate your
+Ideal Text and your feedback, and keep them available to you.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR). This
+processing is what the service is; we cannot provide it without doing this.
+
+Coach review: a WillpowerLab coach listens to recordings in order to review and
+correct the feedback you were given.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR). Coach
+review is part of the service rather than an optional extra — see section 5.
+
+To keep the service secure and working: fraud and abuse prevention, debugging,
+protecting the service and its users.
+Legal basis: our legitimate interests (Article 6(1)(f) GDPR).
+
+To meet our legal obligations: for example accounting records, and responding
+to lawful requests.
+Legal basis: legal obligation (Article 6(1)(c) GDPR).
+
+Practice, and making it personal — optional: choosing a short exercise that fits
+your recording, keeping the fragment you re-record, and remembering what you
+have been working on so that later exercises suit you better.
+Legal basis: your consent (Article 6(1)(a) GDPR). You choose this separately when
+you accept, you can decline it, and declining costs you nothing else in the
+service. You can withdraw it at any time.
+
+Do you have to provide this data? For the parts the service is made of, yes.
+Recording your voice, having it transcribed, and having a coach able to review
+your feedback are what WillpowerLab is; there is no version of it that works
+without them. If you are not willing to provide them, you cannot use the
+service. Practice is the exception — it is optional, and refusing it costs you
+nothing but practice.
+
+If you take a paid plan, your payment is handled by Stripe. We never see or
+store your card details; we hold the record that a plan is active and the
+invoices we are required to keep. Under this version we do not use
+anyone's recordings to train models, and that is enforced rather than merely
+stated: while this version is in force our systems refuse to register a
+processing policy that would permit it. Changing it would take a new policy
+version and your acceptance of it.
+
+Special categories of data. A recording of you speaking freely may happen to
+reveal something sensitive — a health condition audible in your speech, or
+something you mention while presenting. We do not look for this and we do not
+infer it. Where such information is present, we rely on your explicit consent
+(Article 9(2)(a) GDPR), which you give on the acceptance screen. You can
+withdraw it at any time; doing so means we can no longer process recordings for
+you.
+
+We do not make decisions about you by automated means that produce legal effects
+or similarly significantly affect you.
+
+
+5. WHO ELSE RECEIVES YOUR DATA
+
+AI providers
+
+OpenAI receives:
+- the audio of your recording, in order to transcribe it;
+- parts of your transcript and related text, in order to generate your Ideal
+  Text and your feedback.
+
+OpenAI is the only AI provider that receives your audio or your transcript.
+Each transfer is made under a short-lived internal permit that records which
+operation it was for and the minimum data it was allowed to carry. We do not
+authorise OpenAI to use your content to train its models.
+
+Infrastructure providers
+- Cloudflare (R2): storage of your audio recordings.
+- Supabase: our database, and audio storage on a fallback path.
+- Railway: hosting of the application. For your account and usage data — not
+  your recordings — Railway is an independent controller in its own right,
+  deciding for itself how it uses that data under its own terms, in the same
+  way Stripe does below.
+- Resend: transactional email.
+- Vercel: hosting of the website.
+- Sentry: error reports, stored in the European Union.
+
+Payments
+- Stripe, if you take a paid plan. Stripe is not our processor: it decides for
+  itself how it uses payment data, as a controller in its own right, under its
+  own terms. We never see or store your card details.
+
+Human coaches
+A WillpowerLab coach — a person — listens to recordings in order to review the
+feedback you were given. This is part of the service, not an extra you opt into:
+agreeing to the Terms is agreeing to it, and there is no version of WillpowerLab
+without it. A coach who reviews your recording does not see the voice
+measurements described in section 3.
+
+Others
+We share data with professional advisers, and with authorities where the law
+requires it. We do not sell your personal data and we do not share it for
+advertising.
+
+
+6. TRANSFERS OUTSIDE THE EEA
+
+Some of the providers above process data in the United States. Every one of
+those transfers is made under the European Commission's Standard Contractual
+Clauses, which each provider's data processing agreement incorporates.
+
+- OpenAI: Standard Contractual Clauses. Its agreement appoints OpenAI Ireland
+  Limited to process data from the EEA and Switzerland.
+- Cloudflare: Standard Contractual Clauses. Our storage carries an Eastern
+  Europe location hint, which is a preference rather than a guarantee.
+- Supabase: Standard Contractual Clauses and a UK addendum. Your data is stored
+  in Ireland.
+- Railway, Resend, Vercel: Standard Contractual Clauses.
+- Sentry: error reports are stored in the European Union.
+
+You can ask us for a copy of the safeguards in place.
+
+
+7. HOW LONG WE KEEP IT
+
+Recordings (audio): 12 months after you last use the recording.
+Transcripts, Ideal Text and feedback: until you delete your account.
+Voice measurements: deleted together with the recording they came from, never
+  kept after it.
+Practice attempts: kept while the practice is open; after that we keep only the
+  attempt you chose and delete the rest after 30 days.
+Uploaded files that never became a recording: deleted after 24 hours.
+Security and technical logs: 90 days.
+Account records: until you delete your account.
+Record of your agreement to this policy: kept for as long as we may need to
+  show that your recordings were processed lawfully, and then deleted.
+
+Our full retention and destruction schedule is published at
+willpowerlab.com/legal/retention.
+
+What OpenAI holds, separately from us
+OpenAI keeps the audio and text sent to its API for up to 30 days, to check for
+abuse, and then deletes it. On our current plan that period cannot be switched
+off. It is not used to train OpenAI's models.
+
+8. YOUR RIGHTS
+
+You have the right to:
+- get a copy of the personal data we hold about you;
+- have inaccurate data corrected;
+- have your data deleted;
+- restrict how we use your data, or object to our using it on the basis of our
+  legitimate interests;
+- receive your data in a portable format;
+- withdraw any consent you have given, at any time, without affecting what we
+  did lawfully before you withdrew it.
+
+To exercise any of these, contact contact@willpowerlab.com. We respond within one
+month. If we need longer because a request is complex, we will tell you within
+that month and explain why.
+
+If you are unhappy with how we handle your data, you can complain to your local
+supervisory authority. In Poland that is the President of the Personal Data
+Protection Office (Prezes Urzędu Ochrony Danych Osobowych), ul. Stawki 2,
+00-193 Warszawa.
+
+
+9. DELETING YOUR DATA — WHAT ACTUALLY HAPPENS
+
+We want to be precise about this rather than reassuring.
+
+When you ask us to delete your data, we build an inventory of everywhere it is:
+database records, stored audio files, transcripts, generated documents, queued
+processing jobs, records of what was sent to providers, and coach copies where
+they exist. We then delete them and record proof of each deletion.
+
+If our process reaches something it cannot resolve on its own, it stops rather
+than guessing, and a person completes it. That is deliberate: it is better for
+the process to halt than to report a deletion it did not actually make. It means
+some deletions are finished by hand. We finish them within the one-month period
+in section 8, and we tell you when it is done.
+
+Two things survive deletion:
+
+- Records that prove your recordings were processed with your agreement. These
+  contain identifiers, timestamps and fingerprints — not your recordings, your
+  transcripts or anything you said. We keep them because they are the evidence
+  that we handled your data lawfully, and we delete them when we no longer need
+  them for that.
+- Anything we must keep by law, for example accounting records.
+
+Audio already sent to a provider is deleted at the provider as part of the same
+process, and we record the outcome.
+
+
+10. SECURITY
+
+Your recordings are stored with access restricted to the systems that need it.
+We verify each stored recording against a fingerprint of its exact bytes so we
+can tell that what we hold is what you uploaded and that nothing has been
+altered. Internal access is limited and logged. Records that prove how your data
+was handled cannot be edited or deleted by the application.
+
+No service is perfectly secure. If a breach affects your rights, we will notify
+you and the supervisory authority as the law requires.
+
+
+11. CHILDREN
+
+The service is for adults aged 18 and over. We do not knowingly collect data
+about anyone under 18. If you believe we hold data about a child, contact us and
+we will delete it.
+
+
+12. CHANGES TO THIS POLICY
+
+When we change this policy we publish a new version with a new version number.
+The exact words of each version are fingerprinted, so you will be asked to
+accept the new version before continuing to use the service, and your record
+shows exactly which version you agreed to and when.
+
+
+13. CONTACT
+
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)
+$privacy$ AS privacy,
 
 $notice$WillpowerLab — how the automated part works
 
@@ -263,10 +779,10 @@ $agree$I am 18 or over. I agree to the Terms and the Privacy notice, including t
 SELECT public.register_phase1_policy_v1(
   jsonb_build_object(
     'version','phase1-2026-09-23',
-    'terms_version','terms-2026-09-23',
+    'terms_version','terms-2.1-2026-09-23',
     'terms_copy', c.terms,
     'terms_copy_sha256', encode(extensions.digest(c.terms,'sha256'),'hex'),
-    'privacy_version','privacy-2026-09-23',
+    'privacy_version','privacy-2.1-2026-09-23',
     'privacy_copy', c.privacy,
     'privacy_copy_sha256', encode(extensions.digest(c.privacy,'sha256'),'hex'),
     'ai_notice_version','ai-notice-2026-09-23',

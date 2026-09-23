@@ -679,3 +679,88 @@ it issues is hard-coded `provider="openai"`. §4's claim that the system
 refuses to register a policy permitting training is also true and stronger
 than stated — `PHASE2_PURPOSE_FORBIDDEN` fires at acceptance, and
 `pooled_model_improvement` is registered phase2.
+
+---
+
+### 2026-09-23 · P11 rebased on the v2.0 documents · p11-unbundle-the-policy · #(pending)
+
+**The founder gave a new base.** The short strings patched in the entries above
+were the wrong source: `legal/phase1-2026.1/copy/terms-2.0.txt` and
+`privacy-2.0.txt` are full documents (9,146 and 10,915 chars) that were drafted
+and never published, while what is live is ~1,800 chars total. The script now
+carries those documents with surgical edits, not the short strings. Published
+as **v2.1**, because v2.0's own effective date (18 September 2026) has passed
+and it never bound anyone.
+
+**Article 13 audit, verified rather than assumed** (the amendment asked for
+this explicitly). Of the six items believed absent, FOUR were already present
+in v2.0: controller identity and contact (§1, §13), named recipients — eight
+processors individually, not categories (§5), third-country transfers with SCCs
+per provider and a copy on request (§6), and the right to complain with UODO's
+address (§8). Genuinely absent: **13(2)(e)**, whether providing the data is a
+contractual requirement and what follows from refusing. Partial: **13(1)(c)**,
+which listed three bases but none of the purposes the new policy names. Both
+are now written. 13(1)(b) is satisfied in an unusual way worth noting — §1
+states that no DPO is appointed and why Art 37 does not require one, which is
+the correct answer rather than a gap.
+
+**The founder's UODO line is additive, not duplicative.** §8 already carried
+the Art 13(2)(d) right to complain. The new sentence in §1 names the Art 56
+LEAD authority. Different articles, different jobs.
+
+**Three contradictions with the 2026-09-23 ruling, fixed.** privacy §5 said
+coach review happens "only if you ask … and agree to it separately"; terms §11
+said it "is optional"; terms §2's plan table read as "nobody listens" for Free
+and Practice. All three predate the ruling and argued against our own lawful
+basis. Two sentences were KEPT deliberately: privacy §5's statement that a
+coach does not see the voice measurements (that is the blind lane, accurately
+described) and terms §11's "the recording and feedback loop never waits for a
+coach" (asynchronous is not optional — only one of those words was wrong).
+
+**"Keep it promisable" — founder steer, and the most consequential edit here.**
+The founder said phases 2, 3 and 4 are coming. v2.0 contained five sentences
+that phase 2 would break, one of them expensively: *"We do not use anyone's
+recordings to train models. That one is not a promise we could quietly walk
+back: our systems refuse to register any processing policy that would permit
+it."* That does not merely state today's truth — it stakes credibility on
+permanence and names the mechanism so a reader can verify it. Walking it back
+later is not a policy update; it is the thing the sentence promises will not
+happen. Every one is now present tense and scoped to this version, with the
+future left to the re-acceptance clause each document already carries (privacy
+§12, terms §15). The enforcement claim SURVIVES, because it is true and
+checkable — it is now scoped: "while this version is in force".
+
+**Railway is an independent controller, not only our processor.** Found by the
+session on `claude/compassionate-hamilton-2f4t73` in the executed DPA §13, and
+flagged there as needing to reach the v2.0 recipients section before
+publication. Done: §5 now gives Railway the same treatment the document already
+gives Stripe, scoped to account and usage data and explicitly not recordings.
+
+**Art 9 left alone**, per the amendment's item 3: the incidental-sensitive-
+content acknowledgement stays its own explicit consent under 9(2)(a), separate
+from the service description, with withdrawal ending processing. **AI notice
+left alone**, per item 6: 529 bytes, unchanged, and checked against the new
+documents — it already says "a person may review that automated feedback
+afterwards", which is now more accurate than it was.
+
+**A bug I introduced and the test caught immediately.** The date warning I
+added to the header contained the literal dollar-quote delimiters, so
+`_quoted()`'s regex matched the COMMENT's delimiter first and captured the
+wrong span. Two cases went red — the privacy and terms content assertions —
+which is exactly what they exist for. Delimiters removed from the prose, and
+the header now states the delimiter count invariant.
+
+**One assertion widened, not weakened.** `test_the_privacy_copy_says_a_coach_
+may_listen` pinned the exact phrase "a willpowerlab coach — a person — may
+listen". The new copy says "listens to recordings" — the tense changed because
+coach review is now continuous rather than conditional. The assertion now pins
+"a willpowerlab coach — a person —", which is the part that carries the
+disclosure; the tense is not what the case is protecting.
+
+**Contract lines:** 15 cases, all passing, none removed. Baseline 17 passed,
+1 xfailed (F-4) — unchanged.
+
+**Still NOT RUN, and still out of manifest.txt.** The effective date is written
+into the copy as 23 September 2026; running it later means changing that date
+in two blocks and re-running the mirror sync. The header says so where the
+person running it will see it.
