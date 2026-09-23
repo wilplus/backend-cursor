@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -56,6 +55,7 @@ def metric_observations(metrics: Optional[dict]) -> dict:
 # 2026-08-03; hash-locked in prompts.lock.json. Aliases keep this module's
 # surface stable for callers and tests.
 from services.prompts import coach_comment_drafter as _prompts
+from services.parallel import start_scoped_thread
 
 _STYLE_EXAMPLE = _prompts.STYLE_EXAMPLE
 _system_prompt = _prompts.system
@@ -216,11 +216,13 @@ def dispatch_coach_note_drafts(
     if not snippets:
         return
     try:
-        threading.Thread(
-            target=_draft_all,
+        # B-6: see services/parallel.start_scoped_thread — a raw thread loses
+        # the Take's provider scope and the model call goes out unpermitted.
+        start_scoped_thread(
+            _draft_all,
             args=(session_id, snippets, slides, advances, goal, llm_ids),
-            daemon=True,
-        ).start()
+            name=f"coach-draft-{str(session_id)[:8]}",
+        )
     except Exception as e:
         logger.warning("coach_comment_drafter: dispatch failed sid=%s: %s", session_id, e)
 

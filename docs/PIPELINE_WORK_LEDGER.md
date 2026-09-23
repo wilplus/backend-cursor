@@ -351,3 +351,68 @@ needs your sign-off.
 the contract table above was two lines stale before I touched it (their two
 new lines are green and unrecorded). Not mine to write for them, but worth
 knowing that this file undercounts.
+
+---
+
+### 2026-09-23 · WS3b · b6-fanout-inherits-scope · #(pending)
+
+**Closed:** B-6, thread half only. The admin-route half is NOT closed and is
+NOT deferred for effort — see below.
+**Contract lines flipped:** none
+**Contract lines added:** none. B-6's regression tests live in
+`tests/test_authorized_provider_scope.py`.
+**Broke and fixed:** none. Baseline before and after: 17 passed, 1 xfailed
+(F-4), 45 subtests.
+**Open for the founder:** one. The audit's prescription for B-6's admin half
+is wrong, and the right version is a behaviour change on a live coach surface.
+
+**The thread half.** `threading.Thread` does not copy contextvars: a raw
+daemon thread starts with an EMPTY context. Four fire-and-forget dispatches
+started one from inside `protected_provider_scope`, so in the child thread
+`authorize_protected_generation` found no scope, returned `(None, None)`, and
+`llm.chat_complete` went to the provider with the speaker's transcript and no
+permit. Nothing raised. The call left no `processing_provider_permits` row and
+no `processing_provider_operations` row, so the purge subject graph never
+learns the transcript left and the provider-deletion contract has nothing to
+act on. Three of the four are live and ungated on every Take
+(`say_it_stronger`, the snippet draft fan-out, `conversation_summary`); the
+fourth sits behind `COACH_PREFILL_ENABLED=0`.
+
+**Why it happened, which is the part worth keeping.** `run_parallel` already
+had this right — it submits `copy_context().run`. The rule lived at that ONE
+call site instead of in a named function, so the next four people who needed a
+thread wrote `threading.Thread(...)` and silently lost the scope. The fix is
+therefore `services/parallel.start_scoped_thread`, not four inline
+`copy_context()` calls: a rule that must be remembered at every call site is a
+rule that will be forgotten at the fifth. **Reach for it instead of
+`threading.Thread` anywhere a request or a Take is what the work belongs to.**
+
+**THE ADMIN HALF: THE AUDIT'S PRESCRIPTION IS WRONG. DO NOT IMPLEMENT IT AS
+WRITTEN.** `engineer_prompt.md` says the two admin routes that call LLMs on
+user data (`routes/v2/admin.py:1121`, `:1437`) "get `phase1_provider_route`".
+That decorator resolves `_principal_id()` — the **caller's** principal
+(`routes/v2/processing_authorization.py:68-78`). On an admin route the caller
+is the COACH. Applying it there would:
+
+  1. require the coach to have accepted the Phase-1 policy, and
+  2. mint a permit under the COACH's acquisition principal for a provider
+     call carrying the STUDENT's transcript.
+
+That is precisely the defect B-2 was — authorization evidence attached to
+audio it was never given for — wearing an operator's hat. It would also leave
+the student's purge subject graph still ignorant of the call, because the
+permit would not be under their principal. So the decorator does not fix the
+finding; it launders it.
+
+**The version I believe is right, and why it needs you.** Bind to the SUBJECT
+(the session's owner, or `user_id`'s principal), not the caller. That is the
+honest provenance and it needs no new decision. What does need one: when the
+subject has not authorized processing, the correct answer is to REFUSE — a
+coach may not send an unauthorized person's transcript to a provider. That is
+a behaviour change on a live coach surface, so it is yours, not mine. A
+subject with no resolvable principal at all (a legacy account) would refuse
+too, which is the case most likely to bite.
+
+I built the thread half, which has none of this ambiguity and is live on every
+Take, and stopped at the boundary rather than shipping a permit that says
+something untrue.

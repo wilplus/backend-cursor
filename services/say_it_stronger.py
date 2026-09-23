@@ -34,9 +34,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
+from services.parallel import start_scoped_thread
 
 logger = logging.getLogger(__name__)
 
@@ -300,11 +300,13 @@ def dispatch_say_it_stronger(session_id: str, snippets: list,
     if not snippets:
         return
     try:
-        threading.Thread(
-            target=_generate_all,
+        # B-6: the scope carrying this Take's provider authority lives in a
+        # contextvar, and a raw threading.Thread starts with an empty context.
+        start_scoped_thread(
+            _generate_all,
             args=(session_id, snippets, context, means),
-            daemon=True,
-        ).start()
+            name=f"say-it-stronger-{str(session_id)[:8]}",
+        )
     except Exception as e:
         logger.warning(
             "say_it_stronger: dispatch failed sid=%s: %s", session_id, e)
