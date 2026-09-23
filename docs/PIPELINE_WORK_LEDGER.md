@@ -579,3 +579,40 @@ would rebuild the Art 7(4) defect one purpose to the left. Left ABSENT pending
 one line: either it rides with practice as optional, or it does something the
 core loop needs that the one-line description omits. It is live in production
 today as consent + required, inside the bundle this script replaces.
+
+---
+
+### 2026-09-23 · individual_learning_profile resolved · p11-unbundle-the-policy · #(pending)
+
+**Correcting the entry above, not editing it.** That entry closed with
+individual_learning_profile ABSENT and open for the founder. It is now
+resolved and the script publishes it.
+
+**The exchange, because the first answer and the second disagree and the
+second is right.** Asked what it does: *"It personalises the excercises you
+get."* Asked whether a user can refuse it and still use the app: *"NO"* —
+then, unprompted, *"okok, optional"*. The correction is the coherent answer
+and it is the one implemented. A purpose cannot be more necessary than the
+only thing it serves, and the same founder ruled exercises refusable the same
+day. Published as contract + required it would have rebuilt the Art 7(4)
+defect one purpose to the left — the precise shape this script exists to
+remove — and it would have carried the founder's name.
+
+**All five purposes are now published.** Three required on contract
+(recording_voice_processing, transcription_feedback, coach_review), two
+refusable on consent (personalized_exercise_recommendation,
+individual_learning_profile). Nothing is held out; `UNJUSTIFIED_PURPOSES` is
+now an empty tuple and its guard stays armed for the next purpose somebody
+reaches for.
+
+**One tick covers both optional purposes**, because from the user's side it is
+one choice — personalised practice — expressed as two registry rows: the
+recommendation, and the profile that makes it personal. Splitting them offers
+a choice with no meaning (a profile that personalises nothing, or exercises
+that cannot be personalised). ⚠ FOR COUNSEL: confirm one tick is granular
+enough under Recital 43, or split it. `accept_v2` takes an array, so splitting
+is a screen change and not a schema one.
+
+**Contract lines:** none flipped. `tests/test_phase1_policy_unbundled.py`
+stays at 15 cases, all passing; only the two purpose constants moved.
+Baseline 17 passed, 1 xfailed (F-4) — unchanged.

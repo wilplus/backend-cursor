@@ -52,18 +52,32 @@
 --   transcription_feedback                contract   required
 --   coach_review                          contract   required
 --   personalized_exercise_recommendation  consent    OPTIONAL
+--   individual_learning_profile           consent    OPTIONAL
 --
---   individual_learning_profile           ABSENT
+-- All five purposes are published. Nothing is held out.
 --
 -- Moving the three mandatory purposes from 'consent' to 'contract' dissolves
 -- the Art 7(4) problem at the root: consent is no longer the basis for
 -- anything compulsory, so there is no compelled consent left to be invalid.
--- The one genuinely separable purpose keeps consent — real consent, refusable
+-- The two genuinely separable purposes keep consent — real consent, refusable
 -- without losing the service, which is the only kind worth recording.
 --
--- individual_learning_profile stays ABSENT. No ruling covers it, no route
--- reads it, and nothing authorizes it. A purpose nobody has justified does
--- not get published because it happens to be in the registry.
+-- individual_learning_profile is OPTIONAL, founder ruling 2026-09-23. Asked
+-- what it does, the founder said "it personalises the exercises you get";
+-- asked whether a user may refuse it and still use the app, first "NO", then
+-- corrected to optional. The correction is the coherent answer: a purpose
+-- cannot be more necessary than the only thing it serves, and exercises are
+-- themselves refusable. Published as required it would have rebuilt the Art
+-- 7(4) defect one purpose to the left.
+--
+-- It rides the SAME optional tick as practice, because from the user's side
+-- it is one choice — "personalised practice" — expressed as two registry
+-- rows: the recommendation, and the profile that makes it personal. Granting
+-- them separately would offer a choice with no meaning (a profile that
+-- personalises nothing, or exercises that cannot be personalised).
+-- ⚠ FOR COUNSEL: confirm one tick for both is granular enough under Recital
+-- 43, or split it. accept_v2 takes an array, so splitting is a screen change
+-- and not a schema one.
 --
 -- The Art 9 element stays separate and is NOT folded into coach_review's
 -- basis, per the ruling's own third clause.
@@ -203,7 +217,7 @@ Who can hear your recording:
 
 That second one is a human being hearing your voice. We are telling you plainly because it is the kind of thing people assume does not happen. It is part of the service, not an extra: agreeing to the Terms is agreeing to this, and there is no version of WillpowerLab without it.
 
-Practice is separate, and optional. If you turn it on, we use your recording to choose a short exercise that fits it and to keep the fragment you re-record. If you leave it off, nothing is processed for practice and everything else works exactly the same. You can change your mind at any time.
+Practice is separate, and optional. If you turn it on, we use your recording to choose a short exercise that fits it, we keep the fragment you re-record, and we remember what you have been working on so later exercises suit you better. If you leave it off, none of that is processed and everything else works exactly the same. You can change your mind at any time.
 
 How long we keep it: your recordings and everything derived from them stay while your account is open. Practice attempts you did not keep are deleted after 30 days. Deleting your account deletes all of it.
 
@@ -226,9 +240,10 @@ $agree$I am 18 or over. I agree to the Terms and the Privacy notice, including t
 -- sends an empty array and the person keeps the whole service.
 --
 --   OPTIONAL_TICK:
---   "Optional — practice. Use my recordings to choose short exercises that
---    fit them, and keep the fragments I re-record. I can turn this off at any
---    time and keep using everything else."
+--   "Optional — personalised practice. Use my recordings to choose short
+--    exercises that fit them, to keep the fragments I re-record, and to
+--    remember what I am working on so the exercises get more personal. I can
+--    turn this off at any time and keep using everything else."
 
 SELECT public.register_phase1_policy_v1(
   jsonb_build_object(
@@ -335,10 +350,19 @@ SELECT public.register_phase1_policy_v1(
       'deletion_control_version', r.deletion_control_version,
       'rights_control_version', r.rights_control_version)
       FROM public.processing_purpose_registry r
-     WHERE r.id = 'personalized_exercise_recommendation')
-    -- individual_learning_profile is ABSENT. No ruling covers it and no route
-    -- reads it. It returns only when something actually needs it and a
-    -- lawful basis has been decided for it on its own merits.
+     WHERE r.id = 'personalized_exercise_recommendation'),
+    -- Founder ruling 2026-09-23, after a correction: "it personalises the
+    -- exercises you get", and optional. It serves an optional feature, so it
+    -- inherits that status; it cannot outrank what it exists to serve.
+    (SELECT jsonb_build_object('purpose_id', r.id,
+      'lawful_basis_code','consent','required_for_core_service',false,
+      'capability_version', r.capability_version,
+      'reviewed_at', r.reviewed_at,
+      'retention_control_version', r.retention_control_version,
+      'deletion_control_version', r.deletion_control_version,
+      'rights_control_version', r.rights_control_version)
+      FROM public.processing_purpose_registry r
+     WHERE r.id = 'individual_learning_profile')
   ),
   'founder:artur@willonski.com'
 ) FROM c;
@@ -357,10 +381,11 @@ SELECT public.activate_phase1_policy_v1(
 -- ── STEP 3 · verify the shape ───────────────────────────────────────────
 --
 -- Expect ONE row:
---   purposes  = {coach_review, personalized_exercise_recommendation,
+--   purposes  = {coach_review, individual_learning_profile,
+--                personalized_exercise_recommendation,
 --                recording_voice_processing, transcription_feedback}
 --   required  = 3
---   optional  = 1
+--   optional  = 2
 --   bases     = {consent, contract}
 
 SELECT p.version, p.status, p.activated_at,
@@ -389,10 +414,12 @@ SELECT pp.purpose_id, pp.lawful_basis_code, pp.required_for_core_service
 
 -- ── STEP 5 · verify the optional purpose is genuinely refusable ─────────
 --
--- Expect exactly ONE row: personalized_exercise_recommendation, consent,
--- required_for_core_service = false. If this returns zero rows the optional
--- lane silently vanished, and the acceptance screen would have nothing to
--- offer — which is how an "optional" purpose quietly becomes mandatory.
+-- Expect exactly TWO rows: personalized_exercise_recommendation and
+-- individual_learning_profile, both consent, both
+-- required_for_core_service = false. Fewer rows means the optional lane
+-- silently shrank and the acceptance screen has less to offer than the
+-- policy claims — which is how an "optional" purpose quietly becomes
+-- mandatory.
 
 SELECT pp.purpose_id, pp.lawful_basis_code, pp.required_for_core_service
   FROM public.processing_policy_versions p

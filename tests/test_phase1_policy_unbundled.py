@@ -58,11 +58,17 @@ REQUIRED_PURPOSES = (
 #: Five routes return 410 PURPOSE_NOT_OPERATIONAL today and the record →
 #: transcript → Ideal Text → Feedback loop completes without any of them,
 #: which is the necessity test answered by the running system.
-OPTIONAL_PURPOSES = ("personalized_exercise_recommendation",)
+OPTIONAL_PURPOSES = (
+    "personalized_exercise_recommendation",
+    "individual_learning_profile",
+)
 
-#: Still held out. No ruling covers it and no route reads it. A purpose
-#: nobody has justified does not get published because it is in the registry.
-UNJUSTIFIED_PURPOSES = ("individual_learning_profile",)
+#: Held out of the policy entirely. EMPTY since 2026-09-23: the founder ruled
+#: individual_learning_profile optional ("it personalises the exercises you
+#: get"), so all five registry purposes are now published — three required on
+#: contract, two refusable on consent. The guard stays armed for the next
+#: purpose somebody adds to the registry and reaches for here.
+UNJUSTIFIED_PURPOSES: tuple[str, ...] = ()
 
 #: The dollar-quoted tag in the script -> the file it must match byte for byte.
 MIRRORED = {

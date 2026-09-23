@@ -8,7 +8,7 @@ Who can hear your recording:
 
 That second one is a human being hearing your voice. We are telling you plainly because it is the kind of thing people assume does not happen. It is part of the service, not an extra: agreeing to the Terms is agreeing to this, and there is no version of WillpowerLab without it.
 
-Practice is separate, and optional. If you turn it on, we use your recording to choose a short exercise that fits it and to keep the fragment you re-record. If you leave it off, nothing is processed for practice and everything else works exactly the same. You can change your mind at any time.
+Practice is separate, and optional. If you turn it on, we use your recording to choose a short exercise that fits it, we keep the fragment you re-record, and we remember what you have been working on so later exercises suit you better. If you leave it off, none of that is processed and everything else works exactly the same. You can change your mind at any time.
 
 How long we keep it: your recordings and everything derived from them stay while your account is open. Practice attempts you did not keep are deleted after 30 days. Deleting your account deletes all of it.
 
