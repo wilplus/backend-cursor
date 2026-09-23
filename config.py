@@ -188,6 +188,17 @@ class Config:
     # sitting in the line a speaker is waiting in.
     BAKE_QUEUE_NAME = (os.getenv("BAKE_QUEUE_NAME") or "").strip()
     WORKER_QUEUE = (os.getenv("WORKER_QUEUE") or "").strip()
+    # THE REASON LAYER (contract 24j). Off means the Confident Voice ordering
+    # is byte-for-byte what it was; on means what the words did outranks how
+    # the delivery sounded, sequenced and never blended.
+    #
+    # CONFIG-FIRST, and here it bites harder than usual: this decides which
+    # moment is SELECTED, and the selection is FROZEN with the Take. A worker
+    # that ranks one way while web ranks another would freeze one order and
+    # serve the other, and the difference would be invisible — both answers
+    # are well-formed items. Set it on web, worker AND cron together, or not
+    # at all.
+    REASONABLE_CONFIDENCE_ENABLED = _env_flag("REASONABLE_CONFIDENCE_ENABLED", "0")
     MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
     COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
     SENTENCE_BOUNDARY_SPLIT_ENABLED = _env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1")
