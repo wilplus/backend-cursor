@@ -494,3 +494,88 @@ coach is asked for separately; the bytes published on 09-20 bundle it. The
 file and the receipt disagreed. `tests/test_phase1_policy_unbundled.py` now
 fails if the script and the mirrored files diverge again, and if a consent
 policy ever reaches `migrations/manifest.txt`.
+
+---
+
+### 2026-09-23 · P11 REWRITTEN after the coach-review ruling · p11-unbundle-the-policy · #(pending)
+
+**Correcting entry, not an edit.** The entry above describes the FIRST draft of
+`scripts/phase1_policy_publish_unbundled.sql`, which removed coach_review from
+the policy and published two purposes on contract. The founder reversed its
+premise the same day:
+
+> "Coach review is core to the product. A user who refuses to allow a human to
+> listen to their recordings cannot use WillpowerLab. This reverses the
+> assumption in doc 01 §3 and §6."
+
+and on the practice step: *"you can always leave the app and not do it, you
+can skip it."* The two open purposes move in OPPOSITE directions. The entry
+above stands as written; this one supersedes its conclusion.
+
+**What the script now publishes:** recording_voice_processing, transcription_
+feedback and coach_review on `contract` + required; personalized_exercise_
+recommendation on `consent` + REFUSABLE; individual_learning_profile still
+absent. Moving the mandatory purposes off consent dissolves Art 7(4) at the
+root — consent is no longer the basis for anything compulsory, so there is no
+compelled consent left to be invalid.
+
+**The copy went back to the LIVE bytes, not the draft's.** Checked production:
+the 09-20 privacy notice already says "a WillpowerLab coach — a person — may
+listen", and the live tick names coach listening in the tick itself. The copy
+was never the defect; the machinery under it was. The first draft had replaced
+that honest paragraph with "no person at WillpowerLab listens", which the
+ruling makes false. Reinstated verbatim, then four deltas, all TODO-flagged for
+founder sign-off: Terms gain a coach-review paragraph and the plan distinction
+(a plan with no delivered reviews does not mean nobody listens); Privacy gains
+"not optional" for coach and an optional-practice paragraph; the mandatory tick
+DROPS "and prepare practice for me", because a compulsory tick carrying an
+optional purpose is the same defect one purpose smaller.
+
+**Contract lines flipped / added:** `tests/test_phase1_policy_unbundled.py`
+went 8 → 15 cases. Seven added, none removed. SEVEN of the original eight
+asserted the superseded shape — coach_review absent, no purpose on consent,
+exactly 2 contract + 2 required, the tick must not say "coach", and the privacy
+copy must NOT say a coach may listen but MUST promise "we will ask you for that
+separately". That last pair required the notice to promise coach review is
+refusable, which is precisely what the ruling abolishes. They were pinning a
+product decision the founder overturned, so they are INVERTED, not deleted, and
+the invariant they protected is now asserted structurally instead of by
+counting: `test_no_purpose_is_both_consent_and_required` reads each purpose
+object whole, so a consent purpose can no longer hide behind a required one
+elsewhere in the array. Baseline 17 passed, 1 xfailed (F-4) — unchanged.
+
+**A bug found in the test's own helper.** `_purposes_block()` sliced from the
+first `jsonb_build_array(` after `'allowed_countries'` — which is the COUNTRY
+list, not the purposes — so it silently swept in the three legal-artifact
+objects. Any artifact metadata naming a purpose or a basis would have corrupted
+its counts, and this rewrite adds exactly such metadata
+(`'coach_review_basis','contract'`). It now anchors on the last array before
+the actor argument. The old helper would not have failed loudly; it would have
+counted wrong.
+
+**The ordering trap, now stated in the header in terms nobody can miss.**
+`accept_phase1_processing_authorization_v1` writes receipt rows only `WHERE
+pp.required_for_core_service`, so under v1 an OPTIONAL purpose can never reach
+a receipt at all. Publish this before accept_v2 ships and nobody can ever opt
+into practice — MLC-3 stays dark with no error to explain it. Run order:
+(1) deploy accept_v2; (2) the acceptance screen sends what was actually ticked;
+(3) run this file by hand; only then is flipping `processing_purpose_registry.
+operational` a meaningful switch. STEP 6 of the script verifies accept_v2
+exists and says STOP if it does not.
+
+**What the running system already proves.** Five routes are gated by
+`@operational_purpose_disabled("personalized_exercise_recommendation")` and all
+five return 410 today — one coach route, four user routes. The record →
+transcript → Ideal Text → Feedback loop completes with every one of them
+closed. That is the EDPB necessity test answered by the system rather than by
+argument, and it is why practice cannot ride on the contract basis.
+
+**Open for the founder:** `individual_learning_profile`. The founder said "we
+need that" and, asked whether a user may refuse it and still use the app,
+answered NO — but described its job as "it personalises the exercises you get".
+A purpose cannot be more necessary than the only thing it serves, and exercises
+are refusable by the same founder's ruling. Published as contract + required it
+would rebuild the Art 7(4) defect one purpose to the left. Left ABSENT pending
+one line: either it rides with practice as optional, or it does something the
+core loop needs that the one-line description omits. It is live in production
+today as consent + required, inside the bundle this script replaces.
