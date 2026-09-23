@@ -433,3 +433,100 @@ there because `test_every_created_function_revokes_anon_and_authenticated`
 has no "revoked by an earlier migration" carve-out — its sibling PUBLIC test
 does — and because a reader auditing an erasure writer should not have to open
 another file to learn it is service_role-only.
+
+---
+
+### 2026-09-23 · WS3 · b2-b3-acquisition-principal · #(pending)
+
+**Closed:** B-2, B-3, B-11
+**Contract lines flipped:** none — none of the three has a line in
+`test_f1_loop_contract.py`
+**Contract lines added:** none. Their regression tests live in their own
+files, per the rule that only findings against what a speaker *sees* go in the
+F1 contract.
+**Broke and fixed:** none. Baseline before and after: 17 passed, 1 xfailed
+(F-4), 45 subtests.
+**Open for the founder:** none. No gate moved, no route opened, no copy
+changed. Merge order: this stacks on #618 (B-4), which owns migration 0353.
+
+**Three names, one defect.** Phase-1 lineage rests on a single claim — the
+principal named on a permit is the principal that acquired the recording — and
+three places let that claim be false:
+
+  * **B-2** `issue_phase1_provider_permit_v1` read the authorization of
+    `p_acquisition_principal_id` and then inserted `p_source_take_id` /
+    `p_source_recording_id` verbatim. Nothing anywhere said those coordinates
+    were that principal's to name. The auditor minted a permit for one guest's
+    recording under another principal's receipt; the snapshot table then held
+    two rows for that recording naming different principals, with nothing
+    downstream able to say which was the truth.
+  * **B-3** `resolve_phase1_acquisition_principal_v1` returned a claim's
+    SOURCE only when that source already held a receipt, and otherwise fell
+    through to the TARGET. A guest who recorded while the gate was off holds
+    no receipt *by construction*, so after they signed up every one of those
+    recordings resolved to the new account principal.
+  * **B-11** `resolve_acquisition_principal` returned the product owner
+    unchanged whenever the gate was off, before either read — so one human's
+    acquisition identity depended on which mode was deployed when they tapped
+    Agree, and one person could end up with two receipts on two principals.
+
+**The shape of each fix, and why none of them refuses more than it must.**
+
+1. B-2 adds an ownership check that runs BEFORE the authorization read, so a
+   caller cannot probe another principal's authorization state with their
+   recording id. The attempt row is authoritative wherever it exists. Where it
+   does not — every recording acquired while the gate was off — the session's
+   owner is the only statement left, and because `claim_guest_owner` rewrites
+   `v2_sessions.owner_principal_id`, the acquirer is either that owner or a
+   principal claimed into it. **Both pass**, or signing up would cut a speaker
+   off from their own recordings. A source with neither an attempt row nor a
+   session row is left alone: absence of evidence is not evidence of theft,
+   and refusing on it would take the live loop down for a data gap this
+   function did not create.
+2. B-3 turns a WHERE filter into an ORDER BY preference. The answer is
+   **identical** for every claim whose source holds a receipt — `ORDER BY
+   has_receipt DESC, claimed_at DESC` still picks the newest such source. It
+   changes only the case where none does, which previously returned the wrong
+   principal outright.
+3. B-11 removes the off-mode short-circuit. Reading is now mode-independent;
+   what the mode still decides is the disposition of a FAILURE — `enforce`
+   refuses, `off` degrades to the product owner it would have returned anyway.
+   A gate that is off may not start failing requests for the state it was off
+   for.
+
+**Why the loop survives B-3, which was the thing worth checking.** Resolving a
+claimed guest to their old principal means `get_phase1_processing_authorization`
+says not-authorized, and the client asks the human to accept — which sounds
+like a regression until you follow `routes/v2/processing_authorization.py`:
+`_principal_id()` runs the SAME resolver, so the acceptance lands on the GUEST
+principal, not the account. The person taps Agree once and the receipt is
+written where the audio actually came from. No founder decision needed; I went
+looking for one.
+
+**A dead test this replaced.** `tests/test_phase1_processing_rehearsal_contract.py`
+and `tests/test_phase1_compliance_contract.py` assert SUBSTRINGS of
+`tests/integration/phase1_processing_rehearsal.sql` — a 700-line script that
+exercises the whole Phase-1 chain including `issue_phase1_provider_permit_v1`,
+and that **nothing runs**. `rg` for its name finds only those two readers. That
+is exactly the pattern the audit called out on B-4 ("the only tests for this
+path assert source-text substrings and never call the DB function"), and it is
+why B-2 and B-3 sat in a covered-looking area. The new
+`tests/test_phase1_processing_postgres.py` executes the real functions on the
+released lane. **Someone should decide what to do with that .sql file** — run
+it in the tier or delete it; a script nobody runs is worse than no script,
+because it reads as coverage. Not mine to settle, and left alone.
+
+**Evidence that the tests are real.** Against the pre-0354 definitions restored
+onto a clone of the same lane, 3 of the 8 postgres cases fail — both B-2
+refusal cases and the B-3 resolver case. The other 5 pass on both sides, which
+is their job: they are the guards that the fix is not a blanket refusal.
+Likewise 2 of the 5 B-11 cases fail with the service change stashed.
+
+**A lane trap, for whoever writes the next postgres suite.** A fixture that
+registers its own Phase-1 policy works alone and fails in the tier:
+`processing_purpose_registry` freezes a purpose's control versions once it is
+operational, so a second registration inventing its own raises
+`PURPOSE_CONTROL_VERSION_CONFLICT`; and `activate_phase1_policy_v1` retires
+whatever was active, which would pull the policy out from under any suite
+sharing the lane. **Reuse the active policy** — read its version, copy hashes
+and first allowed country — and only register one when there is none.
