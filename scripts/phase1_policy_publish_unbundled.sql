@@ -209,10 +209,28 @@
 --      `sex_gender_inference` and `emotion_intention_inference` all false and
 --      `pipeline_version = voice-confidence-universal-v3`.
 --
--- The three legal artifacts stay attributed to the FOUNDER with
--- `counsel_review: pending` and `provisional-` versions, because that is
--- still the true state. Recording them as counsel-approved would be the
--- paper-only claim this boundary exists to prevent.
+-- ── COUNSEL HAS ANSWERED, AND THE ARTIFACTS SAY SO CAREFULLY ────────────
+--
+-- Per docs/HANDOFF-2026-09-23.md §0, counsel answered on 2026-09-23: the
+-- voice-confidence component is not an emotion recognition system under AI
+-- Act Art 3(39); Art 6(1)(b) contract holds for coach review, covering
+-- delivery of the coaching only; Art 9(2)(a) survives separately and a
+-- contract never unlocks special-category data; UODO is the lead authority
+-- under Art 56. An earlier revision of this header said `counsel_review:
+-- pending` was "still the true state". It is not, and that is corrected.
+--
+-- The metadata now records TWO fields rather than one, because they are two
+-- different facts:
+--
+--   counsel_review        confirmed_by_correspondence_2026-09-23
+--   counsel_signed_letter pending
+--
+-- §0 is explicit that getting the answer as a DATED LETTER THAT CAN BE HASHED
+-- is still a founder task, because an email thread cannot be a registered
+-- artifact. Recording only the first field would let correspondence pass for
+-- a signed opinion; recording only the second would deny an answer we have.
+-- The versions stay `provisional-` until the letter exists, which is what
+-- "provisional" has meant here all along.
 --
 -- ══════════════════════════════════════════════════════════════════════════
 -- ⚠ TODO — FOUR COPY DECISIONS THE FOUNDER MUST SIGN OFF BEFORE THIS RUNS.
@@ -252,6 +270,34 @@
 -- privacy blocks below, re-run the mirror sync, and publish — the
 -- sha256s recompute themselves from the text, so only the date needs touching.
 -- tests/test_phase1_policy_unbundled.py fails if the mirrors drift.
+
+-- ── STEP 0 · COUNT THE PURPOSES BEFORE PUBLISHING ANYTHING ──────────────
+--
+-- Handoff trap 4.2: "Purposes built with jsonb_agg fail silently. A missing id
+-- publishes a smaller policy with no error. Always count the rows first."
+--
+-- This file builds each purpose as its own subselect rather than with
+-- jsonb_agg, which fails differently but just as quietly: a purpose missing
+-- from the registry yields a NULL array element, and the policy publishes
+-- short. STEP 3 and STEP 5 below would catch it — AFTERWARDS, and running
+-- this file is the signature, so afterwards is the wrong time to find out.
+--
+-- Run this FIRST, on its own. It must return exactly 5. If it returns 4, STOP
+-- and find out which id is missing before anything is published.
+
+SELECT count(*) AS purposes_resolving,
+       array_agg(r.id ORDER BY r.id) AS resolved,
+       bool_and(r.operational AND r.authorizes_processing) AS all_operational
+  FROM public.processing_purpose_registry r
+ WHERE r.phase = 'phase1'
+   AND r.id IN ('recording_voice_processing','transcription_feedback',
+                'coach_review','personalized_exercise_recommendation',
+                'individual_learning_profile');
+
+-- Expect: purposes_resolving = 5, all_operational = true.
+-- `all_operational` matters because a REQUIRED purpose that is not
+-- operational makes every acceptance raise PROCESSING_PURPOSE_NOT_OPERATIONAL
+-- — the whole product, not a degraded corner of it.
 
 -- ── STEP 1 · register ───────────────────────────────────────────────────
 
@@ -868,7 +914,7 @@ SELECT public.register_phase1_policy_v1(
     'approved_at', now(),
     'object_key','legal/phase1-2026.1/01-product-legal-approval-v1.1.pdf',
     'sha256', encode(extensions.digest('provisional-legal-2026-09-23','sha256'),'hex'),
-    'metadata', jsonb_build_object('counsel_review','pending',
+    'metadata', jsonb_build_object('counsel_review','confirmed_by_correspondence_2026-09-23',
       'unbundled','true','supersedes','provisional-founder-2026-09-20',
       'coach_review_basis','contract',
       'founder_ruling','2026-09-23 coach review is core to the product')),
@@ -880,7 +926,8 @@ SELECT public.register_phase1_policy_v1(
     'object_key','phase1-2026.1/legal/power-score-classification-v1.0.pdf',
     'sha256', encode(extensions.digest('provisional-power-2026-09-23','sha256'),'hex'),
     'metadata', jsonb_build_object(
-      'counsel_review','pending',
+      'counsel_review','confirmed_by_correspondence_2026-09-23',
+      'counsel_signed_letter','pending',
       'biometric_identification', false,
       'sex_gender_inference', false,
       'emotion_intention_inference', false,
@@ -892,7 +939,9 @@ SELECT public.register_phase1_policy_v1(
     'approved_at', now(),
     'object_key','phase1-2026.1/legal/article-50-assessment-v1.0.pdf',
     'sha256', encode(extensions.digest('provisional-article50-2026-09-23','sha256'),'hex'),
-    'metadata', jsonb_build_object('counsel_review','pending')),
+    'metadata', jsonb_build_object(
+      'counsel_review','confirmed_by_correspondence_2026-09-23',
+      'counsel_signed_letter','pending')),
   jsonb_build_array(
     -- ── REQUIRED, CONTRACT. Art 6(1)(b). ──────────────────────────────
     -- The five control versions are READ BACK from the registry rather than
