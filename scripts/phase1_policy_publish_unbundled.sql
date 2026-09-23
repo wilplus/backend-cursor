@@ -21,8 +21,10 @@
 -- paragraph, which says outright that the consent "is not bundled with
 -- anything else, and a contract can never stand in for it"; §11's solution to
 -- the plan-table problem — every plan includes at least one coach review, so
--- "no coach reviews" cannot be read as "nobody listens"; and the Art 56 UODO
--- line, which they had written identically.
+-- "no coach reviews" cannot be read as "nobody listens" (SUPERSEDED: the code
+-- grants ZERO on two plans; see the CORRECTION below, which keeps their
+-- reassurance and drops their number); and the Art 56 UODO line, which they
+-- had written identically.
 --
 -- WHAT DID NOT, and why. Their script publishes ALL FIVE purposes as
 -- 'contract' + required_for_core_service TRUE, which makes practice and the
@@ -88,6 +90,43 @@
 -- A plan's number is how many reviews are SENT BACK, never whether anyone
 -- listens. Terms §11 and privacy §5 both say so, because "no coach reviews"
 -- read as "nobody hears me" is the misreading this table invites.
+--
+-- ── CORRECTION 2026-09-23, AFTER READING THE CODE ───────────────────
+--
+-- The block above is wrong. It stays only as the record of how it was decided.
+-- I put those four numbers to the founder for confirmation without first
+-- checking whether the code could honour them. It cannot.
+--
+-- services/token_prices.py is the live table and grants:
+--
+--     free       12,000 tokens    0 coach reviews    USD  0
+--     practice  150,000 tokens    0 coach reviews    USD 12
+--     coaching  150,000 tokens    3 coach reviews    USD 39
+--     intensive 400,000 tokens    8 coach reviews    USD 89
+--
+-- Publishing 1/1/3/8 would have promised every Free and Practice user a
+-- monthly review the tier table does not grant. Founder ruling 2026-09-23,
+-- option A: the TERMS move to the code, not the code to the Terms. §2 now
+-- reads 0/0/3/8 and §11 carries the distinction explicitly.
+--
+-- The premise in the block above survives the change, for a reason that block
+-- had backwards. Counsel's Art 6(1)(b) argument needs a PERSON LISTENING, not
+-- a review delivered back. routes/v2/coach.py builds the review queue with NO
+-- TIER FILTER: a coach sees takes from every plan, Free included. Listening is
+-- universal in the code; the delivered review is an allowance. A zero in the
+-- table never meant nobody hears you, and §11 now says exactly that.
+--
+-- TWO THINGS I DID NOT ESTABLISH, recorded so nobody reads more into this:
+--   1. I found NO code that refuses a review once the allowance is spent. The
+--      counter is incremented and surfaced as {used, allowed}; whether it
+--      GATES delivery I could not show. The allowance may be advisory.
+--      add_token_charge_rpc.sql:39 records a past bug of exactly that shape.
+--   2. token_prices.py also carries a second, unrelated tier table
+--      (starter/pro/max, 1/6/30 reviews) that these Terms never mention.
+--      Which sheet is live is a founder question, not a copy question.
+--
+-- Counsel should confirm the listening-vs-delivery distinction carries the
+-- 6(1)(b) basis at zero delivered reviews. I am not counsel.
 --
 -- ── REWRITTEN 2026-09-23 AFTER THE FOUNDER'S COACH-REVIEW RULING ────────
 --
@@ -386,8 +425,8 @@ Work in the app is measured in tokens. Each plan gives you an allowance of them
 for the month. The allowance is SET at the start of each month rather than
 added to what you had, so unused tokens do not carry over.
 
-  Free         12,000 tokens a month     1 coach review       no charge
-  Practice    150,000 tokens a month     1 coach review       USD 12 a month
+  Free         12,000 tokens a month     no coach reviews     no charge
+  Practice    150,000 tokens a month     no coach reviews     USD 12 a month
   Coaching    150,000 tokens a month     3 coach reviews      USD 39 a month
   Intensive   400,000 tokens a month     8 coach reviews      USD 89 a month
 
@@ -520,10 +559,12 @@ rather than an extra you switch on. Section 1 says why: this is hybrid
 coaching, and the human half is not optional to it.
 
 What that means in practice. A coach may listen to your recordings in order to
-review the feedback you were given and to prepare practice for you. How many
-reviews you receive each month depends on your plan, and section 2 sets out the
-allowance for each; every plan includes at least one. A coach does not see the
-voice measurements described in section 3 of the Privacy Policy.
+review the feedback you were given and to prepare practice for you. That part
+does not depend on your plan. What your plan sets is how many written reviews
+come back to you each month, and section 2 sets out the allowance for each. A
+plan with no coach reviews does not mean nobody listens; it means no written
+review is returned to you that month. A coach does not see the voice
+measurements described in section 3 of the Privacy Policy.
 
 Practice is optional, and it is the one part of this that you choose. After
 your feedback you may be offered a short exercise and the chance to re-record a

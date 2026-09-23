@@ -41,8 +41,8 @@ Work in the app is measured in tokens. Each plan gives you an allowance of them
 for the month. The allowance is SET at the start of each month rather than
 added to what you had, so unused tokens do not carry over.
 
-  Free         12,000 tokens a month     1 coach review       no charge
-  Practice    150,000 tokens a month     1 coach review       USD 12 a month
+  Free         12,000 tokens a month     no coach reviews     no charge
+  Practice    150,000 tokens a month     no coach reviews     USD 12 a month
   Coaching    150,000 tokens a month     3 coach reviews      USD 39 a month
   Intensive   400,000 tokens a month     8 coach reviews      USD 89 a month
 
@@ -175,10 +175,12 @@ rather than an extra you switch on. Section 1 says why: this is hybrid
 coaching, and the human half is not optional to it.
 
 What that means in practice. A coach may listen to your recordings in order to
-review the feedback you were given and to prepare practice for you. How many
-reviews you receive each month depends on your plan, and section 2 sets out the
-allowance for each; every plan includes at least one. A coach does not see the
-voice measurements described in section 3 of the Privacy Policy.
+review the feedback you were given and to prepare practice for you. That part
+does not depend on your plan. What your plan sets is how many written reviews
+come back to you each month, and section 2 sets out the allowance for each. A
+plan with no coach reviews does not mean nobody listens; it means no written
+review is returned to you that month. A coach does not see the voice
+measurements described in section 3 of the Privacy Policy.
 
 Practice is optional, and it is the one part of this that you choose. After
 your feedback you may be offered a short exercise and the chance to re-record a
