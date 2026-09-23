@@ -596,3 +596,67 @@ constant `identity_hash`. That column is UNIQUE on the released table, so it
 passed once and failed the second time the lane was reused — a test that only
 works on a fresh database. It derives a fresh hash now. **Re-run a new
 postgres case against the same lane twice before believing it.**
+
+---
+
+### 2026-09-23 · P11 prerequisite · p11b-optional-consent · #(pending)
+
+**Closed:** the knot reported in #622. Founder decision 2026-09-23: build this
+BEFORE republishing the policy, so the republish is one cutover and nothing
+goes dark.
+**Contract lines flipped / added:** none. Baseline 17 passed, 1 xfailed (F-4).
+**Broke and fixed:** none in the contract. Four fixture mistakes of my own on
+the way — worth reading, at the bottom.
+**Open for the founder:** none for this PR. Stacks on #621; this is 0356.
+
+**The trap, restated because it is the whole reason this exists.**
+`accept_phase1_processing_authorization_v1` writes receipt purpose rows only
+`WHERE pp.required_for_core_service`, so a purpose someone could DECLINE left
+no evidence at all — and for `coach_review`, whose lawful basis IS consent,
+that is the absence of the lawful basis, not a gap in the paperwork. Meanwhile
+`resolve_mlc3_dual_purpose_receipt_v2` gates the entire MLC-3 service on the
+receipt NAMING two such purposes. The only way the product worked was if both
+were compulsory, which is the bundling doc 01 §3 calls invalid. A receipt had
+no way to say "they were asked, separately, and said yes". Now it has one.
+
+**v2 sits beside v1 and never replaces it.** The signature differs, so a
+CREATE OR REPLACE was never available — and it is not wanted: dropping a live
+consent writer to change its shape is not something this repo does. With an
+empty array v2 does what v1 does, with one deliberate difference: **the
+evidence hash covers the choices.** Without that, replaying one idempotency key
+with a different set of choices hashes identically to the first, passes as a
+silent no-op, and leaves a receipt attesting to a decision the person did not
+make the second time. There is a test for exactly that.
+
+Three refusals, each because the alternative is a lie in the evidence: a
+purpose not in THIS policy is refused rather than ignored (dropping it records
+less than the screen asked about); a REQUIRED purpose passed as a choice is
+refused (it is already in the receipt, and accepting it lets a caller present
+a compulsory term as though it had been optional); and the choices are
+de-duplicated and sorted before hashing, because the order a client sent them
+in is not a fact about consent.
+
+**Nothing calls it yet, deliberately.** The route still calls v1 and must,
+until the policy carries optional purposes for v2 to record. Three things ship
+together later: this function, the republished policy with the two purposes at
+`required_for_core_service FALSE`, and the acceptance screen offering the
+separate tick (frontend + copy, founder sign-off). **Landing this alone changes
+no behaviour whatsoever** — that is the point of it.
+
+**FOUR FIXTURE MISTAKES, AND THE ONE THAT MATTERS.** The postgres suite needs a
+policy shaped like the republished one, and I built it by hand because
+`register_phase1_policy_v1` refuses an optional purpose — the very defect.
+Getting that policy to be *valid* took four passes: `created_by` is NOT NULL;
+an active policy needs **all three** legal artifacts, not one
+(`processing_policy_approved_check`); retiring the incumbent needs
+`retired_at`; and both accept functions refuse a policy whose required
+purposes are not operational, which only `register_phase1_policy_v1` normally
+makes them.
+
+The fourth is the one to remember. My fixture DID make them operational — and
+the suite still failed, because the fixture returns early when the policy
+already exists, and on a re-used lane that early return skipped the registry
+update entirely. **A setup step behind a reuse check is a setup step that does
+not run.** Guarantees go before the early return, not after it. Same shape as
+R-2's constant `identity_hash`: both only worked on a database nobody had
+touched.
