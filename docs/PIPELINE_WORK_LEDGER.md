@@ -351,3 +351,85 @@ needs your sign-off.
 the contract table above was two lines stale before I touched it (their two
 new lines are green and unrecorded). Not mine to write for them, but worth
 knowing that this file undercounts.
+
+---
+
+### 2026-09-23 · WS3a · b4-deletion-reaches-practice · #(pending)
+
+**Closed:** B-4
+**Contract lines flipped:** none — B-4 has no line in `test_f1_loop_contract.py`
+**Contract lines added:** none. B-4's regression tests live in their own file,
+`tests/test_phase1_deletion_completion_postgres.py`, per the rule that only
+findings against what a speaker *sees* go in the F1 contract.
+**Broke and fixed:** none. Baseline before and after: 17 passed, 1 xfailed
+(F-4), 45 subtests.
+**Open for the founder:** none. No gate moved, no route opened, no copy
+changed.
+
+**Why out of order.** The settled order does not list B-4 anywhere; §3 runs
+A-1's write, then A-2, then B-2 and B-3. B-4 jumps that queue for one reason:
+it is the first finding in the audit that names something a real person can
+ask for and the app cannot do. A subject whose only stored audio is a practice
+recording **could not be erased at all** — and a dozen testers are days away.
+It is also the cheapest thing in the audit to hold: two `CREATE OR REPLACE
+FUNCTION`s, no table, no column, no grant, no gate.
+
+**The shape of the defect.** `services/data_purge.py` has emitted storage
+targets carrying `source_relation = 'processing_practice_objects'` since
+migration 0334 gave practice audio its own registry. Neither function that
+consumes those targets knew the relation existed:
+`freeze_phase1_purge_inventory_v4` raised `PURGE_STORAGE_TARGET_SOURCE_INVALID`
+and `mark_phase1_storage_object_purged_v1` raised `PURGE_OBJECT_SOURCE_INVALID`.
+So the request was written, the freeze refused, and the row sat at `requested`
+for ever with nothing erased. Not a partial deletion — **no** deletion, and a
+record saying one had been asked for.
+
+**The table was always ready.** 0334 gave `processing_practice_objects` a
+`deleted_at` column commented "stamped by the purge once the object is gone
+from storage… mirrors the sibling tables". The registry was built for exactly
+this and only the two functions were never told. Migration 0353 adds one
+`ELSIF` branch to each, mirroring the orphan branch line for line, ownership
+check included; every other path, check and error code is byte-identical to
+what runs today.
+
+**Why nobody caught it, and what now would.** No rehearsal lane carried a
+`processing_practice_objects` row to purge, so the two functions were never
+asked. Two things changed, and the second is the one that generalises:
+
+1. The released lane now builds the registry
+   (`tests/integration/confident_moment_rehearsal.sh`), and five cases in
+   `tests/test_phase1_deletion_completion_postgres.py` EXECUTE both functions
+   against it. Evidence: against the pre-0353 definitions restored onto a
+   clone of the same lane, 4 of the 5 fail with the two error codes above.
+   The fifth — "an unknown relation is still refused by both" — passes on
+   both sides, which is the point of it.
+2. `test_every_emitted_source_relation_is_known_to_the_purge_functions`
+   (unit tier) walks `migrations/manifest.txt` in order, finds the LAST
+   definition of each function, and asserts every `source_relation` literal
+   in `services/data_purge.py` appears there. The next table to get its own
+   registry cannot drift the same way silently. Verified genuine: remove 0353
+   from the manifest and it fails.
+
+**A trap in the lane, worth writing down.** My first cut added
+`hard migrations/add_confident_voice_practice.sql` (0279) to build the two
+practice tables. 0279 creates `diagnostic_exercise` first, whose
+`journal_post_id` references `public.journal_post` — the entire Journal chain,
+a surface this lane does not carry and has no reason to. The right answer was
+much smaller: `mlc3_exercise_foundation_prerequisites.sql` **already** defines
+narrow `confident_voice_practice` / `confident_voice_practice_attempt`, and
+0334 needed exactly one thing they lacked — `closed_at`, for its retention
+index. One nullable trailing column on the narrow copy, which is the pattern
+that file already documents. **When a lane needs a released migration, check
+first whether the fixture already has the two keys it wants.**
+
+**Where 0353 sits in the lane.** After BOTH current definitions: the mark
+comes from `add_phase1_deletion_completion.sql` and the freeze from
+`add_mlc3_exercise_dark_foundation.sql`, and the narrow lane applies the
+deletion file in a later block. Applied twice on the released lane, cleanly.
+
+**Restated grants, and why.** `CREATE OR REPLACE FUNCTION` preserves a
+function's ACL, so the REVOKE/GRANT pairs in 0353 change nothing. They are
+there because `test_every_created_function_revokes_anon_and_authenticated`
+has no "revoked by an earlier migration" carve-out — its sibling PUBLIC test
+does — and because a reader auditing an erasure writer should not have to open
+another file to learn it is service_role-only.

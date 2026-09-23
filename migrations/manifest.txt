@@ -388,3 +388,4 @@
 0350	fix_ideal_text_core_v2_summary_key.sql
 0351	the_bake_knows_about_answers_and_its_own_start.sql
 0352	guard_runtime_config_model_keys.sql
+0353	deletion_reaches_practice_objects.sql
