@@ -390,3 +390,4 @@
 0352	guard_runtime_config_model_keys.sql
 0353	deletion_reaches_practice_objects.sql
 0354	authorization_binds_to_acquirer.sql
+0355	speaker_identity_the_table_accepts.sql

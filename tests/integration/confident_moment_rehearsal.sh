@@ -300,6 +300,11 @@ hard migrations/add_mlc3_first_client_service_d2.sql
 hard migrations/add_mlc3_coach_inline_exercise_authoring_d5.sql
 hard migrations/add_mlc3_founder_canary_security_closure.sql
 hard migrations/add_mlc3_general_user_service_d4.sql
+# 0355 replaces record_mlc3_self_speaker_target_v1, which the file above
+# defines — so it must land here, not at the end of the chain. The d4 lane is
+# cloned from a checkpoint cut right after this pair, and the suite that
+# exercises the speaker writer runs in that clone.
+hard migrations/speaker_identity_the_table_accepts.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.

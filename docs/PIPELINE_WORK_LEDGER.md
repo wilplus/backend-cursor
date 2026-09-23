@@ -530,3 +530,69 @@ operational, so a second registration inventing its own raises
 whatever was active, which would pull the policy out from under any suite
 sharing the lane. **Reuse the active policy** — read its version, copy hashes
 and first allowed country — and only register one when there is none.
+
+---
+
+### 2026-09-23 · WS4 · r2-speaker-identity · #(pending)
+
+**Closed:** R-2
+**Contract lines flipped:** none
+**Contract lines added:** none. R-2's regression tests live in
+`tests/test_mlc3_self_speaker_identity_postgres.py`, on the RELEASED lane.
+**Broke and fixed:** none in the contract. I did turn four rehearsal lanes red
+on the way and then backed the change out — read the next-to-last section.
+**Open for the founder:** none. Stacks on #619 (0354); this is 0355.
+
+**The defect.** `record_mlc3_self_speaker_target_v1` minted a speaker with two
+bare INSERTs naming one column each — `ml_speakers(id)` and
+`ml_speaker_principals(speaker_id, acquisition_principal_id)`. The released
+tables require six more columns between them, all NOT NULL with no default:
+identity_version, identity_hash (UNIQUE, exactly 64 chars), created_by,
+binding_kind, binding_proof_hash, bound_by. The first speaker this service
+ever had to mint would have raised and taken the Take with it, through all
+three entry points (the target writer and its candidate and practice
+wrappers).
+
+**One writer, not two.** The fix routes through
+`register_ml_speaker_principal_v1`, the canonical writer MLC-2 already owns,
+rather than a second hand-rolled pair of INSERTs. That restores two things the
+bare INSERTs silently skipped: the refusal to re-bind a principal already
+bound to a DIFFERENT identity, and `assign_ml_speaker_split_v1` — without
+which a speaker created here had no split assignment at all, invisible until
+something tried to build a dataset from it. The identity derives from the
+owner's user id, so a replay resolves to the same speaker instead of minting a
+second person on every retry.
+
+**WHY A GREEN SUITE WAS PROVING THE OPPOSITE OF WHAT IT CLAIMED — the part to
+remember.** `tests/test_mlc3_general_user_service_d4_postgres.py` calls this
+exact function, asserts on the speaker it returns, and passes. It passes
+because its lane is cloned from the narrow fixture, where
+`tests/integration/mlc3_exercise_foundation_prerequisites.sql` declares
+
+    CREATE TABLE public.ml_speakers (id UUID PRIMARY KEY);
+
+One column. No constraints. **The fixture had removed exactly the constraints
+the code violates**, so the test drove the defect and reported success. This
+is the third finding in three days with the same shape (B-4's substring-only
+tests, B-2's unrun .sql script, now this): the covered-looking areas are
+where the defects are.
+
+**What happened when I tried to fix the fixture, which is a finding of its
+own.** I tightened it to the released shape first, because a test that cannot
+fail is worse than no test. The tier went red in four lanes at once: m33 30
+failed + 83 errors, d3 14 errors, service 23 failed, confident-moment narrow
+47 failed, d4 17 failed. Roughly a hundred cases across suites this change
+does not own have been minting identity-less speakers for as long as the
+fixture allowed it. **That is Workstream 10** — make the tests test the
+released schema — and burying a one-function correction under a hundred
+unrelated edits would have made both unreviewable. So I backed it out and put
+R-2's proof on the RELEASED lane, where `ml_speakers` has always carried its
+constraints. **Whoever takes Workstream 10: the number is ~100, in four
+lanes, and this fixture is where to start.**
+
+**A trap in my own test, caught by re-running it.** The case that proves the
+old INSERT fails on the binding seeds a speaker first, and I gave it a
+constant `identity_hash`. That column is UNIQUE on the released table, so it
+passed once and failed the second time the lane was reused — a test that only
+works on a fresh database. It derives a fresh hash now. **Re-run a new
+postgres case against the same lane twice before believing it.**
