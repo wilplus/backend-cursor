@@ -123,6 +123,66 @@ def tier_rank(tier: Optional[str]) -> int:
     return UNMEASURED_RANK
 
 
+def selection_summary(blocks: Any) -> str:
+    """One line per Take: how the reason layer actually ranked it.
+
+    WHY THIS EXISTS. 24j went live for everyone at once, which was defensible
+    — it cannot crash, cannot empty a block, and rolls back with the flag —
+    but the failure it CAN have is not loud. If the words read badly, nothing
+    errors; the bookmarks are just quietly on worse moments, for everyone,
+    looking entirely normal. A canary is one way to catch that and being able
+    to SEE it is the other, and this is the cheap half of the second.
+
+    Reads as: how often did the winner actually carry the slide's point, and
+    how often was that verdict the coarse word-overlap kind rather than the
+    measured one. A Take that reports `not=9 degraded=11` is telling you the
+    gate is barely gating.
+
+    AC-9. Counts and tier names only — no quote, no transcript, no score, and
+    nothing here reaches a speaker. `_row_rejection` in
+    take_feedback_policy_v3_service.py says the same of its own log values:
+    the fence is about what a user sees, and a deploy log is not that.
+
+    NEVER RAISES. It is called on the live path for the sake of a log line,
+    and a log line is never worth a failed Take (live loop).
+    """
+    counts = dict.fromkeys(TIERS, 0)
+    unmeasured = degraded = selected = 0
+    try:
+        for block in blocks or []:
+            if not isinstance(block, dict):
+                continue
+            chosen_id = block.get("selected_candidate_id")
+            if not chosen_id:
+                continue
+            row = next(
+                (
+                    candidate
+                    for candidate in block.get("confidence_candidates") or []
+                    if isinstance(candidate, dict)
+                    and candidate.get("candidate_id") == chosen_id
+                ),
+                None,
+            )
+            if row is None:
+                continue
+            selected += 1
+            tier = row.get("reason_tier")
+            if tier in counts:
+                counts[tier] += 1
+            else:
+                unmeasured += 1
+            if row.get("reason_degraded"):
+                degraded += 1
+    except Exception:  # pragma: no cover - see NEVER RAISES above
+        return "summary_unavailable"
+    ordered = " ".join(f"{tier}={counts[tier]}" for tier in TIERS)
+    return (
+        f"enabled={int(enabled())} selected={selected} {ordered} "
+        f"unmeasured={unmeasured} degraded={degraded}"
+    )
+
+
 def ordering_rank(candidate: Any) -> int:
     """The leading element of a candidate's sort key.
 
