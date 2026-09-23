@@ -4,7 +4,7 @@ Status of processor paperwork and the facts a supervisory authority or customer
 would ask for. **Keep this in sync with `frontend-cursor/src/app/privacy/page.tsx`
 (sub-processor table) — a vendor in one and not the other is a defect.**
 
-Last updated: 2026-09-17
+Last updated: 2026-09-23
 
 ## Controller
 
@@ -36,7 +36,7 @@ yet, and one marked ⚠️ means the row was written before the file arrived.
 | OpenAI | Processor | API inputs/outputs: audio, transcripts, feedback text | BY-REF — effective 2026-01-01 | 2026-09-17 | SCCs; DPA instructs **OpenAI Ireland Limited** to process EEA/Swiss data | US | `compliance/dpa/OpenAI_DPA_2026-09-17.pdf` |
 | Cloudflare (R2) | Processor | The voice/video objects themselves | BY-REF | 2026-09-17 | SCCs | **EEUR** (Eastern Europe) location hint on all buckets; default jurisdiction, not EU-pinned | `compliance/dpa/Cloudflare_DPA_2026-09-17.pdf` |
 | Supabase | Processor | Accounts, transcripts, feedback, auth | BY-REF | 2026-09-17 | SCCs + UK addendum (in DPA); data at rest in EU | **eu-west-1** — West EU (Ireland), confirmed 2026-09-17 | `compliance/dpa/Supabase_DPA_2026-09-17.pdf` (vendor Version 1, 2026-08-01) |
-| Railway | Processor | Compute + Redis queue payloads | REQUESTED — **needs DocuSign**, see below | 2026-09-17 | SCCs in DPA | | `compliance/dpa/Railway_DPA_2026-09-17.pdf` |
+| Railway | Processor **+ independent controller** for Company Account Data and Company Usage Data (DPA §13) | Compute + Redis queue payloads | **SIGNED** — Docusign envelope `7D29F3C2-8EAD-8C42-8022-1470194A943E`, effective 2026-09-23 | 2026-09-23 | SCCs (Commission Decision 2021/914) + UK Addendum, both in DPA Exhibit D | | `compliance/dpa/Railway_DPA_2026-09-23.pdf` (executed; the 2026-09-17 capture of the unexecuted template is retained beside it) |
 | Resend | Processor | Email addresses + rendered session-result content | BY-REF | 2026-09-17 | SCCs deemed entered into and incorporated by reference | | `compliance/dpa/Resend_DPA_2026-09-17.pdf` (vendor last update 2026-08-27) |
 | Sentry | Processor | Error telemetry (PII suppressed — see below) | SIGNED — DPA v5.1.0 | 2026-09-17 | EU storage region; SCCs in DPA | **European Union (EU)** | ⚠️ `Sentry_DPA_2026-09-17.pdf` — **not yet committed**, file not supplied |
 | Vercel | Processor | Frontend hosting + internal email render endpoint | BY-REF | 2026-09-17 | SCCs deemed signed on acceptance of ToS | US | `compliance/dpa/Vercel_DPA_2026-09-17.pdf` |
@@ -89,8 +89,17 @@ ISO 27001:2022 certificate. Filed alongside the DPAs.
 
 | Vendor | Sent | To | Asked for | Still blocking? |
 |---|---|---|---|---|
-| Railway | 2026-09-17 | support/legal | DPA, sub-processor list, region availability | **YES — action is ours.** The DPA is captured and read: it is NOT in force by reference. "Customer must complete the information requested and submit the DocuSign form available here. This DPA will become legally binding upon Company's execution in the signature block below." Submitting that form is the whole remaining step. The same document also says it "supplements the Terms of Service", which reads like incorporation and is not — that phrase describes its relationship to the TOS, not its execution |
 | OpenAI | 2026-09-17 | privacy@openai.com | DPA execution route, confirmation that OpenAI Ireland Limited is the EU contracting entity, retention period on current plan, sub-processor list; also ask whether EU project residency is available on our plan | **Partly resolved from the DPA text itself.** No execution route is needed — the DPA "supplements, and is incorporated into the OpenAI Services Agreement", effective 2026-01-01, with no signature block. It also instructs **OpenAI Ireland Limited** to process EEA/Swiss data, which is evidence toward the EU-entity question but not a statement of which entity contracts with us — counsel should read §1 rather than take this row for it. Still open: retention period in writing, sub-processor list, EU project residency |
+
+**Not blocking any more: Railway.** Executed 2026-09-23. The signature block
+names Christian Ohrgaard, Head of Operations, for Railway Corporation, which is
+what DPA §14 requires — *"this DPA will become legally binding upon Company's
+execution in the signature block below."* Two loose ends recorded rather than
+left to be found: the Customer print name reads **"Artur"** where the party line
+reads "Artur Willoński", and **no Docusign Certificate of Completion was supplied
+with the document** — that certificate is the cleanest proof an envelope reached
+Completed status, and it should be downloaded from Docusign and filed beside the
+DPA.
 
 **Not blocking any more:** Resend. Its DPA states the signature blocks "are
 provided for reference purposes only" and that it "becomes legally binding upon
@@ -109,6 +118,32 @@ Noted 2026-09-17, not a data-protection finding but a continuity one:
 
 The live loop currently depends on services with no contractual obligation
 to keep it running.
+
+## Findings from the executed Railway DPA (2026-09-23)
+
+Three things in the executed text that the register did not previously record.
+
+1. **Railway is an independent controller for some data, not only our processor.**
+   DPA §13: with respect to *Company Account Data* and *Company Usage Data*,
+   "Company is an independent controller, not a joint controller with Customer",
+   processing it for its own relationship management, accounting, fraud detection,
+   identity verification and legal compliance, and to "provide, optimize, and
+   maintain the Services". This is the same shape as Stripe. **The sub-processor
+   table in `frontend-cursor/src/app/privacy/page.tsx` describes Railway as a
+   processor only**, and the register header requires the two to stay in sync — so
+   that table, and the recipients section of the v2.0 privacy copy, need the
+   controller role added before the next policy version is published.
+
+2. **Transfer basis confirmed.** The EU SCCs (Commission Decision 2021/914,
+   4 June 2021) are incorporated, with the UK Addendum at Exhibit D. The parties
+   are deemed to have signed the SCCs by entering into the DPA (§9.3.9), so no
+   separate SCC signature is outstanding.
+
+3. **The SCC contact address does not match our published one.** The Data Exporter
+   contact recorded in the DPA annex is `a@willonski.com`; the Privacy Policy gives
+   `contact@willpowerlab.com`. Not a defect in the DPA, but a supervisory authority
+   reading both would see two different contacts for the same controller. Decide
+   which is canonical and make the other point at it.
 
 ## Open questions for legal advice
 
