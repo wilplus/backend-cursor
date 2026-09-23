@@ -102,9 +102,24 @@ def _presentable(row: dict, presentation: dict) -> dict:
     AC-9 bans surfacing scores, and a number that is merely PRESENT in a payload
     is one render away from being surfaced by someone who assumes anything sent
     was meant to be shown. The canonical row keeps it; this copy does not.
+
+    `reason_tier` leaves by the same door and for the same reason (24j). It is
+    not a number, but `"not"` is a VERDICT about what the speaker's words did,
+    which AC-9 bans in the same breath as the score — and it is the ordering
+    input, so a client that read it could reconstruct the ranking the tier
+    decided. It rides the internal row, where 24f's exercise and the wording
+    read it; the visible copy is drawn by `bookmark_tier` and `why_key`, which
+    are founder-signed keys, not judgements the client has to interpret.
+
+    A DENYLIST, DELIBERATELY. Everything else on the row is lineage (ids,
+    spans, versions) that the client needs, so the list names what must not
+    travel. Anything added to the row that says something ABOUT the speaker
+    belongs on this list the same day it is added.
     """
     visible = dict(row)
     visible.pop("candidate_score", None)
+    visible.pop("reason_tier", None)
+    visible.pop("reason_degraded", None)
     visible.update(presentation)
     return visible
 
@@ -241,6 +256,12 @@ def _v3_confidence_candidate_row(
         "why_key": "confident_voice",
         "tentative": raw.get("selection_language")
         == "best_available_tentative",
+        # THE REASON LAYER (24j) rides with the item rather than being
+        # recomputed here: the wording can say a bottom-tier winner is one,
+        # and 24f's exercise can read it as a reason to fire. `degraded` says
+        # the verdict came from word overlap rather than entailment.
+        "reason_tier": raw.get("reason_tier"),
+        "reason_degraded": bool(raw.get("reason_degraded")),
         "candidate_score": raw.get("machine_score"),
         "detector_version": raw.get("machine_version"),
         "rule_version": policy.get("policy_version"),

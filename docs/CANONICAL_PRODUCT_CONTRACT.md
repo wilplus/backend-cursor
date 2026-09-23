@@ -197,6 +197,48 @@ with this contract, this contract wins.
     are internal arbitration inputs. None is ever surfaced. "Let's practice"
     carries no number, band name, comparison to other users, or "below average"
     phrasing — it is an invitation to act, never a verdict on the speaker.
+
+24j. **Reasonable confidence — what a Confident Voice item is.** (founder
+    2026-09-23, agreed in session.) A moment qualifies when **the words carried
+    the point they were meant to carry, and the delivery sounded more assured
+    than that speaker's own norm.**
+
+    **The two halves are SEQUENCED, never blended.** Within a block, candidates
+    are ordered by what the words did — `covered`, then `partial`, then `not` —
+    and the delivery read orders candidates only *within* a tier. There is no
+    weight between the halves and no threshold on either: `on_slide_score`
+    already returns one of `{1.0, 0.5, 0.0}`, so the three verdicts **are** the
+    ordering and there is no new parameter to calibrate.
+
+    **24b is unchanged.** Every valid block still yields exactly one item on
+    every Take, because the bottom tier is never empty. A moment that made no
+    point wins only when nothing in that block made one — the honest report,
+    not a bypass. A candidate with no slide read at all sorts last rather than
+    being excluded, so an unmeasured moment can never beat a measured one and
+    a block can never be emptied. The item carries `reason_tier`, so the
+    wording can say what tier it came from and 24f's exercise can read it.
+
+    **24i covers the tier.** `reason_tier` is an internal arbitration input
+    and never rides a client payload: `"not"` is a verdict about what the
+    speaker's words did, and it is the ordering input, so a client holding it
+    could reconstruct the ranking. The screen is drawn by `bookmark_tier` and
+    `why_key` — founder-signed keys — exactly as it is for `candidate_score`.
+
+    **Deleting the weak end was rejected twice over:** 24f's exercise fires on
+    the weakest item below the neutral band, and the owner is only ever asked
+    about what surfaces — so surfacing one end of the range would collect
+    judgements from one end of it, and the validation this rests on needs a
+    clean spread across confident, middling and not.
+
+    **The rater's instrument does not move.** `conf-q-v2` still asks about the
+    delivery of the clip it is shown, which stays true: the tier chose which
+    clip, not what is being judged. Editing it would start a new corpus for no
+    gain (SPEC §17, and `services/state_ratings.py` says so itself).
+
+    Implemented in `services/reasonable_confidence.py`, behind
+    `REASONABLE_CONFIDENCE_ENABLED`, **default OFF**. With the flag off the
+    served order is byte-for-byte unchanged.
+
 25. Each active-policy lane ranks its complete candidate pool and selects its
     best available item, not the first match. Under V3, confidence is relative
     only to the eligible clips inside its block; it is not an objective claim
