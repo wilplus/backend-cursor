@@ -20,6 +20,7 @@ from services.reasonable_confidence import (
     enabled,
     ordering_rank,
     reason_tier,
+    selection_summary,
     tier_rank,
 )
 from services.take_feedback_policy_v3 import _confidence_rank
@@ -190,3 +191,77 @@ class TestSequencedNotBlended:
         rows = [_cand("a", 0.10, None), _cand("b", 0.60, None)]
         with _layer(True):
             assert min(rows, key=_confidence_rank)["candidate_id"] == "b"
+
+
+def _block(bid, tier, degraded=False, selected=True):
+    row = {"candidate_id": bid, "reason_tier": tier, "reason_degraded": degraded}
+    return {
+        "block_id": bid,
+        "selected_candidate_id": bid if selected else None,
+        "confidence_candidates": [row],
+    }
+
+
+class TestTheOnlyPlaceTheLayerIsObservable:
+    """24j is live for everyone and its failure mode is QUIET — bad verdicts
+    produce no error, just worse bookmarks that look normal. This line is the
+    whole of the evidence that it is doing anything."""
+
+    def test_it_counts_what_actually_won(self):
+        blocks = [
+            _block("a", "covered"), _block("b", "covered"),
+            _block("c", "partial"), _block("d", "not"),
+        ]
+        with _layer(True):
+            line = selection_summary(blocks)
+        assert "selected=4" in line
+        assert "covered=2" in line and "partial=1" in line and "not=1" in line
+        assert "enabled=1" in line
+
+    def test_it_separates_the_coarse_verdicts_from_the_measured_ones(self):
+        # The number that answers "is the gate real yet": a Take reporting
+        # not=9 degraded=11 is telling you it is barely gating.
+        blocks = [_block("a", "covered", degraded=True),
+                  _block("b", "covered", degraded=False)]
+        with _layer(True):
+            assert "degraded=1" in selection_summary(blocks)
+
+    def test_an_unmeasured_winner_is_counted_as_itself(self):
+        # Not folded into "not" — "we did not look" and "you said nothing of
+        # the point" stay different facts in the log, as they are in the rank.
+        with _layer(True):
+            line = selection_summary([_block("a", None)])
+        assert "unmeasured=1" in line and "not=0" in line
+
+    def test_a_block_with_no_winner_is_not_counted(self):
+        with _layer(True):
+            assert "selected=0" in selection_summary(
+                [_block("a", "covered", selected=False)])
+
+    def test_the_line_says_whether_the_layer_was_even_on(self):
+        # Without this the log is ambiguous: all-covered could mean the layer
+        # worked or that it was off and the voice happened to agree.
+        blocks = [_block("a", "covered")]
+        with _layer(False):
+            assert "enabled=0" in selection_summary(blocks)
+        with _layer(True):
+            assert "enabled=1" in selection_summary(blocks)
+
+    def test_it_never_raises_whatever_it_is_handed(self):
+        # It runs on the live path for the sake of a log line, and a log line
+        # is never worth a failed Take.
+        for junk in (None, [], "nonsense", [None], ["x"], [{}],
+                     [{"selected_candidate_id": "a"}],
+                     [{"selected_candidate_id": "a",
+                       "confidence_candidates": "not-a-list"}],
+                     [{"selected_candidate_id": "a",
+                       "confidence_candidates": [None, 7]}]):
+            assert isinstance(selection_summary(junk), str)
+
+    def test_it_carries_no_speaker_words(self):
+        # AC-9's neighbour: the fence is about what a speaker sees, but a log
+        # is also not a place to put their transcript.
+        blocks = [_block("a", "covered")]
+        blocks[0]["confidence_candidates"][0]["quote"] = "a private sentence"
+        with _layer(True):
+            assert "private" not in selection_summary(blocks)
