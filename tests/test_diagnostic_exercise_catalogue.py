@@ -15,8 +15,11 @@ WHAT THIS PINS DOWN:
   * an unavailable library SKIPS the tag check rather than failing it, because
     empty means "no library", not "nothing is detectable" — reading it the
     other way would refuse every exercise;
-  * the founder's kept coupling still holds: no post, no exercise, and no
-    switching one on while its post is a draft.
+  * the post is OPTIONAL since 2026-09-23 (migration 0353) — an exercise goes
+    live on its video and instruction alone — but a post that IS attached must
+    still be published before the exercise switches on;
+  * the avatar tick cannot be set without a setup label, because a tick that
+    cannot say two clips MATCH does not do the job it was added for.
 
 Run: python3 -m unittest tests.test_diagnostic_exercise_catalogue
 """
@@ -130,11 +133,26 @@ class CatalogueTests(unittest.TestCase):
             with self.assertRaises(CatalogueRefusal):
                 self.save(_Db(), acoustic_problem_tags=empty)
 
-    # ── the coupling the founder kept ────────────────────────────────────
+    # ── the post: optional since 2026-09-23, migration 0353 ──────────────
 
-    def test_an_exercise_needs_a_post(self):
+    def test_an_exercise_no_longer_needs_a_post(self):
+        """REVERSED 2026-09-23 (founder). This asserted that an exercise with
+        no post is refused — the coupling kept on 2026-09-16, when the post WAS
+        the explanation a learner read. The founder's decision is that the
+        video and the one-line instruction stand on their own."""
+        saved = self.save(_Db(), journal_post_id="")
+        self.assertIsNone(saved["journal_post_id"])
+
+    def test_and_it_can_go_live_without_one(self):
+        # The whole point of the change: not "saved but never offered".
+        db = _Db()
+        self.assertTrue(self.save(db, journal_post_id="", active=True)["active"])
+
+    def test_a_video_is_still_required_when_the_post_is_gone(self):
+        # What the relaxed rule did NOT relax. An exercise with nothing to show
+        # is not an exercise, and it is now the only asset standing.
         with self.assertRaises(CatalogueRefusal):
-            self.save(_Db(), journal_post_id="")
+            self.save(_Db(), journal_post_id="", explanation_video_url="")
 
     def test_a_missing_post_is_a_404(self):
         with self.assertRaises(CatalogueRefusal) as caught:
@@ -191,3 +209,68 @@ class CatalogueTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TheAvatarTick(unittest.TestCase):
+    """Founder 2026-09-23. A coach marking a recording usable for a future
+    avatar is recording something PERISHABLE — only the person in the room
+    knows whether the shirt, angle and light matched, and no one can recover it
+    from the file later. Nothing reads these fields yet, by decision."""
+
+    def save(self, db, **over):
+        return save_exercise(db, {**GOOD, **over})
+
+    def test_unticked_by_default(self):
+        saved = self.save(_Db())
+        self.assertIs(saved["avatar_training_eligible"], False)
+        self.assertIsNone(saved["avatar_setup_label"])
+
+    def test_the_tick_needs_a_setup_label(self):
+        # THE REASON THE FIELD EXISTS. A bare yes says this clip was shot
+        # carefully; it cannot say two clips match each other, and matching is
+        # the entire requirement of a training set.
+        with self.assertRaises(CatalogueRefusal) as caught:
+            self.save(_Db(), avatar_training_eligible=True)
+        self.assertIn("setup", caught.exception.message)
+
+    def test_a_blank_label_is_not_a_label(self):
+        for blank in ("", "   ", "\t"):
+            with self.assertRaises(CatalogueRefusal):
+                self.save(_Db(), avatar_training_eligible=True,
+                          avatar_setup_label=blank)
+
+    def test_a_ticked_exercise_keeps_its_label(self):
+        saved = self.save(_Db(), avatar_training_eligible=True,
+                          avatar_setup_label="  desk-white-shirt-sept  ")
+        self.assertIs(saved["avatar_training_eligible"], True)
+        self.assertEqual(saved["avatar_setup_label"], "desk-white-shirt-sept")
+
+    def test_unticking_keeps_the_label_rather_than_dropping_it(self):
+        # An author who unticks and reticks should not retype it.
+        saved = self.save(_Db(), avatar_training_eligible=False,
+                          avatar_setup_label="desk-white-shirt-sept")
+        self.assertIs(saved["avatar_training_eligible"], False)
+        self.assertEqual(saved["avatar_setup_label"], "desk-white-shirt-sept")
+
+    def test_the_tick_must_be_a_decision_not_a_number(self):
+        # Same reason `active` is isinstance-checked: 1 == True in Python, so a
+        # membership test would switch this on for a caller who sent a count.
+        for junk in (1, 0, "yes", None if False else "true"):
+            with self.assertRaises(CatalogueRefusal):
+                self.save(_Db(), avatar_training_eligible=junk,
+                          avatar_setup_label="desk-white-shirt-sept")
+
+    def test_an_absurd_label_is_refused(self):
+        with self.assertRaises(CatalogueRefusal):
+            self.save(_Db(), avatar_training_eligible=True,
+                      avatar_setup_label="x" * 200)
+
+    def test_the_tick_is_independent_of_everything_else(self):
+        # It rides with an exercise that has no post and is live, which is the
+        # combination the founder actually described.
+        saved = self.save(_Db(), journal_post_id="", active=True,
+                          avatar_training_eligible=True,
+                          avatar_setup_label="desk-white-shirt-sept")
+        self.assertIsNone(saved["journal_post_id"])
+        self.assertTrue(saved["active"])
+        self.assertTrue(saved["avatar_training_eligible"])
