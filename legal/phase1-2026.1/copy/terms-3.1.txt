@@ -1,15 +1,14 @@
 WillpowerLab — Terms of Service
-Version 2.1. Effective 23 September 2026.
+Version 3.1. Effective 23 September 2026.
 
 These terms are an agreement between you and Artur Willoński, operating under
 the name "WillpowerLab" from Poland ("WillpowerLab", "we", "us"). They govern
-your use of
-willpowerlab.com and the WillpowerLab application.
+your use of willpowerlab.com and the WillpowerLab application.
 
-Version 2.1 replaces version 1.2. It is not an edit of it. Version 1.2 required
-you to agree that your practice data could be used to train models shared with
-other users. This version does not ask for that and does not permit it. Under
-these terms your recordings are processed to deliver your own coaching. If that
+Version 3.1 replaces every earlier version. Earlier versions required you to
+agree that your practice data could be used to train models shared with other
+users. This version does not ask for that and does not permit it. Under these
+terms your recordings are processed to deliver your own coaching. If that
 changes, it changes in a new version you are asked to accept — see section 15.
 
 
@@ -20,10 +19,17 @@ the transcript up with your slides, writes an Ideal Text — a presentation
 document built from what you actually said — and gives you feedback after each
 attempt.
 
+WillpowerLab is hybrid coaching: automated work and a human coach, together.
 The transcription and the written documents are produced by artificial
-intelligence. Your audio is sent to a third-party AI provider to be
-transcribed. The AI notice tells you who receives it and what happens to it,
-and the Privacy Policy sets out the detail.
+intelligence, and a WillpowerLab coach — a person — may listen to your
+recordings in order to review the feedback you were given and to prepare
+practice for you. Both halves are the service. If you are not willing for a
+person to hear your recordings, WillpowerLab is not the product for you, and
+you should not accept these terms.
+
+Your audio is sent to a third-party AI provider to be transcribed. The AI
+notice tells you who receives it and what happens to it, and the Privacy Policy
+sets out the detail.
 
 
 2. WHAT IT COSTS
@@ -35,17 +41,13 @@ Work in the app is measured in tokens. Each plan gives you an allowance of them
 for the month. The allowance is SET at the start of each month rather than
 added to what you had, so unused tokens do not carry over.
 
-  Free         12,000 tokens a month     no coach reviews      no charge
-  Practice    150,000 tokens a month     no coach reviews      USD 12 a month
-  Coaching    150,000 tokens a month     3 coach reviews       USD 39 a month
-  Intensive   400,000 tokens a month     8 coach reviews       USD 89 a month
+  Free         12,000 tokens a month     1 coach review       no charge
+  Practice    150,000 tokens a month     1 coach review       USD 12 a month
+  Coaching    150,000 tokens a month     3 coach reviews      USD 39 a month
+  Intensive   400,000 tokens a month     8 coach reviews      USD 89 a month
 
 Reviews by a human coach are a separate limit from tokens, and the tighter of
 the two applies: you can have tokens left and no reviews left.
-
-That limit is about reviews sent back to you. It is not about whether anyone
-listens. Coach review is part of the service on every plan, including Free —
-see section 11.
 
 The price and what it includes are shown before you pay. We will tell you
 before any price changes. Payments are taken by our payment provider; we do not
@@ -53,7 +55,8 @@ see or store your card details. A paid plan renews each month until you cancel,
 and you can cancel at any time.
 
 If you are a consumer in the EU or EEA, you have 14 days to withdraw from a
-paid plan.
+paid plan. We give you that full 14 days with no questions asked, even once you
+have started using it.
 
 
 3. YOU MUST BE 18
@@ -135,12 +138,11 @@ transcripts and the documents the service produces for you.
 You give us permission to process that material only so far as it takes to give
 you the service: to store it, transcribe it, send the necessary parts to the
 providers named in the Privacy Policy, generate your documents and feedback,
-and keep them available to you. That permission is limited to your own service
-and ends when your content is deleted.
+have a coach review them, and keep them available to you. That permission is
+limited to your own service and ends when your content is deleted.
 
-Under these terms we do not use your recordings to train models for anyone
-else, and we do not pool your material with other users' material. Any change
-to that comes as a new version you are asked to accept.
+We do not use your recordings to train models for anyone else, and we do not
+pool your material with other users' material.
 
 
 9. THE IDEAL TEXT IS YOUR DOCUMENT
@@ -168,16 +170,28 @@ a measurement of your ability.
 
 11. HUMAN COACHES
 
-Coach review is part of the service. A WillpowerLab coach — a person — listens
-to recordings in order to check and correct the feedback you were given. It is
-not something you can switch off: if you are not willing to have a person hear
-your recordings, WillpowerLab is not for you.
+A WillpowerLab coach is a person, and coach review is part of the service
+rather than an extra you switch on. Section 1 says why: this is hybrid
+coaching, and the human half is not optional to it.
 
-How many coach reviews are sent back to you depends on your plan. A plan that
-includes no coach reviews does not mean nobody listens.
+What that means in practice. A coach may listen to your recordings in order to
+review the feedback you were given and to prepare practice for you. How many
+reviews you receive each month depends on your plan, and section 2 sets out the
+allowance for each; every plan includes at least one. A coach does not see the
+voice measurements described in section 3 of the Privacy Policy.
 
-The recording and feedback loop never waits for a coach. Review happens
-afterwards, so you already have your feedback before any coach opens it.
+Practice is optional, and it is the one part of this that you choose. After
+your feedback you may be offered a short exercise and the chance to re-record a
+fragment. You can turn it on when you accept and off whenever you like;
+declining it changes nothing else about your account, and everything in section
+1 still works exactly as described.
+
+Your recording and feedback loop never waits for a coach. You record, you get
+your transcript, your Ideal Text and your feedback, and you record again — all
+of it without a person in the way.
+
+We are stating this plainly because it is the kind of thing people assume does
+not happen.
 
 
 12. AVAILABILITY
@@ -229,9 +243,9 @@ for that record at any time.
 16. LAW AND DISPUTES
 
 These terms are governed by Polish law, and the courts of Warsaw, Poland have
-jurisdiction. If you are a consumer resident in the
-EU, this does not deprive you of the protection of the mandatory rules of the
-country where you live, and you may bring proceedings there.
+jurisdiction. If you are a consumer resident in the EU, this does not deprive
+you of the protection of the mandatory rules of the country where you live, and
+you may bring proceedings there.
 
 You may also use the European Commission's online dispute resolution platform.
 

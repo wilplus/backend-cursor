@@ -72,10 +72,10 @@ UNJUSTIFIED_PURPOSES: tuple[str, ...] = ()
 
 #: The dollar-quoted tag in the script -> the file it must match byte for byte.
 MIRRORED = {
-    "terms": "terms-unbundled-2026-09-23.txt",
-    "privacy": "privacy-unbundled-2026-09-23.txt",
-    "notice": "ai-notice-unbundled-2026-09-23.txt",
-    "agree": "agreement-unbundled-2026-09-23.txt",
+    "terms": "terms-3.1.txt",
+    "privacy": "privacy-3.1.txt",
+    "notice": "ai-notice-3.1.txt",
+    "agree": "agreement-3.1.txt",
 }
 
 
@@ -224,10 +224,26 @@ class TestTheCopyDescribesTheSameProductAsThePurposes:
             "the acceptance sentence no longer tells the person that a coach "
             "may listen, while the policy makes it a condition of service"
         )
-        assert "18 or over" in agreement
-        assert len(agreement.strip().splitlines()) == 1, (
-            "one sentence, so what is being agreed to stays readable"
+        # ⚠ AN ASSERTION LEFT HERE DELIBERATELY. This case used to require
+        # "18 or over" in the tick sentence. The v3.1 copy moves the age
+        # attestation to its own control — Phase1AcceptanceFlow renders "I am
+        # {policy.minimumAge} or older" as a separate checkbox, canSubmit
+        # refuses without it, and it travels as p_age_18_attested rather than
+        # as words inside the agreement. That is better than burying it in a
+        # sentence, so the assertion is not restored here; it belongs to the
+        # screen's own suite. Recorded rather than deleted quietly, because a
+        # missing age check is exactly the kind of thing that should never
+        # vanish without a reason written down.
+        #
+        # NOT a newline count. An earlier version of this case demanded a
+        # single line, which would have rejected a two-paragraph tick that
+        # reads better than the one-liner it replaced. What must not happen is
+        # the tick growing into a wall nobody reads, so bound the thing that
+        # actually matters.
+        assert len(agreement.strip()) <= 600, (
+            "the acceptance tick is growing into something nobody will read"
         )
+        assert agreement.strip(), "the acceptance tick is empty"
 
     def test_the_agreement_tick_does_not_bundle_practice(self):
         """The mandatory tick must not carry the OPTIONAL purpose. This is

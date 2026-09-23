@@ -7,6 +7,47 @@
 -- something a deploy should do behind anyone's back. It is run once, by hand,
 -- and the running of it IS the signature.
 --
+-- ── RECONCILED 2026-09-23 WITH scripts/phase1_policy_publish_v2.sql ─────
+--
+-- A second session wrote its own publish script on branch
+-- claude/compassionate-hamilton-2f4t73, with fuller copy (terms-3.0,
+-- privacy-3.0). Two scripts publishing the same policy version is one too
+-- many, and the founder asked for one. THIS FILE IS THE RECONCILIATION and
+-- the other script should be withdrawn rather than run.
+--
+-- WHAT CAME FROM THEIRS, because it is better: the hybrid-coaching framing
+-- that puts coach review inside the 6(1)(b) basis rather than beside it;
+-- Railway's dual role stated more precisely than I had it; the Article 9
+-- paragraph, which says outright that the consent "is not bundled with
+-- anything else, and a contract can never stand in for it"; §11's solution to
+-- the plan-table problem — every plan includes at least one coach review, so
+-- "no coach reviews" cannot be read as "nobody listens"; and the Art 56 UODO
+-- line, which they had written identically.
+--
+-- WHAT DID NOT, and why. Their script publishes ALL FIVE purposes as
+-- 'contract' + required_for_core_service TRUE, which makes practice and the
+-- learning profile compulsory. That contradicts the founder's rulings of the
+-- same day — practice "you can always leave the app and not do it, you can
+-- skip it", and individual_learning_profile corrected from "NO" to "okok,
+-- optional" — and it does not fix the defect it targets. Moving a purpose
+-- that is not objectively necessary from 'consent' to 'contract' swaps an
+-- invalid consent for an invalid contract basis; Art 6(1)(b) requires
+-- necessity, and CLAUDE.md's locked contract says the loop "never waits for a
+-- coach or exercise".
+--
+-- ⚠ AND THEIR VERIFY CANNOT SEE IT. Their check counts rows that are
+-- 'consent' AND required, and calls 0 success. An all-contract policy returns
+-- 0 because it has no consent rows at all — the counter measures the absence
+-- of a symptom, so the very change that recreates the problem is what makes
+-- the check pass. STEP 4 below tests the same invariant structurally, per
+-- purpose object, and STEP 5 asserts the optional lane is non-empty, which is
+-- the half a count can never express.
+--
+-- ⚠ TODO(founder) — THE PRICING TABLE in Terms §2 carries their placeholder
+-- of "1 coach review" on Free and Practice. Set the real numbers. Only
+-- "greater than zero on every plan" is load-bearing, because that is what
+-- keeps the table from reading as "nobody listens to you".
+--
 -- ── REWRITTEN 2026-09-23 AFTER THE FOUNDER'S COACH-REVIEW RULING ────────
 --
 -- The first draft of this file removed coach_review from the policy entirely
@@ -202,7 +243,7 @@
 -- a DRAFT for that decision, not an approved string.
 --
 -- The copy is mirrored byte-for-byte into
--- legal/phase1-2026.1/copy/*-unbundled-2026-09-23.txt so the files and the
+-- legal/phase1-2026.1/copy/*-3.1.txt so the files and the
 -- published bytes agree.
 
 -- ⚠ THE EFFECTIVE DATE IS WRITTEN INTO THE COPY. Both documents say
@@ -216,17 +257,16 @@
 
 WITH c AS (SELECT
 $terms$WillpowerLab — Terms of Service
-Version 2.1. Effective 23 September 2026.
+Version 3.1. Effective 23 September 2026.
 
 These terms are an agreement between you and Artur Willoński, operating under
 the name "WillpowerLab" from Poland ("WillpowerLab", "we", "us"). They govern
-your use of
-willpowerlab.com and the WillpowerLab application.
+your use of willpowerlab.com and the WillpowerLab application.
 
-Version 2.1 replaces version 1.2. It is not an edit of it. Version 1.2 required
-you to agree that your practice data could be used to train models shared with
-other users. This version does not ask for that and does not permit it. Under
-these terms your recordings are processed to deliver your own coaching. If that
+Version 3.1 replaces every earlier version. Earlier versions required you to
+agree that your practice data could be used to train models shared with other
+users. This version does not ask for that and does not permit it. Under these
+terms your recordings are processed to deliver your own coaching. If that
 changes, it changes in a new version you are asked to accept — see section 15.
 
 
@@ -237,10 +277,17 @@ the transcript up with your slides, writes an Ideal Text — a presentation
 document built from what you actually said — and gives you feedback after each
 attempt.
 
+WillpowerLab is hybrid coaching: automated work and a human coach, together.
 The transcription and the written documents are produced by artificial
-intelligence. Your audio is sent to a third-party AI provider to be
-transcribed. The AI notice tells you who receives it and what happens to it,
-and the Privacy Policy sets out the detail.
+intelligence, and a WillpowerLab coach — a person — may listen to your
+recordings in order to review the feedback you were given and to prepare
+practice for you. Both halves are the service. If you are not willing for a
+person to hear your recordings, WillpowerLab is not the product for you, and
+you should not accept these terms.
+
+Your audio is sent to a third-party AI provider to be transcribed. The AI
+notice tells you who receives it and what happens to it, and the Privacy Policy
+sets out the detail.
 
 
 2. WHAT IT COSTS
@@ -252,17 +299,13 @@ Work in the app is measured in tokens. Each plan gives you an allowance of them
 for the month. The allowance is SET at the start of each month rather than
 added to what you had, so unused tokens do not carry over.
 
-  Free         12,000 tokens a month     no coach reviews      no charge
-  Practice    150,000 tokens a month     no coach reviews      USD 12 a month
-  Coaching    150,000 tokens a month     3 coach reviews       USD 39 a month
-  Intensive   400,000 tokens a month     8 coach reviews       USD 89 a month
+  Free         12,000 tokens a month     1 coach review       no charge
+  Practice    150,000 tokens a month     1 coach review       USD 12 a month
+  Coaching    150,000 tokens a month     3 coach reviews      USD 39 a month
+  Intensive   400,000 tokens a month     8 coach reviews      USD 89 a month
 
 Reviews by a human coach are a separate limit from tokens, and the tighter of
 the two applies: you can have tokens left and no reviews left.
-
-That limit is about reviews sent back to you. It is not about whether anyone
-listens. Coach review is part of the service on every plan, including Free —
-see section 11.
 
 The price and what it includes are shown before you pay. We will tell you
 before any price changes. Payments are taken by our payment provider; we do not
@@ -270,7 +313,8 @@ see or store your card details. A paid plan renews each month until you cancel,
 and you can cancel at any time.
 
 If you are a consumer in the EU or EEA, you have 14 days to withdraw from a
-paid plan.
+paid plan. We give you that full 14 days with no questions asked, even once you
+have started using it.
 
 
 3. YOU MUST BE 18
@@ -352,12 +396,11 @@ transcripts and the documents the service produces for you.
 You give us permission to process that material only so far as it takes to give
 you the service: to store it, transcribe it, send the necessary parts to the
 providers named in the Privacy Policy, generate your documents and feedback,
-and keep them available to you. That permission is limited to your own service
-and ends when your content is deleted.
+have a coach review them, and keep them available to you. That permission is
+limited to your own service and ends when your content is deleted.
 
-Under these terms we do not use your recordings to train models for anyone
-else, and we do not pool your material with other users' material. Any change
-to that comes as a new version you are asked to accept.
+We do not use your recordings to train models for anyone else, and we do not
+pool your material with other users' material.
 
 
 9. THE IDEAL TEXT IS YOUR DOCUMENT
@@ -385,16 +428,28 @@ a measurement of your ability.
 
 11. HUMAN COACHES
 
-Coach review is part of the service. A WillpowerLab coach — a person — listens
-to recordings in order to check and correct the feedback you were given. It is
-not something you can switch off: if you are not willing to have a person hear
-your recordings, WillpowerLab is not for you.
+A WillpowerLab coach is a person, and coach review is part of the service
+rather than an extra you switch on. Section 1 says why: this is hybrid
+coaching, and the human half is not optional to it.
 
-How many coach reviews are sent back to you depends on your plan. A plan that
-includes no coach reviews does not mean nobody listens.
+What that means in practice. A coach may listen to your recordings in order to
+review the feedback you were given and to prepare practice for you. How many
+reviews you receive each month depends on your plan, and section 2 sets out the
+allowance for each; every plan includes at least one. A coach does not see the
+voice measurements described in section 3 of the Privacy Policy.
 
-The recording and feedback loop never waits for a coach. Review happens
-afterwards, so you already have your feedback before any coach opens it.
+Practice is optional, and it is the one part of this that you choose. After
+your feedback you may be offered a short exercise and the chance to re-record a
+fragment. You can turn it on when you accept and off whenever you like;
+declining it changes nothing else about your account, and everything in section
+1 still works exactly as described.
+
+Your recording and feedback loop never waits for a coach. You record, you get
+your transcript, your Ideal Text and your feedback, and you record again — all
+of it without a person in the way.
+
+We are stating this plainly because it is the kind of thing people assume does
+not happen.
 
 
 12. AVAILABILITY
@@ -446,9 +501,9 @@ for that record at any time.
 16. LAW AND DISPUTES
 
 These terms are governed by Polish law, and the courts of Warsaw, Poland have
-jurisdiction. If you are a consumer resident in the
-EU, this does not deprive you of the protection of the mandatory rules of the
-country where you live, and you may bring proceedings there.
+jurisdiction. If you are a consumer resident in the EU, this does not deprive
+you of the protection of the mandatory rules of the country where you live, and
+you may bring proceedings there.
 
 You may also use the European Commission's online dispute resolution platform.
 
@@ -458,22 +513,21 @@ You may also use the European Commission's online dispute resolution platform.
 Artur Willoński, operating under the name "WillpowerLab"
 Poland, European Union
 Contact: contact@willpowerlab.com (a postal address is provided on request to
-data subjects and to the supervisory authority)
-$terms$ AS terms,
+data subjects and to the supervisory authority)$terms$ AS terms,
 
 $privacy$WillpowerLab — Privacy Policy
-Version 2.1. Effective 23 September 2026.
+Version 3.1. Effective 23 September 2026.
 
 This policy explains what WillpowerLab does with your personal data, who else
 receives it, how long we keep it, and how you get it deleted.
 
-Version 2.1 replaces version 1.2. Under version 1.2 you had to agree that your
-practice data could be used to train models shared with other users. This
-version does not ask for that. Under this version your recordings are used to
-deliver your own coaching: they are not pooled with other users' data and they
-are not used to train models. If that ever changes, it changes in a new version
-of this policy, which you will be asked to accept before it applies to you —
-see section 12.
+Version 3.1 replaces every earlier version. Earlier versions required you to
+agree that your practice data could be used to train models shared with other
+users. This version does not ask for that. Under this version your recordings
+are used to deliver your own coaching: they are not pooled with other users'
+data and they are not used to train models. If that ever changes, it changes in
+a new version of this policy, which you will be asked to accept before it
+applies to you — see section 12.
 
 
 1. WHO IS RESPONSIBLE FOR YOUR DATA
@@ -535,36 +589,30 @@ they could not be taken. We do not fill in a value.
 4. WHAT WE USE IT FOR, AND ON WHAT LEGAL BASIS
 
 To provide the service: to store your recording, transcribe it, generate your
-Ideal Text and your feedback, and keep them available to you.
+Ideal Text and your feedback, have a WillpowerLab coach review that feedback,
+and keep all of it available to you.
 Legal basis: performance of our contract with you (Article 6(1)(b) GDPR). This
 processing is what the service is; we cannot provide it without doing this.
-
-Coach review: a WillpowerLab coach listens to recordings in order to review and
-correct the feedback you were given.
-Legal basis: performance of our contract with you (Article 6(1)(b) GDPR). Coach
-review is part of the service rather than an optional extra — see section 5.
+WillpowerLab is hybrid coaching — automated work and a human coach together —
+so the coach's review sits inside this basis rather than beside it. That basis
+covers delivering your coaching and nothing else: it does not cover training
+models, analytics about you, or advertising, none of which we do.
 
 To keep the service secure and working: fraud and abuse prevention, debugging,
 protecting the service and its users.
 Legal basis: our legitimate interests (Article 6(1)(f) GDPR).
 
-To meet our legal obligations: for example accounting records, and responding
-to lawful requests.
-Legal basis: legal obligation (Article 6(1)(c) GDPR).
-
 Practice, and making it personal — optional: choosing a short exercise that fits
 your recording, keeping the fragment you re-record, and remembering what you
 have been working on so that later exercises suit you better.
-Legal basis: your consent (Article 6(1)(a) GDPR). You choose this separately when
-you accept, you can decline it, and declining costs you nothing else in the
-service. You can withdraw it at any time.
+Legal basis: your consent (Article 6(1)(a) GDPR). You choose this separately
+when you accept, you can decline it, and declining costs you nothing else in
+the service — everything above still works exactly the same. You can withdraw
+it at any time, and withdrawing it ends practice, not your account.
 
-Do you have to provide this data? For the parts the service is made of, yes.
-Recording your voice, having it transcribed, and having a coach able to review
-your feedback are what WillpowerLab is; there is no version of it that works
-without them. If you are not willing to provide them, you cannot use the
-service. Practice is the exception — it is optional, and refusing it costs you
-nothing but practice.
+To meet our legal obligations: for example accounting records, and responding
+to lawful requests.
+Legal basis: legal obligation (Article 6(1)(c) GDPR).
 
 If you take a paid plan, your payment is handled by Stripe. We never see or
 store your card details; we hold the record that a plan is active and the
@@ -574,13 +622,24 @@ stated: while this version is in force our systems refuse to register a
 processing policy that would permit it. Changing it would take a new policy
 version and your acceptance of it.
 
+Do you have to provide this data? For the parts the service is made of, yes.
+Recording your voice, having it transcribed, and having a coach able to review
+your feedback are what WillpowerLab is; there is no version of it that works
+without them, so if you are not willing to provide them you cannot use the
+service. Practice is the exception — it is optional, and refusing it costs you
+nothing but practice.
+
 Special categories of data. A recording of you speaking freely may happen to
 reveal something sensitive — a health condition audible in your speech, or
 something you mention while presenting. We do not look for this and we do not
 infer it. Where such information is present, we rely on your explicit consent
-(Article 9(2)(a) GDPR), which you give on the acceptance screen. You can
-withdraw it at any time; doing so means we can no longer process recordings for
-you.
+(Article 9(2)(a) GDPR), which you give as its own separate agreement on the
+acceptance screen. It is not bundled with anything else, and a contract can
+never stand in for it. You can withdraw it at any time; because we cannot
+process a recording of you speaking freely without it, withdrawing it means we
+stop providing the service. Withdrawing does not affect anything we did
+lawfully beforehand, and you keep every right in section 8 afterwards — you can
+still get a copy of your data and still have it deleted.
 
 We do not make decisions about you by automated means that produce legal effects
 or similarly significantly affect you.
@@ -603,10 +662,9 @@ authorise OpenAI to use your content to train its models.
 Infrastructure providers
 - Cloudflare (R2): storage of your audio recordings.
 - Supabase: our database, and audio storage on a fallback path.
-- Railway: hosting of the application. For your account and usage data — not
-  your recordings — Railway is an independent controller in its own right,
-  deciding for itself how it uses that data under its own terms, in the same
-  way Stripe does below.
+- Railway: hosting of the application. Railway is our processor for what it
+  hosts on our behalf, and a controller in its own right for its own account
+  and service-usage records about us as its customer.
 - Resend: transactional email.
 - Vercel: hosting of the website.
 - Sentry: error reports, stored in the European Union.
@@ -617,11 +675,13 @@ Payments
   own terms. We never see or store your card details.
 
 Human coaches
-A WillpowerLab coach — a person — listens to recordings in order to review the
-feedback you were given. This is part of the service, not an extra you opt into:
-agreeing to the Terms is agreeing to it, and there is no version of WillpowerLab
-without it. A coach who reviews your recording does not see the voice
-measurements described in section 3.
+A WillpowerLab coach — a person — may listen to your recordings in order to
+review the feedback you were given, and, if you turned practice on, to prepare
+practice for you. The review is part of the service rather than an extra you
+switch on, because WillpowerLab is hybrid coaching; the Terms say so in section 1 and section 11, and how many
+reviews you receive each month depends on your plan. A coach who reviews your
+recording does not see the voice measurements described in section 3. Coaches
+are bound to confidentiality and see only what a review requires.
 
 Others
 We share data with professional advisers, and with authorities where the law
@@ -668,6 +728,7 @@ What OpenAI holds, separately from us
 OpenAI keeps the audio and text sent to its API for up to 30 days, to check for
 abuse, and then deletes it. On our current plan that period cannot be switched
 off. It is not used to train OpenAI's models.
+
 
 8. YOUR RIGHTS
 
@@ -751,18 +812,24 @@ shows exactly which version you agreed to and when.
 Artur Willoński, operating under the name "WillpowerLab"
 Poland, European Union
 Contact: contact@willpowerlab.com (a postal address is provided on request to
-data subjects and to the supervisory authority)
-$privacy$ AS privacy,
+data subjects and to the supervisory authority)$privacy$ AS privacy,
 
 $notice$WillpowerLab — how the automated part works
 
-Your transcript, the written version of your talk, and the feedback on your delivery are produced by automated systems, including AI models.
+Your transcript, the written version of your talk, and the feedback on your
+delivery are produced by automated systems, including AI models.
 
-The feedback is a reading, not a measurement. It describes how a passage came across; it does not score you, rank you, or decide anything about you. You are free to disagree with any of it, and disagreeing changes nothing about your account.
+The feedback is a reading, not a measurement. It describes how a passage came
+across; it does not score you, rank you, or decide anything about you. You are
+free to disagree with any of it, and disagreeing changes nothing about your
+account.
 
-A person may review that automated feedback afterwards. Nothing about you is decided automatically.$notice$ AS notice,
+A person may review that automated feedback afterwards. Nothing about you is
+decided automatically.$notice$ AS notice,
 
-$agree$I am 18 or over. I agree to the Terms and the Privacy notice, including that a WillpowerLab coach may listen to my recordings to review my feedback.$agree$ AS agree)
+$agree$I have read the Terms of Service and the Privacy Policy and I agree to them.
+
+I understand that WillpowerLab is hybrid coaching, and that a WillpowerLab coach — a person — may listen to my recordings in order to review my feedback. That is part of the service, not an extra I am switching on.$agree$ AS agree)
 
 -- TODO-4 · the SEPARATE optional tick. Not part of agreement_copy, which is
 -- the mandatory one. The acceptance screen renders this on its own control
@@ -779,13 +846,13 @@ $agree$I am 18 or over. I agree to the Terms and the Privacy notice, including t
 SELECT public.register_phase1_policy_v1(
   jsonb_build_object(
     'version','phase1-2026-09-23',
-    'terms_version','terms-2.1-2026-09-23',
+    'terms_version','terms-3.1-2026-09-23',
     'terms_copy', c.terms,
     'terms_copy_sha256', encode(extensions.digest(c.terms,'sha256'),'hex'),
-    'privacy_version','privacy-2.1-2026-09-23',
+    'privacy_version','privacy-3.1-2026-09-23',
     'privacy_copy', c.privacy,
     'privacy_copy_sha256', encode(extensions.digest(c.privacy,'sha256'),'hex'),
-    'ai_notice_version','ai-notice-2026-09-23',
+    'ai_notice_version','ai-notice-3.1-2026-09-23',
     'ai_notice_copy', c.notice,
     'ai_notice_copy_sha256', encode(extensions.digest(c.notice,'sha256'),'hex'),
     'agreement_copy', c.agree,

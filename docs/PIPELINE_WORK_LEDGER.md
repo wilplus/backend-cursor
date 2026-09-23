@@ -814,3 +814,68 @@ disclosure; the tense is not what the case is protecting.
 into the copy as 23 September 2026; running it later means changing that date
 in two blocks and re-running the mirror sync. The header says so where the
 person running it will see it.
+
+---
+
+### 2026-09-23 · two publish scripts reconciled into one · p11-unbundle-the-policy · #(pending)
+
+**A second session wrote its own.** `scripts/phase1_policy_publish_v2.sql` on
+`claude/compassionate-hamilton-2f4t73`, 804 lines, with fuller copy
+(terms-3.0, privacy-3.0, agreement-3.0, ai-notice-3.0). The founder was about
+to run it. Two scripts publishing the same policy version is one too many.
+
+**Taken from theirs, because it is better than what I had.** The
+hybrid-coaching framing, which puts coach review INSIDE the 6(1)(b) basis
+rather than beside it — a cleaner statement of the same ruling. Railway's dual
+role, more precisely worded than mine. The Article 9 paragraph, which says
+outright that the consent "is not bundled with anything else, and a contract
+can never stand in for it". And §11's answer to the plan-table problem: every
+plan includes at least one coach review, so "no coach reviews" cannot be
+misread as "nobody listens" — better than my clarifying sentence, because it
+fixes the product rather than explaining the table. They had written the Art 56
+UODO line identically.
+
+**Not taken: the purposes.** Their script publishes ALL FIVE as 'contract' +
+required_for_core_service TRUE, making practice and the learning profile
+compulsory. That contradicts the founder's rulings of the same day, and it does
+not fix the defect it targets — moving a purpose that is not objectively
+necessary from 'consent' to 'contract' swaps an invalid consent for an invalid
+contract basis. Art 6(1)(b) requires necessity; CLAUDE.md's locked contract
+says the loop "never waits for a coach or exercise".
+
+**Their verify could not have caught it.** Their 3a counts rows that are
+'consent' AND required and calls 0 success. An all-contract policy returns 0
+because it has no consent rows at all — the counter measures the absence of a
+symptom, so the very change that recreates the problem is what makes the check
+pass. STEP 4 here tests the invariant structurally, per purpose object, and
+STEP 5 asserts the optional lane is non-empty, which is the half a count cannot
+express.
+
+**A defect in their copy, found by a test rather than by reading.** Their
+agreement tick said a coach may listen "to review my feedback AND PREPARE
+PRACTICE FOR ME. That is part of the service, not an extra I am switching on."
+The mandatory tick asked for agreement to the optional purpose — the same
+bundling, one clause smaller.
+`test_the_agreement_tick_does_not_bundle_practice` failed on it immediately.
+Clause removed; the optional purposes travel in accept_v2's array instead.
+
+**An assertion I removed, recorded rather than dropped quietly.** The tick case
+required "18 or over" in the agreement sentence. v3.1 moves the age attestation
+to its own control — the acceptance screen renders "I am {policy.minimumAge} or
+older" as a separate checkbox, `canSubmit` refuses without it, and it travels
+as `p_age_18_attested`. That is better than burying it in a sentence, so the
+assertion is not restored here and the reason is written into the test. The
+one-line rule on the tick was also mine, and it would have rejected their
+two-paragraph version, which reads better; replaced with a length bound, since
+what must not happen is the tick becoming a wall nobody reads.
+
+**Open, and NOT fixed here because it is outside what was approved:**
+`services/processing_authorization.py` passes `"p_age_18_attested": True` as a
+literal rather than reading the payload. The screen gates it, but a non-browser
+client could accept without ticking and the receipt would still record the
+attestation. A receipt that asserts something the server never checked is worth
+a founder decision, not a quiet patch on a consent path.
+
+**Mirrors renamed** to `legal/phase1-2026.1/copy/*-3.1.txt`, matching the
+document version instead of the publish date, so the lineage from their 3.0 is
+visible. Contract lines: 15 cases, all passing. Baseline 17 passed, 1 xfailed.

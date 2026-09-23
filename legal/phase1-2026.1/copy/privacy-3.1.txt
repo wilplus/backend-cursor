@@ -1,16 +1,16 @@
 WillpowerLab — Privacy Policy
-Version 2.1. Effective 23 September 2026.
+Version 3.1. Effective 23 September 2026.
 
 This policy explains what WillpowerLab does with your personal data, who else
 receives it, how long we keep it, and how you get it deleted.
 
-Version 2.1 replaces version 1.2. Under version 1.2 you had to agree that your
-practice data could be used to train models shared with other users. This
-version does not ask for that. Under this version your recordings are used to
-deliver your own coaching: they are not pooled with other users' data and they
-are not used to train models. If that ever changes, it changes in a new version
-of this policy, which you will be asked to accept before it applies to you —
-see section 12.
+Version 3.1 replaces every earlier version. Earlier versions required you to
+agree that your practice data could be used to train models shared with other
+users. This version does not ask for that. Under this version your recordings
+are used to deliver your own coaching: they are not pooled with other users'
+data and they are not used to train models. If that ever changes, it changes in
+a new version of this policy, which you will be asked to accept before it
+applies to you — see section 12.
 
 
 1. WHO IS RESPONSIBLE FOR YOUR DATA
@@ -72,36 +72,30 @@ they could not be taken. We do not fill in a value.
 4. WHAT WE USE IT FOR, AND ON WHAT LEGAL BASIS
 
 To provide the service: to store your recording, transcribe it, generate your
-Ideal Text and your feedback, and keep them available to you.
+Ideal Text and your feedback, have a WillpowerLab coach review that feedback,
+and keep all of it available to you.
 Legal basis: performance of our contract with you (Article 6(1)(b) GDPR). This
 processing is what the service is; we cannot provide it without doing this.
-
-Coach review: a WillpowerLab coach listens to recordings in order to review and
-correct the feedback you were given.
-Legal basis: performance of our contract with you (Article 6(1)(b) GDPR). Coach
-review is part of the service rather than an optional extra — see section 5.
+WillpowerLab is hybrid coaching — automated work and a human coach together —
+so the coach's review sits inside this basis rather than beside it. That basis
+covers delivering your coaching and nothing else: it does not cover training
+models, analytics about you, or advertising, none of which we do.
 
 To keep the service secure and working: fraud and abuse prevention, debugging,
 protecting the service and its users.
 Legal basis: our legitimate interests (Article 6(1)(f) GDPR).
 
-To meet our legal obligations: for example accounting records, and responding
-to lawful requests.
-Legal basis: legal obligation (Article 6(1)(c) GDPR).
-
 Practice, and making it personal — optional: choosing a short exercise that fits
 your recording, keeping the fragment you re-record, and remembering what you
 have been working on so that later exercises suit you better.
-Legal basis: your consent (Article 6(1)(a) GDPR). You choose this separately when
-you accept, you can decline it, and declining costs you nothing else in the
-service. You can withdraw it at any time.
+Legal basis: your consent (Article 6(1)(a) GDPR). You choose this separately
+when you accept, you can decline it, and declining costs you nothing else in
+the service — everything above still works exactly the same. You can withdraw
+it at any time, and withdrawing it ends practice, not your account.
 
-Do you have to provide this data? For the parts the service is made of, yes.
-Recording your voice, having it transcribed, and having a coach able to review
-your feedback are what WillpowerLab is; there is no version of it that works
-without them. If you are not willing to provide them, you cannot use the
-service. Practice is the exception — it is optional, and refusing it costs you
-nothing but practice.
+To meet our legal obligations: for example accounting records, and responding
+to lawful requests.
+Legal basis: legal obligation (Article 6(1)(c) GDPR).
 
 If you take a paid plan, your payment is handled by Stripe. We never see or
 store your card details; we hold the record that a plan is active and the
@@ -111,13 +105,24 @@ stated: while this version is in force our systems refuse to register a
 processing policy that would permit it. Changing it would take a new policy
 version and your acceptance of it.
 
+Do you have to provide this data? For the parts the service is made of, yes.
+Recording your voice, having it transcribed, and having a coach able to review
+your feedback are what WillpowerLab is; there is no version of it that works
+without them, so if you are not willing to provide them you cannot use the
+service. Practice is the exception — it is optional, and refusing it costs you
+nothing but practice.
+
 Special categories of data. A recording of you speaking freely may happen to
 reveal something sensitive — a health condition audible in your speech, or
 something you mention while presenting. We do not look for this and we do not
 infer it. Where such information is present, we rely on your explicit consent
-(Article 9(2)(a) GDPR), which you give on the acceptance screen. You can
-withdraw it at any time; doing so means we can no longer process recordings for
-you.
+(Article 9(2)(a) GDPR), which you give as its own separate agreement on the
+acceptance screen. It is not bundled with anything else, and a contract can
+never stand in for it. You can withdraw it at any time; because we cannot
+process a recording of you speaking freely without it, withdrawing it means we
+stop providing the service. Withdrawing does not affect anything we did
+lawfully beforehand, and you keep every right in section 8 afterwards — you can
+still get a copy of your data and still have it deleted.
 
 We do not make decisions about you by automated means that produce legal effects
 or similarly significantly affect you.
@@ -140,10 +145,9 @@ authorise OpenAI to use your content to train its models.
 Infrastructure providers
 - Cloudflare (R2): storage of your audio recordings.
 - Supabase: our database, and audio storage on a fallback path.
-- Railway: hosting of the application. For your account and usage data — not
-  your recordings — Railway is an independent controller in its own right,
-  deciding for itself how it uses that data under its own terms, in the same
-  way Stripe does below.
+- Railway: hosting of the application. Railway is our processor for what it
+  hosts on our behalf, and a controller in its own right for its own account
+  and service-usage records about us as its customer.
 - Resend: transactional email.
 - Vercel: hosting of the website.
 - Sentry: error reports, stored in the European Union.
@@ -154,11 +158,13 @@ Payments
   own terms. We never see or store your card details.
 
 Human coaches
-A WillpowerLab coach — a person — listens to recordings in order to review the
-feedback you were given. This is part of the service, not an extra you opt into:
-agreeing to the Terms is agreeing to it, and there is no version of WillpowerLab
-without it. A coach who reviews your recording does not see the voice
-measurements described in section 3.
+A WillpowerLab coach — a person — may listen to your recordings in order to
+review the feedback you were given, and, if you turned practice on, to prepare
+practice for you. The review is part of the service rather than an extra you
+switch on, because WillpowerLab is hybrid coaching; the Terms say so in section 1 and section 11, and how many
+reviews you receive each month depends on your plan. A coach who reviews your
+recording does not see the voice measurements described in section 3. Coaches
+are bound to confidentiality and see only what a review requires.
 
 Others
 We share data with professional advisers, and with authorities where the law
@@ -205,6 +211,7 @@ What OpenAI holds, separately from us
 OpenAI keeps the audio and text sent to its API for up to 30 days, to check for
 abuse, and then deletes it. On our current plan that period cannot be switched
 off. It is not used to train OpenAI's models.
+
 
 8. YOUR RIGHTS
 
