@@ -2341,7 +2341,7 @@ def v2_explore_set_part_lock(arc_id, part_id):
 @v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/root", methods=["PUT"])
 @require_auth
 def v2_explore_set_part_root(arc_id, part_id):
-    """Accept, replace, or skip the orange exact-span prompt after a lock."""
+    """Accept, replace, or skip the orange exact-span prompt on one part."""
     try:
         owned, _sessions = _arc_owned_by_caller(arc_id)
         if not owned:
@@ -2359,9 +2359,7 @@ def v2_explore_set_part_root(arc_id, part_id):
         if target is None:
             return jsonify({"code": "STALE_DOCUMENT",
                             "error": "document moved"}), 409
-        if not target.get("locked"):
-            return jsonify({"code": "PART_NOT_LOCKED",
-                            "error": "Lock this paragraph first."}), 409
+        # No lock precondition — why, in db.set_ideal_text_part_root.
         phrase = body.get("phrase")
         start, end = body.get("start"), body.get("end")
         if phrase is None:
@@ -2376,6 +2374,7 @@ def v2_explore_set_part_root(arc_id, part_id):
             if valid is None:
                 return jsonify({
                     "code": "INVALID_ROOT_PHRASE",
+                    # TODO(copy, founder): "locked" is inaccurate now.
                     "error": "Choose exact words from this locked paragraph.",
                 }), 400
         if not db.set_ideal_text_part_root(

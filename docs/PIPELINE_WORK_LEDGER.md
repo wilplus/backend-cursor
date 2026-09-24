@@ -1788,3 +1788,68 @@ whole point of the finding being wrong.
 Contract baseline unchanged.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · the rooting phrase saves without a lock · claude/willab-workstream-impl-ijgapq · #(pending)
+
+**A live break on an F1 surface, reported by the founder as "where you wanted
+to save the emphasis words there was an error".**
+
+`#442` (merged 12:45 today) moved the rooting-phrase save onto the emphasis
+step, which runs BEFORE the lock — and on "No", "Not sure" and "Audio unclear"
+the Lock step is not built at all. `PUT /explore/arc/<id>/parts/<id>/root` still
+required `locked`, so it answered 409 `PART_NOT_LOCKED`. The client reads only
+`res.ok`, so the speaker got `failRoot` and the ladder stopped. A paragraph
+re-opened already locked still worked, which is why it presented as
+intermittent rather than total.
+
+That the 409 was `PART_NOT_LOCKED` and not the `STALE_DOCUMENT` above it is
+inference, not a captured response: the lock route at `:2131` runs the same
+`_locked_parts(arc_id, user_id, echo)` staleness check, and locking works in
+production, so the staleness check agrees and the lock guard is what the
+request reached.
+
+**Three places enforced the lock, and the third was the dangerous one.**
+
+1. the route guard → 409 `PART_NOT_LOCKED`
+2. `db.set_ideal_text_part_root` → `not rows[0].get("locked_at")` → False → 500
+3. `project_recording_roots` → `raise RECORDING_ROOTS_UNLOCKED_ROOT`
+
+(3) does not skip the offending paragraph, it fails the whole projection, and
+the route turns that into a 409. Lifting (1) and (2) alone would have traded a
+visible error for every root on a project silently disappearing from
+`GET /recording-roots`. All three moved together.
+
+**No migration.** The `ideal_text_part_root_span` CHECK
+(`add_feedback_manager_and_part_commits.sql:99`) never referenced `locked_at`;
+the schema already permitted a root on an unlocked row. Nothing to run on boot.
+
+**What did NOT loosen.** The span must still be exact words of the paragraph;
+`STALE_DOCUMENT` still fires; and reads still yield locked roots only — an
+unlocked phrase is recorded but not yet eligible. That is the founder's own
+versioning: "if you record and see the rooting phrases and say things before
+not locking it, it will be gone, cause the new text will replace it."
+
+**One passing contract line was deliberately changed, not deleted.**
+`test_stale_or_invalid_live_root_fails_closed` carried a `"lock"` case
+asserting the raise. It was moved to its own named test asserting the new
+behaviour (skipped, `== []`), with the reason written in the docstring. The
+other three mutations still fail closed. Flagging it explicitly because the
+standing rule is never to weaken a passing contract line — this one changed
+only because the founder ruled the behaviour it guarded wrong, and chose
+Option A after being shown both options and this exact consequence.
+
+**Second, quieter bug on the same path, fixed in the frontend PR.**
+`saveEmphasis` returned `true` both when no phrase was chosen and when a chosen
+phrase failed to resolve against the draft. The second is a failure reported as
+success: the ladder advanced past the only step that records the words, with
+nothing written and nothing shown. Now only "nothing chosen" returns true. The
+error reuses `failRoot`; a phrase that no longer matches edited text deserves
+its own line, and that is left as a TODO for sign-off rather than invented.
+The `INVALID_ROOT_PHRASE` copy still says "locked paragraph", which is now
+inaccurate — also left as a TODO for the same reason.
+
+Contract baseline unchanged. No fence touched: no score, no verdict, no badge,
+no new user-facing string. L1 intact — the phrase annotates a part, it does not
+rebuild Ideal Text.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

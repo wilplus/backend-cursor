@@ -49,19 +49,64 @@ def test_missing_slide_lineage_is_never_guessed():
     assert project_recording_roots(_snapshot(slide_index=None), _live_rows()) == []
 
 
-@pytest.mark.parametrize("mutation", ["id", "text", "span", "lock"])
+@pytest.mark.parametrize("mutation", ["id", "text", "span"])
 def test_stale_or_invalid_live_root_fails_closed(mutation):
     rows = _live_rows()
     if mutation == "id":
         rows[0]["id"] = "part-foreign"
     elif mutation == "text":
         rows[0]["text"] = "Changed text."
-    elif mutation == "span":
-        rows[0]["root_start"] = 0
     else:
-        rows[0]["locked_at"] = None
+        rows[0]["root_start"] = 0
     with pytest.raises(RecordingRootsStale):
         project_recording_roots(_snapshot(), rows)
+
+
+def test_an_unlocked_root_is_skipped_rather_than_failing_the_read():
+    """A "lock" case used to sit in the parametrize above, and it asserted a
+    raise. It was moved here rather than deleted, because the behaviour it
+    guarded was deliberately changed (founder 2026-09-24) and the new one still
+    needs a test.
+
+    WHY IT CHANGED. The emphasis step now saves on the step that chose the
+    words, so an unlocked paragraph carrying a phrase is an ordinary product
+    state, not a corrupted document. Raising treated it as corruption and the
+    route turned that into a 409 for the WHOLE projection — one unlocked phrase
+    and every root on the project disappeared from the read.
+
+    WHAT DID NOT CHANGE, and is the real contract: the projection still yields
+    locked roots ONLY. An unlocked phrase is recorded but not yet eligible.
+    """
+    rows = _live_rows()
+    rows[0]["locked_at"] = None
+    assert project_recording_roots(_snapshot(), rows) == []
+
+
+def test_an_unlocked_root_does_not_409_the_recording_roots_route(monkeypatch):
+    import routes.v2.explore_ideal_text as route
+
+    rows = _live_rows()
+    rows[0]["locked_at"] = None
+    database = Mock()
+    database.get_ideal_text_document_core.return_value = _snapshot()
+    database.get_ideal_text_parts.return_value = rows
+    monkeypatch.setattr(route, "db", database)
+    monkeypatch.setattr(route, "_arc_owned_by_caller", lambda _arc: (True, []))
+
+    app = Flask(__name__)
+
+    @app.before_request
+    def actor():
+        request.user_id = "actor-1"
+
+    app.add_url_rule(
+        "/test/<arc_id>",
+        view_func=inspect.unwrap(route.v2_explore_get_recording_roots),
+    )
+    response = app.test_client().get("/test/arc-1")
+
+    assert response.status_code == 200
+    assert response.get_json()["roots"] == []
 
 
 def test_recording_roots_route_returns_the_live_root(monkeypatch):
