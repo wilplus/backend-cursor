@@ -710,7 +710,9 @@ def v2_guest_get_recording_readout(session_id):
             }), 404
         # Async analysis (founder 2026-07-15) — job state first; the FE polls
         # this route (guests included) until analysis_state ready|failed.
-        _an_state = session.get("analysis_state")
+        from services.take_analysis_state import served_analysis_state
+
+        _an_state = served_analysis_state(db, session, session_id=session_id)
         if _an_state == "processing":
             _job = db.get_latest_processing_job_by_session(session_id)
             _progress = None
@@ -728,7 +730,7 @@ def v2_guest_get_recording_readout(session_id):
                 "analysis_state": "processing", "readout": None,
                 "processing": _progress,
             }), 200
-        if _an_state in ("failed", "failed_ideal_text_unconfirmed"):
+        if _an_state:
             return jsonify({
                 "session_id": session_id, "state": _an_state,
                 "analysis_state": _an_state, "readout": None,
@@ -822,26 +824,19 @@ def v2_retry_recording_ideal_text(session_id):
             "error": "Ideal Text retry is available for a spoken Take only",
         }), 409
 
-    from services.ideal_text_confirmation import confirmed_ideal_text
+    from services.ideal_text_confirmation import (
+        withdraw_and_announce_confirmed_document,
+    )
 
-    confirmed = confirmed_ideal_text(
-        db.ideal_text.get_coach_arc_ideal_text(str(arc_id)))
-    if confirmed:
-        db.takes.set_session_analysis_state(session_id, "ready")
-        if session.get("user_id"):
-            try:
-                from services.arc_notifications import fire_ideal_version_ready
-
-                fire_ideal_version_ready(
-                    db,
-                    session.get("user_id"),
-                    arc_id,
-                    confirmed.get("version") or 1,
-                    # 1 is right only on Take 1; a recovery omits the nudge.
-                    **({"spoken_take_count": 1} if take_index == 1 else {}),
-                )
-            except Exception:
-                pass
+    # Already there: withdraw the failure, its card included, and announce the
+    # document rather than rebuilding anything (the L1 guard for this route).
+    if withdraw_and_announce_confirmed_document(
+        db,
+        session_id=session_id,
+        user_id=session.get("user_id"),
+        arc_id=str(arc_id),
+        take_index=take_index,
+    ):
         return jsonify({
             "session_id": session_id,
             "state": "ready",

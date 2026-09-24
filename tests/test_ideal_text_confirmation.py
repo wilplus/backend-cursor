@@ -20,6 +20,7 @@ if not hasattr(sys.modules["sentry_sdk"], "capture_exception"):
 
 from services import ideal_text_confirmation as confirmation
 from services import pipeline_jobs
+from services import take_analysis_state as state
 
 
 SID = "77777777-7777-4777-8777-777777777777"
@@ -266,12 +267,15 @@ class IdealTextRetryJobTests(unittest.TestCase):
             return_value=row,
         ) as build:
             result = pipeline_jobs._run_ideal_text_retry(job)
-        build.assert_called_once_with(
-            database,
-            "arc-1",
-            source_session_id=SID,
-            include_suggestion_anchors=True,
-        )
+        build.assert_called_once()
+        _args, _kwargs = build.call_args
+        self.assertEqual(_args, (database, "arc-1"))
+        self.assertEqual(_kwargs["source_session_id"], SID)
+        self.assertTrue(_kwargs["include_suggestion_anchors"])
+        # The late-confirmation hook is the retry's own withdrawal path: a
+        # document that lands after this attempt's deadline still has to
+        # clear the terminal state and retract the card.
+        self.assertTrue(callable(_kwargs["on_late_confirmation"]))
         self.assertEqual(result, {
             "ideal_text_confirmed": True,
             "version": 1,
@@ -462,3 +466,344 @@ class TheRetryFollowsTheCreatingTakeTests(unittest.TestCase):
                             take_index=index,
                         ))
         database.create_processing_job.assert_not_called()
+
+
+class AFailureMustNotOutliveTheFailureTests(unittest.TestCase):
+    """Founder 2026-09-24: "Ideal text generation fails!" -- shown as a ready
+    v1.0 card with "we couldn't create your Ideal Text" directly underneath.
+
+    Generation had not failed. The 120-second deadline bounds the OWNER's
+    wait, not the generation, so a document landing a moment later left a
+    terminal state and a durable Lounge card that nothing on any path ever
+    withdrew. These tests hold the three places the claim is now checked
+    against the only evidence that counts: the document itself.
+    """
+
+    @staticmethod
+    def _database(document: dict | None) -> Mock:
+        database = Mock()
+        database.ideal_text.get_coach_arc_ideal_text.return_value = document
+        database.takes.set_session_analysis_state.return_value = True
+        database.delete_lounge_message_by_client_id.return_value = True
+        return database
+
+    # -- 1. never claim a failure over a document that exists ---------------
+
+    def test_no_terminal_state_is_written_when_the_document_is_there(self):
+        database = self._database({"auto_text": "The document landed."})
+        with patch(
+            "services.arc_notifications.fire_ideal_text_unconfirmed"
+        ) as fire:
+            self.assertFalse(confirmation.mark_ideal_text_unconfirmed(
+                database,
+                session_id=SID,
+                user_id="user-1",
+                arc_id="arc-1",
+                take_index=1,
+                error="timed out",
+            ))
+        fire.assert_not_called()
+        # The Take did not fail, so it is recorded as what it was -- and any
+        # card an earlier writer already put in the thread is retracted.
+        database.takes.set_session_analysis_state.assert_called_once_with(
+            SID, "ready",
+        )
+        database.delete_lounge_message_by_client_id.assert_called_once_with(
+            "user-1", SID,
+        )
+
+    def test_a_real_failure_is_still_recorded(self):
+        """The guard reads evidence; it cannot talk a real failure away."""
+        database = self._database(None)
+        with patch(
+            "services.arc_notifications.fire_ideal_text_unconfirmed"
+        ) as fire:
+            self.assertTrue(confirmation.mark_ideal_text_unconfirmed(
+                database,
+                session_id=SID,
+                user_id="user-1",
+                arc_id="arc-1",
+                take_index=1,
+                error="timed out",
+            ))
+        database.takes.set_session_analysis_state.assert_called_once_with(
+            SID, confirmation.FAILED_IDEAL_TEXT_UNCONFIRMED, "timed out",
+        )
+        fire.assert_called_once()
+
+    def test_an_empty_document_row_is_not_a_document(self):
+        database = self._database({"auto_text": "   ", "text": ""})
+        with patch("services.arc_notifications.fire_ideal_text_unconfirmed"):
+            self.assertTrue(confirmation.mark_ideal_text_unconfirmed(
+                database,
+                session_id=SID, user_id="user-1", arc_id="arc-1",
+                take_index=1,
+            ))
+        database.takes.set_session_analysis_state.assert_called_once()
+
+    # -- 2. withdraw a failure the database no longer supports --------------
+
+    def test_resolve_clears_the_state_and_retracts_the_card(self):
+        database = self._database({"auto_text": "Ideal", "version": 1})
+        row = confirmation.resolve_ideal_text_unconfirmed(
+            database, session_id=SID, user_id="user-1", arc_id="arc-1",
+        )
+        self.assertEqual(row, {"auto_text": "Ideal", "version": 1})
+        database.takes.set_session_analysis_state.assert_called_once_with(
+            SID, "ready",
+        )
+        # The card's key is the Take's session UUID -- the one key every
+        # writer of that card agrees on, which is what makes it retractable.
+        database.delete_lounge_message_by_client_id.assert_called_once_with(
+            "user-1", SID,
+        )
+
+    def test_resolve_changes_nothing_without_a_document(self):
+        database = self._database(None)
+        self.assertIsNone(confirmation.resolve_ideal_text_unconfirmed(
+            database, session_id=SID, user_id="user-1", arc_id="arc-1",
+        ))
+        database.takes.set_session_analysis_state.assert_not_called()
+        database.delete_lounge_message_by_client_id.assert_not_called()
+
+    def test_resolve_never_writes_the_canonical_document(self):
+        """L1: the withdrawal reads the document and never touches it."""
+        database = self._database({"auto_text": "Ideal"})
+        confirmation.resolve_ideal_text_unconfirmed(
+            database, session_id=SID, user_id="user-1", arc_id="arc-1",
+        )
+        for banned in (
+            "upsert_coach_arc_ideal_text",
+            "set_coach_arc_ideal_text",
+            "save_coach_arc_ideal_text",
+        ):
+            self.assertFalse(
+                getattr(database.ideal_text, banned).called,
+                f"resolve must never call {banned}",
+            )
+
+    def test_resolve_survives_a_card_that_will_not_delete(self):
+        database = self._database({"auto_text": "Ideal"})
+        database.delete_lounge_message_by_client_id.side_effect = \
+            RuntimeError("lounge down")
+        self.assertIsNotNone(confirmation.resolve_ideal_text_unconfirmed(
+            database, session_id=SID, user_id="user-1", arc_id="arc-1",
+        ))
+        database.takes.set_session_analysis_state.assert_called_once_with(
+            SID, "ready",
+        )
+
+    # -- 3. the late document announces itself ------------------------------
+
+    def test_a_document_landing_after_the_deadline_is_announced(self):
+        """The owner gives up at the deadline; the worker keeps running. The
+        thread that makes the failure untrue is the one that must say so."""
+        database = Mock()
+        seen: list[dict] = []
+        released = threading.Event()
+        document = {"auto_text": "Late but real", "version": 1}
+
+        def _slow_assemble(*_a, **_k):
+            released.wait(2)
+            return True
+
+        database.ideal_text.get_coach_arc_ideal_text.return_value = document
+        with patch(
+            "services.ideal_text_block.maybe_assemble_ideal_text",
+            side_effect=_slow_assemble,
+        ):
+            with self.assertRaises(confirmation.IdealTextUnconfirmedError):
+                confirmation.build_initial_ideal_text_from_stored_artifacts(
+                    database,
+                    "arc-1",
+                    timeout_seconds=0.02,
+                    on_late_confirmation=seen.append,
+                )
+            released.set()
+            for _ in range(200):
+                if seen:
+                    break
+                time.sleep(0.01)
+        self.assertEqual(seen, [document])
+
+    def test_no_late_announcement_when_the_owner_did_not_give_up(self):
+        database = Mock()
+        seen: list[dict] = []
+        database.ideal_text.get_coach_arc_ideal_text.return_value = {
+            "auto_text": "In time",
+        }
+        with patch(
+            "services.ideal_text_block.maybe_assemble_ideal_text",
+            return_value=True,
+        ):
+            row = confirmation.build_initial_ideal_text_from_stored_artifacts(
+                database, "arc-1", timeout_seconds=5,
+                on_late_confirmation=seen.append,
+            )
+        self.assertEqual(row, {"auto_text": "In time"})
+        time.sleep(0.05)
+        self.assertEqual(seen, [])
+
+    def test_the_deadline_stays_bounded_with_a_late_hook_attached(self):
+        """The hook must not reintroduce an unbounded call inside the wait."""
+        database = Mock()
+        release = threading.Event()
+        database.ideal_text.get_coach_arc_ideal_text.side_effect = \
+            lambda *_a, **_k: release.wait(1)
+        with patch(
+            "services.ideal_text_block.maybe_assemble_ideal_text",
+            return_value=True,
+        ):
+            started = time.monotonic()
+            with self.assertRaises(confirmation.IdealTextUnconfirmedError):
+                confirmation.build_initial_ideal_text_from_stored_artifacts(
+                    database, "arc-1", timeout_seconds=0.02,
+                    on_late_confirmation=lambda _row: None,
+                )
+            elapsed = time.monotonic() - started
+        release.set()
+        self.assertLess(elapsed, 0.2)
+
+
+class EveryReadOfAFailedTakeWithdrawsAStaleFailureTests(unittest.TestCase):
+    """The stuck state must not be OBSERVABLE.
+
+    Both readout routes decide what to serve through one service function, so
+    a document that landed after the deadline clears the failure on the very
+    next read of the Take rather than waiting for the speaker to tap retry.
+    """
+
+    @staticmethod
+    def _database(document: dict | None) -> Mock:
+        database = Mock()
+        database.ideal_text.get_coach_arc_ideal_text.return_value = document
+        database.takes.set_session_analysis_state.return_value = True
+        database.delete_lounge_message_by_client_id.return_value = True
+        return database
+
+    def _session(self, state: str) -> dict:
+        return {
+            "id": SID, "user_id": "user-1", "arc_id": "arc-1",
+            "analysis_state": state,
+        }
+
+    def test_a_stale_failure_is_withdrawn_and_the_readout_serves(self):
+        database = self._database({"auto_text": "Ideal", "version": 1})
+        self.assertIsNone(state.served_analysis_state(
+            database, self._session("failed_ideal_text_unconfirmed"),
+        ))
+        database.takes.set_session_analysis_state.assert_called_once_with(
+            SID, "ready",
+        )
+        database.delete_lounge_message_by_client_id.assert_called_once_with(
+            "user-1", SID,
+        )
+
+    def test_a_real_failure_is_still_served_as_a_failure(self):
+        database = self._database(None)
+        self.assertEqual(
+            state.served_analysis_state(
+                database, self._session("failed_ideal_text_unconfirmed")),
+            "failed_ideal_text_unconfirmed",
+        )
+        database.takes.set_session_analysis_state.assert_not_called()
+
+    def test_a_running_take_is_never_touched(self):
+        """Only the Ideal Text failure is re-examined. A processing Take is
+        served as-is -- reading the arc's document would say nothing about
+        whether THIS Take has finished."""
+        database = self._database({"auto_text": "Ideal"})
+        self.assertEqual(
+            state.served_analysis_state(database, self._session("processing")),
+            "processing",
+        )
+        database.ideal_text.get_coach_arc_ideal_text.assert_not_called()
+        database.takes.set_session_analysis_state.assert_not_called()
+
+    def test_an_ordinary_failure_is_not_reinterpreted(self):
+        database = self._database({"auto_text": "Ideal"})
+        self.assertEqual(
+            state.served_analysis_state(database, self._session("failed")),
+            "failed",
+        )
+        database.ideal_text.get_coach_arc_ideal_text.assert_not_called()
+
+    def test_a_finished_take_reads_normally(self):
+        database = self._database(None)
+        for finished in ("ready", None):
+            self.assertIsNone(state.served_analysis_state(
+                database, self._session(finished)))
+
+    def test_both_readout_routes_go_through_it(self):
+        from routes.v2 import lab_recording, user_sessions
+
+        for module, name in (
+            (lab_recording, "lab readout"),
+            (user_sessions, "authed session readout"),
+        ):
+            self.assertIn(
+                "served_analysis_state", inspect.getsource(module),
+                f"the {name} must withdraw a failure the document disproves",
+            )
+
+    def test_the_retry_route_retracts_the_card_not_just_the_state(self):
+        from routes.v2 import lab_recording
+
+        source = inspect.getsource(lab_recording)
+        # Clearing analysis_state alone is what left the card standing.
+        self.assertNotIn(
+            'set_session_analysis_state(session_id, "ready")', source,
+        )
+
+
+class TheRetryFindsTheDocumentAlreadyThereTests(unittest.TestCase):
+    """The commonest shape of the 2026-09-24 bug: the deadline declared the
+    document lost, it landed anyway, and the speaker taps "Try creating it
+    again" on a card describing a failure that is already over."""
+
+    @staticmethod
+    def _database(document: dict | None) -> Mock:
+        database = Mock()
+        database.ideal_text.get_coach_arc_ideal_text.return_value = document
+        database.takes.set_session_analysis_state.return_value = True
+        database.delete_lounge_message_by_client_id.return_value = True
+        return database
+
+    def test_nothing_is_rebuilt_and_the_failure_is_withdrawn(self):
+        database = self._database({"auto_text": "Ideal", "version": 1})
+        with patch(
+            "services.arc_notifications.fire_ideal_version_ready"
+        ) as ready:
+            row = confirmation.withdraw_and_announce_confirmed_document(
+                database, session_id=SID, user_id="user-1", arc_id="arc-1",
+                take_index=1,
+            )
+        self.assertEqual(row.get("version"), 1)
+        database.takes.set_session_analysis_state.assert_called_once_with(
+            SID, "ready",
+        )
+        database.delete_lounge_message_by_client_id.assert_called_once_with(
+            "user-1", SID,
+        )
+        ready.assert_called_once_with(
+            database, "user-1", "arc-1", 1, spoken_take_count=1)
+
+    def test_a_recovery_take_omits_the_takes_one_and_two_nudge(self):
+        database = self._database({"auto_text": "Ideal", "version": 2})
+        with patch(
+            "services.arc_notifications.fire_ideal_version_ready"
+        ) as ready:
+            confirmation.withdraw_and_announce_confirmed_document(
+                database, session_id=SID, user_id="user-1", arc_id="arc-1",
+                take_index=3,
+            )
+        ready.assert_called_once_with(database, "user-1", "arc-1", 2)
+
+    def test_without_a_document_the_retry_proceeds_as_a_retry(self):
+        database = self._database(None)
+        self.assertIsNone(
+            confirmation.withdraw_and_announce_confirmed_document(
+                database, session_id=SID, user_id="user-1", arc_id="arc-1",
+                take_index=1,
+            ))
+        database.takes.set_session_analysis_state.assert_not_called()

@@ -447,14 +447,19 @@ def fire_ideal_version_ready(db, user_id: Any, arc_id: Any,
 def fire_ideal_text_unconfirmed(db, user_id: Any, arc_id: Any,
                                 take_session_id: Any,
                                 take_index: Any) -> bool:
-    """Durable Take 1 terminal card, keyed by the recording session UUID.
+    """Durable terminal card for the creating Take, keyed by its session UUID.
 
     The worker, a reconnecting browser, and every retry all converge on this
     one Lounge row. Its actions remain structured metadata; the frontend owns
     navigation and the artifact-only retry call.
     """
+    # ANY Take that was creating the document, not only Take 1 (Option A,
+    # 2026-09-22). `mark_ideal_text_unconfirmed` has said so since that day
+    # and this guard did not follow it, so a recovery Take that failed wrote
+    # the terminal state and then showed the speaker nothing at all -- a dead
+    # screen with no sentence and no retry.
     if (not user_id or not arc_id or isinstance(take_index, bool)
-            or take_index != 1):
+            or not isinstance(take_index, int) or take_index < 1):
         return False
     try:
         session_id = str(uuid.UUID(str(take_session_id)))
@@ -472,7 +477,7 @@ def fire_ideal_text_unconfirmed(db, user_id: Any, arc_id: Any,
                 "variant": "ideal_text_unconfirmed",
                 "arc_id": str(arc_id),
                 "take_session_id": session_id,
-                "take_index": 1,
+                "take_index": int(take_index),
                 "actions": [
                     "retry_ideal_text",
                     "view_take_feedback",

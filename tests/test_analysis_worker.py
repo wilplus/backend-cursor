@@ -288,6 +288,36 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
             "actions": ["retry_ideal_text", "view_take_feedback"],
         })
 
+    def test_a_later_creating_take_gets_the_same_card(self):
+        """Option A (2026-09-22) let a later Take create the document when
+        the Project still had none, and `mark_ideal_text_unconfirmed` has
+        said so ever since. This card kept refusing anything but Take 1, so
+        such a Take wrote the terminal state and then showed the speaker
+        nothing at all: no sentence, no retry, a dead screen."""
+        from services.arc_notifications import fire_ideal_text_unconfirmed
+        captured = {}
+
+        class _Db:
+            def insert_lounge_messages(self, uid, messages):
+                captured["messages"] = messages
+                return messages
+
+        self.assertTrue(fire_ideal_text_unconfirmed(
+            _Db(), "user-1", "arc-1", _SID, 3))
+        self.assertEqual(
+            captured["messages"][0]["metadata"]["take_index"], 3)
+
+    def test_a_value_that_is_not_a_take_still_writes_nothing(self):
+        from services.arc_notifications import fire_ideal_text_unconfirmed
+
+        class _Db:
+            def insert_lounge_messages(self, uid, messages):
+                raise AssertionError("must not write")
+
+        for not_a_take in (0, -1, True, None, "1", 1.5):
+            self.assertFalse(fire_ideal_text_unconfirmed(
+                _Db(), "user-1", "arc-1", _SID, not_a_take))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -536,16 +536,12 @@ def v2_user_get_session_readout(session_id):
 
         # Async analysis (founder 2026-07-15) — while the background daemon
         # is still running (or after it failed), serve the job state instead
-        # of a partial readout; the FE polls until ready|failed. NULL state =
-        # legacy/sync rows → fall through to the normal read.
-        _an_state = session.get("analysis_state")
-        if _an_state == "processing":
-            return jsonify({
-                "session_id": session_id, "published": False,
-                "state": "processing", "analysis_state": "processing",
-                "readout": None,
-            }), 200
-        if _an_state in ("failed", "failed_ideal_text_unconfirmed"):
+        # of a partial readout; the FE polls until ready|failed. A stale Ideal
+        # Text failure is withdrawn there first (founder 2026-09-24).
+        from services.take_analysis_state import served_analysis_state
+
+        _an_state = served_analysis_state(db, session, session_id=session_id)
+        if _an_state:
             return jsonify({
                 "session_id": session_id, "published": False,
                 "state": _an_state, "analysis_state": _an_state,
