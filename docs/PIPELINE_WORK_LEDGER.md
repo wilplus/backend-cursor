@@ -1694,3 +1694,44 @@ aggregate query was verified by counting rather than by eye: 21 `%s`, 21
 parameters, the new pair immediately after the block it belongs to.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · CORRECTION · I reported a RED gate as green, and the CI premise was stale · warn-when-coach-is-the-founder · #632
+
+**Two errors, both mine, both found by the founder asking why CI was red.**
+
+**1. I misread my own gate.** `gate-coach.log` line 331 reads
+`FAIL Complexity ratchet`, and line 161 names the cause:
+`assess_founder_canary_readiness: CC grew 41 → 42. A grandfathered function
+may only come down.` The gate worked. My check of it did not: I grepped the
+log for the substring `GREEN`, which matched the REHEARSAL TIER's own summary
+line (`rehearsal tier: GREEN (verified lanes)`) rather than the overall verdict.
+A passing sub-step made a failing run look green, and I opened #632 claiming a
+green gate.
+
+Audited every gate log from this session against the real verdict line: only
+this one was RED. The ten merges, #631 and #633 all genuinely printed
+`GREEN — every gate the checks job runs passed here`, and GitHub CI
+independently agrees for #631's `checks` and all of #633. The damage is
+confined to #632.
+
+**2. The CI-minutes premise was stale and I never re-checked it.** Every PR
+body and squash message written today carries the documented override
+paragraph claiming Actions minutes are exhausted and the jobs fail at runner
+allocation. **They are not.** #631's `checks` job ran for five minutes and
+succeeded; #632's ran and failed with real logs; #633's whole run succeeded.
+CI has been alive all day. The claim was inherited from earlier in the session
+and repeated eleven times without verification — the same failure mode as every
+other wrong finding this week: asserting a premise instead of reading the thing.
+
+Eleven squash commits on `main` now carry that false paragraph. They cannot be
+rewritten. This entry is the correction.
+
+**The fix itself.** `_readiness_warnings` extracted, holding both warnings.
+The parent comes down 41 → 40, which is the direction the ratchet allows. 34
+cases pass.
+
+**Method change.** Gate verification now reads the exact verdict line and
+counts `^  FAIL ` steps, rather than grepping for a word that appears in
+sub-step output.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
