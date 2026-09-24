@@ -14,7 +14,7 @@ Run: python3 -m unittest tests.test_publish_emails_the_speaker
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import services.coach_publish_delivery as cpd
 
