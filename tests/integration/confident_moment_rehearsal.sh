@@ -305,6 +305,9 @@ hard migrations/add_mlc3_general_user_service_d4.sql
 # cloned from a checkpoint cut right after this pair, and the suite that
 # exercises the speaker writer runs in that clone.
 hard migrations/speaker_identity_the_table_accepts.sql
+# 0357 adds accept_phase1_processing_authorization_v2 beside v1, which
+# add_phase1_processing_boundary.sql defines and 0335 last replaced.
+hard migrations/a_receipt_can_record_an_optional_yes.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.

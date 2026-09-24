@@ -724,6 +724,127 @@ passed once and failed the second time the lane was reused — a test that only
 works on a fresh database. It derives a fresh hash now. **Re-run a new
 postgres case against the same lane twice before believing it.**
 
+---
+
+### 2026-09-23 · P11 prerequisite · p11b-optional-consent · #(pending)
+
+**Closed:** the knot reported in #622. Founder decision 2026-09-23: build this
+BEFORE republishing the policy, so the republish is one cutover and nothing
+goes dark.
+**Contract lines flipped / added:** none. Baseline 17 passed, 1 xfailed (F-4).
+**Broke and fixed:** none in the contract. Four fixture mistakes of my own on
+the way — worth reading, at the bottom.
+**Open for the founder:** none for this PR. Stacks on #621; this is 0356.
+
+**The trap, restated because it is the whole reason this exists.**
+`accept_phase1_processing_authorization_v1` writes receipt purpose rows only
+`WHERE pp.required_for_core_service`, so a purpose someone could DECLINE left
+no evidence at all — and for `coach_review`, whose lawful basis IS consent,
+that is the absence of the lawful basis, not a gap in the paperwork. Meanwhile
+`resolve_mlc3_dual_purpose_receipt_v2` gates the entire MLC-3 service on the
+receipt NAMING two such purposes. The only way the product worked was if both
+were compulsory, which is the bundling doc 01 §3 calls invalid. A receipt had
+no way to say "they were asked, separately, and said yes". Now it has one.
+
+**v2 sits beside v1 and never replaces it.** The signature differs, so a
+CREATE OR REPLACE was never available — and it is not wanted: dropping a live
+consent writer to change its shape is not something this repo does. With an
+empty array v2 does what v1 does, with one deliberate difference: **the
+evidence hash covers the choices.** Without that, replaying one idempotency key
+with a different set of choices hashes identically to the first, passes as a
+silent no-op, and leaves a receipt attesting to a decision the person did not
+make the second time. There is a test for exactly that.
+
+Three refusals, each because the alternative is a lie in the evidence: a
+purpose not in THIS policy is refused rather than ignored (dropping it records
+less than the screen asked about); a REQUIRED purpose passed as a choice is
+refused (it is already in the receipt, and accepting it lets a caller present
+a compulsory term as though it had been optional); and the choices are
+de-duplicated and sorted before hashing, because the order a client sent them
+in is not a fact about consent.
+
+**Nothing calls it yet, deliberately.** The route still calls v1 and must,
+until the policy carries optional purposes for v2 to record. Three things ship
+together later: this function, the republished policy with the two purposes at
+`required_for_core_service FALSE`, and the acceptance screen offering the
+separate tick (frontend + copy, founder sign-off). **Landing this alone changes
+no behaviour whatsoever** — that is the point of it.
+
+**FOUR FIXTURE MISTAKES, AND THE ONE THAT MATTERS.** The postgres suite needs a
+policy shaped like the republished one, and I built it by hand because
+`register_phase1_policy_v1` refuses an optional purpose — the very defect.
+Getting that policy to be *valid* took four passes: `created_by` is NOT NULL;
+an active policy needs **all three** legal artifacts, not one
+(`processing_policy_approved_check`); retiring the incumbent needs
+`retired_at`; and both accept functions refuse a policy whose required
+purposes are not operational, which only `register_phase1_policy_v1` normally
+makes them.
+
+The fourth is the one to remember. My fixture DID make them operational — and
+the suite still failed, because the fixture returns early when the policy
+already exists, and on a re-used lane that early return skipped the registry
+update entirely. **A setup step behind a reuse check is a setup step that does
+not run.** Guarantees go before the early return, not after it. Same shape as
+R-2's constant `identity_hash`: both only worked on a database nobody had
+touched.
+
+---
+
+### 2026-09-23 · the acceptance writer becomes v2 · p11b-optional-consent · #(pending)
+
+**Closed:** step 3's backend half. `ProcessingAuthorizationService.accept` now
+calls `accept_phase1_processing_authorization_v2` and passes
+`p_optional_purposes`. The migration that defines v2 is on this same branch
+and in `manifest.txt`, so `MIGRATE_ON_BOOT=1` applies it during container start
+before the app process reads the new code — one boot does the whole cutover,
+which is the CONFIG-FIRST shape.
+
+**Safe before any optional purpose exists.** v2's own comment says it: an empty
+array "behaves exactly as v1 does". So this can merge and deploy while the live
+policy still marks everything required, and nothing changes until the policy is
+republished.
+
+**Absence is not refusal, but a malformed choice is.** A client that has never
+heard of `optional_purposes` sends no field and must keep working exactly as it
+did — that is an empty choice, not an error. A field of the wrong shape IS an
+error (422 OPTIONAL_PURPOSES_INVALID), because recording consent from a payload
+we could not parse is worse than refusing to record it.
+
+**Shape here, membership at the RPC.** This layer judges only that the value is
+a list of non-empty strings. Whether a named purpose is in the active policy,
+and whether it may be optional at all, is v2's to decide — it raises
+PROCESSING_OPTIONAL_PURPOSE_INVALID. A test asserts that an unknown purpose
+passes shape and reaches the RPC, which is the point: validating membership in
+two places is how the two drift apart and one starts quietly allowing
+something.
+
+**Not deduplicated, not reordered.** v2 canonicalises (btrim, DISTINCT, ORDER
+BY) and the evidence hash is computed over that canonical form. Doing it twice,
+differently, is how a receipt ends up hashing something other than what it
+stored.
+
+**Contract lines added:** `tests/test_optional_purposes_payload.py`, 18 cases.
+Three of them exist for a failure that would not be loud:
+`test_it_no_longer_calls_v1` fails if the RPC name reverts, because under v1
+every acceptance would keep succeeding while every optional yes was silently
+dropped — no error, no log, and a receipt that says the person chose nothing.
+`test_the_array_is_passed` covers the same failure by the other route: v2 with
+the argument omitted defaults to an empty array and loses the answer just as
+quietly.
+
+**Baseline:** 17 passed, 1 xfailed (F-4) — unchanged.
+
+**Follow-up, same workstream.** The gate came back RED on
+`test_d11_runtime_rpc_caller_registry_is_exact`: a registry pinning exactly
+which service file may call which watched RPC, and the move from v1 to v2 was
+not declared in it. That is the registry working — a new RPC call from a
+service has to be stated, not slipped in. Declared, and v1 left in the WATCHED
+set although nothing calls it any more, so a reintroduced v1 call would appear
+as an unexpected entry. Worth the extra line: that regression is silent, since
+every acceptance would keep succeeding while every optional yes was dropped.
+Rehearsal tier was GREEN across all ten lanes on the same run; only the unit
+tier failed.
+
 ### 2026-09-23 · WS0 · claude/dazzling-johnson-excc8e · #(pending)
 
 **Closed:** none (coach authoring, founder-directed)
@@ -838,5 +959,29 @@ the only one the runner reads; the other two are what a person reads at 2am.
 
 The two already-merged migration files conflicted only on their header lines
 and were resolved in favour of `main`, which now holds the corrected values.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · CORRECTION · my own resolver was wrong · p11b-optional-consent · #625
+
+`a_receipt_can_record_an_optional_yes.sql` takes **0357**.
+
+**A defect in how I was resolving these, caught here and worth recording.** The
+script I used to resolve each merge matched the FIRST conflict hunk in a file
+and stopped. On the earlier branches each file had exactly one hunk, so it was
+right by luck. This file had four. The result was one hunk resolved to the
+WRONG side (keeping this branch's pre-renumber comment over main's corrected
+one) and three left with `<<<<<<<` markers still in the file.
+
+`origin/main` was checked immediately and is clean — nothing broken was
+merged, and the rehearsal tier would have caught it anyway, since it executes
+this exact script. But it was caught by reading the file, not by the gate, and
+a resolver that is right by luck is not right.
+
+Both shell scripts were redone by taking main's version and re-applying this
+branch's additions on top, rather than taking "ours" wholesale: ours carries
+the pre-renumber comments, so wholesale is exactly how a stale number survives
+a merge that was supposed to fix it. The new fixture block is numbered 0357,
+and the released lane gains `tests/test_optional_consent_postgres.py`.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

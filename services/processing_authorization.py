@@ -73,6 +73,38 @@ def _domain_code(error: Exception, fallback: str) -> str:
     return fallback
 
 
+def _optional_purposes(payload: Any) -> list[str]:
+    """The optional purposes named in an acceptance, as a clean list.
+
+    A missing field and an empty list mean the same thing — nothing optional
+    was chosen — because a client that has never heard of optional purposes
+    must keep working exactly as it did. What is NOT accepted is a value of
+    the wrong shape: a string, a number, or a list with a non-string in it is
+    a client bug, and recording consent from a malformed payload is worse than
+    refusing it.
+
+    Order and duplicates are left alone; the RPC canonicalises them and is the
+    one place that decides whether a named purpose is in the policy at all.
+    """
+    raw = payload.get("optional_purposes") if isinstance(payload, dict) else None
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ProcessingAuthorizationError(
+            "OPTIONAL_PURPOSES_INVALID",
+            "Optional purposes must be a list.", 422,
+        )
+    out: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ProcessingAuthorizationError(
+                "OPTIONAL_PURPOSES_INVALID",
+                "Each optional purpose must be a non-empty string.", 422,
+            )
+        out.append(item.strip())
+    return out
+
+
 class ProcessingAuthorizationService:
     """The only application API for Phase-1 processing authority."""
 
@@ -237,6 +269,14 @@ class ProcessingAuthorizationService:
             "p_client_version": str(payload.get("client_version") or ""),
             "p_accepted_at": accepted_at,
             "p_idempotency_key": str(payload.get("idempotency_key") or ""),
+            # ONLY what the person affirmatively ticked. An empty list is the
+            # recorded "no", and v2 behaves exactly as v1 does for it — an
+            # absent field could not tell a refusal from never having asked.
+            # Shape is checked here; whether a purpose is IN the policy, and
+            # whether it is one that may be optional at all, is the RPC's to
+            # decide (PROCESSING_OPTIONAL_PURPOSE_INVALID). Validating it in
+            # two places is how the two drift apart.
+            "p_optional_purposes": _optional_purposes(payload),
         }
         if not args["p_idempotency_key"]:
             raise ProcessingAuthorizationError(
@@ -244,7 +284,7 @@ class ProcessingAuthorizationService:
             )
         try:
             result = self.client.rpc(
-                "accept_phase1_processing_authorization_v1", args
+                "accept_phase1_processing_authorization_v2", args
             ).execute()
             row = _one(result.data)
             if not row:
