@@ -41,6 +41,12 @@ from routes.v2.common import (
 )
 from services.db import db
 from services.coach_video_storage import refreshed_media_url
+# Module level, because the packet SHAPER uses them and it is module level too
+# — the blind rules belong beside the row they gate, not inside one route.
+from services.coach_blind_gate import (
+    has_committed_blind_label,
+    reveal_owner_answer_after_commit,
+)
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -636,6 +642,40 @@ def _bookmarked_snippet_ids(session, session_id):
         return set()
 
 
+def _owner_confidence_answers(session):
+    """What the SPEAKER answered about each moment of this arc, by snippet.
+
+    FOUNDER 2026-09-24: "in the coach review I want to see what the user judged
+    after I judge it." One read for the whole packet rather than one per piece.
+
+    Their self-report lane and nothing else: `take_feedback_self_report`, whose
+    `provenance` column is CHECK-constrained to `user_self_report`, filtered to
+    the confident-voice family — the same question the coach is being asked, so
+    the two answers are about the same thing. Nothing here writes, and no coach
+    table is touched: L3 keeps the lanes separate in storage, which is where it
+    means it.
+    """
+    arc_id = session.get("arc_id") if isinstance(session, dict) else None
+    if not arc_id:
+        return {}
+    try:
+        rows = db.list_confident_voice_self_reports(str(arc_id)) or []
+    except Exception as e:
+        logger.warning("owner confidence answers failed arc=%s err=%s",
+                       arc_id, e)
+        return {}
+    out = {}
+    for row in rows:
+        sid = str((row or {}).get("snippet_id") or "")
+        response = str((row or {}).get("response") or "")
+        # Ordered by created_at, so the LAST write for a moment is the
+        # speaker's current answer — the same "current answer" the coach's own
+        # table keeps.
+        if sid and response:
+            out[sid] = response
+    return out
+
+
 def _shape_coach_review_packet(readout, cstate_map, session, session_id):
     """Every evidence piece of one take, each saying whether it was bookmarked.
 
@@ -644,15 +684,18 @@ def _shape_coach_review_packet(readout, cstate_map, session, session_id):
     lookup is one DB read for the whole packet rather than one per piece.
     """
     bookmarked = _bookmarked_snippet_ids(session, session_id)
+    owner = _owner_confidence_answers(session)
     return [
         _shape_coach_review_snippet(
-            snip, cstate_map, str(session_id), bookmarked_ids=bookmarked)
+            snip, cstate_map, str(session_id),
+            bookmarked_ids=bookmarked, owner_answers=owner)
         for snip in (readout.get("snippets") or [])
     ]
 
 
 def _shape_coach_review_snippet(snip, cstate_map, owning_sid,
-                                kind_default=None, bookmarked_ids=None):
+                                kind_default=None, bookmarked_ids=None,
+                                owner_answers=None):
     _sid = str(snip.get("id"))
     _coach_state = dict(cstate_map.get(_sid, {
         "note": "", "tag": None, "surfaced": False,
@@ -696,6 +739,15 @@ def _shape_coach_review_snippet(snip, cstate_map, owning_sid,
         # One boolean, never the tier: the coach is told the moment was
         # surfaced, never what the machine made of it.
         "bookmarked": _sid in (bookmarked_ids or set()),
+        # What the SPEAKER answered about this same moment — released only
+        # after THIS coach has committed their own, exactly as the transcript
+        # is. Gated HERE rather than in the redactor because the unlocked
+        # packet never passes through it, and a coach who skipped a moment
+        # must not be handed the speaker's answer to it.
+        "owner_answer": reveal_owner_answer_after_commit(
+            (owner_answers or {}).get(_sid),
+            committed=has_committed_blind_label(_coach_state),
+        ),
     }
 
 

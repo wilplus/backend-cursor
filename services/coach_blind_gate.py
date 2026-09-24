@@ -53,6 +53,31 @@ def reveal_transcript_after_commit(transcript: Any, *, committed: bool) -> str:
     return transcript if isinstance(transcript, str) else ""
 
 
+def reveal_owner_answer_after_commit(answer: Any, *, committed: bool) -> str:
+    """The SPEAKER's own answer about this moment — only after the coach's own.
+
+    FOUNDER 2026-09-24: "in the coach review I want to see what the user judged
+    after I judge it."
+
+    THE RULE IS THE TRANSCRIPT'S, and deliberately so. The coach answers from
+    the voice, their answer is committed, and only then does the moment tell
+    them something more — words first, and now the speaker's own read beside
+    them. Before the commit this returns "", so the owner's answer is not
+    merely hidden in the browser: it never leaves the server.
+
+    IT IS NOT THE COACH'S LANE AND NEVER BECOMES IT. `take_feedback_self_report`
+    is the owner's self-report, its `provenance` column CHECK-constrained to
+    exactly that value, and nothing here writes to any coach table. L3 keeps
+    machine prediction, owner routing, blind peer rating and coach judgment in
+    separate lanes; showing one to the other after both are recorded does not
+    merge them, and the coach's own answer for this moment was already stored
+    before this string was ever computed.
+    """
+    if not committed:
+        return ""
+    return answer if isinstance(answer, str) else ""
+
+
 def reveal_acoustic_features_after_commit(
     features: Any, *, committed: bool
 ) -> dict | None:
@@ -136,6 +161,11 @@ def redact_contextual_snippets(snippets: Any) -> list[dict]:
             "slide": row.get("slide"),
             # A bare boolean: surfaced to the user, or not. Never the tier.
             "bookmarked": bool(row.get("bookmarked")),
+            # Already gated at shape time — see _shape_coach_review_snippet.
+            # It has to be gated there rather than here, because the UNLOCKED
+            # packet never passes through this function, and a coach who
+            # skipped a moment must not read the speaker's answer to it.
+            "owner_answer": row.get("owner_answer") or "",
             "coach_state": {
                 "note": "",
                 "tag": None,

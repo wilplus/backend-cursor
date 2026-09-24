@@ -4,6 +4,7 @@ from services.coach_blind_gate import (
     has_committed_blind_label,
     redact_contextual_snippets,
     reveal_acoustic_features_after_commit,
+    reveal_owner_answer_after_commit,
     reveal_transcript_after_commit,
 )
 
@@ -77,6 +78,7 @@ def test_redaction_keeps_audio_its_own_answer_the_slide_and_the_bookmark():
         "duration_ms": 900,
         "slide": {"index": 2},
         "bookmarked": True,
+        "owner_answer": "in_between",
         "features": {"f0": 3},
         "rank": 1,
         "stickiness": {"composite": 0.9},
@@ -97,6 +99,7 @@ def test_redaction_keeps_audio_its_own_answer_the_slide_and_the_bookmark():
         "duration_ms": 900,
         "slide": {"index": 2},
         "bookmarked": True,
+        "owner_answer": "in_between",
         "coach_state": {
             "note": "",
             "tag": None,
@@ -135,6 +138,20 @@ def test_a_row_with_no_bookmark_flag_reads_false_rather_than_missing():
     [row] = redact_contextual_snippets([{"id": "s3", "coach_state": {}}])
     assert row["bookmarked"] is False
     assert row["slide"] is None
+    assert row["owner_answer"] == ""
+
+
+def test_the_speakers_own_answer_waits_for_the_coachs_own():
+    """FOUNDER 2026-09-24: "what the user judged AFTER I judge it."
+
+    The same rule the transcript runs on, and for the same reason: the coach
+    answers from the voice, and only a committed answer buys anything more.
+    Before that it is not hidden in the browser — it never leaves the server.
+    """
+    assert reveal_owner_answer_after_commit("no", committed=False) == ""
+    assert reveal_owner_answer_after_commit("no", committed=True) == "no"
+    # Nothing recorded for that moment is not a judgement of it.
+    assert reveal_owner_answer_after_commit(None, committed=True) == ""
 
 
 def test_redaction_withholds_unanswered_transcript_from_the_payload():
