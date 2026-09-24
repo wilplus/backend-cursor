@@ -57,6 +57,7 @@ import math
 from typing import Any
 
 import numpy as np
+from services.parallel import start_scoped_thread
 
 from services.audio_metrics import (
     FRAME_MS,
@@ -797,7 +798,6 @@ def _spawn_draft_generators_async(inserted_rows: list[dict]) -> None:
     module; we don't propagate anything back here.
     """
     try:
-        import threading
         from services.snippet_drafts import (
             generate_charisma_draft_for_snippet,
         )
@@ -814,10 +814,12 @@ def _spawn_draft_generators_async(inserted_rows: list[dict]) -> None:
         if not snippet_id:
             continue
         try:
-            t = threading.Thread(
-                target=fn, args=(str(snippet_id),), daemon=True,
+            # B-6: one context copy per thread — this loop spawns one per
+            # snippet, and a Context cannot be entered by two threads at once.
+            start_scoped_thread(
+                fn, args=(str(snippet_id),),
+                name=f"draft-gen-{str(snippet_id)[:8]}",
             )
-            t.start()
         except Exception as e:
             logger.warning(
                 "draft-generator: thread spawn failed snippet=%s: %s",

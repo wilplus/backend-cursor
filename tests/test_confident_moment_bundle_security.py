@@ -398,7 +398,15 @@ def test_d11_runtime_rpc_caller_registry_is_exact():
         "ack_feedback_v3_service_render_v1",
         "record_confident_moment_bundle_family_response_v1",
         "publish_ideal_text_document_snapshot_v1",
+        # v1 stays WATCHED although nothing calls it any more. The service
+        # moved to v2 on 2026-09-23 so that an optional purpose can reach a
+        # receipt at all — v1 writes rows only WHERE required_for_core_service.
+        # Keeping v1 here means a reintroduced call shows up as an unexpected
+        # entry rather than passing unnoticed, which matters because that
+        # regression is silent: every acceptance would keep succeeding while
+        # every optional yes was dropped.
         "accept_phase1_processing_authorization_v1",
+        "accept_phase1_processing_authorization_v2",
         "mark_phase1_storage_object_purged_v1",
         "finalize_phase1_purge_v3",
     }
@@ -408,7 +416,7 @@ def test_d11_runtime_rpc_caller_registry_is_exact():
         ("services/first_client_repository.py", "ack_feedback_v3_service_render", "ack_feedback_v3_service_render_v1"),
         ("services/confident_moment_bundle_repository.py", "record_family_response", "record_confident_moment_bundle_family_response_v1"),
         ("services/db.py", "publish_ideal_text_document_snapshot", "publish_ideal_text_document_snapshot_v1"),
-        ("services/processing_authorization.py", "accept", "accept_phase1_processing_authorization_v1"),
+        ("services/processing_authorization.py", "accept", "accept_phase1_processing_authorization_v2"),
         ("services/data_purge.py", "_resolve_object", "mark_phase1_storage_object_purged_v1"),
         ("services/data_purge.py", "finalize", "finalize_phase1_purge_v3"),
     }

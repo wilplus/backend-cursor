@@ -20,10 +20,10 @@ Never block the next question on a slow / errored summarizer.
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Optional
 
 from services.db import db
+from services.parallel import start_scoped_thread
 
 
 logger = logging.getLogger(__name__)
@@ -113,11 +113,8 @@ def update_summary_async(
                 session_id, e,
             )
 
-    threading.Thread(
-        target=_runner,
-        name=f"conv-summary-{session_id[:8]}",
-        daemon=True,
-    ).start()
+    # B-6: keeps the caller's provider scope, which a raw thread drops.
+    start_scoped_thread(_runner, name=f"conv-summary-{session_id[:8]}")
 
 
 def format_summary_for_prompt(summary: str) -> str:

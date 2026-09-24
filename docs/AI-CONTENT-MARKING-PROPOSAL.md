@@ -1,5 +1,15 @@
 # Marking AI-generated output — mechanism proposal (Article 50(2))
 
+> **STATUS, 2026-09-22 — §3's recommendation was NOT adopted.** The founder
+> decided that the `text/plain` clipboard flavour carries no marker line:
+> rich-text marking only, do not go further than the obligation requires. See
+> `docs/SPEC-DECISIONS-LOG.md`, 2026-09-22, for the reasoning and for what it
+> does not settle. The argument below is kept in full and is not withdrawn —
+> if counsel rejects the boundary argument in
+> `legal/phase1-2026.1/03-article-50-assessment-v1.0` §3, this is where the
+> product comes back to. §4 (C2PA) is unaffected.
+
+
 **Status: BUILT 2026-09-19, except one decision — see the box below.** This
 was written as a proposal, and it is kept as written rather than rewritten into
 a description, because what it got right and wrong is the useful part of the
