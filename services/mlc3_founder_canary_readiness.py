@@ -584,6 +584,31 @@ def validate_deployment_attestation(
     )
 
 
+def _readiness_warnings(health: Mapping[str, Any]) -> list[str]:
+    """Everything a reviewer must be told that does not stop the review.
+
+    Extracted rather than written inline: `assess_founder_canary_readiness` is
+    grandfathered at CC 41 and the ratchet lets a grandfathered function come
+    down, never up. Adding the reviewer check inline took it to 42 and the
+    ratchet refused — correctly. Both warnings live here now, so the parent
+    comes down instead.
+    """
+    warnings: list[str] = []
+    if _count(health, "approved_active_exercise_version_count") < 1:
+        warnings.append("no_matching_exercise_may_require_inline_authoring")
+    # NOT A BLOCKER, AND THAT IS DELIBERATE. The founder canary is the founder
+    # testing the loop on his own recording; refusing a coach who is also the
+    # speaker would refuse the canary itself. But founder_principal_count and
+    # coach_principal_count are separate checks that never assert two DIFFERENT
+    # people, so a report can read as though there were two when there is one.
+    # The buckets are required to be distinct; the humans never were. A coach
+    # reviewing his own recording is not blind, so nothing produced in that
+    # configuration can later be treated as a blind coach label.
+    if _count(health, "coach_is_the_founder_count") >= 1:
+        warnings.append("reviewing_coach_is_the_founder_not_a_blind_reviewer")
+    return warnings
+
+
 def assess_founder_canary_readiness(
     health: Mapping[str, Any],
     *,
@@ -675,8 +700,7 @@ def assess_founder_canary_readiness(
         blockers.append("founder_has_no_project")
     if _count(health, "catalog_snapshot_count") < 1:
         blockers.append("reviewed_catalogue_snapshot_missing")
-    if _count(health, "approved_active_exercise_version_count") < 1:
-        warnings.append("no_matching_exercise_may_require_inline_authoring")
+    warnings.extend(_readiness_warnings(health))
 
     switch_states = {
         "backend_serving": bool(backend_serving_enabled),
@@ -729,6 +753,9 @@ def assess_founder_canary_readiness(
     evidence = {
         "founder_principal_configured": founder_valid,
         "coach_email_configured": bool(normalized_coach_email),
+        "reviewing_coach_is_the_founder": bool(
+            _count(health, "coach_is_the_founder_count") >= 1
+        ),
         "database_gate_state": health.get("service_contract_state"),
         "all_product_gates_disabled": (
             not any(switch_states.values())
