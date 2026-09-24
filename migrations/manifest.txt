@@ -391,3 +391,4 @@
 0353	an_exercise_can_live_without_a_post.sql
 0354	deletion_reaches_practice_objects.sql
 0355	authorization_binds_to_acquirer.sql
+0356	speaker_identity_the_table_accepts.sql

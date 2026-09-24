@@ -273,7 +273,7 @@ if [ "$LANE" = "narrow" ]; then
     -c "ALTER TABLE public.ml_speakers ALTER COLUMN identity_version DROP NOT NULL" >>"$log" 2>&1
 fi
 
-# 0353 replaces the two purge writers, so it must land after BOTH of their
+# 0354 replaces the two purge writers, so it must land after BOTH of their
 # current definitions: mark_phase1_storage_object_purged_v1 from
 # add_phase1_deletion_completion.sql and freeze_phase1_purge_inventory_v4 from
 # add_mlc3_exercise_dark_foundation.sql. The narrow lane applies the deletion
@@ -300,6 +300,11 @@ hard migrations/add_mlc3_first_client_service_d2.sql
 hard migrations/add_mlc3_coach_inline_exercise_authoring_d5.sql
 hard migrations/add_mlc3_founder_canary_security_closure.sql
 hard migrations/add_mlc3_general_user_service_d4.sql
+# 0356 replaces record_mlc3_self_speaker_target_v1, which the file above
+# defines — so it must land here, not at the end of the chain. The d4 lane is
+# cloned from a checkpoint cut right after this pair, and the suite that
+# exercises the speaker writer runs in that clone.
+hard migrations/speaker_identity_the_table_accepts.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.
