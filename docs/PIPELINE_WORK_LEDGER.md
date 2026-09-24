@@ -481,6 +481,62 @@ the row does not appear in the line.
 
 ---
 
+### 2026-09-23 · P1 · p1-signed-urls-user-voice · #(pending)
+
+**Closed:** P1's remaining gap. The signed-URL work itself landed 2026-09-18;
+this closes two prefixes and one module it missed, and makes the next miss
+fail a test.
+**Contract lines flipped / added:** none. Baseline 17 passed, 1 xfailed (F-4).
+**Broke and fixed:** none.
+**Open for the founder:** none. The bucket-level fix (DPIA M11.4, making the
+buckets private) is still yours and is unchanged by this.
+
+**What was already there.** `services/user_content_keys.py` holds the rule —
+user recordings sign, everything else keeps the permanent public URL — and
+`coach_video_storage`, `audio_storage` and `lab_audio_storage` all consult it.
+That work is sound. This entry is about what it did not reach.
+
+**Two prefixes of user voice were outside the question entirely.**
+
+  * `casual_voice/<user>/<row>.webm` — retained user audio, written by
+    `casual_voice_analytics` through `put_audio_bytes` into the SAME bucket as
+    `session_recordings/`. `audio_public_url`'s own docstring asserts that
+    bucket holds only the two prefixes the list already named. The sentence
+    described the list, not the bucket. A third prefix of someone's voice was
+    getting permanent, unauthenticated URLs.
+  * `mlc3-practice/<principal>/<session>/<id>` — a speaker re-recording a
+    passage, from `practice_attempt_orchestrator`.
+
+**And a fourth storage module.** The module docstring says "three storage
+modules mint public URLs" and names three. There are four:
+`user_media_storage.user_media_public_url` had no `is_user_content_key` check
+at all. Nothing calls it today, so nothing leaked through it — but a public
+base URL and one caller is the whole distance, and a loaded gun with no finger
+on it is still worth unloading.
+
+**THE PART WORTH KEEPING.** I found `casual_voice/` by reading. I did not find
+`mlc3-practice/` at all — `tests/test_object_key_prefixes_are_classified.py`
+did, on its first run, and that is the better argument for the test than the
+prefix it caught. The rule this module states is FAIL TOWARD SIGNING: "an
+unknown prefix that should have been listed here stays public, which is the
+exposure." **That only works if an unknown prefix ever reaches the question.**
+Two did not, for six days, because a hand-kept list has no way to know what it
+is missing.
+
+The test scans the services layer for object-key literals and fails when a
+prefix is classified neither as user content nor as explicitly exempt. Adding
+to `NON_USER_CONTENT_PREFIXES` is now a deliberate act with a reason beside it;
+forgetting is not a thing the test leaves available. It also asserts the
+scanner still SEES the known writers, so a regex that drifts away from how keys
+are built cannot make the whole guard vacuous — the failure mode a scanner-style
+test dies of.
+
+**Pattern, third time this week.** B-4's tests asserted substrings, B-2's
+`.sql` was never run, R-2's fixture had deleted the constraints the code broke.
+Here the list simply could not see its own gaps. Every one of them is a check
+that could not fail. When a control looks covered, ask what would make it go
+red, and try it.
+
 ### 2026-09-23 · WS3b · b6-fanout-inherits-scope · #(pending)
 
 **Closed:** B-6, thread half only. The admin-route half is NOT closed and is

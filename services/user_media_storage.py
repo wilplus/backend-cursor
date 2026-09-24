@@ -36,6 +36,8 @@ import logging
 import mimetypes
 from typing import Any, Optional
 
+from services.user_content_keys import is_user_content_key
+
 from services.r2_client import build_r2_client, clamp_ttl
 
 logger = logging.getLogger(__name__)
@@ -132,7 +134,18 @@ def presigned_get_user_media_r2(
 def user_media_public_url(storage_key: str) -> Optional[str]:
     """Stable HTTPS URL when R2_USER_MEDIA_PUBLIC_BASE_URL is set
     (public bucket / custom domain). ``None`` means the read path
-    must mint a signed URL."""
+    must mint a signed URL.
+
+    Also ``None`` for USER CONTENT (DPIA RISK-11, P1 2026-09-23).
+    ``services/user_content_keys.py`` says "three storage modules mint public
+    URLs" and names coach_video_storage, audio_storage and lab_audio_storage.
+    It undercounted: this is the fourth. Nothing calls this function today, so
+    nothing was exposed through it — but a public base URL and one caller is
+    all it would take, and a loaded gun with no finger on it is still worth
+    unloading. The rule is the same rule, so it reads the same list.
+    """
+    if is_user_content_key(storage_key):
+        return None
     base = (
         getattr(_config(), "R2_USER_MEDIA_PUBLIC_BASE_URL", None) or ""
     ).strip().rstrip("/")
