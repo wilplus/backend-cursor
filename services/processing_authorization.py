@@ -263,7 +263,13 @@ class ProcessingAuthorizationService:
             "p_ai_notice_copy_sha256": str(payload.get("ai_notice_copy_sha256") or ""),
             "p_agreement_copy_sha256": str(payload.get("agreement_copy_sha256") or ""),
             "p_explicit_action": "agree_and_continue",
-            "p_age_18_attested": True,
+            # Proven True by the guard above, which raises
+            # AGE_ATTESTATION_REQUIRED on anything else. The literal was
+            # not a hole -- no caller can reach here without having sent
+            # it -- but it READ like the payload was ignored, and that
+            # misreading has already cost one wrong finding. Pass the
+            # value that was checked, so the code says what it does.
+            "p_age_18_attested": bool(payload["age_18_attested"]),
             "p_country_of_residence": str(payload.get("country_of_residence") or ""),
             "p_locale": str(payload.get("locale") or ""),
             "p_client_version": str(payload.get("client_version") or ""),
