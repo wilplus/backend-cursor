@@ -388,6 +388,7 @@
 0350	fix_ideal_text_core_v2_summary_key.sql
 0351	the_bake_knows_about_answers_and_its_own_start.sql
 0352	guard_runtime_config_model_keys.sql
-0353	deletion_reaches_practice_objects.sql
-0354	authorization_binds_to_acquirer.sql
-0355	speaker_identity_the_table_accepts.sql
+0353	an_exercise_can_live_without_a_post.sql
+0354	deletion_reaches_practice_objects.sql
+0355	authorization_binds_to_acquirer.sql
+0356	speaker_identity_the_table_accepts.sql

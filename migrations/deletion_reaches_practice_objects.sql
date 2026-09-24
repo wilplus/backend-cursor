@@ -1,4 +1,4 @@
--- 0353 · Deletion reaches a practice recording.
+-- 0354 · Deletion reaches a practice recording.
 --
 -- B-4 (major), ML provenance audit 2026-09-22.
 --
