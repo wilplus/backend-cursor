@@ -1642,3 +1642,29 @@ Final order on `main`: 0353 `an_exercise_can_live_without_a_post`, 0354
 `a_receipt_can_record_an_optional_yes`, 0358 `status_knows_a_reacceptance`.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · the effective date had to be true · p11-effective-date · #(pending)
+
+The Terms and Privacy copy read "Version 3.1. Effective 23 September 2026."
+The founder reached the SQL editor on the **24th**, and
+`activate_phase1_policy_v1` stamps `activated_at` with the moment it runs — so
+publishing as drafted would have registered a document claiming to bind a day
+before it was activated, with both facts visible in the same record.
+
+Moved to 24 September in both documents. The sha256s recompute from the text,
+so the four mirrors were regenerated; terms and privacy changed, the AI notice
+and the agreement did not.
+
+**The VERSION ID stays `phase1-2026-09-23`.** That is the day the document was
+drafted, and a version drafted one day and effective the next is ordinary. Only
+the binding date had to be true. Changing the id would have meant touching the
+`activate_phase1_policy_v1` call and anything pinning the string, for no gain.
+
+The script's own header already warned about this, in a note written before the
+2.1 → 3.1 bump and still naming 2.1. The warning was right and the stale
+version number in it is corrected here, along with a record that it fired.
+
+Free only because the script had not run. Afterwards a date in registered copy
+costs a new policy version and re-acceptance by every user.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

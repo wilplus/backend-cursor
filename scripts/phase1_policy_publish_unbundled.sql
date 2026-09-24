@@ -345,11 +345,19 @@
 -- published bytes agree.
 
 -- ⚠ THE EFFECTIVE DATE IS WRITTEN INTO THE COPY. Both documents say
--- "Version 2.1. Effective 23 September 2026." If you run this on a later day
+-- "Version 3.1. Effective 24 September 2026." If you run this on a later day
 -- that sentence is wrong on the day it binds. Change the date in the terms and
 -- privacy blocks below, re-run the mirror sync, and publish — the
 -- sha256s recompute themselves from the text, so only the date needs touching.
 -- tests/test_phase1_policy_unbundled.py fails if the mirrors drift.
+--
+-- 2026-09-24: this warning did its job. The date was 23 September, the founder
+-- was at the SQL editor on the 24th, and activate_phase1_policy_v1 stamps
+-- activated_at with the moment it runs — so the record would have carried a
+-- document claiming to bind a day before it was activated. Moved to the 24th
+-- before publishing. The VERSION ID stays phase1-2026-09-23: that is the day
+-- the document was drafted, and a version drafted one day and effective the
+-- next is ordinary. Only the binding date had to be true.
 
 -- ── STEP 0 · COUNT THE PURPOSES BEFORE PUBLISHING ANYTHING ──────────────
 --
@@ -383,7 +391,7 @@ SELECT count(*) AS purposes_resolving,
 
 WITH c AS (SELECT
 $terms$WillpowerLab — Terms of Service
-Version 3.1. Effective 23 September 2026.
+Version 3.1. Effective 24 September 2026.
 
 These terms are an agreement between you and Artur Willoński, operating under
 the name "WillpowerLab" from Poland ("WillpowerLab", "we", "us"). They govern
@@ -644,7 +652,7 @@ Contact: contact@willpowerlab.com (a postal address is provided on request to
 data subjects and to the supervisory authority)$terms$ AS terms,
 
 $privacy$WillpowerLab — Privacy Policy
-Version 3.1. Effective 23 September 2026.
+Version 3.1. Effective 24 September 2026.
 
 This policy explains what WillpowerLab does with your personal data, who else
 receives it, how long we keep it, and how you get it deleted.
