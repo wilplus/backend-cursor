@@ -34,7 +34,9 @@ and returns it.
 """
 from __future__ import annotations
 
+import functools
 import logging
+import threading
 from contextvars import copy_context
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Optional
@@ -71,3 +73,45 @@ def run_in_parallel(*thunks: Callable[[], Any],
         # contract, and as_completed() is precisely the function that would
         # silently break it.
         return [f.result() for f in futures]
+
+
+def start_scoped_thread(
+    target: Callable[..., Any], *, args: tuple = (), name: Optional[str] = None,
+) -> threading.Thread:
+    """Start a fire-and-forget thread that KEEPS the caller's context.
+
+    B-6 (ML provenance audit, 2026-09-22). `threading.Thread` does not copy
+    contextvars — a raw daemon thread starts with an EMPTY context. Four
+    fire-and-forget dispatches did exactly that from inside
+    `protected_provider_scope`, so in the child thread
+    `authorize_protected_generation` found no scope, returned `(None, None)`,
+    and `llm.chat_complete` called the provider with the speaker's transcript
+    and **no permit**. Nothing raised. The call simply left no trace: no
+    `processing_provider_permits` row, no `processing_provider_operations`
+    row, so the purge subject graph never learns the transcript went out and
+    the provider-deletion contract has nothing to act on.
+
+    `run_parallel` above already had this right — it submits
+    `copy_context().run`. The defect was that the rule lived at that one call
+    site instead of in a named function, so the next four people who needed a
+    thread wrote `threading.Thread(...)` and lost the scope. This is that
+    named function; reach for it instead of `threading.Thread` anywhere a
+    request or a Take is what the work belongs to.
+
+    Each call takes its OWN copy, because one Context cannot be entered by two
+    threads concurrently — a loop spawning a thread per item is the normal
+    case here, not the exception.
+
+    Raising is the caller's to handle: every current call site already wraps
+    the dispatch in try/except and logs, and swallowing here would hide a
+    thread that never started.
+    """
+    context = copy_context()
+    thread = threading.Thread(
+        target=context.run,
+        args=(functools.partial(target, *args),),
+        name=name,
+        daemon=True,
+    )
+    thread.start()
+    return thread
