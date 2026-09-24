@@ -281,7 +281,7 @@ fi
 # the practice registry.
 hard migrations/deletion_reaches_practice_objects.sql
 
-# 0354 replaces issue_phase1_provider_permit_v1 and
+# 0355 replaces issue_phase1_provider_permit_v1 and
 # resolve_phase1_acquisition_principal_v1, both from
 # add_phase1_processing_boundary.sql, which the narrow lane also applies in the
 # block above.
