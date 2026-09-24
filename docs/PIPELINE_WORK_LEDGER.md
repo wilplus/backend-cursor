@@ -1668,3 +1668,29 @@ Free only because the script had not run. Afterwards a date in registered copy
 costs a new policy version and re-acceptance by every user.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · the readiness report can now say the coach is the founder · warn-when-coach-is-the-founder · #(pending)
+
+`assess_founder_canary_readiness` asserts `founder_principal_count = 1` and
+`coach_principal_count = 1` as two separate checks and **never asserts they are
+two different people**. It does require the practice-audio and coach-video
+buckets to be distinct, and blocks when they are not — so distinctness was
+considered, and applied to the buckets but not to the humans.
+
+Found live on 2026-09-24: the only active coach is the founder's own account,
+and the check is content with that.
+
+**Deliberately a WARNING, not a blocker.** The founder canary is the founder
+testing the loop on his own recording; refusing a coach who is also the speaker
+would refuse the canary itself. What the report must not do is stay silent,
+because two passing counts read as two people. A coach reviewing his own
+recording is not blind, so nothing this run produces can later be treated as a
+blind coach label — and only the report can carry that fact forward.
+
+New health scalar `coach_is_the_founder_count`, new warning
+`reviewing_coach_is_the_founder_not_a_blind_reviewer`, new evidence field
+`reviewing_coach_is_the_founder`. Placeholder/parameter alignment in the
+aggregate query was verified by counting rather than by eye: 21 `%s`, 21
+parameters, the new pair immediately after the block it belongs to.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

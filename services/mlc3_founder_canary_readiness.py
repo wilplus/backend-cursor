@@ -677,6 +677,17 @@ def assess_founder_canary_readiness(
         blockers.append("reviewed_catalogue_snapshot_missing")
     if _count(health, "approved_active_exercise_version_count") < 1:
         warnings.append("no_matching_exercise_may_require_inline_authoring")
+    # NOT A BLOCKER, AND THAT IS DELIBERATE. The founder canary is the founder
+    # testing the loop on his own recording; refusing a coach who is also the
+    # speaker would refuse the canary itself. But the two counts above --
+    # founder_principal_count and coach_principal_count -- are separate checks
+    # that never assert two DIFFERENT people, so a report can read as though
+    # there were two when there is one. The buckets are required to be
+    # distinct; the humans were never given the same treatment. A coach
+    # reviewing his own recording is not blind, so anything this run produces
+    # cannot be treated later as a blind coach label.
+    if _count(health, "coach_is_the_founder_count") >= 1:
+        warnings.append("reviewing_coach_is_the_founder_not_a_blind_reviewer")
 
     switch_states = {
         "backend_serving": bool(backend_serving_enabled),
@@ -729,6 +740,9 @@ def assess_founder_canary_readiness(
     evidence = {
         "founder_principal_configured": founder_valid,
         "coach_email_configured": bool(normalized_coach_email),
+        "reviewing_coach_is_the_founder": bool(
+            _count(health, "coach_is_the_founder_count") >= 1
+        ),
         "database_gate_state": health.get("service_contract_state"),
         "all_product_gates_disabled": (
             not any(switch_states.values())
