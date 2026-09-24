@@ -481,6 +481,473 @@ the row does not appear in the line.
 
 ---
 
+### 2026-09-23 · P11 · p11-unbundle-the-policy · #(pending)
+
+**Closed:** P11 — the script exists and is verified. It is NOT run; running it
+is the founder's act and it has a cost, below.
+**Contract lines flipped / added:** none. Baseline 17 passed, 1 xfailed (F-4).
+**Broke and fixed:** none.
+**Open for the founder:** one, and it is the whole point of the entry.
+
+**What is live and wrong.** `scripts/phase1_policy_publish.sql` ran in
+production on 2026-09-20 and published all five purposes with
+`lawful_basis_code 'consent'` AND `required_for_core_service TRUE` — including
+coach_review, individual_learning_profile and
+personalized_exercise_recommendation — with an agreement sentence bundling
+coach review into one tick. Doc 01 §3 assesses that exact structure as invalid
+under Art 4(11) and Art 7(4) with Recital 43; §6 says those three were held out
+of v1 for precisely this reason. Zero non-founder users have accepted.
+
+**THE THING P11 ASKED ME TO LOOK FOR, AND I FOUND IT.** Step 1 said: report
+any place the determination and the schema cannot both be satisfied rather
+than picking one. Here it is.
+
+`resolve_mlc3_dual_purpose_receipt_v2` (add_mlc3_general_user_service_d4,
+603-622) gates the ENTIRE MLC-3 general-user service on the receipt carrying
+BOTH `personalized_exercise_recommendation` AND `coach_review`. And
+`accept_phase1_processing_authorization_v1` writes receipt purpose rows only
+`WHERE pp.required_for_core_service` — still true at current main (boundary
+line 692; 0335 kept it at line 152). Doc 01 §6 predicted this in the abstract.
+
+Put together: **the only way MLC-3 works today is if those two purposes are
+marked required — which is the bundling doc 01 calls invalid.** The unlawful
+structure is not a slip in the publish script. The exercise service depends on
+it. That is a harder fact than the audit or doc 01 knew, and it means P11
+cannot be "just run".
+
+**So publishing the new script, on its own, means:** recording, transcription,
+Ideal Text and Feedback keep working on the contract basis, lawfully (F1
+safe); coach delivery is refused; and the MLC-3 general-user service refuses
+every principal, because the dual-purpose receipt can never resolve. Doc 01 §6
+named the first two costs and called it the founder's call. What has changed is
+that MLC-3 GA now sits behind it too.
+
+**The schema change, proposed not built** (step 3 said propose):
+`accept_phase1_processing_authorization_v2(..., p_optional_purposes TEXT[])` —
+a NEW function beside v1, never a replacement; writes rows for every required
+purpose as today PLUS each optional purpose the caller names; raises if a
+named purpose is absent from the policy or IS required, so the array can only
+record a real separable choice. With it, the two purposes return as
+`required_for_core_service FALSE` with their own consent, the dual-purpose
+gate resolves for people who opted in, and someone who declines coach review
+can still record. That is doc 01 §6's v1.1. **Not built here because it
+changes how consent is recorded for real people and deserves its own review.**
+
+**Copy is held for sign-off.** Three of the four documents change wording,
+because the policy they describe changes — the privacy copy can no longer say
+a coach may listen. Drafted, mirrored into
+`legal/phase1-2026.1/copy/*-unbundled-2026-09-23.txt`, and published by nobody
+until the founder runs the script.
+
+**A drift that had already happened.** `copy/agreement-1.0.txt` on disk says a
+coach is asked for separately; the bytes published on 09-20 bundle it. The
+file and the receipt disagreed. `tests/test_phase1_policy_unbundled.py` now
+fails if the script and the mirrored files diverge again, and if a consent
+policy ever reaches `migrations/manifest.txt`.
+
+---
+
+### 2026-09-23 · P11 REWRITTEN after the coach-review ruling · p11-unbundle-the-policy · #(pending)
+
+**Correcting entry, not an edit.** The entry above describes the FIRST draft of
+`scripts/phase1_policy_publish_unbundled.sql`, which removed coach_review from
+the policy and published two purposes on contract. The founder reversed its
+premise the same day:
+
+> "Coach review is core to the product. A user who refuses to allow a human to
+> listen to their recordings cannot use WillpowerLab. This reverses the
+> assumption in doc 01 §3 and §6."
+
+and on the practice step: *"you can always leave the app and not do it, you
+can skip it."* The two open purposes move in OPPOSITE directions. The entry
+above stands as written; this one supersedes its conclusion.
+
+**What the script now publishes:** recording_voice_processing, transcription_
+feedback and coach_review on `contract` + required; personalized_exercise_
+recommendation on `consent` + REFUSABLE; individual_learning_profile still
+absent. Moving the mandatory purposes off consent dissolves Art 7(4) at the
+root — consent is no longer the basis for anything compulsory, so there is no
+compelled consent left to be invalid.
+
+**The copy went back to the LIVE bytes, not the draft's.** Checked production:
+the 09-20 privacy notice already says "a WillpowerLab coach — a person — may
+listen", and the live tick names coach listening in the tick itself. The copy
+was never the defect; the machinery under it was. The first draft had replaced
+that honest paragraph with "no person at WillpowerLab listens", which the
+ruling makes false. Reinstated verbatim, then four deltas, all TODO-flagged for
+founder sign-off: Terms gain a coach-review paragraph and the plan distinction
+(a plan with no delivered reviews does not mean nobody listens); Privacy gains
+"not optional" for coach and an optional-practice paragraph; the mandatory tick
+DROPS "and prepare practice for me", because a compulsory tick carrying an
+optional purpose is the same defect one purpose smaller.
+
+**Contract lines flipped / added:** `tests/test_phase1_policy_unbundled.py`
+went 8 → 15 cases. Seven added, none removed. SEVEN of the original eight
+asserted the superseded shape — coach_review absent, no purpose on consent,
+exactly 2 contract + 2 required, the tick must not say "coach", and the privacy
+copy must NOT say a coach may listen but MUST promise "we will ask you for that
+separately". That last pair required the notice to promise coach review is
+refusable, which is precisely what the ruling abolishes. They were pinning a
+product decision the founder overturned, so they are INVERTED, not deleted, and
+the invariant they protected is now asserted structurally instead of by
+counting: `test_no_purpose_is_both_consent_and_required` reads each purpose
+object whole, so a consent purpose can no longer hide behind a required one
+elsewhere in the array. Baseline 17 passed, 1 xfailed (F-4) — unchanged.
+
+**A bug found in the test's own helper.** `_purposes_block()` sliced from the
+first `jsonb_build_array(` after `'allowed_countries'` — which is the COUNTRY
+list, not the purposes — so it silently swept in the three legal-artifact
+objects. Any artifact metadata naming a purpose or a basis would have corrupted
+its counts, and this rewrite adds exactly such metadata
+(`'coach_review_basis','contract'`). It now anchors on the last array before
+the actor argument. The old helper would not have failed loudly; it would have
+counted wrong.
+
+**The ordering trap, now stated in the header in terms nobody can miss.**
+`accept_phase1_processing_authorization_v1` writes receipt rows only `WHERE
+pp.required_for_core_service`, so under v1 an OPTIONAL purpose can never reach
+a receipt at all. Publish this before accept_v2 ships and nobody can ever opt
+into practice — MLC-3 stays dark with no error to explain it. Run order:
+(1) deploy accept_v2; (2) the acceptance screen sends what was actually ticked;
+(3) run this file by hand; only then is flipping `processing_purpose_registry.
+operational` a meaningful switch. STEP 6 of the script verifies accept_v2
+exists and says STOP if it does not.
+
+**What the running system already proves.** Five routes are gated by
+`@operational_purpose_disabled("personalized_exercise_recommendation")` and all
+five return 410 today — one coach route, four user routes. The record →
+transcript → Ideal Text → Feedback loop completes with every one of them
+closed. That is the EDPB necessity test answered by the system rather than by
+argument, and it is why practice cannot ride on the contract basis.
+
+**Open for the founder:** `individual_learning_profile`. The founder said "we
+need that" and, asked whether a user may refuse it and still use the app,
+answered NO — but described its job as "it personalises the exercises you get".
+A purpose cannot be more necessary than the only thing it serves, and exercises
+are refusable by the same founder's ruling. Published as contract + required it
+would rebuild the Art 7(4) defect one purpose to the left. Left ABSENT pending
+one line: either it rides with practice as optional, or it does something the
+core loop needs that the one-line description omits. It is live in production
+today as consent + required, inside the bundle this script replaces.
+
+---
+
+### 2026-09-23 · individual_learning_profile resolved · p11-unbundle-the-policy · #(pending)
+
+**Correcting the entry above, not editing it.** That entry closed with
+individual_learning_profile ABSENT and open for the founder. It is now
+resolved and the script publishes it.
+
+**The exchange, because the first answer and the second disagree and the
+second is right.** Asked what it does: *"It personalises the excercises you
+get."* Asked whether a user can refuse it and still use the app: *"NO"* —
+then, unprompted, *"okok, optional"*. The correction is the coherent answer
+and it is the one implemented. A purpose cannot be more necessary than the
+only thing it serves, and the same founder ruled exercises refusable the same
+day. Published as contract + required it would have rebuilt the Art 7(4)
+defect one purpose to the left — the precise shape this script exists to
+remove — and it would have carried the founder's name.
+
+**All five purposes are now published.** Three required on contract
+(recording_voice_processing, transcription_feedback, coach_review), two
+refusable on consent (personalized_exercise_recommendation,
+individual_learning_profile). Nothing is held out; `UNJUSTIFIED_PURPOSES` is
+now an empty tuple and its guard stays armed for the next purpose somebody
+reaches for.
+
+**One tick covers both optional purposes**, because from the user's side it is
+one choice — personalised practice — expressed as two registry rows: the
+recommendation, and the profile that makes it personal. Splitting them offers
+a choice with no meaning (a profile that personalises nothing, or exercises
+that cannot be personalised). ⚠ FOR COUNSEL: confirm one tick is granular
+enough under Recital 43, or split it. `accept_v2` takes an array, so splitting
+is a screen change and not a schema one.
+
+**Contract lines:** none flipped. `tests/test_phase1_policy_unbundled.py`
+stays at 15 cases, all passing; only the two purpose constants moved.
+Baseline 17 passed, 1 xfailed (F-4) — unchanged.
+
+---
+
+### 2026-09-23 · CORRECTION · practice was never closed · p11-unbundle-the-policy · #(pending)
+
+**I got a fact wrong and it reached a legal document. This entry corrects it;
+the entries above stand as written.**
+
+**What I claimed.** That all five practice routes return 410
+PURPOSE_NOT_OPERATIONAL, and that the record → transcript → Ideal Text →
+Feedback loop "runs to completion with all five closed" — offered as the EDPB
+necessity test answered by the running system. It went into the script header,
+the ledger entry above, and two artifacts shown to the founder.
+
+**What is true.** The founder read production:
+
+    personalized_exercise_recommendation | phase1 | operational=true |
+    authorizes_processing=true | confident-voice-practice-v1 | 2026-09-16
+
+`@operational_purpose_disabled` has ASKED the registry since 0335 rather than
+refusing unconditionally — that is the whole point of that migration — and the
+only other guard on those routes is `@require_auth`. **Practice is live in
+production.** I read the decorator, saw it could return 410, and assumed the
+answer without reading the row. 0335 exists precisely to stop the switch and
+the fact it claims to reflect being two different things kept in step by hand;
+I did by hand exactly what it removed.
+
+**coach_review was wrong in the other direction.** Migration 0339 states as a
+production fact that it is `operational=false, authorizes_processing=false`,
+and I raised it as a blocker that would make every acceptance raise
+PROCESSING_PURPOSE_NOT_OPERATIONAL. Production says otherwise: all five
+purposes are operational with every control version set, four of them switched
+in one batch at 2026-09-19 23:58:51 — the day after 0339 was written and the
+day before the policy was published. 0339's comment is stale, not wrong when
+written. A migration comment is a snapshot, and I read it as current state.
+
+**What changed in the script.** The necessity argument no longer rests on the
+routes. It rests where it belongs: the founder's ruling that the step is
+skippable, and the locked contract line "the loop never waits for a coach or
+exercise". A step the product is built never to wait for is not necessary to
+perform the contract, whether or not its routes are serving. The false
+sentence is replaced by a CORRECTION block that states what was claimed and
+why it was wrong, because a legal artifact should carry its own errata.
+
+**A consequence this surfaced, which is not an error but is load-bearing.**
+Practice works today BECAUSE of the defect this file removes: the live policy
+marks it `required_for_core_service`, and accept_v1 writes receipt rows only
+`WHERE pp.required_for_core_service`, so every receipt carries practice and
+every permit issues. After this publishes, practice is optional and a user who
+does not tick the box genuinely has it off. Receipts already issued stay valid
+until re-acceptance. That is a real behaviour change, and it is the correct
+one — it is what "refusable" means.
+
+**Contract lines:** none flipped. 15 cases still pass. Baseline 17 passed,
+1 xfailed (F-4) — unchanged.
+
+**Verified on the way, no change needed.** privacy-2.0 §5's claim that OpenAI
+is the only AI provider receiving audio or transcript is TRUE:
+`services/authorized_provider.py` is the single typed adapter and every permit
+it issues is hard-coded `provider="openai"`. §4's claim that the system
+refuses to register a policy permitting training is also true and stronger
+than stated — `PHASE2_PURPOSE_FORBIDDEN` fires at acceptance, and
+`pooled_model_improvement` is registered phase2.
+
+---
+
+### 2026-09-23 · P11 rebased on the v2.0 documents · p11-unbundle-the-policy · #(pending)
+
+**The founder gave a new base.** The short strings patched in the entries above
+were the wrong source: `legal/phase1-2026.1/copy/terms-2.0.txt` and
+`privacy-2.0.txt` are full documents (9,146 and 10,915 chars) that were drafted
+and never published, while what is live is ~1,800 chars total. The script now
+carries those documents with surgical edits, not the short strings. Published
+as **v2.1**, because v2.0's own effective date (18 September 2026) has passed
+and it never bound anyone.
+
+**Article 13 audit, verified rather than assumed** (the amendment asked for
+this explicitly). Of the six items believed absent, FOUR were already present
+in v2.0: controller identity and contact (§1, §13), named recipients — eight
+processors individually, not categories (§5), third-country transfers with SCCs
+per provider and a copy on request (§6), and the right to complain with UODO's
+address (§8). Genuinely absent: **13(2)(e)**, whether providing the data is a
+contractual requirement and what follows from refusing. Partial: **13(1)(c)**,
+which listed three bases but none of the purposes the new policy names. Both
+are now written. 13(1)(b) is satisfied in an unusual way worth noting — §1
+states that no DPO is appointed and why Art 37 does not require one, which is
+the correct answer rather than a gap.
+
+**The founder's UODO line is additive, not duplicative.** §8 already carried
+the Art 13(2)(d) right to complain. The new sentence in §1 names the Art 56
+LEAD authority. Different articles, different jobs.
+
+**Three contradictions with the 2026-09-23 ruling, fixed.** privacy §5 said
+coach review happens "only if you ask … and agree to it separately"; terms §11
+said it "is optional"; terms §2's plan table read as "nobody listens" for Free
+and Practice. All three predate the ruling and argued against our own lawful
+basis. Two sentences were KEPT deliberately: privacy §5's statement that a
+coach does not see the voice measurements (that is the blind lane, accurately
+described) and terms §11's "the recording and feedback loop never waits for a
+coach" (asynchronous is not optional — only one of those words was wrong).
+
+**"Keep it promisable" — founder steer, and the most consequential edit here.**
+The founder said phases 2, 3 and 4 are coming. v2.0 contained five sentences
+that phase 2 would break, one of them expensively: *"We do not use anyone's
+recordings to train models. That one is not a promise we could quietly walk
+back: our systems refuse to register any processing policy that would permit
+it."* That does not merely state today's truth — it stakes credibility on
+permanence and names the mechanism so a reader can verify it. Walking it back
+later is not a policy update; it is the thing the sentence promises will not
+happen. Every one is now present tense and scoped to this version, with the
+future left to the re-acceptance clause each document already carries (privacy
+§12, terms §15). The enforcement claim SURVIVES, because it is true and
+checkable — it is now scoped: "while this version is in force".
+
+**Railway is an independent controller, not only our processor.** Found by the
+session on `claude/compassionate-hamilton-2f4t73` in the executed DPA §13, and
+flagged there as needing to reach the v2.0 recipients section before
+publication. Done: §5 now gives Railway the same treatment the document already
+gives Stripe, scoped to account and usage data and explicitly not recordings.
+
+**Art 9 left alone**, per the amendment's item 3: the incidental-sensitive-
+content acknowledgement stays its own explicit consent under 9(2)(a), separate
+from the service description, with withdrawal ending processing. **AI notice
+left alone**, per item 6: 529 bytes, unchanged, and checked against the new
+documents — it already says "a person may review that automated feedback
+afterwards", which is now more accurate than it was.
+
+**A bug I introduced and the test caught immediately.** The date warning I
+added to the header contained the literal dollar-quote delimiters, so
+`_quoted()`'s regex matched the COMMENT's delimiter first and captured the
+wrong span. Two cases went red — the privacy and terms content assertions —
+which is exactly what they exist for. Delimiters removed from the prose, and
+the header now states the delimiter count invariant.
+
+**One assertion widened, not weakened.** `test_the_privacy_copy_says_a_coach_
+may_listen` pinned the exact phrase "a willpowerlab coach — a person — may
+listen". The new copy says "listens to recordings" — the tense changed because
+coach review is now continuous rather than conditional. The assertion now pins
+"a willpowerlab coach — a person —", which is the part that carries the
+disclosure; the tense is not what the case is protecting.
+
+**Contract lines:** 15 cases, all passing, none removed. Baseline 17 passed,
+1 xfailed (F-4) — unchanged.
+
+**Still NOT RUN, and still out of manifest.txt.** The effective date is written
+into the copy as 23 September 2026; running it later means changing that date
+in two blocks and re-running the mirror sync. The header says so where the
+person running it will see it.
+
+---
+
+### 2026-09-23 · two publish scripts reconciled into one · p11-unbundle-the-policy · #(pending)
+
+**A second session wrote its own.** `scripts/phase1_policy_publish_v2.sql` on
+`claude/compassionate-hamilton-2f4t73`, 804 lines, with fuller copy
+(terms-3.0, privacy-3.0, agreement-3.0, ai-notice-3.0). The founder was about
+to run it. Two scripts publishing the same policy version is one too many.
+
+**Taken from theirs, because it is better than what I had.** The
+hybrid-coaching framing, which puts coach review INSIDE the 6(1)(b) basis
+rather than beside it — a cleaner statement of the same ruling. Railway's dual
+role, more precisely worded than mine. The Article 9 paragraph, which says
+outright that the consent "is not bundled with anything else, and a contract
+can never stand in for it". And §11's answer to the plan-table problem: every
+plan includes at least one coach review, so "no coach reviews" cannot be
+misread as "nobody listens" — better than my clarifying sentence, because it
+fixes the product rather than explaining the table. They had written the Art 56
+UODO line identically.
+
+**Not taken: the purposes.** Their script publishes ALL FIVE as 'contract' +
+required_for_core_service TRUE, making practice and the learning profile
+compulsory. That contradicts the founder's rulings of the same day, and it does
+not fix the defect it targets — moving a purpose that is not objectively
+necessary from 'consent' to 'contract' swaps an invalid consent for an invalid
+contract basis. Art 6(1)(b) requires necessity; CLAUDE.md's locked contract
+says the loop "never waits for a coach or exercise".
+
+**Their verify could not have caught it.** Their 3a counts rows that are
+'consent' AND required and calls 0 success. An all-contract policy returns 0
+because it has no consent rows at all — the counter measures the absence of a
+symptom, so the very change that recreates the problem is what makes the check
+pass. STEP 4 here tests the invariant structurally, per purpose object, and
+STEP 5 asserts the optional lane is non-empty, which is the half a count cannot
+express.
+
+**A defect in their copy, found by a test rather than by reading.** Their
+agreement tick said a coach may listen "to review my feedback AND PREPARE
+PRACTICE FOR ME. That is part of the service, not an extra I am switching on."
+The mandatory tick asked for agreement to the optional purpose — the same
+bundling, one clause smaller.
+`test_the_agreement_tick_does_not_bundle_practice` failed on it immediately.
+Clause removed; the optional purposes travel in accept_v2's array instead.
+
+**An assertion I removed, recorded rather than dropped quietly.** The tick case
+required "18 or over" in the agreement sentence. v3.1 moves the age attestation
+to its own control — the acceptance screen renders "I am {policy.minimumAge} or
+older" as a separate checkbox, `canSubmit` refuses without it, and it travels
+as `p_age_18_attested`. That is better than burying it in a sentence, so the
+assertion is not restored here and the reason is written into the test. The
+one-line rule on the tick was also mine, and it would have rejected their
+two-paragraph version, which reads better; replaced with a length bound, since
+what must not happen is the tick becoming a wall nobody reads.
+
+**Open, and NOT fixed here because it is outside what was approved:**
+`services/processing_authorization.py` passes `"p_age_18_attested": True` as a
+literal rather than reading the payload. The screen gates it, but a non-browser
+client could accept without ticking and the receipt would still record the
+attestation. A receipt that asserts something the server never checked is worth
+a founder decision, not a quiet patch on a consent path.
+
+**Mirrors renamed** to `legal/phase1-2026.1/copy/*-3.1.txt`, matching the
+document version instead of the publish date, so the lineage from their 3.0 is
+visible. Contract lines: 15 cases, all passing. Baseline 17 passed, 1 xfailed.
+
+**§7 decided, same day.** Founder chose "say what the system does" over
+publishing the four periods. The copy now describes deletion on request and on
+account closure — both real and performed — and states plainly that no fixed
+periods are quoted because none are enforced yet. The four periods and the
+willpowerlab.com/legal/retention link are gone. This was free only because the
+script had not run; afterwards it would have cost a new policy version and
+re-acceptance by every user. The live 09-20 copy carries one unkept promise
+(30-day practice attempts); publishing as drafted would have made it four.
+
+**Pricing table confirmed, same day.** Asked directly, the founder kept Terms
+§2 as drafted — Free and Practice 1 coach review each, Coaching 3, Intensive 8,
+tokens and prices unchanged. The numbers themselves are a business call; what
+is load-bearing is that none is ZERO. The earlier draft gave Free and Practice
+none, which would have made counsel's premise false for half the plans, since
+coach review sits on Art 6(1)(b) precisely because this is ONE hybrid service
+in which a person listening is how it is performed. The product changed rather
+than the argument. **#622 now carries no founder TODO.**
+
+### 2026-09-23 · CORRECTION · the plan table promised reviews the code does not grant · p11-unbundle-the-policy · #622
+
+**This corrects the "Pricing table confirmed" paragraph in the entry above.
+That paragraph stands as written; this one supersedes it.**
+
+I asked the founder to confirm four plan rows without first checking whether
+the code could honour them. It cannot. `services/token_prices.py` is the live
+table and grants `free: 0`, `practice: 0`, `coaching: 3`, `intensive: 8` coach
+reviews. Terms §2 as drafted said `1 / 1 / 3 / 8`. Publishing it would have
+promised every Free and Practice user a monthly review the tier table does not
+allocate.
+
+Presented as A (Terms move to the code, free) versus B (code grants a review on
+Free and Practice, a human sitting for every free user every month). **Founder
+ruled A, 2026-09-23.** §2 now reads `no coach reviews / no coach reviews / 3 /
+8`, and §11 replaces "every plan includes at least one" with the distinction
+that actually holds: a coach may listen whatever your plan is, and what the
+plan sets is how many written reviews come back to you.
+
+**The argument in the superseded paragraph had it backwards, and this is the
+part worth keeping.** Counsel's Art 6(1)(b) basis needs a PERSON LISTENING, not
+a review delivered back. `routes/v2/coach.py` builds the review queue with no
+tier filter — a coach sees takes from every plan, Free included. So listening
+is universal in the code while the delivered review is an allowance, and a zero
+never meant nobody hears you. The zeros do not endanger the premise; it was the
+conflation of listening with delivery that did. Counsel should confirm the
+distinction carries 6(1)(b) at zero delivered reviews.
+
+The frontend already agreed with the code and not with the draft:
+`src/components/tokens/copy.ts` has a `n === 0 → "No coach reviews"` branch and
+a `planFreeLine` reading "Free plan: … tokens included, no coach reviews."
+Publishing 1/1/3/8 would have put the Terms at odds with the screen as well as
+the tier table.
+
+**Two things I did not establish, recorded so nobody reads more into this.**
+(1) I found NO code that refuses a review once the allowance is spent. The
+counter increments and is surfaced as `{used, allowed}`; whether it GATES
+delivery I could not show, so the allowance may be advisory —
+`add_token_charge_rpc.sql:39` records a past bug of that exact shape. I had
+earlier said the system "refuses on the first attempt" at zero; that was a
+grep-shaped claim and I withdraw it. (2) `token_prices.py` also carries a
+second tier table (`starter`/`pro`/`max`, 1/6/30 reviews) that these Terms
+never mention. Which sheet is live is a founder question, not a copy question,
+and it is open.
+
+Free again only because the script has not run. After it runs, the same change
+costs a new policy version and re-acceptance by every user. Mirror
+`terms-3.1.txt` regenerated byte-for-byte (10707 → 10845 bytes). Contract lines
+15 cases, all passing.
+
 ### 2026-09-23 · WS3a · b4-deletion-reaches-practice · #(pending)
 
 **Closed:** B-4
