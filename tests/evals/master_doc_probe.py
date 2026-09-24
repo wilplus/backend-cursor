@@ -371,7 +371,20 @@ CASES: list[Case] = [
         user_message="can I see my training?",
         rubric={
             "must_set_suggested_action": "trainings",
-            "max_answer_chars": 140,  # bridge-not-dump one-liner
+            # Raised 140 -> 155 (founder decision, 2026-09-24). The answer
+            # lands just over 140 on roughly every other run: 155 chars on
+            # #638's first run, then a pass on the SAME commit, then 152 on
+            # main after the merge. Routing was correct in all three; only
+            # the length rule tripped, which reddened main on a change that
+            # cannot affect how long a sentence the model writes.
+            #
+            # The founder was shown MDR-14's answer to the identical symptom
+            # -- it went report-only in 2026-09-14 rather than moving its
+            # line -- and the risk that 155 is the highest value SEEN rather
+            # than a bound, and chose to keep the cap gating at the raised
+            # number. Recorded so the next person reads a decision, not an
+            # arbitrary constant.
+            "max_answer_chars": 155,  # bridge-not-dump one-liner
         },
     ),
 ]
