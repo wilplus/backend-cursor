@@ -80,9 +80,41 @@ def can_reveal_acoustic_features(rows: Any, *, requested: bool) -> bool:
 def redact_contextual_snippets(snippets: Any) -> list[dict]:
     """Allowlist the blind evidence packet while the pass is incomplete.
 
-    The full rows contain slide mapping, analytics, ranks, and user-facing
-    draft state.  Returning an allowlist rather than popping known keys makes
-    a future contextual field private by default.
+    The full rows contain analytics, ranks, and user-facing draft state.
+    Returning an allowlist rather than popping known keys makes a future
+    contextual field private by default.
+
+    TWO FIELDS WERE ADDED TO THIS ALLOWLIST ON 2026-09-24, both by explicit
+    founder ruling, and both are widenings of what a blind rater may see. They
+    are listed here rather than only at their keys because adding to this list
+    is the only way context reaches a blind screen, and a reader who does not
+    know that will not know what they are looking at.
+
+    ``slide`` — FOUNDER OVERRIDE OF THE BLIND-COACH FENCE. "I want as a coach
+    to see the slide at the top; to know on which slide they are talking
+    about." Until now the confidence label was collected from the voice alone,
+    which is what this module's own first sentence describes and what the
+    frontend's structural early return enforces. It no longer is. The founder
+    was shown the fence, shown the compliant alternative (reveal the slide on
+    the answer, as the transcript already does), and chose the override
+    deliberately; only the founder can move that fence, so this is the one
+    change that could not be made any other way.
+
+    WHAT THE OVERRIDE COSTS, AND WHAT PAYS FOR IT. The instrument changed
+    mid-collection: every label before today was voice-only and every label
+    after it is voice-plus-slide, and once stored the two are
+    indistinguishable — the same defect ``saw_model_output`` exists to prevent
+    for the machine read. So the rating write now stamps ``saw_slide`` the same
+    way, server-supplied and defaulting to blind. The corpus can then separate
+    the two instruments instead of silently mixing them. Do not remove that
+    stamp while this key is on the list.
+
+    ``bookmarked`` — whether the user met this moment as a bookmark. A bare
+    boolean and nothing else: no tier, no colour, no band, no ordering. The
+    coach learns that the moment was surfaced, never what the machine thought
+    of it, which is the line AC-9 draws. Founder ruling the same day, taken
+    with the signal named out loud: the coach's answer is only comparable to
+    the user's if both are about the same moments.
     """
     out: list[dict] = []
     for row in (snippets or []):
@@ -99,6 +131,11 @@ def redact_contextual_snippets(snippets: Any) -> list[dict]:
             "audio_ref": row.get("audio_ref"),
             "start_offset_ms": row.get("start_offset_ms"),
             "duration_ms": row.get("duration_ms"),
+            # Founder override, 2026-09-24 — see this function's docstring.
+            # Paired with the `saw_slide` stamp on the rating write.
+            "slide": row.get("slide"),
+            # A bare boolean: surfaced to the user, or not. Never the tier.
+            "bookmarked": bool(row.get("bookmarked")),
             "coach_state": {
                 "note": "",
                 "tag": None,

@@ -11242,6 +11242,12 @@ class DatabaseService:
             "question_id": row.get("question_id"),
             "question_version": row.get("question_version"),
             "saw_model_output": bool(row.get("saw_model_output")),
+            # Paired with saw_model_output and written the same way: what the
+            # rater could see when they answered (founder 2026-09-24 put the
+            # slide on the coach's blind screen). It is a STAMP, so it joins
+            # the ledger-column retry below rather than being allowed to take
+            # a rating down with it — see that handler for why.
+            "saw_slide": bool(row.get("saw_slide")),
             "latency_ms": row.get("latency_ms"),
             "note": row.get("note"),
             "lane": lane,
@@ -11293,15 +11299,27 @@ class DatabaseService:
             # irreplaceable half; the provenance stamps are re-derivable
             # (machine_value from the stored acoustic read, self_report from
             # ownership). Dropping the answer to protect a stamp is backwards.
-            if ("machine_value" in err_low or "self_report" in err_low) and (
+            if ("machine_value" in err_low or "self_report" in err_low
+                    or "saw_slide" in err_low) and (
                     "column" in err_low or "pgrst204" in err_low):
                 logger.warning(
                     "upsert_state_rating: ledger columns missing (run "
-                    "migrations/add_label_quorum_ledger.sql) — retrying "
+                    "migrations/add_label_quorum_ledger.sql or "
+                    "the_rater_says_what_they_could_see.sql) — retrying "
                     "without them snip=%s", snippet_id,
                 )
                 payload.pop("machine_value", None)
                 payload.pop("self_report", None)
+                # `saw_slide` arrived 2026-09-24 with the founder's override of
+                # the blind-coach fence. Same rule as its neighbours and for
+                # the same reason: the migration lands on web boot, so a worker
+                # or cron container legitimately runs this code against the
+                # older schema for a few seconds. The human answer is the
+                # irreplaceable half. What IS lost on that path is the ability
+                # to tell which instrument collected the row, so the retry is
+                # logged loudly rather than silently — a run of these means the
+                # migration has not landed and the corpus is mixing.
+                payload.pop("saw_slide", None)
                 try:
                     (self.client.table("confidence_labels")
                          .upsert(payload,
@@ -11376,6 +11394,10 @@ class DatabaseService:
                 "question_id": payload.get("question_id"),
                 "question_version": payload.get("question_version"),
                 "saw_model_output": bool(payload.get("saw_model_output")),
+                # Same stamp, same reason: the revision is the only record of
+                # what the upsert replaced, so it must say which instrument
+                # collected the row it is shadowing.
+                "saw_slide": bool(payload.get("saw_slide")),
                 "latency_ms": payload.get("latency_ms"),
                 "session_id": payload.get("session_id"),
                 "model_version_at_time": payload.get("model_version_at_time"),
