@@ -8656,7 +8656,7 @@ class DatabaseService:
         self, *, arc_id: str, user_id: str, part_id: str,
         phrase: Optional[str], start: Optional[int], end: Optional[int],
     ) -> bool:
-        """Set/skip the exact orange root on one currently locked part."""
+        """Set/skip the exact orange root on one part, locked or not."""
         if not arc_id or not user_id or not part_id:
             return False
         try:
@@ -8666,7 +8666,25 @@ class DatabaseService:
                     .eq("arc_id", str(arc_id))
                     .eq("user_id", str(user_id))
                     .limit(1).execute().data) or []
-            if not rows or not rows[0].get("locked_at"):
+            # THE LOCK IS NOT A PRECONDITION FOR THE PHRASE (founder
+            # 2026-09-24). This required `locked_at`, and the route above it
+            # refused an unlocked part with 409 PART_NOT_LOCKED, because the
+            # phrase was once stored BY the lock. The ladder stopped working
+            # that way in #442: the emphasis step saves on the step that chose
+            # the words, and on "No", "Not sure" and "Audio unclear" the Lock
+            # step is not built at all — "Just save the rooting phrases orange,
+            # but do not let them lock that text." A precondition the speaker
+            # cannot reach is not a guard but a dead end, and until this change
+            # EVERY first-pass emphasis save answered 409 and showed an error.
+            #
+            # Nothing downstream loosens. The `ideal_text_part_root_span` CHECK
+            # never tied a root to `locked_at`, so no migration is involved,
+            # and `project_recording_roots` still yields locked roots only — an
+            # unlocked phrase is recorded but not yet eligible, which is the
+            # versioning the founder described: "if you record and see the
+            # rooting phrases and say things before not locking it, it will be
+            # gone, cause the new text will replace it."
+            if not rows:
                 return False
             text = str(rows[0].get("text") or "")
             now = datetime.now(timezone.utc).isoformat()

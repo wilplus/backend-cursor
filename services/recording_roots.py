@@ -58,7 +58,15 @@ def project_recording_roots(
         if not phrase:
             continue
         if not live.get("locked"):
-            raise RecordingRootsStale("RECORDING_ROOTS_UNLOCKED_ROOT")
+            # NOT YET ELIGIBLE, NOT A STALE DOCUMENT. Since the emphasis step
+            # saves on the step that chose the words (founder 2026-09-24), an
+            # unlocked paragraph legitimately carries a phrase. This used to
+            # raise RECORDING_ROOTS_UNLOCKED_ROOT, which failed the WHOLE
+            # projection with a 409: one unlocked phrase and every root on the
+            # project vanished from the read. Skipping keeps the promise this
+            # function makes — locked roots only — without letting an ordinary
+            # product state present as a corrupted document.
+            continue
         if (
             not isinstance(start, int)
             or isinstance(start, bool)
