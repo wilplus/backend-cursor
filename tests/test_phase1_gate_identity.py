@@ -124,3 +124,134 @@ def test_request_user_id_prefers_what_a_decorator_already_resolved(
         assert gate_module._request_user_id() == "from-token"
     with app_module.app.test_request_context("/v2/projects"):
         assert gate_module._request_user_id() is None
+
+
+class _RecordingClient:
+    """The database as these two calls actually see it.
+
+    `resolve_acquisition_principal` makes exactly two reads — a
+    `processing_recording_attempts` lookup and the resolver RPC — and B-11 is
+    about WHETHER it makes them, so the double records what was asked rather
+    than only what came back.
+    """
+
+    def __init__(self, *, resolved: str | None, attempt: str | None = None):
+        self._resolved = resolved
+        self._attempt = attempt
+        self.rpcs: list[tuple[str, dict]] = []
+        self.tables: list[str] = []
+
+    # -- table(...).select(...).eq(...).limit(...).execute() ---------------
+    def table(self, name):
+        self.tables.append(name)
+        return self
+
+    def select(self, *_a, **_k):
+        return self
+
+    def eq(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def rpc(self, name, args):
+        self.rpcs.append((name, dict(args)))
+        return _Deferred(_Result(self._resolved))
+
+    def execute(self):
+        return _Result(
+            [{"acquisition_principal_id": self._attempt}]
+            if self._attempt else []
+        )
+
+
+class _Deferred:
+    def __init__(self, result):
+        self._result = result
+
+    def execute(self):
+        return self._result
+
+
+class _Result:
+    def __init__(self, data):
+        self.data = data
+
+
+class _Database:
+    def __init__(self, client):
+        self.client = client
+
+
+GUEST = "11111111-1111-1111-1111-111111111111"
+ACCOUNT = "22222222-2222-2222-2222-222222222222"
+USER = "33333333-3333-3333-3333-333333333333"
+
+
+def test_resolution_is_mode_independent():
+    """B-11 (audit 2026-09-22). The named regression test.
+
+    `resolve_acquisition_principal` used to return the product owner
+    unchanged whenever the gate was off, before either read. So one human's
+    acquisition identity depended on which mode was deployed when they tapped
+    Agree: a guest accepting in `off` mode got a receipt on the guest
+    principal, was asked again after signing up because the off-mode resolver
+    ignored the claim, and ended up with two receipts on two principals for
+    one acquisition. Switching the gate to `enforce` later made the resolver
+    prefer the guest — so the account's receipt became orphaned evidence.
+
+    Acquisition identity is a fact about the past. Both modes must read it.
+    """
+    answers = {}
+    for mode in ("off", "enforce"):
+        client = _RecordingClient(resolved=GUEST)
+        service = ProcessingAuthorizationService(_Database(client), mode=mode)
+        answers[mode] = service.resolve_acquisition_principal(
+            ACCOUNT, user_id=USER
+        )
+        assert client.rpcs == [(
+            "resolve_phase1_acquisition_principal_v1",
+            {"p_product_owner_principal_id": ACCOUNT, "p_user_id": USER},
+        )], f"the {mode} gate did not ask the database who acquired this"
+
+    assert answers["off"] == answers["enforce"] == GUEST
+
+
+def test_the_attempt_row_still_wins_in_both_modes():
+    """The recording's own acquisition record outranks the claim graph, and
+    did so only in `enforce` mode before."""
+    for mode in ("off", "enforce"):
+        client = _RecordingClient(resolved=GUEST, attempt=ACCOUNT)
+        service = ProcessingAuthorizationService(_Database(client), mode=mode)
+
+        assert service.resolve_acquisition_principal(
+            ACCOUNT, user_id=USER, recording_id="rec-1") == ACCOUNT
+        assert client.tables == ["processing_recording_attempts"]
+        assert client.rpcs == [], (
+            "the attempt row answered and the resolver was asked anyway")
+
+
+def test_an_unresolvable_principal_refuses_only_where_the_gate_is_on():
+    """What the mode still decides.
+
+    Reading is mode-independent; the disposition of a failure is not.
+    `enforce` refuses, because processing without a resolved acquirer is the
+    thing the gate exists to stop. `off` degrades to the product owner it
+    would have returned anyway — a gate that is off may not start failing
+    requests for the state it was off for.
+    """
+    from services.processing_authorization import ProcessingAuthorizationError
+
+    service_off = ProcessingAuthorizationService(
+        _Database(_RecordingClient(resolved=None)), mode="off"
+    )
+    assert service_off.resolve_acquisition_principal(
+        ACCOUNT, user_id=USER) == ACCOUNT
+
+    service_on = ProcessingAuthorizationService(
+        _Database(_RecordingClient(resolved=None)), mode="enforce"
+    )
+    with pytest.raises(ProcessingAuthorizationError) as raised:
+        service_on.resolve_acquisition_principal(ACCOUNT, user_id=USER)
+    assert raised.value.code == "PROCESSING_PRINCIPAL_UNRESOLVED"
