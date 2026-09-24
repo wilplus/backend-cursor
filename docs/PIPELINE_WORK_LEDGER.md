@@ -844,3 +844,144 @@ as an unexpected entry. Worth the extra line: that regression is silent, since
 every acceptance would keep succeeding while every optional yes was dropped.
 Rehearsal tier was GREEN across all ten lanes on the same run; only the unit
 tier failed.
+
+### 2026-09-23 · WS0 · claude/dazzling-johnson-excc8e · #(pending)
+
+**Closed:** none (coach authoring, founder-directed)
+**Contract lines flipped:** none
+**Contract lines added:** `TheAvatarTick` in
+`tests/test_diagnostic_exercise_catalogue.py`
+**Broke and fixed:** one test asserted the rule this change reverses — see below
+**Open for the founder:** migration 0353 runs on the next container start
+(`MIGRATE_ON_BOOT=1`). It only RELAXES a constraint and adds two nullable-ish
+columns, so no existing row becomes invalid and nothing is rewritten.
+
+**What changed, in one line.** An exercise no longer needs a journal post to go
+live, and it can say it is usable for a future avatar.
+
+**THE SERVE-TIME GATE WAS THE REAL WORK, and it is the thing to remember.**
+Relaxing the database CHECK and the authoring refusal is the obvious half.
+`db.get_active_diagnostic_exercise` then still read
+
+    if not row or not row.get("journal_post_id") ...: return None
+
+so a post-less exercise would have saved, reported itself active, and been
+served to nobody. That is exactly the outcome the founder rejected when he was
+offered it as an option ("saved but never offered"). Three places had to agree
+before the decision meant anything: the CHECK, the authoring refusal, and the
+read. If you relax a rule here, grep for every place that re-asserts it.
+
+**What did NOT change.** A post that IS attached must still be published before
+the exercise switches on. Half-linking an exercise to a draft would show a
+learner a dead address, which is worse than showing them none.
+
+**The avatar pair, and why it is a pair.** `avatar_training_eligible` plus
+`avatar_setup_label`, with a CHECK refusing the flag without the label. The
+flag records something PERISHABLE — only the person in the room at record time
+knows whether the shirt, angle and light matched, and it cannot be recovered
+from the file afterwards, which is the whole argument for storing it now for a
+product that does not exist. But a bare boolean says only that ONE clip was
+shot carefully; it cannot say two clips MATCH, and matching each other is the
+entire requirement of a training set. The label is what makes the flag pay.
+
+**Nothing reads the new columns** — founder's decision: remember only. There is
+a partial index on `(avatar_setup_label) WHERE avatar_training_eligible` so the
+one query this exists to enable is cheap the day something wants it.
+
+**Two things that cost time.** The migration filename must NOT carry its number
+— the manifest owns that, and `0353_name.sql` failed both manifest-integrity
+tests. And the rehearsal tier is not opt-in when the change needs it: touching
+`migrations/manifest.txt` triggered 388 PostgreSQL tests automatically, which
+is why this run took ~20 minutes rather than 5. Budget for it.
+
+### 2026-09-24 · CORRECTION · 0353 was claimed twice · b4-deletion-reaches-practice · #618
+
+`#629` merged to `main` on 2026-09-23 and took migration number **0353** for
+`an_exercise_can_live_without_a_post.sql`. This branch had already numbered
+`deletion_reaches_practice_objects.sql` 0353, so the two collided and GitHub
+reported `#618` un-mergeable.
+
+Resolved by merging `origin/main` into this branch and renumbering ours to
+**0354**, behind main's 0353. The file itself is unchanged — the number lives
+only in `migrations/manifest.txt`, so nothing about the migration's content or
+its twice-clean apply is affected. The ledger conflict was resolved by keeping
+both entries; neither side's was rewritten.
+
+The same collision will recur on each of the four branches stacked above this
+one, since each carries this migration. Each is being re-based and re-gated in
+turn rather than merged on stale evidence.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · CORRECTION · the 0353 collision cascades · b2-b3-acquisition-principal · #619
+
+`#629` took 0353 on `main`, so `#618` renumbered its migration to 0354 and the
+same collision reaches every branch stacked above it. This branch resolves it
+by merging `origin/main` and taking **0355** for
+`authorization_binds_to_acquirer.sql`.
+
+**Also corrects an oversight in #618.** When I renumbered
+`deletion_reaches_practice_objects.sql` to 0354 I updated
+`migrations/manifest.txt` but not the `-- 0353 ·` header comment inside the
+file itself, so that file landed on `main` naming a number it no longer holds.
+Its header is corrected to 0354 here. The manifest, not the comment, is what
+the runner reads, so nothing behaved wrongly — but a migration whose first line
+misstates its own number is exactly the kind of small lie that costs an hour
+later.
+
+Two rehearsal-script conflicts were resolved in favour of this branch: our
+`scripts/rehearsal_tier.sh` line is a superset of main's (it adds
+`tests/test_phase1_processing_postgres.py` to the released lane), and
+`tests/integration/confident_moment_rehearsal.sh` carries a migration block
+main does not have. The `# 0354 replaces` comment in that block was corrected
+to `# 0355`. The ledger conflict kept both sides.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · CORRECTION · the cascade, round three · r2-speaker-identity · #621
+
+`speaker_identity_the_table_accepts.sql` takes **0356**, behind main's 0353
+(`#629`), 0354 (`#618`) and 0355 (`#619`).
+
+**A second oversight corrected, of the same shape as the first.** On `#619` I
+fixed the stale header inside `deletion_reaches_practice_objects.sql` but did
+not look for the migration's number anywhere else. It appears in
+`tests/integration/confident_moment_rehearsal.sh`, where each applied block
+carries a `# 03NN replaces …` comment explaining its ordering. Two of those
+three comments were stale on `main`. All three are corrected here, and they
+were rewritten by matching the DESCRIPTION rather than the number, so a wrong
+starting value could not be carried forward.
+
+The lesson, recorded because it will recur: renumbering a migration is not one
+edit. The number lives in `migrations/manifest.txt`, in the migration's own
+header, and in any lane comment that explains its ordering. `manifest.txt` is
+the only one the runner reads; the other two are what a person reads at 2am.
+
+The two already-merged migration files conflicted only on their header lines
+and were resolved in favour of `main`, which now holds the corrected values.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · CORRECTION · my own resolver was wrong · p11b-optional-consent · #625
+
+`a_receipt_can_record_an_optional_yes.sql` takes **0357**.
+
+**A defect in how I was resolving these, caught here and worth recording.** The
+script I used to resolve each merge matched the FIRST conflict hunk in a file
+and stopped. On the earlier branches each file had exactly one hunk, so it was
+right by luck. This file had four. The result was one hunk resolved to the
+WRONG side (keeping this branch's pre-renumber comment over main's corrected
+one) and three left with `<<<<<<<` markers still in the file.
+
+`origin/main` was checked immediately and is clean — nothing broken was
+merged, and the rehearsal tier would have caught it anyway, since it executes
+this exact script. But it was caught by reading the file, not by the gate, and
+a resolver that is right by luck is not right.
+
+Both shell scripts were redone by taking main's version and re-applying this
+branch's additions on top, rather than taking "ours" wholesale: ours carries
+the pre-renumber comments, so wholesale is exactly how a stale number survives
+a merge that was supposed to fix it. The new fixture block is numbered 0357,
+and the released lane gains `tests/test_optional_consent_postgres.py`.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

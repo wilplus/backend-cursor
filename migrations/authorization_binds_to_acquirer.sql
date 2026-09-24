@@ -1,4 +1,4 @@
--- 0354 · Authorization binds to the principal that actually acquired the audio.
+-- 0355 · Authorization binds to the principal that actually acquired the audio.
 --
 -- B-2 and B-3 (major) from the ML provenance audit of 2026-09-22, plus the
 -- app-side half of B-11, which ships in services/processing_authorization.py.
