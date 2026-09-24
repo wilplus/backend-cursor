@@ -10,11 +10,10 @@ _NAMESPACE = uuid.UUID("c0af92c8-758e-4c31-9c6e-f6d36bd52395")
 
 _COPY = {
     1: (
-        "Your first talk track is ready.\n\n"
-        "We’ve seen what already works and where the message needs more clarity. "
-        "Now let’s focus on how it sounds and lands.\n\n"
-        "Use the orange-marked text as your anchors - not a script - and try "
-        "to speak as to a friend."
+        "We have successfully registered your first take 🎉\n\n"
+        "You have recorded some of the helper words and recognized your "
+        "confident moments.\n\n"
+        "Use the helper words and record the second take of your presentation ⬇️"
     ),
     2: (
         "Your presentation is stronger now.\n\n"

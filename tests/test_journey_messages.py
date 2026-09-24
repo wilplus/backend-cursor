@@ -24,7 +24,12 @@ class JourneyMessageTests(unittest.TestCase):
     def test_take_one_copy_and_action_are_locked(self):
         row = journey_message("u1", "a1", 1)
         self.assertEqual(row["kind"], "cadence")
-        self.assertTrue(row["body"].startswith("Your first talk track is ready."))
+        self.assertEqual(row["body"].split("\n\n"), [
+            "We have successfully registered your first take 🎉",
+            "You have recorded some of the helper words and recognized your "
+            "confident moments.",
+            "Use the helper words and record the second take of your presentation ⬇️",
+        ])
         self.assertEqual(row["metadata"]["actions"], ["prepare_take_2"])
 
     def test_take_three_has_completion_actions(self):
