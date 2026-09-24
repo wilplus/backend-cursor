@@ -12949,6 +12949,36 @@ class DatabaseService:
             logger.warning("get_lounge_message_by_client_id failed: %s", e)
             return None
 
+    def delete_lounge_message_by_client_id(
+        self, user_id: str, client_id: str,
+    ) -> bool:
+        """Retract ONE owner-scoped Lounge row by its idempotency key.
+
+        The narrow counterpart to the user-initiated thread clear below. It
+        removes a single card that a later, stronger read of the database
+        proved untrue -- today only the Ideal Text failure card, whose
+        client_id is the Take's session UUID. Deliberately not a general
+        moderation tool: the same idempotent upsert recreates the row if the
+        failure it describes turns out to be real after all.
+        """
+        if not user_id or not client_id:
+            return False
+        try:
+            (
+                self.client.table("lounge_messages")
+                .delete()
+                .eq("user_id", user_id)
+                .eq("client_id", client_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "delete_lounge_message_by_client_id failed user=%s cid=%s "
+                "err=%s", user_id, client_id, e,
+            )
+            return False
+
     def delete_lounge_messages_for_user(self, user_id: str) -> bool:
         """Delete the entire Lounge thread for a user (BE contract
         §3.14 — user-deletable privacy commitment). Account deletion

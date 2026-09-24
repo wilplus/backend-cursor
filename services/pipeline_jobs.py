@@ -841,6 +841,23 @@ def _run_ideal_text_retry(job: Dict[str, Any]) -> Dict[str, Any]:
         ProviderCoordinates(principal_id, session_id, recording_id),
         authorization=authorization,
     )
+    user_id = payload.get("user_id") or job.get("user_id")
+
+    def _withdraw_failure(_row: Any = None) -> Any:
+        """The retry's whole purpose: this Take's failure is over.
+
+        Clearing the terminal state was never enough -- the Lounge card
+        outlived it and kept telling the speaker the document could not be
+        created (founder 2026-09-24). Also used as the late-confirmation
+        hook, for a document that lands after this attempt's own deadline.
+        """
+        from services.ideal_text_confirmation import (
+            resolve_ideal_text_unconfirmed,
+        )
+        return resolve_ideal_text_unconfirmed(
+            db, session_id=session_id, user_id=user_id, arc_id=arc_id,
+        )
+
     with protected_provider_scope(
         adapter,
         idempotency_prefix=f"ideal-text-retry:{job_id}:{job.get('attempts') or 1}",
@@ -850,8 +867,9 @@ def _run_ideal_text_retry(job: Dict[str, Any]) -> Dict[str, Any]:
             arc_id,
             source_session_id=session_id,
             include_suggestion_anchors=True,
+            on_late_confirmation=_withdraw_failure,
         )
-    user_id = payload.get("user_id") or job.get("user_id")
+    _withdraw_failure()
     if user_id:
         try:
             from services.arc_notifications import fire_ideal_version_ready

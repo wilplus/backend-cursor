@@ -310,10 +310,39 @@ def _run_full_analysis_impl(
                       "Preparing your speaking anchors…")
                 tl.mark("speaking_anchors")
                 if _initial_take:
+                    def _late_ideal_text(_row: dict) -> None:
+                        """The document landed after the deadline gave up.
+
+                        The 120 seconds bounds this thread's wait, not the
+                        generation, so a document can be persisted moments
+                        after the terminal state was written. It is then
+                        simply not true that we could not create it, and the
+                        card saying so has to go (founder 2026-09-24).
+                        """
+                        from services.ideal_text_confirmation import (
+                            resolve_ideal_text_unconfirmed,
+                        )
+                        if not resolve_ideal_text_unconfirmed(
+                            db,
+                            session_id=session_id,
+                            user_id=user_id,
+                            arc_id=arc_id,
+                        ):
+                            return
+                        if not user_id:
+                            return
+                        from services.arc_notifications import (
+                            fire_ideal_version_ready,
+                        )
+                        fire_ideal_version_ready(
+                            db, user_id, arc_id, _row.get("version") or 1)
+
                     # The helper assembles solely from the transcript/snippet
                     # artifacts already persisted above, then polls the source
                     # row for at most 120 seconds. Its typed timeout escapes
-                    # this block and becomes the dedicated terminal state.
+                    # this block and becomes the dedicated terminal state --
+                    # unless the document lands late, which the callback above
+                    # turns back into the success it actually is.
                     _confirmed_row = \
                         build_initial_ideal_text_from_stored_artifacts(
                             db,
@@ -322,6 +351,7 @@ def _run_full_analysis_impl(
                             include_suggestion_anchors=(
                                 _moment_suggestions_enabled()),
                             degradation=_deg,
+                            on_late_confirmation=_late_ideal_text,
                         )
                 if _confirmed_row is not None and user_id:
                     from services.arc_notifications import (
