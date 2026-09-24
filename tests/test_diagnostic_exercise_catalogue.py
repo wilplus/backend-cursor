@@ -177,10 +177,24 @@ class CatalogueTests(unittest.TestCase):
             with self.assertRaises(CatalogueRefusal):
                 self.save(_Db(), explanation_video_url=bad)
 
-    def test_the_words_are_required(self):
-        for key in ("title", "instruction", "introduction_copy"):
-            with self.assertRaises(CatalogueRefusal):
-                self.save(_Db(), **{key: "  "})
+    def test_a_name_is_required(self):
+        # The one piece of text that still blocks a save. Without it the
+        # catalogue has a row nothing can refer to.
+        with self.assertRaises(CatalogueRefusal):
+            self.save(_Db(), title="  ")
+
+    def test_the_words_are_optional(self):
+        """Founder 2026-09-24, on the CMS lane's "The words" step: "that is
+        not obligatory!"
+
+        A video is required and always was, so what this allows is an exercise
+        that DEMONSTRATES rather than describes — the shape the speaker's
+        screen already takes, with the coach's recording first and the words
+        underneath. Blank is stored as "" rather than NULL, so a later save
+        that fills them in is an ordinary update."""
+        for key in ("instruction", "introduction_copy"):
+            saved = self.save(_Db(), **{key: "  "})
+            self.assertEqual(saved[key], "")
 
     def test_confidence_patterns_default_to_all_three(self):
         saved = self.save(_Db())

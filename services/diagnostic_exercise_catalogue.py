@@ -47,9 +47,19 @@ _URL = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 
 _REQUIRED_TEXT = (
     ("title", "a name"),
-    ("instruction", "what the speaker should do"),
-    ("introduction_copy", "the line the speaker sees first"),
 )
+
+# THE WORDS ARE OPTIONAL (founder 2026-09-24, on the CMS lane's "The words"
+# step: "that is not obligatory!").
+#
+# A video is still required and always was, so what this allows is an exercise
+# that demonstrates rather than describes — which is the shape the speaker's
+# screen already takes: the coach's recording first, the instruction underneath
+# it. An empty instruction now draws no box there rather than an empty one.
+#
+# They are stored as "" rather than NULL so nothing depends on the columns'
+# nullability, and a later save that fills them in is an ordinary update.
+_OPTIONAL_TEXT = ("instruction", "introduction_copy")
 
 DEFAULT_MATCHING_CRITERIA = {
     "requires_multiple_acoustic_signals": True,
@@ -130,6 +140,8 @@ def _identity(fields: dict) -> dict:
         if not value:
             raise CatalogueRefusal(f"{key}: give it {what}")
         row[key] = value
+    for key in _OPTIONAL_TEXT:
+        row[key] = str(fields.get(key) or "").strip()
     confident = str(fields.get("confident_introduction_copy") or "").strip()
     row["confident_introduction_copy"] = confident if confident else None
     return row
