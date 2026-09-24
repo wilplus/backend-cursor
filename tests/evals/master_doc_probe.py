@@ -371,20 +371,28 @@ CASES: list[Case] = [
         user_message="can I see my training?",
         rubric={
             "must_set_suggested_action": "trainings",
-            # Raised 140 -> 155 (founder decision, 2026-09-24). The answer
+            # Report-only (founder decision, 2026-09-24), the same answer
+            # MDR-14 reached on 2026-09-14 for the same symptom. The answer
             # lands just over 140 on roughly every other run: 155 chars on
-            # #638's first run, then a pass on the SAME commit, then 152 on
-            # main after the merge. Routing was correct in all three; only
-            # the length rule tripped, which reddened main on a change that
-            # cannot affect how long a sentence the model writes.
+            # #638's first run, a pass on the SAME commit, then 152 on main
+            # after the merge. Routing was correct every time -- only the
+            # length rule tripped, reddening main on a change that cannot
+            # affect how long a sentence the model writes.
             #
-            # The founder was shown MDR-14's answer to the identical symptom
-            # -- it went report-only in 2026-09-14 rather than moving its
-            # line -- and the risk that 155 is the highest value SEEN rather
-            # than a bound, and chose to keep the cap gating at the raised
-            # number. Recorded so the next person reads a decision, not an
-            # arbitrary constant.
-            "max_answer_chars": 155,  # bridge-not-dump one-liner
+            # The cap was first raised 140 -> 155 (#640). That held for two
+            # runs but could not hold in general: the grader fails on
+            # `len(answer) > max_chars`, and 155 was the highest value SEEN
+            # across two failing samples rather than a ceiling, so a
+            # 156-char answer would have reddened the build again. Shown
+            # that, the founder moved it here.
+            #
+            # The length is still measured and printed on every run; it no
+            # longer decides the exit code. Runaway answers are still caught:
+            # with no `max_answer_chars` of its own the case falls back to
+            # _DEFAULT_MAX_ANSWER_CHARS (1500), which is a real guard rather
+            # than a flapping one. The routing assertion is untouched and
+            # still fails the build.
+            "report_only_max_answer_chars": 155,  # bridge-not-dump one-liner
         },
     ),
 ]
