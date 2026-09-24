@@ -91,10 +91,31 @@ class ProcessingAuthorizationService:
         self, product_owner_principal_id: str, *, user_id: str | None = None,
         recording_id: str | None = None,
     ) -> str:
-        """Resolve immutable acquisition identity without rewriting evidence."""
+        """Resolve immutable acquisition identity without rewriting evidence.
+
+        B-11 (audit 2026-09-22). This used to return the product owner
+        unchanged whenever the gate was off, and that made one human's
+        acquisition identity depend on which mode happened to be active when
+        they tapped Agree. A guest accepts in `off` mode, so the receipt is
+        written against whatever principal they own at that moment; they sign
+        up, the claim moves product ownership to the account principal, and
+        the client — still in `off` mode — resolves to the account, sees no
+        authorization, and asks the same person to accept a second time. Flip
+        the gate to `enforce` later and the resolver now prefers the guest
+        principal, so processing is judged against the guest's receipt while
+        the account's receipt is orphaned evidence that
+        `export_authorization_evidence` reports and nothing else honours. One
+        person, two acquisition principals, decided by a deployment setting.
+
+        Acquisition identity is a fact about the past. It cannot depend on a
+        runtime mode, so the resolution below is the same in both. What the
+        mode still decides is what to do when the answer cannot be computed:
+        `enforce` refuses, because processing without a resolved acquirer is
+        the thing the gate exists to stop, while `off` degrades to the product
+        owner it would have returned anyway. A gate that is off may not start
+        failing requests for the state it was off for.
+        """
         owner_id = str(product_owner_principal_id or "")
-        if not self.enforced:
-            return owner_id
         if recording_id:
             try:
                 result = (
@@ -122,11 +143,15 @@ class ProcessingAuthorizationService:
             if value:
                 return str(value)
         except Exception as error:
+            if not self.enforced:
+                return owner_id
             raise ProcessingAuthorizationError(
                 "PROCESSING_PRINCIPAL_UNRESOLVED",
                 "The acquisition principal could not be resolved.",
                 503,
             ) from error
+        if not self.enforced:
+            return owner_id
         raise ProcessingAuthorizationError(
             "PROCESSING_PRINCIPAL_UNRESOLVED",
             "The acquisition principal could not be resolved.",

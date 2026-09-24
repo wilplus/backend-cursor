@@ -390,3 +390,4 @@
 0352	guard_runtime_config_model_keys.sql
 0353	an_exercise_can_live_without_a_post.sql
 0354	deletion_reaches_practice_objects.sql
+0355	authorization_binds_to_acquirer.sql
