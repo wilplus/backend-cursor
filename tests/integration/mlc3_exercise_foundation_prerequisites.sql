@@ -262,7 +262,10 @@ $$;
 CREATE TABLE public.confident_voice_practice (
     id UUID PRIMARY KEY,
     owner_user_id UUID NOT NULL,
-    take_session_id UUID NOT NULL
+    take_session_id UUID NOT NULL,
+    -- Released; the narrow copy omitted it because nothing here read it.
+    -- Migration 0334 indexes it for the practice retention sweep.
+    closed_at TIMESTAMPTZ NULL
 );
 CREATE TABLE public.confident_voice_practice_attempt (
     id UUID PRIMARY KEY,

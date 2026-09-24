@@ -1,10 +1,52 @@
 # Decisions log — settled in review, not yet folded into SPEC.md
 
-**Last updated:** 2026-08-29.
+**Last updated:** 2026-09-22.
 
 **Purpose:** everything agreed after SPEC.md v3 was committed. This file exists so a long
 review session survives itself. Entries here are **binding** and get folded into the numbered
 sections on the next spec pass. Where this file and SPEC.md v3 disagree, **this file is newer.**
+
+## 2026-09-22 · Article 50(2) and the plain-text clipboard — SETTLED
+
+**Founder decision, 2026-09-22: do not go further than the obligation
+requires. The `text/plain` clipboard flavour carries no marker line.**
+
+This closes the open item recorded in
+`legal/phase1-2026.1/03-article-50-assessment-v1.0` §3, where the written
+assessment and `docs/AI-CONTENT-MARKING-PROPOSAL.md` §3 disagreed and the
+implementation had taken one side without the disagreement being resolved.
+
+**What was decided.** The rich-text (`text/html`) flavour keeps its marking.
+The plain-text flavour ships unmarked, as it does today. No visible trailing
+line, and — unchanged and never in question — no zero-width encoding.
+
+**On what basis.** §3 assesses Article 50(2) as **MET as of 2026-09-19**, and
+rests that on a boundary: the obligation is on the provider to mark what the
+AI system produces, and a user copying text out is the user's own act. §3's own
+list of what then goes unmarked is "the `text/plain` clipboard flavour, a
+screenshot, and retyping" — one category, of which only the first could ever
+be marked at all. A rule that followed generated text through a screenshot
+would bind no provider of generated text anywhere.
+
+**What this does NOT settle**, and §3 is explicit that it cannot: *"counsel
+confirms whether html-only satisfies 50(2) for the clipboard at all."* That
+question is open under every option and is not the founder's to close. If
+counsel rejects the boundary argument, the trailing line is where this lands,
+and this entry gets a superseding one below it rather than an edit.
+
+**Not folded into the signed document.** `03` was signed at 21:02:08 UTC on
+2026-09-22 with the item recorded as open. Editing its markdown now would
+break the match with the signed PDF — the defect that superseded two earlier
+signature rounds. The decision lives here and in the proposal's status line. A
+`v1.1` of `03` carrying it is a separate, unhurried call.
+
+**Supersedes** the recommendation in `AI-CONTENT-MARKING-PROPOSAL.md` §3
+("option 1 for `text/plain`, plus the HTML flavour"). That document's
+reasoning stands on the record and is not withdrawn; the product does not
+follow it.
+
+**C2PA** (proposal §4) remains the strategic answer and is unaffected. Today's
+choice is a holding position until a signing identity makes it proportionate.
 
 ## 2026-08-29 · PLF-1 onboarding and processing flow
 
@@ -449,3 +491,60 @@ do not activate the policy. Exact Product/legal artifacts, retention/deletion
 readiness, staging proof and explicit production authorization are still
 required. The destructive historical cleanup migration remains outside the
 manifest until separately authorized.
+
+---
+
+## M · Coach review is core to the service (founder 2026-09-23)
+
+**The ruling, verbatim.**
+
+> Coach review is core to the product. A user who refuses to allow a human to
+> listen to their recordings cannot use WillpowerLab. This reverses the
+> assumption in doc 01 §3 and §6, which placed `coach_review` on consent and
+> held it out of v1 because it was treated as optional. Consequence: coach
+> review moves to Art 6(1)(b) contract basis, the Terms must describe it, and
+> the Art 9 element stays separate. Put to counsel 2026-09-23.
+>
+> — Artur Willoński, founder and controller
+
+**M1 · This supersedes doc 01 §3 row 8 and §6.** Document 01 was signed on
+2026-09-19, so those sections are not edited — they stand as the position held
+on that date, and a v1.1 carries the new one. `coach_review` becomes
+Art 6(1)(b) contract, `required_for_core_service TRUE`. The Article 7(4)
+objection that governed the old structure does not reach it: 7(4) is about
+consent, and this is not consent.
+
+**M2 · "Agree or leave" is the intended offer and is lawful for a contract.**
+It is not lawful for consent, which is why the basis is the load-bearing part
+of the ruling rather than a formality.
+
+**M3 · What the ruling does NOT decide, and needs a second ruling of the same
+kind.** `resolve_mlc3_dual_purpose_receipt_v2` gates the MLC-3 general-user
+service on the receipt naming BOTH `coach_review` and
+`personalized_exercise_recommendation`. The ruling settles the first. The
+second is untouched: doc 01 §3 row 9 already places practice on 6(1)(b)
+contract — the BASIS was never in question for it — but §6 held it out of v1,
+and §6's reason (an optional purpose leaves no receipt evidence) is moot for
+anything marked required. So the open question is narrow: **is practice
+capture and comparison part of the service, or optional?** Until that is
+answered, the MLC-3 gate still cannot resolve.
+
+**M4 · The Terms currently describe a different product.**
+`legal/phase1-2026.1/copy/terms-2.0.txt` lists "no coach reviews" for the Free
+and Practice plans. Read beside M1 that is a contradiction, and it is the piece
+counsel will weigh. The reconciliation put to the founder: separate *a human
+may listen* (every plan, part of the service) from *you receive N coach
+reviews* (a tiered deliverable). Not yet confirmed; the Terms are not rewritten
+until it is.
+
+**M5 · Article 9 stays separate and cannot be contract.** One consent element
+therefore remains in the flow. If refusing it also means leaving, Art 7(4)
+applies to that element alone. Doc 01 §3 already offered counsel the
+alternative position — that Article 9 is not engaged at all — and that question
+is now more load-bearing, not less.
+
+**M6 · The optional-consent writer keeps its purpose.** Migration 0356's
+`accept_phase1_processing_authorization_v2` was built for purposes a person can
+decline. After this ruling that is no longer `coach_review`; it is pooled model
+improvement, which must stay declinable and can never ride on a contract. It is
+not retired.

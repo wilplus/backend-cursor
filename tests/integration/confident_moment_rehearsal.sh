@@ -196,6 +196,18 @@ fi
 
 soft tests/integration/mlc3_exercise_foundation_prerequisites.sql
 hard migrations/add_mlc3_exercise_dark_foundation.sql
+
+# B-4 (audit 2026-09-22). THE LANE HAD NO PRACTICE OBJECT TO PURGE, which is
+# why nothing caught that `freeze_phase1_purge_inventory_v4` and
+# `mark_phase1_storage_object_purged_v1` do not accept one. The orchestrator
+# has emitted `source_relation = 'processing_practice_objects'` since 0334;
+# both functions raise on it, so a subject with a single practice recording
+# cannot be purged at all. The narrow practice tables 0334 references are
+# already laid down by the fixture above; the released 0279 that defines them
+# for real is NOT applied here, because it builds diagnostic_exercise first
+# and that references public.journal_post — the whole Journal chain, a surface
+# this lane does not carry and has no reason to.
+hard migrations/add_practice_audio_objects.sql
 soft tests/integration/mlc3_assignment_prerequisites.sql
 hard migrations/add_mlc3_dark_assignment_frames.sql
 soft tests/integration/rpq_restoration_prerequisites.sql
@@ -261,6 +273,20 @@ if [ "$LANE" = "narrow" ]; then
     -c "ALTER TABLE public.ml_speakers ALTER COLUMN identity_version DROP NOT NULL" >>"$log" 2>&1
 fi
 
+# 0354 replaces the two purge writers, so it must land after BOTH of their
+# current definitions: mark_phase1_storage_object_purged_v1 from
+# add_phase1_deletion_completion.sql and freeze_phase1_purge_inventory_v4 from
+# add_mlc3_exercise_dark_foundation.sql. The narrow lane applies the deletion
+# file in the block above, which is why this sits below it rather than beside
+# the practice registry.
+hard migrations/deletion_reaches_practice_objects.sql
+
+# 0355 replaces issue_phase1_provider_permit_v1 and
+# resolve_phase1_acquisition_principal_v1, both from
+# add_phase1_processing_boundary.sql, which the narrow lane also applies in the
+# block above.
+hard migrations/authorization_binds_to_acquirer.sql
+
 hard migrations/add_ideal_text_core_snapshot.sql
 hard migrations/fix_ideal_text_core_pgcrypto_search_path.sql
 hard migrations/add_mlc3_n1_source_pattern_provenance.sql
@@ -274,6 +300,16 @@ hard migrations/add_mlc3_first_client_service_d2.sql
 hard migrations/add_mlc3_coach_inline_exercise_authoring_d5.sql
 hard migrations/add_mlc3_founder_canary_security_closure.sql
 hard migrations/add_mlc3_general_user_service_d4.sql
+# 0356 replaces record_mlc3_self_speaker_target_v1, which the file above
+# defines — so it must land here, not at the end of the chain. The d4 lane is
+# cloned from a checkpoint cut right after this pair, and the suite that
+# exercises the speaker writer runs in that clone.
+hard migrations/speaker_identity_the_table_accepts.sql
+# 0357 adds accept_phase1_processing_authorization_v2 beside v1, which
+# add_phase1_processing_boundary.sql defines and 0335 last replaced.
+hard migrations/a_receipt_can_record_an_optional_yes.sql
+# 0358 replaces get_phase1_processing_authorization_v1, from the boundary file.
+hard migrations/status_knows_a_reacceptance.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.

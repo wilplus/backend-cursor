@@ -13810,13 +13810,22 @@ class DatabaseService:
                    .eq("exercise_id", str(exercise_id))
                    .eq("active", True).limit(1).execute())
             row = (res.data or [None])[0]
-            if not row or not row.get("journal_post_id") \
-                    or not row.get("explanation_video_url"):
+            # THE VIDEO IS THE ONLY REQUIRED ASSET (founder 2026-09-23,
+            # migration 0353). The post used to be required here too, and
+            # leaving that check in place would have made "publish without a
+            # blog post" mean "saved and never served" — the outcome the
+            # founder explicitly rejected. An exercise now stands on its video
+            # and its instruction.
+            if not row or not row.get("explanation_video_url"):
                 return None
-            # A mapping is explicit but its content asset must also be live.
-            post = self.get_journal_post_by_id(str(row["journal_post_id"]))
-            if not post or post.get("status") != "published":
-                return None
+            # A post is optional, but one that IS attached must be live: half-
+            # linking an exercise to a draft would show a learner a dead
+            # address, which is worse than showing them none.
+            post_id = row.get("journal_post_id")
+            if post_id:
+                post = self.get_journal_post_by_id(str(post_id))
+                if not post or post.get("status") != "published":
+                    return None
             return row
         except Exception as e:
             logger.warning("get_active_diagnostic_exercise failed id=%s: %s",

@@ -1,6 +1,15 @@
 # Phase-1 processing policy `phase1-2026.1` — drafting pack
 
-**Status: DRAFT. Nothing here is signed, approved, or registrable as it stands.**
+**Status: partly signed, NOT registrable.** `SIGNED-ARTIFACTS.md` is the single
+authority on which artifacts are signed and what their hashes are — this line
+said "nothing here is signed" long after `01` and `06` were signed on
+2026-09-19, which is exactly the drift that comes of recording the same fact in
+two places. Do not restate signature state here; link to that file.
+
+**Not registrable** remains true and is the load-bearing half: `04` §5 and
+`SIGNED-ARTIFACTS.md` both require all four rows to carry a hash before
+`register_phase1_policy_v1` may be called, and `02` and `03` are blank pending
+re-signature.
 
 This pack is the written material needed to register and activate one Phase-1
 processing policy through `register_phase1_policy_v1` / `activate_phase1_policy_v1`

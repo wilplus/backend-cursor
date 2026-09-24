@@ -543,3 +543,1046 @@ too, which is the case most likely to bite.
 I built the thread half, which has none of this ambiguity and is live on every
 Take, and stopped at the boundary rather than shipping a permit that says
 something untrue.
+
+### 2026-09-23 · P11 · p11-unbundle-the-policy · #(pending)
+
+**Closed:** P11 — the script exists and is verified. It is NOT run; running it
+is the founder's act and it has a cost, below.
+**Contract lines flipped / added:** none. Baseline 17 passed, 1 xfailed (F-4).
+**Broke and fixed:** none.
+**Open for the founder:** one, and it is the whole point of the entry.
+
+**What is live and wrong.** `scripts/phase1_policy_publish.sql` ran in
+production on 2026-09-20 and published all five purposes with
+`lawful_basis_code 'consent'` AND `required_for_core_service TRUE` — including
+coach_review, individual_learning_profile and
+personalized_exercise_recommendation — with an agreement sentence bundling
+coach review into one tick. Doc 01 §3 assesses that exact structure as invalid
+under Art 4(11) and Art 7(4) with Recital 43; §6 says those three were held out
+of v1 for precisely this reason. Zero non-founder users have accepted.
+
+**THE THING P11 ASKED ME TO LOOK FOR, AND I FOUND IT.** Step 1 said: report
+any place the determination and the schema cannot both be satisfied rather
+than picking one. Here it is.
+
+`resolve_mlc3_dual_purpose_receipt_v2` (add_mlc3_general_user_service_d4,
+603-622) gates the ENTIRE MLC-3 general-user service on the receipt carrying
+BOTH `personalized_exercise_recommendation` AND `coach_review`. And
+`accept_phase1_processing_authorization_v1` writes receipt purpose rows only
+`WHERE pp.required_for_core_service` — still true at current main (boundary
+line 692; 0335 kept it at line 152). Doc 01 §6 predicted this in the abstract.
+
+Put together: **the only way MLC-3 works today is if those two purposes are
+marked required — which is the bundling doc 01 calls invalid.** The unlawful
+structure is not a slip in the publish script. The exercise service depends on
+it. That is a harder fact than the audit or doc 01 knew, and it means P11
+cannot be "just run".
+
+**So publishing the new script, on its own, means:** recording, transcription,
+Ideal Text and Feedback keep working on the contract basis, lawfully (F1
+safe); coach delivery is refused; and the MLC-3 general-user service refuses
+every principal, because the dual-purpose receipt can never resolve. Doc 01 §6
+named the first two costs and called it the founder's call. What has changed is
+that MLC-3 GA now sits behind it too.
+
+**The schema change, proposed not built** (step 3 said propose):
+`accept_phase1_processing_authorization_v2(..., p_optional_purposes TEXT[])` —
+a NEW function beside v1, never a replacement; writes rows for every required
+purpose as today PLUS each optional purpose the caller names; raises if a
+named purpose is absent from the policy or IS required, so the array can only
+record a real separable choice. With it, the two purposes return as
+`required_for_core_service FALSE` with their own consent, the dual-purpose
+gate resolves for people who opted in, and someone who declines coach review
+can still record. That is doc 01 §6's v1.1. **Not built here because it
+changes how consent is recorded for real people and deserves its own review.**
+
+**Copy is held for sign-off.** Three of the four documents change wording,
+because the policy they describe changes — the privacy copy can no longer say
+a coach may listen. Drafted, mirrored into
+`legal/phase1-2026.1/copy/*-unbundled-2026-09-23.txt`, and published by nobody
+until the founder runs the script.
+
+**A drift that had already happened.** `copy/agreement-1.0.txt` on disk says a
+coach is asked for separately; the bytes published on 09-20 bundle it. The
+file and the receipt disagreed. `tests/test_phase1_policy_unbundled.py` now
+fails if the script and the mirrored files diverge again, and if a consent
+policy ever reaches `migrations/manifest.txt`.
+
+---
+
+### 2026-09-23 · P11 REWRITTEN after the coach-review ruling · p11-unbundle-the-policy · #(pending)
+
+**Correcting entry, not an edit.** The entry above describes the FIRST draft of
+`scripts/phase1_policy_publish_unbundled.sql`, which removed coach_review from
+the policy and published two purposes on contract. The founder reversed its
+premise the same day:
+
+> "Coach review is core to the product. A user who refuses to allow a human to
+> listen to their recordings cannot use WillpowerLab. This reverses the
+> assumption in doc 01 §3 and §6."
+
+and on the practice step: *"you can always leave the app and not do it, you
+can skip it."* The two open purposes move in OPPOSITE directions. The entry
+above stands as written; this one supersedes its conclusion.
+
+**What the script now publishes:** recording_voice_processing, transcription_
+feedback and coach_review on `contract` + required; personalized_exercise_
+recommendation on `consent` + REFUSABLE; individual_learning_profile still
+absent. Moving the mandatory purposes off consent dissolves Art 7(4) at the
+root — consent is no longer the basis for anything compulsory, so there is no
+compelled consent left to be invalid.
+
+**The copy went back to the LIVE bytes, not the draft's.** Checked production:
+the 09-20 privacy notice already says "a WillpowerLab coach — a person — may
+listen", and the live tick names coach listening in the tick itself. The copy
+was never the defect; the machinery under it was. The first draft had replaced
+that honest paragraph with "no person at WillpowerLab listens", which the
+ruling makes false. Reinstated verbatim, then four deltas, all TODO-flagged for
+founder sign-off: Terms gain a coach-review paragraph and the plan distinction
+(a plan with no delivered reviews does not mean nobody listens); Privacy gains
+"not optional" for coach and an optional-practice paragraph; the mandatory tick
+DROPS "and prepare practice for me", because a compulsory tick carrying an
+optional purpose is the same defect one purpose smaller.
+
+**Contract lines flipped / added:** `tests/test_phase1_policy_unbundled.py`
+went 8 → 15 cases. Seven added, none removed. SEVEN of the original eight
+asserted the superseded shape — coach_review absent, no purpose on consent,
+exactly 2 contract + 2 required, the tick must not say "coach", and the privacy
+copy must NOT say a coach may listen but MUST promise "we will ask you for that
+separately". That last pair required the notice to promise coach review is
+refusable, which is precisely what the ruling abolishes. They were pinning a
+product decision the founder overturned, so they are INVERTED, not deleted, and
+the invariant they protected is now asserted structurally instead of by
+counting: `test_no_purpose_is_both_consent_and_required` reads each purpose
+object whole, so a consent purpose can no longer hide behind a required one
+elsewhere in the array. Baseline 17 passed, 1 xfailed (F-4) — unchanged.
+
+**A bug found in the test's own helper.** `_purposes_block()` sliced from the
+first `jsonb_build_array(` after `'allowed_countries'` — which is the COUNTRY
+list, not the purposes — so it silently swept in the three legal-artifact
+objects. Any artifact metadata naming a purpose or a basis would have corrupted
+its counts, and this rewrite adds exactly such metadata
+(`'coach_review_basis','contract'`). It now anchors on the last array before
+the actor argument. The old helper would not have failed loudly; it would have
+counted wrong.
+
+**The ordering trap, now stated in the header in terms nobody can miss.**
+`accept_phase1_processing_authorization_v1` writes receipt rows only `WHERE
+pp.required_for_core_service`, so under v1 an OPTIONAL purpose can never reach
+a receipt at all. Publish this before accept_v2 ships and nobody can ever opt
+into practice — MLC-3 stays dark with no error to explain it. Run order:
+(1) deploy accept_v2; (2) the acceptance screen sends what was actually ticked;
+(3) run this file by hand; only then is flipping `processing_purpose_registry.
+operational` a meaningful switch. STEP 6 of the script verifies accept_v2
+exists and says STOP if it does not.
+
+**What the running system already proves.** Five routes are gated by
+`@operational_purpose_disabled("personalized_exercise_recommendation")` and all
+five return 410 today — one coach route, four user routes. The record →
+transcript → Ideal Text → Feedback loop completes with every one of them
+closed. That is the EDPB necessity test answered by the system rather than by
+argument, and it is why practice cannot ride on the contract basis.
+
+**Open for the founder:** `individual_learning_profile`. The founder said "we
+need that" and, asked whether a user may refuse it and still use the app,
+answered NO — but described its job as "it personalises the exercises you get".
+A purpose cannot be more necessary than the only thing it serves, and exercises
+are refusable by the same founder's ruling. Published as contract + required it
+would rebuild the Art 7(4) defect one purpose to the left. Left ABSENT pending
+one line: either it rides with practice as optional, or it does something the
+core loop needs that the one-line description omits. It is live in production
+today as consent + required, inside the bundle this script replaces.
+
+---
+
+### 2026-09-23 · individual_learning_profile resolved · p11-unbundle-the-policy · #(pending)
+
+**Correcting the entry above, not editing it.** That entry closed with
+individual_learning_profile ABSENT and open for the founder. It is now
+resolved and the script publishes it.
+
+**The exchange, because the first answer and the second disagree and the
+second is right.** Asked what it does: *"It personalises the excercises you
+get."* Asked whether a user can refuse it and still use the app: *"NO"* —
+then, unprompted, *"okok, optional"*. The correction is the coherent answer
+and it is the one implemented. A purpose cannot be more necessary than the
+only thing it serves, and the same founder ruled exercises refusable the same
+day. Published as contract + required it would have rebuilt the Art 7(4)
+defect one purpose to the left — the precise shape this script exists to
+remove — and it would have carried the founder's name.
+
+**All five purposes are now published.** Three required on contract
+(recording_voice_processing, transcription_feedback, coach_review), two
+refusable on consent (personalized_exercise_recommendation,
+individual_learning_profile). Nothing is held out; `UNJUSTIFIED_PURPOSES` is
+now an empty tuple and its guard stays armed for the next purpose somebody
+reaches for.
+
+**One tick covers both optional purposes**, because from the user's side it is
+one choice — personalised practice — expressed as two registry rows: the
+recommendation, and the profile that makes it personal. Splitting them offers
+a choice with no meaning (a profile that personalises nothing, or exercises
+that cannot be personalised). ⚠ FOR COUNSEL: confirm one tick is granular
+enough under Recital 43, or split it. `accept_v2` takes an array, so splitting
+is a screen change and not a schema one.
+
+**Contract lines:** none flipped. `tests/test_phase1_policy_unbundled.py`
+stays at 15 cases, all passing; only the two purpose constants moved.
+Baseline 17 passed, 1 xfailed (F-4) — unchanged.
+
+---
+
+### 2026-09-23 · CORRECTION · practice was never closed · p11-unbundle-the-policy · #(pending)
+
+**I got a fact wrong and it reached a legal document. This entry corrects it;
+the entries above stand as written.**
+
+**What I claimed.** That all five practice routes return 410
+PURPOSE_NOT_OPERATIONAL, and that the record → transcript → Ideal Text →
+Feedback loop "runs to completion with all five closed" — offered as the EDPB
+necessity test answered by the running system. It went into the script header,
+the ledger entry above, and two artifacts shown to the founder.
+
+**What is true.** The founder read production:
+
+    personalized_exercise_recommendation | phase1 | operational=true |
+    authorizes_processing=true | confident-voice-practice-v1 | 2026-09-16
+
+`@operational_purpose_disabled` has ASKED the registry since 0335 rather than
+refusing unconditionally — that is the whole point of that migration — and the
+only other guard on those routes is `@require_auth`. **Practice is live in
+production.** I read the decorator, saw it could return 410, and assumed the
+answer without reading the row. 0335 exists precisely to stop the switch and
+the fact it claims to reflect being two different things kept in step by hand;
+I did by hand exactly what it removed.
+
+**coach_review was wrong in the other direction.** Migration 0339 states as a
+production fact that it is `operational=false, authorizes_processing=false`,
+and I raised it as a blocker that would make every acceptance raise
+PROCESSING_PURPOSE_NOT_OPERATIONAL. Production says otherwise: all five
+purposes are operational with every control version set, four of them switched
+in one batch at 2026-09-19 23:58:51 — the day after 0339 was written and the
+day before the policy was published. 0339's comment is stale, not wrong when
+written. A migration comment is a snapshot, and I read it as current state.
+
+**What changed in the script.** The necessity argument no longer rests on the
+routes. It rests where it belongs: the founder's ruling that the step is
+skippable, and the locked contract line "the loop never waits for a coach or
+exercise". A step the product is built never to wait for is not necessary to
+perform the contract, whether or not its routes are serving. The false
+sentence is replaced by a CORRECTION block that states what was claimed and
+why it was wrong, because a legal artifact should carry its own errata.
+
+**A consequence this surfaced, which is not an error but is load-bearing.**
+Practice works today BECAUSE of the defect this file removes: the live policy
+marks it `required_for_core_service`, and accept_v1 writes receipt rows only
+`WHERE pp.required_for_core_service`, so every receipt carries practice and
+every permit issues. After this publishes, practice is optional and a user who
+does not tick the box genuinely has it off. Receipts already issued stay valid
+until re-acceptance. That is a real behaviour change, and it is the correct
+one — it is what "refusable" means.
+
+**Contract lines:** none flipped. 15 cases still pass. Baseline 17 passed,
+1 xfailed (F-4) — unchanged.
+
+**Verified on the way, no change needed.** privacy-2.0 §5's claim that OpenAI
+is the only AI provider receiving audio or transcript is TRUE:
+`services/authorized_provider.py` is the single typed adapter and every permit
+it issues is hard-coded `provider="openai"`. §4's claim that the system
+refuses to register a policy permitting training is also true and stronger
+than stated — `PHASE2_PURPOSE_FORBIDDEN` fires at acceptance, and
+`pooled_model_improvement` is registered phase2.
+
+---
+
+### 2026-09-23 · P11 rebased on the v2.0 documents · p11-unbundle-the-policy · #(pending)
+
+**The founder gave a new base.** The short strings patched in the entries above
+were the wrong source: `legal/phase1-2026.1/copy/terms-2.0.txt` and
+`privacy-2.0.txt` are full documents (9,146 and 10,915 chars) that were drafted
+and never published, while what is live is ~1,800 chars total. The script now
+carries those documents with surgical edits, not the short strings. Published
+as **v2.1**, because v2.0's own effective date (18 September 2026) has passed
+and it never bound anyone.
+
+**Article 13 audit, verified rather than assumed** (the amendment asked for
+this explicitly). Of the six items believed absent, FOUR were already present
+in v2.0: controller identity and contact (§1, §13), named recipients — eight
+processors individually, not categories (§5), third-country transfers with SCCs
+per provider and a copy on request (§6), and the right to complain with UODO's
+address (§8). Genuinely absent: **13(2)(e)**, whether providing the data is a
+contractual requirement and what follows from refusing. Partial: **13(1)(c)**,
+which listed three bases but none of the purposes the new policy names. Both
+are now written. 13(1)(b) is satisfied in an unusual way worth noting — §1
+states that no DPO is appointed and why Art 37 does not require one, which is
+the correct answer rather than a gap.
+
+**The founder's UODO line is additive, not duplicative.** §8 already carried
+the Art 13(2)(d) right to complain. The new sentence in §1 names the Art 56
+LEAD authority. Different articles, different jobs.
+
+**Three contradictions with the 2026-09-23 ruling, fixed.** privacy §5 said
+coach review happens "only if you ask … and agree to it separately"; terms §11
+said it "is optional"; terms §2's plan table read as "nobody listens" for Free
+and Practice. All three predate the ruling and argued against our own lawful
+basis. Two sentences were KEPT deliberately: privacy §5's statement that a
+coach does not see the voice measurements (that is the blind lane, accurately
+described) and terms §11's "the recording and feedback loop never waits for a
+coach" (asynchronous is not optional — only one of those words was wrong).
+
+**"Keep it promisable" — founder steer, and the most consequential edit here.**
+The founder said phases 2, 3 and 4 are coming. v2.0 contained five sentences
+that phase 2 would break, one of them expensively: *"We do not use anyone's
+recordings to train models. That one is not a promise we could quietly walk
+back: our systems refuse to register any processing policy that would permit
+it."* That does not merely state today's truth — it stakes credibility on
+permanence and names the mechanism so a reader can verify it. Walking it back
+later is not a policy update; it is the thing the sentence promises will not
+happen. Every one is now present tense and scoped to this version, with the
+future left to the re-acceptance clause each document already carries (privacy
+§12, terms §15). The enforcement claim SURVIVES, because it is true and
+checkable — it is now scoped: "while this version is in force".
+
+**Railway is an independent controller, not only our processor.** Found by the
+session on `claude/compassionate-hamilton-2f4t73` in the executed DPA §13, and
+flagged there as needing to reach the v2.0 recipients section before
+publication. Done: §5 now gives Railway the same treatment the document already
+gives Stripe, scoped to account and usage data and explicitly not recordings.
+
+**Art 9 left alone**, per the amendment's item 3: the incidental-sensitive-
+content acknowledgement stays its own explicit consent under 9(2)(a), separate
+from the service description, with withdrawal ending processing. **AI notice
+left alone**, per item 6: 529 bytes, unchanged, and checked against the new
+documents — it already says "a person may review that automated feedback
+afterwards", which is now more accurate than it was.
+
+**A bug I introduced and the test caught immediately.** The date warning I
+added to the header contained the literal dollar-quote delimiters, so
+`_quoted()`'s regex matched the COMMENT's delimiter first and captured the
+wrong span. Two cases went red — the privacy and terms content assertions —
+which is exactly what they exist for. Delimiters removed from the prose, and
+the header now states the delimiter count invariant.
+
+**One assertion widened, not weakened.** `test_the_privacy_copy_says_a_coach_
+may_listen` pinned the exact phrase "a willpowerlab coach — a person — may
+listen". The new copy says "listens to recordings" — the tense changed because
+coach review is now continuous rather than conditional. The assertion now pins
+"a willpowerlab coach — a person —", which is the part that carries the
+disclosure; the tense is not what the case is protecting.
+
+**Contract lines:** 15 cases, all passing, none removed. Baseline 17 passed,
+1 xfailed (F-4) — unchanged.
+
+**Still NOT RUN, and still out of manifest.txt.** The effective date is written
+into the copy as 23 September 2026; running it later means changing that date
+in two blocks and re-running the mirror sync. The header says so where the
+person running it will see it.
+
+---
+
+### 2026-09-23 · two publish scripts reconciled into one · p11-unbundle-the-policy · #(pending)
+
+**A second session wrote its own.** `scripts/phase1_policy_publish_v2.sql` on
+`claude/compassionate-hamilton-2f4t73`, 804 lines, with fuller copy
+(terms-3.0, privacy-3.0, agreement-3.0, ai-notice-3.0). The founder was about
+to run it. Two scripts publishing the same policy version is one too many.
+
+**Taken from theirs, because it is better than what I had.** The
+hybrid-coaching framing, which puts coach review INSIDE the 6(1)(b) basis
+rather than beside it — a cleaner statement of the same ruling. Railway's dual
+role, more precisely worded than mine. The Article 9 paragraph, which says
+outright that the consent "is not bundled with anything else, and a contract
+can never stand in for it". And §11's answer to the plan-table problem: every
+plan includes at least one coach review, so "no coach reviews" cannot be
+misread as "nobody listens" — better than my clarifying sentence, because it
+fixes the product rather than explaining the table. They had written the Art 56
+UODO line identically.
+
+**Not taken: the purposes.** Their script publishes ALL FIVE as 'contract' +
+required_for_core_service TRUE, making practice and the learning profile
+compulsory. That contradicts the founder's rulings of the same day, and it does
+not fix the defect it targets — moving a purpose that is not objectively
+necessary from 'consent' to 'contract' swaps an invalid consent for an invalid
+contract basis. Art 6(1)(b) requires necessity; CLAUDE.md's locked contract
+says the loop "never waits for a coach or exercise".
+
+**Their verify could not have caught it.** Their 3a counts rows that are
+'consent' AND required and calls 0 success. An all-contract policy returns 0
+because it has no consent rows at all — the counter measures the absence of a
+symptom, so the very change that recreates the problem is what makes the check
+pass. STEP 4 here tests the invariant structurally, per purpose object, and
+STEP 5 asserts the optional lane is non-empty, which is the half a count cannot
+express.
+
+**A defect in their copy, found by a test rather than by reading.** Their
+agreement tick said a coach may listen "to review my feedback AND PREPARE
+PRACTICE FOR ME. That is part of the service, not an extra I am switching on."
+The mandatory tick asked for agreement to the optional purpose — the same
+bundling, one clause smaller.
+`test_the_agreement_tick_does_not_bundle_practice` failed on it immediately.
+Clause removed; the optional purposes travel in accept_v2's array instead.
+
+**An assertion I removed, recorded rather than dropped quietly.** The tick case
+required "18 or over" in the agreement sentence. v3.1 moves the age attestation
+to its own control — the acceptance screen renders "I am {policy.minimumAge} or
+older" as a separate checkbox, `canSubmit` refuses without it, and it travels
+as `p_age_18_attested`. That is better than burying it in a sentence, so the
+assertion is not restored here and the reason is written into the test. The
+one-line rule on the tick was also mine, and it would have rejected their
+two-paragraph version, which reads better; replaced with a length bound, since
+what must not happen is the tick becoming a wall nobody reads.
+
+**Open, and NOT fixed here because it is outside what was approved:**
+`services/processing_authorization.py` passes `"p_age_18_attested": True` as a
+literal rather than reading the payload. The screen gates it, but a non-browser
+client could accept without ticking and the receipt would still record the
+attestation. A receipt that asserts something the server never checked is worth
+a founder decision, not a quiet patch on a consent path.
+
+**Mirrors renamed** to `legal/phase1-2026.1/copy/*-3.1.txt`, matching the
+document version instead of the publish date, so the lineage from their 3.0 is
+visible. Contract lines: 15 cases, all passing. Baseline 17 passed, 1 xfailed.
+
+**§7 decided, same day.** Founder chose "say what the system does" over
+publishing the four periods. The copy now describes deletion on request and on
+account closure — both real and performed — and states plainly that no fixed
+periods are quoted because none are enforced yet. The four periods and the
+willpowerlab.com/legal/retention link are gone. This was free only because the
+script had not run; afterwards it would have cost a new policy version and
+re-acceptance by every user. The live 09-20 copy carries one unkept promise
+(30-day practice attempts); publishing as drafted would have made it four.
+
+**Pricing table confirmed, same day.** Asked directly, the founder kept Terms
+§2 as drafted — Free and Practice 1 coach review each, Coaching 3, Intensive 8,
+tokens and prices unchanged. The numbers themselves are a business call; what
+is load-bearing is that none is ZERO. The earlier draft gave Free and Practice
+none, which would have made counsel's premise false for half the plans, since
+coach review sits on Art 6(1)(b) precisely because this is ONE hybrid service
+in which a person listening is how it is performed. The product changed rather
+than the argument. **#622 now carries no founder TODO.**
+
+### 2026-09-23 · CORRECTION · the plan table promised reviews the code does not grant · p11-unbundle-the-policy · #622
+
+**This corrects the "Pricing table confirmed" paragraph in the entry above.
+That paragraph stands as written; this one supersedes it.**
+
+I asked the founder to confirm four plan rows without first checking whether
+the code could honour them. It cannot. `services/token_prices.py` is the live
+table and grants `free: 0`, `practice: 0`, `coaching: 3`, `intensive: 8` coach
+reviews. Terms §2 as drafted said `1 / 1 / 3 / 8`. Publishing it would have
+promised every Free and Practice user a monthly review the tier table does not
+allocate.
+
+Presented as A (Terms move to the code, free) versus B (code grants a review on
+Free and Practice, a human sitting for every free user every month). **Founder
+ruled A, 2026-09-23.** §2 now reads `no coach reviews / no coach reviews / 3 /
+8`, and §11 replaces "every plan includes at least one" with the distinction
+that actually holds: a coach may listen whatever your plan is, and what the
+plan sets is how many written reviews come back to you.
+
+**The argument in the superseded paragraph had it backwards, and this is the
+part worth keeping.** Counsel's Art 6(1)(b) basis needs a PERSON LISTENING, not
+a review delivered back. `routes/v2/coach.py` builds the review queue with no
+tier filter — a coach sees takes from every plan, Free included. So listening
+is universal in the code while the delivered review is an allowance, and a zero
+never meant nobody hears you. The zeros do not endanger the premise; it was the
+conflation of listening with delivery that did. Counsel should confirm the
+distinction carries 6(1)(b) at zero delivered reviews.
+
+The frontend already agreed with the code and not with the draft:
+`src/components/tokens/copy.ts` has a `n === 0 → "No coach reviews"` branch and
+a `planFreeLine` reading "Free plan: … tokens included, no coach reviews."
+Publishing 1/1/3/8 would have put the Terms at odds with the screen as well as
+the tier table.
+
+**Two things I did not establish, recorded so nobody reads more into this.**
+(1) I found NO code that refuses a review once the allowance is spent. The
+counter increments and is surfaced as `{used, allowed}`; whether it GATES
+delivery I could not show, so the allowance may be advisory —
+`add_token_charge_rpc.sql:39` records a past bug of that exact shape. I had
+earlier said the system "refuses on the first attempt" at zero; that was a
+grep-shaped claim and I withdraw it. (2) `token_prices.py` also carries a
+second tier table (`starter`/`pro`/`max`, 1/6/30 reviews) that these Terms
+never mention. Which sheet is live is a founder question, not a copy question,
+and it is open.
+
+Free again only because the script has not run. After it runs, the same change
+costs a new policy version and re-acceptance by every user. Mirror
+`terms-3.1.txt` regenerated byte-for-byte (10707 → 10845 bytes). Contract lines
+15 cases, all passing.
+
+### 2026-09-23 · WS3a · b4-deletion-reaches-practice · #(pending)
+
+**Closed:** B-4
+**Contract lines flipped:** none — B-4 has no line in `test_f1_loop_contract.py`
+**Contract lines added:** none. B-4's regression tests live in their own file,
+`tests/test_phase1_deletion_completion_postgres.py`, per the rule that only
+findings against what a speaker *sees* go in the F1 contract.
+**Broke and fixed:** none. Baseline before and after: 17 passed, 1 xfailed
+(F-4), 45 subtests.
+**Open for the founder:** none. No gate moved, no route opened, no copy
+changed.
+
+**Why out of order.** The settled order does not list B-4 anywhere; §3 runs
+A-1's write, then A-2, then B-2 and B-3. B-4 jumps that queue for one reason:
+it is the first finding in the audit that names something a real person can
+ask for and the app cannot do. A subject whose only stored audio is a practice
+recording **could not be erased at all** — and a dozen testers are days away.
+It is also the cheapest thing in the audit to hold: two `CREATE OR REPLACE
+FUNCTION`s, no table, no column, no grant, no gate.
+
+**The shape of the defect.** `services/data_purge.py` has emitted storage
+targets carrying `source_relation = 'processing_practice_objects'` since
+migration 0334 gave practice audio its own registry. Neither function that
+consumes those targets knew the relation existed:
+`freeze_phase1_purge_inventory_v4` raised `PURGE_STORAGE_TARGET_SOURCE_INVALID`
+and `mark_phase1_storage_object_purged_v1` raised `PURGE_OBJECT_SOURCE_INVALID`.
+So the request was written, the freeze refused, and the row sat at `requested`
+for ever with nothing erased. Not a partial deletion — **no** deletion, and a
+record saying one had been asked for.
+
+**The table was always ready.** 0334 gave `processing_practice_objects` a
+`deleted_at` column commented "stamped by the purge once the object is gone
+from storage… mirrors the sibling tables". The registry was built for exactly
+this and only the two functions were never told. Migration 0353 adds one
+`ELSIF` branch to each, mirroring the orphan branch line for line, ownership
+check included; every other path, check and error code is byte-identical to
+what runs today.
+
+**Why nobody caught it, and what now would.** No rehearsal lane carried a
+`processing_practice_objects` row to purge, so the two functions were never
+asked. Two things changed, and the second is the one that generalises:
+
+1. The released lane now builds the registry
+   (`tests/integration/confident_moment_rehearsal.sh`), and five cases in
+   `tests/test_phase1_deletion_completion_postgres.py` EXECUTE both functions
+   against it. Evidence: against the pre-0353 definitions restored onto a
+   clone of the same lane, 4 of the 5 fail with the two error codes above.
+   The fifth — "an unknown relation is still refused by both" — passes on
+   both sides, which is the point of it.
+2. `test_every_emitted_source_relation_is_known_to_the_purge_functions`
+   (unit tier) walks `migrations/manifest.txt` in order, finds the LAST
+   definition of each function, and asserts every `source_relation` literal
+   in `services/data_purge.py` appears there. The next table to get its own
+   registry cannot drift the same way silently. Verified genuine: remove 0353
+   from the manifest and it fails.
+
+**A trap in the lane, worth writing down.** My first cut added
+`hard migrations/add_confident_voice_practice.sql` (0279) to build the two
+practice tables. 0279 creates `diagnostic_exercise` first, whose
+`journal_post_id` references `public.journal_post` — the entire Journal chain,
+a surface this lane does not carry and has no reason to. The right answer was
+much smaller: `mlc3_exercise_foundation_prerequisites.sql` **already** defines
+narrow `confident_voice_practice` / `confident_voice_practice_attempt`, and
+0334 needed exactly one thing they lacked — `closed_at`, for its retention
+index. One nullable trailing column on the narrow copy, which is the pattern
+that file already documents. **When a lane needs a released migration, check
+first whether the fixture already has the two keys it wants.**
+
+**Where 0353 sits in the lane.** After BOTH current definitions: the mark
+comes from `add_phase1_deletion_completion.sql` and the freeze from
+`add_mlc3_exercise_dark_foundation.sql`, and the narrow lane applies the
+deletion file in a later block. Applied twice on the released lane, cleanly.
+
+**Restated grants, and why.** `CREATE OR REPLACE FUNCTION` preserves a
+function's ACL, so the REVOKE/GRANT pairs in 0353 change nothing. They are
+there because `test_every_created_function_revokes_anon_and_authenticated`
+has no "revoked by an earlier migration" carve-out — its sibling PUBLIC test
+does — and because a reader auditing an erasure writer should not have to open
+another file to learn it is service_role-only.
+
+---
+
+### 2026-09-23 · WS3 · b2-b3-acquisition-principal · #(pending)
+
+**Closed:** B-2, B-3, B-11
+**Contract lines flipped:** none — none of the three has a line in
+`test_f1_loop_contract.py`
+**Contract lines added:** none. Their regression tests live in their own
+files, per the rule that only findings against what a speaker *sees* go in the
+F1 contract.
+**Broke and fixed:** none. Baseline before and after: 17 passed, 1 xfailed
+(F-4), 45 subtests.
+**Open for the founder:** none. No gate moved, no route opened, no copy
+changed. Merge order: this stacks on #618 (B-4), which owns migration 0353.
+
+**Three names, one defect.** Phase-1 lineage rests on a single claim — the
+principal named on a permit is the principal that acquired the recording — and
+three places let that claim be false:
+
+  * **B-2** `issue_phase1_provider_permit_v1` read the authorization of
+    `p_acquisition_principal_id` and then inserted `p_source_take_id` /
+    `p_source_recording_id` verbatim. Nothing anywhere said those coordinates
+    were that principal's to name. The auditor minted a permit for one guest's
+    recording under another principal's receipt; the snapshot table then held
+    two rows for that recording naming different principals, with nothing
+    downstream able to say which was the truth.
+  * **B-3** `resolve_phase1_acquisition_principal_v1` returned a claim's
+    SOURCE only when that source already held a receipt, and otherwise fell
+    through to the TARGET. A guest who recorded while the gate was off holds
+    no receipt *by construction*, so after they signed up every one of those
+    recordings resolved to the new account principal.
+  * **B-11** `resolve_acquisition_principal` returned the product owner
+    unchanged whenever the gate was off, before either read — so one human's
+    acquisition identity depended on which mode was deployed when they tapped
+    Agree, and one person could end up with two receipts on two principals.
+
+**The shape of each fix, and why none of them refuses more than it must.**
+
+1. B-2 adds an ownership check that runs BEFORE the authorization read, so a
+   caller cannot probe another principal's authorization state with their
+   recording id. The attempt row is authoritative wherever it exists. Where it
+   does not — every recording acquired while the gate was off — the session's
+   owner is the only statement left, and because `claim_guest_owner` rewrites
+   `v2_sessions.owner_principal_id`, the acquirer is either that owner or a
+   principal claimed into it. **Both pass**, or signing up would cut a speaker
+   off from their own recordings. A source with neither an attempt row nor a
+   session row is left alone: absence of evidence is not evidence of theft,
+   and refusing on it would take the live loop down for a data gap this
+   function did not create.
+2. B-3 turns a WHERE filter into an ORDER BY preference. The answer is
+   **identical** for every claim whose source holds a receipt — `ORDER BY
+   has_receipt DESC, claimed_at DESC` still picks the newest such source. It
+   changes only the case where none does, which previously returned the wrong
+   principal outright.
+3. B-11 removes the off-mode short-circuit. Reading is now mode-independent;
+   what the mode still decides is the disposition of a FAILURE — `enforce`
+   refuses, `off` degrades to the product owner it would have returned anyway.
+   A gate that is off may not start failing requests for the state it was off
+   for.
+
+**Why the loop survives B-3, which was the thing worth checking.** Resolving a
+claimed guest to their old principal means `get_phase1_processing_authorization`
+says not-authorized, and the client asks the human to accept — which sounds
+like a regression until you follow `routes/v2/processing_authorization.py`:
+`_principal_id()` runs the SAME resolver, so the acceptance lands on the GUEST
+principal, not the account. The person taps Agree once and the receipt is
+written where the audio actually came from. No founder decision needed; I went
+looking for one.
+
+**A dead test this replaced.** `tests/test_phase1_processing_rehearsal_contract.py`
+and `tests/test_phase1_compliance_contract.py` assert SUBSTRINGS of
+`tests/integration/phase1_processing_rehearsal.sql` — a 700-line script that
+exercises the whole Phase-1 chain including `issue_phase1_provider_permit_v1`,
+and that **nothing runs**. `rg` for its name finds only those two readers. That
+is exactly the pattern the audit called out on B-4 ("the only tests for this
+path assert source-text substrings and never call the DB function"), and it is
+why B-2 and B-3 sat in a covered-looking area. The new
+`tests/test_phase1_processing_postgres.py` executes the real functions on the
+released lane. **Someone should decide what to do with that .sql file** — run
+it in the tier or delete it; a script nobody runs is worse than no script,
+because it reads as coverage. Not mine to settle, and left alone.
+
+**Evidence that the tests are real.** Against the pre-0354 definitions restored
+onto a clone of the same lane, 3 of the 8 postgres cases fail — both B-2
+refusal cases and the B-3 resolver case. The other 5 pass on both sides, which
+is their job: they are the guards that the fix is not a blanket refusal.
+Likewise 2 of the 5 B-11 cases fail with the service change stashed.
+
+**A lane trap, for whoever writes the next postgres suite.** A fixture that
+registers its own Phase-1 policy works alone and fails in the tier:
+`processing_purpose_registry` freezes a purpose's control versions once it is
+operational, so a second registration inventing its own raises
+`PURPOSE_CONTROL_VERSION_CONFLICT`; and `activate_phase1_policy_v1` retires
+whatever was active, which would pull the policy out from under any suite
+sharing the lane. **Reuse the active policy** — read its version, copy hashes
+and first allowed country — and only register one when there is none.
+
+---
+
+### 2026-09-23 · WS4 · r2-speaker-identity · #(pending)
+
+**Closed:** R-2
+**Contract lines flipped:** none
+**Contract lines added:** none. R-2's regression tests live in
+`tests/test_mlc3_self_speaker_identity_postgres.py`, on the RELEASED lane.
+**Broke and fixed:** none in the contract. I did turn four rehearsal lanes red
+on the way and then backed the change out — read the next-to-last section.
+**Open for the founder:** none. Stacks on #619 (0354); this is 0355.
+
+**The defect.** `record_mlc3_self_speaker_target_v1` minted a speaker with two
+bare INSERTs naming one column each — `ml_speakers(id)` and
+`ml_speaker_principals(speaker_id, acquisition_principal_id)`. The released
+tables require six more columns between them, all NOT NULL with no default:
+identity_version, identity_hash (UNIQUE, exactly 64 chars), created_by,
+binding_kind, binding_proof_hash, bound_by. The first speaker this service
+ever had to mint would have raised and taken the Take with it, through all
+three entry points (the target writer and its candidate and practice
+wrappers).
+
+**One writer, not two.** The fix routes through
+`register_ml_speaker_principal_v1`, the canonical writer MLC-2 already owns,
+rather than a second hand-rolled pair of INSERTs. That restores two things the
+bare INSERTs silently skipped: the refusal to re-bind a principal already
+bound to a DIFFERENT identity, and `assign_ml_speaker_split_v1` — without
+which a speaker created here had no split assignment at all, invisible until
+something tried to build a dataset from it. The identity derives from the
+owner's user id, so a replay resolves to the same speaker instead of minting a
+second person on every retry.
+
+**WHY A GREEN SUITE WAS PROVING THE OPPOSITE OF WHAT IT CLAIMED — the part to
+remember.** `tests/test_mlc3_general_user_service_d4_postgres.py` calls this
+exact function, asserts on the speaker it returns, and passes. It passes
+because its lane is cloned from the narrow fixture, where
+`tests/integration/mlc3_exercise_foundation_prerequisites.sql` declares
+
+    CREATE TABLE public.ml_speakers (id UUID PRIMARY KEY);
+
+One column. No constraints. **The fixture had removed exactly the constraints
+the code violates**, so the test drove the defect and reported success. This
+is the third finding in three days with the same shape (B-4's substring-only
+tests, B-2's unrun .sql script, now this): the covered-looking areas are
+where the defects are.
+
+**What happened when I tried to fix the fixture, which is a finding of its
+own.** I tightened it to the released shape first, because a test that cannot
+fail is worse than no test. The tier went red in four lanes at once: m33 30
+failed + 83 errors, d3 14 errors, service 23 failed, confident-moment narrow
+47 failed, d4 17 failed. Roughly a hundred cases across suites this change
+does not own have been minting identity-less speakers for as long as the
+fixture allowed it. **That is Workstream 10** — make the tests test the
+released schema — and burying a one-function correction under a hundred
+unrelated edits would have made both unreviewable. So I backed it out and put
+R-2's proof on the RELEASED lane, where `ml_speakers` has always carried its
+constraints. **Whoever takes Workstream 10: the number is ~100, in four
+lanes, and this fixture is where to start.**
+
+**A trap in my own test, caught by re-running it.** The case that proves the
+old INSERT fails on the binding seeds a speaker first, and I gave it a
+constant `identity_hash`. That column is UNIQUE on the released table, so it
+passed once and failed the second time the lane was reused — a test that only
+works on a fresh database. It derives a fresh hash now. **Re-run a new
+postgres case against the same lane twice before believing it.**
+
+---
+
+### 2026-09-23 · P11 prerequisite · p11b-optional-consent · #(pending)
+
+**Closed:** the knot reported in #622. Founder decision 2026-09-23: build this
+BEFORE republishing the policy, so the republish is one cutover and nothing
+goes dark.
+**Contract lines flipped / added:** none. Baseline 17 passed, 1 xfailed (F-4).
+**Broke and fixed:** none in the contract. Four fixture mistakes of my own on
+the way — worth reading, at the bottom.
+**Open for the founder:** none for this PR. Stacks on #621; this is 0356.
+
+**The trap, restated because it is the whole reason this exists.**
+`accept_phase1_processing_authorization_v1` writes receipt purpose rows only
+`WHERE pp.required_for_core_service`, so a purpose someone could DECLINE left
+no evidence at all — and for `coach_review`, whose lawful basis IS consent,
+that is the absence of the lawful basis, not a gap in the paperwork. Meanwhile
+`resolve_mlc3_dual_purpose_receipt_v2` gates the entire MLC-3 service on the
+receipt NAMING two such purposes. The only way the product worked was if both
+were compulsory, which is the bundling doc 01 §3 calls invalid. A receipt had
+no way to say "they were asked, separately, and said yes". Now it has one.
+
+**v2 sits beside v1 and never replaces it.** The signature differs, so a
+CREATE OR REPLACE was never available — and it is not wanted: dropping a live
+consent writer to change its shape is not something this repo does. With an
+empty array v2 does what v1 does, with one deliberate difference: **the
+evidence hash covers the choices.** Without that, replaying one idempotency key
+with a different set of choices hashes identically to the first, passes as a
+silent no-op, and leaves a receipt attesting to a decision the person did not
+make the second time. There is a test for exactly that.
+
+Three refusals, each because the alternative is a lie in the evidence: a
+purpose not in THIS policy is refused rather than ignored (dropping it records
+less than the screen asked about); a REQUIRED purpose passed as a choice is
+refused (it is already in the receipt, and accepting it lets a caller present
+a compulsory term as though it had been optional); and the choices are
+de-duplicated and sorted before hashing, because the order a client sent them
+in is not a fact about consent.
+
+**Nothing calls it yet, deliberately.** The route still calls v1 and must,
+until the policy carries optional purposes for v2 to record. Three things ship
+together later: this function, the republished policy with the two purposes at
+`required_for_core_service FALSE`, and the acceptance screen offering the
+separate tick (frontend + copy, founder sign-off). **Landing this alone changes
+no behaviour whatsoever** — that is the point of it.
+
+**FOUR FIXTURE MISTAKES, AND THE ONE THAT MATTERS.** The postgres suite needs a
+policy shaped like the republished one, and I built it by hand because
+`register_phase1_policy_v1` refuses an optional purpose — the very defect.
+Getting that policy to be *valid* took four passes: `created_by` is NOT NULL;
+an active policy needs **all three** legal artifacts, not one
+(`processing_policy_approved_check`); retiring the incumbent needs
+`retired_at`; and both accept functions refuse a policy whose required
+purposes are not operational, which only `register_phase1_policy_v1` normally
+makes them.
+
+The fourth is the one to remember. My fixture DID make them operational — and
+the suite still failed, because the fixture returns early when the policy
+already exists, and on a re-used lane that early return skipped the registry
+update entirely. **A setup step behind a reuse check is a setup step that does
+not run.** Guarantees go before the early return, not after it. Same shape as
+R-2's constant `identity_hash`: both only worked on a database nobody had
+touched.
+
+---
+
+### 2026-09-23 · P10 (part 1 of 3) · p10-reacceptance-signal · #(pending)
+
+**Closed:** the backend half of P10. The surface itself is parts 2 and 3, and
+part 3 needs a founder decision — see below.
+**Contract lines flipped / added:** none. Baseline 17 passed, 1 xfailed (F-4).
+**Broke and fixed:** none.
+**Open for the founder:** one, and it is a gap between a locked decision and
+the code as it stands.
+
+**What was missing.** `get_phase1_processing_authorization_v1` looks up the
+receipt for the ACTIVE policy. A receipt against an older policy does not match
+that lookup, so it answers `PROCESSING_AUTHORIZATION_REQUIRED` — the same
+answer it gives someone who has never accepted anything. Two different people,
+one answer. `Phase1AcceptanceGate` therefore could only ever show the
+first-time screen, to both.
+
+That bites the moment counsel returns revised Terms: every existing speaker
+goes stale at once and every one of them meets a screen written for a stranger.
+
+0357 adds two keys — `reacceptance_required` and `accepted_policy_version` —
+and touches `authorized` and `code` not at all. A reader that ignores both is
+still correct, which is why it is a CREATE OR REPLACE of v1 rather than a v2:
+adding keys to a JSONB return breaks nobody. The extra read happens only when
+the active policy has no receipt, so the ordinary authorized path does no more
+work than before. A blocked principal reports `reacceptance_required = false`,
+because someone under a service block is not being asked for anything and
+offering them the screen would be an invitation to a door that stays shut.
+
+**P10.3 IS NOT SATISFIED BY THE CURRENT FRONTEND, AND THAT IS A REAL GAP.**
+The locked decision says: *while stale, reading and exporting still work,
+recording does not.* In `frontend-cursor`, `Phase1AcceptanceGate` wraps
+`authorizedShell`, which wraps the **Lounge** — where a speaker reads their
+Ideal Text and their history. So a stale speaker today cannot read their own
+document either. The gate blocks the surface, not the recording.
+
+That is pre-existing and harmless so far, because no policy has ever changed
+under a real user. It stops being harmless the day one does. Fixing it means
+moving the gate from the surface to the record action, which restructures the
+main product surface — too large to fold into a signal PR, and the founder
+should see the choice before I do it.
+
+**Remaining parts of P10, in order:**
+  2. the versioned re-acceptance copy module (P10.4), pending founder sign-off
+     on the wording;
+  3. move the gate so reading survives a stale receipt (P10.3) — needs the
+     founder's go, per above.
+
+**And a note for whoever builds part 2:** 41 existing accounts have no consent
+record at all. They are founder-created test accounts, there is nothing to
+remediate, and they will correctly show `reacceptance_required = false` — the
+first-time screen, which is right for them. Do not let them look like a bug.
+
+### 2026-09-23 · the acceptance writer becomes v2 · p11b-optional-consent · #(pending)
+
+**Closed:** step 3's backend half. `ProcessingAuthorizationService.accept` now
+calls `accept_phase1_processing_authorization_v2` and passes
+`p_optional_purposes`. The migration that defines v2 is on this same branch
+and in `manifest.txt`, so `MIGRATE_ON_BOOT=1` applies it during container start
+before the app process reads the new code — one boot does the whole cutover,
+which is the CONFIG-FIRST shape.
+
+**Safe before any optional purpose exists.** v2's own comment says it: an empty
+array "behaves exactly as v1 does". So this can merge and deploy while the live
+policy still marks everything required, and nothing changes until the policy is
+republished.
+
+**Absence is not refusal, but a malformed choice is.** A client that has never
+heard of `optional_purposes` sends no field and must keep working exactly as it
+did — that is an empty choice, not an error. A field of the wrong shape IS an
+error (422 OPTIONAL_PURPOSES_INVALID), because recording consent from a payload
+we could not parse is worse than refusing to record it.
+
+**Shape here, membership at the RPC.** This layer judges only that the value is
+a list of non-empty strings. Whether a named purpose is in the active policy,
+and whether it may be optional at all, is v2's to decide — it raises
+PROCESSING_OPTIONAL_PURPOSE_INVALID. A test asserts that an unknown purpose
+passes shape and reaches the RPC, which is the point: validating membership in
+two places is how the two drift apart and one starts quietly allowing
+something.
+
+**Not deduplicated, not reordered.** v2 canonicalises (btrim, DISTINCT, ORDER
+BY) and the evidence hash is computed over that canonical form. Doing it twice,
+differently, is how a receipt ends up hashing something other than what it
+stored.
+
+**Contract lines added:** `tests/test_optional_purposes_payload.py`, 18 cases.
+Three of them exist for a failure that would not be loud:
+`test_it_no_longer_calls_v1` fails if the RPC name reverts, because under v1
+every acceptance would keep succeeding while every optional yes was silently
+dropped — no error, no log, and a receipt that says the person chose nothing.
+`test_the_array_is_passed` covers the same failure by the other route: v2 with
+the argument omitted defaults to an empty array and loses the answer just as
+quietly.
+
+**Baseline:** 17 passed, 1 xfailed (F-4) — unchanged.
+
+**Follow-up, same workstream.** The gate came back RED on
+`test_d11_runtime_rpc_caller_registry_is_exact`: a registry pinning exactly
+which service file may call which watched RPC, and the move from v1 to v2 was
+not declared in it. That is the registry working — a new RPC call from a
+service has to be stated, not slipped in. Declared, and v1 left in the WATCHED
+set although nothing calls it any more, so a reintroduced v1 call would appear
+as an unexpected entry. Worth the extra line: that regression is silent, since
+every acceptance would keep succeeding while every optional yes was dropped.
+Rehearsal tier was GREEN across all ten lanes on the same run; only the unit
+tier failed.
+
+### 2026-09-23 · WS0 · claude/dazzling-johnson-excc8e · #(pending)
+
+**Closed:** none (coach authoring, founder-directed)
+**Contract lines flipped:** none
+**Contract lines added:** `TheAvatarTick` in
+`tests/test_diagnostic_exercise_catalogue.py`
+**Broke and fixed:** one test asserted the rule this change reverses — see below
+**Open for the founder:** migration 0353 runs on the next container start
+(`MIGRATE_ON_BOOT=1`). It only RELAXES a constraint and adds two nullable-ish
+columns, so no existing row becomes invalid and nothing is rewritten.
+
+**What changed, in one line.** An exercise no longer needs a journal post to go
+live, and it can say it is usable for a future avatar.
+
+**THE SERVE-TIME GATE WAS THE REAL WORK, and it is the thing to remember.**
+Relaxing the database CHECK and the authoring refusal is the obvious half.
+`db.get_active_diagnostic_exercise` then still read
+
+    if not row or not row.get("journal_post_id") ...: return None
+
+so a post-less exercise would have saved, reported itself active, and been
+served to nobody. That is exactly the outcome the founder rejected when he was
+offered it as an option ("saved but never offered"). Three places had to agree
+before the decision meant anything: the CHECK, the authoring refusal, and the
+read. If you relax a rule here, grep for every place that re-asserts it.
+
+**What did NOT change.** A post that IS attached must still be published before
+the exercise switches on. Half-linking an exercise to a draft would show a
+learner a dead address, which is worse than showing them none.
+
+**The avatar pair, and why it is a pair.** `avatar_training_eligible` plus
+`avatar_setup_label`, with a CHECK refusing the flag without the label. The
+flag records something PERISHABLE — only the person in the room at record time
+knows whether the shirt, angle and light matched, and it cannot be recovered
+from the file afterwards, which is the whole argument for storing it now for a
+product that does not exist. But a bare boolean says only that ONE clip was
+shot carefully; it cannot say two clips MATCH, and matching each other is the
+entire requirement of a training set. The label is what makes the flag pay.
+
+**Nothing reads the new columns** — founder's decision: remember only. There is
+a partial index on `(avatar_setup_label) WHERE avatar_training_eligible` so the
+one query this exists to enable is cheap the day something wants it.
+
+**Two things that cost time.** The migration filename must NOT carry its number
+— the manifest owns that, and `0353_name.sql` failed both manifest-integrity
+tests. And the rehearsal tier is not opt-in when the change needs it: touching
+`migrations/manifest.txt` triggered 388 PostgreSQL tests automatically, which
+is why this run took ~20 minutes rather than 5. Budget for it.
+
+### 2026-09-24 · CORRECTION · 0353 was claimed twice · b4-deletion-reaches-practice · #618
+
+`#629` merged to `main` on 2026-09-23 and took migration number **0353** for
+`an_exercise_can_live_without_a_post.sql`. This branch had already numbered
+`deletion_reaches_practice_objects.sql` 0353, so the two collided and GitHub
+reported `#618` un-mergeable.
+
+Resolved by merging `origin/main` into this branch and renumbering ours to
+**0354**, behind main's 0353. The file itself is unchanged — the number lives
+only in `migrations/manifest.txt`, so nothing about the migration's content or
+its twice-clean apply is affected. The ledger conflict was resolved by keeping
+both entries; neither side's was rewritten.
+
+The same collision will recur on each of the four branches stacked above this
+one, since each carries this migration. Each is being re-based and re-gated in
+turn rather than merged on stale evidence.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · CORRECTION · the 0353 collision cascades · b2-b3-acquisition-principal · #619
+
+`#629` took 0353 on `main`, so `#618` renumbered its migration to 0354 and the
+same collision reaches every branch stacked above it. This branch resolves it
+by merging `origin/main` and taking **0355** for
+`authorization_binds_to_acquirer.sql`.
+
+**Also corrects an oversight in #618.** When I renumbered
+`deletion_reaches_practice_objects.sql` to 0354 I updated
+`migrations/manifest.txt` but not the `-- 0353 ·` header comment inside the
+file itself, so that file landed on `main` naming a number it no longer holds.
+Its header is corrected to 0354 here. The manifest, not the comment, is what
+the runner reads, so nothing behaved wrongly — but a migration whose first line
+misstates its own number is exactly the kind of small lie that costs an hour
+later.
+
+Two rehearsal-script conflicts were resolved in favour of this branch: our
+`scripts/rehearsal_tier.sh` line is a superset of main's (it adds
+`tests/test_phase1_processing_postgres.py` to the released lane), and
+`tests/integration/confident_moment_rehearsal.sh` carries a migration block
+main does not have. The `# 0354 replaces` comment in that block was corrected
+to `# 0355`. The ledger conflict kept both sides.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · CORRECTION · the cascade, round three · r2-speaker-identity · #621
+
+`speaker_identity_the_table_accepts.sql` takes **0356**, behind main's 0353
+(`#629`), 0354 (`#618`) and 0355 (`#619`).
+
+**A second oversight corrected, of the same shape as the first.** On `#619` I
+fixed the stale header inside `deletion_reaches_practice_objects.sql` but did
+not look for the migration's number anywhere else. It appears in
+`tests/integration/confident_moment_rehearsal.sh`, where each applied block
+carries a `# 03NN replaces …` comment explaining its ordering. Two of those
+three comments were stale on `main`. All three are corrected here, and they
+were rewritten by matching the DESCRIPTION rather than the number, so a wrong
+starting value could not be carried forward.
+
+The lesson, recorded because it will recur: renumbering a migration is not one
+edit. The number lives in `migrations/manifest.txt`, in the migration's own
+header, and in any lane comment that explains its ordering. `manifest.txt` is
+the only one the runner reads; the other two are what a person reads at 2am.
+
+The two already-merged migration files conflicted only on their header lines
+and were resolved in favour of `main`, which now holds the corrected values.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · CORRECTION · my own resolver was wrong · p11b-optional-consent · #625
+
+`a_receipt_can_record_an_optional_yes.sql` takes **0357**.
+
+**A defect in how I was resolving these, caught here and worth recording.** The
+script I used to resolve each merge matched the FIRST conflict hunk in a file
+and stopped. On the earlier branches each file had exactly one hunk, so it was
+right by luck. This file had four. The result was one hunk resolved to the
+WRONG side (keeping this branch's pre-renumber comment over main's corrected
+one) and three left with `<<<<<<<` markers still in the file.
+
+`origin/main` was checked immediately and is clean — nothing broken was
+merged, and the rehearsal tier would have caught it anyway, since it executes
+this exact script. But it was caught by reading the file, not by the gate, and
+a resolver that is right by luck is not right.
+
+Both shell scripts were redone by taking main's version and re-applying this
+branch's additions on top, rather than taking "ours" wholesale: ours carries
+the pre-renumber comments, so wholesale is exactly how a stale number survives
+a merge that was supposed to fix it. The new fixture block is numbered 0357,
+and the released lane gains `tests/test_optional_consent_postgres.py`.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · the cascade closes · p10-reacceptance-signal · #626
+
+`status_knows_a_reacceptance.sql` takes **0358**, the last of the six-deep
+renumber that `#629` started by claiming 0353 while five stacked branches were
+open.
+
+Resolved with the method that #625's mistake taught: count the hunks per file
+FIRST, take `main`'s version of every already-merged file and every shared
+script, then re-apply only this branch's own additions on top. The fixture
+script had four hunks again — the same shape that the first-hunk-only resolver
+got wrong.
+
+Final order on `main`: 0353 `an_exercise_can_live_without_a_post`, 0354
+`deletion_reaches_practice_objects`, 0355 `authorization_binds_to_acquirer`,
+0356 `speaker_identity_the_table_accepts`, 0357
+`a_receipt_can_record_an_optional_yes`, 0358 `status_knows_a_reacceptance`.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
