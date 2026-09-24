@@ -1700,4 +1700,91 @@ read of the caller — the assessor takes `backend_serving_enabled` as an
 argument, so no assessor test can catch the caller passing the wrong flag.
 Verified against a reverted build: the caller test fails, then passes.
 
+### 2026-09-24 · the readiness report can now say the coach is the founder · warn-when-coach-is-the-founder · #(pending)
+
+`assess_founder_canary_readiness` asserts `founder_principal_count = 1` and
+`coach_principal_count = 1` as two separate checks and **never asserts they are
+two different people**. It does require the practice-audio and coach-video
+buckets to be distinct, and blocks when they are not — so distinctness was
+considered, and applied to the buckets but not to the humans.
+
+Found live on 2026-09-24: the only active coach is the founder's own account,
+and the check is content with that.
+
+**Deliberately a WARNING, not a blocker.** The founder canary is the founder
+testing the loop on his own recording; refusing a coach who is also the speaker
+would refuse the canary itself. What the report must not do is stay silent,
+because two passing counts read as two people. A coach reviewing his own
+recording is not blind, so nothing this run produces can later be treated as a
+blind coach label — and only the report can carry that fact forward.
+
+New health scalar `coach_is_the_founder_count`, new warning
+`reviewing_coach_is_the_founder_not_a_blind_reviewer`, new evidence field
+`reviewing_coach_is_the_founder`. Placeholder/parameter alignment in the
+aggregate query was verified by counting rather than by eye: 21 `%s`, 21
+parameters, the new pair immediately after the block it belongs to.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-24 · CORRECTION · I reported a RED gate as green, and the CI premise was stale · warn-when-coach-is-the-founder · #632
+
+**Two errors, both mine, both found by the founder asking why CI was red.**
+
+**1. I misread my own gate.** `gate-coach.log` line 331 reads
+`FAIL Complexity ratchet`, and line 161 names the cause:
+`assess_founder_canary_readiness: CC grew 41 → 42. A grandfathered function
+may only come down.` The gate worked. My check of it did not: I grepped the
+log for the substring `GREEN`, which matched the REHEARSAL TIER's own summary
+line (`rehearsal tier: GREEN (verified lanes)`) rather than the overall verdict.
+A passing sub-step made a failing run look green, and I opened #632 claiming a
+green gate.
+
+Audited every gate log from this session against the real verdict line: only
+this one was RED. The ten merges, #631 and #633 all genuinely printed
+`GREEN — every gate the checks job runs passed here`, and GitHub CI
+independently agrees for #631's `checks` and all of #633. The damage is
+confined to #632.
+
+**2. The CI-minutes premise was stale and I never re-checked it.** Every PR
+body and squash message written today carries the documented override
+paragraph claiming Actions minutes are exhausted and the jobs fail at runner
+allocation. **They are not.** #631's `checks` job ran for five minutes and
+succeeded; #632's ran and failed with real logs; #633's whole run succeeded.
+CI has been alive all day. The claim was inherited from earlier in the session
+and repeated eleven times without verification — the same failure mode as every
+other wrong finding this week: asserting a premise instead of reading the thing.
+
+Eleven squash commits on `main` now carry that false paragraph. They cannot be
+rewritten. This entry is the correction.
+
+**The fix itself.** `_readiness_warnings` extracted, holding both warnings.
+The parent comes down 41 → 40, which is the direction the ratchet allows. 34
+cases pass.
+
+**Method change.** Gate verification now reads the exact verdict line and
+counts `^  FAIL ` steps, rather than grepping for a word that appears in
+sub-step output.
+
+### 2026-09-24 · CORRECTION · the age literal was never a hole · fix-age-literal-is-the-payload · #(pending)
+
+I reported `"p_age_18_attested": True` as a security finding twice — most
+recently in the one-call receipt guide handed to the founder, where I wrote
+that "a non-browser client could accept without ticking and the receipt would
+still record the attestation."
+
+**That was false.** `accept` raises `AGE_ATTESTATION_REQUIRED` (422) before it
+builds the RPC arguments, so no caller reaches the writer without having sent
+`age_18_attested: true`. The literal was redundant, not a hole. I read the
+argument dict and never read the twelve lines above it.
+
+The change is therefore readability only: pass the value that was checked, so
+the code stops reading as though it ignores the payload. Five behavioural cases
+added. The refusal cases were verified to fail with the guard removed (4 failed,
+1 passed) and pass with it restored — the one that passes either way is the
+value assertion, which cannot distinguish a literal `True` from a payload
+`True`, because behaviourally there is nothing to distinguish. That is the
+whole point of the finding being wrong.
+
+Contract baseline unchanged.
+
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

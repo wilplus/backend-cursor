@@ -132,3 +132,85 @@ class TestTheAcceptanceWriterIsV2:
             "the v2 argument is not being passed, so the default empty array "
             "applies and every optional yes is lost"
         )
+
+
+class TestAgeAttestationComesFromThePayload:
+    """The literal `True` was redundant, not a hole — and this pins why.
+
+    2026-09-24. I reported the hardcoded literal as a finding twice: "a
+    non-browser client could accept without ticking and the receipt would
+    still record the attestation." That was FALSE. `accept` raises
+    AGE_ATTESTATION_REQUIRED before it builds the RPC arguments, so nothing
+    can reach the writer without having sent it.
+
+    The change is therefore readability, not behaviour. Both halves are pinned
+    here so the next reader does not have to re-derive what I got wrong:
+    the guard really does refuse, and the recorded value really is the one
+    that was checked. Source-text assertions could not tell those apart —
+    only calling it can.
+    """
+
+    class _Result:
+        data = [{"id": "receipt-1", "authorized": True}]
+
+    class _Client:
+        def __init__(self):
+            self.calls: list[tuple[str, dict]] = []
+
+        def rpc(self, name, args):
+            self.calls.append((name, args))
+            return self
+
+        def execute(self):
+            return TestAgeAttestationComesFromThePayload._Result()
+
+    class _Database:
+        def __init__(self, client):
+            self.client = client
+
+    def _service(self):
+        from services.processing_authorization import (
+            ProcessingAuthorizationService,
+        )
+        client = self._Client()
+        return ProcessingAuthorizationService(self._Database(client)), client
+
+    @staticmethod
+    def _payload(**overrides):
+        payload = {
+            "explicit_action": "agree_and_continue",
+            "age_18_attested": True,
+            "policy_version": "phase1-2026-09-23",
+            "terms_copy_sha256": "a" * 64,
+            "privacy_copy_sha256": "b" * 64,
+            "ai_notice_copy_sha256": "c" * 64,
+            "agreement_copy_sha256": "d" * 64,
+            "country_of_residence": "pl",
+            "locale": "en",
+            "client_version": "test",
+            "idempotency_key": "key-1",
+        }
+        payload.update(overrides)
+        return payload
+
+    @pytest.mark.parametrize("attested", [None, False, "true", 1])
+    def test_it_refuses_an_acceptance_that_never_attested(self, attested):
+        service, client = self._service()
+        payload = self._payload()
+        if attested is None:
+            payload.pop("age_18_attested")
+        else:
+            payload["age_18_attested"] = attested
+        with pytest.raises(ProcessingAuthorizationError) as caught:
+            service.accept("principal-1", payload)
+        assert caught.value.code == "AGE_ATTESTATION_REQUIRED"
+        assert client.calls == [], (
+            "the writer must not be reached at all — a receipt asserting an "
+            "attestation nobody made is exactly what this guard prevents"
+        )
+
+    def test_the_recorded_value_is_the_one_that_was_checked(self):
+        service, client = self._service()
+        service.accept("principal-1", self._payload())
+        assert len(client.calls) == 1
+        assert client.calls[0][1]["p_age_18_attested"] is True

@@ -365,6 +365,16 @@ def _aggregate_health(connection, principal_id: str, coach_email: str) -> dict:
                 SELECT count(*) FROM public.owner_principals principal
                 JOIN auth.users account ON account.id=principal.user_id
                 WHERE lower(account.email)=lower(%s)),
+              -- 1 when the reviewing coach IS the founder. Not a blocker: the
+              -- founder canary is the founder testing the loop on himself, and
+              -- refusing that would refuse the canary. But a coach reviewing
+              -- his own recording is not blind, so the report must say so
+              -- rather than let the two separate counts above imply two people.
+              'coach_is_the_founder_count', (
+                SELECT count(*) FROM public.owner_principals principal
+                JOIN auth.users account ON account.id=principal.user_id
+                WHERE lower(account.email)=lower(%s)
+                  AND principal.id=%s::uuid),
               'approved_need_contract_count', (
                 SELECT count(*) FROM public.exercise_need_contracts
                 WHERE need_code='rushed_phrase_endings'
@@ -472,6 +482,7 @@ def _aggregate_health(connection, principal_id: str, coach_email: str) -> dict:
                 READINESS_CONTRACT_VERSION,
                 principal_id, principal_id, principal_id, principal_id,
                 principal_id, principal_id, coach_email, coach_email,
+                coach_email, principal_id,
                 list(_REQUIRED_RPC_SIGNATURES),
                 list(_REQUIRED_RPC_SIGNATURES),
                 list(_REQUIRED_RPC_SIGNATURES),

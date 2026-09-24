@@ -306,6 +306,7 @@ def _health(**changes):
         "founder_open_purge_count": 0,
         "active_coach_allowlist_count": 1,
         "coach_principal_count": 1,
+        "coach_is_the_founder_count": 0,
         "approved_need_contract_count": 1,
         "catalog_snapshot_count": 1,
         "approved_active_exercise_version_count": 1,
@@ -437,6 +438,33 @@ def test_catalogue_can_warn_for_no_match_but_frozen_inventory_is_required():
     )
     blocked = _assess(_health(catalog_snapshot_count=0))
     assert "reviewed_catalogue_snapshot_missing" in blocked.blocker_codes
+
+
+def test_a_coach_who_is_the_founder_warns_without_blocking():
+    """The canary is the founder testing on himself, so this must not block.
+
+    But founder_principal_count and coach_principal_count are separate checks
+    that never assert two DIFFERENT people, so a passing report could read as
+    though two were involved. The buckets are required to be distinct; the
+    humans never were. A coach reviewing his own recording is not blind, and
+    the report has to say so or the record cannot tell the difference later.
+    """
+    report = _assess(_health(coach_is_the_founder_count=1))
+    assert report.ready_for_activation_review is True, (
+        "blocking here would refuse the founder canary itself"
+    )
+    assert "reviewing_coach_is_the_founder_not_a_blind_reviewer" in (
+        report.warning_codes
+    )
+    assert report.evidence["reviewing_coach_is_the_founder"] is True
+
+
+def test_a_separate_coach_raises_no_such_warning():
+    report = _assess(_health())
+    assert "reviewing_coach_is_the_founder_not_a_blind_reviewer" not in (
+        report.warning_codes
+    )
+    assert report.evidence["reviewing_coach_is_the_founder"] is False
 
 
 def test_database_contract_and_runtime_records_must_remain_dark():
