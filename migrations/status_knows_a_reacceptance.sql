@@ -1,4 +1,4 @@
--- 0357 · The status can say "you agreed to an older version".
+-- 0358 · The status can say "you agreed to an older version".
 --
 -- P10, the re-acceptance surface. Decisions P10.1-P10.4 locked by the founder
 -- 2026-09-23.

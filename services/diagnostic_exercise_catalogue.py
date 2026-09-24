@@ -180,10 +180,16 @@ def _targeting(fields: dict, database: Any) -> dict:
 def _placement(fields: dict, database: Any) -> dict:
     """Where it lives, and whether it is switched on.
 
-    The coupling the founder chose to keep (2026-09-16): an exercise is a
-    journal post plus a mapping, and it only goes live when that post is
-    published. The database CHECK says the same thing; this exists so an
-    author reads a sentence instead of a constraint violation.
+    THE POST IS NOW OPTIONAL (founder 2026-09-23, migration 0353). The coupling
+    kept on 2026-09-16 was that an exercise IS a journal post plus a mapping,
+    because the post was the explanation a learner read when the exercise
+    fired. The founder's decision is that the video and the one-line
+    instruction stand on their own, and the write-up is a companion rather than
+    a precondition. So an exercise with no post may now go live.
+
+    WHAT DID NOT CHANGE: a post that IS attached still has to be published
+    before the exercise switches on. Half-linking an exercise to a draft would
+    show a learner a dead address, which is worse than showing them none.
     """
     active = fields.get("active")
     # isinstance, not `in (True, False)`: 1 == True in Python, so the
@@ -194,7 +200,7 @@ def _placement(fields: dict, database: Any) -> dict:
 
     post_id = str(fields.get("journal_post_id") or "").strip()
     if not post_id:
-        raise CatalogueRefusal("an exercise needs a post to live on")
+        return {"journal_post_id": None, "active": active}
     post = database.get_journal_post_by_id(post_id)
     if not post:
         raise CatalogueRefusal("post not found", code="NOT_FOUND", status=404)
@@ -202,6 +208,45 @@ def _placement(fields: dict, database: Any) -> dict:
         raise CatalogueRefusal(
             "publish the post before switching the exercise on")
     return {"journal_post_id": post_id, "active": active}
+
+
+def _avatar(fields: dict) -> dict:
+    """Whether this recording may seed a future avatar, and from which setup.
+
+    PERISHABLE, WHICH IS THE WHOLE ARGUMENT FOR STORING IT NOW. Only the person
+    in the room at record time knows whether the shirt, angle and lighting
+    matched the others. It cannot be recovered from the file afterwards, so it
+    is captured at the one moment it exists — for a product that does not yet
+    exist. Nothing reads these fields today, by the founder's decision:
+    remember only, no list, no export, no surface.
+
+    THE LABEL IS NOT OPTIONAL WHEN THE FLAG IS SET, and that is the point of
+    the field rather than a formality. A bare yes says this clip was shot
+    carefully; it cannot say these clips match EACH OTHER, and matching each
+    other is the entire requirement. Two hundred unlabelled "usable" clips is
+    the manual sorting job the flag existed to prevent. The database CHECK says
+    the same; this exists so an author reads a sentence instead of a constraint
+    violation.
+    """
+    eligible = fields.get("avatar_training_eligible", False)
+    if not isinstance(eligible, bool):
+        raise CatalogueRefusal(
+            "avatar_training_eligible: must be true or false")
+    label = str(fields.get("avatar_setup_label") or "").strip()
+    if not eligible:
+        # A label without the tick is kept rather than dropped: an author who
+        # unticks and reticks should not have to type it again.
+        return {"avatar_training_eligible": False,
+                "avatar_setup_label": label or None}
+    if not label:
+        raise CatalogueRefusal(
+            "avatar_setup_label: name the setup this was shot in — the same "
+            "short label for every clip with the same shirt, angle and light. "
+            "Without it the tick says a clip was shot carefully but never that "
+            "two clips match, which is the only thing a training set needs.")
+    if len(label) > 120:
+        raise CatalogueRefusal("avatar_setup_label: keep it under 120 letters")
+    return {"avatar_training_eligible": True, "avatar_setup_label": label}
 
 
 def save_exercise(database: Any, body: Any) -> Optional[dict]:
@@ -215,5 +260,6 @@ def save_exercise(database: Any, body: Any) -> Optional[dict]:
         **_identity(fields),
         **_targeting(fields, database),
         **_placement(fields, database),
+        **_avatar(fields),
     }
     return database.upsert_diagnostic_exercise(row)

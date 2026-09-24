@@ -1,4 +1,4 @@
--- 0356 · A receipt can record an optional yes.
+-- 0357 · A receipt can record an optional yes.
 --
 -- P11's prerequisite. Founder decision 2026-09-23: build this BEFORE
 -- republishing the policy, so the republish is one cutover and nothing goes
