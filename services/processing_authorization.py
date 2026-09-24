@@ -73,6 +73,38 @@ def _domain_code(error: Exception, fallback: str) -> str:
     return fallback
 
 
+def _optional_purposes(payload: Any) -> list[str]:
+    """The optional purposes named in an acceptance, as a clean list.
+
+    A missing field and an empty list mean the same thing — nothing optional
+    was chosen — because a client that has never heard of optional purposes
+    must keep working exactly as it did. What is NOT accepted is a value of
+    the wrong shape: a string, a number, or a list with a non-string in it is
+    a client bug, and recording consent from a malformed payload is worse than
+    refusing it.
+
+    Order and duplicates are left alone; the RPC canonicalises them and is the
+    one place that decides whether a named purpose is in the policy at all.
+    """
+    raw = payload.get("optional_purposes") if isinstance(payload, dict) else None
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ProcessingAuthorizationError(
+            "OPTIONAL_PURPOSES_INVALID",
+            "Optional purposes must be a list.", 422,
+        )
+    out: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ProcessingAuthorizationError(
+                "OPTIONAL_PURPOSES_INVALID",
+                "Each optional purpose must be a non-empty string.", 422,
+            )
+        out.append(item.strip())
+    return out
+
+
 class ProcessingAuthorizationService:
     """The only application API for Phase-1 processing authority."""
 
@@ -91,10 +123,31 @@ class ProcessingAuthorizationService:
         self, product_owner_principal_id: str, *, user_id: str | None = None,
         recording_id: str | None = None,
     ) -> str:
-        """Resolve immutable acquisition identity without rewriting evidence."""
+        """Resolve immutable acquisition identity without rewriting evidence.
+
+        B-11 (audit 2026-09-22). This used to return the product owner
+        unchanged whenever the gate was off, and that made one human's
+        acquisition identity depend on which mode happened to be active when
+        they tapped Agree. A guest accepts in `off` mode, so the receipt is
+        written against whatever principal they own at that moment; they sign
+        up, the claim moves product ownership to the account principal, and
+        the client — still in `off` mode — resolves to the account, sees no
+        authorization, and asks the same person to accept a second time. Flip
+        the gate to `enforce` later and the resolver now prefers the guest
+        principal, so processing is judged against the guest's receipt while
+        the account's receipt is orphaned evidence that
+        `export_authorization_evidence` reports and nothing else honours. One
+        person, two acquisition principals, decided by a deployment setting.
+
+        Acquisition identity is a fact about the past. It cannot depend on a
+        runtime mode, so the resolution below is the same in both. What the
+        mode still decides is what to do when the answer cannot be computed:
+        `enforce` refuses, because processing without a resolved acquirer is
+        the thing the gate exists to stop, while `off` degrades to the product
+        owner it would have returned anyway. A gate that is off may not start
+        failing requests for the state it was off for.
+        """
         owner_id = str(product_owner_principal_id or "")
-        if not self.enforced:
-            return owner_id
         if recording_id:
             try:
                 result = (
@@ -122,11 +175,15 @@ class ProcessingAuthorizationService:
             if value:
                 return str(value)
         except Exception as error:
+            if not self.enforced:
+                return owner_id
             raise ProcessingAuthorizationError(
                 "PROCESSING_PRINCIPAL_UNRESOLVED",
                 "The acquisition principal could not be resolved.",
                 503,
             ) from error
+        if not self.enforced:
+            return owner_id
         raise ProcessingAuthorizationError(
             "PROCESSING_PRINCIPAL_UNRESOLVED",
             "The acquisition principal could not be resolved.",
@@ -212,6 +269,14 @@ class ProcessingAuthorizationService:
             "p_client_version": str(payload.get("client_version") or ""),
             "p_accepted_at": accepted_at,
             "p_idempotency_key": str(payload.get("idempotency_key") or ""),
+            # ONLY what the person affirmatively ticked. An empty list is the
+            # recorded "no", and v2 behaves exactly as v1 does for it — an
+            # absent field could not tell a refusal from never having asked.
+            # Shape is checked here; whether a purpose is IN the policy, and
+            # whether it is one that may be optional at all, is the RPC's to
+            # decide (PROCESSING_OPTIONAL_PURPOSE_INVALID). Validating it in
+            # two places is how the two drift apart.
+            "p_optional_purposes": _optional_purposes(payload),
         }
         if not args["p_idempotency_key"]:
             raise ProcessingAuthorizationError(
@@ -219,7 +284,7 @@ class ProcessingAuthorizationService:
             )
         try:
             result = self.client.rpc(
-                "accept_phase1_processing_authorization_v1", args
+                "accept_phase1_processing_authorization_v2", args
             ).execute()
             row = _one(result.data)
             if not row:
