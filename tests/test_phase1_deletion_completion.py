@@ -517,3 +517,55 @@ def test_operator_execution_is_disabled_without_exact_double_gate(monkeypatch):
             "--purge-request-id", "purge-1", "--execute",
             "--confirm-request-id", "purge-2",
         ])
+
+
+def test_every_emitted_source_relation_is_known_to_the_purge_functions():
+    """B-4 (audit 2026-09-22). THE DRIFT, CAUGHT WITHOUT A DATABASE.
+
+    `data_purge.py` has emitted `source_relation = 'processing_practice_objects'`
+    since 0334 gave practice audio its own registry. Neither
+    `freeze_phase1_purge_inventory_v4` nor
+    `mark_phase1_storage_object_purged_v1` knows that relation exists: both
+    accept `processing_audio_objects` and `processing_orphan_objects` and
+    raise on anything else. So a subject with one practice recording cannot
+    be purged at all — the request is written, the freeze refuses, and the
+    row sits at `requested` for ever.
+
+    This is the cheap half of the guard and it is deliberately not
+    database-bound, so it runs on every pull request rather than only when
+    somebody remembers the rehearsal tier. It would have caught this the day
+    0334 shipped.
+    """
+    root = Path(__file__).resolve().parent.parent
+    emitted = set(re.findall(
+        r'"source_relation":\s*"([a-z_]+)"',
+        (root / "services" / "data_purge.py").read_text(encoding="utf-8")))
+    assert emitted, "no source_relation literals found to check"
+
+    # The LAST definition in manifest order is the one that runs. A function
+    # replaced by a later migration must be read there, or this guard checks
+    # a body production stopped using.
+    manifest = [
+        line.split("\t")[1].strip()
+        for line in (root / "migrations" / "manifest.txt")
+        .read_text(encoding="utf-8").splitlines()
+        if "\t" in line
+    ]
+    for function in ("freeze_phase1_purge_inventory_v4",
+                     "mark_phase1_storage_object_purged_v1"):
+        body = None
+        for name in manifest:
+            path = root / "migrations" / name
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            marker = f"FUNCTION public.{function}("
+            if marker in text:
+                body = text[text.index(marker):]
+        assert body is not None, f"{function} is defined in no migration"
+        unknown = sorted(r for r in emitted if f"'{r}'" not in body)
+        assert not unknown, (
+            f"the orchestrator emits {unknown} and the current definition of "
+            f"{function} does not mention them — a subject whose only storage "
+            "is one of these cannot be erased"
+        )
