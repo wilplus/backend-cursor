@@ -336,6 +336,12 @@ def _valid_attestation_service_roster(
     monitor_code_sha256: str,
 ) -> dict[str, str] | None:
     backend_gates = {
+        # MLC3_SERVICE_ENABLED is what decides serving after the D4 cutover;
+        # MLC3_PILOT_ENABLED is the retired flag that used to. The retired one
+        # is KEPT rather than replaced: a stale flag left set is still a flag
+        # that should be off before a review, and dropping the assertion would
+        # weaken a line that passes today. An attestation must now show both.
+        "MLC3_SERVICE_ENABLED",
         "MLC3_PILOT_ENABLED", "MLC3_COACH_INLINE_AUTHORING_ENABLED",
         "MLC2_DATASET_RELEASES_ENABLED", "MLC2_TRAINING_ENABLED",
         "MLC2_EVALUATION_ENABLED", "MLC2_PROMOTION_ENABLED",
@@ -465,6 +471,11 @@ def _valid_attestation_emergency_disable(
         return False
     expected_disabled_targets = {
         "database_contract_state": "disabled",
+        # The live pair first, then the retired pair they replaced. An
+        # emergency-disable rehearsal that only proves the retired flags went
+        # off proves nothing about what is actually serving.
+        "MLC3_SERVICE_ENABLED": False,
+        "NEXT_PUBLIC_MLC3_SERVICE_UI_ENABLED": False,
         "MLC3_PILOT_ENABLED": False,
         "MLC3_COACH_INLINE_AUTHORING_ENABLED": False,
         "NEXT_PUBLIC_MLC3_PILOT_UI_ENABLED": False,
@@ -524,6 +535,10 @@ def _valid_attestation_vercel_export(
         and vercel_export.get("build_config_sha256") == expected_build_sha
         and isinstance(frontend_gates, Mapping)
         and set(frontend_gates) == {
+            # The live presentation gate after the D4 cutover. Without it the
+            # Vercel export proved nothing about the flag that actually decides
+            # whether the surface is reachable in the production build.
+            "NEXT_PUBLIC_MLC3_SERVICE_UI_ENABLED",
             "NEXT_PUBLIC_MLC3_PILOT_UI_ENABLED",
             "NEXT_PUBLIC_MLC3_COACH_INLINE_AUTHORING_ENABLED",
         }

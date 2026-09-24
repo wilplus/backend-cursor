@@ -1669,6 +1669,37 @@ costs a new policy version and re-acceptance by every user.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
+### 2026-09-24 · the readiness check was verifying retired flags · readiness-checks-the-live-gates · #(pending)
+
+`check_mlc3_founder_canary_readiness.py` passed
+`backend_serving_enabled=Config.MLC3_PILOT_ENABLED`, and the attestation
+validator required `MLC3_PILOT_ENABLED` and `NEXT_PUBLIC_MLC3_PILOT_UI_ENABLED`
+to be false. **Those are the flags the D4 cutover retired.**
+
+What decides serving now is `MLC3_SERVICE_ENABLED` — `routes/phase2_guard.py`
+reads it through `coach_guidance_delivery.runtime_is_enabled` and nothing else —
+and `NEXT_PUBLIC_MLC3_SERVICE_UI_ENABLED` in the production build. The readiness
+path never read either. So the check could certify "backend serving disabled"
+while the surface was live, and a signed attestation could swear to it.
+
+This is the CONFIG-FIRST failure in its purest form: verifying a variable the
+code ignores. The repo's own rule says to confirm a per-service variable from
+that service's boot log rather than the panel, for exactly this reason — and
+then the gate that enforces readiness read the wrong name.
+
+**ADDED, never swapped.** The retired names stay asserted: a stale flag left set
+is still a flag that should be off before a review, and removing those lines
+would weaken a contract that passes today. An attestation must now carry both
+pairs, and `backend_serving_enabled` is true if EITHER is set — OR is the
+fail-closed direction.
+
+Three fixtures gained the new keys (backend roster, emergency-disable targets,
+Vercel build gates). Three new cases: an old-shape attestation that omits the
+live flag must now fail, a live flag switched on must fail, and a source-level
+read of the caller — the assessor takes `backend_serving_enabled` as an
+argument, so no assessor test can catch the caller passing the wrong flag.
+Verified against a reverted build: the caller test fails, then passes.
+
 ### 2026-09-24 · the readiness report can now say the coach is the founder · warn-when-coach-is-the-founder · #(pending)
 
 `assess_founder_canary_readiness` asserts `founder_principal_count = 1` and

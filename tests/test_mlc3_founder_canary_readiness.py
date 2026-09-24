@@ -141,6 +141,7 @@ def _r2_manifest():
 
 def _deployment_manifest():
     backend_gates = {
+        "MLC3_SERVICE_ENABLED": False,
         "MLC3_PILOT_ENABLED": False,
         "MLC3_COACH_INLINE_AUTHORING_ENABLED": False,
         "MLC2_DATASET_RELEASES_ENABLED": False,
@@ -180,6 +181,7 @@ def _deployment_manifest():
         "deployment_id": "vercel-deployment",
         "commit_sha": "f" * 40,
         "effective_build_gates": {
+            "NEXT_PUBLIC_MLC3_SERVICE_UI_ENABLED": False,
             "NEXT_PUBLIC_MLC3_PILOT_UI_ENABLED": False,
             "NEXT_PUBLIC_MLC3_COACH_INLINE_AUTHORING_ENABLED": False,
         },
@@ -203,6 +205,8 @@ def _deployment_manifest():
     now = datetime.now(timezone.utc).isoformat()
     disabled_targets = {
         "database_contract_state": "disabled",
+        "MLC3_SERVICE_ENABLED": False,
+        "NEXT_PUBLIC_MLC3_SERVICE_UI_ENABLED": False,
         "MLC3_PILOT_ENABLED": False,
         "MLC3_COACH_INLINE_AUTHORING_ENABLED": False,
         "NEXT_PUBLIC_MLC3_PILOT_UI_ENABLED": False,
@@ -975,3 +979,83 @@ def test_the_superseded_writer_stays_required_and_the_guard_explains_it():
     assert "founder_canary_surface_superseded_by_d4" in source
     assert "--allow-superseded-surface" in source
     assert "check_mlc3_general_service_readiness.py" in source
+
+
+def test_attestation_requires_the_live_serving_gates_not_the_retired_ones():
+    """The D4 cutover retired MLC3_PILOT_ENABLED and NEXT_PUBLIC_MLC3_PILOT_UI
+    _ENABLED. routes/phase2_guard.py reads MLC3_SERVICE_ENABLED, via
+    coach_guidance_delivery.runtime_is_enabled, and nothing else.
+
+    Before this, an attestation could swear the retired flags were off and say
+    nothing at all about the flag that actually decides serving — so the report
+    could certify "backend serving disabled" while the surface was live. The
+    retired names are kept rather than replaced: a stale flag left set is still
+    a flag that should be off before a review.
+    """
+    manifest = _deployment_manifest()
+
+    # An attestation in the OLD shape must no longer validate.
+    old_shape = json.loads(json.dumps(manifest))
+    for service in old_shape["railway"]["authenticated_provider_export"][
+        "services"
+    ]:
+        service["effective_gates"].pop("MLC3_SERVICE_ENABLED")
+    old_shape = _attest({key: value for key, value in old_shape.items()
+                         if key not in {"evidence_sha256",
+                                        "signature_ed25519_base64"}})
+    assert not _validate_deployment(old_shape), (
+        "an attestation that never mentions the live serving flag must not "
+        "pass: it proves nothing about what is actually serving"
+    )
+
+    # And it must fail when the live flag is ON.
+    serving = json.loads(json.dumps(manifest))
+    for service in serving["railway"]["authenticated_provider_export"][
+        "services"
+    ]:
+        service["effective_gates"]["MLC3_SERVICE_ENABLED"] = True
+    serving = _attest({key: value for key, value in serving.items()
+                       if key not in {"evidence_sha256",
+                                      "signature_ed25519_base64"}})
+    assert not _validate_deployment(serving)
+
+
+def test_vercel_export_must_carry_the_live_presentation_gate():
+    manifest = _deployment_manifest()
+
+    missing = json.loads(json.dumps(manifest))
+    missing["vercel"]["authenticated_provider_export"][
+        "effective_build_gates"
+    ].pop("NEXT_PUBLIC_MLC3_SERVICE_UI_ENABLED")
+    missing = _attest({key: value for key, value in missing.items()
+                       if key not in {"evidence_sha256",
+                                      "signature_ed25519_base64"}})
+    assert not _validate_deployment(missing)
+
+    enabled = json.loads(json.dumps(manifest))
+    enabled["vercel"]["authenticated_provider_export"][
+        "effective_build_gates"
+    ]["NEXT_PUBLIC_MLC3_SERVICE_UI_ENABLED"] = True
+    enabled = _attest({key: value for key, value in enabled.items()
+                       if key not in {"evidence_sha256",
+                                      "signature_ed25519_base64"}})
+    assert not _validate_deployment(enabled)
+
+
+def test_the_checker_reads_the_live_serving_flag():
+    """The assessor takes backend_serving_enabled as an argument, so no
+    assessor test can catch the caller passing the wrong flag. This reads the
+    caller."""
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts" / "check_mlc3_founder_canary_readiness.py"
+    ).read_text(encoding="utf-8")
+    call = re.search(
+        r"backend_serving_enabled=(.*?),\n\s+backend_inline_authoring_enabled",
+        source, re.S,
+    )
+    assert call, "the backend_serving_enabled argument moved or vanished"
+    assert "MLC3_SERVICE_ENABLED" in call.group(1), (
+        "the readiness check is reading only the retired pilot flag again; it "
+        "would certify serving as disabled while the service flag is on"
+    )

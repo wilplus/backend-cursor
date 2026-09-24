@@ -645,7 +645,17 @@ def main(argv: list[str] | None = None) -> int:
         health,
         founder_principal_id=args.principal_id,
         coach_email=args.coach_email,
-        backend_serving_enabled=Config.MLC3_PILOT_ENABLED,
+        # EITHER flag, not just the retired one. MLC3_PILOT_ENABLED was
+        # what decided serving before the D4 cutover; MLC3_SERVICE_ENABLED
+        # is what decides it now (routes/phase2_guard.py reads only the
+        # latter, via coach_guidance_delivery.runtime_is_enabled). Reading
+        # only the retired one meant this check could certify "backend
+        # serving disabled" while serving was switched on. Both are read
+        # because a retired flag left set is still a flag that should be
+        # off before a review, and OR is the fail-closed direction.
+        backend_serving_enabled=bool(
+            Config.MLC3_SERVICE_ENABLED or Config.MLC3_PILOT_ENABLED
+        ),
         backend_inline_authoring_enabled=(
             Config.MLC3_COACH_INLINE_AUTHORING_ENABLED
         ),
