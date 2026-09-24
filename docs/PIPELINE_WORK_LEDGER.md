@@ -560,3 +560,71 @@ there because `test_every_created_function_revokes_anon_and_authenticated`
 has no "revoked by an earlier migration" carve-out — its sibling PUBLIC test
 does — and because a reader auditing an erasure writer should not have to open
 another file to learn it is service_role-only.
+
+### 2026-09-23 · WS0 · claude/dazzling-johnson-excc8e · #(pending)
+
+**Closed:** none (coach authoring, founder-directed)
+**Contract lines flipped:** none
+**Contract lines added:** `TheAvatarTick` in
+`tests/test_diagnostic_exercise_catalogue.py`
+**Broke and fixed:** one test asserted the rule this change reverses — see below
+**Open for the founder:** migration 0353 runs on the next container start
+(`MIGRATE_ON_BOOT=1`). It only RELAXES a constraint and adds two nullable-ish
+columns, so no existing row becomes invalid and nothing is rewritten.
+
+**What changed, in one line.** An exercise no longer needs a journal post to go
+live, and it can say it is usable for a future avatar.
+
+**THE SERVE-TIME GATE WAS THE REAL WORK, and it is the thing to remember.**
+Relaxing the database CHECK and the authoring refusal is the obvious half.
+`db.get_active_diagnostic_exercise` then still read
+
+    if not row or not row.get("journal_post_id") ...: return None
+
+so a post-less exercise would have saved, reported itself active, and been
+served to nobody. That is exactly the outcome the founder rejected when he was
+offered it as an option ("saved but never offered"). Three places had to agree
+before the decision meant anything: the CHECK, the authoring refusal, and the
+read. If you relax a rule here, grep for every place that re-asserts it.
+
+**What did NOT change.** A post that IS attached must still be published before
+the exercise switches on. Half-linking an exercise to a draft would show a
+learner a dead address, which is worse than showing them none.
+
+**The avatar pair, and why it is a pair.** `avatar_training_eligible` plus
+`avatar_setup_label`, with a CHECK refusing the flag without the label. The
+flag records something PERISHABLE — only the person in the room at record time
+knows whether the shirt, angle and light matched, and it cannot be recovered
+from the file afterwards, which is the whole argument for storing it now for a
+product that does not exist. But a bare boolean says only that ONE clip was
+shot carefully; it cannot say two clips MATCH, and matching each other is the
+entire requirement of a training set. The label is what makes the flag pay.
+
+**Nothing reads the new columns** — founder's decision: remember only. There is
+a partial index on `(avatar_setup_label) WHERE avatar_training_eligible` so the
+one query this exists to enable is cheap the day something wants it.
+
+**Two things that cost time.** The migration filename must NOT carry its number
+— the manifest owns that, and `0353_name.sql` failed both manifest-integrity
+tests. And the rehearsal tier is not opt-in when the change needs it: touching
+`migrations/manifest.txt` triggered 388 PostgreSQL tests automatically, which
+is why this run took ~20 minutes rather than 5. Budget for it.
+
+### 2026-09-24 · CORRECTION · 0353 was claimed twice · b4-deletion-reaches-practice · #618
+
+`#629` merged to `main` on 2026-09-23 and took migration number **0353** for
+`an_exercise_can_live_without_a_post.sql`. This branch had already numbered
+`deletion_reaches_practice_objects.sql` 0353, so the two collided and GitHub
+reported `#618` un-mergeable.
+
+Resolved by merging `origin/main` into this branch and renumbering ours to
+**0354**, behind main's 0353. The file itself is unchanged — the number lives
+only in `migrations/manifest.txt`, so nothing about the migration's content or
+its twice-clean apply is affected. The ledger conflict was resolved by keeping
+both entries; neither side's was rewritten.
+
+The same collision will recur on each of the four branches stacked above this
+one, since each carries this migration. Each is being re-based and re-gated in
+turn rather than merged on stale evidence.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
