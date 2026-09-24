@@ -72,6 +72,60 @@ def _deliver(database, row: dict) -> None:
     if payload.get("voice_album_clip_ids"):
         fire_voice_album_ready(database, owner_id, project_id)
     maybe_fire_best_presentation_ready(database, project_id)
+    _mail_the_speaker(database, owner_id, project_id, session_id, payload)
+
+
+def _mail_the_speaker(database, owner_id, project_id, session_id, payload):
+    """The publish-results email — the ONLY thing that reaches a speaker who
+    is not looking at the app.
+
+    It was called from the publish endpoint until b73697f moved delivery
+    effects here and left it behind; it has sent nothing since 2026-08-24.
+    Founder 2026-09-24: "You should turn on the email so that they know that
+    they have it."
+
+    BEST-EFFORT ON PURPOSE. This module is a retrying outbox: a raise leaves
+    the event to run again, and the Lounge bubbles above survive that because
+    each is idempotent on its client key. An email is not — a retry would put
+    a second copy in the inbox. So a failed send is logged and swallowed, and
+    the publish stands. Silence in an inbox beats a duplicate, and beats a
+    delivery row that never finishes.
+    """
+    if not owner_id:
+        return
+    try:
+        from services.arc_notifications import _arc_topic
+        from services.post_session_results_email import (
+            send_publish_results_email,
+        )
+
+        email = database.get_user_email_from_auth(str(owner_id))
+        if not email:
+            logger.info(
+                "publish email: no address on file user=%s", owner_id)
+            return
+        items = payload.get("feedback_items")
+        result = send_publish_results_email(
+            user_id=str(owner_id),
+            user_email=email,
+            user_first_name=None,
+            # The project's own name. Non-empty matters: the render endpoint
+            # refuses a blank topTheme, and the sender would quietly fall back
+            # to its degraded inline template rather than the designed one.
+            top_theme=_arc_topic(database, project_id) or "your latest take",
+            snippet_count=len(items) if isinstance(items, list) else 0,
+            session_id=str(session_id or ""),
+            arc_id=str(project_id) if project_id else None,
+        )
+        logger.info(
+            "publish email: %s user=%s arc=%s",
+            (result or {}).get("status"), owner_id, project_id,
+        )
+    except Exception as e:
+        logger.exception(
+            "publish email failed user=%s arc=%s err=%s",
+            owner_id, project_id, e,
+        )
 
 
 def deliver_review(revision_id: str, *, database=None) -> bool:
