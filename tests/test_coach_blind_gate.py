@@ -4,6 +4,7 @@ from services.coach_blind_gate import (
     has_committed_blind_label,
     redact_contextual_snippets,
     reveal_acoustic_features_after_commit,
+    reveal_owner_answer_after_commit,
     reveal_transcript_after_commit,
 )
 
@@ -52,7 +53,22 @@ def test_acoustic_queue_requires_explicit_second_pass_and_every_answer():
     assert can_reveal_acoustic_features(complete, requested=True)
 
 
-def test_redaction_keeps_audio_and_own_answer_but_drops_context():
+def test_redaction_keeps_audio_its_own_answer_the_slide_and_the_bookmark():
+    """What a blind rater may see — REWRITTEN 2026-09-24, not relaxed.
+
+    This test used to assert that the slide was dropped, and that was the
+    right assertion for the instrument that existed when it was written: the
+    confidence label came from the voice alone. The founder moved that fence
+    deliberately ("I want as a coach to see the slide at the top; to know on
+    which slide they are talking about"), having been shown both the fence and
+    the compliant alternative. Only the founder can move it, so the test
+    follows the new rule rather than the old one.
+
+    It is still a fence. Everything that says something ABOUT the speaker —
+    acoustic features, rank, stickiness — stays out, as does every scrap of the
+    coach's own authoring. `bookmarked` is the other addition and is a bare
+    boolean: surfaced to the user, or not, never the tier behind it.
+    """
     rows = redact_contextual_snippets([{
         "id": "s1",
         "index": 0,
@@ -61,6 +77,8 @@ def test_redaction_keeps_audio_and_own_answer_but_drops_context():
         "start_offset_ms": 100,
         "duration_ms": 900,
         "slide": {"index": 2},
+        "bookmarked": True,
+        "owner_answer": "in_between",
         "features": {"f0": 3},
         "rank": 1,
         "stickiness": {"composite": 0.9},
@@ -79,6 +97,9 @@ def test_redaction_keeps_audio_and_own_answer_but_drops_context():
         "audio_ref": "https://audio",
         "start_offset_ms": 100,
         "duration_ms": 900,
+        "slide": {"index": 2},
+        "bookmarked": True,
+        "owner_answer": "in_between",
         "coach_state": {
             "note": "",
             "tag": None,
@@ -87,6 +108,50 @@ def test_redaction_keeps_audio_and_own_answer_but_drops_context():
             "rating_unrateable": False,
         },
     }]
+
+
+def test_the_allowlist_still_drops_everything_that_judges_the_speaker():
+    """The half of the fence the founder did NOT move.
+
+    A slide is the speaker's own material and a bookmark is a fact about what
+    they were shown. A rank, a stickiness composite and an acoustic vector are
+    the machine's read of how well they did it, and none of them may reach a
+    rater who has not answered yet — that is N1, and it is untouched.
+    """
+    [row] = redact_contextual_snippets([{
+        "id": "s2",
+        "transcript": "words",
+        "features": {"f0_mean": 146.4},
+        "rank": 1,
+        "overall_score": 0.82,
+        "slide_stickiness": {"composite": 0.91},
+        "stickiness": {"composite": 0.9},
+        "coach_state": {"rating_value": "yes"},
+    }])
+    for leaked in ("features", "rank", "overall_score",
+                   "slide_stickiness", "stickiness"):
+        assert leaked not in row, leaked
+
+
+def test_a_row_with_no_bookmark_flag_reads_false_rather_than_missing():
+    """Safe-ahead: an older shaped row simply is not a bookmark."""
+    [row] = redact_contextual_snippets([{"id": "s3", "coach_state": {}}])
+    assert row["bookmarked"] is False
+    assert row["slide"] is None
+    assert row["owner_answer"] == ""
+
+
+def test_the_speakers_own_answer_waits_for_the_coachs_own():
+    """FOUNDER 2026-09-24: "what the user judged AFTER I judge it."
+
+    The same rule the transcript runs on, and for the same reason: the coach
+    answers from the voice, and only a committed answer buys anything more.
+    Before that it is not hidden in the browser — it never leaves the server.
+    """
+    assert reveal_owner_answer_after_commit("no", committed=False) == ""
+    assert reveal_owner_answer_after_commit("no", committed=True) == "no"
+    # Nothing recorded for that moment is not a judgement of it.
+    assert reveal_owner_answer_after_commit(None, committed=True) == ""
 
 
 def test_redaction_withholds_unanswered_transcript_from_the_payload():

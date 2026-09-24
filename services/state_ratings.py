@@ -156,7 +156,8 @@ def describe_question(question_version: Any) -> Optional[dict]:
 # ── validation ──────────────────────────────────────────────────────────────
 
 def validate_rating(payload: Any, *,
-                    saw_model_output: bool = False
+                    saw_model_output: bool = False,
+                    saw_slide: bool = False,
                     ) -> tuple[Optional[dict], Optional[str]]:
     """Validate one five-state rating -> ``(row, None)`` or ``(None, error)``.
 
@@ -248,6 +249,26 @@ def validate_rating(payload: Any, *,
         # accepted from the payload. The surface is not something the surface
         # gets to describe.
         "saw_model_output": bool(saw_model_output),
+        # WHAT ELSE THE RATER COULD SEE (founder 2026-09-24). The coach's blind
+        # screen now shows the slide the moment was spoken over — an explicit
+        # founder override of the blind-coach fence, taken after being shown
+        # both the fence and a compliant alternative.
+        #
+        # THE OVERRIDE IS WHY THIS FIELD EXISTS. Every label before that ruling
+        # was collected from the voice alone; every label after it is collected
+        # from the voice and the slide together. That is one instrument
+        # replacing another mid-collection, and once stored the two are
+        # indistinguishable — which is precisely the defect `saw_model_output`
+        # above exists to prevent for the machine read, and precisely what §1.4
+        # means by one question asking exactly one thing. Stamping it keeps the
+        # corpus able to separate them; not stamping it would quietly merge two
+        # instruments into one column and no later analysis could unpick it.
+        #
+        # SERVER-SUPPLIED AND BLIND BY DEFAULT, for the same reason as its
+        # neighbour: a caller that forgets records the stricter claim, and the
+        # only way to record `True` is for a route to say so. The surface does
+        # not get to describe itself.
+        "saw_slide": bool(saw_slide),
     }, None
 
 

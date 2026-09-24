@@ -11242,6 +11242,12 @@ class DatabaseService:
             "question_id": row.get("question_id"),
             "question_version": row.get("question_version"),
             "saw_model_output": bool(row.get("saw_model_output")),
+            # Paired with saw_model_output and written the same way: what the
+            # rater could see when they answered (founder 2026-09-24 put the
+            # slide on the coach's blind screen). It is a STAMP, so it joins
+            # the ledger-column retry below rather than being allowed to take
+            # a rating down with it — see that handler for why.
+            "saw_slide": bool(row.get("saw_slide")),
             "latency_ms": row.get("latency_ms"),
             "note": row.get("note"),
             "lane": lane,
@@ -11293,26 +11299,10 @@ class DatabaseService:
             # irreplaceable half; the provenance stamps are re-derivable
             # (machine_value from the stored acoustic read, self_report from
             # ownership). Dropping the answer to protect a stamp is backwards.
-            if ("machine_value" in err_low or "self_report" in err_low) and (
-                    "column" in err_low or "pgrst204" in err_low):
-                logger.warning(
-                    "upsert_state_rating: ledger columns missing (run "
-                    "migrations/add_label_quorum_ledger.sql) — retrying "
-                    "without them snip=%s", snippet_id,
-                )
-                payload.pop("machine_value", None)
-                payload.pop("self_report", None)
-                try:
-                    (self.client.table("confidence_labels")
-                         .upsert(payload,
-                                 on_conflict="snippet_id,rater_id").execute())
-                    self._append_label_revision(payload)
-                    return True
-                except Exception as retry_err:
-                    logger.warning(
-                        "upsert_state_rating retry failed snip=%s: %s",
-                        snippet_id, retry_err)
-                    return False
+            retried = self._retry_rating_without_stamps(
+                payload, snippet_id, err_low)
+            if retried is not None:
+                return retried
             if ("column" in err_low and (
                     "state_id" in err_low or "unrateable" in err_low
                     or "question_version" in err_low or "lane" in err_low)):
@@ -11330,6 +11320,54 @@ class DatabaseService:
                 return False
             logger.warning("upsert_state_rating failed snip=%s: %s",
                            snippet_id, e)
+            return False
+
+    def _retry_rating_without_stamps(
+        self, payload: dict, snippet_id: str, err_low: str,
+    ) -> Optional[bool]:
+        """Re-send a rating whose PROVENANCE STAMPS the schema does not have.
+
+        Returns None when the error was not a missing stamp column, so the
+        caller keeps its own handlers; True/False when this path owned it.
+
+        WHY IT IS A RETRY AND NOT A FAILURE. The migration lands on web boot
+        (MIGRATE_ON_BOOT), so a worker or cron container legitimately runs this
+        code against the older schema for a few seconds. The human answer is
+        the irreplaceable half of the write; the stamps are re-derivable
+        (machine_value from the stored acoustic read, self_report from
+        ownership). Dropping the answer to protect a stamp is backwards.
+
+        `saw_slide` joined them on 2026-09-24 with the founder's override of
+        the blind-coach fence. What is lost when it is dropped is the ability
+        to tell WHICH INSTRUMENT collected the row — voice alone, or voice and
+        slide — so this logs loudly rather than quietly: a run of these means
+        the migration has not landed and the corpus is mixing.
+
+        Its own method because the caller is at the complexity ratchet's
+        ceiling and adding the third column name tipped it over. The retry is
+        one self-contained concern, so it is the right piece to lift out.
+        """
+        stamps = ("machine_value", "self_report", "saw_slide")
+        if not any(name in err_low for name in stamps):
+            return None
+        if "column" not in err_low and "pgrst204" not in err_low:
+            return None
+        logger.warning(
+            "upsert_state_rating: stamp columns missing (run "
+            "migrations/add_label_quorum_ledger.sql or "
+            "the_rater_says_what_they_could_see.sql) — retrying without "
+            "them snip=%s", snippet_id,
+        )
+        for name in stamps:
+            payload.pop(name, None)
+        try:
+            (self.client.table("confidence_labels")
+                 .upsert(payload, on_conflict="snippet_id,rater_id").execute())
+            self._append_label_revision(payload)
+            return True
+        except Exception as retry_err:
+            logger.warning("upsert_state_rating retry failed snip=%s: %s",
+                           snippet_id, retry_err)
             return False
 
     def _append_label_revision(self, payload: dict) -> None:
@@ -11376,6 +11414,10 @@ class DatabaseService:
                 "question_id": payload.get("question_id"),
                 "question_version": payload.get("question_version"),
                 "saw_model_output": bool(payload.get("saw_model_output")),
+                # Same stamp, same reason: the revision is the only record of
+                # what the upsert replaced, so it must say which instrument
+                # collected the row it is shadowing.
+                "saw_slide": bool(payload.get("saw_slide")),
                 "latency_ms": payload.get("latency_ms"),
                 "session_id": payload.get("session_id"),
                 "model_version_at_time": payload.get("model_version_at_time"),

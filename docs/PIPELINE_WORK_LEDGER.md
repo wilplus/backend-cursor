@@ -1734,4 +1734,26 @@ cases pass.
 counts `^  FAIL ` steps, rather than grepping for a word that appears in
 sub-step output.
 
+### 2026-09-24 · CORRECTION · the age literal was never a hole · fix-age-literal-is-the-payload · #(pending)
+
+I reported `"p_age_18_attested": True` as a security finding twice — most
+recently in the one-call receipt guide handed to the founder, where I wrote
+that "a non-browser client could accept without ticking and the receipt would
+still record the attestation."
+
+**That was false.** `accept` raises `AGE_ATTESTATION_REQUIRED` (422) before it
+builds the RPC arguments, so no caller reaches the writer without having sent
+`age_18_attested: true`. The literal was redundant, not a hole. I read the
+argument dict and never read the twelve lines above it.
+
+The change is therefore readability only: pass the value that was checked, so
+the code stops reading as though it ignores the payload. Five behavioural cases
+added. The refusal cases were verified to fail with the guard removed (4 failed,
+1 passed) and pass with it restored — the one that passes either way is the
+value assertion, which cannot distinguish a literal `True` from a payload
+`True`, because behaviourally there is nothing to distinguish. That is the
+whole point of the finding being wrong.
+
+Contract baseline unchanged.
+
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
