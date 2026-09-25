@@ -412,3 +412,4 @@
 0374	practice_is_judged_after_every_attempt.sql
 0375	training_copies_are_copies.sql
 0376	training_copies_go_when_the_yes_goes.sql
+0377	the_old_consent_code_ignores_the_training_yes.sql
