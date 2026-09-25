@@ -35,6 +35,7 @@ from services.create_take import session_owned_by_principal
 from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
 from services.snippet_values import resolve_all
+from services.take_repository import TakeHasLineageError
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -359,12 +360,24 @@ def _user_presentation_groups(user_id: str) -> dict:
     }
 
 
-def _hard_delete_session_for_user(user_id: str, session_id: str) -> None:
-    """Durably delete one historical take through the owner-scoped adapter."""
-    try:
-        db.takes.v2_delete_session(session_id, user_id)
-    except Exception as e:
-        logger.warning("presentation delete: session delete failed sid=%s err=%s", session_id, e)
+def _hard_delete_sessions_for_user(user_id: str, session_ids: list) -> None:
+    """Delete these owner-scoped takes in one statement, or none of them.
+
+    Raises instead of swallowing: a Take the database refuses to delete
+    (TakeHasLineageError) is left exactly as it was, and the caller must not
+    report success for it."""
+    db.takes.v2_delete_sessions(list(session_ids), user_id)
+
+
+def _take_has_lineage_response(e: TakeHasLineageError):
+    """409 for a Take whose lineage still references it. Nothing was changed;
+    deleting it is the governed Phase-1 purge's job, not this route's."""
+    logger.info("take delete refused (lineage) sids=%s", e.session_ids)
+    return jsonify({
+        "code": "TAKE_HAS_LINEAGE",
+        "error": "This take is part of a project's history and cannot be "
+                 "deleted here. Nothing was deleted.",
+    }), 409
 
 
 def _user_presentation_sessions_all(user_id: str, presentation_id: str) -> list:
@@ -393,8 +406,9 @@ def v2_user_delete_presentation(presentation_id):
     """Delete a whole presentation (deck) and ALL its takes — owner-scoped,
     HARD delete (the recordings are gone everywhere, incl. coach history).
     Deletes the complete owner-scoped session set for the deck (see
-    ``_user_presentation_sessions_all``).
-    200 {deleted_sessions} · 404 if the user has no such presentation."""
+    ``_user_presentation_sessions_all``) in one statement: all of it or none.
+    200 {deleted_sessions} · 404 if the user has no such presentation ·
+    409 TAKE_HAS_LINEAGE if any take is still referenced (nothing deleted)."""
     try:
         uid = str(request.user_id)
         sids = _user_presentation_sessions_all(uid, presentation_id)
@@ -403,13 +417,14 @@ def v2_user_delete_presentation(presentation_id):
                 "code": "NOT_FOUND",
                 "error": "No such presentation for this user",
             }), 404
-        for sid in sids:
-            _hard_delete_session_for_user(uid, sid)
+        _hard_delete_sessions_for_user(uid, sids)
         logger.info(
             "presentation deleted user=%s pid=%s takes=%d",
             uid, presentation_id, len(sids),
         )
         return jsonify({"status": "ok", "deleted_sessions": len(sids)}), 200
+    except TakeHasLineageError as e:
+        return _take_has_lineage_response(e)
     except Exception as e:
         logger.error("user/presentations DELETE failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
@@ -424,7 +439,8 @@ def v2_user_delete_presentation(presentation_id):
 def v2_user_delete_take(presentation_id, take_number):
     """Delete a single take (one recording session) of a presentation —
     owner-scoped HARD delete. take_number is 1-based and chronological.
-    200 · 400 bad take_number · 404 unknown presentation/take."""
+    200 · 400 bad take_number · 404 unknown presentation/take ·
+    409 TAKE_HAS_LINEAGE if the take is still referenced (nothing deleted)."""
     try:
         uid = str(request.user_id)
         try:
@@ -452,12 +468,14 @@ def v2_user_delete_take(presentation_id, take_number):
                 "error": f"take {n} does not exist (presentation has {len(sids)})",
             }), 404
         sid = sids[n - 1]  # take_number is 1-based, take 1 = oldest
-        _hard_delete_session_for_user(uid, sid)
+        _hard_delete_sessions_for_user(uid, [sid])
         logger.info(
             "take deleted user=%s pid=%s take=%d session=%s",
             uid, presentation_id, n, sid,
         )
         return jsonify({"status": "ok", "deleted_session": sid, "take_number": n}), 200
+    except TakeHasLineageError as e:
+        return _take_has_lineage_response(e)
     except Exception as e:
         logger.error("user/presentations/takes DELETE failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
@@ -471,7 +489,8 @@ def v2_user_delete_session(session_id):
     (library rows + session; same helper as the presentation/take deletes).
     This is the delete path for DECKLESS trainings, which have no
     presentation_id and were previously undeletable (backlog 4.4).
-    200 {deleted_session} · 400 bad uuid · 404 not found / not the owner."""
+    200 {deleted_session} · 400 bad uuid · 404 not found / not the owner ·
+    409 TAKE_HAS_LINEAGE if the take is still referenced (nothing deleted)."""
     if not _is_valid_uuid(session_id):
         return jsonify({
             "code": "INVALID_INPUT", "error": "session_id must be a valid UUID",
@@ -483,9 +502,11 @@ def v2_user_delete_session(session_id):
             return jsonify({
                 "code": "SESSION_NOT_FOUND", "error": "Session not found",
             }), 404
-        _hard_delete_session_for_user(uid, session_id)
+        _hard_delete_sessions_for_user(uid, [session_id])
         logger.info("session deleted user=%s sid=%s", uid, session_id)
         return jsonify({"status": "ok", "deleted_session": session_id}), 200
+    except TakeHasLineageError as e:
+        return _take_has_lineage_response(e)
     except Exception as e:
         logger.error("user/sessions DELETE failed sid=%s: %s",
                      session_id, e, exc_info=True)

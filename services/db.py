@@ -10,6 +10,7 @@ import time
 
 import sentry_sdk
 from services.snippet_tables import SNIPPETS_TABLE
+from services.take_repository import TakeHasLineageError
 
 config = Config()
 logger = logging.getLogger(__name__)
@@ -764,6 +765,10 @@ class DatabaseService:
                 try:
                     if self.takes.v2_delete_session(session_id, user_id):
                         deleted_ids.append(session_id)
+                except TakeHasLineageError:
+                    # A canonical Take: the refusal changed nothing, and the
+                    # governed purge owns it. Not an error to page on.
+                    logger.info("cleanup: take has lineage, kept sid=%s", session_id)
                 except Exception as e:
                     sentry_sdk.capture_exception(e)
         return len(deleted_ids), deleted_ids
