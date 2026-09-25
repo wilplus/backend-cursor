@@ -1056,6 +1056,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "data_rights_requests", "data_retention_rules",
     "processing_policy_versions", "processing_policy_purposes",
     "processing_purpose_registry", "processing_legal_artifacts",
+    # MLC-2 consent POLICIES and their approvals (0302, 0373): the wording a
+    # yes was given against and who approved it. No speaker's data; the
+    # per-person yes and no live in ml_consent_events.
+    "ml_consent_policies", "ml_product_legal_approvals",
     "processing_authorization_receipt_purposes",
     "exercise_need_contracts", "exercise_media_objects",
     "exercise_definitions", "exercise_versions",
