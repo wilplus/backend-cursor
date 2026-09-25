@@ -809,6 +809,26 @@ def _claim_coach_review_error(session_id):
         }), 503
 
 
+def _coach_session_readout(session_id, snippet_rows, session_row):
+    """The coach's readout for one session, built from rows already in hand.
+
+    `include_slide_scores=True` gives the coach Stickiness #2: per-snippet
+    on-slide-ness plus the per-slide coverage ledger. Coach-only (AC-9).
+
+    The caller read both of these a moment earlier — the snippets for its
+    language check, the session again after the review claim — so without
+    handing them in, opening one lesson paid for the same two queries twice.
+
+    The post-claim re-read on the caller's side STAYS, and this is why the
+    session is passed rather than re-read here: review ownership must never
+    be decided on a row read before the claim was taken.
+    """
+    from services.lab_recording import build_readout_from_session
+    return build_readout_from_session(
+        session_id, include_slide_scores=True,
+        snippet_rows=snippet_rows, session_row=session_row)
+
+
 def _fold_coach_review_reads(session_id, snippets, cstate):
     from services.lab_recording import build_readout_from_session
     read_sessions = []
@@ -1045,10 +1065,8 @@ def v2_coach_get_session(session_id):
             return claim_error
         session = db.v2_get_session_by_id(session_id) or session
 
-        from services.lab_recording import build_readout_from_session
-        # include_slide_scores=True → coach gets Stickiness #2 (per-snippet
-        # on-slide-ness + the per-slide coverage ledger). Coach-only (AC-9).
-        readout = build_readout_from_session(session_id, include_slide_scores=True)
+        readout = _coach_session_readout(
+            session_id, snippets_for_language, session)
         cstate = _coach_state_map(
             session_id, rater_id=getattr(request, "user_id", None))
 
@@ -1121,7 +1139,9 @@ def v2_coach_slide_alignment(session_id):
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
         from services.lab_recording import build_readout_from_session
-        readout = build_readout_from_session(session_id, include_slide_scores=True)
+        # The session row is already in hand from the 404 check above.
+        readout = build_readout_from_session(
+            session_id, include_slide_scores=True, session_row=session)
         coverage = readout.get("slide_coverage") or []
         if not coverage:
             return jsonify({"available": False}), 200

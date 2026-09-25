@@ -252,5 +252,61 @@ class TheJourneyReadsTheWholeArcAtOnceTests(unittest.TestCase):
                 v2_coach._arc_has_a_surfaced_note([{"id": "s0"}]))
 
 
+class TheReadoutTakesRowsTheCallerAlreadyHasTests(unittest.TestCase):
+    """Opening one lesson read the session row 3x and the snippets 2x.
+
+    Founder call 2026-09-25: de-duplicate, but KEEP the re-read taken after
+    the review claim. So the readout learned to accept rows instead of
+    re-reading them, and every other caller still reads for itself.
+    """
+
+    def test_supplied_rows_mean_the_readout_reads_neither(self):
+        from services import lab_recording
+
+        with _Swap(get_snippets_by_session=_boom, v2_get_session_by_id=_boom):
+            out = lab_recording.build_readout_from_session(
+                "s1",
+                snippet_rows=[],
+                session_row={"results_published_at": None},
+            )
+        self.assertIsInstance(out, dict)
+
+    def test_every_other_caller_still_reads_for_itself(self):
+        """The optional arguments must not change the default path."""
+        from services import lab_recording
+
+        seen = {"snips": 0, "sess": 0}
+
+        def snips(_sid):
+            seen["snips"] += 1
+            return []
+
+        def sess(_sid):
+            seen["sess"] += 1
+            return {"results_published_at": None}
+
+        with _Swap(get_snippets_by_session=snips, v2_get_session_by_id=sess):
+            lab_recording.build_readout_from_session("s1")
+        self.assertEqual(seen["snips"], 1)
+        self.assertEqual(seen["sess"], 1)
+
+    def test_the_post_claim_re_read_is_still_in_the_route(self):
+        """The claim boundary is the one read we deliberately did NOT cut.
+
+        If someone later removes it to save a round trip, review ownership
+        starts being decided on a row read BEFORE the claim was taken. This
+        test is the reason that stays.
+        """
+        import inspect
+
+        src = inspect.getsource(v2_coach.v2_coach_get_session)
+        claim = src.index("_claim_coach_review_error")
+        reread = src.index("db.v2_get_session_by_id(session_id) or session")
+        self.assertGreater(
+            reread, claim,
+            "the session must still be re-read AFTER the review claim",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

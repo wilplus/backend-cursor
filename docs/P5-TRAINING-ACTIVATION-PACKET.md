@@ -5,6 +5,12 @@ counsel's answers to §2; both are recorded in `SPEC-DECISIONS-LOG.md` §N10.
 Still open: counsel's drafted policy text, the named training processors, and
 the signed retention schedule.
 
+**Update 2026-09-26 (§N11):** the founder answered the eight open questions.
+Drafts for counsel: `legal/phase1-2026.1/10-training-policy-changes-DRAFT.md`
+(the Privacy Policy changes) and
+`legal/phase1-2026.1/11-retention-schedule-v1.1-training-DRAFT.md` (the
+training rows). Who trains is not decided, so training stays off.
+
 **Status:** nothing in this document is switched on. P2 (0373), P3 (0375) and
 P4 (0376) are built and dark. P5 is the only phase that reaches a user, and it
 needs **counsel review** and **founder sign-off** before any line below is
@@ -61,6 +67,14 @@ their own switches (`MLC2_TRAINING_ENABLED`, `MLC2_DATASET_RELEASES_ENABLED`,
 ## 4 · The engineering checklist, in order
 
 Each item is a reviewed code change; none is a dashboard toggle.
+
+**Built dark (2026-09-26, founder N11 answer 8):** items 1 and 2 (0377); items
+6, 7, 8 and 9 (the switch route behind `Config.MLC2_TRAINING_SWITCH_ENABLED`,
+the due-copy sweep, the late coach-label sweep, and `ml_consent_events`
+retained under `consent_evidence`), plus the frontend card, which appears only
+when the backend offers the switch. Still to do, in order: 3, 4 and 5 (they
+need counsel's reviewed policy text and the signed retention schedule v1.1),
+10 (with P1), then 11 together with turning the switch constant on.
 
 1. **Make the `_v1` consent readers bundled-only** before a training policy
    exists. Today they assume one active policy of one kind:

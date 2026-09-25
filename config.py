@@ -278,6 +278,10 @@ class Config:
     # code constant, flipped only by a reviewed change at P5 (counsel +
     # founder), never by a dashboard.
     MLC2_TRAINING_CORPUS_COPY_ENABLED = False
+    # The training switch route (P5 packet §4 item 6). Same rule: a code
+    # constant, flipped only by a reviewed change once counsel has reviewed
+    # the policy text and the founder has signed it. Never an env variable.
+    MLC2_TRAINING_SWITCH_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` is the deployed/pre-cutover behavior;
     # ``founder_canary`` is a separately-authorized future code change;

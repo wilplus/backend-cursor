@@ -280,3 +280,58 @@ def _object_gone(item: dict) -> bool:
         logger.warning("training corpus object not erased item=%s: %s",
                        item.get("id"), error)
         return False
+
+
+def sweep_due_training_copies(*, database: Any = None, limit: int = 20) -> dict:
+    """Finish every erasure a lost queue message left undone.
+
+    Turning training off queues `purge_due_copies` once. If that message is
+    lost, or storage refuses a delete, the copies stay `purge_pending` and
+    "your training copies will be deleted" stops being true. The worker's
+    sweep calls this, so an erasure never depends on one message. Not behind
+    the copy switch: erasure runs whenever copies are due.
+    """
+    if database is None:
+        from services.db import db as database
+    people = erased = failed = 0
+    for principal in database.list_principals_with_due_training_copies(limit):
+        result = purge_due_copies(principal, database=database)
+        people += 1
+        erased += int(result.get("erased") or 0)
+        failed += int(result.get("failed") or 0)
+    return {"people": people, "erased": erased, "failed": failed}
+
+
+def _snippet_of(source_ref: str) -> str:
+    parts = str(source_ref or "").split(":")
+    return parts[1] if len(parts) >= 3 and parts[0] == "snippet" else ""
+
+
+def sweep_late_coach_labels(*, database: Any = None, limit: int = 100) -> dict:
+    """Copy a coach's label that arrived after the moment was copied.
+
+    The copy job copies a coach label only if one exists when it runs, and a
+    coach usually rates days later. This finds copied moments (their words)
+    with no copied label yet and copies the coach's label if there is one
+    now. The database re-checks the same training yes the moment was copied
+    under, so nothing is copied after a withdrawal. DARK with the copy job.
+    """
+    if not copy_enabled():
+        return {"status": "disabled"}
+    if database is None:
+        from services.db import db as database
+    rows = database.list_training_moments(limit)
+    labelled = {(row["training_grant_event_id"], _snippet_of(row["source_ref"]))
+                for row in rows if row.get("item_kind") == "coach_label"}
+    copied = 0
+    for row in rows:
+        snippet_id = _snippet_of(row.get("source_ref") or "")
+        if (row.get("item_kind") != "transcript_span" or not snippet_id
+                or (row["training_grant_event_id"], snippet_id) in labelled):
+            continue
+        base = {key: str(row[key]) for key in (
+            "acquisition_principal_id", "training_grant_event_id",
+            "source_project_id", "source_take_id")}
+        if _copy_coach_label(database, base, snippet_id):
+            copied += 1
+    return {"status": "swept", "labels": copied}
