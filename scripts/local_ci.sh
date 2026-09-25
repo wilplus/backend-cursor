@@ -3,18 +3,29 @@
 # local_ci.sh — run the `checks` job from .github/workflows/tests.yml on this
 # machine, with the SAME interpreter and the SAME pinned tools.
 #
-# WHY THIS EXISTS (founder 2026-08-11). This repo is private, so its Actions
-# minutes come out of the account allowance, and the allowance ran out at
-# ~15:30 UTC on 2026-08-11. Every run since then has failed at runner
-# allocation: two red X's, zero billable ms, and no logs to download at all
-# (HTTP 404 — the job never started, so there is nothing to log). Minutes
-# reset with the billing month; until then the merge gate is simply absent.
+# WHY THIS EXISTS (founder 2026-08-11) — AND WHY IT NO LONGER CLAIMS AN
+# OVERRIDE (2026-09-24).
 #
-# The founder's ruling was DO NOT UPGRADE — "I trust your local testing
-# discipline... as long as your local gates (pytest, ruff, mypy) are green.
-# Document the overrides in the squash commits." That trust is only worth
-# what the local run actually is, and an ad-hoc `pytest && ruff && mypy`
-# typed from memory is NOT the CI job:
+# This repo is private, so its Actions minutes come out of the account
+# allowance, and the allowance ran out at ~15:30 UTC on 2026-08-11. Runs then
+# failed at runner allocation: two red X's, zero billable ms, and no logs to
+# download at all (HTTP 404 — the job never started). With no gate on GitHub,
+# the founder ruled DO NOT UPGRADE — "I trust your local testing discipline...
+# as long as your local gates (pytest, ruff, mypy) are green. Document the
+# overrides in the squash commits."
+#
+# THAT OUTAGE IS OVER, AND THIS SCRIPT KEPT SAYING OTHERWISE. It printed the
+# override paragraph unconditionally, with no check of any kind, so it went on
+# asserting "minutes exhausted" all through 2026-09-24 while Actions was
+# running `checks` and `evals` on every PR and going green. Eleven squash
+# commits on main carry that false claim because it was copied from here.
+# A script cannot know the billing state, so it no longer guesses: it reports
+# what it actually ran and says nothing about GitHub.
+#
+# CI IS THE GATE AGAIN. This script is the fast local mirror of it — run it
+# before pushing, then let Actions go green before merging. That is what it
+# should always have been. An ad-hoc `pytest && ruff && mypy` typed from
+# memory is NOT the CI job:
 #
 #   · the system python here is 3.11, CI pins 3.12.1;
 #   · a system mypy is whatever was installed last (1.19.1 on this box),
@@ -221,13 +232,15 @@ fi
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 bold "GREEN — every gate the \`checks\` job runs passed here."
 echo
-dim "For the squash commit (the founder's documented-override rule):"
+dim "For the squash commit:"
 cat <<EOF
 
-  CI override: GitHub Actions minutes exhausted for the month; the two
-  jobs fail at runner allocation (no logs, zero billable ms), not on this
-  code. Verified locally at $SHA via scripts/local_ci.sh on python
-  ${CI_PYTHON%.*} with the pinned $CI_RUFF / $CI_MYPY: migrations, migration
-  runner, ruff, mypy and the unit tier all green. Evals: $EVALS.
-  Rehearsal tier: $REHEARSAL.
+  Gate: scripts/local_ci.sh at $SHA — GREEN, 0 failed steps. Python
+  ${CI_PYTHON%.*} with the pinned $CI_RUFF / $CI_MYPY: migration manifest,
+  migration runner, ruff, mypy, complexity ratchet, the unit tier and the F1
+  coverage floor. Evals: $EVALS. Rehearsal tier: $REHEARSAL.
+
+  This is the local mirror, not a substitute for CI. Let GitHub Actions go
+  green before merging, and say what IT did — do not claim an outage this
+  script cannot observe.
 EOF
