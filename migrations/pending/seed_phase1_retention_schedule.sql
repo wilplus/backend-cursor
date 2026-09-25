@@ -72,12 +72,15 @@
 
 DO $$
 DECLARE
-    -- [[FOUNDER: from the signed PDF — storage path]]
-    v_object_key TEXT := 'legal/phase1-2026.1/06-retention-schedule-v1.0.pdf';
-    -- [[FOUNDER: sha256sum of the signed PDF, lowercase hex]]
-    v_sha256 TEXT := NULL;
-    v_authority TEXT := NULL;      -- [[FOUNDER: named person or firm]]
-    v_approved_at TIMESTAMPTZ := NULL;  -- [[FOUNDER: signature timestamp, UTC]]
+    -- The signed PDF as registered in legal/phase1-2026.1/SIGNED-ARTIFACTS.md
+    -- (row 06). Signed 19 September 2026 by Artur Willoński (doc 06 §5,
+    -- reference WILLAB-PHASE1-2026.1-RET-2026-09-19). The document records the
+    -- date, not a time, so approved_at is that day and metadata says so.
+    v_object_key TEXT := 'phase1-2026.1/legal/retention-schedule-v1.0.pdf';
+    v_sha256 TEXT :=
+        '73d078ea110c4419fc1c8b5322f90881716e66141cac5fa3a4221f0aa72a0c69';
+    v_authority TEXT := 'Artur Willoński';
+    v_approved_at TIMESTAMPTZ := '2026-09-19 00:00:00+00';
     v_artifact_id UUID;
 BEGIN
     -- Degrade gracefully: if the Phase-1 boundary has not been applied yet
@@ -113,7 +116,10 @@ BEGIN
             jsonb_build_object(
                 'control_version', 'phase1-retention-schedule-v1',
                 'source_document',
-                'legal/phase1-2026.1/06-retention-schedule-v1.0.md'
+                'legal/phase1-2026.1/06-retention-schedule-v1.0-DRAFT.md',
+                'signature_reference', 'WILLAB-PHASE1-2026.1-RET-2026-09-19',
+                'approved_at_precision', 'day',
+                'section_3b_confirmed', 'founder 2026-09-26, decisions log N13'
             )
         ) RETURNING id INTO v_artifact_id;
     ELSIF NOT EXISTS (

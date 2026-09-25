@@ -716,3 +716,14 @@ page).**
    delete them ("Simply delete them"). `4e92203`, `8ddaab2` and `81369c0`
    were removed and the sentences kept readable; the signed PDFs and their
    hashes are unchanged.
+
+**N13 · Two answers (founder 2026-09-26).**
+1. **Users see Delete once the signed retention schedule is loaded.**
+   `PROJECT_DELETE_ENABLED` (frontend) turns on only after retention schedule
+   v1.0 is seeded in production. Until then a confirmed deletion stops at
+   `review_required`, and the copy's "We'll finish within 7 days" could not
+   be kept.
+2. **Retention schedule v1.0 §3b: yes, same as consent.** `deletion_evidence`
+   and `transparency_evidence` follow `accountability_need_ends`, the rule
+   already signed for `authorization_evidence`. Neither holds a person's words
+   or voice. This closes §3b; doc 06 itself is signed and is not edited.
