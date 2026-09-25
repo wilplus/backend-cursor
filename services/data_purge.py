@@ -395,6 +395,40 @@ class DataPurgeOrchestrator:
                 }))
         return targets
 
+    def _corpus_targets(
+        self,
+        graph: SubjectGraph,
+        existing_relations: frozenset[str],
+    ) -> list[PurgeTarget]:
+        """Training copies' audio (0375, P4). Account erasure deletes every
+        copy (C3), so each object is a storage target like a practice one;
+        the rows follow as the `training_corpus_items` dependency."""
+        targets: list[PurgeTarget] = []
+        rows = self._rows(
+            "training_corpus_items",
+            "id,storage_provider,bucket,storage_key,object_sha256,state",
+            selector="acquisition_principal_id", values=graph.principal_ids,
+            existing_relations=existing_relations,
+        )
+        for row in rows:
+            if not row.get("storage_key"):
+                continue
+            provider = str(row.get("storage_provider") or "")
+            already_purged = row.get("state") == "purged"
+            targets.append(PurgeTarget(
+                "r2_object" if provider == "r2" else "supabase_object",
+                f"training-copy:{row.get('id')}",
+                0 if already_purged else 1, {
+                    "provider": provider,
+                    "bucket": str(row.get("bucket") or ""),
+                    "key": str(row.get("storage_key") or ""),
+                    "sha256": str(row.get("object_sha256") or ""),
+                    "source_relation": "training_corpus_items",
+                    "source_id": str(row.get("id") or ""),
+                    "already_purged": already_purged,
+                }))
+        return targets
+
     def _storage_targets(
         self,
         graph: SubjectGraph,
@@ -448,6 +482,7 @@ class DataPurgeOrchestrator:
                 "already_purged": already_purged,
             }))
         targets.extend(self._practice_targets(graph, existing_relations))
+        targets.extend(self._corpus_targets(graph, existing_relations))
 
         orphans = self._rows(
             "processing_orphan_objects",
