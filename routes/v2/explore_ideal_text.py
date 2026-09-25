@@ -58,6 +58,7 @@ from services.recording_roots import (
     RecordingRootsStale,
     project_recording_roots,
 )
+from services.paragraph_history import history_for_part
 from services.slide_helper_words import (
     merge_recording_roots,
     record_lock,
@@ -2345,6 +2346,24 @@ def v2_explore_set_part_lock(arc_id, part_id):
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR",
                         "error": "Failed to set the lock"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/history",
+             methods=["GET"])
+@require_auth
+def v2_explore_get_part_history(arc_id, part_id):
+    """The history behind a Paragraph's bookmark (contract 16): its Slide's
+    words Take by Take, and the helper words locked when. Owner only."""
+    owned, _sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    history = history_for_part(db, arc_id, str(request.user_id),
+                               str(part_id))
+    if history is None:
+        return jsonify({"code": "NOT_FOUND", "error": "part not found"}), 404
+    response = jsonify(history)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/root", methods=["PUT"])

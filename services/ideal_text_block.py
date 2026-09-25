@@ -437,9 +437,11 @@ def _snapshot_version(database, arc_id, text) -> None:
     _row_now = database.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
     _v_now = _row_now.get("version") or 1
     _sugs_now = database.get_moment_suggestions_by_arc(arc_id) or {}
+    _doc_now = _row_now.get("document")
     database.upsert_ideal_text_version(
         str(arc_id), int(_v_now), text,
-        sanitize_suggestions_snapshot(_sugs_now))
+        sanitize_suggestions_snapshot(_sugs_now),
+        document=_doc_now if isinstance(_doc_now, dict) else None)
 
 
 def _take_index(value: Any) -> Optional[int]:
