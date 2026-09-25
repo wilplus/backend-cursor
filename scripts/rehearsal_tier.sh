@@ -71,6 +71,8 @@ PORT="${REHEARSAL_PGPORT:-55432}"
 # PostgreSQL refuses to run as root; on a root shell delegate the server
 # processes to the postgres system user (present wherever the server package
 # is installed). Everything else runs as the caller.
+# Expanded as ${AS_PG[@]+"${AS_PG[@]}"}: macOS ships bash 3.2, where an empty
+# array under `set -u` is an unbound variable and the tier died before initdb.
 AS_PG=()
 if [ "$(id -u)" = 0 ]; then
   id postgres >/dev/null 2>&1 || { echo "rehearsal tier: running as root and no 'postgres' user to delegate to" >&2; exit 2; }
@@ -90,18 +92,18 @@ DATA="$SOCK/data"; LOG="$SOCK/postgres.log"
 
 teardown() {
   if [ "$KEEP" = 1 ]; then
-    echo "cluster kept at $SOCK (stop with: ${AS_PG[*]} $PG_BIN/pg_ctl -D $DATA stop)"
+    echo "cluster kept at $SOCK (stop with: ${AS_PG[*]:-} $PG_BIN/pg_ctl -D $DATA stop)"
     return
   fi
-  "${AS_PG[@]}" "$PG_BIN/pg_ctl" -D "$DATA" -m fast -w stop >/dev/null 2>&1 || true
+  ${AS_PG[@]+"${AS_PG[@]}"} "$PG_BIN/pg_ctl" -D "$DATA" -m fast -w stop >/dev/null 2>&1 || true
   rm -rf "$SOCK"
 }
 trap teardown EXIT
 
 echo "→ rehearsal tier: disposable cluster at $SOCK (port $PORT, socket only)"
-"${AS_PG[@]}" "$PG_BIN/initdb" -D "$DATA" -U postgres --auth=trust -E UTF8 --locale=C >"$SOCK/initdb.log" 2>&1 \
+${AS_PG[@]+"${AS_PG[@]}"} "$PG_BIN/initdb" -D "$DATA" -U postgres --auth=trust -E UTF8 --locale=C >"$SOCK/initdb.log" 2>&1 \
   || { echo "initdb failed:" >&2; tail -20 "$SOCK/initdb.log" >&2; exit 1; }
-"${AS_PG[@]}" "$PG_BIN/pg_ctl" -D "$DATA" -l "$LOG" -w \
+${AS_PG[@]+"${AS_PG[@]}"} "$PG_BIN/pg_ctl" -D "$DATA" -l "$LOG" -w \
   -o "-c listen_addresses='' -c unix_socket_directories=$SOCK -c port=$PORT -c fsync=off -c synchronous_commit=off -c full_page_writes=off" start >/dev/null 2>&1 \
   || { echo "postgres failed to start:" >&2; tail -20 "$LOG" >&2; exit 1; }
 
@@ -301,7 +303,7 @@ for lane in "${LANES[@]}"; do
   env WILLAB_REHEARSAL=1 JWT_SECRET=ci-placeholder-secret \
       SUPABASE_URL=https://ci-placeholder.invalid SUPABASE_KEY=ci-placeholder-key \
       "$var=$(dsn "$db")" \
-      "${WALLCLOCK[@]}" \
+      ${WALLCLOCK[@]+"${WALLCLOCK[@]}"} \
       "$PY" -m pytest $modules -p no:cacheprovider -q --tb=short >"$SOCK/lane.log" 2>&1
   rc=$?
   line="$(grep -E "passed|failed|error" "$SOCK/lane.log" | tail -1)"
