@@ -319,6 +319,10 @@ hard migrations/a_person_can_change_their_mind.sql
 # 0354 defines, above. Twice: the apply/reapply idempotency check.
 hard migrations/an_account_deletion_can_start.sql
 hard migrations/an_account_deletion_can_start.sql
+# 0363 lists practice made for people who never ticked the box (founder
+# decision 1). Twice: the apply/reapply idempotency check.
+hard migrations/practice_made_without_the_tick.sql
+hard migrations/practice_made_without_the_tick.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.
