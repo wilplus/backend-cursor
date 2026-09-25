@@ -248,10 +248,10 @@ class ReviewStateTests(unittest.TestCase):
                               return_value=rows), \
                  patch.object(db, "get_feelings_by_sessions",
                               return_value=[]), \
-                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
-                              return_value={"text": "machine draft",
-                                            "updated_by": None,
-                                            "approved_at": None}):
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_texts",
+                              return_value={ARC: {"text": "machine draft",
+                                                  "updated_by": None,
+                                                  "approved_at": None}}):
                 resp, status = v2_coach.v2_coach_student_detail.__wrapped__(uid)
                 body = resp.get_json()
         self.assertEqual(status, 200)

@@ -202,18 +202,23 @@ class CoachStudentsRouteTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
         self._orig_list = getattr(db.takes, "list_coach_students", None)
-        self._orig_prof = getattr(db, "get_user_profile", None)
+        # BATCHED 2026-09-25: the route read one profile per student, so a
+        # hundred students meant a hundred round trips to render one field.
+        # The stub follows the route; every assertion below is unchanged.
+        self._orig_prof = getattr(db, "get_user_profiles", None)
         db.takes.list_coach_students = lambda **k: [
             {"user_id": "secret-uid-123", "last_active": "2026-06-08T10:00:00Z",
              "session_count": 7},
         ]
-        db.get_user_profile = lambda uid: {"domain": "sales", "goal": "x"}
+        db.get_user_profiles = lambda uids: {
+            "secret-uid-123": {"domain": "sales", "goal": "x"},
+        }
 
     def tearDown(self):
         if self._orig_list is not None:
             db.takes.list_coach_students = self._orig_list
         if self._orig_prof is not None:
-            db.get_user_profile = self._orig_prof
+            db.get_user_profiles = self._orig_prof
 
     def _get(self):
         with self.app.test_request_context():
