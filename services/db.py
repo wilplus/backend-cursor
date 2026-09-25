@@ -12782,6 +12782,11 @@ class DatabaseService:
         A user with no row is simply absent from the result; callers already
         treat a missing profile as "not set yet". {} on any failure, which
         degrades every row to blank rather than failing the list.
+
+        The singular carries a fallback for the goal-change columns
+        (`profile_goal_previous` / `profile_goal_changed_at`) because a
+        pre-migration env errors on them. This selects neither, so that gap
+        cannot be reached from here — do not add one back "for symmetry".
         """
         ids = [str(u) for u in (user_ids or []) if u]
         if not ids:

@@ -107,10 +107,6 @@
     "lines": 90,
     "db_calls": 5
   },
-  "routes/v2/coach.py:_coach_state_map": {
-    "lines": 42,
-    "db_calls": 2
-  },
   "routes/v2/coach.py:_save_coach_snippet_lanes": {
     "lines": 84,
     "db_calls": 1
@@ -186,10 +182,6 @@
   "routes/v2/coach.py:v2_coach_put_star_verdict": {
     "lines": 145,
     "db_calls": 7
-  },
-  "routes/v2/coach.py:v2_coach_queue": {
-    "lines": 58,
-    "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_save_feedback": {
     "lines": 96,

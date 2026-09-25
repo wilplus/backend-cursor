@@ -40,6 +40,7 @@ from routes.v2.common import (
     _is_valid_uuid,
 )
 from services.db import db
+from services.coach_queue import load_review_queue
 from services.coach_video_storage import refreshed_media_url
 from services.coach_moment_errors import (
     apply_moment_edit,
@@ -103,6 +104,25 @@ def _coach_pseudonym(user_id):
     return f"{adj} {animal}"
 
 
+def _drafts_by_snippet(session_id, draft_rows=None):
+    """This session's drafts keyed by snippet.
+
+    `draft_rows` lets a caller that already read many sessions in ONE query
+    hand its rows in — the coach queue does, which is how that list stopped
+    costing a round trip per take. None reads this one session, which is what
+    every single-session caller wants and exactly what this did before.
+
+    Lives outside `_coach_state_map` so the route fence's line budget for that
+    function is spent on its own decision rather than on a lookup.
+    """
+    rows = (db.get_coach_snippet_drafts(session_id) or []
+            if draft_rows is None else draft_rows)
+    return {
+        str(d.get("snippet_id")): d
+        for d in rows if d.get("snippet_id") is not None
+    }
+
+
 def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
     """Per-snippet coach_state for the resume read.
 
@@ -121,16 +141,7 @@ def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
     ratings at all, which is the safe default for any caller that has not
     thought about whose answer it is showing.
     """
-    drafts = {}
-    # `draft_rows` lets a caller that already read many sessions in one query
-    # hand them in (the queue does). None means read this one session, which
-    # is what every single-session caller wants and what this did before.
-    _rows = (db.get_coach_snippet_drafts(session_id) or []
-             if draft_rows is None else draft_rows)
-    for d in _rows:
-        sid = d.get("snippet_id")
-        if sid is not None:
-            drafts[str(sid)] = d
+    drafts = _drafts_by_snippet(session_id, draft_rows)
     ratings = (db.get_own_state_ratings_for_session(session_id, rater_id)
                if rater_id else {})
     out = {}
@@ -559,19 +570,11 @@ def v2_coach_queue():
         if not proficient:
             return _rater_language_error("profile_required")
 
-        rows = db.list_review_queue() or []
-        # TWO READS FOR THE WHOLE QUEUE, not two per row. This loop used to
-        # call `get_snippets_by_session` and `_coach_state_map` once per
-        # queued take — forty takes meant eighty round trips before the coach
-        # saw a list. Both reads are used for one small thing each: a language
-        # match plus a count, and a lifecycle pill.
-        _ids = [r.get("id") for r in rows if r.get("id")]
-        _snips_by_session = db.get_snippets_by_sessions(_ids) or {}
-        _drafts_by_session = db.get_coach_snippet_drafts_by_sessions(_ids) or {}
+        rows, _snips, _states = load_review_queue(db, _coach_state_map)
         out = []
         for r in rows:
             sid = r.get("id")
-            snippets = _snips_by_session.get(str(sid)) or []
+            snippets = _snips.get(str(sid)) or []
             outcome, _language = _rater_language_outcome(
                 r, snippets, proficient=proficient)
             if outcome != "matched":
@@ -579,8 +582,7 @@ def v2_coach_queue():
                 # routed to another eligible coach. They are not ratings.
                 continue
             ctx = r.get("intake_context") if isinstance(r.get("intake_context"), dict) else {}
-            cstate = _coach_state_map(
-                sid, draft_rows=_drafts_by_session.get(str(sid)) or [])
+            cstate = _states.get(str(sid)) or {}
             out.append({
                 "session_id": sid,
                 # Opaque drill key — mirrors GET /v2/coach/students (never
