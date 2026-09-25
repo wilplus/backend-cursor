@@ -142,12 +142,12 @@ class TheMintingFunctions(unittest.TestCase):
         self.assertIsNone(self._run(
             coach_media_public_url, "willab_presentations/a.pdf"))
 
-    def test_coach_media_public_url_still_serves_coach_authored_media(self):
+    def test_coach_media_public_url_refuses_coach_authored_media_too(self):
+        """Founder 2026-09-25, decision 4: both buckets go private (M11.4).
+        Until then coach-authored media kept its permanent public URL; with a
+        public base still configured, nothing gets one now."""
         from services.coach_video_storage import coach_media_public_url
-        self.assertEqual(
-            self._run(coach_media_public_url, "coach-feedback/a.webm"),
-            f"{_COACH_BASE}/coach-feedback/a.webm",
-        )
+        self.assertIsNone(self._run(coach_media_public_url, "coach-feedback/a.webm"))
 
     def test_audio_public_url_refuses_a_session_recording(self):
         from services.audio_storage import audio_public_url
@@ -216,12 +216,15 @@ class TheDeckReadPath(unittest.TestCase):
                  "willab_presentations/a.pdf?X-Amz-Signature=expired-weeks-ago")
         self.assertEqual(self._refresh(stale, signed="FRESH"), "FRESH")
 
-    def test_coach_authored_media_still_gets_the_permanent_public_url(self):
-        """The other half of the split must not move."""
-        out = self._refresh(
+    def test_coach_authored_media_is_signed_never_publicised(self):
+        """Founder 2026-09-25, decision 4. This pinned the other half of the
+        split — coach-authored media re-pointed at the permanent public URL.
+        With the bucket private that URL fails, so it signs like the rest,
+        whether the stored ref was presigned or already public."""
+        self.assertEqual(self._refresh(
             "https://acct.r2.cloudflarestorage.com/coach-feedback-videos/"
-            "coach-feedback/a.webm?X-Amz-Signature=old")
-        self.assertEqual(out, f"{_COACH_BASE}/coach-feedback/a.webm")
+            "coach-feedback/a.webm?X-Amz-Signature=old"), _SIGNED)
+        self.assertEqual(self._refresh(f"{_COACH_BASE}/coach-feedback/a.webm"), _SIGNED)
 
     def test_a_foreign_url_is_left_alone(self):
         ref = "https://example.org/somebody-elses/deck.pdf"

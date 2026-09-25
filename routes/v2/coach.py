@@ -930,7 +930,7 @@ def _coach_get_session_media_fields(
         "overall_message": (
             session.get("coach_overall_message") or ""
             if _context_unlocked else ""),
-        "video_ref": ((session.get("coach_video_ref") or None)
+        "video_ref": (refreshed_media_url(session.get("coach_video_ref") or None)
                       if _context_unlocked else None),
         # Slide-deck context (UX Wave 4 BE-S6a) — coach sees the deck while
         # reviewing; per-snippet slide mapping is Phase 2.
@@ -1849,9 +1849,7 @@ def v2_coach_session_video(session_id):
     """
     # Local import on purpose: binds at CALL time, so tests that monkeypatch
     # services.coach_video_storage attributes take effect.
-    from services.coach_video_storage import (
-        coach_media_public_url, put_coach_object_bytes,
-    )
+    from services.coach_video_storage import put_coach_object_bytes
 
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -1900,7 +1898,7 @@ def v2_coach_session_video(session_id):
                 db.takes.set_session_coach_video_ref(session_id, _existing["video_ref"])
                 return jsonify({
                     "status": "ok", "session_id": session_id,
-                    "video_ref": _existing["video_ref"], "deduped": True,
+                    "video_ref": refreshed_media_url(_existing["video_ref"]), "deduped": True,
                 }), 200
 
         bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
@@ -1917,7 +1915,7 @@ def v2_coach_session_video(session_id):
             logger.error("coach video upload failed sid=%s err=%s", session_id, upload_err)
             return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to upload video to storage."}), 502
 
-        video_ref = coach_media_public_url(storage_key)
+        video_ref = f"s3://{bucket}/{storage_key}"  # private bucket: signed on read
         db.takes.set_session_coach_video_ref(session_id, video_ref)
         logger.info("coach video stored sid=%s key=%s", session_id, storage_key)
 
@@ -1926,7 +1924,8 @@ def v2_coach_session_video(session_id):
         # deliberately absent until a separately approved Phase-2 cutover.
 
         return jsonify({
-            "status": "ok", "session_id": session_id, "video_ref": video_ref,
+            "status": "ok", "session_id": session_id,
+            "video_ref": refreshed_media_url(video_ref),
         }), 200
     except Exception as e:
         logger.error("coach/session-video failed sid=%s err=%s", session_id, e, exc_info=True)

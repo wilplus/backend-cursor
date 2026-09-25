@@ -102,6 +102,9 @@ USER_CONTENT_PREFIXES: tuple[str, ...] = (
     "willab_presentations/",
     "casual_voice/",
     "mlc3-practice/",
+    # Per-person audit PDFs (migrations/add_user_audits.sql). Missed when this
+    # list was written; found in the 2026-09-25 private-bucket audit.
+    "willab_audits/",
 )
 
 #: Object-key prefixes this codebase writes that are deliberately NOT user
