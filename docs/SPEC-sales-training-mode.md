@@ -6,10 +6,10 @@ section 2 are settled.
 
 **Origin:** founder request 2026-09-25, for the hair-spa front-desk pilot
 (24 employees, 5 locations, 8 takes over 2 weeks, blind listening by colleagues
-and an outside panel, compared with real sales).
+from other locations, compared with real sales).
 
 ```
-FILTER: ADVANCE-F2 (conditional) — cat F2 — fences clear IF §3 holds (AC-9, CONSTRUCT, BLIND, LIVE LOOP, copy sign-off) — locks clear IF peer/panel lanes stay separate (L3) — redirect: none
+FILTER: ADVANCE-F2 (conditional) — cat F2 — fences clear IF §3 holds (AC-9, CONSTRUCT, BLIND, LIVE LOOP, copy sign-off) — locks clear IF the sales_peer lane stays separate (L3) — redirect: none
 ```
 
 ---
@@ -23,7 +23,8 @@ A user in the mode:
    recommend, objection, close) across 8 takes in the normal Lab;
 2. is told **before** some takes that the take will be shared with colleagues for
    blind listening. Takes without that notice are never shared;
-3. listens to and rates anonymous clips from colleagues at other locations.
+3. listens to and rates anonymous clips from colleagues at other locations,
+   answering two questions per clip.
 
 Everything else is the normal app. Recording, processing, Ideal Text and Manager
 Feedback run exactly as they do today.
@@ -37,12 +38,13 @@ within each person).
 
 | # | Decision | Default in this spec |
 |---|---|---|
-| D1 | Which takes are shared | **Take 1 private and unannounced. Even takes (2, 4, 6, 8) shared and announced. Odd takes (1, 3, 5, 7) private.** This is configurable (`share_pattern`). If "uneven" means odd takes, set the pattern to odd-except-1. |
+| D1 | Which takes are shared | **DECIDED 2026-09-25: even takes (2, 4, 6, 8) are announced and shared. Odd takes (1, 3, 5, 7) are private; take 1 is private and unannounced.** Stored per cohort as `share_pattern = 'even'`. |
 | D2 | Can a user make an announced take private instead? | **Yes, always.** The take then stays private, and the choice is logged. Consent must stay voluntary. |
-| D3 | Second listener question, "Would you buy from her?" | **Not built until defined.** It needs a one-line operational definition, answer options and a new SPEC §17 entry (CONSTRUCT fence). Until then only the existing confidence question ships. |
+| D3 | Second listener question, "Would you buy from her?" | **DECIDED 2026-09-25: same five answers as confidence.** Draft definition in §3a. It needs a SPEC §17 entry (`buy-q-v1`) and founder sign-off before it ships (CONSTRUCT fence). |
 | D4 | Spacing between takes | **At most one take per calendar day** (user's local time). |
-| D5 | Outside panel | Outside listeners get rater-only accounts in the same mode (`role = panel`). They never record. |
+| D5 | Who listens | **DECIDED 2026-09-25: only the enrolled salespeople.** They rate colleagues from other locations. No outside panel. |
 | D6 | All user-facing copy in §6 | **DRAFT.** It needs founder sign-off before release (LIVE LOOP fence). |
+| D7 | Retention | **DECIDED 2026-09-25: recordings are kept for training after the pilot only if the member opts in (separate consent checkbox). Everyone else's are deleted after the pilot.** Keeping them is storage only: Phase-2 training paths stay disabled until separately authorized. |
 
 ## 3. Non-negotiable rules
 
@@ -53,8 +55,8 @@ within each person).
 2. **No numbers to users (AC-9).** Employees never see ratings, counts,
    rankings, percentages or who rated what, about themselves or anyone else.
    Results leave the system only through the admin export.
-3. **Separate rating lanes (L3).** Ratings in this mode are stored in new lanes
-   `sales_peer` and `sales_panel`. They are **not** in `PANEL_LANES` or
+3. **Separate rating lane (L3).** Ratings in this mode are stored in a new lane
+   `sales_peer`. They are **not** in `PANEL_LANES` or
    `QUORUM_LANES`. They never produce a quorum label, never count toward Voice
    Album admission, and never enter a training corpus. The existing
    `game_peer` lane is not reused because it is counted in the panel quorum.
@@ -67,16 +69,26 @@ within each person).
 6. **Consent comes first.** No recording or rating in the mode before the user
    has accepted the mode's consent (versioned, stored, withdrawable).
    Withdrawing removes all of that user's clips from the queue immediately.
-7. **One construct, one question (CONSTRUCT).** The confidence question uses the
-   existing `conf-q-v2` wording and five answers. Nothing new is measured without
-   a §17 entry.
+7. **One construct, one question (CONSTRUCT).** Each question measures one thing.
+   Confidence uses the existing `conf-q-v2` wording. The buy question uses
+   `buy-q-v1` (§3a) and ships only after its §17 entry and sign-off.
+
+## 3a. Draft definition — `buy-q-v1` (needs §17 entry + founder sign-off)
+
+- **Question:** "Would you buy from her?"
+- **Operational definition:** based only on this clip, would the listener, as
+  a salon client, be willing to buy the product being recommended from this
+  speaker. It asks about willingness to buy from this speaker, not about the
+  product, the price or how confident she sounds.
+- **Answers:** Yes · In-between · No · Not sure · Audio unclear.
+- **Kept separate from confidence:** stored under its own `question_id`, never
+  combined with `conf-q-v2` into one score.
 
 ## 4. Roles
 
 | Role | Records | Rates | Sees results |
 |---|---|---|---|
 | `member` (employee) | yes | yes (other locations only) | own qualitative notes, on request, delivered offline |
-| `panel` (outside listener) | no | yes (all locations) | nothing |
 | admin / founder | no | no | admin export only |
 
 ## 5. User stories and acceptance criteria
@@ -103,6 +115,8 @@ be shared before I record anything.*
 - AC-2.2 Consent states in plain words: some takes will be shared; I will be told
   before each one; takes without a notice are never shared; my name is hidden;
   I will listen to colleagues from other locations; I can withdraw any time.
+  A separate, unticked checkbox asks whether my recordings may be kept for
+  training after the pilot (D7).
 - AC-2.3 Acceptance stores `consent_version`, a hash of the text and a
   timestamp. Declining leaves the account usable without the mode.
 - AC-2.4 After consent the sales pack project is in the member's project list,
@@ -140,24 +154,26 @@ be shared before I record anything.*
 - AC-5.3 After take 8 the project stays usable as normal practice. Further
   takes are private and not part of the study.
 
-### US-6 Member or panel listener rates clips
+### US-6 Member rates colleagues' clips
 *As a listener, I hear short anonymous clips and answer one question each.*
 
-- AC-6.1 A **Listen** entry appears in the menu for `member` and `panel`
-  roles only.
+- AC-6.1 A **Listen** entry appears in the menu for enrolled, consented
+  members only.
 - AC-6.2 One clip is one slide segment of a shared take. The queue never contains
-  the rater's own clips or (for members) clips from the rater's location, and it
-  is shuffled across people and takes.
-- AC-6.3 The screen shows only a player, the question
-  "Does the speaker sound confident here?" and five answers:
-  Yes · In-between · No · Not sure · Audio unclear.
+  the rater's own clips or clips from the rater's location, and it is shuffled
+  across people and takes.
+- AC-6.3 The screen shows only a player and two questions, each with the same
+  five answers (Yes · In-between · No · Not sure · Audio unclear):
+  "Does the speaker sound confident here?" (`conf-q-v2`) and
+  "Would you buy from her?" (`buy-q-v1`, only once signed off; until then the
+  screen shows the confidence question alone).
 - AC-6.4 The rater cannot skip ahead without answering or choosing
   "Audio unclear". An answer cannot be changed once the next clip loads.
-- AC-6.5 The only progress shown is "12 of 70 listened". No results, averages or
+- AC-6.5 The only progress shown is "12 of 48 listened". No results, averages or
   labels from other raters appear anywhere.
 - AC-6.6 Assignment aims for at least 3 ratings per clip across raters and
   stops giving a clip once it has 5.
-- AC-6.7 Each answer is stored with `lane` (`sales_peer` or `sales_panel`),
+- AC-6.7 Each answer is stored with `lane = 'sales_peer'`,
   `question_id`, `rater_id`, `clip_id`, `latency_ms` and `created_at`.
 
 ### US-7 Member withdraws
@@ -173,7 +189,7 @@ be shared before I record anything.*
 - AC-8.2 A second CSV returns acoustic metrics and the transcript per clip
   (from existing snippet data), for private and shared takes of consented
   members.
-- AC-8.3 No export or result is reachable from any member or panel screen.
+- AC-8.3 No export or result is reachable from any member screen.
 
 ## 6. Screens (DRAFT copy — needs founder sign-off)
 
@@ -192,6 +208,7 @@ be shared before I record anything.*
 > - Your name and location are never shown to listeners.
 > - You'll also listen to colleagues from other locations.
 > - You can leave at any time in Settings.
+> ☐ Keep my recordings for training after the pilot (optional)
 > [I agree] [Not now]
 
 **Shared-take notice** (pre-record, shared slots only)
@@ -206,9 +223,11 @@ be shared before I record anything.*
 **Pacing:** `Take 3 of 8 · Your next take opens tomorrow`
 
 **Listen**
-> Clip 12 of 70
+> Clip 12 of 48
 > ▶ (player)
 > Does the speaker sound confident here?
+> [Yes] [In-between] [No] [Not sure] [Audio unclear]
+> Would you buy from her?
 > [Yes] [In-between] [No] [Not sure] [Audio unclear]
 
 ## 7. User flow
@@ -223,7 +242,7 @@ Admin enrolls user ─► Welcome ─► Consent ─┬─ Not now ─► normal
               │                                                 │
      slot = share_pattern[N]                          clip ─► answer ─► next
        ├─ private ─► normal pre-record                          │
-       └─ shared  ─► Shared-take notice                  "12 of 70 listened"
+       └─ shared  ─► Shared-take notice                  "12 of 48 listened"
                        ├─ Keep private ─► private take
                        └─ Record shared ─► take (tag "Shared take")
               │
@@ -237,7 +256,7 @@ Admin enrolls user ─► Welcome ─► Consent ─┬─ Not now ─► normal
 ## 8. Out of scope
 
 - Any score, ranking, leaderboard or result screen for members.
-- The "Would you buy" question until D3 is settled.
+- An outside listener panel (D5).
 - CRM or sales-data integration. Sales numbers stay offline with the client.
 - Changes to Manager arbitration, Ideal Text, the V3 feedback policy, or the
   coach queue.
@@ -255,14 +274,17 @@ the WILLAB DECISION FILTER and emit the verdict before writing code.
 
 Hard rules (reject your own change if any fails):
 - An unannounced take is never shared. Enforce it server-side, not only in the UI.
-- No rating, count, rank or percentage reaches a member or panel screen (AC-9).
-- New lanes `sales_peer` and `sales_panel` are NOT added to PANEL_LANES
+- No rating, count, rank or percentage reaches a member screen (AC-9).
+- The new lane `sales_peer` is NOT added to PANEL_LANES
   (services/state_ratings.py) or QUORUM_LANES (services/label_quorum.py). Add a
-  test that fails if they are. Do not reuse `game_peer`.
+  test that fails if it is. Do not reuse `game_peer`.
 - The record → process → Ideal Text → Feedback loop is untouched. No new
   awaits or gates after recording starts.
 - All copy is taken verbatim from spec §6 and marked DRAFT behind the flag.
-- The only question is conf-q-v2. Do not add "would you buy".
+- Two questions only: conf-q-v2 (existing) and buy-q-v1 (spec §3a). Add
+  buy-q-v1 to QUESTIONS in services/state_ratings.py and SPEC.md §17 as a
+  draft, behind SALES_TRAINING_BUY_Q=on; do not turn it on without founder
+  sign-off. The two answers are never combined into one value.
 
 Backend (Flask, Postgres; follow docs/MIGRATIONS.md — idempotent, IF NOT EXISTS,
 add to migrations/manifest.txt only when the web, worker and cron services
@@ -282,9 +304,10 @@ already have SALES_TRAINING_MODE set, per the CONFIG-FIRST rule):
     user_id UUID PRIMARY KEY,
     cohort_id UUID NOT NULL REFERENCES sales_training_cohorts(id),
     location_id TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('member','panel')),
+    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member')),
     enabled BOOLEAN NOT NULL DEFAULT true,
     consent_version TEXT, consent_text_sha256 TEXT, consented_at TIMESTAMPTZ,
+    keep_for_training BOOLEAN NOT NULL DEFAULT false,   -- D7 opt-in
     withdrawn_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
@@ -302,22 +325,22 @@ already have SALES_TRAINING_MODE set, per the CONFIG-FIRST rule):
                AND recording_started_at IS NOT NULL
                AND announced_at < recording_started_at))
   );
-  -- ratings: reuse confidence_labels with lane IN ('sales_peer','sales_panel');
-  -- extend ck_confidence_labels_lane accordingly.
+  -- ratings: reuse confidence_labels with lane = 'sales_peer' and
+  -- question_id IN ('conf-q-v2','buy-q-v1'); extend ck_confidence_labels_lane.
   -- queue bookkeeping: sales_training_assignments(clip_id, rater_id, assigned_at,
   --   answered_at) with UNIQUE(clip_id, rater_id).
 
   Routes (routes/v2/sales_training.py, all @require_auth, 404 when flag off or
   not enrolled):
     GET  /v2/sales-training/me              -> {role, cohort, take_count, next_take_opens_at, consent_required}
-    POST /v2/sales-training/consent         -> {consent_version, text_sha256}
+    POST /v2/sales-training/consent         -> {consent_version, text_sha256, keep_for_training}
     POST /v2/sales-training/withdraw
     POST /v2/sales-training/takes/next      -> decides slot BEFORE recording:
                                                {take_index, visibility, notice_required}
     POST /v2/sales-training/takes/<sid>/announce      -> sets announced_at
     POST /v2/sales-training/takes/<sid>/keep-private  -> visibility='private'
     GET  /v2/sales-training/listen/next     -> {clip_id, audio_url, question_id, progress:{done,total}}
-    PUT  /v2/sales-training/listen/<clip_id>  body {value, unrateable}
+    PUT  /v2/sales-training/listen/<clip_id>  body {question_id, value, unrateable}
   Admin (require_admin):
     POST /v2/admin/sales-training/members   (bulk upsert)
     GET  /v2/admin/sales-training/export/ratings.csv
@@ -328,8 +351,7 @@ already have SALES_TRAINING_MODE set, per the CONFIG-FIRST rule):
   not withdrawn. Otherwise log `sales_training.share_refused` and enqueue
   nothing.
 
-  Rating queue: exclude rater's own clips; exclude rater's location for role
-  'member'; shuffle; hide take_index; prefer clips with < 3 ratings; cap at 5.
+  Rating queue: exclude rater's own clips; exclude rater's location; shuffle; hide take_index; prefer clips with < 3 ratings; cap at 5.
   The response must not contain the owner id, location, take index, transcript,
   machine value or other ratings.
 
@@ -340,18 +362,18 @@ already have SALES_TRAINING_MODE set, per the CONFIG-FIRST rule):
 Frontend (Next.js App Router; BFF proxies under src/app/api/v2/sales-training/*
 and src/app/api/v2/admin/sales-training/*):
   - src/app/admin/users/page.tsx: add a "Sales training" column per user
-    (location select, role select member|panel, on/off toggle) -> members API.
-  - NEW src/app/sales-training/page.tsx: Welcome + Consent (spec §6), shown once
-    after enrollment; redirect here from the Lab while consent_required.
+    (location select, on/off toggle) -> members API.
+  - NEW src/app/sales-training/page.tsx: Welcome + Consent (spec §6) with the
+    optional, unticked keep-for-training checkbox, shown once after enrollment; redirect here from the Lab while consent_required.
   - src/components/willab/RecordingSetup.tsx: for the sales project, call
     takes/next before enabling Record; if notice_required, render the
     Shared-take notice, call announce when it is shown, wire
     "Keep this one private". Private slots render the unchanged screen.
   - Recording screen: small "Shared take" tag for shared takes only.
   - "Take N of 8 · Your next take opens tomorrow" line; Record disabled until then.
-  - NEW src/app/sales-training/listen/page.tsx: player, conf-q-v2 text, five
-    buttons, "N of M listened". No other data.
-  - src/components/AppMenu.tsx: "Listen" entry for member/panel roles only.
+  - NEW src/app/sales-training/listen/page.tsx: player, conf-q-v2 and (when
+    enabled) buy-q-v1, five buttons each, "N of M listened". No other data.
+  - src/components/AppMenu.tsx: "Listen" entry for enrolled members only.
   - src/app/panel/data (settings/data page): "Leave sales training" with an
     in-page confirm (no window.confirm).
 
@@ -360,7 +382,10 @@ Tests (must pass; backend via scripts/local_ci.sh):
   - announced_at after recording start => stored private + logged
   - own clips and own-location clips never returned to a member rater
   - listen/next payload has none of the forbidden fields
-  - sales lanes absent from PANEL_LANES and QUORUM_LANES
+  - sales_peer absent from PANEL_LANES and QUORUM_LANES
+  - conf-q-v2 and buy-q-v1 answers stored as separate rows, never merged
+  - after the pilot, recordings of members without keep_for_training are
+    listed for deletion (report only; deletion is a separately approved run)
   - withdraw removes queued clips
   - flag off => all routes 404 and the FE shows nothing
   - live-loop regression: processing time and Feedback payload unchanged for a
