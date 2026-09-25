@@ -315,6 +315,10 @@ hard migrations/status_knows_a_reacceptance.sql
 # apply/reapply idempotency check.
 hard migrations/a_person_can_change_their_mind.sql
 hard migrations/a_person_can_change_their_mind.sql
+# 0362 adds project deletion requests (the picker's Delete becomes a request an
+# operator confirms). Twice: the apply/reapply idempotency check.
+hard migrations/a_project_deletion_can_be_requested.sql
+hard migrations/a_project_deletion_can_be_requested.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.
