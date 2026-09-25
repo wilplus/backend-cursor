@@ -364,6 +364,10 @@ hard migrations/a_project_row_is_kept_as_a_tombstone.sql
 # apply/reapply idempotency check.
 hard migrations/an_exercise_is_sometimes_something_new.sql
 hard migrations/an_exercise_is_sometimes_something_new.sql
+# 0373 adds the training-only consent record (P2, dark). Twice: the
+# apply/reapply idempotency check.
+hard migrations/a_training_yes_is_its_own_act.sql
+hard migrations/a_training_yes_is_its_own_act.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

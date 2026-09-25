@@ -408,3 +408,4 @@
 0370	every_take_rewrites_the_slides_it_spoke.sql
 0371	helper_words_keep_a_history.sql
 0372	an_exercise_is_sometimes_something_new.sql
+0373	a_training_yes_is_its_own_act.sql
