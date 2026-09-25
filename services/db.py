@@ -14001,6 +14001,105 @@ class DatabaseService:
                            row.get("exercise_id"), e)
             return None
 
+    # ── A coach names the error on one moment, and teaches the library ────
+    # migrations/a_coach_names_the_error_and_teaches_the_library.sql. Every
+    # method here degrades to "nothing" on failure — a pending migration, or a
+    # read that failed — so the coach's save itself never depends on them.
+
+    def list_coach_moment_error_events(self, practice_id: str) -> list[dict]:
+        """Every naming event on one moment, in the order they happened."""
+        if not practice_id:
+            return []
+        try:
+            res = (self.client.table("coach_moment_error_event")
+                   .select("error_id,action,coach_id,created_at,seq")
+                   .eq("practice_id", str(practice_id))
+                   .order("seq").execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_coach_moment_error_events failed "
+                           "practice=%s: %s", practice_id, e)
+            return []
+
+    def insert_coach_moment_error_event(
+        self, practice_id: str, error_id: str, coach_id: str, action: str,
+    ) -> Optional[dict]:
+        """Append one naming event. Never an update: the history is the record."""
+        if action not in ("named", "withdrawn"):
+            return None
+        try:
+            res = (self.client.table("coach_moment_error_event").insert({
+                "practice_id": str(practice_id),
+                "error_id": str(error_id),
+                "coach_id": str(coach_id),
+                "action": action,
+            }).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("insert_coach_moment_error_event failed "
+                           "practice=%s error=%s: %s", practice_id, error_id, e)
+            return None
+
+    def teach_diagnostic_exercise(
+        self, exercise_id: str, practice_id: str, coach_id: str,
+        error_ids: list[str], source: str,
+    ) -> Optional[list[dict]]:
+        """Record that an exercise fixes these errors; None when it could not.
+
+        One atomic call (teach_diagnostic_exercise_v1): the tag and its log row
+        land together or not at all.
+        """
+        try:
+            result = self.client.rpc("teach_diagnostic_exercise_v1", {
+                "p_exercise_id": str(exercise_id),
+                "p_practice_id": str(practice_id),
+                "p_coach_id": str(coach_id),
+                "p_error_ids": [str(e) for e in error_ids],
+                "p_source": str(source),
+            }).execute()
+        except Exception as e:
+            logger.warning("teach_diagnostic_exercise failed exercise=%s "
+                           "practice=%s: %s", exercise_id, practice_id, e)
+            return None
+        data = result.data
+        if isinstance(data, list):
+            return [row for row in data if isinstance(row, dict)]
+        return None
+
+    def undo_diagnostic_exercise_teaching(
+        self, teaching_id: str, practice_id: str, coach_id: str,
+    ) -> Optional[dict]:
+        try:
+            result = self.client.rpc("undo_diagnostic_exercise_teaching_v1", {
+                "p_teaching_id": str(teaching_id),
+                "p_practice_id": str(practice_id),
+                "p_coach_id": str(coach_id),
+            }).execute()
+        except Exception as e:
+            logger.warning("undo_diagnostic_exercise_teaching failed id=%s: %s",
+                           teaching_id, e)
+            return None
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        return data if isinstance(data, dict) else None
+
+    def list_diagnostic_exercise_teachings(self, practice_id: str) -> list[dict]:
+        """Every teaching row made from one moment, taught and undone alike."""
+        if not practice_id:
+            return []
+        try:
+            res = (self.client.table("diagnostic_exercise_teaching")
+                   .select("id,exercise_id,error_id,action,changed_tags,"
+                           "undoes_id,seq")
+                   .eq("practice_id", str(practice_id))
+                   .order("seq").execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_diagnostic_exercise_teachings failed "
+                           "practice=%s: %s", practice_id, e)
+            return []
+
     def get_confident_voice_practice_by_take(
         self, take_session_id: str, owner_user_id: Optional[str] = None,
     ) -> Optional[dict]:
