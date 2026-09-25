@@ -17,7 +17,7 @@ pins production's state.  When a founder-approved fix lands, this fails until
 the entry is removed from UNRESOLVED.
 
 ``accept_phase1_processing_authorization_v2`` (0357) is checked too.  0327
-never named it; 0365 gives it v1's preamble, and ``registered_writers`` lists
+never named it; 0366 gives it v1's preamble, and ``registered_writers`` lists
 it next to 0327's registry.
 
 Rehearsal tier only (the released confident-moment lane).
@@ -83,7 +83,7 @@ def test_the_repaired_writers_keep_the_bodies_that_replaced_them(db, signature):
         # 0354's practice branch survives the re-injection.
         assert "'processing_practice_objects'" in body
     elif signature == AUTHORIZATION_RECEIPT_V2:
-        # 0357's optional-purpose refusal and evidence hash survive 0365.
+        # 0357's optional-purpose refusal and evidence hash survive 0366.
         assert "PROCESSING_OPTIONAL_PURPOSE_INVALID" in body
         assert "array_to_string(chosen, ',')" in body
     else:
@@ -118,7 +118,7 @@ def test_v2_takes_the_receipt_locks_before_anything_else(db):
     A second connection holds the principal's service lock.  v2, called with
     arguments that fail validation, must wait for that lock before it reaches
     the first check, so it runs into the lock timeout rather than raising
-    its own error.  Without 0365 it raises PROCESSING_POLICY_UNAPPROVED.
+    its own error.  Without 0366 it raises PROCESSING_POLICY_UNAPPROVED.
     """
     principal = "00000000-0000-4000-8000-00000000d11a"
     holder = psycopg2.connect(**psycopg2.extensions.parse_dsn(DSN))

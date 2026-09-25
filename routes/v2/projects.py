@@ -8,6 +8,7 @@ import sentry_sdk
 from flask import jsonify, request
 
 from auth import optional_auth, require_auth
+from routes.admin import require_admin
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.project_ownership import (
@@ -17,6 +18,11 @@ from services.project_ownership import (
     verify_guest_owner,
 )
 from services.project_repository import ProjectOwnershipError, ProjectRepository
+from services.project_deletion import (
+    ProjectDeletionError,
+    ProjectDeletionService,
+    public_view,
+)
 from services.lab_send import send_lab_recording_to_coach
 from routes.v2.common import _is_valid_uuid
 
@@ -188,3 +194,108 @@ def v2_send_project_take_to_coach(project_id: str, take_id: str):
         "already_sent": bool(result.get("already_sent")),
         "post_signup_confirmation": _POST_SIGNUP_CONFIRMATION,
     }), 200
+
+
+def _deletion_owner(project_id: str):
+    """The signed-in owner principal, or a (response, status) to return."""
+    if not _is_valid_uuid(project_id):
+        return None, (jsonify({"code": "INVALID_INPUT",
+                               "error": "project_id must be a UUID"}), 400)
+    repository = ProjectRepository(db)
+    try:
+        principal = repository.owner_for_user(str(getattr(request, "user_id", "")))
+    except ProjectOwnershipError:
+        return None, (jsonify({"code": "PROJECT_NOT_FOUND",
+                               "error": "Project not found"}), 404)
+    return principal, None
+
+
+def _deletion_error(error: ProjectDeletionError):
+    return jsonify({"code": error.code, "error": error.message}), error.status
+
+
+@v2_bp.route("/projects/<project_id>/deletion-request", methods=["POST"])
+@require_auth
+def v2_request_project_deletion(project_id: str):
+    """Ask for one owned project to be deleted (P1-A, decisions log N8).
+
+    A request, not a delete: an operator confirms it within 7 days and the
+    project is locked until then. Idempotent on `idempotency_key`; asking again
+    for a project with an open request returns that request.
+    201 {deletion} · 400 · 404 not the owner's project · 503 not migrated.
+    """
+    principal, failure = _deletion_owner(project_id)
+    if failure:
+        return failure
+    body = request.get_json(silent=True) or {}
+    key = str(body.get("idempotency_key") or "").strip()
+    if not key or len(key) > 200:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "idempotency_key is required"}), 400
+    try:
+        row = ProjectDeletionService(db).request(principal.id, project_id, key)
+    except ProjectDeletionError as error:
+        return _deletion_error(error)
+    except Exception as error:
+        logger.error("project deletion request failed project=%s: %s",
+                     project_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not request deletion"}), 500
+    logger.info("project deletion requested project=%s request=%s state=%s",
+                project_id, row.get("id"), row.get("state"))
+    return jsonify({"deletion": public_view(row)}), 201
+
+
+@v2_bp.route("/projects/<project_id>/deletion-request", methods=["DELETE"])
+@require_auth
+def v2_cancel_project_deletion(project_id: str):
+    """Cancel a pending deletion before an operator confirms it.
+    200 {deletion} · 409 nothing pending, or already confirmed."""
+    principal, failure = _deletion_owner(project_id)
+    if failure:
+        return failure
+    try:
+        row = ProjectDeletionService(db).cancel(principal.id, project_id)
+    except ProjectDeletionError as error:
+        return _deletion_error(error)
+    except Exception as error:
+        logger.error("project deletion cancel failed project=%s: %s",
+                     project_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not cancel deletion"}), 500
+    logger.info("project deletion cancelled project=%s request=%s",
+                project_id, row.get("id"))
+    return jsonify({"deletion": public_view(row)}), 200
+
+
+@v2_bp.route("/admin/project-deletions", methods=["GET"])
+@require_admin
+def v2_admin_project_deletions():
+    """Operator queue (P1-A, N8): open project deletion requests, oldest due
+    first. Confirming one arrives with P1-B, when the purge can scope to a
+    single project; until then this is the list an operator works from.
+    Admin-only surface."""
+    try:
+        rows = ProjectDeletionService(db).queue()
+        ids = [str(r["project_id"]) for r in rows if r.get("project_id")]
+        names: dict[str, str] = {}
+        if ids:
+            projects = (db.client.table("projects")
+                        .select("id,display_name").in_("id", ids)
+                        .execute().data or [])
+            names = {str(p["id"]): str(p.get("display_name") or "")
+                     for p in projects}
+    except Exception as error:
+        logger.error("admin project deletions failed: %s", error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not load project deletions"}), 500
+    return jsonify({"requests": [
+        {**(public_view(r) or {}),
+         "acquisition_principal_id": str(r.get("acquisition_principal_id")),
+         "confirmed_at": r.get("confirmed_at"),
+         "project_name": names.get(str(r.get("project_id")), "")}
+        for r in rows
+    ]}), 200

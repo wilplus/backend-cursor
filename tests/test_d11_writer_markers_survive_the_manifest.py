@@ -13,7 +13,7 @@ text removes it without a word.  Two did:
   * 0354 (deletion_reaches_practice_objects.sql) re-issued
     ``mark_phase1_storage_object_purged_v1``.
 
-Production lost both preambles.  0364 re-injects them.
+Production lost both preambles.  0365 re-injects them.
 
 It stayed hidden because the rehearsal lane applied 0327 LAST, after 0354, so
 the injection landed on 0354's body, and the lane never applied 0335 at all.
@@ -44,9 +44,8 @@ a repair.
 After the last manifest entry, the writers left without their marker must be
 exactly UNRESOLVED.  The failure names the file that removed each marker.
 The fix is to carry the marker in the new body or add a re-injection like
-0364's.  A writer that gets repaired must leave UNRESOLVED; the equality
+0365's.  A writer that gets repaired must leave UNRESOLVED; the equality
 check forces that.
-
 WRITERS 0327 NEVER NAMED.  The registry is parsed from 0327, so a writer
 created after it is not on the list by itself.  ``later_writers`` adds each
 one by hand, with the spec its closing migration injects.  The walk treats it
@@ -54,7 +53,7 @@ as unmarked from the file that creates it, and it must be marked by the end
 of the chain like every other writer.  The first is
 ``accept_phase1_processing_authorization_v2``.  0357 created it, and
 services/processing_authorization.accept() calls it.  It writes the receipt
-and purpose rows D11 reads, so 0365 gives it v1's preamble.
+and purpose rows D11 reads, so 0366 gives it v1's preamble.
 """
 from __future__ import annotations
 
@@ -78,7 +77,7 @@ AUTHORIZATION_RECEIPT_V2 = (
     "public.accept_phase1_processing_authorization_v2"
     "(uuid,text,text,text,text,text,text,boolean,text,text,text,timestamptz,text,text[])"
 )
-#: 0357 creates v2 without a preamble; 0365 injects v1's.
+#: 0357 creates v2 without a preamble; 0366 injects v1's.
 OPTIONAL_YES = "a_receipt_can_record_an_optional_yes.sql"
 V2_CLOSURE = "the_optional_yes_takes_the_d11_locks.sql"
 
@@ -341,7 +340,7 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
         self.assertEqual(v2["sql"], v1["sql"])
         self.assertEqual(v2["signature"], AUTHORIZATION_RECEIPT_V2)
 
-    def test_0365_injects_exactly_the_registered_v2_spec(self):
+    def test_0366_injects_exactly_the_registered_v2_spec(self):
         sql = (MIGRATIONS / V2_CLOSURE).read_text(encoding="utf-8")
         self.assertEqual(
             [spec for _, spec in registry_entries(sql)],
@@ -353,19 +352,19 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
         created = [sig for _, kind, sig, _ in function_events(sql) if kind == "create"]
         self.assertEqual(created, [AUTHORIZATION_RECEIPT_V2])
 
-    def test_without_0365_the_walk_names_0357(self):
-        # v2 is created unmarked; only 0365 closes it.
+    def test_without_0366_the_walk_names_0357(self):
+        # v2 is created unmarked; only 0366 closes it.
         files = [f for f in manifest_files() if f != V2_CLOSURE]
         self.assertEqual(
             unmarked_writers(files),
             {**UNRESOLVED, AUTHORIZATION_RECEIPT_V2: OPTIONAL_YES},
         )
 
-    def test_0365_follows_0357(self):
+    def test_0366_follows_0357(self):
         files = manifest_files()
         self.assertGreater(files.index(V2_CLOSURE), files.index(OPTIONAL_YES))
 
-    def test_0365_restates_the_service_role_grant_by_exact_signature(self):
+    def test_0366_restates_the_service_role_grant_by_exact_signature(self):
         sql = " ".join((MIGRATIONS / V2_CLOSURE).read_text(encoding="utf-8").split())
         target = (
             "ON FUNCTION public.accept_phase1_processing_authorization_v2( "
@@ -375,7 +374,7 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
         self.assertIn(f"REVOKE ALL {target} FROM PUBLIC, anon, authenticated;", sql)
         self.assertIn(f"GRANT EXECUTE {target} TO service_role;", sql)
 
-    def test_without_0364_the_walk_names_0335_and_0354(self):
+    def test_without_0365_the_walk_names_0335_and_0354(self):
         # Shows the guard catches the production regressions it was written for.
         files = [f for f in manifest_files() if f != REASSERT]
         self.assertEqual(
@@ -395,7 +394,7 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
         ):
             self.assertGreater(files.index(REASSERT), files.index(replaced))
 
-    def test_0364_restates_the_service_role_grants_by_exact_signature(self):
+    def test_0365_restates_the_service_role_grants_by_exact_signature(self):
         sql = " ".join((MIGRATIONS / REASSERT).read_text(encoding="utf-8").split())
         for target in (
             "ON FUNCTION public.accept_phase1_processing_authorization_v1( "
