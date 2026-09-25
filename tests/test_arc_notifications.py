@@ -247,14 +247,16 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
         self.assertFalse(fire_voice_album_ready(db, "u1", None))
         self.assertEqual(db.rows, [])
 
-    def test_the_publish_hook_checks_eligibility_after_every_reconciliation(self):
-        # The first clip can land before Take 3. A later reconciliation must
-        # still be able to introduce it once the journey is complete.
+    def test_publish_no_longer_posts_its_own_album_bubble(self):
+        # FOUNDER 2026-09-25, Q34 B: one bubble per publish, nothing else. The
+        # clips are still reconciled on publish; the album is announced by its
+        # other paths (the owner's and the coach's confirmations), not here.
         import inspect
 
         from services import coach_publish_delivery
         src = inspect.getsource(coach_publish_delivery._deliver)
-        self.assertIn("fire_voice_album_ready", src)
+        self.assertNotIn("fire_voice_album_ready", src)
+        self.assertIn("reconcile_voice_album_clip", src)
 
     def test_it_waits_for_take_three(self):
         from services.arc_notifications import fire_voice_album_ready

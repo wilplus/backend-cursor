@@ -344,6 +344,13 @@ def _startup_cleanup():
         _logger.info("gate flags %s", gate_summary())
     except Exception as exc:
         _logger.warning("gate flags unreadable: %s", exc)
+    # Same line as the worker's: which publish-email settings this process
+    # sees, never their values. The worker is the one that sends.
+    try:
+        from services.post_session_results_email import email_config_summary
+        _logger.info("publish email config %s", email_config_summary())
+    except Exception as exc:
+        _logger.warning("publish email config unreadable: %s", exc)
 
 
 with app.app_context():

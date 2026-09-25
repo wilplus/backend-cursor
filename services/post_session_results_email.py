@@ -88,6 +88,29 @@ def build_unsubscribe_url(user_id: str) -> Optional[str]:
     return f"{base}/unsubscribe?token={_url_quote(token)}"
 
 
+def email_config_summary() -> dict[str, Any]:
+    """Which publish-email settings this process can see -- never their values.
+
+    Logged at boot by the web and worker processes (founder 2026-09-25: "in
+    Railway all the variables are added to all 3 services, investigate it to
+    make sure"). The email is sent by the WORKER, so its boot log is the one
+    that proves the send can happen. Two of these must match another place:
+    EMAIL_RENDER_SECRET must equal the one on Vercel, or the designed email
+    falls back to the plain inline one."""
+    cfg = Config()
+    front = cfg.PUBLIC_FRONTEND_URL or ""
+    return {
+        "send_emails": bool(cfg.SEND_EMAILS),
+        "resend_api_key": bool(cfg.RESEND_API_KEY),
+        "resend_from_email": bool(cfg.RESEND_FROM_EMAIL),
+        "public_frontend_url": front if front.startswith("https://") else
+        ("localhost" if "localhost" in front else "unset-or-http"),
+        "frontend_base_url_set": bool(cfg.FRONTEND_BASE_URL),
+        "email_render_secret": bool(cfg.EMAIL_RENDER_SECRET),
+        "unsubscribe_token_secret": bool(cfg.UNSUBSCRIBE_TOKEN_SECRET),
+    }
+
+
 def render_post_session_results_email(props: dict) -> dict:
     """POST props to the frontend renderer and return ``{html, text}``.
 
@@ -180,10 +203,13 @@ def send_publish_results_email(
     # Falls back to plain /chat when the arc is unknown: a take with no arc is
     # a real (if odd) state, and a link to nothing is worse than a link to the
     # thread that holds the card.
+    # `&feedback=1` (founder 2026-09-25, Q28 A): the Ideal Text opens with
+    # the sheet already on the first coach-reviewed moment, in text order --
+    # the same place the chat bubble opens.
     _base = cfg.PUBLIC_FRONTEND_URL.rstrip("/")
     _arc = (arc_id or "").strip()
     journey_url = (
-        f"{_base}/chat?idealArc={_url_quote(_arc, safe='')}" if _arc
+        f"{_base}/chat?idealArc={_url_quote(_arc, safe='')}&feedback=1" if _arc
         else f"{_base}/chat"
     )
 
@@ -331,82 +357,74 @@ def _render_inline_fallback(props: dict) -> dict:
     """
     import html as _html_lib
 
-    first_name = (props.get("userFirstName") or "").strip()
+    # FOUNDER 2026-09-25: the same words as the designed email (the
+    # frontend's PostSessionResultsEmail), so a fallback send still says
+    # the signed-off thing. A count of moments, never a score (AC-9).
     snippet_count = int(props.get("snippetCount") or 0)
     top_theme = (props.get("topTheme") or "").strip()
     journey_url = (props.get("journeyUrl") or "").strip()
     unsubscribe_url = (props.get("unsubscribeUrl") or "").strip()
 
-    greeting_name = _html_lib.escape(first_name) if first_name else "there"
-    safe_journey_url = _html_lib.escape(journey_url, quote=True)
+    heading = "Your coach's feedback is in."
+    moments = (
+        "Your coach listened to your latest take and left feedback on "
+        f"{snippet_count} moment{'s' if snippet_count != 1 else ''}."
+        if snippet_count > 0 else
+        "Your coach listened to your latest take and left feedback."
+    )
+    invite = ("Open it to hear each moment, say how it sounded to you, and "
+              "see your coach's notes and exercises.")
 
-    if snippet_count > 0:
-        headline = (
-            f"{snippet_count} new voice moment"
-            f"{'s' if snippet_count != 1 else ''} are ready"
-        )
-    else:
-        headline = "Your voice moments are ready"
-
-    theme_line = ""
-    if top_theme:
-        theme_line = (
-            f"<p style=\"font-size:15px;line-height:1.6;margin:8px 0 16px;"
-            f"color:#444;\">Top theme this session: "
-            f"<strong>{_html_lib.escape(top_theme)}</strong>.</p>"
-        )
-
+    eyebrow = (
+        f"<p style=\"font-size:12px;letter-spacing:.08em;text-transform:"
+        f"uppercase;font-weight:600;color:#F97316;margin:0 0 8px;\">"
+        f"{_html_lib.escape(top_theme)}</p>"
+        if top_theme else ""
+    )
     cta_block = ""
     if journey_url:
+        safe_journey_url = _html_lib.escape(journey_url, quote=True)
         cta_block = (
-            f"<div style=\"text-align:center;margin:28px 0;\">"
+            f"<div style=\"text-align:center;margin:28px 0 8px;\">"
             f"<a href=\"{safe_journey_url}\" "
-            f"style=\"display:inline-block;background:#000;color:#fff;"
-            f"padding:14px 28px;border-radius:6px;text-decoration:none;"
-            f"font-weight:600;font-size:16px;\">View your results</a></div>"
+            f"style=\"display:inline-block;background:#F97316;color:#fff;"
+            f"padding:14px 28px;border-radius:9999px;text-decoration:none;"
+            f"font-weight:600;font-size:15px;\">Open the feedback</a></div>"
         )
-
     footer_unsub = ""
     if unsubscribe_url:
         safe_unsub = _html_lib.escape(unsubscribe_url, quote=True)
         footer_unsub = (
-            f"<p style=\"font-size:12px;color:#888;margin:16px 0 0;\">"
-            f"Don't want these updates? "
-            f"<a href=\"{safe_unsub}\" style=\"color:#888;\">Unsubscribe</a>."
+            f"<p style=\"font-size:12px;color:#888;margin:24px 0 0;"
+            f"text-align:center;\">"
+            f"<a href=\"{safe_unsub}\" style=\"color:#888;\">Unsubscribe</a>"
             f"</p>"
         )
 
     html_body = f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#222;">
-  <div style="max-width:560px;margin:0 auto;padding:32px 24px;background:#ffffff;">
-    <h1 style="font-size:22px;font-weight:600;margin:0 0 16px;">{headline}</h1>
-    <p style="font-size:16px;line-height:1.6;margin:0 0 12px;">Hi {greeting_name},</p>
-    <p style="font-size:16px;line-height:1.6;margin:0 0 8px;">
-      Your voice analysis is complete. We extracted your best moments and added detailed feedback.
-    </p>
-    {theme_line}
-    {cta_block}
+<body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1F1A14;">
+  <div style="max-width:580px;margin:0 auto;padding:32px 24px;">
+    <div style="text-align:center;margin:0 0 24px;"><img src="https://www.willpowerlab.com/willab-logo" alt="WillpowerLab" width="182" height="42" style="display:inline-block;width:182px;height:auto;border:0;"></div>
+    <div style="background:#FCFAF6;border:1px solid #EFE9DE;border-radius:16px;padding:32px;">
+      {eyebrow}
+      <h1 style="font-size:26px;font-weight:600;line-height:1.3;margin:0 0 16px;">{heading}</h1>
+      <p style="font-size:16px;line-height:1.6;margin:0 0 12px;">{moments}</p>
+      <p style="font-size:16px;line-height:1.6;margin:0;">{invite}</p>
+      {cta_block}
+    </div>
     {footer_unsub}
   </div>
 </body>
 </html>"""
 
-    # Plain-text fallback for clients that prefer text/plain. Hand-
-    # built rather than regex-stripped so line breaks read cleanly.
-    text_lines = [
-        headline,
-        "",
-        f"Hi {first_name or 'there'},",
-        "",
-        "Your voice analysis is complete. We extracted your best "
-        "moments and added detailed feedback.",
-    ]
+    text_lines = ["WillpowerLab", ""]
     if top_theme:
-        text_lines.append(f"Top theme this session: {top_theme}.")
+        text_lines.extend([top_theme.upper(), ""])
+    text_lines.extend([heading, "", moments, invite])
     if journey_url:
-        text_lines.extend(["", f"View your results: {journey_url}"])
+        text_lines.extend(["", f"Open the feedback: {journey_url}"])
     if unsubscribe_url:
         text_lines.extend(["", f"Unsubscribe: {unsubscribe_url}"])
 

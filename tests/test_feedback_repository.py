@@ -135,8 +135,8 @@ def test_published_readout_exposes_empty_result_and_separate_coach_review():
         readout = lab_recording.build_readout_from_session("take-1")
 
     assert readout["feedback_items"] == []
+    # The coach's Take video is gone (founder 2026-09-25): only the note.
     assert readout["coach_review"] == {
         "overall_message": "No changes needed.",
-        "video_ref": "https://cdn.example/coach.mp4",
     }
     assert "insights_payload" not in readout
