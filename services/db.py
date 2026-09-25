@@ -1474,7 +1474,12 @@ class DatabaseService:
                       .eq("id", str(project_id))
                       .eq("owner_principal_id", str(owner_principal_id))
                       .limit(1).execute())
-            return result.data[0] if result.data else None
+            row = result.data[0] if result.data else None
+            # An erased project is kept only as an empty receipt (N9); it is
+            # no longer the owner's to open or record into.
+            if row and row.get("tombstoned_at"):
+                return None
+            return row
         except Exception as e:
             logger.warning("get_project_for_owner failed project=%s: %s",
                            project_id, e)

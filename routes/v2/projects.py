@@ -270,12 +270,41 @@ def v2_cancel_project_deletion(project_id: str):
     return jsonify({"deletion": public_view(row)}), 200
 
 
+@v2_bp.route("/admin/project-deletions/<request_id>/confirm", methods=["POST"])
+@require_admin
+def v2_admin_confirm_project_deletion(request_id: str):
+    """The operator confirms one project deletion (P1-B, N8). Creates the
+    one-project purge request; the owner can no longer cancel. Nothing is
+    deleted here: the purge runs only when an operator runs
+    scripts/run_phase1_data_purge.py with PHASE1_PURGE_EXECUTION_ENABLED and
+    the request id repeated. Idempotent. Admin-only surface.
+    200 {deletion, purge_request_id} · 400 · 404 · 409 no longer pending."""
+    if not _is_valid_uuid(request_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "Invalid request id"}), 400
+    operator = str(getattr(request, "user_id", "") or "")
+    if not _is_valid_uuid(operator):
+        return jsonify({"code": "INVALID_INPUT", "error": "Invalid operator"}), 400
+    try:
+        row = ProjectDeletionService(db).confirm(request_id, operator)
+    except ProjectDeletionError as error:
+        return _deletion_error(error)
+    except Exception as error:
+        logger.error("project deletion confirm failed request=%s: %s",
+                     request_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not confirm deletion"}), 500
+    logger.info("project deletion confirmed request=%s purge=%s operator=%s",
+                request_id, row.get("purge_request_id"), operator)
+    return jsonify({"deletion": public_view(row),
+                    "purge_request_id": str(row.get("purge_request_id") or "")}), 200
+
+
 @v2_bp.route("/admin/project-deletions", methods=["GET"])
 @require_admin
 def v2_admin_project_deletions():
     """Operator queue (P1-A, N8): open project deletion requests, oldest due
-    first. Confirming one arrives with P1-B, when the purge can scope to a
-    single project; until then this is the list an operator works from.
+    first; POST .../<request_id>/confirm confirms one (P1-B).
     Admin-only surface."""
     try:
         rows = ProjectDeletionService(db).queue()

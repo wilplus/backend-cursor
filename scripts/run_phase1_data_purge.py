@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.data_purge import DataPurgeOrchestrator
+from services.data_purge_project_scope import orchestrator_for
 from services.db import db
 
 
@@ -33,8 +33,9 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    orchestrator = DataPurgeOrchestrator(db)
     if not args.execute:
+        # A project deletion is purged by its own, one-project orchestrator.
+        orchestrator = orchestrator_for(db, args.purge_request_id)
         inventory = orchestrator.build_inventory(args.purge_request_id)
         print(json.dumps({
             "mode": "preview",
@@ -49,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("PHASE1_PURGE_EXECUTION_DISABLED")
     if args.confirm_request_id != args.purge_request_id:
         raise SystemExit("PURGE_REQUEST_CONFIRMATION_MISMATCH")
+    orchestrator = orchestrator_for(db, args.purge_request_id)
     print(json.dumps(orchestrator.run(args.purge_request_id), sort_keys=True))
     return 0
 

@@ -393,6 +393,11 @@ hard migrations/a_project_deletion_pauses_only_its_project.sql
 # Twice: apply/reapply idempotency.
 hard migrations/a_take_keeps_an_empty_receipt.sql
 hard migrations/a_take_keeps_an_empty_receipt.sql
+# 0380 lets one project be purged: project_deletion joins the purge kinds
+# (the founder-approved CHECK swap), the project graph and freeze, the
+# manifest scope guard, and the operator's confirm. Twice: apply/reapply.
+hard migrations/one_project_can_be_purged.sql
+hard migrations/one_project_can_be_purged.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

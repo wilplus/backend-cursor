@@ -135,6 +135,43 @@ class FeedTests(unittest.TestCase):
         out = with_deletion_state(database, [{"arc_id": PROJECT}])
         self.assertIsNone(out[0]["deletion"])
 
+    def test_an_erased_project_leaves_the_feed(self):
+        """P1-B: once erased, a project's row and takes are empty receipts;
+        the picker must not list them (tombstoned, or a finished request)."""
+        from services.project_deletion import with_deletion_state
+
+        tombstoned = "33333333-3333-4333-8333-333333333333"
+        finished = "44444444-4444-4444-8444-444444444444"
+        client = MagicMock()
+
+        def table(name):
+            chain = MagicMock()
+            chain.select.return_value = chain
+            chain.in_.return_value = chain
+            rows = {
+                "projects": [
+                    {"id": PROJECT, "tombstoned_at": None},
+                    {"id": tombstoned, "tombstoned_at": "2026-09-26T10:00:00Z"},
+                ],
+                "project_deletion_requests": [
+                    {"project_id": finished, "state": "done"},
+                ],
+            }[name]
+            chain.execute.return_value = SimpleNamespace(data=rows)
+            return chain
+
+        client.table.side_effect = table
+        out = with_deletion_state(SimpleNamespace(client=client), [
+            {"arc_id": PROJECT}, {"arc_id": tombstoned}, {"arc_id": finished},
+        ])
+        self.assertEqual([t["arc_id"] for t in out], [PROJECT])
+
+    def test_a_legacy_arc_id_is_never_sent_as_a_project_id(self):
+        client = _client(rows=[])
+        ProjectDeletionService(SimpleNamespace(client=client)).erased_projects(
+            ["arc-not-a-uuid"])
+        client.table.assert_not_called()
+
     def test_a_database_without_a_client_sees_no_request(self):
         self.assertEqual(
             ProjectDeletionService(SimpleNamespace()).open_for_projects([PROJECT]),
@@ -258,3 +295,61 @@ class RouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ConfirmRouteTests(unittest.TestCase):
+    """The operator's confirm (P1-B, N8)."""
+
+    OPERATOR = "55555555-5555-4555-8555-555555555555"
+    REQUEST = "66666666-6666-4666-8666-666666666666"
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.service = MagicMock()
+        self._p = patch.object(v2_projects, "ProjectDeletionService",
+                               return_value=self.service)
+        self._p.start()
+
+    def tearDown(self):
+        self._p.stop()
+
+    def _confirm(self, request_id=None):
+        with self.app.test_request_context(method="POST"):
+            request.user_id = self.OPERATOR
+            resp, status = v2_projects.v2_admin_confirm_project_deletion.__wrapped__(
+                request_id or self.REQUEST)
+            return resp.get_json(), status
+
+    def test_confirm_returns_the_purge_request(self):
+        self.service.confirm.return_value = {
+            **ROW, "state": "confirmed", "purge_request_id": "purge-1"}
+        body, status = self._confirm()
+        self.assertEqual(status, 200)
+        self.assertEqual(body["deletion"]["state"], "confirmed")
+        self.assertEqual(body["purge_request_id"], "purge-1")
+        self.service.confirm.assert_called_once_with(self.REQUEST, self.OPERATOR)
+
+    def test_a_cancelled_request_cannot_be_confirmed(self):
+        self.service.confirm.side_effect = ProjectDeletionError(
+            "PROJECT_DELETION_NOT_PENDING", "PROJECT_DELETION_NOT_PENDING", 409)
+        _body, status = self._confirm()
+        self.assertEqual(status, 409)
+
+    def test_a_bad_id_is_400(self):
+        _body, status = self._confirm("not-a-uuid")
+        self.assertEqual(status, 400)
+        self.service.confirm.assert_not_called()
+
+
+class ConfirmServiceTests(unittest.TestCase):
+
+    def test_confirm_maps_its_errors(self):
+        for raised, status in (("PROJECT_DELETION_NOT_FOUND", 404),
+                               ("PROJECT_DELETION_NOT_PENDING", 409),
+                               ("PURGE_PROJECT_NOT_OWNED", 409)):
+            service = ProjectDeletionService(SimpleNamespace(
+                client=_client(rpc_error=_ApiError(raised, "P0001"))))
+            with self.assertRaises(ProjectDeletionError) as ctx:
+                service.confirm("r1", "o1")
+            self.assertEqual(ctx.exception.status, status)

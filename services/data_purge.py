@@ -578,6 +578,11 @@ class DataPurgeOrchestrator:
 
     def build_inventory(self, purge_request_id: str) -> dict[str, Any]:
         request = self._request(purge_request_id)
+        # A project request is never run account-wide, nor an account
+        # request project-wide (0380; the manifest guard refuses it too).
+        if (request.get("trigger_kind") == "project_deletion") != (
+                self.scope == "project"):
+            raise RuntimeError("PURGE_SCOPE_MISMATCH")
         catalog = self._catalog()
         existing = frozenset(
             str(item) for item in catalog.get("existing_allowlisted_relations", [])
@@ -625,10 +630,10 @@ class DataPurgeOrchestrator:
         inventory = self.build_inventory(purge_request_id)
         graph_payload = inventory["graph"].payload()
         target_payload = [item.payload() for item in inventory["targets"]]
-        result = self.client.rpc("freeze_phase1_purge_inventory_v4", {
+        result = self.client.rpc(self.freeze_function, {
             "p_purge_request_id": purge_request_id,
-            "p_resolver_version": RESOLVER_VERSION,
-            "p_dependency_manifest_sha256": dependency_manifest_sha256(),
+            "p_resolver_version": self.resolver_version,
+            "p_dependency_manifest_sha256": self._dependency_manifest_sha(),
             "p_subject_graph": graph_payload,
             "p_targets": target_payload,
             "p_catalog_sha256": inventory["catalog"]["catalog_sha256"],
@@ -651,11 +656,11 @@ class DataPurgeOrchestrator:
         self, manifest: Mapping[str, Any], purge_request_id: str,
     ) -> None:
         """Refuse deletion if code or catalog changed after inventory freeze."""
-        if str(manifest.get("resolver_version") or "") != RESOLVER_VERSION:
+        if str(manifest.get("resolver_version") or "") != self.resolver_version:
             raise RuntimeError("PURGE_RESOLVER_VERSION_CHANGED")
         if (
             str(manifest.get("dependency_manifest_sha256") or "")
-            != dependency_manifest_sha256()
+            != self._dependency_manifest_sha()
         ):
             raise RuntimeError("PURGE_DEPENDENCY_MANIFEST_CHANGED")
         current_catalog = self._catalog()
@@ -781,7 +786,7 @@ class DataPurgeOrchestrator:
         self, target: Mapping[str, Any], graph: SubjectGraph,
     ) -> None:
         metadata = target.get("metadata") or {}
-        dependency = dependency_by_code(str(metadata.get("dependency_code") or ""))
+        dependency = self._dependency(str(metadata.get("dependency_code") or ""))
         if dependency is None:
             self._resolve(target, state="unknown", remaining=1,
                           error_code="DEPENDENCY_CONTRACT_MISSING")
@@ -923,7 +928,7 @@ class DataPurgeOrchestrator:
         targets = self._targets(purge_request_id)
         evidence = _sha({
             "purge_request_id": purge_request_id,
-            "resolver_version": RESOLVER_VERSION,
+            "resolver_version": self.resolver_version,
             "targets": sorted(({
                 "id": str(row.get("id") or ""),
                 "state": str(row.get("state") or ""),
@@ -941,3 +946,15 @@ class DataPurgeOrchestrator:
         self.resolve_targets(purge_request_id)
         final = self.finalize(purge_request_id)
         return {"inventory": frozen, "result": final}
+
+    # The account scope. `ProjectPurgeOrchestrator`
+    # (services/data_purge_project_scope.py) narrows it to one project.
+    scope = "account"
+    resolver_version = RESOLVER_VERSION
+    freeze_function = "freeze_phase1_purge_inventory_v4"
+
+    def _dependency(self, code: str) -> PurgeDependency | None:
+        return dependency_by_code(code)
+
+    def _dependency_manifest_sha(self) -> str:
+        return dependency_manifest_sha256()
