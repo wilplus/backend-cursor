@@ -21,7 +21,7 @@ def project_recording_roots(
     snapshot: Mapping[str, Any],
     live_rows: Any,
 ) -> list[dict[str, Any]]:
-    """Return only exact locked orange roots with proven Slide lineage."""
+    """Return locked helper words with proven Slide lineage."""
     payload = snapshot.get("payload")
     if not isinstance(payload, Mapping):
         raise RecordingRootsStale("RECORDING_ROOTS_SNAPSHOT_REQUIRED")
@@ -53,8 +53,6 @@ def project_recording_roots(
             raise RecordingRootsStale("RECORDING_ROOTS_LINEAGE_STALE")
 
         phrase = live.get("root_phrase")
-        start = live.get("root_start")
-        end = live.get("root_end")
         if not phrase:
             continue
         if not live.get("locked"):
@@ -67,17 +65,10 @@ def project_recording_roots(
             # function makes — locked roots only — without letting an ordinary
             # product state present as a corrupted document.
             continue
-        if (
-            not isinstance(start, int)
-            or isinstance(start, bool)
-            or not isinstance(end, int)
-            or isinstance(end, bool)
-            or start < 0
-            or end <= start
-            or end > len(live["text"])
-            or live["text"][start:end] != phrase
-        ):
-            raise RecordingRootsStale("RECORDING_ROOTS_SPAN_STALE")
+        # NO SPAN CHECK. The helper words are their own text and persist
+        # when a Take rewrites the Paragraph (contract 14, founder
+        # 2026-09-25); the recording screen shows the words, not a position,
+        # so a Paragraph that no longer contains them still shows them.
         slide = piece.get("slide_index")
         if isinstance(slide, bool) or not isinstance(slide, int) or slide < 0:
             # A committed root without exact Slide lineage remains stored but

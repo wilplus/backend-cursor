@@ -280,6 +280,31 @@ def _freezable_selection(selected_keys: Any) -> bool:
     )
 
 
+
+def _carried_root(previous: Optional[dict], text: str) -> dict:
+    """The helper-word columns a rewritten part keeps (contract 14).
+
+    The phrase and its selection time carry across any change to the words.
+    The span is kept while it still proves the same words, re-found when the
+    words occur exactly once in the new text, and otherwise cleared — the
+    `ideal_text_part_root_span` CHECK allows a phrase without a span since
+    migration 0364."""
+    from services.ideal_text_parts import root_span_in
+
+    prev = previous or {}
+    phrase = prev.get("root_phrase")
+    if not isinstance(phrase, str) or not phrase:
+        return {"root_phrase": None, "root_start": None, "root_end": None,
+                "root_selected_at": None}
+    span = root_span_in(text, phrase, prev.get("root_start"),
+                        prev.get("root_end"))
+    return {
+        "root_phrase": phrase,
+        "root_start": span[0] if span else None,
+        "root_end": span[1] if span else None,
+        "root_selected_at": prev.get("root_selected_at"),
+    }
+
 class DatabaseService:
     def __init__(self):
         self.client: Client = self._build_supabase_client()
@@ -8846,30 +8871,13 @@ class DatabaseService:
                     "iteration": (p.get("iteration")
                                   if isinstance(p.get("iteration"), int)
                                   else prev_iter.get(str(p["id"]), 0)),
-                    # Orange is metadata on the exact locked words. Preserve
-                    # it only while this part's text is byte-identical; an edit
-                    # or refreshed open paragraph clears it and must ask anew.
-                    "root_phrase": (
-                        (prev_meta.get(str(p["id"])) or {}).get("root_phrase")
-                        if (prev_meta.get(str(p["id"])) or {}).get("text")
-                        == str(p["text"]) else None
-                    ),
-                    "root_start": (
-                        (prev_meta.get(str(p["id"])) or {}).get("root_start")
-                        if (prev_meta.get(str(p["id"])) or {}).get("text")
-                        == str(p["text"]) else None
-                    ),
-                    "root_end": (
-                        (prev_meta.get(str(p["id"])) or {}).get("root_end")
-                        if (prev_meta.get(str(p["id"])) or {}).get("text")
-                        == str(p["text"]) else None
-                    ),
-                    "root_selected_at": (
-                        (prev_meta.get(str(p["id"])) or {}).get(
-                            "root_selected_at")
-                        if (prev_meta.get(str(p["id"])) or {}).get("text")
-                        == str(p["text"]) else None
-                    ),
+                    # THE HELPER WORDS ARE THEIR OWN TEXT (contract 14,
+                    # founder 2026-09-25). They ride with the Paragraph id
+                    # through any change to its words and persist until the
+                    # user picks new ones. Only the span — a render hint — is
+                    # recomputed against the new words; see `_carried_root`.
+                    **_carried_root(prev_meta.get(str(p["id"])),
+                                    str(p["text"])),
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 for p in parts
@@ -8887,10 +8895,7 @@ class DatabaseService:
                             part_id=str(p["id"]),
                             action=revision_action,
                             text=str(p["text"]),
-                            root_phrase=(
-                                _previous.get("root_phrase")
-                                if not _text_changed else None
-                            ),
+                            root_phrase=_previous.get("root_phrase"),
                         )
             return True
         except Exception as e:
