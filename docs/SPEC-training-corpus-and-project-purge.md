@@ -353,8 +353,8 @@ Settled 2026-09-25 (decisions log N8):
 | **P1** | Project-scoped purge (§6.1), operator queue in the admin panel (§6.4), picker delete with pending state and cancel (§7); corpus absent | Migration via manifest. Founder go-ahead and copy given (N8) |
 | **P2** | Consent schema + v2 functions + v2 reader (§3), with no `training_only` policy row | Migration only; stays dark. **Built: 0373 `a_training_yes_is_its_own_act.sql`** (the two CHECK removals approved by the founder 2026-09-26) |
 | **P3** | Corpus tables + copy job (§4), behind `phase2_guard` | Migration; stays dark. **Built: 0375 `training_copies_are_copies.sql` + `services/training_corpus.py`**, behind the code constant `MLC2_TRAINING_CORPUS_COPY_ENABLED = False`; the table is `external_review` in the purge registry until P4 |
-| **P4** | Registry disposition `retain_while_training_consented` + withdrawal purge (§6.2, §6.3) | Deletion-completion tests updated |
-| **P5** | New policy version with the training purpose, the re-accept flow, the training toggle, the retention rule activated, honest delete copy | **Counsel review**, founder sign-off on copy, lifting `PHASE2_PURPOSE_FORBIDDEN` for this one purpose, updated Privacy text and retention schedule |
+| **P4** | Registry disposition `retain_while_training_consented` + withdrawal purge (§6.2, §6.3) | Deletion-completion tests updated. **Built: 0376 `training_copies_go_when_the_yes_goes.sql`**: withdrawal makes copies due, `purge_due_copies` erases them, account erasure reaches their audio and rows (`delete`). `retain_while_training_consented` waits for the project-scoped purge (P1) |
+| **P5** | See [`P5-TRAINING-ACTIVATION-PACKET.md`](P5-TRAINING-ACTIVATION-PACKET.md). New policy version with the training purpose, the re-accept flow, the training toggle, the retention rule activated, honest delete copy | **Counsel review**, founder sign-off on copy, lifting `PHASE2_PURPOSE_FORBIDDEN` for this one purpose, updated Privacy text and retention schedule |
 
 P1 is useful on its own and doesn't depend on any training decision. P2–P4
 can land dark in any order after P1. Nothing reaches a user until P5.

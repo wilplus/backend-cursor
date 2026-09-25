@@ -372,6 +372,12 @@ hard migrations/a_training_yes_is_its_own_act.sql
 # apply/reapply idempotency check.
 hard migrations/training_copies_are_copies.sql
 hard migrations/training_copies_are_copies.sql
+# 0376 lets the copies go when the yes goes: the withdrawal marks them due,
+# and the account purge reaches them. It re-issues the freeze (0362) and the
+# object mark (0354) and re-injects the mark's D11 preamble. Twice: the
+# apply/reapply idempotency check.
+hard migrations/training_copies_go_when_the_yes_goes.sql
+hard migrations/training_copies_go_when_the_yes_goes.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

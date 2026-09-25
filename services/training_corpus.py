@@ -215,3 +215,68 @@ def _discard(key: str, bucket: str, provider: str, sha256: str) -> None:
             expected_sha256=sha256)
     except Exception as error:  # noqa: BLE001
         logger.warning("training corpus orphan left key=%s: %s", key, error)
+
+
+# ── Erasure (SPEC §6.3, P4) ────────────────────────────────────────────────
+
+PURGE_TASK_PATH = "services.training_corpus.purge_due_copies"
+
+
+def enqueue_corpus_purge(acquisition_principal_id: Any) -> bool:
+    """Ask for the erasure of a person's due copies. Never raises.
+
+    Not behind the copy switch: erasure must run whenever copies are due,
+    including after the copying itself has been switched off again.
+    """
+    if not acquisition_principal_id:
+        return False
+    try:
+        from services.job_queue import enqueue
+
+        return bool(enqueue(
+            PURGE_TASK_PATH, str(acquisition_principal_id),
+            rq_job_id=f"training-corpus-purge:{acquisition_principal_id}"))
+    except Exception as error:  # noqa: BLE001
+        logger.warning("training corpus purge not enqueued principal=%s: %s",
+                       acquisition_principal_id, error)
+        return False
+
+
+def purge_due_copies(acquisition_principal_id: str, *,
+                     database: Any = None) -> dict:
+    """Erase every copy of this person that a withdrawal marked due.
+
+    For audio: delete the object at its exact coordinates after re-checking
+    its hash, and require it verified absent; only then erase the row. A copy
+    whose object cannot be proven gone stays due, and the next run tries
+    again. Rows the account purge already marked `purged` (object gone) are
+    erased directly.
+    """
+    if database is None:
+        from services.db import db as database
+    due = database.list_due_training_corpus_items(str(acquisition_principal_id))
+    erased = failed = 0
+    for item in due or []:
+        if item.get("storage_key") and item.get("state") != "purged" \
+                and not _object_gone(item):
+            failed += 1
+            continue
+        if database.erase_training_corpus_item(str(item["id"])):
+            erased += 1
+        else:
+            failed += 1
+    return {"erased": erased, "failed": failed}
+
+
+def _object_gone(item: dict) -> bool:
+    try:
+        from services.lab_audio_storage import delete_verified_lab_audio_object
+
+        return bool(delete_verified_lab_audio_object(
+            str(item["storage_key"]), bucket=str(item.get("bucket") or ""),
+            storage_provider=str(item.get("storage_provider") or ""),
+            expected_sha256=str(item.get("object_sha256") or "")))
+    except Exception as error:  # noqa: BLE001 — never proof of absence
+        logger.warning("training corpus object not erased item=%s: %s",
+                       item.get("id"), error)
+        return False

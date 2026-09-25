@@ -14357,6 +14357,35 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
+    def list_due_training_corpus_items(
+        self, acquisition_principal_id: str,
+    ) -> list[dict]:
+        """A person's copies a withdrawal or the account purge made due."""
+        try:
+            return (self.client.table("training_corpus_items")
+                    .select("id,state,storage_provider,bucket,storage_key,"
+                            "object_sha256")
+                    .eq("acquisition_principal_id", str(acquisition_principal_id))
+                    .in_("state", ["purge_pending", "purged"])
+                    .execute().data or [])
+        except Exception as e:
+            logger.warning("due training copies read failed principal=%s: %s",
+                           acquisition_principal_id, e)
+            return []
+
+    def erase_training_corpus_item(self, item_id: str) -> bool:
+        """Erase one DUE copy's row. The state filter is the guard: an active
+        copy is never erased here, only one a withdrawal or purge moved."""
+        try:
+            rows = (self.client.table("training_corpus_items").delete()
+                    .eq("id", str(item_id))
+                    .in_("state", ["purge_pending", "purged"])
+                    .execute().data or [])
+            return bool(rows)
+        except Exception as e:
+            logger.warning("training copy erase failed item=%s: %s", item_id, e)
+            return False
+
     def get_take_audio_object(self, take_session_id: str) -> Optional[dict]:
         """The Take's own recording object (processing_audio_objects)."""
         if not take_session_id:
