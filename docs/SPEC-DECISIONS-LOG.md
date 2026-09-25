@@ -603,3 +603,24 @@ bundled consent.
   other optional purposes (`personalized_exercise_recommendation`,
   `individual_learning_profile`) and no longer covers pooled model
   improvement.
+
+**N8 · P1 and cleanup decisions (founder 2026-09-25, answered on the decision
+board).**
+- **P1 starts now**, shipped as PRs for review.
+- **Operator target:** an operator confirms a project deletion within 7 days
+  (legal ceiling one month).
+- **Cancel:** a user can cancel a pending deletion until an operator confirms
+  it.
+- **Queue:** the operator queue lives in the existing admin panel.
+- **Copy approved as written:**
+  - Delete "<project name>"?
+  - Every take in this project and its ideal text will be permanently
+    deleted. This can't be undone. We'll finish within 7 days, and until then
+    the project is locked.
+  - Request deletion
+  - Deletion pending
+  - Cancel deletion
+- **Damaged take links:** repaired by hand with
+  `scripts/sql/repair_delete_cleared_take_links.sql`, previewing first.
+- **Trainings-page deletes fail cleanly:** done in #653.
+- **Counsel brief:** sent.
