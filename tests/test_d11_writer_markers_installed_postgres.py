@@ -16,6 +16,10 @@ rewritten by 0327 differently, so for them the marker alone is checked, as
 pins production's state.  When a founder-approved fix lands, this fails until
 the entry is removed from UNRESOLVED.
 
+``accept_phase1_processing_authorization_v2`` (0357) is checked too.  0327
+never named it; 0363 gives it v1's preamble, and ``registered_writers`` lists
+it next to 0327's registry.
+
 Rehearsal tier only (the released confident-moment lane).
 """
 from __future__ import annotations
@@ -27,10 +31,13 @@ import pytest
 
 from tests.test_d11_writer_markers_survive_the_manifest import (
     AUTHORIZATION_RECEIPT,
+    AUTHORIZATION_RECEIPT_V2,
     OBJECT_PURGE,
     UNRESOLVED,
-    d11_registry,
+    registered_writers,
 )
+
+REPAIRED = [AUTHORIZATION_RECEIPT, AUTHORIZATION_RECEIPT_V2, OBJECT_PURGE]
 
 DSN = os.environ.get("CONFIDENT_MOMENT_REHEARSAL_DSN", "")
 pytestmark = pytest.mark.skipif(not DSN, reason="disposable rehearsal only")
@@ -55,9 +62,9 @@ def _definition(db, signature: str) -> str:
         return cur.fetchone()[0]
 
 
-@pytest.mark.parametrize("signature", sorted(d11_registry()))
+@pytest.mark.parametrize("signature", sorted(registered_writers()))
 def test_the_installed_writer_carries_its_d11_marker(db, signature):
-    spec = d11_registry()[signature]
+    spec = registered_writers()[signature]
     body = _definition(db, signature)
     if signature in UNRESOLVED:
         assert spec["marker"] not in body, f"{signature} is repaired: update UNRESOLVED"
@@ -69,18 +76,22 @@ def test_the_installed_writer_carries_its_d11_marker(db, signature):
         assert body.count(spec["marker"]) == 1, f"{signature}: injected twice"
 
 
-@pytest.mark.parametrize("signature", [AUTHORIZATION_RECEIPT, OBJECT_PURGE])
+@pytest.mark.parametrize("signature", REPAIRED)
 def test_the_repaired_writers_keep_the_bodies_that_replaced_them(db, signature):
     body = _definition(db, signature)
     if signature == OBJECT_PURGE:
         # 0354's practice branch survives the re-injection.
         assert "'processing_practice_objects'" in body
+    elif signature == AUTHORIZATION_RECEIPT_V2:
+        # 0357's optional-purpose refusal and evidence hash survive 0363.
+        assert "PROCESSING_OPTIONAL_PURPOSE_INVALID" in body
+        assert "array_to_string(chosen, ',')" in body
     else:
         # 0335's registry-driven phase-2 refusal survives the re-injection.
         assert "pr.phase = 'phase2'" in body
 
 
-@pytest.mark.parametrize("signature", [AUTHORIZATION_RECEIPT, OBJECT_PURGE])
+@pytest.mark.parametrize("signature", REPAIRED)
 def test_the_repaired_writers_stay_service_role_only(db, signature):
     with db.cursor() as cur:
         for role, allowed in (
@@ -99,3 +110,36 @@ def test_the_repaired_writers_stay_service_role_only(db, signature):
             (signature,),
         )
         assert cur.fetchone()[0] is False, f"PUBLIC can execute {signature}"
+
+
+def test_v2_takes_the_receipt_locks_before_anything_else(db):
+    """The served acceptance queues behind a writer holding the principal lock.
+
+    A second connection holds the principal's service lock.  v2, called with
+    arguments that fail validation, must wait for that lock before it reaches
+    the first check, so it runs into the lock timeout rather than raising
+    its own error.  Without 0363 it raises PROCESSING_POLICY_UNAPPROVED.
+    """
+    principal = "00000000-0000-4000-8000-00000000d11a"
+    holder = psycopg2.connect(**psycopg2.extensions.parse_dsn(DSN))
+    try:
+        with holder.cursor() as cur:
+            cur.execute(
+                "SELECT pg_advisory_lock(hashtextextended(%s, 0))",
+                ("mlc3-service-principal:" + principal,),
+            )
+        with db.cursor() as cur:
+            cur.execute("SET lock_timeout = '300ms'")
+            try:
+                with pytest.raises(psycopg2.errors.LockNotAvailable):
+                    cur.execute(
+                        "SELECT public.accept_phase1_processing_authorization_v2("
+                        "%s::uuid, 'no-such-policy', '', '', '', '', "
+                        "'agree_and_continue', true, 'de', 'en', 'test', now(), "
+                        "'d11-lock-probe', '{}'::text[])",
+                        (principal,),
+                    )
+            finally:
+                cur.execute("RESET lock_timeout")
+    finally:
+        holder.close()

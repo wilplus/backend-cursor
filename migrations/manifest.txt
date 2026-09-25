@@ -398,3 +398,4 @@
 0360	a_coach_names_the_error_and_teaches_the_library.sql
 0361	a_person_can_change_their_mind.sql
 0362	two_d11_writers_take_their_locks_again.sql
+0363	the_optional_yes_takes_the_d11_locks.sql
