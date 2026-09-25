@@ -624,3 +624,16 @@ board).**
   `scripts/sql/repair_delete_cleared_take_links.sql`, previewing first.
 - **Trainings-page deletes fail cleanly:** done in #653.
 - **Counsel brief:** sent.
+
+**N9 · A purged project row is a tombstone (founder 2026-09-25).**
+- **Found by running it:** `tests/test_take_purge_postgres.py` purges an
+  account with one recorded take through the real orchestrator. The take was
+  deleted, then the project delete was refused: every accepted recording
+  attempt is retained as evidence and points at its project ON DELETE
+  RESTRICT. So no erasure could finish for anyone who had recorded a take.
+- **Decision:** keep the row, wipe its content. The registry files `projects`
+  as `tombstone` under the deletion-evidence rule; migration 0368 blanks
+  `display_name`, `setup` and `presentation_ref` and stamps `tombstoned_at`,
+  only for projects in the request's frozen graph.
+- **Still true:** production has no active retention rule yet, so a real run
+  stops at `review_required` until the retention schedule is seeded.

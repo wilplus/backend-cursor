@@ -403,4 +403,5 @@
 0365	two_d11_writers_take_their_locks_again.sql
 0366	the_optional_yes_takes_the_d11_locks.sql
 0367	helper_words_are_their_own_text.sql
-0368	helper_words_belong_to_the_slide.sql
+0368	a_project_row_is_kept_as_a_tombstone.sql
+0369	helper_words_belong_to_the_slide.sql
