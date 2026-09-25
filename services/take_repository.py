@@ -22,6 +22,30 @@ from services.table_repository import TableRepository
 logger = logging.getLogger(__name__)
 
 
+class TakeHasLineageError(Exception):
+    """A Take still has ON DELETE RESTRICT dependents; the delete was refused
+    and nothing was changed."""
+
+    def __init__(self, session_ids: List[str]):
+        self.session_ids = list(session_ids)
+        super().__init__(f"take has lineage: {', '.join(self.session_ids)}")
+
+
+class TakeDeleteNotApplied(Exception):
+    """The DELETE raised nothing, but these sessions are still there."""
+
+    def __init__(self, session_ids: List[str]):
+        self.session_ids = list(session_ids)
+        super().__init__(f"delete not applied: {', '.join(self.session_ids)}")
+
+
+def _is_fk_violation(exc: BaseException) -> bool:
+    """PostgreSQL foreign_key_violation (23503), as PostgREST reports it."""
+    if str(getattr(exc, "code", "") or "") == "23503":
+        return True
+    return "violates foreign key constraint" in str(exc)
+
+
 class TakeRepository(TableRepository):
     def v2_update_session(self, session_id: str, user_id: str, data: dict):
         """Update v2 session; verify user_id."""
@@ -29,28 +53,45 @@ class TakeRepository(TableRepository):
         return result.data[0] if result.data else None
 
     def v2_delete_session(self, session_id: str, user_id: str) -> bool:
-        """Delete v2 session (owner only). Recordings.session_v2_id set to NULL; v2_reports CASCADE deleted. Returns True when delete executes without error (Supabase delete may return empty body).
-
-        NOTE: The schema has a mutual FK cycle between v2_sessions and v2_reports:
-          v2_sessions.report_id → v2_reports(id) ON DELETE SET NULL
-          v2_reports.session_v2_id → v2_sessions(id) ON DELETE CASCADE
-        PostgreSQL can raise a constraint-cycle error when both fire in the same transaction.
-        We break the cycle first by nulling out the FK columns on v2_sessions before deleting.
-        Same precaution for recording_1_id (bidirectional with recordings table).
-        """
-        # Step 1: Break circular FK references to avoid PostgreSQL constraint-cycle errors.
-        try:
-            self.client.table("v2_sessions").update({
-                "recording_1_id": None,
-                "report_id": None,
-            }).eq("id", session_id).eq("user_id", user_id).execute()
-        except Exception:
-            pass  # Best-effort; proceed to delete regardless.
-
-        # Step 2: Delete the session row (v2_reports CASCADE, recordings.session_v2_id SET NULL).
-        self.client.table("v2_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
-        # PostgREST/Supabase delete often returns empty result.data even on success; if we got here without exception, treat as success.
+        """Delete one v2 session (owner only). See ``v2_delete_sessions``."""
+        self.v2_delete_sessions([session_id], user_id)
         return True
+
+    def v2_delete_sessions(self, session_ids: List[str], user_id: str) -> None:
+        """Delete owner-scoped v2 sessions in ONE statement, or none of them.
+
+        recordings.session_v2_id goes to NULL and v2_reports CASCADE, as before.
+        A canonical Take is referenced ON DELETE RESTRICT (recording attempts,
+        feedback candidates, Ideal Text core snapshots, Confident Moment
+        bundles, Voice Album — manifest 0296/0297/0315/0327), so PostgreSQL
+        refuses the statement and nothing changes: the refusal raises
+        ``TakeHasLineageError``. That Take's delete belongs to the governed
+        Phase-1 purge (services/data_purge.py), not here.
+
+        No links are cleared first. This used to null recording_1_id and
+        report_id in a separate call "to break an FK cycle", but PostgreSQL
+        runs the mutual CASCADE / SET NULL without trouble (checked on PG16),
+        and the separate commit left a refused Take with its links cut.
+
+        A statement that raises nothing but leaves a row behind raises
+        ``TakeDeleteNotApplied``: success is what the table says afterwards.
+        Both statements are owner-scoped; callers resolve ownership first.
+        """
+        ids = [str(s) for s in session_ids if s]
+        if not ids:
+            return
+        try:
+            (self.client.table("v2_sessions").delete()
+             .in_("id", ids).eq("user_id", user_id).execute())
+        except Exception as e:
+            if _is_fk_violation(e):
+                raise TakeHasLineageError(ids) from e
+            raise
+        left = (self.client.table("v2_sessions").select("id")
+                .in_("id", ids).eq("user_id", user_id).execute())
+        remaining = [str(r.get("id")) for r in (left.data or [])]
+        if remaining:
+            raise TakeDeleteNotApplied(remaining)
 
     def v2_get_incomplete_sessions_older_than(self, hours: float) -> List[dict]:
         """Return v2_sessions that are not completed and created_at is older than hours (for cleanup)."""
