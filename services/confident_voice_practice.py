@@ -470,7 +470,7 @@ def reviewed_active_exercises(database: Any) -> list[dict]:
 
 
 def rank_exercises_for_clip(
-    verdict: Any, database: Any,
+    verdict: Any, database: Any, *, exercises: Optional[list[dict]] = None,
 ) -> list[tuple[int, int, str, dict]]:
     """THE one composition both ranking paths use.
 
@@ -479,14 +479,69 @@ def rank_exercises_for_clip(
     first. Composing the pattern, the catalogue and the problem vocabulary in
     two places is how those two silently drift into disagreeing — so they
     compose here, once.
+
+    ``exercises`` lets a caller that already holds the reviewed catalogue pass
+    it in rather than read it twice. It must BE ``reviewed_active_exercises``;
+    anything else would rank a different pool than the speaker is offered.
     """
+    pool = (reviewed_active_exercises(database)
+            if exercises is None else exercises)
     return rank_exercises_for_pattern(
         str(verdict.get("pattern") or "") if isinstance(verdict, dict) else "",
-        reviewed_active_exercises(database),
+        pool,
         observed_tags=observed_problem_tags(
             verdict, vocabulary=detected_problem_vocabulary(database),
         ),
     )
+
+
+def stored_practice_verdict(practice: Any) -> dict:
+    """The verdict a practice was OFFERED on, rebuilt from its own row.
+
+    `rank_exercises_for_clip` reads only the pattern and the fired signals,
+    and the practice stored both when it was created
+    (`machine_assessment.pattern`, `acoustic_evidence.signals`). Reading them
+    back rather than recomputing from the snippet means the coach ranks the
+    very clip the speaker was offered on, even if the session's median pace
+    has moved since.
+    """
+    row = practice if isinstance(practice, dict) else {}
+    assessment = row.get("machine_assessment")
+    evidence = row.get("acoustic_evidence")
+    return {
+        "pattern": (assessment.get("pattern")
+                    if isinstance(assessment, dict) else None),
+        "signals": (evidence.get("signals")
+                    if isinstance(evidence, dict) else None),
+    }
+
+
+def coach_exercise_order(practice: Any, database: Any) -> list[dict]:
+    """Every reviewed exercise, best match for THIS clip first.
+
+    FOUNDER 2026-09-25: "show all exercises, best match first". Two halves.
+
+    BEST MATCH FIRST, by the speaker's own rule. The head of this list is
+    `rank_exercises_for_clip` on the verdict the practice was offered on, so
+    the exercise the coach sees at the top is the one the matcher would pick.
+    A second ranking written for the coach would disagree with the speaker's
+    sooner or later, and the coach would be judging a list nobody is served.
+
+    ALL OF THEM. The matcher drops an exercise whose confidence patterns it
+    cannot place, which is right for choosing one to OFFER but wrong for a
+    coach choosing by hand: an exercise they can see in the library must not
+    vanish from this list. Those follow the ranked ones, in catalogue order.
+
+    Internal order only — no score, distance or overlap leaves this function.
+    """
+    pool = reviewed_active_exercises(database)
+    ranked = [item[3] for item in rank_exercises_for_clip(
+        stored_practice_verdict(practice), database, exercises=pool)]
+    placed = {str(row.get("exercise_id") or "") for row in ranked}
+    return ranked + [
+        row for row in pool
+        if str(row.get("exercise_id") or "") not in placed
+    ]
 
 
 def attach_exercise_offer(changes: list[dict], *, take_session_id: str,

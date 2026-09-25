@@ -1,6 +1,7 @@
 """Confident Voice micro-practice: narrow eligibility and isolation fences."""
 from __future__ import annotations
 
+import importlib
 import inspect
 import re
 import pathlib
@@ -684,3 +685,126 @@ class VocabularyFilterTests(unittest.TestCase):
             cvp.detected_problem_vocabulary(self._Db([])), frozenset())
         self.assertEqual(
             cvp.detected_problem_vocabulary(object()), frozenset())
+
+
+class _CatalogueDb:
+    """A catalogue and an error library, and nothing else."""
+
+    def __init__(self, rows, detected=("rushing", "word_compression",
+                                       "ending_compression")):
+        self._rows = rows
+        self._detected = detected
+
+    def list_diagnostic_exercises(self):
+        return [dict(row) for row in self._rows]
+
+    def get_active_diagnostic_exercise(self, exercise_id):
+        for row in self._rows:
+            if (row["exercise_id"] == exercise_id and row.get("active", True)
+                    and row.get("explanation_video_url")):
+                return dict(row)
+        return None
+
+    def list_speaking_errors(self):
+        return [{"error_id": e, "status": "detected"} for e in self._detected]
+
+
+class CoachExerciseOrderTests(unittest.TestCase):
+    """FOUNDER 2026-09-25: the coach sees every exercise, best match first."""
+
+    def _exercise(self, exercise_id, patterns, tags=(), **over):
+        row = {
+            "exercise_id": exercise_id,
+            "supported_confidence_patterns": list(patterns),
+            "acoustic_problem_tags": list(tags),
+            "matching_criteria": {"editorial_priority": 0},
+            "explanation_video_url": f"https://cdn.example/{exercise_id}.mp4",
+            "active": True,
+        }
+        row.update(over)
+        return row
+
+    def _practice(self, pattern="near_confident", **signals):
+        return {
+            "machine_assessment": {"pattern": pattern},
+            "acoustic_evidence": {"signals": signals},
+        }
+
+    def _ids(self, rows):
+        return [row["exercise_id"] for row in rows]
+
+    def test_the_exercise_treating_the_clip_s_problem_comes_first(self):
+        db = _CatalogueDb([
+            self._exercise("a-suits-the-level", ["near_confident"]),
+            self._exercise("b-treats-the-ending", ["confident"],
+                           ["ending_compression"]),
+        ])
+        order = cvp.coach_exercise_order(
+            self._practice(compressed_ending=True), db)
+        self.assertEqual(self._ids(order)[0], "b-treats-the-ending")
+
+    def test_the_top_is_what_the_speaker_s_matcher_would_pick(self):
+        # Parity, not a second ranking: the head of the coach's list is the
+        # head of rank_exercises_for_clip on the verdict the practice stored.
+        rows = [
+            self._exercise("a", ["confident"], ["rushing"]),
+            self._exercise("b", ["near_confident"], ["word_compression"]),
+            self._exercise("c", ["near_confident"],
+                           ["word_compression", "ending_compression"]),
+        ]
+        db = _CatalogueDb(rows)
+        practice = self._practice(
+            compressed_ending=True, dense_articulation=True)
+        speaker_best = cvp.rank_exercises_for_clip(
+            cvp.stored_practice_verdict(practice), db)[0][3]["exercise_id"]
+        self.assertEqual(
+            self._ids(cvp.coach_exercise_order(practice, db))[0], speaker_best)
+        self.assertEqual(speaker_best, "c")
+
+    def test_an_exercise_the_matcher_cannot_place_stays_in_the_list_last(self):
+        # The matcher drops it, which is right for an offer; a coach choosing
+        # by hand must still see everything the library holds.
+        db = _CatalogueDb([
+            self._exercise("a-unplaceable", ["not_a_pattern"]),
+            self._exercise("b-placed", ["near_confident"]),
+        ])
+        self.assertEqual(
+            self._ids(cvp.coach_exercise_order(self._practice(), db)),
+            ["b-placed", "a-unplaceable"])
+
+    def test_nothing_unpublished_is_listed(self):
+        db = _CatalogueDb([
+            self._exercise("live", ["near_confident"]),
+            self._exercise("no-video", ["near_confident"],
+                           explanation_video_url=None),
+            self._exercise("retired", ["near_confident"], active=False),
+        ])
+        self.assertEqual(
+            self._ids(cvp.coach_exercise_order(self._practice(), db)),
+            ["live"])
+
+    def test_a_practice_without_a_stored_verdict_keeps_catalogue_order(self):
+        db = _CatalogueDb([
+            self._exercise("a", ["near_confident"]),
+            self._exercise("b", ["confident"], ["rushing"]),
+        ])
+        for practice in ({}, None, {"machine_assessment": "junk"}):
+            self.assertEqual(
+                self._ids(cvp.coach_exercise_order(practice, db)), ["a", "b"])
+
+    def test_the_catalogue_is_read_once(self):
+        db = _CatalogueDb([self._exercise("a", ["near_confident"])])
+        calls = []
+        original = db.list_diagnostic_exercises
+        db.list_diagnostic_exercises = lambda: calls.append(1) or original()
+        cvp.coach_exercise_order(self._practice(), db)
+        self.assertEqual(len(calls), 1)
+
+    def test_the_coach_payload_uses_it_and_carries_no_rank(self):
+        source = inspect.getsource(importlib.import_module("routes.v2.coach")
+                                   ._coach_practice_payload)
+        self.assertIn("coach_exercise_order(practice, db)", source)
+        block = source[source.index("available_exercises = ["):
+                       source.index("for active in coach_exercise_order")]
+        for leaked in ("distance", "overlap", "rank", "score", "priority"):
+            self.assertNotIn(leaked, block)
