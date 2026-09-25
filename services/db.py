@@ -10046,6 +10046,38 @@ class DatabaseService:
                            arc_id, e)
             return False
 
+    def list_ideal_text_versions(self, arc_id: Optional[str]) -> list[dict]:
+        """Every snapshot this project has, oldest first.
+
+        The table is append-only and one row per (arc, version), so this is
+        the project's written history in order. History STARTS AT THE TABLE:
+        versions assembled before it existed have no row, and the caller sees
+        a shorter chain rather than a wrong one.
+        """
+        if not arc_id:
+            return []
+        try:
+            res = (
+                self.client.table("ideal_text_versions")
+                .select("arc_id,version,text,created_at")
+                .eq("arc_id", str(arc_id))
+                .order("version")
+                .execute()
+            )
+            return res.data or []
+        except Exception as e:
+            _e = str(e).lower()
+            if "ideal_text_versions" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                logger.warning(
+                    "list_ideal_text_versions: table missing (run "
+                    "migrations/add_ideal_text_versions.sql)")
+                return []
+            logger.warning("list_ideal_text_versions failed arc=%s: %s",
+                           arc_id, e)
+            return []
+
     def get_ideal_text_version(self, arc_id: Optional[str],
                                version: Any) -> Optional[dict]:
         """One historical snapshot, or None (pre-migration / never

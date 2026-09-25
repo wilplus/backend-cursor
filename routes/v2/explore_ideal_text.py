@@ -631,6 +631,27 @@ def v2_explore_get_recording_roots(arc_id):
     return response
 
 
+@v2_bp.route("/explore/arc/<arc_id>/learning-history", methods=["GET"])
+@require_auth
+def v2_explore_get_learning_history(arc_id):
+    """The project's chain: the words, what the coach showed, what followed.
+
+    Founder 2026-09-25 — "there was a video then the practice and they can
+    scroll and actually see how it changed." Assembled entirely from rows
+    that already exist; this endpoint writes nothing.
+
+    Owner-only, same gate as the document itself. The assembler holds the two
+    fences that decide what may appear: only what a coach chose to SHARE
+    (never a blind judgement), and no score, ratio or verdict of any kind.
+    """
+    owned, _sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    from services.learning_history import build_learning_history
+
+    return jsonify(build_learning_history(db, arc_id)), 200
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/enrichment", methods=["GET"])
 @require_auth
 def v2_explore_get_ideal_text_enrichment(arc_id):
