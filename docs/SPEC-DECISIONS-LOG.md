@@ -584,3 +584,13 @@ bundled consent.
 - No backfill.
 - The honest delete copy is agreed in principle; its exact text is held for
   sign-off at the phase where training goes live.
+
+**N6 · Spec questions settled (founder 2026-09-25).**
+- **Q1:** the corpus copies audio segments around Confident Voice items,
+  transcript spans and coach labels.
+- **Q2:** copies are kept until the training yes is withdrawn or the account is
+  deleted, with no fixed maximum.
+- **Q3:** after withdrawal there is no retraining; future use stops.
+- **Q5:** a project-deletion purge waits for operator confirmation. There is no
+  automatic execution.
+- **Q4** (M6 vs C2) stays open.

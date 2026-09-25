@@ -175,7 +175,7 @@ never touch product data. So:
 | `consent_snapshot_id` | FK `ml_consent_snapshots`: consent state at copy time |
 | `source_project_id`, `source_take_id`, `source_ref` | plain UUID/text, **no FK** |
 | `source_sha256` | hash of the source bytes or row at copy time |
-| `item_kind` | e.g. `audio_segment`, `transcript_span`, `label` (Q1) |
+| `item_kind` | `audio_segment` (around Confident Voice items), `transcript_span`, `coach_label` (Q1, settled) |
 | `label_provenance` | `machine`, `owner_routing`, `blind_peer`, `coach`, `detector`: one per row, never mixed (L3) |
 | `storage_key`, `object_sha256` | for audio kinds |
 | `retention_rule_id` | FK `data_retention_rules` |
@@ -202,7 +202,7 @@ another recording's item.
   `evidence_category = 'training_corpus'`. Its `legal_artifact_id` is the new
   policy version's legal artifact.
 - `retention_until_rule`: **until the training yes is withdrawn or the account
-  is erased**, subject to a fixed maximum if the founder sets one (Q2).
+  is erased.** No fixed maximum (Q2, settled).
 - The rule is `active = false` until P5. With it inactive, the purge cannot
   keep any corpus item (fail closed).
 - `legal/phase1-2026.1/06-retention-schedule-v1.0` gains a "Training copies"
@@ -247,22 +247,31 @@ by editing a frozen run.
 `record_mlc2_consent_withdrawal_v2('pooled_model_improvement')` enqueues a
 corpus-only purge for the principal: every `training_corpus_items` row and
 object, with verified deletion and absence as for any other storage target.
-Items already used in a trained model are not un-trained; the model-lineage
-position is Q3.
+Items already used in a trained model are not un-trained: **no retraining,
+stop future use** (Q3, settled). A withdrawn user's items are never used in a
+new training run, and the DPIA records this position at P5.
 
-### 6.4 Execution
+### 6.4 Execution — operator-confirmed (Q5, settled)
 
-Today execution requires `PHASE1_PURGE_EXECUTION_ENABLED=true` and an operator
-repeating the request id. A user-initiated project delete needs the worker to
-execute `project_deletion` requests **without** an operator step. This is a
-founder authorization in its own right (Q5). Until it is given, a request
-waits for an operator, and the picker shows the project as pending deletion.
+`project_deletion` requests **wait for an operator**, exactly like every other
+purge today: execution requires `PHASE1_PURGE_EXECUTION_ENABLED=true` and an
+operator repeating the request id. The user's tap creates the request; it does
+not execute it. There is no automatic execution path.
+
+That means the operator needs a queue: pending `project_deletion` requests,
+each showing its frozen inventory (targets, retained corpus items and why) and
+any `review_required` reason, with the confirm step. The freeze runs when the
+request is created, so the operator confirms exactly what the user asked to
+delete.
 
 ## 7 · Product surface
 
 - The picker's ⋯ → **Delete** comes back, creating a `project_deletion`
-  request. The row disappears only once the request reaches `done`. Before
-  that it shows a pending state, never a false "deleted".
+  request. Because an operator confirms every purge (§6.4), the project does
+  **not** vanish on tap. It shows a pending-deletion state and can't be
+  opened or recorded into, and it disappears once the request reaches `done`.
+  The UI never claims "deleted" before that. The pending-state wording needs
+  founder sign-off.
 - **Copy:**
   - Before P5 (no training), the existing signed-off copy: *"Every take in this
     project and its ideal text will be permanently deleted. This can't be
@@ -276,7 +285,7 @@ waits for an operator, and the picker shows the project as pending deletion.
 
 | Phase | What | Needs |
 |---|---|---|
-| **P1** | Project-scoped purge (§6.1) + picker delete wired to it (§7), corpus absent | Founder authorization for automatic execution (Q5); migration via manifest |
+| **P1** | Project-scoped purge (§6.1), operator queue (§6.4), picker delete with pending state (§7); corpus absent | Migration via manifest; founder sign-off on pending-state copy |
 | **P2** | Consent schema + v2 functions + v2 reader (§3), with no `training_only` policy row | Migration only; stays dark |
 | **P3** | Corpus tables + copy job (§4), behind `phase2_guard` | Migration; stays dark |
 | **P4** | Registry disposition `retain_while_training_consented` + withdrawal purge (§6.2, §6.3) | Deletion-completion tests updated |
@@ -285,21 +294,25 @@ waits for an operator, and the picker shows the project as pending deletion.
 P1 is useful on its own and doesn't depend on any training decision. P2–P4
 can land dark in any order after P1. Nothing reaches a user until P5.
 
-## 9 · Open questions
+## 9 · Questions
 
-- **Q1** Which items count as "important data" for the corpus: audio segments
-  around Confident Voice items, transcript spans, coach labels, others?
-- **Q2** Is there a fixed maximum retention period for training copies, or
-  only "until withdrawal or erasure"?
-- **Q3** Model lineage: when a withdrawn user's items were already used to
-  train a model, is the position "no retraining, stop future use"? Record it
-  in the DPIA.
+Settled by the founder, 2026-09-25:
+
+- **Q1 — what to copy:** all of audio segments around Confident Voice items,
+  transcript spans, and coach labels.
+- **Q2 — retention:** until the training yes is withdrawn or the account is
+  deleted. No fixed maximum.
+- **Q3 — model lineage:** no retraining after withdrawal; stop future use.
+- **Q5 — execution:** a `project_deletion` purge waits for operator
+  confirmation (§6.4).
+
+Still open:
+
 - **Q4** Reconcile decisions log M6 (`accept_phase1_processing_authorization_v2`
   as the optional writer for pooled model improvement) with C2 (MLC-2 tables
   hold the training yes). Proposal: the Phase-1 receipt records acceptance of
-  the policy version; the MLC-2 v2 grant is the only training yes.
-- **Q5** May `project_deletion` purges execute automatically on the user's
-  request, without the operator confirmation step?
+  the policy version; the MLC-2 v2 grant is the only training yes. Blocks P2,
+  not P1.
 
 ## 10 · Invariants the implementation must test
 
