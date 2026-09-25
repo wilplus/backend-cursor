@@ -321,6 +321,23 @@ hard migrations/a_person_can_change_their_mind.sql
 hard migrations/add_confident_moment_coaching_bundle_v1.sql
 hard migrations/add_confident_moment_coaching_bundle_v1.sql
 
+# PRODUCTION ORDER FOR TWO D11 WRITERS (2026-09-25). The bundle above is
+# applied last, but in the manifest 0335 and 0354 come AFTER it, and each
+# re-issues from source text a writer the bundle closed at migration time.
+# Applying the bundle last put its lock preambles onto bodies production never
+# gave it, so the marker tests passed while production had lost both. Re-applying
+# them here leaves the two functions as production has them: 0335's
+# accept_phase1_processing_authorization_v1 and 0354's
+# mark_phase1_storage_object_purged_v1, both without the preamble. 0362 then
+# re-injects it. Nothing after 0335 or 0354 in the manifest replaces anything
+# else either file defines, so re-applying them reverts nothing. Keep any
+# later purge-writer file below this block. 0362 runs twice: the reapply is the
+# idempotency check.
+hard migrations/enable_practice_phase1_purpose.sql
+hard migrations/deletion_reaches_practice_objects.sql
+hard migrations/two_d11_writers_take_their_locks_again.sql
+hard migrations/two_d11_writers_take_their_locks_again.sql
+
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
 rm -f "$log"
