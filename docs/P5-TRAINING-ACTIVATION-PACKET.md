@@ -1,5 +1,10 @@
 # P5 — switching training on: the packet for counsel and the founder
 
+**Update 2026-09-26:** the founder signed the four wordings in §3 and relayed
+counsel's answers to §2; both are recorded in `SPEC-DECISIONS-LOG.md` §N10.
+Still open: counsel's drafted policy text, the named training processors, and
+the signed retention schedule.
+
 **Status:** nothing in this document is switched on. P2 (0373), P3 (0375) and
 P4 (0376) are built and dark. P5 is the only phase that reaches a user, and it
 needs **counsel review** and **founder sign-off** before any line below is
