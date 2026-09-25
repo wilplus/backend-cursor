@@ -119,6 +119,12 @@ It is idempotent on `idempotency_key`, like v1.
 
 ### 3.4 `record_mlc2_consent_withdrawal_v2(purpose)`
 
+*As built (0373):* it accepts only `pooled_model_improvement` on a
+`training_only` grant. Withdrawing training from a bundled grant through it
+would read, to the `_v1` readers, as withdrawing coaching too, and a bundled
+grant is never a training yes (C2). The corpus purge (step 2 below) arrives
+with P4, when there is a corpus.
+
 Withdraws **one purpose** of a grant. The withdraw event copies only that
 purpose row. For training it:
 
@@ -338,7 +344,7 @@ Settled 2026-09-25 (decisions log N8):
 | Phase | What | Needs |
 |---|---|---|
 | **P1** | Project-scoped purge (§6.1), operator queue in the admin panel (§6.4), picker delete with pending state and cancel (§7); corpus absent | Migration via manifest. Founder go-ahead and copy given (N8) |
-| **P2** | Consent schema + v2 functions + v2 reader (§3), with no `training_only` policy row | Migration only; stays dark |
+| **P2** | Consent schema + v2 functions + v2 reader (§3), with no `training_only` policy row | Migration only; stays dark. **Built: 0373 `a_training_yes_is_its_own_act.sql`** (the two CHECK removals approved by the founder 2026-09-26) |
 | **P3** | Corpus tables + copy job (§4), behind `phase2_guard` | Migration; stays dark |
 | **P4** | Registry disposition `retain_while_training_consented` + withdrawal purge (§6.2, §6.3) | Deletion-completion tests updated |
 | **P5** | New policy version with the training purpose, the re-accept flow, the training toggle, the retention rule activated, honest delete copy | **Counsel review**, founder sign-off on copy, lifting `PHASE2_PURPOSE_FORBIDDEN` for this one purpose, updated Privacy text and retention schedule |
