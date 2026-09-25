@@ -222,6 +222,44 @@ def v2_processing_authorization():
         return jsonify({"code": error.code, "error": error.message}), error.status
 
 
+@v2_bp.route("/processing-authorization/choices", methods=["GET", "POST"])
+@optional_auth
+def v2_processing_choices():
+    """Read or change a choice made at acceptance (founder 2026-09-25, F1/E5).
+
+    GET returns the choices in force. POST
+    ``{"choice", "enabled", "idempotency_key", "client_version"}`` changes one:
+    ``personalised_practice`` (the optional tick) or ``sensitive_information``
+    (withdrawing stops new recording; reads are untouched). Under
+    /processing-authorization, so the core gate never locks a person out of
+    the place where they change their mind.
+    """
+    try:
+        principal_id = _principal_id()
+    except (CreateTakeError, ProjectOwnershipError) as error:
+        return _principal_error(error)
+    service = ProcessingAuthorizationService(db)
+    if request.method == "GET":
+        choices = service.consent_choices(principal_id)
+        if choices is None:
+            return jsonify({"code": "CONSENT_CHOICES_UNAVAILABLE",
+                            "error": "Your choices could not be read."}), 503
+        return jsonify(choices), 200
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"code": "INVALID_INPUT", "error": "JSON object required"}), 400
+    try:
+        return jsonify(service.set_consent_choice(
+            principal_id,
+            choice=str(payload.get("choice") or ""),
+            enabled=payload.get("enabled"),
+            idempotency_key=str(payload.get("idempotency_key") or ""),
+            client_version=str(payload.get("client_version") or "") or None,
+        )), 200
+    except ProcessingAuthorizationError as error:
+        return jsonify({"code": error.code, "error": error.message}), error.status
+
+
 @v2_bp.route("/processing-authorization/ai-rendered", methods=["POST"])
 @optional_auth
 def v2_processing_ai_rendered():

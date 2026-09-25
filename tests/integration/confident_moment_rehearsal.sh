@@ -310,6 +310,11 @@ hard migrations/speaker_identity_the_table_accepts.sql
 hard migrations/a_receipt_can_record_an_optional_yes.sql
 # 0358 replaces get_phase1_processing_authorization_v1, from the boundary file.
 hard migrations/status_knows_a_reacceptance.sql
+# 0361 adds the choice record a person changes after accepting (turn the
+# practice tick off, withdraw the sensitive-information consent). Twice: the
+# apply/reapply idempotency check.
+hard migrations/a_person_can_change_their_mind.sql
+hard migrations/a_person_can_change_their_mind.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.

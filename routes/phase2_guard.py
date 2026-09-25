@@ -63,6 +63,53 @@ def operational_purpose_disabled(purpose_id: str):
     return decorate
 
 
+def consent_choice_required(choice: str):
+    """Refuse the caller's request when their own choice says no.
+
+    FOUNDER 2026-09-25 (E1): the "Personalised practice" tick was recorded
+    and then read by nothing, so a person who left it empty still had
+    exercises chosen from their recordings. This asks the one boundary that
+    knows (ProcessingAuthorizationService.choice_permitted) about THIS caller,
+    and nothing here decides the rule itself.
+
+    It sits beside operational_purpose_disabled and does not replace it: that
+    one asks whether the feature exists for anyone, this one whether this
+    person said yes. Authentication must wrap it. A caller whose acquirer
+    cannot be resolved is refused while the gate enforces, and passes the
+    established path while it is off, the same rule the service applies.
+    """
+    def decorate(function):
+        @wraps(function)
+        def gated(*args, **kwargs):
+            from flask import request
+
+            from services.db import db
+            from services.processing_authorization import (
+                ProcessingAuthorizationService,
+            )
+
+            service = ProcessingAuthorizationService(db)
+            user_id = getattr(request, "user_id", None)
+            try:
+                principal = (service.user_acquisition_principal(str(user_id))
+                             if user_id else "")
+            except Exception:
+                principal = ""
+            allowed = (service.choice_permitted(principal, choice)
+                       if principal else not service.enforced)
+            if allowed:
+                return function(*args, **kwargs)
+            return jsonify({
+                "code": "CONSENT_CHOICE_OFF",
+                "error": "This is turned off in your data choices.",
+                "choice": choice,
+            }), 403
+
+        return gated
+
+    return decorate
+
+
 def mlc3_service_required(function):
     """Expose the service loop only after rollout-aware DB enrollment.
 
