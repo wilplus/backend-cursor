@@ -1441,29 +1441,26 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     custom_exercise = None
     exercise_id = None
     if custom_body is not None:
-        if not isinstance(custom_body, dict):
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "custom_exercise must be an object."}), 400
-        custom_title = str(custom_body.get("title") or "").strip()
-        custom_instruction = str(custom_body.get("instruction") or "").strip()
-        custom_video = str(custom_body.get("explanation_video_url") or "").strip()
-        if not custom_title or len(custom_title) > 120 \
-                or not custom_instruction or len(custom_instruction) > 1000:
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "A short exercise title and instruction are required."}), 400
-        if custom_video and not re.match(
-                r"^https?://[^\s]+$", custom_video, re.IGNORECASE):
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "explanation video must use http or https."}), 400
-        custom_exercise = {
-            "exercise_id": f"coach-custom-{practice.get('id')}",
-            "version": 1,
-            "title": custom_title,
-            "instruction": custom_instruction,
-            "explanation_video_url": custom_video or None,
-            "source": "professional_coach",
-        }
-        exercise = custom_exercise
+        # FILED INTO THE LIBRARY, not minted here (founder 2026-09-25). It has
+        # to name the error it treats, or it can never reach anyone: routing
+        # matches an exercise's errors against the errors a detector actually
+        # found on a clip. Filing it also keeps a coach's judgement about one
+        # recording from riding along onto that speaker's later practice (L3).
+        from services.diagnostic_exercise_catalogue import (
+            CatalogueRefusal,
+            file_coach_exercise,
+        )
+        try:
+            exercise = file_coach_exercise(
+                db, practice_id=practice.get("id"), fields=custom_body)
+        except CatalogueRefusal as refusal:
+            return jsonify({"code": refusal.code,
+                            "error": refusal.message}), refusal.status
+        if not exercise:
+            return jsonify({"code": "EXERCISE_UNAVAILABLE",
+                            "error": "The exercise could not be saved."}), 503
+        custom_exercise = exercise
+        exercise_id = str(exercise.get("exercise_id") or "")
     else:
         exercise_id = str(body.get("exercise_id") or practice.get("exercise_id"))
         exercise = db.get_active_diagnostic_exercise(exercise_id)

@@ -45,6 +45,7 @@ def _deliver(database, row: dict) -> None:
     )
 
     from services.arc_notifications import (
+        fire_coach_feedback_published,
         fire_coach_video_shared,
         fire_material_coach_correction,
         fire_voice_album_ready,
@@ -72,6 +73,12 @@ def _deliver(database, row: dict) -> None:
     if payload.get("voice_album_clip_ids"):
         fire_voice_album_ready(database, owner_id, project_id)
     maybe_fire_best_presentation_ready(database, project_id)
+    # THE MOMENT THE WORK LANDS NOW HAS A VOICE (founder 2026-09-25). Every
+    # card above is conditional -- corrections, a shared video, an album clip,
+    # a milestone -- so a publish with none of them said nothing at all. This
+    # one is unconditional, because the publish itself is the news. Idempotent
+    # on the revision, which is what lets this retrying outbox re-run safely.
+    fire_coach_feedback_published(database, owner_id, project_id, revision_id)
     _mail_the_speaker(database, owner_id, project_id, session_id, payload)
 
 

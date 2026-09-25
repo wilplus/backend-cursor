@@ -342,13 +342,74 @@ class PersistenceAndJourneyFenceTests(unittest.TestCase):
         self.assertIn('"coach_shared_exercise": exercise_snapshot', route)
 
     def test_coach_can_draft_a_case_specific_exercise(self):
+        """Still drafted on the spot -- but FILED, not minted (founder
+        2026-09-25). It used to be built inline with no error on it, which
+        meant it could never route to anyone: matching compares an exercise's
+        errors against the errors a detector found on a clip, and one naming
+        none matches nothing, forever."""
         source = (self.ROOT / "routes/v2/coach.py").read_text()
         start = source.index("def v2_coach_confident_voice_practice")
         end = source.index("@v2_bp.route", start)
         route = source[start:end]
         self.assertIn('custom_body = body.get("custom_exercise")', route)
-        self.assertIn('"source": "professional_coach"', route)
+        self.assertIn("file_coach_exercise(", route)
+        # The route no longer decides what a valid exercise is; the catalogue
+        # does, and its refusals reach the coach verbatim.
+        self.assertIn("except CatalogueRefusal as refusal", route)
+        self.assertNotIn('"source": "professional_coach"', route)
         self.assertIn('if share and not final_video_url', route)
+
+    def test_a_drafted_exercise_must_name_an_error_it_treats(self):
+        from services import diagnostic_exercise_catalogue as cat
+
+        class _Db:
+            def list_speaking_errors(self):
+                return [{"error_id": "ending_compression", "status": "detected"}]
+
+            def upsert_diagnostic_exercise(self, row):
+                return row
+
+        base = {
+            "title": "Land the last word",
+            "instruction": "Say the final word at full volume.",
+            "explanation_video_url": "https://example.com/v.mp4",
+        }
+        with self.assertRaises(cat.CatalogueRefusal):
+            cat.file_coach_exercise(_Db(), practice_id="p1", fields=base)
+
+        # An error code cannot hear is refused with the sentence that explains
+        # why, rather than saved as something that would route nothing.
+        with self.assertRaises(cat.CatalogueRefusal) as ctx:
+            cat.file_coach_exercise(
+                _Db(), practice_id="p1",
+                fields={**base, "acoustic_problem_tags": ["mumbling"]})
+        self.assertEqual(ctx.exception.code, "TAG_NOT_DETECTED")
+
+        row = cat.file_coach_exercise(
+            _Db(), practice_id="p1",
+            fields={**base, "acoustic_problem_tags": ["ending_compression"]})
+        self.assertEqual(row["exercise_id"], "coach-custom-p1")
+        self.assertEqual(row["acoustic_problem_tags"], ["ending_compression"])
+        # Once per take is the library default, which is the budget already.
+        self.assertEqual(row["matching_criteria"]["max_per_take"], 1)
+
+    def test_a_drafted_exercise_still_needs_its_video(self):
+        """The library has always required one; this path used to treat it as
+        optional, so a coach could file something with nothing to show."""
+        from services import diagnostic_exercise_catalogue as cat
+
+        class _Db:
+            def list_speaking_errors(self):
+                return [{"error_id": "ending_compression", "status": "detected"}]
+
+            def upsert_diagnostic_exercise(self, row):
+                return row
+
+        with self.assertRaises(cat.CatalogueRefusal):
+            cat.file_coach_exercise(_Db(), practice_id="p1", fields={
+                "title": "Land the last word",
+                "acoustic_problem_tags": ["ending_compression"],
+            })
 
     def test_coach_must_rate_the_selected_attempt_itself(self):
         source = (self.ROOT / "routes/v2/coach.py").read_text()
