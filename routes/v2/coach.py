@@ -1318,7 +1318,8 @@ def _save_coach_snippet_lanes(session_id, snippet_id, body):
 def _coach_practice_payload(practice: dict) -> dict:
     """Coach-only attempt bundle, intentionally separate from blind packet."""
     from services.audio_ref_resolver import resolve_playable_ref
-    from services.confident_voice_practice import ASSESSMENT_COPY
+    from services.confident_voice_practice import (
+        ASSESSMENT_COPY, coach_exercise_order)
     original_raw = db.get_active_diagnostic_exercise(
         str(practice.get("exercise_id") or "")) or \
         (practice.get("exercise_snapshot")
@@ -1335,18 +1336,15 @@ def _coach_practice_payload(practice: dict) -> dict:
                 or practice.get("exercise_id") or "")) or original_exercise
         exercise = (selected_exercise
                     if isinstance(selected_exercise, dict) else {})
-    available_exercises = []
-    for row in db.list_diagnostic_exercises():
-        active = db.get_active_diagnostic_exercise(
-            str(row.get("exercise_id") or ""))
-        if active:
-            available_exercises.append({
-                "exercise_id": active.get("exercise_id"),
-                "version": active.get("version"),
-                "title": active.get("title"),
-                "instruction": active.get("instruction"),
-                "explanation_video_ref": active.get("explanation_video_url"),
-            })
+    # Best match for THIS clip first, by the speaker's own ranking; every
+    # reviewed exercise stays in the list (coach_exercise_order).
+    available_exercises = [{
+        "exercise_id": active.get("exercise_id"),
+        "version": active.get("version"),
+        "title": active.get("title"),
+        "instruction": active.get("instruction"),
+        "explanation_video_ref": active.get("explanation_video_url"),
+    } for active in coach_exercise_order(practice, db)]
     attempts = db.list_confident_voice_practice_attempts(
         str(practice.get("id")))
     return {
