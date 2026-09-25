@@ -12667,6 +12667,54 @@ class DatabaseService:
             )
             return []
 
+    def get_coach_snippet_drafts_by_sessions(self, session_ids) -> dict:
+        """Batch read — drafts for many sessions, returned {session_id: rows}.
+
+        Kills the N+1 on the coach queue, which called the singular once per
+        queued take purely to decide a lifecycle pill.
+
+        PAGED LIKE `get_snippets_by_sessions`, and for the same reason: a
+        session carries one draft PER SNIPPET, so a wide chunk can exceed
+        PostgREST's server-side max-rows, which truncates SILENTLY. A missing
+        draft reads as "nothing authored" — a wrong pill rather than an
+        error — so the guard matters more here than a loud failure would.
+        """
+        ids = [str(s) for s in (session_ids or []) if s]
+        if not ids:
+            return {}
+        _page = 1000
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 20):
+                chunk = ids[i:i + 20]
+                offset = 0
+                while True:
+                    res = (
+                        self.client.table("coach_snippet_drafts")
+                        .select("*")
+                        .in_("session_id", chunk)
+                        .order("snippet_id", desc=False)
+                        .range(offset, offset + _page - 1)
+                        .execute()
+                    )
+                    rows = res.data or []
+                    for row in rows:
+                        out.setdefault(str(row.get("session_id")), []).append(row)
+                    if len(rows) < _page:
+                        break
+                    offset += _page
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_snippet_drafts" in err_low and (
+                "does not exist" in err_low or "pgrst" in err_low
+            ):
+                return {}
+            logger.warning(
+                "get_coach_snippet_drafts_by_sessions failed n=%s err=%s",
+                len(ids), e)
+            return {}
+        return out
+
     # ── willab beta — user profile (design §2 / contract §3.1) ──────
     #
     # One-time self-declared {domain, goal} on user_settings (co-located
@@ -12722,6 +12770,42 @@ class DatabaseService:
                 "get_user_profile failed user=%s err=%s", user_id, e,
             )
             return None
+
+    def get_user_profiles(self, user_ids) -> dict:
+        """Batch read — {user_id: {domain, goal}} for many users in one query.
+
+        Kills the N+1 on the coach's student list, which read a whole profile
+        per student to render one field. Only the two DISPLAYED fields are
+        selected: the coach surface shows domain, never a goal it did not ask
+        for, and a narrow select cannot leak a column a later migration adds.
+
+        A user with no row is simply absent from the result; callers already
+        treat a missing profile as "not set yet". {} on any failure, which
+        degrades every row to blank rather than failing the list.
+        """
+        ids = [str(u) for u in (user_ids or []) if u]
+        if not ids:
+            return {}
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                res = (
+                    self.client.table("user_settings")
+                    .select("user_id, profile_domain, profile_goal")
+                    .in_("user_id", chunk)
+                    .execute()
+                )
+                for row in (res.data or []):
+                    out[str(row.get("user_id"))] = {
+                        "domain": row.get("profile_domain"),
+                        "goal": row.get("profile_goal"),
+                    }
+        except Exception as e:
+            logger.warning(
+                "get_user_profiles failed n=%s err=%s", len(ids), e)
+            return {}
+        return out
 
     def _get_user_profile_base(self, user_id: str) -> Optional[dict]:
         """Pre-migration fallback — {domain, goal} only, change fields None."""
