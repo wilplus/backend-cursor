@@ -397,3 +397,4 @@
 0359	the_rater_says_what_they_could_see.sql
 0360	a_coach_names_the_error_and_teaches_the_library.sql
 0361	a_person_can_change_their_mind.sql
+0362	an_account_deletion_can_start.sql

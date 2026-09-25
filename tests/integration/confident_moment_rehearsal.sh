@@ -315,6 +315,10 @@ hard migrations/status_knows_a_reacceptance.sql
 # apply/reapply idempotency check.
 hard migrations/a_person_can_change_their_mind.sql
 hard migrations/a_person_can_change_their_mind.sql
+# 0362 adds resolve_phase1_purge_subject_graph_v3 and replaces the freeze
+# 0354 defines, above. Twice: the apply/reapply idempotency check.
+hard migrations/an_account_deletion_can_start.sql
+hard migrations/an_account_deletion_can_start.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.

@@ -112,7 +112,7 @@ class TestThePurgeReachesAPracticeRecording:
     def test_the_freeze_takes_a_practice_object_into_the_manifest(self, db, subject):
         """Before 0353 this raised PURGE_STORAGE_TARGET_SOURCE_INVALID and the
         erasure never started."""
-        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v2(%s)",
+        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v3(%s)",
                      (subject["principal"],))
         result = _one(db, """
             SELECT public.freeze_phase1_purge_inventory_v4(
@@ -145,7 +145,7 @@ class TestThePurgeReachesAPracticeRecording:
                 acquisition_principal_id, trigger_kind, idempotency_key)
             VALUES (%s, 'account_deletion', %s) RETURNING id""",
             (stranger, str(uuid.uuid4())))
-        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v2(%s)",
+        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v3(%s)",
                      (stranger,))
 
         with pytest.raises(psycopg2.errors.RaiseException) as raised:
@@ -192,7 +192,7 @@ class TestThePurgeReachesAPracticeRecording:
 
     def test_an_unknown_relation_is_still_refused_by_both(self, db, subject):
         """0353 adds one relation; it does not open the door."""
-        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v2(%s)",
+        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v3(%s)",
                      (subject["principal"],))
         invented = json.loads(json.dumps(subject["target"]))
         invented["metadata"]["source_relation"] = "processing_invented_objects"

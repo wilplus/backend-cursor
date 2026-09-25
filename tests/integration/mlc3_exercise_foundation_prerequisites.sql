@@ -269,13 +269,22 @@ CREATE TABLE public.confident_voice_practice (
 );
 CREATE TABLE public.confident_voice_practice_attempt (
     id UUID PRIMARY KEY,
+    -- ON DELETE CASCADE as released (add_confident_voice_practice.sql:100-102);
+    -- the erasure rehearsal (0362) deletes a practice and relies on it.
     practice_id UUID NOT NULL REFERENCES public.confident_voice_practice(id)
+        ON DELETE CASCADE
 );
 CREATE TABLE public.voice_album_practice (
     arc_id UUID NOT NULL,
-    practice_attempt_id UUID NOT NULL REFERENCES public.confident_voice_practice_attempt(id),
+    practice_attempt_id UUID NOT NULL REFERENCES public.confident_voice_practice_attempt(id)
+        ON DELETE CASCADE,
     PRIMARY KEY (arc_id, practice_attempt_id)
 );
+-- As add_confident_voice_practice.sql:167-168 grants them. The account-
+-- deletion rehearsal (0362) deletes practice rows as service_role, and a stub
+-- without the released grant failed on the stub, not on production.
+GRANT ALL ON TABLE public.confident_voice_practice,
+    public.confident_voice_practice_attempt TO service_role;
 
 CREATE TABLE public.data_purge_requests (
     id UUID PRIMARY KEY,
