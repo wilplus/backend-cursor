@@ -72,10 +72,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take", "delete", "coach_packet", 30),
 
     # Exact user-facing evidence and derived state.
-    PurgeDependency("feedback_exposure", "take_feedback_exposure", "session_id",
-                    "take", "external_review", "derived_feedback", 300),
+    PurgeDependency("feedback_exposure", "take_feedback_exposure",
+                    "take_session_id", "take", "external_review",
+                    "derived_feedback", 300),
     PurgeDependency("feedback_self_report", "take_feedback_self_report",
-                    "session_id", "take", "external_review",
+                    "take_session_id", "take", "external_review",
                     "derived_feedback", 300),
     PurgeDependency("suggestion_feedback", "user_suggestion_feedback",
                     "session_id", "take", "delete", "derived_feedback", 35),
@@ -87,9 +88,9 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("star_verdicts", "star_verdicts", "session_id", "take",
                     "delete", "derived_feedback", 35),
     PurgeDependency("snippet_reviews", "snippet_confidence_reviews",
-                    "session_id", "take", "delete", "derived_feedback", 35),
-    PurgeDependency("peer_labels", "snippet_peer_labels", "session_id", "take",
-                    "delete", "derived_feedback", 35),
+                    "snippet_id", "snippet", "delete", "derived_feedback", 35),
+    PurgeDependency("peer_labels", "snippet_peer_labels", "snippet_id",
+                    "snippet", "delete", "derived_feedback", 35),
     PurgeDependency("slide_corrections", "snippet_slide_corrections",
                     "session_id", "take", "delete", "derived_feedback", 35),
     PurgeDependency("transcript_edits", "user_transcript_edits", "session_id",
@@ -107,8 +108,8 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 50),
     PurgeDependency("recording_feelings", "recording_feelings", "recording_id",
                     "recording", "delete", "database_row", 45),
-    PurgeDependency("read_alignments", "read_alignments", "recording_id",
-                    "recording", "delete", "database_row", 45),
+    PurgeDependency("read_alignments", "read_alignments", "session_id",
+                    "take", "delete", "database_row", 45),
     PurgeDependency("candidate_windows", "candidate_windows", "recording_id",
                     "recording", "delete", "derived_feedback", 45),
     PurgeDependency("evidence_spans", "evidence_spans", "recording_id",
@@ -195,13 +196,17 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 60),
     PurgeDependency("acoustic_baseline", "user_acoustic_baseline", "user_id",
                     "user", "delete", "database_row", 60),
-    PurgeDependency("voice_album", "voice_album", "user_id", "user", "delete",
+    # voice_album has no user column (add_voice_album.sql: arc_id, snippet_id);
+    # its rows belong to a project. Until 2026-09-26 this selected `user_id`,
+    # which no migration creates, so the inventory would fail for every
+    # account that had any Voice Album row.
+    PurgeDependency("voice_album", "voice_album", "arc_id", "project", "delete",
                     "derived_feedback", 60),
     PurgeDependency("voice_album_practice", "voice_album_practice",
                     "practice_attempt_id", "practice_attempt", "delete",
                     "derived_feedback", 60),
-    PurgeDependency("voice_album_routing", "owner_voice_album_routing", "user_id",
-                    "user", "delete", "derived_feedback", 60),
+    PurgeDependency("voice_album_routing", "owner_voice_album_routing",
+                    "owner_user_id", "user", "delete", "derived_feedback", 60),
     # The owner's own notes on a moment. Authored by the subject, about their
     # own recording, read by nobody else — so erasure is a plain delete on the
     # user key, with no evidence to retain on anyone's behalf.
@@ -244,10 +249,6 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "database_row", 60),
     PurgeDependency("uploaded_files", "user_uploaded_files", "user_id", "user",
                     "delete", "database_row", 60),
-    PurgeDependency("journal_posts", "journal_post", "user_id", "user", "delete",
-                    "database_row", 60),
-    PurgeDependency("journal_community", "journal_community_post", "user_id",
-                    "user", "delete", "database_row", 60),
     PurgeDependency("product_discoveries", "user_product_discoveries", "user_id",
                     "user", "delete", "database_row", 60),
     PurgeDependency("coaching_sessions", "coaching_sessions", "user_id", "user",
@@ -392,8 +393,6 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "external_review", "database_row", 300),
     PurgeDependency("arc_purchases_review", "arc_purchases", "user_id", "user",
                     "external_review", "database_row", 300),
-    PurgeDependency("stripe_grants_review", "stripe_checkout_credit_grants",
-                    "user_id", "user", "external_review", "database_row", 300),
     PurgeDependency("student_tasks_review", "tasks", "user_id", "user",
                     "external_review", "database_row", 300),
     PurgeDependency("coaching_directives_review", "coaching_directives_queue",
@@ -1060,6 +1059,11 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # yes was given against and who approved it. No speaker's data; the
     # per-person yes and no live in ml_consent_events.
     "ml_consent_policies", "ml_product_legal_approvals",
+    # The public Journal (marketing posts written by WillpowerLab) and the
+    # Stripe webhook's idempotency ledger (a checkout session id and a time,
+    # no user). Neither has a column naming a person; both were listed under a
+    # `user_id` that no migration creates (2026-09-26).
+    "journal_post", "journal_community_post", "stripe_checkout_credit_grants",
     "processing_authorization_receipt_purposes",
     "exercise_need_contracts", "exercise_media_objects",
     "exercise_definitions", "exercise_versions",
