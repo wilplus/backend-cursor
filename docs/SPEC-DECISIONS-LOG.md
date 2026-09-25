@@ -637,3 +637,40 @@ board).**
   only for projects in the request's frozen graph.
 - **Still true:** production has no active retention rule yet, so a real run
   stops at `review_required` until the retention schedule is seeded.
+
+**N10 · P5 wording signed; counsel's answers (founder 2026-09-26).**
+- **Founder sign-off on the four wordings**, as drafted in the P5 packet §3
+  ("You've got my sign off on the wordings"):
+  - *Training switch:* **Help improve WillpowerLab** — "Keep separate copies
+    of short moments from my recordings (the audio, its words and my coach's
+    rating) to train WillpowerLab. I can turn this off at any time, and my
+    copies are then deleted." Its own screen, off by default, never on
+    sign-up, never a condition of the service.
+  - *Turning it off:* **Turn off training?** — "Your training copies will be
+    deleted. Anything already used to train stays in that training, but it
+    won't be used again."
+  - *Project delete, switch on:* "Your project will be deleted. Recordings you
+    shared for training stay until you withdraw that permission."
+  - *The new policy version:* approved in principle; counsel drafts the text,
+    the founder approves the final text before it is published.
+- **Counsel's answers to the P5 packet §2, relayed by the founder:**
+  1. The separate switch is valid consent (Art. 6(1)(a), 4(11), 7(4)): yes.
+  2. No Article 9 basis on a training grant: confirmed.
+  3. Voice is not treated as biometric; copies may outlive a project delete
+     while the switch is on: confirmed.
+  4. Retention "until the switch is turned off or the account is deleted",
+     no fixed maximum: confirmed.
+  5. After withdrawal: no retraining, stop future use. Models already trained
+     are kept as intellectual property; they are to use only anonymised data
+     and hold no personal information.
+  6. Bundled-era yeses count for nothing and are never carried over: yes.
+  7. New Privacy Policy text, a "Training copies" retention-schedule row and
+     the DPIA update: agreed as the paperwork to produce.
+  8. Processors and transfers for a future training run: confirmed as a
+     required disclosure (the named processors are still to be supplied).
+  9. Consent records (the yes and the no) are kept after an account deletion
+     as long as they are useful for training the model.
+- **Still needed before P5 can go live:** counsel's drafted policy text
+  (item 7), the named training processors and transfer mechanism (item 8),
+  and the signed retention schedule that seeds the `training_corpus` and
+  consent-evidence rules.
