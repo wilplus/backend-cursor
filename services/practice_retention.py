@@ -128,3 +128,85 @@ def _expire(database: Any, attempt: dict, tally: dict[str, int]) -> bool:
         logger.error("practice retention: row delete failed for %s: %s",
                      attempt_id, error)
         return False
+
+
+# ── Withdrawal: turning practice off deletes it (founder 2026-09-25, E2) ──
+#
+# A different promise from the 30 days above, so different rules. That sweep
+# keeps what the person chose and what the Voice Album admitted, because it
+# answers "we said we would not keep this". A withdrawal answers "I no longer
+# agree", and the approved confirm step says "Your practice recordings will be
+# deleted", so here nothing is spared: open or closed, chosen or not, in the
+# Album or not. An Album entry built on a practice clip goes with it
+# (voice_album_practice CASCADE), which is what keeps the Album from listing a
+# clip that no longer exists.
+#
+# The same order and the same caution as _expire: the recording first, then
+# its row, and never the row while the recording may still exist. A practice
+# row goes only once every attempt under it is gone.
+
+WITHDRAWAL_RETRY_DAYS = 30
+
+
+def erase_practice_for_principal(*, database: Any, principal_id: str) -> dict:
+    """Delete every practice recording and row of one person.
+
+    Returns {"practices", "attempts", "objects", "failed", "complete"}.
+    `complete` is False while anything is left, so the caller can say so and
+    the backstop sweep finds it again.
+    """
+    tally = {"practices": 0, "attempts": 0, "objects": 0, "failed": 0}
+    try:
+        practice_ids = database.practice_ids_for_principal(principal_id)
+    except Exception as error:
+        logger.error("practice withdrawal: could not resolve %s: %s",
+                     principal_id, error)
+        return {**tally, "failed": 1, "complete": False}
+    for practice_id in practice_ids:
+        try:
+            attempts = database.list_confident_voice_practice_attempts(
+                practice_id) or []
+        except Exception as error:
+            logger.error("practice withdrawal: could not read %s: %s",
+                         practice_id, error)
+            tally["failed"] += 1
+            continue
+        left = 0
+        for attempt in attempts:
+            if not isinstance(attempt, dict) or not attempt.get("id"):
+                continue
+            if _expire(database, attempt, tally):
+                tally["attempts"] += 1
+            else:
+                tally["failed"] += 1
+                left += 1
+        if left:
+            continue
+        if database.delete_confident_voice_practice(practice_id):
+            tally["practices"] += 1
+        else:
+            tally["failed"] += 1
+    if tally["attempts"] or tally["failed"] or tally["practices"]:
+        logger.info("practice withdrawal erased %s for %s", tally, principal_id)
+    return {**tally, "complete": tally["failed"] == 0}
+
+
+def sweep_withdrawn_practice(
+    *, database: Any, limit: int = 20, now: datetime | None = None,
+) -> dict[str, int]:
+    """The backstop: finish any withdrawal whose erasure did not complete."""
+    since = ((now or datetime.now(timezone.utc))
+             - timedelta(days=WITHDRAWAL_RETRY_DAYS)).isoformat()
+    totals = {"people": 0, "attempts": 0, "practices": 0, "failed": 0}
+    try:
+        principals = database.list_recent_practice_withdrawals(since, limit)
+    except Exception as error:
+        logger.error("practice withdrawal: could not list: %s", error)
+        return totals
+    for principal_id in principals:
+        result = erase_practice_for_principal(
+            database=database, principal_id=principal_id)
+        totals["people"] += 1
+        for key in ("attempts", "practices", "failed"):
+            totals[key] += int(result.get(key) or 0)
+    return totals

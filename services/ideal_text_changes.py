@@ -882,9 +882,36 @@ class _ChangesRun:
         # Confident Voice row; no new intervention is created. Missing
         # migration/config is a clean no-offer, never a reason to lose the
         # feedback itself.
+        #
+        # ONLY WITH THE PERSON'S YES (founder 2026-09-25, E1). Choosing an
+        # exercise from their recording is the "Personalised practice" tick.
+        # A tick left empty, or turned off later, means no offer: the
+        # Confident Voice card still arrives, simply without an exercise.
+        # Not a degradation: the person's choice is the healthy outcome, so
+        # nothing is noted and the payload is byte-identical to "no offer".
+        if not self._practice_permitted():
+            return
         from services.confident_voice_practice import attach_exercise_offer
         self.changes = attach_exercise_offer(
             self.changes, take_session_id=self.arm_sid, database=self.db)
+
+    def _practice_permitted(self) -> bool:
+        """Whether this Take's owner allows exercises chosen from it.
+
+        Asked of the one boundary that decides it. A failure to resolve the
+        owner is a clean no-offer while the gate enforces, and the
+        established path while it is off, the same rule every caller gets.
+        """
+        from services.processing_authorization import (
+            PERSONALISED_PRACTICE,
+            ProcessingAuthorizationService,
+        )
+        service = ProcessingAuthorizationService(self.db)
+        try:
+            principal = service.take_acquisition_principal(str(self.arm_sid))
+        except Exception:
+            return not service.enforced
+        return service.choice_permitted(principal, PERSONALISED_PRACTICE)
 
     def _span_checks(self) -> Optional[dict]:
         from services.tracked_changes import verify_changes

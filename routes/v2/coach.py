@@ -1321,6 +1321,26 @@ def _save_coach_snippet_lanes(session_id, snippet_id, body):
     return None
 
 
+def _speaker_practice_permitted(take_session_id: str) -> bool:
+    """Whether the speaker behind this Take allows practice (E3).
+
+    A coach may not send an exercise to someone who turned practice off, or
+    never turned it on: choosing one for them is the practice purpose, not
+    coach review. Asked of the one boundary that decides it, about the
+    SPEAKER, never the coach making the request.
+    """
+    from services.processing_authorization import (
+        PERSONALISED_PRACTICE,
+        ProcessingAuthorizationService,
+    )
+    service = ProcessingAuthorizationService(db)
+    try:
+        principal = service.take_acquisition_principal(str(take_session_id))
+    except Exception:
+        return not service.enforced
+    return service.choice_permitted(principal, PERSONALISED_PRACTICE)
+
+
 def _requested_video_url(body: dict) -> tuple[Any, Any]:
     """The coach's explanation video address, or the reason it is refused.
 
@@ -1474,6 +1494,9 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     if coach_state.get("rating_value") not in ("yes", "no"):
         return jsonify({"code": "BLIND_RATING_REQUIRED",
                         "error": "Rate the original moment before reviewing practice."}), 409
+    if not _speaker_practice_permitted(owner_sid):  # E3, founder 2026-09-25
+        return jsonify({"code": "SPEAKER_PRACTICE_OFF",
+                        "error": "The speaker turned practice off."}), 409
     practice = db.get_confident_voice_practice_by_take(owner_sid)
     if not practice or str(practice.get("snippet_id")) != str(snippet_id):
         return jsonify({"code": "NOT_FOUND",

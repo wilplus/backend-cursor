@@ -271,6 +271,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("authorization_receipts", "processing_authorization_receipts",
                     "acquisition_principal_id", "principal", "retain",
                     "database_row", 200, "authorization_evidence"),
+    # A choice changed after accepting (0361) qualifies the receipt it names,
+    # so it is kept as the same evidence, under the same rule, as the receipt:
+    # proof of what the person agreed to and later withdrew.
+    PurgeDependency("consent_choice_events", "processing_consent_choice_events",
+                    "acquisition_principal_id", "principal", "retain",
+                    "database_row", 200, "authorization_evidence"),
     PurgeDependency("authorization_snapshots", "processing_authorization_snapshots",
                     "acquisition_principal_id", "principal", "retain",
                     "database_row", 200, "authorization_evidence"),

@@ -17,6 +17,12 @@ from typing import Any, Mapping
 _ENFORCED_VALUES = {"enforce", "enforced", "active"}
 
 
+# The two choices a person can change after accepting (0361).
+PERSONALISED_PRACTICE = "personalised_practice"
+SENSITIVE_INFORMATION = "sensitive_information"
+CONSENT_CHOICES = (PERSONALISED_PRACTICE, SENSITIVE_INFORMATION)
+
+
 @dataclass(frozen=True)
 class ProcessingAuthorizationError(RuntimeError):
     code: str
@@ -65,7 +71,8 @@ def _domain_code(error: Exception, fallback: str) -> str:
         "PROCESSING_PURPOSE_NOT_AUTHORIZED", "EXPLICIT_ACCEPTANCE_REQUIRED",
         "COUNTRY_NOT_ALLOWED", "PHASE2_PURPOSE_FORBIDDEN",
         "IDEMPOTENCY_CONFLICT", "PROVIDER_PERMIT_INVALID",
-        "PROCESSING_BOUNDARY_INCOMPLETE",
+        "PROCESSING_BOUNDARY_INCOMPLETE", "CONSENT_CHOICE_INVALID",
+        "PROCESSING_PRINCIPAL_UNRESOLVED",
     )
     for code in known:
         if code in text:
@@ -215,6 +222,17 @@ class ProcessingAuthorizationService:
     def require_current(
         self, acquisition_principal_id: str, *, operation: str
     ) -> ProcessingAuthority:
+        if operation == "recording" and not self.choice_permitted(
+                acquisition_principal_id, SENSITIVE_INFORMATION):
+            # E5-A (founder 2026-09-25). Withdrawing the sensitive-information
+            # consent stops NEW recording, and only that: reads, exports and
+            # everything else keep answering. Checked before the mode, because
+            # an explicit withdrawal is honoured whether or not the gate is on.
+            raise ProcessingAuthorizationError(
+                "PROCESSING_RECORDING_WITHDRAWN",
+                "Recording is off because the consent for it was withdrawn.",
+                403,
+            )
         if not self.enforced:
             return ProcessingAuthority(
                 str(acquisition_principal_id), None, None, None,
@@ -240,6 +258,115 @@ class ProcessingAuthorizationService:
             str(status.get("policy_id") or "") or None,
             str(status.get("policy_version") or "") or None,
             str(status.get("code") or "PROCESSING_AUTHORIZED"), True,
+        )
+
+    # ── Choices a person changes after accepting (0361) ────────────────────
+    # FOUNDER 2026-09-25, E1-E5. The receipt records the ticks given at
+    # acceptance; these read and record what the person changed since. Every
+    # caller that needs to know whether a choice is on asks choice_permitted,
+    # so the rule lives in one place and no route decides it for itself.
+
+    def consent_choices(self, acquisition_principal_id: str) -> dict | None:
+        """The choices in force now, or None when they cannot be read."""
+        try:
+            result = self.client.rpc("get_phase1_consent_choices_v1", {
+                "p_acquisition_principal_id": str(acquisition_principal_id),
+            }).execute()
+            return _one(result.data)
+        except Exception:
+            return None
+
+    def choice_permitted(self, acquisition_principal_id: str, choice: str) -> bool:
+        """Whether this person's choice allows the processing it covers.
+
+        An explicit "no" (a tick left empty, a switch turned off, a consent
+        withdrawn) is refused in every mode. When there is nothing to read —
+        no receipt, or a read that failed — the answer follows the gate: an
+        enforcing gate refuses, because it cannot show consent; a gate that is
+        off keeps the established product path, which it may not start
+        failing for the state it was off for.
+        """
+        choices = self.consent_choices(acquisition_principal_id)
+        if not choices or not choices.get("has_receipt"):
+            return not self.enforced
+        return choices.get(choice) is True
+
+    def set_consent_choice(
+        self, acquisition_principal_id: str, *, choice: str, enabled: bool,
+        idempotency_key: str, client_version: str | None,
+    ) -> dict:
+        if choice not in CONSENT_CHOICES or not isinstance(enabled, bool):
+            raise ProcessingAuthorizationError(
+                "CONSENT_CHOICE_INVALID", "Unknown choice.", 400,
+            )
+        if not isinstance(idempotency_key, str) or not (
+                8 <= len(idempotency_key.strip()) <= 200):
+            raise ProcessingAuthorizationError(
+                "IDEMPOTENCY_KEY_REQUIRED",
+                "An idempotency key of 8 to 200 characters is required.", 400,
+            )
+        try:
+            result = self.client.rpc("set_phase1_consent_choice_v1", {
+                "p_acquisition_principal_id": str(acquisition_principal_id),
+                "p_choice": choice,
+                "p_enabled": enabled,
+                "p_idempotency_key": idempotency_key.strip(),
+                "p_client_version": (client_version or "")[:120] or None,
+            }).execute()
+            row = _one(result.data)
+            if not row:
+                raise RuntimeError("empty consent choice state")
+            return row
+        except Exception as error:
+            code = _domain_code(error, "CONSENT_CHOICE_FAILED")
+            status = {
+                "PROCESSING_AUTHORIZATION_REQUIRED": 403,
+                "CONSENT_CHOICE_INVALID": 400,
+                "PROCESSING_PRINCIPAL_UNRESOLVED": 403,
+            }.get(code, 503)
+            raise ProcessingAuthorizationError(
+                code, "The choice could not be saved.", status,
+            ) from error
+
+    def change_consent_choice(
+        self, acquisition_principal_id: str, *, choice: str, enabled: Any,
+        idempotency_key: str, client_version: str | None,
+    ) -> dict:
+        """Record a change, and carry out what it promises.
+
+        Turning practice off deletes the person's practice recordings (E2,
+        founder 2026-09-25), straight away. If storage fails midway the
+        answer says so (`practice_erasure.complete` false) and the worker's
+        withdrawal sweep finishes it; processing already stopped with the
+        change itself.
+        """
+        state = self.set_consent_choice(
+            acquisition_principal_id, choice=choice, enabled=enabled,
+            idempotency_key=idempotency_key, client_version=client_version)
+        if (choice == PERSONALISED_PRACTICE and enabled is False
+                and state.get(PERSONALISED_PRACTICE) is False):
+            from services.practice_retention import erase_practice_for_principal
+
+            erasure = erase_practice_for_principal(
+                database=self.database, principal_id=acquisition_principal_id)
+            state = {**state,
+                     "practice_erasure": {"complete": bool(erasure["complete"])}}
+        return state
+
+    def user_acquisition_principal(self, user_id: str) -> str:
+        """The acquirer behind a signed-in user, as the routes resolve it."""
+        from services.project_repository import ProjectRepository
+
+        owner = ProjectRepository(self.database).owner_for_user(str(user_id))
+        return self.resolve_acquisition_principal(owner.id, user_id=str(user_id))
+
+    def take_acquisition_principal(self, take_id: str) -> str:
+        """The acquirer behind a Take, as the recording pipeline resolves it."""
+        session = self.database.v2_get_session_by_id(str(take_id)) or {}
+        return self.resolve_acquisition_principal(
+            str(session.get("owner_principal_id") or ""),
+            user_id=str(session.get("user_id") or "") or None,
+            recording_id=str(session.get("recording_id") or "") or None,
         )
 
     def accept(self, acquisition_principal_id: str, payload: Mapping[str, Any]) -> dict:

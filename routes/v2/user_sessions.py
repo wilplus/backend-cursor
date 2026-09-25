@@ -19,7 +19,10 @@ from flask import jsonify, request
 from auth import optional_auth, require_auth
 from config import Config
 from routes.admin import is_admin, is_coach
-from routes.phase2_guard import operational_purpose_disabled
+from routes.phase2_guard import (
+    consent_choice_required,
+    operational_purpose_disabled,
+)
 from routes.v2.arcs import (
     _arc_audit_paid,
     _presentation_group_key,
@@ -1642,6 +1645,7 @@ def _practice_user_payload(practice, attempts=None):
              methods=["POST"])
 @require_auth
 @operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
 def v2_start_confident_voice_practice(snippet_id):
     """Open/resume the one optional same-passage practice for this take."""
     if not _is_valid_uuid(snippet_id):
@@ -1777,6 +1781,7 @@ def v2_start_confident_voice_practice(snippet_id):
 @v2_bp.route("/user/confidence-practice/<practice_id>", methods=["GET"])
 @require_auth
 @operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
 def v2_get_confident_voice_practice(practice_id):
     if not _is_valid_uuid(practice_id):
         return jsonify({"code": "INVALID_INPUT",
@@ -1792,6 +1797,8 @@ def v2_get_confident_voice_practice(practice_id):
              methods=["POST"])
 @require_auth
 @operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
+@consent_choice_required("sensitive_information")
 def v2_add_confident_voice_practice_attempt(practice_id):
     """Transcribe and acoustically compare one retained same-text attempt."""
     if not _is_valid_uuid(practice_id):
@@ -1939,6 +1946,7 @@ def v2_add_confident_voice_practice_attempt(practice_id):
              methods=["PUT"])
 @require_auth
 @operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
 def v2_complete_confident_voice_practice(practice_id):
     """Dismiss or retain an attempt. Never writes any presentation surface."""
     if not _is_valid_uuid(practice_id):
