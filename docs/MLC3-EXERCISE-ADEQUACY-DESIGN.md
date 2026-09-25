@@ -304,6 +304,13 @@ The 80/20 rule is an exposure policy, not a dataset split:
 - exploration changes only which eligible exercise is selected, never its
   content, the user's answer, or the blind packet.
 
+> **Founder decision 2026-09-26 ("please do the 80/20 try smth new").**
+> User-facing 80/20 now serves on the live `diagnostic_exercise` lane
+> (`exercise-80-20-v1`, migration 0372, contract 35c as amended), with the
+> pool, probabilities, seed commitment and draw frozen once per (Take, moment).
+> The paragraphs below still govern the MLC-3 frames, and using the outcomes
+> as evaluation evidence still waits for the §3.5 contract.
+
 User-facing 80/20 assignments cannot begin until the endpoint/evaluation
 contract in §3.5 and this exposure-policy version are both approved. Before
 then, serving—if separately authorized—selects the deterministic top eligible

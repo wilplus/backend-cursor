@@ -14,10 +14,13 @@ only.
 """
 from __future__ import annotations
 
+import logging
 import re
 import statistics
 from difflib import SequenceMatcher
 from typing import Any, Optional
+
+_log = logging.getLogger(__name__)
 
 
 EXERCISE_ID = "hear-every-word-v1"
@@ -544,14 +547,43 @@ def coach_exercise_order(practice: Any, database: Any) -> list[dict]:
     ]
 
 
-def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
-                          database: Any) -> list[dict]:
-    """Attach at most one active exercise after Feedback Manager selection."""
-    rows = [dict(row) for row in (changes or [])]
-    candidates = [row for row in rows if row.get("source") == "confident_voice"
-                  and row.get("snippet_id")]
-    if not candidates or not take_session_id:
-        return rows
+#: The 80/20 exposure policy (founder 2026-09-26). The frozen draw lives in
+#: `confident_voice_exercise_assignments`; see migration 0372.
+EXPOSURE_POLICY_VERSION = "exercise-80-20-v1"
+MATCHING_POLICY_VERSION = "exercise-proximity-service-v1"
+
+#: `exercise_eligibility` refusals that mean THIS CLIP cannot carry practice
+#: at all — too few aligned words, unreliable audio, a verbal problem, no
+#: confidence read. Every lane keeps them. The remaining refusal,
+#: `weak_acoustic_evidence`, is the rush gate: the legacy lane's way of
+#: choosing a moment. V3 already chooses the moment (the weakest block below
+#: the neutral band, contract 24f), so on V3's moment it does not apply
+#: (founder 2026-09-26: "Follow V3").
+_CLIP_REFUSALS = frozenset({
+    "semantic_or_structural", "alignment_or_passage", "audio_quality",
+    "confidence_unavailable",
+})
+
+
+def clip_can_carry_exercise(verdict: Any) -> bool:
+    """Whether a clip passes the safety half of `exercise_eligibility`."""
+    if not isinstance(verdict, dict):
+        return False
+    return bool(verdict.get("eligible")) or (
+        verdict.get("reason") == "weak_acoustic_evidence"
+        and verdict.get("pattern") is not None)
+
+
+def _with_default_patterns(active: dict) -> dict:
+    if (str(active.get("exercise_id") or "") == EXERCISE_ID
+            and not active.get("supported_confidence_patterns")):
+        return {**active,
+                "supported_confidence_patterns": list(_PATTERN_ORDINAL)}
+    return active
+
+
+def offerable_exercises(database: Any) -> list[dict]:
+    """The live catalogue the speaker's offer is chosen from."""
     exercise_rows = (
         database.list_diagnostic_exercises() or []
         if hasattr(database, "list_diagnostic_exercises")
@@ -559,107 +591,86 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     )
     exercises = []
     for row in exercise_rows:
-        exercise_id = str(row.get("exercise_id") or "")
-        active = database.get_active_diagnostic_exercise(exercise_id)
+        active = database.get_active_diagnostic_exercise(
+            str(row.get("exercise_id") or ""))
         if active:
-            if (exercise_id == EXERCISE_ID
-                    and not active.get("supported_confidence_patterns")):
-                active = {
-                    **active,
-                    "supported_confidence_patterns": list(_PATTERN_ORDINAL),
-                }
-            exercises.append(active)
-    if not exercises:
-        return rows
-    existing = database.get_confident_voice_practice_by_take(take_session_id)
-    if existing and existing.get("status") in ("completed", "dismissed"):
-        return rows
-    if existing:
-        # A resumed offer must remain attached to the exact original moment.
-        # Re-running the manager may produce a different ranking, but changing
-        # snippets under an open practice would break its passage/audio link.
-        candidates = [
-            row for row in candidates
-            if str(row.get("snippet_id")) == str(existing.get("snippet_id"))
-        ]
-        if not candidates:
-            return rows
-    snippet_ids = [str(row["snippet_id"]) for row in candidates]
-    snippets = database.get_confident_voice_practice_candidates(snippet_ids) or []
-    by_id = {str(row.get("id")): row for row in snippets}
-    take_rows = database.get_snippets_by_session(take_session_id) or []
-    median_wpm = _median_wpm(take_rows)
-    # Read the library ONCE for the whole take, not per candidate clip.
-    vocabulary = detected_problem_vocabulary(database)
-    # (-tag overlap, confidence distance, -editorial, -priority, id, …)
-    ranked: list[
-        tuple[int, int, int, int, str, int, dict, dict, dict, dict]
-    ] = []
-    for index, row in enumerate(candidates):
-        snippet = by_id.get(str(row.get("snippet_id")))
-        if not snippet:
-            continue
-        raw_evidence = row.get("evidence")
-        evidence: dict = raw_evidence if isinstance(raw_evidence, dict) else {}
-        verbal_problem = bool(row.get("semantic_or_structural_problem"))
-        if not verbal_problem:
-            for other in rows:
-                other_evidence = other.get("evidence")
-                if not isinstance(other_evidence, dict):
-                    continue
-                if (other is not row
-                        and other.get("feedback_family") == "rewrite_clarity"
-                        and other_evidence.get("slide_index")
-                        == evidence.get("slide_index")
-                        and other_evidence.get("paragraph_index")
-                        == evidence.get("paragraph_index")):
-                    verbal_problem = True
-                    break
-        verdict = exercise_eligibility(
-            snippet,
-            session_median_wpm=median_wpm,
-            semantic_or_structural_problem=verbal_problem,
-        )
-        if verdict.get("eligible"):
-            # WHAT WENT WRONG, not just how confident it sounded. The overlap
-            # leads the sort key, so an exercise that treats this clip's actual
-            # problems beats one that merely suits its confidence level. With a
-            # tagless catalogue every overlap is 0 and the original order
-            # stands untouched.
-            observed_tags = observed_problem_tags(
-                verdict, vocabulary=vocabulary)
-            for exercise in exercises:
-                distance = confidence_pattern_distance(
-                    str(verdict.get("pattern") or ""),
-                    exercise.get("supported_confidence_patterns"),
-                )
-                if distance is None:
-                    continue
-                criteria = exercise.get("matching_criteria")
-                editorial = (
-                    int(criteria.get("editorial_priority") or 0)
-                    if isinstance(criteria, dict)
-                    else 0
-                )
-                ranked.append((
-                    -problem_tag_overlap(observed_tags, exercise),
-                    distance,
-                    -editorial,
-                    -int(verdict.get("priority") or 0),
-                    str(exercise.get("exercise_id") or ""),
-                    index,
-                    row,
-                    snippet,
-                    verdict,
-                    exercise,
-                ))
+            exercises.append(_with_default_patterns(active))
+    return exercises
+
+
+def _exercise_key(verdict: dict, observed_tags: Any,
+                  exercise: dict) -> Optional[tuple[int, int, int, str]]:
+    """(-tag overlap, confidence distance, -editorial, id), or None when the
+    exercise cannot be placed against this clip's pattern."""
+    distance = confidence_pattern_distance(
+        str(verdict.get("pattern") or ""),
+        exercise.get("supported_confidence_patterns"),
+    )
+    if distance is None:
+        return None
+    criteria = exercise.get("matching_criteria")
+    editorial = (int(criteria.get("editorial_priority") or 0)
+                 if isinstance(criteria, dict) else 0)
+    return (-problem_tag_overlap(observed_tags, exercise), distance,
+            -editorial, str(exercise.get("exercise_id") or ""))
+
+
+def _blocked_by_existing(existing: Any, snippet_id: str) -> bool:
+    """One exercise per Take: a finished or declined one ends the offer, and
+    an open one keeps its original moment (its passage and audio are bound)."""
+    if not existing:
+        return False
+    if existing.get("status") in ("completed", "dismissed"):
+        return True
+    return str(existing.get("snippet_id")) != str(snippet_id)
+
+
+def choose_exercise(ranked: list[dict], *, owner_user_id: str,
+                    take_session_id: str, snippet_id: str, lane: str,
+                    database: Any) -> Optional[dict]:
+    """The 80/20 choice among a moment's ranked exercises, frozen once.
+
+    The database draws and stores it (migration 0372), so every later read
+    of the same moment gets the same exercise. Without the table (not yet
+    migrated) or an owner, the best match is served exactly as before.
+    Returns None when a frozen choice is no longer in the live catalogue:
+    serving a different exercise would contradict the stored assignment.
+    """
     if not ranked:
-        return rows
-    _, _, _, _, _, _, chosen, snippet, verdict, exercise = min(ranked)
+        return None
+    assign = getattr(database, "assign_confident_voice_exercise", None)
+    if not owner_user_id or assign is None:
+        return ranked[0]
+    try:
+        assignment = assign(
+            owner_user_id=str(owner_user_id),
+            take_session_id=str(take_session_id),
+            snippet_id=str(snippet_id),
+            lane=lane,
+            matching_policy_version=MATCHING_POLICY_VERSION,
+            candidates=[{
+                "exercise_id": str(item.get("exercise_id") or ""),
+                "version": int(item.get("version") or 1),
+            } for item in ranked],
+        )
+    except Exception as e:  # noqa: BLE001 — never lose the feedback
+        _log.warning(
+            "exercise assignment failed take=%s snip=%s: %s",
+            take_session_id, snippet_id, e)
+        return ranked[0]
+    if not isinstance(assignment, dict):
+        return ranked[0]
+    selected = str(assignment.get("selected_exercise_id") or "")
+    return next((item for item in ranked
+                 if str(item.get("exercise_id") or "") == selected), None)
+
+
+def _offer_payload(exercise: dict, verdict: dict, snippet: dict,
+                   chosen: dict, existing: Any) -> dict:
     intro = (exercise.get("confident_introduction_copy")
              if verdict.get("pattern") == "confident" else
              exercise.get("introduction_copy"))
-    chosen["practice_exercise"] = {
+    return {
         "exercise_id": str(exercise.get("exercise_id")),
         "version": int(exercise.get("version") or 1),
         "title": exercise.get("title") or TITLE,
@@ -671,13 +682,199 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
         "passage": (snippet.get("transcript") or chosen.get("quote") or "").strip(),
         "practice_id": str(existing.get("id")) if existing else None,
         "resume": bool(existing and existing.get("status") == "open"),
-        "matching_policy_version": "exercise-proximity-service-v1",
+        "matching_policy_version": MATCHING_POLICY_VERSION,
         "pattern_distance": confidence_pattern_distance(
             str(verdict.get("pattern") or ""),
             exercise.get("supported_confidence_patterns"),
         ),
     }
+
+
+def _rewrite_on_same_paragraph(row: dict, rows: list[dict]) -> bool:
+    raw_evidence = row.get("evidence")
+    evidence: dict = raw_evidence if isinstance(raw_evidence, dict) else {}
+    for other in rows:
+        other_evidence = other.get("evidence")
+        if (other is not row and isinstance(other_evidence, dict)
+                and other.get("feedback_family") == "rewrite_clarity"
+                and other_evidence.get("slide_index")
+                == evidence.get("slide_index")
+                and other_evidence.get("paragraph_index")
+                == evidence.get("paragraph_index")):
+            return True
+    return False
+
+
+def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
+                          database: Any, owner_user_id: str = "") -> list[dict]:
+    """Attach at most one active exercise after Feedback Manager selection.
+
+    The LEGACY lane: it chooses the moment itself, by the rush gate. V3 Takes
+    use `attach_v3_exercise_offer`, where V3 has already chosen the moment.
+    """
+    rows = [dict(row) for row in (changes or [])]
+    candidates = [row for row in rows if row.get("source") == "confident_voice"
+                  and row.get("snippet_id")]
+    if not candidates or not take_session_id:
+        return rows
+    exercises = offerable_exercises(database)
+    if not exercises:
+        return rows
+    existing = database.get_confident_voice_practice_by_take(take_session_id)
+    if existing:
+        candidates = [row for row in candidates if not _blocked_by_existing(
+            existing, str(row.get("snippet_id")))]
+        if not candidates:
+            return rows
+    snippet_ids = [str(row["snippet_id"]) for row in candidates]
+    snippets = database.get_confident_voice_practice_candidates(snippet_ids) or []
+    by_id = {str(row.get("id")): row for row in snippets}
+    median_wpm = _median_wpm(
+        database.get_snippets_by_session(take_session_id) or [])
+    # Read the library ONCE for the whole take, not per candidate clip.
+    vocabulary = detected_problem_vocabulary(database)
+    # (-tag overlap, confidence distance, -editorial, -priority, id, index)
+    ranked: list[tuple[tuple, dict, dict, dict, dict]] = []
+    for index, row in enumerate(candidates):
+        snippet = by_id.get(str(row.get("snippet_id")))
+        if not snippet:
+            continue
+        verdict = exercise_eligibility(
+            snippet,
+            session_median_wpm=median_wpm,
+            semantic_or_structural_problem=bool(
+                row.get("semantic_or_structural_problem")
+                or _rewrite_on_same_paragraph(row, rows)),
+        )
+        if not verdict.get("eligible"):
+            continue
+        # WHAT WENT WRONG, not just how confident it sounded. The overlap
+        # leads the sort key, so an exercise that treats this clip's actual
+        # problems beats one that merely suits its confidence level.
+        observed_tags = observed_problem_tags(verdict, vocabulary=vocabulary)
+        for exercise in exercises:
+            key = _exercise_key(verdict, observed_tags, exercise)
+            if key is not None:
+                ranked.append((
+                    (*key[:3], -int(verdict.get("priority") or 0), key[3],
+                     index),
+                    row, snippet, verdict, exercise,
+                ))
+    if not ranked:
+        return rows
+    ranked.sort(key=lambda item: item[0])
+    _, chosen, snippet, verdict, _ = ranked[0]
+    moment = [item[4] for item in ranked if item[1] is chosen]
+    exercise = choose_exercise(
+        moment, owner_user_id=owner_user_id, take_session_id=take_session_id,
+        snippet_id=str(chosen.get("snippet_id")), lane="legacy_offer",
+        database=database)
+    if exercise is None:
+        return rows
+    chosen["practice_exercise"] = _offer_payload(
+        exercise, verdict, snippet, chosen, existing)
     return rows
+
+
+def attach_v3_exercise_offer(
+    changes: list[dict], *, take_session_id: str, owner_user_id: str,
+    database: Any, ground: Any, verbal_problem: bool = False,
+) -> list[dict]:
+    """The exercise on the one V3 item that carries it (contract 24f).
+
+    V3 marks exactly one Confident Voice item per Take `bookmark_tier =
+    "exercise"`: the weakest below the neutral band. That item gets the best
+    matching exercise for its clip under the 80/20 policy. The clip must still
+    be able to carry practice (`clip_can_carry_exercise`), and `ground` must
+    prove its exact evidence coordinates, which the practice needs; failing
+    either, the item is served exactly as V3 made it, without an exercise.
+    """
+    rows = [dict(row) for row in (changes or [])]
+    target = next((row for row in rows
+                   if row.get("source") == "confident_voice"
+                   and row.get("bookmark_tier") == "exercise"
+                   and row.get("snippet_id")), None)
+    if target is None or not take_session_id or verbal_problem:
+        return rows
+    snippet_id = str(target["snippet_id"])
+    existing = database.get_confident_voice_practice_by_take(take_session_id)
+    if _blocked_by_existing(existing, snippet_id):
+        return rows
+    exercises = offerable_exercises(database)
+    snippet = next(iter(
+        database.get_confident_voice_practice_candidates([snippet_id]) or []),
+        None)
+    if not exercises or not isinstance(snippet, dict):
+        return rows
+    verdict = exercise_eligibility(
+        snippet, session_median_wpm=_median_wpm(
+            database.get_snippets_by_session(take_session_id) or []))
+    if not clip_can_carry_exercise(verdict):
+        return rows
+    observed_tags = observed_problem_tags(
+        verdict, vocabulary=detected_problem_vocabulary(database))
+    keyed = [(key, exercise) for exercise in exercises
+             if (key := _exercise_key(verdict, observed_tags, exercise))
+             is not None]
+    evidence = ground(target) if keyed else None
+    if not isinstance(evidence, dict):
+        return rows
+    keyed.sort(key=lambda item: item[0])
+    exercise = choose_exercise(
+        [item[1] for item in keyed], owner_user_id=owner_user_id,
+        take_session_id=take_session_id, snippet_id=snippet_id,
+        lane="v3_exercise_block", database=database)
+    if exercise is None:
+        return rows
+    target["evidence"] = evidence
+    target["practice_exercise"] = _offer_payload(
+        exercise, verdict, snippet, target, existing)
+    return rows
+
+
+def start_exercise_check(*, snippet: dict, take_session_id: str,
+                         snippet_id: str, exercise_id: str,
+                         session_median_wpm: Any, database: Any):
+    """Whether the practice-start route may open `exercise_id` on this clip.
+
+    Returns `(error_code, verdict, matching)`: `error_code` is None when it
+    may. With a frozen 80/20 assignment for the moment, the tapped exercise
+    must be the assigned one and the clip must pass the safety half of the
+    gate. Without one (the table not migrated yet), the pre-80/20 rule holds:
+    the clip passes the full gate and the exercise is the current best match.
+    """
+    verdict = exercise_eligibility(
+        snippet, session_median_wpm=session_median_wpm)
+    getter = getattr(database, "get_confident_voice_exercise_assignment", None)
+    assignment = (getter(take_session_id, snippet_id)
+                  if getter is not None else None)
+    if isinstance(assignment, dict):
+        if not clip_can_carry_exercise(verdict):
+            return "NOT_ELIGIBLE", verdict, None
+        if str(assignment.get("selected_exercise_id")) != str(exercise_id):
+            return "EXERCISE_OFFER_STALE", verdict, None
+        active = database.get_active_diagnostic_exercise(str(exercise_id))
+        return None, verdict, {
+            "pattern_distance": confidence_pattern_distance(
+                str(verdict.get("pattern") or ""),
+                _with_default_patterns(active or {}).get(
+                    "supported_confidence_patterns")),
+            "matching_policy_version": MATCHING_POLICY_VERSION,
+            "exposure_policy_version": EXPOSURE_POLICY_VERSION,
+            "exercise_assignment_id": str(assignment.get("id") or ""),
+        }
+    if not verdict.get("eligible"):
+        return "NOT_ELIGIBLE", verdict, None
+    ranked_exercises = rank_exercises_for_clip(verdict, database)
+    if not ranked_exercises:
+        return "NOT_MATCHABLE", verdict, None
+    pattern_distance, _, _, best_exercise = ranked_exercises[0]
+    if str(best_exercise.get("exercise_id")) != str(exercise_id):
+        return "EXERCISE_OFFER_STALE", verdict, None
+    return None, verdict, {
+        "pattern_distance": pattern_distance,
+        "matching_policy_version": MATCHING_POLICY_VERSION,
+    }
 
 
 def reconcile_practice_voice_album(practice: dict, *, database: Any) -> bool:
