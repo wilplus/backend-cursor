@@ -315,7 +315,15 @@ hard migrations/status_knows_a_reacceptance.sql
 # apply/reapply idempotency check.
 hard migrations/a_person_can_change_their_mind.sql
 hard migrations/a_person_can_change_their_mind.sql
-# 0362 adds project deletion requests (the picker's Delete becomes a request an
+# 0362 adds resolve_phase1_purge_subject_graph_v3 and replaces the freeze
+# 0354 defines, above. Twice: the apply/reapply idempotency check.
+hard migrations/an_account_deletion_can_start.sql
+hard migrations/an_account_deletion_can_start.sql
+# 0363 lists practice made for people who never ticked the box (founder
+# decision 1). Twice: the apply/reapply idempotency check.
+hard migrations/practice_made_without_the_tick.sql
+hard migrations/practice_made_without_the_tick.sql
+# 0364 adds project deletion requests (the picker's Delete becomes a request an
 # operator confirms). Twice: the apply/reapply idempotency check.
 hard migrations/a_project_deletion_can_be_requested.sql
 hard migrations/a_project_deletion_can_be_requested.sql

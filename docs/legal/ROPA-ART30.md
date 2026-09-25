@@ -278,7 +278,7 @@ the subject's personal data. **It does not discharge Art 15 or Art 20.**
 > The purge orchestrator exists but currently deletes **nothing, for anyone**.
 >
 > `resolve_targets` is all-or-nothing by design — *"Unknown inventory means
-> zero deletion"*, `services/data_purge.py:774`. Any dependency that cannot
+> zero deletion"*, `services/data_purge.py:808`. Any dependency that cannot
 > resolve a retention rule aborts the whole run rather than deleting part of an
 > account, which is the correct behaviour: a half-deleted account is worse than
 > an undeleted one, because the subject is told it is done.

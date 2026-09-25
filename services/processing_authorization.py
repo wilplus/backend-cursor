@@ -54,6 +54,24 @@ def rethrow_processing_authorization(error: BaseException) -> None:
         raise error
 
 
+def _in_force(row: Mapping[str, Any], now: datetime) -> bool:
+    """Activated by now and not yet retired; an unreadable time is not."""
+    def _at(value: Any) -> datetime | None:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+    activated = _at(row.get("activated_at"))
+    if activated is None or activated > now:
+        return False
+    if row.get("retired_at") in (None, ""):
+        return True
+    retired = _at(row.get("retired_at"))
+    return retired is not None and retired > now
+
+
 def _one(data: Any) -> dict | None:
     if isinstance(data, dict):
         return data
@@ -196,6 +214,49 @@ class ProcessingAuthorizationService:
             "The acquisition principal could not be resolved.",
             503,
         )
+
+    def published_policy_text(self) -> dict | None:
+        """The Terms and Privacy Policy in force, for anyone to read.
+
+        Founder 2026-09-25, decisions 2 and 3. The legal pages read their
+        copy through ``status``, which needs an owner: a visitor neither
+        signed in nor holding a guest token was refused, so /privacy said it
+        could not load and /terms showed the retired v1.2 text. The published
+        documents are public; this reads them with no principal at all.
+
+        The same selection ``get_phase1_processing_authorization_v1`` makes:
+        the one active policy whose activation has arrived and whose
+        retirement has not. The exact stored bytes and their hashes, never a
+        copy re-rendered here. ``None`` when there is no such policy.
+        """
+        try:
+            rows = (
+                self.client.table("processing_policy_versions")
+                .select(
+                    "version,terms_version,terms_copy,terms_copy_sha256,"
+                    "privacy_version,privacy_copy,privacy_copy_sha256,"
+                    "activated_at,retired_at"
+                )
+                .eq("status", "active").limit(1).execute().data
+            )
+        except Exception:
+            return None
+        row = _one(rows)
+        if not row or not _in_force(row, datetime.now(timezone.utc)):
+            return None
+        return {
+            "policy_version": str(row["version"]),
+            "terms": {
+                "version": str(row["terms_version"]),
+                "copy": str(row["terms_copy"]),
+                "sha256": str(row["terms_copy_sha256"]),
+            },
+            "privacy": {
+                "version": str(row["privacy_version"]),
+                "copy": str(row["privacy_copy"]),
+                "sha256": str(row["privacy_copy_sha256"]),
+            },
+        }
 
     def status(self, acquisition_principal_id: str) -> dict:
         try:

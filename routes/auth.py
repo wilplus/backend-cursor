@@ -5,16 +5,31 @@ import sentry_sdk
 import services.db as db_module
 from utils.errors import safe_error
 from services.db import new_client
+from services.processing_authorization import ProcessingAuthorizationService
 
 logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint("auth", __name__)
 config = Config()
 
-# The version string must match the "Last updated" date in the published
-# Terms of Service / Privacy Policy. Bump this when documents change so
-# returning users are asked to re-accept the updated terms.
+# The version a sign-up records when no published policy can be read. It is a
+# fallback only (founder 2026-09-25, decision 2): the version recorded is the
+# one on the Terms the person was shown, read from the policy record.
 CURRENT_TERMS_VERSION = "1.2"
+
+
+def _signup_terms_version() -> str:
+    """The Terms version this sign-up agreed to.
+
+    /terms shows the stored Terms in force; this records THAT version. It
+    used to record the constant above, "1.2", whatever the page showed, so a
+    sign-up under the current Terms could not be told from one under the
+    retired bundled version. Falls back to the constant only when no policy
+    is in force or it cannot be read.
+    """
+    policy = ProcessingAuthorizationService(db_module.db).published_policy_text()
+    version = str(((policy or {}).get("terms") or {}).get("version") or "").strip()
+    return version or CURRENT_TERMS_VERSION
 
 
 @auth_bp.route("/signup", methods=["POST"])
@@ -108,7 +123,7 @@ def signup():
             user_metadata["display_name"] = name
         # Record the terms version in Supabase user_metadata as a fast
         # secondary reference (the authoritative record is user_consents).
-        user_metadata["terms_version"] = CURRENT_TERMS_VERSION
+        user_metadata["terms_version"] = terms_version = _signup_terms_version()
 
         create_resp = supabase.auth.admin.create_user({
             "email": email,
@@ -136,7 +151,7 @@ def signup():
         db = db_module.db
         consent_row = db.record_user_consent(
             user_id=user_id,
-            terms_version=CURRENT_TERMS_VERSION,
+            terms_version=terms_version,
             ip_address=ip_address or None,
             user_agent=user_agent or None,
         )

@@ -30,6 +30,7 @@ from routes.v2.arcs import (
 )
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
+from services.coach_video_storage import refreshed_media_url
 from services.db import db
 from services.create_take import session_owned_by_principal
 from services.project_deletion import with_deletion_state
@@ -1185,7 +1186,7 @@ def v2_user_list_trainings():
                 # explicitly though the FE falls back to arc_id if omitted.
                 "topic": topic,
                 "best_presentation_arc_id": aid,
-                "cover_ref": cover_ref,
+                "cover_ref": refreshed_media_url(cover_ref),
                 "created_at": sess[0].get("created_at") if sess else None,
                 "take_count": len(sess),
                 "takes_target": TAKES_TARGET,

@@ -222,6 +222,20 @@ def v2_processing_authorization():
         return jsonify({"code": error.code, "error": error.message}), error.status
 
 
+@v2_bp.route("/processing-authorization/policy-text", methods=["GET"])
+def v2_processing_policy_text():
+    """The published Terms and Privacy Policy, for anyone (founder 2026-09-25,
+    decisions 2 and 3). No owner is resolved: the legal pages must read for a
+    first-time visitor, a crawler, and a browser with no JavaScript alike."""
+    policy = ProcessingAuthorizationService(db).published_policy_text()
+    if policy is None:
+        return jsonify({"code": "PROCESSING_POLICY_INACTIVE",
+                        "error": "No policy is in force."}), 404
+    response = jsonify(policy)
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return response, 200
+
+
 @v2_bp.route("/processing-authorization/choices", methods=["GET", "POST"])
 @optional_auth
 def v2_processing_choices():

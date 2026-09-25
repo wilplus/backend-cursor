@@ -74,7 +74,7 @@ been satisfied".
 have failed silently. It listed nine `evidence_category` values — `r2_object`,
 `transcript`, `cache`, `coach_packet` and so on. Those are
 `data_purge_targets.target_kind` values. The column this table feeds is matched
-against `PurgeDependency.retention_category` (`services/data_purge.py:231`),
+against `PurgeDependency.retention_category` (`services/data_purge.py:232`),
 whose vocabulary has five values and shares none of them. Seeding the original
 table would have written twelve active rows resolving nothing, left all sixteen
 retain-dependencies on `RETENTION_RULE_UNRESOLVED`, and — because

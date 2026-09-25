@@ -1,4 +1,4 @@
--- 0362 · A project deletion can be requested.
+-- 0364 · A project deletion can be requested.
 --
 -- FOUNDER 2026-09-25, decisions log N8 and spec
 -- docs/SPEC-training-corpus-and-project-purge.md §6.4 / §7 (P1).

@@ -151,7 +151,7 @@ to keep it running.
    `pg_dump` to encrypted off-site storage would satisfy the restore requirement
    without a plan change. Not yet implemented.
 
-5. **Retention rules may be unenforced.** `services/data_purge.py:231` resolves
+5. **Retention rules may be unenforced.** `services/data_purge.py:232` resolves
    rules from the `data_retention_rules` table and no-ops with
    `RETENTION_RULE_UNRESOLVED` when a category has none;
    `scripts/run_phase1_data_purge.py:48` gates execution on

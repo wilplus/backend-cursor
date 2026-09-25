@@ -5,7 +5,7 @@ days; until then the project is locked and its owner may cancel. Nothing here
 deletes anything: a confirmed request is executed by the governed Phase-1
 purge once it can scope to one project (P1-B, spec §6).
 
-Storage is ``project_deletion_requests`` (migration 0362), deliberately apart
+Storage is ``project_deletion_requests`` (migration 0364), deliberately apart
 from ``data_purge_requests`` so a project request can never be run as an
 account-wide purge.
 

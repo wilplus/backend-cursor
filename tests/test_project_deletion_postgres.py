@@ -1,4 +1,4 @@
-"""Project deletion requests (0362), against the real functions.
+"""Project deletion requests (0364), against the real functions.
 
 FOUNDER 2026-09-25, decisions log N8. The picker's Delete is a REQUEST an
 operator confirms within 7 days; the owner may cancel until then. These cases

@@ -187,8 +187,11 @@ fallback.
 1. Create the R2 bucket, e.g. `willab-lab-audio`, on the **same R2
    account** — the existing `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` /
    `R2_SECRET_ACCESS_KEY` are reused, no new credentials.
-2. Attach a public domain (or enable the r2.dev subdomain) →
-   that URL is `R2_LAB_AUDIO_PUBLIC_BASE_URL`.
+2. Do NOT enable public access (founder decision 4, 2026-09-25; see
+   docs/PRIVATE-BUCKETS-M11.4.md). Every read is signed. Note that
+   `R2_LAB_AUDIO_PUBLIC_BASE_URL` also gates whether lab audio uses this
+   bucket at all (`services/lab_audio_storage.py:99-103`), so that switch
+   must be separated from the public base before this cutover.
 3. Set a lifecycle rule to match the retention promise in the privacy
    policy. This is the point of the split — the coach bucket's rule was
    never right for user voice.
