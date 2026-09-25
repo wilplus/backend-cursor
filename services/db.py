@@ -8771,6 +8771,52 @@ class DatabaseService:
                            arc_id, e)
             return []
 
+    def _log_slide_helper_words(self, arc_id: str, user_id: str,
+                                slide_index: int, rows: list) -> None:
+        """Append the Slide's LOCKED set when it differs from the last one
+        logged — the "which helper words were locked when" half of the
+        Paragraph history. Best-effort: never fails the write it follows."""
+        phrases = [str(r["phrase"]) for r in sorted(
+            rows or [], key=lambda r: int(r.get("ord") or 0))
+            if r.get("locked_at") and r.get("phrase")]
+        try:
+            last = (self.client.table("ideal_text_slide_helper_words_log")
+                    .select("phrases")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .eq("slide_index", slide_index)
+                    .order("id", desc=True).limit(1)
+                    .execute().data) or []
+            if last and last[0].get("phrases") == phrases:
+                return
+            if not last and not phrases:
+                return
+            self.client.table("ideal_text_slide_helper_words_log").insert({
+                "arc_id": str(arc_id),
+                "user_id": str(user_id),
+                "slide_index": slide_index,
+                "phrases": phrases,
+            }).execute()
+        except Exception as e:
+            logger.warning("slide helper words log failed arc=%s slide=%s: "
+                           "%s", arc_id, slide_index, e)
+
+    def list_slide_helper_words_log(self, arc_id: str, user_id: str,
+                                    slide_index: int) -> list:
+        """One Slide's locked helper-word sets over time, oldest first."""
+        try:
+            return (self.client.table("ideal_text_slide_helper_words_log")
+                    .select("phrases,created_at")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .eq("slide_index", slide_index)
+                    .order("id")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list slide helper words log failed arc=%s: %s",
+                           arc_id, e)
+            return []
+
     def replace_slide_helper_words(self, arc_id: str, user_id: str,
                                    slide_index: int, rows: list) -> bool:
         """Replace ONE Slide's rows wholesale (delete, then insert).
@@ -8799,6 +8845,7 @@ class DatabaseService:
                     "locked_at": r.get("locked_at"),
                     "selected_at": r.get("selected_at"),
                 } for r in rows]).execute()
+            self._log_slide_helper_words(arc_id, user_id, slide_index, rows)
             return True
         except Exception as e:
             logger.warning("replace slide helper words failed arc=%s "
@@ -10089,7 +10136,8 @@ class DatabaseService:
             return []
 
     def upsert_ideal_text_version(self, arc_id: str, version: int,
-                                  text: str, moments: Any) -> bool:
+                                  text: str, moments: Any,
+                                  document: Optional[dict] = None) -> bool:
         """Append-only per-VERSION snapshot (founder 2026-07-20) — the text
         as this version assembled it + that step's sanitized reasoning.
         Idempotent per (arc, version). Best-effort."""
@@ -10102,6 +10150,9 @@ class DatabaseService:
                 "version": version,
                 "text": text,
                 "moments": moments,
+                # The Slide map this version had (paragraph history, 3c).
+                **({"document": document} if isinstance(document, dict)
+                   else {}),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }, on_conflict="arc_id,version").execute()
             return True
@@ -10117,6 +10168,22 @@ class DatabaseService:
             logger.warning("upsert_ideal_text_version failed arc=%s: %s",
                            arc_id, e)
             return False
+
+    def list_ideal_text_versions(self, arc_id: Optional[str]) -> list:
+        """Every version snapshot of one document, oldest first; [] on any
+        failure (the history then simply has nothing to show)."""
+        if not arc_id:
+            return []
+        try:
+            return (self.client.table("ideal_text_versions")
+                    .select("version,text,document,created_at")
+                    .eq("arc_id", str(arc_id))
+                    .order("version")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list_ideal_text_versions failed arc=%s: %s",
+                           arc_id, e)
+            return []
 
     def get_ideal_text_version(self, arc_id: Optional[str],
                                version: Any) -> Optional[dict]:
