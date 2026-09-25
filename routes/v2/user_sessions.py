@@ -490,6 +490,39 @@ def v2_user_delete_session(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to delete session"}), 500
 
 
+@v2_bp.route("/user/arcs/<arc_id>", methods=["DELETE"])
+@require_auth
+def v2_user_delete_arc(arc_id):
+    """Delete ONE project (arc) and every take in it — owner-scoped HARD
+    delete, the project picker's ⋯ → Delete (founder 2026-09-25). The delete
+    set is exactly the arc-keyed rows /user/trainings groups (same repository
+    read, reads included), so what the picker lists is what gets deleted and a
+    deleted project cannot resurface there.
+    200 {deleted_sessions} · 400 bad uuid · 404 no such project for this user."""
+    if not _is_valid_uuid(arc_id):
+        return jsonify({
+            "code": "INVALID_INPUT", "error": "arc_id must be a valid UUID",
+        }), 400
+    try:
+        uid = str(request.user_id)
+        sids = [
+            str(r.get("id")) for r in (db.takes.list_user_arc_sessions(uid) or [])
+            if str(r.get("arc_id") or "") == str(arc_id) and r.get("id")
+        ]
+        if not sids:
+            return jsonify({
+                "code": "NOT_FOUND", "error": "No such project for this user",
+            }), 404
+        for sid in sids:
+            _hard_delete_session_for_user(uid, sid)
+        logger.info("arc deleted user=%s arc=%s takes=%d", uid, arc_id, len(sids))
+        return jsonify({"status": "ok", "deleted_sessions": len(sids)}), 200
+    except Exception as e:
+        logger.error("user/arcs DELETE failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to delete project"}), 500
+
+
 @v2_bp.route("/user/sessions/<session_id>/readout", methods=["GET"])
 @require_auth
 def v2_user_get_session_readout(session_id):

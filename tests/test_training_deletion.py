@@ -150,5 +150,65 @@ class SessionDeleteTests(unittest.TestCase):
         self.assertEqual(status, 400)
 
 
+_ARC = "22222222-2222-4222-8222-222222222222"
+_OTHER_ARC = "33333333-3333-4333-8333-333333333333"
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ArcDeleteTests(unittest.TestCase):
+    """DELETE /user/arcs/<arc_id> — the project picker's delete. The set is
+    the owner's arc-keyed rows, read through the same scoped repository read
+    /user/trainings uses, so another user's project can never be reached."""
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self._rows = {
+            "u1": [
+                {"id": "t1", "arc_id": _ARC, "take_index": 1},
+                {"id": "t2", "arc_id": _ARC, "take_index": 2},
+                {"id": "r2", "arc_id": _ARC, "take_index": 2,
+                 "recording_kind": "read", "paired_session_id": "t2"},
+                {"id": "o1", "arc_id": _OTHER_ARC, "take_index": 1},
+            ],
+            "intruder": [],
+        }
+        self._deleted = []
+        self._p = [
+            patch.object(db.takes, "list_user_arc_sessions",
+                         lambda uid: list(self._rows.get(uid, []))),
+            patch("routes.v2.user_sessions._hard_delete_session_for_user",
+                  lambda uid, sid: self._deleted.append((uid, sid))),
+        ]
+        for p_ in self._p:
+            p_.start()
+
+    def tearDown(self):
+        for p_ in self._p:
+            p_.stop()
+
+    def _call(self, arc_id=_ARC, user_id="u1"):
+        with self.app.test_request_context():
+            request.user_id = user_id
+            resp, status = v2_user_sessions.v2_user_delete_arc.__wrapped__(arc_id)
+            return resp.get_json(), status
+
+    def test_deletes_every_take_of_the_arc_only(self):
+        body, status = self._call()
+        self.assertEqual(status, 200)
+        self.assertEqual(body["deleted_sessions"], 3)
+        self.assertEqual(self._deleted,
+                         [("u1", "t1"), ("u1", "t2"), ("u1", "r2")])
+
+    def test_non_owner_404s(self):
+        _, status = self._call(user_id="intruder")
+        self.assertEqual(status, 404)
+        self.assertEqual(self._deleted, [])
+
+    def test_bad_uuid_400s(self):
+        _, status = self._call(arc_id="nope")
+        self.assertEqual(status, 400)
+        self.assertEqual(self._deleted, [])
+
+
 if __name__ == "__main__":
     unittest.main()
