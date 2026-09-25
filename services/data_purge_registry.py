@@ -221,6 +221,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("library_teachings", "diagnostic_exercise_teaching",
                     "practice_id", "practice", "delete", "derived_feedback",
                     58),
+    # The frozen 80/20 exercise choice per (Take, moment), migration 0372.
+    # Product state about one speaker's Take, not evidence: it goes with it.
+    PurgeDependency("practice_exercise_assignment",
+                    "confident_voice_exercise_assignments", "take_session_id",
+                    "take", "delete", "derived_feedback", 60),
     PurgeDependency("practice", "confident_voice_practice", "id", "practice",
                     "delete", "derived_feedback", 60),
     PurgeDependency("practice_attempt", "confident_voice_practice_attempt",

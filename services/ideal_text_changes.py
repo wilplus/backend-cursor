@@ -179,7 +179,6 @@ class _ChangesRun:
         self._immutable_membership()
         self._select()
         self._evidence_coordinates()
-        log.run("changes.practice_offer", self._practice_offer)
         early = self._span_checks()
         if early is not None:
             return early
@@ -249,6 +248,15 @@ class _ChangesRun:
         # actually owned.
         if self.v3_replaced_changes:
             log.run("changes.praise_playback_v3", self._praise_playback)
+        # THE EXERCISE, ON THE ROWS THAT ACTUALLY SURFACE (founder 2026-09-26).
+        #
+        # This ran above `_first_client_feedback`, which replaces the rows on
+        # every V3 Take — so since the cutover the offer went out with the V2
+        # rows it was attached to, and no V3 Take ever carried an exercise.
+        # Moved here, after the claim, so it annotates only a row that is
+        # served, and so the 80/20 draw it freezes is never spent on a moment
+        # nobody sees.
+        log.run("changes.practice_offer", self._practice_offer)
         return self._finish()
 
     def _load_document(self) -> None:
@@ -891,9 +899,50 @@ class _ChangesRun:
         # nothing is noted and the payload is byte-identical to "no offer".
         if not self._practice_permitted():
             return
+        if getattr(self, "v3_replaced_changes", False):
+            self._v3_exercise_offer()
+            return
         from services.confident_voice_practice import attach_exercise_offer
         self.changes = attach_exercise_offer(
-            self.changes, take_session_id=self.arm_sid, database=self.db)
+            self.changes, take_session_id=self.arm_sid, database=self.db,
+            owner_user_id=str(getattr(self, "user_id", "") or ""))
+
+    def _v3_exercise_offer(self) -> None:
+        # V3 CHOSE THE MOMENT (contract 24f): the one item it marks
+        # `bookmark_tier="exercise"`. This attaches the exercise to that item
+        # (founder 2026-09-26: "Follow V3"), grounding its evidence
+        # coordinates on the way, because V3 rows arrive without them and the
+        # practice cannot start without them. A rewrite on the same Paragraph
+        # still withholds it: that problem is the words, not the delivery.
+        from services.confident_voice_practice import attach_v3_exercise_offer
+        from services.intervention_spend import paragraph_index_at
+
+        def ground(row: dict) -> Optional[dict]:
+            grounded = self.deps.with_evidence_coordinates(
+                [dict(row)], arc_id=self.arc_id, served_text=self.served_text,
+                pieces=[p for p in [self.review_evidence_piece,
+                                    *self.canonical_pieces, *self.pieces]
+                        if isinstance(p, dict)])
+            return grounded[0].get("evidence") if grounded else None
+
+        def paragraph(row: dict) -> Optional[int]:
+            span = row.get("span")
+            start = span.get("start") if isinstance(span, dict) else None
+            return (paragraph_index_at(self.served_text, start)
+                    if isinstance(start, int) else None)
+
+        target = next((row for row in self.changes
+                       if isinstance(row, dict)
+                       and row.get("bookmark_tier") == "exercise"), None)
+        verbal = target is not None and paragraph(target) is not None and any(
+            isinstance(row, dict)
+            and row.get("feedback_family") == "rewrite_clarity"
+            and paragraph(row) == paragraph(target)
+            for row in self.changes)
+        self.changes = attach_v3_exercise_offer(
+            self.changes, take_session_id=self.arm_sid,
+            owner_user_id=str(self.user_id or ""), database=self.db,
+            ground=ground, verbal_problem=verbal)
 
     def _practice_permitted(self) -> bool:
         """Whether this Take's owner allows exercises chosen from it.

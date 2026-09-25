@@ -338,12 +338,19 @@ with this contract, this contract wins.
     gate. The complete in-scope catalogue is frozen with every version marked
     eligible or typed-excluded. If none is eligible, the product creates a
     post-blind coach request rather than inventing or forcing an exercise.
-35c. Until a primary endpoint, horizon, missing-data treatment, and evaluation
-    contract are separately approved, serving may select only the deterministic
-    top eligible exercise. Any future 80/20 exploration is an exposure policy,
-    not a dataset split, and must freeze the complete pool, probabilities,
-    stable draw, policy version, and selected version without rerandomizing on
-    refresh or retry.
+35c. 80/20 exploration is an exposure policy, not a dataset split (founder
+    2026-09-26: "please do the 80/20 try smth new", superseding the earlier
+    "deterministic top until an evaluation contract is approved"). With two or
+    more eligible exercises for a moment, the best match is served with
+    probability 4/5 and each other eligible one with 1/(5(n-1)); one eligible
+    exercise is served with probability 1 and is not a randomized comparison.
+    The choice freezes the complete ranked pool, every probability, the seed
+    commitment and draw, the policy version and the selected version, once per
+    (Take, moment), and never rerandomizes on refresh or retry
+    (`exercise-80-20-v1`, migration 0372). Using the outcomes as evaluation
+    evidence still needs the endpoint, horizon and missing-data contract; until
+    then they are raw evidence only, and no dataset, training or promotion path
+    reads them.
 35d. The user is shown which exact exercise version was assigned and its prior
     use, so the product does not unknowingly repeat it. One practice session may
     contain at most three same-passage Recording Attempts. Practice attempts are
