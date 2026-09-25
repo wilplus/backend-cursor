@@ -204,5 +204,53 @@ class TheStateMapCanBeHandedItsRowsTests(unittest.TestCase):
         self.assertEqual(out["n1"]["note"], "read")
 
 
+class TheJourneyReadsTheWholeArcAtOnceTests(unittest.TestCase):
+    """The library floor on GET /coach/arc/<id>/review-state.
+
+    This scanned take by take and broke on the first hit, so the cost fell
+    entirely on the case that matters: an arc with NO notes yet — every new
+    student's journey — paid one round trip per take.
+    """
+
+    def test_one_read_for_an_arc_with_no_notes_at_all(self):
+        calls = {"n": 0}
+
+        def batch(ids):
+            calls["n"] += 1
+            return {}
+
+        spoken = [{"id": f"s{i}"} for i in range(18)]
+        with _Swap(get_coach_snippet_drafts_by_sessions=batch,
+                   get_coach_snippet_drafts=_boom):
+            out = v2_coach._arc_has_a_surfaced_note(spoken)
+        self.assertFalse(out)
+        self.assertEqual(calls["n"], 1, "one read for 18 takes")
+
+    def test_a_surfaced_note_anywhere_in_the_arc_counts(self):
+        rows = {
+            "s0": [{"surfaced": False, "note": "not surfaced"}],
+            "s1": [{"surfaced": True, "note": "  "}],
+            "s2": [{"surfaced": True, "note": "here it is"}],
+        }
+        with _Swap(get_coach_snippet_drafts_by_sessions=lambda ids: rows,
+                   get_coach_snippet_drafts=_boom):
+            self.assertTrue(
+                v2_coach._arc_has_a_surfaced_note([{"id": "s0"}]))
+
+    def test_a_read_miss_fails_OPEN_and_never_blocks_the_coach(self):
+        """The floor is advisory here and re-checked at publish. A miss must
+        not grey out the publish button with a reason the coach cannot act
+        on — a false ENABLE costs one clear error, a false DISABLE costs a
+        coach who cannot ship work they already did."""
+
+        def explode(_ids):
+            raise RuntimeError("supabase said no")
+
+        with _Swap(get_coach_snippet_drafts_by_sessions=explode,
+                   get_coach_snippet_drafts=_boom):
+            self.assertTrue(
+                v2_coach._arc_has_a_surfaced_note([{"id": "s0"}]))
+
+
 if __name__ == "__main__":
     unittest.main()
