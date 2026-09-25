@@ -530,6 +530,11 @@ def _run_full_analysis_impl(
     # question.
     from services.ideal_text_feedback_bake import enqueue_bake
     enqueue_bake(arc_id, user_id, recording_kind)
+    # Training copies (SPEC-training-corpus P3). Same shape as the bake: one
+    # unbranched call that cannot raise, every condition inside it. A code
+    # constant keeps it a no-op until P5.
+    from services.training_corpus import enqueue_corpus_copy
+    enqueue_corpus_copy(session_id, arc_id, user_id)
     return readout_local, sent_local
 
 
