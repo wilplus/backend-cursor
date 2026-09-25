@@ -2374,8 +2374,8 @@ def v2_explore_set_part_root(arc_id, part_id):
             if valid is None:
                 return jsonify({
                     "code": "INVALID_ROOT_PHRASE",
-                    # TODO(copy, founder): "locked" is inaccurate now.
-                    "error": "Choose exact words from this locked paragraph.",
+                    # "locked" dropped 2026-09-25, founder sign-off.
+                    "error": "Choose exact words from this paragraph.",
                 }), 400
         if not db.set_ideal_text_part_root(
                 arc_id=arc_id, user_id=user_id, part_id=str(part_id),
