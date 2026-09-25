@@ -130,8 +130,9 @@ class RefreshedMediaUrlTests(unittest.TestCase):
             + tricky_key
             + "?X-Amz-Signature=abc"
         )
+        # Signed since decision 4 (2026-09-25); the key it signs is the check.
         with _with_config():
-            self.assertEqual(refreshed_media_url(url), f"{PUBLIC}/{tricky_key}")
+            self.assertEqual(refreshed_media_url(url), f"{FRESH}#{tricky_key}")
 
     def test_leaves_a_supabase_signed_url_alone(self):
         """A different signer, a different shape — not this function's claim."""
@@ -151,15 +152,17 @@ class RefreshedMediaUrlTests(unittest.TestCase):
         with _with_config(public_base=""):
             self.assertEqual(refreshed_media_url(PRESIGNED), f"{FRESH}#{KEY}")
 
-    def test_non_user_content_still_needs_a_public_base_to_be_repaired(self):
-        """The other half of the split is unchanged: never invent a URL, and
-        an expiring link is still better than None."""
+    def test_non_user_content_is_signed_fresh_with_no_public_base(self):
+        """Founder 2026-09-25, decision 4. The other half of the split used
+        to need a public base to be repaired, and kept an expiring link
+        without one. With the buckets private it signs from the key like user
+        content — no public base needed, and still no URL invented."""
         coach_url = (
             "https://acct123.r2.cloudflarestorage.com/willab-media/"
             "coach-feedback/a.webm?X-Amz-Signature=deadbeef"
         )
         with _with_config(public_base=""):
-            self.assertEqual(refreshed_media_url(coach_url), coach_url)
+            self.assertEqual(refreshed_media_url(coach_url), f"{FRESH}#coach-feedback/a.webm")
 
     def test_passes_through_what_it_cannot_read(self):
         with _with_config():
@@ -209,6 +212,31 @@ class ServedEverywhereTests(unittest.TestCase):
                     "refreshed_media_url", expr,
                     f"{path} serves a stored ref without repairing it: {expr!r}",
                 )
+
+    def test_every_other_stored_media_ref_it_serves_is_signed(self):
+        """Founder 2026-09-25, decision 4: the buckets go private, so a stored
+        ref served raw stops playing. These read sites served one raw: the
+        coach's feedback video (coach review, a de-duplicated re-upload, and
+        the speaker's readout), the readout's deck (two keys), and the
+        Trainings-page cover."""
+        import re
+
+        for path, field in (
+            ("routes/v2/coach.py", '"video_ref"'),
+            ("services/lab_recording.py", '"video_ref"'),
+            ("services/readout_context.py", '"presentation_ref"'),
+            ("services/readout_context.py", 'result["presentation_ref"]'),
+            ("routes/v2/user_sessions.py", '"cover_ref"'),
+        ):
+            with open(path, encoding="utf-8") as fh:
+                src = fh.read()
+            served = re.findall(re.escape(field) + r'\s*[:=]\s*\(?([^\n]*)', src)
+            self.assertTrue(served, f"{path} no longer serves {field}")
+            for expr in served:
+                if expr.startswith(("None", "video_ref", "{")):
+                    continue
+                self.assertIn("refreshed_media_url", expr,
+                              f"{path} serves {field} without signing it: {expr!r}")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from services.coach_video_storage import refreshed_media_url
 
 logger = logging.getLogger(__name__)
 
@@ -146,14 +147,14 @@ def _attach_setup_fields(result: dict, context: dict) -> None:
             "audience": context.get("audience"),
             "target_length_seconds": context.get("target_length_seconds"),
             "slides": context.get("slides") or [],
-            "presentation_ref": context.get("presentation_ref"),
+            "presentation_ref": refreshed_media_url(context.get("presentation_ref")),
         }
     raw_audience = context.get("audience")
     audience = raw_audience.strip() if isinstance(raw_audience, str) else ""
     if audience:
         result["audience"] = audience
     if context.get("presentation_ref"):
-        result["presentation_ref"] = context.get("presentation_ref")
+        result["presentation_ref"] = refreshed_media_url(context.get("presentation_ref"))
 
 
 def _map_snippets_to_slides(
