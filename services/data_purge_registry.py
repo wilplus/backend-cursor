@@ -112,8 +112,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take", "delete", "database_row", 45),
     PurgeDependency("candidate_windows", "candidate_windows", "recording_id",
                     "recording", "delete", "derived_feedback", 45),
-    PurgeDependency("evidence_spans", "evidence_spans", "recording_id",
-                    "recording", "delete", "derived_feedback", 45),
+    # N12: canonical evidence is kept as an empty receipt (identifiers and
+    # timestamps; the words erased), never deleted. See LINEAGE_TOMBSTONES.
+    PurgeDependency("evidence_spans", "evidence_spans", "owner_principal_id",
+                    "principal", "tombstone", "derived_feedback", 200,
+                    "deletion_evidence"),
     PurgeDependency("retired_stress_corpus", "stress_snippets", "recording_id",
                     "recording", "external_review", "dataset_lineage", 300),
 
@@ -255,15 +258,23 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 65),
     PurgeDependency("coaching_attempts", "coaching_attempts", "user_id", "user",
                     "delete", "database_row", 65),
+    # N12, "keep an empty receipt": the take session, its recording attempt,
+    # the take and its transitions are pointed at ON DELETE RESTRICT by the
+    # permanent record, so they stay as identifiers and times and everything
+    # said is erased (migration 0379, tombstone_phase1_purge_lineage_v1).
     PurgeDependency("v2_sessions", "v2_sessions", "owner_principal_id",
-                    "principal", "delete", "database_row", 80),
+                    "principal", "tombstone", "database_row", 200,
+                    "deletion_evidence"),
     PurgeDependency("legacy_attempts", "recording_attempts", "owner_principal_id",
-                    "principal", "external_review", "database_row", 300),
+                    "principal", "tombstone", "database_row", 200,
+                    "deletion_evidence"),
     PurgeDependency("canonical_takes", "takes", "owner_principal_id",
-                    "principal", "external_review", "database_row", 300),
+                    "principal", "tombstone", "database_row", 200,
+                    "deletion_evidence"),
     PurgeDependency("canonical_transition_events_review",
                     "processing_transition_events", "owner_principal_id",
-                    "principal", "external_review", "database_row", 300),
+                    "principal", "tombstone", "database_row", 200,
+                    "deletion_evidence"),
     PurgeDependency("rejected_takes", "rejected_takes", "owner_principal_id",
                     "principal", "delete", "database_row", 80),
     # Founder 2026-09-25 (decisions log N9): a TOMBSTONE, not a delete.
@@ -462,28 +473,29 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # subject paths are fully classified here, but they enter the separately
     # reviewed exceptional-purge traversal instead of ordinary DELETE calls.
     PurgeDependency("canonical_transcript_versions", "transcript_versions",
-                    "owner_principal_id", "principal", "external_review",
-                    "dataset_lineage", 300),
+                    "owner_principal_id", "principal", "tombstone",
+                    "derived_feedback", 200, "deletion_evidence"),
     PurgeDependency("canonical_slides", "slides", "owner_principal_id",
-                    "principal", "external_review", "dataset_lineage", 300),
+                    "principal", "tombstone", "derived_feedback", 200,
+                    "deletion_evidence"),
     PurgeDependency("canonical_paragraphs", "paragraphs",
-                    "owner_principal_id", "principal", "external_review",
-                    "dataset_lineage", 300),
+                    "owner_principal_id", "principal", "tombstone",
+                    "derived_feedback", 200, "deletion_evidence"),
     PurgeDependency("canonical_acoustics", "acoustic_feature_snapshots",
-                    "owner_principal_id", "principal", "external_review",
-                    "dataset_lineage", 300),
+                    "owner_principal_id", "principal", "tombstone",
+                    "derived_feedback", 200, "deletion_evidence"),
     PurgeDependency("canonical_candidate_sets", "candidate_sets",
-                    "owner_principal_id", "principal", "external_review",
-                    "dataset_lineage", 300),
+                    "owner_principal_id", "principal", "tombstone",
+                    "derived_feedback", 200, "deletion_evidence"),
     PurgeDependency("canonical_machine_predictions", "machine_predictions",
-                    "owner_principal_id", "principal", "external_review",
-                    "dataset_lineage", 300),
+                    "owner_principal_id", "principal", "tombstone",
+                    "derived_feedback", 200, "deletion_evidence"),
     PurgeDependency("canonical_generation_runs", "generation_runs",
-                    "owner_principal_id", "principal", "external_review",
-                    "dataset_lineage", 300),
+                    "owner_principal_id", "principal", "tombstone",
+                    "derived_feedback", 200, "deletion_evidence"),
     PurgeDependency("canonical_processing_stage_runs", "processing_stage_runs",
-                    "owner_principal_id", "principal", "external_review",
-                    "dataset_lineage", 300),
+                    "owner_principal_id", "principal", "tombstone",
+                    "derived_feedback", 200, "deletion_evidence"),
     PurgeDependency("canonical_split_assignments", "dataset_split_assignments",
                     "owner_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
@@ -1115,3 +1127,13 @@ def dependency_manifest_sha256() -> str:
 
 def dependency_by_code(code: str) -> PurgeDependency | None:
     return next((item for item in DEPENDENCIES if item.code == code), None)
+
+#: Relations kept as an empty receipt by tombstone_phase1_purge_lineage_v1
+#: (migration 0379, founder N12). The only other tombstone is the project row.
+LINEAGE_TOMBSTONES: frozenset[str] = frozenset({
+    "v2_sessions", "recording_attempts", "takes",
+    "processing_transition_events", "transcript_versions", "slides",
+    "paragraphs", "evidence_spans", "acoustic_feature_snapshots",
+    "candidate_sets", "machine_predictions", "generation_runs",
+    "processing_stage_runs",
+})

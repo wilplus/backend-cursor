@@ -9,7 +9,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from services.data_purge import DataPurgeOrchestrator
-from services.data_purge_registry import DEPENDENCIES, dependency_by_code
+from services.data_purge_registry import (
+    DEPENDENCIES, LINEAGE_TOMBSTONES, dependency_by_code,
+)
 
 
 def test_projects_is_a_tombstone_under_the_deletion_evidence_rule():
@@ -17,8 +19,20 @@ def test_projects_is_a_tombstone_under_the_deletion_evidence_rule():
     assert projects is not None
     assert projects.disposition == "tombstone"
     assert projects.retention_category == "deletion_evidence"
-    assert [d.code for d in DEPENDENCIES if d.disposition == "tombstone"] == [
-        "projects"]
+    # N12 (2026-09-26, "keep an empty receipt") adds the take's permanent
+    # record. Exactly these, nothing else, and every one under the
+    # deletion-evidence rule.
+    tombstones = {d.relation for d in DEPENDENCIES if d.disposition == "tombstone"}
+    assert tombstones == {"projects"} | LINEAGE_TOMBSTONES
+    assert {d.retention_category for d in DEPENDENCIES
+            if d.disposition == "tombstone"} == {"deletion_evidence"}
+    assert LINEAGE_TOMBSTONES == {
+        "v2_sessions", "recording_attempts", "takes",
+        "processing_transition_events", "transcript_versions", "slides",
+        "paragraphs", "evidence_spans", "acoustic_feature_snapshots",
+        "candidate_sets", "machine_predictions", "generation_runs",
+        "processing_stage_runs",
+    }
 
 
 def _orchestrator(rpc_data=None, rpc_error=None):
@@ -58,4 +72,20 @@ def test_content_left_behind_is_a_failure_not_a_retention():
 def test_a_failed_wipe_is_a_failure():
     orchestrator, _ = _orchestrator(rpc_error=RuntimeError("boom"))
     orchestrator._resolve_tombstone(_target(), dependency_by_code("projects"), 1)
+    assert orchestrator._resolve.call_args.kwargs["state"] == "failed"
+
+
+def test_a_take_record_is_wiped_by_the_lineage_function():
+    """N12: a take's permanent record goes through its own wipe, and content
+    left behind is still a failure."""
+    orchestrator, client = _orchestrator({"tombstoned": 3, "not_blank": 0})
+    orchestrator._resolve_tombstone(
+        _target(), dependency_by_code("canonical_transcript_versions"), 1)
+    client.rpc.assert_called_once_with(
+        "tombstone_phase1_purge_lineage_v1", {"p_purge_request_id": "r1"})
+    assert orchestrator._resolve.call_args.kwargs["state"] == "retained"
+
+    orchestrator, _ = _orchestrator({"tombstoned": 3, "not_blank": 2})
+    orchestrator._resolve_tombstone(
+        _target(), dependency_by_code("v2_sessions"), 1)
     assert orchestrator._resolve.call_args.kwargs["state"] == "failed"
