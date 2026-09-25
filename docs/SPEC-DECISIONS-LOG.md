@@ -674,3 +674,23 @@ board).**
   (item 7), the named training processors and transfer mechanism (item 8),
   and the signed retention schedule that seeds the `training_corpus` and
   consent-evidence rules.
+
+**N11 · The eight open training questions (founder 2026-09-26, answered on the
+decision page).**
+1. **Consent records after an account deletion:** kept "as long as useful for
+   training", as counsel said. No automatic end; a person decides. Engineering
+   recommended "while a model trained on the person's data is in use" and was
+   overruled. Counsel is asked to check the wording
+   (`legal/phase1-2026.1/11-…` §3).
+2. **Model anonymity:** rely on counsel's statement; no technical check is
+   built before a trained model is kept. Recorded as against engineering's
+   recommendation.
+3. **Who trains:** not decided. **Training stays off until it is.**
+4. **Transfers:** decided together with who trains.
+5. **Privacy Policy text:** engineering drafts, counsel reviews, the founder
+   approves. Draft: `legal/phase1-2026.1/10-training-policy-changes-DRAFT.md`.
+6. **Retention schedule:** engineering prepares v1.1 with the training-copies
+   and consent-record rows, counsel checks, the founder signs. Draft:
+   `legal/phase1-2026.1/11-retention-schedule-v1.1-training-DRAFT.md`.
+7. **Delete one project (P1):** finish now.
+8. **The switched-off P5 pieces:** build now, everything off.
