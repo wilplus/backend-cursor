@@ -256,3 +256,23 @@ class EmailConfigIsVisibleAtBootTests(unittest.TestCase):
     def test_the_worker_logs_it_at_boot(self):
         with open("worker.py", encoding="utf-8") as fh:
             self.assertIn("email_config_summary()", fh.read())
+
+
+class FallbackEmailSaysTheSignedWordsTests(unittest.TestCase):
+    """Founder 2026-09-25: the fallback send carries the same words."""
+
+    def test_fallback_wording(self):
+        from services.post_session_results_email import _render_inline_fallback
+
+        out = _render_inline_fallback({
+            "snippetCount": 2, "topTheme": "Series A pitch",
+            "journeyUrl": "https://x/chat?idealArc=a&feedback=1",
+            "unsubscribeUrl": "https://x/unsubscribe?token=t",
+        })
+        for text in (out["html"], out["text"]):
+            self.assertIn("Your coach's feedback is in.", text.replace("&#x27;", "'"))
+            self.assertIn("left feedback on 2 moments.", text)
+            self.assertIn("Open the feedback", text)
+        self.assertIn("/willab-logo", out["html"])
+        self.assertNotIn("Top theme", out["html"])
+        self.assertNotIn("View your results", out["html"])
