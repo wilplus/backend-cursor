@@ -335,3 +335,146 @@ def build_moment_history(
         "origin": origin,
         "events": order_events(events),
     }
+
+
+def build_snippet_history(
+    *,
+    arc_id: Any,
+    snippet_id: Any,
+    owner_user_id: Any,
+    take_session_id: Any = None,
+    take_index: Any = None,
+    slide_index: Any = None,
+    database=None,
+    resolve_audio=None,
+) -> dict:
+    """The story behind ANY moment — the ones that went badly included.
+
+    FOUNDER 2026-09-25: "the album shows your confident moments, not any
+    moments." The Album is a trophy case: a clip gets in only on three
+    separate yeses, so the history above it can only ever be told about a
+    moment that went well. The moments worth learning from are the other ones.
+
+    Same story, told for a moment wherever it actually lives — the sheet the
+    speaker opens on their own words, which is already where a review's
+    exercise reaches them.
+
+    THE COACH LANE IS DELIBERATELY ABSENT, and that is a fence, not an
+    oversight. ``_coach_agreed_event`` emits only when a coach said YES. Inside
+    the Album that is harmless: every moment in there already has a coach yes,
+    so the row is always present and discloses nothing the moment's own
+    membership did not. Told about EVERY moment it inverts — present on some,
+    missing on others — and the silence announces the coach's verdict on the
+    rest. That is BLIND COACH, breached by omission rather than by a badge,
+    which is the harder kind to notice. So this function does not call it, and
+    a test fails if it ever starts.
+
+    Everything else carries over untouched: where the moment came from, the
+    speaker's own answer read back to them, the exercise they were given with
+    the recordings they made against it, and their own note.
+
+    Never raises; a lane whose records are missing contributes nothing.
+    """
+    if database is None:
+        from services.db import db as database
+    if resolve_audio is None:
+        def resolve_audio(_ref):
+            return None
+
+    arc = _text(arc_id)
+    snippet = _text(snippet_id)
+    owner = _text(owner_user_id)
+
+    origin = {
+        "take_index": _int_or_none(take_index),
+        "slide_index": _int_or_none(slide_index),
+        "at": None,
+        "source": "snippet",
+    }
+    if not arc or not snippet:
+        return {"arc_id": arc, "moment_key": snippet, "origin": origin,
+                "events": []}
+
+    events: list = []
+    try:
+        practice = None
+        take = _text(take_session_id)
+        if take:
+            candidate = database.get_confident_voice_practice_by_take(
+                take, owner or None)
+            if (isinstance(candidate, dict)
+                    and _text(candidate.get("snippet_id")) == snippet):
+                practice = candidate
+
+        owner_event = _owner_answer_event(database, snippet)
+        if owner_event:
+            events.append(owner_event)
+
+        # NO _coach_agreed_event HERE — see the docstring.
+
+        exercise_event = _exercise_event(
+            database, practice, resolve_audio=resolve_audio)
+        if exercise_event:
+            events.append(exercise_event)
+
+        events.extend(_note_events(database, arc, snippet, owner))
+    except Exception as error:
+        logger.warning(
+            "voice_album_history: snippet assembly failed arc=%s snippet=%s: "
+            "%s", arc_id, snippet_id, error)
+
+    return {
+        "arc_id": arc,
+        "moment_key": snippet,
+        "origin": origin,
+        "events": order_events(events),
+    }
+
+
+def owned_snippet_history(
+    database: Any,
+    *,
+    arc_id: Any,
+    snippet_id: Any,
+    session: Any,
+    owner_user_id: Any,
+    resolve_audio=None,
+) -> Optional[dict]:
+    """One moment's story, but only for a moment that is actually theirs.
+
+    THE OWNERSHIP CHAIN IS THE POINT OF THIS FUNCTION. The caller has already
+    proved the PROJECT is theirs and handed in one of its sessions; this
+    proves the SNIPPET belongs to that session. Without the last link a
+    caller could name any snippet id in the world and have its owner's own
+    answers and notes read back to them — the lanes below are keyed by
+    snippet, and they do not ask whose it is.
+
+    Returns None when the link cannot be proved, which the route answers as a
+    plain not-found: whether someone else's snippet exists is not something
+    this endpoint should confirm either.
+    """
+    snippet = _text(snippet_id)
+    if not isinstance(session, dict) or not snippet:
+        return None
+    session_id = _text(session.get("id"))
+    if not session_id:
+        return None
+    try:
+        rows = database.get_snippets_by_session(session_id) or []
+    except Exception:
+        # A read that fails proves nothing, and "prove nothing" must mean no
+        # rather than yes on an ownership check.
+        return None
+    if not any(_text(row.get("id")) == snippet
+               for row in rows if isinstance(row, dict)):
+        return None
+    return build_snippet_history(
+        arc_id=arc_id,
+        snippet_id=snippet,
+        owner_user_id=owner_user_id,
+        take_session_id=session_id,
+        take_index=session.get("take_index"),
+        slide_index=None,
+        database=database,
+        resolve_audio=resolve_audio,
+    )
