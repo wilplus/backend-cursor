@@ -87,7 +87,9 @@ BEGIN
   END IF;
   definition:=pg_get_functiondef(target);
   IF position(spec->>'marker' IN definition)=0 THEN
-   openings:=(length(definition)-length(replace(definition,E'\nBEGIN\n','')))/length(E'\nBEGIN\n');
+   -- Whole lines, newline-sensitive: counting E'\nBEGIN\n' substrings would
+   -- read two adjacent BEGIN lines as one, since they share a newline.
+   SELECT count(*) INTO openings FROM regexp_matches(definition,'^BEGIN$','gn');
    IF openings<>1 THEN
     RAISE EXCEPTION 'CONFIDENT_MOMENT_WRITER_BODY_DRIFT: % (% BEGIN lines)',spec->>'signature',openings;
    END IF;
