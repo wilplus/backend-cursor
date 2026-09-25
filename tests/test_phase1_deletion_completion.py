@@ -561,7 +561,7 @@ def test_every_emitted_source_relation_is_known_to_the_purge_functions():
             text = path.read_text(encoding="utf-8", errors="replace")
             # A definition, not any mention: a later file that only restates
             # the grant (`GRANT ... ON FUNCTION public.<name>(`) or re-injects
-            # a preamble into the installed body (0362) keeps this body.
+            # a preamble into the installed body (0364) keeps this body.
             found = re.search(
                 rf"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.{function}\(",
                 text,
@@ -575,3 +575,66 @@ def test_every_emitted_source_relation_is_known_to_the_purge_functions():
             f"{function} does not mention them — a subject whose only storage "
             "is one of these cannot be erased"
         )
+
+
+def test_every_registry_locator_is_known_to_the_freeze():
+    """0362 (founder decision 6, 2026-09-25). The same drift, one level up.
+
+    The registry has addressed Feedback-language delivery jobs by
+    `locator_kind = 'delivery_job'` since 0327, and the freeze's locator map
+    had no branch for it: every such dependency target would have raised
+    PURGE_DEPENDENCY_TARGET_GRAPH_MISMATCH. Like the guard above, this runs
+    on every pull request, without a database.
+    """
+    from services.data_purge_registry import DEPENDENCIES
+
+    root = Path(__file__).resolve().parent.parent
+    manifest = [
+        line.split("\t")[1].strip()
+        for line in (root / "migrations" / "manifest.txt")
+        .read_text(encoding="utf-8").splitlines()
+        if "\t" in line
+    ]
+    body = None
+    marker = "CREATE OR REPLACE FUNCTION public.freeze_phase1_purge_inventory_v4("
+    for name in manifest:
+        path = root / "migrations" / name
+        if path.exists():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if marker in text:
+                start = text.index(marker)
+                body = text[start:text.index("$$;", start)]
+    assert body is not None, "the freeze is defined in no migration"
+    kinds = {dependency.locator_kind for dependency in DEPENDENCIES}
+    unmapped = sorted(k for k in kinds if f"WHEN '{k}' THEN '{k}_ids'" not in body)
+    assert not unmapped, (
+        f"the registry addresses rows by {unmapped} and the current freeze "
+        "cannot map them to the subject graph — a subject with such rows "
+        "cannot be erased"
+    )
+
+
+def test_every_dependency_target_kind_is_one_the_freeze_accepts():
+    """0362. The freeze files any other kind as `unknown`, and one unknown
+    target stops the whole erasure — fourteen registry entries did that at
+    zero rows. The orchestrator's accepted set must be the SQL's, and every
+    dependency target it builds must use it."""
+    from services.data_purge import FREEZE_TARGET_KINDS
+    from services.data_purge_registry import DEPENDENCIES
+
+    root = Path(__file__).resolve().parent.parent
+    text = (root / "migrations" / "an_account_deletion_can_start.sql").read_text(
+        encoding="utf-8")
+    body = text[text.index(
+        "CREATE OR REPLACE FUNCTION public.freeze_phase1_purge_inventory_v4("):]
+    listed = body[body.index("IF kind NOT IN ("):body.index(") THEN kind := 'unknown'")]
+    assert set(re.findall(r"'([a-z0-9_]+)'", listed)) == FREEZE_TARGET_KINDS
+
+    orchestrator = DataPurgeOrchestrator(type("Database", (), {"client": object()})())
+    orchestrator._count = lambda *_args: 0
+    graph = SubjectGraph(principal_ids=("principal-1",))
+    relations = frozenset(dependency.relation for dependency in DEPENDENCIES)
+    for dependency in DEPENDENCIES:
+        target = orchestrator._dependency_target(dependency, graph, relations)
+        assert target is not None and target.target_kind in FREEZE_TARGET_KINDS, (
+            dependency.code, target)

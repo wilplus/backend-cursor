@@ -27,6 +27,13 @@ from services.lab_audio_storage import (
 from services.provider_deletion import resolve_provider_operation
 
 RESOLVER_VERSION = "phase1-purge-resolver-v4"
+#: The target kinds `freeze_phase1_purge_inventory_v4` accepts; it files any
+#: other kind as `unknown`, which stops the whole erasure (0362).
+FREEZE_TARGET_KINDS = frozenset({
+    "database_row", "r2_object", "supabase_object", "transcript",
+    "derived_feedback", "processing_queue", "provider_operation",
+    "coach_packet", "cache", "dataset_lineage", "model_lineage",
+})
 _MISSING_RELATION_CODES = {"42P01", "PGRST205"}
 
 
@@ -196,7 +203,10 @@ class DataPurgeOrchestrator:
     def build_subject_graph(
         self, principal_id: str, _existing_relations: frozenset[str],
     ) -> SubjectGraph:
-        result = self.client.rpc("resolve_phase1_purge_subject_graph_v2", {
+        # The whole graph comes from SQL (0362). The freeze recomputes it and
+        # requires an identical one, so a key added here and not there made
+        # every account deletion fail PURGE_SUBJECT_GRAPH_MISMATCH.
+        result = self.client.rpc("resolve_phase1_purge_subject_graph_v3", {
             "p_acquisition_principal_id": principal_id,
         }).execute()
         payload = _one(result.data)
@@ -207,20 +217,11 @@ class DataPurgeOrchestrator:
             "recording_ids", "snippet_ids", "permit_ids", "job_ids",
             "speaker_ids", "practice_ids", "practice_attempt_ids",
             "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
+            "delivery_job_ids",
             "unresolved_legacy_take_ids",
         )
         if any(not isinstance(payload.get(key), list) for key in keys):
             raise RuntimeError("PURGE_SUBJECT_GRAPH_INVALID")
-        principal_ids = tuple(str(item) for item in payload["principal_ids"])
-        delivery_jobs = self._rows(
-            "feedback_language_delivery_materialization_jobs",
-            "id",
-            selector="acquisition_principal_id",
-            values=principal_ids,
-            existing_relations=_existing_relations,
-        )
-        payload["delivery_job_ids"] = sorted(self._ids(delivery_jobs, "id"))
-        keys = (*keys, "delivery_job_ids")
         graph = SubjectGraph(**{
             key: tuple(str(item) for item in payload[key]) for key in keys
         })
@@ -282,15 +283,7 @@ class DataPurgeOrchestrator:
         if dependency.relation not in existing_relations:
             return None
         values = graph.values(dependency.locator_kind)
-        if not values:
-            count = 0
-        else:
-            rows = self._rows(
-                dependency.relation, dependency.selector_column,
-                selector=dependency.selector_column, values=values,
-                existing_relations=existing_relations,
-            )
-            count = len(rows)
+        count = self._count(dependency, values, existing_relations)
         metadata: dict[str, Any] = {
             "dependency_code": dependency.code,
             "relation": dependency.relation,
@@ -314,10 +307,54 @@ class DataPurgeOrchestrator:
                     {**metadata, "reason_code": "RETENTION_RULE_UNRESOLVED"},
                 )
             metadata["retention_rule_id"] = str(rule["id"])
+        kind = dependency.target_kind
+        if kind not in FREEZE_TARGET_KINDS:
+            # The rows ARE database rows; the registry's label says what they
+            # point at. Kept, but not as a kind the freeze would call unknown.
+            metadata["registry_target_kind"] = kind
+            kind = "database_row"
         return PurgeTarget(
-            dependency.target_kind, f"dependency:{dependency.code}", count,
-            metadata,
+            kind, f"dependency:{dependency.code}", count, metadata,
         )
+
+    def _count(
+        self,
+        dependency: PurgeDependency,
+        values: Sequence[str],
+        existing_relations: frozenset[str] | None = None,
+    ) -> int:
+        """One subject's rows in one registry relation.
+
+        Read as before where service_role may read. Where it may not — 0327
+        revoked it from the coaching-bundle tables — the read failed and filed
+        the dependency as unknown, which stops the whole erasure; those are
+        counted in SQL as the function's owner instead (0362). Any other
+        failure still raises, and still fails closed.
+        """
+        if not values:
+            return 0
+        try:
+            return len(self._rows(
+                dependency.relation, dependency.selector_column,
+                selector=dependency.selector_column, values=values,
+                existing_relations=existing_relations,
+            ))
+        except RuntimeError as error:
+            if not str(error).startswith("UNRESOLVED_DEPENDENCY:"):
+                raise
+        result = self.client.rpc("count_phase1_purge_dependency_rows_v1", {
+            "p_relation": dependency.relation,
+            "p_selector_column": dependency.selector_column,
+            "p_values": list(values),
+        }).execute()
+        count = result.data
+        if isinstance(count, list):
+            count = count[0] if count else None
+        if isinstance(count, dict):
+            count = next(iter(count.values()), None)
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            raise RuntimeError(f"PURGE_COUNT_INVALID:{dependency.relation}")
+        return count
 
     def _practice_targets(
         self,
@@ -736,10 +773,7 @@ class DataPurgeOrchestrator:
                 query.in_(dependency.selector_column, list(values))
             )
             query.execute()
-            remaining = len(self._rows(
-                dependency.relation, dependency.selector_column,
-                selector=dependency.selector_column, values=values,
-            ))
+            remaining = self._count(dependency, values)
             state = "deleted" if remaining == 0 else "failed"
             self._resolve(
                 target, state=state, remaining=remaining,
