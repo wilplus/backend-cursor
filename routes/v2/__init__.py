@@ -13,7 +13,8 @@ by the split.
 # endpoint names and the URL map are unchanged.
 DOMAIN_MODULES = (
     "blueprint", "common", "arcs", "explore_ideal_text", "user_account",
-    "mlc2_consent", "rooting_phrase_qualification", "confident_moment_bundles",
+    "mlc2_consent", "training_consent", "rooting_phrase_qualification",
+    "confident_moment_bundles",
     "coach_guidance_delivery", "mlc3_first_client_service",
     "mlc3_first_client_coach", "processing_authorization", "lounge", "coach",
     "admin", "coaching", "canonical_publish", "auth_alias", "lab_recording",

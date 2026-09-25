@@ -58,12 +58,17 @@ SEEDED = set(re.findall(
 
 
 class TheSeedMatchesTheRegistry(unittest.TestCase):
-    def test_the_registry_still_has_exactly_five_retained_categories(self):
+    def test_the_registry_still_has_exactly_six_retained_categories(self):
         """A canary. If this changes, the seed and doc 06 both need a look —
         and the failure should be noticed here, not in a purge that silently
-        deletes nothing."""
+        deletes nothing.
+
+        Six since 2026-09-26: `consent_evidence`, the record of a training
+        yes and no (founder N10 answer 9, N11 answer 1; doc 11, retention
+        schedule v1.1 §2)."""
         self.assertEqual(REQUIRED, {
             "authorization_evidence",
+            "consent_evidence",
             "deletion_evidence",
             "financial_evidence",
             "processor_evidence",
@@ -72,7 +77,9 @@ class TheSeedMatchesTheRegistry(unittest.TestCase):
 
     #: Deliberately unseeded pending a counsel decision (doc 06 §3). Named
     #: here so "missing" and "open" cannot be confused for one another.
-    OPEN = {"financial_evidence"}
+    #: `consent_evidence` waits for retention schedule v1.1 (doc 11), which
+    #: counsel checks and the founder signs; it is not in the v1.0 seed.
+    OPEN = {"financial_evidence", "consent_evidence"}
 
     def test_every_retained_category_has_a_rule_except_the_open_one(self):
         seeded_categories = {category for _, category in SEEDED}

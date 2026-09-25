@@ -14373,6 +14373,108 @@ class DatabaseService:
                            acquisition_principal_id, e)
             return []
 
+    def get_active_training_consent_policy(self) -> Optional[dict]:
+        """The training-only policy in force now, with its approved switch
+        wording (0373). None when there is none, or when it cannot be read."""
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            policies = (self.client.table("ml_consent_policies")
+                        .select("version,product_legal_approval_id,"
+                                "active_from,retired_at")
+                        .eq("grant_scope", "training_only")
+                        .lte("active_from", now)
+                        .execute().data or [])
+            live = [row for row in policies
+                    if not row.get("retired_at") or row["retired_at"] > now]
+            if len(live) != 1:
+                return None
+            approval = (self.client.table("ml_product_legal_approvals")
+                        .select("onboarding_copy,approved_copy_sha256,"
+                                "terms_version,privacy_policy_version")
+                        .eq("id", str(live[0]["product_legal_approval_id"]))
+                        .limit(1).execute().data or [])
+            if not approval:
+                return None
+            return {"version": live[0]["version"], **approval[0]}
+        except Exception as e:
+            logger.warning("training consent policy read failed: %s", e)
+            return None
+
+    def record_mlc2_training_consent_grant(
+        self, *, acquisition_principal_id: str, consent_policy_version: str,
+        terms_version: str, privacy_policy_version: str, source_route: str,
+        client_version: str, affirmative_action: dict, occurred_at: str,
+        idempotency_key: str,
+    ) -> Optional[dict]:
+        """The training yes (0373). Raises when the database refuses it."""
+        result = self.client.rpc("record_mlc2_training_consent_grant_v2", {
+            "p_acquisition_principal_id": str(acquisition_principal_id),
+            "p_consent_policy_version": str(consent_policy_version),
+            "p_jurisdiction": "PL/EU",
+            "p_terms_version": str(terms_version),
+            "p_privacy_policy_version": str(privacy_policy_version),
+            "p_source_route": str(source_route),
+            "p_client_version": str(client_version),
+            "p_affirmative_action": dict(affirmative_action),
+            "p_occurred_at": str(occurred_at),
+            "p_idempotency_key": str(idempotency_key),
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def record_mlc2_training_consent_withdrawal(
+        self, *, acquisition_principal_id: str, grant_event_id: str,
+        source_route: str, client_version: str, affirmative_action: dict,
+        occurred_at: str, idempotency_key: str,
+    ) -> Optional[dict]:
+        """Turning training off (0373, 0376: the copies become due in the
+        same transaction). Raises when the database refuses it."""
+        result = self.client.rpc("record_mlc2_consent_withdrawal_v2", {
+            "p_acquisition_principal_id": str(acquisition_principal_id),
+            "p_grant_event_id": str(grant_event_id),
+            "p_purpose": "pooled_model_improvement",
+            "p_source_route": str(source_route),
+            "p_client_version": str(client_version),
+            "p_affirmative_action": dict(affirmative_action),
+            "p_occurred_at": str(occurred_at),
+            "p_idempotency_key": str(idempotency_key),
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def list_principals_with_due_training_copies(self, limit: int = 20) -> list[str]:
+        """People with copies a withdrawal or the account purge made due."""
+        try:
+            rows = (self.client.table("training_corpus_items")
+                    .select("acquisition_principal_id")
+                    .in_("state", ["purge_pending", "purged"])
+                    .limit(max(1, int(limit)) * 20)
+                    .execute().data or [])
+        except Exception as e:
+            logger.warning("due training copies scan failed: %s", e)
+            return []
+        out: list[str] = []
+        for row in rows:
+            principal = str(row.get("acquisition_principal_id") or "")
+            if principal and principal not in out:
+                out.append(principal)
+        return out[:max(1, int(limit))]
+
+    def list_training_moments(self, limit: int = 100) -> list[dict]:
+        """Active training copies of a moment's words and of its coach label,
+        newest first, for the late coach-label copy."""
+        try:
+            return (self.client.table("training_corpus_items")
+                    .select("acquisition_principal_id,training_grant_event_id,"
+                            "source_project_id,source_take_id,source_ref,"
+                            "item_kind")
+                    .eq("state", "active")
+                    .in_("item_kind", ["transcript_span", "coach_label"])
+                    .order("created_at", desc=True)
+                    .limit(max(1, int(limit)))
+                    .execute().data or [])
+        except Exception as e:
+            logger.warning("training moments read failed: %s", e)
+            return []
+
     def erase_training_corpus_item(self, item_id: str) -> bool:
         """Erase one DUE copy's row. The state filter is the guard: an active
         copy is never erased here, only one a withdrawal or purge moved."""

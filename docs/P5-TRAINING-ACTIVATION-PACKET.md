@@ -68,6 +68,14 @@ their own switches (`MLC2_TRAINING_ENABLED`, `MLC2_DATASET_RELEASES_ENABLED`,
 
 Each item is a reviewed code change; none is a dashboard toggle.
 
+**Built dark (2026-09-26, founder N11 answer 8):** items 1 and 2 (0377); items
+6, 7, 8 and 9 (the switch route behind `Config.MLC2_TRAINING_SWITCH_ENABLED`,
+the due-copy sweep, the late coach-label sweep, and `ml_consent_events`
+retained under `consent_evidence`), plus the frontend card, which appears only
+when the backend offers the switch. Still to do, in order: 3, 4 and 5 (they
+need counsel's reviewed policy text and the signed retention schedule v1.1),
+10 (with P1), then 11 together with turning the switch constant on.
+
 1. **Make the `_v1` consent readers bundled-only** before a training policy
    exists. Today they assume one active policy of one kind:
    `get_mlc2_principal_consent_status_v1` raises when more than one policy is
