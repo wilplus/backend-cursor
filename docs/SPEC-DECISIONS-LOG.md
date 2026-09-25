@@ -593,4 +593,13 @@ bundled consent.
 - **Q3:** after withdrawal there is no retraining; future use stops.
 - **Q5:** a project-deletion purge waits for operator confirmation. There is no
   automatic execution.
-- **Q4** (M6 vs C2) stays open.
+**N7 · Q4 = A — the MLC-2 grant is the only training yes (founder
+2026-09-25).**
+- Accepting the policy writes the Phase-1 receipt, which never records a
+  training tick; `pooled_learning_eligible` stays false.
+- A separate training toggle writes the MLC-2 training grant, which requires
+  a receipt for the policy version that introduced training (enforces C1).
+- **Amends M6.** The optional-consent writer keeps its job for the policy's
+  other optional purposes (`personalized_exercise_recommendation`,
+  `individual_learning_profile`) and no longer covers pooled model
+  improvement.

@@ -142,7 +142,32 @@ superseding it.
   purge (§6) and any future training read path call it. The Phase-1 receipt's
   `pooled_learning_eligible`, and any value written by
   `accept_phase1_processing_authorization_v2` (M6), are **not** a training yes
-  under this design. Reconciling M6 with C2 is open item Q4 (§9).
+  under this design (Q4 = A, §3.6).
+
+### 3.6 The Phase-1 receipt and the training grant (Q4 = A)
+
+Two separate acts create two separate records:
+
+1. **Accepting the policy version** writes the Phase-1 receipt
+   (`accept_phase1_processing_authorization_v2`). The receipt proves which
+   policy version the user accepted, with its required purposes and the
+   policy's *other* optional purposes. It **never** records a training tick,
+   before or after P5. `pooled_learning_eligible` stays false, and the
+   receipt writer refuses `pooled_model_improvement` as a chosen purpose.
+2. **Turning the training toggle on** writes the MLC-2 training grant
+   (§3.3). It is the only training yes.
+
+`record_mlc2_training_consent_grant_v2` refuses unless the principal holds a
+Phase-1 receipt for the policy version that introduced training. That is
+how C1 (every user re-accepts) is enforced.
+
+At P5 the new policy text describes training, so accepting it covers the
+notice. The yes itself is still only the separate toggle.
+
+Decisions-log M6 is amended, not dropped. The optional-consent writer keeps
+its job for the policy's other optional purposes
+(`personalized_exercise_recommendation`, `individual_learning_profile`); it
+no longer covers pooled model improvement.
 
 Per C2 the yes is **recorded per user**, **withdrawable on its own** without
 leaving the product, and **read by the purge**.
@@ -303,16 +328,13 @@ Settled by the founder, 2026-09-25:
 - **Q2 — retention:** until the training yes is withdrawn or the account is
   deleted. No fixed maximum.
 - **Q3 — model lineage:** no retraining after withdrawal; stop future use.
+- **Q4 — which record holds the training yes:** A. The MLC-2 training grant
+  is the only training yes; the Phase-1 receipt records the accepted policy
+  version and never a training tick (§3.6).
 - **Q5 — execution:** a `project_deletion` purge waits for operator
   confirmation (§6.4).
 
-Still open:
-
-- **Q4** Reconcile decisions log M6 (`accept_phase1_processing_authorization_v2`
-  as the optional writer for pooled model improvement) with C2 (MLC-2 tables
-  hold the training yes). Proposal: the Phase-1 receipt records acceptance of
-  the policy version; the MLC-2 v2 grant is the only training yes. Blocks P2,
-  not P1.
+No design questions remain open. Counsel review is still required before P5.
 
 ## 10 · Invariants the implementation must test
 
@@ -330,3 +352,8 @@ Still open:
    recorded an active training yes and an active `training_corpus` rule;
    account erasure always deletes them.
 7. The copy job copies nothing when the reader returns no active yes.
+8. `accept_phase1_processing_authorization_v2` refuses
+   `pooled_model_improvement` as a chosen purpose, and every receipt keeps
+   `pooled_learning_eligible = false`.
+9. `record_mlc2_training_consent_grant_v2` refuses a principal with no
+   receipt for the policy version that introduced training.
