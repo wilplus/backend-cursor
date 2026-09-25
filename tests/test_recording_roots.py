@@ -64,7 +64,7 @@ def test_stale_or_invalid_live_root_fails_closed(mutation):
 def test_helper_words_show_without_a_matching_position(start, end):
     """Contract 14 (founder 2026-09-25): the helper words are their own text.
     A span that no longer proves the words — or no span at all, which the
-    0366 CHECK now allows — still shows the words while recording. Only
+    CHECK now allows (helper_words_are_their_own_text.sql) — still shows the words while recording. Only
     Paragraph identity and Slide lineage can make the read stale."""
     rows = _live_rows()
     rows[0]["root_start"], rows[0]["root_end"] = start, end

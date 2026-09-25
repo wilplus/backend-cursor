@@ -401,4 +401,5 @@
 0363	practice_made_without_the_tick.sql
 0364	a_project_deletion_can_be_requested.sql
 0365	two_d11_writers_take_their_locks_again.sql
-0366	helper_words_are_their_own_text.sql
+0366	the_optional_yes_takes_the_d11_locks.sql
+0367	helper_words_are_their_own_text.sql

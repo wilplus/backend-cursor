@@ -351,6 +351,11 @@ hard migrations/a_project_deletion_can_be_requested.sql
 hard migrations/a_project_deletion_can_be_requested.sql
 hard migrations/two_d11_writers_take_their_locks_again.sql
 hard migrations/two_d11_writers_take_their_locks_again.sql
+# 0366 closes accept_phase1_processing_authorization_v2 (0357, applied above,
+# the served acceptance writer), which 0327's registry never named. Twice: the
+# reapply is the idempotency check.
+hard migrations/the_optional_yes_takes_the_d11_locks.sql
+hard migrations/the_optional_yes_takes_the_d11_locks.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
