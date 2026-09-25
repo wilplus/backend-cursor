@@ -21,21 +21,31 @@ The marker tests passed on function states production never had.  This walk
 found 0335; the rehearsal cluster had only shown 0354.
 
 This is a STATIC guard, like tests/test_locking_functions_are_volatile.py.
-It walks migrations/manifest.txt in the order the runner applies it and
-tracks, for every function in 0327's registry, whether the marker is still in
-the installed body:
+It walks migrations/manifest.txt in the order the runner applies it, starting
+AT 0327, and tracks for every function in 0327's registry whether the marker
+is in the installed body:
 
-  * 0327 marks every registered writer;
-  * a later ``CREATE [OR REPLACE] FUNCTION`` of that exact signature keeps
-    the mark only if its body carries the marker text;
-  * a later ``DROP FUNCTION`` clears it;
-  * a later ``$registry$`` injection entry for that signature restores it,
-    but only if the entry is byte-identical to 0327's (same marker, same lock
-    SQL, same order).
+  * a ``$registry$`` injection entry marks it, but a later file's entry
+    counts only if it is byte-identical to 0327's (same marker, same lock
+    SQL, same order);
+  * a ``CREATE [OR REPLACE] FUNCTION`` of that exact signature keeps the
+    mark only if its body carries the marker text;
+  * a ``DROP FUNCTION`` clears it.
 
-After the last manifest entry every registered writer must be marked.  The
-failure names the file that removed the marker, so the fix is either to carry
-the marker in the new body or to add a re-injection like 0362's.
+Starting at 0327 rather than after it matters.  0327 injects the trigger
+preamble for ``advance_ideal_text_document_generation_v1()`` at its line
+~1019, then re-creates that function from source at ~2061 (D19) without it.
+So production has never run that trigger with its D11 locks.  That one is
+listed in UNRESOLVED below and not repaired: restoring it would add lock
+acquisition to every Take-ready transition and Ideal Text edit, a hot path
+production has never run with these locks.  That is a founder decision, not
+a repair.
+
+After the last manifest entry, the writers left without their marker must be
+exactly UNRESOLVED.  The failure names the file that removed each marker.
+The fix is to carry the marker in the new body or add a re-injection like
+0362's.  A writer that gets repaired must leave UNRESOLVED; the equality
+check forces that.
 """
 from __future__ import annotations
 
@@ -50,6 +60,7 @@ MANIFEST = MIGRATIONS / "manifest.txt"
 D11_SOURCE = "add_confident_moment_coaching_bundle_v1.sql"
 REASSERT = "two_d11_writers_take_their_locks_again.sql"
 OBJECT_PURGE = "public.mark_phase1_storage_object_purged_v1(uuid,text,uuid,text,text,text,text)"
+DOCUMENT_GENERATION = "public.advance_ideal_text_document_generation_v1()"
 AUTHORIZATION_RECEIPT = (
     "public.accept_phase1_processing_authorization_v1"
     "(uuid,text,text,text,text,text,text,boolean,text,text,text,timestamptz,text)"
@@ -62,6 +73,11 @@ LEGACY_ROOT_WRITERS = (
     "public.activate_synthetic_root_phrase_v1(uuid,uuid,boolean,boolean,text)",
     "public.remove_synthetic_root_phrase_v1(uuid,integer,integer,uuid,uuid,text)",
 )
+
+#: Writers knowingly left without their D11 marker -> the file that removed
+#: it.  This may only shrink.  Each entry needs a founder decision (see the
+#: module docstring).
+UNRESOLVED = {DOCUMENT_GENERATION: D11_SOURCE}
 
 _REGISTRY = re.compile(r"\$registry\$\s*(\[.*?\])\s*\$registry\$", re.DOTALL)
 _CREATE = re.compile(
@@ -200,15 +216,18 @@ def function_events(sql: str) -> list[tuple[int, str, str, str]]:
     return events
 
 
-def walk(chain: list[tuple[str, str]]) -> dict[str, str]:
+def walk(
+    chain: list[tuple[str, str]], initially_lost: dict[str, str] | None = None
+) -> dict[str, str]:
     """signature -> the file that left it without its marker, at chain end.
 
-    ``chain`` is (file name, SQL) for every file AFTER 0327, in manifest order;
-    0327 itself has just marked every registered writer.  Raises
-    AssertionError for a re-injection whose spec is not 0327's.
+    ``chain`` is (file name, SQL) in manifest order.  ``initially_lost``
+    names the writers that start without a marker; every other registered
+    writer starts marked.  Raises AssertionError for a re-injection whose
+    spec is not 0327's.
     """
     registry = d11_registry()
-    lost: dict[str, str] = {}
+    lost: dict[str, str] = dict(initially_lost or {})
     for filename, sql in chain:
         events = function_events(sql)
         for offset, spec in registry_entries(sql):
@@ -234,9 +253,22 @@ def walk(chain: list[tuple[str, str]]) -> dict[str, str]:
 
 
 def unmarked_writers(files: list[str]) -> dict[str, str]:
-    """``walk`` over the real migration files that follow 0327."""
-    later = files[files.index(D11_SOURCE) + 1:]
-    return walk([(f, (MIGRATIONS / f).read_text(encoding="utf-8")) for f in later])
+    """``walk`` over the real migration files, from 0327 on.
+
+    Before 0327 runs, no ``$registry$`` writer is marked yet.  The two legacy
+    root writers start marked: 0327 edits them without a ``$registry$`` entry,
+    and its own verifier refuses to finish unless both carry the marker.
+    """
+    chain = files[files.index(D11_SOURCE):]
+    not_yet_injected = {
+        sig: D11_SOURCE
+        for sig, spec in d11_registry().items()
+        if "sql" in spec
+    }
+    return walk(
+        [(f, (MIGRATIONS / f).read_text(encoding="utf-8")) for f in chain],
+        not_yet_injected,
+    )
 
 
 class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
@@ -253,10 +285,17 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
         lost = unmarked_writers(manifest_files())
         self.assertEqual(
             lost,
-            {},
-            "These D11 writers are replaced after 0327 without their marker. "
-            "Carry the preamble in the new body, or add a re-injection like "
-            f"{REASSERT}: {lost}",
+            UNRESOLVED,
+            "The D11 writers left without their marker are not exactly the "
+            "known UNRESOLVED set. A new entry: carry the preamble in the new "
+            f"body, or add a re-injection like {REASSERT}. A missing entry: "
+            f"it was repaired, so remove it from UNRESOLVED. Got: {lost}",
+        )
+
+    def test_0327_overwrites_its_own_document_generation_injection(self):
+        # Walking 0327 alone: the trigger closure marks it, D19 unmarks it.
+        self.assertEqual(
+            unmarked_writers([D11_SOURCE]), {DOCUMENT_GENERATION: D11_SOURCE}
         )
 
     def test_without_0362_the_walk_names_0335_and_0354(self):
@@ -265,6 +304,7 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
         self.assertEqual(
             unmarked_writers(files),
             {
+                **UNRESOLVED,
                 AUTHORIZATION_RECEIPT: "enable_practice_phase1_purpose.sql",
                 OBJECT_PURGE: "deletion_reaches_practice_objects.sql",
             },

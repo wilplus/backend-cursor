@@ -12,7 +12,9 @@ For each writer 0327 injects into, the preamble must sit directly after the
 body's ``BEGIN`` line and be byte-identical to 0327's entry.  That covers
 placement and lock order in one comparison.  The two legacy root writers are
 rewritten by 0327 differently, so for them the marker alone is checked, as
-0327's own verifier does.
+0327's own verifier does.  A writer in UNRESOLVED must be ABSENT here, which
+pins production's state.  When a founder-approved fix lands, this fails until
+the entry is removed from UNRESOLVED.
 
 Rehearsal tier only (the released confident-moment lane).
 """
@@ -26,6 +28,7 @@ import pytest
 from tests.test_d11_writer_markers_survive_the_manifest import (
     AUTHORIZATION_RECEIPT,
     OBJECT_PURGE,
+    UNRESOLVED,
     d11_registry,
 )
 
@@ -56,6 +59,9 @@ def _definition(db, signature: str) -> str:
 def test_the_installed_writer_carries_its_d11_marker(db, signature):
     spec = d11_registry()[signature]
     body = _definition(db, signature)
+    if signature in UNRESOLVED:
+        assert spec["marker"] not in body, f"{signature} is repaired: update UNRESOLVED"
+        return
     assert spec["marker"] in body, f"{signature} lost '{spec['marker']}'"
     if "sql" in spec:
         preamble = "\nBEGIN\n -- " + spec["marker"] + "\n" + spec["sql"]
