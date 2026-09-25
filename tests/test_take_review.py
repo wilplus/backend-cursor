@@ -59,14 +59,23 @@ class _ReviewDb:
 
     def finalize_ideal_text_take(
         self, arc_id, owner, session_id, index, moments,
+        auto_text=None, document=None,
     ):
+        # Mirrors finalize_ideal_text_take_v2: with rebuilt words the new
+        # Take wins and the owner edit stays behind; without, v1 exactly.
         self.ideal["version"] = index
-        if self.edit and self.edit["version"] == 1:
-            self.edit["version"] = index
+        if auto_text:
+            self.ideal["auto_text"] = auto_text
+            self.ideal["document"] = document
+            text = auto_text
+        else:
+            if self.edit and self.edit["version"] == 1:
+                self.edit["version"] = index
+            text = self.edit["text"] if self.edit else self.ideal["auto_text"]
         self.snapshots[index] = {
             "arc_id": arc_id,
             "version": index,
-            "text": self.edit["text"] if self.edit else self.ideal["auto_text"],
+            "text": text,
             "moments": moments,
         }
         return {
@@ -74,8 +83,29 @@ class _ReviewDb:
             "take_session_id": session_id,
             "take_index": index,
             "version": index,
+            "rebuilt": bool(auto_text),
             "text_confirmed": True,
         }
+
+    # Paragraph identity and Slide helper words (take_rebuild).
+    parts: list = []
+    slide_rows: dict = {}
+
+    def get_ideal_text_parts(self, arc_id, user_id, with_lock=False):
+        return [dict(p) for p in self.parts]
+
+    def replace_ideal_text_parts(self, arc_id, user_id, parts,
+                                 revision_action=None):
+        self.parts = [dict(p) for p in parts]
+        return True
+
+    def get_slide_helper_words(self, arc_id, user_id):
+        return [dict(r, slide_index=k) for k, rows in self.slide_rows.items()
+                for r in rows]
+
+    def replace_slide_helper_words(self, arc_id, user_id, slide, rows):
+        self.slide_rows = {**self.slide_rows, slide: list(rows)}
+        return True
 
     def get_ideal_text_version(self, arc_id, version):
         return self.snapshots.get(version)
@@ -449,3 +479,75 @@ class CurrentTakeConfidentVoiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _two_slide_document():
+    text = "Slide one words.\n\nSlide two words."
+    return text, {
+        "pieces": [],
+        "paragraphs": [
+            {"slide_index": 0, "start": 0, "end": 16},
+            {"slide_index": 1, "start": 18, "end": 34},
+        ],
+    }
+
+
+class EveryTakeRewritesTheSlidesItSpoke(unittest.TestCase):
+    """Contract 8-9 (founder 2026-09-25): Take 2 rebuilds the Slides it spoke
+    from what was said, keeps the others, and supersedes the owner edit."""
+
+    def _run(self, database, new_doc):
+        from unittest import mock
+
+        with mock.patch(
+                "services.transcript_document.build_transcript_document",
+                return_value=new_doc), \
+                mock.patch(
+                    "services.ideal_text_core_snapshot.publish_for_arc"):
+            return finalize_later_take_review(
+                database, arc_id="arc-1", owner_user_id="user-1",
+                take_session_id="take-2", take_index=2)
+
+    def test_the_spoken_slide_is_rebuilt_and_the_other_is_kept(self):
+        database = _ReviewDb()
+        old_text, old_doc = _two_slide_document()
+        database.ideal.update(auto_text=old_text, text=old_text,
+                              document=old_doc)
+        database.parts = [
+            {"id": "p-one", "ord": 0, "text": "Slide one words.",
+             "locked_at": "2026-09-25T10:00:00Z",
+             "root_phrase": "one words", "root_start": 6, "root_end": 15,
+             "root_selected_at": "2026-09-25T10:00:00Z"},
+            {"id": "p-two", "ord": 1, "text": "Slide two words."},
+        ]
+        new_text = "Take two says slide two differently."
+        self._run(database, {
+            "text": new_text, "pieces": [],
+            "paragraphs": [{"slide_index": 1, "start": 0,
+                            "end": len(new_text)}],
+            "take_session_id": "take-2", "take_index": 2,
+        })
+        merged = "Slide one words.\n\n" + new_text
+        self.assertEqual(database.ideal["auto_text"], merged)
+        self.assertEqual(database.snapshots[2]["text"], merged)
+        # Q5 A: the owner edit is not carried; it stays at its version.
+        self.assertEqual(database.edit["version"], 1)
+        # Identity: the untouched Paragraph keeps its id; slide two reuses
+        # its old id for its new words.
+        self.assertEqual([(p["id"], p["text"]) for p in database.parts],
+                         [("p-one", "Slide one words."), ("p-two", new_text)])
+        # Q12 A: the locked Paragraph-level helper words moved to the Slide.
+        self.assertEqual(
+            [r["phrase"] for r in database.slide_rows.get(0, [])],
+            ["one words"])
+
+    def test_an_unprovable_document_finalizes_exactly_as_before(self):
+        database = _ReviewDb()  # no `document`: nothing to merge by Slide
+        result = self._run(database, {
+            "text": "Anything.", "pieces": [],
+            "paragraphs": [{"slide_index": 0, "start": 0, "end": 9}],
+        })
+        self.assertEqual(result["version"], 2)
+        self.assertEqual(database.ideal["auto_text"], "Canonical words")
+        self.assertEqual(database.edit, {"text": "My exact words",
+                                         "version": 2})

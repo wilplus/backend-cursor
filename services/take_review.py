@@ -30,6 +30,35 @@ def _take_number(value: Any) -> int | None:
     return value
 
 
+def _settled(database: Any, plan: Any, receipt: dict, after: Any, *,
+             arc_id: str, owner_user_id: str, index: int, old_version: int,
+             owner_edit_before: Any) -> str:
+    """What the atomic write promised, proven by a fresh read. "" when true.
+
+    With a rebuild (founder 2026-09-25) the current row must carry exactly the
+    rebuilt words; read from the row, not the snapshot, because a retried Take
+    keeps its first snapshot (append-only) and must not fail on it. The owner
+    edit is then superseded by design (Q5 A) and stays readable as
+    `prior_edit`.
+
+    Without one, a version advance alone must never discard the user's words:
+    a current owner edit stays byte-for-byte current."""
+    if receipt.get("rebuilt") is True:
+        if not plan.confirm(database, arc_id, owner_user_id, after):
+            return "rebuilt text was not observable"
+        return ""
+    if (index > old_version and isinstance(owner_edit_before, dict)
+            and owner_edit_before.get("version") == old_version
+            and str(owner_edit_before.get("text") or "").strip()):
+        owner_edit_after = database.get_user_ideal_edit(
+            arc_id, owner_user_id) or {}
+        if (owner_edit_after.get("version") != index
+                or owner_edit_after.get("text")
+                != owner_edit_before.get("text")):
+            return "owner edit was not preserved"
+    return ""
+
+
 def finalize_later_take_review(
     database: Any,
     *,
@@ -104,6 +133,15 @@ def finalize_later_take_review(
     except Exception:
         moments = []
 
+    # EVERY TAKE REWRITES THE SLIDES IT SPOKE (contract 8-9, founder
+    # 2026-09-25). Planned before the atomic write and handed to it, so the
+    # words, their Slide map and the version snapshot land together. None
+    # (nothing provable) finalizes exactly as before.
+    from services.take_rebuild import prepare
+
+    plan = prepare(database, str(arc_id), str(owner_user_id),
+                   str(take_session_id), before)
+
     try:
         receipt = database.finalize_ideal_text_take(
             str(arc_id),
@@ -111,6 +149,8 @@ def finalize_later_take_review(
             str(take_session_id),
             index,
             moments,
+            auto_text=plan.auto_text,
+            document=plan.document,
         )
     except Exception as exc:
         raise TakeReviewFinalizationError(
@@ -136,18 +176,14 @@ def finalize_later_take_review(
         raise TakeReviewFinalizationError(
             take_session_id, "historical review snapshot was not observable")
 
-    # When this operation actually advances the current version, a current
-    # owner edit must remain byte-for-byte current.  That is the mechanical L1
-    # proof that "new review" did not mean "discard the user's words".
-    if (index > old_version and isinstance(owner_edit_before, dict)
-            and owner_edit_before.get("version") == old_version
-            and str(owner_edit_before.get("text") or "").strip()):
-        owner_edit_after = database.get_user_ideal_edit(
-            str(arc_id), str(owner_user_id)) or {}
-        if (owner_edit_after.get("version") != index
-                or owner_edit_after.get("text") != owner_edit_before.get("text")):
-            raise TakeReviewFinalizationError(
-                take_session_id, "owner edit was not preserved")
+    # The words are this Take's now, or — without a rebuild — the owner's
+    # words must have survived. `_settled` proves whichever applies.
+    problem = _settled(database, plan, receipt, after, arc_id=str(arc_id),
+                       owner_user_id=str(owner_user_id), index=index,
+                       old_version=old_version,
+                       owner_edit_before=owner_edit_before)
+    if problem:
+        raise TakeReviewFinalizationError(take_session_id, problem)
 
     # Publish the exact later-Take review state before returning. The
     # canonical words remain untouched; only their immutable cold-open read

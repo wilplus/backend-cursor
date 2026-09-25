@@ -7471,8 +7471,14 @@ class DatabaseService:
         take_session_id: str,
         take_index: int,
         moments: Any,
+        auto_text: Optional[str] = None,
+        document: Optional[dict] = None,
     ) -> Optional[dict]:
         """Atomically advance a later Take's review version.
+
+        With ``auto_text`` (v2, founder 2026-09-25) the same transaction also
+        writes the rebuilt words and their Slide map, superseding an owner
+        edit and coach-verified text. Without it, v2 behaves exactly as v1.
 
         The SQL boundary preserves the canonical/owner-edited body, carries a
         current owner edit to the new review identity, and appends the matching
@@ -7484,12 +7490,14 @@ class DatabaseService:
                 or isinstance(take_index, bool)
                 or not isinstance(take_index, int) or take_index < 2):
             return None
-        result = self.client.rpc("finalize_ideal_text_take_v1", {
+        result = self.client.rpc("finalize_ideal_text_take_v2", {
             "p_arc_id": str(arc_id),
             "p_owner_user_id": str(owner_user_id),
             "p_take_session_id": str(take_session_id),
             "p_take_index": take_index,
             "p_moments": moments if isinstance(moments, list) else [],
+            "p_auto_text": auto_text if isinstance(auto_text, str) else None,
+            "p_document": document if isinstance(document, dict) else None,
         }).execute()
         data = result.data
         if isinstance(data, list):
