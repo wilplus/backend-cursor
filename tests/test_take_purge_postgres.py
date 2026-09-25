@@ -31,12 +31,14 @@ import pytest
 from services import data_purge
 from services.data_purge import DataPurgeOrchestrator
 from services.data_purge_registry import DEPENDENCIES
-from tests.test_account_deletion_starts_postgres import (  # noqa: F401 - fixture
-    DSN,
-    _Database,
-    _one,
-    db,
-)
+from tests import test_account_deletion_starts_postgres as base
+
+# The account-deletion suite's SQL client and fixture, bound as module
+# attributes, which is how pytest finds fixtures.
+DSN = base.DSN
+_Database = base._Database
+_one = base._one
+db = base.db
 
 pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
