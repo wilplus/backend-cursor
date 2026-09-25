@@ -928,11 +928,30 @@ def _coach_get_session_media_fields(
                       if _context_unlocked else None),
         # Slide-deck context (UX Wave 4 BE-S6a) — coach sees the deck while
         # reviewing; per-snippet slide mapping is Phase 2.
+        #
+        # `slides` — the WHOLE deck, for the slide-correction control. Stays
+        # behind the context gate: correcting a mapping is authoring, not
+        # rating, and a blind rater has no business paging the deck.
         "slides": ((ctx or {}).get("slides") or [])
         if _context_unlocked else [],
-        "presentation_ref": (refreshed_media_url(
-            (ctx or {}).get("presentation_ref") or None)
-            if _context_unlocked else None),
+        # `presentation_ref` — THE DECK FILE, AND IT IS NOT GATED (founder
+        # 2026-09-25). The 2026-09-24 override already put `slide` on the
+        # blind allowlist — "I want as a coach to see the slide at the top; to
+        # know on which slide they are talking about" — but the file needed to
+        # DRAW that slide stayed behind this gate, so the ruling only half
+        # landed: the blind screen received a title and a body and redrew them
+        # as text, and the coach was shown a reconstruction of their speaker's
+        # slide rather than the slide.
+        #
+        # It discloses nothing the override did not already allow. The page is
+        # the same page; only its fidelity changes. What pays for it is the
+        # same thing that pays for `slide`: every rating written from this
+        # surface is stamped `saw_slide`, so the corpus can tell a voice-only
+        # label from a voice-plus-slide one instead of silently merging them.
+        # Do not gate this again while `slide` is on that allowlist — the two
+        # halves are one ruling and splitting them is what caused this.
+        "presentation_ref": refreshed_media_url(
+            (ctx or {}).get("presentation_ref") or None),
         # Per-slide coverage ledger (Stickiness #2 (i)) — coach audit.
         "slide_coverage": (readout.get("slide_coverage") or [])
         if _context_unlocked else [],

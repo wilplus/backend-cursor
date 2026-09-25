@@ -168,3 +168,51 @@ def test_redaction_withholds_unanswered_transcript_from_the_payload():
     }])
     assert rows[0]["transcript"] == ""
     assert rows[0]["audio_ref"] == "https://audio"
+
+
+# ---------------------------------------------------------------------------
+# THE DECK FILE IS NOT GATED (founder 2026-09-25).
+#
+# The 2026-09-24 override put `slide` on the blind allowlist — "I want as a
+# coach to see the slide at the top; to know on which slide they are talking
+# about". The file needed to DRAW that slide stayed behind the context gate,
+# so the ruling only half landed: the blind screen got a title and a body and
+# redrew them as text, and the coach was shown a reconstruction of their
+# speaker's slide rather than the slide.
+#
+# These two halves are ONE ruling. Splitting them is what caused the bug, so
+# the test names them together.
+# ---------------------------------------------------------------------------
+def test_the_deck_reaches_a_blind_rater_so_the_slide_can_be_drawn():
+    import inspect
+
+    from routes.v2 import coach
+
+    source = inspect.getsource(coach)
+    start = source.index('"presentation_ref"')
+    served = source[start:start + 200]
+    assert "_context_unlocked" not in served, (
+        "the deck file must not be gated while `slide` is on the blind "
+        "allowlist — the coach then sees a redrawn slide, not their own"
+    )
+
+
+def test_the_whole_deck_stays_gated_because_paging_it_is_authoring():
+    import inspect
+
+    from routes.v2 import coach
+
+    source = inspect.getsource(coach)
+    start = source.index('"slides":')
+    served = source[start:start + 120]
+    assert "_context_unlocked" in served
+
+
+def test_the_stamp_that_pays_for_it_is_still_there():
+    """`saw_slide` is what lets the corpus separate a voice-only label from a
+    voice-plus-slide one. Without it the override is unpaid for."""
+    import inspect
+
+    from routes.v2 import coach
+
+    assert "saw_slide" in inspect.getsource(coach)
