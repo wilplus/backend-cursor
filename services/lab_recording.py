@@ -553,6 +553,8 @@ def build_readout_from_session(
     include_slide_scores: bool = False,
     audit_paid: bool = True,
     include_upgrade_cards: bool = True,
+    snippet_rows: Optional[list] = None,
+    session_row: Optional[dict] = None,
 ) -> dict:
     """Re-derive the §3.3 Readout from PERSISTED snippets — the canonical
     reader for parked-restore + history (contract: a report loads
@@ -591,7 +593,13 @@ def build_readout_from_session(
     """
     from services.db import db
 
-    snippets = db.get_snippets_by_session(session_id) or []
+    # `snippet_rows` / `session_row` let a caller that has ALREADY read these
+    # hand them in; None reads for itself, which is what every caller but the
+    # coach panel does and exactly what this did before. The coach session
+    # route read both a moment earlier for its language check, so without this
+    # opening one lesson paid for the same two queries twice.
+    snippets = (db.get_snippets_by_session(session_id) or []
+                if snippet_rows is None else snippet_rows)
 
     out_snips, _edits_by_chunk = prepare_readout_snippets(
         db,
@@ -648,10 +656,12 @@ def build_readout_from_session(
     result["audit_paid"] = bool(audit_paid)
 
     if include_insights:
-        try:
-            session = db.v2_get_session_by_id(session_id) or {}
-        except Exception:
-            session = {}
+        session = session_row
+        if session is None:
+            try:
+                session = db.v2_get_session_by_id(session_id) or {}
+            except Exception:
+                session = {}
         if session.get("results_published_at"):
             from services.feedback_repository import (
                 FeedbackRepository,
