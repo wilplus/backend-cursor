@@ -14569,7 +14569,10 @@ class DatabaseService:
     def keep_confident_voice_practice_attempt(
         self, practice_id: str, attempt_id: str, user_answer: str,
     ) -> Optional[dict]:
-        if user_answer not in ("yes", "no"):
+        # The same five answers as the first judgement (Q17 A, founder
+        # 2026-09-25). Only a Yes keeps the attempt for Voice Album review.
+        if user_answer not in ("yes", "in_between", "no", "not_sure",
+                               "audio_unclear"):
             return None
         try:
             # Only an attempt belonging to this practice can be selected.
@@ -14585,6 +14588,47 @@ class DatabaseService:
             logger.warning("keep_confident_voice_practice_attempt failed id=%s: %s",
                            attempt_id, e)
             return None
+
+    def adopt_practice_passage(
+        self, *, arc_id: str, owner_user_id: str, expected_text: str,
+        new_text: str, new_document: Optional[dict], slide_index: Any,
+        practice_id: str, attempt_id: str, before: str, after: str,
+    ) -> Optional[dict]:
+        """Atomic: the adopted words + Slide map + history row, or nothing
+        when the document moved since it was read (see the migration)."""
+        result = self.client.rpc("adopt_practice_passage_v1", {
+            "p_arc_id": str(arc_id),
+            "p_owner_user_id": str(owner_user_id),
+            "p_expected_text": expected_text,
+            "p_new_text": new_text,
+            "p_new_document": new_document,
+            "p_slide_index": (slide_index if isinstance(slide_index, int)
+                              and not isinstance(slide_index, bool) else None),
+            "p_practice_id": str(practice_id),
+            "p_attempt_id": str(attempt_id),
+            "p_before": before,
+            "p_after": after,
+        }).execute()
+        data = result.data
+        if isinstance(data, list):
+            return data[0] if data and isinstance(data[0], dict) else None
+        return data if isinstance(data, dict) else None
+
+    def list_practice_adoptions(self, arc_id: str, user_id: str,
+                                slide_index: int) -> list:
+        """One Slide's adopted practice passages, oldest first."""
+        try:
+            return (self.client.table("ideal_text_practice_adoptions")
+                    .select("before_text,after_text,created_at")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .eq("slide_index", slide_index)
+                    .order("id")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list_practice_adoptions failed arc=%s: %s",
+                           arc_id, e)
+            return []
 
     def set_confident_voice_practice_attempt_coach_decision(
         self, practice_id: str, attempt_id: str, decision: str,

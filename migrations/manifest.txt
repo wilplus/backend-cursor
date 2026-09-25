@@ -407,3 +407,4 @@
 0369	helper_words_belong_to_the_slide.sql
 0370	every_take_rewrites_the_slides_it_spoke.sql
 0371	helper_words_keep_a_history.sql
+0372	practice_is_judged_after_every_attempt.sql

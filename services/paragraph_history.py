@@ -1,7 +1,8 @@
 """The history behind a Paragraph's bookmark (contract 16, founder 2026-09-25).
 
 Clicking a bookmark never opens an empty screen: it shows how this Slide's
-words changed Take by Take, and which helper words were locked when. Every
+words changed Take by Take, which helper words were locked when, and which
+practised passages were adopted into it (contract 29a). Every
 Take rewrites the Slides it spoke (contract 8), so the history is read per
 Slide from the version snapshots, each of which keeps its Slide map.
 
@@ -31,7 +32,8 @@ def _slide_paragraphs(version: Mapping, slide_index: int) -> Optional[list]:
             and para.get("slide_index") == slide_index]
 
 
-def slide_history(versions: Any, helper_log: Any, slide_index: int) -> dict:
+def slide_history(versions: Any, helper_log: Any, slide_index: int,
+                  adoptions: Any = None) -> dict:
     """Versions where this Slide's words changed, and its helper-word sets.
 
     Consecutive versions with identical words collapse into the first: a Take
@@ -54,8 +56,13 @@ def slide_history(versions: Any, helper_log: Any, slide_index: int) -> dict:
         {"phrases": list(r.get("phrases") or []), "at": r.get("created_at")}
         for r in helper_log or [] if isinstance(r, Mapping)
     ]
+    practice = [
+        {"before": r.get("before_text"), "after": r.get("after_text"),
+         "at": r.get("created_at")}
+        for r in adoptions or [] if isinstance(r, Mapping)
+    ]
     return {"slide_index": slide_index, "versions": out_versions,
-            "helper_words": helper_words}
+            "helper_words": helper_words, "practice": practice}
 
 
 def history_for_part(database: Any, arc_id: str, user_id: str,
@@ -72,4 +79,5 @@ def history_for_part(database: Any, arc_id: str, user_id: str,
     return slide_history(
         database.list_ideal_text_versions(arc_id),
         database.list_slide_helper_words_log(arc_id, user_id, slide),
-        slide)
+        slide,
+        database.list_practice_adoptions(arc_id, user_id, slide))
