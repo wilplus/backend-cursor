@@ -8,7 +8,8 @@ subject-bearing relation with this manifest; an unknown relation becomes a
 
 ``delete`` dependencies contain product/content state. ``retain`` entries are
 minimal legal/security evidence and require an active retention rule at purge
-time. ``external_review`` entries belong to a separately governed lineage
+time. A ``tombstone`` entry is a row retained evidence still points at: its
+user content is wiped and the bare row is kept, under the same rule. ``external_review`` entries belong to a separately governed lineage
 (currently the dark MLC-2 foundation) and fail closed if any matching rows
 exist. ``non_subject`` relations are global configuration or actor/admin data,
 not data belonging to the acquisition principal being purged.
@@ -20,7 +21,7 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Literal
 
-Disposition = Literal["delete", "retain", "external_review"]
+Disposition = Literal["delete", "retain", "tombstone", "external_review"]
 LocatorKind = Literal[
     "principal", "user", "project", "take", "recording", "snippet",
     "permit", "job", "speaker", "practice", "practice_attempt",
@@ -251,8 +252,15 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "principal", "external_review", "database_row", 300),
     PurgeDependency("rejected_takes", "rejected_takes", "owner_principal_id",
                     "principal", "delete", "database_row", 80),
+    # Founder 2026-09-25 (decisions log N9): a TOMBSTONE, not a delete.
+    # Every accepted recording attempt is retained as evidence
+    # (recording_boundary) and points at its project ON DELETE RESTRICT, so
+    # deleting the row was refused for anyone who had recorded a take and no
+    # erasure could finish (tests/test_take_purge_postgres.py). The row's user
+    # content — name, setup, deck link — is wiped; the bare row (id, owner,
+    # dates) is kept under the deletion-evidence rule.
     PurgeDependency("projects", "projects", "owner_principal_id", "principal",
-                    "delete", "database_row", 90),
+                    "tombstone", "database_row", 90, "deletion_evidence"),
 
     # Canonical intake coordinates are minimal immutable deletion evidence;
     # the bytes themselves are a separate storage target and are erased first.
@@ -1015,6 +1023,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "ceo_projects", "ceo_reevaluation_requests", "ceo_source_snapshots",
     "ceo_tasks", "ceo_timeline_events", "dev_bugs", "dev_tasks",
     "data_purge_requests", "data_purge_targets", "data_purge_events",
+    # A project deletion REQUEST (0364) is the deletion's own paperwork, like
+    # data_purge_requests beside it: it names what to delete and is never the
+    # content being deleted.
+    "project_deletion_requests",
     "data_rights_requests", "data_retention_rules",
     "processing_policy_versions", "processing_policy_purposes",
     "processing_purpose_registry", "processing_legal_artifacts",

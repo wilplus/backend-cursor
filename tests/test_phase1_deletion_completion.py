@@ -559,9 +559,15 @@ def test_every_emitted_source_relation_is_known_to_the_purge_functions():
             if not path.exists():
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
-            marker = f"FUNCTION public.{function}("
-            if marker in text:
-                body = text[text.index(marker):]
+            # A definition, not any mention: a later file that only restates
+            # the grant (`GRANT ... ON FUNCTION public.<name>(`) or re-injects
+            # a preamble into the installed body (0365) keeps this body.
+            found = re.search(
+                rf"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.{function}\(",
+                text,
+            )
+            if found:
+                body = text[found.start():]
         assert body is not None, f"{function} is defined in no migration"
         unknown = sorted(r for r in emitted if f"'{r}'" not in body)
         assert not unknown, (
