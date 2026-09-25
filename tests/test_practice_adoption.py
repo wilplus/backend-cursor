@@ -115,10 +115,12 @@ def test_a_yes_completes_and_adopts():
     db = _Db([{"id": "a1", "attempt_index": 1, "user_answer": None,
                "transcript": "Nine days became two."}])
     with mock.patch("services.practice_adoption.adopt",
-                    return_value={"adopted": True, "reason": ""}) as adopt:
+                    return_value={"adopted": True, "reason": "",
+                                  "paragraph": "Nine days became two."}) as adopt:
         status, body = judge_attempt(db, db.practice, "a1", "in_between", "u")
     assert status == 200 and body["outcome"] == "adopt" and body["adopted"]
     assert body["attempt_transcript"]
+    assert body["paragraph"] == "Nine days became two."
     assert db.practice["status"] == "completed"
     assert db.practice["final_user_answer"] == "in_between"
     adopt.assert_called_once()

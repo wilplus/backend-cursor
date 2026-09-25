@@ -152,7 +152,7 @@ def adopt(database: Any, practice: Mapping, attempt: Mapping,
         _rename_part(database, arc_id, owner_user_id, text, index, after)
         from services.ideal_text_core_snapshot import publish_for_arc
         publish_for_arc(database, arc_id, owner_user_id)
-        return {"adopted": True, "reason": ""}
+        return {"adopted": True, "reason": "", "paragraph": after}
     except Exception as error:
         logger.warning("practice adoption failed practice=%s: %s",
                        practice.get("id"), error)
@@ -215,7 +215,7 @@ def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
             str(practice.get("id")), str(attempt_id), str(answer)):
         return 500, {"code": "V2_ERROR", "error": "Could not save."}
     step = outcome(str(answer), len(attempts))
-    result: dict = {"outcome": step, "adopted": False,
+    result: dict = {"outcome": step, "adopted": False, "paragraph": None,
                     "attempt_transcript": None, "practice_row": practice}
     if step == "again":
         return 200, result
@@ -229,7 +229,10 @@ def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
         }) or practice
     if step == "adopt":
         adoption = adopt(database, practice, target, owner_user_id)
+        # `paragraph`: the adopted paragraph's words, so the sheet shows them
+        # at once and locks against the text the server now holds.
         result.update(adopted=adoption["adopted"],
+                      paragraph=adoption.get("paragraph"),
                       attempt_transcript=practice_words(
                           target.get("transcript")))
     return 200, result
