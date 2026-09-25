@@ -327,6 +327,10 @@ hard migrations/practice_made_without_the_tick.sql
 # operator confirms). Twice: the apply/reapply idempotency check.
 hard migrations/a_project_deletion_can_be_requested.sql
 hard migrations/a_project_deletion_can_be_requested.sql
+# 0365 keeps a purged project row as a tombstone (its content wiped), because
+# retained recording-attempt evidence points at it. Twice: idempotency.
+hard migrations/a_project_row_is_kept_as_a_tombstone.sql
+hard migrations/a_project_row_is_kept_as_a_tombstone.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.
