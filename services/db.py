@@ -288,7 +288,7 @@ def _carried_root(previous: Optional[dict], text: str) -> dict:
     The span is kept while it still proves the same words, re-found when the
     words occur exactly once in the new text, and otherwise cleared — the
     `ideal_text_part_root_span` CHECK allows a phrase without a span since
-    migration 0364."""
+    migration 0365."""
     from services.ideal_text_parts import root_span_in
 
     prev = previous or {}
