@@ -765,14 +765,14 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     ranked.sort(key=lambda item: item[0])
     _, chosen, snippet, verdict, _ = ranked[0]
     moment = [item[4] for item in ranked if item[1] is chosen]
-    exercise = choose_exercise(
+    served = choose_exercise(
         moment, owner_user_id=owner_user_id, take_session_id=take_session_id,
         snippet_id=str(chosen.get("snippet_id")), lane="legacy_offer",
         database=database)
-    if exercise is None:
+    if served is None:
         return rows
     chosen["practice_exercise"] = _offer_payload(
-        exercise, verdict, snippet, chosen, existing)
+        served, verdict, snippet, chosen, existing)
     return rows
 
 
