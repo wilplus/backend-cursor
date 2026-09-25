@@ -321,6 +321,13 @@ hard migrations/a_person_can_change_their_mind.sql
 hard migrations/add_confident_moment_coaching_bundle_v1.sql
 hard migrations/add_confident_moment_coaching_bundle_v1.sql
 
+# 0362 replaces resolve_phase1_purge_subject_graph_v2 and
+# freeze_phase1_purge_inventory_v4, and its resolver reads the delivery-job
+# table the coaching bundle above creates — so it lands after the bundle, as
+# it does in the manifest. Twice: the reapply is the idempotency check.
+hard migrations/a_purge_freezes_the_graph_it_is_sent.sql
+hard migrations/a_purge_freezes_the_graph_it_is_sent.sql
+
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
 rm -f "$log"

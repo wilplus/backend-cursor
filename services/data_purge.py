@@ -196,6 +196,10 @@ class DataPurgeOrchestrator:
     def build_subject_graph(
         self, principal_id: str, _existing_relations: frozenset[str],
     ) -> SubjectGraph:
+        # The server derives every coordinate, `delivery_job_ids` included
+        # (0362), and the freeze compares this graph with its own exactly. A
+        # key computed here instead is one that can disagree with it — which
+        # is how every purge stopped at the freeze from #490 until 0362.
         result = self.client.rpc("resolve_phase1_purge_subject_graph_v2", {
             "p_acquisition_principal_id": principal_id,
         }).execute()
@@ -207,20 +211,11 @@ class DataPurgeOrchestrator:
             "recording_ids", "snippet_ids", "permit_ids", "job_ids",
             "speaker_ids", "practice_ids", "practice_attempt_ids",
             "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
+            "delivery_job_ids",
             "unresolved_legacy_take_ids",
         )
         if any(not isinstance(payload.get(key), list) for key in keys):
             raise RuntimeError("PURGE_SUBJECT_GRAPH_INVALID")
-        principal_ids = tuple(str(item) for item in payload["principal_ids"])
-        delivery_jobs = self._rows(
-            "feedback_language_delivery_materialization_jobs",
-            "id",
-            selector="acquisition_principal_id",
-            values=principal_ids,
-            existing_relations=_existing_relations,
-        )
-        payload["delivery_job_ids"] = sorted(self._ids(delivery_jobs, "id"))
-        keys = (*keys, "delivery_job_ids")
         graph = SubjectGraph(**{
             key: tuple(str(item) for item in payload[key]) for key in keys
         })

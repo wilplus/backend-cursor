@@ -569,3 +569,63 @@ def test_every_emitted_source_relation_is_known_to_the_purge_functions():
             f"{function} does not mention them — a subject whose only storage "
             "is one of these cannot be erased"
         )
+
+
+def _current_definition(function: str) -> str:
+    """The body of `function` as the LAST migration in manifest order wrote it.
+
+    Bounded to that one function, so a later function in the same file cannot
+    satisfy a check meant for this one.
+    """
+    root = Path(__file__).resolve().parent.parent
+    body = None
+    for line in (root / "migrations" / "manifest.txt").read_text(
+        encoding="utf-8"
+    ).splitlines():
+        if "\t" not in line:
+            continue
+        path = root / "migrations" / line.split("\t")[1].strip()
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        marker = f"FUNCTION public.{function}("
+        if marker in text:
+            start = text.index(marker)
+            body = text[start:text.index("\n$$;", start)]
+    assert body is not None, f"{function} is defined in no migration"
+    return body
+
+
+def test_every_subject_graph_key_and_locator_is_known_to_the_freeze():
+    """0362. THE SAME DRIFT ONE LEVEL UP, CAUGHT WITHOUT A DATABASE.
+
+    #490 added `delivery_job_ids` to `SubjectGraph.payload()` and four
+    registry dependencies with `locator_kind = 'delivery_job'`. The freeze
+    compares the graph it is sent with the server's resolver EXACTLY and maps
+    each locator kind to a graph key in a CASE; the resolver never returned
+    the key and the CASE had no branch, so every governed purge stopped at the
+    freeze. Each key Python sends must be one the server derives, and each
+    locator a dependency uses must be one the freeze can map.
+    """
+    field_names = list(SubjectGraph.__dataclass_fields__)
+    sentinel = SubjectGraph(**{name: (name,) for name in field_names})
+
+    resolver = (
+        _current_definition("resolve_phase1_purge_subject_graph_v2")
+        + _current_definition("resolve_phase1_purge_subject_graph_v1")
+    )
+    underived = sorted(
+        key for key in sentinel.payload() if f"'{key}'" not in resolver
+    )
+    assert not underived, (
+        f"the orchestrator sends {underived} and the server's resolver never "
+        "derives them — the freeze's exact graph comparison refuses every purge"
+    )
+
+    freeze = _current_definition("freeze_phase1_purge_inventory_v4")
+    for kind in sorted({dependency.locator_kind for dependency in DEPENDENCIES}):
+        (key,) = sentinel.values(kind)
+        assert f"WHEN '{kind}' THEN '{key}'" in freeze, (
+            f"dependencies locate rows by {kind!r} and the current freeze has "
+            f"no branch mapping it to {key!r} — every such target is refused"
+        )
