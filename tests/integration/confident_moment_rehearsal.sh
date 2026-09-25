@@ -383,6 +383,11 @@ hard migrations/training_copies_go_when_the_yes_goes.sql
 # 0366's D11 preamble stays. Twice: the apply/reapply idempotency check.
 hard migrations/the_old_consent_code_ignores_the_training_yes.sql
 hard migrations/the_old_consent_code_ignores_the_training_yes.sql
+# 0378 adds data_purge_requests.project_id and narrows the nineteen
+# "unfinished purge" predicates to account-wide requests, editing installed
+# bodies in place (D11 preambles kept). Twice: apply/reapply idempotency.
+hard migrations/a_project_deletion_pauses_only_its_project.sql
+hard migrations/a_project_deletion_pauses_only_its_project.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
