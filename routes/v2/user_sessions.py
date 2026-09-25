@@ -1643,6 +1643,20 @@ def _practice_user_payload(practice, attempts=None):
     }
 
 
+#: start_exercise_check refusal → (code, message). The codes and messages
+#: are the ones this route already returned; only the owner moved.
+_START_REFUSALS = {
+    "NOT_ELIGIBLE": ("NOT_ELIGIBLE", "This moment does not match the exercise."),
+    "NOT_MATCHABLE": ("NOT_ELIGIBLE", "This exercise cannot be matched safely."),
+    "EXERCISE_OFFER_STALE": ("EXERCISE_OFFER_STALE",
+                             "A better matching exercise is now available."),
+}
+
+
+def _yes_or_no(owner_route: dict) -> str:
+    return "yes" if owner_route.get("response") == "yes" else "no"
+
+
 @v2_bp.route("/user/snippets/<snippet_id>/confidence-practice",
              methods=["POST"])
 @require_auth
@@ -1673,7 +1687,9 @@ def v2_start_confident_voice_practice(snippet_id):
             if str(row.get("snippet_id")) == str(snippet_id)
             and str(row.get("owner_user_id")) == str(request.user_id)
         ), None)
-        if not owner_route or owner_route.get("response") != original_answer:
+        # Five answers, two introductions: only Yes reads as "yes" (the sheet
+        # sends "no" for In between, Not sure and Audio unclear too).
+        if not owner_route or _yes_or_no(owner_route) != original_answer:
             return jsonify({"code": "ANSWER_REQUIRED",
                             "error": "Answer the Confident Voice question first."}), 409
         exercise_id = str(body.get("exercise_id") or "hear-every-word-v1")
@@ -1690,7 +1706,6 @@ def v2_start_confident_voice_practice(snippet_id):
                                 "error": "An exercise was already offered for this take."}), 409
             return jsonify({"practice": _practice_user_payload(existing)}), 200
 
-        from services.confident_voice_practice import exercise_eligibility
         take_snippets = db.get_snippets_by_session(take_id) or []
         wpms = []
         for row in take_snippets:
@@ -1699,25 +1714,17 @@ def v2_start_confident_voice_practice(snippet_id):
             if isinstance(wpm, (int, float)) and not isinstance(wpm, bool):
                 wpms.append(float(wpm))
         import statistics
-        verdict = exercise_eligibility(
-            snip,
-            session_median_wpm=statistics.median(wpms) if wpms else None,
-        )
-        if not verdict.get("eligible"):
-            return jsonify({"code": "NOT_ELIGIBLE",
-                            "error": "This moment does not match the exercise."}), 409
-        # The SAME composition the offer was attached with. Ranking by a
-        # different rule here would reject a freshly offered exercise as stale
-        # the moment a speaker tapped it.
-        from services.confident_voice_practice import rank_exercises_for_clip
-        ranked_exercises = rank_exercises_for_clip(verdict, db)
-        if not ranked_exercises:
-            return jsonify({"code": "NOT_ELIGIBLE",
-                            "error": "This exercise cannot be matched safely."}), 409
-        pattern_distance, _, _, best_exercise = ranked_exercises[0]
-        if str(best_exercise.get("exercise_id")) != exercise_id:
-            return jsonify({"code": "EXERCISE_OFFER_STALE",
-                            "error": "A better matching exercise is now available."}), 409
+        # The offer froze its choice (80/20, founder 2026-09-26); the tapped
+        # exercise must be that one. services.confident_voice_practice owns
+        # the rule, so the offer and this route cannot drift apart.
+        from services.confident_voice_practice import start_exercise_check
+        refusal, verdict, matching = start_exercise_check(
+            snippet=snip, take_session_id=take_id, snippet_id=str(snippet_id),
+            exercise_id=exercise_id, database=db,
+            session_median_wpm=statistics.median(wpms) if wpms else None)
+        if refusal:
+            return jsonify({"code": _START_REFUSALS[refusal][0],
+                            "error": _START_REFUSALS[refusal][1]}), 409
         evidence = body.get("evidence") if isinstance(body.get("evidence"), dict) else {}
         span = evidence.get("span") if isinstance(evidence.get("span"), dict) else {}
         slide_index = evidence.get("slide_index")
@@ -1758,8 +1765,7 @@ def v2_start_confident_voice_practice(snippet_id):
             "machine_assessment": {
                 "pattern": verdict.get("pattern"),
                 "priority": verdict.get("priority"),
-                "pattern_distance": pattern_distance,
-                "matching_policy_version": "exercise-proximity-service-v1",
+                **(matching or {}),
             },
             "acoustic_evidence": {
                 "signals": verdict.get("signals"),

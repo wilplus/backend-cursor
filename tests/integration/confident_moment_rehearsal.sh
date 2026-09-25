@@ -360,6 +360,10 @@ hard migrations/the_optional_yes_takes_the_d11_locks.sql
 # retained recording-attempt evidence points at it. Twice: idempotency.
 hard migrations/a_project_row_is_kept_as_a_tombstone.sql
 hard migrations/a_project_row_is_kept_as_a_tombstone.sql
+# 0372 freezes the 80/20 exercise choice per (Take, moment). Twice: the
+# apply/reapply idempotency check.
+hard migrations/an_exercise_is_sometimes_something_new.sql
+hard migrations/an_exercise_is_sometimes_something_new.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

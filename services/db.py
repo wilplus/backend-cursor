@@ -14234,6 +14234,45 @@ class DatabaseService:
                            "practice=%s: %s", practice_id, e)
             return []
 
+    def assign_confident_voice_exercise(
+        self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
+        lane: str, matching_policy_version: str, candidates: list[dict],
+    ) -> Optional[dict]:
+        """The moment's frozen 80/20 exercise choice (migration 0372).
+
+        Idempotent: the first call draws, every later call returns that row.
+        Raises on failure so the caller can fall back to the best match.
+        """
+        result = self.client.rpc("assign_confident_voice_exercise_v1", {
+            "p_owner_user_id": str(owner_user_id),
+            "p_take_session_id": str(take_session_id),
+            "p_snippet_id": str(snippet_id),
+            "p_lane": str(lane),
+            "p_matching_policy_version": str(matching_policy_version),
+            "p_candidates": candidates,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def get_confident_voice_exercise_assignment(
+        self, take_session_id: str, snippet_id: str,
+    ) -> Optional[dict]:
+        if not take_session_id or not snippet_id:
+            return None
+        try:
+            res = (self.client.table("confident_voice_exercise_assignments")
+                   .select("id,selected_exercise_id,selected_exercise_version,"
+                           "selection_mode,exposure_policy_version,lane")
+                   .eq("take_session_id", str(take_session_id))
+                   .eq("snippet_id", str(snippet_id))
+                   .eq("exposure_policy_version", "exercise-80-20-v1")
+                   .limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning(
+                "get_confident_voice_exercise_assignment failed sid=%s: %s",
+                take_session_id, e)
+            return None
+
     def get_confident_voice_practice_by_take(
         self, take_session_id: str, owner_user_id: Optional[str] = None,
     ) -> Optional[dict]:
