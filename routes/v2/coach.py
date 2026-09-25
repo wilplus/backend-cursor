@@ -41,6 +41,12 @@ from routes.v2.common import (
 )
 from services.db import db
 from services.coach_video_storage import refreshed_media_url
+from services.coach_moment_errors import (
+    apply_moment_edit,
+    coach_moment_fields,
+    teach_on_attach,
+    with_moment_errors,
+)
 # Module level, because the packet SHAPER uses them and it is module level too
 # — the blind rules belong beside the row they gate, not inside one route.
 from services.coach_blind_gate import (
@@ -1315,11 +1321,43 @@ def _save_coach_snippet_lanes(session_id, snippet_id, body):
     return None
 
 
+def _requested_video_url(body: dict) -> tuple[Any, Any]:
+    """The coach's explanation video address, or the reason it is refused.
+
+    Returns ``(url_or_None, None)`` or ``(None, message)``. Moved out of the
+    practice route unchanged, so the route stays inside its frozen size.
+    """
+    requested = body.get("explanation_video_url")
+    if requested is None:
+        return None, None
+    if not isinstance(requested, str):
+        return None, "explanation_video_url must be a URL."
+    requested = requested.strip()
+    if requested and not re.match(r"^https?://[^\s]+$", requested,
+                                  re.IGNORECASE):
+        return None, "explanation_video_url must use http or https."
+    return requested, None
+
+
+def _coach_moment_edit(practice: dict):
+    """PATCH on the practice review: name an error, or undo a teaching.
+
+    Reached only through the practice route, AFTER its blind gate, so an
+    edit here is behind exactly the gate and the purpose guard the review
+    itself is. The work is apply_moment_edit's.
+    """
+    status, error = apply_moment_edit(
+        db, practice, request.get_json(silent=True) or {},
+        str(getattr(request, "user_id", "")))
+    if error:
+        return jsonify(error), status
+    return jsonify({"practice": _coach_practice_payload(practice)}), status
+
+
 def _coach_practice_payload(practice: dict) -> dict:
     """Coach-only attempt bundle, intentionally separate from blind packet."""
     from services.audio_ref_resolver import resolve_playable_ref
-    from services.confident_voice_practice import (
-        ASSESSMENT_COPY, coach_exercise_order)
+    from services.confident_voice_practice import ASSESSMENT_COPY, coach_exercise_order
     original_raw = db.get_active_diagnostic_exercise(
         str(practice.get("exercise_id") or "")) or \
         (practice.get("exercise_snapshot")
@@ -1381,6 +1419,7 @@ def _coach_practice_payload(practice: dict) -> dict:
             "is_custom": isinstance(custom_exercise, dict),
         },
         "available_exercises": available_exercises,
+        **coach_moment_fields(practice, db),
         "attempts": [{
             "id": str(row.get("id")),
             "attempt_index": row.get("attempt_index"),
@@ -1407,7 +1446,7 @@ def _coach_practice_payload(practice: dict) -> dict:
 
 @v2_bp.route(
     "/coach/sessions/<session_id>/snippets/<snippet_id>/confidence-practice",
-    methods=["GET", "PUT"],
+    methods=["GET", "PUT", "PATCH"],
 )
 @require_admin_or_coach
 @operational_purpose_disabled("personalized_exercise_recommendation")
@@ -1441,6 +1480,8 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
                         "error": "practice not found"}), 404
     if request.method == "GET":
         return jsonify({"practice": _coach_practice_payload(practice)}), 200
+    if request.method == "PATCH":
+        return _coach_moment_edit(practice)
 
     body = request.get_json(silent=True) or {}
     decision = body.get("professional_coach_decision")
@@ -1467,6 +1508,7 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
             CatalogueRefusal,
             file_coach_exercise,
         )
+        custom_body = with_moment_errors(custom_body, practice, db)
         try:
             exercise = file_coach_exercise(
                 db, practice_id=practice.get("id"), fields=custom_body)
@@ -1484,16 +1526,9 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
         if not exercise:
             return jsonify({"code": "EXERCISE_UNAVAILABLE",
                             "error": "Select an active reviewed exercise."}), 409
-    requested_video_url = body.get("explanation_video_url")
-    if requested_video_url is not None:
-        if not isinstance(requested_video_url, str):
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "explanation_video_url must be a URL."}), 400
-        requested_video_url = requested_video_url.strip()
-        if requested_video_url and not re.match(
-                r"^https?://[^\s]+$", requested_video_url, re.IGNORECASE):
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "explanation_video_url must use http or https."}), 400
+    requested_video_url, invalid_video = _requested_video_url(body)
+    if invalid_video:
+        return jsonify({"code": "INVALID_INPUT", "error": invalid_video}), 400
     final_video_url = (
         requested_video_url
         or exercise.get("explanation_video_url")
@@ -1546,6 +1581,8 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
             from services.arc_notifications import fire_voice_album_ready
             fire_voice_album_ready(
                 db, practice.get("owner_user_id"), practice.get("project_id"))
+    if share and custom_exercise is None:  # "Attach = both" (founder 09-25)
+        teach_on_attach(db, practice, exercise_id, str(request.user_id))
     if share:
         from services.arc_notifications import fire_confidence_practice_shared
         emitted = fire_confidence_practice_shared(
