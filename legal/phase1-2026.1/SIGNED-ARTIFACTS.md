@@ -20,10 +20,10 @@ unsigned render is never the right value.
 | 03 | `phase1-2026.1/legal/article-50-assessment-v1.0.pdf` | 2026-09-22 | `f79a5114e0047ca8b15a60b77023cde5bab79669f510120a8166f82359d70fc3` |
 | 06 | `phase1-2026.1/legal/retention-schedule-v1.0.pdf` | 2026-09-19 | `73d078ea110c4419fc1c8b5322f90881716e66141cac5fa3a4221f0aa72a0c69` |
 
-`01` and `06` were rendered at `4e92203` and their markdown is byte-identical at
+`01` and `06` were rendered from markdown that is byte-identical at
 `6f7ded6`, so those signatures stand and nothing about them needs redoing.
 
-`02` and `03` were rendered at `8ddaab2` by `scripts/render_doc_pdf.py` and
+`02` and `03` were rendered by `scripts/render_doc_pdf.py` and
 signed on 2026-09-22 at 21:02:08 UTC. Both signatures are PAdES
 (`/SubFilter /ETSI.CAdES.detached`), and in each case the unsigned render is a
 **byte-identical prefix** of the signed file — so what was signed is exactly
@@ -49,9 +49,9 @@ here against a file nobody uploaded is a claim, not a record.
 Neither is a change of substance to what the founder decided. Both are
 corrections that would have made a signed document say something untrue.
 
-- **02** — #555 corrected §9's citation from `81369c0` to `e5e02d6` (#544).
+- **02** — #555 corrected §9's citation to `e5e02d6` (#544).
   That is the commit which renamed the band labels, in the section a lawyer is
-  most likely to check, and `81369c0` resolves in neither repository. A
+  most likely to check, and the old citation resolved in neither repository. A
   determination citing a commit nobody can follow is worse than one more
   signature. The determination itself — `false` on all three booleans, not
   high-risk, not prohibited, conditional on counsel confirming before any
@@ -70,7 +70,7 @@ Kept so that a signed file found later can be identified rather than trusted.
 |---|---|---|
 | 01 | `e4d2abc23b4d8d81…` | signed over a render that read "STATUS: DRAFT — NOT APPROVED, NOT SIGNED" with a blank signature block |
 | 02 | `a0eb28c47b2ffcd6…` | same defect, plus `emotion_intention_inference` still `[[COUNSEL]]` in the metadata while §9 ticked `false` |
-| 02 | `a7e4bfce8eaeac2d9ed831003241047d22af03cc6b82a8b00064effbb1c86add` | correct in every other respect; superseded only by the `81369c0` → `e5e02d6` citation fix |
+| 02 | `a7e4bfce8eaeac2d9ed831003241047d22af03cc6b82a8b00064effbb1c86add` | correct in every other respect; superseded only by the citation fix to `e5e02d6` |
 | 03 | `b7d366629b53c3d2…` | the "NOT SIGNED" render |
 | 03 | `2853693158e9ac10cae745c34f20affb07230d45a2ed008bd1172a170dca15c6` | said the marking covered two export paths when there are four |
 | 06 | `de8b455a8b327b5b…` | the "not yet signed as a PDF" render, blank signature block |

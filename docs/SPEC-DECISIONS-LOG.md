@@ -694,3 +694,25 @@ decision page).**
    `legal/phase1-2026.1/11-retention-schedule-v1.1-training-DRAFT.md`.
 7. **Delete one project (P1):** finish now.
 8. **The switched-off P5 pieces:** build now, everything off.
+
+**N12 · Four more answers (founder 2026-09-26, answered on the "finish line"
+page).**
+1. **A take's permanent record on deletion: keep an empty receipt.** When a
+   project or an account is erased, the append-only take lineage
+   (`recording_attempts`, `takes`, `processing_transition_events`, the
+   canonical feedback rows) keeps only identifiers and timestamps. Every word,
+   every piece of feedback and all audio is erased. This is the N9 tombstone
+   rule applied to the take lineage. It is what lets a deletion finish for
+   anyone who has recorded; today every real one stops at `review_required`.
+2. **Who trains: OpenAI.** Training copies go to OpenAI in the United States
+   under the European Commission's standard contractual clauses. Filled into
+   `legal/phase1-2026.1/10-training-policy-changes-DRAFT.md` for counsel.
+   Training itself stays off until P5.
+3. **The Data & consent intro, approved wording:** "Your recordings are used to
+   run your own coaching. They are used to train models only if you turn on
+   Help improve WillpowerLab." It is shown only while the switch is offered;
+   until then the current wording stays, because it is still true.
+4. **The dead commit codes in `legal/phase1-2026.1/SIGNED-ARTIFACTS.md`:**
+   delete them ("Simply delete them"). `4e92203`, `8ddaab2` and `81369c0`
+   were removed and the sentences kept readable; the signed PDFs and their
+   hashes are unchanged.
