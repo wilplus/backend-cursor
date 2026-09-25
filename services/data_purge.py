@@ -14,8 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from services.data_purge_registry import (
-    DEPENDENCIES,
-    LINEAGE_TOMBSTONES,
+    DEPENDENCIES, LINEAGE_TOMBSTONES,
     PurgeDependency,
     classified_relations,
     dependency_by_code,
