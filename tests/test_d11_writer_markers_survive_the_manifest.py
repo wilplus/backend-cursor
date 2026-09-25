@@ -46,6 +46,14 @@ exactly UNRESOLVED.  The failure names the file that removed each marker.
 The fix is to carry the marker in the new body or add a re-injection like
 0365's.  A writer that gets repaired must leave UNRESOLVED; the equality
 check forces that.
+WRITERS 0327 NEVER NAMED.  The registry is parsed from 0327, so a writer
+created after it is not on the list by itself.  ``later_writers`` adds each
+one by hand, with the spec its closing migration injects.  The walk treats it
+as unmarked from the file that creates it, and it must be marked by the end
+of the chain like every other writer.  The first is
+``accept_phase1_processing_authorization_v2``.  0357 created it, and
+services/processing_authorization.accept() calls it.  It writes the receipt
+and purpose rows D11 reads, so 0366 gives it v1's preamble.
 """
 from __future__ import annotations
 
@@ -65,6 +73,13 @@ AUTHORIZATION_RECEIPT = (
     "public.accept_phase1_processing_authorization_v1"
     "(uuid,text,text,text,text,text,text,boolean,text,text,text,timestamptz,text)"
 )
+AUTHORIZATION_RECEIPT_V2 = (
+    "public.accept_phase1_processing_authorization_v2"
+    "(uuid,text,text,text,text,text,text,boolean,text,text,text,timestamptz,text,text[])"
+)
+#: 0357 creates v2 without a preamble; 0366 injects v1's.
+OPTIONAL_YES = "a_receipt_can_record_an_optional_yes.sql"
+V2_CLOSURE = "the_optional_yes_takes_the_d11_locks.sql"
 
 #: 0327 rewrites these two with targeted regexp edits, not through a
 #: ``$registry$`` entry.  Its own verifier checks the same marker text.
@@ -196,6 +211,22 @@ def d11_registry() -> dict[str, dict]:
     return registry
 
 
+def later_writers() -> dict[str, dict]:
+    """signature -> spec for D11 writers created after 0327.
+
+    0327's registry cannot name these, so each one is listed here.  v2 writes
+    the rows v1 writes, so it takes v1's marker and lock SQL; only the
+    signature differs.
+    """
+    v1 = d11_registry()[AUTHORIZATION_RECEIPT]
+    return {AUTHORIZATION_RECEIPT_V2: dict(v1, signature=AUTHORIZATION_RECEIPT_V2)}
+
+
+def registered_writers() -> dict[str, dict]:
+    """0327's registry plus ``later_writers``: every writer the walk tracks."""
+    return {**d11_registry(), **later_writers()}
+
+
 def function_events(sql: str) -> list[tuple[int, str, str, str]]:
     """(offset, kind, signature, body) for each CREATE / DROP FUNCTION."""
     scan = _blank_comments(sql)
@@ -204,7 +235,7 @@ def function_events(sql: str) -> list[tuple[int, str, str, str]]:
         for match in pattern.finditer(scan):
             opening = match.end() - 1
             closing = _closing_paren(scan, opening)
-            sig = signature(match.group("name"), sql[opening + 1:closing])
+            sig = signature(match.group("name"), scan[opening + 1:closing])
             body = ""
             if kind == "create":
                 tag = _BODY_TAG.search(scan, closing)
@@ -223,10 +254,12 @@ def walk(
 
     ``chain`` is (file name, SQL) in manifest order.  ``initially_lost``
     names the writers that start without a marker; every other registered
-    writer starts marked.  Raises AssertionError for a re-injection whose
-    spec is not 0327's.
+    writer starts marked.  A writer from ``later_writers`` does not exist
+    until a file creates it, so it counts as unmarked from that file until a
+    re-injection marks it.  Raises AssertionError for a re-injection whose
+    spec is not the registered one.
     """
-    registry = d11_registry()
+    registry = registered_writers()
     lost: dict[str, str] = dict(initially_lost or {})
     for filename, sql in chain:
         events = function_events(sql)
@@ -237,7 +270,8 @@ def walk(
             if spec != registry[sig]:
                 raise AssertionError(
                     f"{filename} re-injects {sig} with a spec that differs "
-                    f"from {D11_SOURCE}'s. Copy the entry byte-for-byte."
+                    f"from the registered one ({D11_SOURCE}, or "
+                    "later_writers). Copy the entry byte-for-byte."
                 )
             events.append((offset, "reinject", sig, ""))
         for _, kind, sig, body in sorted(events):
@@ -298,6 +332,48 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
             unmarked_writers([D11_SOURCE]), {DOCUMENT_GENERATION: D11_SOURCE}
         )
 
+    def test_v2_is_registered_with_v1s_marker_and_lock_sql(self):
+        v1 = d11_registry()[AUTHORIZATION_RECEIPT]
+        v2 = registered_writers()[AUTHORIZATION_RECEIPT_V2]
+        self.assertNotIn(AUTHORIZATION_RECEIPT_V2, d11_registry())
+        self.assertEqual(v2["marker"], v1["marker"])
+        self.assertEqual(v2["sql"], v1["sql"])
+        self.assertEqual(v2["signature"], AUTHORIZATION_RECEIPT_V2)
+
+    def test_0366_injects_exactly_the_registered_v2_spec(self):
+        sql = (MIGRATIONS / V2_CLOSURE).read_text(encoding="utf-8")
+        self.assertEqual(
+            [spec for _, spec in registry_entries(sql)],
+            [later_writers()[AUTHORIZATION_RECEIPT_V2]],
+        )
+
+    def test_0357_creates_v2_under_the_registered_signature(self):
+        sql = (MIGRATIONS / OPTIONAL_YES).read_text(encoding="utf-8")
+        created = [sig for _, kind, sig, _ in function_events(sql) if kind == "create"]
+        self.assertEqual(created, [AUTHORIZATION_RECEIPT_V2])
+
+    def test_without_0366_the_walk_names_0357(self):
+        # v2 is created unmarked; only 0366 closes it.
+        files = [f for f in manifest_files() if f != V2_CLOSURE]
+        self.assertEqual(
+            unmarked_writers(files),
+            {**UNRESOLVED, AUTHORIZATION_RECEIPT_V2: OPTIONAL_YES},
+        )
+
+    def test_0366_follows_0357(self):
+        files = manifest_files()
+        self.assertGreater(files.index(V2_CLOSURE), files.index(OPTIONAL_YES))
+
+    def test_0366_restates_the_service_role_grant_by_exact_signature(self):
+        sql = " ".join((MIGRATIONS / V2_CLOSURE).read_text(encoding="utf-8").split())
+        target = (
+            "ON FUNCTION public.accept_phase1_processing_authorization_v2( "
+            "UUID,TEXT,TEXT,TEXT,TEXT,TEXT,TEXT,BOOLEAN,TEXT,TEXT,TEXT,TIMESTAMPTZ,TEXT, "
+            "TEXT[] )"
+        )
+        self.assertIn(f"REVOKE ALL {target} FROM PUBLIC, anon, authenticated;", sql)
+        self.assertIn(f"GRANT EXECUTE {target} TO service_role;", sql)
+
     def test_without_0365_the_walk_names_0335_and_0354(self):
         # Shows the guard catches the production regressions it was written for.
         files = [f for f in manifest_files() if f != REASSERT]
@@ -343,6 +419,14 @@ class SignatureParsing(unittest.TestCase):
             ),
             OBJECT_PURGE,
         )
+
+    def test_a_comment_inside_the_parameter_list_is_not_a_parameter(self):
+        sql = (
+            "CREATE FUNCTION public.f(\n  p_a UUID,\n"
+            "  -- a note, with a comma\n  p_b TEXT[] DEFAULT '{}'::TEXT[]\n"
+            ") RETURNS void LANGUAGE sql AS $$ SELECT 1 $$;\n"
+        )
+        self.assertEqual(function_events(sql)[0][2], "public.f(uuid,text[])")
 
     def test_modes_defaults_and_multiword_types(self):
         self.assertEqual(
@@ -402,6 +486,23 @@ class TheWalkerOnSyntheticChains(unittest.TestCase):
         sql = "SELECT $registry$ [" + json.dumps(spec) + "] $registry$;\n"
         with self.assertRaises(AssertionError):
             self._walk(sql)
+
+    def test_a_later_writer_is_unmarked_from_its_creation(self):
+        sql = (
+            "CREATE OR REPLACE FUNCTION public.accept_phase1_processing_authorization_v2(\n"
+            "  p_acquisition_principal_id UUID, p_policy_version TEXT,\n"
+            "  p_terms TEXT, p_privacy TEXT, p_ai TEXT, p_agreement TEXT,\n"
+            "  p_action TEXT, p_age BOOLEAN, p_country TEXT, p_locale TEXT,\n"
+            "  p_client TEXT, p_at TIMESTAMPTZ, p_key TEXT,\n"
+            "  p_optional_purposes TEXT[] DEFAULT '{}'::TEXT[]\n"
+            ") RETURNS jsonb LANGUAGE plpgsql AS $$\nBEGIN\n RETURN NULL;\nEND;\n$$;\n"
+        )
+        self.assertEqual(
+            self._walk(sql), {AUTHORIZATION_RECEIPT_V2: "later.sql"}
+        )
+        spec = later_writers()[AUTHORIZATION_RECEIPT_V2]
+        closed = sql + "SELECT $registry$ [" + json.dumps(spec) + "] $registry$;\n"
+        self.assertEqual(self._walk(closed), {})
 
     def test_a_drop_is_flagged(self):
         sql = "DROP FUNCTION IF EXISTS public.finalize_phase1_purge_v3(uuid, text);\n"
