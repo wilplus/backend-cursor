@@ -328,13 +328,13 @@ hard migrations/add_confident_moment_coaching_bundle_v1.sql
 # gave it, so the marker tests passed while production had lost both. Re-applying
 # them here leaves the two functions as production has them: 0335's
 # accept_phase1_processing_authorization_v1 and 0354's
-# mark_phase1_storage_object_purged_v1, both without the preamble. 0364 then
-# re-injects it. 0364 runs twice: the reapply is the idempotency check.
+# mark_phase1_storage_object_purged_v1, both without the preamble. 0365 then
+# re-injects it. 0365 runs twice: the reapply is the idempotency check.
 #
 # Re-applying 0354 also resets freeze_phase1_purge_inventory_v4 to 0354's body.
 # So every later file that replaces a function 0335 or 0354 defines must stay
 # BELOW this block, in manifest order. Today that is 0362, which rebuilds the
-# freeze. 0363 comes after it to keep manifest order.
+# freeze. 0363 and 0364 come after it to keep manifest order.
 hard migrations/enable_practice_phase1_purpose.sql
 hard migrations/deletion_reaches_practice_objects.sql
 # 0362 adds resolve_phase1_purge_subject_graph_v3 and replaces the freeze
@@ -345,6 +345,10 @@ hard migrations/an_account_deletion_can_start.sql
 # decision 1). Twice: the apply/reapply idempotency check.
 hard migrations/practice_made_without_the_tick.sql
 hard migrations/practice_made_without_the_tick.sql
+# 0364 adds project deletion requests (the picker's Delete becomes a request an
+# operator confirms). Twice: the apply/reapply idempotency check.
+hard migrations/a_project_deletion_can_be_requested.sql
+hard migrations/a_project_deletion_can_be_requested.sql
 hard migrations/two_d11_writers_take_their_locks_again.sql
 hard migrations/two_d11_writers_take_their_locks_again.sql
 

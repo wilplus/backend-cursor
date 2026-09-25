@@ -1,12 +1,17 @@
 """Strict project ownership and idempotency boundary for CreateTake."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from services.canonical_product import OwnerPrincipal
 from services.project_ownership import parse_guest_owner_token, verify_guest_owner
+from services.project_deletion import ProjectDeletionService
 from services.project_repository import ProjectOwnershipError, ProjectRepository
+
+
+logger = logging.getLogger(__name__)
 
 
 class CreateTakeError(ValueError):
@@ -87,6 +92,25 @@ def session_owned_by_principal(
     return str(session.get("owner_principal_id")) == principal.id
 
 
+def _deletion_pending(database: Any, project_id: str) -> bool:
+    """A project with an open deletion request is locked (P1-A, N8): no new
+    take goes into it. A retried upload of a take that already exists is
+    checked by the caller first, so a client retry never becomes an error.
+
+    If the state cannot be read, recording goes ahead: the live loop never
+    stops on a lock marker. The purge stays safe regardless, because a take
+    added after its inventory froze fails the frozen-graph check and nothing
+    is deleted.
+    """
+    try:
+        return ProjectDeletionService(database).open_for_project(
+            project_id) is not None
+    except Exception as error:
+        logger.warning("deletion lock unreadable project=%s: %s",
+                       project_id, error)
+        return False
+
+
 def resolve_take_project(
     form: Any,
     *,
@@ -115,6 +139,11 @@ def resolve_take_project(
     duplicate = repository.project_take_by_idempotency_key(
         project_id, idempotency_key,
     )
+    if duplicate is None and _deletion_pending(database, project_id):
+        raise CreateTakeError(
+            "PROJECT_DELETION_PENDING",
+            "This project is waiting to be deleted", 409,
+        )
     return TakeProjectContext(
         project_id=project_id,
         principal=principal,

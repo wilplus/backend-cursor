@@ -561,7 +561,7 @@ def test_every_emitted_source_relation_is_known_to_the_purge_functions():
             text = path.read_text(encoding="utf-8", errors="replace")
             # A definition, not any mention: a later file that only restates
             # the grant (`GRANT ... ON FUNCTION public.<name>(`) or re-injects
-            # a preamble into the installed body (0364) keeps this body.
+            # a preamble into the installed body (0365) keeps this body.
             found = re.search(
                 rf"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.{function}\(",
                 text,

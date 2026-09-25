@@ -1015,6 +1015,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "ceo_projects", "ceo_reevaluation_requests", "ceo_source_snapshots",
     "ceo_tasks", "ceo_timeline_events", "dev_bugs", "dev_tasks",
     "data_purge_requests", "data_purge_targets", "data_purge_events",
+    # A project deletion REQUEST (0364) is the deletion's own paperwork, like
+    # data_purge_requests beside it: it names what to delete and is never the
+    # content being deleted.
+    "project_deletion_requests",
     "data_rights_requests", "data_retention_rules",
     "processing_policy_versions", "processing_policy_purposes",
     "processing_purpose_registry", "processing_legal_artifacts",

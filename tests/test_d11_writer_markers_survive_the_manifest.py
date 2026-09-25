@@ -13,7 +13,7 @@ text removes it without a word.  Two did:
   * 0354 (deletion_reaches_practice_objects.sql) re-issued
     ``mark_phase1_storage_object_purged_v1``.
 
-Production lost both preambles.  0364 re-injects them.
+Production lost both preambles.  0365 re-injects them.
 
 It stayed hidden because the rehearsal lane applied 0327 LAST, after 0354, so
 the injection landed on 0354's body, and the lane never applied 0335 at all.
@@ -44,7 +44,7 @@ a repair.
 After the last manifest entry, the writers left without their marker must be
 exactly UNRESOLVED.  The failure names the file that removed each marker.
 The fix is to carry the marker in the new body or add a re-injection like
-0364's.  A writer that gets repaired must leave UNRESOLVED; the equality
+0365's.  A writer that gets repaired must leave UNRESOLVED; the equality
 check forces that.
 """
 from __future__ import annotations
@@ -298,7 +298,7 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
             unmarked_writers([D11_SOURCE]), {DOCUMENT_GENERATION: D11_SOURCE}
         )
 
-    def test_without_0364_the_walk_names_0335_and_0354(self):
+    def test_without_0365_the_walk_names_0335_and_0354(self):
         # Shows the guard catches the production regressions it was written for.
         files = [f for f in manifest_files() if f != REASSERT]
         self.assertEqual(
@@ -318,7 +318,7 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
         ):
             self.assertGreater(files.index(REASSERT), files.index(replaced))
 
-    def test_0364_restates_the_service_role_grants_by_exact_signature(self):
+    def test_0365_restates_the_service_role_grants_by_exact_signature(self):
         sql = " ".join((MIGRATIONS / REASSERT).read_text(encoding="utf-8").split())
         for target in (
             "ON FUNCTION public.accept_phase1_processing_authorization_v1( "
