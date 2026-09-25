@@ -1181,6 +1181,22 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
     except Exception as e:
         logger.warning("pipeline_jobs: practice withdrawal sweep failed: %s", e)
         counts["practice_withdrawal_people"] = 0
+    try:
+        # "Your training copies will be deleted" (founder 2026-09-26, N10).
+        # Turning training off queues the erasure once; this finishes any a
+        # lost message or a refused storage delete left behind.
+        from services.training_corpus import (
+            sweep_due_training_copies, sweep_late_coach_labels,
+        )
+
+        due = sweep_due_training_copies(database=db, limit=min(max_rows, 20))
+        counts.update({f"training_erasure_{key}": value
+                       for key, value in due.items()})
+        late = sweep_late_coach_labels(database=db, limit=max_rows)
+        counts["training_late_labels"] = int(late.get("labels") or 0)
+    except Exception as e:
+        logger.warning("pipeline_jobs: training copy sweep failed: %s", e)
+        counts["training_erasure_people"] = 0
     return counts
 
 

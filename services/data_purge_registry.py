@@ -509,9 +509,14 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("ml_evidence_spans", "ml_evidence_spans",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
+    # The record of a person's yes and no to training (founder 2026-09-26:
+    # N10 counsel answer 9, N11 answer 1) is kept after an account erasure
+    # as consent evidence, under the signed `consent_evidence` rule
+    # (retention schedule v1.1). Until that rule is seeded the erasure still
+    # stops for review (RETENTION_RULE_UNRESOLVED), as it did before.
     PurgeDependency("ml_consent_events", "ml_consent_events",
-                    "acquisition_principal_id", "principal", "external_review",
-                    "dataset_lineage", 300),
+                    "acquisition_principal_id", "principal", "retain",
+                    "dataset_lineage", 300, "consent_evidence"),
     PurgeDependency("ml_consent_snapshots", "ml_consent_snapshots",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
@@ -1051,6 +1056,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "data_rights_requests", "data_retention_rules",
     "processing_policy_versions", "processing_policy_purposes",
     "processing_purpose_registry", "processing_legal_artifacts",
+    # MLC-2 consent POLICIES and their approvals (0302, 0373): the wording a
+    # yes was given against and who approved it. No speaker's data; the
+    # per-person yes and no live in ml_consent_events.
+    "ml_consent_policies", "ml_product_legal_approvals",
     "processing_authorization_receipt_purposes",
     "exercise_need_contracts", "exercise_media_objects",
     "exercise_definitions", "exercise_versions",
