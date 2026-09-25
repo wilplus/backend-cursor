@@ -368,6 +368,10 @@ hard migrations/an_exercise_is_sometimes_something_new.sql
 # apply/reapply idempotency check.
 hard migrations/a_training_yes_is_its_own_act.sql
 hard migrations/a_training_yes_is_its_own_act.sql
+# 0374 adds the separate training copies (P3, dark). Twice: the
+# apply/reapply idempotency check.
+hard migrations/training_copies_are_copies.sql
+hard migrations/training_copies_are_copies.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
