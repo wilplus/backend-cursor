@@ -10,15 +10,14 @@ It changes only what training needs. Every other line of
 `copy/privacy-3.1.txt` stays as it is. Each change below gives the section, the
 current text where one exists, and the proposed text.
 
-**Two blanks must be filled before this can be published**, and training stays
-off until they are (§N11, answers 3 and 4):
-
-- `[[TRAINING PROCESSOR]]`: who trains the models, and where.
-- `[[TRANSFER MECHANISM]]`: EU only, or outside the EU under standard
-  contractual clauses.
+**Who trains, and where (§N12, answer 2):** the founder chose OpenAI. The
+training copies therefore go to the United States, under the European
+Commission's standard contractual clauses. Changes 4 to 6 below say so.
+Counsel should confirm the transfer wording and that OpenAI's terms for model
+training match what section 4a promises (see "For counsel", point 3).
 
 Decisions this text rests on: §N10 (the founder's signed wordings, counsel's
-nine answers) and §N11 (the founder's eight answers).
+nine answers), §N11 (the founder's eight answers) and §N12 (who trains).
 
 ---
 
@@ -93,17 +92,20 @@ stated: our systems refuse to keep a training copy for anyone who has not."
 > on and off, including after you delete your account, for as long as it is
 > useful for training our models.
 >
-> *Who trains, and where:* `[[TRAINING PROCESSOR]]`, `[[TRANSFER MECHANISM]]`.
+> *Who trains, and where:* OpenAI trains the models for us. Your training
+> copies are sent to OpenAI in the United States, under the European
+> Commission's standard contractual clauses.
 
 ## Change 5 — section 5, who else receives your data
 
 **Add, under "AI providers":** "If you turn on the choice in section 4a, your
-training copies are processed by `[[TRAINING PROCESSOR]]` to train
+training copies are processed by OpenAI to train
 WillpowerLab's models, and by no one else."
 
 ## Change 6 — section 6, transfers
 
-**Add:** "Training copies (section 4a) are transferred `[[TRANSFER MECHANISM]]`."
+**Add:** "Training copies (section 4a) are transferred to OpenAI in the United
+States under the European Commission's standard contractual clauses."
 
 ## Change 7 — section 7, how long we keep it
 
@@ -132,9 +134,9 @@ deletion: they are deleted with everything else."
 
 ## For counsel
 
-The positions above are the ones counsel gave (§N10). Three of them are worth a
-second look in the final text, because the product decisions they carry were
-made against the recommended option (§N11):
+The positions above are the ones counsel gave (§N10). Three points are worth
+a second look in the final text. The first two carry decisions made against
+engineering's recommendation (§N11); the third is new (§N12):
 
 1. **The consent-record period** is "as long as it is useful for training our
    models", with no fixed end (§N11 answer 1). Is that specific enough under
@@ -142,4 +144,7 @@ made against the recommended option (§N11):
 2. **"Built from anonymised data and hold no personal information"** is stated
    on counsel's advice; no technical check verifies it for a given model (§N11
    answer 2). Is the statement acceptable as written?
-3. **The two blanks**: the processor and the transfer mechanism.
+3. **OpenAI as the trainer** (§N12 answer 2). Do OpenAI's fine-tuning terms
+   keep our training copies for our models only, and let us delete them when a
+   person turns the switch off? Is the transfer wording in changes 4 and 6
+   enough, given the transfers already described for transcription?
