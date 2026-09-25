@@ -2387,6 +2387,31 @@ def v2_coach_save_feedback(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
 
 
+def _arc_has_a_surfaced_note(spoken):
+    """Does anywhere in this arc carry a surfaced note? — the library floor.
+
+    ONE READ FOR THE WHOLE ARC. This scanned take by take and broke on the
+    first hit: cheap for a coach who authored something on take 1, a round
+    trip PER TAKE for the case that actually matters — a journey with no
+    notes yet, which is every new student's.
+
+    True on a read miss, DELIBERATELY: a miss must not fabricate a blocker
+    and lock the coach out of publishing. Publish re-checks per take anyway,
+    where a miss is a 409 with copy that says what to do — a false ENABLE
+    costs one clear error, a false DISABLE costs a coach who cannot ship
+    work they have already done.
+    """
+    try:
+        by_take = db.get_coach_snippet_drafts_by_sessions(
+            [s.get("id") for s in spoken if s.get("id")]) or {}
+    except Exception:
+        return True
+    return any(
+        d.get("surfaced") and (d.get("note") or "").strip()
+        for rows in by_take.values() for d in rows
+    )
+
+
 @v2_bp.route("/coach/arc/<arc_id>/review-state", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_arc_review_state(arc_id):
@@ -2491,19 +2516,7 @@ def v2_coach_arc_review_state(arc_id):
         # one surfaced snippet carrying a note, somewhere in the arc. It is
         # what guarantees a publish delivers something rather than an empty
         # envelope, and it is enforced again per-take at publish time.
-        _has_a_note = False
-        for s in spoken:
-            try:
-                for d in (db.get_coach_snippet_drafts(str(s.get("id"))) or []):
-                    if d.get("surfaced") and (d.get("note") or "").strip():
-                        _has_a_note = True
-                        break
-            except Exception:
-                # A read miss must not fabricate a blocker and lock the coach
-                # out of publishing; publish re-checks per take anyway.
-                _has_a_note = True
-            if _has_a_note:
-                break
+        _has_a_note = _arc_has_a_surfaced_note(spoken)
 
         # ONLY ONE BLOCKER SURVIVES: there is nothing recorded to publish.
         #
