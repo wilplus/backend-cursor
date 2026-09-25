@@ -1,4 +1,4 @@
--- 0365 — The helper words are their own text (contract 14, founder 2026-09-25).
+-- 0366 — The helper words are their own text (contract 14, founder 2026-09-25).
 --
 -- A Take now rewrites each Paragraph from what was said, and the locked helper
 -- words persist through that rewrite until the user picks new ones. The phrase
