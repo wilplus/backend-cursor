@@ -88,6 +88,29 @@ def build_unsubscribe_url(user_id: str) -> Optional[str]:
     return f"{base}/unsubscribe?token={_url_quote(token)}"
 
 
+def email_config_summary() -> dict[str, Any]:
+    """Which publish-email settings this process can see -- never their values.
+
+    Logged at boot by the web and worker processes (founder 2026-09-25: "in
+    Railway all the variables are added to all 3 services, investigate it to
+    make sure"). The email is sent by the WORKER, so its boot log is the one
+    that proves the send can happen. Two of these must match another place:
+    EMAIL_RENDER_SECRET must equal the one on Vercel, or the designed email
+    falls back to the plain inline one."""
+    cfg = Config()
+    front = cfg.PUBLIC_FRONTEND_URL or ""
+    return {
+        "send_emails": bool(cfg.SEND_EMAILS),
+        "resend_api_key": bool(cfg.RESEND_API_KEY),
+        "resend_from_email": bool(cfg.RESEND_FROM_EMAIL),
+        "public_frontend_url": front if front.startswith("https://") else
+        ("localhost" if "localhost" in front else "unset-or-http"),
+        "frontend_base_url_set": bool(cfg.FRONTEND_BASE_URL),
+        "email_render_secret": bool(cfg.EMAIL_RENDER_SECRET),
+        "unsubscribe_token_secret": bool(cfg.UNSUBSCRIBE_TOKEN_SECRET),
+    }
+
+
 def render_post_session_results_email(props: dict) -> dict:
     """POST props to the frontend renderer and return ``{html, text}``.
 
@@ -180,10 +203,13 @@ def send_publish_results_email(
     # Falls back to plain /chat when the arc is unknown: a take with no arc is
     # a real (if odd) state, and a link to nothing is worse than a link to the
     # thread that holds the card.
+    # `&feedback=1` (founder 2026-09-25, Q28 A): the Ideal Text opens with
+    # the sheet already on the first coach-reviewed moment, in text order --
+    # the same place the chat bubble opens.
     _base = cfg.PUBLIC_FRONTEND_URL.rstrip("/")
     _arc = (arc_id or "").strip()
     journey_url = (
-        f"{_base}/chat?idealArc={_url_quote(_arc, safe='')}" if _arc
+        f"{_base}/chat?idealArc={_url_quote(_arc, safe='')}&feedback=1" if _arc
         else f"{_base}/chat"
     )
 

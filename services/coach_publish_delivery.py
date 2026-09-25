@@ -20,17 +20,6 @@ def enqueue_review_delivery(revision_id: str, *, delay_seconds: int = 0) -> bool
     )
 
 
-def _freeze_shared_video(database, session_id: str, overall_message: str | None) -> None:
-    text = str(overall_message or "").strip()
-    if not text:
-        return
-    for asset in database.get_current_coach_video_assets_for_session(session_id) or []:
-        if asset.get("content_type") != "take_summary":
-            continue
-        if not asset.get("comment_text_at_publish"):
-            database.set_coach_video_comment_at_publish(asset.get("id"), text)
-
-
 def _deliver(database, row: dict) -> None:
     revision = row.get("coach_review_revisions") or {}
     payload = row.get("payload") or {}
@@ -44,25 +33,17 @@ def _deliver(database, row: dict) -> None:
         admin_user_id=str(revision.get("actor_user_id") or ""),
     )
 
-    from services.arc_notifications import (
-        fire_coach_feedback_published,
-        fire_coach_video_shared,
-        fire_material_coach_correction,
-        fire_voice_album_ready,
-        maybe_fire_best_presentation_ready,
-    )
-
-    for item in payload.get("material_corrections") or []:
-        fire_material_coach_correction(database, owner_id, revision_id, item)
-
-    if payload.get("share_video") is True:
-        _freeze_shared_video(database, session_id, revision.get("overall_message"))
-        fire_coach_video_shared(
-            database, owner_id, revision_id, project_id, session_id,
-        )
-
+    from services.arc_notifications import fire_coach_feedback_published
     from services.voice_album import reconcile_voice_album_clip
 
+    # ONE BUBBLE PER PUBLISH (founder 2026-09-25, Q34 B). Correction cards,
+    # the coach's shared-video card, "Voice Album ready" and the best-
+    # presentation milestone used to fire here too; every one of them is
+    # reached from the one sheet the bubble and the email open. The coach's
+    # own Take video is gone from the product: the exercise video is the only
+    # video (founder, same day).
+    #
+    # The album clips are still reconciled -- that is data, not a message.
     for clip_id in payload.get("voice_album_clip_ids") or []:
         reconcile_voice_album_clip(
             project_id,
@@ -70,14 +51,9 @@ def _deliver(database, row: dict) -> None:
             take_session_id=session_id,
             database=database,
         )
-    if payload.get("voice_album_clip_ids"):
-        fire_voice_album_ready(database, owner_id, project_id)
-    maybe_fire_best_presentation_ready(database, project_id)
-    # THE MOMENT THE WORK LANDS NOW HAS A VOICE (founder 2026-09-25). Every
-    # card above is conditional -- corrections, a shared video, an album clip,
-    # a milestone -- so a publish with none of them said nothing at all. This
-    # one is unconditional, because the publish itself is the news. Idempotent
-    # on the revision, which is what lets this retrying outbox re-run safely.
+    # THE MOMENT THE WORK LANDS HAS A VOICE (founder 2026-09-25): the publish
+    # itself is the news. Idempotent on the revision, which is what lets this
+    # retrying outbox re-run safely.
     fire_coach_feedback_published(database, owner_id, project_id, revision_id)
     _mail_the_speaker(database, owner_id, project_id, session_id, payload)
 
