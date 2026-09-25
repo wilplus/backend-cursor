@@ -150,6 +150,8 @@ DECLARE
     manifest public.data_purge_inventory_manifests;
     principal_values TEXT[];
     project_values TEXT[];
+    take_values TEXT[];
+    session_scope TEXT;
     scope TEXT;
     rel TEXT;
     parent TEXT;
@@ -183,12 +185,20 @@ BEGIN
     SELECT ARRAY(SELECT jsonb_array_elements_text(
                    COALESCE(manifest.subject_graph->'project_ids', '[]'::jsonb)))
       INTO project_values;
+    SELECT ARRAY(SELECT jsonb_array_elements_text(
+                   COALESCE(manifest.subject_graph->'take_ids', '[]'::jsonb)))
+      INTO take_values;
 
     -- The frozen scope, as tombstone_phase1_purge_projects_v1 draws it.
     scope := format(
         '(t.owner_principal_id::text = ANY(%L::text[]) OR '
         '(t.project_id::text = ANY(%L::text[]) AND t.owner_principal_id = %L::uuid))',
         principal_values, project_values, req.acquisition_principal_id);
+    -- An older take session names its project only in arc_id; the frozen
+    -- graph lists it among take_ids, owned by the requester.
+    session_scope := format(
+        '(%s OR (t.id::text = ANY(%L::text[]) AND t.owner_principal_id = %L::uuid))',
+        scope, take_values, req.acquisition_principal_id);
 
     PERFORM set_config('willab.purge_wipe_request_id', req.id::text, true);
 
@@ -199,12 +209,14 @@ BEGIN
             ('slides', NULL, NULL),
             ('paragraphs', NULL, NULL),
             ('evidence_spans', NULL, NULL),
-            ('acoustic_feature_snapshots', NULL, NULL),
             ('machine_predictions', NULL, NULL),
             ('generation_runs', NULL, NULL),
             ('processing_stage_runs', NULL, NULL),
             ('processing_transition_events', NULL, NULL),
             ('recording_attempts', NULL, NULL),
+            -- Voice measurements carry no project column; they follow their
+            -- evidence span.
+            ('acoustic_feature_snapshots', 'evidence_spans', 'evidence_span_id'),
             ('feedback_candidates', 'candidate_sets', 'candidate_set_id'),
             ('feedback_revisions', 'evidence_spans', 'evidence_span_id'),
             ('accepted_flagships', 'evidence_spans', 'evidence_span_id'),
@@ -285,11 +297,11 @@ BEGIN
            AND NOT (c.column_name = ANY(keep));
         IF set_list IS NOT NULL THEN
             EXECUTE format('UPDATE public.v2_sessions t SET %s WHERE %s AND (%s)',
-                           set_list, scope, dirty);
+                           set_list, session_scope, dirty);
             GET DIAGNOSTICS touched = ROW_COUNT;
             wiped := wiped + touched;
             EXECUTE format('SELECT count(*) FROM public.v2_sessions t WHERE %s AND (%s)',
-                           scope, dirty) INTO remaining;
+                           session_scope, dirty) INTO remaining;
             not_blank := not_blank + remaining;
         END IF;
     END IF;
