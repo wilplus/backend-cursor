@@ -1,6 +1,6 @@
 # SPEC — Sales Training Mode (draft, not implemented)
 
-**Status:** DRAFT for founder review. No code has been written. Section 9 is the
+**Status:** APPROVED by founder 2026-09-25 (buy-q-v1 definition and all §6 copy signed off). No code has been written. Section 9 is the
 implementation prompt to hand to an engineer or agent once the open decisions in
 section 2 are settled.
 
@@ -40,10 +40,11 @@ within each person).
 |---|---|---|
 | D1 | Which takes are shared | **DECIDED 2026-09-25: even takes (2, 4, 6, 8) are announced and shared. Odd takes (1, 3, 5, 7) are private; take 1 is private and unannounced.** Stored per cohort as `share_pattern = 'even'`. |
 | D2 | Can a user make an announced take private instead? | **Yes, always.** The take then stays private, and the choice is logged. Consent must stay voluntary. |
-| D3 | Second listener question, "Would you buy from her?" | **DECIDED 2026-09-25: same five answers as confidence.** Draft definition in §3a. It needs a SPEC §17 entry (`buy-q-v1`) and founder sign-off before it ships (CONSTRUCT fence). |
+| D3 | Second listener question, "Would you buy from her?" | **DECIDED 2026-09-25: same five answers as confidence.** Definition in §3a **approved by founder 2026-09-25**. Add it to SPEC §17 as `buy-q-v1` with the build. |
 | D4 | Spacing between takes | **At most one take per calendar day** (user's local time). |
 | D5 | Who listens | **DECIDED 2026-09-25: only the enrolled salespeople.** They rate colleagues from other locations. No outside panel. |
-| D6 | All user-facing copy in §6 | **DRAFT.** It needs founder sign-off before release (LIVE LOOP fence). |
+| D6 | All user-facing copy in §6 | **SIGNED OFF by founder 2026-09-25.** Use it verbatim. |
+| D8 | Products in the pack | **DECIDED 2026-09-25: 2–3 products**, supplied by the client (name, price, 2–3 benefits each) and placed on slide 2. |
 | D7 | Retention | **DECIDED 2026-09-25: recordings are kept for training after the pilot only if the member opts in (separate consent checkbox). Everyone else's are deleted after the pilot.** Keeping them is storage only: Phase-2 training paths stay disabled until separately authorized. |
 
 ## 3. Non-negotiable rules
@@ -73,7 +74,7 @@ within each person).
    Confidence uses the existing `conf-q-v2` wording. The buy question uses
    `buy-q-v1` (§3a) and ships only after its §17 entry and sign-off.
 
-## 3a. Draft definition — `buy-q-v1` (needs §17 entry + founder sign-off)
+## 3a. Definition — `buy-q-v1` (founder-approved 2026-09-25)
 
 - **Question:** "Would you buy from her?"
 - **Operational definition:** based only on this clip, would the listener, as
@@ -165,8 +166,7 @@ be shared before I record anything.*
 - AC-6.3 The screen shows only a player and two questions, each with the same
   five answers (Yes · In-between · No · Not sure · Audio unclear):
   "Does the speaker sound confident here?" (`conf-q-v2`) and
-  "Would you buy from her?" (`buy-q-v1`, only once signed off; until then the
-  screen shows the confidence question alone).
+  "Would you buy from her?" (`buy-q-v1`).
 - AC-6.4 The rater cannot skip ahead without answering or choosing
   "Audio unclear". An answer cannot be changed once the next clip loads.
 - AC-6.5 The only progress shown is "12 of 48 listened". No results, averages or
@@ -191,7 +191,7 @@ be shared before I record anything.*
   members.
 - AC-8.3 No export or result is reachable from any member screen.
 
-## 6. Screens (DRAFT copy — needs founder sign-off)
+## 6. Screens (copy signed off by founder 2026-09-25)
 
 **Welcome**
 > **Sales training**
@@ -280,11 +280,11 @@ Hard rules (reject your own change if any fails):
   test that fails if it is. Do not reuse `game_peer`.
 - The record → process → Ideal Text → Feedback loop is untouched. No new
   awaits or gates after recording starts.
-- All copy is taken verbatim from spec §6 and marked DRAFT behind the flag.
+- All copy is taken verbatim from spec §6 (founder signed off 2026-09-25).
 - Two questions only: conf-q-v2 (existing) and buy-q-v1 (spec §3a). Add
-  buy-q-v1 to QUESTIONS in services/state_ratings.py and SPEC.md §17 as a
-  draft, behind SALES_TRAINING_BUY_Q=on; do not turn it on without founder
-  sign-off. The two answers are never combined into one value.
+  buy-q-v1 to QUESTIONS in services/state_ratings.py and SPEC.md §17 using
+  the founder-approved definition in spec §3a. The two answers are never
+  combined into one value.
 
 Backend (Flask, Postgres; follow docs/MIGRATIONS.md — idempotent, IF NOT EXISTS,
 add to migrations/manifest.txt only when the web, worker and cron services
@@ -371,8 +371,8 @@ and src/app/api/v2/admin/sales-training/*):
     "Keep this one private". Private slots render the unchanged screen.
   - Recording screen: small "Shared take" tag for shared takes only.
   - "Take N of 8 · Your next take opens tomorrow" line; Record disabled until then.
-  - NEW src/app/sales-training/listen/page.tsx: player, conf-q-v2 and (when
-    enabled) buy-q-v1, five buttons each, "N of M listened". No other data.
+  - NEW src/app/sales-training/listen/page.tsx: player, conf-q-v2 and
+    buy-q-v1, five buttons each, "N of M listened". No other data.
   - src/components/AppMenu.tsx: "Listen" entry for enrolled members only.
   - src/app/panel/data (settings/data page): "Leave sales training" with an
     in-page confirm (no window.confirm).
@@ -392,5 +392,6 @@ Tests (must pass; backend via scripts/local_ci.sh):
     sales take vs a normal take
 
 Deliver as two PRs (backend first, frontend second), each with the FILTER stamp
-line in the description. Do not merge; the founder signs off copy and D1–D6.
+line in the description. Do not merge: gate-routed PRs, CI green, then the
+founder merges.
 ```
