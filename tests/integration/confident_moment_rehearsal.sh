@@ -315,6 +315,28 @@ hard migrations/status_knows_a_reacceptance.sql
 # apply/reapply idempotency check.
 hard migrations/a_person_can_change_their_mind.sql
 hard migrations/a_person_can_change_their_mind.sql
+
+# The pending migration is unnumbered and absent from the manifest; applying it
+# twice is the apply/reapply idempotency check.
+hard migrations/add_confident_moment_coaching_bundle_v1.sql
+hard migrations/add_confident_moment_coaching_bundle_v1.sql
+
+# PRODUCTION ORDER FOR TWO D11 WRITERS (2026-09-25). The bundle above is
+# applied last, but in the manifest 0335 and 0354 come AFTER it, and each
+# re-issues from source text a writer the bundle closed at migration time.
+# Applying the bundle last put its lock preambles onto bodies production never
+# gave it, so the marker tests passed while production had lost both. Re-applying
+# them here leaves the two functions as production has them: 0335's
+# accept_phase1_processing_authorization_v1 and 0354's
+# mark_phase1_storage_object_purged_v1, both without the preamble. 0365 then
+# re-injects it. 0365 runs twice: the reapply is the idempotency check.
+#
+# Re-applying 0354 also resets freeze_phase1_purge_inventory_v4 to 0354's body.
+# So every later file that replaces a function 0335 or 0354 defines must stay
+# BELOW this block, in manifest order. Today that is 0362, which rebuilds the
+# freeze. 0363 and 0364 come after it to keep manifest order.
+hard migrations/enable_practice_phase1_purpose.sql
+hard migrations/deletion_reaches_practice_objects.sql
 # 0362 adds resolve_phase1_purge_subject_graph_v3 and replaces the freeze
 # 0354 defines, above. Twice: the apply/reapply idempotency check.
 hard migrations/an_account_deletion_can_start.sql
@@ -327,11 +349,8 @@ hard migrations/practice_made_without_the_tick.sql
 # operator confirms). Twice: the apply/reapply idempotency check.
 hard migrations/a_project_deletion_can_be_requested.sql
 hard migrations/a_project_deletion_can_be_requested.sql
-
-# The pending migration is unnumbered and absent from the manifest; applying it
-# twice is the apply/reapply idempotency check.
-hard migrations/add_confident_moment_coaching_bundle_v1.sql
-hard migrations/add_confident_moment_coaching_bundle_v1.sql
+hard migrations/two_d11_writers_take_their_locks_again.sql
+hard migrations/two_d11_writers_take_their_locks_again.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
