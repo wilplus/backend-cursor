@@ -271,3 +271,151 @@ class NeverSurfacedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# THE STORY BEHIND ANY MOMENT (founder 2026-09-25).
+#
+# "the album shows your confident moments, not any moments." The Album is a
+# trophy case — three separate yeses to get in — so the history above it can
+# only ever be told about a moment that went well. The ones worth learning
+# from are the others.
+# ---------------------------------------------------------------------------
+from services.voice_album_history import (  # noqa: E402
+    build_snippet_history,
+    owned_snippet_history,
+)
+
+SESSION = {"id": "sess-1", "take_index": 2}
+
+
+class _SnippetDb(_Db):
+    """The Album double plus the one read an ownership check needs."""
+
+    def __init__(self, *, snippets=None, snippets_raise=False, **kwargs):
+        super().__init__(**kwargs)
+        self.snippets = snippets if snippets is not None else [{"id": SNIP}]
+        self.snippets_raise = snippets_raise
+
+    def get_snippets_by_session(self, session_id):
+        if self.snippets_raise:
+            raise RuntimeError("read failed")
+        return self.snippets
+
+
+class TheCoachLaneIsAlbumOnlyTests(unittest.TestCase):
+    """The fence, stated as a test because it is invisible in the output.
+
+    `_coach_agreed_event` emits ONLY on a yes. Inside the Album that is
+    harmless — every moment there already has a coach yes, so the row is
+    always present and discloses nothing. Told about every moment it inverts:
+    present on some, missing on others, and the silence announces the verdict
+    on the rest. BLIND COACH, breached by omission.
+    """
+
+    def test_a_coach_yes_never_appears_in_any_moments_story(self):
+        db = _SnippetDb(labels={SNIP: _coach("yes")})
+        out = build_snippet_history(
+            arc_id=ARC, snippet_id=SNIP, owner_user_id="user-1",
+            take_session_id="sess-1", take_index=2, database=db,
+        )
+        kinds = [event.get("kind") for event in out["events"]]
+        self.assertNotIn("coach_agreed", kinds)
+        self.assertNotIn(COACH_DISPLAY, repr(out))
+
+    def test_the_album_still_tells_it_a_regression_guard(self):
+        """The Album path is unchanged — this exists so a future edit cannot
+        take the lane away from the surface where it IS safe."""
+        db = _Db(labels={SNIP: _coach("yes")})
+        out = _build(db)
+        self.assertIn("coach_agreed",
+                      [event.get("kind") for event in out["events"]])
+
+
+class EveryOtherLaneCarriesOverTests(unittest.TestCase):
+    def test_the_speakers_own_answer_is_read_back_to_them(self):
+        db = _SnippetDb(reports=[{
+            "snippet_id": SNIP, "feedback_family": "confident_voice",
+            "response": "no", "created_at": "2026-08-15T09:30:00Z",
+        }])
+        out = build_snippet_history(
+            arc_id=ARC, snippet_id=SNIP, owner_user_id="user-1",
+            take_session_id="sess-1", database=db,
+        )
+        self.assertIn("owner_answer",
+                      [event.get("kind") for event in out["events"]])
+
+    def test_the_exercise_and_its_attempts_are_the_point_of_the_story(self):
+        db = _SnippetDb(
+            practice={"id": "p1", "snippet_id": SNIP,
+                      "exercise_snapshot": {
+                          "title": "Land the last word",
+                          "explanation_video_url": "https://x/v.mp4"}},
+            attempts=[{"attempt_index": 1,
+                       "created_at": "2026-08-16T09:00:00Z"}],
+        )
+        out = build_snippet_history(
+            arc_id=ARC, snippet_id=SNIP, owner_user_id="user-1",
+            take_session_id="sess-1", database=db,
+            resolve_audio=lambda ref: None,
+        )
+        self.assertIn("exercise",
+                      [event.get("kind") for event in out["events"]])
+
+    def test_origin_says_where_not_how_well(self):
+        out = build_snippet_history(
+            arc_id=ARC, snippet_id=SNIP, owner_user_id="user-1",
+            take_index=2, database=_SnippetDb(),
+        )
+        self.assertEqual(out["origin"]["take_index"], 2)
+        self.assertEqual(out["origin"]["source"], "snippet")
+
+    def test_nothing_at_all_is_an_empty_story_not_a_raise(self):
+        out = build_snippet_history(
+            arc_id="", snippet_id="", owner_user_id="u",
+            database=_SnippetDb())
+        self.assertEqual(out["events"], [])
+
+
+class ItMustBeTheirOwnMomentTests(unittest.TestCase):
+    """The lanes are keyed by snippet and never ask whose it is, so without
+    this link a caller could name any snippet id and have its owner's own
+    answers and notes read back to them."""
+
+    def test_a_snippet_from_this_session_is_served(self):
+        db = _SnippetDb(snippets=[{"id": SNIP}, {"id": "other"}])
+        out = owned_snippet_history(
+            db, arc_id=ARC, snippet_id=SNIP, session=SESSION,
+            owner_user_id="user-1")
+        self.assertIsNotNone(out)
+        self.assertEqual(out["moment_key"], SNIP)
+
+    def test_a_snippet_that_is_not_in_the_session_is_refused(self):
+        db = _SnippetDb(snippets=[{"id": "someone-elses"}])
+        self.assertIsNone(owned_snippet_history(
+            db, arc_id=ARC, snippet_id=SNIP, session=SESSION,
+            owner_user_id="user-1"))
+
+    def test_a_read_that_fails_proves_nothing_so_it_refuses(self):
+        db = _SnippetDb(snippets_raise=True)
+        self.assertIsNone(owned_snippet_history(
+            db, arc_id=ARC, snippet_id=SNIP, session=SESSION,
+            owner_user_id="user-1"))
+
+    def test_a_missing_session_is_refused(self):
+        db = _SnippetDb()
+        for bad in (None, {}, {"id": ""}, "sess-1"):
+            self.assertIsNone(owned_snippet_history(
+                db, arc_id=ARC, snippet_id=SNIP, session=bad,
+                owner_user_id="user-1"))
+
+    def test_the_route_asks_for_all_three_before_it_reads_anything(self):
+        import inspect
+
+        from routes.v2 import arcs
+
+        source = inspect.getsource(arcs.v2_moment_history)
+        self.assertIn("owned_snippet_history", source)
+        # The project is proved first, then the session, then the snippet.
+        self.assertLess(source.index("_arc_owned_by_caller"),
+                        source.index("owned_snippet_history"))

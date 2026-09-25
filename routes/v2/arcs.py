@@ -455,6 +455,56 @@ def _album_entry_for(arc_id, moment_key):
     return None
 
 
+@v2_bp.route("/moment-history", methods=["GET"])
+@require_auth
+def v2_moment_history():
+    """Where ANY moment came from — the ones that went badly included.
+
+    Founder 2026-09-25: "the album shows your confident moments, not any
+    moments." The Album's history can only ever be told about a clip that
+    passed three yeses; the moments worth learning from are the others. Same
+    story, served for a moment wherever it actually lives.
+
+    Query: ``arc``, ``session`` (the Take the moment was spoken in) and
+    ``snippet``.
+
+    The coach lane is absent BY DESIGN — it emits only on a yes, so told
+    about every moment its silence would announce the verdict on the rest
+    (BLIND COACH, breached by omission). AC-9 holds as it does for the Album:
+    no score, ratio or verdict in any lane.
+
+    404 rather than 403 for a moment that is not the caller's: whether
+    someone else's snippet exists is not this endpoint's to confirm.
+    """
+    arc_id = (request.args.get("arc") or "").strip()
+    session_id = (request.args.get("session") or "").strip()
+    snippet_id = (request.args.get("snippet") or "").strip()
+    if not arc_id or not session_id or not snippet_id:
+        return jsonify({"code": "BAD_REQUEST",
+                        "error": "arc, session and snippet are required"}), 400
+    owned, sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    session = next(
+        (s for s in sessions if str(s.get("id")) == session_id), None)
+    if not session:
+        return jsonify({"code": "NOT_FOUND", "error": "moment not found"}), 404
+
+    from services.voice_album_history import owned_snippet_history
+
+    history = owned_snippet_history(
+        db,
+        arc_id=arc_id,
+        snippet_id=snippet_id,
+        session=session,
+        owner_user_id=str(request.user_id),
+        resolve_audio=_resolve_feedback_audio,
+    )
+    if history is None:
+        return jsonify({"code": "NOT_FOUND", "error": "moment not found"}), 404
+    return jsonify(history), 200
+
+
 @v2_bp.route("/voice-album/moment-history", methods=["GET"])
 @require_auth
 def v2_voice_album_moment_history():
