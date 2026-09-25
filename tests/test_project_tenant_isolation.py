@@ -72,3 +72,22 @@ def test_take_lookup_requires_take_project_and_owner_coordinates_together():
         ("project_id", "project-a"),
         ("owner_principal_id", "owner-b"),
     ]
+
+
+def test_an_erased_project_is_no_longer_its_owners_to_open():
+    """P1-B (N9): an erased project remains only as an empty receipt."""
+    service, _query = _service([
+        {"id": "project-a", "owner_principal_id": "owner-a",
+         "display_name": "", "tombstoned_at": "2026-09-26T10:00:00Z"},
+    ])
+
+    assert service.get_project_for_owner("project-a", "owner-a") is None
+
+
+def test_a_live_project_still_opens():
+    service, _query = _service([
+        {"id": "project-a", "owner_principal_id": "owner-a",
+         "display_name": "Q3", "tombstoned_at": None},
+    ])
+
+    assert service.get_project_for_owner("project-a", "owner-a")["id"] == "project-a"

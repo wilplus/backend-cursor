@@ -15,6 +15,7 @@ keeps today's behaviour; every other failure raises.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Iterable
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,9 @@ _RPC_ERRORS = {
         "PROJECT_DELETION_ALREADY_CONFIRMED", 409),
     "IDEMPOTENCY_CONFLICT": ("IDEMPOTENCY_CONFLICT", 409),
     "PROJECT_DELETION_IDEMPOTENCY_KEY_REQUIRED": ("INVALID_INPUT", 400),
+    # The operator's confirm (P1-B, 0380).
+    "PROJECT_DELETION_NOT_FOUND": ("PROJECT_DELETION_NOT_FOUND", 404),
+    "PURGE_PROJECT_NOT_OWNED": ("PURGE_PROJECT_NOT_OWNED", 409),
 }
 
 
@@ -59,6 +63,14 @@ def _one(data: Any) -> dict | None:
     if isinstance(data, list):
         data = data[0] if data else None
     return data if isinstance(data, dict) and data.get("id") else None
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
 
 
 def public_view(row: dict | None) -> dict | None:
@@ -120,6 +132,15 @@ class ProjectDeletionService:
             "p_project_id": str(project_id),
         })
 
+    def confirm(self, request_id: str, operator_id: str) -> dict:
+        """The operator's confirm (N8): creates the one-project purge request
+        and ends the owner's chance to cancel. Deletes nothing; the purge
+        runs only through scripts/run_phase1_data_purge.py, double-gated."""
+        return self._rpc("confirm_project_deletion_v1", {
+            "p_request_id": str(request_id),
+            "p_operator_id": str(operator_id),
+        })
+
     def open_for_projects(self, project_ids: Iterable[str]) -> dict[str, dict]:
         """{project_id: open request} for the given projects. Empty when the
         table is not migrated yet."""
@@ -143,6 +164,32 @@ class ProjectDeletionService:
     def open_for_project(self, project_id: str) -> dict | None:
         return self.open_for_projects([project_id]).get(str(project_id))
 
+    def erased_projects(self, project_ids: Iterable[str]) -> set[str]:
+        """The given projects an erasure has reached: kept as a tombstone,
+        or with a finished deletion request."""
+        ids = sorted({str(p) for p in project_ids if _is_uuid(str(p))})
+        if not ids or self.client is None:
+            return set()
+        erased: set[str] = set()
+        for relation, columns, keep in (
+            ("projects", "id,tombstoned_at",
+             lambda row: bool(row.get("tombstoned_at"))),
+            ("project_deletion_requests", "project_id,state",
+             lambda row: row.get("state") == "done"),
+        ):
+            key = "id" if relation == "projects" else "project_id"
+            try:
+                rows = (
+                    self.client.table(relation).select(columns)
+                    .in_(key, ids).execute().data or []
+                )
+            except Exception as error:
+                if _is_missing(error) or "tombstoned_at" in str(error):
+                    continue
+                raise
+            erased |= {str(row[key]) for row in rows if row.get(key) and keep(row)}
+        return erased
+
     def queue(self, states: Iterable[str] = OPEN_STATES, limit: int = 200) -> list[dict]:
         """Operator queue, oldest due first."""
         if self.client is None:
@@ -165,16 +212,25 @@ class ProjectDeletionService:
 def with_deletion_state(database: Any, trainings: list[dict]) -> list[dict]:
     """Stamp each project in the picker feed with its open deletion request,
     or None (P1-A, N8): the picker shows "Deletion pending" and locks it.
+    A project already erased (P1-B) is left out: its row and takes remain
+    only as empty receipts (N9, N12).
 
     Best effort: a failed read leaves the list as it was and logs, rather
     than failing the whole picker over a lock marker.
     """
+    service = ProjectDeletionService(database)
+    ids = [str(t.get("arc_id") or "") for t in trainings]
     try:
-        open_requests = ProjectDeletionService(database).open_for_projects(
-            str(t.get("arc_id") or "") for t in trainings)
+        open_requests = service.open_for_projects(ids)
     except Exception as error:
         logger.warning("project deletion state unavailable: %s", error)
         open_requests = {}
+    try:
+        erased = service.erased_projects(ids)
+    except Exception as error:
+        logger.warning("erased projects unavailable: %s", error)
+        erased = set()
+    trainings = [t for t in trainings if str(t.get("arc_id") or "") not in erased]
     for training in trainings:
         training["deletion"] = public_view(
             open_requests.get(str(training.get("arc_id"))))

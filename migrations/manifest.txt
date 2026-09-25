@@ -415,3 +415,4 @@
 0377	the_old_consent_code_ignores_the_training_yes.sql
 0378	a_project_deletion_pauses_only_its_project.sql
 0379	a_take_keeps_an_empty_receipt.sql
+0380	one_project_can_be_purged.sql
