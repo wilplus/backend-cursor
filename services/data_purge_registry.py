@@ -136,6 +136,9 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("ideal_slide_helper_words_log",
                     "ideal_text_slide_helper_words_log",
                     "arc_id", "project", "delete", "derived_feedback", 55),
+    PurgeDependency("ideal_practice_adoptions",
+                    "ideal_text_practice_adoptions",
+                    "arc_id", "project", "delete", "derived_feedback", 55),
     PurgeDependency("ideal_part_revision", "ideal_text_part_revision", "arc_id",
                     "project", "external_review", "derived_feedback", 300),
     # Immutable cold-open read model. Heads go first because their restrictive
@@ -512,7 +515,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("ml_consent_snapshots", "ml_consent_snapshots",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
-    # Training copies (P3, migration 0374). `external_review` UNTIL P4 gives
+    # Training copies (P3, migration 0375). `external_review` UNTIL P4 gives
     # them their own disposition: a purge that meets a corpus row halts for a
     # human rather than guessing. None can exist while training is dark.
     PurgeDependency("training_corpus_items", "training_corpus_items",

@@ -213,7 +213,7 @@ never touch product data. So:
 | `state` | `active`, `purge_pending`, `purged` |
 | `created_at` | |
 
-*As built (0374):* the consent state at copy time is stored on the item by
+*As built (0375):* the consent state at copy time is stored on the item by
 value (`consent_state`, `consent_state_sha256`), not as an FK to
 `ml_consent_snapshots`, because that table references `takes`, `projects` and
 `recording_attempts` ON DELETE RESTRICT and would block the product delete
@@ -352,7 +352,7 @@ Settled 2026-09-25 (decisions log N8):
 |---|---|---|
 | **P1** | Project-scoped purge (§6.1), operator queue in the admin panel (§6.4), picker delete with pending state and cancel (§7); corpus absent | Migration via manifest. Founder go-ahead and copy given (N8) |
 | **P2** | Consent schema + v2 functions + v2 reader (§3), with no `training_only` policy row | Migration only; stays dark. **Built: 0373 `a_training_yes_is_its_own_act.sql`** (the two CHECK removals approved by the founder 2026-09-26) |
-| **P3** | Corpus tables + copy job (§4), behind `phase2_guard` | Migration; stays dark. **Built: 0374 `training_copies_are_copies.sql` + `services/training_corpus.py`**, behind the code constant `MLC2_TRAINING_CORPUS_COPY_ENABLED = False`; the table is `external_review` in the purge registry until P4 |
+| **P3** | Corpus tables + copy job (§4), behind `phase2_guard` | Migration; stays dark. **Built: 0375 `training_copies_are_copies.sql` + `services/training_corpus.py`**, behind the code constant `MLC2_TRAINING_CORPUS_COPY_ENABLED = False`; the table is `external_review` in the purge registry until P4 |
 | **P4** | Registry disposition `retain_while_training_consented` + withdrawal purge (§6.2, §6.3) | Deletion-completion tests updated |
 | **P5** | New policy version with the training purpose, the re-accept flow, the training toggle, the retention rule activated, honest delete copy | **Counsel review**, founder sign-off on copy, lifting `PHASE2_PURPOSE_FORBIDDEN` for this one purpose, updated Privacy text and retention schedule |
 

@@ -81,7 +81,9 @@ def test_exercise_surface_is_registry_only_and_fail_closed():
     user_routes = (ROOT / "routes" / "v2" / "user_sessions.py").read_text()
     coach_routes = (ROOT / "routes" / "v2" / "coach.py").read_text()
     marker = '@operational_purpose_disabled("personalized_exercise_recommendation")'
-    assert user_routes.count(marker) == 4
+    # Six since 2026-09-25: the per-attempt judgement and the practice
+    # helper-words routes (contract 29a) carry the same gate.
+    assert user_routes.count(marker) == 6
     assert coach_routes.count(marker) == 1
     # The purpose was born phase2 here and was moved to phase1 by 0335, once
     # its deletion and retention controls actually existed. Both halves are

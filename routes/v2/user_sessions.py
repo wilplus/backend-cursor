@@ -38,6 +38,12 @@ from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
 from services.snippet_values import resolve_all
 from services.take_repository import TakeHasLineageError
+from services.practice_adoption import (
+    ROUTE_OF as _ROUTE_OF,
+    helper_words_from_practice,
+    judge_attempt,
+    judgeable_attempt,
+)
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -1584,6 +1590,12 @@ def v2_post_take_feedback_response(take_session_id):
                         "error": "Failed to save the response"}), 500
 
 
+def _judgeable_id(rows):
+    """The latest practice attempt while it is still unjudged (Q17 A)."""
+    target = judgeable_attempt(list(rows or []))
+    return str(target.get("id")) if target else None
+
+
 def _practice_user_payload(practice, attempts=None):
     """Owner-safe practice shape. Raw metrics/comparison scores stay private."""
     from services.confident_voice_practice import (
@@ -1610,7 +1622,6 @@ def _practice_user_payload(practice, attempts=None):
     }) for row in rows]
     strongest = next((row for row in public_rows if row["is_strongest"]), None)
     final_ready = len(public_rows) >= 3
-    final_message = FINAL_STRONGEST if strongest else None
     return {
         "id": str(practice.get("id")),
         "status": practice.get("status") or "open",
@@ -1636,10 +1647,11 @@ def _practice_user_payload(practice, attempts=None):
         "attempts_remaining": max(0, 3 - len(public_rows)),
         "strongest_attempt": strongest,
         "final_ready": final_ready,
-        "final_message": final_message,
+        "final_message": FINAL_STRONGEST if strongest else None,
         "final_question": FINAL_QUESTION if final_ready or strongest else None,
         "final_user_answer": practice.get("final_user_answer"),
         "selected_attempt_id": practice.get("selected_attempt_id"),
+        "judgeable_attempt_id": _judgeable_id(rows),
     }
 
 
@@ -1657,6 +1669,16 @@ def _yes_or_no(owner_route: dict) -> str:
     return "yes" if owner_route.get("response") == "yes" else "no"
 
 
+def _answer_matches_route(owner_route: dict, answer: str) -> bool:
+    """The first answer as the owner route stored it (founder 2026-09-25).
+
+    The sheet sends one of the five answers since PR 5; before it, "no"
+    stood for every answer but Yes (wilplus/backend-cursor#673). Both are
+    accepted, so neither the old nor the new sheet is refused."""
+    return (owner_route.get("response") == _ROUTE_OF.get(answer)
+            or _yes_or_no(owner_route) == answer)
+
+
 @v2_bp.route("/user/snippets/<snippet_id>/confidence-practice",
              methods=["POST"])
 @require_auth
@@ -1669,9 +1691,9 @@ def v2_start_confident_voice_practice(snippet_id):
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
     original_answer = body.get("original_user_answer")
-    if original_answer not in ("yes", "no"):
+    if original_answer not in _ROUTE_OF:
         return jsonify({"code": "INVALID_INPUT",
-                        "error": "original_user_answer must be yes or no"}), 400
+                        "error": "original_user_answer is not valid"}), 400
     try:
         snip = db.get_snippet_by_id(snippet_id)
         session = db.v2_get_session_by_id(
@@ -1687,9 +1709,8 @@ def v2_start_confident_voice_practice(snippet_id):
             if str(row.get("snippet_id")) == str(snippet_id)
             and str(row.get("owner_user_id")) == str(request.user_id)
         ), None)
-        # Five answers, two introductions: only Yes reads as "yes" (the sheet
-        # sends "no" for In between, Not sure and Audio unclear too).
-        if not owner_route or _yes_or_no(owner_route) != original_answer:
+        # The five answers, or the two-way yes/no the sheet sent before PR 5.
+        if not owner_route or not _answer_matches_route(owner_route, original_answer):
             return jsonify({"code": "ANSWER_REQUIRED",
                             "error": "Answer the Confident Voice question first."}), 409
         exercise_id = str(body.get("exercise_id") or "hear-every-word-v1")
@@ -2007,6 +2028,51 @@ def v2_complete_confident_voice_practice(practice_id):
     # Deliberate absence: no ideal-text, decision, style, cue, flagship or
     # voice_album call belongs here. Professional review remains separate.
     return jsonify({"practice": _practice_user_payload(updated)}), 200
+
+
+@v2_bp.route("/user/confidence-practice/<practice_id>/attempts/"
+             "<attempt_id>/answer", methods=["PUT"])
+@require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
+def v2_judge_confident_voice_practice_attempt(practice_id, attempt_id):
+    """The five-answer judgement of the latest attempt (contract 29a)."""
+    if not _is_valid_uuid(practice_id) or not _is_valid_uuid(attempt_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "ids must be valid UUIDs"}), 400
+    practice = db.get_confident_voice_practice(
+        practice_id, str(request.user_id))
+    if not practice:
+        return jsonify({"code": "NOT_FOUND", "error": "practice not found"}), 404
+    body = request.get_json(silent=True) or {}
+    status, result = judge_attempt(db, practice, attempt_id,
+                                   body.get("user_answer"),
+                                   str(request.user_id))
+    row = result.pop("practice_row", None)
+    if status == 200:
+        result["practice"] = _practice_user_payload(row or practice)
+    return jsonify(result), status
+
+
+@v2_bp.route("/user/confidence-practice/<practice_id>/helper-words",
+             methods=["PUT"])
+@require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
+def v2_confident_voice_practice_helper_words(practice_id):
+    """Helper words tapped from the adopted practice attempt (Q10 B)."""
+    if not _is_valid_uuid(practice_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "practice_id must be a valid UUID"}), 400
+    practice = db.get_confident_voice_practice(
+        practice_id, str(request.user_id))
+    if not practice:
+        return jsonify({"code": "NOT_FOUND", "error": "practice not found"}), 404
+    body = request.get_json(silent=True) or {}
+    status, result = helper_words_from_practice(
+        db, practice, body.get("part_id"), body.get("phrase"),
+        str(request.user_id))
+    return jsonify(result), status
 
 
 @v2_bp.route("/session/status", methods=["GET"])

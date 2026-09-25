@@ -57,8 +57,14 @@ def test_history_for_part_resolves_the_slide_from_the_published_core():
             assert slide == 1
             return []
 
+        def list_practice_adoptions(self, arc_id, user_id, slide):
+            return [{"before_text": "B one.", "after_text": "B practised.",
+                     "created_at": "p"}]
+
     h = history_for_part(Db(), "arc", "user", "p1")
     assert h["slide_index"] == 1 and len(h["versions"]) == 2
+    assert h["practice"] == [{"before": "B one.", "after": "B practised.",
+                              "at": "p"}]
     assert history_for_part(Db(), "arc", "user", "unknown") is None
 
 

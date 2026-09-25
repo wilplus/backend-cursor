@@ -2,7 +2,7 @@
 
 After a Take is processed, and only while its owner holds an active training
 yes (`get_mlc2_training_consent_status_v2`, migration 0373), copy three kinds
-of thing into `training_corpus_items` (0374) — separate copies, never pointers:
+of thing into `training_corpus_items` (0375) — separate copies, never pointers:
 
 * the AUDIO SEGMENT of each Confident Voice item the speaker was shown, cut
   from the Take's own recording and stored under `training-corpus/`;

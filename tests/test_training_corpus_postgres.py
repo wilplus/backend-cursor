@@ -1,4 +1,4 @@
-"""Training copies are copies (0374, SPEC-training-corpus §4, P3).
+"""Training copies are copies (0375, SPEC-training-corpus §4, P3).
 
 Run on the released rehearsal lane, after tests/test_training_consent_postgres.py
 has registered the test training policy. Pins:
