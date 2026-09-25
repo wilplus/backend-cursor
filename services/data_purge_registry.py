@@ -515,12 +515,14 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("ml_consent_snapshots", "ml_consent_snapshots",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
-    # Training copies (P3, migration 0375). `external_review` UNTIL P4 gives
-    # them their own disposition: a purge that meets a corpus row halts for a
-    # human rather than guessing. None can exist while training is dark.
+    # Training copies (P3 0375, P4 0376). Account erasure always deletes them
+    # (C3): their audio first, as storage targets (_corpus_targets), then the
+    # rows here. Keeping them through a PROJECT delete for someone with an
+    # active training yes (`retain_while_training_consented`) arrives with the
+    # project-scoped purge; every purge that exists today is principal-wide.
     PurgeDependency("training_corpus_items", "training_corpus_items",
-                    "acquisition_principal_id", "principal", "external_review",
-                    "dataset_lineage", 300),
+                    "acquisition_principal_id", "principal", "delete",
+                    "dataset_lineage", 57),
     PurgeDependency("ml_product_actions", "ml_product_actions",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),

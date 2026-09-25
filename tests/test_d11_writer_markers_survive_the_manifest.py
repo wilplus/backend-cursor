@@ -67,6 +67,9 @@ MIGRATIONS = ROOT / "migrations"
 MANIFEST = MIGRATIONS / "manifest.txt"
 D11_SOURCE = "add_confident_moment_coaching_bundle_v1.sql"
 REASSERT = "two_d11_writers_take_their_locks_again.sql"
+#: 0376 re-issues mark_phase1_storage_object_purged_v1 (a training-copy
+#: branch) and ends with 0365's own re-injection for it.
+CORPUS_PURGE = "training_copies_go_when_the_yes_goes.sql"
 OBJECT_PURGE = "public.mark_phase1_storage_object_purged_v1(uuid,text,uuid,text,text,text,text)"
 DOCUMENT_GENERATION = "public.advance_ideal_text_document_generation_v1()"
 AUTHORIZATION_RECEIPT = (
@@ -376,7 +379,10 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
 
     def test_without_0365_the_walk_names_0335_and_0354(self):
         # Shows the guard catches the production regressions it was written for.
-        files = [f for f in manifest_files() if f != REASSERT]
+        # 0376 re-issues the object mark and re-injects its preamble too, so
+        # the counterfactual removes every re-injection of it, not just 0365's.
+        files = [f for f in manifest_files()
+                 if f not in (REASSERT, CORPUS_PURGE)]
         self.assertEqual(
             unmarked_writers(files),
             {
@@ -385,6 +391,15 @@ class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
                 OBJECT_PURGE: "deletion_reaches_practice_objects.sql",
             },
         )
+
+    def test_without_0376_s_reinjection_its_replacement_would_unmark(self):
+        # 0376 re-issues the object mark from source. Were its re-injection
+        # block missing, the walk would name 0376 itself.
+        body = (MIGRATIONS / CORPUS_PURGE).read_text(encoding="utf-8")
+        self.assertIn("CREATE OR REPLACE FUNCTION public.mark_phase1_storage_object_purged_v1", body)
+        self.assertIn('"marker":"D11 writer: object purge"', body)
+        self.assertGreater(body.index("DO $d11_writer_reclosure$"),
+                           body.index("CREATE OR REPLACE FUNCTION public.mark_phase1_storage_object_purged_v1"))
 
     def test_the_reinjection_follows_both_replacements(self):
         files = manifest_files()
