@@ -202,8 +202,24 @@ class TestAnAccountWithARealTakeCanBeErased:
         assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
                     (subject["request"],)) == "done"
         assert fake_storage, "the stored take audio was never deleted"
+        # N12 (2026-09-26): the take session is an empty receipt, not a
+        # deleted row. It keeps identity, ownership, index, kind, state and
+        # times; every other nullable column is empty.
         assert _one(db, "SELECT count(*) FROM public.v2_sessions WHERE id = %s",
-                    (subject["take"],)) == 0, "the take row survived the erasure"
+                    (subject["take"],)) == 1, "the receipt was lost"
+        assert _one(db, """
+            SELECT count(*) FROM information_schema.columns c
+             WHERE c.table_schema = 'public' AND c.table_name = 'v2_sessions'
+               AND c.is_nullable = 'YES'
+               AND c.column_name NOT IN (
+                   'id', 'arc_id', 'owner_principal_id', 'user_id',
+                   'project_id', 'take_index', 'canonical_take_index',
+                   'recording_kind', 'analysis_state', 'paired_session_id',
+                   'created_at', 'updated_at', 'completed_at')
+               AND (SELECT to_jsonb(s) -> c.column_name
+                      FROM public.v2_sessions s WHERE s.id = %s)
+                   NOT IN ('null'::jsonb)""", (subject["take"],)) == 0, (
+            "the take receipt still holds content")
         # N9: the project row is a tombstone. Retained recording-attempt
         # evidence points at it ON DELETE RESTRICT, so the row stays; what the
         # person wrote into it does not.
