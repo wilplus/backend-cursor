@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from services.data_purge_registry import (
-    DEPENDENCIES,
+    DEPENDENCIES, LINEAGE_TOMBSTONES,
     PurgeDependency,
     classified_relations,
     dependency_by_code,
@@ -828,15 +828,21 @@ class DataPurgeOrchestrator:
         """Wipe the user content of rows retained evidence still points at,
         then keep the bare rows under the deletion-evidence rule (N9).
 
-        Only ``projects`` is a tombstone today. The database function scrubs
-        exactly the projects inside this request's frozen graph, and reports
-        how many are still not blank; anything but zero is a failure."""
+        Two kinds: the project row (0368) and a take's permanent record, its
+        take session included (0379, founder N12). Each database function
+        scrubs exactly the rows inside this request's frozen graph and reports
+        how many are still not blank; anything but zero is a failure. Both
+        are idempotent, so every target of the kind may call its own."""
         metadata = target.get("metadata") or {}
         rule_id = str(metadata.get("retention_rule_id") or "")
         try:
-            if dependency.relation != "projects":
+            if dependency.relation == "projects":
+                function = "tombstone_phase1_purge_projects_v1"
+            elif dependency.relation in LINEAGE_TOMBSTONES:
+                function = "tombstone_phase1_purge_lineage_v1"
+            else:
                 raise RuntimeError("TOMBSTONE_RELATION_UNSUPPORTED")
-            result = self.client.rpc("tombstone_phase1_purge_projects_v1", {
+            result = self.client.rpc(function, {
                 "p_purge_request_id": str(target.get("purge_request_id") or ""),
             }).execute()
             outcome = _one(result.data) or {}
