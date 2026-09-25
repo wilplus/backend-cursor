@@ -198,6 +198,20 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # user key, with no evidence to retain on anyone's behalf.
     PurgeDependency("voice_album_notes", "voice_album_notes", "owner_user_id",
                     "user", "delete", "derived_feedback", 60),
+    # A coach's naming of an error on a speaker's moment is a judgement about
+    # THAT recording, so it goes with it. Ordered ahead of the practice row;
+    # the table's ON DELETE CASCADE from the practice is only the backstop.
+    PurgeDependency("coach_moment_error_events", "coach_moment_error_event",
+                    "practice_id", "practice", "delete", "derived_feedback",
+                    58),
+    # What attaching an exercise from a speaker's moment taught the library.
+    # The rows made from their moment go with it. The tag a teaching added
+    # stays on the exercise: that is a claim about the EXERCISE, like any the
+    # CMS makes, and carries nothing about the speaker. The table's ON DELETE
+    # SET NULL from the practice is the backstop for any other path.
+    PurgeDependency("library_teachings", "diagnostic_exercise_teaching",
+                    "practice_id", "practice", "delete", "derived_feedback",
+                    58),
     PurgeDependency("practice", "confident_voice_practice", "id", "practice",
                     "delete", "derived_feedback", 60),
     PurgeDependency("practice_attempt", "confident_voice_practice_attempt",
