@@ -209,6 +209,51 @@ BEGIN
 END;
 $$;
 
+-- The backstop for E2 (founder 2026-09-25: turning practice off deletes the
+-- practice recordings). The route erases at once; if storage failed midway,
+-- the worker's sweep retries everyone whose practice is off BY A CHANGE made
+-- since p_since. A tick simply left empty at acceptance is not listed: that
+-- person never turned anything off.
+CREATE OR REPLACE FUNCTION public.list_recent_practice_withdrawals_v1(
+    p_since TIMESTAMPTZ,
+    p_limit INT
+) RETURNS TABLE (acquisition_principal_id UUID)
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public
+AS $$
+    WITH policy AS (
+        SELECT id FROM processing_policy_versions
+         WHERE status = 'active' AND activated_at <= now()
+           AND (retired_at IS NULL OR retired_at > now())
+         ORDER BY activated_at DESC LIMIT 1
+    ), current_receipt AS (
+        SELECT DISTINCT ON (r.acquisition_principal_id)
+               r.acquisition_principal_id, r.id
+          FROM processing_authorization_receipts r
+          JOIN policy ON r.policy_id = policy.id
+         ORDER BY r.acquisition_principal_id, r.accepted_at DESC, r.id DESC
+    ), latest AS (
+        SELECT DISTINCT ON (e.receipt_id)
+               e.receipt_id, e.acquisition_principal_id, e.event_kind,
+               e.created_at
+          FROM processing_consent_choice_events e
+         WHERE e.choice = 'personalised_practice'
+         ORDER BY e.receipt_id, e.seq DESC
+    )
+    SELECT latest.acquisition_principal_id
+      FROM latest
+      JOIN current_receipt ON current_receipt.id = latest.receipt_id
+     WHERE latest.event_kind = 'withdraw' AND latest.created_at >= p_since
+     ORDER BY latest.created_at
+     LIMIT GREATEST(COALESCE(p_limit, 0), 0);
+$$;
+
+REVOKE ALL ON FUNCTION public.list_recent_practice_withdrawals_v1(
+    TIMESTAMPTZ, INT
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.list_recent_practice_withdrawals_v1(
+    TIMESTAMPTZ, INT
+) TO service_role;
+
 REVOKE ALL ON FUNCTION public.get_phase1_consent_choices_v1(UUID)
     FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_phase1_consent_choices_v1(UUID)

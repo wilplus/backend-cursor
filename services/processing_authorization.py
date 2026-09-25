@@ -328,6 +328,31 @@ class ProcessingAuthorizationService:
                 code, "The choice could not be saved.", status,
             ) from error
 
+    def change_consent_choice(
+        self, acquisition_principal_id: str, *, choice: str, enabled: Any,
+        idempotency_key: str, client_version: str | None,
+    ) -> dict:
+        """Record a change, and carry out what it promises.
+
+        Turning practice off deletes the person's practice recordings (E2,
+        founder 2026-09-25), straight away. If storage fails midway the
+        answer says so (`practice_erasure.complete` false) and the worker's
+        withdrawal sweep finishes it; processing already stopped with the
+        change itself.
+        """
+        state = self.set_consent_choice(
+            acquisition_principal_id, choice=choice, enabled=enabled,
+            idempotency_key=idempotency_key, client_version=client_version)
+        if (choice == PERSONALISED_PRACTICE and enabled is False
+                and state.get(PERSONALISED_PRACTICE) is False):
+            from services.practice_retention import erase_practice_for_principal
+
+            erasure = erase_practice_for_principal(
+                database=self.database, principal_id=acquisition_principal_id)
+            state = {**state,
+                     "practice_erasure": {"complete": bool(erasure["complete"])}}
+        return state
+
     def user_acquisition_principal(self, user_id: str) -> str:
         """The acquirer behind a signed-in user, as the routes resolve it."""
         from services.project_repository import ProjectRepository

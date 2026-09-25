@@ -1166,6 +1166,21 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
     except Exception as e:
         logger.warning("pipeline_jobs: practice retention sweep failed: %s", e)
         counts["practice_retention_attempts"] = 0
+    try:
+        # A withdrawal's erasure normally finishes in the request that made
+        # it (founder 2026-09-25, E2). This finishes any that storage cut
+        # short, so "your practice recordings will be deleted" stays true.
+        from services.practice_retention import sweep_withdrawn_practice
+
+        withdrawn = sweep_withdrawn_practice(
+            database=db, limit=min(max_rows, 20))
+        counts.update({
+            f"practice_withdrawal_{key}": value
+            for key, value in withdrawn.items()
+        })
+    except Exception as e:
+        logger.warning("pipeline_jobs: practice withdrawal sweep failed: %s", e)
+        counts["practice_withdrawal_people"] = 0
     return counts
 
 

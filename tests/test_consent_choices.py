@@ -367,5 +367,141 @@ class ChoicesRouteTests(unittest.TestCase):
                       gate)
 
 
+class _PracticeDb:
+    """One person's practices and attempts, and the calls made to erase them."""
+
+    def __init__(self, practices, *, failing_audio=(), graph_error=False):
+        self.practices = {pid: list(attempts) for pid, attempts in practices.items()}
+        self.failing_audio = set(failing_audio)
+        self.graph_error = graph_error
+        self.calls: list = []
+
+    def practice_ids_for_principal(self, principal_id):
+        if self.graph_error:
+            raise RuntimeError("graph down")
+        return list(self.practices)
+
+    def list_confident_voice_practice_attempts(self, practice_id):
+        return [dict(a) for a in self.practices.get(practice_id, [])]
+
+    def delete_practice_audio_object(self, attempt_id):
+        self.calls.append(("audio", attempt_id))
+        return attempt_id not in self.failing_audio
+
+    def delete_confident_voice_practice_attempt(self, attempt_id):
+        self.calls.append(("attempt", attempt_id))
+        for attempts in self.practices.values():
+            attempts[:] = [a for a in attempts if a["id"] != attempt_id]
+        return True
+
+    def delete_confident_voice_practice(self, practice_id):
+        self.calls.append(("practice", practice_id))
+        self.practices.pop(practice_id, None)
+        return True
+
+
+class ErasureTests(unittest.TestCase):
+    """E2: turning practice off deletes the practice recordings."""
+
+    def _erase(self, database):
+        from services.practice_retention import erase_practice_for_principal
+        return erase_practice_for_principal(database=database,
+                                            principal_id=PRINCIPAL)
+
+    def test_everything_goes_recording_first_then_rows(self):
+        database = _PracticeDb({
+            # Open, chosen and album-kept attempts are NOT spared here: that
+            # is the 30-day sweep's rule, not a withdrawal's.
+            "p-open": [{"id": "a1"}, {"id": "a2", "kept": True}],
+            "p-closed": [{"id": "a3"}],
+        })
+        result = self._erase(database)
+        self.assertTrue(result["complete"])
+        self.assertEqual(database.practices, {})
+        self.assertEqual(database.calls[:2], [("audio", "a1"), ("attempt", "a1")])
+        for practice in ("p-open", "p-closed"):
+            self.assertIn(("practice", practice), database.calls)
+
+    def test_a_recording_that_would_not_go_keeps_its_row_and_practice(self):
+        database = _PracticeDb({"p1": [{"id": "a1"}, {"id": "a2"}]},
+                               failing_audio={"a2"})
+        result = self._erase(database)
+        self.assertFalse(result["complete"])
+        self.assertNotIn(("attempt", "a2"), database.calls)
+        self.assertNotIn(("practice", "p1"), database.calls)
+        self.assertEqual([a["id"] for a in database.practices["p1"]], ["a2"])
+
+    def test_a_failed_read_is_never_taken_for_nothing_to_delete(self):
+        database = _PracticeDb({"p1": [{"id": "a1"}]}, graph_error=True)
+        result = self._erase(database)
+        self.assertFalse(result["complete"])
+        self.assertEqual(database.calls, [])
+
+    def test_the_backstop_retries_everyone_listed(self):
+        from services.practice_retention import sweep_withdrawn_practice
+
+        class _Db(_PracticeDb):
+            def list_recent_practice_withdrawals(self, since, limit):
+                self.asked = (since, limit)
+                return [PRINCIPAL]
+
+        database = _Db({"p1": [{"id": "a1"}]})
+        totals = sweep_withdrawn_practice(database=database, limit=5)
+        self.assertEqual(totals["people"], 1)
+        self.assertEqual(totals["attempts"], 1)
+        self.assertEqual(database.asked[1], 5)
+
+    def test_the_worker_runs_the_backstop(self):
+        source = (ROOT / "services/pipeline_jobs.py").read_text()
+        self.assertIn("sweep_withdrawn_practice(", source)
+
+
+class ChangeChoiceTests(unittest.TestCase):
+    """Only turning PRACTICE off erases, and only when it is off after."""
+
+    def _change(self, choice, enabled, state):
+        import services.practice_retention as retention
+
+        erased: list = []
+        original = retention.erase_practice_for_principal
+        retention.erase_practice_for_principal = (
+            lambda **kw: erased.append(kw) or {"complete": True})
+        try:
+            service = _service("enforce", set_phase1_consent_choice_v1=state)
+            out = service.change_consent_choice(
+                PRINCIPAL, choice=choice, enabled=enabled,
+                idempotency_key="key-12345678", client_version=None)
+            return out, erased
+        finally:
+            retention.erase_practice_for_principal = original
+
+    def test_turning_practice_off_erases_it(self):
+        out, erased = self._change(pa.PERSONALISED_PRACTICE, False,
+                                   _choices(practice=False))
+        self.assertEqual(erased[0]["principal_id"], PRINCIPAL)
+        self.assertEqual(out["practice_erasure"], {"complete": True})
+
+    def test_nothing_else_erases(self):
+        for choice, enabled, state in (
+            (pa.PERSONALISED_PRACTICE, True, _choices(practice=True)),
+            (pa.SENSITIVE_INFORMATION, False, _choices(sensitive=False)),
+            # Practice already off, then the OTHER consent is withdrawn: only
+            # the practice switch itself erases.
+            (pa.SENSITIVE_INFORMATION, False,
+             _choices(practice=False, sensitive=False)),
+            (pa.SENSITIVE_INFORMATION, True, _choices()),
+        ):
+            out, erased = self._change(choice, enabled, state)
+            self.assertEqual(erased, [], (choice, enabled))
+            self.assertNotIn("practice_erasure", out)
+
+    def test_the_route_calls_the_change_that_erases(self):
+        source = (ROOT / "routes/v2/processing_authorization.py").read_text()
+        route = source[source.index("def v2_processing_choices"):]
+        route = route[:route.index("@v2_bp.route")]
+        self.assertIn("service.change_consent_choice(", route)
+        self.assertNotIn("service.set_consent_choice(", route)
+
+
 if __name__ == "__main__":
     unittest.main()

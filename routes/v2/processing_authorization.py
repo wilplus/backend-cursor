@@ -249,7 +249,7 @@ def v2_processing_choices():
     if not isinstance(payload, dict):
         return jsonify({"code": "INVALID_INPUT", "error": "JSON object required"}), 400
     try:
-        return jsonify(service.set_consent_choice(
+        return jsonify(service.change_consent_choice(
             principal_id,
             choice=str(payload.get("choice") or ""),
             enabled=payload.get("enabled"),

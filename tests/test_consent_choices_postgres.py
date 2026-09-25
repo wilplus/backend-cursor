@@ -159,3 +159,29 @@ def test_browser_roles_cannot_call_either_function(db):
         ):
             assert _one(db, "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
                         (role, signature)) is False
+
+
+def _withdrawn_since(db, since):
+    return {str(r[0]) for r in base._rows(db, """
+        SELECT acquisition_principal_id
+          FROM public.list_recent_practice_withdrawals_v1(%s, 1000)""",
+        (since,))}
+
+
+def test_the_backstop_lists_only_a_standing_turn_off(db, policy):
+    turned_off, turned_back, never_ticked = (
+        _one(db, """INSERT INTO public.owner_principals (id, user_id)
+                    VALUES (gen_random_uuid(), gen_random_uuid())
+                    RETURNING id""") for _ in range(3))
+    _accept(db, policy, turned_off, [OPTIONAL])
+    _set(db, turned_off, "personalised_practice", False)
+    _accept(db, policy, turned_back, [OPTIONAL])
+    _set(db, turned_back, "personalised_practice", False)
+    _set(db, turned_back, "personalised_practice", True)
+    _accept(db, policy, never_ticked, [])
+    listed = _withdrawn_since(db, "2000-01-01T00:00:00Z")
+    assert str(turned_off) in listed
+    assert str(turned_back) not in listed
+    assert str(never_ticked) not in listed
+    # Older than the window: not retried.
+    assert str(turned_off) not in _withdrawn_since(db, "2999-01-01T00:00:00Z")

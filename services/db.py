@@ -14312,6 +14312,49 @@ class DatabaseService:
                 attempt_id, e)
             return False
 
+    def delete_confident_voice_practice(self, practice_id: str) -> bool:
+        """Delete one practice row, once its attempts are gone (0361, E2).
+
+        Its children go by foreign key: coach_moment_error_event CASCADE,
+        diagnostic_exercise_teaching.practice_id SET NULL. The caller removes
+        every attempt (recording first) before this, so no file is orphaned.
+        """
+        if not practice_id:
+            return False
+        try:
+            (self.client.table("confident_voice_practice")
+             .delete().eq("id", str(practice_id)).execute())
+            return True
+        except Exception as e:
+            logger.warning("delete_confident_voice_practice failed id=%s: %s",
+                           practice_id, e)
+            return False
+
+    def practice_ids_for_principal(self, principal_id: str) -> list[str]:
+        """Every practice belonging to one person, as the governed purge sees
+        it (resolve_phase1_purge_subject_graph_v2), so a guest who later
+        signed up is one person here exactly as there. Raises on failure: a
+        caller erasing data must not read "none" into a failed read."""
+        result = self.client.rpc("resolve_phase1_purge_subject_graph_v2", {
+            "p_acquisition_principal_id": str(principal_id),
+        }).execute()
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if not isinstance(data, dict) or not isinstance(
+                data.get("practice_ids"), list):
+            raise RuntimeError("subject graph unavailable")
+        return [str(item) for item in data["practice_ids"] if item]
+
+    def list_recent_practice_withdrawals(self, since: str, limit: int) -> list[str]:
+        """People whose practice is off by a change made since `since`."""
+        result = self.client.rpc("list_recent_practice_withdrawals_v1", {
+            "p_since": since, "p_limit": int(limit),
+        }).execute()
+        return [str(row.get("acquisition_principal_id"))
+                for row in (result.data or [])
+                if isinstance(row, dict) and row.get("acquisition_principal_id")]
+
     def insert_practice_audio_object(self, row: dict) -> Optional[dict]:
         """Register one stored practice recording so the purge can reach it.
 
