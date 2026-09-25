@@ -38,6 +38,7 @@ from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
 from services.snippet_values import resolve_all
 from services.take_repository import TakeHasLineageError
+from services.owner_feedback_answers import owner_answers
 from services.practice_adoption import (
     ROUTE_OF as _ROUTE_OF,
     helper_words_from_practice,
@@ -1397,6 +1398,22 @@ def v2_put_confidence_agree(snippet_id):
             "code": "V2_ERROR",
             "error": "Failed to save the answer",
         }), 500
+
+
+@v2_bp.route("/user/takes/<take_session_id>/feedback-responses",
+             methods=["GET"])
+@require_auth
+def v2_get_take_feedback_responses(take_session_id):
+    """The owner's own answers on their Take (the answered bookmark, Q19 A)."""
+    if not _is_valid_uuid(take_session_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "take_session_id must be a valid UUID"}), 400
+    answers = owner_answers(db, str(take_session_id), str(request.user_id))
+    if answers is None:
+        return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+    response = jsonify({"answers": answers})
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @v2_bp.route("/user/takes/<take_session_id>/feedback-response",
