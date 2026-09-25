@@ -29,6 +29,7 @@ from dataclasses import replace
 import logging
 from typing import Any, Optional
 
+from services.coach_video_storage import refreshed_media_url
 from services.recording_state import RecordingState
 from services.recording_piece_analysis import (
     PiecesCanonicalUnavailable,
@@ -664,6 +665,6 @@ def build_readout_from_session(
             ]
             result["coach_review"] = {
                 "overall_message": session.get("coach_overall_message"),
-                "video_ref": session.get("coach_video_ref"),
+                "video_ref": refreshed_media_url(session.get("coach_video_ref")),
             }
     return result

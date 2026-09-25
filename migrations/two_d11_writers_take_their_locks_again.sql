@@ -1,4 +1,4 @@
--- 0362 · Two D11 writers take their locks again.
+-- 0364 · Two D11 writers take their locks again.
 --
 -- FOUND ON A REHEARSAL CLUSTER 2026-09-25. In production,
 -- `public.mark_phase1_storage_object_purged_v1` no longer carries the

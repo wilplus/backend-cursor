@@ -1,4 +1,4 @@
--- 0363 · The optional yes takes the D11 locks.
+-- 0365 · The optional yes takes the D11 locks.
 --
 -- THE GAP. 0327 (add_confident_moment_coaching_bundle_v1.sql) closes every
 -- writer that can change the D11 read inventory. One of them is
@@ -9,7 +9,7 @@
 -- services/processing_authorization.accept() now calls v2. v2 was never in
 -- 0327's registry, and 0327's verifier counts overloads by name, so a new name
 -- was never checked. The acceptance path in use takes no D11 lock at all.
--- 0362 put v1's lost preamble back and left v2 alone; this file covers v2.
+-- 0364 put v1's lost preamble back and left v2 alone; this file covers v2.
 --
 -- WHY v2 MUST SERIALISE. It writes the rows D11 reads, the same rows v1 writes:
 --
@@ -29,10 +29,10 @@
 -- Every other writer of this inventory queues on the same two locks; v2
 -- should too.
 --
--- THE REPAIR IS 0327's OWN, AS IN 0362. The lock SQL and marker are v1's
+-- THE REPAIR IS 0327's OWN, AS IN 0364. The lock SQL and marker are v1's
 -- entry, byte for byte; only the signature differs
 -- (tests/test_d11_writer_markers_survive_the_manifest.py compares them). The
--- loop is 0362's: skip when the marker is present; otherwise insert after
+-- loop is 0364's: skip when the marker is present; otherwise insert after
 -- `BEGIN` and re-execute the CURRENT definition, so 0357's body is kept. It
 -- refuses if the function is absent, if its body does not have exactly one
 -- `BEGIN` line, if the preamble reads a parameter the function lacks, or if
@@ -78,7 +78,7 @@ BEGIN
   END IF;
   definition:=pg_get_functiondef(target);
   IF position(spec->>'marker' IN definition)=0 THEN
-   -- Whole lines, newline-sensitive, as 0362 counts them: counting
+   -- Whole lines, newline-sensitive, as 0364 counts them: counting
    -- E'\nBEGIN\n' substrings would read two adjacent BEGIN lines as one.
    SELECT count(*) INTO openings FROM regexp_matches(definition,'^BEGIN$','gn');
    IF openings<>1 THEN

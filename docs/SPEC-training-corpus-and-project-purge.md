@@ -289,14 +289,33 @@ any `review_required` reason, with the confirm step. The freeze runs when the
 request is created, so the operator confirms exactly what the user asked to
 delete.
 
+Settled 2026-09-25 (decisions log N8):
+
+- **Target:** an operator confirms within **7 days** of the request. The
+  legal ceiling is one month (Art. 12(3)); 7 days is the promise shown to the
+  user.
+- **Cancel:** the user can cancel a pending request until an operator
+  confirms it. Nothing has been deleted before confirmation, so cancelling
+  changes no data. A cancelled request keeps its row with a terminal
+  `cancelled` state; it is never deleted or reused.
+- **Queue:** the operator queue lives in the existing admin panel.
+
 ## 7 · Product surface
 
 - The picker's ⋯ → **Delete** comes back, creating a `project_deletion`
   request. Because an operator confirms every purge (§6.4), the project does
   **not** vanish on tap. It shows a pending-deletion state and can't be
   opened or recorded into, and it disappears once the request reaches `done`.
-  The UI never claims "deleted" before that. The pending-state wording needs
-  founder sign-off.
+  The UI never claims "deleted" before that. The wording is signed off
+  (N8):
+
+  | Where | Text |
+  |---|---|
+  | Confirm dialog title | Delete "&lt;project name&gt;"? |
+  | Confirm dialog body | Every take in this project and its ideal text will be permanently deleted. This can't be undone. We'll finish within 7 days, and until then the project is locked. |
+  | Confirm button | Request deletion |
+  | Row label while pending | Deletion pending |
+  | Undo while pending | Cancel deletion |
 - **Copy:**
   - Before P5 (no training), the existing signed-off copy: *"Every take in this
     project and its ideal text will be permanently deleted. This can't be
@@ -310,7 +329,7 @@ delete.
 
 | Phase | What | Needs |
 |---|---|---|
-| **P1** | Project-scoped purge (§6.1), operator queue (§6.4), picker delete with pending state (§7); corpus absent | Migration via manifest; founder sign-off on pending-state copy |
+| **P1** | Project-scoped purge (§6.1), operator queue in the admin panel (§6.4), picker delete with pending state and cancel (§7); corpus absent | Migration via manifest. Founder go-ahead and copy given (N8) |
 | **P2** | Consent schema + v2 functions + v2 reader (§3), with no `training_only` policy row | Migration only; stays dark |
 | **P3** | Corpus tables + copy job (§4), behind `phase2_guard` | Migration; stays dark |
 | **P4** | Registry disposition `retain_while_training_consented` + withdrawal purge (§6.2, §6.3) | Deletion-completion tests updated |

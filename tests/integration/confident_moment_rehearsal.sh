@@ -328,16 +328,26 @@ hard migrations/add_confident_moment_coaching_bundle_v1.sql
 # gave it, so the marker tests passed while production had lost both. Re-applying
 # them here leaves the two functions as production has them: 0335's
 # accept_phase1_processing_authorization_v1 and 0354's
-# mark_phase1_storage_object_purged_v1, both without the preamble. 0362 then
-# re-injects it. Nothing after 0335 or 0354 in the manifest replaces anything
-# else either file defines, so re-applying them reverts nothing. Keep any
-# later purge-writer file below this block. 0362 runs twice: the reapply is the
-# idempotency check.
+# mark_phase1_storage_object_purged_v1, both without the preamble. 0364 then
+# re-injects it. 0364 runs twice: the reapply is the idempotency check.
+#
+# Re-applying 0354 also resets freeze_phase1_purge_inventory_v4 to 0354's body.
+# So every later file that replaces a function 0335 or 0354 defines must stay
+# BELOW this block, in manifest order. Today that is 0362, which rebuilds the
+# freeze. 0363 comes after it to keep manifest order.
 hard migrations/enable_practice_phase1_purpose.sql
 hard migrations/deletion_reaches_practice_objects.sql
+# 0362 adds resolve_phase1_purge_subject_graph_v3 and replaces the freeze
+# 0354 defines, above. Twice: the apply/reapply idempotency check.
+hard migrations/an_account_deletion_can_start.sql
+hard migrations/an_account_deletion_can_start.sql
+# 0363 lists practice made for people who never ticked the box (founder
+# decision 1). Twice: the apply/reapply idempotency check.
+hard migrations/practice_made_without_the_tick.sql
+hard migrations/practice_made_without_the_tick.sql
 hard migrations/two_d11_writers_take_their_locks_again.sql
 hard migrations/two_d11_writers_take_their_locks_again.sql
-# 0363 closes accept_phase1_processing_authorization_v2 (0357, applied above,
+# 0365 closes accept_phase1_processing_authorization_v2 (0357, applied above,
 # the served acceptance writer), which 0327's registry never named. Twice: the
 # reapply is the idempotency check.
 hard migrations/the_optional_yes_takes_the_d11_locks.sql

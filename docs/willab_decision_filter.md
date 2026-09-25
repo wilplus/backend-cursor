@@ -11,8 +11,9 @@
 **F1 — THE MVP, THE CRITICAL PATH.** voice → durable Recording Attempt →
 perfect transcript segmented exactly 1:1 per slide → project-specific Ideal Text
 after Take 1 → evidence-backed Manager Feedback after every Take. Ideal Text is
-the sole canonical presentation document. Later Takes propose improvements but
-never rebuild or silently overwrite it.
+the sole canonical presentation document. Each Take rewrites each Paragraph
+from exactly what was said in the latest Take; locked helper words persist until the
+user picks new ones, and every version stays in the Paragraph's history.
 - **Three load-bearing pieces:** **(a)** perfect per-slide transcription,
   **(b)** coherent initial Ideal Text with stable Paragraph identity, and
   **(c)** versioned Manager arbitration. The currently served V2 policy returns
@@ -37,9 +38,12 @@ eligible pool. Owner answers are routing signals, never blind training labels.
 
 **LOCKED CHOICES** (founder re-locked 2026-08-26; complete contract:
 [`CANONICAL_PRODUCT_CONTRACT.md`](CANONICAL_PRODUCT_CONTRACT.md)):
-- **L1 — One canonical document.** Ideal Text is persistent and user-controlled.
-  Take 1 creates it; later Takes never replace it with a transcript or best-of
-  assembly. Best Presentation as a separate product artifact is retired.
+- **L1 — One canonical document that follows the speaker** (founder amended
+  2026-09-25). Ideal Text is the one persistent document. Take 1 creates it; each
+  later Take rewrites each Paragraph from exactly what was said in that Take —
+  never a best-of assembly; an unspoken Paragraph keeps its last version. The lock
+  keeps the helper words, which persist until the user picks new ones. Every
+  version stays in the Paragraph's history. Best Presentation remains retired.
 - **L2 — Manager-gated, versioned Feedback.** Detectors create Candidates;
   only Manager-approved Candidates surface. V2 keeps its exact-three budget
   until a separate V3 cutover. V3 uses one relative-best Confident Voice item
@@ -67,7 +71,7 @@ eligible pool. Owner answers are routing signals, never blind training labels.
 **STEP 2 — FENCE CHECK (hard stop, FIRST — before any F1 classification).** Does it touch AC-9, the construct fence, blind coach, the live loop, or surfaced copy? Any violation → **REJECT**. *First on purpose: a fence breach that also sounds like an F1 improvement ("surface a confidence score so users see progress") must die here before it can masquerade as ADVANCE.*
 
 **STEP 3 — LOCKED-CHOICE CHECK (second hard gate, separate from fences).** Any YES → **REJECT**:
-1. Rebuilds or silently changes Ideal Text from a later transcript, best-of assembly, machine proposal, or coach action? → breaks **L1**.
+1. Builds a Paragraph from anything other than the latest Take's words (best-of assembly, machine proposal, coach action) without the user accepting it, drops or changes locked helper words without the user, or loses a Paragraph version from history? → breaks **L1**.
 2. Surfaces a raw Candidate, bypasses Manager arbitration, exceeds the active versioned budget, or manufactures Feedback? → breaks **L2**.
 3. Mixes owner routing, peer rating, coach judgment, machine prediction, or detector verdict provenance; or reuses one recording's signal for another? → breaks **L3**.
 
@@ -107,7 +111,7 @@ WHY:      <one line — the mechanism by which it does/doesn't move F1 (or F2); 
 REDIRECT: <if not a clean ADVANCE-F1: name the nearest F1-advancing action. Default targets, in order:
            (1) tighten word→slide bucketing at the two-clocks boundary
            (2) improve transcription fidelity on hard/accented audio
-           (3) improve initial Ideal Text coherence without silent later changes
+           (3) improve Ideal Text coherence while keeping Paragraph identity and helper words across Takes
            (4) sharpen Manager evidence selection or reduce manual coach load
            For a locked/fence breach: the compliant version that keeps the lock/fence,
            or "founder north-star change required.">
@@ -126,7 +130,7 @@ REDIRECT: <if not a clean ADVANCE-F1: name the nearest F1-advancing action. Defa
 |---|----------|---------|----------|---------|
 | **A** | Fix `recordStartRef` two-clocks offset | **ADVANCE-F1** | F1-CORE | improves word→slide bucketing = piece (a) |
 | **B** | Streaks + leaderboard for retention | **REJECT** | DRIFT | engagement goal (R3); leaderboard also flirts AC-9; "more takes→better ranking" laundering rejected |
-| **C** | Later Take silently rewrites Ideal Text | **REJECT** | — | breaks **L1**; later Takes may propose but never overwrite |
+| **C** | Later Take builds a Paragraph from a best-of pick, or drops locked helper words | **REJECT** | — | breaks **L1**; the Paragraph is the latest Take's words and helper words persist until the user changes them |
 | **D** | 0–100 confidence score for users | **REJECT** | — | breaks **AC-9 + CONSTRUCT** (R6); caught at STEP 2 before it can pose as F1 signal |
 | **E** | Cache the canonical Ideal Text read path at scale | **JUSTIFIED-SCAFFOLDING** | F1-SURFACE | performance-hardens a real F1 surface |
 | **F** | Surface raw detector candidates “for speed” | **REJECT** | — | bypasses Manager and breaks **L2** |
@@ -151,7 +155,7 @@ REDIRECT: <if not a clean ADVANCE-F1: name the nearest F1-advancing action. Defa
 | R4 | "The coach asked for it." | The coach is a labeler inside F2, not the founder. Route to "does it reduce manual coach load via the shadow loop?" New coach-only surface w/ no shadow path = drift. Only the FOUNDER moves the north star. |
 | R5 | "Quick / low-effort / while we're in here." | Cheap off-goal is still off-goal; "while we're in here" is how fences erode. Quick + on-path ⇒ do it; quick + off-path ⇒ still waits. |
 | R6 | "Users want a score / number / rating." | AC-9 + CONSTRUCT. Surfacing any score/ratio/confidence-number = REJECT regardless of demand. Redirect to a qualitative read. |
-| R7 | “Let each Take regenerate the Ideal Text.” | Breaks L1. Generate a proposal and require explicit user acceptance. |
+| R7 | “Let each Take assemble the best fragments across Takes.” | Breaks L1. The Paragraph is exactly what was said in the latest Take; earlier versions live in its history. |
 | R8 | “Show every strong detector output.” | Breaks L2. Route Candidates through Manager arbitration and its active versioned evidence budget. |
 | R9 | "Ship the shadow guess as a badge — it's accurate enough." | Breaks BLIND COACH + CONSTRUCT. Shadow learns silently; coach labels stay blind. Redirect: measure shadow-vs-coach agreement OFF-SURFACE. |
 | R10 | “Owner agreement is good enough training data.” | Breaks L3. Owner answers remain routing signals, separate from blind and coach labels. |

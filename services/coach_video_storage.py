@@ -101,59 +101,38 @@ def r2_bucket_name() -> str:
 
 
 def coach_media_public_url(storage_key: str) -> Optional[str]:
-    """Stable HTTPS URL if R2_PUBLIC_BASE_URL (custom or public dev domain) is set.
+    """Always ``None``: nothing in these buckets gets a public URL any more.
 
-    ``None`` for USER CONTENT (DPIA RISK-11) — a public URL is permanent and
-    unauthenticated, so recordings get signed GETs instead. Every caller
-    already handles ``None``: they fall back to an ``s3://bucket/key`` marker,
-    which ``services.audio_ref_resolver.resolve_playable_ref`` signs at read
-    time. That fallback is the path a service without the public base has
-    always taken, so this returns callers to an exercised branch rather than a
-    new one.
+    FOUNDER 2026-09-25, decision 4: both buckets go private (DPIA RISK-11,
+    M11.4). A public URL is permanent, unauthenticated and unrevocable; user
+    content stopped getting one on 2026-09-17/18, and coach-authored media
+    kept it only because the buckets were public anyway. With them private a
+    public URL would simply fail, so no caller is handed one.
 
-    Decks and coach-authored media keep the public URL. That is deliberate:
-    see services/user_content_keys.py for why, and for the 2026-09-16 incident
-    that put decks there.
+    Every caller already handles ``None`` — each falls back to a presigned GET
+    or an ``s3://bucket/key`` marker — and every read re-signs from the key
+    (``refreshed_media_url``, ``resolve_playable_ref``), so a stored ref never
+    has to stay valid. Kept as a function so those call sites read the same.
     """
-    if is_user_content_key(storage_key):
-        return None
-    base = (getattr(_config(), "R2_PUBLIC_BASE_URL", None) or "").strip().rstrip("/")
-    if not base:
-        return None
-    return f"{base}/{storage_key.lstrip('/')}"
+    del storage_key
+    return None
 
 
 def refreshed_media_url(ref: Optional[str]) -> Optional[str]:
-    """Re-point a STORED media URL that was minted as a presigned GET.
+    """Re-sign a STORED media ref from its key, fresh, on every read.
 
-    REPORTED FROM REAL USE 2026-09-16: "slide preview is unavailable again."
+    Four shapes reach this (see ``media_key_from_ref``): a presigned GET, a
+    URL on one of our public bases, an ``s3://`` marker, a bare key. Each is
+    ours, so each comes back as a new presigned GET for the same object in
+    the same bucket. Anything else — a Supabase signed URL, a foreign URL, a
+    malformed value — is returned untouched. Never a guess.
 
-    A deck's URL is written once, at upload, and read forever after. The
-    writer picks the durable form when it can::
-
-        return coach_media_public_url(key) or presigned_get_coach_object(
-            bucket, key, expires_in=604800,
-        )
-
-    — but before ``R2_PUBLIC_BASE_URL`` was configured, the fallback was the
-    only branch, and 604800 seconds is SEVEN DAYS. Nothing re-signs it, so
-    every deck uploaded in that window went dark a week later and stayed dark;
-    setting the variable afterwards fixed new uploads and did nothing at all
-    for the rows already written.
-
-    The Ideal Text read is where that bites hardest. It serves "the FIRST
-    non-null presentation_ref across takes in take order" — deliberately, so a
-    deckless retake cannot clobber the deck — which means it serves the OLDEST
-    stored URL, the one most likely to predate the config.
-
-    So: when a stored ref is a presigned R2 GET, take the object key back out
-    of it and re-emit the permanent public URL. Same bytes, same object, same
-    bucket — only the way of addressing them is refreshed. A ref that is
-    already public is returned untouched, and so is anything this cannot read
-    with certainty: a Supabase signed URL (different shape, different signer),
-    a relative or malformed value, or any ref at all when no public base is
-    configured. Never a guess, and never a second lane — the URL it produces
-    is the one ``coach_media_public_url`` would have produced at upload.
+    HISTORY. Written 2026-09-16 for the deck blackout (a 7-day presigned URL
+    written once and read forever went dark), when it re-pointed presigned
+    refs at the permanent public URL. User content moved to signing on
+    2026-09-17/18 (DPIA RISK-11). Founder 2026-09-25, decision 4: both
+    buckets go private, so coach-authored media signs too and no public URL
+    is produced at all.
 
     Pure apart from reading config. Repairs on READ, so no backfill runs
     against rows nobody is looking at.
@@ -163,7 +142,14 @@ def refreshed_media_url(ref: Optional[str]) -> Optional[str]:
     raw = ref.strip()
     try:
         key = media_key_from_ref(raw)
-        if key and is_user_content_key(key):
+        # EVERY OBJECT OF OURS SIGNS (founder 2026-09-25, decision 4). Until
+        # the buckets went private only user content did, and coach-authored
+        # media kept its permanent public URL — which stops working the moment
+        # the bucket is private. A bare value signs only when it is a
+        # user-content key, as before: anything else bare may not be a key at
+        # all. A foreign ref has no key and passes through.
+        explicit = raw.startswith("s3://") or raw.lower().startswith(("http://", "https://"))
+        if key and (explicit or is_user_content_key(key)):
             # USER CONTENT SIGNS, AND SIGNS FRESH (DPIA RISK-11, decks added
             # 2026-09-18). A new signature is minted from the KEY on every
             # read, so nothing depends on a stored URL staying valid — which
@@ -188,19 +174,8 @@ def refreshed_media_url(ref: Optional[str]) -> Optional[str]:
             return presigned_get_coach_object(
                 media_ref_bucket(raw) or "", key, expires_in=_DECK_REF_TTL,
             ) or ref
-        if not raw.lower().startswith(("http://", "https://")):
-            return ref
-        from urllib.parse import urlsplit
-
-        parts = urlsplit(raw)
-        # The presigned marker. Only SigV4 (what boto3 mints for R2) is
-        # claimed here; Supabase's `?token=` signatures are left alone.
-        if "x-amz-signature=" not in (parts.query or "").lower():
-            return ref
-        path = _strip_leading_bucket((parts.path or "").lstrip("/"))
-        if not path:
-            return ref
-        return coach_media_public_url(path) or ref
+        # Not ours to re-address: a Supabase signed URL, a foreign URL, junk.
+        return ref
     except Exception:  # pragma: no cover - a malformed ref stays as it was
         return ref
 

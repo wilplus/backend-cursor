@@ -77,3 +77,8 @@ CREATE TABLE IF NOT EXISTS public.takes (
 CREATE TABLE IF NOT EXISTS public.paragraphs (
     id UUID PRIMARY KEY
 );
+-- The purge registry counts a subject's paragraphs by owner_principal_id, as
+-- the real table (add_canonical_feedback_data_contract.sql) carries it. Without
+-- the column here the rehearsal's count raised and the erasure stopped on a
+-- stub, not on anything production has (0362).
+ALTER TABLE public.paragraphs ADD COLUMN IF NOT EXISTS owner_principal_id UUID;

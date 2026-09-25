@@ -58,14 +58,18 @@ class CoachVideoTests(unittest.TestCase):
         cvc._spawn_transcription = lambda *a, **k: None
         self._orig_put = cvs.put_coach_object_bytes
         self._orig_url = cvs.coach_media_public_url
+        self._orig_sign = cvs.presigned_get_coach_object
         cvs.put_coach_object_bytes = self._fake_put
         cvs.coach_media_public_url = lambda key: f"https://cdn/{key}"
+        cvs.presigned_get_coach_object = (
+            lambda bucket, key, expires_in: f"https://signed/{bucket}/{key}")
 
     def tearDown(self):
         for target, attr, orig in self.originals.values():
             setattr(target, attr, orig)
         cvs.put_coach_object_bytes = self._orig_put
         cvs.coach_media_public_url = self._orig_url
+        cvs.presigned_get_coach_object = self._orig_sign
         cvc._spawn_transcription = self._orig_spawn
 
     def _capture_asset(self, row):
@@ -80,6 +84,7 @@ class CoachVideoTests(unittest.TestCase):
         setattr(target, attr, fn)
 
     def _fake_put(self, bucket, key, data, content_type):
+        self.stored["bucket"] = bucket
         self.stored["key"] = key
         self.stored["len"] = len(data)
 
@@ -106,8 +111,12 @@ class CoachVideoTests(unittest.TestCase):
         key = self.stored["key"]
         self.assertTrue(key.startswith(f"coach-feedback/{SID}/"), key)
         self.assertTrue(key.endswith(".mp4"), key)
-        self.assertEqual(self.stored["ref"], f"https://cdn/{key}")
-        self.assertEqual(resp.get_json()["video_ref"], self.stored["ref"])
+        # Founder 2026-09-25, decision 4: the bucket is private. What is
+        # stored is where the object lives — never a public URL, even with a
+        # public base configured — and what is served is signed.
+        bucket = self.stored["bucket"]
+        self.assertEqual(self.stored["ref"], f"s3://{bucket}/{key}")
+        self.assertEqual(resp.get_json()["video_ref"], f"https://signed/{bucket}/{key}")
 
     def test_take_is_not_captured_into_a_training_corpus(self):
         """Phase 1 stores product video without a hidden learning write."""

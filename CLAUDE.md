@@ -5,16 +5,18 @@
 **F1 — THE MVP, THE CRITICAL PATH.** voice → durable Recording Attempt →
 perfect transcript segmented exactly 1:1 per slide → project-specific Ideal Text
 after Take 1 → evidence-backed Manager Feedback after every Take. Ideal Text is
-the sole canonical presentation document. Later Takes propose improvements but
-never rebuild or silently overwrite it. The load-bearing pieces are per-slide
+the sole canonical presentation document. Each Take rewrites each Paragraph
+from exactly what was said in the latest Take; locked helper words persist until the
+user picks new ones, and every version stays in the Paragraph's history. The load-bearing pieces are per-slide
 transcription, coherent initial Ideal Text with stable Paragraph identity, and
 versioned Manager arbitration. **V3 is the served policy** (founder cutover
 2026-09-18; V2 is retained but is no longer a fallback). It partitions each
 Slide run into deterministic blocks closest to 75 words and surfaces exactly
 one relative-best Confident Voice item per valid block on **every** Take,
-Take 1 included (contract 24b). Every item carries the delivery read and the
-tap-to-root phrase step — Emphasis IS that step, not a Feedback family and
-not a budget (24e). On top, each Take carries at most two Praise (on its most
+Take 1 included (contract 24b). Every item carries the delivery read; after Yes, In-between or
+Not sure the tap-to-root helper-words step follows — Emphasis IS that step, not a
+Feedback family and not a budget. No and Audio unclear get it only through the
+practice loop (24e, 29a). On top, each Take carries at most two Praise (on its most
 and second-most Confident items), one exercise (on the weakest item below the
 neutral band), and one rewrite (24f). Of the Slides yielding at least one valid
 block, coverage is ≥70% on Take 1, ≥80% on Take 2 and 100% from Take 3 — a
@@ -35,8 +37,11 @@ eligible pool. Owner answers are routing signals, never blind training labels.
 
 **LOCKED choices** (complete contract:
 [`docs/CANONICAL_PRODUCT_CONTRACT.md`](docs/CANONICAL_PRODUCT_CONTRACT.md)):
-**L1** Ideal Text is the one persistent, user-controlled document; later Takes
-never rebuild or silently change it, and Best Presentation is retired.
+**L1** (founder amended 2026-09-25) Ideal Text is the one persistent document. Each
+Take rewrites each Paragraph from exactly what was said in the latest Take — never
+a best-of pick; an unspoken Paragraph keeps its last version. The lock keeps the
+helper words, which persist until the user picks new ones. Every version stays in
+the Paragraph's history. Best Presentation is retired.
 **L2** Detectors create Candidates and only Manager-approved Candidates surface
 under the active versioned budget. V3 (served since 2026-09-18) uses one
 relative-best Confident Voice item per valid 75-word block on every Take,
@@ -56,7 +61,7 @@ Every proposed decision — feature, refactor, bugfix, library, copy, infra, pro
 
 1. **STATE & SPLIT** — restate it in one sentence + what it concretely changes; split bundles and run each.
 2. **FENCE CHECK (first, hard stop)** — touches AC-9 / construct / blind-coach / live-loop / surfaced copy? → **REJECT**. (First on purpose: a fence breach that *sounds* like an F1 win — e.g. "surface a confidence score for progress" — must die here.)
-3. **LOCKED-CHOICE CHECK** — rebuilds or silently changes Ideal Text (L1)? surfaces raw Candidates, bypasses Manager, exceeds the active versioned budget, or manufactures Feedback (L2)? mixes label provenance or reuses signals across recordings (L3)? Any yes → **REJECT**. Refactors must prove L1/L2/L3 and the live loop remain intact.
+3. **LOCKED-CHOICE CHECK** — builds a Paragraph from anything but the latest Take's words, or drops/changes locked helper words without the user (L1)? surfaces raw Candidates, bypasses Manager, exceeds the active versioned budget, or manufactures Feedback (L2)? mixes label provenance or reuses signals across recordings (L3)? Any yes → **REJECT**. Refactors must prove L1/L2/L3 and the live loop remain intact.
 4. **CLASSIFY (one tier)** — **F1-CORE** changes per-slide transcription, initial Ideal Text coherence/identity, or Manager evidence arbitration. **F1-SURFACE** hardens record→Take, Ideal Text read/edit/protect, Feedback decisions, or root-roadmap delivery. **F1-SUPPORT** is required for a named in-flight F1 task. **F2** covers coach-review lineage, provenance-safe learning, Confident Voice, exact-clip exercise matching/practice, and Voice Album. Everything else is **SCAFFOLDING** or **DRIFT**.
 5. **RATIONALIZATION SCAN** — “more usage” is not an F1 goal. “Foundation,” “cleaner,” or “later” requires a named in-flight F1/F2 task. No concrete mechanism means park or reject.
 6. **CONTENTION** — F1-CORE wins all ties. F1-SURFACE sits behind open F1-CORE. F1-SUPPORT passes only with the named in-flight task. F2 yields to F1-CORE. SCAFFOLDING passes only as the named unblocker of in-flight F1/F2. **DRIFT vs DEFER:** off-goal + serves a non-F1 goal = REJECT-DRIFT; off-goal but neutral & legit-someday with nothing in flight = DEFER.
@@ -69,7 +74,7 @@ WHY:      <the mechanism it does/doesn't move F1 (or F2); cite any fence/Lx/R# h
 REDIRECT: <if not a clean ADVANCE-F1: the nearest F1-advancing action. Default targets, in order:
            (1) tighten word→slide bucketing at the two-clocks boundary
            (2) improve transcription fidelity on hard/accented audio
-           (3) improve initial Ideal Text coherence without silent later changes
+           (3) improve Ideal Text coherence while keeping Paragraph identity and helper words across Takes
            (4) sharpen Manager evidence selection or reduce manual coach load
            For a locked/fence breach: the compliant version, or "founder north-star change required.">
 ```
