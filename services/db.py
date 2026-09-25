@@ -8743,6 +8743,60 @@ class DatabaseService:
             logger.warning("set ideal text part root failed: %s", e)
             return False
 
+    # ── Helper words belong to the Slide (contract 13-14, Q12/Q14) ─────────
+    # services/slide_helper_words.py owns the rule; these two are plain I/O.
+
+    def get_slide_helper_words(self, arc_id: str, user_id: str) -> list:
+        """Every Slide's helper-word rows for one document, [] on failure."""
+        if not arc_id or not user_id:
+            return []
+        try:
+            return (self.client.table("ideal_text_slide_helper_words")
+                    .select("slide_index,ord,phrase,take_session_id,"
+                            "source_part_id,locked_at,selected_at")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .order("slide_index").order("ord")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("get slide helper words failed arc=%s: %s",
+                           arc_id, e)
+            return []
+
+    def replace_slide_helper_words(self, arc_id: str, user_id: str,
+                                   slide_index: int, rows: list) -> bool:
+        """Replace ONE Slide's rows wholesale (delete, then insert).
+
+        Wholesale for the same reason as `replace_ideal_text_parts`: a pick
+        or a lock can renumber every row of the Slide, and per-row upserts
+        would transiently collide on the (slide, ord) slot."""
+        if not arc_id or not user_id or not isinstance(slide_index, int):
+            return False
+        try:
+            (self.client.table("ideal_text_slide_helper_words")
+                .delete()
+                .eq("arc_id", str(arc_id))
+                .eq("user_id", str(user_id))
+                .eq("slide_index", slide_index)
+                .execute())
+            if rows:
+                self.client.table("ideal_text_slide_helper_words").insert([{
+                    "arc_id": str(arc_id),
+                    "user_id": str(user_id),
+                    "slide_index": slide_index,
+                    "ord": int(r["ord"]),
+                    "phrase": str(r["phrase"]),
+                    "take_session_id": r.get("take_session_id") or None,
+                    "source_part_id": r.get("source_part_id") or None,
+                    "locked_at": r.get("locked_at"),
+                    "selected_at": r.get("selected_at"),
+                } for r in rows]).execute()
+            return True
+        except Exception as e:
+            logger.warning("replace slide helper words failed arc=%s "
+                           "slide=%s: %s", arc_id, slide_index, e)
+            return False
+
     def append_ideal_text_part_revision(
         self, *, arc_id: str, user_id: str, part_id: str, action: str,
         text: str, root_phrase: Optional[str] = None,

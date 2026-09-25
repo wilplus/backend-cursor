@@ -130,6 +130,8 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "arc_id", "project", "delete", "derived_feedback", 55),
     PurgeDependency("ideal_part", "ideal_text_part", "arc_id", "project",
                     "delete", "derived_feedback", 55),
+    PurgeDependency("ideal_slide_helper_words", "ideal_text_slide_helper_words",
+                    "arc_id", "project", "delete", "derived_feedback", 55),
     PurgeDependency("ideal_part_revision", "ideal_text_part_revision", "arc_id",
                     "project", "external_review", "derived_feedback", 300),
     # Immutable cold-open read model. Heads go first because their restrictive
