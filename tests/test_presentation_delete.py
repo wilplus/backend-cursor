@@ -60,8 +60,9 @@ class PresentationDeleteTests(unittest.TestCase):
             dict(meta, id=sid) for sid, meta in self._sessions.items()
         ])
         self._patch_db(
-            "v2_delete_session",
-            lambda sid, uid: self.deleted_sessions.append((sid, uid)) or True,
+            "v2_delete_sessions",
+            lambda sids, uid: self.deleted_sessions.extend(
+                (sid, uid) for sid in sids),
         )
 
     def tearDown(self):

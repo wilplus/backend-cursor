@@ -65,8 +65,8 @@ class PresentationDeleteCompleteSetTests(unittest.TestCase):
         self._p = [
             patch.object(db.takes, "v2_list_user_lab_sessions",
                          lambda uid, **kw: list(self._sessions)),
-            patch("routes.v2.user_sessions._hard_delete_session_for_user",
-                         lambda uid, sid: self._deleted.append(sid)),
+            patch("routes.v2.user_sessions._hard_delete_sessions_for_user",
+                  lambda uid, sids: self._deleted.extend(sids)),
         ]
         for p_ in self._p:
             p_.start()
@@ -113,8 +113,8 @@ class SessionDeleteTests(unittest.TestCase):
         self._p = [
             patch.object(db, "v2_get_session_by_id",
                          lambda sid: self._session),
-            patch("routes.v2.user_sessions._hard_delete_session_for_user",
-                         lambda uid, sid: self._deleted.append(sid)),
+            patch("routes.v2.user_sessions._hard_delete_sessions_for_user",
+                  lambda uid, sids: self._deleted.extend(sids)),
         ]
         for p_ in self._p:
             p_.start()
