@@ -74,3 +74,12 @@ def test_the_log_table_is_registered_and_locked_down():
     sql = (Path(__file__).resolve().parents[1] / "migrations"
            / "helper_words_keep_a_history.sql").read_text()
     assert "ENABLE ROW LEVEL SECURITY" in sql
+
+
+def test_each_version_names_its_take_when_the_snapshot_says_so():
+    tagged = _version(1, ["A one."], [0])
+    tagged["document"]["take_index"] = 2
+    untagged = _version(2, ["A two."], [0])
+    untagged["document"]["take_index"] = True
+    h = slide_history([tagged, untagged], [], 0)
+    assert [v["take_index"] for v in h["versions"]] == [2, None]
