@@ -11,6 +11,9 @@ Drafts for counsel: `legal/phase1-2026.1/10-training-policy-changes-DRAFT.md`
 `legal/phase1-2026.1/11-retention-schedule-v1.1-training-DRAFT.md` (the
 training rows). Who trains is not decided, so training stays off.
 
+**Update 2026-09-26 (§N12):** OpenAI trains; the policy draft now names it
+and the transfer to the United States under standard contractual clauses.
+
 **Status:** nothing in this document is switched on. P2 (0373), P3 (0375) and
 P4 (0376) are built and dark. P5 is the only phase that reaches a user, and it
 needs **counsel review** and **founder sign-off** before any line below is
