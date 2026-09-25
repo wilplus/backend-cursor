@@ -71,6 +71,9 @@ PORT="${REHEARSAL_PGPORT:-55432}"
 # PostgreSQL refuses to run as root; on a root shell delegate the server
 # processes to the postgres system user (present wherever the server package
 # is installed). Everything else runs as the caller.
+# AS_PG and WALLCLOCK may be empty, so they expand as ${X[@]+"${X[@]}"}:
+# macOS's /bin/bash is 3.2, where "${X[@]}" of an empty array under `set -u`
+# is an "unbound variable" error and the tier died before initdb.
 AS_PG=()
 if [ "$(id -u)" = 0 ]; then
   id postgres >/dev/null 2>&1 || { echo "rehearsal tier: running as root and no 'postgres' user to delegate to" >&2; exit 2; }
@@ -90,18 +93,18 @@ DATA="$SOCK/data"; LOG="$SOCK/postgres.log"
 
 teardown() {
   if [ "$KEEP" = 1 ]; then
-    echo "cluster kept at $SOCK (stop with: ${AS_PG[*]} $PG_BIN/pg_ctl -D $DATA stop)"
+    echo "cluster kept at $SOCK (stop with: ${AS_PG[*]:+${AS_PG[*]} }$PG_BIN/pg_ctl -D $DATA stop)"
     return
   fi
-  "${AS_PG[@]}" "$PG_BIN/pg_ctl" -D "$DATA" -m fast -w stop >/dev/null 2>&1 || true
+  ${AS_PG[@]+"${AS_PG[@]}"} "$PG_BIN/pg_ctl" -D "$DATA" -m fast -w stop >/dev/null 2>&1 || true
   rm -rf "$SOCK"
 }
 trap teardown EXIT
 
 echo "→ rehearsal tier: disposable cluster at $SOCK (port $PORT, socket only)"
-"${AS_PG[@]}" "$PG_BIN/initdb" -D "$DATA" -U postgres --auth=trust -E UTF8 --locale=C >"$SOCK/initdb.log" 2>&1 \
+${AS_PG[@]+"${AS_PG[@]}"} "$PG_BIN/initdb" -D "$DATA" -U postgres --auth=trust -E UTF8 --locale=C >"$SOCK/initdb.log" 2>&1 \
   || { echo "initdb failed:" >&2; tail -20 "$SOCK/initdb.log" >&2; exit 1; }
-"${AS_PG[@]}" "$PG_BIN/pg_ctl" -D "$DATA" -l "$LOG" -w \
+${AS_PG[@]+"${AS_PG[@]}"} "$PG_BIN/pg_ctl" -D "$DATA" -l "$LOG" -w \
   -o "-c listen_addresses='' -c unix_socket_directories=$SOCK -c port=$PORT -c fsync=off -c synchronous_commit=off -c full_page_writes=off" start >/dev/null 2>&1 \
   || { echo "postgres failed to start:" >&2; tail -20 "$LOG" >&2; exit 1; }
 
@@ -260,7 +263,7 @@ LANES=(
   "d3|COACH_GUIDANCE_REHEARSAL_DSN|willab_d3_rehearsal|tests/test_coach_guidance_delivery_d3_postgres.py"
   "service|MLC3_FIRST_CLIENT_REHEARSAL_DSN|willab_service_rehearsal|tests/test_mlc3_first_client_service_postgres.py"
   "confident-moment narrow|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_narrow|tests/test_confident_moment_coaching_bundle_postgres.py"
-  "confident-moment released|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_released|tests/test_confident_moment_production_fixtures.py tests/test_phase1_deletion_completion_postgres.py tests/test_phase1_processing_postgres.py tests/test_mlc3_self_speaker_identity_postgres.py tests/test_optional_consent_postgres.py tests/test_reacceptance_signal_postgres.py tests/test_consent_choices_postgres.py tests/test_account_deletion_starts_postgres.py tests/test_practice_without_the_tick_postgres.py tests/test_bundled_era_erasure_postgres.py tests/test_project_deletion_postgres.py tests/test_take_purge_postgres.py"
+  "confident-moment released|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_released|tests/test_confident_moment_production_fixtures.py tests/test_d11_writer_markers_installed_postgres.py tests/test_phase1_deletion_completion_postgres.py tests/test_phase1_processing_postgres.py tests/test_mlc3_self_speaker_identity_postgres.py tests/test_optional_consent_postgres.py tests/test_reacceptance_signal_postgres.py tests/test_consent_choices_postgres.py tests/test_account_deletion_starts_postgres.py tests/test_practice_without_the_tick_postgres.py tests/test_bundled_era_erasure_postgres.py tests/test_project_deletion_postgres.py tests/test_take_purge_postgres.py"
   "canary|MLC3_CANARY_READINESS_REHEARSAL_DSN|willab_d3_canary|tests/test_mlc3_founder_canary_readiness_postgres.py"
   "d4|MLC3_GENERAL_USER_REHEARSAL_DSN|willab_ga_template|tests/test_mlc3_general_user_service_d4_postgres.py"
   "freeze|TAKE_FEEDBACK_FREEZE_REHEARSAL_DSN|willab_freeze_rehearsal|tests/test_take_feedback_freeze_postgres.py"
@@ -301,7 +304,7 @@ for lane in "${LANES[@]}"; do
   env WILLAB_REHEARSAL=1 JWT_SECRET=ci-placeholder-secret \
       SUPABASE_URL=https://ci-placeholder.invalid SUPABASE_KEY=ci-placeholder-key \
       "$var=$(dsn "$db")" \
-      "${WALLCLOCK[@]}" \
+      ${WALLCLOCK[@]+"${WALLCLOCK[@]}"} \
       "$PY" -m pytest $modules -p no:cacheprovider -q --tb=short >"$SOCK/lane.log" 2>&1
   rc=$?
   line="$(grep -E "passed|failed|error" "$SOCK/lane.log" | tail -1)"

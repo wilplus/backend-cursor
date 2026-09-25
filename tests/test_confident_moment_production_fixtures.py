@@ -114,12 +114,19 @@ def test_policy_registration_uses_the_canonical_phase1_writers(db):
 
 
 def test_phase1_policy_refuses_a_phase2_purpose(db):
-    """The fixture cannot smuggle a phase-2 purpose into a phase-1 policy."""
+    """The fixture cannot smuggle a phase-2 purpose into a phase-1 policy.
+
+    The probe is `pooled_model_improvement`, which 0335 guards as phase 2.
+    It used to be `personalized_exercise_recommendation`, but 0335
+    reclassified that one as phase 1. The lane only started applying 0335
+    on 2026-09-25 (see confident_moment_rehearsal.sh), and that exposed the
+    stale probe.
+    """
     with pytest.raises(psycopg2.Error) as failure:
         register_policy(
             db,
             version=f"phase2-probe-{uuid4().hex[:8]}",
-            purpose_ids=("coach_review", "personalized_exercise_recommendation"),
+            purpose_ids=("coach_review", "pooled_model_improvement"),
         )
     assert "PHASE2_PURPOSE_FORBIDDEN" in str(failure.value)
 

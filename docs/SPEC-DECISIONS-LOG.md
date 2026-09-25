@@ -632,7 +632,7 @@ board).**
   attempt is retained as evidence and points at its project ON DELETE
   RESTRICT. So no erasure could finish for anyone who had recorded a take.
 - **Decision:** keep the row, wipe its content. The registry files `projects`
-  as `tombstone` under the deletion-evidence rule; migration 0365 blanks
+  as `tombstone` under the deletion-evidence rule; migration 0367 blanks
   `display_name`, `setup` and `presentation_ref` and stamps `tombstoned_at`,
   only for projects in the request's frozen graph.
 - **Still true:** production has no active retention rule yet, so a real run
