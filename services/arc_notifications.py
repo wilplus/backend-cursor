@@ -498,6 +498,36 @@ def fire_ideal_text_unconfirmed(db, user_id: Any, arc_id: Any,
         return False
 
 
+def fire_coach_feedback_published(db, user_id: Any, arc_id: Any,
+                                  revision_id: Any) -> bool:
+    """The coach pressed Publish, and the chat finally says so.
+
+    FOUNDER 2026-09-25, decision 02. Until now the moment a coach's work
+    became visible was the one moment nothing announced: hours of judgement,
+    Publish pressed, and the speaker's thread stayed completely silent. The
+    email was carrying that alone, and only for people who read email.
+
+    ONE card, and it opens the Ideal Text -- the same destination as the
+    email's button, so the inbox and the chat lead to one place. It is not a
+    per-take bubble: those were retired in July because they put a second
+    deliverable beside the canonical document (L1), and this does not bring
+    them back.
+
+    Keyed on the REVISION, because publish delivery is a retrying outbox and
+    the same event can arrive twice.
+
+    Copy: founder sign-off 2026-09-25.
+    """
+    if not user_id or not arc_id or not revision_id:
+        return False
+    return _fire_ideal_bubble(
+        db, user_id, arc_id,
+        client_key=f"willab-coach-feedback:{revision_id}",
+        body="Your coach's feedback is in.",
+        variant="coach_feedback_published", version=None,
+    )
+
+
 def fire_ideal_verified(db, user_id: Any, arc_id: Any, version: Any) -> bool:
     """Single deliverable (founder 2026-07-17): the coach VERIFIED the
     current version → the per-version verified bubble. Copy = founder

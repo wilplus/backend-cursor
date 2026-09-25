@@ -275,3 +275,39 @@ def save_exercise(database: Any, body: Any) -> Optional[dict]:
         **_avatar(fields),
     }
     return database.upsert_diagnostic_exercise(row)
+
+
+def file_coach_exercise(
+    database: Any, *, practice_id: Any, fields: Any,
+) -> Optional[dict]:
+    """The coach's on-the-spot exercise, filed into the library like any other.
+
+    FOUNDER 2026-09-25, decision 04. This path used to mint a one-off
+    ``coach-custom-{practice}`` dictionary carrying a title, an instruction and
+    NO ERROR AT ALL. Two things followed, both bad.
+
+    It could never reach anyone. Routing works by matching an exercise's
+    errors against the errors a detector actually found on a clip, so an
+    exercise naming none matches nothing, forever.
+
+    And it carried a coach's judgement about ONE recording forward onto that
+    speaker's later practice -- the provenance wall L3 exists to hold. The
+    founder's decision closes that: the coach's video becomes teaching
+    material FOR AN ERROR, reusable by any speaker whose recording shows it,
+    rather than a private verdict about one person.
+
+    So it goes through exactly the validation every catalogue entry goes
+    through -- including the refusal for an error code cannot detect, which is
+    the one a coach is most likely to meet and most needs to read.
+    """
+    payload: dict = fields if isinstance(fields, dict) else {}
+    practice = str(practice_id or "").strip()
+    if not practice:
+        raise CatalogueRefusal("an exercise needs the practice it came from")
+    body = dict(payload)
+    body["exercise_id"] = f"coach-custom-{practice}"
+    body.setdefault("active", True)
+    # Every other field is the author's, and is validated by save_exercise --
+    # including the video, which the library has always required and this path
+    # used to treat as optional.
+    return save_exercise(database, body)

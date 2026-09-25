@@ -88,3 +88,82 @@ class MailTheSpeaker(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PublishingFinallySaysSomethingTests(unittest.TestCase):
+    """FOUNDER 2026-09-25, decision 02.
+
+    Every card publish could fire was conditional -- a correction, a shared
+    video, an album clip, a milestone -- so a publish with none of them left
+    the speaker's thread completely silent at the one moment the coach's work
+    became visible. The email was carrying that alone.
+    """
+
+    def test_publish_fires_one_card_and_it_is_unconditional(self):
+        import inspect
+
+        from services import coach_publish_delivery as cpd
+
+        source = inspect.getsource(cpd._deliver)
+        self.assertIn("fire_coach_feedback_published(", source)
+        # Not nested under a payload condition: the publish itself is the news.
+        for line in source.splitlines():
+            if "fire_coach_feedback_published(" in line:
+                indent = len(line) - len(line.lstrip())
+                self.assertEqual(
+                    indent, 4,
+                    "the publish card must not sit behind a payload flag")
+
+    def test_the_card_carries_the_signed_copy(self):
+        from services.arc_notifications import fire_coach_feedback_published
+        captured = {}
+
+        class _Db:
+            def insert_lounge_messages(self, uid, messages):
+                captured["uid"] = uid
+                captured["messages"] = messages
+                return messages
+
+            def get_arc_by_id(self, _arc_id):
+                return None
+
+        self.assertTrue(fire_coach_feedback_published(
+            _Db(), "user-1", "arc-1", "rev-9"))
+        message = captured["messages"][0]
+        # Founder sign-off 2026-09-25.
+        self.assertEqual(message["body"], "Your coach's feedback is in.")
+        self.assertEqual(message["kind"], "ideal_text")
+        self.assertEqual(
+            message["metadata"]["variant"], "coach_feedback_published")
+
+    def test_the_same_revision_delivered_twice_is_one_card(self):
+        """Publish delivery is a RETRYING outbox: the same event can arrive
+        again, and a second card in the thread would be the visible cost."""
+        from services.arc_notifications import fire_coach_feedback_published
+        keys = []
+
+        class _Db:
+            def insert_lounge_messages(self, uid, messages):
+                keys.append(messages[0]["client_id"])
+                return messages
+
+            def get_arc_by_id(self, _arc_id):
+                return None
+
+        fire_coach_feedback_published(_Db(), "user-1", "arc-1", "rev-9")
+        fire_coach_feedback_published(_Db(), "user-1", "arc-1", "rev-9")
+        self.assertEqual(len(set(keys)), 1, "same revision → same client key")
+
+        fire_coach_feedback_published(_Db(), "user-1", "arc-1", "rev-10")
+        self.assertEqual(len(set(keys)), 2, "a new revision announces again")
+
+    def test_nothing_fires_without_a_revision(self):
+        from services.arc_notifications import fire_coach_feedback_published
+
+        class _Db:
+            def insert_lounge_messages(self, uid, messages):
+                raise AssertionError("must not write")
+
+        for missing in (None, "", 0):
+            self.assertFalse(fire_coach_feedback_published(
+                _Db(), "user-1", "arc-1", missing))
