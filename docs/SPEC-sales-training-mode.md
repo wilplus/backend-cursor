@@ -333,16 +333,27 @@ already have SALES_TRAINING_MODE set, per the CONFIG-FIRST rule):
   The response must not contain the owner id, location, take index, transcript,
   machine value or other ratings.
 
-Frontend (Next.js App Router; BFF proxies under src/app/api/v2/sales-training/*):
-  - Welcome + Consent screens (spec §6), shown once after enrollment.
-  - Lab: for the sales project, call takes/next before the record button;
-    if notice_required, render the Shared-take notice and call announce when it
-    is shown; wire "Keep this one private".
-  - "Shared take" tag on the recording screen for shared takes only.
-  - "Take N of 8 · Your next take opens tomorrow" line; disable record until then.
-  - Listen page: player, conf-q-v2 text, five buttons, "N of M listened". No
-    other data. Menu entry only for member/panel.
-  - Settings: "Leave sales training" with an in-page confirm (no window.confirm).
+  Share-gate hook: call sales_training.share_gate from services/analysis_worker.py
+  AFTER the take's normal processing has committed, in a try/except that logs
+  and never raises (a gate failure must not affect the take).
+
+Frontend (Next.js App Router; BFF proxies under src/app/api/v2/sales-training/*
+and src/app/api/v2/admin/sales-training/*):
+  - src/app/admin/users/page.tsx: add a "Sales training" column per user
+    (location select, role select member|panel, on/off toggle) -> members API.
+  - NEW src/app/sales-training/page.tsx: Welcome + Consent (spec §6), shown once
+    after enrollment; redirect here from the Lab while consent_required.
+  - src/components/willab/RecordingSetup.tsx: for the sales project, call
+    takes/next before enabling Record; if notice_required, render the
+    Shared-take notice, call announce when it is shown, wire
+    "Keep this one private". Private slots render the unchanged screen.
+  - Recording screen: small "Shared take" tag for shared takes only.
+  - "Take N of 8 · Your next take opens tomorrow" line; Record disabled until then.
+  - NEW src/app/sales-training/listen/page.tsx: player, conf-q-v2 text, five
+    buttons, "N of M listened". No other data.
+  - src/components/AppMenu.tsx: "Listen" entry for member/panel roles only.
+  - src/app/panel/data (settings/data page): "Leave sales training" with an
+    in-page confirm (no window.confirm).
 
 Tests (must pass; backend via scripts/local_ci.sh):
   - unannounced shared take is never enqueued (unit + route)
