@@ -20,7 +20,7 @@ as service_role, against the disposable schema. Two stand-ins, both named:
 WHAT IT FOUND. The purge deleted the Take and then failed on the project row:
 retained recording-attempt evidence points at it ON DELETE RESTRICT. Founder
 decision N9: the project row is kept as a tombstone with its content wiped
-(migration 0367).
+(migration 0368).
 """
 from __future__ import annotations
 
@@ -190,7 +190,7 @@ def _left_for_review(db, request: str) -> list:
 class TestAnAccountWithARealTakeCanBeErased:
 
     def test_the_erasure_reaches_done_and_the_take_is_gone(self, db, fake_storage):
-        """Before 0367 this ended at review_required: the project delete was
+        """Before 0368 this ended at review_required: the project delete was
         refused by retained recording-attempt evidence (RESTRICT)."""
         _production_columns(db)
         _seed_every_retention_rule(db)

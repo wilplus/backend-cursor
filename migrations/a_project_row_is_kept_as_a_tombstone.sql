@@ -1,4 +1,4 @@
--- 0367 · A project row is kept as a tombstone.
+-- 0368 · A project row is kept as a tombstone.
 --
 -- FOUNDER 2026-09-25, decisions log N9 ("tombstone it").
 --

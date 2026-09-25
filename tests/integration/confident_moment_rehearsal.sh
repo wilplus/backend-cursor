@@ -356,7 +356,7 @@ hard migrations/two_d11_writers_take_their_locks_again.sql
 # reapply is the idempotency check.
 hard migrations/the_optional_yes_takes_the_d11_locks.sql
 hard migrations/the_optional_yes_takes_the_d11_locks.sql
-# 0367 keeps a purged project row as a tombstone (its content wiped), because
+# 0368 keeps a purged project row as a tombstone (its content wiped), because
 # retained recording-attempt evidence points at it. Twice: idempotency.
 hard migrations/a_project_row_is_kept_as_a_tombstone.sql
 hard migrations/a_project_row_is_kept_as_a_tombstone.sql
