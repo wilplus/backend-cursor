@@ -40,6 +40,7 @@ from routes.v2.common import (
     _is_valid_uuid,
 )
 from services.db import db
+from services.coach_queue import load_review_queue
 from services.coach_video_storage import refreshed_media_url
 from services.coach_moment_errors import (
     apply_moment_edit,
@@ -103,7 +104,26 @@ def _coach_pseudonym(user_id):
     return f"{adj} {animal}"
 
 
-def _coach_state_map(session_id, rater_id=None):
+def _drafts_by_snippet(session_id, draft_rows=None):
+    """This session's drafts keyed by snippet.
+
+    `draft_rows` lets a caller that already read many sessions in ONE query
+    hand its rows in — the coach queue does, which is how that list stopped
+    costing a round trip per take. None reads this one session, which is what
+    every single-session caller wants and exactly what this did before.
+
+    Lives outside `_coach_state_map` so the route fence's line budget for that
+    function is spent on its own decision rather than on a lookup.
+    """
+    rows = (db.get_coach_snippet_drafts(session_id) or []
+            if draft_rows is None else draft_rows)
+    return {
+        str(d.get("snippet_id")): d
+        for d in rows if d.get("snippet_id") is not None
+    }
+
+
+def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
     """Per-snippet coach_state for the resume read.
 
     Draft authoring and the authenticated coach's own blind confidence rating
@@ -121,11 +141,7 @@ def _coach_state_map(session_id, rater_id=None):
     ratings at all, which is the safe default for any caller that has not
     thought about whose answer it is showing.
     """
-    drafts = {}
-    for d in (db.get_coach_snippet_drafts(session_id) or []):
-        sid = d.get("snippet_id")
-        if sid is not None:
-            drafts[str(sid)] = d
+    drafts = _drafts_by_snippet(session_id, draft_rows)
     ratings = (db.get_own_state_ratings_for_session(session_id, rater_id)
                if rater_id else {})
     out = {}
@@ -288,10 +304,15 @@ def v2_coach_students():
         except (TypeError, ValueError):
             offset = 0
         rows = db.takes.list_coach_students(limit=limit, offset=offset) or []
+        # ONE PROFILE READ FOR THE WHOLE LIST. This read a whole profile per
+        # student to render a single field; a hundred students meant a hundred
+        # round trips before the coach saw a name.
+        _profiles = db.get_user_profiles(
+            [r.get("user_id") for r in rows if r.get("user_id")]) or {}
         out = []
         for r in rows:
             uid = r.get("user_id")
-            prof = db.get_user_profile(uid) or {}
+            prof = _profiles.get(str(uid)) or {}
             out.append({
                 # Opaque drill key — the FE keys the student detail view
                 # (GET /v2/coach/students/<user_id>) on this and NEVER renders
@@ -382,15 +403,15 @@ def v2_coach_student_detail(user_id):
             })
         # "Ideal text ready to review" badges (founder 2026-07-15) — the arcs
         # with a persisted MACHINE draft awaiting the coach (unapproved).
+        # ONE READ FOR EVERY PROJECT, not one each. A student with a dozen
+        # projects paid a dozen round trips to decide which badges to draw.
         _ideal_ready_arcs = []
-        for _aid in {s.get("arc_id") for s in sessions if s.get("arc_id")}:
-            try:
-                _row = db.ideal_text.get_coach_arc_ideal_text(_aid)
-                if _row and (_row.get("text") or "").strip() \
-                        and not _row.get("approved_at"):
-                    _ideal_ready_arcs.append(str(_aid))
-            except Exception:
-                continue
+        _ideal_rows = db.ideal_text.get_coach_arc_ideal_texts(
+            [s.get("arc_id") for s in sessions if s.get("arc_id")]) or {}
+        for _aid, _row in _ideal_rows.items():
+            if _row and (_row.get("text") or "").strip() \
+                    and not _row.get("approved_at"):
+                _ideal_ready_arcs.append(str(_aid))
         return jsonify({
             "pseudonym": _coach_pseudonym(user_id),
             "domain": (prof or {}).get("domain") or "",
@@ -549,11 +570,11 @@ def v2_coach_queue():
         if not proficient:
             return _rater_language_error("profile_required")
 
-        rows = db.list_review_queue() or []
+        rows, _snips, _states = load_review_queue(db, _coach_state_map)
         out = []
         for r in rows:
             sid = r.get("id")
-            snippets = db.get_snippets_by_session(sid) or []
+            snippets = _snips.get(str(sid)) or []
             outcome, _language = _rater_language_outcome(
                 r, snippets, proficient=proficient)
             if outcome != "matched":
@@ -561,7 +582,7 @@ def v2_coach_queue():
                 # routed to another eligible coach. They are not ratings.
                 continue
             ctx = r.get("intake_context") if isinstance(r.get("intake_context"), dict) else {}
-            cstate = _coach_state_map(sid)
+            cstate = _states.get(str(sid)) or {}
             out.append({
                 "session_id": sid,
                 # Opaque drill key — mirrors GET /v2/coach/students (never

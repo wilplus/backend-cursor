@@ -48,6 +48,40 @@ class IdealTextRepository(TableRepository):
                            arc_id, e)
             return None
 
+    def get_coach_arc_ideal_texts(self, arc_ids) -> dict:
+        """Batch read — {arc_id: row} for many projects in one query.
+
+        Kills the N+1 on the coach's student detail, which read one row per
+        project purely to decide which projects show a "ready to review"
+        badge. A project with no row is absent, which the caller already
+        treats as "nothing waiting".
+        """
+        ids = [str(a) for a in (arc_ids or []) if a]
+        if not ids:
+            return {}
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                res = (
+                    self.client.table("coach_arc_ideal_text")
+                    .select("*")
+                    .in_("arc_id", chunk)
+                    .execute()
+                )
+                for row in (res.data or []):
+                    out.setdefault(str(row.get("arc_id")), row)
+        except Exception as e:
+            _e = str(e).lower()
+            if "coach_arc_ideal_text" in _e and (
+                "does not exist" in _e or "pgrst" in _e
+            ):
+                return {}
+            logger.warning("get_coach_arc_ideal_texts failed n=%s: %s",
+                           len(ids), e)
+            return {}
+        return out
+
     def upsert_coach_arc_ideal_text(
         self, arc_id: str, text: str, updated_by: Optional[str],
         *, approve: bool = False,
