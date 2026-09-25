@@ -49,17 +49,29 @@ def test_missing_slide_lineage_is_never_guessed():
     assert project_recording_roots(_snapshot(slide_index=None), _live_rows()) == []
 
 
-@pytest.mark.parametrize("mutation", ["id", "text", "span"])
+@pytest.mark.parametrize("mutation", ["id", "text"])
 def test_stale_or_invalid_live_root_fails_closed(mutation):
     rows = _live_rows()
     if mutation == "id":
         rows[0]["id"] = "part-foreign"
-    elif mutation == "text":
-        rows[0]["text"] = "Changed text."
     else:
-        rows[0]["root_start"] = 0
+        rows[0]["text"] = "Changed text."
     with pytest.raises(RecordingRootsStale):
         project_recording_roots(_snapshot(), rows)
+
+
+@pytest.mark.parametrize("start,end", [(0, 5), (None, None)])
+def test_helper_words_show_without_a_matching_position(start, end):
+    """Contract 14 (founder 2026-09-25): the helper words are their own text.
+    A span that no longer proves the words — or no span at all, which the
+    CHECK now allows (helper_words_are_their_own_text.sql) — still shows the words while recording. Only
+    Paragraph identity and Slide lineage can make the read stale."""
+    rows = _live_rows()
+    rows[0]["root_start"], rows[0]["root_end"] = start, end
+    assert project_recording_roots(_snapshot(), rows) == [{
+        "part_id": "part-1", "slide_index": 1,
+        "text": "accepted sentence", "type": "flagship",
+    }]
 
 
 def test_an_unlocked_root_is_skipped_rather_than_failing_the_read():

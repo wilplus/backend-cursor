@@ -591,16 +591,19 @@ def serve(rows: Any) -> Optional[list]:
             "iteration": iteration,
         }
         # Optional metadata stays absent until selected. This preserves the
-        # old parts wire exactly for the overwhelming majority of paragraphs
-        # while still carrying one complete exact span when it exists.
-        if (isinstance(root, str) and root
-                and isinstance(start, int) and not isinstance(start, bool)
-                and isinstance(end, int) and not isinstance(end, bool)):
-            item.update({
-                "root_phrase": root,
-                "root_start": start,
-                "root_end": end,
-            })
+        # old parts wire exactly for the overwhelming majority of paragraphs.
+        #
+        # THE HELPER WORDS ARE THEIR OWN TEXT (contract 14, founder
+        # 2026-09-25). They persist when the Paragraph's words change, so the
+        # phrase is served whenever one is stored. The span is only a render
+        # hint for painting those words inside the Paragraph: served when it
+        # still proves the same words, re-found when the words occur exactly
+        # once in the new text, and otherwise absent — never guessed.
+        if isinstance(root, str) and root:
+            item["root_phrase"] = root
+            span = root_span_in(text, root, start, end)
+            if span is not None:
+                item["root_start"], item["root_end"] = span
         out.append(item)
     # Re-index on the way out. A gap in `ord` (a partial write, a row deleted
     # by hand) would otherwise reach the client as a position it cannot use,
@@ -608,6 +611,28 @@ def serve(rows: Any) -> Optional[list]:
     for i, p in enumerate(out):
         p["ord"] = i
     return out
+
+
+def root_span_in(text: Any, phrase: Any, start: Any = None,
+                 end: Any = None) -> Optional[tuple[int, int]]:
+    """Where the helper words sit inside this Paragraph text, if provably.
+
+    The stored span wins while it still proves the same words. Otherwise the
+    words are re-found only when they occur exactly once: twice is ambiguous
+    and absent means the speaker said it differently this Take. Both of those
+    return None, and the helper words stay stored regardless — they are their
+    own text, not a position (contract 14)."""
+    if not isinstance(text, str) or not isinstance(phrase, str) or not phrase:
+        return None
+    if (isinstance(start, int) and not isinstance(start, bool)
+            and isinstance(end, int) and not isinstance(end, bool)
+            and 0 <= start < end <= len(text)
+            and text[start:end] == phrase):
+        return start, end
+    at = text.find(phrase)
+    if at < 0 or text.find(phrase, at + 1) >= 0:
+        return None
+    return at, at + len(phrase)
 
 
 def mint_machine_parts(text: Any) -> Optional[list]:
