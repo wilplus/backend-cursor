@@ -33,6 +33,7 @@ from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
 from services.coach_video_storage import refreshed_media_url
 from services.db import db
 from services.create_take import session_owned_by_principal
+from services.project_deletion import with_deletion_state
 from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
 from services.snippet_values import resolve_all
@@ -1195,7 +1196,7 @@ def v2_user_list_trainings():
                 "ideal_ready": bool(delivered) or coach_finalized,
             })
         trainings.sort(key=lambda t: t.get("created_at") or "", reverse=True)
-        return jsonify({"trainings": trainings}), 200
+        return jsonify({"trainings": with_deletion_state(db, trainings)}), 200
     except Exception as e:
         logger.error("user/trainings failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)

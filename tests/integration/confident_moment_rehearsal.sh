@@ -323,6 +323,10 @@ hard migrations/an_account_deletion_can_start.sql
 # decision 1). Twice: the apply/reapply idempotency check.
 hard migrations/practice_made_without_the_tick.sql
 hard migrations/practice_made_without_the_tick.sql
+# 0364 adds project deletion requests (the picker's Delete becomes a request an
+# operator confirms). Twice: the apply/reapply idempotency check.
+hard migrations/a_project_deletion_can_be_requested.sql
+hard migrations/a_project_deletion_can_be_requested.sql
 
 # The pending migration is unnumbered and absent from the manifest; applying it
 # twice is the apply/reapply idempotency check.
