@@ -1,6 +1,6 @@
 # Decisions log — settled in review, not yet folded into SPEC.md
 
-**Last updated:** 2026-09-22.
+**Last updated:** 2026-09-25.
 
 **Purpose:** everything agreed after SPEC.md v3 was committed. This file exists so a long
 review session survives itself. Entries here are **binding** and get folded into the numbered
@@ -548,3 +548,39 @@ is now more load-bearing, not less.
 decline. After this ruling that is no longer `coach_review`; it is pooled model
 improvement, which must stay declinable and can never ride on a contract. It is
 not retired.
+
+## N · Training consent, the training corpus and project delete (founder 2026-09-25)
+
+Locked by the founder on 2026-09-25. Design:
+`docs/SPEC-training-corpus-and-project-purge.md`.
+
+**N1 · C1 — training returns only through re-acceptance.** Training may come
+back later only through a new policy version that every user re-accepts.
+
+**N2 · C2 — the MLC-2 tables hold the training yes; bundled-era yeses count
+for nothing.**
+- Only a fresh yes counts: given under the new policy version, as its own
+  act, separate from everything else.
+- Anything recorded under `mlc2-bundled-consent-v1` is never a training yes and
+  is never migrated into one.
+- The tables stay; `record_mlc2_consent_grant_v1` and
+  `record_mlc2_consent_withdrawal_v1` do not, because both are hard-wired to
+  the two bundled purposes. New versioned functions record and withdraw
+  `pooled_model_improvement` alone.
+
+**N3 · C3 — copies survive a project delete only under an active training
+yes.**
+- They are purged on withdrawal and on account erasure.
+- Project delete must first exist as a project-scoped purge. Today the purge
+  is principal-wide only, and the row-delete route was reverted (#649).
+
+**N4 · C4 — #651 merged as it was.** DPIA §2.4 records that training is not
+processed since `phase1-2026-09-23`, and that counsel has not cleared the
+bundled consent.
+
+**N5 · Also settled.**
+- Voice is not biometric data here, on counsel's advice, so a training grant
+  carries no Article 9 basis.
+- No backfill.
+- The honest delete copy is agreed in principle; its exact text is held for
+  sign-off at the phase where training goes live.
