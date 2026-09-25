@@ -515,6 +515,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("ml_consent_snapshots", "ml_consent_snapshots",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
+    # Training copies (P3, migration 0375). `external_review` UNTIL P4 gives
+    # them their own disposition: a purge that meets a corpus row halts for a
+    # human rather than guessing. None can exist while training is dark.
+    PurgeDependency("training_corpus_items", "training_corpus_items",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
     PurgeDependency("ml_product_actions", "ml_product_actions",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),

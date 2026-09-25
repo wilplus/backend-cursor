@@ -14323,6 +14323,57 @@ class DatabaseService:
                            "practice=%s: %s", practice_id, e)
             return []
 
+    def get_mlc2_training_consent_status(
+        self, acquisition_principal_id: str,
+    ) -> Optional[dict]:
+        """The one training-yes reader (0373). None when it cannot answer."""
+        try:
+            result = self.client.rpc("get_mlc2_training_consent_status_v2", {
+                "p_acquisition_principal_id": str(acquisition_principal_id),
+            }).execute()
+            data = result.data
+            return data if isinstance(data, dict) else self._rpc_row(data)
+        except Exception as e:
+            logger.warning("training consent status failed principal=%s: %s",
+                           acquisition_principal_id, e)
+            return None
+
+    def record_training_corpus_item(self, item: dict) -> Optional[dict]:
+        """One training copy (0374). Raises when the database refuses it."""
+        result = self.client.rpc("record_training_corpus_item_v1", {
+            "p_acquisition_principal_id": item["acquisition_principal_id"],
+            "p_training_grant_event_id": item["training_grant_event_id"],
+            "p_source_project_id": item["source_project_id"],
+            "p_source_take_id": item["source_take_id"],
+            "p_source_ref": item["source_ref"],
+            "p_source_sha256": item["source_sha256"],
+            "p_item_kind": item["item_kind"],
+            "p_label_provenance": item.get("label_provenance"),
+            "p_content": item.get("content"),
+            "p_storage_provider": item.get("storage_provider"),
+            "p_bucket": item.get("bucket"),
+            "p_storage_key": item.get("storage_key"),
+            "p_object_sha256": item.get("object_sha256"),
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def get_take_audio_object(self, take_session_id: str) -> Optional[dict]:
+        """The Take's own recording object (processing_audio_objects)."""
+        if not take_session_id:
+            return None
+        try:
+            rows = (self.client.table("processing_audio_objects")
+                    .select("id,storage_provider,bucket,object_key,"
+                            "exact_bytes_sha256")
+                    .eq("recording_attempt_id", str(take_session_id))
+                    .is_("deleted_at", "null")
+                    .limit(1).execute().data or [])
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("take audio object read failed sid=%s: %s",
+                           take_session_id, e)
+            return None
+
     def assign_confident_voice_exercise(
         self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
         lane: str, matching_policy_version: str, candidates: list[dict],

@@ -274,6 +274,10 @@ class Config:
     MLC2_DATASET_RELEASES_ENABLED = False
     MLC2_TRAINING_ENABLED = False
     MLC2_PROMOTION_ENABLED = False
+    # The training-corpus copy job (SPEC-training-corpus P3). Same rule: a
+    # code constant, flipped only by a reviewed change at P5 (counsel +
+    # founder), never by a dashboard.
+    MLC2_TRAINING_CORPUS_COPY_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` is the deployed/pre-cutover behavior;
     # ``founder_canary`` is a separately-authorized future code change;
