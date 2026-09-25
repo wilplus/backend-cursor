@@ -82,6 +82,11 @@ class ProjectDeletionService:
         self.client = getattr(database, "client", None)
 
     def _rpc(self, name: str, params: dict) -> dict:
+        if self.client is None:
+            raise ProjectDeletionError(
+                "PROJECT_DELETION_UNAVAILABLE",
+                "Project deletion is not available yet", 503,
+            )
         try:
             result = self.client.rpc(name, params).execute()
         except Exception as error:
@@ -166,7 +171,7 @@ def with_deletion_state(database: Any, trainings: list[dict]) -> list[dict]:
     """
     try:
         open_requests = ProjectDeletionService(database).open_for_projects(
-            t.get("arc_id") for t in trainings)
+            str(t.get("arc_id") or "") for t in trainings)
     except Exception as error:
         logger.warning("project deletion state unavailable: %s", error)
         open_requests = {}
