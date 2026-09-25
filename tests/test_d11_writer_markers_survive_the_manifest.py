@@ -118,7 +118,9 @@ def _closing_paren(sql: str, opening: int) -> int:
 
 
 def _split_top_level(args: str) -> list[str]:
-    parts, depth, current = [], 0, []
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
     for char in args:
         if char == "(":
             depth += 1
