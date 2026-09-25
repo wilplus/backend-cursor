@@ -180,6 +180,12 @@ derive the full immutable lineage and acquire their complete ordered sets.
 serialization. Append-only/immutability/runtime-event guards are denial-only
 and are separately checksum-pinned; they do not establish currentness.
 
+**Open decision (founder, 2026-09-25):** production's
+`advance_ideal_text_document_generation_v1()` takes none of these locks (0327's
+D19 re-creation dropped the preamble), and restoring it as written was measured
+to block unrelated users and deadlock the owner's Ideal Text save; this must be
+decided before the rooting-phrase or Bundle writers are switched on.
+
 Owner response writers are outside the projection identity because responses
 are never projected. They remain required by the separately guarded root-action
 path. Exercise/practice/coach-media writers are outside this projection because

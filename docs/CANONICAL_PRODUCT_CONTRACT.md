@@ -2,6 +2,9 @@
 
 Status: founder-locked on 2026-08-26. Feedback Policy V3 amendment locked on
 2026-08-30; it remains inactive until a separately authorized serving cutover.
+L1 / helper-words amendment locked by the founder on 2026-09-25 (clauses 8, 9,
+12-20, 24e, 29a, 35d): each Take rewrites the Paragraph from what was said; the
+lock keeps the helper words, not the text.
 
 This document is the product source of truth for the frontend and backend.
 Historical prompts, handoffs, schemas, routes, names, and tests are evidence of
@@ -28,51 +31,60 @@ with this contract, this contract wins.
 
 7. Ideal Text is the sole canonical presentation document. Best Presentation
    as a separate assembled product artifact is retired.
-8. Take 1 creates the initial project-specific Ideal Text. Later Takes never
-   replace it with the latest transcript or reconstruct it from best fragments.
-9. Later Takes produce evidence, feedback, and proposals. Ideal Text changes
-   only through direct user editing, an explicitly accepted proposal, or a
-   prior **Keep evolving** choice for that Paragraph.
+8. Take 1 creates the initial project-specific Ideal Text. Each later Take
+   rewrites every Paragraph it covers from exactly what the speaker said in
+   that Take — the latest Take, never a best-of pick across Takes. A Paragraph
+   the speaker did not say in a Take keeps its last spoken version. (Founder,
+   2026-09-25; supersedes "later Takes never replace it".)
+9. Between Takes, Ideal Text also changes through direct user editing, an
+   explicitly accepted proposal, or a practice attempt adopted under 35d. The
+   next Take replaces all of these with what was said; nothing is lost,
+   because every version stays in the Paragraph's history (clause 16).
 10. The document hierarchy is Project -> ordered Slides -> ordered Paragraphs
     -> exact text spans.
 11. Paragraph is the canonical unit for identity, editing, protection,
     feedback attachment, and root-phrase generation. Part, chunk, segment, and
     API piece are not alternative product names for an Ideal Text Paragraph.
-12. A Paragraph keeps its ID through ordinary wording edits. Split and merge
-    operations create new Paragraph IDs; prior IDs remain only in history and
-    provenance.
+12. A Paragraph keeps its ID through ordinary wording edits and through a
+    Take rewriting its words, so its helper words and history follow it. Split
+    and merge operations create new Paragraph IDs; prior IDs remain only in
+    history and provenance.
 
 ## 3. Decisions, protection, anchors, and roots
 
-13. Resolving Feedback and committing a Paragraph are separate user actions.
-    After this Take's Feedback for a Paragraph is resolved, the user explicitly
-    chooses **Lock for next Take** or **Keep evolving**.
-14. A lock is a hard version commit. It preserves the Paragraph's exact words
-    through later Takes until the user explicitly edits or unlocks it. Keep
-    evolving is explicit permission for a later Take's Manager-selected
-    working version to replace that Paragraph; it is not an implicit unlock.
-15. Protection blocks machine rewrite, restructure, add, and cut proposals.
-    Vocal feedback may still reference protected text. A coach may raise a
-    material correction as an explicit proposal. Nobody silently changes
-    protected text.
-16. Every edit, lock, unlock, keep-evolving choice, and root-phrase choice
-    appends an immutable Paragraph revision with timestamp and provenance.
-17. Feedback, version commits, and root phrases are separate layers.
-18. Immediately after a lock, the app asks whether to make a proposed exact
-    phrase orange, choose different exact words from that Paragraph, or skip.
-    Orange styling is never inferred from praise or a confidence response.
-19. A rewrite overlapping an accepted orange root requires warning and
-    confirmation. Applying it removes the root styling. Editing or unlocking
-    also clears stale root metadata. Undo restores the complete prior text,
-    root, and decision state.
-20. Presentation Mode and export render, in order, the Slide image, accepted
-    roots, and normal-sized Ideal Text. Recording Mode renders the same accepted
-    roots as memory cues. A root is eligible for either surface only when its
-    Paragraph is locked and the user explicitly accepted the orange action.
-    Before Take 3 an uncovered Slide has no generated fallback root. After Take
-    3, the Manager may propose at most one root for an uncovered Slide, but the
-    user must still explicitly lock and apply it. No surface duplicates a root
-    as a separate third text layer.
+13. Resolving Feedback and choosing helper words are separate steps. The
+    helper words (root phrase, rendered orange) are words the user taps; the
+    user then locks them. There is no Keep evolving choice and no Unlock
+    action: every Paragraph follows the speaker (clause 8), and choosing new
+    helper words replaces the old ones.
+14. A lock keeps the helper words, not the text. Locked helper words persist
+    across Takes — including a later Take whose words no longer contain them,
+    and a later No answer on that Paragraph — until the user explicitly picks
+    new ones. Helper words are stored as their own text on the Paragraph, not
+    as a position inside it.
+15. Machine proposals (rewrite, restructure, add, cut) and coach corrections
+    remain explicit proposals the user accepts or ignores. Nobody silently
+    changes a Paragraph's text or its helper words; the only automatic change
+    is clause 8, and every version is kept.
+16. Every Take rewrite, edit, accepted proposal, adopted practice attempt, and
+    helper-word choice appends an immutable Paragraph revision with timestamp
+    and provenance. The Paragraph's bookmark opens this history: every version,
+    Take by Take, and which helper words were locked when. An exercise shows
+    its own history the same way. A bookmark is never an empty screen.
+17. Feedback, Paragraph versions, and helper words are separate layers.
+18. Helper words are chosen by tapping exact words from the current Paragraph,
+    or from the adopted practice transcript under 35d. Orange styling is never
+    inferred from praise or a confidence response.
+19. The Ideal Text shows each Paragraph as its latest text with no "changed"
+    marker; the history lives behind the bookmark.
+20. Presentation Mode, export, and the Ideal Text render helper words as a bold
+    orange headline above the Paragraph, with the same words appearing again at
+    normal size in the text when they were said — like a newspaper headline
+    over its article. Recording Mode shows the same helper words as memory
+    cues. Only locked helper words are shown. Before Take 3 an uncovered Slide
+    has no generated fallback. After Take 3, the Manager may propose at most one
+    helper-word phrase for an uncovered Slide, but the user must still tap and
+    lock it.
 
 ## 4. Feedback and Manager arbitration
 
@@ -133,14 +145,18 @@ with this contract, this contract wins.
     This subordinates 24c to clause 25 and to L2, deliberately: a coverage floor
     that could override the evidence rule would be a licence to fabricate.
 
-24e. **Every item carries the judgement and the rooting step.** A surfaced
-    Confident Voice item always offers its delivery read and the tap-to-root
-    phrase step that follows it. **Emphasis is that step — it is not a Feedback
-    family and carries no budget.** It is how a user works a judgement, not a
-    finding asserted about them, which is why the only Feedback families remain
+24e. **Every item carries the judgement; the rooting step follows the
+    answer.** A surfaced Confident Voice item always offers its delivery read.
+    After **Yes, In-between, or Not sure**, the tap-to-root helper-words step
+    and the lock follow the item's feedback. After **No or Audio unclear**, the
+    exercise, praise, or correction still shows, then the sheet closes with no
+    helper words — unless the practice loop in 29a turns the answer into Yes,
+    In-between, or Not sure. **Emphasis is the helper-words step — it is not a
+    Feedback family and carries no budget.** The only Feedback families remain
     Confident Voice, Actionable Improvement and Evidence-backed Praise. No
-    bookmark is ever empty, because the judgement and the rooting step are
-    always there.
+    bookmark is ever empty, because the judgement and the Paragraph's history
+    are always there. (Founder 2026-09-25; supersedes the 2026-09-24 "keep the
+    emphasis open for every answer" ruling.)
 
 24f. **On top of that, each Take carries a bounded set of anchored notes**,
     each attached to the item it concerns and never floating free of a Slide:
@@ -272,6 +288,13 @@ with this contract, this contract wins.
 29. Confident Voice offers primary responses Yes — Confident, In-between, and
     No — Not confident, plus secondary Not sure and Audio unclear. The response
     is an immutable self-report tied to the exact clip and Take.
+29a. **The practice loop.** After an exercise, the user may practise. After
+    each practice attempt the exact same judgement screen appears again, with
+    the same five responses, judging that practice attempt. No or Audio unclear
+    offers another attempt; Yes, In-between, or Not sure opens the helper-words
+    step and the lock (35d). When the attempt limit is reached on No or Audio
+    unclear, the sheet closes with no helper words. Each answer is stored
+    against the practice attempt it judges, never against the Take (clause 31).
 30. No blocks orange styling and Voice Album admission for that exact clip and
     suppresses that exact clip from resurfacing. It does not penalize the
     Paragraph, the user's voice, or materially stronger audio in a future Take.
@@ -315,16 +338,28 @@ with this contract, this contract wins.
     gate. The complete in-scope catalogue is frozen with every version marked
     eligible or typed-excluded. If none is eligible, the product creates a
     post-blind coach request rather than inventing or forcing an exercise.
-35c. Until a primary endpoint, horizon, missing-data treatment, and evaluation
-    contract are separately approved, serving may select only the deterministic
-    top eligible exercise. Any future 80/20 exploration is an exposure policy,
-    not a dataset split, and must freeze the complete pool, probabilities,
-    stable draw, policy version, and selected version without rerandomizing on
-    refresh or retry.
+35c. 80/20 exploration is an exposure policy, not a dataset split (founder
+    2026-09-26: "please do the 80/20 try smth new", superseding the earlier
+    "deterministic top until an evaluation contract is approved"). With two or
+    more eligible exercises for a moment, the best match is served with
+    probability 4/5 and each other eligible one with 1/(5(n-1)); one eligible
+    exercise is served with probability 1 and is not a randomized comparison.
+    The choice freezes the complete ranked pool, every probability, the seed
+    commitment and draw, the policy version and the selected version, once per
+    (Take, moment), and never rerandomizes on refresh or retry
+    (`exercise-80-20-v1`, migration 0372). Using the outcomes as evaluation
+    evidence still needs the endpoint, horizon and missing-data contract; until
+    then they are raw evidence only, and no dataset, training or promotion path
+    reads them.
 35d. The user is shown which exact exercise version was assigned and its prior
     use, so the product does not unknowingly repeat it. One practice session may
     contain at most three same-passage Recording Attempts. Practice attempts are
-    not presentation Takes and never mutate Ideal Text, locks, or orange roots.
+    not presentation Takes. When the user answers Yes, In-between, or Not sure
+    about a practice attempt (29a), that attempt's transcript replaces the
+    matching part of the Paragraph, the helper words are tapped from that
+    transcript, and the Take's version stays in the Paragraph's history
+    (founder 2026-09-25). No other practice outcome mutates Ideal Text or
+    helper words, and the next Take rewrites the Paragraph again (clause 8).
 35e. Exercise comparison is qualitative. No acoustic score, rank, probability,
     or machine verdict is shown to the user. Opening, skipping, timing out, or
     making no attempt is not an effectiveness label.

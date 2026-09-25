@@ -51,6 +51,20 @@ from services.ideal_text_read import (
 from services.rate_limits import llm_limit
 from services.token_prices import price_of as _price_of
 from services.coach_video_storage import refreshed_media_url
+from services.intervention_spend import (
+    latest_spoken_take_sid as _latest_take_sid,
+)
+from services.recording_roots import (
+    RecordingRootsStale,
+    project_recording_roots,
+)
+from services.paragraph_history import history_for_part
+from services.slide_helper_words import (
+    merge_recording_roots,
+    record_lock,
+    record_pick,
+    slide_roots,
+)
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -611,10 +625,6 @@ def v2_explore_get_recording_roots(arc_id):
             "code": "IDEAL_TEXT_DOCUMENT_PENDING",
             "state": "pending",
         }), 404
-    from services.recording_roots import (
-        RecordingRootsStale,
-        project_recording_roots,
-    )
     try:
         roots = project_recording_roots(
             snapshot,
@@ -622,6 +632,7 @@ def v2_explore_get_recording_roots(arc_id):
         )
     except RecordingRootsStale as error:
         return jsonify({"code": str(error)}), 409
+    roots = merge_recording_roots(roots, slide_roots(db, arc_id, actor_id))
     response = jsonify({
         "document_snapshot_id": str(snapshot.get("id")),
         "document_snapshot_sha256": snapshot.get("payload_sha256"),
@@ -2187,12 +2198,9 @@ def v2_explore_set_part_lock(arc_id, part_id):
             # exists) → the 409 below, exactly as before.
             parts = _seed_parts_for_lock(arc_id, user_id, echo,
                                          body.get("parts"))
-        if not parts:
+        if not parts or not agrees_with_text(parts, echo):
             # Either no identity is stored, or it no longer describes this
             # document. Both mean the same thing to the caller: refetch.
-            return jsonify({"code": "STALE_DOCUMENT",
-                            "error": "document moved"}), 409
-        if not agrees_with_text(parts, echo):
             return jsonify({"code": "STALE_DOCUMENT",
                             "error": "document moved"}), 409
         target = next((p for p in parts if p["id"] == str(part_id).lower()),
@@ -2263,6 +2271,8 @@ def v2_explore_set_part_lock(arc_id, part_id):
                                  if _reason == "keep_evolving" else None)):
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save"}), 500
+        record_lock(db, arc_id, user_id, str(part_id),
+                    _latest_take_sid(_lock_sessions), locked)
         # Canonical paragraph versioning is an immutable decision chain. The
         # legacy part row remains the live read during parity; the canonical
         # write binds the explicit action to this exact paragraph body and the
@@ -2338,6 +2348,24 @@ def v2_explore_set_part_lock(arc_id, part_id):
                         "error": "Failed to set the lock"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/history",
+             methods=["GET"])
+@require_auth
+def v2_explore_get_part_history(arc_id, part_id):
+    """The history behind a Paragraph's bookmark (contract 16): its Slide's
+    words Take by Take, and the helper words locked when. Owner only."""
+    owned, _sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    history = history_for_part(db, arc_id, str(request.user_id),
+                               str(part_id))
+    if history is None:
+        return jsonify({"code": "NOT_FOUND", "error": "part not found"}), 404
+    response = jsonify(history)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/root", methods=["PUT"])
 @require_auth
 def v2_explore_set_part_root(arc_id, part_id):
@@ -2384,15 +2412,16 @@ def v2_explore_set_part_root(arc_id, part_id):
                 end=(valid or {}).get("end")):
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not save the rooting phrase"}), 500
+        _root_take_id = _latest_take_sid(_sessions)
+        record_pick(db, arc_id, user_id, str(part_id), _root_take_id,
+                    (valid or {}).get("text"))
         try:
             from services.feedback_data_contract import (
                 canonical_root_phrase,
                 canonical_root_phrase_skip,
                 content_hash,
             )
-            from services.intervention_spend import latest_spoken_take_sid
 
-            _root_take_id = latest_spoken_take_sid(_sessions)
             _root_session = (
                 db.v2_get_session_by_id(_root_take_id) or {}
                 if _root_take_id else {}

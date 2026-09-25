@@ -437,9 +437,18 @@ def _snapshot_version(database, arc_id, text) -> None:
     _row_now = database.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
     _v_now = _row_now.get("version") or 1
     _sugs_now = database.get_moment_suggestions_by_arc(arc_id) or {}
+    _doc_now = _row_now.get("document")
     database.upsert_ideal_text_version(
         str(arc_id), int(_v_now), text,
-        sanitize_suggestions_snapshot(_sugs_now))
+        sanitize_suggestions_snapshot(_sugs_now),
+        document=_doc_now if isinstance(_doc_now, dict) else None)
+
+
+def _take_index(value: Any) -> Optional[int]:
+    """A real 1-based Take index, or None (a bool is not an index)."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
 
 
 def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
@@ -485,19 +494,25 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         spoken = spoken_arc_sessions(database.takes.get_arc_sessions(arc_id))
         source_take_count = len(spoken)
         if source_session_id:
-            # Artifact-only Take 1 retry: pin the source to THIS accepted
-            # recording. An arc-level "latest take" lookup could otherwise
-            # rebuild the initial document from Take 2 if a delayed retry were
-            # tapped after another session existed — a direct L1 violation.
+            # Pin the source to THIS accepted recording. An arc-level "latest
+            # take" lookup could otherwise build the document from a different
+            # Take than the one being processed.
+            #
+            # ANY spoken Take may be the source, not only Take 1. We only get
+            # here when the Project has no document at all (the guard above),
+            # and since Option A (2026-09-22) the worker asks a later Take to
+            # create it in exactly that case. Refusing every index but 1 made
+            # that request a silent no-op: the poll timed out and the Take
+            # ended as `failed_ideal_text_unconfirmed`.
             source_row = database.v2_get_session_by_id(
                 str(source_session_id)) or {}
             source_take_index = source_row.get("take_index")
+            pinned_index = _take_index(source_take_index)
             if (str(source_row.get("arc_id") or "") != str(arc_id)
-                    or isinstance(source_take_index, bool)
-                    or source_take_index != 1
+                    or pinned_index is None
                     or source_row.get("recording_kind") == "read"):
                 return False
-            source_take_count = 1
+            source_take_count = pinned_index
         # require_target=False (single deliverable, 2026-07-17): assemble
         # after EVERY take, take 1 included; the legacy lanes keep the
         # 3-take trigger.

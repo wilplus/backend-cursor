@@ -559,9 +559,15 @@ def test_every_emitted_source_relation_is_known_to_the_purge_functions():
             if not path.exists():
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
-            marker = f"FUNCTION public.{function}("
-            if marker in text:
-                body = text[text.index(marker):]
+            # A definition, not any mention: a later file that only restates
+            # the grant (`GRANT ... ON FUNCTION public.<name>(`) or re-injects
+            # a preamble into the installed body (0365) keeps this body.
+            found = re.search(
+                rf"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.{function}\(",
+                text,
+            )
+            if found:
+                body = text[found.start():]
         assert body is not None, f"{function} is defined in no migration"
         unknown = sorted(r for r in emitted if f"'{r}'" not in body)
         assert not unknown, (
@@ -632,3 +638,56 @@ def test_every_dependency_target_kind_is_one_the_freeze_accepts():
         target = orchestrator._dependency_target(dependency, graph, relations)
         assert target is not None and target.target_kind in FREEZE_TARGET_KINDS, (
             dependency.code, target)
+
+
+def test_every_subject_graph_key_is_derived_by_the_server_resolver():
+    """0362's other half, caught without a database.
+
+    The freeze compares the graph the orchestrator sends with the one the
+    server's resolver builds, EXACTLY. From #490 until 0362 Python sent
+    `delivery_job_ids` and the resolver never derived it, so every freeze
+    raised PURGE_SUBJECT_GRAPH_MISMATCH. The locator guard above covers the
+    freeze's CASE; this covers the graph: every key `SubjectGraph.payload()`
+    sends must be one the resolver the orchestrator calls — or a resolver it
+    builds on — writes.
+    """
+    root = Path(__file__).resolve().parent.parent
+    manifest = [
+        line.split("\t")[1].strip()
+        for line in (root / "migrations" / "manifest.txt")
+        .read_text(encoding="utf-8").splitlines()
+        if "\t" in line
+    ]
+
+    def current(function: str) -> str:
+        body = None
+        marker = f"FUNCTION public.{function}("
+        for name in manifest:
+            path = root / "migrations" / name
+            if path.exists():
+                text = path.read_text(encoding="utf-8", errors="replace")
+                if marker in text:
+                    start = text.index(marker)
+                    body = text[start:text.index("$$;", start)]
+        assert body is not None, f"{function} is defined in no migration"
+        return body
+
+    resolver_name = re.compile(r"resolve_phase1_purge_subject_graph_v\d+")
+    called = set(resolver_name.findall(
+        (root / "services" / "data_purge.py").read_text(encoding="utf-8")))
+    assert len(called) == 1, f"the orchestrator calls {sorted(called)}"
+    chain, pending = {}, list(called)
+    while pending:
+        function = pending.pop()
+        if function not in chain:
+            chain[function] = current(function)
+            pending.extend(resolver_name.findall(chain[function]))
+    resolved = "".join(chain.values())
+
+    sent = SubjectGraph(principal_ids=("principal-1",)).payload()
+    underived = sorted(key for key in sent if f"'{key}'" not in resolved)
+    assert not underived, (
+        f"the orchestrator sends {underived} and no resolver in "
+        f"{sorted(chain)} derives them — the freeze's exact graph comparison "
+        "refuses every erasure"
+    )

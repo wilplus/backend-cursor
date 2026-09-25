@@ -1478,7 +1478,8 @@ class VersionSnapshotWriteTests(unittest.TestCase):
         def upsert_moment_suggestion(self, *a, **_kw):
             return True
 
-        def upsert_ideal_text_version(self, arc_id, version, text, moments):
+        def upsert_ideal_text_version(self, arc_id, version, text, moments,
+                                      document=None):
             self.snapshots.append((arc_id, version, text, moments))
             return True
 

@@ -280,6 +280,31 @@ def _freezable_selection(selected_keys: Any) -> bool:
     )
 
 
+
+def _carried_root(previous: Optional[dict], text: str) -> dict:
+    """The helper-word columns a rewritten part keeps (contract 14).
+
+    The phrase and its selection time carry across any change to the words.
+    The span is kept while it still proves the same words, re-found when the
+    words occur exactly once in the new text, and otherwise cleared — the
+    `ideal_text_part_root_span` CHECK allows a phrase without a span since
+    migrations/helper_words_are_their_own_text.sql."""
+    from services.ideal_text_parts import root_span_in
+
+    prev = previous or {}
+    phrase = prev.get("root_phrase")
+    if not isinstance(phrase, str) or not phrase:
+        return {"root_phrase": None, "root_start": None, "root_end": None,
+                "root_selected_at": None}
+    span = root_span_in(text, phrase, prev.get("root_start"),
+                        prev.get("root_end"))
+    return {
+        "root_phrase": phrase,
+        "root_start": span[0] if span else None,
+        "root_end": span[1] if span else None,
+        "root_selected_at": prev.get("root_selected_at"),
+    }
+
 class DatabaseService:
     def __init__(self):
         self.client: Client = self._build_supabase_client()
@@ -7446,8 +7471,14 @@ class DatabaseService:
         take_session_id: str,
         take_index: int,
         moments: Any,
+        auto_text: Optional[str] = None,
+        document: Optional[dict] = None,
     ) -> Optional[dict]:
         """Atomically advance a later Take's review version.
+
+        With ``auto_text`` (v2, founder 2026-09-25) the same transaction also
+        writes the rebuilt words and their Slide map, superseding an owner
+        edit and coach-verified text. Without it, v2 behaves exactly as v1.
 
         The SQL boundary preserves the canonical/owner-edited body, carries a
         current owner edit to the new review identity, and appends the matching
@@ -7459,12 +7490,14 @@ class DatabaseService:
                 or isinstance(take_index, bool)
                 or not isinstance(take_index, int) or take_index < 2):
             return None
-        result = self.client.rpc("finalize_ideal_text_take_v1", {
+        result = self.client.rpc("finalize_ideal_text_take_v2", {
             "p_arc_id": str(arc_id),
             "p_owner_user_id": str(owner_user_id),
             "p_take_session_id": str(take_session_id),
             "p_take_index": take_index,
             "p_moments": moments if isinstance(moments, list) else [],
+            "p_auto_text": auto_text if isinstance(auto_text, str) else None,
+            "p_document": document if isinstance(document, dict) else None,
         }).execute()
         data = result.data
         if isinstance(data, list):
@@ -8718,6 +8751,107 @@ class DatabaseService:
             logger.warning("set ideal text part root failed: %s", e)
             return False
 
+    # ── Helper words belong to the Slide (contract 13-14, Q12/Q14) ─────────
+    # services/slide_helper_words.py owns the rule; these two are plain I/O.
+
+    def get_slide_helper_words(self, arc_id: str, user_id: str) -> list:
+        """Every Slide's helper-word rows for one document, [] on failure."""
+        if not arc_id or not user_id:
+            return []
+        try:
+            return (self.client.table("ideal_text_slide_helper_words")
+                    .select("slide_index,ord,phrase,take_session_id,"
+                            "source_part_id,locked_at,selected_at")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .order("slide_index").order("ord")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("get slide helper words failed arc=%s: %s",
+                           arc_id, e)
+            return []
+
+    def _log_slide_helper_words(self, arc_id: str, user_id: str,
+                                slide_index: int, rows: list) -> None:
+        """Append the Slide's LOCKED set when it differs from the last one
+        logged — the "which helper words were locked when" half of the
+        Paragraph history. Best-effort: never fails the write it follows."""
+        phrases = [str(r["phrase"]) for r in sorted(
+            rows or [], key=lambda r: int(r.get("ord") or 0))
+            if r.get("locked_at") and r.get("phrase")]
+        try:
+            last = (self.client.table("ideal_text_slide_helper_words_log")
+                    .select("phrases")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .eq("slide_index", slide_index)
+                    .order("id", desc=True).limit(1)
+                    .execute().data) or []
+            if last and last[0].get("phrases") == phrases:
+                return
+            if not last and not phrases:
+                return
+            self.client.table("ideal_text_slide_helper_words_log").insert({
+                "arc_id": str(arc_id),
+                "user_id": str(user_id),
+                "slide_index": slide_index,
+                "phrases": phrases,
+            }).execute()
+        except Exception as e:
+            logger.warning("slide helper words log failed arc=%s slide=%s: "
+                           "%s", arc_id, slide_index, e)
+
+    def list_slide_helper_words_log(self, arc_id: str, user_id: str,
+                                    slide_index: int) -> list:
+        """One Slide's locked helper-word sets over time, oldest first."""
+        try:
+            return (self.client.table("ideal_text_slide_helper_words_log")
+                    .select("phrases,created_at")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .eq("slide_index", slide_index)
+                    .order("id")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list slide helper words log failed arc=%s: %s",
+                           arc_id, e)
+            return []
+
+    def replace_slide_helper_words(self, arc_id: str, user_id: str,
+                                   slide_index: int, rows: list) -> bool:
+        """Replace ONE Slide's rows wholesale (delete, then insert).
+
+        Wholesale for the same reason as `replace_ideal_text_parts`: a pick
+        or a lock can renumber every row of the Slide, and per-row upserts
+        would transiently collide on the (slide, ord) slot."""
+        if not arc_id or not user_id or not isinstance(slide_index, int):
+            return False
+        try:
+            (self.client.table("ideal_text_slide_helper_words")
+                .delete()
+                .eq("arc_id", str(arc_id))
+                .eq("user_id", str(user_id))
+                .eq("slide_index", slide_index)
+                .execute())
+            if rows:
+                self.client.table("ideal_text_slide_helper_words").insert([{
+                    "arc_id": str(arc_id),
+                    "user_id": str(user_id),
+                    "slide_index": slide_index,
+                    "ord": int(r["ord"]),
+                    "phrase": str(r["phrase"]),
+                    "take_session_id": r.get("take_session_id") or None,
+                    "source_part_id": r.get("source_part_id") or None,
+                    "locked_at": r.get("locked_at"),
+                    "selected_at": r.get("selected_at"),
+                } for r in rows]).execute()
+            self._log_slide_helper_words(arc_id, user_id, slide_index, rows)
+            return True
+        except Exception as e:
+            logger.warning("replace slide helper words failed arc=%s "
+                           "slide=%s: %s", arc_id, slide_index, e)
+            return False
+
     def append_ideal_text_part_revision(
         self, *, arc_id: str, user_id: str, part_id: str, action: str,
         text: str, root_phrase: Optional[str] = None,
@@ -8846,30 +8980,13 @@ class DatabaseService:
                     "iteration": (p.get("iteration")
                                   if isinstance(p.get("iteration"), int)
                                   else prev_iter.get(str(p["id"]), 0)),
-                    # Orange is metadata on the exact locked words. Preserve
-                    # it only while this part's text is byte-identical; an edit
-                    # or refreshed open paragraph clears it and must ask anew.
-                    "root_phrase": (
-                        (prev_meta.get(str(p["id"])) or {}).get("root_phrase")
-                        if (prev_meta.get(str(p["id"])) or {}).get("text")
-                        == str(p["text"]) else None
-                    ),
-                    "root_start": (
-                        (prev_meta.get(str(p["id"])) or {}).get("root_start")
-                        if (prev_meta.get(str(p["id"])) or {}).get("text")
-                        == str(p["text"]) else None
-                    ),
-                    "root_end": (
-                        (prev_meta.get(str(p["id"])) or {}).get("root_end")
-                        if (prev_meta.get(str(p["id"])) or {}).get("text")
-                        == str(p["text"]) else None
-                    ),
-                    "root_selected_at": (
-                        (prev_meta.get(str(p["id"])) or {}).get(
-                            "root_selected_at")
-                        if (prev_meta.get(str(p["id"])) or {}).get("text")
-                        == str(p["text"]) else None
-                    ),
+                    # THE HELPER WORDS ARE THEIR OWN TEXT (contract 14,
+                    # founder 2026-09-25). They ride with the Paragraph id
+                    # through any change to its words and persist until the
+                    # user picks new ones. Only the span — a render hint — is
+                    # recomputed against the new words; see `_carried_root`.
+                    **_carried_root(prev_meta.get(str(p["id"])),
+                                    str(p["text"])),
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 for p in parts
@@ -8887,10 +9004,7 @@ class DatabaseService:
                             part_id=str(p["id"]),
                             action=revision_action,
                             text=str(p["text"]),
-                            root_phrase=(
-                                _previous.get("root_phrase")
-                                if not _text_changed else None
-                            ),
+                            root_phrase=_previous.get("root_phrase"),
                         )
             return True
         except Exception as e:
@@ -10022,7 +10136,8 @@ class DatabaseService:
             return []
 
     def upsert_ideal_text_version(self, arc_id: str, version: int,
-                                  text: str, moments: Any) -> bool:
+                                  text: str, moments: Any,
+                                  document: Optional[dict] = None) -> bool:
         """Append-only per-VERSION snapshot (founder 2026-07-20) — the text
         as this version assembled it + that step's sanitized reasoning.
         Idempotent per (arc, version). Best-effort."""
@@ -10035,6 +10150,9 @@ class DatabaseService:
                 "version": version,
                 "text": text,
                 "moments": moments,
+                # The Slide map this version had (paragraph history, 3c).
+                **({"document": document} if isinstance(document, dict)
+                   else {}),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }, on_conflict="arc_id,version").execute()
             return True
@@ -10050,6 +10168,22 @@ class DatabaseService:
             logger.warning("upsert_ideal_text_version failed arc=%s: %s",
                            arc_id, e)
             return False
+
+    def list_ideal_text_versions(self, arc_id: Optional[str]) -> list:
+        """Every version snapshot of one document, oldest first; [] on any
+        failure (the history then simply has nothing to show)."""
+        if not arc_id:
+            return []
+        try:
+            return (self.client.table("ideal_text_versions")
+                    .select("version,text,document,created_at")
+                    .eq("arc_id", str(arc_id))
+                    .order("version")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list_ideal_text_versions failed arc=%s: %s",
+                           arc_id, e)
+            return []
 
     def get_ideal_text_version(self, arc_id: Optional[str],
                                version: Any) -> Optional[dict]:
@@ -14099,6 +14233,45 @@ class DatabaseService:
             logger.warning("list_diagnostic_exercise_teachings failed "
                            "practice=%s: %s", practice_id, e)
             return []
+
+    def assign_confident_voice_exercise(
+        self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
+        lane: str, matching_policy_version: str, candidates: list[dict],
+    ) -> Optional[dict]:
+        """The moment's frozen 80/20 exercise choice (migration 0372).
+
+        Idempotent: the first call draws, every later call returns that row.
+        Raises on failure so the caller can fall back to the best match.
+        """
+        result = self.client.rpc("assign_confident_voice_exercise_v1", {
+            "p_owner_user_id": str(owner_user_id),
+            "p_take_session_id": str(take_session_id),
+            "p_snippet_id": str(snippet_id),
+            "p_lane": str(lane),
+            "p_matching_policy_version": str(matching_policy_version),
+            "p_candidates": candidates,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def get_confident_voice_exercise_assignment(
+        self, take_session_id: str, snippet_id: str,
+    ) -> Optional[dict]:
+        if not take_session_id or not snippet_id:
+            return None
+        try:
+            res = (self.client.table("confident_voice_exercise_assignments")
+                   .select("id,selected_exercise_id,selected_exercise_version,"
+                           "selection_mode,exposure_policy_version,lane")
+                   .eq("take_session_id", str(take_session_id))
+                   .eq("snippet_id", str(snippet_id))
+                   .eq("exposure_policy_version", "exercise-80-20-v1")
+                   .limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning(
+                "get_confident_voice_exercise_assignment failed sid=%s: %s",
+                take_session_id, e)
+            return None
 
     def get_confident_voice_practice_by_take(
         self, take_session_id: str, owner_user_id: Optional[str] = None,

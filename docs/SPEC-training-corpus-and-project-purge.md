@@ -235,6 +235,14 @@ another recording's item.
 
 ## 6 · Purge behaviour
 
+> **Proven before building (N9, 2026-09-25).** A purge of an account with a
+> real recorded take could not finish: retained recording-attempt evidence
+> points at the project row ON DELETE RESTRICT. The project row is now kept as
+> a tombstone with its content wiped (migration 0368), and
+> `tests/test_take_purge_postgres.py` shows the run reaching `done`. Project
+> scope (§6.1) builds on that. Production still stops at `review_required`
+> until the retention schedule seeds its rules.
+
 ### 6.1 Project-scoped purge (prerequisite for C3)
 
 - `data_purge_requests` gains a nullable `project_id` (FK `projects`), and
