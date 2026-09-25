@@ -32,6 +32,16 @@ def _slide_paragraphs(version: Mapping, slide_index: int) -> Optional[list]:
             and para.get("slide_index") == slide_index]
 
 
+def _take_index(version: Mapping) -> Optional[int]:
+    """The Take whose words this version holds, when its snapshot says so —
+    the answered bookmark labels each version "Take N" (Q21 A)."""
+    doc = version.get("document")
+    value = doc.get("take_index") if isinstance(doc, Mapping) else None
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
 def slide_history(versions: Any, helper_log: Any, slide_index: int,
                   adoptions: Any = None) -> dict:
     """Versions where this Slide's words changed, and its helper-word sets.
@@ -48,6 +58,7 @@ def slide_history(versions: Any, helper_log: Any, slide_index: int,
             continue
         out_versions.append({
             "version": row.get("version"),
+            "take_index": _take_index(row),
             "paragraphs": words,
             "at": row.get("created_at"),
         })
