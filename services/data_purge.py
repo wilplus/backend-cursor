@@ -298,7 +298,7 @@ class DataPurgeOrchestrator:
                 "unknown", f"dependency:{dependency.code}", count,
                 {**metadata, "reason_code": "EXPLICIT_RESOLVER_REQUIRED"},
             )
-        if count and dependency.disposition == "retain":
+        if count and dependency.disposition in ("retain", "tombstone"):
             category = str(dependency.retention_category or "")
             rule = self._retention_rule(category, existing_relations)
             if not rule:
@@ -644,8 +644,8 @@ class DataPurgeOrchestrator:
     def _targets(self, purge_request_id: str) -> list[dict]:
         return self._rows(
             "data_purge_targets",
-            "id,target_kind,target_ref,state,initial_match_count,"
-            "remaining_match_count,metadata",
+            "id,purge_request_id,target_kind,target_ref,state,"
+            "initial_match_count,remaining_match_count,metadata",
             selector="purge_request_id", values=(purge_request_id,),
         )
 
@@ -761,6 +761,9 @@ class DataPurgeOrchestrator:
             self._resolve(target, state="retained", remaining=initial,
                           retention_rule_id=rule_id)
             return
+        if dependency.disposition == "tombstone":
+            self._resolve_tombstone(target, dependency, initial)
+            return
         if dependency.disposition != "delete":
             self._resolve(target, state="unknown", remaining=initial,
                           error_code="EXPLICIT_RESOLVER_REQUIRED")
@@ -779,6 +782,34 @@ class DataPurgeOrchestrator:
                 target, state=state, remaining=remaining,
                 error_code=None if remaining == 0 else "ROWS_REMAIN_AFTER_DELETE",
             )
+        except Exception as error:  # noqa: BLE001 - database boundary
+            self._resolve(target, state="failed", remaining=initial,
+                          error_code=_error_code(error))
+
+    def _resolve_tombstone(
+        self, target: Mapping[str, Any], dependency: PurgeDependency,
+        initial: int,
+    ) -> None:
+        """Wipe the user content of rows retained evidence still points at,
+        then keep the bare rows under the deletion-evidence rule (N9).
+
+        Only ``projects`` is a tombstone today. The database function scrubs
+        exactly the projects inside this request's frozen graph, and reports
+        how many are still not blank; anything but zero is a failure."""
+        metadata = target.get("metadata") or {}
+        rule_id = str(metadata.get("retention_rule_id") or "")
+        try:
+            if dependency.relation != "projects":
+                raise RuntimeError("TOMBSTONE_RELATION_UNSUPPORTED")
+            result = self.client.rpc("tombstone_phase1_purge_projects_v1", {
+                "p_purge_request_id": str(target.get("purge_request_id") or ""),
+            }).execute()
+            outcome = _one(result.data) or {}
+            if int(outcome.get("not_blank") or 0) != 0:
+                raise RuntimeError("TOMBSTONE_CONTENT_REMAINS")
+            self._resolve(target, state="retained", remaining=initial,
+                          retention_rule_id=rule_id,
+                          evidence_extra={"tombstoned": outcome.get("tombstoned")})
         except Exception as error:  # noqa: BLE001 - database boundary
             self._resolve(target, state="failed", remaining=initial,
                           error_code=_error_code(error))
