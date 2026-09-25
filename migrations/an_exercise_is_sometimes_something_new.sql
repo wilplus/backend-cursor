@@ -73,8 +73,7 @@ REVOKE ALL ON public.confident_voice_exercise_assignments
 -- Written only by the function below. The server reads it (the practice
 -- start route checks the tapped exercise against it) and the account purge
 -- deletes it, so SELECT and DELETE stay with service_role; nothing updates it.
-REVOKE INSERT, UPDATE, TRUNCATE ON public.confident_voice_exercise_assignments
-    FROM service_role;
+REVOKE ALL ON public.confident_voice_exercise_assignments FROM service_role;
 GRANT SELECT, DELETE ON public.confident_voice_exercise_assignments TO service_role;
 
 -- Immutable once written. DELETE stays possible because erasure must be.
