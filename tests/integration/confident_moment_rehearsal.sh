@@ -378,6 +378,11 @@ hard migrations/training_copies_are_copies.sql
 # apply/reapply idempotency check.
 hard migrations/training_copies_go_when_the_yes_goes.sql
 hard migrations/training_copies_go_when_the_yes_goes.sql
+# 0377 keeps the old consent code off the training policy and makes the
+# receipt writer refuse training as a tick. It edits v2's INSTALLED body, so
+# 0366's D11 preamble stays. Twice: the apply/reapply idempotency check.
+hard migrations/the_old_consent_code_ignores_the_training_yes.sql
+hard migrations/the_old_consent_code_ignores_the_training_yes.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
