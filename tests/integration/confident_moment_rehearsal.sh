@@ -398,6 +398,10 @@ hard migrations/a_take_keeps_an_empty_receipt.sql
 # manifest scope guard, and the operator's confirm. Twice: apply/reapply.
 hard migrations/one_project_can_be_purged.sql
 hard migrations/one_project_can_be_purged.sql
+# 0382 adds projects.archived_at (N14: Archive hides a project from the
+# list; nothing is deleted). Twice: apply/reapply.
+hard migrations/a_project_can_be_archived.sql
+hard migrations/a_project_can_be_archived.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

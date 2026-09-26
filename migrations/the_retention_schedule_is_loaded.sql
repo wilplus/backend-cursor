@@ -2,25 +2,21 @@
 -- Control version: phase1-retention-schedule-v1
 --
 -- ─────────────────────────────────────────────────────────────────────────────
--- WHY THIS FILE IS IN migrations/pending/ AND NOT IN manifest.txt
+-- 0381. LOADED ON THE FOUNDER'S DECISION (2026-09-26, decisions log N13).
 --
--- MIGRATE_ON_BOOT=1: merging a manifest entry RUNS it in production during
--- container start. This migration needs the object_key and sha256 of the SIGNED
--- retention schedule PDF, and that document is not signed
--- (legal/phase1-2026.1/06-retention-schedule-v1.0-DRAFT.md §4 holds it open on
--- OpenAI's own retention window). Inventing those two values would write a
--- record asserting that a document exists and was approved, into an append-only
--- table that cannot be corrected afterwards.
+-- MIGRATE_ON_BOOT=1: merging this manifest entry RUNS it in production during
+-- container start. It registers retention schedule v1.0 by the coordinates in
+-- legal/phase1-2026.1/SIGNED-ARTIFACTS.md row 06 and seeds the rules that
+-- reference it. Nothing is deleted by it; the purge still needs an operator.
 --
--- The CONFIG-FIRST rule's own escape hatch applies: keep the migration out of
--- manifest.txt until the document lands. A migration that RAISED on placeholder
--- values would be the wrong protection — under MIGRATE_ON_BOOT a raising
--- migration fails container start, so an accidental merge would take production
--- down rather than merely not seed a table.
+-- The founder chose to load it BEFORE the signed PDF is in storage at its
+-- object_key ("Not yet, turn on anyway"). Until the founder uploads it, the
+-- artifact row names a file storage does not hold yet. The sha256 is the
+-- founder's registered fingerprint of the signed bytes, not a guess.
 --
--- TO SHIP: fill the two values below from the signed PDF, move this file to
--- migrations/, append it to manifest.txt, and re-run scripts/local_ci.sh
--- --with-rehearsal.
+-- It was parked in migrations/pending/ while unsigned. The unsigned gate below
+-- is kept: if the values were ever emptied it would RAISE NOTICE and seed
+-- nothing, rather than fail container start.
 --
 -- ─────────────────────────────────────────────────────────────────────────────
 -- WHY A MIGRATION AND NOT A SECURITY DEFINER RPC
@@ -93,8 +89,8 @@ BEGIN
 
     IF v_sha256 IS NULL OR v_authority IS NULL OR v_approved_at IS NULL THEN
         RAISE NOTICE
-            'Retention schedule unsigned; nothing seeded. Fill the [[FOUNDER]] '
-            'values before adding this file to manifest.txt.';
+            'Retention schedule unsigned; nothing seeded. It needs the '
+            'signed PDF''s key, sha256, authority and date.';
         RETURN;
     END IF;
 
@@ -128,10 +124,14 @@ BEGIN
            AND object_key = v_object_key
     ) THEN
         -- A different document already occupies this version. Silently reusing
-        -- it would anchor the rules to bytes nobody reviewed.
-        RAISE EXCEPTION
+        -- it would anchor the rules to bytes nobody reviewed. Under
+        -- MIGRATE_ON_BOOT a RAISE here would stop production from starting,
+        -- so it seeds nothing and says so instead; the purge then keeps
+        -- stopping at review, which is the safe side.
+        RAISE NOTICE
             'RETENTION_SCHEDULE_VERSION_CONFLICT: retention_schedule 1.0 '
-            'already exists with different bytes. Bump the version.';
+            'already exists with different bytes; nothing seeded.';
+        RETURN;
     END IF;
 
     -- ── the rules ────────────────────────────────────────────────────────

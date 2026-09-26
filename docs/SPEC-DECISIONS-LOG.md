@@ -727,3 +727,35 @@ page).**
    and `transparency_evidence` follow `accountability_need_ends`, the rule
    already signed for `authorization_evidence`. Neither holds a person's words
    or voice. This closes §3b; doc 06 itself is signed and is not edited.
+3. **Load retention v1.0 now; upload the signed PDF after** ("Not yet, turn
+   on anyway"). Migration 0381 registers the schedule by the coordinates in
+   `SIGNED-ARTIFACTS.md` row 06 and seeds its four rules. Until the founder
+   uploads the signed file to `phase1-2026.1/legal/retention-schedule-v1.0.pdf`,
+   that record names a file storage does not hold. **Open: the upload.**
+
+**N14 · Archive on the project list, Delete in Data & consent (founder
+2026-09-26).** "In place of a real delete that for now we can hide":
+1. The ⋯ on each row of the project list (the choose-topic screen) offers
+   **Archive**: the project leaves the list; nothing is deleted.
+2. **Delete a project** moves to Data & consent (hamburger menu): it opens the
+   list of projects, and a project is chosen and deleted there, never straight
+   from the choose-topic screen.
+3. **Why Delete stays switched off for users for now:** a real deletion still
+   stops at `review_required`, because several append-only tables that every
+   take with feedback writes (`take_feedback_exposure`,
+   `take_feedback_self_report`, `ideal_text_part_revision`,
+   `phase1_processing_job_events`) are marked `external_review` in the purge
+   registry and have no decided disposition. The copy promises "We'll finish
+   within 7 days"; until those are decided it could not be kept.
+4. **Getting a project back: in Data & consent.** Its project list marks an
+   archived project "Archived" with an **Unarchive** button; the choose-topic
+   screen stays clean.
+5. **The four append-only records stay as they are** ("No, keep them as they
+   are"): no empty-receipt wipe for `take_feedback_exposure`,
+   `take_feedback_self_report`, `ideal_text_part_revision` or
+   `phase1_processing_job_events`. So a real deletion keeps stopping for
+   review, and **Delete stays switched off for users**
+   (`PROJECT_DELETE_ENABLED = false`). Archive is the way to tidy the list.
+6. **Words approved as written:** "Archive", "Archived", "Unarchive",
+   "Delete a project", "Your projects", "Couldn't archive. Try again." The
+   delete confirmation keeps the signed N8 wording.

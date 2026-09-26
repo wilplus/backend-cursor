@@ -23,6 +23,7 @@ from services.project_deletion import (
     ProjectDeletionService,
     public_view,
 )
+from services.project_archive import ProjectArchiveError, ProjectArchiveService
 from services.lab_send import send_lab_recording_to_coach
 from routes.v2.common import _is_valid_uuid
 
@@ -245,6 +246,46 @@ def v2_request_project_deletion(project_id: str):
     logger.info("project deletion requested project=%s request=%s state=%s",
                 project_id, row.get("id"), row.get("state"))
     return jsonify({"deletion": public_view(row)}), 201
+
+
+def _archive(project_id: str, archive: bool):
+    principal, failure = _deletion_owner(project_id)
+    if failure:
+        return failure
+    service = ProjectArchiveService(db)
+    try:
+        row = (service.archive if archive else service.restore)(
+            principal.id, project_id)
+    except ProjectArchiveError as error:
+        return jsonify({"code": error.code,
+                        "error": "Project not found"
+                        if error.status == 404 else error.code}), error.status
+    except Exception as error:
+        logger.error("project archive failed project=%s: %s",
+                     project_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not update the project"}), 500
+    logger.info("project %s project=%s",
+                "archived" if archive else "restored", project_id)
+    return jsonify({"project_id": row["project_id"],
+                    "archived": bool(row.get("archived_at"))}), 200
+
+
+@v2_bp.route("/projects/<project_id>/archive", methods=["POST"])
+@require_auth
+def v2_archive_project(project_id: str):
+    """Archive one owned project (N14): it leaves the project list; nothing
+    is deleted. Idempotent. 200 {project_id, archived} · 400 · 404."""
+    return _archive(project_id, True)
+
+
+@v2_bp.route("/projects/<project_id>/archive", methods=["DELETE"])
+@require_auth
+def v2_restore_project(project_id: str):
+    """Bring an archived project back to the list (N14). Idempotent.
+    200 {project_id, archived} · 400 · 404."""
+    return _archive(project_id, False)
 
 
 @v2_bp.route("/projects/<project_id>/deletion-request", methods=["DELETE"])

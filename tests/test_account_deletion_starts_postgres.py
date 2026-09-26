@@ -370,7 +370,7 @@ def _request_with_practice_rows(db) -> dict:
 
 
 def _seed_deletion_evidence_rule(db) -> None:
-    """What migrations/pending/seed_phase1_retention_schedule.sql will write,
+    """What migrations/the_retention_schedule_is_loaded.sql will write,
     with a stand-in document: this database is disposable."""
     artifact = _one(db, """
         INSERT INTO public.processing_legal_artifacts (
