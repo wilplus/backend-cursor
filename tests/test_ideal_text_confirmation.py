@@ -102,6 +102,38 @@ class IdealTextConfirmationTests(unittest.TestCase):
             1,
         )
 
+    def test_an_assembler_refusal_fails_at_once_not_after_the_poll(self):
+        """Founder 2026-09-26: the bar sat at 81% for the whole deadline after
+        the assembler had already said no document was coming."""
+        database = Mock()
+        database.ideal_text.get_coach_arc_ideal_text.return_value = None
+        with patch(
+            "services.ideal_text_block.maybe_assemble_ideal_text",
+            return_value=False,
+        ):
+            started = time.monotonic()
+            with self.assertRaises(confirmation.IdealTextUnconfirmedError):
+                confirmation.build_initial_ideal_text_from_stored_artifacts(
+                    database, "arc-1", source_session_id=SID,
+                    timeout_seconds=30,
+                )
+        self.assertLess(time.monotonic() - started, 5)
+        database.ideal_text.get_coach_arc_ideal_text.assert_called_once_with(
+            "arc-1")
+
+    def test_an_assembler_refusal_still_accepts_a_document_already_there(self):
+        database = Mock()
+        document = {"arc_id": "arc-1", "auto_text": "Already written"}
+        database.ideal_text.get_coach_arc_ideal_text.return_value = document
+        with patch(
+            "services.ideal_text_block.maybe_assemble_ideal_text",
+            return_value=False,
+        ):
+            row = confirmation.build_initial_ideal_text_from_stored_artifacts(
+                database, "arc-1", source_session_id=SID, timeout_seconds=30,
+            )
+        self.assertEqual(row["auto_text"], "Already written")
+
     def test_requires_nonempty_text_read_back_from_database(self):
         database = Mock()
         database.ideal_text.get_coach_arc_ideal_text.side_effect = [

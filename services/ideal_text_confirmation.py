@@ -164,7 +164,7 @@ def build_initial_ideal_text_from_stored_artifacts(
 
     def assemble_and_confirm() -> None:
         try:
-            maybe_assemble_ideal_text(
+            assembled = maybe_assemble_ideal_text(
                 str(arc_id),
                 database=database,
                 require_target=False,
@@ -175,11 +175,32 @@ def build_initial_ideal_text_from_stored_artifacts(
                 **({"degradation": degradation} if degradation is not None
                    else {}),
             )
-            result.append(wait_for_ideal_text_confirmation(
-                database,
-                str(arc_id),
-                timeout_seconds=timeout,
-            ))
+            # AN EXPLICIT REFUSAL IS NOT WORTH WAITING OUT (founder
+            # 2026-09-26: the bar "is stale at 81%"). The assembler is
+            # synchronous and nothing else writes this document, so `False`
+            # means no document is coming from this run. Polling for it
+            # anyway held the speaker on "Finding your anchors" for the full
+            # 120 seconds before the same failure card. One read still
+            # accepts a document that is already there (an earlier run, a
+            # concurrent retry); otherwise fail now, and name it in the log.
+            if assembled is False:
+                confirmed = confirmed_ideal_text(
+                    database.ideal_text.get_coach_arc_ideal_text(str(arc_id))
+                )
+                if confirmed is None:
+                    logger.warning(
+                        "ideal_text_confirmation: assembler refused, failing "
+                        "without the %.0fs poll arc=%s sid=%s",
+                        timeout, arc_id, source_session_id,
+                    )
+                    raise IdealTextUnconfirmedError(str(arc_id))
+                result.append(confirmed)
+            else:
+                result.append(wait_for_ideal_text_confirmation(
+                    database,
+                    str(arc_id),
+                    timeout_seconds=timeout,
+                ))
         except Exception as exc:  # propagated on the owning worker thread
             failure.append(exc)
         finally:
