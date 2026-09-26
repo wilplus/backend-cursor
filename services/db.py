@@ -49,7 +49,7 @@ def _session_preview_row(
     """Normalize one admin-session preview from already-batched data."""
     rec = {key: value for key, value in session.items()
            if key in session_fields}
-    recording_id = session.get("recording_1_id")
+    recording_id = session.get("recording_id")
     rec["recording_id"] = recording_id
     rec["recording_preview"] = None
     rec["report_preview"] = None
@@ -1901,7 +1901,7 @@ class DatabaseService:
         try:
             sessions = self.takes.v2_list_user_lab_sessions(user_id)
             rec_ids = [
-                s.get("recording_1_id") for s in sessions if s.get("recording_1_id")
+                s.get("recording_id") for s in sessions if s.get("recording_id")
             ]
             if not rec_ids:
                 return 0
@@ -1931,7 +1931,7 @@ class DatabaseService:
         """Get v2 sessions for a user with full report text and all analytics previews for admin session history."""
         all_session_columns = [
             "id", "created_at", "completed_at", "status",
-            "recording_1_id", "report_id", "report_grade",
+            "recording_id", "report_id", "report_grade",
             "student_completion_email_sent_at",
             "self_rating_submitted_at",
             "student_self_rating",
@@ -1982,7 +1982,7 @@ class DatabaseService:
                 pass
 
         # Batch: recordings (keyed by recording id)
-        recording_ids = list({s.get("recording_1_id") for s in sessions if s.get("recording_1_id")})
+        recording_ids = list({s.get("recording_id") for s in sessions if s.get("recording_id")})
         recordings_by_id: dict = {}
         if recording_ids:
             try:

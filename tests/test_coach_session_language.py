@@ -25,7 +25,7 @@ class CoachSessionLanguageTests(unittest.TestCase):
         self.originals = {}
         self._patch_db("v2_get_session_by_id", lambda sid: {
             "id": sid,
-            "recording_1_id": RID,
+            "recording_id": RID,
             "intake_context": {},
         })
         self._patch_db("get_recording", lambda rid: {

@@ -401,7 +401,7 @@ def prepare_first_client_feedback(
         suggestions=suggestions,
         feedback_candidates=feedback_candidates,
         take_index=take.get("take_index"),
-        expected_recording_id=take.get("recording_1_id"),
+        expected_recording_id=take.get("recording_id"),
     )
     inventory_detail: list[str] = []
     inventory = prepare_v3_service_inventory(

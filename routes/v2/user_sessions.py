@@ -166,7 +166,7 @@ def v2_user_sessions_current():
         # `has_recordings` is true iff the session has a bound recording.
         # We check the recording_1 link rather than counting rows on the
         # recordings table — same answer, one fewer query.
-        has_recordings = bool(session.get("recording_1_id"))
+        has_recordings = bool(session.get("recording_id"))
 
         return jsonify({
             "has_session": True,

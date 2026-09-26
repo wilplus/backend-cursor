@@ -254,7 +254,7 @@ class RecutGuardTests(unittest.TestCase):
         self._o = getattr(db, "v2_get_session_by_id", None)
         self._d = getattr(db, "get_coach_snippet_drafts", None)
         db.v2_get_session_by_id = lambda sid: {
-            "id": sid, "results_published_at": None, "recording_1_id": "r1",
+            "id": sid, "results_published_at": None, "recording_id": "r1",
         }
         db.get_coach_snippet_drafts = lambda sid: [
             {"snippet_id": "a"}, {"snippet_id": "b"},
