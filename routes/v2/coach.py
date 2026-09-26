@@ -831,8 +831,11 @@ def _coach_session_readout(session_id, snippet_rows, session_row):
     never be decided on a row read before the claim was taken.
     """
     from services.lab_recording import build_readout_from_session
+    # include_insights=False (founder 2026-09-26, "the coach review is just
+    # very long"): it only adds the published take's surfaced feedback items
+    # and overall message, and the coach payload reads neither.
     return build_readout_from_session(
-        session_id, include_slide_scores=True,
+        session_id, include_insights=False, include_slide_scores=True,
         snippet_rows=snippet_rows, session_row=session_row)
 
 
@@ -847,11 +850,24 @@ def _fold_coach_review_reads(session_id, snippets, cstate):
     except Exception as _rl_err:
         logger.warning("coach/get-session: read lookup failed sid=%s: %s",
                        session_id, _rl_err)
+    # One snippet read for every re-read instead of one each (founder
+    # 2026-09-26). An empty or failed batch hands in None, and the readout
+    # then reads for itself exactly as before.
+    _read_snips: dict = {}
+    if read_sessions:
+        try:
+            _read_snips = db.get_snippets_by_sessions(
+                [str(r.get("id")) for r in read_sessions],
+                include_words=True) or {}
+        except Exception as _rb_err:
+            logger.warning("coach/get-session: read batch failed sid=%s: %s",
+                           session_id, _rb_err)
     for _r in read_sessions:
         _rid = str(_r.get("id"))
         try:
             _r_readout = build_readout_from_session(
-                _rid, include_slide_scores=True)
+                _rid, include_insights=False, include_slide_scores=True,
+                snippet_rows=_read_snips.get(_rid))
             _r_cstate = _coach_state_map(
                 _rid, rater_id=getattr(request, "user_id", None))
             _r_snips = [
@@ -2618,6 +2634,43 @@ def v2_coach_arc_review_state(arc_id):
 # carries no acoustic read or shadow prediction. A coach can
 # judge the ADVICE with full sight and must still label the VOICE blind.
 # Pinned by test_star_verdicts.py.
+def _star_playback_by_snippet(sessions, starred) -> dict:
+    """Playback fields for each starred snippet across the arc's takes.
+
+    One batch read for the arc's takes instead of one per take (founder
+    2026-09-26). Full rows: the playback falls back to audio_ref /
+    storage_path / transcript_excerpt, which the slim projection leaves out.
+    """
+    # Resolved (founder 2026-08-10: "I need the playbacks to work in the
+    # feedbacks review") — an s3:// fallback ref rendered every star row's
+    # player dead; the resolver signs it against its own bucket and passes
+    # healthy URLs through.
+    from services.audio_ref_resolver import resolve_playable_ref
+    _ids = [str(_s.get("id") or "") for _s in sessions if _s.get("id")]
+    _by_session = (db.get_snippets_by_sessions(
+        _ids, include_words=True) or {}) if _ids else {}
+    out: dict = {}
+    for _s in sessions:
+        _sid = str(_s.get("id") or "")
+        for _snip in (_by_session.get(_sid) or []) if _sid else []:
+            _snip_id = str(_snip.get("id") or "")
+            if _snip_id not in starred:
+                continue
+            out[_snip_id] = {
+                "audio_ref": resolve_playable_ref(
+                    _snip.get("audio_segment_path")
+                    or _snip.get("audio_ref")
+                    or _snip.get("storage_path")),
+                "start_offset_ms": _snip.get("start_offset_ms"),
+                "duration_ms": _snip.get("duration_ms"),
+                "transcript": (_snip.get("transcript")
+                               or _snip.get("transcript_excerpt")
+                               or ""),
+                "take_index": _s.get("take_index"),
+            }
+    return out
+
+
 @v2_bp.route("/coach/arc/<arc_id>/stars", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_arc_stars(arc_id):
@@ -2648,37 +2701,8 @@ def v2_coach_arc_stars(arc_id):
         # snippet row's metrics (acoustic_read/voice_confidence) must NOT ride
         # an analytics review payload (BLIND COACH); the allowlist lives in
         # stars_with_verdicts._SNIPPET_PLAYBACK_KEYS.
-        snippets_by_id: dict = {}
-        if suggestions:
-            _starred = set(suggestions.keys())
-            for _s in sessions:
-                _sid = str(_s.get("id") or "")
-                if not _sid:
-                    continue
-                for _snip in (db.get_snippets_by_session(_sid) or []):
-                    _snip_id = str(_snip.get("id") or "")
-                    if _snip_id not in _starred:
-                        continue
-                    # Resolved (founder 2026-08-10: "I need the playbacks
-                    # to work in the feedbacks review") — an s3:// fallback
-                    # ref rendered every star row's player dead; the
-                    # resolver signs it against its own bucket and passes
-                    # healthy URLs through.
-                    from services.audio_ref_resolver import (
-                        resolve_playable_ref,
-                    )
-                    snippets_by_id[_snip_id] = {
-                        "audio_ref": resolve_playable_ref(
-                            _snip.get("audio_segment_path")
-                            or _snip.get("audio_ref")
-                            or _snip.get("storage_path")),
-                        "start_offset_ms": _snip.get("start_offset_ms"),
-                        "duration_ms": _snip.get("duration_ms"),
-                        "transcript": (_snip.get("transcript")
-                                       or _snip.get("transcript_excerpt")
-                                       or ""),
-                        "take_index": _s.get("take_index"),
-                    }
+        snippets_by_id = (_star_playback_by_snippet(
+            sessions, set(suggestions.keys())) if suggestions else {})
 
         stars = stars_with_verdicts(list(suggestions.values()), verdicts,
                                     snippets_by_id)
