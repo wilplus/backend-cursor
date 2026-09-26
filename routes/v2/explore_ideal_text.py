@@ -575,8 +575,23 @@ def v2_explore_get_ideal_text_core(arc_id):
     """
     from time import perf_counter
     started = perf_counter()
-    core_read = db.get_ideal_text_document_core_v2(
-        arc_id, str(request.user_id))
+    from services.db import IdealTextCoreReadError
+    try:
+        core_read = db.get_ideal_text_document_core_v2(
+            arc_id, str(request.user_id))
+    except IdealTextCoreReadError:
+        # A FAILED read is not "no document yet" (founder 2026-09-26: a
+        # dropped connection showed an existing Ideal Text as missing). 503
+        # says try again; the client retries and falls back, and never
+        # renders a pending screen for a document that exists.
+        response = jsonify({
+            "code": "IDEAL_TEXT_READ_FAILED",
+            "retryable": True,
+        })
+        response.status_code = 503
+        response.headers["Retry-After"] = "2"
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
     if not core_read:
         response = jsonify({
             "code": "IDEAL_TEXT_DOCUMENT_PENDING",

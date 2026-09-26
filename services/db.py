@@ -305,6 +305,17 @@ def _carried_root(previous: Optional[dict], text: str) -> dict:
         "root_selected_at": prev.get("root_selected_at"),
     }
 
+
+class IdealTextCoreReadError(RuntimeError):
+    """The cold-open Ideal Text read FAILED, as opposed to finding nothing.
+
+    Founder 2026-09-26, from real use: a dropped database connection
+    ("Server disconnected") made the core read return ``None``, the route
+    answered ``404 IDEAL_TEXT_DOCUMENT_PENDING``, and the client showed a
+    project that has an Ideal Text a screen saying it did not have one yet.
+    "Could not read it" and "there is none" must never share an answer.
+    """
+
 class DatabaseService:
     def __init__(self):
         self.client: Client = self._build_supabase_client()
@@ -7211,17 +7222,25 @@ class DatabaseService:
             return None
 
     def get_ideal_text_document_core(
-        self, arc_id: str, actor_id: str,
+        self, arc_id: str, actor_id: str, *, raise_on_failure: bool = False,
     ) -> Optional[dict]:
-        """One owner-checked RPC read for the strict cold-open path."""
+        """One owner-checked RPC read for the strict cold-open path.
+
+        ``raise_on_failure``: the core GET passes True, so a read that FAILED
+        raises ``IdealTextCoreReadError`` instead of returning the ``None``
+        that means "no document". Every other caller keeps ``None``."""
         if not arc_id or not actor_id:
             return None
         try:
-            result = self.client.rpc(
-                "read_ideal_text_document_core_v1", {
-                    "p_arc_id": str(arc_id),
-                    "p_actor_id": str(actor_id),
-                }).execute()
+            # A dropped connection is retried on a fresh client (the same
+            # helper every other hot read uses) before it counts as a failure.
+            result = self._execute_with_retry(
+                lambda: self.client.rpc(
+                    "read_ideal_text_document_core_v1", {
+                        "p_arc_id": str(arc_id),
+                        "p_actor_id": str(actor_id),
+                    }),
+                label="ideal_text_core_v1")
             data = result.data
             if isinstance(data, list):
                 data = data[0] if data else None
@@ -7242,6 +7261,8 @@ class DatabaseService:
             observe_f1_degrade(
                 "ideal_text_core_read_failed", exc=error,
                 arc_id=arc_id, error=error)
+            if raise_on_failure:
+                raise IdealTextCoreReadError(str(error)) from error
             return None
 
     def get_ideal_text_document_core_v2(
@@ -7251,16 +7272,19 @@ class DatabaseService:
         if not arc_id or not actor_id:
             return None
         try:
-            result = self.client.rpc(
-                "read_ideal_text_document_core_v2", {
-                    "p_arc_id": str(arc_id),
-                    "p_actor_id": str(actor_id),
-                }).execute()
+            result = self._execute_with_retry(
+                lambda: self.client.rpc(
+                    "read_ideal_text_document_core_v2", {
+                        "p_arc_id": str(arc_id),
+                        "p_actor_id": str(actor_id),
+                    }),
+                label="ideal_text_core_v2")
             data = result.data
             if isinstance(data, list):
                 data = data[0] if data else None
             if data is None:
-                return self._ideal_text_core_v1_fallback(arc_id, actor_id)
+                return self._ideal_text_core_v1_fallback(
+                    arc_id, actor_id, raise_on_failure=True)
             from services.confident_moment_bundle import (
                 validate_ideal_text_core_v2,
             )
@@ -7269,7 +7293,8 @@ class DatabaseService:
             low = str(error).lower()
             if "read_ideal_text_document_core_v2" in low and (
                     "does not exist" in low or "pgrst" in low):
-                return self._ideal_text_core_v1_fallback(arc_id, actor_id)
+                return self._ideal_text_core_v1_fallback(
+                    arc_id, actor_id, raise_on_failure=True)
             # Never a 500 on the cold-open read. The v2 read introduced in #490
             # re-raised whatever its RPC or validator raised, and the RPC
             # raises (STRICT selects, explicit RAISE) for any arc without the
@@ -7293,10 +7318,13 @@ class DatabaseService:
             from services.f1_observability import observe_f1_degrade
             observe_f1_degrade(
                 "ideal_text_core_v2_read_failed", exc=error, arc_id=arc_id)
-            return self._ideal_text_core_v1_fallback(arc_id, actor_id)
+            # The core GET is this method's only caller, so a v1 read that
+            # also FAILS raises rather than posing as "no document".
+            return self._ideal_text_core_v1_fallback(
+                arc_id, actor_id, raise_on_failure=True)
 
     def _ideal_text_core_v1_fallback(
-        self, arc_id: str, actor_id: str,
+        self, arc_id: str, actor_id: str, *, raise_on_failure: bool = False,
     ) -> Optional[dict]:
         """The pre-#490 cold-open document for an arc the v2 read cannot serve.
 
@@ -7307,7 +7335,8 @@ class DatabaseService:
         served before #490 plus the fields the FE mapper treats as optional.
         ``None`` when there is no document either way — the 404 "pending".
         """
-        snapshot = self.get_ideal_text_document_core(arc_id, actor_id)
+        snapshot = self.get_ideal_text_document_core(
+            arc_id, actor_id, raise_on_failure=raise_on_failure)
         if not isinstance(snapshot, dict) or not snapshot.get("payload"):
             return None
         logger.info(
