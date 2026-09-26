@@ -130,6 +130,23 @@ class RetiredCollectionGuardTests(unittest.TestCase):
         _a, _sa, fired = self._guard('coach noted: "watch the drop-off"')
         self.assertEqual(fired, "retired_collection_dump")
 
+    def test_named_retired_collection_triggers_bridge(self):
+        # MDR-14 (2026-09-25): the Polish answer pointed to a coined
+        # "Strong Sides" collection instead of Voice Album.
+        a, sa, fired = self._guard(
+            'Twoje mocne strony są zebrane w kolekcji "Strong Sides", '
+            "którą znajdziesz w menu."
+        )
+        self.assertEqual(fired, "retired_collection_dump")
+        self.assertIsNone(sa)
+        self.assertIn("Voice Album", a)
+
+    def test_everyday_strong_sides_phrase_passes(self):
+        msg = "Your strong sides live in Voice Album in the menu."
+        a, _sa, fired = self._guard(msg)
+        self.assertIsNone(fired)
+        self.assertEqual(a, msg)
+
     def test_benign_answer_passes(self):
         msg = "I can't see any coach notes for you yet — record a take?"
         a, _sa, fired = self._guard(msg)
@@ -253,6 +270,16 @@ class RouterScaffoldTests(unittest.TestCase):
         out = _build_lane_prompt("library_recall", "")
         self.assertIn("Voice Album", out)
         self.assertNotIn("LIBRARIAN", out)
+        # The name is pinned verbatim in every language, and the lane never
+        # offers the model the retired collection's name to reuse.
+        self.assertIn('exactly "Voice Album"', out)
+        self.assertIn("never translated", out)
+        self.assertNotIn("Strong Sides", out)
+
+    def test_mega_prompt_never_offers_the_retired_collection_name(self):
+        from services.master_doc_rag import _SYSTEM_PROMPT
+        self.assertIn('exactly "Voice Album"', _SYSTEM_PROMPT)
+        self.assertNotIn("Strong Sides", _SYSTEM_PROMPT)
 
     def test_record_lane_points_to_official_recording(self):
         from services.master_doc_rag import _LANE_BODIES

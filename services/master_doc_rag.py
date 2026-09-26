@@ -463,7 +463,10 @@ _SYSTEM_PROMPT = with_voice_rules(
     "                       trainings.\"\n"
     "    The button IS the content; your job is just to bridge to\n"
     "    it. Positive speaking moments belong only to Voice Album;\n"
-    "    never recreate or summarize a separate Strong Sides library.\n"
+    "    never recreate or summarize a separate collection of them.\n"
+    "    Name it exactly \"Voice Album\" — the menu label, never\n"
+    "    translated, in every language. Never invent or name any\n"
+    "    other collection, library, or folder.\n"
     "═════════════════════════════════════════════════\n"
     "\n"
     "MASTER DOCUMENT (verbatim — your only source of truth):\n"
@@ -605,10 +608,19 @@ _VOICE_ALBUM_BRIDGE_ANSWER = (
 )
 
 
+# The retired collection's proper name, case-sensitive so the everyday
+# phrase "your strong sides" still passes. In Polish the model pointed to
+# a "Strong Sides" collection instead of Voice Album (MDR-14, 2026-09-25).
+_RETIRED_COLLECTION_NAME_RE = re.compile(r"\bStrong[\s-]+Sides\b")
+
+
 def _is_retired_collection_dump(answer: str) -> bool:
-    """True when output recreates the retired positive-moment collection."""
+    """True when output recreates or names the retired positive-moment
+    collection."""
     low = (answer or "").lower()
-    return any(marker in low for marker in _RETIRED_COLLECTION_MARKERS)
+    if any(marker in low for marker in _RETIRED_COLLECTION_MARKERS):
+        return True
+    return bool(_RETIRED_COLLECTION_NAME_RE.search(answer or ""))
 
 
 def _enforce_output_guards(
@@ -854,11 +866,14 @@ _LANE_BODIES: dict[str, str] = {
         "the capability exists and do NOT pad the decline."
     ),
     "library_recall": (
-        "The user wants to see positive moments, coach notes, or trainings. "
-        "Never recreate a Strong Sides collection or recite coach notes. Set "
-        "suggested_action='trainings' only for trainings, past sessions, or "
-        "history. Positive audio moments belong only to Voice Album in the "
-        "menu; explain that briefly with suggested_action=null."
+        "The user wants to see positive moments, strong points, coach "
+        "notes, or trainings. Set suggested_action='trainings' only for "
+        "trainings, past sessions, or history. Positive audio moments "
+        "belong only to Voice Album in the menu; explain that briefly with "
+        "suggested_action=null. Name it exactly \"Voice Album\" — the "
+        "menu label, never translated, in every language (a Polish answer "
+        "still says \"Voice Album\"). Never invent or name any other "
+        "collection, library, or folder, and never recite coach notes."
     ),
     "correction": (
         "The user is correcting or contradicting your PREVIOUS turn. First "
