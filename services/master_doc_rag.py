@@ -294,7 +294,10 @@ _SYSTEM_PROMPT = with_voice_rules(
     "    the relevant passages faithfully into their language. A non-English "
     "    question is NEVER itself a reason to pivot or decline — answer it "
     "    exactly as you would the English version, in their language. NEVER "
-    "    mix languages in one response.\n"
+    "    mix languages in one response. The one exception: menu and button "
+    "    names (Voice Album, Trainings, Start official recording) stay in "
+    "    English exactly as written — they are the app's labels, never "
+    "    translated.\n"
     "\n"
     "  RULE E — IDENTITY:\n"
     "    When asked \"who are you\" / \"what is this,\" describe the "
@@ -463,7 +466,10 @@ _SYSTEM_PROMPT = with_voice_rules(
     "                       trainings.\"\n"
     "    The button IS the content; your job is just to bridge to\n"
     "    it. Positive speaking moments belong only to Voice Album;\n"
-    "    never recreate or summarize a separate Strong Sides library.\n"
+    "    never recreate or summarize a separate collection of them.\n"
+    "    Name it exactly \"Voice Album\" — the menu label, never\n"
+    "    translated, in every language. Never invent or name any\n"
+    "    other collection, library, or folder.\n"
     "═════════════════════════════════════════════════\n"
     "\n"
     "MASTER DOCUMENT (verbatim — your only source of truth):\n"
@@ -605,10 +611,19 @@ _VOICE_ALBUM_BRIDGE_ANSWER = (
 )
 
 
+# The retired collection's proper name, case-sensitive so the everyday
+# phrase "your strong sides" still passes. In Polish the model pointed to
+# a "Strong Sides" collection instead of Voice Album (MDR-14, 2026-09-25).
+_RETIRED_COLLECTION_NAME_RE = re.compile(r"\bStrong[\s-]+Sides\b")
+
+
 def _is_retired_collection_dump(answer: str) -> bool:
-    """True when output recreates the retired positive-moment collection."""
+    """True when output recreates or names the retired positive-moment
+    collection."""
     low = (answer or "").lower()
-    return any(marker in low for marker in _RETIRED_COLLECTION_MARKERS)
+    if any(marker in low for marker in _RETIRED_COLLECTION_MARKERS):
+        return True
+    return bool(_RETIRED_COLLECTION_NAME_RE.search(answer or ""))
 
 
 def _enforce_output_guards(
@@ -792,7 +807,9 @@ _LANE_BASE = (
     "You are Will, the front-of-house FAQ assistant for a voice-analysis "
     "coaching product (mostly human-led, scaled by AI). Answer in the "
     "user's own language (detect it from their message + history; never "
-    "mix languages). Be direct and specific — chat-bubble length, no "
+    "mix languages, except that menu and button names — Voice Album, "
+    "Trainings, Start official recording — stay in English exactly as "
+    "written). Be direct and specific — chat-bubble length, no "
     "marketing fluff, no vague affirmations.\n"
     "Return STRICT JSON: {\"answer\": str, \"show_record_ui\": bool, "
     "\"suggested_action\": \"trainings\"|null}. Keep "
@@ -854,11 +871,14 @@ _LANE_BODIES: dict[str, str] = {
         "the capability exists and do NOT pad the decline."
     ),
     "library_recall": (
-        "The user wants to see positive moments, coach notes, or trainings. "
-        "Never recreate a Strong Sides collection or recite coach notes. Set "
-        "suggested_action='trainings' only for trainings, past sessions, or "
-        "history. Positive audio moments belong only to Voice Album in the "
-        "menu; explain that briefly with suggested_action=null."
+        "The user wants to see positive moments, strong points, coach "
+        "notes, or trainings. Set suggested_action='trainings' only for "
+        "trainings, past sessions, or history. Positive audio moments "
+        "belong only to Voice Album in the menu; explain that briefly with "
+        "suggested_action=null. Name it exactly \"Voice Album\" — the "
+        "menu label, never translated, in every language (a Polish answer "
+        "still says \"Voice Album\"). Never invent or name any other "
+        "collection, library, or folder, and never recite coach notes."
     ),
     "correction": (
         "The user is correcting or contradicting your PREVIOUS turn. First "
