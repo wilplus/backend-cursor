@@ -16,7 +16,9 @@ def build_r2_client(config: Any) -> Any:
     from botocore.config import Config as BotoConfig
 
     account = (config.R2_ACCOUNT_ID or "").strip()
-    return boto3.client(
+    # A fresh Session per client: plain boto3.client() uses the shared default
+    # session, which is not thread-safe to create clients from (gthread workers).
+    return boto3.session.Session().client(
         "s3",
         endpoint_url=f"https://{account}.r2.cloudflarestorage.com",
         aws_access_key_id=(config.R2_ACCESS_KEY_ID or "").strip(),

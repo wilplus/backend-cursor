@@ -190,7 +190,9 @@ class R2ExactPrivateObjectReader:
             from botocore.config import Config as BotoConfig
             from config import Config
 
-            client = boto3.client(
+            # A fresh Session per client: plain boto3.client() uses the shared default
+            # session, which is not thread-safe to create clients from (gthread workers).
+            client = boto3.session.Session().client(
                 "s3",
                 endpoint_url=(
                     f"https://{str(Config.R2_ACCOUNT_ID).strip()}"

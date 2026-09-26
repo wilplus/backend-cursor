@@ -183,7 +183,9 @@ def _client():
 
     c = _config()
     account = (getattr(c, "R2_ACCOUNT_ID", None) or "").strip()
-    _s3_client = boto3.client(
+    # A fresh Session per client: plain boto3.client() uses the shared default
+    # session, which is not thread-safe to create clients from (gthread workers).
+    _s3_client = boto3.session.Session().client(
         "s3",
         endpoint_url=f"https://{account}.r2.cloudflarestorage.com",
         aws_access_key_id=(getattr(c, "R2_ACCESS_KEY_ID", None) or "").strip(),
