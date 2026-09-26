@@ -13037,6 +13037,53 @@ class DatabaseService:
             )
             return []
 
+    def bump_latest_lounge_ideal_bubble(
+        self,
+        user_id: str,
+        arc_id: str,
+        variants: list[str],
+        at_iso: str,
+    ) -> bool:
+        """Move one project's latest Ideal Text version bubble to ``at_iso``.
+
+        The thread is ordered by client_created_at, so re-stamping it is what
+        brings the bubble back to the bottom (founder 2026-09-25, Q41 A).
+        True when a bubble moved; False when there is none (or on error)."""
+        if not user_id or not arc_id:
+            return False
+        try:
+            rows = (
+                self.client.table("lounge_messages")
+                .select("id, metadata, client_created_at")
+                .eq("user_id", user_id)
+                .eq("kind", "ideal_text")
+                .eq("metadata->>arc_id", arc_id)
+                .order("client_created_at", desc=True)
+                .limit(20)
+                .execute()
+            ).data or []
+            target = next(
+                (r for r in rows
+                 if (r.get("metadata") or {}).get("variant") in variants),
+                None,
+            )
+            if not target:
+                return False
+            (
+                self.client.table("lounge_messages")
+                .update({"client_created_at": at_iso})
+                .eq("id", target["id"])
+                .eq("user_id", user_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "bump_latest_lounge_ideal_bubble failed user=%s arc=%s err=%s",
+                user_id, arc_id, e,
+            )
+            return False
+
     def insert_lounge_messages(
         self,
         user_id: str,

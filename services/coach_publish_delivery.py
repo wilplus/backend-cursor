@@ -23,7 +23,6 @@ def enqueue_review_delivery(revision_id: str, *, delay_seconds: int = 0) -> bool
 def _deliver(database, row: dict) -> None:
     revision = row.get("coach_review_revisions") or {}
     payload = row.get("payload") or {}
-    revision_id = str(row.get("revision_id") or "")
     session_id = str(row.get("session_id") or "")
     owner_id = str(revision.get("owner_user_id") or payload.get("owner_user_id") or "")
     project_id = str(revision.get("project_id") or payload.get("project_id") or "")
@@ -33,10 +32,11 @@ def _deliver(database, row: dict) -> None:
         admin_user_id=str(revision.get("actor_user_id") or ""),
     )
 
-    from services.arc_notifications import fire_coach_feedback_published
+    from services.arc_notifications import bump_ideal_bubble
     from services.voice_album import reconcile_voice_album_clip
 
-    # ONE BUBBLE PER PUBLISH (founder 2026-09-25, Q34 B). Correction cards,
+    # NO NEW BUBBLE PER PUBLISH (founder 2026-09-25, Q34 B, then "the
+    # feedback bubble can be deleted"). Correction cards,
     # the coach's shared-video card, "Voice Album ready" and the best-
     # presentation milestone used to fire here too; every one of them is
     # reached from the one sheet the bubble and the email open. The coach's
@@ -51,10 +51,10 @@ def _deliver(database, row: dict) -> None:
             take_session_id=session_id,
             database=database,
         )
-    # THE MOMENT THE WORK LANDS HAS A VOICE (founder 2026-09-25): the publish
-    # itself is the news. Idempotent on the revision, which is what lets this
-    # retrying outbox re-run safely.
-    fire_coach_feedback_published(database, owner_id, project_id, revision_id)
+    # THE MOMENT THE WORK LANDS (founder 2026-09-25, Q39 B / Q41 A): no new
+    # bubble -- the project's own Ideal Text bubble moves to the bottom of the
+    # chat, where it wears the orange dot with the unopened feedback count.
+    bump_ideal_bubble(database, owner_id, project_id)
     _mail_the_speaker(database, owner_id, project_id, session_id, payload)
 
 

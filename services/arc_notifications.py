@@ -435,34 +435,34 @@ def fire_ideal_text_unconfirmed(db, user_id: Any, arc_id: Any,
         return False
 
 
-def fire_coach_feedback_published(db, user_id: Any, arc_id: Any,
-                                  revision_id: Any) -> bool:
-    """The coach pressed Publish, and the chat finally says so.
+# The version bubbles a project's feedback dot may sit on (Q39 B). Not the
+# retired coach-feedback bubble, not the instant card, not a failure card.
+IDEAL_VERSION_VARIANTS = frozenset({"ready", "verified"})
 
-    FOUNDER 2026-09-25, decision 02. Until now the moment a coach's work
-    became visible was the one moment nothing announced: hours of judgement,
-    Publish pressed, and the speaker's thread stayed completely silent. The
-    email was carrying that alone, and only for people who read email.
 
-    ONE card, and it opens the Ideal Text -- the same destination as the
-    email's button, so the inbox and the chat lead to one place. It is not a
-    per-take bubble: those were retired in July because they put a second
-    deliverable beside the canonical document (L1), and this does not bring
-    them back.
+def bump_ideal_bubble(db, user_id: Any, arc_id: Any) -> bool:
+    """The coach published: the project's latest Ideal Text bubble comes
+    back to the bottom of the chat, like a new message.
 
-    Keyed on the REVISION, because publish delivery is a retrying outbox and
-    the same event can arrive twice.
+    FOUNDER 2026-09-25 (Q39 B, Q41 A): the feedback bubble ("Your coach's
+    feedback is in.") is deleted; the project's own Ideal Text bubble wears
+    an orange dot with the number of unopened coach feedbacks, and moves to
+    the bottom -- the SAME bubble, no copy left behind higher up. It stays
+    where it lands once the dot is gone (Q42 A).
 
-    Copy: founder sign-off 2026-09-25.
-    """
-    if not user_id or not arc_id or not revision_id:
+    Re-stamps the bubble's thread time; idempotent enough for a retrying
+    outbox (a second run just moves it to "now" again). False when the
+    project has no version bubble yet."""
+    if not user_id or not arc_id:
         return False
-    return _fire_ideal_bubble(
-        db, user_id, arc_id,
-        client_key=f"willab-coach-feedback:{revision_id}",
-        body="Your coach's feedback is in.",
-        variant="coach_feedback_published", version=None,
-    )
+    try:
+        return bool(db.bump_latest_lounge_ideal_bubble(
+            str(user_id), str(arc_id), sorted(IDEAL_VERSION_VARIANTS),
+            datetime.now(timezone.utc).isoformat()))
+    except Exception as e:
+        logger.warning("arc_notifications: bump ideal bubble failed arc=%s: %s",
+                       arc_id, e)
+        return False
 
 
 def fire_ideal_verified(db, user_id: Any, arc_id: Any, version: Any) -> bool:
