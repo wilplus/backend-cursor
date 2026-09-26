@@ -90,83 +90,64 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class PublishingFinallySaysSomethingTests(unittest.TestCase):
-    """FOUNDER 2026-09-25, decision 02.
+class PublishMovesTheIdealBubbleTests(unittest.TestCase):
+    """FOUNDER 2026-09-25 (Q39 B, Q41 A): the feedback bubble is deleted; the
+    project's own Ideal Text bubble comes back to the bottom of the chat."""
 
-    Every card publish could fire was conditional -- a correction, a shared
-    video, an album clip, a milestone -- so a publish with none of them left
-    the speaker's thread completely silent at the one moment the coach's work
-    became visible. The email was carrying that alone.
-    """
-
-    def test_publish_fires_one_card_and_it_is_unconditional(self):
+    def test_publish_bumps_the_bubble_unconditionally(self):
         import inspect
 
         from services import coach_publish_delivery as cpd
 
         source = inspect.getsource(cpd._deliver)
-        self.assertIn("fire_coach_feedback_published(", source)
-        # Not nested under a payload condition: the publish itself is the news.
+        self.assertIn("bump_ideal_bubble(", source)
+        self.assertNotIn("fire_coach_feedback_published", source)
         for line in source.splitlines():
-            if "fire_coach_feedback_published(" in line:
+            if "bump_ideal_bubble(" in line and "import" not in line:
                 indent = len(line) - len(line.lstrip())
-                self.assertEqual(
-                    indent, 4,
-                    "the publish card must not sit behind a payload flag")
+                self.assertEqual(indent, 4,
+                                 "the bump must not sit behind a payload flag")
 
-    def test_the_card_carries_the_signed_copy(self):
-        from services.arc_notifications import fire_coach_feedback_published
-        captured = {}
+    def test_the_feedback_bubble_no_longer_exists(self):
+        from services import arc_notifications
 
-        class _Db:
-            def insert_lounge_messages(self, uid, messages):
-                captured["uid"] = uid
-                captured["messages"] = messages
-                return messages
+        self.assertFalse(hasattr(arc_notifications,
+                                 "fire_coach_feedback_published"))
 
-            def get_arc_by_id(self, _arc_id):
-                return None
+    def test_it_moves_only_a_version_bubble(self):
+        from services.arc_notifications import bump_ideal_bubble
 
-        self.assertTrue(fire_coach_feedback_published(
-            _Db(), "user-1", "arc-1", "rev-9"))
-        message = captured["messages"][0]
-        # Founder sign-off 2026-09-25.
-        self.assertEqual(message["body"], "Your coach's feedback is in.")
-        self.assertEqual(message["kind"], "ideal_text")
-        self.assertEqual(
-            message["metadata"]["variant"], "coach_feedback_published")
-
-    def test_the_same_revision_delivered_twice_is_one_card(self):
-        """Publish delivery is a RETRYING outbox: the same event can arrive
-        again, and a second card in the thread would be the visible cost."""
-        from services.arc_notifications import fire_coach_feedback_published
-        keys = []
+        calls = []
 
         class _Db:
-            def insert_lounge_messages(self, uid, messages):
-                keys.append(messages[0]["client_id"])
-                return messages
+            def bump_latest_lounge_ideal_bubble(self, uid, arc, variants, at):
+                calls.append((uid, arc, variants, at))
+                return True
 
-            def get_arc_by_id(self, _arc_id):
-                return None
+        self.assertTrue(bump_ideal_bubble(_Db(), "user-1", "arc-1"))
+        uid, arc, variants, at = calls[0]
+        self.assertEqual((uid, arc), ("user-1", "arc-1"))
+        self.assertEqual(variants, ["ready", "verified"])
+        self.assertTrue(at.endswith("+00:00"))
 
-        fire_coach_feedback_published(_Db(), "user-1", "arc-1", "rev-9")
-        fire_coach_feedback_published(_Db(), "user-1", "arc-1", "rev-9")
-        self.assertEqual(len(set(keys)), 1, "same revision → same client key")
-
-        fire_coach_feedback_published(_Db(), "user-1", "arc-1", "rev-10")
-        self.assertEqual(len(set(keys)), 2, "a new revision announces again")
-
-    def test_nothing_fires_without_a_revision(self):
-        from services.arc_notifications import fire_coach_feedback_published
+    def test_nothing_moves_without_an_owner_or_a_project(self):
+        from services.arc_notifications import bump_ideal_bubble
 
         class _Db:
-            def insert_lounge_messages(self, uid, messages):
+            def bump_latest_lounge_ideal_bubble(self, *a):
                 raise AssertionError("must not write")
 
-        for missing in (None, "", 0):
-            self.assertFalse(fire_coach_feedback_published(
-                _Db(), "user-1", "arc-1", missing))
+        self.assertFalse(bump_ideal_bubble(_Db(), None, "arc-1"))
+        self.assertFalse(bump_ideal_bubble(_Db(), "user-1", ""))
+
+    def test_a_failure_never_breaks_the_publish(self):
+        from services.arc_notifications import bump_ideal_bubble
+
+        class _Db:
+            def bump_latest_lounge_ideal_bubble(self, *a):
+                raise RuntimeError("db down")
+
+        self.assertFalse(bump_ideal_bubble(_Db(), "user-1", "arc-1"))
 
 
 class OneBubblePerPublishTests(unittest.TestCase):
@@ -184,7 +165,7 @@ class OneBubblePerPublishTests(unittest.TestCase):
                      "fire_voice_album_ready", "maybe_fire_best_presentation_ready",
                      "share_video"):
             self.assertNotIn(gone, source)
-        self.assertEqual(source.count("fire_"), 2)  # the import and the call
+        self.assertEqual(source.count("fire_"), 0)  # no bubble fires at all
 
     def test_the_coach_video_card_no_longer_exists(self):
         from services import arc_notifications
