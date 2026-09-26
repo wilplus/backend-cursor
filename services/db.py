@@ -7261,7 +7261,11 @@ class DatabaseService:
             observe_f1_degrade(
                 "ideal_text_core_read_failed", exc=error,
                 arc_id=arc_id, error=error)
-            if raise_on_failure:
+            # Only a DROPPED CONNECTION is "try again". Any other RPC error on
+            # this read is what an arc without a readable head has always
+            # answered (production 2026-09-26: raising on every error turned
+            # such arcs into a 503 on every load), and stays "pending".
+            if raise_on_failure and self._is_transient_postgrest_disconnect(error):
                 raise IdealTextCoreReadError(str(error)) from error
             return None
 

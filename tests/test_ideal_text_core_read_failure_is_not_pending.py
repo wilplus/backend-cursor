@@ -87,6 +87,15 @@ class CoreReadRetriesAndFailsLoudly(unittest.TestCase):
         with self.assertRaises(IdealTextCoreReadError):
             _read(client)
 
+    def test_a_non_transient_read_error_stays_pending_not_503(self):
+        # Production 2026-09-26: some arcs' v1 read raises an ordinary RPC
+        # error; raising on those made a 503 on every load.
+        client = _Client(
+            read_ideal_text_document_core_v2=[RuntimeError("P0001 projection invalid")],
+            read_ideal_text_document_core_v1=[RuntimeError("P0002 query returned no rows")],
+        )
+        self.assertIsNone(_read(client))
+
     def test_an_arc_with_no_document_is_still_pending(self):
         client = _Client(
             read_ideal_text_document_core_v2=[_Result([])],
