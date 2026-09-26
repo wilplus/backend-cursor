@@ -511,6 +511,11 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
             if (str(source_row.get("arc_id") or "") != str(arc_id)
                     or pinned_index is None
                     or source_row.get("recording_kind") == "read"):
+                logger.warning(
+                    "ideal_text: source take refused arc=%s sid=%s "
+                    "row_arc=%s take_index=%r kind=%s", arc_id,
+                    source_session_id, source_row.get("arc_id"),
+                    source_take_index, source_row.get("recording_kind"))
                 return False
             source_take_count = pinned_index
         # require_target=False (single deliverable, 2026-07-17): assemble
@@ -519,6 +524,9 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         if require_target and len(spoken) < TAKES_TARGET:
             return False
         if not spoken:
+            logger.warning(
+                "ideal_text: no spoken take on the project arc=%s sid=%s",
+                arc_id, source_session_id)
             return False
         _extra = None
         if include_suggestion_anchors:
@@ -563,6 +571,9 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                 extra_anchor_ids=_extra)
         text = (auto.get("text") or "").strip()
         if not text:
+            logger.warning(
+                "ideal_text: assembled document is empty arc=%s sid=%s",
+                arc_id, source_session_id)
             return False
         # THE VERSION IS THE TAKE COUNT (founder 2026-08-05): take 1 → 1.0,
         # take 2 → 2.0. `spoken` is the same list the trigger above counted,

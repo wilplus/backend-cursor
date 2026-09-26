@@ -793,6 +793,14 @@ def v2_retry_recording_processing(session_id):
     }), 202
 
 
+def _log_retry_refused(session_id: str, reason: str) -> None:
+    """Every refusal of the Ideal Text retry names itself (founder
+    2026-09-26: a tapped "Try creating it again" created no job and left no
+    line in either service's log, so nothing could say which gate said no)."""
+    logger.warning("lab: ideal-text retry refused sid=%s reason=%s",
+                   session_id, reason)
+
+
 @v2_bp.route(
     "/lab/recordings/<session_id>/retry-ideal-text", methods=["POST"])
 @optional_auth
@@ -808,17 +816,20 @@ def v2_retry_recording_ideal_text(session_id):
                         "error": "session_id must be a valid UUID"}), 400
     session = _owned_recording_session(session_id)
     if not session:
+        _log_retry_refused(session_id, "SESSION_NOT_FOUND")
         return jsonify({"code": "SESSION_NOT_FOUND",
                         "error": "Recording not found"}), 404
     try:
         _require_session_processing_authority(session, "ideal_text_retry")
     except ProcessingAuthorizationError as error:
+        _log_retry_refused(session_id, error.code)
         return jsonify({"code": error.code, "error": error.message}), error.status
     arc_id = session.get("arc_id")
     take_index = session.get("take_index")
     if (not arc_id or isinstance(take_index, bool)
             or not isinstance(take_index, int) or take_index < 1
             or session.get("recording_kind") == "read"):
+        _log_retry_refused(session_id, "NOT_A_SPOKEN_TAKE")
         return jsonify({
             "code": "IDEAL_TEXT_RETRY_UNAVAILABLE",
             "error": "Ideal Text retry is available for a spoken Take only",
@@ -845,6 +856,7 @@ def v2_retry_recording_ideal_text(session_id):
 
     state = session.get("analysis_state")
     if state not in ("failed_ideal_text_unconfirmed", "processing"):
+        _log_retry_refused(session_id, f"STATE_{state}")
         return jsonify({
             "code": "IDEAL_TEXT_RETRY_UNAVAILABLE",
             "error": "Ideal Text retry is not available for this take",
@@ -859,6 +871,7 @@ def v2_retry_recording_ideal_text(session_id):
         take_index=int(take_index),
     )
     if not job:
+        _log_retry_refused(session_id, "ENQUEUE_FAILED")
         return jsonify({
             "code": "IDEAL_TEXT_RETRY_UNAVAILABLE",
             "error": "Ideal Text creation could not be restarted",
