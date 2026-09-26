@@ -147,7 +147,7 @@ class _Db:
 
 
 def _row(sid, user="u1"):
-    return {"id": sid, "user_id": user, "recording_1_id": f"rec-{sid}",
+    return {"id": sid, "user_id": user, "recording_id": f"rec-{sid}",
             "report_id": f"rep-{sid}"}
 
 

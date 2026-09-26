@@ -622,7 +622,7 @@ class _ChangesRun:
                 suggestions=self.user_sugs,
                 feedback_candidates=self.changes,
                 take_index=_v3_take_index,
-                expected_recording_id=_v3_session.get("recording_1_id"),
+                expected_recording_id=_v3_session.get("recording_id"),
             )
             if _v3_frame is not None:
                 _v3_saved = db.record_take_feedback_policy_v3_shadow(

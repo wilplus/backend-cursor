@@ -60,7 +60,7 @@ def _select_candidates(
         db.client.table("v2_sessions")
         .select(
             "id, user_id, status, created_at, results_published_at, "
-            "recording_1_id",
+            "recording_id",
         )
         .is_("results_published_at", "null")
         .not_.is_("user_id", "null")
@@ -84,7 +84,7 @@ def _select_candidates(
     # them keeps this conservative.
     trial_rows: list[dict] = []
     for r in rows:
-        rid = r.get("recording_1_id")
+        rid = r.get("recording_id")
         if not rid:
             continue
         try:

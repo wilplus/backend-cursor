@@ -201,7 +201,7 @@ def _stored_confidence_queue_count(context):
 
 def _session_recording(session):
     """Best-effort recording metadata used only for declared language."""
-    recording_id = session.get("recording_1_id") if isinstance(session, dict) else None
+    recording_id = session.get("recording_id") if isinstance(session, dict) else None
     return db.get_recording(str(recording_id)) if recording_id else None
 
 
@@ -1777,7 +1777,7 @@ def v2_coach_session_recut(session_id):
                 ),
                 "drafts": len(_drafts),
             }), 409
-        recording_id = session.get("recording_1_id")
+        recording_id = session.get("recording_id")
         if not recording_id:
             return jsonify({"code": "NO_RECORDING", "error": "Session has no recording."}), 404
         rec = db.get_recording(recording_id)
@@ -3758,7 +3758,7 @@ def v2_coach_confirm_session_language(session_id):
         sess = db.v2_get_session_by_id(str(session_id))
         if not sess:
             return jsonify({"code": "NOT_FOUND", "error": "session not found"}), 404
-        recording_id = str(sess.get("recording_1_id") or "")
+        recording_id = str(sess.get("recording_id") or "")
         recording = db.get_recording(recording_id) if recording_id else None
         if not recording:
             return jsonify({

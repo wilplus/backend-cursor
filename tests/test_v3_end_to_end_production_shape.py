@@ -148,7 +148,7 @@ def _session() -> dict:
         "user_id": USER,
         "owner_principal_id": OWNER,
         "project_id": PROJECT,
-        "recording_1_id": RECORDING,
+        "recording_id": RECORDING,
         "take_index": 1,
     }
 

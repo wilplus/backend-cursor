@@ -344,14 +344,14 @@ class IdealTextRetryJobTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, source)
 
-    def test_enforced_retry_reads_the_takes_recording_1_id(self):
-        """Founder 2026-09-26, Take b6c04b8b: v2_sessions stores the Take's
-        recording as `recording_1_id` and has no `recording_id` column, so
-        the enforced retry resolved no recording and failed every time."""
+    def test_enforced_retry_reads_the_takes_recording_id(self):
+        """Founder 2026-09-26, Take b6c04b8b: before 0383 the Take row named
+        its recording only `recording_1_id`, so the enforced retry resolved
+        no recording and failed every time. It reads `recording_id` now."""
         database = Mock()
         database.v2_get_session_by_id.return_value = {
             "id": SID, "user_id": "user-1", "owner_principal_id": "owner-1",
-            "recording_1_id": "rec-1",
+            "recording_id": "rec-1",
         }
         job = {
             "id": "job-1",

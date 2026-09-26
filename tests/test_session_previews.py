@@ -12,7 +12,7 @@ from services.db import (
 def test_preview_prefers_sniper_wpm_and_normalizes_legacy_duration():
     session = {
         "id": "s1",
-        "recording_1_id": "r1",
+        "recording_id": "r1",
         "student_self_rating": "4",
         "self_rating_submitted_at": "2026-08-22T10:00:00Z",
     }
@@ -44,10 +44,10 @@ def test_preview_marks_submitted_rating_without_value_as_skipped():
     row = _session_preview_row(
         {
             "id": "s1",
-            "recording_1_id": None,
+            "recording_id": None,
             "self_rating_submitted_at": "2026-08-22T10:00:00Z",
         },
-        ("id", "recording_1_id", "self_rating_submitted_at"),
+        ("id", "recording_id", "self_rating_submitted_at"),
         {},
         {},
     )

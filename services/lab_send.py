@@ -124,7 +124,7 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
         )
 
         recording_id = str(
-            session.get("recording_1_id") or session.get("recording_id") or ""
+            session.get("recording_id") or ""
         )
         authorization = ProcessingAuthorizationService(db)
         principal_id = authorization.resolve_acquisition_principal(

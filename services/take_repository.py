@@ -68,7 +68,7 @@ class TakeRepository(TableRepository):
         ``TakeHasLineageError``. That Take's delete belongs to the governed
         Phase-1 purge (services/data_purge.py), not here.
 
-        No links are cleared first. This used to null recording_1_id and
+        No links are cleared first. This used to null the recording link and
         report_id in a separate call "to break an FK cycle", but PostgreSQL
         runs the mutual CASCADE / SET NULL without trouble (checked on PG16),
         and the separate commit left a refused Take with its links cut.
@@ -287,7 +287,7 @@ class TakeRepository(TableRepository):
         try:
             sess = (
                 self.client.table("v2_sessions")
-                .select("recording_1_id")
+                .select("recording_id")
                 .eq("id", session_id)
                 .limit(1)
                 .execute()
@@ -295,7 +295,7 @@ class TakeRepository(TableRepository):
             if not sess.data:
                 return None
             s0 = sess.data[0]
-            rid = s0.get("recording_1_id")
+            rid = s0.get("recording_id")
             if not rid:
                 return None
             rec_res = (
@@ -368,7 +368,7 @@ class TakeRepository(TableRepository):
             "status": "processing",
         }
         if recording_id:
-            payload["recording_1_id"] = recording_id
+            payload["recording_id"] = recording_id
         result = self.client.table("v2_sessions").insert(payload).execute()
         return result.data[0] if result.data else None
 
@@ -439,7 +439,7 @@ class TakeRepository(TableRepository):
         """Link a recording to its already-owned Take row."""
         result = (
             self.client.table("v2_sessions")
-            .update({"recording_1_id": recording_id})
+            .update({"recording_id": recording_id})
             .eq("id", session_id)
             .execute()
         )
@@ -503,7 +503,7 @@ class TakeRepository(TableRepository):
         try:
             res = (
                 self.client.table("v2_sessions")
-                .select("id, recording_1_id, intake_context, status, "
+                .select("id, recording_id, intake_context, status, "
                         "created_at, review_requested_at, results_published_at, "
                         "coach_overall_message, project_id, arc_id, take_index, "
                         "slide_transcripts, coach_feedback_saved_at, "
@@ -529,7 +529,7 @@ class TakeRepository(TableRepository):
                 try:
                     res = (
                         self.client.table("v2_sessions")
-                        .select("id, recording_1_id, intake_context, status, "
+                        .select("id, recording_id, intake_context, status, "
                                 "created_at, review_requested_at, "
                                 "results_published_at, coach_overall_message")
                         .eq("user_id", user_id)
@@ -1703,9 +1703,9 @@ class TakeRepository(TableRepository):
         would otherwise return an EMPTY corpus index, which reads exactly
         like "nothing imported" — the failure this list exists to rule out."""
         _cols_full = ("id, arc_id, take_index, intake_context, created_at, "
-                      "status, user_id, recording_1_id, analysis_state")
+                      "status, user_id, recording_id, analysis_state")
         _cols_base = ("id, arc_id, take_index, intake_context, created_at, "
-                      "status, user_id, recording_1_id")
+                      "status, user_id, recording_id")
         for _cols in (_cols_full, _cols_base):
             try:
                 q = (
