@@ -36,6 +36,31 @@ an optimization against the 502, not a correctness dependency.
 workers = 2
 timeout = 1800
 
+# LANES PER WORKER (founder 2026-09-26: reloads "sometimes very slow").
+#
+# The default `sync` worker serves one request at a time, so two slow
+# requests (an upload, an AI call) held both workers and every quick read —
+# the app's boot calls included — queued behind them. `gthread` gives each
+# worker a small pool of threads: a slow request occupies one lane, not the
+# whole worker.
+#
+# Reviewed for shared state before turning on (2026-09-26): the Supabase
+# client is one httpx client per process, safe to share, and a transient
+# rebuild swaps it without closing the old one; no request attaches a user's
+# token to a shared client; boto3 clients are now built from their own
+# Session (the default session is not thread-safe to build from); the
+# module-level globals left are lazy config, clients, and counters.
+#
+# GUNICORN_THREADS on the web service tunes it without a deploy; 1 is
+# effectively the old behaviour.
+import os as _os
+
+worker_class = "gthread"
+try:
+    threads = max(1, int((_os.getenv("GUNICORN_THREADS") or "4").strip()))
+except ValueError:
+    threads = 4
+
 
 def post_worker_init(worker):
     """Pay librosa's numba JIT cost at worker boot, before traffic."""
