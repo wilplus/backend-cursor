@@ -14613,6 +14613,28 @@ class DatabaseService:
                            take_session_id, e)
             return None
 
+    def completed_exercise_before(
+        self, owner_user_id: str, exercise_id: str, take_session_id: str,
+    ) -> bool:
+        """Whether the owner completed a practice of this exercise on an
+        earlier Take (contract 35d). False on any failure: the label is a
+        courtesy and never blocks the offer."""
+        if not owner_user_id or not exercise_id:
+            return False
+        try:
+            query = (self.client.table("confident_voice_practice").select("id")
+                     .eq("owner_user_id", str(owner_user_id))
+                     .eq("exercise_id", str(exercise_id))
+                     .eq("status", "completed"))
+            if take_session_id:
+                query = query.neq("take_session_id", str(take_session_id))
+            res = query.limit(1).execute()
+            return bool(res.data)
+        except Exception as e:
+            logger.warning("completed_exercise_before failed ex=%s: %s",
+                           exercise_id, e)
+            return False
+
     def get_confident_voice_practice(
         self, practice_id: str, owner_user_id: Optional[str] = None,
     ) -> Optional[dict]:

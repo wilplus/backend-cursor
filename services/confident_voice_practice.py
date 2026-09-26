@@ -690,6 +690,21 @@ def _offer_payload(exercise: dict, verdict: dict, snippet: dict,
     }
 
 
+def _done_before(database: Any, owner_user_id: str, exercise_id: str,
+                 take_session_id: str) -> bool:
+    """THE GREEN "DONE" LABEL (founder 2026-09-26, Q44/Q45 A, contract 35d):
+    the owner already completed this exercise on an earlier Take, so the
+    product does not repeat it unknowingly. A flag, never a count (AC-9)."""
+    check = getattr(database, "completed_exercise_before", None)
+    if check is None or not owner_user_id:
+        return False
+    try:
+        return bool(check(str(owner_user_id), str(exercise_id),
+                          str(take_session_id or "")))
+    except Exception:  # noqa: BLE001 — a label never costs the offer
+        return False
+
+
 def _rewrite_on_same_paragraph(row: dict, rows: list[dict]) -> bool:
     raw_evidence = row.get("evidence")
     evidence: dict = raw_evidence if isinstance(raw_evidence, dict) else {}
@@ -773,6 +788,9 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
         return rows
     chosen["practice_exercise"] = _offer_payload(
         served, verdict, snippet, chosen, existing)
+    chosen["practice_exercise"]["done_before"] = _done_before(
+        database, owner_user_id, str(served.get("exercise_id") or ""),
+        take_session_id)
     return rows
 
 
@@ -829,6 +847,9 @@ def attach_v3_exercise_offer(
     target["evidence"] = evidence
     target["practice_exercise"] = _offer_payload(
         exercise, verdict, snippet, target, existing)
+    target["practice_exercise"]["done_before"] = _done_before(
+        database, owner_user_id, str(exercise.get("exercise_id") or ""),
+        take_session_id)
     return rows
 
 
