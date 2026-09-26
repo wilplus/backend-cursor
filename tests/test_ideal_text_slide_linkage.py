@@ -272,6 +272,49 @@ if __name__ == "__main__":
 
 
 @unittest.skipIf(Flask is None, f"flask/app import failed: {_IMPORT_ERROR}")
+class CanonicalProvenanceFirstTests(unittest.TestCase):
+    """Stored Take-1 provenance is the answer whenever it exists.
+
+    Rebuilding it from the latest transcript describes a different document
+    after Take 2. #531 split this lane out and began treating an EMPTY stored
+    answer as "nothing stored", so it fell through to that rebuild; audit
+    fix 2 restored the original behaviour."""
+
+    REBUILT = {"take_session_id": None, "paragraphs": [
+        {"snippet_id": "z", "slide_index": 9, "take_session_id": "t2",
+         "take_index": 2}]}
+
+    def _prov(self, stored_paragraphs):
+        from types import SimpleNamespace
+
+        from routes.v2 import explore_ideal_text as mod
+        row = {"auto_text": "machine text",
+               "document": {"paragraphs": stored_paragraphs}}
+        fake_db = SimpleNamespace(ideal_text=SimpleNamespace(
+            get_coach_arc_ideal_text=lambda arc_id: row))
+        with patch.object(mod, "db", fake_db), \
+                patch("services.transcript_document.build_transcript_document",
+                      return_value=self.REBUILT) as rebuild, \
+                patch("services.ideal_text_block._living_transcript_enabled",
+                      return_value=True), \
+                patch("services.master_document.master_document_enabled",
+                      return_value=False):
+            rows = mod._ideal_piece_provenance(ARC, served_text="machine text")
+        return rows, rebuild
+
+    def test_stored_paragraphs_are_served_without_a_rebuild(self):
+        rows, rebuild = self._prov([
+            {"snippet_id": "a", "slide_index": 0, "take_session_id": "t1",
+             "take_index": 1}])
+        self.assertEqual([r["snippet_id"] for r in rows], ["a"])
+        rebuild.assert_not_called()
+
+    def test_stored_paragraphs_with_no_usable_row_never_fall_to_the_rebuild(self):
+        rows, rebuild = self._prov(["not a paragraph row"])
+        self.assertEqual(rows, [])
+        rebuild.assert_not_called()
+
+
 class ComposeFailureFallbackTests(unittest.TestCase):
     """SPEC §12.1 (founder 2026-08-14): a compose exception used to serve
     the RAW machine text — stored parts no longer joined, the parts block
