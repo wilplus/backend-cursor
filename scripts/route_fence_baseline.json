@@ -152,8 +152,8 @@
     "db_calls": 1
   },
   "routes/v2/coach.py:v2_coach_get_session": {
-    "lines": 88,
-    "db_calls": 3
+    "lines": 83,
+    "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_list_training_imports": {
     "lines": 82,

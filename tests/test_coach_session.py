@@ -117,6 +117,46 @@ class CoachSessionReadTests(unittest.TestCase):
         self.assertFalse(cb["surfaced"])
         self.assertNotIn("direction_label", cb)
 
+    def test_a_failed_re_read_after_the_claim_is_503_not_500(self):
+        """The re-read under the claim is part of the claim step.
+
+        Before audit fix 1 it sat outside the claim's error handling, so a
+        database hiccup there fell to the route's generic 500 instead of the
+        coach's "Could not open this review safely" 503.
+        """
+        first_read = db.v2_get_session_by_id
+        calls = {"n": 0}
+
+        def read(sid):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return first_read(sid)
+            raise RuntimeError("connection reset")
+
+        self._patch_db("v2_get_session_by_id", read)
+        status, data = self._get()
+        self.assertEqual(status, 503)
+        self.assertEqual(data["code"], "REVIEW_ASSIGNMENT_FAILED")
+
+    def test_the_session_is_re_read_after_the_claim(self):
+        order = []
+        first_read = db.v2_get_session_by_id
+        claim = db.claim_coach_review
+
+        def read(sid):
+            order.append("read")
+            return first_read(sid)
+
+        def claim_it(*args, **kwargs):
+            order.append("claim")
+            return claim(*args, **kwargs)
+
+        self._patch_db("v2_get_session_by_id", read)
+        self._patch_db("claim_coach_review", claim_it)
+        status, _ = self._get()
+        self.assertEqual(status, 200)
+        self.assertEqual(order, ["read", "claim", "read"])
+
     def test_identity_stripped(self):
         status, data = self._get()
         self.assertTrue(data["pseudonym"])
