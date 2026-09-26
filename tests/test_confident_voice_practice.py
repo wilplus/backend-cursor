@@ -233,6 +233,46 @@ class _AlbumDb:
         return True
 
 
+class DoneBeforeLabelTests(unittest.TestCase):
+    """THE GREEN "DONE" LABEL (founder 2026-09-26, Q44 / Q45 A): the offer says
+    when the owner already completed this exercise on an earlier Take."""
+
+    def _offer(self, db):
+        rows = cvp.attach_exercise_offer([
+            {"id": "one", "source": "confident_voice", "snippet_id": "snippet-a"},
+        ], take_session_id="take-1", database=db, owner_user_id="owner-1")
+        return next(row["practice_exercise"] for row in rows
+                    if "practice_exercise" in row)
+
+    def test_done_before_when_completed_on_an_earlier_take(self):
+        db = _Db()
+        calls = []
+        db.completed_exercise_before = (
+            lambda owner, ex, take: calls.append((owner, ex, take)) or True)
+        offer = self._offer(db)
+        self.assertIs(offer["done_before"], True)
+        self.assertEqual(calls[0][0], "owner-1")
+        self.assertEqual(calls[0][2], "take-1")
+
+    def test_new_exercise_is_not_done(self):
+        db = _Db()
+        db.completed_exercise_before = lambda owner, ex, take: False
+        self.assertIs(self._offer(db)["done_before"], False)
+
+    def test_a_failing_read_never_costs_the_offer(self):
+        db = _Db()
+
+        def boom(*_args):
+            raise RuntimeError("down")
+        db.completed_exercise_before = boom
+        self.assertIs(self._offer(db)["done_before"], False)
+
+    def test_a_flag_never_a_count(self):
+        db = _Db()
+        db.completed_exercise_before = lambda owner, ex, take: 3
+        self.assertIs(self._offer(db)["done_before"], True)
+
+
 class PracticeAlbumTests(unittest.TestCase):
     PRACTICE = {
         "id": "practice-1", "selected_attempt_id": "attempt-1",
