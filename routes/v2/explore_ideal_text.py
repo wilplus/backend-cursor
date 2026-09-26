@@ -446,7 +446,10 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
         # fallback the assembly itself makes.
     if _living_transcript_enabled():
         canonical = _ideal_piece_provenance_canonical(arc_id, served_text)
-        if canonical:
+        # `is not None`, not truthiness: stored paragraphs that yield no rows
+        # are still the canonical answer, never a cue to rebuild provenance
+        # from the latest transcript.
+        if canonical is not None:
             return canonical
         # Compatibility only: rows created before document provenance was
         # added have no canonical map. The latest transcript remains the best

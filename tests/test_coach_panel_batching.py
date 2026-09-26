@@ -295,13 +295,24 @@ class TheReadoutTakesRowsTheCallerAlreadyHasTests(unittest.TestCase):
 
         If someone later removes it to save a round trip, review ownership
         starts being decided on a row read BEFORE the claim was taken. This
-        test is the reason that stays.
+        test is the reason that stays. The re-read lives in the claim step
+        itself (``claim_review_and_reread``), inside the route's claim error
+        handling; ``test_coach_session`` checks the call order end to end.
         """
         import inspect
 
-        src = inspect.getsource(v2_coach.v2_coach_get_session)
-        claim = src.index("_claim_coach_review_error")
-        reread = src.index("db.v2_get_session_by_id(session_id) or session")
+        from services import coach_review_claim
+
+        route = inspect.getsource(v2_coach.v2_coach_get_session)
+        self.assertIn("_claim_coach_review(session_id, session)", route)
+        helper = inspect.getsource(v2_coach._claim_coach_review)
+        self.assertLess(
+            helper.index("claim_review_and_reread("), helper.index("except"),
+            "the claim and its re-read must share one error boundary",
+        )
+        step = inspect.getsource(coach_review_claim.claim_review_and_reread)
+        claim = step.index("database.claim_coach_review(")
+        reread = step.index("database.v2_get_session_by_id(session_id)")
         self.assertGreater(
             reread, claim,
             "the session must still be re-read AFTER the review claim",

@@ -41,6 +41,7 @@ from routes.v2.common import (
 )
 from services.db import db
 from services.coach_queue import load_review_queue
+from services.coach_review_claim import claim_review_and_reread
 from services.coach_video_storage import refreshed_media_url
 from services.coach_moment_errors import (
     apply_moment_edit,
@@ -778,35 +779,41 @@ def _shape_coach_review_snippet(snip, cstate_map, owning_sid,
     }
 
 
-def _claim_coach_review_error(session_id):
+def _claim_coach_review(session_id, session):
+    """Claim the review, then re-read the session under the claim.
+
+    Returns ``(session, None)``, or ``(None, error_response)`` when either
+    step fails: a failed re-read is the same 503 as a failed claim.
+    """
     try:
-        db.claim_coach_review(
+        return claim_review_and_reread(
+            db,
             session_id,
             str(request.user_id),
             actor_is_admin=is_admin(str(request.user_id)),
-        )
-        return None
+            before_claim=session,
+        ), None
     except Exception as assignment_error:
         low = str(assignment_error).lower()
         if "unclaimed guest" in low:
-            return jsonify({
+            return None, (jsonify({
                 "code": "UNCLAIMED_GUEST",
                 "error": "This take must be claimed before coach review.",
-            }), 409
+            }), 409)
         if "another coach" in low:
-            return jsonify({
+            return None, (jsonify({
                 "code": "REVIEW_ASSIGNED_TO_ANOTHER_COACH",
                 "error": "This review is assigned to another coach.",
-            }), 409
+            }), 409)
         logger.error(
             "coach/get-session: review assignment failed sid=%s: %s",
             session_id,
             assignment_error,
         )
-        return jsonify({
+        return None, (jsonify({
             "code": "REVIEW_ASSIGNMENT_FAILED",
             "error": "Could not open this review safely.",
-        }), 503
+        }), 503)
 
 
 def _coach_session_readout(session_id, snippet_rows, session_row):
@@ -819,9 +826,9 @@ def _coach_session_readout(session_id, snippet_rows, session_row):
     language check, the session again after the review claim — so without
     handing them in, opening one lesson paid for the same two queries twice.
 
-    The post-claim re-read on the caller's side STAYS, and this is why the
-    session is passed rather than re-read here: review ownership must never
-    be decided on a row read before the claim was taken.
+    The post-claim re-read (``_claim_coach_review``) STAYS, and this is why
+    the session is passed rather than re-read here: review ownership must
+    never be decided on a row read before the claim was taken.
     """
     from services.lab_recording import build_readout_from_session
     return build_readout_from_session(
@@ -1060,10 +1067,9 @@ def v2_coach_get_session(session_id):
 
         # First open atomically owns the review.  Admins may inspect another
         # coach's assignment, but publishing then requires an audited override.
-        claim_error = _claim_coach_review_error(session_id)
+        session, claim_error = _claim_coach_review(session_id, session)
         if claim_error is not None:
             return claim_error
-        session = db.v2_get_session_by_id(session_id) or session
 
         readout = _coach_session_readout(
             session_id, snippets_for_language, session)
