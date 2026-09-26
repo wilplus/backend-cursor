@@ -245,6 +245,9 @@ def build_transcript_document(arc_id: Any, *, database=None,
 
         snips = database.get_snippets_by_session(sid) or []
         if not snips:
+            logger.warning(
+                "transcript_document: no snippets for the take arc=%s sid=%s",
+                arc_id, sid)
             return None
         corrections, edits = _load_overlays(database, sid)
         slide_fixes = _slide_corrections(database, sid)
@@ -265,6 +268,9 @@ def build_transcript_document(arc_id: Any, *, database=None,
                 continue
             rows.append((s, text, _slide_of(s, slide_fixes)))
         if not rows:
+            logger.warning(
+                "transcript_document: %d snippets, none with usable words "
+                "arc=%s sid=%s", len(snips), arc_id, sid)
             return None
 
         # PASS 2 — slide runs become paragraphs, and the spans are laid out
