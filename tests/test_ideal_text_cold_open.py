@@ -517,7 +517,11 @@ def test_both_reads_failing_is_distinguishable_from_one(observed):
         "read_ideal_text_document_core_v1": Exception("boom v1"),
     }))
 
-    assert database.get_ideal_text_document_core_v2("arc-1", "actor-1") is None
+    # Founder 2026-09-26: an unreadable arc is not "no document yet". The core
+    # GET's read RAISES, and the route answers 503 instead of 404 pending.
+    from services.db import IdealTextCoreReadError
+    with pytest.raises(IdealTextCoreReadError):
+        database.get_ideal_text_document_core_v2("arc-1", "actor-1")
     assert [r for r, _ in observed] == [
         # The v2 degrade is reported BEFORE the fallback is attempted, so it
         # is recorded whether or not the fallback goes on to succeed.
