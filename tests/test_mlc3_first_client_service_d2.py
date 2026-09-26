@@ -508,3 +508,52 @@ def test_route_surface_is_hidden_and_has_no_learning_operations():
     assert "runtime_is_enabled()" in GUIDANCE_ROUTE
     assert "store_exact_object" in GUIDANCE_ROUTE
     assert "publish_coach_guidance_service_exercise" in GUIDANCE_ROUTE
+
+
+def _record(mod, allowed_events, calls):
+    return mod._record_service_event(
+        "entity-1",
+        id_field="session_id",
+        id_param="p_session_id",
+        rpc=lambda params: calls.append(params) or {"id": "event-1"},
+        allowed_events=allowed_events,
+        error_label="practice",
+    )
+
+
+def test_each_client_event_route_checks_its_own_allowlist(monkeypatch):
+    """Audit fix 7: the practice route used to check the offer allowlist.
+
+    The two sets are equal today, so nothing surfaced; the day they diverge,
+    each route must still accept exactly its own events.
+    """
+    from flask import Flask
+
+    from routes.v2 import mlc3_first_client_service as mod
+
+    for name in ("_uuid", "_sha256", "_rpc_time"):
+        monkeypatch.setattr(mod, name, lambda value, field: value)
+    monkeypatch.setattr(mod, "_event_payload", lambda value: value or {})
+    monkeypatch.setattr(mod, "_principal_id", lambda: "principal-1")
+    monkeypatch.setattr(mod, "_idempotency_key", lambda: "key-1")
+    monkeypatch.setattr(
+        mod, "_body", lambda: {"event_kind": "practice_only"})
+    calls: list = []
+    with Flask(__name__).test_request_context():
+        with pytest.raises(ValueError, match="practice event"):
+            _record(mod, {"render_confirmed"}, calls)
+        assert calls == []
+        row, kind = _record(mod, {"practice_only"}, calls)
+    assert (row, kind) == ({"id": "event-1"}, "practice_only")
+    assert calls[0]["p_event_kind"] == "practice_only"
+
+    offer_route = _function_source(mod.v2_mlc3_exercise_offer_event)
+    practice_route = _function_source(mod.v2_mlc3_practice_event)
+    assert "allowed_events=_OFFER_EVENTS" in offer_route
+    assert "allowed_events=_PRACTICE_EVENTS" in practice_route
+
+
+def _function_source(route) -> str:
+    import inspect
+
+    return inspect.getsource(inspect.unwrap(route))

@@ -121,18 +121,19 @@ def _event_payload(value: Any) -> dict[str, Any]:
 
 def _record_service_event(
     entity_id: str, *, id_field: str, id_param: str, rpc: Any,
-    error_label: str, extra_params: dict[str, Any] | None = None,
+    allowed_events: set[str], error_label: str,
+    extra_params: dict[str, Any] | None = None,
 ) -> tuple[Any, str]:
     """Shared body of the offer/practice client-event RPCs (audit C.7 dedup).
 
-    Both call sites validate event_kind against the same allowlist
-    (``_OFFER_EVENTS`` and ``_PRACTICE_EVENTS`` are literally the same set),
-    build an identical event-payload envelope, and differ only in which
-    entity id key/RPC they use and whether ``p_attempt_id`` is present.
+    Both call sites build an identical event-payload envelope and differ in
+    which entity id key/RPC they use, whether ``p_attempt_id`` is present,
+    and which allowlist ``event_kind`` is checked against (each passes its
+    own, so the two can diverge without a silent cross-check).
     """
     body = _body()
     event_kind = str(body.get("event_kind") or "")
-    if event_kind not in _OFFER_EVENTS:
+    if event_kind not in allowed_events:
         raise ValueError(f"event_kind is not a client {error_label} event")
     row = rpc({
         id_param: _uuid(entity_id, id_field),
@@ -421,6 +422,7 @@ def v2_mlc3_exercise_offer_event(offer_id: str):
             id_field="offer_id",
             id_param="p_offer_id",
             rpc=db.record_exercise_offer_service_event,
+            allowed_events=_OFFER_EVENTS,
             error_label="offer",
         )
         if row is None:
@@ -505,6 +507,7 @@ def v2_mlc3_practice_event(session_id: str):
             id_field="session_id",
             id_param="p_session_id",
             rpc=db.record_exercise_practice_service_event,
+            allowed_events=_PRACTICE_EVENTS,
             extra_params={"p_attempt_id": None},
             error_label="practice",
         )
