@@ -344,6 +344,50 @@ class IdealTextRetryJobTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, source)
 
+    def test_enforced_retry_reads_the_takes_recording_1_id(self):
+        """Founder 2026-09-26, Take b6c04b8b: v2_sessions stores the Take's
+        recording as `recording_1_id` and has no `recording_id` column, so
+        the enforced retry resolved no recording and failed every time."""
+        database = Mock()
+        database.v2_get_session_by_id.return_value = {
+            "id": SID, "user_id": "user-1", "owner_principal_id": "owner-1",
+            "recording_1_id": "rec-1",
+        }
+        job = {
+            "id": "job-1",
+            "user_id": "user-1",
+            "payload": {
+                "session_id": SID,
+                "user_id": "user-1",
+                "arc_id": "arc-1",
+                "take_index": 1,
+            },
+        }
+        authorization = Mock()
+        authorization.enforced = True
+        authorization.resolve_acquisition_principal.return_value = "owner-1"
+        with patch.object(pipeline_jobs, "db", database), patch(
+            "services.processing_authorization.ProcessingAuthorizationService",
+            return_value=authorization,
+        ), patch(
+            "services.authorized_provider.AuthorizedProviderAdapter",
+        ) as adapter, patch.object(
+            pipeline_jobs,
+            "build_initial_ideal_text_from_stored_artifacts",
+            return_value={"auto_text": "Ideal", "version": 1},
+        ), patch(
+            "services.arc_notifications.fire_ideal_version_ready",
+        ):
+            result = pipeline_jobs._run_ideal_text_retry(job)
+        self.assertTrue(result["ideal_text_confirmed"])
+        self.assertEqual(
+            authorization.resolve_acquisition_principal.call_args.kwargs[
+                "recording_id"],
+            "rec-1",
+        )
+        coordinates = adapter.call_args.args[1]
+        self.assertEqual(coordinates.recording_id, "rec-1")
+
     def test_ready_card_failure_cannot_reclassify_a_confirmed_document(self):
         database = Mock()
         row = {"auto_text": "Ideal", "version": 1}

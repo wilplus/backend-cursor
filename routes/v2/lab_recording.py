@@ -631,7 +631,9 @@ def _require_session_processing_authority(session: dict, operation: str) -> None
     acquisition_principal_id = service.resolve_acquisition_principal(
         principal_id,
         user_id=str(session.get("user_id") or "") or None,
-        recording_id=str(session.get("recording_id") or "") or None,
+        # `recording_1_id` is the legacy name (0383); see _run_ideal_text_retry.
+        recording_id=str(session.get("recording_id")
+                         or session.get("recording_1_id") or "") or None,
     )
     service.require_current(acquisition_principal_id, operation=operation)
 

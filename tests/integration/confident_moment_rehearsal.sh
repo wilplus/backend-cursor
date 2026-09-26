@@ -402,6 +402,11 @@ hard migrations/one_project_can_be_purged.sql
 # list; nothing is deleted). Twice: apply/reapply.
 hard migrations/a_project_can_be_archived.sql
 hard migrations/a_project_can_be_archived.sql
+# 0383 adds v2_sessions.recording_id beside the legacy recording_1_id, with
+# a backfill and a mirror trigger (safe rename, step 1 of 3). Twice:
+# apply/reapply.
+hard migrations/a_take_names_its_recording.sql
+hard migrations/a_take_names_its_recording.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

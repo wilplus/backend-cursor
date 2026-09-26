@@ -820,8 +820,17 @@ def _run_ideal_text_retry(job: Dict[str, Any]) -> Dict[str, Any]:
     from services.processing_authorization import ProcessingAuthorizationService
 
     session = db.v2_get_session_by_id(session_id) or {}
+    # The Take row named its recording only `recording_1_id` until 0383
+    # added `recording_id` (kept equal by a trigger). Reading `recording_id`
+    # alone resolved to "" on every retry, so under enforce "Try creating it
+    # again" failed PROCESSING_PRINCIPAL_UNRESOLVED for every Take (founder
+    # 2026-09-26, Take b6c04b8b). The legacy name stays as the fallback until
+    # that column is retired (safe rename, step 3).
     recording_id = str(
-        payload.get("recording_id") or session.get("recording_id") or ""
+        payload.get("recording_id")
+        or session.get("recording_id")
+        or session.get("recording_1_id")
+        or ""
     )
     authorization = ProcessingAuthorizationService(db)
     principal_id = authorization.resolve_acquisition_principal(
