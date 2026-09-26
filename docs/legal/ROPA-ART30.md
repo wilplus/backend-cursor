@@ -284,7 +284,7 @@ the subject's personal data. **It does not discharge Art 15 or Art 20.**
 > an undeleted one, because the subject is told it is done.
 >
 > Five `retention_category` values exist in the registry. Four are seeded by
-> `migrations/pending/seed_phase1_retention_schedule.sql`. The fifth,
+> `migrations/the_retention_schedule_is_loaded.sql`. The fifth,
 > `financial_evidence`, is deliberately unseeded pending document 06 §3, so its
 > two dependencies land on `RETENTION_RULE_UNRESOLVED` and every purge aborts.
 >

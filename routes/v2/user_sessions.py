@@ -1112,6 +1112,11 @@ def _build_user_session_status(user_id):
     }
 
 
+def _archived() -> bool:
+    """Data & consent asks for every project, archived ones included (N14)."""
+    return request.args.get("include_archived") == "1"
+
+
 @v2_bp.route("/user/trainings", methods=["GET"])
 @require_auth
 def v2_user_list_trainings():
@@ -1203,7 +1208,7 @@ def v2_user_list_trainings():
                 "ideal_ready": bool(delivered) or coach_finalized,
             })
         trainings.sort(key=lambda t: t.get("created_at") or "", reverse=True)
-        return jsonify({"trainings": with_deletion_state(db, trainings)}), 200
+        return jsonify({"trainings": with_deletion_state(db, trainings, _archived())}), 200
     except Exception as e:
         logger.error("user/trainings failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)

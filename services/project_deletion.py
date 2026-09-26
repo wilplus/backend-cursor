@@ -190,6 +190,23 @@ class ProjectDeletionService:
             erased |= {str(row[key]) for row in rows if row.get(key) and keep(row)}
         return erased
 
+    def archived_projects(self, project_ids: Iterable[str]) -> set[str]:
+        """The given projects their owner archived (N14). Empty before the
+        column exists."""
+        ids = sorted({str(p) for p in project_ids if _is_uuid(str(p))})
+        if not ids or self.client is None:
+            return set()
+        try:
+            rows = (
+                self.client.table("projects").select("id,archived_at")
+                .in_("id", ids).execute().data or []
+            )
+        except Exception as error:
+            if _is_missing(error) or "archived_at" in str(error):
+                return set()
+            raise
+        return {str(r["id"]) for r in rows if r.get("id") and r.get("archived_at")}
+
     def queue(self, states: Iterable[str] = OPEN_STATES, limit: int = 200) -> list[dict]:
         """Operator queue, oldest due first."""
         if self.client is None:
@@ -209,11 +226,15 @@ class ProjectDeletionService:
             raise
 
 
-def with_deletion_state(database: Any, trainings: list[dict]) -> list[dict]:
+def with_deletion_state(
+    database: Any, trainings: list[dict], include_archived: bool = False,
+) -> list[dict]:
     """Stamp each project in the picker feed with its open deletion request,
     or None (P1-A, N8): the picker shows "Deletion pending" and locks it.
     A project already erased (P1-B) is left out: its row and takes remain
-    only as empty receipts (N9, N12).
+    only as empty receipts (N9, N12). An archived project (N14) is left out
+    too, unless the caller asks for it (Data & consent lists every project);
+    each kept project says whether it is archived.
 
     Best effort: a failed read leaves the list as it was and logs, rather
     than failing the whole picker over a lock marker.
@@ -230,8 +251,18 @@ def with_deletion_state(database: Any, trainings: list[dict]) -> list[dict]:
     except Exception as error:
         logger.warning("erased projects unavailable: %s", error)
         erased = set()
-    trainings = [t for t in trainings if str(t.get("arc_id") or "") not in erased]
+    try:
+        archived = service.archived_projects(ids)
+    except Exception as error:
+        logger.warning("archived projects unavailable: %s", error)
+        archived = set()
+    trainings = [
+        t for t in trainings
+        if str(t.get("arc_id") or "") not in erased
+        and (include_archived or str(t.get("arc_id") or "") not in archived)
+    ]
     for training in trainings:
         training["deletion"] = public_view(
             open_requests.get(str(training.get("arc_id"))))
+        training["archived"] = str(training.get("arc_id") or "") in archived
     return trainings

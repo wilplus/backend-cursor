@@ -40,7 +40,7 @@ if not hasattr(sys.modules["sentry_sdk"], "capture_exception"):
 
 from services.data_purge_registry import DEPENDENCIES  # noqa: E402
 
-SEED_PATH = Path("migrations/pending/seed_phase1_retention_schedule.sql")
+SEED_PATH = Path("migrations/the_retention_schedule_is_loaded.sql")
 SEED = SEED_PATH.read_text(encoding="utf-8")
 
 #: Exactly the categories a 'retain' dependency can ask for. Anything else is
@@ -135,12 +135,27 @@ class TheSeedMatchesTheRegistry(unittest.TestCase):
         self.assertEqual(len(codes), len(set(codes)))
 
 
-class TheMigrationIsSafeToSitUnmerged(unittest.TestCase):
-    def test_it_is_not_in_the_manifest(self):
-        """MIGRATE_ON_BOOT=1 means a manifest entry RUNS in production. This
-        one cannot run until the schedule PDF is signed."""
+class TheMigrationRegistersExactlyTheSignedSchedule(unittest.TestCase):
+    def test_it_is_in_the_manifest_once(self):
+        """MIGRATE_ON_BOOT=1 means a manifest entry RUNS in production. It
+        runs because the founder decided it (N13, 2026-09-26), once."""
         manifest = Path("migrations/manifest.txt").read_text(encoding="utf-8")
+        self.assertEqual(manifest.count("the_retention_schedule_is_loaded.sql"), 1)
         self.assertNotIn("seed_phase1_retention_schedule.sql", manifest)
+
+    def test_it_registers_the_signed_pdf_row_06_names(self):
+        """Replaces "not in the manifest": the values it writes into an
+        append-only table must be exactly the ones SIGNED-ARTIFACTS.md
+        records for the signed schedule, never a placeholder."""
+        signed = Path("legal/phase1-2026.1/SIGNED-ARTIFACTS.md").read_text(
+            encoding="utf-8")
+        row = next(line for line in signed.splitlines()
+                   if line.startswith("| 06 |"))
+        key = re.search(r"`([^`]+\.pdf)`", row).group(1)
+        sha = re.search(r"`([0-9a-f]{64})`", row).group(1)
+        self.assertIn(f"v_object_key TEXT := '{key}';", SEED)
+        self.assertIn(f"'{sha}';", SEED)
+        self.assertNotIn("[[FOUNDER", SEED)
 
     def test_it_no_ops_rather_than_raising_when_unsigned(self):
         """A raising migration would fail container start under
@@ -150,6 +165,14 @@ class TheMigrationIsSafeToSitUnmerged(unittest.TestCase):
         self.assertIn("RAISE NOTICE", gate)
         self.assertIn("RETURN;", gate)
         self.assertNotIn("RAISE EXCEPTION", gate)
+
+    def test_a_version_conflict_never_stops_production_starting(self):
+        """It runs on boot now: a different 1.0 already registered must seed
+        nothing and say so, never RAISE and fail container start."""
+        branch = SEED.split("RETENTION_SCHEDULE_VERSION_CONFLICT", 1)[0]
+        branch = branch.rsplit("ELSIF NOT EXISTS", 1)[1]
+        self.assertNotIn("RAISE EXCEPTION", branch)
+        self.assertNotIn("RAISE EXCEPTION", SEED)
 
     def test_it_degrades_when_the_boundary_is_absent(self):
         self.assertIn("to_regclass('public.data_retention_rules')", SEED)

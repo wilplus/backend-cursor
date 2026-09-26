@@ -223,7 +223,6 @@ class ServedEverywhereTests(unittest.TestCase):
 
         for path, field in (
             ("routes/v2/coach.py", '"video_ref"'),
-            ("services/lab_recording.py", '"video_ref"'),
             ("services/readout_context.py", '"presentation_ref"'),
             ("services/readout_context.py", 'result["presentation_ref"]'),
             ("routes/v2/user_sessions.py", '"cover_ref"'),

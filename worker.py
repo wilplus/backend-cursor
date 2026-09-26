@@ -263,6 +263,13 @@ def main() -> int:
         logger.info("gate flags %s", gate_summary())
     except Exception as e:
         logger.warning("gate flags unreadable: %s", e)
+    # The publish email is sent from THIS process (the outbox job). Say which
+    # of its settings are present, never their values (founder 2026-09-25).
+    try:
+        from services.post_session_results_email import email_config_summary
+        logger.info("publish email config %s", email_config_summary())
+    except Exception as e:
+        logger.warning("publish email config unreadable: %s", e)
 
     if serves_pipeline():
         _warm_analysis_stack()
