@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 FAILED_IDEAL_TEXT_UNCONFIRMED = "failed_ideal_text_unconfirmed"
 IDEAL_TEXT_CONFIRM_TIMEOUT_SECONDS = 120.0
 IDEAL_TEXT_CONFIRM_POLL_SECONDS = 1.0
+# Pauses before the 2nd and 3rd assembly attempts. See assemble_and_confirm.
+ASSEMBLY_RETRY_DELAYS_SECONDS: tuple[float, ...] = (2.0, 5.0)
 IDEAL_TEXT_UNCONFIRMED_BODY = (
     "We processed your take, but couldn’t create your Ideal Text."
 )
@@ -164,21 +166,44 @@ def build_initial_ideal_text_from_stored_artifacts(
 
     def assemble_and_confirm() -> None:
         try:
-            assembled = maybe_assemble_ideal_text(
-                str(arc_id),
-                database=database,
-                require_target=False,
-                include_suggestion_anchors=include_suggestion_anchors,
-                source_session_id=source_session_id,
-                # Only when the caller shares a log: the assembler creates
-                # its own otherwise, and the call stays as it was.
-                **({"degradation": degradation} if degradation is not None
-                   else {}),
-            )
+            # A DROPPED CONNECTION IS NOT A VERDICT (founder 2026-09-26). The
+            # Take 1 that failed that morning lost its assembly to one
+            # `RemoteProtocolError: Server disconnected` from the database
+            # client, in the same four seconds as five other calls; the
+            # assembler swallows every exception into `False`, so one blip
+            # cost the whole document. The assembler is idempotent (it
+            # returns an existing row untouched), so asking again is safe;
+            # a refusal that is real simply refuses three times.
+            assembled: object = False
+            for attempt, pause in enumerate(
+                    (0.0, *ASSEMBLY_RETRY_DELAYS_SECONDS), start=1):
+                if attempt > 1:
+                    if abandoned.is_set():
+                        break
+                    logger.warning(
+                        "ideal_text_confirmation: assembler refused, retrying "
+                        "in %.0fs (attempt %d) arc=%s sid=%s",
+                        pause, attempt, arc_id, source_session_id,
+                    )
+                    time.sleep(pause)
+                assembled = maybe_assemble_ideal_text(
+                    str(arc_id),
+                    database=database,
+                    require_target=False,
+                    include_suggestion_anchors=include_suggestion_anchors,
+                    source_session_id=source_session_id,
+                    # Only when the caller shares a log: the assembler
+                    # creates its own otherwise, and the call stays as it
+                    # was.
+                    **({"degradation": degradation}
+                       if degradation is not None else {}),
+                )
+                if assembled is not False:
+                    break
             # AN EXPLICIT REFUSAL IS NOT WORTH WAITING OUT (founder
             # 2026-09-26: the bar "is stale at 81%"). The assembler is
             # synchronous and nothing else writes this document, so `False`
-            # means no document is coming from this run. Polling for it
+            # after every attempt means no document is coming from this run. Polling for it
             # anyway held the speaker on "Finding your anchors" for the full
             # 120 seconds before the same failure card. One read still
             # accepts a document that is already there (an earlier run, a
