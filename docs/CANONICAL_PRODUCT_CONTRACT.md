@@ -4,7 +4,10 @@ Status: founder-locked on 2026-08-26. Feedback Policy V3 amendment locked on
 2026-08-30; it remains inactive until a separately authorized serving cutover.
 L1 / helper-words amendment locked by the founder on 2026-09-25 (clauses 8, 9,
 12-20, 24e, 29a, 35d): each Take rewrites the Paragraph from what was said; the
-lock keeps the helper words, not the text.
+lock keeps the helper words, not the text. Ideal Text redesign amendment locked
+by the founder on 2026-09-26 (clauses 13, 16, 20, 24g-1): "Use these helper
+words" is the lock; helper words head their own Paragraph and read italic inside
+it; the text is never greyed.
 
 This document is the product source of truth for the frontend and backend.
 Historical prompts, handoffs, schemas, routes, names, and tests are evidence of
@@ -53,10 +56,14 @@ with this contract, this contract wins.
 ## 3. Decisions, protection, anchors, and roots
 
 13. Resolving Feedback and choosing helper words are separate steps. The
-    helper words (root phrase, rendered orange) are words the user taps; the
-    user then locks them. There is no Keep evolving choice and no Unlock
-    action: every Paragraph follows the speaker (clause 8), and choosing new
-    helper words replaces the old ones.
+    helper words (root phrase) are words the user taps; the one tap on "Use
+    these helper words" saves and locks them — there is no separate Lock
+    screen, and "lock" is an internal term the user never sees (founder
+    2026-09-26). There is no Keep evolving choice and no Unlock action: every
+    Paragraph follows the speaker (clause 8), and choosing new helper words
+    replaces the old ones. A user whose answer opens the helper-words step
+    (24e) but who closed the sheet before choosing may still choose them from
+    the Paragraph's own sheet.
 14. A lock keeps the helper words, not the text. Locked helper words persist
     across Takes — including a later Take whose words no longer contain them,
     and a later No answer on that Paragraph — until the user explicitly picks
@@ -70,7 +77,10 @@ with this contract, this contract wins.
     helper-word choice appends an immutable Paragraph revision with timestamp
     and provenance. The Paragraph's bookmark opens this history: every version,
     Take by Take, and which helper words were locked when. An exercise shows
-    its own history the same way. A bookmark is never an empty screen.
+    its own history the same way. A bookmark is never an empty screen. Every
+    Paragraph opens this sheet, including one that received no Feedback
+    (founder 2026-09-26): the current Take on top, with the user's own answer
+    said back as a sentence inside it, and earlier Takes folded beneath it.
 17. Feedback, Paragraph versions, and helper words are separate layers.
 18. Helper words are chosen by tapping exact words from the current Paragraph,
     or from the adopted practice transcript under 35d. Orange styling is never
@@ -78,9 +88,12 @@ with this contract, this contract wins.
 19. The Ideal Text shows each Paragraph as its latest text with no "changed"
     marker; the history lives behind the bookmark.
 20. Presentation Mode, export, and the Ideal Text render helper words as a bold
-    orange headline above the Paragraph, with the same words appearing again at
+    orange headline directly above the Paragraph they came from (one headline
+    per Paragraph, not one per Slide), with the same words appearing again at
     normal size in the text when they were said — like a newspaper headline
-    over its article. Recording Mode shows the same helper words as memory
+    over its article. Inside the text those words are italic, in the
+    Paragraph's own colour and font; the headline is the only orange (founder
+    2026-09-26). Recording Mode shows the same helper words as memory
     cues. Only locked helper words are shown. Before Take 3 an uncovered Slide
     has no generated fallback. After Take 3, the Manager may propose at most one
     helper-word phrase for an uncovered Slide, but the user must still tap and
@@ -193,15 +206,15 @@ with this contract, this contract wins.
     reduced-motion. Coach updates on a locked deck render as a plain orange mark
     with no pulse, so nothing competes with the exercise for attention.
 
-24g-1. **Document state.** A block holding an unsettled judgement renders in a
-    softened grey; a settled block renders in the ordinary text colour with no
-    mark at all. **Grey applies at block level, never at word level** — blocks
-    tile a Slide contiguously and never cut a word, so no sentence changes
-    colour midway and no gap can appear. There is no third "done" state: the
-    clean text *is* the settled state, and the document empties as the user
-    works rather than accumulating marks. **The two signals are the grey block
-    and the bookmark, and nothing else** — no underline, highlight, or badge on
-    the text. Only the bookmark opens; the text itself is never tappable.
+24g-1. **Document state** (amended by the founder 2026-09-26). Every block
+    renders in the ordinary text colour; the text is never greyed. A block
+    holding an unsettled judgement carries one orange bar in its left margin,
+    level with the block, and nothing else — no underline, highlight, or badge
+    on the text. There is no third "done" state: the clean text *is* the
+    settled state, and the document empties as the user works rather than
+    accumulating marks. The whole block is the bar's tap target; a settled
+    block opens its own sheet (clause 16). While Feedback is still arriving, one
+    quiet line under the header says so, never a mark per block.
 
 24h. **V3 works or it fails visibly.** V3 never silently substitutes another
     policy version. On failure the client retries once automatically, then shows
