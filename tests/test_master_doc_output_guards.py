@@ -276,6 +276,12 @@ class RouterScaffoldTests(unittest.TestCase):
         self.assertIn("never translated", out)
         self.assertNotIn("Strong Sides", out)
 
+    def test_navigation_names_stay_english_in_every_language(self):
+        # Founder 2026-09-26: menu and button names are never translated.
+        from services.master_doc_rag import _SYSTEM_PROMPT, _build_lane_prompt
+        for prompt in (_SYSTEM_PROMPT, _build_lane_prompt("product_faq", "")):
+            self.assertIn("stay in English exactly as", " ".join(prompt.split()))
+
     def test_mega_prompt_never_offers_the_retired_collection_name(self):
         from services.master_doc_rag import _SYSTEM_PROMPT
         self.assertIn('exactly "Voice Album"', _SYSTEM_PROMPT)
