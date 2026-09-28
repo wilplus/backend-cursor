@@ -306,6 +306,162 @@ def _balanced(paragraph: str) -> bool:
     return paragraph.count("[[") == paragraph.count("]]")
 
 
+def _composed(out: list, parts: list) -> dict:
+    """The composition as served: ords in order, and whether it differs
+    from what was stored."""
+    for i, p in enumerate(out):
+        p["ord"] = i
+    changed = [(p["id"], p["text"], p.get("locked", False)) for p in out] != \
+              [(p["id"], p["text"], p.get("locked", False)) for p in parts]
+    return {"text": joined(out), "parts": out, "changed": changed}
+
+
+def _pinned_composition(parts: list) -> dict:
+    """The fallback: the user's stored document, exactly as saved."""
+    out = [dict(p, ord=i) for i, p in enumerate(parts)]
+    return {"text": joined(out), "parts": out, "changed": False}
+
+
+def _machine_paragraphs(base_text: Any) -> Optional[list]:
+    """The machine document's paragraphs, or None when it has none or a
+    split may have landed inside a marker token (`_balanced`)."""
+    base = (base_text if isinstance(base_text, str) else "").strip()
+    if not base:
+        return None
+    paras = [p.strip() for p in re.split(r"\n{2,}", base) if p.strip()]
+    if not paras or not all(_balanced(p) for p in paras):
+        return None
+    return paras
+
+
+def _anchor_pass(parts: list, locked_ks: list, paras: list) -> dict:
+    """``{locked part index: machine paragraph index}`` for every locked
+    part whose verbatim words are in the machine text.
+
+    THE ANCHOR PASS (SPEC §12.1, founder 2026-08-14).
+
+    A locked part is a HARD, IMMUTABLE ANCHOR. Each one claims its
+    VERBATIM text in the machine list, monotonically (first unused exact
+    match after the previous anchor's claim — the same first-occurrence
+    rule relocate_pieces pass 1 follows, so repeated wording cannot steal
+    an earlier anchor). A machine paragraph equal to a locked part's words
+    is CONSUMED by the anchor: the lock travels with its words, and they
+    serve exactly once, under the lock's id. This is what the two paths
+    this pass replaced could not guarantee:
+
+      * the count-equal POSITIONAL path slotted a locked part at its old
+        ordinal even when the machine had MOVED that content — the words
+        then served twice, once pinned and once as a fresh machine
+        paragraph. Its justification ("the master's paragraph structure
+        is block-stable") also died with the §11.1 cap, which re-grains
+        paragraph counts on both builders.
+      * the flat difflib walk expressed a move as delete+insert — the
+        delete kept the locked part AND the insert minted the machine's
+        copy. Same duplication, different mechanism."""
+    anchor_of: dict = {}
+    scan_from = 0
+    for k in locked_ks:
+        want = parts[k]["text"]
+        for j in range(scan_from, len(paras)):
+            if paras[j] == want:
+                anchor_of[k] = j
+                scan_from = j + 1
+                break
+    return anchor_of
+
+
+def _fresh_part(text: str) -> dict:
+    """A machine paragraph with fresh identity."""
+    return {"id": str(uuid.uuid4()), "text": text, "locked": False}
+
+
+def _emit_open(out: list, stored_seg: list, mach_seg: list) -> None:
+    # Open text follows the machine (equal keeps the id; anything the
+    # machine reworded or added gets fresh identity — "a paragraph the
+    # machine rewrote is not the part the student locked"; anything it
+    # dropped goes).
+    st = [p["text"] for p in stored_seg]
+    sm = difflib.SequenceMatcher(None, st, mach_seg, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            out.extend(dict(stored_seg[i]) for i in range(i1, i2))
+        elif tag in ("replace", "insert"):
+            out.extend(_fresh_part(mach_seg[j]) for j in range(j1, j2))
+
+
+def _compose_anchored(parts: list, paras: list, anchor_of: dict) -> list:
+    """Every lock anchored: the anchors segment both lists into OPEN
+    regions, each refreshed independently."""
+    out: list = []
+    pairs = sorted((k, anchor_of[k]) for k in anchor_of)
+    prev_k, prev_j = -1, -1
+    for k, j in pairs:
+        _emit_open(out, [p for p in parts[prev_k + 1:k]
+                         if not p.get("locked")], paras[prev_j + 1:j])
+        out.append(dict(parts[k]))
+        prev_k, prev_j = k, j
+    _emit_open(out, [p for p in parts[prev_k + 1:]
+                     if not p.get("locked")], paras[prev_j + 1:])
+    return out
+
+
+def _compose_positional(parts: list, paras: list) -> list:
+    """No lock anchored and equal counts: slot by slot. A locked slot keeps
+    the lock; an open slot keeps its id only when the words are equal."""
+    out: list = []
+    for k, part in enumerate(parts):
+        if part.get("locked"):
+            out.append(dict(part))
+        elif paras[k] == part["text"]:
+            out.append(dict(part))
+        else:
+            out.append(_fresh_part(paras[k]))
+    return out
+
+
+def _compose_flat_diff(parts: list, paras: list) -> list:
+    """No lock anchored and diverged counts: equal keeps ids, a replace
+    region containing a lock pins that region (machine rework held as
+    offers), a delete keeps only locked parts, an insert is new machine
+    material."""
+    out: list = []
+    stored_texts = [p["text"] for p in parts]
+    sm = difflib.SequenceMatcher(None, stored_texts, paras,
+                                 autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            out.extend(dict(parts[k]) for k in range(i1, i2))
+        elif tag == "replace":
+            if any(parts[k].get("locked") for k in range(i1, i2)):
+                out.extend(dict(parts[k]) for k in range(i1, i2))
+            else:
+                out.extend(_fresh_part(paras[j]) for j in range(j1, j2))
+        elif tag == "delete":
+            out.extend(dict(parts[k]) for k in range(i1, i2)
+                       if parts[k].get("locked"))
+        else:  # insert
+            out.extend(_fresh_part(paras[j]) for j in range(j1, j2))
+    return out
+
+
+def _locks_intact(out: list, parts: list, locked_ks: list) -> bool:
+    """THE §12.1 INVARIANT: every locked part appears in the output EXACTLY
+    ONCE, id and text intact.
+
+    This is the fence itself, not a debug assert: if a future edit to the
+    alignment breaks the guarantee, the composition is refused and the
+    previous composed state serves — a lock is never lost to a refactor."""
+    served_locked = [(p["id"], p["text"]) for p in out if p.get("locked")]
+    want_locked = [(parts[k]["id"], parts[k]["text"]) for k in locked_ks]
+    if served_locked != want_locked:
+        logger.error(
+            "compose_locked: alignment violated the §12.1 invariant "
+            "(%d locked stored, %d served) — serving the pinned state",
+            len(want_locked), len(served_locked))
+        return False
+    return True
+
+
 def compose_locked(base_text: Any, rows: Any) -> Optional[dict]:
     """Overlay the user's LOCKED parts onto the current machine document.
 
@@ -371,66 +527,12 @@ def compose_locked(base_text: Any, rows: Any) -> Optional[dict]:
     parts = serve(rows)
     if not parts or not any(p.get("locked") for p in parts):
         return None
-    base = (base_text if isinstance(base_text, str) else "").strip()
+    paras = _machine_paragraphs(base_text)
+    if paras is None:
+        return _pinned_composition(parts)
 
-    def _pinned(changed: bool = False) -> dict:
-        # The fallback: the user's stored document, exactly as saved.
-        out = [dict(p, ord=i) for i, p in enumerate(parts)]
-        return {"text": joined(out), "parts": out, "changed": changed}
-
-    if not base:
-        return _pinned()
-    paras = [p.strip() for p in re.split(r"\n{2,}", base) if p.strip()]
-    if not paras or not all(_balanced(p) for p in paras):
-        return _pinned()
-
-    # ── THE ANCHOR PASS (SPEC §12.1, founder 2026-08-14) ────────────────────
-    #
-    # A locked part is a HARD, IMMUTABLE ANCHOR. Each one claims its
-    # VERBATIM text in the machine list, monotonically (first unused exact
-    # match after the previous anchor's claim — the same first-occurrence
-    # rule relocate_pieces pass 1 follows, so repeated wording cannot steal
-    # an earlier anchor). A machine paragraph equal to a locked part's words
-    # is CONSUMED by the anchor: the lock travels with its words, and they
-    # serve exactly once, under the lock's id. This is what the two paths
-    # this pass replaced could not guarantee:
-    #
-    #   * the count-equal POSITIONAL path slotted a locked part at its old
-    #     ordinal even when the machine had MOVED that content — the words
-    #     then served twice, once pinned and once as a fresh machine
-    #     paragraph. Its justification ("the master's paragraph structure
-    #     is block-stable") also died with the §11.1 cap, which re-grains
-    #     paragraph counts on both builders.
-    #   * the flat difflib walk expressed a move as delete+insert — the
-    #     delete kept the locked part AND the insert minted the machine's
-    #     copy. Same duplication, different mechanism.
     locked_ks = [k for k, p in enumerate(parts) if p.get("locked")]
-    anchor_of: dict = {}
-    scan_from = 0
-    for k in locked_ks:
-        want = parts[k]["text"]
-        for j in range(scan_from, len(paras)):
-            if paras[j] == want:
-                anchor_of[k] = j
-                scan_from = j + 1
-                break
-
-    out: list = []
-    stored_texts = [p["text"] for p in parts]
-
-    def _emit_open(stored_seg: list, mach_seg: list) -> None:
-        # Open text follows the machine (equal keeps the id; anything the
-        # machine reworded or added gets fresh identity — "a paragraph the
-        # machine rewrote is not the part the student locked"; anything it
-        # dropped goes).
-        st = [p["text"] for p in stored_seg]
-        sm = difflib.SequenceMatcher(None, st, mach_seg, autojunk=False)
-        for tag, i1, i2, j1, j2 in sm.get_opcodes():
-            if tag == "equal":
-                out.extend(dict(stored_seg[i]) for i in range(i1, i2))
-            elif tag in ("replace", "insert"):
-                out.extend({"id": str(uuid.uuid4()), "text": mach_seg[j],
-                            "locked": False} for j in range(j1, j2))
+    anchor_of = _anchor_pass(parts, locked_ks, paras)
 
     if anchor_of and len(anchor_of) == len(locked_ks):
         # (a) EVERY locked part found its words in the machine text → the
@@ -439,23 +541,15 @@ def compose_locked(base_text: Any, rows: Any) -> Optional[dict]:
         # and it lets open text refresh even when every open paragraph
         # changed — the old flat diff bundled the whole document into one
         # replace opcode, saw a lock inside it, and pinned everything.
-        pairs = sorted((k, anchor_of[k]) for k in anchor_of)
-        prev_k, prev_j = -1, -1
-        for k, j in pairs:
-            _emit_open([p for p in parts[prev_k + 1:k]
-                        if not p.get("locked")], paras[prev_j + 1:j])
-            out.append(dict(parts[k]))
-            prev_k, prev_j = k, j
-        _emit_open([p for p in parts[prev_k + 1:]
-                    if not p.get("locked")], paras[prev_j + 1:])
+        out = _compose_anchored(parts, paras, anchor_of)
     elif anchor_of:
         # (d) MIXED — some locked words are in the machine text, some are
         # gone. Placing the unfound ones relative to the found ones is a
         # guess, and the standing rule is drop-never-guess: the previous
         # composed state serves wholesale. (Two locks with identical text
         # and one machine copy land here too — deliberately.)
-        return _pinned()
-    elif len(paras) == len(stored_texts):
+        return _pinned_composition(parts)
+    elif len(paras) == len(parts):
         # (b) NO lock anchored + EQUAL counts → positional. This is the
         # founder's flagship ("refresh 1 and 3, physically skip 2"): after
         # a fresh take the machine text never contains the typed words, and
@@ -465,62 +559,23 @@ def compose_locked(base_text: Any, rows: Any) -> Optional[dict]:
         # machine paragraph equals any locked text; the lock's slot
         # replaces the machine's paragraph for that slot, and the machine's
         # version stays held as offers behind the lock.
-        for k, part in enumerate(parts):
-            if part.get("locked"):
-                out.append(dict(part))
-            elif paras[k] == part["text"]:
-                out.append(dict(part))
-            else:
-                out.append({"id": str(uuid.uuid4()), "text": paras[k],
-                            "locked": False})
+        out = _compose_positional(parts, paras)
     else:
         # (c) NO lock anchored + counts DIVERGED → the conservative flat
-        # diff: equal keeps ids, a replace region containing a lock pins
-        # that region (machine rework held as offers), a delete keeps only
-        # locked parts, an insert is new machine material. Duplication is
-        # impossible here for the same reason as (b): a machine paragraph
-        # equal to a locked text would have anchored in the pass above.
-        sm = difflib.SequenceMatcher(None, stored_texts, paras,
-                                     autojunk=False)
-        for tag, i1, i2, j1, j2 in sm.get_opcodes():
-            if tag == "equal":
-                out.extend(dict(parts[k]) for k in range(i1, i2))
-            elif tag == "replace":
-                if any(parts[k].get("locked") for k in range(i1, i2)):
-                    out.extend(dict(parts[k]) for k in range(i1, i2))
-                else:
-                    out.extend({"id": str(uuid.uuid4()), "text": paras[j],
-                                "locked": False} for j in range(j1, j2))
-            elif tag == "delete":
-                out.extend(dict(parts[k]) for k in range(i1, i2)
-                           if parts[k].get("locked"))
-            else:  # insert
-                out.extend({"id": str(uuid.uuid4()), "text": paras[j],
-                            "locked": False} for j in range(j1, j2))
+        # diff. Duplication is impossible here for the same reason as (b):
+        # a machine paragraph equal to a locked text would have anchored in
+        # the pass above.
+        out = _compose_flat_diff(parts, paras)
 
     if not out:
-        return _pinned()
+        return _pinned_composition(parts)
 
-    # ── THE §12.1 INVARIANT, CHECKED ON THE WAY OUT ─────────────────────────
-    # Whatever the alignment above did, every locked part must appear in the
-    # output EXACTLY ONCE, id and text intact. This is the fence itself, not
-    # a debug assert: if a future edit to the alignment breaks the
-    # guarantee, the composition is refused and the previous composed state
-    # serves — a lock is never lost to a refactor.
-    served_locked = [(p["id"], p["text"]) for p in out if p.get("locked")]
-    want_locked = [(parts[k]["id"], parts[k]["text"]) for k in locked_ks]
-    if served_locked != want_locked:
-        logger.error(
-            "compose_locked: alignment violated the §12.1 invariant "
-            "(%d locked stored, %d served) — serving the pinned state",
-            len(want_locked), len(served_locked))
-        return _pinned()
+    # Whatever the alignment above did, the §12.1 invariant is checked on
+    # the way out; a violation serves the pinned state.
+    if not _locks_intact(out, parts, locked_ks):
+        return _pinned_composition(parts)
 
-    for i, p in enumerate(out):
-        p["ord"] = i
-    changed = [(p["id"], p["text"], p.get("locked", False)) for p in out] != \
-              [(p["id"], p["text"], p.get("locked", False)) for p in parts]
-    return {"text": joined(out), "parts": out, "changed": changed}
+    return _composed(out, parts)
 
 
 def pinned_parts(rows: Any) -> Optional[dict]:
@@ -539,8 +594,7 @@ def pinned_parts(rows: Any) -> Optional[dict]:
     parts = serve(rows)
     if not parts or not any(p.get("locked") for p in parts):
         return None
-    out = [dict(p, ord=i) for i, p in enumerate(parts)]
-    return {"text": joined(out), "parts": out, "changed": False}
+    return _pinned_composition(parts)
 
 
 def serve(rows: Any) -> Optional[list]:
