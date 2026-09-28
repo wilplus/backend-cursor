@@ -514,85 +514,106 @@ def _appendix_collisions() -> list[str]:
             for row, keys in seen.items() if len(keys) > 1]
 
 
+def _vocabulary_problems(key: str, d: Dimension) -> list[str]:
+    problems: list[str] = []
+    if key != d.dimension_id:
+        problems.append(f"{key}: key does not match dimension_id")
+    if d.window_class not in WINDOW_CLASSES:
+        problems.append(f"{key}: unknown window_class {d.window_class!r}")
+    if d.tier not in TIERS:
+        problems.append(f"{key}: unknown tier {d.tier!r}")
+    if d.aggregation not in AGGREGATIONS:
+        problems.append(f"{key}: unknown aggregation {d.aggregation!r}")
+    if (d.fire_at is None) != (d.clear_at is None):
+        problems.append(
+            f"{key}: hysteresis is half-defined — every benchmark needs "
+            f"BOTH fire_at and clear_at (Appendix D, Schmitt trigger)")
+    return problems
+
+
+def _chain_problems(key: str, d: Dimension) -> list[str]:
+    # THE CHAIN: window -> enough data -> threshold -> intervention. A
+    # break at either end is a measure that cannot do anything. Enforced
+    # in both directions so the author has to write down which it is:
+    # a threshold firing into nothing is a decision nobody acts on, and a
+    # routed intervention with no threshold can never be reached.
+    problems: list[str] = []
+    if d.intervention and d.fire_at is None:
+        problems.append(
+            f"{key}: routes intervention {d.intervention!r} but has no "
+            f"fire_at — nothing can ever trigger it")
+    if d.fire_at is not None and not d.intervention:
+        problems.append(
+            f"{key}: has a threshold at {d.fire_at} that fires into "
+            f"nothing — name the Appendix C intervention, or say "
+            f"'telemetry only' if the decision is only for the p-chart")
+    # Only a LIVE dimension must have its threshold wired. A T1/T2 row
+    # that is specified-but-not-built legitimately has fire_at=None: the
+    # tier records the benchmark's PROVENANCE (Appendix D), which is a
+    # different fact from whether the threshold reached code yet.
+    if d.computed and d.tier in ("T1", "T2") and d.fire_at is None:
+        problems.append(
+            f"{key}: live dimension claims measured tier {d.tier} but "
+            f"fire_at is None — the threshold never reached code")
+    return problems
+
+
+def _denominator_problems(key: str, d: Dimension) -> list[str]:
+    # A DENOMINATOR IS A PROMISE THAT rollup() DIVIDES BY SOMETHING, and
+    # only the rate aggregations do. Declaring one anywhere else is the
+    # F.3 error in miniature: the field says "rate", the code returns a
+    # level, and both read fine. Enforced as IFF in both directions —
+    # a rate with no denominator is the same lie told the other way.
+    problems: list[str] = []
+    rate_forms = ("per_minute", "per_1000_words")
+    if d.denominator and d.aggregation not in rate_forms:
+        problems.append(
+            f"{key}: declares denominator {d.denominator!r} but aggregates "
+            f"as {d.aggregation!r}, which divides by nothing. Units belong "
+            f"in `unit`; `denominator` is what rollup() applies.")
+    if d.aggregation in rate_forms and not d.denominator:
+        problems.append(
+            f"{key}: aggregates as {d.aggregation!r} (a RATE) with no "
+            f"denominator — say what it is per")
+    return problems
+
+
+def _provenance_problems(key: str, d: Dimension) -> list[str]:
+    # THE ONE THAT LET A 30 s GATE ONTO THREE LEVEL MEASURES. A starred
+    # appendix id means "our measure is not this row's measure", so the
+    # row's minimum is an argument about a different quantity and must not
+    # be inherited silently.
+    problems: list[str] = []
+    if d.appendix_id.endswith("*") and not d.spec_mismatch:
+        problems.append(
+            f"{key}: appendix_id {d.appendix_id!r} is starred but "
+            f"spec_mismatch is empty — say WHAT differs, or drop the star")
+    if d.spec_mismatch and d.min_seconds is not None and not d.note:
+        problems.append(
+            f"{key}: inherits a {d.min_seconds}s gate from a row it does "
+            f"NOT match, with no note justifying the transfer")
+
+    # An OFF with no reason decays into an OFF nobody dares reverse,
+    # because nobody can reconstruct what it was protecting against.
+    if not d.enabled and not d.disabled_reason:
+        problems.append(
+            f"{key}: is switched OFF with no reason — say what was wrong "
+            f"and what would make it right, or leave it enabled")
+    if d.disabled_reason and d.enabled:
+        problems.append(
+            f"{key}: carries a disabled_reason but is still ENABLED — "
+            f"one of the two is stale")
+    return problems
+
+
 def validate() -> list[str]:
     """Self-check the registry against its own vocabulary. Returns a list of
     problems; empty means consistent. Called by the test suite so a bad edit
     fails CI rather than reaching a consumer."""
     problems: list[str] = []
     for key, d in _REGISTRY.items():
-        if key != d.dimension_id:
-            problems.append(f"{key}: key does not match dimension_id")
-        if d.window_class not in WINDOW_CLASSES:
-            problems.append(f"{key}: unknown window_class {d.window_class!r}")
-        if d.tier not in TIERS:
-            problems.append(f"{key}: unknown tier {d.tier!r}")
-        if d.aggregation not in AGGREGATIONS:
-            problems.append(f"{key}: unknown aggregation {d.aggregation!r}")
-        if (d.fire_at is None) != (d.clear_at is None):
-            problems.append(
-                f"{key}: hysteresis is half-defined — every benchmark needs "
-                f"BOTH fire_at and clear_at (Appendix D, Schmitt trigger)")
-
-        # THE CHAIN: window -> enough data -> threshold -> intervention. A
-        # break at either end is a measure that cannot do anything. Enforced
-        # in both directions so the author has to write down which it is:
-        # a threshold firing into nothing is a decision nobody acts on, and a
-        # routed intervention with no threshold can never be reached.
-        if d.intervention and d.fire_at is None:
-            problems.append(
-                f"{key}: routes intervention {d.intervention!r} but has no "
-                f"fire_at — nothing can ever trigger it")
-        if d.fire_at is not None and not d.intervention:
-            problems.append(
-                f"{key}: has a threshold at {d.fire_at} that fires into "
-                f"nothing — name the Appendix C intervention, or say "
-                f"'telemetry only' if the decision is only for the p-chart")
-        # Only a LIVE dimension must have its threshold wired. A T1/T2 row
-        # that is specified-but-not-built legitimately has fire_at=None: the
-        # tier records the benchmark's PROVENANCE (Appendix D), which is a
-        # different fact from whether the threshold reached code yet.
-        if d.computed and d.tier in ("T1", "T2") and d.fire_at is None:
-            problems.append(
-                f"{key}: live dimension claims measured tier {d.tier} but "
-                f"fire_at is None — the threshold never reached code")
-
-        # A DENOMINATOR IS A PROMISE THAT rollup() DIVIDES BY SOMETHING, and
-        # only the rate aggregations do. Declaring one anywhere else is the
-        # F.3 error in miniature: the field says "rate", the code returns a
-        # level, and both read fine. Enforced as IFF in both directions —
-        # a rate with no denominator is the same lie told the other way.
-        rate_forms = ("per_minute", "per_1000_words")
-        if d.denominator and d.aggregation not in rate_forms:
-            problems.append(
-                f"{key}: declares denominator {d.denominator!r} but aggregates "
-                f"as {d.aggregation!r}, which divides by nothing. Units belong "
-                f"in `unit`; `denominator` is what rollup() applies.")
-        if d.aggregation in rate_forms and not d.denominator:
-            problems.append(
-                f"{key}: aggregates as {d.aggregation!r} (a RATE) with no "
-                f"denominator — say what it is per")
-
-        # THE ONE THAT LET A 30 s GATE ONTO THREE LEVEL MEASURES. A starred
-        # appendix id means "our measure is not this row's measure", so the
-        # row's minimum is an argument about a different quantity and must not
-        # be inherited silently.
-        if d.appendix_id.endswith("*") and not d.spec_mismatch:
-            problems.append(
-                f"{key}: appendix_id {d.appendix_id!r} is starred but "
-                f"spec_mismatch is empty — say WHAT differs, or drop the star")
-        if d.spec_mismatch and d.min_seconds is not None and not d.note:
-            problems.append(
-                f"{key}: inherits a {d.min_seconds}s gate from a row it does "
-                f"NOT match, with no note justifying the transfer")
-
-        # An OFF with no reason decays into an OFF nobody dares reverse,
-        # because nobody can reconstruct what it was protecting against.
-        if not d.enabled and not d.disabled_reason:
-            problems.append(
-                f"{key}: is switched OFF with no reason — say what was wrong "
-                f"and what would make it right, or leave it enabled")
-        if d.disabled_reason and d.enabled:
-            problems.append(
-                f"{key}: carries a disabled_reason but is still ENABLED — "
-                f"one of the two is stale")
+        problems += _vocabulary_problems(key, d)
+        problems += _chain_problems(key, d)
+        problems += _denominator_problems(key, d)
+        problems += _provenance_problems(key, d)
     return problems + _appendix_collisions()

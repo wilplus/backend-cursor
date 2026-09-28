@@ -41,7 +41,6 @@
   "services/db.py:DatabaseService.set_ideal_text_part_lock": 29,
   "services/db.py:DatabaseService.v2_get_sessions_with_previews": 44,
   "services/db.py:_session_preview_row": 33,
-  "services/dimension_registry.py:validate": 27,
   "services/drift_job.py:run_weekly": 28,
   "services/ideal_text_block.py:assemble_ideal_text_block": 35,
   "services/ideal_text_block.py:maybe_assemble_ideal_text": 33,
