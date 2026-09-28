@@ -1891,3 +1891,29 @@ exact spans, the foundation detector's stamped score becomes a three-class
 prediction, one clip per Take is selected (boundary-first, 20% random, every
 draw recorded), and the D5 batch can build a blind packet from the stored
 span because the evidence coordinates are the lineage's own offsets.
+
+### 2026-09-28 · WS-G6 part 2 · g6-confidence-end-to-end-rehearsal · #(pending)
+
+**Closed:** the activation evidence for G-6: the blind-label chain runs end
+to end on the released lane with the foundation frame factory in the loop.
+G-6 itself still waits on the founder's mode change.
+**Contract lines flipped:** none.
+**Contract lines added:** `tests/test_mlc2_confidence_end_to_end_postgres.py`
+(9 cases, released lane, one rolled-back transaction): promote through the
+atomic producer RPC → outbox → claim → the factory builds the frame from
+the Take's snippet rows → `finalize_mlc2_confidence_frame_v1` accepts it
+(one candidate set, one span per snippet at the snippet's exact offsets on
+the Take's own R2 object, one prediction per eligible clip, exactly one
+selected) → a replay changes nothing → a blind packet from the selected
+candidate carries no transcript, prediction, score, rank or selection hint
+→ the slice-4 health function reports no orphan and every gate closed.
+**Broke and fixed:** none. The released lane's narrow `snippets` copy had no
+`metrics` column (production stamps the delivery-signal read there); the
+recipe now widens it, released lane only, as the widen files do.
+**Open for the founder:** the D5 coach batch joins a stored span to an
+exercise audio lineage, which needs a learning profile and an
+exercise-service authority check; the identity that join compares is
+asserted directly, the join itself is not rehearsed here. Everything a
+`founder_canary` activation needs from code is now in place; what remains is
+readiness (canary principal id on every service, monitoring and Sentry on,
+the bundled consent grant present) and the reviewed constant change.

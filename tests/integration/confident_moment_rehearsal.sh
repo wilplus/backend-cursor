@@ -429,6 +429,15 @@ hard migrations/a_pattern_is_tested_silently_first.sql
 hard migrations/an_exercise_is_seen.sql
 hard migrations/an_exercise_is_seen.sql
 
+# G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
+# `metrics`, the column production stamps the delivery-signal read into and
+# the confidence frame factory reads. Released lane only, a NULLABLE trailing
+# column as the widen files add them; no released file creates it because
+# `snippets` predates the migrations directory.
+if [ "$LANE" = "released" ]; then
+  psql -q -d "$DB" -c "ALTER TABLE public.snippets ADD COLUMN IF NOT EXISTS metrics JSONB" >>"$log" 2>&1
+fi
+
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
 rm -f "$log"
