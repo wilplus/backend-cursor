@@ -77,8 +77,8 @@ def attempt_is_valid(attempt: Any) -> bool:
     """The safety half of the clip gate, on a saved practice attempt (§3.5
     item 3). A saved attempt already passed the exact-passage check; the
     reliability and confidence halves are the same rules the original clip
-    met (`_audio_reliable`, and a confidence read present). Audio-quality
-    flags are not saved on attempts, so that one check cannot run here."""
+    met (`_audio_reliable`, and a confidence read present), including the
+    noise rule once it is switched on (NOISE_GATE_MIN_SEPARATION_DB)."""
     from services.confident_voice_practice import _audio_reliable
     if not isinstance(attempt, dict):
         return False
@@ -123,6 +123,11 @@ def _gate(exposure: dict, *, trace: Any, assignment: dict,
     if assignment.get("below_minimum_probability"):
         return "below_minimum_probability"
     return None
+
+
+def _noise_gate_version() -> str:
+    from services.confident_voice_practice import noise_gate_version
+    return noise_gate_version()
 
 
 def _why_not(counted: int, rows: list[dict], pool: set[str]) -> Optional[str]:
@@ -216,6 +221,7 @@ def build_readiness(*, signal_rules_version: str, **rows: Any) -> dict:
         "label_spec_version": LABEL_SPEC_VERSION,
         "readiness_version": READINESS_VERSION,
         "signal_rules_version": signal_rules_version,
+        "noise_gate_version": _noise_gate_version(),
         "bar": {"min_counted": MIN_COUNTED,
                 "min_per_exercise": MIN_PER_EXERCISE},
         "exposures": len(records),
