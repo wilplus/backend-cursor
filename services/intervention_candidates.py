@@ -865,6 +865,260 @@ def filter_by_window(changes: Any) -> list:
     return kept
 
 
+def _empty_serve(funnel: dict, style: dict | None = None) -> dict:
+    """Nothing to serve: the shape every early exit returns."""
+    return {"changes": [], "result": None, "controls": False,
+            "funnel": funnel, **(style or {})}
+
+
+def _span_key(c: dict) -> tuple:
+    span = c.get("span") or {}
+    return (span.get("start", 0), span.get("end", 0))
+
+
+def _paragraph_counter(served_text: Any) -> Any:
+    """THE COUNTING UNIT (founder 2026-08-11: "do it per slide up to 2").
+    One paragraph per slide, and the paragraph is the chunk the student
+    decides on — so the mix caps and the budget are counted in the same unit
+    the student acts in. None without the document: every rule falls back to
+    document-wide, unchanged."""
+    if not (isinstance(served_text, str) and served_text):
+        return None
+    from services.intervention_spend import paragraph_index_at
+
+    def para_of(c: dict) -> int:
+        return paragraph_index_at(
+            served_text, (c.get("span") or {}).get("start", 0))
+    return para_of
+
+
+def _admissible(rows: list, parts: Any, focus_part_id: Any, para_of: Any,
+                mvp_feedback_contract: bool, funnel: dict) -> tuple:
+    """The admission gates, in the order that is the rule: ``(content rows,
+    style rows)``."""
+    # R1 — the layer filter runs HERE, before anything is scored or
+    # budgeted. See filter_by_layer for why the order is the rule.
+    rows = filter_by_layer(rows, parts)
+    funnel["after_layer"] = len(rows)
+    # CONTENT FIRST, STYLE WHEN THERE IS NOTHING LOUDER (founder
+    # 2026-08-11). Sees both lanes at once, on the same paragraph key the
+    # budget is counted in.
+    #
+    # AHEAD OF FOCUS ON PURPOSE (founder 2026-08-12). This decides "does
+    # this paragraph have something louder to say?", and the honest answer
+    # is about what the ENGINE FOUND, not about what survived a different
+    # gate. Run it after focus and the ordering would invert the rule:
+    # focus deletes the rewrite on paragraph 7, paragraph 7 stops looking
+    # busy, and the accent appears there — telling the student "this one
+    # is fine, just polish it" about the exact paragraph the engine had a
+    # rewrite for.
+    rows = suppress_style_where_feedback_waits(rows, group_of=para_of)
+    funnel["after_style_order"] = len(rows)
+    # SINGLE-POINT FOCUS (founder 2026-08-12) — beside the layer filter
+    # and before the budget, for the same reason: a note suppressed after
+    # arbitration has already eaten a slot the student never sees spent.
+    # A no-op when no focus is established, which is every cold-start
+    # case; the funnel records it either way so an empty serve can never
+    # again be a night of guessing which gate did it.
+    #
+    # THE STYLE LANE BYPASSES IT (founder 2026-08-12): "a finishing touch
+    # like a bolded word is lightweight enough that it shouldn't be
+    # suppressed just because the paragraph isn't the main structural
+    # focus of the take." Focus concentrates the STRUCTURAL work; an
+    # accent on a chunk the student already locked is not competing with
+    # that work for attention, and it is already held back by the
+    # content-first rule above wherever it would.
+    #
+    # So the two lanes SPLIT HERE for their different admissibility rules.
+    # Under the current Take contract they recombine after those gates for
+    # the shared family/≤3 decision; legacy callers retain the historical
+    # independent style allowance.
+    style_rows = [c for c in rows if c.get("style_lane")]
+    content_rows = [c for c in rows if not c.get("style_lane")]
+    rows = (content_rows if mvp_feedback_contract else
+            suppress_outside_focus(content_rows, parts, focus_part_id))
+    funnel["after_focus"] = len(rows)
+    return rows, style_rows
+
+
+def _style_lane(style_rows: list, para_of: Any, spent_count: int,
+                spent_by_group: Any, funnel: dict) -> list:
+    """The style lane keeps the §F.4 accent window (an accent past the
+    intonation ceiling would paint sentences on accept, lock or no lock),
+    and takes no arm assignment: the experiment measures the budgeted
+    serve, and free-lane rows would distort its record."""
+    style_rows = filter_by_window(style_rows)
+    for c in style_rows:
+        c["visual"] = visual_of(c)
+    style_rows.sort(key=_span_key)
+    # THE STYLE CAP (founder 2026-08-12) — AFTER the sort, because the
+    # sort is what makes "which three survive" document order rather than
+    # whichever lane happened to propose first.
+    funnel["style_proposed"] = len(style_rows)
+    style_rows = cap_style_lane(
+        style_rows, group_of=para_of,
+        spent_count=spent_count,
+        spent_by_group=spent_by_group)
+    funnel["style_lane"] = len(style_rows)
+    return style_rows
+
+
+def _serve_feedback_contract(rows: list, style_rows: list, decided_count: int,
+                             style_decided_count: int, session_id: str,
+                             funnel: dict) -> dict:
+    """Apply the Take-level family quota only AFTER layer, focus, window and
+    style-lane admissibility. Selecting a Confident Voice candidate before
+    those gates let them erase the reserved slot. Combining both lanes here
+    also makes "3" mean three for the WHOLE Take, not three budgeted rows
+    plus three style rows.
+
+    The Take contract is itself the manager decision. Running the historical
+    experiment/withhold arbiter afterwards could remove one of the three
+    required lanes, turning a valid Take into a random partial set. The
+    frozen selection therefore returns directly; its complete candidate pool
+    and evidence are recorded separately in the immutable exposure ledger."""
+    remaining = (3 - max(0, int(decided_count or 0))
+                 - max(0, int(style_decided_count or 0)))
+    mixed = enforce_mvp_feedback_mix([*rows, *style_rows], remaining=remaining)
+    mixed_style = [c for c in mixed if c.get("style_lane")]
+    funnel["after_feedback_contract"] = len(mixed)
+    funnel["style_lane"] = len(mixed_style)
+    if len(mixed) != max(0, min(3, remaining)):
+        logger.error(
+            "required feedback families unavailable session=%s families=%s",
+            session_id,
+            [c.get("feedback_family") for c in mixed],
+        )
+        return _empty_serve(funnel)
+    return {
+        "changes": [c for c in mixed if not c.get("style_lane")],
+        "style_changes": mixed_style,
+        "result": None,
+        "controls": False,
+        "funnel": funnel,
+    }
+
+
+def _arbitration_pool(rows: list, para_of: Any, funnel: dict) -> Any:
+    """``(rows, candidates)`` ready for the engine, or None when a gate
+    emptied the pool."""
+    # Appendix C mix caps (founder GO 2026-08-10): cap the POOL per
+    # C.2 type so one lane cannot monopolise the flat budget — see
+    # filter_by_type_caps for why this runs before arbitration.
+    rows = filter_by_type_caps(rows, group_of=para_of)
+    funnel["after_type_caps"] = len(rows)
+    if not rows:
+        return None
+    # LANE RANK leads (see select's docstring): a correction beats an
+    # overlapping swap wherever either begins.
+    rows.sort(key=lambda c: (_collision_rank(c), *_span_key(c)))
+    candidates = to_candidates(rows)
+    # to_candidates refuses zero-width and malformed spans — the one
+    # stage whose loss is invisible in the row list itself.
+    funnel["arbitrated"] = len(candidates)
+    if not candidates:
+        return None
+    return rows, candidates
+
+
+def _paragraph_budget(rows: list, para_of: Any, spent_by_paragraph: Any) -> tuple:
+    """``(group_of, spent_by_group)`` for arbitrate().
+
+    THE BUDGET IS COUNTED PER PARAGRAPH when the caller hands over the served
+    text (founder 2026-08-11: "do it per slide up to 2"). The document
+    carries one paragraph per slide and the paragraph IS the chunk the
+    student decides on, so this is the slide, the chunk and the budget unit
+    all at once. Without the text it falls back to the flat per-take cap —
+    unchanged behaviour, and the guests / callers that have no document keep
+    working."""
+    if para_of is None:
+        return None, None
+    by_ref_para = {str(i): para_of(row) for i, row in enumerate(rows)}
+
+    def group_of(c: Any) -> Any:
+        return by_ref_para.get(c.ref, 0)
+    return group_of, dict(spent_by_paragraph or {})
+
+
+def _arbitration_state(candidates: list, controls: bool, user_id: str) -> Any:
+    state = user_state(candidates)
+    if controls and user_id:
+        state = me.UserState(
+            user_id=str(user_id),
+            state_by_dimension=state.state_by_dimension,
+            p_mastery=state.p_mastery,
+            sessions_since_fired=state.sessions_since_fired)
+    return state
+
+
+def _survivors(result: dict, rows: list) -> list:
+    """The selected rows, in DOCUMENT ORDER."""
+    by_ref = {str(i): row for i, row in enumerate(rows)}
+    kept: list = []
+    for c in result.get("selected") or ():
+        row = by_ref.get(c.ref)
+        if row is not None:
+            # The rendering registry stamps every SURVIVOR (SPEC §3):
+            # Confident Voice = star, rewrites = underline, accents =
+            # bold. Stamped here — after the budget, before the FE — so
+            # one table governs every surface and the FE never derives a
+            # visual from kind on its own. IN PLACE, not a copy: the
+            # returned dicts must stay the caller's own objects (the
+            # identity contract that keeps take_index/block_key/why_key
+            # alive through this adapter).
+            row["visual"] = visual_of(row)
+            kept.append(row)
+    kept.sort(key=lambda c: (c["span"]["start"], c["span"]["end"]))
+    return kept
+
+
+def _rejection_reasons(result: dict) -> dict:
+    """WHY the rest went, in the engine's own words. `rejected` has always
+    carried (dimension, reason) and nothing ever read it — so a pool that
+    emptied on the PPV floor and one that emptied on cooldown were
+    indistinguishable from the outside, which is how "why is there only one
+    note?" became unanswerable without a database session."""
+    why: dict = {}
+    for _dim, reason in (result.get("rejected") or ()):
+        why[reason] = why.get(reason, 0) + 1
+    if result.get("budget_lost"):
+        why["budget"] = len(result["budget_lost"])
+    return why
+
+
+def _arbitrate(rows: list, candidates: list, *, user_id: str, session_id: str,
+               decided_count: int, para_of: Any,
+               spent_by_paragraph: Any) -> tuple:
+    """``(result, controls)``: the budgeted serve outside the Take contract.
+
+    THE EXPLORATION QUOTA, armed with the controls. `exploration_roll` is
+    DETERMINISTIC per (user, session) — never random.random, because this
+    surface is polled and a fresh draw per request would re-decide the branch
+    every few seconds, swapping the notes on screen while the student
+    watched. It returns None without a stable key, and arbitrate then skips
+    the branch entirely.
+
+    Only legacy callers reach here: the Take contract returns before
+    arbitration, so the contract's protected Confident Voice dimension and
+    its limit of 3 are never in play and both stay None."""
+    controls = _controls_enabled()
+    state = _arbitration_state(candidates, controls, user_id)
+    sid = str(session_id or "")
+    group_of, spent_by_group = _paragraph_budget(rows, para_of,
+                                                 spent_by_paragraph)
+    result = me.arbitrate(
+        candidates, state,
+        session_id=sid if controls else "",
+        roll=(me.exploration_roll(str(user_id or ""), sid)
+              if controls else None),
+        controls=controls,
+        protected_dimensions=None,
+        budget_spent=max(0, int(decided_count or 0)),
+        budget_limit=None,
+        group_of=group_of, spent_by_group=spent_by_group)
+    return result, controls
+
+
 def select(changes: Any, *, user_id: str = "", session_id: str = "",
            parts: Any = None, decided_count: int = 0,
            served_text: Any = None, spent_by_paragraph: Any = None,
@@ -935,82 +1189,12 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
             logger.info("intervention funnel session=%s %s (nothing "
                         "generated for this take — upstream of the gate)",
                         session_id, funnel)
-            return {"changes": [], "result": None, "controls": False,
-                    "funnel": funnel}
-        # THE COUNTING UNIT (founder 2026-08-11: "do it per slide up to 2").
-        # One paragraph per slide, and the paragraph is the chunk the student
-        # decides on — so the mix caps below and the budget further down are
-        # counted in the same unit the student acts in. None without the
-        # document: every rule falls back to document-wide, unchanged.
-        _para_of = None
-        if isinstance(served_text, str) and served_text:
-            from services.intervention_spend import paragraph_index_at
-
-            def _para_of(c: dict) -> int:   # noqa: F811 — the guarded form
-                return paragraph_index_at(
-                    served_text, (c.get("span") or {}).get("start", 0))
-        # R1 — the layer filter runs HERE, before anything is scored or
-        # budgeted. See filter_by_layer for why the order is the rule.
-        rows = filter_by_layer(rows, parts)
-        funnel["after_layer"] = len(rows)
-        # CONTENT FIRST, STYLE WHEN THERE IS NOTHING LOUDER (founder
-        # 2026-08-11). Sees both lanes at once, on the same paragraph key the
-        # budget is counted in.
-        #
-        # AHEAD OF FOCUS ON PURPOSE (founder 2026-08-12). This decides "does
-        # this paragraph have something louder to say?", and the honest answer
-        # is about what the ENGINE FOUND, not about what survived a different
-        # gate. Run it after focus and the ordering would invert the rule:
-        # focus deletes the rewrite on paragraph 7, paragraph 7 stops looking
-        # busy, and the accent appears there — telling the student "this one
-        # is fine, just polish it" about the exact paragraph the engine had a
-        # rewrite for.
-        rows = suppress_style_where_feedback_waits(rows, group_of=_para_of)
-        funnel["after_style_order"] = len(rows)
-        # SINGLE-POINT FOCUS (founder 2026-08-12) — beside the layer filter
-        # and before the budget, for the same reason: a note suppressed after
-        # arbitration has already eaten a slot the student never sees spent.
-        # A no-op when no focus is established, which is every cold-start
-        # case; the funnel records it either way so an empty serve can never
-        # again be a night of guessing which gate did it.
-        #
-        # THE STYLE LANE BYPASSES IT (founder 2026-08-12): "a finishing touch
-        # like a bolded word is lightweight enough that it shouldn't be
-        # suppressed just because the paragraph isn't the main structural
-        # focus of the take." Focus concentrates the STRUCTURAL work; an
-        # accent on a chunk the student already locked is not competing with
-        # that work for attention, and it is already held back by the
-        # content-first rule above wherever it would.
-        #
-        # So the two lanes SPLIT HERE for their different admissibility rules.
-        # Under the current Take contract they recombine after those gates for
-        # the shared family/≤3 decision; legacy callers retain the historical
-        # independent style allowance.
-        style_rows = [c for c in rows if c.get("style_lane")]
-        _content_rows = [c for c in rows if not c.get("style_lane")]
-        rows = (_content_rows if mvp_feedback_contract else
-                suppress_outside_focus(_content_rows, parts, focus_part_id))
-        funnel["after_focus"] = len(rows)
-        # The style lane keeps the §F.4 accent window (an accent past the
-        # intonation ceiling would paint sentences on accept, lock or no
-        # lock), and takes no arm assignment: the experiment measures the
-        # budgeted serve, and free-lane rows would distort its record.
-        style_rows = filter_by_window(style_rows)
-        for c in style_rows:
-            c["visual"] = visual_of(c)
-        style_rows.sort(key=lambda c: (
-            (c.get("span") or {}).get("start", 0),
-            (c.get("span") or {}).get("end", 0)))
-        # THE STYLE CAP (founder 2026-08-12) — AFTER the sort, because the
-        # sort is what makes "which three survive" document order rather than
-        # whichever lane happened to propose first.
-        funnel["style_proposed"] = len(style_rows)
-        style_rows = cap_style_lane(
-            style_rows, group_of=_para_of,
-            spent_count=style_decided_count,
-            spent_by_group=style_spent_by_paragraph)
-        _style = {"style_changes": style_rows} if style_rows else {}
-        funnel["style_lane"] = len(style_rows)
+            return _empty_serve(funnel)
+        para_of = _paragraph_counter(served_text)
+        rows, style_rows = _admissible(rows, parts, focus_part_id, para_of,
+                                       mvp_feedback_contract, funnel)
+        style_rows = _style_lane(style_rows, para_of, style_decided_count,
+                                 style_spent_by_paragraph, funnel)
         # §F.4 — the emphasis WINDOW gate, same before-budget reasoning: an
         # accent-class offer whose quote exceeds the intonation-unit ceiling
         # would paint sentences on accept (the bake now refuses it), so a
@@ -1021,149 +1205,25 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         rows = filter_by_window(rows)
         funnel["after_window"] = len(rows)
         if mvp_feedback_contract:
-            # Apply the Take-level family quota only AFTER layer, focus,
-            # window and style-lane admissibility. Selecting a Confident Voice
-            # candidate before those gates let them erase the reserved slot.
-            # Combining both lanes here also makes "3" mean three for the
-            # WHOLE Take, not three budgeted rows plus three style rows.
-            _remaining = (3 - max(0, int(decided_count or 0))
-                          - max(0, int(style_decided_count or 0)))
-            _mixed = enforce_mvp_feedback_mix(
-                [*rows, *style_rows],
-                remaining=_remaining,
-            )
-            rows = [c for c in _mixed if not c.get("style_lane")]
-            style_rows = [c for c in _mixed if c.get("style_lane")]
-            _style = {"style_changes": style_rows} if style_rows else {}
-            funnel["after_feedback_contract"] = len(_mixed)
-            funnel["style_lane"] = len(style_rows)
-            # The Take contract is itself the manager decision. Running the
-            # historical experiment/withhold arbiter afterwards could remove
-            # one of the three required lanes, turning a valid Take into a
-            # random partial set. The frozen selection therefore returns
-            # directly; its complete candidate pool and evidence are recorded
-            # separately in the immutable exposure ledger.
-            _mixed_public = [c for c in _mixed if not c.get("style_lane")]
-            if len(_mixed) != max(0, min(3, _remaining)):
-                logger.error(
-                    "required feedback families unavailable session=%s families=%s",
-                    session_id,
-                    [c.get("feedback_family") for c in _mixed],
-                )
-                return {"changes": [], "result": None, "controls": False,
-                        "funnel": funnel}
-            return {
-                "changes": _mixed_public,
-                "style_changes": [c for c in _mixed if c.get("style_lane")],
-                "result": None,
-                "controls": False,
-                "funnel": funnel,
-            }
+            return _serve_feedback_contract(
+                rows, style_rows, decided_count, style_decided_count,
+                session_id, funnel)
+        style = {"style_changes": style_rows} if style_rows else {}
         if not rows:
             logger.info("intervention funnel session=%s %s (empty after "
                         "admissibility/feedback contract)", session_id, funnel)
-            return {"changes": [], "result": None, "controls": False,
-                    "funnel": funnel, **_style}
-        # Appendix C mix caps (founder GO 2026-08-10): cap the POOL per
-        # C.2 type so one lane cannot monopolise the flat budget — see
-        # filter_by_type_caps for why this runs before arbitration.
-        rows = filter_by_type_caps(rows, group_of=_para_of)
-        funnel["after_type_caps"] = len(rows)
-        if not rows:
-            return {"changes": [], "result": None, "controls": False,
-                    "funnel": funnel, **_style}
-        rows.sort(key=lambda c: (
-            _collision_rank(c),
-            (c.get("span") or {}).get("start", 0),
-            (c.get("span") or {}).get("end", 0)))
-
-        candidates = to_candidates(rows)
-        # to_candidates refuses zero-width and malformed spans — the one
-        # stage whose loss is invisible in the row list itself.
-        funnel["arbitrated"] = len(candidates)
-        if not candidates:
-            return {"changes": [], "result": None, "controls": False,
-                    "funnel": funnel, **_style}
-
-        controls = _controls_enabled()
-        state = user_state(candidates)
-        if controls and user_id:
-            state = me.UserState(
-                user_id=str(user_id),
-                state_by_dimension=state.state_by_dimension,
-                p_mastery=state.p_mastery,
-                sessions_since_fired=state.sessions_since_fired)
-
-        # THE EXPLORATION QUOTA, armed with the controls. `exploration_roll`
-        # is DETERMINISTIC per (user, session) — never random.random, because
-        # this surface is polled and a fresh draw per request would re-decide
-        # the branch every few seconds, swapping the notes on screen while the
-        # student watched. It returns None without a stable key, and arbitrate
-        # then skips the branch entirely.
-        _sid = str(session_id or "")
-        # THE BUDGET IS COUNTED PER PARAGRAPH when the caller hands over the
-        # served text (founder 2026-08-11: "do it per slide up to 2"). The
-        # document carries one paragraph per slide and the paragraph IS the
-        # chunk the student decides on, so this is the slide, the chunk and
-        # the budget unit all at once. Without the text it falls back to the
-        # flat per-take cap — unchanged behaviour, and the guests / callers
-        # that have no document keep working.
-        _grp = None
-        _spent_g = None
-        if _para_of is not None and not mvp_feedback_contract:
-            _by_ref_para = {str(i): _para_of(row)
-                            for i, row in enumerate(rows)}
-
-            def _grp(c: Any) -> Any:   # noqa: F811 — the guarded form
-                return _by_ref_para.get(c.ref, 0)
-
-            _spent_g = dict(spent_by_paragraph or {})
-        result = me.arbitrate(
-            candidates, state,
-            session_id=_sid if controls else "",
-            roll=(me.exploration_roll(str(user_id or ""), _sid)
-                  if controls else None),
-            controls=controls,
-            # The explicit Take contract requires one current-Take Confident
-            # Voice evaluation. It remains Manager-ranked and budgeted, but it
-            # cannot be assigned to gamma control or the within-Take withhold
-            # arm; either would make a valid Take randomly unclaimable.
-            protected_dimensions=(
-                {LANE_PREFIX + "feedback:confident_voice"}
-                if mvp_feedback_contract else None
-            ),
-            budget_spent=max(0, int(decided_count or 0)),
-            budget_limit=(3 if mvp_feedback_contract else None),
-            group_of=_grp, spent_by_group=_spent_g)
-
-        by_ref = {str(i): row for i, row in enumerate(rows)}
-        kept: list = []
-        for c in result.get("selected") or ():
-            row = by_ref.get(c.ref)
-            if row is not None:
-                # The rendering registry stamps every SURVIVOR (SPEC §3):
-                # Confident Voice = star, rewrites = underline, accents =
-                # bold. Stamped here — after the budget, before the FE — so
-                # one table governs every surface and the FE never derives a
-                # visual from kind on its own. IN PLACE, not a copy: the
-                # returned dicts must stay the caller's own objects (the
-                # identity contract that keeps take_index/block_key/why_key
-                # alive through this adapter).
-                row["visual"] = visual_of(row)
-                kept.append(row)
-        kept.sort(key=lambda c: (c["span"]["start"], c["span"]["end"]))
+            return _empty_serve(funnel, style)
+        pool = _arbitration_pool(rows, para_of, funnel)
+        if pool is None:
+            return _empty_serve(funnel, style)
+        rows, candidates = pool
+        result, controls = _arbitrate(
+            rows, candidates, user_id=user_id, session_id=session_id,
+            decided_count=decided_count, para_of=para_of,
+            spent_by_paragraph=spent_by_paragraph)
+        kept = _survivors(result, rows)
         funnel["served"] = len(kept)
-        # WHY the rest went, in the engine's own words. `rejected` has always
-        # carried (dimension, reason) and nothing ever read it — so a pool
-        # that emptied on the PPV floor and one that emptied on cooldown were
-        # indistinguishable from the outside, which is how "why is there only
-        # one note?" became unanswerable without a database session.
-        why: dict = {}
-        for _dim, reason in (result.get("rejected") or ()):
-            why[reason] = why.get(reason, 0) + 1
-        if result.get("budget_lost"):
-            why["budget"] = len(result["budget_lost"])
-        funnel["rejected"] = why
+        funnel["rejected"] = _rejection_reasons(result)
         logger.info("intervention funnel session=%s %s", session_id, funnel)
         # `controls` rides back so the caller knows whether an EXPERIMENT ran.
         # It gates arm persistence: `intervention_arms` is the experiment's
@@ -1171,7 +1231,7 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         # (gamma, withhold_rate) as if an assignment had happened when none
         # did — a table that reads as populated while measuring nothing.
         return {"changes": kept, "result": result, "controls": controls,
-                "funnel": funnel, **_style}
+                "funnel": funnel, **style}
     except Exception as e:
         logger.warning("intervention selection failed: %s", e)
         return {"changes": [], "result": None, "controls": False}
