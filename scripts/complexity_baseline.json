@@ -72,7 +72,6 @@
   "services/mlc3_general_service_monitor.py:assess_general_service_monitor": 43,
   "services/mlc3_general_service_readiness.py:_valid_emergency_disable": 32,
   "services/moment_suggestions.py:generate_for_session": 31,
-  "services/openai_service.py:OpenAIService.transcribe_audio": 43,
   "services/pipeline_jobs.py:_run_session_recording": 37,
   "services/pipeline_jobs.py:run_processing_job": 32,
   "services/prior_take_changes.py:build_prior_take_changes": 27,

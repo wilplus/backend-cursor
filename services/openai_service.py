@@ -13,6 +13,7 @@ prompt registry as ``legacy_openai.whisper_priming``), the shared client, and
 directly (``services/ceo_work_items.py``, a grandfathered direct call site).
 """
 from config import Config
+import logging
 import os
 import mimetypes
 import time
@@ -21,6 +22,153 @@ from services.db import db
 from services.llm_client import build_openai_client
 
 config = Config()
+logger = logging.getLogger(__name__)
+
+_AUDIO_CONTENT_TYPES = {
+    ".webm": "audio/webm",
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".mp4": "video/mp4",
+    ".mpeg": "audio/mpeg",
+    ".mpga": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/opus",
+}
+
+
+def _audio_content_type(filename: str | None, content_type: str | None) -> str:
+    """The caller's MIME, else mimetypes', else the module table's —
+    never a silent webm."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    ct = (content_type or "").strip() or None
+    if not ct:
+        ct = mimetypes.guess_type(filename or "")[0]
+    if not ct:
+        ct = _AUDIO_CONTENT_TYPES.get(ext, "application/octet-stream")
+    return ct
+
+
+def _vocabulary_terms(vocabulary: list | None) -> list:
+    """Domain terms for priming, capped so the prompt stays small."""
+    return [str(t).strip() for t in (vocabulary or []) if str(t).strip()][:40]
+
+
+def _whisper_request(filename: str | None, audio_data: bytes, ct: str,
+                     vocabulary: list | None, language: str | None) -> dict:
+    """The transcription call's arguments, without the granularities.
+
+    See the LANGUAGE + THE PROMPT note on transcribe_audio: an English
+    prompt on non-English audio is worse than no prompt at all."""
+    terms = _vocabulary_terms(vocabulary)
+    # Disfluent prompt conditions Whisper to preserve filler words instead of cleaning them.
+    prompt = "Umm, let me think like, hmm... Okay, so, uh, yeah. I mean, you know, it's like, um, well..."
+    if terms:
+        # Append domain terms so Whisper recognises domain-specific
+        # words (willab §3.3 priming).
+        prompt = prompt + " " + ", ".join(terms) + "."
+    _lang = (language or "").strip().lower() or None
+    _create_kwargs = dict(
+        model="whisper-1",
+        file=(filename or "audio.bin", audio_data, ct),
+        response_format="verbose_json",
+    )
+    if _lang and not _lang.startswith("en"):
+        _create_kwargs["language"] = _lang
+        if terms:
+            _create_kwargs["prompt"] = ", ".join(terms) + "."
+        logger.info(
+            "transcribe_audio: language=%s — English disfluency "
+            "prompt dropped", _lang,
+        )
+    else:
+        if _lang:
+            _create_kwargs["language"] = _lang
+        _create_kwargs["prompt"] = prompt
+    return _create_kwargs
+
+
+def _create_transcription(client, create_kwargs: dict):
+    """One Whisper call asking for BOTH granularities: segments (existing
+    per-snippet transcript slicing) AND words (willab #6 — precise
+    per-slide transcript sync; a word's slide is the one on screen at its
+    timestamp)."""
+    try:
+        return client.audio.transcriptions.create(
+            timestamp_granularities=["segment", "word"], **create_kwargs,
+        )
+    except Exception as _gran_err:
+        # SDK too old / API rejects the param → fall back to the prior
+        # segment-only call so transcription is never worse than before
+        # (#6 just loses word timestamps; the readout/transcript stand).
+        logger.warning(
+            "transcribe_audio: word granularity unavailable, "
+            "falling back to segments-only: %s", _gran_err,
+        )
+        return client.audio.transcriptions.create(**create_kwargs)
+
+
+def _segments_and_duration(transcript_response) -> tuple:
+    """``(duration, segments)``: the last segment's end, and each segment's
+    ``{start, end, text}``."""
+    duration = 0.0
+    segments: list = []
+    if hasattr(transcript_response, 'segments') and transcript_response.segments:
+        duration = transcript_response.segments[-1].end
+        for seg in transcript_response.segments:
+            segments.append({
+                "start": float(getattr(seg, "start", 0.0) or 0.0),
+                "end": float(getattr(seg, "end", 0.0) or 0.0),
+                "text": (getattr(seg, "text", "") or "").strip(),
+            })
+    return duration, segments
+
+
+def _word_field(w, name: str):
+    """A word's field, whether the SDK returned an object or a dict."""
+    value = getattr(w, name, None)
+    if value is None and isinstance(w, dict):
+        value = w.get(name)
+    return value
+
+
+def _word_timestamps(transcript_response) -> list:
+    """Word-level timestamps (#6) — [{word, start, end}] in SECONDS,
+    absolute to the recording. A word with no text or no numeric start is
+    dropped; a missing end falls back to the start."""
+    words: list = []
+    if hasattr(transcript_response, "words") and transcript_response.words:
+        for w in transcript_response.words:
+            ws = _word_field(w, "word")
+            st = _word_field(w, "start")
+            en = _word_field(w, "end")
+            if ws is None or not isinstance(st, (int, float)):
+                continue
+            words.append({
+                "word": str(ws),
+                "start": float(st),
+                "end": float(en) if isinstance(en, (int, float)) else float(st),
+            })
+    return words
+
+
+def _record_whisper_usage(*, surface: str, seconds: float,
+                          user_id: str | None, session_id: str | None,
+                          arc_id: str | None) -> None:
+    """Cost ledger (token-pricing Phase 0). Whisper bills on AUDIO TIME,
+    so `duration` is the billable quantity. Best-effort: llm_usage
+    swallows its own failures and never touches the transcript."""
+    try:
+        from services.llm_usage import record_audio_usage
+        record_audio_usage(
+            surface=surface,
+            seconds=seconds,
+            user_id=user_id,
+            session_id=session_id,
+            arc_id=arc_id,
+        )
+    except Exception:
+        pass
 
 
 class OpenAIService:
@@ -116,8 +264,6 @@ class OpenAIService:
         if not self.client:
             raise Exception("OpenAI client not initialized")
 
-        import logging
-        logger = logging.getLogger(__name__)
         audio_data = b""
         try:
             audio_file.seek(0)
@@ -125,134 +271,31 @@ class OpenAIService:
             audio_file.seek(0)
             logger.info("transcribe_audio: filename=%s size=%d bytes", filename, len(audio_data))
 
-            ext = os.path.splitext(filename or "")[1].lower()
-            ct = (content_type or "").strip() or None
-            if not ct:
-                ct = mimetypes.guess_type(filename or "")[0]
-            if not ct:
-                ct = {
-                    ".webm": "audio/webm",
-                    ".wav": "audio/wav",
-                    ".mp3": "audio/mpeg",
-                    ".m4a": "audio/mp4",
-                    ".mp4": "video/mp4",
-                    ".mpeg": "audio/mpeg",
-                    ".mpga": "audio/mpeg",
-                    ".ogg": "audio/ogg",
-                    ".opus": "audio/opus",
-                }.get(ext, "application/octet-stream")
-
-            # Transcribe
-            # Disfluent prompt conditions Whisper to preserve filler words instead of cleaning them.
-            prompt = "Umm, let me think like, hmm... Okay, so, uh, yeah. I mean, you know, it's like, um, well..."
-            if vocabulary:
-                # Append domain terms so Whisper recognises domain-specific
-                # words (willab §3.3 priming). Cap so the prompt stays small.
-                terms = [str(t).strip() for t in vocabulary if str(t).strip()][:40]
-                if terms:
-                    prompt = prompt + " " + ", ".join(terms) + "."
-            _lang = (language or "").strip().lower() or None
-            _create_kwargs = dict(
-                model="whisper-1",
-                file=(filename or "audio.bin", audio_data, ct),
-                response_format="verbose_json",
-            )
-            # See the LANGUAGE + THE PROMPT note in the docstring: an English
-            # prompt on non-English audio is worse than no prompt at all.
-            if _lang and not _lang.startswith("en"):
-                _create_kwargs["language"] = _lang
-                _vocab_only = ", ".join(
-                    [str(t).strip() for t in (vocabulary or [])
-                     if str(t).strip()][:40])
-                if _vocab_only:
-                    _create_kwargs["prompt"] = _vocab_only + "."
-                logger.info(
-                    "transcribe_audio: language=%s — English disfluency "
-                    "prompt dropped", _lang,
-                )
-            else:
-                if _lang:
-                    _create_kwargs["language"] = _lang
-                _create_kwargs["prompt"] = prompt
+            ct = _audio_content_type(filename, content_type)
+            create_kwargs = _whisper_request(
+                filename, audio_data, ct, vocabulary, language)
             # Whisper on a long take legitimately runs minutes — give
             # transcription its own (larger, still bounded) timeout instead
             # of the client-wide LLM one.
             _tclient = self.client.with_options(
                 timeout=config.OPENAI_TRANSCRIBE_TIMEOUT_SECONDS,
             )
-            try:
-                # Ask for BOTH granularities: segments (existing per-snippet
-                # transcript slicing) AND words (willab #6 — precise per-slide
-                # transcript sync; a word's slide is the one on screen at its
-                # timestamp). Same single call, just a richer response.
-                transcript_response = _tclient.audio.transcriptions.create(
-                    timestamp_granularities=["segment", "word"], **_create_kwargs,
-                )
-            except Exception as _gran_err:
-                # SDK too old / API rejects the param → fall back to the prior
-                # segment-only call so transcription is never worse than before
-                # (#6 just loses word timestamps; the readout/transcript stand).
-                logger.warning(
-                    "transcribe_audio: word granularity unavailable, "
-                    "falling back to segments-only: %s", _gran_err,
-                )
-                transcript_response = _tclient.audio.transcriptions.create(
-                    **_create_kwargs,
-                )
-
-            # Extract duration + per-segment timestamps.
-            duration = 0.0
-            segments: list = []
-            if hasattr(transcript_response, 'segments') and transcript_response.segments:
-                duration = transcript_response.segments[-1].end
-                for seg in transcript_response.segments:
-                    segments.append({
-                        "start": float(getattr(seg, "start", 0.0) or 0.0),
-                        "end": float(getattr(seg, "end", 0.0) or 0.0),
-                        "text": (getattr(seg, "text", "") or "").strip(),
-                    })
-
-            # Word-level timestamps (#6) — [{word, start, end}] in SECONDS,
-            # absolute to the recording. ADDITIVE: existing callers ignore it.
-            words: list = []
-            if hasattr(transcript_response, "words") and transcript_response.words:
-                for w in transcript_response.words:
-                    ws = getattr(w, "word", None)
-                    if ws is None and isinstance(w, dict):
-                        ws = w.get("word")
-                    st = getattr(w, "start", None)
-                    if st is None and isinstance(w, dict):
-                        st = w.get("start")
-                    en = getattr(w, "end", None)
-                    if en is None and isinstance(w, dict):
-                        en = w.get("end")
-                    if ws is None or not isinstance(st, (int, float)):
-                        continue
-                    words.append({
-                        "word": str(ws),
-                        "start": float(st),
-                        "end": float(en) if isinstance(en, (int, float)) else float(st),
-                    })
+            transcript_response = _create_transcription(_tclient, create_kwargs)
+            duration, segments = _segments_and_duration(transcript_response)
+            words = _word_timestamps(transcript_response)
 
             # Whisper verbose_json includes `language` (ISO 639-1). Surface it so
             # callers can persist transcription_language on the recording row for
             # downstream multilingual filler detection (utils/filler_words.py).
             detected_language = getattr(transcript_response, "language", None)
 
-            # Cost ledger (token-pricing Phase 0). Whisper bills on AUDIO TIME,
-            # so `duration` is the billable quantity. Best-effort: llm_usage
-            # swallows its own failures and never touches the transcript.
-            try:
-                from services.llm_usage import record_audio_usage
-                record_audio_usage(
-                    surface=usage_surface,
-                    seconds=duration,
-                    user_id=usage_user_id,
-                    session_id=usage_session_id,
-                    arc_id=usage_arc_id,
-                )
-            except Exception:
-                pass
+            _record_whisper_usage(
+                surface=usage_surface,
+                seconds=duration,
+                user_id=usage_user_id,
+                session_id=usage_session_id,
+                arc_id=usage_arc_id,
+            )
 
             return {
                 "text": transcript_response.text,
