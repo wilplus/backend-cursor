@@ -50,7 +50,6 @@
   "services/ideal_text_block.py:maybe_assemble_ideal_text": 33,
   "services/ideal_text_variants.py:block_variants_payload": 27,
   "services/ideal_text_variants.py:capture_user_edit_variants": 36,
-  "services/lab_send.py:send_lab_recording_to_coach": 36,
   "services/life_engine.py:compare_to_strategy": 31,
   "services/life_engine.py:derive_principles_from_wins": 38,
   "services/life_engine.py:rank_goals_by_expected_value": 29,

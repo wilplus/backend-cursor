@@ -66,6 +66,147 @@ def _reserve_review_credit(user_id: str, session_id: str):
     return result
 
 
+def _load_session(db, session_id: str) -> dict | None:
+    """The Take's session row, or None (logged) when it cannot be read."""
+    try:
+        session = db.v2_get_session_by_id(session_id) or {}
+    except Exception as e:
+        logger.warning("lab_send: session load failed sid=%s err=%s", session_id, e)
+        return None
+    if not session:
+        logger.warning("lab_send: session not found sid=%s", session_id)
+        return None
+    return session
+
+
+def _already_sent(session: dict) -> bool:
+    """Is the session already in or through the coach queue?"""
+    return bool(
+        session.get("status") in _ALREADY_SENT_STATUSES
+        or session.get("coach_review_status") in _ALREADY_REVIEW_STATES
+        or session.get("results_published_at")
+    )
+
+
+def _authorize_coach_delivery(db, session: dict, session_id: str, user_id: str):
+    """Pass the canonical Phase-1 authorization path for the coach hand-off.
+
+    Returns ``(adapter, permit_id)`` with the ``started`` event recorded.
+    Raises ``ProcessingAuthorizationError`` when the hand-off is refused.
+    """
+    from services.authorized_provider import (
+        AuthorizedProviderAdapter,
+        ProviderCoordinates,
+    )
+    from services.processing_authorization import (
+        ProcessingAuthorizationService,
+    )
+
+    recording_id = str(
+        session.get("recording_id") or ""
+    )
+    authorization = ProcessingAuthorizationService(db)
+    principal_id = authorization.resolve_acquisition_principal(
+        str(session.get("owner_principal_id") or ""),
+        user_id=str(session.get("user_id") or user_id or "") or None,
+        recording_id=recording_id or None,
+    )
+    adapter = AuthorizedProviderAdapter(
+        db,
+        ProviderCoordinates(
+            acquisition_principal_id=principal_id,
+            take_id=str(session_id),
+            recording_id=recording_id or None,
+        ),
+        authorization=authorization,
+    )
+    permit = adapter.authorize_operation(
+        "coach_delivery",
+        manifest={"content": ["coach_packet"], "purpose": "coach_review"},
+        idempotency_key=f"coach-delivery:{session_id}:{uuid.uuid4()}",
+    )
+    permit_id = str((permit or {}).get("permit_id") or "") or None
+    adapter.authorization.record_provider_event(permit_id, "started")
+    return adapter, permit_id
+
+
+def _flip_to_pending_review(db, session_id: str) -> bool:
+    """Flip into the coach review queue (the success signal)."""
+    try:
+        flipped = db.takes.v2_mark_session_pending_review(session_id)
+        return bool(flipped)
+    except Exception as e:
+        logger.error("lab_send: status flip failed sid=%s err=%s", session_id, e)
+        return False
+
+
+def _unwind_failed_hand_off(db, adapter, permit_id, session_id: str,
+                            user_id: str) -> None:
+    """The flip did not land: say so once, close the permit, refund."""
+    # The flip either raised (logged there) or returned no row; either
+    # way the hand-off did not land, and this line says so once.
+    logger.error("lab_send: hand-off not queued sid=%s user=%s",
+                 session_id, user_id)
+    if permit_id:
+        try:
+            adapter.authorization.record_provider_event(
+                permit_id, "failed", error_code="COACH_QUEUE_WRITE_FAILED",
+            )
+        except Exception:
+            pass
+    try:
+        db.refund_coach_review_credit(str(user_id), str(session_id))
+    except Exception as refund_error:
+        logger.error(
+            "lab_send: queue failed and refund deferred sid=%s err=%s",
+            session_id,
+            refund_error,
+        )
+
+
+def _record_delivery_completed(adapter, permit_id, session_id: str) -> None:
+    if permit_id:
+        try:
+            adapter.authorization.record_provider_event(
+                permit_id, "completed", metadata={"result_kind": "coach_queue"},
+            )
+        except Exception:
+            logger.exception(
+                "lab_send: provider completion evidence failed sid=%s", session_id,
+            )
+
+
+def _notify_admin(db, session: dict, session_id: str, user_id: str) -> None:
+    """Best-effort admin notification — a nudge, not part of send-success.
+
+    Founder 2026-07-16 (BE-3a): a mid-take RE-READ is part of its parent
+    take — it still enters the review flow (the coach packet folds it),
+    but it NEVER fires its own "homework completed" email. One email per
+    spoken take ⇒ max 3 per arc.
+    """
+    _is_read = (session.get("recording_kind") == "read"
+                or bool(session.get("paired_session_id")))
+    if _is_read:
+        logger.info(
+            "lab_send: re-read sid=%s — admin email skipped (folds into "
+            "take %s)", session_id, session.get("paired_session_id"),
+        )
+        return
+    try:
+        from services.session_publish import _send_admin_notification
+        snippets = db.get_snippets_by_session(session_id) or []
+        _send_admin_notification(
+            session_id=session_id,
+            user_id=user_id,
+            snippet_count=len(snippets),
+        )
+    except Exception as e:
+        logger.warning(
+            "lab_send: admin notify failed sid=%s err=%s (non-fatal)",
+            session_id, e,
+        )
+
+
 def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
     """Idempotently send a (claimed) Lab session to the coach queue.
 
@@ -82,13 +223,8 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
 
     from services.db import db
 
-    try:
-        session = db.v2_get_session_by_id(session_id) or {}
-    except Exception as e:
-        logger.warning("lab_send: session load failed sid=%s err=%s", session_id, e)
-        return {"ok": False, "already_sent": False, "status": None}
-    if not session:
-        logger.warning("lab_send: session not found sid=%s", session_id)
+    session = _load_session(db, session_id)
+    if session is None:
         return {"ok": False, "already_sent": False, "status": None}
 
     # A guest may use the complete immediate machine-feedback journey, but
@@ -105,49 +241,17 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
         }
 
     current = session.get("status")
-    review_state = session.get("coach_review_status")
-    if (current in _ALREADY_SENT_STATUSES
-            or review_state in _ALREADY_REVIEW_STATES
-            or session.get("results_published_at")):
+    if _already_sent(session):
         # Already in/through the coach queue — idempotent no-op.
         return {"ok": True, "already_sent": True, "status": current}
 
-    permit_id = None
     try:
-        from services.authorized_provider import (
-            AuthorizedProviderAdapter,
-            ProviderCoordinates,
-        )
         from services.processing_authorization import (
             ProcessingAuthorizationError,
-            ProcessingAuthorizationService,
         )
-
-        recording_id = str(
-            session.get("recording_id") or ""
+        adapter, permit_id = _authorize_coach_delivery(
+            db, session, session_id, user_id,
         )
-        authorization = ProcessingAuthorizationService(db)
-        principal_id = authorization.resolve_acquisition_principal(
-            str(session.get("owner_principal_id") or ""),
-            user_id=str(session.get("user_id") or user_id or "") or None,
-            recording_id=recording_id or None,
-        )
-        adapter = AuthorizedProviderAdapter(
-            db,
-            ProviderCoordinates(
-                acquisition_principal_id=principal_id,
-                take_id=str(session_id),
-                recording_id=recording_id or None,
-            ),
-            authorization=authorization,
-        )
-        permit = adapter.authorize_operation(
-            "coach_delivery",
-            manifest={"content": ["coach_packet"], "purpose": "coach_review"},
-            idempotency_key=f"coach-delivery:{session_id}:{uuid.uuid4()}",
-        )
-        permit_id = str((permit or {}).get("permit_id") or "") or None
-        adapter.authorization.record_provider_event(permit_id, "started")
     except ProcessingAuthorizationError as error:
         return {
             "ok": False, "already_sent": False, "status": current,
@@ -167,73 +271,13 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
             "reason": "review_credit_unavailable",
         }
 
-    # Flip into the coach review queue (the success signal).
-    try:
-        flipped = db.takes.v2_mark_session_pending_review(session_id)
-        ok = bool(flipped)
-    except Exception as e:
-        logger.error("lab_send: status flip failed sid=%s err=%s", session_id, e)
-        ok = False
-
-    if not ok:
-        # The flip either raised (logged above) or returned no row; either
-        # way the hand-off did not land, and this line says so once.
-        logger.error("lab_send: hand-off not queued sid=%s user=%s",
-                     session_id, user_id)
-        if permit_id:
-            try:
-                adapter.authorization.record_provider_event(
-                    permit_id, "failed", error_code="COACH_QUEUE_WRITE_FAILED",
-                )
-            except Exception:
-                pass
-        try:
-            db.refund_coach_review_credit(str(user_id), str(session_id))
-        except Exception as refund_error:
-            logger.error(
-                "lab_send: queue failed and refund deferred sid=%s err=%s",
-                session_id,
-                refund_error,
-            )
+    if not _flip_to_pending_review(db, session_id):
+        _unwind_failed_hand_off(db, adapter, permit_id, session_id, user_id)
         return {"ok": False, "already_sent": False, "status": current,
                 "reason": "queue_write_failed"}
 
-    if permit_id:
-        try:
-            adapter.authorization.record_provider_event(
-                permit_id, "completed", metadata={"result_kind": "coach_queue"},
-            )
-        except Exception:
-            logger.exception(
-                "lab_send: provider completion evidence failed sid=%s", session_id,
-            )
-
-    # Best-effort admin notification — a nudge, not part of send-success.
-    # Founder 2026-07-16 (BE-3a): a mid-take RE-READ is part of its parent
-    # take — it still enters the review flow (the coach packet folds it),
-    # but it NEVER fires its own "homework completed" email. One email per
-    # spoken take ⇒ max 3 per arc.
-    _is_read = (session.get("recording_kind") == "read"
-                or bool(session.get("paired_session_id")))
-    if _is_read:
-        logger.info(
-            "lab_send: re-read sid=%s — admin email skipped (folds into "
-            "take %s)", session_id, session.get("paired_session_id"),
-        )
-    else:
-        try:
-            from services.session_publish import _send_admin_notification
-            snippets = db.get_snippets_by_session(session_id) or []
-            _send_admin_notification(
-                session_id=session_id,
-                user_id=user_id,
-                snippet_count=len(snippets),
-            )
-        except Exception as e:
-            logger.warning(
-                "lab_send: admin notify failed sid=%s err=%s (non-fatal)",
-                session_id, e,
-            )
+    _record_delivery_completed(adapter, permit_id, session_id)
+    _notify_admin(db, session, session_id, user_id)
 
     logger.info("lab_send: sent to coach sid=%s user=%s", session_id, user_id)
     return {"ok": True, "already_sent": False,
