@@ -14601,19 +14601,94 @@ class DatabaseService:
     def assign_confident_voice_exercise(
         self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
         lane: str, matching_policy_version: str, candidates: list[dict],
+        trace: Optional[dict] = None,
     ) -> Optional[dict]:
-        """The moment's frozen 80/20 exercise choice (migration 0372).
+        """The moment's frozen 80/20 exercise choice (migration 0372), and
+        with a ``trace``, why it was made (migration 0384, written by the same
+        call that draws).
 
         Idempotent: the first call draws, every later call returns that row.
         Raises on failure so the caller can fall back to the best match.
         """
-        result = self.client.rpc("assign_confident_voice_exercise_v1", {
+        params = {
             "p_owner_user_id": str(owner_user_id),
             "p_take_session_id": str(take_session_id),
             "p_snippet_id": str(snippet_id),
             "p_lane": str(lane),
             "p_matching_policy_version": str(matching_policy_version),
             "p_candidates": candidates,
+        }
+        if trace is not None:
+            try:
+                result = self.client.rpc(
+                    "assign_confident_voice_exercise_v2",
+                    {**params, "p_trace": trace}).execute()
+                return self._rpc_row(result.data)
+            except Exception as e:  # noqa: BLE001 — only "not installed" falls back
+                # PGRST202: the function is not in PostgREST's schema cache,
+                # i.e. 0384 has not been applied yet. Draw without the trace
+                # rather than serve no exercise. Any other failure (a trace
+                # the database refuses) is raised: a draw whose reasons were
+                # rejected must not be made silently without them.
+                if "PGRST202" not in str(e):
+                    raise
+                logger.warning(
+                    "assign_confident_voice_exercise_v2 missing; drawing "
+                    "without a match trace sid=%s", take_session_id)
+        result = self.client.rpc(
+            "assign_confident_voice_exercise_v1", params).execute()
+        return self._rpc_row(result.data)
+
+    def request_exercise_from_coach(
+        self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
+        reason: str, pattern: Optional[str], observed_tags: list[str],
+        request_trace: dict,
+    ) -> Optional[dict]:
+        """The moment's coach request (migration 0385): recorded on the first
+        call, returned unchanged — with any resolution since — on every later
+        one. Raises on failure; the caller keeps the feedback regardless."""
+        result = self.client.rpc("request_exercise_from_coach_v1", {
+            "p_owner_user_id": str(owner_user_id),
+            "p_take_session_id": str(take_session_id),
+            "p_snippet_id": str(snippet_id),
+            "p_reason": str(reason),
+            "p_pattern": pattern,
+            "p_observed_tags": list(observed_tags),
+            "p_request_trace": request_trace,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def get_exercise_coach_request(
+        self, take_session_id: str, snippet_id: str,
+    ) -> Optional[dict]:
+        if not take_session_id or not snippet_id:
+            return None
+        try:
+            res = (self.client.table("exercise_coach_requests")
+                   .select("*")
+                   .eq("take_session_id", str(take_session_id))
+                   .eq("snippet_id", str(snippet_id))
+                   .limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_exercise_coach_request failed sid=%s: %s",
+                           take_session_id, e)
+            return None
+
+    def resolve_exercise_coach_request(
+        self, *, request_id: str, coach_id: str, resolution: str,
+        exercise_id: Optional[str], exercise_version: Optional[int],
+        share: bool,
+    ) -> Optional[dict]:
+        """Resolve once, share once (migration 0385). Raises the database's
+        refusal (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED) to the caller."""
+        result = self.client.rpc("resolve_exercise_coach_request_v1", {
+            "p_request_id": str(request_id),
+            "p_coach_id": str(coach_id),
+            "p_resolution": str(resolution),
+            "p_exercise_id": exercise_id,
+            "p_exercise_version": exercise_version,
+            "p_share": bool(share),
         }).execute()
         return self._rpc_row(result.data)
 
@@ -14625,7 +14700,8 @@ class DatabaseService:
         try:
             res = (self.client.table("confident_voice_exercise_assignments")
                    .select("id,selected_exercise_id,selected_exercise_version,"
-                           "selection_mode,exposure_policy_version,lane")
+                           "selection_mode,exposure_policy_version,lane,"
+                           "matching_policy_version")
                    .eq("take_session_id", str(take_session_id))
                    .eq("snippet_id", str(snippet_id))
                    .eq("exposure_policy_version", "exercise-80-20-v1")

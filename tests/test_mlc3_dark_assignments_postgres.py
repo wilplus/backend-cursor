@@ -168,7 +168,16 @@ def insert_source_frame(db, ctx):
 
 def wait_for_lock(db, application, event):
     deadline = monotonic() + 5
-    while not query(db, "SELECT 1 FROM pg_stat_activity WHERE application_name=%s AND wait_event=%s", (application, event)):
+    # pg_stat_activity is read once per transaction and then cached, and `db`
+    # is usually inside one. Without clearing that snapshot, a first poll
+    # that lands a moment before the worker starts waiting sees the same stale
+    # picture on every later poll, times out, and — inside a caller's
+    # ThreadPoolExecutor — turns into a hang rather than a failure.
+    while True:
+        query(db, "SELECT pg_stat_clear_snapshot()")
+        if query(db, "SELECT 1 FROM pg_stat_activity WHERE application_name=%s AND wait_event=%s",
+                 (application, event)):
+            return
         if monotonic() >= deadline:
             raise AssertionError(f"worker never reached {event} wait")
         sleep(0.01)
