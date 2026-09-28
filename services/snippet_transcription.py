@@ -37,6 +37,71 @@ class SnippetTranscriptionProviderError(RuntimeError):
     """The provider outcome is uncertain and must be recorded durably."""
 
 
+def _attr(obj: Any, name: str, default: Any = None) -> Any:
+    """Normalize response: openai SDK returns an object with attributes;
+    older versions may return dicts. Handle both."""
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _whisper_request(
+    mp3_bytes: bytes, hint_filename: str, language_hint: Optional[str],
+) -> dict[str, Any]:
+    """The Whisper request: verbose word timestamps, the disfluent prompt."""
+    ct = mimetypes.guess_type(hint_filename or "")[0] or "audio/mpeg"
+    ext = os.path.splitext(hint_filename or "")[1].lower() or ".mp3"
+    if not (hint_filename or "").endswith(ext):
+        hint_filename = f"snippet{ext}"
+
+    kwargs: dict[str, Any] = {
+        "model": TRANSCRIPTION_MODEL_VERSION,
+        "file": (hint_filename, mp3_bytes, ct),
+        "response_format": "verbose_json",
+        "timestamp_granularities": ["word"],
+        "prompt": _DISFLUENT_PROMPT,
+    }
+    if language_hint:
+        kwargs["language"] = language_hint
+    return kwargs
+
+
+def _word_rows(words_raw: Any) -> list[dict[str, Any]]:
+    """Whisper's words as {word, start, end, confidence}; malformed ones skipped."""
+    words: list[dict[str, Any]] = []
+    for w in words_raw:
+        try:
+            words.append({
+                "word": str(_attr(w, "word", "")),
+                "start": float(_attr(w, "start", 0.0) or 0.0),
+                "end": float(_attr(w, "end", 0.0) or 0.0),
+                "confidence": _attr(w, "probability", None),
+            })
+        except (TypeError, ValueError):
+            continue
+    return words
+
+
+def _duration_ms(duration_seconds: Any) -> Optional[int]:
+    try:
+        if duration_seconds is not None:
+            return int(round(float(duration_seconds) * 1000.0))
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def _record_snippet_usage(duration_seconds: Any) -> None:
+    # Cost ledger (token-pricing Phase 0). Re-Whispering a single piece is the
+    # cost of a COACH/ADMIN boundary edit, not of a take — kept on its own
+    # surface so it can never be mistaken for per-take transcription spend.
+    try:
+        from services.llm_usage import record_audio_usage
+        record_audio_usage(surface="whisper_snippet", seconds=duration_seconds)
+    except Exception:
+        pass
+
+
 def transcribe_snippet_bytes(
     mp3_bytes: bytes,
     hint_filename: str = "snippet.mp3",
@@ -64,21 +129,7 @@ def transcribe_snippet_bytes(
             )
         return None
 
-    ct = mimetypes.guess_type(hint_filename or "")[0] or "audio/mpeg"
-    ext = os.path.splitext(hint_filename or "")[1].lower() or ".mp3"
-    if not (hint_filename or "").endswith(ext):
-        hint_filename = f"snippet{ext}"
-
-    kwargs: dict[str, Any] = {
-        "model": TRANSCRIPTION_MODEL_VERSION,
-        "file": (hint_filename, mp3_bytes, ct),
-        "response_format": "verbose_json",
-        "timestamp_granularities": ["word"],
-        "prompt": _DISFLUENT_PROMPT,
-    }
-    if language_hint:
-        kwargs["language"] = language_hint
-
+    kwargs = _whisper_request(mp3_bytes, hint_filename, language_hint)
     try:
         resp = client.audio.transcriptions.create(**kwargs)
     except Exception as e:
@@ -93,45 +144,12 @@ def transcribe_snippet_bytes(
             ) from e
         return None
 
-    # Normalize response: openai SDK returns an object with attributes; older versions
-    # may return dicts. Handle both.
-    def _attr(obj: Any, name: str, default: Any = None) -> Any:
-        if isinstance(obj, dict):
-            return obj.get(name, default)
-        return getattr(obj, name, default)
-
     text = (_attr(resp, "text", "") or "").strip()
     language = (_attr(resp, "language", None) or None)
     duration_seconds = _attr(resp, "duration", None)
-    words_raw = _attr(resp, "words", None) or []
-
-    words: list[dict[str, Any]] = []
-    for w in words_raw:
-        try:
-            words.append({
-                "word": str(_attr(w, "word", "")),
-                "start": float(_attr(w, "start", 0.0) or 0.0),
-                "end": float(_attr(w, "end", 0.0) or 0.0),
-                "confidence": _attr(w, "probability", None),
-            })
-        except (TypeError, ValueError):
-            continue
-
-    transcribed_duration_ms: Optional[int] = None
-    try:
-        if duration_seconds is not None:
-            transcribed_duration_ms = int(round(float(duration_seconds) * 1000.0))
-    except (TypeError, ValueError):
-        transcribed_duration_ms = None
-
-    # Cost ledger (token-pricing Phase 0). Re-Whispering a single piece is the
-    # cost of a COACH/ADMIN boundary edit, not of a take — kept on its own
-    # surface so it can never be mistaken for per-take transcription spend.
-    try:
-        from services.llm_usage import record_audio_usage
-        record_audio_usage(surface="whisper_snippet", seconds=duration_seconds)
-    except Exception:
-        pass
+    words = _word_rows(_attr(resp, "words", None) or [])
+    transcribed_duration_ms = _duration_ms(duration_seconds)
+    _record_snippet_usage(duration_seconds)
 
     return {
         "provider_response_id": _attr(resp, "id", None),
