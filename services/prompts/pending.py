@@ -54,7 +54,10 @@ REGISTER = {
     # ── Whisper priming prompt (services/openai_service.py is transcription-only
     #    since Q-A4; the thirteen chat methods that lived beside it had no
     #    callers and were deleted, and their entries with them) ──
-    "legacy_openai.whisper_priming": SourceRef(_OAI, "OpenAIService.transcribe_audio"),
+    # The prompt and the language rule that decides whether it is sent live
+    # in _whisper_request since transcribe_audio was split into stages
+    # (audit W1, 2026-09-28); the rest of the method is not prompt text.
+    "legacy_openai.whisper_priming": SourceRef(_OAI, "_whisper_request"),
 
     # ── Life Panel engine ──
     "life_case.system": SourceRef(_LIFE, "_CASE_SYSTEM"),

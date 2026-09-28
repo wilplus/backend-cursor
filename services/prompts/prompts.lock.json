@@ -159,7 +159,7 @@
     "legacy_openai.whisper_priming": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "bfbe6262570fbe9c2cab3bb2f206c23019bfa6652be1487a0f90983079527641"
+      "sha256": "28c5f1d516ca10b036af317fc8c96b7afa84663061202c2bf9045b6616e6f3c8"
     },
     "life_board.advisors": {
       "kind": "source_ref",
