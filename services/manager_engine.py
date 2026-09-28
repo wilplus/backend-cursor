@@ -602,6 +602,145 @@ def _split_withheld(
     return shown, withheld
 
 
+def _partition(cands: Iterable[Candidate], keep: Callable[[Candidate], bool],
+               reason: Callable[[Candidate], str]) -> tuple:
+    """``(kept, [(candidate, why)])``, both in input order."""
+    kept: list[Candidate] = []
+    dropped: list[tuple[Candidate, str]] = []
+    for c in cands:
+        if keep(c):
+            kept.append(c)
+        else:
+            dropped.append((c, reason(c)))
+    return kept, dropped
+
+
+def _per_group_selection(independent: list, cap: int,
+                         group_of: Callable[[Candidate], Any],
+                         spent_by_group: Optional[Mapping[Any, int]]) -> list:
+    """Walk the independent set in RANK ORDER; a group that fills up stops
+    taking while the rest keep drawing."""
+    spent = dict(spent_by_group or {})
+    taken: dict = {}
+    selected = []
+    for c in independent:
+        g = group_of(c)
+        room = cap - max(0, int(spent.get(g, 0) or 0)) - taken.get(g, 0)
+        if room > 0:
+            selected.append(c)
+            taken[g] = taken.get(g, 0) + 1
+    return selected
+
+
+def _budget_selection(independent: list, user: UserState, *,
+                      budget_limit: Optional[int], budget_spent: int,
+                      group_of: Optional[Callable[[Candidate], Any]],
+                      spent_by_group: Optional[Mapping[Any, int]]) -> tuple:
+    """``(selected, n)`` — step 5, the budget.
+
+    Flat, not length-scaled (H.1), minus what has already been spent
+    (founder 2026-08-10): decided interventions keep their slots, so the set
+    on screen is chosen once and only shrinks.
+
+    PER GROUP when the caller supplies one (founder 2026-08-11: "do it per
+    slide up to 2"). The walk is in RANK ORDER over the same independent
+    set, so a group that fills up stops taking while the rest keep drawing —
+    which is the only way a cap counted in one unit can be spent in another
+    without re-ranking. `group_of` absent reproduces the flat cap exactly,
+    and the group cap is the SAME budget() the flat one uses, so a NOVICE
+    still gets one (per slide now, not per take) and the H.1 reasoning
+    survives the regrouping."""
+    cap = (max(0, int(budget_limit)) if budget_limit is not None
+           else budget(user, independent))
+    if group_of is None:
+        n = max(0, cap - max(0, int(budget_spent or 0)))
+        return independent[:n], n
+    selected = _per_group_selection(independent, cap, group_of,
+                                    spent_by_group)
+    return selected, len(selected)
+
+
+def _exploration_drop(swap: Candidate, counterfactual: list,
+                      group_of: Optional[Callable[[Candidate], Any]],
+                      protected: set) -> Optional[Candidate]:
+    """The selected note that gives up its slot to the swap, or None."""
+    if group_of is None:
+        return next((c for c in reversed(counterfactual)
+                     if c.dimension not in protected), None)
+    # WITHIN THE SWAP'S OWN GROUP, so the trade cannot push a slide to
+    # three. The lowest-ranked selected member of that group gives up the
+    # slot; if the group somehow holds none, there is no slot to trade and
+    # exploration sits this one out.
+    g = group_of(swap)
+    mine = [c for c in counterfactual
+            if group_of(c) == g and c.dimension not in protected]
+    return mine[-1] if mine else None
+
+
+def _explore(selected: list, counterfactual: list, independent: list, n: int,
+             *, roll: Optional[Callable[[], float]], exploration_rate: float,
+             group_of: Optional[Callable[[Candidate], Any]],
+             protected: set) -> tuple:
+    """``(selected, explored)`` — step 7, the exploration quota: surface
+    rank 2 or 3, log the road not taken.
+
+    `n > 0` is load-bearing: exploration REPLACES a slot, it never adds one,
+    and on a spent budget `selected[:-1] + [swap]` over an empty selection
+    would serve one note past the take's ceiling. `roll` is only drawn once
+    every other condition holds, exactly as before."""
+    if roll is None or n <= 0 or len(independent) <= n:
+        return selected, False
+    if not (roll() < exploration_rate):
+        return selected, False
+    chosen = {id(c) for c in counterfactual}
+    # The best-ranked candidate that just MISSED — identical to
+    # `independent[n]` under the flat cap, and still correct when the
+    # selection was made per group (where index n may already be in).
+    swap = next((c for c in independent if id(c) not in chosen), None)
+    if swap is None:
+        return selected, False
+    drop = _exploration_drop(swap, counterfactual, group_of, protected)
+    if drop is None:
+        return selected, False
+    selected = [c for c in selected if c.ref != drop.ref]
+    selected.append(replace(swap, form=on_unacted(swap.k), exploration=True))
+    return selected, True
+
+
+def _arbitration_record(*, selected: list, counterfactual: list,
+                        explored: bool, n: int, everything: list,
+                        rejected: list, withheld: list, protected: set,
+                        independent: list, exploration_rate: float) -> dict:
+    """The selection AND the counterfactual, as the caller persists it."""
+    return {
+        "selected": selected,
+        "counterfactual": counterfactual,
+        "exploration": explored,
+        "budget": n,
+        "considered": len(everything),
+        "rejected": [(c.dimension, why) for c, why in rejected],
+        # THE EXPERIMENT'S RECORD. Whoever persists this must store all three
+        # arms, not just what surfaced — an outcome with no arm attached is
+        # an observation, and the whole point of the controls is that these
+        # are not observations.
+        "withheld": [c.dimension for c in withheld],
+        "protected": sorted(protected),
+        # RANKED, UNCOLLIDED, AND BEATEN ONLY BY THE BUDGET. These had no arm
+        # row at all: arm_rows walks selected / withheld / control / rejected,
+        # and a budget loser is in none of those — so "one row per CONSIDERED
+        # dimension", the property the table exists for, quietly did not hold
+        # for them. It went unnoticed while the cap was 3 and pools were
+        # small; a cap of 2 per slide makes budget losers routine.
+        "budget_lost": [c.dimension for c in independent
+                        if id(c) not in {id(x) for x in counterfactual}],
+        "arms": {
+            "intervention_randomisation": INTERVENTION_RANDOMISATION,
+            "epsilon_explore": exploration_rate,
+            "withhold_salt": WITHHOLD_SALT,
+        },
+    }
+
+
 def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
               session_id: str = "",
               take_index: Optional[int] = None,
@@ -648,21 +787,16 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     pool = list(everything)
 
     # 1 · certainty floor — per-detector PPV, never global accuracy      (H.2)
-    live = []
-    for c in pool:
-        if may_submit(c):
-            live.append(c)
-        else:
-            rejected.append((c, f"ppv {c.ppv:.2f} < {PPV_FLOOR}"))
+    live, dropped = _partition(
+        pool, may_submit, lambda c: f"ppv {c.ppv:.2f} < {PPV_FLOOR}")
+    rejected.extend(dropped)
 
     # 2 · cooldown and mastery, with the spike escape                    (H.6)
-    passed = []
-    for c in live:
-        if not in_cooldown(user, c.dimension) or is_spike(c):
-            passed.append(c)
-        else:
-            rejected.append((c, "cooldown/mastery"))
-    live = passed
+    live, dropped = _partition(
+        live,
+        lambda c: not in_cooldown(user, c.dimension) or is_spike(c),
+        lambda c: "cooldown/mastery")
+    rejected.extend(dropped)
 
     # 3 · priority                                          (§8.2, B.4, H.3)
     live = [replace(c, priority=priority(c, user, importance=importance))
@@ -671,83 +805,31 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
     # A grade-C dimension has effect_size 0.0, so its priority is exactly 0
     # and it can never win. Dropped explicitly rather than left to sort last:
     # the §11.1 grade gate and this formula must not drift apart (D18).
-    scored: list[Candidate] = []
-    zeroed: list[Candidate] = []
-    for c in live:
-        (scored if c.priority > 0 else zeroed).append(c)
-    rejected.extend((c, "grade C — effect_size 0.0") for c in zeroed)
+    scored, dropped = _partition(
+        live, lambda c: c.priority > 0,
+        lambda c: "grade C — effect_size 0.0")
+    rejected.extend(dropped)
 
     # 4 · collisions, which is also the independence count               (H.5)
     independent = independent_subset(scored)
-    dropped = {id(c) for c in independent}
-    rejected.extend((c, "collision") for c in scored if id(c) not in dropped)
+    kept_ids = {id(c) for c in independent}
+    rejected.extend((c, "collision") for c in scored if id(c) not in kept_ids)
 
-    # 5 · budget — flat, not length-scaled                               (H.1)
-    #     minus what has already been spent (founder 2026-08-10): decided
-    #     interventions keep their slots, so the set on screen is chosen
-    #     once and only shrinks.
-    #
-    #     PER GROUP when the caller supplies one (founder 2026-08-11: "do it
-    #     per slide up to 2"). The walk is in RANK ORDER over the same
-    #     independent set, so a group that fills up stops taking while the
-    #     rest keep drawing — which is the only way a cap counted in one unit
-    #     can be spent in another without re-ranking. `group_of` absent
-    #     reproduces the flat cap exactly, and the group cap is the SAME
-    #     budget() the flat one uses, so a NOVICE still gets one (per slide
-    #     now, not per take) and the H.1 reasoning survives the regrouping.
-    cap = (max(0, int(budget_limit)) if budget_limit is not None
-           else budget(user, independent))
-    if group_of is None:
-        n = max(0, cap - max(0, int(budget_spent or 0)))
-        selected = independent[:n]
-    else:
-        spent = dict(spent_by_group or {})
-        taken: dict = {}
-        selected = []
-        for c in independent:
-            g = group_of(c)
-            room = cap - max(0, int(spent.get(g, 0) or 0)) - taken.get(g, 0)
-            if room > 0:
-                selected.append(c)
-                taken[g] = taken.get(g, 0) + 1
-        n = len(selected)
+    # 5 · budget (H.1) — see _budget_selection.
+    selected, n = _budget_selection(
+        independent, user, budget_limit=budget_limit,
+        budget_spent=budget_spent, group_of=group_of,
+        spent_by_group=spent_by_group)
     counterfactual = list(selected)
 
     # 6 · form, for anything previously unacted                          (H.4)
     selected = [replace(c, form=on_unacted(c.k)) for c in selected]
 
-    # 7 · exploration quota — surface rank 2 or 3, log the road not taken.
-    #     `n > 0` is load-bearing: exploration REPLACES a slot, it never adds
-    #     one, and on a spent budget `selected[:-1] + [swap]` over an empty
-    #     selection would serve one note past the take's ceiling.
-    explored = False
-    if roll is not None and n > 0 and len(independent) > n \
-            and roll() < exploration_rate:
-        chosen = {id(c) for c in counterfactual}
-        # The best-ranked candidate that just MISSED — identical to
-        # `independent[n]` under the flat cap, and still correct when the
-        # selection was made per group (where index n may already be in).
-        swap = next((c for c in independent if id(c) not in chosen), None)
-        if swap is not None:
-            drop: Optional[Candidate]
-            if group_of is None:
-                drop = next((c for c in reversed(counterfactual)
-                             if c.dimension not in protected), None)
-            else:
-                # WITHIN THE SWAP'S OWN GROUP, so the trade cannot push a
-                # slide to three. The lowest-ranked selected member of that
-                # group gives up the slot; if the group somehow holds none,
-                # there is no slot to trade and exploration sits this one out.
-                g = group_of(swap)
-                mine = [c for c in counterfactual
-                        if group_of(c) == g
-                        and c.dimension not in protected]
-                drop = mine[-1] if mine else None
-            if drop is not None:
-                selected = [c for c in selected if c.ref != drop.ref]
-                selected.append(replace(swap, form=on_unacted(swap.k),
-                                        exploration=True))
-                explored = True
+    # 7 · exploration quota — see _explore.
+    selected, explored = _explore(
+        selected, counterfactual, independent, n, roll=roll,
+        exploration_rate=exploration_rate, group_of=group_of,
+        protected=protected)
 
     # 8 · intervention randomisation — a note that WON is not shown.
     #     Applied LAST, and the slot is CONSUMED rather than backfilled: the
@@ -762,30 +844,8 @@ def arbitrate(candidates: Iterable[Candidate], user: UserState, *,
             session_id=session_id, take_index=take_index,
         )
 
-    return {
-        "selected": selected,
-        "counterfactual": counterfactual,
-        "exploration": explored,
-        "budget": n,
-        "considered": len(everything),
-        "rejected": [(c.dimension, why) for c, why in rejected],
-        # THE EXPERIMENT'S RECORD. Whoever persists this must store all three
-        # arms, not just what surfaced — an outcome with no arm attached is
-        # an observation, and the whole point of the controls is that these
-        # are not observations.
-        "withheld": [c.dimension for c in withheld],
-        "protected": sorted(protected),
-        # RANKED, UNCOLLIDED, AND BEATEN ONLY BY THE BUDGET. These had no arm
-        # row at all: arm_rows walks selected / withheld / control / rejected,
-        # and a budget loser is in none of those — so "one row per CONSIDERED
-        # dimension", the property the table exists for, quietly did not hold
-        # for them. It went unnoticed while the cap was 3 and pools were
-        # small; a cap of 2 per slide makes budget losers routine.
-        "budget_lost": [c.dimension for c in independent
-                        if id(c) not in {id(x) for x in counterfactual}],
-        "arms": {
-            "intervention_randomisation": INTERVENTION_RANDOMISATION,
-            "epsilon_explore": exploration_rate,
-            "withhold_salt": WITHHOLD_SALT,
-        },
-    }
+    return _arbitration_record(
+        selected=selected, counterfactual=counterfactual, explored=explored,
+        n=n, everything=everything, rejected=rejected, withheld=withheld,
+        protected=protected, independent=independent,
+        exploration_rate=exploration_rate)
