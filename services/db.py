@@ -14680,6 +14680,81 @@ class DatabaseService:
         return [row.get("observed_tags") or [] for row in res.data or []
                 if isinstance(row, dict)]
 
+    # ---- step 8 prep: the learning-readiness count ------------------------
+    # Each read raises on failure: the count names an unreadable source
+    # instead of reading it as zero (services/exercise_learning_readiness.py).
+
+    @staticmethod
+    def _chunks(ids: list[str], size: int = 100) -> list[list[str]]:
+        return [ids[i:i + size] for i in range(0, len(ids), size)]
+
+    def list_exercise_exposures(self) -> list[dict]:
+        """Every confirmed exercise render (migration 0387), paged so the
+        server's row cap can never cut the count short."""
+        rows: list[dict] = []
+        page = 1000
+        while True:
+            res = (self.client.table("confident_voice_exercise_exposures")
+                   .select("assignment_id,owner_user_id,exercise_id,"
+                           "exercise_version,rendered_at")
+                   .order("rendered_at").order("assignment_id")
+                   .range(len(rows), len(rows) + page - 1).execute())
+            batch = list(res.data or [])
+            rows.extend(batch)
+            if len(batch) < page:
+                return rows
+
+    def get_exercise_assignments(self, ids: list[str]) -> dict[str, dict]:
+        """The 80/20 facts of these assignments (0372), by id."""
+        out: dict[str, dict] = {}
+        for chunk in self._chunks(ids):
+            res = (self.client.table("confident_voice_exercise_assignments")
+                   .select("id,selection_mode,below_minimum_probability")
+                   .in_("id", chunk).execute())
+            out.update({str(r["id"]): r for r in res.data or []
+                        if isinstance(r, dict) and r.get("id")})
+        return out
+
+    def get_exercise_match_traces(self, ids: list[str]) -> dict[str, dict]:
+        """The frozen trace of each assignment (0384), by assignment id."""
+        out: dict[str, dict] = {}
+        for chunk in self._chunks(ids):
+            res = (self.client.table("confident_voice_exercise_match_traces")
+                   .select("assignment_id,trace")
+                   .in_("assignment_id", chunk).execute())
+            for row in res.data or []:
+                if isinstance(row, dict) and isinstance(row.get("trace"), dict):
+                    out[str(row["assignment_id"])] = row["trace"]
+        return out
+
+    def get_practices_for_assignments(self, ids: list[str]) -> dict[str, dict]:
+        """The first practice opened on each assignment, by assignment id."""
+        out: dict[str, dict] = {}
+        for chunk in self._chunks(ids):
+            res = (self.client.table("confident_voice_practice")
+                   .select("id,created_at,"
+                           "assignment_id:machine_assessment->>exercise_assignment_id")
+                   .in_("machine_assessment->>exercise_assignment_id", chunk)
+                   .order("created_at").execute())
+            for row in res.data or []:
+                key = str((row or {}).get("assignment_id") or "")
+                if key and key not in out:
+                    out[key] = row
+        return out
+
+    def list_attempts_for_practices(self, ids: list[str]) -> dict[str, list[dict]]:
+        """Each practice's saved attempts, without audio or transcript."""
+        out: dict[str, list[dict]] = {}
+        for chunk in self._chunks(ids):
+            res = (self.client.table("confident_voice_practice_attempt")
+                   .select("practice_id,attempt_index,duration_ms,audio_ref,"
+                           "acoustic_metrics")
+                   .in_("practice_id", chunk).execute())
+            for row in res.data or []:
+                if isinstance(row, dict) and row.get("practice_id"):
+                    out.setdefault(str(row["practice_id"]), []).append(row)
+        return out
+
     def list_exercise_coach_requests(self, since: str) -> list[dict]:
         """Coach requests made since `since` (migration 0385), without their
         traces. Raises on failure."""

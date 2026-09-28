@@ -238,6 +238,10 @@ Raw horizons stay separate and are all still stored:
 8. **Minimum evidence.** No learned ranking may be evaluated for promotion
    before at least **300** first-exposure attempts with a valid endpoint, and
    at least **30** for every exercise it would rank.
+   `services/exercise_learning_readiness.py` counts toward this bar
+   (`POST /v2/internal/journal/exercise-learning-readiness`, or
+   `scripts/exercise_learning_readiness.py`). It counts only; it never
+   computes whether an exercise helped.
 9. **Promotion.** A learned ranker replaces the fixed ranking only when, on
    held-out speakers:
    - its estimated success rate is **at least 5 points higher**, with the 95%
