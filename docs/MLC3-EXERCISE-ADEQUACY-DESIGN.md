@@ -247,8 +247,8 @@ Raw horizons stay separate and are all still stored:
    returning only the counter's reason — until this bar is met. No route
    serves it. `services/exercise_fair_test.py` (the fair-test calculator)
    grades a candidate ranker against the fixed ranking under items 6, 7 and
-   9: a stable speaker split (`exercise-speaker-split-v1`, 30% held out —
-   the share is a founder call), inverse-propensity weighting on the stored
+   9: a stable speaker split (`exercise-speaker-split-v1`, 30% held out,
+   confirmed by the founder 2026-09-28), inverse-propensity weighting on the stored
    80/20 odds, a speaker-resampled 95% interval, and the +5-point / interval
    above zero / attempt-rate guardrail. It is sealed the same way, never
    promotes, and always returns `requires_founder_approval`.
