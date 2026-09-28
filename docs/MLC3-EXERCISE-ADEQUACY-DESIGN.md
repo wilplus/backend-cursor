@@ -291,13 +291,24 @@ above the background in one recording.**
   snapshot and every practice attempt as `noise_separation_db` and
   `noise_meter_version`.
 
-**Silent.** No rule reads it: not the clip gate, the eligibility verdict,
-attempt validity, the counter, the scorekeeper or the fair test. It does
-not write `audio_quality`. Nothing reaches a speaker (AC-9). Switching it
-on is a separate founder decision, taken only after checking it against
-what a person hears on a sample of recordings. That decision sets a
-threshold, names the gate it joins, and versions the rule
-(`SIGNAL_RULES_VERSION` or the validity rule).
+**The switch: built, OFF** (founder 2026-09-28).
+`NOISE_GATE_MIN_SEPARATION_DB` in `services/confident_voice_practice.py` is
+`None`, so no recording is skipped for noise. When it is set to a cut-off
+(say 12), the clip gate's reliable-audio rule (`_audio_reliable`) treats a
+recording whose `separation_db` is below the cut-off as unreliable.
+- An original clip below it gets no exercise, and the trace records the
+  reason `audio_quality`.
+- A practice attempt below it is not a valid endpoint, so the counter
+  leaves it out as "no usable try".
+- A recording with no reading (older ones, or too short to judge) is never
+  skipped.
+- The rule in force (`noise-gate-v1:off` or, for example,
+  `noise-gate-v1:12db`) is recorded in every match trace
+  (`gate.noise_gate_version`) and in the learning counter.
+
+Nothing reaches a speaker (AC-9). Switching it on is a reviewed PR that sets
+the number, made only after the meter has been checked against what a
+person hears on a sample of recordings. It is the founder's call.
 
 ## 4. Selection and exposure policy
 
