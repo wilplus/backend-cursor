@@ -12,10 +12,16 @@ score, rank or selection hint; and the slice-4 health function reports a
 safe state throughout.
 
 What is NOT rehearsed here, and why: the D5 coach batch joins the stored
-span to an exercise audio lineage, which needs a learning profile and an
-exercise-service authority check (MLC-3 fixtures outside this chain). The
-identity that join compares — object store, bucket, key, sha256, byte size,
-and the span's start and end — is asserted directly against the stored rows.
+span to an exercise audio lineage through ``exercise_evidence_matches_audio_v1``,
+whose lineage row needs a Phase-1 authorization snapshot (policy, receipt,
+purpose), a learning profile and an exercise-service authority check. That
+join is not executed. What is asserted is narrower: the stored span's
+coordinates equal the snippet's offsets, and the stored object's store,
+bucket, key, sha256 and byte size equal the source manifest. The join
+additionally requires those to equal the Phase-1 registered
+``processing_audio_objects`` row and the lineage's own hash, which this
+suite does not seed. Rehearsing the join is a follow-up that seeds the
+Phase-1 chain.
 
 Nothing here changes any application flag: the RPCs are invoked directly,
 exactly as ``tests/integration/mlc2_confidence_slice4_rehearsal.sql`` does,
@@ -306,13 +312,33 @@ class TestTheFrameIsStored:
 
     def test_the_runs_record_the_foundation_detector_and_the_policy(self, chain):
         cur = chain["cur"]
+        set_id = _candidate_set_id(chain)
+        sel = _one(cur, "SELECT s.exploration_probability, s.selection_policy_version, "
+                        "s.classification_run_id, s.rng_seed, s.rng_draws "
+                        "FROM public.ml_candidate_sets c "
+                        "JOIN public.ml_selection_runs s ON s.model_run_id = c.selection_run_id "
+                        "WHERE c.id = %s", (set_id,))
+        assert float(sel["exploration_probability"]) == 0.2
         run = _one(cur, "SELECT detector_version, taxonomy_version, threshold_version "
-                        "FROM public.ml_classification_runs ORDER BY created_at DESC LIMIT 1")
+                        "FROM public.ml_classification_runs WHERE model_run_id = %s",
+                   (sel["classification_run_id"],))
         assert run["detector_version"] == "voice-confidence-universal-v3"
         assert run["taxonomy_version"] == "conf-q-v2"
-        sel = _one(cur, "SELECT exploration_probability, selection_policy_version "
-                        "FROM public.ml_selection_runs ORDER BY created_at DESC LIMIT 1")
-        assert float(sel["exploration_probability"]) == 0.2
+        assert run["threshold_version"] == "voice-confidence-thresholds-v3"
+
+    def test_the_stored_draw_can_be_rederived_by_the_databases_own_rng(self, chain):
+        """The worker's sha256 counter is exercise_rng_draw_v1's construction:
+        the recorded draw equals the SQL function's value for the stored seed
+        and the draw's index, so a selection can be re-checked in SQL."""
+        cur = chain["cur"]
+        set_id = _candidate_set_id(chain)
+        sel = _one(cur, "SELECT s.rng_seed, s.rng_draws FROM public.ml_candidate_sets c "
+                        "JOIN public.ml_selection_runs s ON s.model_run_id = c.selection_run_id "
+                        "WHERE c.id = %s", (set_id,))
+        for draw in sel["rng_draws"]:
+            sql = _one(cur, "SELECT public.exercise_rng_draw_v1(convert_to(%s, 'UTF8'), %s) AS v",
+                       (sel["rng_seed"], f":{draw['index']}"))["v"]
+            assert abs(float(sql) - float(draw["value"])) < 1e-12
 
 
 class TestAReplayChangesNothing:
@@ -328,7 +354,9 @@ class TestAReplayChangesNothing:
             _count(cur, "SELECT count(*) FROM public.ml_evidence_spans WHERE take_id = %s", (chain["attempt"],)),
         )
         assert before == after == (1, 5)
-        assert again
+        assert again["idempotent_replay"] is True
+        assert str(again["candidate_set_id"]) == str(_candidate_set_id(chain))
+        assert chain["result"]["idempotent_replay"] is False
 
 
 class TestTheBlindPacket:

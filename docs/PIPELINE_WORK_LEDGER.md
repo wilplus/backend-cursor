@@ -1910,10 +1910,16 @@ candidate carries no transcript, prediction, score, rank or selection hint
 **Broke and fixed:** none. The released lane's narrow `snippets` copy had no
 `metrics` column (production stamps the delivery-signal read there); the
 recipe now widens it, released lane only, as the widen files do.
-**Open for the founder:** the D5 coach batch joins a stored span to an
-exercise audio lineage, which needs a learning profile and an
-exercise-service authority check; the identity that join compares is
-asserted directly, the join itself is not rehearsed here. Everything a
-`founder_canary` activation needs from code is now in place; what remains is
-readiness (canary principal id on every service, monitoring and Sentry on,
-the bundled consent grant present) and the reviewed constant change.
+**Open for the founder:** two things this rehearsal does not cover. The D5
+coach batch joins a stored span to an exercise audio lineage
+(`exercise_evidence_matches_audio_v1`), whose row needs the Phase-1
+authorization chain, a learning profile and an authority check; the suite
+asserts the span and object identity against the source manifest, not
+against a Phase-1 registered object or a lineage, so that join is not
+rehearsed. And the MLC-2 blind packet, ack, judgment and reveal RPCs still
+have no application caller (audit G-6 body); the only judgment path is the
+D5 inline route behind `MLC3_COACH_INLINE_AUTHORING_ENABLED`. The producer
+half is rehearsed; a `founder_canary` activation additionally needs a
+caller for the coach side, readiness (canary principal id on every service,
+monitoring and Sentry on, the bundled consent grant present) and the
+reviewed constant change.
