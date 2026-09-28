@@ -161,6 +161,141 @@ def _transcript_snapshot(
     }
 
 
+def _snippet_span(piece: Optional[dict], transcript_text: str) -> tuple:
+    """``(start, end, exact_text)`` of the snippet in the Take transcript,
+    or all None when the piece has no valid span."""
+    if not piece:
+        return None, None, None
+    start, end = _int(piece.get("start")), _int(piece.get("end"))
+    if (start is not None and end is not None
+            and 0 <= start < end <= len(transcript_text)):
+        return start, end, transcript_text[start:end]
+    return None, None, None
+
+
+def _target_span(row: dict, served_text: str) -> tuple:
+    """``(start, end, text)`` of the row's span on the served Ideal Text;
+    the text is None when the span does not fit it."""
+    raw_target_span = row.get("span")
+    target_span: dict = raw_target_span if isinstance(
+        raw_target_span, dict) else {}
+    target_start = _int(target_span.get("start"))
+    target_end = _int(target_span.get("end"))
+    target_text = None
+    if (target_start is not None and target_end is not None
+            and 0 <= target_start < target_end <= len(served_text)):
+        target_text = served_text[target_start:target_end]
+    return target_start, target_end, target_text
+
+
+def _transcript_words(family: str, transcript_text: str,
+                      target_text: Optional[str], snippet: tuple) -> tuple:
+    """``(start, end, exact_text, target_matches_transcript)``.
+
+    For verbal evidence prefer the exact target words in the Take transcript.
+    If they are absent, retain the exact snippet span but mark the candidate
+    research-only. This preserves evidence without inventing equivalence."""
+    start, end, exact_text = snippet
+    if family != "confident_voice" and target_text:
+        located = transcript_text.find(target_text)
+        if located >= 0:
+            return located, located + len(target_text), target_text, True
+        return start, end, exact_text, False
+    if family == "confident_voice":
+        return start, end, exact_text, exact_text is not None
+    return start, end, exact_text, False
+
+
+def _transcript_paragraph(document: dict, transcript: dict,
+                          start: Optional[int]) -> tuple:
+    """``(paragraph_index, paragraph)`` holding ``start``, or None for the
+    paragraph when the transcript has no such paragraph."""
+    paragraph_index = (
+        _paragraph_index(document, start) if start is not None else None
+    )
+    paragraph = (
+        transcript["paragraphs"][paragraph_index]
+        if paragraph_index is not None
+        and paragraph_index < len(transcript["paragraphs"])
+        else None
+    )
+    return paragraph_index, paragraph
+
+
+def _evidence_slide(piece: Optional[dict], paragraph: dict) -> int:
+    """The piece's own slide, else its paragraph's."""
+    piece_slide = piece.get("slide_index") if piece else None
+    return _normalized_slide(
+        piece_slide if _int(piece_slide) is not None
+        else paragraph.get("slide_index")
+    )
+
+
+def _audio_window(piece: Optional[dict]) -> tuple:
+    """``(start_ms, duration_ms, end_ms)``; end_ms only for a real clip."""
+    start_ms = _int((piece or {}).get("start_offset_ms"))
+    duration_ms = _int((piece or {}).get("duration_ms"))
+    end_ms = (
+        start_ms + duration_ms
+        if start_ms is not None and start_ms >= 0
+        and duration_ms is not None and duration_ms > 0
+        else None
+    )
+    return start_ms, duration_ms, end_ms
+
+
+def _evidence_kind(family: str, end_ms: Optional[int], start_ms: Optional[int],
+                   replacement: Optional[str]) -> Optional[tuple[str, str]]:
+    """``(evidence_kind, task_type)``, or None when the family's evidence is
+    missing: Confident Voice needs a clip, a rewrite a replacement."""
+    if family == "confident_voice":
+        if start_ms is None or end_ms is None:
+            return None
+        return "audio_and_transcript", "confidence_classification"
+    if family == "rewrite_clarity":
+        if not replacement:
+            return None
+        return "correction_pair", "correction_selection"
+    return "transcript_span", "praise_selection"
+
+
+def _target_locator(served_text: str, document_snapshot_id: Optional[str],
+                    document_surface_sha256: Optional[str],
+                    target: tuple) -> Optional[tuple]:
+    """``(locator, locator_sha256)``: both None for an unbound call, or None
+    when a snapshot-bound call does not match the served surface exactly."""
+    snapshot_bound = (
+        document_snapshot_id is not None or document_surface_sha256 is not None
+    )
+    if not snapshot_bound:
+        # Historical/synthetic callers are explicitly non-snapshot-bound.
+        # Text equality can never upgrade them to a locator after the fact.
+        return None, None
+    target_start, target_end, target_text = target
+    if (
+        not isinstance(document_snapshot_id, str)
+        or not document_snapshot_id
+        or not isinstance(document_surface_sha256, str)
+        or document_surface_sha256
+        != hashlib.sha256(served_text.encode("utf-8")).hexdigest()
+        or target_text is None
+    ):
+        return None
+    locator = {
+        "version": "ideal-text-target-locator-v1",
+        "surface": "ideal_text",
+        "surface_hash": document_surface_sha256,
+        "start": target_start,
+        "end": target_end,
+        "exact_text": target_text,
+    }
+    locator_sha256 = content_hash({
+        "document_snapshot_id": document_snapshot_id,
+        "locator": locator,
+    })
+    return locator, locator_sha256
+
+
 def _exact_transcript_evidence(
     *, family: str, row: dict, document: dict, transcript: dict,
     served_text: str, document_snapshot_id: Optional[str] = None,
@@ -171,109 +306,29 @@ def _exact_transcript_evidence(
     piece = pieces.get(snippet_id)
     transcript_text = transcript["text"]
 
-    start = end = None
-    exact_text = None
-    if piece:
-        start, end = _int(piece.get("start")), _int(piece.get("end"))
-        if (start is not None and end is not None
-                and 0 <= start < end <= len(transcript_text)):
-            exact_text = transcript_text[start:end]
-        else:
-            start = end = None
-
-    raw_target_span = row.get("span")
-    target_span: dict = raw_target_span if isinstance(
-        raw_target_span, dict) else {}
-    target_start = _int(target_span.get("start"))
-    target_end = _int(target_span.get("end"))
-    target_text = None
-    if (target_start is not None and target_end is not None
-            and 0 <= target_start < target_end <= len(served_text)):
-        target_text = served_text[target_start:target_end]
-
-    # For verbal evidence prefer the exact target words in the Take transcript.
-    # If they are absent, retain the exact snippet span but mark the candidate
-    # research-only. This preserves evidence without inventing equivalence.
-    target_matches_transcript = False
-    if family != "confident_voice" and target_text:
-        located = transcript_text.find(target_text)
-        if located >= 0:
-            start, end, exact_text = located, located + len(target_text), target_text
-            target_matches_transcript = True
-    elif family == "confident_voice":
-        target_matches_transcript = exact_text is not None
-
-    paragraph_index = (
-        _paragraph_index(document, start) if start is not None else None
-    )
-    paragraph = (
-        transcript["paragraphs"][paragraph_index]
-        if paragraph_index is not None
-        and paragraph_index < len(transcript["paragraphs"])
-        else None
-    )
+    target = _target_span(row, served_text)
+    start, end, exact_text, target_matches_transcript = _transcript_words(
+        family, transcript_text, target[2],
+        _snippet_span(piece, transcript_text))
+    paragraph_index, paragraph = _transcript_paragraph(
+        document, transcript, start)
     if not paragraph or start is None or end is None or not exact_text:
         return None
 
-    piece_slide = piece.get("slide_index") if piece else None
-    slide_index = _normalized_slide(
-        piece_slide if _int(piece_slide) is not None
-        else paragraph.get("slide_index")
-    )
-    start_ms = _int((piece or {}).get("start_offset_ms"))
-    duration_ms = _int((piece or {}).get("duration_ms"))
-    end_ms = (
-        start_ms + duration_ms
-        if start_ms is not None and start_ms >= 0
-        and duration_ms is not None and duration_ms > 0
-        else None
-    )
+    slide_index = _evidence_slide(piece, paragraph)
+    start_ms, duration_ms, end_ms = _audio_window(piece)
 
     replacement = str(row.get("proposed_text") or "").strip() or None
-    if family == "confident_voice":
-        if start_ms is None or end_ms is None:
-            return None
-        kind = "audio_and_transcript"
-        task_type = "confidence_classification"
-    elif family == "rewrite_clarity":
-        if not replacement:
-            return None
-        kind = "correction_pair"
-        task_type = "correction_selection"
-    else:
-        kind = "transcript_span"
-        task_type = "praise_selection"
+    kind_and_task = _evidence_kind(family, end_ms, start_ms, replacement)
+    if kind_and_task is None:
+        return None
+    kind, task_type = kind_and_task
 
-    snapshot_bound = (
-        document_snapshot_id is not None or document_surface_sha256 is not None
-    )
-    if snapshot_bound:
-        if (
-            not isinstance(document_snapshot_id, str)
-            or not document_snapshot_id
-            or not isinstance(document_surface_sha256, str)
-            or document_surface_sha256
-            != hashlib.sha256(served_text.encode("utf-8")).hexdigest()
-            or target_text is None
-        ):
-            return None
-        locator = {
-            "version": "ideal-text-target-locator-v1",
-            "surface": "ideal_text",
-            "surface_hash": document_surface_sha256,
-            "start": target_start,
-            "end": target_end,
-            "exact_text": target_text,
-        }
-        locator_sha256 = content_hash({
-            "document_snapshot_id": document_snapshot_id,
-            "locator": locator,
-        })
-    else:
-        # Historical/synthetic callers are explicitly non-snapshot-bound.
-        # Text equality can never upgrade them to a locator after the fact.
-        locator = None
-        locator_sha256 = None
+    bound = _target_locator(served_text, document_snapshot_id,
+                            document_surface_sha256, target)
+    if bound is None:
+        return None
+    locator, locator_sha256 = bound
     evidence_identity = {
         "take_id": row.get("take_session_id") or document.get("take_session_id"),
         "snippet_id": snippet_id,
@@ -289,14 +344,15 @@ def _exact_transcript_evidence(
         "target_locator_sha256": locator_sha256,
     }
     evidence_hash = content_hash(evidence_identity)
+    clip = piece or {}
     return {
         "id": _stable_uuid("evidence", evidence_hash),
-        "recording_id": (piece or {}).get("recording_id"),
+        "recording_id": clip.get("recording_id"),
         "legacy_piece_id": snippet_id or None,
         "uses_transcript": True,
         "evidence_kind": kind,
         "task_type": task_type,
-        "audio_ref": (piece or {}).get("audio_ref"),
+        "audio_ref": clip.get("audio_ref"),
         "start_ms": start_ms,
         "end_ms": end_ms,
         "start_char": start,
@@ -310,7 +366,7 @@ def _exact_transcript_evidence(
         "target_locator_sha256": locator_sha256,
         "technical_metadata": {
             "duration_ms": duration_ms,
-            "language": (piece or {}).get("language"),
+            "language": clip.get("language"),
         },
         "evidence_hash": evidence_hash,
         "input_hash": content_hash(evidence_identity),
