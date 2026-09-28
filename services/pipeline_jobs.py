@@ -932,7 +932,10 @@ def run_processing_job(job_id: str) -> None:
     attempts = int(job.get("attempts") or 0)
     max_attempts = int(job.get("max_attempts") or 3)
     if status == "processing" and _worker_still_plausible(job):
-        return  # another worker is live on it — let it finish
+        # Another worker is live on it — let it finish.
+        logger.info("pipeline_jobs: job %s already running elsewhere "
+                    "(attempt %d), standing down", job_id, attempts)
+        return
     if attempts >= max_attempts:
         _fail_terminal_for_job(
             job, str(job.get("error") or "attempt cap reached"))
@@ -944,12 +947,19 @@ def run_processing_job(job_id: str) -> None:
 
     claimed = db.claim_processing_job(str(job.get("id")), attempts)
     if not claimed:
-        return  # lost the claim race — exactly one runner proceeds
+        # Lost the claim race — exactly one runner proceeds. A failed claim
+        # write lands here too, so say so: this exit used to be silent.
+        logger.warning("pipeline_jobs: job %s not claimed (attempts=%d, "
+                       "status=%s), leaving it to its current owner or "
+                       "the sweeper", job_id, attempts, status)
+        return
 
     jid = str(claimed.get("id"))
     try:
         _sync_phase1_job(claimed, "processing")
     except Exception as sync_error:
+        logger.error("pipeline_jobs: job %s Phase-1 sync failed on claim: %s",
+                     jid, sync_error)
         db.finish_processing_job(
             jid, "failed", error=f"Phase-1 job sync failed: {sync_error}",
         )

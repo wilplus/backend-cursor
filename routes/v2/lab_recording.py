@@ -636,6 +636,22 @@ def _require_session_processing_authority(session: dict, operation: str) -> None
     service.require_current(acquisition_principal_id, operation=operation)
 
 
+def _log_outcome(status, session_id, code, **extra) -> None:
+    """One line per upload, whatever the answer.
+
+    Every refusal below used to return without a trace, and the success path
+    logged nothing either, so a Take that never reached the worker left no
+    line anywhere to say why (2026-09-28: "processing doesn't even start").
+    Codes and ids only: the response body, not the log, carries the wording.
+    """
+    fields = " ".join(f"{k}={v}" for k, v in extra.items() if v is not None)
+    logger.log(
+        logging.INFO if int(status) < 400 else logging.WARNING,
+        "lab/recordings POST %s code=%s sid=%s%s",
+        status, code, session_id, f" {fields}" if fields else "",
+    )
+
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
 @whisper_limit
 @optional_auth
@@ -660,23 +676,30 @@ def v2_lab_create_recording():
             operation="recording",
         )
         if project.duplicate_take:
+            _log_outcome(200, session_id, "duplicate_take")
             return jsonify(_duplicate_take_response(project)), 200
         upload = _prepare_lab_upload(form, project, user_id)
         persisted = _persist_lab_take(upload, user_id)
         session_id = persisted.session_id
         payload, status = _analysis_response(upload, persisted, user_id)
+        _log_outcome(status, session_id, payload.get("state") or "accepted",
+                     job=payload.get("job_id"))
         return jsonify(payload), status
     except (CreateTakeError, RecordingIntakeError) as error:
+        _log_outcome(error.status, session_id, error.code)
         return jsonify({"code": error.code, "error": error.message}), error.status
     except ProcessingAuthorizationError as error:
+        _log_outcome(error.status, session_id, error.code)
         return jsonify({"code": error.code, "error": error.message}), error.status
     except RecordingRejected as error:
+        _log_outcome(422, session_id, "RECORDING_REJECTED", gate=error.gate)
         return jsonify({
             "code": "RECORDING_REJECTED",
             "error": "No speech detected — try recording again.",
             "gate": error.gate,
         }), 422
     except RecordingPersistenceError as error:
+        _log_outcome(500, session_id, "V2_ERROR", detail=error.message)
         return jsonify({"code": "V2_ERROR", "error": error.message}), 500
     except DeadlineExceeded as error:
         logger.warning("lab/recordings POST deadline: %s", error)
