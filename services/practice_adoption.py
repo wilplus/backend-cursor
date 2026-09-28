@@ -26,9 +26,16 @@ import re
 from collections.abc import Mapping
 from typing import Any, Optional
 
+from services.canonical_product import OWNER_RESPONSES
+
 logger = logging.getLogger(__name__)
 
-ANSWERS = ("yes", "in_between", "no", "not_sure", "audio_unclear")
+# The one vocabulary (audit D2), in the order the instrument offers it.
+ANSWERS = tuple(
+    answer for answer in ("yes", "in_between", "no", "not_sure", "audio_unclear")
+    if answer in OWNER_RESPONSES["confident_voice"]
+)
+assert set(ANSWERS) == set(OWNER_RESPONSES["confident_voice"])
 ADOPTING = frozenset({"yes", "in_between", "not_sure"})
 MAX_ATTEMPTS = 3
 

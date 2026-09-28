@@ -252,14 +252,31 @@ def test_the_legacy_routing_values_are_never_produced():
             album_routing_for(legacy)
 
 
-def test_the_take_review_route_stores_the_answer_whole():
-    """The route that used to fold in_between and not_sure into neutral now
-    hands the writer the answer itself, read from the route's own source so
-    a re-inlined derivation would fail here."""
-    import inspect
-    import routes.v2.user_sessions as user_sessions
+def test_the_take_review_route_hands_the_writer_the_answer_itself():
+    """The route's own routing step, called with a fake database: what the
+    writer receives is the answer, for every state the old fold collapsed."""
+    from unittest.mock import Mock
+    from routes.v2.user_sessions import _route_owner_voice_album
 
-    source = inspect.getsource(
-        inspect.unwrap(user_sessions.v2_post_take_feedback_response))
-    assert "album_routing_for(row[\"response\"])" in source
-    assert '"neutral"' not in source and '"unrateable"' not in source
+    for answer in ("in_between", "not_sure", "audio_unclear", "yes", "no"):
+        database = Mock()
+        database.get_snippet_by_id.return_value = {
+            "metrics": {"piece": {"slide_index": 3}},
+        }
+        database.upsert_owner_voice_album_route.return_value = True
+        assert _route_owner_voice_album(
+            database,
+            row={"snippet_id": "s1", "response": answer},
+            arc_id="arc-1", owner_user_id="u1",
+        )
+        database.upsert_owner_voice_album_route.assert_called_once_with(
+            snippet_id="s1", owner_user_id="u1", arc_id="arc-1",
+            response=answer, slide_index=3,
+        )
+
+
+def test_the_route_module_takes_the_derivation_from_the_responses_module():
+    import routes.v2.user_sessions as user_sessions
+    from services.take_feedback_responses import album_routing_for
+
+    assert user_sessions.album_routing_for is album_routing_for

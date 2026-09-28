@@ -80,11 +80,12 @@ Run it rather than trust this table — it is a convenience, and it goes stale:
 | a later Take proposes and never applies | green | — |
 | the words a speaker waits on name work, not judgement | green | — |
 
-None open, thirteen held (F-4 closed 2026-09-28) — and the table still
-undercounts, because #613 and #614 added two green lines without an entry
-here. F-4 was the last of the three the audit found against what a speaker
-sees; every other finding has its own regression test in its own file and
-does not appear here.
+No contract line open, thirteen held (F-4's line flipped 2026-09-28) — and
+the table still undercounts, because #613 and #614 added two green lines
+without an entry here. F-4's contract line was the last of the three the
+audit found against what a speaker sees; the finding itself is closed on the
+Take-review path only (see the WS-F4 entry). Every other finding has its own
+regression test in its own file and does not appear here.
 
 ---
 
@@ -1857,15 +1858,26 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
 ### 2026-09-28 · WS-F4 · f4-five-states-route-as-themselves · #755
 
-**Closed:** F-4.
+**Closed:** F-4 on the Take-review path only (the fold at
+`routes/v2/user_sessions.py`, leg (a) of the finding). Three legs stay open:
+(b) `db.upsert_owner_voice_album_route` still accepts the legacy pair; (c)
+the table has no `taxonomy_version` column and no trigger, so 0341's
+"audit-only, no new writes" is still enforced by comment; (d) the live
+`PUT /v2/user/snippets/<id>/confidence-agree` route (a ternary instrument
+with a BFF proxy and no frontend caller) still mints `neutral`/`unrateable`.
 **Contract lines flipped:** `test_each_of_the_five_states_routes_as_itself`
 xfail → passing (the contract's last open line; baseline before 13 passed /
 1 xfailed, after 14 passed / 0 xfailed).
 **Contract lines added:** none.
-**Broke and fixed:** none.
-**Open for the founder:** none. The legacy `PUT …/confidence-agree` route
-still writes `neutral`/`unrateable` by design of its ternary instrument and
-has no frontend caller; retiring it is a separate decision, not a defect.
+**Broke and fixed:** none. Found on the way: on `main` the practice start
+route refused (409) any clip answered through "Practice new", because that
+route already stored the five states and the matcher only knew the fold;
+`route_matches` fixes that.
+**Open for the founder:** legs (b)–(d) above are one decision: retire or
+410 `PUT …/confidence-agree` (and its frontend proxy), then narrow the
+writer to the five states and add the WS-7 trigger plus `taxonomy_version`
+with `tests/test_owner_voice_album_routing_postgres.py::test_new_neutral_write_is_rejected`.
+Not done here because it removes a live route.
 
 `album_routing_for` in `services/take_feedback_responses.py` is the one
 derivation and returns the answer itself; the Take-review route calls it.

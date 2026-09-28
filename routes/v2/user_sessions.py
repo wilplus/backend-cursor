@@ -39,6 +39,7 @@ from services.project_repository import ProjectRepository
 from services.snippet_values import resolve_all
 from services.take_repository import TakeHasLineageError
 from services.owner_feedback_answers import owner_answers
+from services.take_feedback_responses import album_routing_for
 from services.practice_adoption import (
     ANSWERS as _PRACTICE_ANSWERS,
     helper_words_from_practice,
@@ -1595,21 +1596,8 @@ def v2_post_take_feedback_response(take_session_id):
         )
 
         if row["feedback_family"] == "confident_voice" and row.get("snippet_id"):
-            # The answer routes as itself (F-4): the five states are stored
-            # whole, never folded into the legacy neutral/unrateable pair.
-            from services.take_feedback_responses import album_routing_for
-            routing = album_routing_for(row["response"])
-            snip = db.get_snippet_by_id(row["snippet_id"]) or {}
-            piece = ((snip.get("metrics") or {}).get("piece")
-                     if isinstance(snip.get("metrics"), dict) else {})
-            db.upsert_owner_voice_album_route(
-                snippet_id=row["snippet_id"],
-                owner_user_id=str(request.user_id),
-                arc_id=arc_id,
-                response=routing,
-                slide_index=(piece.get("slide_index")
-                             if isinstance(piece, dict) else None),
-            )
+            _route_owner_voice_album(
+                db, row=row, arc_id=arc_id, owner_user_id=str(request.user_id))
             from services.voice_album import refresh_voice_album
             refresh_voice_album(arc_id, database=db)
         return jsonify({
@@ -1699,6 +1687,27 @@ _START_REFUSALS = {
     "EXERCISE_OFFER_STALE": ("EXERCISE_OFFER_STALE",
                              "A better matching exercise is now available."),
 }
+
+
+def _route_owner_voice_album(
+    database, *, row: dict, arc_id: str, owner_user_id: str,
+) -> bool:
+    """Write the owner's Confident Voice answer as the Voice Album route.
+
+    The answer routes as itself (F-4): the five states are stored whole,
+    never folded into the legacy neutral/unrateable pair. Routing only; it
+    is never a label."""
+    snip = database.get_snippet_by_id(row["snippet_id"]) or {}
+    piece = ((snip.get("metrics") or {}).get("piece")
+             if isinstance(snip.get("metrics"), dict) else {})
+    return bool(database.upsert_owner_voice_album_route(
+        snippet_id=row["snippet_id"],
+        owner_user_id=owner_user_id,
+        arc_id=arc_id,
+        response=album_routing_for(row["response"]),
+        slide_index=(piece.get("slide_index")
+                     if isinstance(piece, dict) else None),
+    ))
 
 
 def _yes_or_no(owner_route: dict) -> str:

@@ -12139,9 +12139,12 @@ class DatabaseService:
         """Persist routing only; never write a label or learning corpus.
 
         Accepts the instrument's five states (contract §29) plus the two
-        legacy values, which stay writable only so an older caller is not
-        broken mid-deploy; they are audit-only and no new surface sends them.
-        Widening the column's CHECK is
+        legacy values. Since F-4 (2026-09-28) the Take-review route sends the
+        answer itself; the legacy pair is still minted by one live route,
+        ``PUT /v2/user/snippets/<id>/confidence-agree`` (a ternary instrument
+        with no frontend caller), so narrowing this check is a founder
+        decision about that route, not a hygiene fix. Widening the column's
+        CHECK is
         ``migrations/widen_owner_voice_album_routing_to_five_states.sql``.
         """
         from services.voice_album_routing import FIVE_STATES
