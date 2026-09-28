@@ -14639,6 +14639,37 @@ class DatabaseService:
             "assign_confident_voice_exercise_v1", params).execute()
         return self._rpc_row(result.data)
 
+    def list_match_trace_tags(self, since: str) -> list[list[str]]:
+        """The patterns that fired on each exercise moment traced since
+        `since` (migration 0384): one list per assignment. Raises on
+        failure — the gap view names an unreadable source instead of
+        reading it as zero."""
+        res = (self.client.table("confident_voice_exercise_match_traces")
+               .select("observed_tags:trace->observed_tags")
+               .gte("created_at", since).execute())
+        return [row.get("observed_tags") or [] for row in res.data or []
+                if isinstance(row, dict)]
+
+    def list_exercise_coach_requests(self, since: str) -> list[dict]:
+        """Coach requests made since `since` (migration 0385), without their
+        traces. Raises on failure."""
+        res = (self.client.table("exercise_coach_requests")
+               .select("reason,observed_tags,resolution,created_at")
+               .gte("created_at", since).execute())
+        return list(res.data or [])
+
+    def count_verbal_cue_shadow(self, error_id: str, since: str) -> dict:
+        """{clips_measured, clips_fired} for one shadow cue since `since`
+        (migration 0386), at any detector version. Raises on failure."""
+        def _count(fired: Optional[bool]) -> int:
+            query = (self.client.table("verbal_cue_shadow_observations")
+                     .select("id", count="exact")
+                     .eq("error_id", error_id).gte("created_at", since))
+            if fired is not None:
+                query = query.eq("fired", fired)
+            return int(query.limit(1).execute().count or 0)
+        return {"clips_measured": _count(None), "clips_fired": _count(True)}
+
     def record_verbal_cue_shadow(self, rows: list[dict]) -> int:
         """One Take's shadow-stage verdicts (migration 0386), insert-once per
         (clip, cue, detector version). Returns how many were new. Raises on

@@ -114,6 +114,40 @@ like the existing `confidence-practice` one.
 - With none set, every tag counts as a main target, which is how exercises
   behave today.
 - Suggested UI: pick the main target from the tags already selected.
+- The library list (`/v2/internal/journal/speaking-errors/list`) now has a
+  third status, `shadow`: a detector is being tested silently. Show it as
+  "being tested". It cannot be chosen as an exercise tag (the save refuses
+  it), and the library form refuses to edit it (`409 ALREADY_IN_SHADOW`).
+
+## 4. CMS: the gap view (step 5)
+
+`POST /v2/internal/journal/exercise-gaps` uses the same CMS password as the
+other internal endpoints. It is read-only.
+
+Body: `{"password": "…", "days": 30}`. `days` is 1–90 and defaults to 30.
+
+Response `200`:
+```
+{"days": 30,
+ "patterns": [{
+    "error_id", "label",
+    "status": "detected" | "shadow" | "observed",
+    "coverage": "no_exercise" | "trial_only" | "covered" | "being_tested" | "not_detectable_yet",
+    "spotted": int,              // exercise moments it fired on in the window
+    "open_coach_requests": int,  // unresolved requests naming it
+    "main_exercises": [exercise_id], "secondary_exercises": [exercise_id],
+    "shadow": {"clips_measured": int, "clips_fired": int}   // shadow only
+ }],
+ "nothing_spotted_open_requests": int,
+ "unavailable": ["match_traces" | "coach_requests" | "shadow_observations"]}
+```
+
+- `patterns` is already in the order to show: patterns to film an exercise
+  for first, then trial-only, covered, being tested, and not detectable yet.
+- A name in `unavailable` means that source couldn't be read. Its numbers are
+  not zeros, so say that rather than showing 0.
+- This is an internal CMS screen, so numbers are fine here. It never goes
+  anywhere near a speaker.
 
 ## Fences
 
