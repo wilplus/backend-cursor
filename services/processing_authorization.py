@@ -267,9 +267,6 @@ class ProcessingAuthorizationService:
             row = _one(result.data)
             if row:
                 row["gate_mode"] = "enforce" if self.enforced else "off"
-                row["accepted_earlier_version"] = (
-                    row.get("code") == "PROCESSING_AUTHORIZATION_REQUIRED"
-                    and self._has_any_receipt(acquisition_principal_id))
                 return row
         except Exception:
             # Before migration/policy activation the gate is explicitly
@@ -282,24 +279,6 @@ class ProcessingAuthorizationService:
             "pooled_learning_eligible": False,
             "gate_mode": "enforce" if self.enforced else "off",
         }
-
-    def _has_any_receipt(self, acquisition_principal_id: str) -> bool:
-        """Whether this person accepted any policy version before (founder
-        2026-09-28, decision 21). The Data page offers "Accept the update"
-        only to someone whose earlier agreement a newer policy replaced; a
-        person who never agreed goes through the ordinary acceptance screen.
-        A failed read answers False, so the card simply does not appear."""
-        try:
-            rows = (
-                self.client.table("processing_authorization_receipts")
-                .select("id")
-                .eq("acquisition_principal_id", str(acquisition_principal_id))
-                .limit(1)
-                .execute().data or []
-            )
-        except Exception:
-            return False
-        return bool(rows)
 
     def require_current(
         self, acquisition_principal_id: str, *, operation: str
