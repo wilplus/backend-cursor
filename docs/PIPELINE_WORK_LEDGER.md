@@ -1854,7 +1854,7 @@ rebuild Ideal Text.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
-### 2026-09-28 · WS-R1 · r1-canonical-tables-rpc-only · #(pending)
+### 2026-09-28 · WS-R1 · r1-canonical-tables-rpc-only · #754
 
 **Closed:** R-1 (0388 `canonical_tables_are_written_only_through_their_rpcs.sql`).
 **Contract lines flipped:** none — the contract has no line for this; the
