@@ -1,8 +1,10 @@
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from services.coach_guidance_delivery import (
+    AttachmentServiceDisabled,
     parse_attachment_request,
     principal_is_allowlisted,
     runtime_is_enabled,
@@ -12,21 +14,6 @@ from services.data_purge_registry import DEPENDENCIES
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "migrations/add_coach_guidance_delivery_d3.sql"
-
-
-def _identity_payload(**updates):
-    payload = {
-        "review_batch_id": "batch",
-        "reveal_grant_id": "grant",
-        "reveal_access_id": "access",
-        "review_assignment_id": "assignment",
-        "feedback_membership_id": "membership",
-        "feedback_candidate_id": "candidate",
-        "attachment_class": "general_product_guidance",
-        "written_note": "Try a shorter pause before the final sentence.",
-    }
-    payload.update(updates)
-    return payload
 
 
 def test_runtime_gate_is_disabled_by_default():
@@ -45,25 +32,112 @@ def test_rollout_presentation_gate_does_not_use_legacy_allowlist(monkeypatch):
     assert principal_is_allowlisted(principal_id=None) is False
 
 
-def test_general_guidance_never_accepts_exercise_identity():
-    with pytest.raises(ValueError, match="GENERAL_EXERCISE_FIELDS_FORBIDDEN"):
-        parse_attachment_request(
-            _identity_payload(exercise_offer_id="offer", need_contract_id="need")
-        )
+# The attachment form follows the route's rules (founder decision
+# 2026-09-28, audit C4): the parser is the route's validation, moved.
+IDS = {name: str(uuid4()) for name in (
+    "access", "batch", "grant", "assignment", "membership", "candidate",
+    "offer", "need", "version",
+)}
 
 
-def test_mlc3_requires_approved_need_and_complete_offer_identity():
-    with pytest.raises(ValueError, match="APPROVED_NEED_AND_INVENTORY_REQUIRED"):
-        parse_attachment_request(_identity_payload(attachment_class="mlc3_exercise"))
+def _form(**updates):
+    form = {
+        "attachment_class": "general_product_guidance",
+        "reveal_access_id": IDS["access"],
+        "written_note": "Try a shorter pause before the final sentence.",
+    }
+    form.update(updates)
+    return {key: value for key, value in form.items() if value is not None}
 
 
-def test_structure_and_delivery_remain_product_subcategories():
-    request = parse_attachment_request(
-        _identity_payload(product_subcategory="structure")
+def _parse(form, *, has_video=False, runtime=True, inline=True):
+    return parse_attachment_request(
+        form, has_video=has_video, runtime_enabled=runtime,
+        inline_authoring_enabled=inline,
     )
-    assert request.product_subcategory == "structure"
-    with pytest.raises(ValueError, match="SUBCATEGORY_INVALID"):
-        parse_attachment_request(_identity_payload(product_subcategory="new_family"))
+
+
+def test_inline_general_guidance_works_with_the_service_off():
+    request = _parse(_form(
+        review_batch_id=IDS["batch"], reveal_grant_id=IDS["grant"],
+        review_assignment_id=IDS["assignment"],
+    ), runtime=False)
+    assert request.inline_general is True
+    assert request.feedback_membership_id is None
+    assert (request.review_batch_id, request.reveal_grant_id,
+            request.review_assignment_id) == (
+        IDS["batch"], IDS["grant"], IDS["assignment"])
+
+
+def test_inline_general_guidance_needs_its_batch_grant_and_assignment():
+    with pytest.raises(ValueError, match="review_batch_id must be a UUID"):
+        _parse(_form(), runtime=False)
+
+
+def test_the_feedback_identity_comes_as_a_pair():
+    with pytest.raises(ValueError, match="pair"):
+        _parse(_form(feedback_membership_id=IDS["membership"]))
+
+
+def test_an_exercise_always_carries_the_feedback_identity():
+    with pytest.raises(ValueError, match="exercise feedback identity"):
+        _parse(_form(attachment_class="mlc3_exercise"))
+    request = _parse(_form(
+        attachment_class="mlc3_exercise",
+        feedback_membership_id=IDS["membership"],
+        feedback_candidate_id=IDS["candidate"],
+    ))
+    # Offer, need and version are optional ids, parsed when present.
+    assert request.exercise_offer_id is None
+    assert request.inline_general is False
+
+
+def test_general_guidance_with_its_feedback_pair_needs_the_service():
+    form = _form(feedback_membership_id=IDS["membership"],
+                 feedback_candidate_id=IDS["candidate"],
+                 reveal_access_id="not-a-uuid")
+    # Disabled is answered before any id is parsed, as the route always did.
+    with pytest.raises(AttachmentServiceDisabled):
+        _parse(form, runtime=False)
+    with pytest.raises(ValueError, match="reveal_access_id"):
+        _parse(form, runtime=True)
+
+
+def test_optional_exercise_ids_are_parsed_when_present():
+    request = _parse(_form(
+        feedback_membership_id=IDS["membership"],
+        feedback_candidate_id=IDS["candidate"],
+        exercise_offer_id=IDS["offer"].upper(),
+        need_contract_id=IDS["need"],
+        exercise_version_id=IDS["version"],
+    ))
+    assert request.exercise_offer_id == IDS["offer"]
+    assert request.need_contract_id == IDS["need"]
+    assert request.exercise_version_id == IDS["version"]
+
+
+def test_a_note_or_a_video_and_the_note_length():
+    # The service path (inline authoring off), so no inline ids are needed.
+    with pytest.raises(ValueError, match="written note or video required"):
+        _parse(_form(written_note="  "), inline=False)
+    request = _parse(_form(written_note=None), has_video=True, inline=False)
+    assert request.written_note is None
+    with pytest.raises(ValueError, match="too long"):
+        _parse(_form(written_note="x" * 2001), inline=False)
+
+
+def test_catalog_publication_needs_a_clean_exercise_video():
+    exercise = _form(
+        attachment_class="mlc3_exercise",
+        feedback_membership_id=IDS["membership"],
+        feedback_candidate_id=IDS["candidate"],
+        publish_to_catalog="true",
+    )
+    with pytest.raises(ValueError, match="clean exercise video"):
+        _parse(exercise, has_video=True)
+    request = _parse({**exercise, "independent_clean_media": "true"},
+                     has_video=True)
+    assert request.publish_to_catalog and request.independent_clean_media
 
 
 def test_synthetic_payload_is_structurally_nonserving_and_nondataset():

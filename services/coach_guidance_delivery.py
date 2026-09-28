@@ -70,64 +70,143 @@ def require_audio_upload(
     return normalized
 
 
+class AttachmentServiceDisabled(Exception):
+    """The form got as far as needing the pilot service, which is off.
+
+    Only inline general guidance runs without it. The route answers with its
+    disabled response, at exactly the point it always did: after the class
+    and feedback-identity checks, before any id is parsed."""
+
+
 @dataclass(frozen=True)
 class GuidanceAttachmentRequest:
-    review_batch_id: str
-    reveal_grant_id: str
-    reveal_access_id: str
-    review_assignment_id: str
-    feedback_membership_id: str
-    feedback_candidate_id: str
     attachment_class: str
-    written_note: str | None
-    media_binding_id: str | None
+    inline_general: bool
+    reveal_access_id: str
+    feedback_membership_id: str | None
+    feedback_candidate_id: str | None
+    review_batch_id: str | None
+    reveal_grant_id: str | None
+    review_assignment_id: str | None
     exercise_offer_id: str | None
-    exercise_version_id: str | None
     need_contract_id: str | None
-    product_subcategory: str | None
+    exercise_version_id: str | None
+    written_note: str | None
+    independent_clean_media: bool
+    publish_to_catalog: bool
 
 
-def parse_attachment_request(payload: Mapping[str, Any]) -> GuidanceAttachmentRequest:
-    """Validate the browser contract without inferring an acoustic need."""
-    required = (
-        "review_batch_id",
-        "reveal_grant_id",
-        "reveal_access_id",
-        "review_assignment_id",
-        "feedback_membership_id",
-        "feedback_candidate_id",
-    )
-    values = {key: str(payload.get(key) or "").strip() for key in required}
-    if any(not value for value in values.values()):
-        raise ValueError("COACH_GUIDANCE_EXACT_IDENTITY_REQUIRED")
-    attachment_class = str(payload.get("attachment_class") or "").strip()
+def _attachment_route(
+    form: Mapping[str, Any], *, runtime_enabled: bool,
+    inline_authoring_enabled: bool,
+) -> tuple[str, str, str, bool]:
+    """Class, feedback pair and which path serves the form: ``(class,
+    membership, candidate, inline_general)``, or the service is off."""
+    attachment_class = str(form.get("attachment_class") or "")
     if attachment_class not in {"general_product_guidance", "mlc3_exercise"}:
-        raise ValueError("COACH_GUIDANCE_ATTACHMENT_CLASS_INVALID")
-    subcategory = payload.get("product_subcategory")
-    if subcategory not in {None, "structure", "delivery"}:
-        raise ValueError("COACH_GUIDANCE_SUBCATEGORY_INVALID")
-    note = str(payload.get("written_note") or "").strip() or None
-    media_binding_id = str(payload.get("media_binding_id") or "").strip() or None
-    if note is None and media_binding_id is None:
-        raise ValueError("COACH_GUIDANCE_CONTENT_REQUIRED")
-    offer_id = str(payload.get("exercise_offer_id") or "").strip() or None
-    version_id = str(payload.get("exercise_version_id") or "").strip() or None
-    need_id = str(payload.get("need_contract_id") or "").strip() or None
-    if attachment_class == "general_product_guidance" and any(
-        (offer_id, version_id, need_id)
+        raise ValueError("attachment_class invalid")
+    membership_value = str(form.get("feedback_membership_id") or "").strip()
+    candidate_value = str(form.get("feedback_candidate_id") or "").strip()
+    if bool(membership_value) != bool(candidate_value):
+        raise ValueError("feedback identity pair invalid")
+    if attachment_class == "mlc3_exercise" and not membership_value:
+        # Rejected before authority issuance, upload reservation or any R2
+        # write: exercises always require the exact frozen V3 identity.
+        raise ValueError("exercise feedback identity required")
+    inline_general = (
+        attachment_class == "general_product_guidance"
+        and not membership_value
+        and inline_authoring_enabled
+    )
+    if not runtime_enabled and not inline_general:
+        raise AttachmentServiceDisabled()
+    return attachment_class, membership_value, candidate_value, inline_general
+
+
+def _attachment_content(
+    form: Mapping[str, Any], attachment_class: str, *, has_video: bool,
+) -> tuple[str | None, bool, bool]:
+    """``(written_note, independent_clean_media, publish_to_catalog)``."""
+    written_note = str(form.get("written_note") or "").strip() or None
+    if written_note and len(written_note) > 2000:
+        raise ValueError("written_note too long")
+    clean = str(form.get("independent_clean_media") or "").lower() == "true"
+    publish = str(form.get("publish_to_catalog") or "").lower() == "true"
+    if publish and (
+        attachment_class != "mlc3_exercise" or not has_video or not clean
     ):
-        raise ValueError("COACH_GUIDANCE_GENERAL_EXERCISE_FIELDS_FORBIDDEN")
-    if attachment_class == "mlc3_exercise" and (offer_id is None or need_id is None):
-        raise ValueError("COACH_GUIDANCE_APPROVED_NEED_AND_INVENTORY_REQUIRED")
+        raise ValueError("catalog publication requires a clean exercise video")
+    if not written_note and not has_video:
+        raise ValueError("written note or video required")
+    return written_note, clean, publish
+
+
+def parse_attachment_request(
+    form: Mapping[str, Any],
+    *,
+    has_video: bool,
+    runtime_enabled: bool,
+    inline_authoring_enabled: bool,
+) -> GuidanceAttachmentRequest:
+    """The one reading of a coach-guidance attachment form (audit C4).
+
+    These are the route's rules, in the route's order (founder decision
+    2026-09-28: the route wins, inline general guidance keeps working):
+
+      * the class is ``general_product_guidance`` or ``mlc3_exercise``;
+      * the feedback membership and candidate ids come as a pair or not at
+        all, and an exercise always carries them;
+      * general guidance without them is inline authoring, which alone runs
+        while the pilot service is off (``AttachmentServiceDisabled``
+        otherwise); it needs its batch, grant and assignment ids;
+      * every id present is a UUID (``utils.ids.parse_uuid``);
+      * a note is at most 2000 characters; a note or a video is required;
+      * catalog publication needs a clean exercise video.
+
+    Raises ``ValueError`` for a malformed form, which the route answers with
+    ``INVALID_INPUT``. Validates only: no authority, upload or write."""
+    from utils.ids import parse_uuid
+
+    attachment_class, membership, candidate, inline_general = _attachment_route(
+        form, runtime_enabled=runtime_enabled,
+        inline_authoring_enabled=inline_authoring_enabled)
+
+    def inline_id(field: str) -> str | None:
+        return parse_uuid(form.get(field), field) if inline_general else None
+
+    def optional_id(field: str) -> str | None:
+        return parse_uuid(form.get(field), field) if form.get(field) else None
+
+    reveal_access_id = parse_uuid(form.get("reveal_access_id"), "reveal_access_id")
+    membership_id = (
+        parse_uuid(membership, "feedback_membership_id") if membership else None
+    )
+    candidate_id = (
+        parse_uuid(candidate, "feedback_candidate_id") if candidate else None
+    )
+    review_batch_id = inline_id("review_batch_id")
+    reveal_grant_id = inline_id("reveal_grant_id")
+    review_assignment_id = inline_id("review_assignment_id")
+    offer_id = optional_id("exercise_offer_id")
+    need_contract_id = optional_id("need_contract_id")
+    exercise_version_id = optional_id("exercise_version_id")
+    written_note, clean, publish = _attachment_content(
+        form, attachment_class, has_video=has_video)
     return GuidanceAttachmentRequest(
-        **values,
         attachment_class=attachment_class,
-        written_note=note,
-        media_binding_id=media_binding_id,
+        inline_general=inline_general,
+        reveal_access_id=reveal_access_id,
+        feedback_membership_id=membership_id,
+        feedback_candidate_id=candidate_id,
+        review_batch_id=review_batch_id,
+        reveal_grant_id=reveal_grant_id,
+        review_assignment_id=review_assignment_id,
         exercise_offer_id=offer_id,
-        exercise_version_id=version_id,
-        need_contract_id=need_id,
-        product_subcategory=subcategory,
+        need_contract_id=need_contract_id,
+        exercise_version_id=exercise_version_id,
+        written_note=written_note,
+        independent_clean_media=clean,
+        publish_to_catalog=publish,
     )
 
 
