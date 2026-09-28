@@ -113,11 +113,8 @@ def prepare_presentation(
     }
 
 
-def prepare_feedback_presentations(
-    *, database: Any, bundle: dict, actor_id: str,
-    delivery_mode: str = "production",
-) -> dict[str, list[dict]]:
-    """Create five surface packets for the three frozen Feedback cards."""
+def _selected_feedback(bundle: dict) -> tuple[list[dict], list[dict]]:
+    """Every candidate dict, and those the bundle's selected keys name."""
     candidates = [
         row for row in (bundle.get("candidates") or [])
         if isinstance(row, dict)
@@ -132,52 +129,84 @@ def prepare_feedback_presentations(
         if (str(row.get("candidate_key") or ""),
             str(row.get("feedback_family") or "")) in selected_keys
     ]
+    return candidates, selected
+
+
+def _generation_ids(bundle: dict) -> dict[tuple[str, str], str]:
+    """Generation run ids by (evidence span id, task type)."""
+    return {
+        (str(row.get("evidence_span_id") or ""), str(row.get("task_type") or "")):
+        str(row.get("id"))
+        for row in (bundle.get("generation_runs") or [])
+        if isinstance(row, dict) and row.get("id")
+    }
+
+
+def _presentation_scope(bundle: dict) -> dict[str, Any]:
+    """The ownership fields every Feedback packet of one bundle shares."""
+    return {
+        "owner_principal_id": str(bundle.get("owner_principal_id") or ""),
+        "project_id": str(bundle.get("project_id") or ""),
+        "take_id": str(bundle.get("take_id") or ""),
+        "candidate_set_id": str(bundle.get("candidate_set_id") or "") or None,
+    }
+
+
+def _feedback_card(candidate: dict) -> tuple[str, str, str, dict]:
+    """A selected candidate's key, family, evidence id and visible payload.
+
+    Raises when the key, a known family or the evidence id is missing.
+    """
+    candidate_key = str(candidate.get("candidate_key") or "")
+    family = str(candidate.get("feedback_family") or "")
+    evidence = candidate.get("evidence")
+    evidence = evidence if isinstance(evidence, dict) else {}
+    evidence_id = str(evidence.get("id") or "")
+    if not candidate_key or family not in _FEEDBACK_SURFACES or not evidence_id:
+        raise LearningExposureError("selected Feedback evidence is incomplete")
+    visible_payload = {
+        "candidate_key": candidate_key,
+        "feedback_family": family,
+        "generated_output": candidate.get("generated_output") or {},
+        "evidence": {
+            "evidence_span_id": evidence_id,
+            "audio_ref": evidence.get("audio_ref"),
+            "start_ms": evidence.get("start_ms"),
+            "end_ms": evidence.get("end_ms"),
+            "exact_text": evidence.get("exact_text"),
+            "replacement_text": evidence.get("replacement_text"),
+            "target_locator": evidence.get("target_locator") or {},
+        },
+    }
+    return candidate_key, family, evidence_id, visible_payload
+
+
+def prepare_feedback_presentations(
+    *, database: Any, bundle: dict, actor_id: str,
+    delivery_mode: str = "production",
+) -> dict[str, list[dict]]:
+    """Create five surface packets for the three frozen Feedback cards."""
+    candidates, selected = _selected_feedback(bundle)
     if len(selected) != 3:
         raise LearningExposureError("feedback selection is not exact-three")
     complete_snapshot = [_candidate_snapshot(row) for row in candidates]
     if len(complete_snapshot) < 3:
         raise LearningExposureError("feedback candidate inventory is incomplete")
 
-    generation_ids = {
-        (str(row.get("evidence_span_id") or ""), str(row.get("task_type") or "")):
-        str(row.get("id"))
-        for row in (bundle.get("generation_runs") or [])
-        if isinstance(row, dict) and row.get("id")
-    }
+    generation_ids = _generation_ids(bundle)
+    scope = _presentation_scope(bundle)
     prepared: dict[str, list[dict]] = defaultdict(list)
     for candidate in selected:
-        candidate_key = str(candidate.get("candidate_key") or "")
-        family = str(candidate.get("feedback_family") or "")
-        evidence = candidate.get("evidence")
-        evidence = evidence if isinstance(evidence, dict) else {}
-        evidence_id = str(evidence.get("id") or "")
-        if not candidate_key or family not in _FEEDBACK_SURFACES or not evidence_id:
-            raise LearningExposureError("selected Feedback evidence is incomplete")
+        candidate_key, family, evidence_id, visible_payload = (
+            _feedback_card(candidate)
+        )
         selected_snapshot = _candidate_snapshot(candidate)
-        visible_payload = {
-            "candidate_key": candidate_key,
-            "feedback_family": family,
-            "generated_output": candidate.get("generated_output") or {},
-            "evidence": {
-                "evidence_span_id": evidence_id,
-                "audio_ref": evidence.get("audio_ref"),
-                "start_ms": evidence.get("start_ms"),
-                "end_ms": evidence.get("end_ms"),
-                "exact_text": evidence.get("exact_text"),
-                "replacement_text": evidence.get("replacement_text"),
-                "target_locator": evidence.get("target_locator") or {},
-            },
-        }
         for surface in _FEEDBACK_SURFACES[family]:
-            generation_id = generation_ids.get((evidence_id, surface))
             packet = prepare_presentation(
                 database=database,
-                owner_principal_id=str(bundle.get("owner_principal_id") or ""),
-                project_id=str(bundle.get("project_id") or ""),
-                take_id=str(bundle.get("take_id") or ""),
+                **scope,
                 evidence_span_id=evidence_id,
-                candidate_set_id=str(bundle.get("candidate_set_id") or "") or None,
-                generation_run_id=generation_id,
+                generation_run_id=generation_ids.get((evidence_id, surface)),
                 learning_surface=surface,
                 actor_role="owner",
                 actor_id=actor_id,

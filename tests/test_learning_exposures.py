@@ -123,6 +123,87 @@ def test_shadow_packets_can_be_stored_but_are_never_returned_for_rendering():
     assert database.create_learning_surface_presentation.call_count == 5
 
 
+def test_feedback_packet_pins_its_scope_payload_and_generation_run():
+    database = _presentation_database()
+    bundle = _bundle()
+    bundle["candidate_set_id"] = ""
+    rewrite = bundle["candidates"][1]
+    rewrite["evidence"]["replacement_text"] = "Clearer words"
+    bundle["generation_runs"] = [
+        {"id": "run-generation", "task_type": "correction_generation",
+         "evidence_span_id": rewrite["evidence"]["id"]},
+        {"id": None, "task_type": "correction_selection",
+         "evidence_span_id": rewrite["evidence"]["id"]},
+        "not a run",
+    ]
+
+    prepare_feedback_presentations(
+        database=database, bundle=bundle, actor_id=ACTOR)
+
+    rows = {
+        call.args[0]["learning_surface"]: call.args[0]
+        for call in database.create_learning_surface_presentation.call_args_list
+    }
+    generation = rows["correction_generation"]
+    assert generation["generation_run_id"] == "run-generation"
+    assert rows["correction_selection"]["generation_run_id"] is None
+    assert rows["confidence_classification"]["generation_run_id"] is None
+    assert generation["candidate_set_id"] is None
+    assert (generation["owner_principal_id"], generation["project_id"],
+            generation["take_id"]) == (OWNER, PROJECT, TAKE)
+    assert generation["evidence_span_id"] == rewrite["evidence"]["id"]
+    assert generation["versions"] == bundle["versions"]
+    assert generation["versions"] is not bundle["versions"]
+    assert generation["delivery_mode"] == "production"
+    assert generation["selected_candidate"]["candidate_key"] == "rewrite"
+    assert generation["visible_payload"] == {
+        "candidate_key": "rewrite",
+        "feedback_family": "rewrite_clarity",
+        "generated_output": {"quote": "Visible rewrite"},
+        "evidence": {
+            "evidence_span_id": rewrite["evidence"]["id"],
+            "audio_ref": "recordings/take.webm",
+            "start_ms": 0,
+            "end_ms": 1000,
+            "exact_text": "Evidence rewrite",
+            "replacement_text": "Clearer words",
+            "target_locator": {},
+        },
+    }
+
+
+def test_feedback_selection_must_name_exactly_three_cards():
+    database = _presentation_database()
+    bundle = _bundle()
+    bundle["selected_keys"] = bundle["selected_keys"][:2]
+
+    with pytest.raises(LearningExposureError,
+                       match="^feedback selection is not exact-three$"):
+        prepare_feedback_presentations(
+            database=database, bundle=bundle, actor_id=ACTOR)
+    database.create_learning_surface_presentation.assert_not_called()
+
+
+@pytest.mark.parametrize("breakage", ["family", "evidence_id", "evidence"])
+def test_selected_card_without_known_family_or_evidence_is_refused(breakage):
+    database = _presentation_database()
+    bundle = _bundle()
+    voice = bundle["candidates"][0]
+    if breakage == "family":
+        voice["feedback_family"] = "unknown_family"
+        bundle["selected_keys"][0]["feedback_family"] = "unknown_family"
+    elif breakage == "evidence_id":
+        voice["evidence"]["id"] = ""
+    else:
+        voice["evidence"] = "not a mapping"
+
+    with pytest.raises(LearningExposureError,
+                       match="^selected Feedback evidence is incomplete$"):
+        prepare_feedback_presentations(
+            database=database, bundle=bundle, actor_id=ACTOR)
+    database.create_learning_surface_presentation.assert_not_called()
+
+
 def test_ideal_text_packet_uses_document_take_boundary_without_fake_evidence():
     database = _presentation_database()
 
