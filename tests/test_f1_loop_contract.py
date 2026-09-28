@@ -46,8 +46,6 @@ import unittest
 import unittest.mock
 from unittest.mock import Mock
 
-import pytest
-
 for _module in ("supabase", "sentry_sdk"):
     if _module not in sys.modules:
         sys.modules[_module] = types.ModuleType(_module)
