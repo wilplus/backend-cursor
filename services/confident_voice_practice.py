@@ -162,6 +162,8 @@ def acoustic_snapshot(snippet: dict) -> dict:
     metrics: dict = raw_metrics if isinstance(raw_metrics, dict) else {}
     duration_ms = snippet.get("duration_ms")
     wf = _word_features(snippet.get("words"), duration_ms)
+    raw_noise = metrics.get("noise_meter")
+    noise: dict = raw_noise if isinstance(raw_noise, dict) else {}
     try:
         from services.voice_confidence import stamped_score
         confidence = stamped_score(metrics)
@@ -175,6 +177,10 @@ def acoustic_snapshot(snippet: dict) -> dict:
         "voiced_duration_sec": _number(metrics.get("voiced_duration_sec")),
         "dynamic_db": _number(metrics.get("dynamic_db")),
         "confidence": confidence,
+        # The noise meter, silent (founder 2026-09-28): saved with every clip
+        # snapshot and practice attempt, read by no rule until switched on.
+        "noise_separation_db": _number(noise.get("separation_db")),
+        "noise_meter_version": noise.get("version"),
         **wf,
     }
 
