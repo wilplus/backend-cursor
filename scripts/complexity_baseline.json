@@ -92,7 +92,6 @@
   "services/take_feedback_policy_v3.py:build_shadow_frame": 37,
   "services/take_review.py:finalize_later_take_review": 44,
   "services/training_import.py:prepare_training_import": 42,
-  "services/transcript_document.py:build_transcript_document": 36,
   "services/transcript_document.py:relocate_pieces": 30,
   "services/tutor_video_url.py:resolve_tutor_video_playable_url": 33,
   "services/voice_album.py:reconcile_voice_album_clip": 36,
