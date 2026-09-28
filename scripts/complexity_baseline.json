@@ -51,7 +51,6 @@
   "services/ideal_text_block.py:assemble_ideal_text_block": 35,
   "services/ideal_text_block.py:maybe_assemble_ideal_text": 33,
   "services/ideal_text_core_snapshot.py:_exact_pieces": 39,
-  "services/ideal_text_parts.py:compose_locked": 50,
   "services/ideal_text_quality_gate.py:validate_composed_text": 28,
   "services/ideal_text_variants.py:block_variants_payload": 27,
   "services/ideal_text_variants.py:capture_user_edit_variants": 36,
