@@ -14598,6 +14598,59 @@ class DatabaseService:
             "assign_confident_voice_exercise_v1", params).execute()
         return self._rpc_row(result.data)
 
+    def request_exercise_from_coach(
+        self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
+        reason: str, pattern: Optional[str], observed_tags: list[str],
+        request_trace: dict,
+    ) -> Optional[dict]:
+        """The moment's coach request (migration 0385): recorded on the first
+        call, returned unchanged — with any resolution since — on every later
+        one. Raises on failure; the caller keeps the feedback regardless."""
+        result = self.client.rpc("request_exercise_from_coach_v1", {
+            "p_owner_user_id": str(owner_user_id),
+            "p_take_session_id": str(take_session_id),
+            "p_snippet_id": str(snippet_id),
+            "p_reason": str(reason),
+            "p_pattern": pattern,
+            "p_observed_tags": list(observed_tags),
+            "p_request_trace": request_trace,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def get_exercise_coach_request(
+        self, take_session_id: str, snippet_id: str,
+    ) -> Optional[dict]:
+        if not take_session_id or not snippet_id:
+            return None
+        try:
+            res = (self.client.table("exercise_coach_requests")
+                   .select("*")
+                   .eq("take_session_id", str(take_session_id))
+                   .eq("snippet_id", str(snippet_id))
+                   .limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_exercise_coach_request failed sid=%s: %s",
+                           take_session_id, e)
+            return None
+
+    def resolve_exercise_coach_request(
+        self, *, request_id: str, coach_id: str, resolution: str,
+        exercise_id: Optional[str], exercise_version: Optional[int],
+        share: bool,
+    ) -> Optional[dict]:
+        """Resolve once, share once (migration 0385). Raises the database's
+        refusal (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED) to the caller."""
+        result = self.client.rpc("resolve_exercise_coach_request_v1", {
+            "p_request_id": str(request_id),
+            "p_coach_id": str(coach_id),
+            "p_resolution": str(resolution),
+            "p_exercise_id": exercise_id,
+            "p_exercise_version": exercise_version,
+            "p_share": bool(share),
+        }).execute()
+        return self._rpc_row(result.data)
+
     def get_confident_voice_exercise_assignment(
         self, take_session_id: str, snippet_id: str,
     ) -> Optional[dict]:

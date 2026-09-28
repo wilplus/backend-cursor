@@ -1050,6 +1050,10 @@ def attach_v3_exercise_offer(
     be able to carry practice (`clip_can_carry_exercise`), and `ground` must
     prove its exact evidence coordinates, which the practice needs; failing
     either, the item is served exactly as V3 made it, without an exercise.
+
+    When nothing fits (D1), the coach hears about it instead
+    (``_coach_request_offer``), and an exercise the coach later shares for
+    this exact moment is what the item carries.
     """
     rows = [dict(row) for row in (changes or [])]
     target = next((row for row in rows
@@ -1066,7 +1070,7 @@ def attach_v3_exercise_offer(
     snippet = next(iter(
         database.get_confident_voice_practice_candidates([snippet_id]) or []),
         None)
-    if not exercises or not isinstance(snippet, dict):
+    if not isinstance(snippet, dict):
         return rows
     verdict = exercise_eligibility(
         snippet, session_median_wpm=_median_wpm(
@@ -1080,7 +1084,13 @@ def attach_v3_exercise_offer(
     fit, keyed = matched_exercises(
         str(verdict.get("pattern") or ""), exercises,
         observed_tags=observed_problem_tags(verdict, vocabulary=vocabulary))
-    evidence = ground(target) if keyed else None
+    if not keyed:
+        return _coach_request_offer(
+            rows, target, verdict=verdict, vocabulary=vocabulary,
+            exercises=exercises, snippet=snippet, existing=existing,
+            take_session_id=take_session_id, owner_user_id=owner_user_id,
+            database=database, ground=ground)
+    evidence = ground(target)
     if not isinstance(evidence, dict):
         return rows
     ranked = [item[1] for item in keyed]
@@ -1101,6 +1111,87 @@ def attach_v3_exercise_offer(
         database, owner_user_id, str(exercise.get("exercise_id") or ""),
         take_session_id)
     return rows
+
+
+#: The policy a coach-shared exercise is served under: no match, no draw.
+COACH_REQUEST_POLICY_VERSION = "exercise-coach-request-v1"
+
+
+def _coach_request_offer(
+    rows: list[dict], target: dict, *, verdict: dict, vocabulary: Any,
+    exercises: list[dict], snippet: dict, existing: Any,
+    take_session_id: str, owner_user_id: str, database: Any, ground: Any,
+) -> list[dict]:
+    """No exercise fits this moment: record the coach request (contract 35b),
+    and serve the exercise the coach shared for it, if they have.
+
+    The request is written insert-once (migration 0385): this runs on every
+    feedback build, and every call after the first returns the same row with
+    whatever resolution it has gained. Nothing waits on it — the item is
+    served now, exactly as V3 made it, and the coach's answer arrives on a
+    later read. A failed write never costs the feedback.
+    """
+    request_fn = getattr(database, "request_exercise_from_coach", None)
+    if request_fn is None or not owner_user_id:
+        return rows
+    snippet_id = str(target["snippet_id"])
+    observed = observed_problem_tags(verdict, vocabulary=vocabulary)
+    try:
+        request = request_fn(
+            owner_user_id=str(owner_user_id),
+            take_session_id=str(take_session_id), snippet_id=snippet_id,
+            reason="nothing_targets_it" if observed else "nothing_spotted",
+            pattern=verdict.get("pattern"), observed_tags=sorted(observed),
+            request_trace=build_match_trace(
+                lane="v3_exercise_block", verdict=verdict,
+                vocabulary=vocabulary, exercises=exercises, ranked=[],
+                fit=None, snippet=snippet, take_session_id=take_session_id,
+                snippet_id=snippet_id))
+    except Exception as e:  # noqa: BLE001 — never lose the feedback
+        _log.warning("exercise coach request failed take=%s snip=%s: %s",
+                     take_session_id, snippet_id, e)
+        return rows
+    exercise = coach_shared_exercise(request, database)
+    evidence = ground(target) if exercise else None
+    if not isinstance(evidence, dict):
+        return rows
+    target["evidence"] = evidence
+    target["practice_exercise"] = {
+        **_offer_payload(exercise, verdict, snippet, target, existing),
+        "matching_policy_version": COACH_REQUEST_POLICY_VERSION,
+        "pattern_distance": None,
+        "chosen_by_coach": True,
+        "done_before": _done_before(
+            database, owner_user_id, str(exercise.get("exercise_id") or ""),
+            take_session_id),
+    }
+    return rows
+
+
+def _shared_request_for(database: Any, take_session_id: str,
+                        snippet_id: str) -> Optional[dict]:
+    getter = getattr(database, "get_exercise_coach_request", None)
+    request = (getter(take_session_id, snippet_id)
+               if getter is not None else None)
+    return request if coach_shared_exercise(request, database) else None
+
+
+def coach_shared_exercise(request: Any, database: Any) -> Optional[dict]:
+    """The live exercise a coach resolved and shared this request with, or
+    None. The version must still be the one they shared: an exercise edited
+    since is not the one they chose."""
+    if not isinstance(request, dict) or not request.get("shared_at"):
+        return None
+    exercise_id = str(request.get("resolved_exercise_id") or "")
+    if not exercise_id:
+        return None
+    active = database.get_active_diagnostic_exercise(exercise_id)
+    if not isinstance(active, dict):
+        return None
+    if int(active.get("version") or 1) != int(
+            request.get("resolved_exercise_version") or 0):
+        return None
+    return active
 
 
 def start_exercise_check(*, snippet: dict, take_session_id: str,
@@ -1137,6 +1228,16 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
             # to the speaker: which practices were trials.
             "exercise_fit": fit_from_policy(
                 assignment.get("matching_policy_version")),
+        }
+    shared = _shared_request_for(database, take_session_id, snippet_id)
+    if shared is not None and str(
+            shared.get("resolved_exercise_id")) == str(exercise_id):
+        if not clip_can_carry_exercise(verdict):
+            return "NOT_ELIGIBLE", verdict, None
+        return None, verdict, {
+            "matching_policy_version": COACH_REQUEST_POLICY_VERSION,
+            "exercise_fit": None,
+            "exercise_coach_request_id": str(shared.get("id") or ""),
         }
     if not verdict.get("eligible"):
         return "NOT_ELIGIBLE", verdict, None

@@ -1665,6 +1665,46 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     return jsonify({"practice": _coach_practice_payload(updated)}), 200
 
 
+@v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/exercise-request",
+    methods=["GET", "PUT"],
+)
+@require_admin_or_coach
+@operational_purpose_disabled("personalized_exercise_recommendation")
+def v2_coach_exercise_request(session_id, snippet_id):
+    """A moment no exercise fitted (founder 2026-09-28; contract 35b, 35f).
+
+    Behind the same blind gate as the practice review: that the machine found
+    nothing for this moment, and what it spotted, would anchor the coach's own
+    confidence judgment, so none of it is revealed until they have rated the
+    moment. The work is services.exercise_coach_requests'.
+    """
+    if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "session_id and snippet_id must be UUIDs"}), 400
+    session = db.v2_get_session_by_id(session_id)
+    if not session:
+        return jsonify({"code": "SESSION_NOT_FOUND",
+                        "error": "Session not found"}), 404
+    owner_sid = _snippet_owner_map(session_id).get(snippet_id)
+    if not owner_sid:
+        return jsonify({"code": "SNIPPET_NOT_FOUND",
+                        "error": "Snippet not in this session"}), 404
+    state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
+    if (state.get(str(snippet_id)) or {}).get("rating_value") not in ("yes", "no"):
+        return jsonify({"code": "BLIND_RATING_REQUIRED",
+                        "error": "Rate the original moment first."}), 409
+    if not _speaker_practice_permitted(owner_sid):
+        return jsonify({"code": "SPEAKER_PRACTICE_OFF",
+                        "error": "The speaker turned practice off."}), 409
+    from services.exercise_coach_requests import review
+    status, payload = review(
+        db, take_session_id=owner_sid, snippet_id=snippet_id,
+        method=request.method, body=request.get_json(silent=True),
+        coach_id=str(getattr(request, "user_id", "")))
+    return jsonify(payload), status
+
+
 @v2_bp.route("/coach/sessions/<session_id>/snippets/<snippet_id>", methods=["POST"])
 @require_admin_or_coach
 def v2_coach_save_snippet(session_id, snippet_id):

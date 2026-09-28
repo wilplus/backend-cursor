@@ -205,7 +205,7 @@ class NoDirectProviderClientRemainsTests(unittest.TestCase):
             .count(marker), 6)  # + judge-attempt, helper-words (2026-09-25)
         self.assertEqual(
             open("routes/v2/coach.py", encoding="utf-8").read()
-            .count(marker), 1)
+            .count(marker), 2)  # + the exercise request (2026-09-28)
 
     def test_no_new_module_calls_the_unpermitted_transcription(self):
         """A ratchet, not a clean sheet.
