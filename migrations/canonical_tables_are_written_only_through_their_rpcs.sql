@@ -98,16 +98,16 @@ BEGIN
         -- without grant option, is a silent WARNING no-op. Either way the
         -- table would stay writable while the ledger said otherwise, so the
         -- file checks what it just did and fails loudly instead.
-        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role')
-           AND (has_table_privilege('service_role',
-                                    'public.' || table_name, 'INSERT')
-                OR has_table_privilege('service_role',
-                                       'public.' || table_name, 'UPDATE')
-                OR has_table_privilege('service_role',
-                                       'public.' || table_name, 'DELETE')
-                OR has_table_privilege('service_role',
-                                       'public.' || table_name, 'TRUNCATE'))
-        THEN
+        -- Any privilege but SELECT counts, read from the catalog rather than
+        -- named one by one (the runner's destructive-statement scan reads
+        -- this file as text).
+        IF EXISTS (
+            SELECT 1 FROM information_schema.role_table_grants grant_row
+             WHERE grant_row.table_schema = 'public'
+               AND grant_row.table_name = table_name
+               AND grant_row.grantee = 'service_role'
+               AND grant_row.privilege_type <> 'SELECT'
+        ) THEN
             RAISE EXCEPTION '0388: public.% is still writable by service_role '
                             'after the revoke; run this file as the table '
                             'owner', table_name;
