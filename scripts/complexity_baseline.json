@@ -91,7 +91,6 @@
   "services/snippet_transcription.py:transcribe_snippet_bytes": 26,
   "services/snippet_truncation.py:apply_extracted_snippets": 35,
   "services/stripe_checkout_credits.py:apply_paid_checkout_session_credits": 36,
-  "services/take_feedback_candidates.py:current_take_confident_voice_candidate": 52,
   "services/take_feedback_policy_v3.py:_verbal_inventory": 45,
   "services/take_feedback_policy_v3.py:build_shadow_frame": 37,
   "services/take_review.py:finalize_later_take_review": 44,
