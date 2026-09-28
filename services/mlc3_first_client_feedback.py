@@ -322,6 +322,180 @@ def _canonical_index(bundle: dict) -> dict[tuple[str, str], dict]:
     }
 
 
+def _snapshot_matches(
+    source_snapshot: dict, snapshot_id: str, served_text: str,
+) -> bool:
+    """Is this the current snapshot contract, of exactly the served text?"""
+    source_generation = source_snapshot.get("source_generation")
+    return not (
+        source_snapshot.get("snapshot_contract_version")
+        != "feedback-v3-candidate-source-snapshot-v1"
+        or snapshot_id != source_snapshot.get("document_snapshot_id")
+        or not isinstance(source_generation, int)
+        or isinstance(source_generation, bool)
+        or source_generation < 1
+        or source_snapshot.get("surface") != served_text
+        or source_snapshot.get("surface_sha256")
+        != sha256(served_text.encode("utf-8")).hexdigest()
+    )
+
+
+def _verified_source_snapshot(
+    database: Any, *, principal_id: str, project_id: str, take_id: str,
+    served_text: str,
+) -> dict | V3Unavailable:
+    """The source snapshot of the served text, or the named decline.
+
+    D20 snapshot-first boundary. Immutable evidence coordinates may only be
+    produced after PostgreSQL identifies the exact current source surface.
+    """
+    try:
+        snapshot_result = database.client.rpc(
+            "read_feedback_v3_candidate_source_snapshot_v1",
+            {
+                "p_acquisition_principal_id": principal_id,
+                "p_project_id": project_id,
+                "p_take_id": take_id,
+            },
+        ).execute()
+        source_snapshot = getattr(snapshot_result, "data", snapshot_result)
+    except Exception as exc:
+        return _decline(take_id, "source_snapshot_rpc_failed", str(exc))
+    if not isinstance(source_snapshot, dict) or set(source_snapshot) != {
+        "snapshot_contract_version", "document_snapshot_id",
+        "source_generation", "surface", "surface_sha256",
+    }:
+        return _decline(take_id, "source_snapshot_shape_unexpected")
+    try:
+        snapshot_id = str(uuid.UUID(str(source_snapshot.get(
+            "document_snapshot_id"
+        ))))
+    except (TypeError, ValueError, AttributeError):
+        return _decline(take_id, "source_snapshot_id_not_a_uuid")
+    if not _snapshot_matches(source_snapshot, snapshot_id, served_text):
+        return _decline(take_id, "source_snapshot_does_not_match_served_text")
+    return source_snapshot
+
+
+def _service_context(
+    database: Any, *, membership: dict, exact: dict, principal_id: str,
+    project_id: str, take_id: str,
+) -> dict | None:
+    """The exercise context of one Confident Voice row, or None."""
+    context = database.prepare_feedback_v3_service_context({
+        "p_membership_id": str(membership["id"]),
+        "p_candidate_id": str(exact["id"]),
+        "p_acquisition_principal_id": principal_id,
+        "p_idempotency_key": (
+            f"feedback-v3-service-context:{membership['id']}:"
+            f"{exact['id']}"
+        ),
+    })
+    if not isinstance(context, dict):
+        return None
+    return {
+        "project_id": project_id,
+        "take_id": take_id,
+        "membership_id": str(membership["id"]),
+        "candidate_id": str(exact["id"]),
+        "feedback_exposure_id": str(exact["exposure_id"]),
+        "content_identity_sha256": str(
+            membership["content_identity_sha256"]
+        ),
+        "n1_candidate_set_id": str(
+            context["n1_candidate_set_id"]
+        ),
+        "authorization_check_id": str(
+            context["authorization_check_id"]
+        ),
+        "source_acquisition_receipt_id": str(
+            context["source_acquisition_receipt_id"]
+        ),
+    }
+
+
+def _visible_rows(
+    database: Any, *, inventory: dict, canonical: dict,
+    lineage: Optional[dict], exercise_context: bool, principal_id: str,
+    project_id: str, take_id: str,
+) -> list[dict] | V3Unavailable:
+    """The inventory's visible rows, each bound to its bundle candidate.
+
+    Declines when a visible row has no candidate in the bundle.
+    """
+    visible: list[dict] = []
+    for raw in inventory["visible_rows"]:
+        row = dict(raw)
+        family = str(row.get("feedback_family") or "")
+        key = str(row.get("id") or "")
+        exact = canonical.get((family, key))
+        if exact is None:
+            return _decline(take_id, "visible_row_candidate_not_in_bundle")
+        # `candidate_id` and `exposure_id` come from the BUNDLE, which is
+        # computed in-process and always available. Only the membership id
+        # comes from the freeze, so only it can be missing.
+        row.update({
+            "candidate_id": str(exact["id"]),
+            "feedback_exposure_id": str(exact["exposure_id"]),
+        })
+        if lineage is None:
+            # No frozen membership: the bookmark serves, the answer path
+            # refuses, and nothing claims a lineage it does not have.
+            visible.append(row)
+            continue
+        membership = lineage
+        row["feedback_membership_id"] = str(membership["id"])
+        if family == "confident_voice" and exercise_context:
+            service = _service_context(
+                database, membership=membership, exact=exact,
+                principal_id=principal_id, project_id=project_id,
+                take_id=take_id,
+            )
+            if service is not None:
+                row["mlc3_service"] = service
+        visible.append(row)
+    return visible
+
+
+def _log_served(
+    visible: list[dict], *, lineage: Optional[dict], take_id: str,
+) -> None:
+    """Log the one line that says V3 served this Take."""
+    # THE LINE THAT SAYS IT WORKED (founder 2026-09-20: "How do we know it
+    # works? I ask.").
+    #
+    # Every other log in `prepare_first_client_feedback` fires on FAILURE. A Take that
+    # succeeded left `stood down` absent and put nothing in its place, so
+    # the only available proof was the absence of an error — which is
+    # weaker evidence than a presence, and indistinguishable from a log
+    # list scrolled to the wrong place or a search string that did not
+    # match. The one positive line this module had
+    # (`v3 serving ... WITHOUT exercise context`) fires only in the
+    # degraded case, so the better the system got the quieter it became.
+    #
+    # Counts and lineage state only: no candidate text, no score, nothing
+    # that reaches a user. `lineage=none` is the ordinary reading while the
+    # MLC-3 rollout is inactive — the bookmark served, its F2 audit record
+    # did not — and it is worth seeing at a glance which of the two
+    # happened.
+    #
+    # PER FAMILY (founder 2026-09-28: "many options to judge, but almost
+    # none, no praise and no corrections"). `items` alone could not tell an
+    # honest empty praise or rewrite lane (24f) from one that never reached
+    # the user; the split can.
+    families: dict[str, int] = {}
+    for row in visible:
+        name = str(row.get("feedback_family") or "unknown")
+        families[name] = families.get(name, 0) + 1
+    logger.info(
+        "first_client: v3 served items=%d families=%s lineage=%s take=%s",
+        len(visible),
+        ",".join(f"{name}:{count}" for name, count in sorted(families.items())),
+        "yes" if lineage is not None else "none",
+        take_id or "?",
+    )
+
+
 def prepare_first_client_feedback(
     *,
     database: Any,
@@ -357,44 +531,14 @@ def prepare_first_client_feedback(
         database, principal_id=principal_id,
         owner_user_id=str(owner_user_id), take_id=take_id,
     )
-    # D20 snapshot-first boundary. Immutable evidence coordinates may only be
-    # produced after PostgreSQL identifies the exact current source surface.
-    try:
-        snapshot_result = database.client.rpc(
-            "read_feedback_v3_candidate_source_snapshot_v1",
-            {
-                "p_acquisition_principal_id": principal_id,
-                "p_project_id": project_id,
-                "p_take_id": take_id,
-            },
-        ).execute()
-        source_snapshot = getattr(snapshot_result, "data", snapshot_result)
-    except Exception as exc:
-        return _decline(take_id, "source_snapshot_rpc_failed", str(exc))
-    if not isinstance(source_snapshot, dict) or set(source_snapshot) != {
-        "snapshot_contract_version", "document_snapshot_id",
-        "source_generation", "surface", "surface_sha256",
-    }:
-        return _decline(take_id, "source_snapshot_shape_unexpected")
-    try:
-        snapshot_id = str(uuid.UUID(str(source_snapshot.get(
-            "document_snapshot_id"
-        ))))
-    except (TypeError, ValueError, AttributeError):
-        return _decline(take_id, "source_snapshot_id_not_a_uuid")
-    source_generation = source_snapshot.get("source_generation")
-    if (
-        source_snapshot.get("snapshot_contract_version")
-        != "feedback-v3-candidate-source-snapshot-v1"
-        or snapshot_id != source_snapshot.get("document_snapshot_id")
-        or not isinstance(source_generation, int)
-        or isinstance(source_generation, bool)
-        or source_generation < 1
-        or source_snapshot.get("surface") != served_text
-        or source_snapshot.get("surface_sha256")
-        != sha256(served_text.encode("utf-8")).hexdigest()
-    ):
-        return _decline(take_id, "source_snapshot_does_not_match_served_text")
+    # D20 snapshot-first boundary: read and verified here, BEFORE the
+    # exposure bundle is built below.
+    source_snapshot = _verified_source_snapshot(
+        database, principal_id=principal_id, project_id=project_id,
+        take_id=take_id, served_text=served_text,
+    )
+    if isinstance(source_snapshot, V3Unavailable):
+        return source_snapshot
     frame = build_service_candidate_frame(
         take_document=take_document,
         snippets=snippets,
@@ -464,59 +608,13 @@ def prepare_first_client_feedback(
         project_id=project_id, take_id=take_id,
     )
 
-    visible: list[dict] = []
-    for raw in inventory["visible_rows"]:
-        row = dict(raw)
-        family = str(row.get("feedback_family") or "")
-        key = str(row.get("id") or "")
-        exact = canonical.get((family, key))
-        if exact is None:
-            return _decline(take_id, "visible_row_candidate_not_in_bundle")
-        # `candidate_id` and `exposure_id` come from the BUNDLE, which is
-        # computed in-process and always available. Only the membership id
-        # comes from the freeze, so only it can be missing.
-        row.update({
-            "candidate_id": str(exact["id"]),
-            "feedback_exposure_id": str(exact["exposure_id"]),
-        })
-        if lineage is None:
-            # No frozen membership: the bookmark serves, the answer path
-            # refuses, and nothing claims a lineage it does not have.
-            visible.append(row)
-            continue
-        membership = lineage
-        row["feedback_membership_id"] = str(membership["id"])
-        if family == "confident_voice" and exercise_context:
-            context = database.prepare_feedback_v3_service_context({
-                "p_membership_id": str(membership["id"]),
-                "p_candidate_id": str(exact["id"]),
-                "p_acquisition_principal_id": principal_id,
-                "p_idempotency_key": (
-                    f"feedback-v3-service-context:{membership['id']}:"
-                    f"{exact['id']}"
-                ),
-            })
-            if isinstance(context, dict):
-                row["mlc3_service"] = {
-                    "project_id": project_id,
-                    "take_id": take_id,
-                    "membership_id": str(membership["id"]),
-                    "candidate_id": str(exact["id"]),
-                    "feedback_exposure_id": str(exact["exposure_id"]),
-                    "content_identity_sha256": str(
-                        membership["content_identity_sha256"]
-                    ),
-                    "n1_candidate_set_id": str(
-                        context["n1_candidate_set_id"]
-                    ),
-                    "authorization_check_id": str(
-                        context["authorization_check_id"]
-                    ),
-                    "source_acquisition_receipt_id": str(
-                        context["source_acquisition_receipt_id"]
-                    ),
-                }
-        visible.append(row)
+    visible = _visible_rows(
+        database, inventory=inventory, canonical=canonical, lineage=lineage,
+        exercise_context=exercise_context, principal_id=principal_id,
+        project_id=project_id, take_id=take_id,
+    )
+    if isinstance(visible, V3Unavailable):
+        return visible
     if not visible:
         # ZERO ROWS IS NOT AN ANSWER, IT IS A STAND-DOWN (founder 2026-09-18:
         # "it was loading long and then showed no bookmarks on the text ZERO").
@@ -538,37 +636,5 @@ def prepare_first_client_feedback(
         # contract this function's own docstring states, and names the reason
         # in the log instead of failing silently.
         return _decline(take_id, "inventory_returned_no_visible_rows")
-    # THE LINE THAT SAYS IT WORKED (founder 2026-09-20: "How do we know it
-    # works? I ask.").
-    #
-    # Every other log in this function fires on FAILURE. A Take that
-    # succeeded left `stood down` absent and put nothing in its place, so
-    # the only available proof was the absence of an error — which is
-    # weaker evidence than a presence, and indistinguishable from a log
-    # list scrolled to the wrong place or a search string that did not
-    # match. The one positive line this module had
-    # (`v3 serving ... WITHOUT exercise context`) fires only in the
-    # degraded case, so the better the system got the quieter it became.
-    #
-    # Counts and lineage state only: no candidate text, no score, nothing
-    # that reaches a user. `lineage=none` is the ordinary reading while the
-    # MLC-3 rollout is inactive — the bookmark served, its F2 audit record
-    # did not — and it is worth seeing at a glance which of the two
-    # happened.
-    #
-    # PER FAMILY (founder 2026-09-28: "many options to judge, but almost
-    # none, no praise and no corrections"). `items` alone could not tell an
-    # honest empty praise or rewrite lane (24f) from one that never reached
-    # the user; the split can.
-    families: dict[str, int] = {}
-    for row in visible:
-        name = str(row.get("feedback_family") or "unknown")
-        families[name] = families.get(name, 0) + 1
-    logger.info(
-        "first_client: v3 served items=%d families=%s lineage=%s take=%s",
-        len(visible),
-        ",".join(f"{name}:{count}" for name, count in sorted(families.items())),
-        "yes" if lineage is not None else "none",
-        take_id or "?",
-    )
+    _log_served(visible, lineage=lineage, take_id=take_id)
     return visible

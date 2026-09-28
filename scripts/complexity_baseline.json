@@ -62,7 +62,6 @@
   "services/master_document.py:assemble_master_document": 28,
   "services/master_document.py:build_skeleton": 34,
   "services/mlc2_confidence.py:_validate_candidate": 26,
-  "services/mlc3_first_client_feedback.py:prepare_first_client_feedback": 41,
   "services/mlc3_founder_canary_readiness.py:assess_founder_canary_readiness": 41,
   "services/mlc3_founder_canary_readiness.py:validate_r2_smoke_manifest": 31,
   "services/mlc3_general_service_readiness.py:_valid_emergency_disable": 32,
