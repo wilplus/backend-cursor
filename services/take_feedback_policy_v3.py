@@ -463,6 +463,21 @@ def _anchored_praise(
     return chosen
 
 
+def _log_verbal_lanes(take_id: Any, rewrite_ranked: list,
+                      rewrite_selected: list, praise_ranked: list,
+                      praise_selected: list) -> None:
+    """Why a lane came out empty, in counts only (founder 2026-09-28: "no
+    praise and no corrections"). No detector finding (candidates=0) and a
+    finding outside the two most Confident blocks (candidates>0,
+    anchored=0) are different causes."""
+    logger.info(
+        "v3 lanes take=%s rewrite candidates=%d selected=%d "
+        "praise candidates=%d anchored=%d",
+        take_id or "?", len(rewrite_ranked), len(rewrite_selected),
+        len(praise_ranked), len(praise_selected),
+    )
+
+
 def coverage_floor(take_index: Any) -> float:
     """The share of assessable Slides this Take is required to cover."""
     if isinstance(take_index, bool) or not isinstance(take_index, int):
@@ -887,6 +902,8 @@ def build_shadow_frame(
         _mark_top_confidence(blocks, PRAISE_ANCHOR_LIMIT),
     )
     praise_selected_ids = [row["candidate_id"] for row in praise_anchors]
+    _log_verbal_lanes(take_id, rewrite_ranked, rewrite_selected_ids,
+                      praise_ranked, praise_selected_ids)
 
     generator_versions = sorted({
         version

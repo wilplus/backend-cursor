@@ -1511,6 +1511,24 @@ def _coach_practice_payload(practice: dict) -> dict:
     }
 
 
+
+def _shared_exercise_snapshot(exercise, final_video_url, body) -> dict:
+    """What the speaker is shown. `own_wording` when the coach asks for
+    different words than the ones said (founder 2026-09-28, 14B): the
+    speaker's practice is then not held to the exact passage. Recorded on the
+    shared exercise itself, so the rule travels with what they were asked."""
+    snapshot = {
+        "exercise_id": exercise.get("exercise_id"),
+        "version": int(exercise.get("version") or 1),
+        "title": exercise.get("title"),
+        "instruction": exercise.get("instruction"),
+        "explanation_video_url": final_video_url,
+        "source": exercise.get("source") or "diagnostic_library",
+    }
+    if body.get("own_wording") is True:
+        snapshot["own_wording"] = True
+    return snapshot
+
 @v2_bp.route(
     "/coach/sessions/<session_id>/snippets/<snippet_id>/confidence-practice",
     methods=["GET", "PUT", "PATCH"],
@@ -1608,14 +1626,8 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     if share and not final_video_url:
         return jsonify({"code": "INVALID_INPUT",
                         "error": "Add an explanation video before sharing."}), 400
-    exercise_snapshot = {
-        "exercise_id": exercise.get("exercise_id"),
-        "version": int(exercise.get("version") or 1),
-        "title": exercise.get("title"),
-        "instruction": exercise.get("instruction"),
-        "explanation_video_url": final_video_url,
-        "source": exercise.get("source") or "diagnostic_library",
-    }
+    exercise_snapshot = _shared_exercise_snapshot(
+        exercise, final_video_url, body)
     patch = {
         "professional_coach_decision": decision,
         "coach_selected_exercise_id": exercise_id,

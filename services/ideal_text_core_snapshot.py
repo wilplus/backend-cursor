@@ -220,6 +220,25 @@ def _exact_pieces(
     return out
 
 
+def _lineage_owner(database: Any, latest: Mapping[str, Any],
+                   arc_id: str) -> tuple[str, str]:
+    """(owner principal, project id) for the head's lineage.
+
+    Most Takes carry no owner copy; the project always does
+    (`get_project_owner_principal`, the same fallback the practice and
+    training paths use). Requiring the copy made every publication of such a
+    project fail, so it never got a head and opened as the unlinked "Your
+    talk" view with no slides. A recording's arc IS its project, so the arc
+    id stands in only when the project answers."""
+    project_id = str(latest.get("project_id") or "")
+    owner = str(latest.get("owner_principal_id") or "")
+    if owner:
+        return owner, project_id
+    candidate = project_id or str(arc_id or "")
+    owner = str(database.get_project_owner_principal(candidate) or "")
+    return (owner, candidate) if owner else ("", project_id)
+
+
 def build_snapshot(
     database: Any,
     arc_id: str,
@@ -312,8 +331,7 @@ def build_snapshot(
     if not project.spoken_rows or not project.latest_take_session_id:
         raise ValueError("IDEAL_TEXT_DOCUMENT_TAKE_REQUIRED")
     latest = project.spoken_rows[-1]
-    owner = str(latest.get("owner_principal_id") or "")
-    project_id = str(latest.get("project_id") or "")
+    owner, project_id = _lineage_owner(database, latest, arc_id)
     if not owner or not project_id:
         raise ValueError("IDEAL_TEXT_DOCUMENT_LINEAGE_REQUIRED")
     version = source.version if isinstance(source.version, int) else 1
@@ -465,3 +483,53 @@ def publish_for_arc(database: Any, arc_id: str,
                     arc_id, enqueue_error,
                 )
         return None
+
+
+# Per-process memory of when each arc last tried an on-open publication. The
+# client asks again every few seconds while a document is pending; one build
+# per arc per window is enough, and the rest simply read.
+MISSING_HEAD_PUBLISH_WINDOW_SECONDS = 30.0
+_missing_head_publish_attempts: dict[str, float] = {}
+
+
+def read_core_or_publish(database: Any, arc_id: str, actor_id: str, *,
+                         is_owner: Any) -> dict | None:
+    """The owner-checked cold-open read; when there is no head at all, one
+    publication and a second read (founder 2026-09-28, decision 16A: "build
+    and save it the moment it's opened").
+
+    The head is normally published at every write boundary. When that
+    publication fails -- a dropped connection, a worker that never ran the
+    retry, a Take without its owner copy -- the project has a document and no
+    head, and every open read the composing lane instead, which cannot always
+    prove each Paragraph's Slide: the deck collapsed into one untitled "Your
+    talk" section with no slide picture. Publishing here repairs the head
+    once, through the same writer every other boundary uses.
+
+    Only the project's owner triggers it (``is_owner``), at most once per arc
+    per window, and only when the read found no head -- an existing head is
+    never rebuilt from here. A failed READ still raises to the caller."""
+    import time
+
+    core_read = database.get_ideal_text_document_core_v2(arc_id, actor_id)
+    if core_read:
+        return core_read
+    key = str(arc_id)
+    now = time.monotonic()
+    last = _missing_head_publish_attempts.get(key)
+    if last is not None and now - last < MISSING_HEAD_PUBLISH_WINDOW_SECONDS:
+        return None
+    _missing_head_publish_attempts[key] = now
+    try:
+        if not is_owner():
+            return None
+        published = publish_for_arc(database, key, actor_id)
+    except Exception as error:
+        logger.warning("ideal-text core on-open publish failed arc=%s: %s",
+                       arc_id, error)
+        return None
+    logger.info("ideal-text core on-open publish arc=%s published=%s",
+                arc_id, published is not None)
+    if published is None:
+        return None
+    return database.get_ideal_text_document_core_v2(arc_id, actor_id)

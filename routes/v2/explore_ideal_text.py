@@ -308,6 +308,29 @@ def _ideal_piece_provenance_from_relocated_pieces(
     return _derived or None
 
 
+def _ideal_piece_provenance_by_slot(_stored_paragraphs, served_text):
+    """Slot-for-slot Slide lineage when the words changed but the shape did
+    not (founder 2026-09-28: "the text was not assigned to the slides ... it
+    was all concatenated").
+
+    The same proof the immutable snapshot already accepts
+    (`ideal_text_core_snapshot._exact_pieces`, compatibility adoption): the
+    edit surfaces rewrite Paragraph slots in place and cannot insert, delete,
+    split, merge or reorder them, so on an equal Paragraph count slot N is
+    still the Slide-bounded Paragraph N. Without this, any difference between
+    the served words and the stored Take-1 body -- a later Take's rewrite, a
+    folded suggestion -- threw every Slide away and the deck rendered one
+    untitled section. A changed count still proves nothing and returns None."""
+    if not (_stored_paragraphs and isinstance(served_text, str)
+            and served_text.strip()):
+        return None
+    served = [p for p in served_text.split("\n\n") if p.strip()]
+    rows = [p for p in _stored_paragraphs if isinstance(p, dict)]
+    if len(rows) != len(_stored_paragraphs) or len(rows) != len(served):
+        return None
+    return _ideal_piece_provenance_from_stored_paragraphs(rows, True)
+
+
 def _ideal_piece_provenance_canonical(arc_id, served_text):
     # CANONICAL SOURCE FIRST. Take 1's document provenance is persisted in
     # the same database write as its text. Later Takes advance the REVIEW
@@ -348,6 +371,10 @@ def _ideal_piece_provenance_canonical(arc_id, served_text):
             _stored_pieces, _same_body, served_text)
         if relocated:
             return relocated
+        adopted = _ideal_piece_provenance_by_slot(
+            _stored_paragraphs, served_text)
+        if adopted is not None:
+            return adopted
     except Exception as _stored_doc_err:
         logger.warning(
             "stored ideal-text provenance failed arc=%s: %s",
@@ -553,7 +580,11 @@ def v2_explore_get_ideal_text_core(arc_id):
     """Strict, read-only cold-open document.
 
     This endpoint reads one immutable prepared snapshot.  It does not compose,
-    repair, persist, aggregate feedback or prepare analytics.
+    persist, aggregate feedback or prepare analytics.
+
+    ONE REPAIR, WHEN THERE IS NO HEAD AT ALL (founder 2026-09-28, 16A): the
+    owner's open asks the ordinary publisher for one -- see
+    ``ideal_text_core_snapshot.read_core_or_publish``.  An existing head is only ever read.
 
     IT DOES RE-ADDRESS THE DECK (2026-09-19, founder: "no slide preview" /
     "it was visible for a moment but then gone").  ``publish_for_arc`` bakes
@@ -577,8 +608,10 @@ def v2_explore_get_ideal_text_core(arc_id):
     started = perf_counter()
     from services.db import IdealTextCoreReadError
     try:
-        core_read = db.get_ideal_text_document_core_v2(
-            arc_id, str(request.user_id))
+        from services.ideal_text_core_snapshot import read_core_or_publish
+        core_read = read_core_or_publish(
+            db, arc_id, str(request.user_id),
+            is_owner=lambda: _arc_owned_by_caller(arc_id)[0])
     except IdealTextCoreReadError:
         # A FAILED read is not "no document yet" (founder 2026-09-26: a
         # dropped connection showed an existing Ideal Text as missing). 503
@@ -2379,6 +2412,13 @@ def v2_explore_get_part_history(arc_id, part_id):
                                str(part_id))
     if history is None:
         return jsonify({"code": "NOT_FOUND", "error": "part not found"}), 404
+    from services.paragraph_history import with_earlier_take_details
+    from services.snippet_audio_url import resolve_snippet_audio_url
+    history = _ideal_optional_read(
+        "earlier_take_details", history,
+        lambda: with_earlier_take_details(
+            db, arc_id, str(request.user_id), history,
+            lambda snippet: resolve_snippet_audio_url(snippet, db)))
     response = jsonify(history)
     response.headers["Cache-Control"] = "private, no-store"
     return response

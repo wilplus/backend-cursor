@@ -555,9 +555,20 @@ def prepare_first_client_feedback(
     # MLC-3 rollout is inactive — the bookmark served, its F2 audit record
     # did not — and it is worth seeing at a glance which of the two
     # happened.
+    #
+    # PER FAMILY (founder 2026-09-28: "many options to judge, but almost
+    # none, no praise and no corrections"). `items` alone could not tell an
+    # honest empty praise or rewrite lane (24f) from one that never reached
+    # the user; the split can.
+    families: dict[str, int] = {}
+    for row in visible:
+        name = str(row.get("feedback_family") or "unknown")
+        families[name] = families.get(name, 0) + 1
     logger.info(
-        "first_client: v3 served items=%d lineage=%s take=%s",
-        len(visible), "yes" if lineage is not None else "none",
+        "first_client: v3 served items=%d families=%s lineage=%s take=%s",
+        len(visible),
+        ",".join(f"{name}:{count}" for name, count in sorted(families.items())),
+        "yes" if lineage is not None else "none",
         take_id or "?",
     )
     return visible

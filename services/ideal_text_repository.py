@@ -29,12 +29,14 @@ class IdealTextRepository(TableRepository):
         if not arc_id:
             return None
         try:
-            res = (
-                self.client.table("coach_arc_ideal_text")
-                .select("*")
-                .eq("arc_id", str(arc_id))
-                .limit(1)
-                .execute()
+            res = self._execute(
+                lambda: (
+                    self.client.table("coach_arc_ideal_text")
+                    .select("*")
+                    .eq("arc_id", str(arc_id))
+                    .limit(1)
+                ),
+                label="get_coach_arc_ideal_text",
             )
             rows = res.data or []
             return rows[0] if rows else None

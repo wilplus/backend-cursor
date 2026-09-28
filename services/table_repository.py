@@ -20,3 +20,13 @@ class TableRepository:
     @property
     def client(self) -> Any:
         return self.database.client
+
+    def _execute(self, query_factory: Any, *, label: str) -> Any:
+        """Run one read, retried on a dropped connection when the database
+        service offers it (founder 2026-09-28, decision 15: the Ideal Text
+        page's reads retry like the core read does). ``query_factory`` builds
+        the query fresh each attempt, so a rebuilt client is used."""
+        retry = getattr(self.database, "_execute_with_retry", None)
+        if callable(retry):
+            return retry(query_factory, label=label)
+        return query_factory().execute()

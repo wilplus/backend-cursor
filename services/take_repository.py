@@ -1511,12 +1511,14 @@ class TakeRepository(TableRepository):
                       "coach_feedback_saved_at, analysis_state")
         try:
             try:
-                res = (
-                    self.client.table("v2_sessions")
-                    .select(_full_cols)
-                    .eq("arc_id", arc_id)
-                    .order("take_index", desc=False)
-                    .execute()
+                res = self._execute(
+                    lambda: (
+                        self.client.table("v2_sessions")
+                        .select(_full_cols)
+                        .eq("arc_id", arc_id)
+                        .order("take_index", desc=False)
+                    ),
+                    label="get_arc_sessions",
                 )
                 return res.data or []
             except Exception as _e_full:
