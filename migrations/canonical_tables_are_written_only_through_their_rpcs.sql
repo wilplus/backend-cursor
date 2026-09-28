@@ -44,11 +44,11 @@
 
 DO $$
 DECLARE
-    table_name TEXT;
+    v_table TEXT;
     role_name TEXT;
     could_read BOOLEAN;
 BEGIN
-    FOREACH table_name IN ARRAY ARRAY[
+    FOREACH v_table IN ARRAY ARRAY[
         -- 0296 add_canonical_feedback_data_contract.sql, lines 2339-2364
         'transcript_versions', 'slides', 'paragraphs', 'evidence_spans',
         'acoustic_feature_snapshots', 'candidate_sets', 'feedback_candidates',
@@ -63,9 +63,9 @@ BEGIN
         -- 0299 add_learning_surface_exposure_receipts.sql, lines 119-120
         'learning_surface_presentations', 'learning_surface_exposure_receipts'
     ] LOOP
-        IF to_regclass('public.' || table_name) IS NULL THEN
+        IF to_regclass('public.' || v_table) IS NULL THEN
             RAISE NOTICE '0388: public.% is not present here; skipped',
-                table_name;
+                v_table;
             CONTINUE;
         END IF;
         -- Reads are preserved, never widened: SELECT comes back only where
@@ -74,24 +74,24 @@ BEGIN
         could_read := EXISTS (SELECT 1 FROM pg_roles
                                WHERE rolname = 'service_role')
                       AND has_table_privilege('service_role',
-                                              'public.' || table_name,
+                                              'public.' || v_table,
                                               'SELECT');
         EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC',
-                       table_name);
+                       v_table);
         FOREACH role_name IN ARRAY ARRAY[
             'anon', 'authenticated', 'service_role'
         ] LOOP
             IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
                 EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I',
-                               table_name, role_name);
+                               v_table, role_name);
             END IF;
         END LOOP;
         IF could_read THEN
             EXECUTE format('GRANT SELECT ON TABLE public.%I TO service_role',
-                           table_name);
+                           v_table);
         ELSE
             RAISE NOTICE '0388: service_role could not read public.% before; '
-                         'left without SELECT', table_name;
+                         'left without SELECT', v_table;
         END IF;
         -- Post-condition. A REVOKE issued by a role that is not the table
         -- owner is refused, or, when that role merely holds the privilege
@@ -104,13 +104,13 @@ BEGIN
         IF EXISTS (
             SELECT 1 FROM information_schema.role_table_grants grant_row
              WHERE grant_row.table_schema = 'public'
-               AND grant_row.table_name = table_name
+               AND grant_row.table_name = v_table
                AND grant_row.grantee = 'service_role'
                AND grant_row.privilege_type <> 'SELECT'
         ) THEN
             RAISE EXCEPTION '0388: public.% is still writable by service_role '
                             'after the revoke; run this file as the table '
-                            'owner', table_name;
+                            'owner', v_table;
         END IF;
     END LOOP;
 END;
