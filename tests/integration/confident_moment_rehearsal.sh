@@ -407,6 +407,10 @@ hard migrations/a_project_can_be_archived.sql
 # apply/reapply.
 hard migrations/a_take_names_its_recording.sql
 hard migrations/a_take_names_its_recording.sql
+# 0384 records why each frozen exercise choice was made, written with the
+# draw by assign_confident_voice_exercise_v2. Twice: apply/reapply.
+hard migrations/an_exercise_remembers_why.sql
+hard migrations/an_exercise_remembers_why.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

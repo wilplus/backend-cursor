@@ -14,7 +14,10 @@ only.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import math
 import re
 import statistics
 from difflib import SequenceMatcher
@@ -552,6 +555,129 @@ def fit_from_policy(policy: Any) -> Optional[str]:
     return fit if fit in _FIT_ORDER else None
 
 
+#: The schema of one match trace (migration 0384).
+MATCH_TRACE_SCHEMA = "exercise-match-trace-v1"
+
+#: The version of the measuring rules a trace was made under: the thresholds
+#: in ``exercise_eligibility`` and the signal-to-problem map above. Bump it
+#: with any change to either; ``test_the_signal_rules_are_versioned`` fails
+#: until you do, because a trace that names the wrong rules explains nothing.
+SIGNAL_RULES_VERSION = "cv-exercise-signals-v1"
+
+
+def _json_safe(value: Any) -> Any:
+    """Measurements as JSON: non-finite numbers become null, not an error."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _routing_fields(exercise: dict) -> dict:
+    """What an exercise claims, as matching reads it — its catalogue entry."""
+    main, secondary = exercise_targets(exercise)
+    return {
+        "exercise_id": str(exercise.get("exercise_id") or ""),
+        "version": int(exercise.get("version") or 1),
+        "main_targets": sorted(main),
+        "secondary_targets": sorted(secondary),
+        "supported_confidence_patterns": sorted(
+            str(p) for p in exercise.get("supported_confidence_patterns") or []),
+        "editorial_priority": _editorial(exercise),
+    }
+
+
+def _sha256(value: Any) -> str:
+    return hashlib.sha256(json.dumps(
+        value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
+                      exercises: list[dict], ranked: list[dict],
+                      fit: Optional[str], snippet: Any,
+                      take_session_id: str, snippet_id: str) -> dict:
+    """Why one moment got the exercise it got (step 2, founder 2026-09-28).
+
+    Every exercise in the offerable catalogue appears once: ``ranked`` (in the
+    pool the draw chose from, with its rank) or ``excluded`` with the reason,
+    in the order matching tests them. The measurements are copied as they
+    were at the moment of choosing, so a later change to a threshold cannot
+    rewrite what this choice was based on. No transcript text is copied.
+
+    Internal only: nothing here is serialised to the speaker.
+    """
+    pattern = str(verdict.get("pattern") or "")
+    observed = observed_problem_tags(verdict, vocabulary=vocabulary)
+    rank_of = {str(ex.get("exercise_id") or ""): i
+               for i, ex in enumerate(ranked, start=1)}
+    catalogue = []
+    candidates = []
+    for exercise in exercises:
+        routing = _routing_fields(exercise)
+        catalogue.append(routing)
+        exercise_id = routing["exercise_id"]
+        found = exercise_fit(observed, exercise)
+        distance = confidence_pattern_distance(
+            pattern, exercise.get("supported_confidence_patterns"))
+        if exercise_id in rank_of:
+            outcome, reason = "ranked", None
+        elif not observed:
+            outcome, reason = "excluded", "nothing_spotted"
+        elif found is None:
+            outcome, reason = "excluded", "targets_nothing_that_fired"
+        elif distance is None:
+            outcome, reason = "excluded", "confidence_level_unplaceable"
+        else:
+            outcome, reason = "excluded", "lower_fit_than_pool"
+        candidates.append({
+            **routing,
+            "outcome": outcome,
+            "reason": reason,
+            "rank": rank_of.get(exercise_id),
+            "fit": found[0] if found else None,
+            "covered": found[1] if found else 0,
+            "claimed": len(routing["main_targets"])
+                       + len(routing["secondary_targets"]),
+            "pattern_distance": distance,
+        })
+    row = snippet if isinstance(snippet, dict) else {}
+    signals = verdict.get("signals")
+    return _json_safe({
+        "trace_schema": MATCH_TRACE_SCHEMA,
+        "lane": lane,
+        "fit": fit,
+        "matching_policy_version": matching_policy_for(fit),
+        "signal_rules_version": SIGNAL_RULES_VERSION,
+        "clip": {
+            "snippet_id": str(snippet_id),
+            "take_session_id": str(take_session_id),
+            "audio_ref": str(row.get("audio_segment_path")
+                             or row.get("audio_ref") or ""),
+            "start_offset_ms": row.get("start_offset_ms"),
+            "duration_ms": row.get("duration_ms"),
+        },
+        "pattern": pattern,
+        "gate": {
+            "eligible": bool(verdict.get("eligible")),
+            "reason": verdict.get("reason"),
+            "pace_high": verdict.get("pace_high"),
+        },
+        "signals": dict(signals) if isinstance(signals, dict) else {},
+        "features": dict(verdict.get("snapshot") or {}),
+        "signal_tag_map": {k: list(v) for k, v in _SIGNAL_PROBLEM_TAGS.items()},
+        "vocabulary": sorted(vocabulary or ()),
+        "vocabulary_available": bool(vocabulary),
+        "observed_tags": sorted(observed),
+        "catalogue_scope": "offerable_active",
+        "catalogue_sha256": _sha256(sorted(
+            catalogue, key=lambda r: r["exercise_id"])),
+        "candidates": candidates,
+    })
+
+
 def rank_exercises_for_pattern(
     pattern: str, exercises: list[dict], *, observed_tags: Any = None,
 ) -> list[tuple[int, int, str, dict]]:
@@ -734,7 +860,8 @@ def _blocked_by_existing(existing: Any, snippet_id: str) -> bool:
 
 def choose_exercise(ranked: list[dict], *, owner_user_id: str,
                     take_session_id: str, snippet_id: str, lane: str,
-                    database: Any, fit: Optional[str] = None) -> Optional[dict]:
+                    database: Any, fit: Optional[str] = None,
+                    trace: Optional[dict] = None) -> Optional[dict]:
     """The 80/20 choice among a moment's ranked exercises, frozen once.
 
     The database draws and stores it (migration 0372), so every later read
@@ -748,8 +875,10 @@ def choose_exercise(ranked: list[dict], *, owner_user_id: str,
     assign = getattr(database, "assign_confident_voice_exercise", None)
     if not owner_user_id or assign is None:
         return ranked[0]
+    extra = {"trace": trace} if trace is not None else {}
     try:
         assignment = assign(
+            **extra,
             owner_user_id=str(owner_user_id),
             take_session_id=str(take_session_id),
             snippet_id=str(snippet_id),
@@ -890,10 +1019,15 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     # Each moment's list is already a single fit; the chosen moment's is the
     # best fit on offer anywhere in the Take.
     moment = [item[4] for item in ranked if item[1] is chosen]
+    fit = fit_of_key(top)
     served = choose_exercise(
         moment, owner_user_id=owner_user_id, take_session_id=take_session_id,
         snippet_id=str(chosen.get("snippet_id")), lane="legacy_offer",
-        database=database, fit=fit_of_key(top))
+        database=database, fit=fit, trace=build_match_trace(
+            lane="legacy_offer", verdict=verdict, vocabulary=vocabulary,
+            exercises=exercises, ranked=moment, fit=fit, snippet=snippet,
+            take_session_id=take_session_id,
+            snippet_id=str(chosen.get("snippet_id"))))
     if served is None:
         return rows
     chosen["practice_exercise"] = _offer_payload(
@@ -942,17 +1076,22 @@ def attach_v3_exercise_offer(
     # Nothing spotted on this clip, or nothing in the catalogue targets what
     # was: the item is served exactly as V3 made it — "Let's practice" with
     # no exercise (D1). The clip's confidence level alone never picks one.
+    vocabulary = detected_problem_vocabulary(database)
     fit, keyed = matched_exercises(
         str(verdict.get("pattern") or ""), exercises,
-        observed_tags=observed_problem_tags(
-            verdict, vocabulary=detected_problem_vocabulary(database)))
+        observed_tags=observed_problem_tags(verdict, vocabulary=vocabulary))
     evidence = ground(target) if keyed else None
     if not isinstance(evidence, dict):
         return rows
+    ranked = [item[1] for item in keyed]
     exercise = choose_exercise(
-        [item[1] for item in keyed], owner_user_id=owner_user_id,
+        ranked, owner_user_id=owner_user_id,
         take_session_id=take_session_id, snippet_id=snippet_id,
-        lane="v3_exercise_block", database=database, fit=fit)
+        lane="v3_exercise_block", database=database, fit=fit,
+        trace=build_match_trace(
+            lane="v3_exercise_block", verdict=verdict, vocabulary=vocabulary,
+            exercises=exercises, ranked=ranked, fit=fit, snippet=snippet,
+            take_session_id=take_session_id, snippet_id=snippet_id))
     if exercise is None:
         return rows
     target["evidence"] = evidence

@@ -1,7 +1,9 @@
 """Confident Voice micro-practice: narrow eligibility and isolation fences."""
 from __future__ import annotations
 
+import hashlib
 import importlib
+import json
 import inspect
 import re
 import pathlib
@@ -1054,3 +1056,149 @@ class V3ExerciseFitTests(unittest.TestCase):
                          "exercise-fit-tier-v1:exact")
         self.assertEqual([c["exercise_id"] for c in db.assigned[0]["candidates"]],
                          ["exact"])
+
+
+class MatchTraceTests(unittest.TestCase):
+    """Why an exercise was chosen, frozen with the draw (step 2, 2026-09-28)."""
+
+    _Db = V3ExerciseFitTests._Db
+    _row = V3ExerciseFitTests._row
+    _offer = V3ExerciseFitTests._offer
+
+    def _catalogue(self):
+        return [
+            self._row("exact", ["rushing"], primary="rushing"),
+            self._row("trial", ["word_compression", "rushing"],
+                      primary="word_compression"),
+            self._row("elsewhere", ["ending_compression"]),
+        ]
+
+    def _trace(self):
+        db = self._Db(self._catalogue(), {})
+        offer = self._offer(db, {"insufficient_pauses": True})
+        return offer, db.assigned[0]
+
+    def test_every_catalogue_exercise_is_accounted_for_with_a_reason(self):
+        _, call = self._trace()
+        by_id = {c["exercise_id"]: c for c in call["trace"]["candidates"]}
+        self.assertEqual(set(by_id), {"exact", "trial", "elsewhere"})
+        self.assertEqual((by_id["exact"]["outcome"], by_id["exact"]["rank"]),
+                         ("ranked", 1))
+        self.assertEqual(by_id["trial"]["reason"], "lower_fit_than_pool")
+        self.assertEqual(by_id["elsewhere"]["reason"],
+                         "targets_nothing_that_fired")
+
+    def test_the_ranked_candidates_are_exactly_the_pool_drawn_from(self):
+        # The database refuses a trace that disagrees; this is the same rule.
+        _, call = self._trace()
+        ranked = sorted((c for c in call["trace"]["candidates"]
+                         if c["outcome"] == "ranked"), key=lambda c: c["rank"])
+        self.assertEqual([c["exercise_id"] for c in ranked],
+                         [c["exercise_id"] for c in call["candidates"]])
+
+    def test_the_trace_names_what_fired_and_the_rules_it_was_measured_by(self):
+        _, call = self._trace()
+        trace = call["trace"]
+        self.assertEqual(trace["trace_schema"], cvp.MATCH_TRACE_SCHEMA)
+        self.assertEqual(trace["observed_tags"], ["rushing"])
+        self.assertTrue(trace["signals"]["insufficient_pauses"])
+        self.assertEqual(trace["signal_rules_version"], cvp.SIGNAL_RULES_VERSION)
+        self.assertEqual(trace["fit"], cvp.FIT_EXACT)
+        self.assertEqual(trace["matching_policy_version"],
+                         call["matching_policy_version"])
+        self.assertEqual(trace["clip"]["snippet_id"], "snippet-a")
+        self.assertEqual(trace["clip"]["take_session_id"], "take-1")
+        self.assertRegex(trace["catalogue_sha256"], r"^[0-9a-f]{64}$")
+
+    def test_no_transcript_text_is_copied_into_the_trace(self):
+        db = self._Db(self._catalogue(), {})
+        passage = db.snippets["snippet-a"]["transcript"]
+        self._offer(db, {"insufficient_pauses": True})
+        self.assertNotIn(passage, json.dumps(db.assigned[0]["trace"]))
+
+    def test_the_trace_never_reaches_the_speaker(self):
+        offer, _ = self._trace()
+        text = repr(offer)
+        for internal in ("trace", "candidates", "observed_tags", "signals"):
+            self.assertNotIn(internal, text)
+
+    def test_the_trace_is_valid_json_even_with_a_broken_measurement(self):
+        trace = cvp.build_match_trace(
+            lane="v3_exercise_block",
+            verdict={"pattern": "near_confident",
+                     "signals": {"insufficient_pauses": True},
+                     "snapshot": {"wpm": float("nan")}},
+            vocabulary=frozenset({"rushing"}), exercises=[], ranked=[],
+            fit=None, snippet={}, take_session_id="t", snippet_id="s")
+        self.assertIsNone(trace["features"]["wpm"])
+        json.dumps(trace, allow_nan=False)
+
+    def test_the_signal_rules_are_versioned(self):
+        """Changing a threshold or the signal map changes what every future
+        trace means. Bump SIGNAL_RULES_VERSION, then update this fingerprint."""
+        source = (inspect.getsource(cvp.exercise_eligibility)
+                  + json.dumps(cvp._SIGNAL_PROBLEM_TAGS, sort_keys=True))
+        self.assertEqual(
+            (cvp.SIGNAL_RULES_VERSION,
+             hashlib.sha256(source.encode()).hexdigest()),
+            ("cv-exercise-signals-v1",
+             "c64a29c434079b018b7bf70bba90d8a27535ac164a52682d1638236ee14bd79c"))
+
+
+class AssignmentWrapperTests(unittest.TestCase):
+    """services/db.py: v2 with a trace, v1 only while 0384 is not applied."""
+
+    class _Client:
+        def __init__(self, v2_error=None):
+            self.v2_error = v2_error
+            self.calls = []
+
+        def rpc(self, name, params):
+            client = self
+
+            class Call:
+                def execute(self_inner):
+                    client.calls.append((name, params))
+                    if name.endswith("_v2") and client.v2_error:
+                        raise client.v2_error
+                    return type("R", (), {"data": [{"id": "asg"}]})()
+            return Call()
+
+    def _db(self, client):
+        from services.db import DatabaseService
+        db = object.__new__(DatabaseService)
+        db.client = client
+        return db
+
+    def _assign(self, db, trace):
+        return db.assign_confident_voice_exercise(
+            owner_user_id="o", take_session_id="t", snippet_id="s",
+            lane="v3_exercise_block", matching_policy_version="p",
+            candidates=[{"exercise_id": "a", "version": 1}], trace=trace)
+
+    def test_a_trace_goes_with_the_draw(self):
+        client = self._Client()
+        self._assign(self._db(client), {"trace_schema": "x"})
+        self.assertEqual([c[0] for c in client.calls],
+                         ["assign_confident_voice_exercise_v2"])
+        self.assertEqual(client.calls[0][1]["p_trace"], {"trace_schema": "x"})
+
+    def test_before_the_migration_the_draw_still_happens(self):
+        client = self._Client(RuntimeError("PGRST202 function not found"))
+        self._assign(self._db(client), {"trace_schema": "x"})
+        self.assertEqual([c[0] for c in client.calls],
+                         ["assign_confident_voice_exercise_v2",
+                          "assign_confident_voice_exercise_v1"])
+
+    def test_a_refused_trace_is_not_silently_dropped(self):
+        client = self._Client(RuntimeError(
+            "CV_EXERCISE_MATCH_TRACE_DISAGREES_WITH_POOL"))
+        with self.assertRaises(RuntimeError):
+            self._assign(self._db(client), {"trace_schema": "x"})
+        self.assertEqual(len(client.calls), 1)
+
+    def test_without_a_trace_nothing_changes(self):
+        client = self._Client()
+        self._assign(self._db(client), None)
+        self.assertEqual([c[0] for c in client.calls],
+                         ["assign_confident_voice_exercise_v1"])
