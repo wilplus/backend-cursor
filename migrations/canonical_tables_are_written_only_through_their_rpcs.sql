@@ -93,6 +93,25 @@ BEGIN
             RAISE NOTICE '0388: service_role could not read public.% before; '
                          'left without SELECT', table_name;
         END IF;
+        -- Post-condition. A REVOKE issued by a role that is not the table
+        -- owner is refused, or, when that role merely holds the privilege
+        -- without grant option, is a silent WARNING no-op. Either way the
+        -- table would stay writable while the ledger said otherwise, so the
+        -- file checks what it just did and fails loudly instead.
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role')
+           AND (has_table_privilege('service_role',
+                                    'public.' || table_name, 'INSERT')
+                OR has_table_privilege('service_role',
+                                       'public.' || table_name, 'UPDATE')
+                OR has_table_privilege('service_role',
+                                       'public.' || table_name, 'DELETE')
+                OR has_table_privilege('service_role',
+                                       'public.' || table_name, 'TRUNCATE'))
+        THEN
+            RAISE EXCEPTION '0388: public.% is still writable by service_role '
+                            'after the revoke; run this file as the table '
+                            'owner', table_name;
+        END IF;
     END LOOP;
 END;
 $$;

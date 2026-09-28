@@ -39,6 +39,9 @@ def test_prepared_packet_and_true_receipt_are_separate_append_only_tables():
         assert f"CREATE TABLE IF NOT EXISTS public.{table}" in SQL
         assert f"ALTER TABLE public.{table}" in SQL
         assert "ENABLE ROW LEVEL SECURITY" in SQL
+        # 0299's grant of ALL is frozen text; 0388 revokes it to SELECT
+        # (R-1). The privileges a database ends up with are asserted by
+        # tests/test_canonical_tables_are_rpc_only_postgres.py.
         assert f"GRANT ALL ON TABLE public.{table} TO service_role;" in SQL
         assert f"{table}_append_only" in SQL
 

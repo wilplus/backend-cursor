@@ -148,6 +148,23 @@ class TestTheLaneCarriesTheTables:
 
 
 class TestServiceRoleCannotWrite:
+    def test_service_role_cannot_insert_into_canonical_tables(self, db, present):
+        """The finding's named regression test (job1_review.md, R-1): one
+        pass over every granted table the lane carries. The parametrized
+        cases below give the per-table diagnosis."""
+        refused = []
+        for table in sorted(present):
+            column = _plain_column(db, table)
+            with _ServiceRole(db) as cur:
+                try:
+                    cur.execute(
+                        f"INSERT INTO public.{table} ({column}) "
+                        f"SELECT {column} FROM public.{table} WHERE false"
+                    )
+                except psycopg2.errors.InsufficientPrivilege:
+                    refused.append(table)
+        assert sorted(refused) == sorted(present)
+
     @pytest.mark.parametrize("table", TABLES)
     def test_insert_is_refused(self, db, table):
         column = _plain_column(db, table)
@@ -241,6 +258,9 @@ class TestWhyTheRevokeIsSafe:
                 "WHERE ns.nspname = 'public' AND p.proname = 'claim_guest_owner'"
             )
             rows = cur.fetchall()
+        if not rows:
+            pytest.skip("claim_guest_owner is not installed on this lane; "
+                        "the definer check is a claim about production")
         assert all(row[0] for row in rows), rows
 
     @pytest.mark.parametrize("rpc", [
