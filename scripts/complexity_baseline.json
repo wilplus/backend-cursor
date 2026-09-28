@@ -84,7 +84,6 @@
   "services/slide_alignment.py:compute_slide_scores": 29,
   "services/slide_selection.py:_finalize_best_presentation": 27,
   "services/slide_selection.py:build_best_presentation": 43,
-  "services/slide_word_split.py:_snap_boundaries_to_pauses": 32,
   "services/snippet_transcription.py:transcribe_snippet_bytes": 26,
   "services/snippet_truncation.py:apply_extracted_snippets": 35,
   "services/stripe_checkout_credits.py:apply_paid_checkout_session_credits": 36,
