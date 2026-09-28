@@ -137,20 +137,52 @@ def _why_not(counted: int, rows: list[dict], pool: set[str]) -> Optional[str]:
     return None
 
 
-def build_readiness(*, exposures: list[dict], assignments: dict[str, dict],
-                    traces: dict[str, dict], practices: dict[str, dict],
-                    attempts: dict[str, list[dict]],
-                    signal_rules_version: str) -> dict:
-    """The count from already-read rows. Pure.
+def cohort_records(*, exposures: list[dict], assignments: dict[str, dict],
+                   traces: dict[str, dict], practices: dict[str, dict],
+                   attempts: dict[str, list[dict]],
+                   signal_rules_version: str) -> list[dict]:
+    """Every confirmed render, in render order, with where §3.5 put it. Pure.
+
+    Each record is `{exposure, assignment, trace, in_cohort, excluded,
+    endpoint}`: `excluded` names the first gate it failed (None when it
+    counts) and `endpoint` is its endpoint attempt when it counts. The
+    counter and the scorekeeper both read this, so they can never disagree
+    about which exposures count.
 
     `assignments` and `traces` are keyed by assignment id; `practices` maps an
     assignment id to the first practice the speaker opened on it; `attempts`
     maps a practice id to its attempts.
     """
+    seen: dict[str, set[str]] = {}
+    records: list[dict] = []
+    ordered = sorted((e for e in exposures if isinstance(e, dict)),
+                     key=lambda e: (str(e.get("rendered_at") or ""),
+                                    str(e.get("assignment_id") or "")))
+    for exposure in ordered:
+        assignment_id = str(exposure.get("assignment_id") or "")
+        assignment = assignments.get(assignment_id) or {}
+        trace = traces.get(assignment_id)
+        refused = _gate(exposure, trace=trace, assignment=assignment,
+                        seen=seen, signal_rules_version=signal_rules_version)
+        in_cohort = refused is None
+        endpoint = None
+        if in_cohort:
+            practice = practices.get(assignment_id) or {}
+            tries = attempts.get(str(practice.get("id") or ""), [])
+            endpoint = endpoint_attempt(tries) if tries else None
+            refused = ("no_attempt" if not tries else
+                       "no_valid_attempt" if endpoint is None else None)
+        records.append({"exposure": exposure, "assignment": assignment,
+                        "trace": trace, "in_cohort": in_cohort,
+                        "excluded": refused, "endpoint": endpoint})
+    return records
+
+
+def build_readiness(*, signal_rules_version: str, **rows: Any) -> dict:
+    """The count from already-read rows (see `cohort_records`). Pure."""
     excluded = {name: 0 for name in EXCLUSIONS}
     per_exercise: dict[str, dict[str, Any]] = {}
     pool: set[str] = set()
-    seen: dict[str, set[str]] = {}
     modes: dict[str, int] = {}
     cohort = counted = 0
 
@@ -159,68 +191,54 @@ def build_readiness(*, exposures: list[dict], assignments: dict[str, dict],
             "exercise_id": exercise_id, "exposures": 0, "cohort": 0,
             "counted": 0, "needed": MIN_PER_EXERCISE})
 
-    ordered = sorted((e for e in exposures if isinstance(e, dict)),
-                     key=lambda e: (str(e.get("rendered_at") or ""),
-                                    str(e.get("assignment_id") or "")))
-    for exposure in ordered:
-        assignment_id = str(exposure.get("assignment_id") or "")
-        row = slot(str(exposure.get("exercise_id") or ""))
+    records = cohort_records(signal_rules_version=signal_rules_version, **rows)
+    for record in records:
+        row = slot(str(record["exposure"].get("exercise_id") or ""))
         row["exposures"] += 1
-        assignment = assignments.get(assignment_id) or {}
-        trace = traces.get(assignment_id)
-        refused = _gate(exposure, trace=trace, assignment=assignment,
-                        seen=seen, signal_rules_version=signal_rules_version)
-        if refused is None:
+        if record["in_cohort"]:
             cohort += 1
             row["cohort"] += 1
-            pool.update(ranked_pool(trace))
-            practice = practices.get(assignment_id) or {}
-            tries = attempts.get(str(practice.get("id") or ""), [])
-            refused = ("no_attempt" if not tries else
-                       "no_valid_attempt" if endpoint_attempt(tries) is None
-                       else None)
-        if refused is not None:
-            excluded[refused] += 1
+            pool.update(ranked_pool(record["trace"]))
+        if record["excluded"] is not None:
+            excluded[record["excluded"]] += 1
             continue
         counted += 1
         row["counted"] += 1
-        mode = str(assignment.get("selection_mode") or "unknown")
+        mode = str(record["assignment"].get("selection_mode") or "unknown")
         modes[mode] = modes.get(mode, 0) + 1
 
     for exercise_id in pool:
         slot(exercise_id)
-    rows = sorted(per_exercise.values(),
-                  key=lambda r: (int(r["counted"]), str(r["exercise_id"])))
-    why_not = _why_not(counted, rows, pool)
+    table = sorted(per_exercise.values(),
+                   key=lambda r: (int(r["counted"]), str(r["exercise_id"])))
+    why_not = _why_not(counted, table, pool)
     return {
         "label_spec_version": LABEL_SPEC_VERSION,
         "readiness_version": READINESS_VERSION,
         "signal_rules_version": signal_rules_version,
         "bar": {"min_counted": MIN_COUNTED,
                 "min_per_exercise": MIN_PER_EXERCISE},
-        "exposures": len(ordered),
+        "exposures": len(records),
         "cohort": cohort,
         "counted": counted,
         "attempt_rate": round(counted / cohort, 4) if cohort else None,
         "excluded": excluded,
         "counted_by_selection_mode": modes,
-        "exercises": rows,
+        "exercises": table,
         "ready": why_not is None,
         "why_not": why_not,
     }
 
 
-def readiness(database: Any) -> dict:
-    """Read everything the count needs and build it. A source that cannot be
-    read (a migration not yet applied) is named in `unavailable`; the count
-    is then marked not ready rather than read as smaller."""
-    from services.confident_voice_practice import SIGNAL_RULES_VERSION
+def read_sources(database: Any) -> tuple[dict, list[str]]:
+    """The rows `cohort_records` needs, and the names of any source that
+    could not be read (a migration not yet applied)."""
     unavailable: list[str] = []
 
     def read(name: str, fn: Any, default: Any) -> Any:
         try:
             return fn()
-        except Exception:  # noqa: BLE001 — named below, never read as zero
+        except Exception:  # noqa: BLE001 — named, never read as zero
             unavailable.append(name)
             return default
 
@@ -238,10 +256,18 @@ def readiness(database: Any) -> dict:
     attempts = read("attempts",
                     lambda: database.list_attempts_for_practices(practice_ids),
                     {})
-    out = build_readiness(exposures=exposures, assignments=assignments,
-                          traces=traces, practices=practices,
-                          attempts=attempts,
-                          signal_rules_version=SIGNAL_RULES_VERSION)
+    return ({"exposures": exposures, "assignments": assignments,
+             "traces": traces, "practices": practices, "attempts": attempts},
+            unavailable)
+
+
+def readiness(database: Any) -> dict:
+    """Read everything the count needs and build it. A source that cannot be
+    read is named in `unavailable`; the count is then marked not ready rather
+    than read as smaller."""
+    from services.confident_voice_practice import SIGNAL_RULES_VERSION
+    rows, unavailable = read_sources(database)
+    out = build_readiness(signal_rules_version=SIGNAL_RULES_VERSION, **rows)
     out["unavailable"] = unavailable
     if unavailable:
         out["ready"] = False
