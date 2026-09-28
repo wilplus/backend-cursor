@@ -17,18 +17,6 @@ def _initials(name: str | None) -> str:
     return (parts[0][:2]).upper()
 
 
-def _score_percent(score: float | int | None) -> int:
-    if score is None:
-        return 0
-    try:
-        v = float(score)
-    except (TypeError, ValueError):
-        return 0
-    if v <= 1.0:
-        v *= 100.0
-    return max(0, min(100, round(v)))
-
-
 def _short(text: str | None, limit: int) -> str:
     t = (text or "").strip()
     if len(t) <= limit:
@@ -47,24 +35,81 @@ def _logo_html(_logo_url: str | None = None) -> str:
     )
 
 
+LOGO_URL = "https://www.willpowerlab.com/willab-logo"
+
+
+def _email_row(label: str, value_html: str) -> str:
+    """One label/value line, styled like the student email's rows.
+
+    `value_html` is HTML and is NOT escaped here: the student row needs a
+    pre-escaped "Name (email)" built by the caller. Escape at the call site,
+    never here, or the parentheses come back double-escaped. The label IS
+    escaped, because every label is a literal.
+    """
+    return (
+        '<tr><td style="padding:12px 0;border-top:1px solid #EFE9DE;'
+        'font-size:13px;color:#8C8378;width:40%;vertical-align:top;">'
+        f'{escape(label)}</td>'
+        '<td style="padding:12px 0;border-top:1px solid #EFE9DE;'
+        f'font-size:15px;color:#1F1A14;font-weight:500;">{value_html}</td></tr>'
+    )
+
+
 def build_admin_homework_completed_email_html(
     *,
     student_email: str,
-    score: float | int | None,
     profile_url: str,
+    moments_awaiting: int | None = None,
+    lesson_label: str = "",
     transcript_excerpt: str = "",
-    pace_wpm: int | None = None,
-    filler_count: int | None = None,
-    strength: str = "Loudness (pending)",
     logo_url: str | None = None,
     student_name: str = "",
 ) -> str:
-    pct = _score_percent(score)
-    pace_text = f"{pace_wpm} WPM" if pace_wpm is not None else "n/a WPM"
-    fillers_text = str(filler_count) if filler_count is not None else "n/a"
-    excerpt = _short(transcript_excerpt, 260) or "No transcript preview available yet."
+    """The coach's "a lesson is in your queue" email.
+
+    RESTYLED 2026-09-28 to the student email's design system (same ground,
+    same card, same pill button, same wordmark) — founder asked for one look
+    across both.
+
+    WHAT WAS REMOVED AND WHY:
+
+    * Pace and Filler words. The caller passed `pace_wpm=None,
+      filler_count=None` as literals, so both rows could only ever render
+      "n/a WPM (target 120-160)" and "n/a", for every student, forever.
+      They were not missing data; they were rows with no source.
+    * Strength: "Loudness (pending)". Same: a constant default that never
+      became anything.
+    * The performance score. It was center_hold_ratio * 100 minus three
+      points per filler (services/metrics_v2.py) — loudness and filler
+      count, which is the pre-V3 "good public speaker" measure the product
+      stopped reasoning about. Founder deferred it 2026-09-28.
+
+    The report preview keeps the product's own rule for an empty lane: when
+    there is nothing to show it draws NO card, rather than a card saying
+    there is nothing (contract 24f).
+    """
     safe_name = escape((student_name or "").strip())
-    student_label = f"{safe_name} ({escape(student_email)})" if safe_name else escape(student_email)
+    student_label = (
+        f"{safe_name} ({escape(student_email)})" if safe_name
+        else escape(student_email)
+    )
+    logo = (logo_url or "").strip() or LOGO_URL
+    rows = [_email_row("Student", student_label)]
+    if (lesson_label or "").strip():
+        rows.append(_email_row("Lesson", escape(lesson_label.strip())))
+    if isinstance(moments_awaiting, int) and moments_awaiting > 0:
+        rows.append(_email_row("Moments to review", str(moments_awaiting)))
+    excerpt = _short(transcript_excerpt, 260)
+    preview_block = ""
+    if excerpt:
+        preview_block = (
+            '<div style="margin:24px 0 0;padding:20px 22px;background:#F6F1E8;'
+            'border-radius:12px;">'
+            '<p style="margin:0 0 10px;font-size:11px;color:#8C8378;'
+            "text-transform:uppercase;letter-spacing:1px;\">Report preview</p>"
+            '<p style="margin:0;font-size:14px;color:#5B5349;line-height:1.6;'
+            f'font-style:italic;">&ldquo;{escape(excerpt)}&rdquo;</p></div>'
+        )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -72,52 +117,19 @@ def build_admin_homework_completed_email_html(
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Student Homework Completed — Willab</title>
 </head>
-<body style="margin:0;padding:0;background-color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;padding:48px 16px;">
-<tr><td align="center">
-<table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
-<tr><td style="padding-bottom:40px;">
-  {_logo_html(logo_url)}
-</td></tr>
-<tr><td style="background-color:#ffffff;border-radius:8px;">
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="padding:36px 36px 0;">
-  <p style="margin:0 0 24px;font-size:18px;font-weight:600;color:#1e293b;line-height:1.4;">A student has completed a homework lesson.</p>
-  <table width="100%" cellpadding="0" cellspacing="0">
-    <tr>
-      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#94a3b8;width:100px;">Student</td>
-      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#1e293b;">{student_label}</td>
-    </tr>
-    <tr>
-      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:14px;color:#94a3b8;">Score</td>
-      <td style="padding:14px 0;border-top:1px solid #f1f5f9;font-size:24px;font-weight:600;color:#f97316;">{pct}%</td>
-    </tr>
-  </table>
-</td></tr>
-<tr><td style="padding:28px 36px;">
-  <a href="{escape(profile_url)}" style="display:inline-block;background-color:#1e293b;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:6px;">View profile &amp; send homework</a>
-</td></tr>
-<tr><td style="padding:0 36px 36px;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;">
-    <tr><td style="padding:20px 24px;">
-      <p style="margin:0 0 12px;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">Report preview</p>
-      <p style="margin:0 0 16px;font-size:14px;color:#64748b;line-height:1.6;font-style:italic;">"{escape(excerpt)}"</p>
-      <table cellpadding="0" cellspacing="0" style="font-size:14px;color:#64748b;line-height:2;">
-        <tr><td>Pace: {escape(pace_text)} <span style="color:#cbd5e1;">(target 120–160)</span></td></tr>
-        <tr><td>Filler words: {escape(fillers_text)}</td></tr>
-        <tr><td>Strength: {escape(strength)}</td></tr>
-      </table>
-    </td></tr>
-  </table>
-</td></tr>
-</table>
-</td></tr>
-<tr><td style="padding:32px 0;text-align:center;">
-  <p style="margin:0;font-size:12px;color:#cbd5e1;">Willab</p>
-</td></tr>
-</table>
-</td></tr>
-</table>
+<body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1F1A14;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 20px;">
+    <div style="text-align:center;margin:0 0 24px;"><img src="{escape(logo)}" alt="WillpowerLab" width="182" height="42" style="display:inline-block;width:182px;height:auto;border:0;"></div>
+    <div style="background:#FCFAF6;border:1px solid #EFE9DE;border-radius:16px;padding:32px;">
+      <h1 style="margin:0 0 24px;font-size:22px;line-height:1.3;font-weight:600;color:#1F1A14;">A student has completed a homework lesson.</h1>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">{"".join(rows)}</table>
+      <div style="text-align:center;margin:28px 0 0;">
+        <a href="{escape(profile_url)}" style="display:inline-block;background:#F97316;color:#fff;padding:14px 28px;border-radius:9999px;text-decoration:none;font-size:15px;font-weight:600;">View profile &amp; send homework</a>
+      </div>
+      {preview_block}
+    </div>
+    <p style="margin:24px 0 0;text-align:center;font-size:12px;color:#9C9488;">Willab</p>
+  </div>
 </body>
 </html>"""
 
