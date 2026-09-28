@@ -29,7 +29,6 @@
   "routes/v2/user_sessions.py:v2_user_suggestion_feedback": 51,
   "services/analysis_worker.py:_run_full_analysis_impl": 31,
   "services/annotation_export.py:run_annotation_export": 29,
-  "services/confident_moment_user_media.py:validate_source_playback_authority": 27,
   "services/confident_voice_practice.py:attach_exercise_offer": 55,
   "services/confident_voice_practice.py:comparison_for_attempt": 33,
   "services/data_purge.py:DataPurgeOrchestrator._storage_targets": 29,
