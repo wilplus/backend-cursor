@@ -57,7 +57,6 @@
   "services/master_document.py:build_skeleton": 34,
   "services/mlc3_founder_canary_readiness.py:assess_founder_canary_readiness": 41,
   "services/mlc3_founder_canary_readiness.py:validate_r2_smoke_manifest": 31,
-  "services/mlc3_general_service_readiness.py:_valid_emergency_disable": 32,
   "services/moment_suggestions.py:generate_for_session": 31,
   "services/pipeline_jobs.py:_run_session_recording": 37,
   "services/pipeline_jobs.py:run_processing_job": 32,
