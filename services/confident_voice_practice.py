@@ -1152,7 +1152,9 @@ def _coach_request_offer(
                      take_session_id, snippet_id, e)
         return rows
     exercise = coach_shared_exercise(request, database)
-    evidence = ground(target) if exercise else None
+    if exercise is None:
+        return rows
+    evidence = ground(target)
     if not isinstance(evidence, dict):
         return rows
     target["evidence"] = evidence
