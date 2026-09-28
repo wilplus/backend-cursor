@@ -14705,11 +14705,13 @@ class DatabaseService:
                 return rows
 
     def get_exercise_assignments(self, ids: list[str]) -> dict[str, dict]:
-        """The 80/20 facts of these assignments (0372), by id."""
+        """The 80/20 facts of these assignments (0372), by id, with every
+        candidate's stored probability (the fair test weights by it)."""
         out: dict[str, dict] = {}
         for chunk in self._chunks(ids):
             res = (self.client.table("confident_voice_exercise_assignments")
-                   .select("id,selection_mode,below_minimum_probability")
+                   .select("id,selection_mode,below_minimum_probability,"
+                           "candidates")
                    .in_("id", chunk).execute())
             out.update({str(r["id"]): r for r in res.data or []
                         if isinstance(r, dict) and r.get("id")})
