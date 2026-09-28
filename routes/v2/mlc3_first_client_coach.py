@@ -1,7 +1,6 @@
 """Coach-side blind review for the allowlisted first-client exercise loop."""
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
@@ -18,18 +17,12 @@ from services.coach_guidance_delivery import (
 from services.db import db as identity_db
 from services.db import first_client_repository as db
 from services.user_media_storage import get_user_media_r2_bytes
+from utils.ids import parse_uuid as _uuid
 
 _DECISIONS = {
     "rating_yes", "rating_in_between", "rating_no",
     "rating_not_sure", "rating_audio_unclear",
 }
-
-
-def _uuid(value: Any, field: str) -> str:
-    try:
-        return str(uuid.UUID(str(value)))
-    except (TypeError, ValueError, AttributeError) as error:
-        raise ValueError(f"{field} must be a UUID") from error
 
 
 def _idempotency_key() -> str:

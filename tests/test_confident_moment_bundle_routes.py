@@ -150,19 +150,23 @@ def test_idempotency_key_requires_real_string():
             route._text(value, "idempotency_key")
 
 
-def test_uuid_requires_canonical_string_without_object_coercion():
+def test_uuid_requires_a_string_in_the_standard_form():
     import routes.v2.confident_moment_bundles as route
 
     canonical = "abcdefab-cdef-abcd-efab-cdefabcdefab"
     assert route._uuid(canonical, "id") == canonical
+    # Any letter case, handed back lowercase (audit D1, founder decision
+    # 2026-09-26: one rule for ids in every route).
+    assert route._uuid(canonical.upper(), "id") == canonical
     for value in (
         1,
         True,
         [canonical],
         {"id": canonical},
         None,
-        canonical.upper(),
         "{00000000-0000-0000-0000-000000000001}",
+        "urn:uuid:00000000-0000-0000-0000-000000000001",
+        "00000000000000000000000000000001",
     ):
         with pytest.raises((TypeError, ValueError)):
             route._uuid(value, "id")

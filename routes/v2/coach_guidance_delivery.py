@@ -27,6 +27,7 @@ from services.mlc3_pilot_storage import (
     ReservedObject,
     store_exact_object,
 )
+from utils.ids import parse_uuid as _uuid
 
 _POLICY = "first-client-coach-guidance-v1"
 _INLINE_POLICY = "coach-inline-exercise-authoring-d5"
@@ -38,13 +39,6 @@ def _disabled_response():
 
 def _unavailable():
     return jsonify({"code": "COACH_GUIDANCE_D3_NOT_AVAILABLE"}), 409
-
-
-def _uuid(value: Any, field: str) -> str:
-    try:
-        return str(uuid.UUID(str(value)))
-    except (TypeError, ValueError, AttributeError) as error:
-        raise ValueError(f"{field} must be a UUID") from error
 
 
 def _reviewer_principal_id() -> str:

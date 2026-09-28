@@ -7,7 +7,6 @@ Dataset, training, evaluation, and promotion operations do not exist here.
 from __future__ import annotations
 
 import json
-import uuid
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
@@ -28,6 +27,7 @@ from services.practice_attempt_orchestrator import (
     PracticeAttemptUnavailable,
 )
 from services.user_media_storage import get_user_media_r2_bytes
+from utils.ids import parse_uuid as _uuid
 
 practice_attempt_orchestrator = PracticeAttemptOrchestrator(db)
 _SERVICE_RESPONSES = {
@@ -43,13 +43,6 @@ _OFFER_EVENTS = {
     "playback_completed",
 }
 _PRACTICE_EVENTS = _OFFER_EVENTS
-
-
-def _uuid(value: Any, field: str) -> str:
-    try:
-        return str(uuid.UUID(str(value)))
-    except (TypeError, ValueError, AttributeError) as error:
-        raise ValueError(f"{field} must be a UUID") from error
 
 
 def _sha256(value: Any, field: str) -> str:
