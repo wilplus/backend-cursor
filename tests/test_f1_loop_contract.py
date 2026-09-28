@@ -340,23 +340,13 @@ def test_the_page_offers_exactly_the_five_owner_states():
     assert RESPONSES["confident_voice"] == set(ANSWER_STATES)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "F-4 (audit, 2026-09-22): the routing derived from a Confident "
-        "Voice answer collapses in_between and not_sure into one value on "
-        "the way to the Voice Album route, so two different things a "
-        "speaker said become the same record. The derivation is also "
-        "inline in `routes/v2/user_sessions.py`, which is why no unit test "
-        "could state it — the same reason `waitProgress`, `deckScroll` and "
-        "`bookmarkMotion` each live in their own module. Closing F-4 means "
-        "naming it (`album_routing_for` in `take_feedback_responses`) and "
-        "keeping the five apart. Owner: the workstream that closes F-4."
-    ),
-)
 def test_each_of_the_five_states_routes_as_itself():
     """A distinction the speaker can make and the record cannot keep is a
-    distinction the product does not really offer."""
+    distinction the product does not really offer.
+
+    F-4 closed 2026-09-28: `album_routing_for` in `take_feedback_responses`
+    is the one derivation and returns the answer itself; the Take-review
+    route calls it. Was xfail(strict) from 2026-09-22 until then."""
     from services.take_feedback_responses import album_routing_for
 
     routed = {album_routing_for(state) for state in ANSWER_STATES}

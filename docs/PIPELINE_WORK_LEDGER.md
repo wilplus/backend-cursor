@@ -75,15 +75,16 @@ Run it rather than trust this table — it is a convenience, and it goes stale:
 | the freshness rule names every route an answer takes | green | — |
 | the computation window reaches the writer | green | — |
 | the page offers exactly the five owner states | green | — |
-| each of the five states routes as itself | **xfail** | F-4 |
+| each of the five states routes as itself | green | — |
 | a promoted model cannot reach the document without a gate | green | — |
 | a later Take proposes and never applies | green | — |
 | the words a speaker waits on name work, not judgement | green | — |
 
-One open, twelve held — and the table still undercounts, because #613 and
-#614 added two green lines without an entry here. F-4 is the last of the
-three the audit found against what a speaker sees; every other finding has
-its own regression test in its own file and does not appear here.
+None open, thirteen held (F-4 closed 2026-09-28) — and the table still
+undercounts, because #613 and #614 added two green lines without an entry
+here. F-4 was the last of the three the audit found against what a speaker
+sees; every other finding has its own regression test in its own file and
+does not appear here.
 
 ---
 

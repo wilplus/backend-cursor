@@ -32,10 +32,21 @@ ANSWERS = ("yes", "in_between", "no", "not_sure", "audio_unclear")
 ADOPTING = frozenset({"yes", "in_between", "not_sure"})
 MAX_ATTEMPTS = 3
 
-# The owner route stores the five answers in four routing values (the
-# feedback-response route's mapping). Starting a practice compares against it.
-ROUTE_OF = {"yes": "yes", "no": "no", "audio_unclear": "unrateable",
-            "in_between": "neutral", "not_sure": "neutral"}
+# The owner route stores the answer itself since F-4 closed (2026-09-28,
+# `album_routing_for`). Rows written before that hold the four legacy routing
+# values the Take-review route used to fold the five answers into; they are
+# audit-only, receive no new writes, and are still read. A legacy `neutral`
+# cannot say whether it was an in-between or a not-sure — that is the
+# distinction F-4 was about — so it matches either.
+LEGACY_ROUTE_OF = {"yes": "yes", "no": "no", "audio_unclear": "unrateable",
+                   "in_between": "neutral", "not_sure": "neutral"}
+
+
+def route_matches(stored: str, answer: str) -> bool:
+    """Does a stored owner route record this answer, in either vocabulary?"""
+    if answer not in ANSWERS:
+        return False
+    return stored == answer or stored == LEGACY_ROUTE_OF[answer]
 
 
 def outcome(answer: str, attempts: int) -> str:

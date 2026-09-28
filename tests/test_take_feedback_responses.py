@@ -230,3 +230,36 @@ def test_the_canonical_praise_scale_is_left_alone():
                  "add_confident_moment_coaching_bundle_v1.sql"):
         sql = (root / "migrations" / name).read_text()
         assert "acknowledged" not in sql, name
+
+
+# F-4 (audit 2026-09-22): the answer routes as itself.
+
+def test_each_confident_voice_answer_routes_as_itself():
+    from services.take_feedback_responses import album_routing_for
+    from services.take_feedback_responses import RESPONSES
+
+    for state in RESPONSES["confident_voice"]:
+        assert album_routing_for(state) == state
+
+
+def test_the_legacy_routing_values_are_never_produced():
+    """neutral and unrateable are audit-only: a writer cannot mint them."""
+    import pytest
+    from services.take_feedback_responses import album_routing_for
+
+    for legacy in ("neutral", "unrateable", "", "maybe"):
+        with pytest.raises(ValueError):
+            album_routing_for(legacy)
+
+
+def test_the_take_review_route_stores_the_answer_whole():
+    """The route that used to fold in_between and not_sure into neutral now
+    hands the writer the answer itself, read from the route's own source so
+    a re-inlined derivation would fail here."""
+    import inspect
+    import routes.v2.user_sessions as user_sessions
+
+    source = inspect.getsource(
+        inspect.unwrap(user_sessions.v2_post_take_feedback_response))
+    assert "album_routing_for(row[\"response\"])" in source
+    assert '"neutral"' not in source and '"unrateable"' not in source

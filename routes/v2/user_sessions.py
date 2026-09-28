@@ -40,10 +40,11 @@ from services.snippet_values import resolve_all
 from services.take_repository import TakeHasLineageError
 from services.owner_feedback_answers import owner_answers
 from services.practice_adoption import (
-    ROUTE_OF as _ROUTE_OF,
+    ANSWERS as _PRACTICE_ANSWERS,
     helper_words_from_practice,
     judge_attempt,
     judgeable_attempt,
+    route_matches as _route_matches,
 )
 
 logger = logging.getLogger(__name__)
@@ -1594,12 +1595,10 @@ def v2_post_take_feedback_response(take_session_id):
         )
 
         if row["feedback_family"] == "confident_voice" and row.get("snippet_id"):
-            routing = (
-                "yes" if row["response"] == "yes"
-                else "no" if row["response"] == "no"
-                else "unrateable" if row["response"] == "audio_unclear"
-                else "neutral"
-            )
+            # The answer routes as itself (F-4): the five states are stored
+            # whole, never folded into the legacy neutral/unrateable pair.
+            from services.take_feedback_responses import album_routing_for
+            routing = album_routing_for(row["response"])
             snip = db.get_snippet_by_id(row["snippet_id"]) or {}
             piece = ((snip.get("metrics") or {}).get("piece")
                      if isinstance(snip.get("metrics"), dict) else {})
@@ -1711,8 +1710,10 @@ def _answer_matches_route(owner_route: dict, answer: str) -> bool:
 
     The sheet sends one of the five answers since PR 5; before it, "no"
     stood for every answer but Yes (wilplus/backend-cursor#673). Both are
-    accepted, so neither the old nor the new sheet is refused."""
-    return (owner_route.get("response") == _ROUTE_OF.get(answer)
+    accepted, so neither the old nor the new sheet is refused. The stored
+    route is the answer itself since F-4, or one of the four legacy values
+    before it; `route_matches` reads both."""
+    return (_route_matches(str(owner_route.get("response") or ""), answer)
             or _yes_or_no(owner_route) == answer)
 
 
@@ -1756,7 +1757,7 @@ def v2_start_confident_voice_practice(snippet_id):
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
     original_answer = body.get("original_user_answer")
-    if original_answer not in _ROUTE_OF:
+    if original_answer not in _PRACTICE_ANSWERS:
         return jsonify({"code": "INVALID_INPUT",
                         "error": "original_user_answer is not valid"}), 400
     try:
