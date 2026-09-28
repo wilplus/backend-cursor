@@ -19,6 +19,7 @@ from services.mlc2_foundation import (
     CanonicalEnvelope,
     Mlc2ContractError,
 )
+from utils.ids import parse_uuid
 
 
 CONFIDENCE_SURFACE = "confidence_classification"
@@ -30,9 +31,9 @@ EXPLORATION_PROBABILITY = 0.20
 
 def _uuid(value: Any, field: str) -> str:
     try:
-        return str(UUID(str(value)))
-    except (TypeError, ValueError, AttributeError) as exc:
-        raise Mlc2ContractError(f"{field} must be a UUID") from exc
+        return parse_uuid(value, field)
+    except ValueError as exc:
+        raise Mlc2ContractError(str(exc)) from exc
 
 
 def _text(value: Any, field: str) -> str:

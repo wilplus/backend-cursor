@@ -15,14 +15,10 @@ from flask import request
 
 from config import Config
 from services.db import db
+from utils.ids import is_uuid as _is_valid_uuid  # noqa: F401 - imported from here by other routes
 
 logger = logging.getLogger(__name__)
 config = Config()
-
-
-def _is_valid_uuid(val):
-    import re
-    return bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', str(val or ''), re.I))
 
 
 def _client_ip_from_request() -> str:

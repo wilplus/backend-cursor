@@ -3,24 +3,13 @@ from flask import Blueprint, request, jsonify
 from auth import require_auth
 from services.db import db
 from config import Config
-import uuid
 import logging
 from utils.errors import safe_error
+from utils.ids import is_uuid as _is_valid_uuid
 
 logger = logging.getLogger(__name__)
 recordings_v2_bp = Blueprint("recordings_v2", __name__)
 config = Config()
-
-
-def _is_valid_uuid(value):
-    """Return True if value is a valid UUID string."""
-    if not value or not isinstance(value, str):
-        return False
-    try:
-        uuid.UUID(value)
-        return True
-    except (ValueError, TypeError, AttributeError):
-        return False
 
 
 def _build_transcript_preview(transcription_text, max_len=280):

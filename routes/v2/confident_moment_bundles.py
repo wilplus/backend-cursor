@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 import re
-import uuid
 from functools import wraps
 
 from flask import Response, jsonify, request
@@ -39,6 +38,7 @@ from services.confident_moment_user_media import (
     ConfidentMomentUserReadRetry,
     load_confident_moment_source_bytes,
 )
+from utils.ids import parse_uuid as _uuid
 
 logger = logging.getLogger(__name__)
 
@@ -74,18 +74,6 @@ def _repo() -> ConfidentMomentBundleRepository:
     # Lazy import keeps services.db out of module import path for pure tests.
     from services.db import db
     return ConfidentMomentBundleRepository(client_provider=lambda: db.client)
-
-
-def _uuid(value, field: str) -> str:
-    if not isinstance(value, str):
-        raise TypeError(f"{field} must be a canonical UUID string")
-    try:
-        canonical = str(uuid.UUID(value))
-    except ValueError as error:
-        raise ValueError(f"{field} must be a UUID") from error
-    if value != canonical:
-        raise ValueError(f"{field} must be a canonical lowercase UUID")
-    return value
 
 
 def _text(value, field: str) -> str:
