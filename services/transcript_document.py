@@ -623,6 +623,51 @@ def _route_to_slides(doc: str, src: list, found: list, regions: Any) -> list:
     return routed
 
 
+def _monotonic_find(doc: str, src: list) -> list:
+    """Pass 1 — where each piece still is, ``(start, end)``, or None.
+
+    Each piece is looked for after the previous one's end, so repeated
+    wording can never steal another piece's anchor."""
+    found: list = []
+    cursor = 0
+    for p in src:
+        needle = (p.get("text") or "").strip()
+        i = doc.find(needle, cursor)
+        if i < 0:
+            found.append(None)
+            continue
+        found.append((i, i + len(needle)))
+        cursor = i + len(needle)
+    return found
+
+
+def _share_unlocated_runs(doc: str, src: list, found: list) -> list:
+    """Pass 2 — hand each unlocated RUN the space between its neighbours."""
+    out: list = []
+    i = 0
+    while i < len(src):
+        if found[i] is not None:
+            lo, hi = found[i]
+            out.append({**src[i], "start": lo, "end": hi,
+                        "anchor_grain": WORD_GRAIN})
+            i += 1
+            continue
+        j = i
+        while j < len(src) and found[j] is None:
+            j += 1
+        gap_lo = found[i - 1][1] if i > 0 and found[i - 1] else 0
+        gap_hi = found[j][0] if j < len(src) and found[j] else len(doc)
+        # A gap-shared span is a width interpolation — LESS precise than a
+        # paragraph, and certainly not word-exact. It answers the only
+        # question a consumer asks ("may I trust this to the word?") the same
+        # way a paragraph span does, so it carries the same grain rather than
+        # inventing a third value nobody would branch on differently.
+        out.extend({**q, "anchor_grain": PARAGRAPH_GRAIN}
+                   for q in _share_gap(doc, gap_lo, gap_hi, src[i:j]))
+        i = j
+    return out
+
+
 def relocate_pieces(text: Any, pieces: Any, *,
                     paragraph_fallback: bool = False,
                     slide_regions: Any = None) -> list:
@@ -678,17 +723,7 @@ def relocate_pieces(text: Any, pieces: Any, *,
     doc = text if isinstance(text, str) else ""
     src = [p for p in (pieces or [])
            if isinstance(p, dict) and (p.get("text") or "").strip()]
-    # Pass 1 — where each piece still is, or None.
-    found: list = []
-    cursor = 0
-    for p in src:
-        needle = (p.get("text") or "").strip()
-        i = doc.find(needle, cursor)
-        if i < 0:
-            found.append(None)
-            continue
-        found.append((i, i + len(needle)))
-        cursor = i + len(needle)
+    found = _monotonic_find(doc, src)
     # ── Pass 2a — THE PARAGRAPH FALLBACK (founder 2026-08-12) ──────────────
     #
     # "If a chunk is locked (edited or not), the AI shouldn't drop the new
@@ -754,30 +789,7 @@ def relocate_pieces(text: Any, pieces: Any, *,
             "fallback=%s paragraphs=%d pieces=%d",
             len(src), len(doc), paragraph_fallback, len(para), len(src))
         return []
-    # Pass 2 — hand each unlocated RUN the space between its neighbours.
-    out: list = []
-    i = 0
-    while i < len(src):
-        if found[i] is not None:
-            lo, hi = found[i]
-            out.append({**src[i], "start": lo, "end": hi,
-                        "anchor_grain": WORD_GRAIN})
-            i += 1
-            continue
-        j = i
-        while j < len(src) and found[j] is None:
-            j += 1
-        gap_lo = found[i - 1][1] if i > 0 and found[i - 1] else 0
-        gap_hi = found[j][0] if j < len(src) and found[j] else len(doc)
-        # A gap-shared span is a width interpolation — LESS precise than a
-        # paragraph, and certainly not word-exact. It answers the only
-        # question a consumer asks ("may I trust this to the word?") the same
-        # way a paragraph span does, so it carries the same grain rather than
-        # inventing a third value nobody would branch on differently.
-        out.extend({**q, "anchor_grain": PARAGRAPH_GRAIN}
-                   for q in _share_gap(doc, gap_lo, gap_hi, src[i:j]))
-        i = j
-    return out
+    return _share_unlocated_runs(doc, src, found)
 
 
 def verify_spans(doc: Any) -> bool:
