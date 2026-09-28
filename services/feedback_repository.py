@@ -6,6 +6,7 @@ Routes, readouts and publish orchestration consume canonical items.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from typing import Any
 
@@ -15,6 +16,8 @@ from services.canonical_product import (
     FeedbackFamily,
     FeedbackItem,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class FeedbackContractError(ValueError):
@@ -43,10 +46,16 @@ def normalize_coach_overall_message(value: Any) -> str | None:
 
 def _family(row: dict) -> FeedbackFamily:
     raw = row.get("feedback_family")
-    try:
-        return FeedbackFamily(str(raw))
-    except ValueError:
-        pass
+    if raw:
+        # A stated family is read as stated. An unknown one is a contract
+        # error, never silently re-read as praise (audit 2026-09-26): the
+        # column's CHECK makes it unreachable today, and this keeps a future
+        # spelling from turning a rewrite into a compliment unnoticed.
+        try:
+            return FeedbackFamily(str(raw))
+        except ValueError as error:
+            raise FeedbackContractError(
+                f"unknown feedback family {raw!r}") from error
     legacy = _LEGACY_FAMILY.get(str(row.get("tag") or ""))
     if legacy is not None:
         return legacy
@@ -185,7 +194,15 @@ class FeedbackRepository:
                 review_state = CoachReviewState(str(state_raw))
             except ValueError as error:
                 raise FeedbackContractError("invalid coach review state") from error
-            family = _family(row)
+            try:
+                family = _family(row)
+            except FeedbackContractError as error:
+                # An unknown stated family is logged and skipped: never read
+                # as praise, and never allowed to fail the whole read, which
+                # feeds the speaker's recording screen (audit B2).
+                logger.error("feedback row skipped take=%s snippet=%s: %s",
+                             take_id, row.get("snippet_id"), error)
+                continue
             locator = self._locator(session, row)
             if family is FeedbackFamily.CONFIDENT_VOICE \
                     and locator.audio_interval is None:

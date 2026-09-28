@@ -22,6 +22,17 @@ class FeedbackFamily(StrEnum):
     GREAT_FORMULATION = "great_formulation"
     REWRITE_FOR_CLARITY = "rewrite_for_clarity"
 
+    @classmethod
+    def _missing_(cls, value: object) -> "FeedbackFamily | None":
+        # One family, two spellings in stored data (audit 2026-09-26, glue
+        # finding 1): the coach-review lineage writes `rewrite_for_clarity`,
+        # the Take-feedback lineage (V3, bundles, their CHECK constraints)
+        # writes `rewrite_clarity`. Reading either gives the same member;
+        # the value written back stays `rewrite_for_clarity`.
+        if value == "rewrite_clarity":
+            return cls.REWRITE_FOR_CLARITY
+        return None
+
 
 class FeedbackDecision(StrEnum):
     PENDING = "pending"
