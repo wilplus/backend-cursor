@@ -1899,7 +1899,7 @@ to end on the released lane with the foundation frame factory in the loop.
 G-6 itself still waits on the founder's mode change.
 **Contract lines flipped:** none.
 **Contract lines added:** `tests/test_mlc2_confidence_end_to_end_postgres.py`
-(9 cases, released lane, one rolled-back transaction): promote through the
+(10 cases, released lane, one rolled-back transaction): promote through the
 atomic producer RPC → outbox → claim → the factory builds the frame from
 the Take's snippet rows → `finalize_mlc2_confidence_frame_v1` accepts it
 (one candidate set, one span per snippet at the snippet's exact offsets on
