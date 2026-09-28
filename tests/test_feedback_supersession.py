@@ -126,6 +126,112 @@ class AcceptedTextSupersessionTests(unittest.TestCase):
         self.assertEqual(out, [])
 
 
+class CoachRevisionPinTests(unittest.TestCase):
+    """build_coach_revision_changes, pinned before its split into named
+    stages (audit W1, 2026-09-28): the exact change, which accepted row
+    wins, and every way a revision is not offered."""
+
+    DOC = "Alpha words here. Beta words here."
+
+    def _accepted(self, sid, current, original, **over):
+        row = {"decision": "approved", "source": "user_star",
+               "kind": "replace", "snippet_id": sid,
+               "replacement_text": current, "display_phrase": original,
+               "updated_at": "2026-09-01T00:00:00Z", "version": 1}
+        row.update(over)
+        return row
+
+    def _build(self, ledger, verdicts, suggestions=None, doc=None,
+               pieces=None):
+        return build_coach_revision_changes(
+            self.DOC if doc is None else doc,
+            [{"snippet_id": "b", "take_session_id": "t-b"},
+             {"snippet_id": "a", "take_session_id": "t-a"}]
+            if pieces is None else pieces,
+            suggestions or {}, ledger, verdicts)
+
+    def test_the_exact_change_and_the_order(self):
+        out = self._build(
+            [self._accepted("b", " Beta words ", "Old beta"),
+             self._accepted("a", "Alpha words", "Old alpha")],
+            {"a": {"verdict": "wrong_kind", "note": "Yours was right."},
+             "b": {"verdict": "keep"}},
+            {"b": {"replacement_text_final": " Coach beta ",
+                   "why_final": None, "why": "machine why"}})
+        self.assertEqual(out, [
+            {"id": "coach-revision:a", "snippet_id": "a",
+             "take_session_id": "t-a", "kind": "replace",
+             "source": "coach_revision", "span": {"start": 0, "end": 11},
+             "quote": "Alpha words", "proposed_text": "Old alpha",
+             "coach_note": "Yours was right."},
+            {"id": "coach-revision:b", "snippet_id": "b",
+             "take_session_id": "t-b", "kind": "replace",
+             "source": "coach_revision", "span": {"start": 18, "end": 28},
+             "quote": "Beta words", "proposed_text": "Coach beta",
+             "coach_note": "machine why"},
+        ])
+
+    def test_the_latest_accepted_row_per_snippet_wins(self):
+        out = self._build(
+            [self._accepted("a", "Alpha words", "Old one",
+                            updated_at="2026-09-01T00:00:00Z", version=5),
+             self._accepted("a", "Beta words", "Old two",
+                            updated_at="2026-09-02T00:00:00Z", version=1),
+             self._accepted("a", "Alpha words here", "Old three",
+                            updated_at="2026-09-02T00:00:00Z", version=0)],
+            {"a": {"verdict": "should_not_fire"}})
+        self.assertEqual([(c["quote"], c["proposed_text"]) for c in out],
+                         [("Beta words", "Old two")])
+        self.assertIsNone(out[0]["coach_note"])
+
+    def test_only_approved_user_star_word_changes_count(self):
+        verdicts = {"a": {"verdict": "wrong_kind"}}
+        for over in ({"decision": "dismissed"}, {"source": "coach"},
+                     {"kind": "bold"}, {"snippet_id": None}):
+            self.assertEqual(self._build(
+                [self._accepted("a", "Alpha words", "Old", **over)],
+                verdicts), [], over)
+        polish = self._accepted("a", "Alpha words", "Old", kind="polish")
+        self.assertEqual(len(self._build([polish], verdicts)), 1)
+
+    def test_no_revision_is_offered(self):
+        wrong = {"a": {"verdict": "wrong_kind"}}
+        # No served text, or the accepted words are not there exactly once.
+        for doc in ("", None, 7):
+            self.assertEqual(build_coach_revision_changes(
+                doc, [], {}, [self._accepted("a", "Alpha", "x")], wrong), [])
+        self.assertEqual(self._build(
+            [self._accepted("a", "words here", "Old")], wrong), [])
+        self.assertEqual(self._build(
+            [self._accepted("a", "Gamma", "Old")], wrong), [])
+        self.assertEqual(self._build(
+            [self._accepted("a", "   ", "Old")], wrong), [])
+        # The revision was itself already decided.
+        decided = {"kind": "polish", "target_phrase": "alpha  words",
+                   "decision": "dismissed"}
+        self.assertEqual(self._build(
+            [self._accepted("a", "Alpha words", "Old"),
+             dict(decided, target_phrase="alpha words")], wrong), [])
+        # A keep with no coach final, an unknown verdict, no verdict.
+        for verdicts in ({"a": {"verdict": "keep"}},
+                         {"a": {"verdict": "later"}}, {}, {"a": "keep"}):
+            self.assertEqual(self._build(
+                [self._accepted("a", "Alpha words", "Old")], verdicts), [])
+        # Restoring would change nothing, or there is nothing to restore.
+        for original in ("Alpha words", "  "):
+            self.assertEqual(self._build(
+                [self._accepted("a", "Alpha words", original)], wrong), [])
+
+    def test_malformed_inputs_are_read_as_empty(self):
+        out = build_coach_revision_changes(
+            self.DOC, "not pieces", "not suggestions",
+            [self._accepted("a", "Alpha words", "Old"), "not a row"],
+            {"a": {"verdict": "wrong_kind"}})
+        self.assertEqual(out[0]["take_session_id"], None)
+        self.assertEqual(build_coach_revision_changes(
+            self.DOC, [], {}, None, None), [])
+
+
 class VoiceAlbumRoutingTests(unittest.TestCase):
     def test_legacy_boolean_contract_maps_to_routing(self):
         row, err = validate_owner_voice_album_route({"ai_correct": True})
