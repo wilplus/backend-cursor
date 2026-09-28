@@ -45,7 +45,6 @@
   "services/db.py:_session_preview_row": 33,
   "services/dimension_registry.py:validate": 27,
   "services/drift_job.py:run_weekly": 28,
-  "services/ideal_decision_ledger.py:record_star_decision": 30,
   "services/ideal_text_block.py:assemble_ideal_text_block": 35,
   "services/ideal_text_block.py:maybe_assemble_ideal_text": 33,
   "services/ideal_text_variants.py:block_variants_payload": 27,
