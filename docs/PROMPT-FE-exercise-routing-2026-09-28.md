@@ -173,6 +173,16 @@ moment had no automatic pick (a coach-shared exercise, or an older Take):
 **`GET /exercise-request` → `request.candidates`**: the same candidate
 rows, showing why nothing fitted.
 
+Step 7 adds three things:
+- Each candidate row carries `repeat_hits` (how many of this speaker's
+  recurring problems it treats) and `done_before` (bool).
+- `machine_pick.history` is
+  `{available, repeated_patterns: [error_id], done_before: [exercise_id],
+  earlier_takes}` as it stood at the draw. For example: "Rushing came up on
+  earlier Takes too".
+- Coach-facing only. The speaker already sees their own green "done" label
+  on the card.
+
 Notes:
 - `trying_another` means the 80/20 draw picked a lower-ranked exercise on
   purpose, to learn whether it helps.

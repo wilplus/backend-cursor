@@ -14819,6 +14819,65 @@ class DatabaseService:
                            take_session_id, e)
             return None
 
+    def speaker_exercise_history(
+        self, owner_user_id: str, take_session_id: str, *, limit: int = 20,
+    ) -> dict:
+        """What this speaker's EARLIER Takes showed, for ranking (step 7).
+
+        Returns {"pattern_takes": {problem: [take ids]},
+                 "completed_exercises": [exercise ids], "earlier_takes": n}:
+        the problems spotted on their exercise moments (from the frozen match
+        traces and coach requests, never recomputed), and the exercises they
+        completed. The current Take is excluded; at most `limit` earlier
+        Takes of each kind are read. Shadow verdicts are never read here —
+        they route nothing. Raises on failure; the caller ranks without
+        history rather than guessing one.
+        """
+        owner = str(owner_user_id)
+        current = str(take_session_id or "")
+        takes_of: dict[str, set] = {}
+
+        def seen(tag: Any, take: Any) -> None:
+            if isinstance(tag, str) and tag and take:
+                takes_of.setdefault(tag, set()).add(str(take))
+
+        assignments = (self.client.table("confident_voice_exercise_assignments")
+                       .select("id,take_session_id")
+                       .eq("owner_user_id", owner).neq("take_session_id", current)
+                       .order("created_at", desc=True).limit(limit)
+                       .execute()).data or []
+        take_of = {str(a.get("id")): a.get("take_session_id")
+                   for a in assignments}
+        if take_of:
+            traces = (self.client.table("confident_voice_exercise_match_traces")
+                      .select("assignment_id,observed_tags:trace->observed_tags")
+                      .in_("assignment_id", list(take_of)).execute()).data or []
+            for row in traces:
+                for tag in row.get("observed_tags") or []:
+                    seen(tag, take_of.get(str(row.get("assignment_id"))))
+        requests = (self.client.table("exercise_coach_requests")
+                    .select("take_session_id,observed_tags")
+                    .eq("owner_user_id", owner).neq("take_session_id", current)
+                    .order("created_at", desc=True).limit(limit)
+                    .execute()).data or []
+        for row in requests:
+            for tag in row.get("observed_tags") or []:
+                seen(tag, row.get("take_session_id"))
+        completed = (self.client.table("confident_voice_practice")
+                     .select("exercise_id")
+                     .eq("owner_user_id", owner).eq("status", "completed")
+                     .neq("take_session_id", current)
+                     .execute()).data or []
+        earlier = ({str(a.get("take_session_id")) for a in assignments}
+                   | {str(r.get("take_session_id")) for r in requests})
+        return {
+            "pattern_takes": {tag: sorted(t) for tag, t in takes_of.items()},
+            "completed_exercises": sorted({str(r.get("exercise_id"))
+                                           for r in completed
+                                           if r.get("exercise_id")}),
+            "earlier_takes": len(earlier),
+        }
+
     def completed_exercise_before(
         self, owner_user_id: str, exercise_id: str, take_session_id: str,
     ) -> bool:

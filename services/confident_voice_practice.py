@@ -478,15 +478,86 @@ def _editorial(exercise: dict) -> int:
             if isinstance(criteria, dict) else 0)
 
 
+#: A problem counts as REPEATED for a speaker once it was spotted on at least
+#: this many of their earlier Takes (step 7, founder 2026-09-28).
+REPEATED_PATTERN_MIN_TAKES = 2
+#: How many earlier Takes of each record kind the history reads.
+HISTORY_TAKES = 20
+
+EMPTY_HISTORY: dict = {"repeated_patterns": frozenset(),
+                       "done_before": frozenset(), "earlier_takes": 0,
+                       "available": False}
+
+
+def speaker_history(database: Any, owner_user_id: Any,
+                    take_session_id: Any) -> dict:
+    """What the speaker's earlier Takes say, for ranking this one (step 7).
+
+    * repeated_patterns — problems spotted on at least
+      REPEATED_PATTERN_MIN_TAKES of their earlier Takes;
+    * done_before — exercises they already completed.
+
+    Read from the frozen records of those Takes (as of now, never the current
+    one). EMPTY_HISTORY when there is no owner or the read fails: ranking
+    then proceeds exactly as without history, rather than on a guess.
+    """
+    reader = getattr(database, "speaker_exercise_history", None)
+    if reader is None or not owner_user_id:
+        return dict(EMPTY_HISTORY)
+    try:
+        raw = reader(str(owner_user_id), str(take_session_id or ""),
+                     limit=HISTORY_TAKES)
+    except Exception as e:  # noqa: BLE001 — history never costs the offer
+        _log.warning("speaker history failed owner=%s take=%s: %s",
+                     owner_user_id, take_session_id, e)
+        return dict(EMPTY_HISTORY)
+    raw = raw if isinstance(raw, dict) else {}
+    takes = raw.get("pattern_takes")
+    takes = takes if isinstance(takes, dict) else {}
+    return {
+        "repeated_patterns": frozenset(
+            str(tag) for tag, seen in takes.items()
+            if isinstance(seen, (list, tuple, set))
+            and len(set(seen)) >= REPEATED_PATTERN_MIN_TAKES),
+        "done_before": frozenset(
+            str(e) for e in raw.get("completed_exercises") or []),
+        "earlier_takes": int(raw.get("earlier_takes") or 0),
+        "available": True,
+    }
+
+
+def _history_terms(fit: tuple[str, int], observed: Any, exercise: dict,
+                   history: Any) -> tuple[int, int]:
+    """(repeat hits, done before) for one exercise against one speaker."""
+    if not isinstance(history, dict):
+        return 0, 0
+    main, secondary = exercise_targets(exercise)
+    targets = main if fit[0] == FIT_EXACT else secondary
+    repeated = history.get("repeated_patterns") or frozenset()
+    hits = len(targets & set(observed or ()) & set(repeated))
+    done = str(exercise.get("exercise_id") or "") in (
+        history.get("done_before") or frozenset())
+    return hits, int(done)
+
+
+#: Positions in the sort key that callers read back.
+KEY_DISTANCE, KEY_EDITORIAL, KEY_ID = 5, 6, 7
+
+
 def _exercise_key(pattern: str, observed_tags: Any,
-                  exercise: dict) -> Optional[tuple]:
+                  exercise: dict, history: Any = None) -> Optional[tuple]:
     """The one sort key every lane ranks by, or None when the exercise may not
     be offered on this clip at all.
 
-    (fit, -covered, claimed, confidence distance, -editorial, id):
+    (fit, -covered, -repeat hits, done before, claimed, confidence distance,
+     -editorial, id):
 
     * fit first — exact before trial (D5);
     * then how many of the clip's fired problems it covers at that fit;
+    * then THIS SPEAKER (step 7): an exercise for a problem they keep showing
+      beats an equally good one, and one they have not done yet beats one
+      they have — ranked after, never removed, so a speaker is never left
+      with nothing (contract 35d: not unknowingly repeated);
     * then the SPECIALIST: fewer claimed targets wins a tie. Counting overlap
       alone let an exercise that claims every problem outrank the one written
       for the problem that actually fired;
@@ -501,8 +572,10 @@ def _exercise_key(pattern: str, observed_tags: Any,
     if distance is None:
         return None
     main, secondary = exercise_targets(exercise)
-    return (_FIT_ORDER[fit[0]], -fit[1], len(main | secondary), distance,
-            -_editorial(exercise), str(exercise.get("exercise_id") or ""))
+    hits, done = _history_terms(fit, observed_tags, exercise, history)
+    return (_FIT_ORDER[fit[0]], -fit[1], -hits, done, len(main | secondary),
+            distance, -_editorial(exercise),
+            str(exercise.get("exercise_id") or ""))
 
 
 def fit_of_key(key: Any) -> Optional[str]:
@@ -515,6 +588,7 @@ def fit_of_key(key: Any) -> Optional[str]:
 
 def matched_exercises(
     pattern: str, exercises: list[dict], *, observed_tags: Any = None,
+    history: Any = None,
 ) -> tuple[Optional[str], list[tuple[tuple, dict]]]:
     """(fit, [(key, exercise), ...] best first) for one clip.
 
@@ -525,8 +599,8 @@ def matched_exercises(
     """
     keyed = sorted(
         ((key, exercise) for exercise in exercises
-         if (key := _exercise_key(str(pattern), observed_tags, exercise))
-         is not None),
+         if (key := _exercise_key(str(pattern), observed_tags, exercise,
+                                  history)) is not None),
         key=lambda item: item[0])
     if not keyed:
         return None, []
@@ -598,7 +672,8 @@ def _sha256(value: Any) -> str:
 def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
                       exercises: list[dict], ranked: list[dict],
                       fit: Optional[str], snippet: Any,
-                      take_session_id: str, snippet_id: str) -> dict:
+                      take_session_id: str, snippet_id: str,
+                      history: Any = None) -> dict:
     """Why one moment got the exercise it got (step 2, founder 2026-09-28).
 
     Every exercise in the offerable catalogue appears once: ``ranked`` (in the
@@ -622,6 +697,8 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
         found = exercise_fit(observed, exercise)
         distance = confidence_pattern_distance(
             pattern, exercise.get("supported_confidence_patterns"))
+        hits, done = (_history_terms(found, observed, exercise, history)
+                      if found else (0, 0))
         if exercise_id in rank_of:
             outcome, reason = "ranked", None
         elif not observed:
@@ -642,8 +719,11 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
             "claimed": len(routing["main_targets"])
                        + len(routing["secondary_targets"]),
             "pattern_distance": distance,
+            "repeat_hits": hits,
+            "done_before": bool(done),
         })
     row = snippet if isinstance(snippet, dict) else {}
+    h = history if isinstance(history, dict) else EMPTY_HISTORY
     signals = verdict.get("signals")
     return _json_safe({
         "trace_schema": MATCH_TRACE_SCHEMA,
@@ -671,6 +751,13 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
         "vocabulary": sorted(vocabulary or ()),
         "vocabulary_available": bool(vocabulary),
         "observed_tags": sorted(observed),
+        # What the speaker's earlier Takes said, as of this choice (step 7).
+        "history": {
+            "available": bool(h.get("available")),
+            "repeated_patterns": sorted(h.get("repeated_patterns") or ()),
+            "done_before": sorted(h.get("done_before") or ()),
+            "earlier_takes": int(h.get("earlier_takes") or 0),
+        },
         "catalogue_scope": "offerable_active",
         "catalogue_sha256": _sha256(sorted(
             catalogue, key=lambda r: r["exercise_id"])),
@@ -694,7 +781,8 @@ def rank_exercises_for_pattern(
     """
     _, matched = matched_exercises(
         pattern, exercises, observed_tags=observed_tags)
-    return [(key[3], key[4], key[5], exercise) for key, exercise in matched]
+    return [(key[KEY_DISTANCE], key[KEY_EDITORIAL], key[KEY_ID], exercise)
+            for key, exercise in matched]
 
 
 def reviewed_active_exercises(database: Any) -> list[dict]:
@@ -715,6 +803,7 @@ def reviewed_active_exercises(database: Any) -> list[dict]:
 
 def rank_exercises_for_clip(
     verdict: Any, database: Any, *, exercises: Optional[list[dict]] = None,
+    history: Any = None,
 ) -> list[tuple[int, int, str, dict]]:
     """THE one composition both ranking paths use.
 
@@ -728,12 +817,15 @@ def rank_exercises_for_clip(
     it in rather than read it twice. It must BE ``reviewed_active_exercises``;
     anything else would rank a different pool than the speaker is offered.
     """
-    _, matched = match_for_clip(verdict, database, exercises=exercises)
-    return [(key[3], key[4], key[5], exercise) for key, exercise in matched]
+    _, matched = match_for_clip(verdict, database, exercises=exercises,
+                                history=history)
+    return [(key[KEY_DISTANCE], key[KEY_EDITORIAL], key[KEY_ID], exercise)
+            for key, exercise in matched]
 
 
 def match_for_clip(
     verdict: Any, database: Any, *, exercises: Optional[list[dict]] = None,
+    history: Any = None,
 ) -> tuple[Optional[str], list[tuple[tuple, dict]]]:
     """``matched_exercises`` for one clip's verdict against the reviewed
     catalogue: the fit and the keyed pool, best first."""
@@ -745,6 +837,7 @@ def match_for_clip(
         observed_tags=observed_problem_tags(
             verdict, vocabulary=detected_problem_vocabulary(database),
         ),
+        history=history,
     )
 
 
@@ -788,8 +881,11 @@ def coach_exercise_order(practice: Any, database: Any) -> list[dict]:
     Internal order only — no score, distance or overlap leaves this function.
     """
     pool = reviewed_active_exercises(database)
+    row = practice if isinstance(practice, dict) else {}
     ranked = [item[3] for item in rank_exercises_for_clip(
-        stored_practice_verdict(practice), database, exercises=pool)]
+        stored_practice_verdict(practice), database, exercises=pool,
+        history=speaker_history(database, row.get("owner_user_id"),
+                                row.get("take_session_id")))]
     placed = {str(row.get("exercise_id") or "") for row in ranked}
     return ranked + [
         row for row in pool
@@ -982,8 +1078,10 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     by_id = {str(row.get("id")): row for row in snippets}
     median_wpm = _median_wpm(
         database.get_snippets_by_session(take_session_id) or [])
-    # Read the library ONCE for the whole take, not per candidate clip.
+    # Read the library and the speaker's history ONCE for the whole take,
+    # not per candidate clip.
     vocabulary = detected_problem_vocabulary(database)
+    history = speaker_history(database, owner_user_id, take_session_id)
     # (fit, -covered, claimed, distance, -editorial, -priority, id, index)
     ranked: list[tuple[tuple, dict, dict, dict, dict]] = []
     for index, row in enumerate(candidates):
@@ -1005,11 +1103,11 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
         _, matched = matched_exercises(
             str(verdict.get("pattern") or ""), exercises,
             observed_tags=observed_problem_tags(
-                verdict, vocabulary=vocabulary))
+                verdict, vocabulary=vocabulary), history=history)
         for key, exercise in matched:
             ranked.append((
-                (*key[:5], -int(verdict.get("priority") or 0), key[5],
-                 index),
+                (*key[:KEY_ID], -int(verdict.get("priority") or 0),
+                 key[KEY_ID], index),
                 row, snippet, verdict, exercise,
             ))
     if not ranked:
@@ -1026,6 +1124,7 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
         database=database, fit=fit, trace=build_match_trace(
             lane="legacy_offer", verdict=verdict, vocabulary=vocabulary,
             exercises=exercises, ranked=moment, fit=fit, snippet=snippet,
+            history=history,
             take_session_id=take_session_id,
             snippet_id=str(chosen.get("snippet_id"))))
     if served is None:
@@ -1081,9 +1180,17 @@ def attach_v3_exercise_offer(
     # was: the item is served exactly as V3 made it — "Let's practice" with
     # no exercise (D1). The clip's confidence level alone never picks one.
     vocabulary = detected_problem_vocabulary(database)
+    # History is read only when this moment has not been drawn yet: once it
+    # has, the draw is frozen and ranking again changes nothing, and this
+    # runs on every poll of the Ideal Text.
+    getter = getattr(database, "get_confident_voice_exercise_assignment", None)
+    drawn = getter(take_session_id, snippet_id) if getter is not None else None
+    history = (dict(EMPTY_HISTORY) if isinstance(drawn, dict)
+               else speaker_history(database, owner_user_id, take_session_id))
     fit, keyed = matched_exercises(
         str(verdict.get("pattern") or ""), exercises,
-        observed_tags=observed_problem_tags(verdict, vocabulary=vocabulary))
+        observed_tags=observed_problem_tags(verdict, vocabulary=vocabulary),
+        history=history)
     if not keyed:
         return _coach_request_offer(
             rows, target, verdict=verdict, vocabulary=vocabulary,
@@ -1101,6 +1208,7 @@ def attach_v3_exercise_offer(
         trace=build_match_trace(
             lane="v3_exercise_block", verdict=verdict, vocabulary=vocabulary,
             exercises=exercises, ranked=ranked, fit=fit, snippet=snippet,
+            history=history,
             take_session_id=take_session_id, snippet_id=snippet_id))
     if exercise is None:
         return rows
@@ -1198,7 +1306,8 @@ def coach_shared_exercise(request: Any, database: Any) -> Optional[dict]:
 
 def start_exercise_check(*, snippet: dict, take_session_id: str,
                          snippet_id: str, exercise_id: str,
-                         session_median_wpm: Any, database: Any):
+                         session_median_wpm: Any, database: Any,
+                         owner_user_id: str = ""):
     """Whether the practice-start route may open `exercise_id` on this clip.
 
     Returns `(error_code, verdict, matching)`: `error_code` is None when it
@@ -1243,14 +1352,17 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
         }
     if not verdict.get("eligible"):
         return "NOT_ELIGIBLE", verdict, None
-    fit, matched = match_for_clip(verdict, database)
+    # The same history the offer ranked with, so the two agree on the best.
+    fit, matched = match_for_clip(
+        verdict, database,
+        history=speaker_history(database, owner_user_id, take_session_id))
     if not matched:
         return "NOT_MATCHABLE", verdict, None
     best_key, best_exercise = matched[0]
     if str(best_exercise.get("exercise_id")) != str(exercise_id):
         return "EXERCISE_OFFER_STALE", verdict, None
     return None, verdict, {
-        "pattern_distance": best_key[3],
+        "pattern_distance": best_key[KEY_DISTANCE],
         "matching_policy_version": MATCHING_POLICY_VERSION,
         "exercise_fit": fit,
     }

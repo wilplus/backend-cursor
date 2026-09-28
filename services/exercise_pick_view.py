@@ -56,6 +56,9 @@ def candidates_view(trace: Any) -> list[dict]:
         "fit": row.get("fit"),
         "main_targets": row.get("main_targets") or [],
         "secondary_targets": row.get("secondary_targets") or [],
+        # This speaker's history as of the choice (step 7).
+        "repeat_hits": row.get("repeat_hits") or 0,
+        "done_before": bool(row.get("done_before")),
     } for row in rows if isinstance(row, dict)]
     return sorted(out, key=lambda r: (r["outcome"] != "ranked",
                                       r["rank"] or 0, str(r["exercise_id"])))
@@ -91,6 +94,8 @@ def machine_pick(database: Any, take_session_id: Any,
         "candidates": candidates_view(trace),
         "rules_version": (trace.get("signal_rules_version")
                           if isinstance(trace, dict) else None),
+        "history": (trace.get("history") if isinstance(trace, dict)
+                    and isinstance(trace.get("history"), dict) else None),
     }
 
 

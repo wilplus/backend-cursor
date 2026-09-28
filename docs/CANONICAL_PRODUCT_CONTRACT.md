@@ -423,6 +423,14 @@ with this contract, this contract wins.
     named the pattern on, and the detector fired on at least 80% of them.
     Coaches record only what is present, so this bar measures what the
     detector catches, not how often it fires falsely.
+35g-4. **The speaker's own history breaks ties** (founder 2026-09-28). Among
+    exercises of equal fit that cover as much of what was spotted, one for a
+    problem this speaker showed on at least two earlier Takes comes first,
+    and one they already completed comes after one they have not. An
+    exercise done before is ranked later, never withheld: history cannot
+    leave a speaker with no exercise. History is read from the frozen records
+    of earlier Takes, as of the first draw, and is frozen with it. Shadow
+    verdicts are never part of it.
 
 ## 6. Coach review and learning lineage
 
