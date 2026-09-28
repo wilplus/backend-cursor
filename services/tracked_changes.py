@@ -236,6 +236,225 @@ def _kind_and_source(sug: dict) -> tuple:
     return (None, None)
 
 
+def _lane_row(p: Any, suggestions: Any, applied: set) -> Optional[tuple]:
+    """``(sid, row, kind, source)`` for a piece whose snippet has a row the
+    FE can render and the student has not already approved, or None."""
+    if not isinstance(p, dict):
+        return None
+    sid = str(p.get("snippet_id") or "")
+    sug = (suggestions or {}).get(sid)
+    if not sid or not isinstance(sug, dict) or sid in applied:
+        return None
+    kind, source = _kind_and_source(sug)
+    if not kind:
+        return None
+    return sid, sug, kind, source
+
+
+def _piece_window(doc: str, p: dict) -> Optional[tuple[int, int, str]]:
+    """``(start, end, words)`` of the piece on the served text, or None."""
+    # The piece carries its span (relocated monotonically onto the
+    # served text by the caller) — never a bare text search, which
+    # would anchor a repeated phrase on the wrong occurrence.
+    try:
+        w_start, w_end = int(p["start"]), int(p["end"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    window_text = doc[w_start:w_end]
+    if window_text != (p.get("text") or "").strip():
+        return None   # the piece's words moved/vanished — never guess
+    return w_start, w_end, window_text
+
+
+def _declines_whole_window(p: dict, sid: str, kind: str, source: str,
+                           window_text: str) -> bool:
+    """THE WHOLE-WINDOW FALLBACK, and the paragraph-grain decline.
+
+    Falling back means "the change is about the entire piece". At
+    word grain that is a sentence the student actually said, which
+    is what these lanes have always meant. At PARAGRAPH grain the
+    piece IS the paragraph, and the same fallback silently promotes
+    every change to whole-paragraph scope: a `replace` renders as
+    "strike this whole chunk, here is one sentence instead", and a
+    `bold` accents the entire chunk — the exact whole-fragment
+    problem T3 was built to kill, at maximum width.
+
+    So composition and accentuation abstain, and only `advice`
+    survives — it alters nothing and its span merely points at the
+    region the coaching is about, which a paragraph honestly is.
+    THE SWAP LANE IS EXEMPT, and it is the one exemption that does
+    not weaken the rule (founder 2026-08-13). The decline exists
+    because a whole-paragraph quote OVERSTATES an ordinary replace:
+    the lane meant "these exact words" and the fallback silently
+    widened it to "this whole chunk". The acoustic swap means the
+    whole paragraph in the first place — it offers this take's
+    delivery of a LOCKED PART, and a part IS a paragraph. Its quote
+    is not a widened claim, it is the claim. Declining it at
+    paragraph grain would mute the lane exactly where it applies,
+    since a locked chunk is precisely what gets a coarse anchor."""
+    if p.get("anchor_grain", WORD_GRAIN) != WORD_GRAIN \
+            and kind in _WORD_PRECISE_KINDS \
+            and source != _SWAP_SOURCE:
+        logger.info(
+            "tracked_changes: declining %s/%s on snippet=%s — piece is "
+            "anchored at PARAGRAPH grain and narrowing found no exact "
+            "phrase, so the quote would be the whole paragraph",
+            kind, source, sid)
+        return True
+    # THE ACCENT WIDTH RULE, at every grain (founder 2026-08-15).
+    # The paragraph-grain decline above already refused the widest
+    # case; this refuses the rest of it. A `bold` whose narrowing
+    # failed would take the ENTIRE piece, and a piece is routinely
+    # several sentences — "style the whole chunk", which is exactly
+    # what the founder asked to delete. A single-sentence piece still
+    # falls through and is bolded whole: that is "or a sentence",
+    # which he allowed in the same breath.
+    #
+    # Only `bold` is held to this. `replace` states which words to
+    # swap and `advice` only points; neither becomes a claim about
+    # emphasis by being wide.
+    if kind == "bold" and not is_accent_width(window_text):
+        logger.info(
+            "tracked_changes: declining bold/%s on snippet=%s — "
+            "narrowing found no phrase and the piece is wider than an "
+            "accent (%d chars), so the quote would be the whole chunk",
+            source, sid, len(window_text))
+        return True
+    return False
+
+
+def _anchor(p: dict, sid: str, kind: str, source: str, sug: dict,
+            window: tuple[int, int, str],
+            key_phrases_by_snippet: Any) -> Optional[tuple[str, int, int]]:
+    """``(quote, start, end)``: the narrowed phrase, else the whole window,
+    or None when the whole window would overstate the change."""
+    w_start, w_end, window_text = window
+    _kp = (key_phrases_by_snippet or {}).get(sid) if kind == "bold" \
+        else None
+    quote = _narrow(window_text, sug, key_phrases=_kp)
+    rel = window_text.find(quote) if quote else -1
+    if quote and rel >= 0:
+        # Narrowing found the phrase INSIDE the window, so this anchor is
+        # word-exact however the window itself was established — the words
+        # are demonstrably on screen. Coarse-grained pieces are welcome
+        # here; the check below is only for the whole-window fallback.
+        return quote, w_start + rel, w_start + rel + len(quote)
+    if _declines_whole_window(p, sid, kind, source, window_text):
+        return None
+    return window_text, w_start, w_end
+
+
+def _known_cues(sug: dict) -> list:
+    """The row's cue keys, kept only if in the closed delivery_cues
+    vocabulary."""
+    _cues = sug.get("cue_keys")
+    if not isinstance(_cues, (list, tuple)):
+        return []
+    from services.delivery_cues import CUE_KEYS as _KNOWN
+    return [c for c in _cues if isinstance(c, str) and c in _KNOWN]
+
+
+def _change_entry(p: dict, sid: str, kind: str, source: str, sug: dict,
+                  quote: str, start: int, end: int) -> Optional[dict]:
+    """The served change for one anchored row, or None when a replace has
+    nothing to propose."""
+    entry = {
+        "id": sid,
+        "snippet_id": sid,
+        # The take this piece came from — the FE fills the
+        # suggestion-feedback POST's required `session_id` from it
+        # (FE contract ask 2026-07-21: a replace/bold with no
+        # snippet+session pair is not actionable and the FE drops it,
+        # so without this every text change renders as a dead
+        # button). Carried from the piece; always present on a
+        # transcript-document piece.
+        "take_session_id": p.get("take_session_id"),
+        "kind": kind,
+        "source": source,
+        "span": {"start": start, "end": end},
+        "quote": quote,
+    }
+    if source == "confident_voice":
+        # The founder-signed body renders FE-side by KEY (the FE's
+        # closed why vocabulary holds the copy — LIVE LOOP): "You
+        # sounded incredibly confident and natural here."
+        entry["why_key"] = "confident_voice"
+    # THE REASON LINE. `why` is the model's FREE TEXT and the FE has
+    # always dropped it: it validates `why_key ?? why` against a closed
+    # vocabulary, so un-signed-off LLM prose can never reach a student
+    # (LIVE LOOP). That gate is right and stays. The field is kept because
+    # a row that ever carries a real key works unchanged.
+    #
+    # `why_key` is what actually renders, and it is a KEY not a string —
+    # the FE holds the copy, exactly as it does for the cross-take lanes.
+    # The four existing keys are all COMPARISON copy ("This take carried
+    # more energy…"), so reusing one here would have written a sentence
+    # about a second take that does not exist in this lane. Founder
+    # supplied the non-comparison copy 2026-08-07 and it splits in two.
+    #
+    # THE SPLIT IS THE LAYER BOUNDARY, not a lane list. A change either
+    # alters the words or styles the words that are already there — the
+    # same composition/accentuation line SPEC-parts-locking-and-layers §2
+    # draws, and the copy only makes sense on the right side of it: you
+    # cannot say "helps your main point stand out" about a word swap, and
+    # "sounds smoother and easier to follow" says nothing about a bold.
+    #
+    # `profanity` gets NEITHER. Its lead line already carries the whole
+    # message ("This might land differently than you meant"), and neither
+    # set is about that; a clarity claim on top would be a second reason
+    # nobody offered.
+    if kind == "replace" and source in ("polish", "wording"):
+        entry["why_key"] = "clarity"      # composition — changes words
+    elif kind == "bold" and source != "confident_voice":
+        entry["why_key"] = "emphasis"     # accentuation — styles words
+    if kind == "replace":
+        _repl = (sug.get("replacement_text") or "").strip()
+        if not _repl:
+            return None   # a replace with nothing to propose is dead
+        entry["proposed_text"] = _repl
+        entry["why"] = sug.get("why")
+    elif kind == "bold":
+        entry["why"] = sug.get("why")
+        if source == "confident_voice":
+            # Acoustic evidence belongs on the Confident Voice row too.
+            # Keep only the closed cue vocabulary; the FE owns all copy.
+            _cues = _known_cues(sug)
+            if _cues:
+                entry["cue_keys"] = _cues
+    else:   # advice — the FE renders copy from the device
+        entry["device"] = sug.get("trigger")
+        entry["why"] = None
+        # THE PRAISE LANE'S EVIDENCE (founder 2026-08-15: "explain using
+        # the vocal and verbal cues"). KEYS only, from the closed
+        # delivery_cues vocabulary — the FE holds a sentence per key, so
+        # this can carry no number and no unsigned-off wording (AC-9 +
+        # LIVE LOOP). Filtered rather than trusted: a row written before
+        # the vocabulary existed, or by a future writer, must not put an
+        # unknown key on a user payload.
+        _cues = _known_cues(sug)
+        if _cues:
+            entry["cue_keys"] = _cues
+    return entry
+
+
+def _change_for_piece(doc: str, p: Any, suggestions: Any, applied: set,
+                      key_phrases_by_snippet: Any) -> Optional[dict]:
+    """The one change a piece offers, or None."""
+    row = _lane_row(p, suggestions, applied)
+    if row is None:
+        return None
+    sid, sug, kind, source = row
+    window = _piece_window(doc, p)
+    if window is None:
+        return None
+    anchor = _anchor(p, sid, kind, source, sug, window,
+                     key_phrases_by_snippet)
+    if anchor is None:
+        return None
+    quote, start, end = anchor
+    return _change_entry(p, sid, kind, source, sug, quote, start, end)
+
+
 def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
                           *, applied: Any = None,
                           key_phrases_by_snippet: Any = None) -> list:
@@ -254,179 +473,10 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
     _applied = {str(x) for x in (applied or [])}
     out: list = []
     for p in (pieces or []):
-        if not isinstance(p, dict):
-            continue
-        sid = str(p.get("snippet_id") or "")
-        sug = (suggestions or {}).get(sid)
-        if not sid or not isinstance(sug, dict) or sid in _applied:
-            continue
-        kind, source = _kind_and_source(sug)
-        if not kind:
-            continue
-        # The piece carries its span (relocated monotonically onto the
-        # served text by the caller) — never a bare text search, which
-        # would anchor a repeated phrase on the wrong occurrence.
-        try:
-            w_start, w_end = int(p["start"]), int(p["end"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        window_text = doc[w_start:w_end]
-        if window_text != (p.get("text") or "").strip():
-            continue   # the piece's words moved/vanished — never guess
-
-        _kp = (key_phrases_by_snippet or {}).get(sid) if kind == "bold" \
-            else None
-        quote = _narrow(window_text, sug, key_phrases=_kp)
-        if quote:
-            rel = window_text.find(quote)
-            if rel < 0:
-                quote = None
-        if quote:
-            # Narrowing found the phrase INSIDE the window, so this anchor is
-            # word-exact however the window itself was established — the words
-            # are demonstrably on screen. Coarse-grained pieces are welcome
-            # here; the check below is only for the whole-window fallback.
-            start, end = w_start + rel, w_start + rel + len(quote)
-        else:
-            # THE WHOLE-WINDOW FALLBACK, and the paragraph-grain decline.
-            #
-            # Falling back means "the change is about the entire piece". At
-            # word grain that is a sentence the student actually said, which
-            # is what these lanes have always meant. At PARAGRAPH grain the
-            # piece IS the paragraph, and the same fallback silently promotes
-            # every change to whole-paragraph scope: a `replace` renders as
-            # "strike this whole chunk, here is one sentence instead", and a
-            # `bold` accents the entire chunk — the exact whole-fragment
-            # problem T3 was built to kill, at maximum width.
-            #
-            # So composition and accentuation abstain, and only `advice`
-            # survives — it alters nothing and its span merely points at the
-            # region the coaching is about, which a paragraph honestly is.
-            # THE SWAP LANE IS EXEMPT, and it is the one exemption that does
-            # not weaken the rule (founder 2026-08-13). The decline exists
-            # because a whole-paragraph quote OVERSTATES an ordinary replace:
-            # the lane meant "these exact words" and the fallback silently
-            # widened it to "this whole chunk". The acoustic swap means the
-            # whole paragraph in the first place — it offers this take's
-            # delivery of a LOCKED PART, and a part IS a paragraph. Its quote
-            # is not a widened claim, it is the claim. Declining it at
-            # paragraph grain would mute the lane exactly where it applies,
-            # since a locked chunk is precisely what gets a coarse anchor.
-            if p.get("anchor_grain", WORD_GRAIN) != WORD_GRAIN \
-                    and kind in _WORD_PRECISE_KINDS \
-                    and source != _SWAP_SOURCE:
-                logger.info(
-                    "tracked_changes: declining %s/%s on snippet=%s — piece is "
-                    "anchored at PARAGRAPH grain and narrowing found no exact "
-                    "phrase, so the quote would be the whole paragraph",
-                    kind, source, sid)
-                continue
-            # THE ACCENT WIDTH RULE, at every grain (founder 2026-08-15).
-            # The paragraph-grain decline above already refused the widest
-            # case; this refuses the rest of it. A `bold` whose narrowing
-            # failed would take the ENTIRE piece, and a piece is routinely
-            # several sentences — "style the whole chunk", which is exactly
-            # what the founder asked to delete. A single-sentence piece still
-            # falls through and is bolded whole: that is "or a sentence",
-            # which he allowed in the same breath.
-            #
-            # Only `bold` is held to this. `replace` states which words to
-            # swap and `advice` only points; neither becomes a claim about
-            # emphasis by being wide.
-            if kind == "bold" and not is_accent_width(window_text):
-                logger.info(
-                    "tracked_changes: declining bold/%s on snippet=%s — "
-                    "narrowing found no phrase and the piece is wider than an "
-                    "accent (%d chars), so the quote would be the whole chunk",
-                    source, sid, len(window_text))
-                continue
-            quote, start, end = window_text, w_start, w_end
-
-        entry = {
-            "id": sid,
-            "snippet_id": sid,
-            # The take this piece came from — the FE fills the
-            # suggestion-feedback POST's required `session_id` from it
-            # (FE contract ask 2026-07-21: a replace/bold with no
-            # snippet+session pair is not actionable and the FE drops it,
-            # so without this every text change renders as a dead
-            # button). Carried from the piece; always present on a
-            # transcript-document piece.
-            "take_session_id": p.get("take_session_id"),
-            "kind": kind,
-            "source": source,
-            "span": {"start": start, "end": end},
-            "quote": quote,
-        }
-        if source == "confident_voice":
-            # The founder-signed body renders FE-side by KEY (the FE's
-            # closed why vocabulary holds the copy — LIVE LOOP): "You
-            # sounded incredibly confident and natural here."
-            entry["why_key"] = "confident_voice"
-        # THE REASON LINE. `why` is the model's FREE TEXT and the FE has
-        # always dropped it: it validates `why_key ?? why` against a closed
-        # vocabulary, so un-signed-off LLM prose can never reach a student
-        # (LIVE LOOP). That gate is right and stays. The field is kept because
-        # a row that ever carries a real key works unchanged.
-        #
-        # `why_key` is what actually renders, and it is a KEY not a string —
-        # the FE holds the copy, exactly as it does for the cross-take lanes.
-        # The four existing keys are all COMPARISON copy ("This take carried
-        # more energy…"), so reusing one here would have written a sentence
-        # about a second take that does not exist in this lane. Founder
-        # supplied the non-comparison copy 2026-08-07 and it splits in two.
-        #
-        # THE SPLIT IS THE LAYER BOUNDARY, not a lane list. A change either
-        # alters the words or styles the words that are already there — the
-        # same composition/accentuation line SPEC-parts-locking-and-layers §2
-        # draws, and the copy only makes sense on the right side of it: you
-        # cannot say "helps your main point stand out" about a word swap, and
-        # "sounds smoother and easier to follow" says nothing about a bold.
-        #
-        # `profanity` gets NEITHER. Its lead line already carries the whole
-        # message ("This might land differently than you meant"), and neither
-        # set is about that; a clarity claim on top would be a second reason
-        # nobody offered.
-        if kind == "replace" and source in ("polish", "wording"):
-            entry["why_key"] = "clarity"      # composition — changes words
-        elif kind == "bold" and source != "confident_voice":
-            entry["why_key"] = "emphasis"     # accentuation — styles words
-        if kind == "replace":
-            _repl = (sug.get("replacement_text") or "").strip()
-            if not _repl:
-                continue   # a replace with nothing to propose is dead
-            entry["proposed_text"] = _repl
-            entry["why"] = sug.get("why")
-        elif kind == "bold":
-            entry["why"] = sug.get("why")
-            if source == "confident_voice":
-                # Acoustic evidence belongs on the Confident Voice row too.
-                # Keep only the closed cue vocabulary; the FE owns all copy.
-                _cues = sug.get("cue_keys")
-                if isinstance(_cues, (list, tuple)):
-                    from services.delivery_cues import CUE_KEYS as _KNOWN
-                    _cues = [c for c in _cues
-                             if isinstance(c, str) and c in _KNOWN]
-                    if _cues:
-                        entry["cue_keys"] = _cues
-        else:   # advice — the FE renders copy from the device
-            entry["device"] = sug.get("trigger")
-            entry["why"] = None
-            # THE PRAISE LANE'S EVIDENCE (founder 2026-08-15: "explain using
-            # the vocal and verbal cues"). KEYS only, from the closed
-            # delivery_cues vocabulary — the FE holds a sentence per key, so
-            # this can carry no number and no unsigned-off wording (AC-9 +
-            # LIVE LOOP). Filtered rather than trusted: a row written before
-            # the vocabulary existed, or by a future writer, must not put an
-            # unknown key on a user payload.
-            _cues = sug.get("cue_keys")
-            if isinstance(_cues, (list, tuple)):
-                from services.delivery_cues import CUE_KEYS as _KNOWN
-                _cues = [c for c in _cues
-                         if isinstance(c, str) and c in _KNOWN]
-                if _cues:
-                    entry["cue_keys"] = _cues
-        out.append(entry)
+        entry = _change_for_piece(doc, p, suggestions, _applied,
+                                  key_phrases_by_snippet)
+        if entry is not None:
+            out.append(entry)
     out.sort(key=lambda c: (c["span"]["start"], c["span"]["end"]))
     return out
 
