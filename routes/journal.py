@@ -860,6 +860,22 @@ def journal_admin_exercise_gaps():
     return jsonify(gap_view(db, days=_body().get("days"))), 200
 
 
+@journal_bp.route("/v2/internal/journal/exercise-learning-readiness",
+                  methods=["POST"])
+def journal_admin_exercise_learning_readiness():
+    """How close exercise learning is to its evidence bar (§3.5 item 8):
+    300 first-exposure attempts with a valid endpoint, 30 per exercise.
+    Body { password }. Read-only; counts only, never outcomes.
+    200 { counted, cohort, attempt_rate, excluded, exercises, ready, … } · 401 · 503
+
+    The work is services/exercise_learning_readiness.py's."""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    from services.exercise_learning_readiness import readiness
+    return jsonify(readiness(db)), 200
+
+
 @journal_bp.route("/v2/internal/journal/speaking-errors/list",
                   methods=["POST"])
 def journal_admin_list_speaking_errors():
