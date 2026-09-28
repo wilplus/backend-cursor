@@ -100,34 +100,3 @@ def correlate_feeling_performance(pairs: Any) -> dict:
     }
 
 
-def stress_as_fuel(pairs: Any) -> Optional[dict]:
-    """The "Stress as fuel" reappraisal stat: of the takes where the user felt
-    NERVOUS (the pressure state), what share still performed at or above their
-    own average → pressure lifting them rather than freezing them.
-
-    Returns ``{"pct": int, "n": int, "headline": str}`` or None when there
-    aren't enough nervous takes to say anything. DIRECTIONAL — a coaching
-    indicator, not a statistic; the headline is a DRAFT the coach curates."""
-    scored = [
-        p for p in (pairs if isinstance(pairs, list) else [])
-        if isinstance(p, dict)
-        and p.get("feeling") in VALID_FEELINGS
-        and isinstance(p.get("performance"), (int, float))
-        and not isinstance(p.get("performance"), bool)
-    ]
-    if len(scored) < _MIN_PAIRS_FOR_HEADLINE:
-        return None
-    nervous = [p for p in scored if p["feeling"] == "nervous"]
-    if len(nervous) < _MIN_N_PER_FEELING:
-        return None
-    avg = sum(float(p["performance"]) for p in scored) / len(scored)
-    lifted = sum(1 for p in nervous if float(p["performance"]) >= avg)
-    pct = round(100 * lifted / len(nervous))
-    return {
-        "pct": pct,
-        "n": len(nervous),
-        "headline": (
-            f"Under pressure you lifted {pct}% of the time — "
-            "nerves tend to fuel you, not freeze you."
-        ),
-    }

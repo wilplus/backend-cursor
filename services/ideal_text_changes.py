@@ -19,9 +19,10 @@ narrowed inside that window. A piece whose words are no longer there (baked,
 coach-corrected, student-edited) yields NO change rather than a mis-pointed
 one (#219).
 
-THE CUE SHEET IS DEFERRED (founder 2026-08-07): ``services/key_points.py``
-and its tests are kept; only the wiring is gone, so ``KEY_POINTS_ENABLED`` no
-longer does anything and should be deleted from Railway.
+THE CUE SHEET IS GONE. Deferred by the founder on 2026-08-07 (module kept,
+wiring removed); deleted with its tests on 2026-09-28 by the founder's
+remediation decision (C4). Git history keeps ``services/key_points.py``.
+``KEY_POINTS_ENABLED`` does nothing and can be deleted from Railway.
 """
 from __future__ import annotations
 

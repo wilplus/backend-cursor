@@ -7,7 +7,7 @@ from __future__ import annotations
 import unittest
 
 from services.feeling_performance import (
-    correlate_feeling_performance, session_performance, stress_as_fuel,
+    correlate_feeling_performance, session_performance,
 )
 
 
@@ -74,27 +74,6 @@ class CorrelateTests(unittest.TestCase):
         out = correlate_feeling_performance(None)
         self.assertEqual(out["buckets"], [])
         self.assertEqual(out["n"], 0)
-
-
-class StressAsFuelTests(unittest.TestCase):
-    def test_nervous_lift_rate(self):
-        pairs = [
-            {"feeling": "nervous", "performance": 0.9},  # >= avg → lifted
-            {"feeling": "nervous", "performance": 0.8},  # >= avg → lifted
-            {"feeling": "calm", "performance": 0.3},
-            {"feeling": "calm", "performance": 0.4},
-        ]
-        out = stress_as_fuel(pairs)
-        self.assertEqual(out["pct"], 100)  # both nervous takes above the mean
-        self.assertEqual(out["n"], 2)
-        self.assertIn("%", out["headline"])
-
-    def test_none_when_too_few_nervous(self):
-        pairs = [{"feeling": "calm", "performance": 0.5} for _ in range(4)]
-        self.assertIsNone(stress_as_fuel(pairs))
-
-    def test_none_when_too_little_data(self):
-        self.assertIsNone(stress_as_fuel([{"feeling": "nervous", "performance": 0.9}]))
 
 
 if __name__ == "__main__":

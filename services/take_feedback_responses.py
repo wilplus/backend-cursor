@@ -79,39 +79,3 @@ def parse_feedback_response(
     }, None
 
 
-def validate_feedback_response(
-    body: Any, selected_keys: Any,
-) -> tuple[Optional[dict], Optional[str]]:
-    """Compatibility validator for callers/tests holding a frozen snapshot."""
-    parsed, err = parse_feedback_response(body)
-    if err or parsed is None:
-        return None, err
-    feedback_id = parsed["feedback_id"]
-    family = parsed["feedback_family"]
-    member = next((
-        key for key in (selected_keys or [])
-        if isinstance(key, dict)
-        and str(key.get("id") or "") == feedback_id
-        and str(key.get("feedback_family") or "") == family
-    ), None)
-    if member is None:
-        return None, "feedback item is not in this Take's frozen set"
-    supplied_snippet = parsed.get("snippet_id")
-    member_snippet = str(member.get("snippet_id") or "") or None
-    if supplied_snippet is not None:
-        if supplied_snippet != member_snippet:
-            return None, "snippet provenance does not match the feedback item"
-    return {
-        "feedback_id": feedback_id,
-        "feedback_family": family,
-        "response": parsed["response"],
-        "snippet_id": member_snippet,
-        **{
-            key: parsed[key]
-            for key in (
-                "candidate_id", "feedback_membership_id",
-                "feedback_exposure_id",
-            )
-            if key in parsed
-        },
-    }, None

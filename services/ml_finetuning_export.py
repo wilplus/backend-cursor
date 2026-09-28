@@ -10,7 +10,7 @@ do not commit generated files to git.
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 # Tune these to match your product voice; OpenAI fine-tuning uses system + user + assistant.
 _DEFAULT_SYSTEM = (
@@ -88,52 +88,6 @@ def get_system_prompt_for_field(field_name: str | None) -> str:
 def build_session_blurb(session: dict[str, Any] | None) -> str:
     """Public accessor for shared export utilities."""
     return _session_blurb(session)
-
-
-def event_to_openai_messages(
-    row: dict[str, Any],
-    *,
-    session: dict[str, Any] | None = None,
-) -> Optional[dict[str, Any]]:
-    """
-    One fine-tuning example, or None if the row should be skipped.
-    """
-    coach = (row.get("coach_final_text") or "").strip()
-    if not coach:
-        return None
-
-    ai_draft = (row.get("ai_original_text") or "").strip()
-    field = row.get("field_name")
-    section = row.get("section_type")
-
-    user_parts: list[str] = []
-    blurb = _session_blurb(session)
-    if blurb:
-        user_parts.append(blurb)
-    user_parts.append(f"Annotation: field={field!s} section={section!s}")
-    rid = row.get("id")
-    if rid:
-        user_parts.append(f"event_id={rid}")
-    if row.get("reason_chip"):
-        user_parts.append(f"Coach reason tag: {row.get('reason_chip')}")
-    if row.get("custom_reason"):
-        cr = str(row.get("custom_reason")).strip()
-        if cr:
-            user_parts.append(f"Coach note: {cr}")
-    if ai_draft:
-        user_parts.append(f"AI draft to improve on:\n{ai_draft}")
-    else:
-        user_parts.append("AI draft was empty or missing; produce the coach-quality output from context only.")
-
-    user_content = "\n\n".join(user_parts)
-
-    return {
-        "messages": [
-            {"role": "system", "content": _system_for_field(str(field) if field else None)},
-            {"role": "user", "content": user_content},
-            {"role": "assistant", "content": coach},
-        ]
-    }
 
 
 def example_to_jsonl_line(example: dict[str, Any]) -> str:

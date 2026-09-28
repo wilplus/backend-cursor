@@ -61,6 +61,8 @@ def _normalize_words(text: str) -> list[str]:
     return [t for t in re.split(r"\s+", (text or "").strip()) if t]
 
 
+# PARKED (founder decision 2026-09-26, audit C4): nothing in the running
+# app calls this yet. Kept for the Confident Moment rooting step, which will call it when wired.
 def extract_exact_clauses(
     transcript: str,
     *,

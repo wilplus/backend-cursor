@@ -64,30 +64,3 @@ def validate_confidence_review(payload: Any) -> tuple[Optional[dict], Optional[s
     }, None
 
 
-def review_corpus_summary(rows: Any) -> dict:
-    """Class balance for a peer-review corpus pull.
-
-    The same guard ``confidence_labels.corpus_summary`` exists for: a corpus
-    that is 95% "the AI was right" teaches nothing except agreement, and this
-    is where that shows up BEFORE anything trains on it. Reviewers are counted
-    distinctly because one enthusiastic rater flagging 200 snippets is not the
-    same evidence as 40 raters flagging 5 each. Pure."""
-    items = [r for r in (rows or []) if isinstance(r, dict)]
-    yes = sum(1 for r in items if r.get("ai_correct") is True)
-    no = sum(1 for r in items if r.get("ai_correct") is False)
-    by_version: dict = {}
-    for r in items:
-        v = r.get("model_version") or "(unattributed)"
-        by_version[v] = by_version.get(v, 0) + 1
-    return {
-        "total": len(items),
-        "ai_correct_true": yes,
-        "ai_correct_false": no,
-        "agreement_rate": (round(yes / len(items), 3) if items else None),
-        "by_model_version": by_version,
-        "reviewers": len({
-            r.get("reviewer_user_id") for r in items if r.get("reviewer_user_id")
-        }),
-        "selection_source": SELECTION_SOURCE,
-        "blind": False,
-    }

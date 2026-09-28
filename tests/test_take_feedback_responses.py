@@ -1,45 +1,31 @@
-from services.take_feedback_responses import (
-    parse_feedback_response,
-    validate_feedback_response,
-)
+from services.take_feedback_responses import parse_feedback_response
 from services.take_feedback_set import snippet_ids_by_family
 from pathlib import Path
 from services.db import DatabaseService
 from tests.fakes import FakeSupabaseClient
 
 
-KEYS = [
-    {"id": "cv", "feedback_family": "confident_voice", "snippet_id": "s1"},
-    {"id": "rw", "feedback_family": "rewrite_clarity", "snippet_id": "s2"},
-    {"id": "pr", "feedback_family": "great_formulation", "snippet_id": "s3"},
-]
-
-
-def test_accepts_only_family_specific_responses_from_frozen_set():
-    row, err = validate_feedback_response({
+def test_accepts_only_family_specific_responses():
+    # Membership (is this item in the frozen set, does the clip match) is the
+    # atomic RPC's decision: test_atomic_rpc_owns_membership_idempotency_and_
+    # provenance. The old in-memory validator that re-checked it had no
+    # caller left and was deleted (audit C4, founder 2026-09-26).
+    row, err = parse_feedback_response({
         "feedback_id": "cv",
         "feedback_family": "confident_voice",
         "response": "in_between",
         "snippet_id": "s1",
-    }, KEYS)
+    })
     assert err is None
     assert row["response"] == "in_between"
 
-    row, err = validate_feedback_response({
+    row, err = parse_feedback_response({
         "feedback_id": "pr",
         "feedback_family": "great_formulation",
         "response": "yes",
-    }, KEYS)
+    })
     assert row is None
     assert "not valid" in err
-
-
-def test_rejects_unexposed_identity_and_mismatched_clip_provenance():
-    assert validate_feedback_response({
-        "feedback_id": "new",
-        "feedback_family": "rewrite_clarity",
-        "response": "keep_wording",
-    }, KEYS)[0] is None
 
 
 def test_typed_parse_does_not_make_a_stale_membership_decision():
@@ -56,12 +42,6 @@ def test_typed_parse_does_not_make_a_stale_membership_decision():
         "response": "yes",
         "snippet_id": "s1",
     }
-    assert validate_feedback_response({
-        "feedback_id": "cv",
-        "feedback_family": "confident_voice",
-        "response": "no",
-        "snippet_id": "different",
-    }, KEYS)[0] is None
 
 
 def test_exact_canonical_identity_is_all_or_nothing_and_opaque():
