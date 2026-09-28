@@ -92,3 +92,87 @@ def history_for_part(database: Any, arc_id: str, user_id: str,
         database.list_slide_helper_words_log(arc_id, user_id, slide),
         slide,
         database.list_practice_adoptions(arc_id, user_id, slide))
+
+
+def _slide_clip(database: Any, session_id: str, slide_index: int,
+                resolve_url: Any) -> Optional[dict]:
+    """The Take's own audio for this Slide: from its first piece on the Slide
+    to the end of its last, when they share one recording file; else the
+    first piece alone. None when nothing on the Slide can play."""
+    from services.transcript_document import _slide_corrections, _slide_of
+
+    fixes = _slide_corrections(database, session_id)
+    pieces = sorted(
+        (s for s in database.get_snippets_by_session(session_id) or []
+         if isinstance(s, Mapping) and _slide_of(s, fixes) == slide_index),
+        key=lambda s: s.get("start_offset_ms") or 0)
+    if not pieces:
+        return None
+    first, last = pieces[0], pieces[-1]
+    url = resolve_url(first)
+    if not url:
+        return None
+    start = int(first.get("start_offset_ms") or 0)
+    duration = int(first.get("duration_ms") or 0)
+    if len(pieces) > 1 and resolve_url(last) == url:
+        duration = max(duration, int(last.get("start_offset_ms") or 0)
+                       + int(last.get("duration_ms") or 0) - start)
+    return {"snippet_audio_ref": url, "start_offset_ms": start,
+            "duration_ms": duration,
+            "snippet_ids": [str(s.get("id")) for s in pieces if s.get("id")]}
+
+
+def _slide_answer(database: Any, session_id: str, user_id: str,
+                  snippet_ids: list) -> Optional[str]:
+    """The owner's own latest Confident Voice answer on this Slide's clips in
+    that Take -- their self-report, shown back to them only. None when they
+    did not answer there."""
+    wanted = set(snippet_ids)
+    answer = None
+    for row in database.list_take_feedback_self_reports(
+            session_id, user_id) or []:
+        if (isinstance(row, Mapping)
+                and row.get("feedback_family") == "confident_voice"
+                and str(row.get("snippet_id") or "") in wanted
+                and row.get("response")):
+            answer = str(row["response"])
+    return answer
+
+
+def with_earlier_take_details(database: Any, arc_id: str, user_id: str,
+                              history: dict, resolve_url: Any) -> dict:
+    """Each version row gains its Take's recording for this Slide and the
+    owner's answer on it (founder 2026-09-28, decision 5: the Earlier Takes
+    rows carry an answer and a player, as the accepted Take stack shows).
+
+    Best-effort per row: a Take whose audio or answer cannot be read keeps
+    its words and simply shows no player or answer."""
+    slide = history.get("slide_index")
+    if not isinstance(slide, int):
+        return history
+    sessions = {
+        row.get("take_index"): str(row.get("id"))
+        for row in database.takes.get_arc_sessions(arc_id) or []
+        if isinstance(row, Mapping) and row.get("id")
+        and row.get("recording_kind") != "read"
+        and not row.get("paired_session_id")
+    }
+    for version in history.get("versions") or []:
+        session_id = sessions.get(version.get("take_index"))
+        if not session_id:
+            continue
+        version["take_session_id"] = session_id
+        try:
+            clip = _slide_clip(database, session_id, slide, resolve_url)
+        except Exception:
+            clip = None
+        if clip is None:
+            continue
+        snippet_ids = clip.pop("snippet_ids")
+        version["clip"] = clip
+        try:
+            version["answer"] = _slide_answer(
+                database, session_id, user_id, snippet_ids)
+        except Exception:
+            version["answer"] = None
+    return history

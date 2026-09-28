@@ -1405,6 +1405,21 @@ def v2_put_confidence_agree(snippet_id):
         }), 500
 
 
+def _passage_refused(practice, alignment) -> bool:
+    """The attempt did not say the shown words, and the coach did not ask
+    for different ones (founder 2026-09-28, 14B)."""
+    return (not alignment.get("matches")
+            and not _coach_asked_own_wording(practice))
+
+
+def _coach_asked_own_wording(practice) -> bool:
+    """The shown words are required unless the coach's shared exercise asks
+    for different wording (founder 2026-09-28, 14B)."""
+    shared = practice.get("coach_shared_exercise") if isinstance(
+        practice, dict) else None
+    return isinstance(shared, dict) and shared.get("own_wording") is True
+
+
 @v2_bp.route("/user/takes/<take_session_id>/feedback-responses",
              methods=["GET"])
 @require_auth
@@ -1889,7 +1904,7 @@ def v2_add_confident_voice_practice_attempt(practice_id):
         alignment = passage_alignment(
             str(practice.get("exact_passage") or ""),
             str(transcription.get("transcript") or ""))
-        if not alignment.get("matches"):
+        if _passage_refused(practice, alignment):
             return jsonify({"code": "PASSAGE_MISMATCH",
                             "error": "Please read the exact passage shown and try again."}), 422
         from services.audio_metrics import analyze_audio

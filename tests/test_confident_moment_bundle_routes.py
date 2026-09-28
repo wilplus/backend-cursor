@@ -284,7 +284,12 @@ def test_registration_and_core_summary_use_exact_database_boundary():
     assert "publish_confident_moment_coach_feedback_language" in registration
     handler = core[core.index("def v2_explore_get_ideal_text_core"):]
     handler = handler[:handler.index("\n\n@v2_bp.route", 10)]
-    assert "get_ideal_text_document_core_v2" in handler
+    # The handler reads through `read_core_or_publish` since decision 16A
+    # (founder 2026-09-28); the exact boundary is still the v2 core read.
+    assert "read_core_or_publish" in handler
+    snapshot_module = Path("services/ideal_text_core_snapshot.py").read_text()
+    reader = snapshot_module[snapshot_module.index("def read_core_or_publish"):]
+    assert "get_ideal_text_document_core_v2" in reader
     assert "load_confident_moment_projection" not in handler
     assert "get_owner_principal_for_user" not in handler
     assert '"items": []' not in handler

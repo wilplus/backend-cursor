@@ -3488,12 +3488,14 @@ class DatabaseService:
     def get_snippets_by_session(self, session_id: str) -> List[dict]:
         """Get all snippets for a session, ordered by start time."""
         try:
-            result = (
-                self.client.table(SNIPPETS_TABLE)
-                .select("*")
-                .eq("session_id", session_id)
-                .order("start_offset_ms", desc=False)
-                .execute()
+            result = self._execute_with_retry(
+                lambda: (
+                    self.client.table(SNIPPETS_TABLE)
+                    .select("*")
+                    .eq("session_id", session_id)
+                    .order("start_offset_ms", desc=False)
+                ),
+                label="get_snippets_by_session",
             )
             return result.data if result.data else []
         except Exception as e:
@@ -7192,21 +7194,25 @@ class DatabaseService:
             return None
         try:
             if snapshot_id:
-                rows = (self.client.table("ideal_text_document_snapshots")
-                        .select("*").eq("id", str(snapshot_id))
-                        .eq("arc_id", str(arc_id))
-                        .eq("actor_id", str(actor_id)).limit(1)
-                        .execute().data) or []
+                rows = self._execute_with_retry(
+                    lambda: (self.client.table("ideal_text_document_snapshots")
+                             .select("*").eq("id", str(snapshot_id))
+                             .eq("arc_id", str(arc_id))
+                             .eq("actor_id", str(actor_id)).limit(1)),
+                    label="ideal_text_snapshot_by_id").data or []
                 return rows[0] if rows else None
-            heads = (self.client.table("ideal_text_document_heads")
-                     .select("snapshot_id").eq("arc_id", str(arc_id))
-                     .eq("actor_id", str(actor_id)).limit(1)
-                     .execute().data) or []
+            heads = self._execute_with_retry(
+                lambda: (self.client.table("ideal_text_document_heads")
+                         .select("snapshot_id").eq("arc_id", str(arc_id))
+                         .eq("actor_id", str(actor_id)).limit(1)),
+                label="ideal_text_snapshot_head").data or []
             if not heads:
                 return None
-            rows = (self.client.table("ideal_text_document_snapshots")
-                    .select("*").eq("id", str(heads[0]["snapshot_id"]))
-                    .limit(1).execute().data) or []
+            head_id = str(heads[0]["snapshot_id"])
+            rows = self._execute_with_retry(
+                lambda: (self.client.table("ideal_text_document_snapshots")
+                         .select("*").eq("id", head_id).limit(1)),
+                label="ideal_text_snapshot_current").data or []
             return rows[0] if rows else None
         except Exception as error:
             low = str(error).lower()
@@ -8588,15 +8594,17 @@ class DatabaseService:
         if not arc_id or not user_id:
             return []
         try:
-            res = (
-                self.client.table("ideal_text_part")
-                .select("id, ord, text, locked_at, iteration, root_phrase, "
-                        "root_start, root_end, root_selected_at" if with_lock
-                        else "id, ord, text")
-                .eq("arc_id", str(arc_id))
-                .eq("user_id", str(user_id))
-                .order("ord")
-                .execute()
+            res = self._execute_with_retry(
+                lambda: (
+                    self.client.table("ideal_text_part")
+                    .select("id, ord, text, locked_at, iteration, root_phrase, "
+                            "root_start, root_end, root_selected_at"
+                            if with_lock else "id, ord, text")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .order("ord")
+                ),
+                label="get_ideal_text_parts",
             )
             return res.data or []
         except Exception as e:

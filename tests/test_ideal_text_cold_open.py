@@ -133,7 +133,11 @@ def test_core_handler_is_strictly_read_only_by_architecture():
         and node.name == "v2_explore_get_ideal_text_core"
     )
     body = ast.get_source_segment(source, handler) or ""
-    assert "get_ideal_text_document_core" in body
+    # The read goes through `read_core_or_publish` since decision 16A
+    # (founder 2026-09-28): the one repair allowed here is publishing a head
+    # that does not exist at all, through the ordinary publisher. Every
+    # composing and enrichment call below stays banned.
+    assert "read_core_or_publish" in body
     called = set()
     for node in ast.walk(handler):
         if not isinstance(node, ast.Call):
