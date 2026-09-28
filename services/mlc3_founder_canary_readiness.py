@@ -193,17 +193,16 @@ def validate_cloudflare_r2_privacy_export(
     return seen == set(expected)
 
 
-def validate_r2_smoke_manifest(
-    manifest: Mapping[str, Any], *, account_id: str,
-    practice_bucket: str, coach_video_bucket: str,
-    trusted_public_key_pem: bytes, trusted_issuer: str,
-    trusted_key_id: str,
-    now: datetime | None = None,
+def _valid_r2_manifest_header(
+    manifest: Mapping[str, Any], *, account_id: str, trusted_public_key_pem: bytes,
+    trusted_issuer: str, trusted_key_id: str, now: datetime | None,
 ) -> bool:
-    """Validate a fresh, exact-bucket write/read/delete evidence manifest."""
+    """The manifest itself: contract, production, the account's exact
+    endpoint and hash, the trusted signer, freshness, its own hash, and
+    the Ed25519 signature (checked last, as before)."""
     expected_sha = str(manifest.get("evidence_sha256") or "").lower()
     endpoint = f"https://{account_id}.r2.cloudflarestorage.com"
-    if (
+    return not (
         manifest.get("contract_version") != R2_EVIDENCE_VERSION
         or manifest.get("environment") != "production"
         or manifest.get("endpoint") != endpoint
@@ -215,10 +214,17 @@ def validate_r2_smoke_manifest(
         or not _valid_sha256(expected_sha)
         or expected_sha != _manifest_sha256(manifest)
         or not _verify_ed25519_manifest(manifest, trusted_public_key_pem)
-    ):
-        return False
+    )
+
+
+def _valid_r2_control_plane(
+    manifest: Mapping[str, Any], *, account_id: str, practice_bucket: str,
+    coach_video_bucket: str, trusted_public_key_pem: bytes,
+    trusted_issuer: str, trusted_key_id: str,
+) -> bool:
+    """The embedded, hash-bound Cloudflare privacy export for both buckets."""
     control_plane = manifest.get("cloudflare_authenticated_provider_export")
-    if (
+    return not (
         not isinstance(control_plane, Mapping)
         or manifest.get("cloudflare_provider_export_sha256")
         != _value_sha256(control_plane)
@@ -230,6 +236,51 @@ def validate_r2_smoke_manifest(
             trusted_issuer=trusted_issuer,
             trusted_key_id=trusted_key_id,
         )
+    )
+
+
+def _valid_r2_result(item: Any, expected: Mapping[str, str],
+                     seen: set[str]) -> bool:
+    """One bucket's write/read/delete round trip: its own role and bucket,
+    matching write and read hashes, the readiness prefix, a real size, and
+    every step verified."""
+    if not isinstance(item, Mapping):
+        return False
+    role = str(item.get("role") or "")
+    write_hash = item.get("write_sha256")
+    return not (
+        role in seen or expected.get(role) != item.get("bucket")
+        or not _valid_sha256(write_hash)
+        or item.get("read_sha256") != write_hash
+        or not _valid_sha256(item.get("object_key_sha256"))
+        or item.get("object_key_prefix") != "mlc3-founder-readiness/"
+        or not isinstance(item.get("byte_size"), int)
+        or item.get("byte_size", 0) < 32
+        or item.get("write_verified") is not True
+        or item.get("read_verified") is not True
+        or item.get("deletion_verified") is not True
+    )
+
+
+def validate_r2_smoke_manifest(
+    manifest: Mapping[str, Any], *, account_id: str,
+    practice_bucket: str, coach_video_bucket: str,
+    trusted_public_key_pem: bytes, trusted_issuer: str,
+    trusted_key_id: str,
+    now: datetime | None = None,
+) -> bool:
+    """Validate a fresh, exact-bucket write/read/delete evidence manifest."""
+    if not _valid_r2_manifest_header(
+        manifest, account_id=account_id,
+        trusted_public_key_pem=trusted_public_key_pem,
+        trusted_issuer=trusted_issuer, trusted_key_id=trusted_key_id, now=now,
+    ):
+        return False
+    if not _valid_r2_control_plane(
+        manifest, account_id=account_id, practice_bucket=practice_bucket,
+        coach_video_bucket=coach_video_bucket,
+        trusted_public_key_pem=trusted_public_key_pem,
+        trusted_issuer=trusted_issuer, trusted_key_id=trusted_key_id,
     ):
         return False
     results = manifest.get("results")
@@ -241,24 +292,9 @@ def validate_r2_smoke_manifest(
     }
     seen: set[str] = set()
     for item in results:
-        if not isinstance(item, Mapping):
+        if not _valid_r2_result(item, expected, seen):
             return False
-        role = str(item.get("role") or "")
-        write_hash = item.get("write_sha256")
-        if (
-            role in seen or expected.get(role) != item.get("bucket")
-            or not _valid_sha256(write_hash)
-            or item.get("read_sha256") != write_hash
-            or not _valid_sha256(item.get("object_key_sha256"))
-            or item.get("object_key_prefix") != "mlc3-founder-readiness/"
-            or not isinstance(item.get("byte_size"), int)
-            or item.get("byte_size", 0) < 32
-            or item.get("write_verified") is not True
-            or item.get("read_verified") is not True
-            or item.get("deletion_verified") is not True
-        ):
-            return False
-        seen.add(role)
+        seen.add(str(item.get("role") or ""))
     return seen == set(expected)
 
 
