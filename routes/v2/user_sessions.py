@@ -1716,6 +1716,34 @@ def _answer_matches_route(owner_route: dict, answer: str) -> bool:
             or _yes_or_no(owner_route) == answer)
 
 
+@v2_bp.route("/user/snippets/<snippet_id>/exercise-rendered", methods=["POST"])
+@require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
+def v2_exercise_rendered(snippet_id):
+    """The exercise card for this moment was on the speaker's screen (0387).
+
+    Send it once the card is actually visible, for any exercise card; it is
+    recorded once per offer however often it arrives, and a moment with no
+    automatic pick answers {"recorded": false}. The work is
+    services.exercise_exposure's.
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    from services.exercise_exposure import record_rendered
+    try:
+        status, payload = record_rendered(
+            db, user_id=str(request.user_id), snippet_id=snippet_id,
+            body=request.get_json(silent=True))
+    except Exception as e:
+        logger.error("exercise-rendered failed snip=%s: %s", snippet_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not record this."}), 500
+    return jsonify(payload), status
+
+
 @v2_bp.route("/user/snippets/<snippet_id>/confidence-practice",
              methods=["POST"])
 @require_auth

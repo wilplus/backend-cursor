@@ -196,6 +196,35 @@ Notes:
   spotted Rushing", with a fold-out listing the other exercises and why
   each wasn't picked. The coach's existing choice controls stay as they are.
 
+## 6. Speaker: confirm the exercise was seen (label spec, required)
+
+The learning contract (§3.5 of `docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md`)
+counts an exercise as shown only once the speaker's app confirms it
+rendered. Without this call, nothing can ever be learned about which
+exercises help.
+
+`POST /v2/user/snippets/<snippet_id>/exercise-rendered`, authenticated as the
+speaker, needs a BFF proxy route like `confidence-practice`.
+
+Body: `{"exercise_id": "<practice_exercise.exercise_id>"}`.
+
+- **When:** the first time the exercise card (the one carrying
+  `practice_exercise`) is actually visible on screen. For example, fire it
+  from an IntersectionObserver at 50% visible, not when the data loads. Once
+  per card per page view is enough. The backend records it once per offer
+  anyway, so re-sending is harmless.
+- **For every exercise card,** including a coach-shared one. The backend works
+  out whether it counts.
+- **Responses:**
+  - `200 {"recorded": true}`: recorded.
+  - `200 {"recorded": false}`: this moment had no automatic pick. Nothing to
+    do.
+  - `409 EXERCISE_OFFER_STALE`: the card shows an exercise other than the one
+    offered. Refresh the Ideal Text.
+  - `404`: not the speaker's snippet.
+- **Fire-and-forget:** never block the UI on it, never retry in a loop, never
+  show anything about it to the speaker.
+
 ## Fences
 
 - The speaker never sees scores, ranks, distances, the fit type, or "trial".

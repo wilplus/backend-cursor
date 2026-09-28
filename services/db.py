@@ -14639,6 +14639,20 @@ class DatabaseService:
             "assign_confident_voice_exercise_v1", params).execute()
         return self._rpc_row(result.data)
 
+    def record_exercise_rendered(
+        self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
+        exercise_id: str,
+    ) -> Optional[dict]:
+        """The exposure for one assignment (migration 0387), recorded once.
+        Raises the database's refusal (EXERCISE_RENDERED_*) to the caller."""
+        result = self.client.rpc("record_exercise_rendered_v1", {
+            "p_owner_user_id": str(owner_user_id),
+            "p_take_session_id": str(take_session_id),
+            "p_snippet_id": str(snippet_id),
+            "p_exercise_id": str(exercise_id),
+        }).execute()
+        return self._rpc_row(result.data)
+
     def get_exercise_match_trace(self, assignment_id: str) -> Optional[dict]:
         """The match trace frozen with one assignment (migration 0384), or
         None — also for an assignment drawn before traces existed."""

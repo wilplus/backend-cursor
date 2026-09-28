@@ -216,7 +216,9 @@ Raw horizons stay separate and are all still stored:
      rendered** (an authenticated "exercise rendered" event, recorded once per
      assignment). An offer that was never rendered is not an exposure. This
      event is **required before any evaluation under this specification**.
-     Until it exists, outcomes stay raw evidence.
+     It is recorded in `confident_voice_exercise_exposures` (migration 0387)
+     through `POST /v2/user/snippets/<snippet_id>/exercise-rendered`; only
+     exposures recorded there count.
    - No attempt, no valid attempt, abandonment, or expiry is **excluded** from
      the success rate and is never a negative label.
    - The **attempt rate** (exposures with a valid endpoint attempt ÷
