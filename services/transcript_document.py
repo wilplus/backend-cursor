@@ -194,6 +194,167 @@ def _close(text: str) -> tuple:
     return trimmed, "."
 
 
+def _document_take(database, arc_id: Any,
+                   session_id: Any) -> Optional[tuple]:
+    """``(session_id, take_index)`` of the take to build, or None.
+
+    An explicit session_id is the historical/per-take form; otherwise the
+    LATEST spoken take IS the current document (decision #4)."""
+    from services.slide_selection import spoken_arc_sessions
+
+    if session_id:
+        sid = str(session_id)
+        try:
+            _row = database.v2_get_session_by_id(sid) or {}
+            return sid, _row.get("take_index")
+        except Exception:
+            return sid, None
+    spoken = spoken_arc_sessions(
+        database.takes.get_arc_sessions(arc_id) or [])
+    if not spoken:
+        return None
+    spoken.sort(key=lambda s: (s.get("take_index") or 0,
+                               s.get("created_at") or ""))
+    latest = spoken[-1]
+    sid = str(latest.get("id") or "")
+    if not sid:
+        return None
+    return sid, latest.get("take_index")
+
+
+def _spoken_rows(snips: list, corrections: dict, edits: dict,
+                 slide_fixes: dict) -> list:
+    """PASS 1 — every piece that has words, in spoken order, carrying the
+    slide it was delivered on: ``[(snippet, text, slide_index)]``."""
+    from services.transcript_smoothing import smooth_piece
+
+    rows: list = []
+    for s in sorted(snips, key=lambda x: ((x.get("start_offset_ms") or 0),
+                                          str(x.get("id") or ""))):
+        raw = _piece_text(s, corrections, edits)
+        if not raw:
+            continue
+        # PER-PIECE: hesitations + repeats + tidy only. Casing and the
+        # terminal mark belong to the finished document (a piece is
+        # very often mid-sentence — review finding).
+        text = smooth_piece(raw, s.get("language"))
+        if not text:
+            continue
+        rows.append((s, text, _slide_of(s, slide_fixes)))
+    return rows
+
+
+def _document_piece(s: dict, sid: str, take_index: Any, slide: Any,
+                    start: int, end: int, text: str) -> dict:
+    return {
+        "snippet_id": str(s.get("id")),
+        # Canonical evidence provenance. These fields stay in
+        # the server-side document and let the feedback
+        # dual-write bind the exact audio interval without a
+        # second, potentially drifting snippet read.
+        "recording_id": s.get("recording_id"),
+        "audio_ref": s.get("audio_ref"),
+        "language": s.get("language"),
+        "take_session_id": sid,
+        "take_index": take_index,
+        "start": start,
+        "end": end,
+        "text": text,
+        "slide_index": slide,
+        "start_offset_ms": s.get("start_offset_ms"),
+        "duration_ms": s.get("duration_ms"),
+    }
+
+
+def _lay_out(rows: list, sid: str, take_index: Any) -> tuple:
+    """PASS 2 — slide runs become paragraphs, and the spans are laid out
+    over the separators that actually go between them:
+    ``(text parts, pieces, paragraphs)``.
+
+    THE CAP (SPEC §11.1, founder 2026-08-14). A slide run is no longer
+    automatically ONE paragraph: within a run, pieces pack greedily up
+    to PARAGRAPH_CAP_CHARS and the run splits into as many paragraphs
+    as that takes. The 2026-08-11 join fix moved the grain from "whole
+    talk = one chunk" to "one chunk per slide"; a two-minute slide was
+    still a wall the founder could not read or save. The upper bound
+    of a chunk is now READABILITY, not the slide. A slide boundary
+    still forces a break exactly as before; the cap only adds breaks
+    INSIDE a run, at piece boundaries, so every cut changes a
+    separator and never a word."""
+    from services.slide_word_split import PARAGRAPH_CAP_CHARS
+    pieces: list = []
+    paragraphs: list = []
+    out: list = []
+    cursor = 0
+    para_i = 0
+    for run in _slide_runs(rows):
+        for pack in pack_items(run["items"], PARAGRAPH_CAP_CHARS):
+            if para_i:
+                out.append(_PARA)
+                cursor += len(_PARA)
+            para_i += 1
+            para_start = cursor
+            for i, (s, text) in enumerate(pack):
+                if i:
+                    out.append(_JOIN)
+                    cursor += len(_JOIN)
+                mark = ""
+                if i == len(pack) - 1:
+                    # Every paragraph end is a read seam now — the cap
+                    # splits mid-run exactly as slides split mid-talk,
+                    # and `_close`'s own reasoning applies unchanged.
+                    text, mark = _close(text)
+                start = cursor
+                cursor += len(text)
+                out.append(text)
+                pieces.append(_document_piece(
+                    s, sid, take_index, run["slide"], start, cursor, text))
+                # OUTSIDE the piece's span, on purpose — see `_close`.
+                if mark:
+                    out.append(mark)
+                    cursor += len(mark)
+            # ONE ROW PER PARAGRAPH — the read surface's chunks are the
+            # document's paragraphs, so provenance has to be counted the
+            # same way. Serving one row per SNIPPET is what made the
+            # consumer's "same length?" alignment test fail and drop
+            # every slide attachment on the floor. Sibling paragraphs of
+            # one run repeat their slide_index; the deck's grouping
+            # folds them into one slide section.
+            paragraphs.append({
+                "slide_index": run["slide"],
+                "snippet_id": str(pack[0][0].get("id")),
+                "take_session_id": sid,
+                "take_index": take_index,
+                "start": para_start,
+                "end": cursor,
+            })
+    return out, pieces, paragraphs
+
+
+def _finish_document(out: list, pieces: list,
+                     paragraphs: list) -> Optional[tuple]:
+    """DOCUMENT-level finish: length-preserving casing + ONE terminal
+    mark at the very end, so every span stays valid. The pieces then
+    re-slice from the finished text so piece text and document text can
+    never disagree. A document over the cap is cut at a word and keeps
+    only whole pieces and paragraphs: ``(text, pieces, paragraphs)``, or
+    None when the cut leaves none."""
+    from services.transcript_smoothing import finalize_document
+
+    doc = finalize_document("".join(out))
+    for p in pieces:
+        p["text"] = doc[p["start"]:p["end"]]
+    if len(doc) > _MAX_DOC_CHARS:
+        cut = doc.rfind(" ", 0, _MAX_DOC_CHARS)
+        doc = doc[:cut if cut > 0 else _MAX_DOC_CHARS].rstrip()
+        doc = finalize_document(doc)
+        pieces = [p for p in pieces if p["end"] <= len(doc)]
+        paragraphs = [p for p in paragraphs if p["end"] <= len(doc)]
+        if not pieces or not paragraphs:
+            return None
+    return doc, pieces, paragraphs
+
+
 def build_transcript_document(arc_id: Any, *, database=None,
                               session_id: Any = None) -> Optional[dict]:
     """The full-transcript document for an arc's LATEST spoken take (or an
@@ -216,32 +377,11 @@ def build_transcript_document(arc_id: Any, *, database=None,
     try:
         if database is None:
             from services.db import db as database
-        from services.slide_selection import spoken_arc_sessions
-        from services.transcript_smoothing import (
-            finalize_document, smooth_piece,
-        )
 
-        take_index = None
-        if session_id:
-            sid = str(session_id)
-            try:
-                _row = database.v2_get_session_by_id(sid) or {}
-                take_index = _row.get("take_index")
-            except Exception:
-                take_index = None
-        else:
-            spoken = spoken_arc_sessions(
-                database.takes.get_arc_sessions(arc_id) or [])
-            if not spoken:
-                return None
-            # The LATEST spoken take IS the current document (decision #4).
-            spoken.sort(key=lambda s: (s.get("take_index") or 0,
-                                       s.get("created_at") or ""))
-            latest = spoken[-1]
-            sid = str(latest.get("id") or "")
-            take_index = latest.get("take_index")
-            if not sid:
-                return None
+        take = _document_take(database, arc_id, session_id)
+        if take is None:
+            return None
+        sid, take_index = take
 
         snips = database.get_snippets_by_session(sid) or []
         if not snips:
@@ -250,121 +390,18 @@ def build_transcript_document(arc_id: Any, *, database=None,
                 arc_id, sid)
             return None
         corrections, edits = _load_overlays(database, sid)
-        slide_fixes = _slide_corrections(database, sid)
-
-        # PASS 1 — every piece that has words, in spoken order, carrying the
-        # slide it was delivered on.
-        rows: list = []
-        for s in sorted(snips, key=lambda x: ((x.get("start_offset_ms") or 0),
-                                              str(x.get("id") or ""))):
-            raw = _piece_text(s, corrections, edits)
-            if not raw:
-                continue
-            # PER-PIECE: hesitations + repeats + tidy only. Casing and the
-            # terminal mark belong to the finished document (a piece is
-            # very often mid-sentence — review finding).
-            text = smooth_piece(raw, s.get("language"))
-            if not text:
-                continue
-            rows.append((s, text, _slide_of(s, slide_fixes)))
+        rows = _spoken_rows(snips, corrections, edits,
+                            _slide_corrections(database, sid))
         if not rows:
             logger.warning(
                 "transcript_document: %d snippets, none with usable words "
                 "arc=%s sid=%s", len(snips), arc_id, sid)
             return None
 
-        # PASS 2 — slide runs become paragraphs, and the spans are laid out
-        # over the separators that actually go between them.
-        #
-        # THE CAP (SPEC §11.1, founder 2026-08-14). A slide run is no longer
-        # automatically ONE paragraph: within a run, pieces pack greedily up
-        # to PARAGRAPH_CAP_CHARS and the run splits into as many paragraphs
-        # as that takes. The 2026-08-11 join fix moved the grain from "whole
-        # talk = one chunk" to "one chunk per slide"; a two-minute slide was
-        # still a wall the founder could not read or save. The upper bound
-        # of a chunk is now READABILITY, not the slide. A slide boundary
-        # still forces a break exactly as before; the cap only adds breaks
-        # INSIDE a run, at piece boundaries, so every cut changes a
-        # separator and never a word.
-        from services.slide_word_split import PARAGRAPH_CAP_CHARS
-        pieces: list = []
-        paragraphs: list = []
-        out: list = []
-        cursor = 0
-        para_i = 0
-        for run in _slide_runs(rows):
-            for pack in pack_items(run["items"], PARAGRAPH_CAP_CHARS):
-                if para_i:
-                    out.append(_PARA)
-                    cursor += len(_PARA)
-                para_i += 1
-                para_start = cursor
-                for i, (s, text) in enumerate(pack):
-                    if i:
-                        out.append(_JOIN)
-                        cursor += len(_JOIN)
-                    mark = ""
-                    if i == len(pack) - 1:
-                        # Every paragraph end is a read seam now — the cap
-                        # splits mid-run exactly as slides split mid-talk,
-                        # and `_close`'s own reasoning applies unchanged.
-                        text, mark = _close(text)
-                    start = cursor
-                    cursor += len(text)
-                    out.append(text)
-                    pieces.append({
-                        "snippet_id": str(s.get("id")),
-                        # Canonical evidence provenance. These fields stay in
-                        # the server-side document and let the feedback
-                        # dual-write bind the exact audio interval without a
-                        # second, potentially drifting snippet read.
-                        "recording_id": s.get("recording_id"),
-                        "audio_ref": s.get("audio_ref"),
-                        "language": s.get("language"),
-                        "take_session_id": sid,
-                        "take_index": take_index,
-                        "start": start,
-                        "end": cursor,
-                        "text": text,
-                        "slide_index": run["slide"],
-                        "start_offset_ms": s.get("start_offset_ms"),
-                        "duration_ms": s.get("duration_ms"),
-                    })
-                    # OUTSIDE the piece's span, on purpose — see `_close`.
-                    if mark:
-                        out.append(mark)
-                        cursor += len(mark)
-                # ONE ROW PER PARAGRAPH — the read surface's chunks are the
-                # document's paragraphs, so provenance has to be counted the
-                # same way. Serving one row per SNIPPET is what made the
-                # consumer's "same length?" alignment test fail and drop
-                # every slide attachment on the floor. Sibling paragraphs of
-                # one run repeat their slide_index; the deck's grouping
-                # folds them into one slide section.
-                paragraphs.append({
-                    "slide_index": run["slide"],
-                    "snippet_id": str(pack[0][0].get("id")),
-                    "take_session_id": sid,
-                    "take_index": take_index,
-                    "start": para_start,
-                    "end": cursor,
-                })
-
-        # DOCUMENT-level finish: length-preserving casing + ONE terminal
-        # mark at the very end, so every span above stays valid. The
-        # pieces then re-slice from the finished text so piece text and
-        # document text can never disagree.
-        doc = finalize_document("".join(out))
-        for p in pieces:
-            p["text"] = doc[p["start"]:p["end"]]
-        if len(doc) > _MAX_DOC_CHARS:
-            cut = doc.rfind(" ", 0, _MAX_DOC_CHARS)
-            doc = doc[:cut if cut > 0 else _MAX_DOC_CHARS].rstrip()
-            doc = finalize_document(doc)
-            pieces = [p for p in pieces if p["end"] <= len(doc)]
-            paragraphs = [p for p in paragraphs if p["end"] <= len(doc)]
-            if not pieces or not paragraphs:
-                return None
+        finished = _finish_document(*_lay_out(rows, sid, take_index))
+        if finished is None:
+            return None
+        doc, pieces, paragraphs = finished
         return {
             "text": doc,
             "pieces": pieces,
