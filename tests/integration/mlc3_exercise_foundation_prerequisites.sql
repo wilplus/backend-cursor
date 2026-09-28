@@ -265,14 +265,23 @@ CREATE TABLE public.confident_voice_practice (
     take_session_id UUID NOT NULL,
     -- Released; the narrow copy omitted it because nothing here read it.
     -- Migration 0334 indexes it for the practice retention sweep.
-    closed_at TIMESTAMPTZ NULL
+    closed_at TIMESTAMPTZ NULL,
+    -- Released (add_confident_voice_practice.sql:72, NOT NULL there); 0388
+    -- reads the original clip's confidence from it. Nullable here so the
+    -- older fixtures that insert only ids still do.
+    acoustic_evidence JSONB NULL
 );
 CREATE TABLE public.confident_voice_practice_attempt (
     id UUID PRIMARY KEY,
     -- ON DELETE CASCADE as released (add_confident_voice_practice.sql:100-102);
     -- the erasure rehearsal (0362) deletes a practice and relies on it.
     practice_id UUID NOT NULL REFERENCES public.confident_voice_practice(id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    -- Released (add_confident_voice_practice.sql:110-122); 0388 reads the
+    -- attempt's confidence and the coach's answer from them. Nullable here
+    -- for the same reason as above.
+    acoustic_metrics JSONB NULL,
+    coach_confidence_decision TEXT NULL
 );
 CREATE TABLE public.voice_album_practice (
     arc_id UUID NOT NULL,

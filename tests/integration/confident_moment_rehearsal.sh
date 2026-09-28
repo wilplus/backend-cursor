@@ -428,6 +428,10 @@ hard migrations/a_pattern_is_tested_silently_first.sql
 # once per assignment. Twice: apply/reapply.
 hard migrations/an_exercise_is_seen.sql
 hard migrations/an_exercise_is_seen.sql
+# 0388 records whether a coach-judged practice attempt sounded more confident
+# than the original (internal, never a label). Twice: apply/reapply.
+hard migrations/a_practice_sounds_more_confident.sql
+hard migrations/a_practice_sounds_more_confident.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

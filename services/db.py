@@ -14653,6 +14653,18 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
+    def record_practice_more_confident(
+        self, *, practice_id: str, attempt_id: str,
+    ) -> Optional[dict]:
+        """Recompute one practice's "sounds more confident" result from what
+        is stored (migration 0388). Raises the database's refusal
+        (PRACTICE_MORE_CONFIDENT_*) to the caller."""
+        result = self.client.rpc("record_practice_more_confident_v1", {
+            "p_practice_id": str(practice_id),
+            "p_attempt_id": str(attempt_id),
+        }).execute()
+        return self._rpc_row(result.data)
+
     def get_exercise_match_trace(self, assignment_id: str) -> Optional[dict]:
         """The match trace frozen with one assignment (migration 0384), or
         None — also for an assignment drawn before traces existed."""
