@@ -12,7 +12,6 @@
   "routes/v2/coach.py:v2_coach_student_detail": 39,
   "routes/v2/coach_guidance_delivery.py:v2_coach_guidance_attachment": 58,
   "routes/v2/coaching.py:v2_chat_query": 36,
-  "routes/v2/confident_moment_bundles.py:record_confident_moment_root_action": 29,
   "routes/v2/explore_ideal_text.py:_ideal_text_pieces": 26,
   "routes/v2/explore_ideal_text.py:_legacy_user_edit_via_cas": 42,
   "routes/v2/explore_ideal_text.py:_with_evidence_coordinates": 28,
