@@ -72,28 +72,16 @@ def _project_id(session: dict) -> str:
     return str(value)
 
 
-def _document_evidence(database: Any, session: dict, snippet: dict) -> EvidenceLocator:
-    from services.transcript_document import build_transcript_document
+def _dict_rows(value: Any) -> list[dict[str, Any]]:
+    """The dict entries of a list; anything else is empty."""
+    if not isinstance(value, list):
+        return []
+    return [row for row in value if isinstance(row, dict)]
 
-    take_id = str(session.get("id") or snippet.get("session_id") or "")
-    document = build_transcript_document(
-        session.get("arc_id") or session.get("project_id"),
-        database=database,
-        session_id=take_id,
-    ) or {}
-    raw_pieces = document.get("pieces")
-    pieces: list[dict[str, Any]] = (
-        [piece for piece in raw_pieces if isinstance(piece, dict)]
-        if isinstance(raw_pieces, list)
-        else []
-    )
-    raw_paragraphs = document.get("paragraphs")
-    paragraphs: list[dict[str, Any]] = (
-        [paragraph for paragraph in raw_paragraphs
-         if isinstance(paragraph, dict)]
-        if isinstance(raw_paragraphs, list)
-        else []
-    )
+
+def _exact_piece(pieces: list[dict[str, Any]], snippet: dict) -> tuple:
+    """``(piece, slide_index, start, end)`` for the snippet's piece, or the
+    refusal naming what is missing."""
     piece = next(
         (p for p in pieces if str(p.get("snippet_id") or "") == str(snippet.get("id") or "")),
         None,
@@ -107,6 +95,11 @@ def _document_evidence(database: Any, session: dict, snippet: dict) -> EvidenceL
     end = piece.get("end")
     if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end <= start:
         raise FeedbackContractError("feedback requires a valid evidence span")
+    return piece, slide_index, start, end
+
+
+def _paragraph_holding(paragraphs: list[dict[str, Any]], start: int) -> int:
+    """The index of the paragraph that holds ``start``, or the refusal."""
     paragraph_index = next(
         (
             index
@@ -120,22 +113,40 @@ def _document_evidence(database: Any, session: dict, snippet: dict) -> EvidenceL
     )
     if paragraph_index is None:
         raise FeedbackContractError("feedback requires an exact paragraph")
+    return paragraph_index
 
-    audio_interval = None
+
+def _audio_interval(snippet: dict) -> dict[str, int] | None:
     start_ms = snippet.get("start_offset_ms")
     duration_ms = snippet.get("duration_ms")
     if isinstance(start_ms, (int, float)) and isinstance(duration_ms, (int, float)):
-        audio_interval = {
+        return {
             "start_ms": max(0, int(start_ms)),
             "end_ms": max(0, int(start_ms + duration_ms)),
         }
+    return None
+
+
+def _document_evidence(database: Any, session: dict, snippet: dict) -> EvidenceLocator:
+    from services.transcript_document import build_transcript_document
+
+    take_id = str(session.get("id") or snippet.get("session_id") or "")
+    document = build_transcript_document(
+        session.get("arc_id") or session.get("project_id"),
+        database=database,
+        session_id=take_id,
+    ) or {}
+    piece, slide_index, start, end = _exact_piece(
+        _dict_rows(document.get("pieces")), snippet)
+    paragraph_index = _paragraph_holding(
+        _dict_rows(document.get("paragraphs")), start)
     return EvidenceLocator(
         project_id=_project_id(session),
         take_id=take_id,
         slide_index=slide_index,
         paragraph_index=paragraph_index,
         evidence_span={"start": start, "end": end, "text": piece.get("text") or ""},
-        audio_interval=audio_interval,
+        audio_interval=_audio_interval(snippet),
         piece_id=str(snippet.get("id") or "") or None,
     )
 
