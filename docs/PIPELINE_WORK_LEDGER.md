@@ -1856,11 +1856,14 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
 ### 2026-09-28 · WS-G6 · g6-confidence-frame-factory · #756
 
-**Closed:** G-6's missing piece: the worker's `frame_factory` and the chain
-that runs it (`services/mlc2_confidence_frame_factory.py`). G-6 itself stays
-open until the founder flips `MLC2_CONFIDENCE_CUTOVER_MODE` to
-`founder_canary` after readiness, which is the authorization step and not
-this PR's to take.
+**Closed:** the producer half of G-6's missing piece: the worker's
+`frame_factory` and the chain that runs it
+(`services/mlc2_confidence_frame_factory.py`). Not closed: the consumer
+half the audit names (no application caller for the MLC-2 blind packet,
+ack, judgment and reveal RPCs; the only judgment path is the D5 inline
+route behind its own flag), and G-6 itself, which stays open until the
+founder flips `MLC2_CONFIDENCE_CUTOVER_MODE` to `founder_canary` after
+readiness.
 **Contract lines flipped:** none.
 **Contract lines added:** none in `test_f1_loop_contract.py`; the module's
 own suite is `tests/test_mlc2_confidence_frame_factory.py` (28 cases), and
@@ -1872,8 +1875,13 @@ disposable lane → worker → `finalize_mlc2_confidence_frame_v1` → a D5 blin
 packet with the transcript and prediction absent) is the next PR and the
 activation evidence; this PR proves the frame against the contract's own
 validator only. (2) `MIN_CLIP_MS = 1000` and the boundary-first ranking are
-this PR's reading of contract K9; say if the first blind batches should
-weight the random slice higher than 20% while the pool is small.
+this PR's reading of contract K9, and K9's third component, balanced
+predicted regions, is not implemented in this version; say whether the
+first blind batches need it, and whether the random slice should weigh more
+than 20% while the pool is small. (3) The foundation class is read at the
+detector's ±0.5 band edges, not at the served sign-based lean; both are
+recorded per clip, and the comparison target for a later model is the
+three perceptual answers of the blind instrument.
 
 What a coach can now be asked. Under `dark` nothing changes: no outbox event
 is written, the boot line says `confidence producer dark: not started`, a

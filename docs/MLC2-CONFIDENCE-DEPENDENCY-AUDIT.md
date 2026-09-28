@@ -153,10 +153,15 @@ now supplies both, with the mode unchanged:
   identity `exercise_evidence_matches_audio_v1` compares against an exercise
   audio lineage. The prediction is the production foundation detector
   (`voice-confidence-universal-v3`, `assignment_origin = foundation`) read as
-  yes / in_between / no at its own ±0.5 band edges; the selection is contract
-  K9's boundary pick with the fixed 20% random slice, every draw recorded.
-  The frame is a pure function of the event and the snippets, so a replay
-  satisfies the finalizer's idempotency check.
+  yes / in_between / no at its own ±0.5 band edges (a different read from
+  the served sign-based lean in `services/moment_confidence.py`, which is
+  stored beside it in `raw_output.served_lean`); the selection implements
+  two of contract K9's three components — the boundary pick and the fixed
+  20% random slice, every draw recorded — and not the third, balanced
+  predicted regions, which is put to the founder. The frame is a pure
+  function of the event and the snippets, so a replay satisfies the
+  finalizer's idempotency check; the run's request hash binds the snippet
+  inputs, so a refused replay can be attributed to changed rows.
 - `sweep_confidence_outbox` claims, builds and finalizes; it re-checks the
   cutover mode on every tick and re-arms only while it owns its own lease
   key. `worker.py` prints one boot line naming the resolved mode; in `dark`
@@ -164,9 +169,14 @@ now supplies both, with the mode unchanged:
 - Legacy learning objects remain unreadable from this module (the isolation
   guard covers every `mlc2_*.py`), and no route or product service imports it.
 
-Activation is still the reviewed change of `MLC2_CONFIDENCE_CUTOVER_MODE` to
-`founder_canary`, gated by the readiness report; this section adds the code
-path that change needs and nothing that runs before it.
+This is the producer half of G-6. The consumer half the audit also names —
+no application caller for `create_mlc2_confidence_blind_packet_v1`,
+`ack_mlc2_rendered_exposure_v1`, `submit_mlc2_confidence_blind_judgment_v1`
+and the reveal — is unchanged; the only judgment path today is the D5 inline
+route behind `MLC3_COACH_INLINE_AUTHORING_ENABLED`. Activation is still the
+reviewed change of `MLC2_CONFIDENCE_CUTOVER_MODE` to `founder_canary`, gated
+by the readiness report; this section adds the code path that change needs
+and nothing that runs before it.
 
 ## Tests required before Slice 3 acceptance
 

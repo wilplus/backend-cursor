@@ -29,11 +29,26 @@ model can be compared against it. Nothing in the frame carries transcript
 text, and nothing here ever reaches a user (the frame is written to the
 ``ml_*`` tables only; AC-9 is not in play).
 
-Selection follows contract K9: the deterministic pick is the eligible clip
-closest to a class boundary (model-boundary active learning), and with the
-contract's fixed 20% probability a uniformly random eligible clip is taken
-instead (the unbiased window). Every draw, seed and per-candidate inclusion
-probability is recorded. Exactly one clip is selected per Take.
+Selection implements two of contract K9's three components: the
+deterministic pick is the eligible clip closest to a class boundary
+(model-boundary active learning), and with the contract's fixed 20%
+probability a uniformly random eligible clip is taken instead (the unbiased
+window). K9's third component, balanced predicted regions, is NOT
+implemented in this version (``SELECTION_POLICY_VERSION`` says so: boundary
+plus random), and is put to the founder with ``MIN_CLIP_MS``. Every draw,
+seed and per-candidate inclusion probability is recorded. Exactly one clip
+is selected per Take.
+
+Two reads of one score, both recorded. The served product routes a moment
+on the SIGN of the stamped score (``services/moment_confidence.py``:
+``confident`` above zero, ``unconfident`` below, none at zero). The
+foundation class here is the detector's own band read at ±0.5 (``yes`` at
+or above +0.5, ``no`` at or below -0.5, ``in_between`` between), because
+the blind instrument's three perceptual answers (K1) are what a later
+trained model is compared against, and the neutral band is exactly the
+region where a sign read and a rater are most likely to disagree. The
+served lean is stored beside it in ``raw_output.served_lean`` so the two
+reads can be compared row by row; neither is a calibration.
 
 Replay-stable by construction. ``finalize_mlc2_confidence_frame_v1`` compares a
 replayed frame's pool hash with the stored one and refuses a different frame,
@@ -64,6 +79,7 @@ from services.mlc2_confidence import (
 from services.mlc2_confidence_producer import ConfidenceProducerEvent
 from services.mlc2_foundation import Mlc2ContractError
 from services.voice_confidence import VERSION as DETECTOR_VERSION
+from services.moment_confidence import resolve_moment_confidence
 from services.voice_confidence import band, stamped_score
 
 logger = logging.getLogger(__name__)
@@ -109,7 +125,14 @@ def _sha256_text(*parts: Any) -> str:
 
 
 def _draw(seed: str, index: int) -> float:
-    """Uniform in [0, 1) from a sha256 counter; recorded, never re-rolled."""
+    """Uniform in [0, 1) from a sha256 counter; recorded, never re-rolled.
+
+    Same construction as the database's ``exercise_rng_draw_v1(p_seed,
+    p_unit)`` (first 13 hex digits of sha256(seed || unit) over 2^52), with
+    ``p_seed = seed`` as UTF-8 and ``p_unit = ':<index>'``, so a stored draw
+    can be re-derived in SQL from ``rng_seed`` and the draw's index. The
+    Python copy exists because the frame is built in the worker, not in a
+    database function; the end-to-end rehearsal asserts the parity."""
     digest = hashlib.sha256(f"{seed}:{index}".encode()).hexdigest()
     return int(digest[:13], 16) / float(1 << 52)
 
@@ -219,6 +242,7 @@ def _candidate_for_snippet(
             "raw_output": {
                 "score": score,
                 "band": band(score),
+                "served_lean": resolve_moment_confidence(snippet.get("metrics")),
                 "cues": stamp.get("cues"),
                 "baseline": stamp.get("baseline"),
                 "detector_version": stamp.get("version"),
@@ -308,7 +332,17 @@ def build_foundation_frame(
     n = sum(1 for c in pool if c["eligible"])
     seed = _sha256_text(SELECTION_POLICY_VERSION, key)
 
-    request_hash = _sha256_text(FRAME_VERSION, key, envelope.take_id, n, len(pool))
+    # The request hash binds the rows the frame was built from, so a replay
+    # the finalizer refuses (a snippet re-stamped or re-cut between two
+    # deliveries) can be attributed to changed inputs from the stored run.
+    inputs_hash = _sha256_text(*(
+        f"{c['clip_id']}:{c['evidence']['coordinates']['start_ms']}:"
+        f"{c['evidence']['coordinates']['end_ms']}:"
+        f"{(c.get('prediction') or {}).get('raw_output', {}).get('score')}"
+        for c in pool
+    ))
+    request_hash = _sha256_text(
+        FRAME_VERSION, key, envelope.take_id, n, len(pool), inputs_hash)
     classification_run = {
         "id": _stable_id(FRAME_VERSION, key, "classification_run"),
         "provider": "willab",
@@ -320,6 +354,7 @@ def build_foundation_frame(
             "min_clip_ms": MIN_CLIP_MS,
             "classes": list(PERCEPTUAL_CLASSES),
             "snippets_without_interval": without_interval,
+            "inputs_sha256": inputs_hash,
         },
         "request_sha256": request_hash,
         "started_at": occurred,
@@ -392,7 +427,13 @@ def _mode() -> Any:
 
 
 def _own_lease(conn: Any, chain_id: str, *, ttl_seconds: int) -> bool:
-    """Take or renew this chain's lease; False when another chain owns it."""
+    """Take or renew this chain's lease; False when another chain owns it.
+
+    Same semantics as ``job_queue.acquire_sweep_lease`` / ``renew_sweep_lease``
+    (SET NX, then refresh only while the key holds our id), on this chain's
+    own key so the pipeline sweep's lease is never touched. Kept local
+    rather than parametrising the pipeline helpers by key, so that a change
+    here cannot alter the chain the live loop runs on."""
     if conn.set(CHAIN_LEASE_KEY, chain_id, nx=True, ex=ttl_seconds):
         return True
     holder = conn.get(CHAIN_LEASE_KEY)
@@ -423,6 +464,14 @@ def sweep_confidence_outbox(chain_id: str) -> dict[str, Any]:
         Mlc2ConfidenceProducerStore,
     )
 
+    # Ownership first: a chain that is not the lease holder claims nothing
+    # and re-arms nothing, so an accumulated duplicate drains on its first
+    # tick instead of doing one more pass (the 2026-08-10 sweep lesson).
+    conn = job_queue.get_redis()
+    if conn is None or not _own_lease(
+            conn, chain_id, ttl_seconds=SWEEP_INTERVAL_SECONDS * LEASE_INTERVALS):
+        return {"skipped": "not_lease_owner", "claimed": 0, "rearmed": False}
+
     worker_id = f"confidence-producer:{chain_id[:12]}"
     producer_store = Mlc2ConfidenceProducerStore(db.client)
     worker = DarkConfidenceWorker(
@@ -440,12 +489,8 @@ def sweep_confidence_outbox(chain_id: str) -> dict[str, Any]:
             failed += 1
             logger.warning("confidence frame failed event=%s: %s",
                            row.get("id"), type(error).__name__)
-    conn = job_queue.get_redis()
-    rearmed = False
-    if conn is not None and _own_lease(
-            conn, chain_id, ttl_seconds=SWEEP_INTERVAL_SECONDS * LEASE_INTERVALS):
-        rearmed = job_queue.enqueue(
-            SWEEP_TASK_PATH, chain_id, delay_seconds=SWEEP_INTERVAL_SECONDS)
+    rearmed = job_queue.enqueue(
+        SWEEP_TASK_PATH, chain_id, delay_seconds=SWEEP_INTERVAL_SECONDS)
     return {"claimed": len(claimed), "finalized": finalized,
             "failed": failed, "rearmed": rearmed}
 

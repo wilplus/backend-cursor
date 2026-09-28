@@ -278,3 +278,114 @@ class TestTheModeStaysDark:
         from config import Config
 
         assert Config.MLC2_CONFIDENCE_CUTOVER_MODE == "dark"
+
+
+class TestReplayInputsAreBound:
+    def test_a_changed_stamp_between_deliveries_is_a_different_frame(self):
+        """The finalizer refuses a replay whose pool hash differs; the run's
+        request hash binds the rows the frame was built from, so the refusal
+        can be attributed to changed inputs rather than to the worker."""
+        first = build_foundation_frame(_event(), snippets=SNIPPETS).as_dict()
+        changed = [dict(s) for s in SNIPPETS]
+        changed[1] = _snippet(2, 0.30)   # re-stamped between two deliveries
+        second = build_foundation_frame(_event(), snippets=changed).as_dict()
+        assert json.dumps(first, sort_keys=True) != json.dumps(second, sort_keys=True)
+        assert (first["classification_run"]["request_sha256"]
+                != second["classification_run"]["request_sha256"])
+        assert (first["classification_run"]["configuration"]["inputs_sha256"]
+                != second["classification_run"]["configuration"]["inputs_sha256"])
+
+    def test_the_served_lean_is_recorded_beside_the_foundation_class(self):
+        payload = build_foundation_frame(_event(), snippets=SNIPPETS).as_dict()
+        by_clip = {c["clip_id"]: c for c in payload["candidate_set"]["candidates"]}
+        # 0.45 is `in_between` at the band edges but leans `confident` by sign.
+        assert by_clip[_id(102)]["prediction"]["predicted_value"] == "in_between"
+        assert by_clip[_id(102)]["prediction"]["raw_output"]["served_lean"] == "confident"
+        assert by_clip[_id(103)]["prediction"]["raw_output"]["served_lean"] == "unconfident"
+
+    def test_a_refused_finalize_fails_the_event_back_to_the_outbox(self):
+        from services.mlc2_confidence import Mlc2ConfidenceStore
+        from services.mlc2_confidence_producer import Mlc2ConfidenceProducerStore
+
+        class _RefusingClient(_Client):
+            def rpc(self, name, payload):
+                if name == "finalize_mlc2_confidence_frame_v1":
+                    raise RuntimeError("idempotent confidence replay changed immutable frame")
+                return super().rpc(name, payload)
+
+        client = _RefusingClient()
+        database = SimpleNamespace(get_snippets_by_session=lambda take_id: SNIPPETS)
+        worker = DarkConfidenceWorker(
+            producer_store=Mlc2ConfidenceProducerStore(client),
+            frame_store=Mlc2ConfidenceStore(client),
+            frame_factory=foundation_frame_factory(database),
+        )
+        with pytest.raises(RuntimeError):
+            worker.process_claimed({"id": _id(7), "payload": _event().payload}, worker_id="t")
+        assert [name for name, _ in client.calls] == ["fail_mlc2_outbox_event_v1"]
+        assert client.calls[0][1]["p_error_code"].startswith("RuntimeError:")
+
+
+class _FakeRedis:
+    def __init__(self, holder=None):
+        self.store = {}
+        if holder is not None:
+            self.store["willab:confidence-producer:chain"] = holder
+
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.store:
+            return False
+        self.store[key] = value
+        return True
+
+    def get(self, key):
+        return self.store.get(key)
+
+    def expire(self, key, ttl):
+        return True
+
+
+class TestTheSweepUnderFounderCanary:
+    """The chain's ownership rule, with the mode monkeypatched open: the
+    real constant stays dark (asserted above), so this is the only place the
+    founder_canary branch runs before the founder's own change."""
+
+    def _open(self, monkeypatch, redis, client):
+        import services.job_queue as job_queue
+        import services.mlc2_confidence_frame_factory as factory
+
+        monkeypatch.setattr(factory, "_mode", lambda: SimpleNamespace(
+            mode="founder_canary", canonical_writes_enabled=True))
+        monkeypatch.setattr(job_queue, "get_redis", lambda *a, **k: redis)
+        enqueued = []
+        monkeypatch.setattr(job_queue, "enqueue",
+                            lambda path, *args, **kw: enqueued.append((path, args, kw)) or True)
+        import services.db as db_module
+        monkeypatch.setattr(db_module, "db", SimpleNamespace(
+            client=client, get_snippets_by_session=lambda take_id: SNIPPETS))
+        return enqueued
+
+    def test_the_owner_claims_finalizes_and_rearms(self, monkeypatch):
+        class _ClaimingClient(_Client):
+            def rpc(self, name, payload):
+                if name == "claim_mlc2_confidence_outbox_v1":
+                    self.calls.append((name, payload))
+                    return SimpleNamespace(execute=lambda: SimpleNamespace(
+                        data=[{"id": _id(7), "payload": _event().payload}]))
+                return super().rpc(name, payload)
+
+        client = _ClaimingClient()
+        enqueued = self._open(monkeypatch, _FakeRedis(), client)
+        result = sweep_confidence_outbox("chain-a")
+        assert result == {"claimed": 1, "finalized": 1, "failed": 0, "rearmed": True}
+        assert [n for n, _ in client.calls] == [
+            "claim_mlc2_confidence_outbox_v1", "finalize_mlc2_confidence_frame_v1"]
+        assert enqueued and enqueued[0][1] == ("chain-a",)
+
+    def test_a_chain_that_does_not_own_the_lease_claims_nothing(self, monkeypatch):
+        client = _Client()
+        enqueued = self._open(monkeypatch, _FakeRedis(holder="chain-a"), client)
+        result = sweep_confidence_outbox("chain-b")
+        assert result == {"skipped": "not_lease_owner", "claimed": 0, "rearmed": False}
+        assert client.calls == []
+        assert enqueued == []
