@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any
+from typing import Any, Optional
 from config import Config
 
 config = Config()
@@ -115,22 +115,9 @@ def context_with_clock_offset(session_context: Any) -> Any:
     return {**session_context, "slide_advances": shifted}
 
 
-def _snap_boundaries_to_pauses(slide_advances: Any, words: Any, *,
-                               window_ms: int, min_gap_ms: int) -> list:
-    """Move each slide-change boundary to the NEAREST real speech pause within
-    ``window_ms``, so a small audio-vs-UI clock offset lands in the silence the
-    speaker leaves when they tap NEXT/BACK. Pure. Returns slide_advances
-    unchanged (same ``{index, t_ms}`` shape) when there's no qualifying pause
-    near a tap (speaker talked straight through) or when inputs are empty. Never
-    reorders or collapses adjacent boundaries (clamps each snap strictly between
-    the previous SNAPPED boundary and the next RAW boundary); the index of every
-    entry is preserved; the first entry at t_ms<=0 (recording start) is never
-    moved."""
-    if not slide_advances or not words:
-        return slide_advances
-
-    # 1) Real pauses → snap-points (gap midpoints, ms). Only gaps bigger than
-    #    normal speech rhythm count (a deliberate pause, not a breath).
+def _pause_points(words: Any, min_gap_ms: int) -> list:
+    """Real pauses → snap-points (gap midpoints, ms). Only gaps bigger than
+    normal speech rhythm count (a deliberate pause, not a breath)."""
     ws = sorted(
         (w for w in words if isinstance(w, dict)
          and isinstance(w.get("start"), (int, float))),
@@ -143,10 +130,27 @@ def _snap_boundaries_to_pauses(slide_advances: Any, words: Any, *,
         ns = float(ws[i + 1].get("start") or 0.0)
         if (ns - pe) * 1000.0 >= min_gap_ms:
             gaps.append((pe + ns) / 2.0 * 1000.0)
-    if not gaps:
-        return slide_advances
+    return gaps
 
-    # 2) Boundaries in time order (t_ms is monotonic even with BACK nav).
+
+def _nearest_pause(gaps: list, t: float, lo: float, hi: float,
+                   window_ms: int) -> Optional[float]:
+    """The pause nearest ``t`` strictly between ``lo`` and ``hi`` and within
+    ``window_ms`` of it; the first such on a tie; None if there is none."""
+    best = None
+    best_d = None
+    for g in gaps:
+        if g <= lo or g >= hi or abs(g - t) > window_ms:
+            continue
+        d = abs(g - t)
+        if best_d is None or d < best_d:
+            best, best_d = g, d
+    return best
+
+
+def _snapped_times(slide_advances: list, gaps: list, window_ms: int) -> dict:
+    """``{position in slide_advances: t_ms}`` after snapping, walking the
+    boundaries in time order (t_ms is monotonic even with BACK nav)."""
     idxs = [i for i, a in enumerate(slide_advances)
             if isinstance(a, dict) and isinstance(a.get("t_ms"), (int, float))]
     idxs.sort(key=lambda i: slide_advances[i]["t_ms"])
@@ -161,18 +165,32 @@ def _snap_boundaries_to_pauses(slide_advances: Any, words: Any, *,
         lo = prev_snapped if prev_snapped is not None else float("-inf")
         nxt = idxs[pos + 1] if pos + 1 < len(idxs) else None
         hi = slide_advances[nxt]["t_ms"] if nxt is not None else float("inf")
-        best = None
-        best_d = None
-        for g in gaps:
-            if g <= lo or g >= hi or abs(g - t) > window_ms:
-                continue
-            d = abs(g - t)
-            if best_d is None or d < best_d:
-                best, best_d = g, d
+        best = _nearest_pause(gaps, t, lo, hi, window_ms)
         snapped[i] = int(round(best)) if best is not None else t
         prev_snapped = snapped[i]
+    return snapped
 
-    # 3) Rebuild preserving original order + index; only t_ms changes.
+
+def _snap_boundaries_to_pauses(slide_advances: Any, words: Any, *,
+                               window_ms: int, min_gap_ms: int) -> list:
+    """Move each slide-change boundary to the NEAREST real speech pause within
+    ``window_ms``, so a small audio-vs-UI clock offset lands in the silence the
+    speaker leaves when they tap NEXT/BACK. Pure. Returns slide_advances
+    unchanged (same ``{index, t_ms}`` shape) when there's no qualifying pause
+    near a tap (speaker talked straight through) or when inputs are empty. Never
+    reorders or collapses adjacent boundaries (clamps each snap strictly between
+    the previous SNAPPED boundary and the next RAW boundary); the index of every
+    entry is preserved; the first entry at t_ms<=0 (recording start) is never
+    moved."""
+    if not slide_advances or not words:
+        return slide_advances
+
+    gaps = _pause_points(words, min_gap_ms)
+    if not gaps:
+        return slide_advances
+    snapped = _snapped_times(slide_advances, gaps, window_ms)
+
+    # Rebuild preserving original order + index; only t_ms changes.
     return [
         ({**a, "t_ms": snapped[i]} if (i in snapped and isinstance(a, dict)) else a)
         for i, a in enumerate(slide_advances)
