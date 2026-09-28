@@ -247,17 +247,9 @@
     "lines": 58,
     "db_calls": 3
   },
-  "routes/v2/explore_ideal_text.py:_legacy_user_edit_via_cas": {
-    "lines": 105,
-    "db_calls": 1
-  },
   "routes/v2/explore_ideal_text.py:_seed_parts_for_lock": {
     "lines": 49,
     "db_calls": 2
-  },
-  "routes/v2/explore_ideal_text.py:v2_explore_decide_block": {
-    "lines": 88,
-    "db_calls": 0
   },
   "routes/v2/explore_ideal_text.py:v2_explore_get_ideal_text": {
     "lines": 481,
@@ -271,16 +263,8 @@
     "lines": 36,
     "db_calls": 2
   },
-  "routes/v2/explore_ideal_text.py:v2_explore_ideal_revisions": {
-    "lines": 36,
-    "db_calls": 2
-  },
   "routes/v2/explore_ideal_text.py:v2_explore_put_ideal_user_edit": {
     "lines": 113,
-    "db_calls": 1
-  },
-  "routes/v2/explore_ideal_text.py:v2_explore_save_ideal_text": {
-    "lines": 101,
     "db_calls": 1
   },
   "routes/v2/explore_ideal_text.py:v2_explore_set_part_lock": {

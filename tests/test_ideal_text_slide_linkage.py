@@ -205,8 +205,6 @@ class LivingTranscriptProvenanceTests(unittest.TestCase):
                    return_value=doc), \
                 patch("services.ideal_text_block._living_transcript_enabled",
                       return_value=True), \
-                patch("services.master_document.master_document_enabled",
-                      return_value=False), \
                 patch.object(mod.db, "get_snippets_by_session",
                              return_value=[], create=True):
             lane, rows = mod._ideal_piece_provenance(ARC, **kw)
@@ -263,9 +261,7 @@ class LivingTranscriptProvenanceTests(unittest.TestCase):
         # was right; it was just standing in the wrong place.
         from routes.v2 import explore_ideal_text as mod
         with patch("services.ideal_text_block._living_transcript_enabled",
-                   return_value=False), \
-                patch("services.master_document.master_document_enabled",
-                      return_value=False):
+                   return_value=False):
             self.assertEqual(
                 mod._ideal_piece_provenance(ARC, deckless_ok=False),
                 ("deckless", []))
@@ -300,9 +296,7 @@ class CanonicalProvenanceFirstTests(unittest.TestCase):
                 patch("services.transcript_document.build_transcript_document",
                       return_value=self.REBUILT) as rebuild, \
                 patch("services.ideal_text_block._living_transcript_enabled",
-                      return_value=True), \
-                patch("services.master_document.master_document_enabled",
-                      return_value=False):
+                      return_value=True):
             lane, rows = mod._ideal_piece_provenance(
                 ARC, served_text="machine text")
         self.assertEqual(lane, "canonical")
@@ -389,8 +383,6 @@ class ComposeFailureFallbackTests(unittest.TestCase):
                        return_value=False), \
                  patch("routes.v2.explore_ideal_text."
                        "_moment_explanations_map", return_value={}), \
-                 patch("routes.v2.explore_ideal_text._ideal_save_state",
-                       return_value={}), \
                  patch("routes.v2.explore_ideal_text."
                        "_tracked_changes_block", return_value={}), \
                  patch.object(db.ideal_text, "get_coach_arc_ideal_text",

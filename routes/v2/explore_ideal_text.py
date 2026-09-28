@@ -211,56 +211,12 @@ def _instant_ideal_enabled() -> bool:
 
 def _snip_slide(snip):
     # The cutter's own bucket (the slide on screen when the words
-    # were spoken) — same read master_document keys its skeleton on.
+    # were spoken).
     m = (snip or {}).get("metrics")
     piece = m.get("piece") if isinstance(m, dict) else None
     si = piece.get("slide_index") if isinstance(piece, dict) else None
     return si if isinstance(si, int) and not isinstance(si, bool) \
         else None
-
-
-def _ideal_piece_provenance_skeleton(arc_id):
-    rows = sorted(
-        (r for r in (db.ideal_text.list_ideal_text_blocks(str(arc_id)) or [])
-         if r.get("active", True) and r.get("status") != "candidate"),
-        key=lambda r: r.get("block_key") or 0)
-    if not rows:
-        return None
-    # ONE ROW PER SERVED PARAGRAPH, not per block (SPEC §11.1).
-    # Since the cap, a block packs into one OR MORE "\n\n"
-    # paragraphs, so a per-block list under-counts and the
-    # caller's count-zip drops every slide attachment. Mirror the
-    # assembly's packing exactly — same pure packer, same cap,
-    # same strip-empty filter, over the same rows — WITHOUT
-    # re-running any composition on the student GET. A block with
-    # no incumbent text contributes no paragraph in the assembly,
-    # so it contributes no row here either.
-    from services.slide_word_split import PARAGRAPH_CAP_CHARS
-    from services.transcript_document import pack_items
-    out = []
-    for r in rows:
-        items = []
-        for p in (r.get("incumbent_pieces") or []):
-            _t = (p.get("text") or "").strip()
-            if _t:
-                items.append((p, _t))
-        for pack in pack_items(items, PARAGRAPH_CAP_CHARS):
-            out.append({
-                "slide_index": r.get("slide_index"),
-                # The KEYED pill→picker join (FE picker handoff
-                # 2026-08-03): the FE deep-links a paragraph's
-                # pill into the variants sheet by block_key —
-                # never by index-zipping two lists that merely
-                # happen to be sorted the same way. Sibling
-                # paragraphs of one block share its key.
-                "block_key": r.get("block_key"),
-                "snippet_id": pack[0][0].get("snippet_id"),
-                "take_session_id": r.get("incumbent_take_session_id"),
-                "take_index": r.get("incumbent_take_index"),
-                "status": r.get("status") or "settled",
-                "challenger": r.get("challenger_take_index"),
-            })
-    return out or None
 
 
 def _ideal_piece_provenance_from_stored_paragraphs(_stored_paragraphs, _same_body):
@@ -449,7 +405,6 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
     mirrors maybe_assemble_ideal_text's source choice WITHOUT re-running
     any composition on the student GET:
 
-      * master flag: the skeleton blocks own the cutter's slide_index;
       * living transcript: the take's pieces, slide from the cutter's
         metrics.piece.slide_index bucket;
       * legacy: the persisted best-presentation compose cache — the very
@@ -464,18 +419,11 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
     Each entry: {slide_index, snippet_id, take_session_id, take_index,
     status, challenger}. Best-effort; [] when nothing is provable.
 
-    ``lane`` is one of skeleton / canonical / compat / legacy_cache /
-    deckless, so a misaligned read can say which source it came from
-    (audit A3)."""
+    ``lane`` is one of canonical / compat / legacy_cache / deckless, so a
+    misaligned read can say which source it came from (audit A3). The
+    master-document skeleton lane is retired (audit C2)."""
     from services.ideal_text_block import _living_transcript_enabled
-    from services.master_document import master_document_enabled
 
-    if _living_transcript_enabled() and master_document_enabled():
-        skeleton = _ideal_piece_provenance_skeleton(arc_id)
-        if skeleton:
-            return "skeleton", skeleton
-        # No skeleton yet → the living-transcript document, exactly the
-        # fallback the assembly itself makes.
     if _living_transcript_enabled():
         canonical = _ideal_piece_provenance_canonical(arc_id, served_text)
         # `is not None`, not truthiness: stored paragraphs that yield no rows
@@ -490,10 +438,10 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
         return "compat", _ideal_piece_provenance_compat(arc_id)
     # LEGACY compose cache — and the ONLY lane the deckless guard belongs
     # to. This one keys its picks by SECTION index, which is not a deck page,
-    # so without an uploaded deck it must not attach. The two lanes above
-    # read the CUTTER's own bucket (the slide that was on screen when the
+    # so without an uploaded deck it must not attach. The living-transcript
+    # lanes above read the CUTTER's own bucket (the slide that was on screen when the
     # words were spoken), which is a real page whether or not a PDF was ever
-    # uploaded — and applying the guard to all three is what made the
+    # uploaded — and applying the guard to every lane is what made the
     # built-in mock deck attach nothing at all (founder 2026-08-11).
     if not deckless_ok:
         return "deckless", []
@@ -801,7 +749,6 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
     def document_layers_section():
         prior = seed.get("prior_edit") if isinstance(seed, dict) else None
         result = {"prior_edit": prior}
-        result.update(_ideal_save_state(arc_id, core.get("version")))
         # The publish-boundary bake when it is provably the same answer,
         # else computed live — see `services.ideal_text_feedback_bake`.
         from services.ideal_text_feedback_bake import changes_block_for
@@ -1329,10 +1276,6 @@ def v2_explore_get_ideal_text(arc_id):
             # paywall → no paywall shown). Automatic moments are free
             # regardless.
             "explanations_available": bool(_has_expl),
-            # MASTER DOCUMENT (founder 2026-07-22): the latest save —
-            # the FE hides take badges and gates the re-read button on
-            # saved_version == version. Absent pre-migration/flag-off.
-            **_ideal_save_state(arc_id, _version),
             # ── LIVING TRANSCRIPT (founder 2026-07-20, flag-gated):
             # span-anchored tracked changes on the full-transcript
             # document — strike/propose/bold/advice, each pointing at
@@ -1345,9 +1288,9 @@ def v2_explore_get_ideal_text(arc_id):
             # rather than in whether a call site remembered to.
             **_tracked_changes_block(
                 arc_id, _text, getattr(request, "user_id", "") or "",
-                # The take this arbitration is about — NOT the doc-level id,
-                # which is None under the master flag (see _tracked_changes_
-                # block). It keys the withhold arm and every arm row.
+                # The take this arbitration is about — NOT the doc-level id
+                # (see _tracked_changes_block). It keys the withhold arm and
+                # every arm row.
                 _latest_take_sid or "", review_version=_version,
                 degradation=_deg),
             # ── PROPOSAL HISTORY (slice 2, founder 2026-08-11): the arc's
@@ -1527,408 +1470,57 @@ def v2_explore_decide_prior_take(arc_id):
 @llm_limit
 @require_auth
 def v2_explore_decide_block(arc_id, block_key):
-    """The MASTER-DOCUMENT block decision (founder 2026-07-22):
+    """Always 404: the master-document block decision is retired (audit C2).
 
-      accept → the offered block becomes the master's (badge flips to
-               the new take; a candidate block activates); the document
-               reassembles at once — version bump + snapshot + the
-               idempotent ready bubble;
-      keep   → the offer is remembered on the block's rejected list and
-               never re-offered for that take.
-
-    Body: { action: "accept"|"keep",
-            take_session_id: <echo of the offered take — the race guard> }
-    200 { saved } · 400 · 404 · 409 NOT_PENDING / STALE_OFFER · 500
-    """
-    try:
-        from services.ideal_text_block import _living_transcript_enabled
-        from services.master_document import (
-            decide_block, master_document_enabled,
-        )
-        if not (master_document_enabled() and _living_transcript_enabled()):
-            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
-        owned, _blk_sessions = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        body = request.get_json(silent=True) or {}
-        action = body.get("action")
-        if action not in ("accept", "keep"):
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "action must be accept or keep"}), 400
-        echo = (body.get("take_session_id") or "").strip()
-        if not echo:
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "take_session_id is required"}), 400
-        ok, err = decide_block(arc_id, int(block_key), action, echo, db)
-        if not ok:
-            if err == "NOT_FOUND":
-                return jsonify({"code": "NOT_FOUND",
-                                "error": "block not found"}), 404
-            if err in ("NOT_PENDING", "STALE_OFFER"):
-                return jsonify({
-                    "code": err,
-                    "error": ("No offer is pending here."
-                              if err == "NOT_PENDING"
-                              else "A newer take changed this offer."),
-                }), 409
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not save"}), 500
-        # THE TAKE'S BUDGET (founder 2026-08-10): a decided offer keeps its
-        # slot — accepted and kept alike. Also SPEC §6's ground-truth row.
-        # ONLY this explicit tap spends: the save-time bulk auto-keeps must
-        # never write here (SPEC R4 — fabricated refusals). Best-effort.
-        from services.intervention_spend import spend
-        _bq = body.get("quote")
-        _bpt = body.get("proposed_text")
-        _bwk = body.get("why_key")
-        spend(db, arc_id, _blk_sessions,
-              change_key=f"block:{int(block_key)}:{echo}",
-              decision=("approved" if action == "accept"
-                        else "disregarded"),
-              lane="lane:new_take", intervention_type="REWRITE",
-              # PROPOSAL HISTORY (slice 2): optional — older clients write
-              # text-less rows, which the history read skips.
-              quote=(str(_bq) if isinstance(_bq, str) and _bq.strip()
-                     else None),
-              proposed_text=(str(_bpt) if isinstance(_bpt, str)
-                             and _bpt.strip() else None),
-              why_key=(str(_bwk) if isinstance(_bwk, str)
-                       and _bwk.strip() else None))
-        if action == "accept":
-            _reassemble_after_decision(arc_id)
-            try:
-                from services.arc_notifications import (
-                    fire_ideal_version_ready,
-                )
-                _r2 = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
-                if _r2.get("version"):
-                    fire_ideal_version_ready(
-                        db, str(request.user_id), str(arc_id),
-                        _r2["version"])
-            except Exception:
-                pass
-        return jsonify({"saved": True}), 200
-    except Exception as e:
-        logger.error("block decide failed arc=%s key=%s: %s",
-                     arc_id, block_key, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Failed to save the decision"}), 500
-
-
-def _block_variants_gate() -> bool:
-    """The variant-pool read surfaces exist only on top of the master
-    model (founder 2026-08-03; BLOCK_VARIANTS_ENABLED default OFF —
-    flag off, every route below is a plain 404 and the FE is
-    unaffected)."""
-    try:
-        from services.ideal_text_block import _living_transcript_enabled
-        from services.ideal_text_variants import variants_enabled
-        from services.master_document import master_document_enabled
-        return (variants_enabled() and master_document_enabled()
-                and _living_transcript_enabled())
-    except Exception:
-        return False
+    Its body only ran when ``master_document_enabled()`` was true, and that
+    has been permanently False since the experiment was retired. The route
+    stays because the FE still calls it."""
+    return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
 
 
 @v2_bp.route("/explore/arc/<arc_id>/blocks/variants", methods=["GET"])
 @require_auth
 def v2_explore_block_variants(arc_id):
-    """The PICKER read (founder 2026-08-03, fear #3): per block, every
-    text this block has ever had — each take's version (verbatim,
-    take-badged) plus the student's latest edit — with the current one
-    flagged. Block-level granularity by design (the mobile picker stays
-    clean). AC-9: provenance and text only, no scores.
-
-    200 { blocks: [{block_key, label, take_index, variants: [
-          {variant_id, source, take_index, text, is_current}]}],
-          head_revision } · 404 · 500
-    """
-    try:
-        if not _block_variants_gate():
-            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND",
-                            "error": "arc not found"}), 404
-        from services.ideal_text_variants import block_variants_payload
-        payload = block_variants_payload(db, str(arc_id))
-        if payload is None:
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not read the document — "
-                                     "try again."}), 500
-        return jsonify({"arc_id": arc_id, **payload}), 200
-    except Exception as e:
-        logger.error("block variants GET failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to load"}), 500
+    """Always 404: the variant pool sat on top of the retired master
+    document (audit C2). The route stays because the FE still calls it."""
+    return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
 
 
 @v2_bp.route("/explore/arc/<arc_id>/blocks/<int:block_key>/select",
              methods=["POST"])
 @require_auth
 def v2_explore_select_block_variant(arc_id, block_key):
-    """MIX AND MATCH (founder 2026-08-03): point one block at ANY pooled
-    variant — this take's, an earlier take's, or my own edit. The
-    displaced text stays in the pool (selecting is never destructive),
-    the composition records a new revision, and the document reassembles
-    at once.
-
-    Body: { variant_id }
-    200 { saved } · 400 · 404 · 409 NOT_PENDING (candidate block) · 500
-    """
-    try:
-        if not _block_variants_gate():
-            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND",
-                            "error": "arc not found"}), 404
-        body = request.get_json(silent=True) or {}
-        variant_id = (str(body.get("variant_id") or "")).strip()
-        if not variant_id:
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "variant_id is required"}), 400
-        from services.ideal_text_variants import select_block_variant
-        ok, err = select_block_variant(db, str(arc_id), int(block_key),
-                                       variant_id, str(request.user_id))
-        if not ok:
-            if err == "NOT_FOUND":
-                return jsonify({"code": "NOT_FOUND",
-                                "error": "block or variant not found"}), 404
-            if err == "NOT_PENDING":
-                return jsonify({"code": "NOT_PENDING",
-                                "error": "This block is not selectable "
-                                         "yet."}), 409
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not save"}), 500
-        _reassemble_after_decision(arc_id)
-        return jsonify({"saved": True}), 200
-    except Exception as e:
-        logger.error("block select failed arc=%s key=%s: %s",
-                     arc_id, block_key, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Failed to save the selection"}), 500
+    """Always 404: the variant pool sat on top of the retired master
+    document (audit C2). The route stays because the FE still calls it."""
+    return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/revisions", methods=["GET"])
 @require_auth
 def v2_explore_ideal_revisions(arc_id):
-    """The composition timeline (founder 2026-08-03, fear #2): every
-    selection state the document has been in, newest first, with the
-    head flagged — the FE's undo/history surface. Selections are pointer
-    lists; the texts live in the pool, so nothing here is a copy.
-
-    200 { revisions: [{revision, reason, created_at, is_head}],
-          head_revision } · 404 · 500
-    """
-    try:
-        if not _block_variants_gate():
-            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND",
-                            "error": "arc not found"}), 404
-        rows = db.list_ideal_text_compositions(str(arc_id), limit=50)
-        if rows is None:
-            rows = []
-        head = (db.get_ideal_text_composition_head(str(arc_id))
-                or {}).get("head_revision")
-        return jsonify({
-            "arc_id": arc_id,
-            "head_revision": head,
-            "revisions": [{
-                "revision": r.get("revision"),
-                "reason": r.get("reason"),
-                "created_at": r.get("created_at"),
-                "is_head": r.get("revision") == head,
-            } for r in rows],
-        }), 200
-    except Exception as e:
-        logger.error("ideal revisions GET failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to load"}), 500
+    """Always 404: the variant pool sat on top of the retired master
+    document (audit C2). The route stays because the FE still calls it."""
+    return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/revisions/<int:revision>"
              "/restore", methods=["POST"])
 @require_auth
 def v2_explore_restore_ideal_revision(arc_id, revision):
-    """GO BACK (founder 2026-08-03, fear #2): repoint the document at an
-    earlier composition. Blocks that revision recorded write through;
-    blocks added since stay as they are (restore repoints, never
-    deletes). The restore lands as a NEW revision, so it is itself
-    undoable. The document reassembles at once.
-
-    200 { restored, head_revision } · 404 · 500
-    """
-    try:
-        if not _block_variants_gate():
-            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND",
-                            "error": "arc not found"}), 404
-        from services.ideal_text_variants import restore_revision
-        ok, err = restore_revision(db, str(arc_id), int(revision),
-                                   str(request.user_id))
-        if not ok:
-            if err == "NOT_FOUND":
-                return jsonify({"code": "NOT_FOUND",
-                                "error": "revision not found"}), 404
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not restore"}), 500
-        _reassemble_after_decision(arc_id)
-        head = (db.get_ideal_text_composition_head(str(arc_id))
-                or {}).get("head_revision")
-        return jsonify({"restored": True, "arc_id": arc_id,
-                        "head_revision": head}), 200
-    except Exception as e:
-        logger.error("ideal revision restore failed arc=%s rev=%s: %s",
-                     arc_id, revision, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Failed to restore"}), 500
+    """Always 404: the variant pool sat on top of the retired master
+    document (audit C2). The route stays because the FE still calls it."""
+    return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/save", methods=["POST"])
 @llm_limit
 @require_auth
 def v2_explore_save_ideal_text(arc_id):
-    """SAVE = ACCEPT-AND-FREEZE (founder decision #3, 2026-07-22): the
-    student accepts the master's current state as their script.
+    """Always 404: Save belonged to the retired master document (audit C2).
 
-      * every UNACTIONED offer resolves as kept-mine (dismissed-
-        remembered — Save must leave a clean document, not hidden
-        pending state);
-      * the current version is stamped as a save row (the FE hides the
-        take badges and gates the re-read button on it);
-      * the frozen snapshot rides the existing per-version history lane.
-
-    200 { saved: true, saved_version } · 404 · 409 NOTHING_TO_SAVE · 500
-    """
-    try:
-        from services.ideal_text_block import _living_transcript_enabled
-        from services.master_document import master_document_enabled
-        if not (master_document_enabled() and _living_transcript_enabled()):
-            return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-
-        # Resolve every unactioned offer as kept-mine. A failed block
-        # READ must not freeze over unknown state, and a failed resolve
-        # must not stamp a save that still has hidden pending offers
-        # (review findings #8/#11/#18).
-        rows = db.ideal_text.list_ideal_text_blocks(str(arc_id))
-        if rows is None:
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not read the document — "
-                                     "try again."}), 500
-        from services.master_document import decide_block
-        # ── SAVE MUST NOT DECIDE WHAT THE LOCK HID (founder 2026-08-07) ──
-        # R1 suppresses composition offers on a LOCKED part: the offer is
-        # created and stored, just not surfaced, so unlocking brings it back.
-        # Resolving it here as kept-mine would silently refuse an upgrade the
-        # student never saw — writing a decision they never made into the one
-        # signal §6 depends on, which is exactly what R3 refuses on the lock
-        # button. Suppressed means PENDING, not refused.
-        #
-        # Best-effort: an unreadable parts list leaves `_locked` empty, so
-        # nothing is skipped and Save behaves as it always did.
-        _locked = []
-        try:
-            from services.ideal_text_parts import covered_by_locked_part
-            _locked = [
-                p for p in (db.get_ideal_text_parts(
-                    arc_id, str(getattr(request, "user_id", "") or ""),
-                    with_lock=True) or [])
-                if isinstance(p, dict) and p.get("locked_at")
-            ]
-        except Exception as _lk_err:
-            logger.warning("save: locked parts unreadable arc=%s: %s",
-                           arc_id, _lk_err)
-
-        def _block_text(row) -> str:
-            return " ".join(
-                (p.get("text") or "").strip()
-                for p in (row.get("incumbent_pieces") or [])).strip()
-
-        _resolve_failed = False
-        _held = 0
-        for r in rows:
-            if _locked and covered_by_locked_part(_block_text(r), _locked):
-                _held += 1
-                continue
-            if r.get("status") == "pending_upgrade":
-                ok, _e = decide_block(
-                    arc_id, int(r.get("block_key")), "keep",
-                    r.get("challenger_take_session_id"), db)
-                _resolve_failed = _resolve_failed or not ok
-            elif r.get("status") == "candidate":
-                ok, _e = decide_block(
-                    arc_id, int(r.get("block_key")), "keep",
-                    r.get("incumbent_take_session_id"), db)
-                _resolve_failed = _resolve_failed or not ok
-        if _held:
-            logger.info("save: %d offer(s) held pending behind a lock arc=%s",
-                        _held, arc_id)
-        if _resolve_failed:
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not resolve every open "
-                                     "suggestion — try again."}), 500
-
-        _row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
-        _v = _row.get("version")
-        if not isinstance(_v, int):
-            return jsonify({"code": "NOTHING_TO_SAVE",
-                            "error": "No ideal text to save yet."}), 409
-        ok = db.ideal_text.insert_ideal_text_save(str(arc_id), _v)
-        if not ok:
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not save"}), 500
-        return jsonify({"saved": True, "arc_id": arc_id,
-                        "saved_version": _v}), 200
-    except Exception as e:
-        logger.error("ideal-text save failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Failed to save"}), 500
-
-
-def _ideal_save_state(arc_id, current_version) -> dict:
-    """{saved_version, saved_at, is_saved} from the latest save row —
-    {} when the master flag is off or nothing was ever saved."""
-    try:
-        from services.master_document import master_document_enabled
-        if not master_document_enabled():
-            return {}
-        row = db.ideal_text.get_latest_ideal_text_save(str(arc_id))
-        if not row:
-            return {}
-        _pending = False
-        try:
-            _pending = any(
-                r.get("status") in ("pending_upgrade", "candidate")
-                for r in (db.ideal_text.list_ideal_text_blocks(str(arc_id)) or []))
-        except Exception:
-            _pending = False
-        return {
-            "saved_version": row.get("version"),
-            "saved_at": row.get("saved_at"),
-            # A saved document UN-saves when new offers arrive — an
-            # offers-only take bumps no version, so the version match
-            # alone left is_saved stuck true (review finding #28).
-            "is_saved": bool(current_version is not None
-                             and row.get("version") == current_version
-                             and not _pending),
-        }
-    except Exception:
-        return {}
+    Its body only ran when ``master_document_enabled()`` was true, which it
+    never is. The route stays because the FE still calls it."""
+    return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
 
 
 def _generated_text(arc_id, user_id) -> "str | None":
@@ -2642,34 +2234,6 @@ def _legacy_user_edit_via_cas(arc_id, body, text, version):
             )
     except Exception as error:
         logger.warning("ideal user-edit: ledger failed arc=%s: %s",
-                       arc_id, error)
-    try:
-        from services.master_document import (
-            assemble_master_document, master_document_enabled,
-        )
-
-        if master_document_enabled():
-            master = assemble_master_document(arc_id, database=db)
-            master_text = master.get("text") or ""
-            version_base = (
-                ((row.get("verified_text") or "").strip()
-                 if row.get("verified_version") == current else "")
-                or machine
-            )
-            if master.get("ready") and master_text and version_base and (
-                re.sub(r"\s+", " ", master_text).strip().lower()
-                == re.sub(r"\s+", " ", version_base).strip().lower()
-            ):
-                from services.ideal_text_variants import (
-                    capture_user_edit_variants,
-                )
-
-                capture_user_edit_variants(
-                    db, str(arc_id), str(request.user_id), master_text,
-                    ((master.get("document") or {}).get("pieces") or []), text,
-                )
-    except Exception as error:
-        logger.warning("ideal user-edit: variant capture failed arc=%s: %s",
                        arc_id, error)
     _publish_ideal_text_core(arc_id, str(request.user_id))
     return jsonify({"saved": True, "arc_id": arc_id,
