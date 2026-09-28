@@ -214,6 +214,66 @@ def bake_piece(text: str, approved_rows: Any) -> str:
     return text
 
 
+_REPLACE_TARGETS = ("moment_replace", "document_replace")
+_BOLD_TARGETS = ("moment_emphasize", "document_bold")
+
+
+def _star_kind(target: str, suggestion: dict) -> str:
+    """moment_emphasize/document_bold → 'emphasize'; a replace target →
+    'polish' when the suggestion row's trigger is polish, else 'replace'."""
+    if target in _BOLD_TARGETS:
+        return "emphasize"
+    return "polish" if suggestion.get("trigger") == "polish" else "replace"
+
+
+def _retire_overlapping_flagships(database, arc_id: Any, norm: str) -> None:
+    """The accepted rewrite owns this word range now. Remove any
+    overlapping accepted flagship decision rather than merely letting it
+    fail to match this one assembly; otherwise a later take that repeats
+    the old wording resurrects an orange anchor the user already
+    superseded."""
+    try:
+        for row in database.list_ideal_decisions(str(arc_id)) or []:
+            if (not isinstance(row, dict)
+                    or row.get("kind") != "emphasize"
+                    or row.get("decision") != "approved"):
+                continue
+            accepted = normalize_phrase(
+                row.get("display_phrase")
+                or row.get("target_phrase"))
+            if accepted and (accepted in norm or norm in accepted):
+                database.delete_ideal_decision(
+                    str(arc_id), "emphasize", accepted)
+    except Exception as e:
+        logger.warning(
+            "ideal_ledger: overlapping flagship cleanup failed "
+            "arc=%s: %s", arc_id, e)
+
+
+def _save_star_decision(database, arc_id: Any, *, kind: str, norm: str,
+                        phrase_raw: str, suggestion: dict, decision: str,
+                        snippet_id: Any, version: Any,
+                        slide_index: Any) -> bool:
+    """Upsert one approved/dismissed star decision."""
+    # §12.3 — the INTENT key rides every new decision: WHERE it was
+    # made (the snippet's slide — the only cross-take location) and
+    # WHICH class was decided. The phrase key above stays for the bake
+    # and history; these two are what the generation gate blocks on.
+    _si = slide_index if isinstance(slide_index, int) \
+        and not isinstance(slide_index, bool) else None
+    return bool(database.upsert_ideal_decision(
+        arc_id=str(arc_id), kind=kind, target_phrase=norm,
+        display_phrase=phrase_raw,
+        replacement_text=(suggestion.get("replacement_text")
+                          if kind != "emphasize" else None),
+        decision=decision, source="user_star",
+        snippet_id=(str(snippet_id) if snippet_id else None),
+        version=(version if isinstance(version, int) else None),
+        slide_index=_si,
+        lane_class=lane_class(kind, source=suggestion.get("trigger"),
+                              why=suggestion.get("why"))))
+
+
 def record_star_decision(database, arc_id: Any, *, suggestion: Any,
                          target: str, action: str, target_text: Any,
                          snippet_id: Any = None,
@@ -228,9 +288,7 @@ def record_star_decision(database, arc_id: Any, *, suggestion: Any,
     trigger is polish, else 'replace'. Best-effort — a ledger miss must
     never break the feedback POST."""
     try:
-        _replace_targets = ("moment_replace", "document_replace")
-        _bold_targets = ("moment_emphasize", "document_bold")
-        if not arc_id or target not in _replace_targets + _bold_targets:
+        if not arc_id or target not in _REPLACE_TARGETS + _BOLD_TARGETS:
             return False
         if action not in ("applied", "dismissed", "reverted"):
             return False
@@ -239,53 +297,17 @@ def record_star_decision(database, arc_id: Any, *, suggestion: Any,
         if not norm:
             return False
         sug = suggestion or {}
-        if target in _bold_targets:
-            kind = "emphasize"
-        else:
-            kind = "polish" if sug.get("trigger") == "polish" else "replace"
+        kind = _star_kind(target, sug)
         if action == "reverted":
             return bool(database.delete_ideal_decision(
                 str(arc_id), kind, norm))
-        decision = "approved" if action == "applied" else "dismissed"
-        # §12.3 — the INTENT key rides every new decision: WHERE it was
-        # made (the snippet's slide — the only cross-take location) and
-        # WHICH class was decided. The phrase key above stays for the bake
-        # and history; these two are what the generation gate blocks on.
-        _si = slide_index if isinstance(slide_index, int) \
-            and not isinstance(slide_index, bool) else None
-        saved = bool(database.upsert_ideal_decision(
-            arc_id=str(arc_id), kind=kind, target_phrase=norm,
-            display_phrase=phrase_raw,
-            replacement_text=(sug.get("replacement_text")
-                              if kind != "emphasize" else None),
-            decision=decision, source="user_star",
-            snippet_id=(str(snippet_id) if snippet_id else None),
-            version=(version if isinstance(version, int) else None),
-            slide_index=_si,
-            lane_class=lane_class(kind, source=sug.get("trigger"),
-                                  why=sug.get("why"))))
+        saved = _save_star_decision(
+            database, arc_id, kind=kind, norm=norm, phrase_raw=phrase_raw,
+            suggestion=sug,
+            decision="approved" if action == "applied" else "dismissed",
+            snippet_id=snippet_id, version=version, slide_index=slide_index)
         if saved and action == "applied" and kind in ("replace", "polish"):
-            # The accepted rewrite owns this word range now. Remove any
-            # overlapping accepted flagship decision rather than merely
-            # letting it fail to match this one assembly; otherwise a later
-            # take that repeats the old wording resurrects an orange anchor
-            # the user already superseded.
-            try:
-                for row in database.list_ideal_decisions(str(arc_id)) or []:
-                    if (not isinstance(row, dict)
-                            or row.get("kind") != "emphasize"
-                            or row.get("decision") != "approved"):
-                        continue
-                    accepted = normalize_phrase(
-                        row.get("display_phrase")
-                        or row.get("target_phrase"))
-                    if accepted and (accepted in norm or norm in accepted):
-                        database.delete_ideal_decision(
-                            str(arc_id), "emphasize", accepted)
-            except Exception as e:
-                logger.warning(
-                    "ideal_ledger: overlapping flagship cleanup failed "
-                    "arc=%s: %s", arc_id, e)
+            _retire_overlapping_flagships(database, arc_id, norm)
         return saved
     except Exception as e:
         logger.warning("ideal_ledger: record failed arc=%s: %s", arc_id, e)
