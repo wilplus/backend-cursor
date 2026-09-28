@@ -42,8 +42,8 @@ from services.exercise_learning_readiness import (
 
 FAIR_TEST_VERSION = "exercise-fair-test-v1"
 SPLIT_VERSION = "exercise-speaker-split-v1"
-#: Share of speakers held out for grading. Not fixed by §3.5; changing it
-#: changes SPLIT_VERSION and is the founder's call.
+#: Share of speakers held out for grading (founder 2026-09-28: keep 30%).
+#: Changing it changes SPLIT_VERSION and is the founder's call.
 HOLDOUT_SHARE = 0.3
 #: §3.5 item 9 (founder 2026-09-28).
 MIN_SUCCESS_GAIN = 0.05
