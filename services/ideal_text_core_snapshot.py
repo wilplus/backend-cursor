@@ -97,6 +97,70 @@ def _suggestions_enabled() -> bool:
     return bool(config.MOMENT_SUGGESTIONS_ENABLED)
 
 
+def _paragraphs_of(text: str) -> list[str]:
+    return [part.strip() for part in text.split("\n\n") if part.strip()]
+
+
+def _provenance_rows(row: Mapping[str, Any]) -> list[Mapping[str, Any]] | None:
+    """The canonical document's per-paragraph provenance, or None when it is
+    missing or any entry is malformed."""
+    document = row.get("document") if isinstance(row.get("document"), dict) else {}
+    provenance = document.get("paragraphs") if isinstance(document, dict) else []
+    return (
+        provenance
+        if isinstance(provenance, list)
+        and all(isinstance(item, Mapping) for item in provenance)
+        else None
+    )
+
+
+def _previous_by_part(
+    previous_payload: Mapping[str, Any] | None,
+) -> dict[str, Mapping[str, Any]]:
+    """``{part id: piece}`` from the previous immutable snapshot, when its
+    parts and pieces line up one to one."""
+    previous_by_part: dict[str, Mapping[str, Any]] = {}
+    if not isinstance(previous_payload, Mapping):
+        return previous_by_part
+    previous_parts = previous_payload.get("parts")
+    previous_pieces = previous_payload.get("pieces")
+    if not (isinstance(previous_parts, list) and isinstance(previous_pieces, list)
+            and len(previous_parts) == len(previous_pieces)):
+        return previous_by_part
+    for old_part, old_piece in zip(previous_parts, previous_pieces):
+        if not isinstance(old_part, Mapping) \
+                or not isinstance(old_piece, Mapping):
+            continue
+        old_id = str(old_part.get("id") or "")
+        if old_id:
+            previous_by_part[old_id] = old_piece
+    return previous_by_part
+
+
+def _proven_slide(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _published_piece(index: int, paragraph: str, part: Mapping[str, Any],
+                     source: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "piece_key": index,
+        "part_id": part.get("id"),
+        "text": paragraph,
+        "root_phrase": part.get("root_phrase"),
+        "root_type": "flagship" if part.get("root_phrase") else None,
+        "slide_index": _proven_slide(source.get("slide_index")),
+        "block_key": None,
+        "snippet_id": source.get("snippet_id"),
+        "take_session_id": source.get("take_session_id"),
+        "take_index": source.get("take_index"),
+        "status": "settled",
+        "challenger": None,
+    }
+
+
 def _exact_pieces(
     row: Mapping[str, Any],
     text: str,
@@ -111,37 +175,17 @@ def _exact_pieces(
     snapshot.  New/split/merged Paragraph ids receive no attachment until a
     writer publishes explicit lineage.
     """
-    paragraphs = [part.strip() for part in text.split("\n\n") if part.strip()]
-    document = row.get("document") if isinstance(row.get("document"), dict) else {}
-    provenance = document.get("paragraphs") if isinstance(document, dict) else []
-    provenance_rows: list[Mapping[str, Any]] | None = (
-        provenance
-        if isinstance(provenance, list)
-        and all(isinstance(item, Mapping) for item in provenance)
-        else None
-    )
+    paragraphs = _paragraphs_of(text)
+    provenance_rows = _provenance_rows(row)
     part_rows = parts or []
-    source_text = str(row.get("auto_text") or row.get("text") or "").strip()
-    source_paragraphs = [part.strip() for part in source_text.split("\n\n")
-                         if part.strip()]
+    source_paragraphs = _paragraphs_of(
+        str(row.get("auto_text") or row.get("text") or "").strip())
     aligned = (
         provenance_rows is not None
         and len(provenance_rows) == len(paragraphs) == len(source_paragraphs)
         and source_paragraphs == paragraphs
     )
-    previous_by_part: dict[str, Mapping[str, Any]] = {}
-    if isinstance(previous_payload, Mapping):
-        previous_parts = previous_payload.get("parts")
-        previous_pieces = previous_payload.get("pieces")
-        if isinstance(previous_parts, list) and isinstance(previous_pieces, list) \
-                and len(previous_parts) == len(previous_pieces):
-            for old_part, old_piece in zip(previous_parts, previous_pieces):
-                if not isinstance(old_part, Mapping) \
-                        or not isinstance(old_piece, Mapping):
-                    continue
-                old_id = str(old_part.get("id") or "")
-                if old_id:
-                    previous_by_part[old_id] = old_piece
+    previous_by_part = _previous_by_part(previous_payload)
 
     # Compatibility adoption for documents first edited before the immutable
     # core began returning stored Paragraph identity.  The only live edit
@@ -200,23 +244,7 @@ def _exact_pieces(
             # stable-id mapping exists: durable identity always wins.
             assert provenance_rows is not None
             source = provenance_rows[index]
-        slide = source.get("slide_index")
-        if isinstance(slide, bool) or not isinstance(slide, int) or slide < 0:
-            slide = None
-        out.append({
-            "piece_key": index,
-            "part_id": part.get("id"),
-            "text": paragraph,
-            "root_phrase": part.get("root_phrase"),
-            "root_type": "flagship" if part.get("root_phrase") else None,
-            "slide_index": slide,
-            "block_key": None,
-            "snippet_id": source.get("snippet_id"),
-            "take_session_id": source.get("take_session_id"),
-            "take_index": source.get("take_index"),
-            "status": "settled",
-            "challenger": None,
-        })
+        out.append(_published_piece(index, paragraph, part, source))
     return out
 
 
