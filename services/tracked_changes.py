@@ -481,6 +481,96 @@ def build_tracked_changes(text: Any, pieces: Any, suggestions: Any,
     return out
 
 
+def _decided_targets(rows: list) -> set:
+    """``(kind, target_phrase)`` of every ledger decision."""
+    return {
+        (r.get("kind"), r.get("target_phrase")) for r in rows
+        if r.get("kind") and r.get("target_phrase")
+    }
+
+
+def _pieces_by_snippet(pieces: Any) -> dict[str, dict[str, Any]]:
+    return {
+        str(p.get("snippet_id")): p for p in (pieces or [])
+        if isinstance(p, dict) and p.get("snippet_id")
+    }
+
+
+def _span_order(change: dict) -> tuple:
+    return (
+        int((change.get("span") or {}).get("start") or 0),
+        int((change.get("span") or {}).get("end") or 0),
+    )
+
+
+def _approved_user_stars(rows: list) -> list:
+    """The student's approved word changes (replace or polish), newest
+    first — by update time, then version."""
+    approved = [r for r in rows
+                if r.get("decision") == "approved"
+                and r.get("source") == "user_star"
+                and r.get("kind") in ("replace", "polish")
+                and r.get("snippet_id")]
+    approved.sort(key=lambda r: (r.get("updated_at") or "",
+                                 int(r.get("version") or 0)), reverse=True)
+    return approved
+
+
+def _coach_proposal(verdict_row: dict, sug: dict,
+                    original: str) -> Optional[tuple]:
+    """``(proposed, coach_note)`` for a judged snippet, or None.
+
+    A rejection proposes restoring the student's original words; a keep
+    proposes the coach's final wording, when there is one. Anything else —
+    unjudged, or a keep with no final — never supersedes accepted text."""
+    verdict = verdict_row.get("verdict")
+    if verdict in ("wrong_kind", "should_not_fire"):
+        return original, verdict_row.get("note")
+    if verdict == "keep" and sug.get("replacement_text_final"):
+        return ((sug.get("replacement_text_final") or "").strip(),
+                sug.get("why_final") or sug.get("why"))
+    return None
+
+
+def _coach_revision(doc: str, accepted: dict, sugs: dict, judged: dict,
+                    decided_targets: set, piece_by_sid: dict) -> Optional[dict]:
+    """The fresh proposal against one accepted change, or None."""
+    from services.ideal_decision_ledger import normalize_phrase
+    sid = str(accepted.get("snippet_id"))
+    current = (accepted.get("replacement_text") or "").strip()
+    original = (accepted.get("display_phrase") or "").strip()
+    if not current or doc.count(current) != 1:
+        return None
+    target_norm = normalize_phrase(current)
+    if (("replace", target_norm) in decided_targets
+            or ("polish", target_norm) in decided_targets):
+        return None
+    verdict_raw = judged.get(sid)
+    verdict_row: dict[str, Any] = (
+        verdict_raw if isinstance(verdict_raw, dict) else {})
+    sug_raw = sugs.get(sid)
+    sug: dict[str, Any] = sug_raw if isinstance(sug_raw, dict) else {}
+    proposal = _coach_proposal(verdict_row, sug, original)
+    if proposal is None:
+        return None
+    proposed, coach_note = proposal
+    if not proposed or proposed == current:
+        return None
+    start = doc.find(current)
+    piece = piece_by_sid.get(sid) or {}
+    return {
+        "id": f"coach-revision:{sid}",
+        "snippet_id": sid,
+        "take_session_id": piece.get("take_session_id"),
+        "kind": "replace",
+        "source": "coach_revision",
+        "span": {"start": start, "end": start + len(current)},
+        "quote": current,
+        "proposed_text": proposed,
+        "coach_note": coach_note,
+    }
+
+
 def build_coach_revision_changes(text: Any, pieces: Any, suggestions: Any,
                                   ledger: Any, verdicts: Any) -> list:
     """Emit a coach supersession as a fresh proposal against accepted words.
@@ -494,70 +584,20 @@ def build_coach_revision_changes(text: Any, pieces: Any, suggestions: Any,
     sugs = suggestions if isinstance(suggestions, dict) else {}
     judged = verdicts if isinstance(verdicts, dict) else {}
     rows = [r for r in (ledger or []) if isinstance(r, dict)]
-    from services.ideal_decision_ledger import normalize_phrase
-    decided_targets = {
-        (r.get("kind"), r.get("target_phrase")) for r in rows
-        if r.get("kind") and r.get("target_phrase")
-    }
-    piece_by_sid: dict[str, dict[str, Any]] = {
-        str(p.get("snippet_id")): p for p in (pieces or [])
-        if isinstance(p, dict) and p.get("snippet_id")
-    }
-    approved = [r for r in rows
-                if r.get("decision") == "approved"
-                and r.get("source") == "user_star"
-                and r.get("kind") in ("replace", "polish")
-                and r.get("snippet_id")]
-    approved.sort(key=lambda r: (r.get("updated_at") or "",
-                                 int(r.get("version") or 0)), reverse=True)
+    decided_targets = _decided_targets(rows)
+    piece_by_sid = _pieces_by_snippet(pieces)
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for accepted in approved:
+    for accepted in _approved_user_stars(rows):
         sid = str(accepted.get("snippet_id"))
         if sid in seen:
             continue
         seen.add(sid)
-        current = (accepted.get("replacement_text") or "").strip()
-        original = (accepted.get("display_phrase") or "").strip()
-        if not current or doc.count(current) != 1:
-            continue
-        target_norm = normalize_phrase(current)
-        if (("replace", target_norm) in decided_targets
-                or ("polish", target_norm) in decided_targets):
-            continue
-        verdict_raw = judged.get(sid)
-        verdict_row: dict[str, Any] = (
-            verdict_raw if isinstance(verdict_raw, dict) else {})
-        verdict = verdict_row.get("verdict")
-        sug_raw = sugs.get(sid)
-        sug: dict[str, Any] = sug_raw if isinstance(sug_raw, dict) else {}
-        if verdict in ("wrong_kind", "should_not_fire"):
-            proposed = original
-            coach_note = verdict_row.get("note")
-        elif verdict == "keep" and sug.get("replacement_text_final"):
-            proposed = (sug.get("replacement_text_final") or "").strip()
-            coach_note = sug.get("why_final") or sug.get("why")
-        else:
-            continue
-        if not proposed or proposed == current:
-            continue
-        start = doc.find(current)
-        piece = piece_by_sid.get(sid) or {}
-        out.append({
-            "id": f"coach-revision:{sid}",
-            "snippet_id": sid,
-            "take_session_id": piece.get("take_session_id"),
-            "kind": "replace",
-            "source": "coach_revision",
-            "span": {"start": start, "end": start + len(current)},
-            "quote": current,
-            "proposed_text": proposed,
-            "coach_note": coach_note,
-        })
-    out.sort(key=lambda c: (
-        int((c.get("span") or {}).get("start") or 0),
-        int((c.get("span") or {}).get("end") or 0),
-    ))
+        change = _coach_revision(doc, accepted, sugs, judged,
+                                 decided_targets, piece_by_sid)
+        if change is not None:
+            out.append(change)
+    out.sort(key=_span_order)
     return out
 
 
