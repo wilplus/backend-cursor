@@ -1892,7 +1892,7 @@ prediction, one clip per Take is selected (boundary-first, 20% random, every
 draw recorded), and the D5 batch can build a blind packet from the stored
 span because the evidence coordinates are the lineage's own offsets.
 
-### 2026-09-28 · WS-G6 part 2 · g6-confidence-end-to-end-rehearsal · #(pending)
+### 2026-09-28 · WS-G6 part 2 · g6-confidence-end-to-end-rehearsal · #759
 
 **Closed:** the activation evidence for G-6: the blind-label chain runs end
 to end on the released lane with the foundation frame factory in the loop.
