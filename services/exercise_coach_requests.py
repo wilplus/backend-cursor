@@ -49,6 +49,7 @@ def coach_request_payload(request: dict, database: Any) -> dict:
     """What the coach sees AFTER their blind rating. Coach-only: the need
     evidence may be revealed now (35f), never to the speaker."""
     from services.confident_voice_practice import coach_exercise_order
+    from services.exercise_pick_view import request_candidates
     trace = request.get("request_trace")
     signals = trace.get("signals") if isinstance(trace, dict) else None
     labels = _labels(database)
@@ -75,6 +76,8 @@ def coach_request_payload(request: dict, database: Any) -> dict:
         # The library has since gained a fitting exercise and the speaker was
         # offered it: a share from here would not reach them.
         "offered_since": isinstance(assignment, dict),
+        # Why nothing fitted: every exercise and its reason (step 6).
+        "candidates": request_candidates(request),
         "available_exercises": [{
             "exercise_id": row.get("exercise_id"),
             "version": row.get("version"),

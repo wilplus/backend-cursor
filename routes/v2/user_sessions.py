@@ -1778,7 +1778,7 @@ def v2_start_confident_voice_practice(snippet_id):
         from services.confident_voice_practice import start_exercise_check
         refusal, verdict, matching = start_exercise_check(
             snippet=snip, take_session_id=take_id, snippet_id=str(snippet_id),
-            exercise_id=exercise_id, database=db,
+            exercise_id=exercise_id, database=db, owner_user_id=request.user_id,
             session_median_wpm=statistics.median(wpms) if wpms else None)
         if refusal:
             return jsonify({"code": _START_REFUSALS[refusal][0],

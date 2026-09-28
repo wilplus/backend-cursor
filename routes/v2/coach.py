@@ -17,7 +17,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import sentry_sdk
 from flask import jsonify, request
@@ -1437,6 +1437,15 @@ def _coach_moment_edit(practice: dict):
     return jsonify({"practice": _coach_practice_payload(practice)}), status
 
 
+def _machine_pick(practice: dict) -> Optional[dict]:
+    """What the machine picked for this moment and why (step 6). Reached only
+    through the practice route, after its blind gate; routing only, never the
+    machine's confidence read."""
+    from services.exercise_pick_view import machine_pick
+    return machine_pick(db, practice.get("take_session_id"),
+                        practice.get("snippet_id"))
+
+
 def _coach_practice_payload(practice: dict) -> dict:
     """Coach-only attempt bundle, intentionally separate from blind packet."""
     from services.audio_ref_resolver import resolve_playable_ref
@@ -1502,6 +1511,7 @@ def _coach_practice_payload(practice: dict) -> dict:
             "is_custom": isinstance(custom_exercise, dict),
         },
         "available_exercises": available_exercises,
+        "machine_pick": _machine_pick(practice),
         **coach_moment_fields(practice, db),
         "attempts": [{
             "id": str(row.get("id")),
