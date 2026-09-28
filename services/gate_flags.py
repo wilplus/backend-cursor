@@ -50,6 +50,15 @@ GATE_FLAGS: tuple[str, ...] = (
     # items, one frozen and the other served, with nothing anywhere saying
     # they disagreed (contract 24j).
     "REASONABLE_CONFIDENCE_ENABLED",
+    # The three switches that choose which F1 code path runs (audit A2,
+    # 2026-09-28). LIVING_TRANSCRIPT_ENABLED defaults OFF in code but is on
+    # in production: a service that never got the variable silently takes
+    # the retired provenance lane and serves no Feedback. "(unset)" here is
+    # that service. The default is flipped only once every service's boot
+    # line shows it set (remediation C5).
+    "LIVING_TRANSCRIPT_ENABLED",
+    "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED",
+    "PIPELINE_QUEUE_ENABLED",
 )
 
 #: Reported as set/unset, never by value. Extend this rather than adding a

@@ -40,6 +40,9 @@ GATES = (
     "MLC2_CONFIDENCE_MONITORING_ENABLED",
     "MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID",
     "REASONABLE_CONFIDENCE_ENABLED",
+    "LIVING_TRANSCRIPT_ENABLED",
+    "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED",
+    "PIPELINE_QUEUE_ENABLED",
 )
 
 
@@ -68,6 +71,21 @@ class TheSummaryItselfIsHonest(unittest.TestCase):
                         {"PLF1_PROCESSING_AUTHORIZATION_MODE": "off"}):
             self.assertIn(
                 "PLF1_PROCESSING_AUTHORIZATION_MODE=off", gate_summary())
+
+    def test_an_unset_f1_switch_is_visible_as_unset(self):
+        """The C5 check: a service missing LIVING_TRANSCRIPT_ENABLED must say
+        so, not print the code default as if someone had chosen it."""
+        import os
+        from unittest.mock import patch
+
+        from services.gate_flags import gate_summary
+
+        env = {k: v for k, v in os.environ.items()
+               if k != "LIVING_TRANSCRIPT_ENABLED"}
+        with patch.dict(os.environ, env, clear=True):
+            self.assertIn("LIVING_TRANSCRIPT_ENABLED=(unset)", gate_summary())
+        with patch.dict(os.environ, {"LIVING_TRANSCRIPT_ENABLED": "1"}):
+            self.assertIn("LIVING_TRANSCRIPT_ENABLED=1", gate_summary())
 
     def test_it_never_prints_the_canary_principal(self):
         """AC-9 is not the fence here; a log is not a user surface. But a
