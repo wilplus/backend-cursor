@@ -83,6 +83,80 @@ def _owner_agreements(database, arc_id: Any) -> dict:
     return out
 
 
+def _slide_or_none(slide: Any) -> Any:
+    """An integer slide index, or None (a bool is not a slide)."""
+    return slide if isinstance(slide, int) and not isinstance(slide, bool) else None
+
+
+def _reconcile_practice_attempt(
+    database: Any, *, arc: str, target: str, attempt: Any,
+) -> bool:
+    """A practice attempt of this project: an explicit coach No removes it;
+    it enters only when coach, machine and user all say yes AND it is the
+    practice's selected attempt."""
+    practice = database.get_confident_voice_practice(
+        str(attempt.get("practice_id") or ""))
+    if not practice or str(practice.get("project_id") or "") != arc:
+        return False
+    coach = attempt.get("coach_confidence_decision")
+    if coach == "no":
+        return bool(database.delete_voice_album_practice_entry(
+            arc_id=arc, practice_attempt_id=target,
+        ))
+    aligned = (
+        coach == "yes"
+        and attempt.get("machine_confidence_decision") == "yes"
+        and attempt.get("user_answer") == "yes"
+        and str(practice.get("selected_attempt_id") or "") == target
+    )
+    if not aligned:
+        return False
+    return bool(database.insert_voice_album_practice_entry(
+        arc_id=arc,
+        practice_attempt_id=target,
+        take_session_id=str(practice.get("take_session_id") or "") or None,
+        slide_index=practice.get("slide_index"),
+    ))
+
+
+def _reconcile_original_clip(
+    database: Any, *, arc: str, target: str, take_session_id: Any,
+) -> bool:
+    """An original clip: an explicit professional No on its published Take
+    removes it; it enters only when the user's yes, the machine's confident
+    star and the professional Yes on that published Take all align."""
+    user_row = _owner_agreements(database, arc).get(target)
+    suggestion = (
+        database.get_moment_suggestions_by_arc(arc) or {}
+    ).get(target)
+    labels = database.get_confidence_labels_by_snippet_ids([target]) or {}
+    from services.professional_confidence import latest_professional_value
+    coach_value = latest_professional_value(labels.get(target))
+    session = database.v2_get_session_by_id(str(take_session_id or "")) or {}
+    session_matches = bool(
+        session.get("results_published_at")
+        and str(session.get("project_id") or session.get("arc_id") or "") == arc
+    )
+    if coach_value == "no" and session_matches:
+        return bool(database.delete_voice_album_entry(
+            arc_id=arc, snippet_id=target,
+        ))
+    aligned = bool(
+        coach_value == "yes"
+        and user_row
+        and _machine_confident(suggestion)
+        and session_matches
+    )
+    if not aligned or not isinstance(user_row, dict):
+        return False
+    return bool(database.insert_voice_album_entry(
+        arc_id=arc,
+        snippet_id=target,
+        take_session_id=str(take_session_id or "") or None,
+        slide_index=_slide_or_none(user_row.get("slide_index")),
+    ))
+
+
 def reconcile_voice_album_clip(
     arc_id: Any, clip_id: Any, *, take_session_id: Any = None, database=None,
 ) -> bool:
@@ -102,65 +176,12 @@ def reconcile_voice_album_clip(
 
         attempt = database.get_confident_voice_practice_attempt(target)
         if attempt:
-            practice = database.get_confident_voice_practice(
-                str(attempt.get("practice_id") or ""))
-            if not practice or str(practice.get("project_id") or "") != arc:
-                return False
-            coach = attempt.get("coach_confidence_decision")
-            if coach == "no":
-                return bool(database.delete_voice_album_practice_entry(
-                    arc_id=arc, practice_attempt_id=target,
-                ))
-            aligned = (
-                coach == "yes"
-                and attempt.get("machine_confidence_decision") == "yes"
-                and attempt.get("user_answer") == "yes"
-                and str(practice.get("selected_attempt_id") or "") == target
+            return _reconcile_practice_attempt(
+                database, arc=arc, target=target, attempt=attempt,
             )
-            if not aligned:
-                return False
-            return bool(database.insert_voice_album_practice_entry(
-                arc_id=arc,
-                practice_attempt_id=target,
-                take_session_id=str(practice.get("take_session_id") or "") or None,
-                slide_index=practice.get("slide_index"),
-            ))
-
-        user_row = _owner_agreements(database, arc).get(target)
-        suggestion = (
-            database.get_moment_suggestions_by_arc(arc) or {}
-        ).get(target)
-        labels = database.get_confidence_labels_by_snippet_ids([target]) or {}
-        coach_value = None
-        from services.professional_confidence import latest_professional_value
-        coach_value = latest_professional_value(labels.get(target))
-        session = database.v2_get_session_by_id(str(take_session_id or "")) or {}
-        session_matches = bool(
-            session.get("results_published_at")
-            and str(session.get("project_id") or session.get("arc_id") or "") == arc
+        return _reconcile_original_clip(
+            database, arc=arc, target=target, take_session_id=take_session_id,
         )
-        if coach_value == "no" and session_matches:
-            return bool(database.delete_voice_album_entry(
-                arc_id=arc, snippet_id=target,
-            ))
-        aligned = bool(
-            coach_value == "yes"
-            and user_row
-            and _machine_confident(suggestion)
-            and session_matches
-        )
-        if not aligned or not isinstance(user_row, dict):
-            return False
-        slide = user_row.get("slide_index")
-        return bool(database.insert_voice_album_entry(
-            arc_id=arc,
-            snippet_id=target,
-            take_session_id=str(take_session_id or "") or None,
-            slide_index=(
-                slide if isinstance(slide, int) and not isinstance(slide, bool)
-                else None
-            ),
-        ))
     except Exception as error:
         logger.warning(
             "voice_album: exact clip reconciliation failed arc=%s clip=%s: %s",
@@ -169,6 +190,53 @@ def reconcile_voice_album_clip(
             error,
         )
         return False
+
+
+def _acoustic_yes_ids(database: Any, arc_id: Any) -> set:
+    """ACOUSTIC — the machine's emphasize stars for this arc."""
+    return {
+        sid for sid, row in
+        (database.get_moment_suggestions_by_arc(str(arc_id)) or {}
+         ).items()
+        if _machine_confident(row)
+    }
+
+
+def _coach_yes_sessions(database: Any, arc_id: Any) -> dict:
+    """COACH — {snippet_id: take_session_id} for every explicit professional
+    coach YES, on PUBLISHED sessions only.
+
+    The publish gate is unchanged and load-bearing: a professional coach
+    can save a draft judgment while still working, and none of it exists
+    for the student until the review is released.
+    """
+    coach_ok: dict = {}   # snippet_id -> take_session_id
+    for sess in (database.takes.get_arc_sessions(arc_id) or []):
+        if not sess.get("results_published_at"):
+            continue
+        sid = str(sess.get("id") or "")
+        if not sid:
+            continue
+        try:
+            snips = database.get_snippets_by_session(sid) or []
+        except Exception:
+            continue
+        _ids = [str(x.get("id")) for x in snips
+                if isinstance(x, dict) and x.get("id")]
+        labels = database.get_confidence_labels_by_snippet_ids(_ids) or {}
+        for snip_id in _ids:
+            if _professional_coach_yes(labels.get(snip_id)):
+                coach_ok[str(snip_id)] = sid
+    return coach_ok
+
+
+def _existing_clip_entries(database: Any, arc_id: Any) -> set:
+    """Snippet ids of the album's original-clip entries (not practice)."""
+    return {str(e.get("snippet_id"))
+            for e in (database.list_voice_album(str(arc_id)) or [])
+            if isinstance(e, dict)
+            and e.get("source_kind") != "practice_attempt"
+            and e.get("snippet_id")}
 
 
 def refresh_voice_album(arc_id: Any, *, database=None) -> int:
@@ -184,58 +252,23 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
             from services.db import db as database
 
         user_ok = _owner_agreements(database, arc_id)
-
-        # ACOUSTIC — the machine's emphasize stars for this arc.
-        acoustic_ok = {
-            sid for sid, row in
-            (database.get_moment_suggestions_by_arc(str(arc_id)) or {}
-             ).items()
-            if _machine_confident(row)
-        }
-
-        # COACH — explicit professional coach YES, on PUBLISHED sessions only.
-        #
-        # The publish gate is unchanged and load-bearing: a professional coach
-        # can save a draft judgment while still working, and none of it exists
-        # for the student until the review is released.
-        coach_ok: dict = {}   # snippet_id -> take_session_id
-        for sess in (database.takes.get_arc_sessions(arc_id) or []):
-            if not sess.get("results_published_at"):
-                continue
-            sid = str(sess.get("id") or "")
-            if not sid:
-                continue
-            try:
-                snips = database.get_snippets_by_session(sid) or []
-            except Exception:
-                continue
-            _ids = [str(x.get("id")) for x in snips
-                    if isinstance(x, dict) and x.get("id")]
-            labels = database.get_confidence_labels_by_snippet_ids(_ids) or {}
-            for snip_id in _ids:
-                if _professional_coach_yes(labels.get(snip_id)):
-                    coach_ok[str(snip_id)] = sid
+        acoustic_ok = _acoustic_yes_ids(database, arc_id)
+        coach_ok = _coach_yes_sessions(database, arc_id)
 
         # `aligned` may legitimately be EMPTY — the mirror still has to
         # run, because an empty alignment with existing entries means
         # every one of them must go (the user changed their mind).
         aligned = set(user_ok) & acoustic_ok & set(coach_ok)
 
-        existing = {str(e.get("snippet_id"))
-                    for e in (database.list_voice_album(str(arc_id)) or [])
-                    if isinstance(e, dict)
-                    and e.get("source_kind") != "practice_attempt"
-                    and e.get("snippet_id")}
+        existing = _existing_clip_entries(database, arc_id)
 
         new = 0
         for snip_id in sorted(aligned - existing):
-            row = user_ok[snip_id]
-            _si = row.get("slide_index")
             ok = database.insert_voice_album_entry(
                 arc_id=str(arc_id), snippet_id=snip_id,
                 take_session_id=coach_ok.get(snip_id),
-                slide_index=(_si if isinstance(_si, int)
-                             and not isinstance(_si, bool) else None))
+                slide_index=_slide_or_none(
+                    user_ok[snip_id].get("slide_index")))
             if ok:
                 new += 1
 
