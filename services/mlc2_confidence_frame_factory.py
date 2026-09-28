@@ -168,106 +168,81 @@ def _int_or_none(value: Any) -> Optional[int]:
     return value
 
 
-def build_foundation_frame(
-    event: ConfidenceProducerEvent,
-    *,
-    snippets: Sequence[Mapping[str, Any]],
-) -> ConfidenceSamplingFrame:
-    """A complete, replay-stable sampling frame for one promoted Take."""
-    envelope = event.envelope()
-    manifest = dict(event.payload.get("source_manifest") or {})
-    audio = dict(manifest.get("audio") or {})
-    key = envelope.idempotency_key
-    occurred = envelope.occurred_at.isoformat()
-    object_id = _stable_id(FRAME_VERSION, "object", audio.get("object_key"))
-    object_metadata = {
-        "id": object_id,
-        "bucket": audio.get("bucket"),
-        "object_key": audio.get("object_key"),
-        "sha256": audio.get("sha256"),
-        "byte_size": audio.get("byte_size"),
-        "content_type": audio.get("content_type"),
-    }
-
-    pool: list[dict[str, Any]] = []
-    without_interval = 0
-    for snippet in snippets:
-        snippet_id = str(snippet.get("id") or "")
-        if not snippet_id:
-            continue
-        start = _int_or_none(snippet.get("start_offset_ms"))
-        duration = _int_or_none(snippet.get("duration_ms"))
-        if start is None or duration is None or start < 0 or duration <= 0:
-            # No exact span means no evidence at all, and a candidate without
-            # evidence cannot exist in the frame. Counted, not silently gone.
-            without_interval += 1
-            continue
-        end = start + duration
-        score = stamped_score(snippet.get("metrics"))
-        exclusion: Optional[str] = None
-        if duration < MIN_CLIP_MS:
-            exclusion = "audio_too_short"
-        elif score is None:
-            exclusion = "no_confidence_read"
-        evidence = {
+def _candidate_for_snippet(
+    snippet: Mapping[str, Any], *, key: str, object_metadata: Mapping[str, Any],
+    audio_sha256: Any,
+) -> Optional[dict[str, Any]]:
+    """One candidate, or None when the snippet has no exact span at all."""
+    snippet_id = str(snippet.get("id") or "")
+    start = _int_or_none(snippet.get("start_offset_ms"))
+    duration = _int_or_none(snippet.get("duration_ms"))
+    if not snippet_id or start is None or duration is None \
+            or start < 0 or duration <= 0:
+        return None
+    end = start + duration
+    score = stamped_score(snippet.get("metrics"))
+    exclusion: Optional[str] = None
+    if duration < MIN_CLIP_MS:
+        exclusion = "audio_too_short"
+    elif score is None:
+        exclusion = "no_confidence_read"
+    candidate: dict[str, Any] = {
+        "id": _stable_id(FRAME_VERSION, key, "candidate", snippet_id),
+        "clip_id": snippet_id,
+        "candidate_key": f"snippet:{snippet_id}",
+        "evidence": {
             "id": _stable_id(FRAME_VERSION, key, "evidence", snippet_id),
             "coordinates": {"start_ms": start, "end_ms": end},
             "content_sha256": _sha256_text(
-                EVIDENCE_SCHEMA_VERSION, audio.get("sha256"), start, end
+                EVIDENCE_SCHEMA_VERSION, audio_sha256, start, end
             ),
             "evidence_schema_version": EVIDENCE_SCHEMA_VERSION,
             "object": dict(object_metadata),
+        },
+        "eligible": exclusion is None,
+        "exclusion_reason_code": exclusion,
+        "selected": False,
+        "selection_mode": "excluded" if exclusion else "not_selected",
+        "selection_reason_code": (
+            f"ineligible_{exclusion}" if exclusion else "ranked_not_selected"
+        ),
+        "sampling_probability": 0,
+        "rng_draw_index": None,
+        "score": None,
+        "rank": None,
+    }
+    if exclusion is None and score is not None:
+        stamp = dict((snippet.get("metrics") or {}).get("voice_confidence") or {})
+        candidate["prediction"] = {
+            "id": _stable_id(FRAME_VERSION, key, "prediction", snippet_id),
+            **foundation_prediction(score),
+            "raw_output": {
+                "score": score,
+                "band": band(score),
+                "cues": stamp.get("cues"),
+                "baseline": stamp.get("baseline"),
+                "detector_version": stamp.get("version"),
+            },
+            "output_schema_version": OUTPUT_SCHEMA_VERSION,
         }
-        candidate: dict[str, Any] = {
-            "id": _stable_id(FRAME_VERSION, key, "candidate", snippet_id),
-            "clip_id": snippet_id,
-            "candidate_key": f"snippet:{snippet_id}",
-            "evidence": evidence,
-            "eligible": exclusion is None,
-            "exclusion_reason_code": exclusion,
-            "selected": False,
-            "selection_mode": "excluded" if exclusion else "not_selected",
-            "selection_reason_code": (
-                f"ineligible_{exclusion}" if exclusion else "ranked_not_selected"
-            ),
-            "sampling_probability": 0,
-            "rng_draw_index": None,
-            "score": None,
-            "rank": None,
-        }
-        if exclusion is None and score is not None:
-            read = foundation_prediction(score)
-            stamp = dict((snippet.get("metrics") or {}).get("voice_confidence") or {})
-            candidate["prediction"] = {
-                "id": _stable_id(FRAME_VERSION, key, "prediction", snippet_id),
-                **read,
-                "raw_output": {
-                    "score": score,
-                    "band": band(score),
-                    "cues": stamp.get("cues"),
-                    "baseline": stamp.get("baseline"),
-                    "detector_version": stamp.get("version"),
-                },
-                "output_schema_version": OUTPUT_SCHEMA_VERSION,
-            }
-            candidate["score"] = boundary_distance(score)
-            candidate["_order"] = (candidate["score"], start, snippet_id)
-        pool.append(candidate)
+        candidate["score"] = boundary_distance(score)
+    return candidate
 
-    # The pool's order is part of the hashed frame, so it is the Take's
-    # order (start offset, then id), never the order the rows arrived in.
-    pool.sort(key=lambda c: (c["evidence"]["coordinates"]["start_ms"], c["clip_id"]))
+
+def _rank_and_select(
+    pool: list[dict[str, Any]], *, key: str,
+) -> list[dict[str, Any]]:
+    """Rank the eligible clips boundary-first, select exactly one (K9: the
+    top rank, or a uniform random eligible clip on the fixed 20% draw), and
+    record every draw and inclusion probability. Returns the draws."""
     eligible = [c for c in pool if c["eligible"]]
     if not eligible:
-        raise NoEligibleConfidenceClip(
-            "no eligible confidence clip in this Take"
-        )
-    eligible.sort(key=lambda c: c["_order"])
+        raise NoEligibleConfidenceClip("no eligible confidence clip in this Take")
+    eligible.sort(key=lambda c: (
+        c["score"], c["evidence"]["coordinates"]["start_ms"], c["clip_id"]
+    ))
     for rank, candidate in enumerate(eligible, start=1):
         candidate["rank"] = rank
-    for candidate in pool:
-        candidate.pop("_order", None)
-
     n = len(eligible)
     seed = _sha256_text(SELECTION_POLICY_VERSION, key)
     explore_draw = _draw(seed, 0)
@@ -288,9 +263,50 @@ def build_foundation_frame(
     chosen["selected"] = True
     share = EXPLORATION_PROBABILITY / n
     for candidate in eligible:
-        candidate["sampling_probability"] = round(
-            share + (1.0 - EXPLORATION_PROBABILITY if candidate["rank"] == 1 else 0.0), 9
+        top = 1.0 - EXPLORATION_PROBABILITY if candidate["rank"] == 1 else 0.0
+        candidate["sampling_probability"] = round(share + top, 9)
+    return rng_draws
+
+
+def build_foundation_frame(
+    event: ConfidenceProducerEvent,
+    *,
+    snippets: Sequence[Mapping[str, Any]],
+) -> ConfidenceSamplingFrame:
+    """A complete, replay-stable sampling frame for one promoted Take."""
+    envelope = event.envelope()
+    manifest = dict(event.payload.get("source_manifest") or {})
+    audio = dict(manifest.get("audio") or {})
+    key = envelope.idempotency_key
+    occurred = envelope.occurred_at.isoformat()
+    object_metadata = {
+        "id": _stable_id(FRAME_VERSION, "object", audio.get("object_key")),
+        "bucket": audio.get("bucket"),
+        "object_key": audio.get("object_key"),
+        "sha256": audio.get("sha256"),
+        "byte_size": audio.get("byte_size"),
+        "content_type": audio.get("content_type"),
+    }
+
+    pool: list[dict[str, Any]] = []
+    without_interval = 0
+    for snippet in snippets:
+        candidate = _candidate_for_snippet(
+            snippet, key=key, object_metadata=object_metadata,
+            audio_sha256=audio.get("sha256"),
         )
+        if candidate is None:
+            # No exact span means no evidence at all, and a candidate without
+            # evidence cannot exist in the frame. Counted, not silently gone.
+            without_interval += 1
+            continue
+        pool.append(candidate)
+    # The pool's order is part of the hashed frame, so it is the Take's
+    # order (start offset, then id), never the order the rows arrived in.
+    pool.sort(key=lambda c: (c["evidence"]["coordinates"]["start_ms"], c["clip_id"]))
+    rng_draws = _rank_and_select(pool, key=key)
+    n = sum(1 for c in pool if c["eligible"])
+    seed = _sha256_text(SELECTION_POLICY_VERSION, key)
 
     request_hash = _sha256_text(FRAME_VERSION, key, envelope.take_id, n, len(pool))
     classification_run = {
