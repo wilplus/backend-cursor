@@ -1854,3 +1854,23 @@ no new user-facing string. L1 intact — the phrase annotates a part, it does no
 rebuild Ideal Text.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-28 · WS-F4 · f4-five-states-route-as-themselves · #755
+
+**Closed:** F-4.
+**Contract lines flipped:** `test_each_of_the_five_states_routes_as_itself`
+xfail → passing (the contract's last open line; baseline before 13 passed /
+1 xfailed, after 14 passed / 0 xfailed).
+**Contract lines added:** none.
+**Broke and fixed:** none.
+**Open for the founder:** none. The legacy `PUT …/confidence-agree` route
+still writes `neutral`/`unrateable` by design of its ternary instrument and
+has no frontend caller; retiring it is a separate decision, not a defect.
+
+`album_routing_for` in `services/take_feedback_responses.py` is the one
+derivation and returns the answer itself; the Take-review route calls it.
+`services/practice_adoption.route_matches` reads both vocabularies, because
+rows written before today hold the folded pair and a legacy `neutral` cannot
+say whether it was an in-between or a not-sure. Every reader of the stored
+value tests it against `yes` or uses only the snippet id, so nothing served
+changes.
