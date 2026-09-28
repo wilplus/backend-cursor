@@ -1179,3 +1179,15 @@ SELECT p.proname,
   JOIN pg_namespace n ON n.oid = p.pronamespace
  WHERE n.nspname = 'public'
    AND p.proname = 'accept_phase1_processing_authorization_v2';
+
+-- ── STEP 7 · re-point the coaching rollout (added 2026-09-28) ───────────
+--
+-- Activating a policy does NOT move the MLC-3 coaching rollout, which keeps
+-- requiring the policy it was registered against. After STEP 2 every new
+-- receipt names the new policy, the rollout still names the retired one, and
+-- coaching fails with MLC3_DUAL_PURPOSE_AUTHORITY_REQUIRED for everyone who
+-- re-accepts. It went unnoticed from 2026-09-24 to 2026-09-28.
+--
+-- Run scripts/mlc3_repoint_rollout_to_active_policy.sql right after STEP 6:
+-- its CHECK query first, then its RE-POINT block, then its VERIFY query.
+-- Every future policy publish needs the same step.
