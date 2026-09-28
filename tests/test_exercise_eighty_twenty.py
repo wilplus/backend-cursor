@@ -26,9 +26,11 @@ from tests.test_confident_voice_practice import _snippet, _words
 
 
 def _calm_snippet(**over):
-    """Safe to practise on, but no rush evidence: the gate's last refusal."""
+    """Safe to practise on, but not enough rush evidence: the gate's last
+    refusal. One problem is still spotted (too few pauses), because with
+    nothing spotted no exercise is offered at all (D1, 2026-09-28)."""
     row = _snippet(words=_words(compressed=False), **over)
-    row["metrics"] = {**row["metrics"], "pause_ratio": 0.2, "voiced_ratio": 0.6}
+    row["metrics"] = {**row["metrics"], "pause_ratio": 0.05, "voiced_ratio": 0.6}
     return row
 
 
@@ -37,6 +39,7 @@ def _exercise(exercise_id, editorial=0):
         "exercise_id": exercise_id, "version": 1, "title": exercise_id,
         "instruction": "Do it.", "explanation_video_url": f"https://x/{exercise_id}.mp4",
         "supported_confidence_patterns": ["near_confident"],
+        "acoustic_problem_tags": ["rushing"],
         "matching_criteria": {"editorial_priority": editorial},
     }
 

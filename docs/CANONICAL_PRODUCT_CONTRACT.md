@@ -375,6 +375,18 @@ with this contract, this contract wins.
     and Voice Album admission remain separate provenance. Exercise outcomes
     never train Confidence Classification. A practice recording enters Voice
     Album only through Machine Yes + User Yes + Coach Yes on that exact attempt.
+35g-1. **Exercise fit** (founder 2026-09-28, D1/D5/D5a/D6). An exercise is
+    offered only when a detected problem fired on that exact clip; a clip's
+    confidence level alone never picks one. An exercise names one main target
+    and may list secondary targets. **Exact**: its main target fired.
+    **Trial**: no exercise's main target fired, but one of its secondary
+    targets did; it is shown like any exercise and marked a trial internally so
+    its outcomes can show whether it helps. A trial never competes with an
+    exact fit, not even in the 80/20 exploration slot. Nothing fired, or
+    nothing targets what fired: no exercise, and the item keeps "Let's
+    practice" alone. Fit is a category, never a number, and never reaches the
+    speaker. Among equal fits, the exercise covering more of what fired wins,
+    then the one claiming fewer targets.
 
 ## 6. Coach review and learning lineage
 

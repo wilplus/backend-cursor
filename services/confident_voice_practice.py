@@ -381,19 +381,75 @@ def observed_problem_tags(
 def problem_tag_overlap(observed: Any, exercise: Any) -> int:
     """How many of the clip's observed problems this exercise claims to treat.
 
-    Zero when either side is silent, which is what keeps this change inert for
-    a catalogue that carries no tags: every exercise scores 0 and the original
-    confidence-distance order is preserved exactly.
+    Counts main and secondary targets alike. Ranking no longer reads it — it
+    reads ``exercise_fit`` — but it stays as the plain answer to "does this
+    exercise say it treats anything that fired here".
     """
     if not observed or not isinstance(exercise, dict):
         return 0
-    claimed = exercise.get("acoustic_problem_tags")
-    if not isinstance(claimed, list):
-        return 0
-    return sum(
-        1 for tag in set(claimed)
-        if isinstance(tag, str) and tag in observed
-    )
+    main, secondary = exercise_targets(exercise)
+    return len((main | secondary) & set(observed))
+
+
+#: How close an exercise is to what fired on a clip (founder 2026-09-28,
+#: decisions D1, D5, D5a, D6). A category, never a number, so there is no
+#: closeness figure to leak and anyone can check why an exercise was chosen.
+#:
+#:   exact  the exercise's MAIN target fired on this clip;
+#:   trial  no exercise's main target fired, but this one lists a fired
+#:          problem as a SECONDARY target. Shown like any other exercise; kept
+#:          apart internally so its outcomes can say whether it helps;
+#:   none   nothing it targets fired. Never shown (D1): an exercise with no
+#:          spotted problem behind it is a guess, and a guess is not evidence.
+FIT_EXACT = "exact"
+FIT_TRIAL = "trial"
+_FIT_ORDER = {FIT_EXACT: 0, FIT_TRIAL: 1}
+
+
+def exercise_targets(exercise: Any) -> tuple[frozenset[str], frozenset[str]]:
+    """(main targets, secondary targets) as the exercise's author declared them.
+
+    The author names ONE main target in ``matching_criteria.primary_problem_tag``;
+    every other tag is secondary. An exercise that names none keeps the claim
+    it was written with — every tag is a main target — so the catalogue that
+    exists today routes exactly as it did.
+
+    A main target that is declared but no longer among the tags (a teaching
+    was undone) leaves NO main target, not every tag: the author said the rest
+    were secondary, and promoting them silently would turn trials into exact
+    fits nobody chose.
+    """
+    if not isinstance(exercise, dict):
+        return frozenset(), frozenset()
+    raw = exercise.get("acoustic_problem_tags")
+    tags = frozenset(
+        tag for tag in (raw if isinstance(raw, list) else [])
+        if isinstance(tag, str) and tag)
+    criteria = exercise.get("matching_criteria")
+    primary = (criteria.get("primary_problem_tag")
+               if isinstance(criteria, dict) else None)
+    if not isinstance(primary, str) or not primary:
+        return tags, frozenset()
+    if primary in tags:
+        return frozenset({primary}), tags - {primary}
+    return frozenset(), tags
+
+
+def exercise_fit(observed: Any, exercise: Any) -> Optional[tuple[str, int]]:
+    """(fit, how many fired problems it covers at that fit), or None.
+
+    Exact beats trial whatever the counts: one fired main target outranks any
+    number of fired secondary ones.
+    """
+    fired = set(observed or ())
+    if not fired:
+        return None
+    main, secondary = exercise_targets(exercise)
+    if hits := len(main & fired):
+        return FIT_EXACT, hits
+    if hits := len(secondary & fired):
+        return FIT_TRIAL, hits
+    return None
 
 
 def confidence_pattern_distance(pattern: str, supported: Any) -> Optional[int]:
@@ -413,47 +469,106 @@ def confidence_pattern_distance(pattern: str, supported: Any) -> Optional[int]:
     return min(values) if values else None
 
 
+def _editorial(exercise: dict) -> int:
+    criteria = exercise.get("matching_criteria")
+    return (int(criteria.get("editorial_priority") or 0)
+            if isinstance(criteria, dict) else 0)
+
+
+def _exercise_key(pattern: str, observed_tags: Any,
+                  exercise: dict) -> Optional[tuple]:
+    """The one sort key every lane ranks by, or None when the exercise may not
+    be offered on this clip at all.
+
+    (fit, -covered, claimed, confidence distance, -editorial, id):
+
+    * fit first — exact before trial (D5);
+    * then how many of the clip's fired problems it covers at that fit;
+    * then the SPECIALIST: fewer claimed targets wins a tie. Counting overlap
+      alone let an exercise that claims every problem outrank the one written
+      for the problem that actually fired;
+    * then how well it suits the clip's confidence level, editorial priority,
+      and the id, so the order is total and reproducible.
+    """
+    fit = exercise_fit(observed_tags, exercise)
+    if fit is None:
+        return None
+    distance = confidence_pattern_distance(
+        pattern, exercise.get("supported_confidence_patterns"))
+    if distance is None:
+        return None
+    main, secondary = exercise_targets(exercise)
+    return (_FIT_ORDER[fit[0]], -fit[1], len(main | secondary), distance,
+            -_editorial(exercise), str(exercise.get("exercise_id") or ""))
+
+
+def fit_of_key(key: Any) -> Optional[str]:
+    """The fit a key from ``_exercise_key`` was made at."""
+    if not isinstance(key, tuple) or not key:
+        return None
+    return next((fit for fit, order in _FIT_ORDER.items()
+                 if order == key[0]), None)
+
+
+def matched_exercises(
+    pattern: str, exercises: list[dict], *, observed_tags: Any = None,
+) -> tuple[Optional[str], list[tuple[tuple, dict]]]:
+    """(fit, [(key, exercise), ...] best first) for one clip.
+
+    Only the best fit present is returned (D6): trials fill the gap when no
+    exact fit exists, and never compete with one, not even in the 80/20
+    exploration slot. Nothing fired, or nothing targets what fired, returns
+    (None, []) — no exercise (D1).
+    """
+    keyed = sorted(
+        ((key, exercise) for exercise in exercises
+         if (key := _exercise_key(str(pattern), observed_tags, exercise))
+         is not None),
+        key=lambda item: item[0])
+    if not keyed:
+        return None, []
+    best = keyed[0][0][0]
+    return fit_of_key(keyed[0][0]), [
+        item for item in keyed if item[0][0] == best]
+
+
+def matching_policy_for(fit: Optional[str]) -> str:
+    """The policy version an assignment is frozen under, with its fit.
+
+    One Take's pool is always a single fit (D6), so the fit is a property of
+    the whole assignment and rides on its policy version:
+    ``exercise-fit-tier-v1:trial`` marks every trial ever served. Internal
+    only — the speaker's payload carries the bare version.
+    """
+    return f"{MATCHING_POLICY_VERSION}:{fit}" if fit else MATCHING_POLICY_VERSION
+
+
+def fit_from_policy(policy: Any) -> Optional[str]:
+    """Inverse of ``matching_policy_for``; None for assignments made before
+    fits existed."""
+    text = str(policy or "")
+    prefix = MATCHING_POLICY_VERSION + ":"
+    fit = text[len(prefix):] if text.startswith(prefix) else None
+    return fit if fit in _FIT_ORDER else None
+
+
 def rank_exercises_for_pattern(
     pattern: str, exercises: list[dict], *, observed_tags: Any = None,
 ) -> list[tuple[int, int, str, dict]]:
     """Complete deterministic order for already reviewed active exercises.
 
     ``observed_tags`` is the clip's fired problems (``observed_problem_tags``).
-    It orders the result but does NOT enter the returned tuples, so the shape
-    this returns is unchanged for every caller.
+    Only exercises at the clip's best fit are returned (``matched_exercises``);
+    with nothing fired the list is empty. The tuple shape — (confidence
+    distance, -editorial, id, exercise) — is unchanged for every caller.
 
-    Passing it is not optional in spirit: this ordering must agree with
-    ``attach_exercise_offer`` below, because the practice-start route re-ranks
-    here to decide whether an offer has gone stale. Rank by a different rule in
-    one place and a freshly offered exercise is rejected the moment a speaker
-    taps it.
+    This ordering must agree with the offer lanes below, because the
+    practice-start route re-ranks here to decide whether an offer has gone
+    stale. They all rank through ``matched_exercises`` for that reason.
     """
-    ranked: list[tuple[int, int, str, dict]] = []
-    for exercise in exercises:
-        distance = confidence_pattern_distance(
-            pattern, exercise.get("supported_confidence_patterns")
-        )
-        if distance is None:
-            continue
-        criteria = exercise.get("matching_criteria")
-        editorial = (
-            int(criteria.get("editorial_priority") or 0)
-            if isinstance(criteria, dict)
-            else 0
-        )
-        ranked.append((
-            distance,
-            -editorial,
-            str(exercise.get("exercise_id") or ""),
-            exercise,
-        ))
-    return sorted(
-        ranked,
-        key=lambda item: (
-            -problem_tag_overlap(observed_tags, item[3]),
-            *item[:3],
-        ),
-    )
+    _, matched = matched_exercises(
+        pattern, exercises, observed_tags=observed_tags)
+    return [(key[3], key[4], key[5], exercise) for key, exercise in matched]
 
 
 def reviewed_active_exercises(database: Any) -> list[dict]:
@@ -487,9 +602,18 @@ def rank_exercises_for_clip(
     it in rather than read it twice. It must BE ``reviewed_active_exercises``;
     anything else would rank a different pool than the speaker is offered.
     """
+    _, matched = match_for_clip(verdict, database, exercises=exercises)
+    return [(key[3], key[4], key[5], exercise) for key, exercise in matched]
+
+
+def match_for_clip(
+    verdict: Any, database: Any, *, exercises: Optional[list[dict]] = None,
+) -> tuple[Optional[str], list[tuple[tuple, dict]]]:
+    """``matched_exercises`` for one clip's verdict against the reviewed
+    catalogue: the fit and the keyed pool, best first."""
     pool = (reviewed_active_exercises(database)
             if exercises is None else exercises)
-    return rank_exercises_for_pattern(
+    return matched_exercises(
         str(verdict.get("pattern") or "") if isinstance(verdict, dict) else "",
         pool,
         observed_tags=observed_problem_tags(
@@ -550,7 +674,7 @@ def coach_exercise_order(practice: Any, database: Any) -> list[dict]:
 #: The 80/20 exposure policy (founder 2026-09-26). The frozen draw lives in
 #: `confident_voice_exercise_assignments`; see migration 0372.
 EXPOSURE_POLICY_VERSION = "exercise-80-20-v1"
-MATCHING_POLICY_VERSION = "exercise-proximity-service-v1"
+MATCHING_POLICY_VERSION = "exercise-fit-tier-v1"
 
 #: `exercise_eligibility` refusals that mean THIS CLIP cannot carry practice
 #: at all — too few aligned words, unreliable audio, a verbal problem, no
@@ -598,23 +722,6 @@ def offerable_exercises(database: Any) -> list[dict]:
     return exercises
 
 
-def _exercise_key(verdict: dict, observed_tags: Any,
-                  exercise: dict) -> Optional[tuple[int, int, int, str]]:
-    """(-tag overlap, confidence distance, -editorial, id), or None when the
-    exercise cannot be placed against this clip's pattern."""
-    distance = confidence_pattern_distance(
-        str(verdict.get("pattern") or ""),
-        exercise.get("supported_confidence_patterns"),
-    )
-    if distance is None:
-        return None
-    criteria = exercise.get("matching_criteria")
-    editorial = (int(criteria.get("editorial_priority") or 0)
-                 if isinstance(criteria, dict) else 0)
-    return (-problem_tag_overlap(observed_tags, exercise), distance,
-            -editorial, str(exercise.get("exercise_id") or ""))
-
-
 def _blocked_by_existing(existing: Any, snippet_id: str) -> bool:
     """One exercise per Take: a finished or declined one ends the offer, and
     an open one keeps its original moment (its passage and audio are bound)."""
@@ -627,7 +734,7 @@ def _blocked_by_existing(existing: Any, snippet_id: str) -> bool:
 
 def choose_exercise(ranked: list[dict], *, owner_user_id: str,
                     take_session_id: str, snippet_id: str, lane: str,
-                    database: Any) -> Optional[dict]:
+                    database: Any, fit: Optional[str] = None) -> Optional[dict]:
     """The 80/20 choice among a moment's ranked exercises, frozen once.
 
     The database draws and stores it (migration 0372), so every later read
@@ -647,7 +754,7 @@ def choose_exercise(ranked: list[dict], *, owner_user_id: str,
             take_session_id=str(take_session_id),
             snippet_id=str(snippet_id),
             lane=lane,
-            matching_policy_version=MATCHING_POLICY_VERSION,
+            matching_policy_version=matching_policy_for(fit),
             candidates=[{
                 "exercise_id": str(item.get("exercise_id") or ""),
                 "version": int(item.get("version") or 1),
@@ -748,7 +855,7 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
         database.get_snippets_by_session(take_session_id) or [])
     # Read the library ONCE for the whole take, not per candidate clip.
     vocabulary = detected_problem_vocabulary(database)
-    # (-tag overlap, confidence distance, -editorial, -priority, id, index)
+    # (fit, -covered, claimed, distance, -editorial, -priority, id, index)
     ranked: list[tuple[tuple, dict, dict, dict, dict]] = []
     for index, row in enumerate(candidates):
         snippet = by_id.get(str(row.get("snippet_id")))
@@ -763,27 +870,30 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
         )
         if not verdict.get("eligible"):
             continue
-        # WHAT WENT WRONG, not just how confident it sounded. The overlap
-        # leads the sort key, so an exercise that treats this clip's actual
+        # WHAT WENT WRONG, not just how confident it sounded. The fit leads
+        # the sort key, so an exercise that treats this clip's actual
         # problems beats one that merely suits its confidence level.
-        observed_tags = observed_problem_tags(verdict, vocabulary=vocabulary)
-        for exercise in exercises:
-            key = _exercise_key(verdict, observed_tags, exercise)
-            if key is not None:
-                ranked.append((
-                    (*key[:3], -int(verdict.get("priority") or 0), key[3],
-                     index),
-                    row, snippet, verdict, exercise,
-                ))
+        _, matched = matched_exercises(
+            str(verdict.get("pattern") or ""), exercises,
+            observed_tags=observed_problem_tags(
+                verdict, vocabulary=vocabulary))
+        for key, exercise in matched:
+            ranked.append((
+                (*key[:5], -int(verdict.get("priority") or 0), key[5],
+                 index),
+                row, snippet, verdict, exercise,
+            ))
     if not ranked:
         return rows
     ranked.sort(key=lambda item: item[0])
-    _, chosen, snippet, verdict, _ = ranked[0]
+    top, chosen, snippet, verdict, _ = ranked[0]
+    # Each moment's list is already a single fit; the chosen moment's is the
+    # best fit on offer anywhere in the Take.
     moment = [item[4] for item in ranked if item[1] is chosen]
     served = choose_exercise(
         moment, owner_user_id=owner_user_id, take_session_id=take_session_id,
         snippet_id=str(chosen.get("snippet_id")), lane="legacy_offer",
-        database=database)
+        database=database, fit=fit_of_key(top))
     if served is None:
         return rows
     chosen["practice_exercise"] = _offer_payload(
@@ -829,19 +939,20 @@ def attach_v3_exercise_offer(
             database.get_snippets_by_session(take_session_id) or []))
     if not clip_can_carry_exercise(verdict):
         return rows
-    observed_tags = observed_problem_tags(
-        verdict, vocabulary=detected_problem_vocabulary(database))
-    keyed = [(key, exercise) for exercise in exercises
-             if (key := _exercise_key(verdict, observed_tags, exercise))
-             is not None]
+    # Nothing spotted on this clip, or nothing in the catalogue targets what
+    # was: the item is served exactly as V3 made it — "Let's practice" with
+    # no exercise (D1). The clip's confidence level alone never picks one.
+    fit, keyed = matched_exercises(
+        str(verdict.get("pattern") or ""), exercises,
+        observed_tags=observed_problem_tags(
+            verdict, vocabulary=detected_problem_vocabulary(database)))
     evidence = ground(target) if keyed else None
     if not isinstance(evidence, dict):
         return rows
-    keyed.sort(key=lambda item: item[0])
     exercise = choose_exercise(
         [item[1] for item in keyed], owner_user_id=owner_user_id,
         take_session_id=take_session_id, snippet_id=snippet_id,
-        lane="v3_exercise_block", database=database)
+        lane="v3_exercise_block", database=database, fit=fit)
     if exercise is None:
         return rows
     target["evidence"] = evidence
@@ -883,18 +994,23 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
             "matching_policy_version": MATCHING_POLICY_VERSION,
             "exposure_policy_version": EXPOSURE_POLICY_VERSION,
             "exercise_assignment_id": str(assignment.get("id") or ""),
+            # Stored with the practice (machine_assessment), never returned
+            # to the speaker: which practices were trials.
+            "exercise_fit": fit_from_policy(
+                assignment.get("matching_policy_version")),
         }
     if not verdict.get("eligible"):
         return "NOT_ELIGIBLE", verdict, None
-    ranked_exercises = rank_exercises_for_clip(verdict, database)
-    if not ranked_exercises:
+    fit, matched = match_for_clip(verdict, database)
+    if not matched:
         return "NOT_MATCHABLE", verdict, None
-    pattern_distance, _, _, best_exercise = ranked_exercises[0]
+    best_key, best_exercise = matched[0]
     if str(best_exercise.get("exercise_id")) != str(exercise_id):
         return "EXERCISE_OFFER_STALE", verdict, None
     return None, verdict, {
-        "pattern_distance": pattern_distance,
+        "pattern_distance": best_key[3],
         "matching_policy_version": MATCHING_POLICY_VERSION,
+        "exercise_fit": fit,
     }
 
 

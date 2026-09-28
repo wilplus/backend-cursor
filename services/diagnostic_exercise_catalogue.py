@@ -182,6 +182,18 @@ def _targeting(fields: dict, database: Any) -> dict:
         else:
             raise CatalogueRefusal(f"{key}: must be an object")
 
+    # THE MAIN TARGET (founder 2026-09-28, D5/D5a). One tag the exercise is
+    # written FOR; every other tag becomes a secondary target, which can only
+    # ever serve it as a trial. Optional: an exercise that names none keeps
+    # every tag as a main target, as before.
+    primary = row["matching_criteria"].get("primary_problem_tag")
+    if primary is not None and (not isinstance(primary, str)
+                                or primary not in tags):
+        raise CatalogueRefusal(
+            "matching_criteria.primary_problem_tag: must be one of this "
+            "exercise's own acoustic_problem_tags — a main target it does not "
+            "claim would make it the exact fit for nothing")
+
     version = fields.get("version", 1)
     if not isinstance(version, int) or isinstance(version, bool) or version < 1:
         raise CatalogueRefusal("version: must be a whole number above zero")

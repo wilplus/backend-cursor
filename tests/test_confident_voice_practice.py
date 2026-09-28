@@ -134,6 +134,10 @@ class _Db:
             "introduction_copy": cvp.INTRO_NEAR,
             "confident_introduction_copy": cvp.INTRO_CONFIDENT,
             "explanation_video_url": "https://example.com/coach.mp4",
+            # The seed row's claim (add_confident_voice_practice.sql). Without
+            # tags an exercise is never offered (D1, 2026-09-28).
+            "acoustic_problem_tags": [
+                "rushing", "word_compression", "ending_compression"],
         }
         if self.supported_patterns is not None:
             row["supported_confidence_patterns"] = self.supported_patterns
@@ -199,9 +203,11 @@ class ManagerTests(unittest.TestCase):
         offer = next(row["practice_exercise"] for row in rows
                      if "practice_exercise" in row)
         self.assertEqual(offer["pattern_distance"], 1)
+        # The bare version: whether this was a trial never reaches the
+        # speaker's payload.
         self.assertEqual(
             offer["matching_policy_version"],
-            "exercise-proximity-service-v1",
+            "exercise-fit-tier-v1",
         )
 
     def test_offer_carries_answer_specific_framing(self):
@@ -434,6 +440,32 @@ class PersistenceAndJourneyFenceTests(unittest.TestCase):
         # Once per take is the library default, which is the budget already.
         self.assertEqual(row["matching_criteria"]["max_per_take"], 1)
 
+    def test_a_main_target_must_be_one_of_the_exercise_s_own_tags(self):
+        from services import diagnostic_exercise_catalogue as cat
+
+        class _Db:
+            def list_speaking_errors(self):
+                return [{"error_id": e, "status": "detected"}
+                        for e in ("ending_compression", "rushing")]
+
+            def upsert_diagnostic_exercise(self, row):
+                return row
+
+        base = {
+            "title": "Land the last word",
+            "explanation_video_url": "https://example.com/v.mp4",
+            "acoustic_problem_tags": ["ending_compression", "rushing"],
+        }
+        for bad in ("word_compression", 7):
+            with self.assertRaises(cat.CatalogueRefusal):
+                cat.file_coach_exercise(_Db(), practice_id="p1", fields={
+                    **base, "matching_criteria": {"primary_problem_tag": bad}})
+        row = cat.file_coach_exercise(_Db(), practice_id="p1", fields={
+            **base,
+            "matching_criteria": {"primary_problem_tag": "ending_compression"}})
+        self.assertEqual(row["matching_criteria"]["primary_problem_tag"],
+                         "ending_compression")
+
     def test_a_drafted_exercise_still_needs_its_video(self):
         """The library has always required one; this path used to treat it as
         optional, so a coach could file something with nothing to show."""
@@ -538,16 +570,22 @@ class ExerciseRankingTests(unittest.TestCase):
         )
         self.assertEqual(ranked[0][3]["exercise_id"], "treats-the-problem")
 
-    def test_without_tags_the_original_confidence_order_is_untouched(self):
-        # The inertness guarantee: a catalogue with no tags ranks exactly as it
-        # did before this change, so shipping it changes nothing on its own.
-        near = self._exercise("near", ["near_confident"])
-        far = self._exercise("far", ["confident"])
+    def test_nothing_spotted_means_no_exercise(self):
+        # D1 (founder 2026-09-28). This used to fall back to the confidence
+        # order, so a clip with no spotted problem still got an exercise.
+        near = self._exercise("near", ["near_confident"], ["rushing"])
+        far = self._exercise("far", ["confident"], ["rushing"])
         for observed in (None, frozenset()):
-            ranked = cvp.rank_exercises_for_pattern(
-                "near_confident", [far, near], observed_tags=observed)
-            self.assertEqual(
-                [row[3]["exercise_id"] for row in ranked], ["near", "far"])
+            self.assertEqual(cvp.rank_exercises_for_pattern(
+                "near_confident", [far, near], observed_tags=observed), [])
+
+    def test_an_exercise_that_targets_nothing_that_fired_is_never_offered(self):
+        tagless = self._exercise("tagless", ["near_confident"])
+        elsewhere = self._exercise(
+            "elsewhere", ["near_confident"], ["word_compression"])
+        self.assertEqual(cvp.rank_exercises_for_pattern(
+            "near_confident", [tagless, elsewhere],
+            observed_tags=frozenset({"rushing"})), [])
 
     def test_more_of_the_clip_s_problems_treated_wins(self):
         one = self._exercise("one", ["near_confident"], ["rushing"])
@@ -579,21 +617,10 @@ class ExerciseRankingTests(unittest.TestCase):
             "near_confident", exercises, observed_tags=observed,
         )[0][3]["exercise_id"]
 
-        # What the offer path computes, using its own sort key shape.
-        offer_ranked = sorted(
-            (
-                -cvp.problem_tag_overlap(observed, exercise),
-                cvp.confidence_pattern_distance(
-                    "near_confident",
-                    exercise.get("supported_confidence_patterns"),
-                ),
-                -int(exercise["matching_criteria"]["editorial_priority"]),
-                -3,
-                str(exercise["exercise_id"]),
-            )
-            for exercise in exercises
-        )
-        self.assertEqual(offer_ranked[0][4], start_best)
+        # What both offer lanes compute.
+        _, offered = cvp.matched_exercises(
+            "near_confident", exercises, observed_tags=observed)
+        self.assertEqual(offered[0][1]["exercise_id"], start_best)
 
 
 class SpeakingErrorLibraryTests(unittest.TestCase):
@@ -805,11 +832,12 @@ class CoachExerciseOrderTests(unittest.TestCase):
         # The matcher drops it, which is right for an offer; a coach choosing
         # by hand must still see everything the library holds.
         db = _CatalogueDb([
-            self._exercise("a-unplaceable", ["not_a_pattern"]),
-            self._exercise("b-placed", ["near_confident"]),
+            self._exercise("a-unplaceable", ["not_a_pattern"], ["rushing"]),
+            self._exercise("b-placed", ["near_confident"], ["rushing"]),
         ])
         self.assertEqual(
-            self._ids(cvp.coach_exercise_order(self._practice(), db)),
+            self._ids(cvp.coach_exercise_order(
+                self._practice(insufficient_pauses=True), db)),
             ["b-placed", "a-unplaceable"])
 
     def test_nothing_unpublished_is_listed(self):
@@ -848,3 +876,181 @@ class CoachExerciseOrderTests(unittest.TestCase):
                        source.index("for active in coach_exercise_order")]
         for leaked in ("distance", "overlap", "rank", "score", "priority"):
             self.assertNotIn(leaked, block)
+
+class ExerciseFitTests(unittest.TestCase):
+    """Exact, trial, none (founder 2026-09-28: D1, D5, D5a, D6)."""
+
+    def _exercise(self, exercise_id, tags, primary=None,
+                  patterns=("near_confident",)):
+        criteria = {"editorial_priority": 0}
+        if primary is not None:
+            criteria["primary_problem_tag"] = primary
+        return {
+            "exercise_id": exercise_id,
+            "supported_confidence_patterns": list(patterns),
+            "acoustic_problem_tags": list(tags),
+            "matching_criteria": criteria,
+        }
+
+    def _rank(self, exercises, *fired):
+        return cvp.matched_exercises(
+            "near_confident", exercises, observed_tags=frozenset(fired))
+
+    def test_undeclared_main_target_keeps_every_tag_a_main_target(self):
+        legacy = self._exercise("legacy", ["rushing", "ending_compression"])
+        self.assertEqual(
+            cvp.exercise_targets(legacy),
+            (frozenset({"rushing", "ending_compression"}), frozenset()))
+        self.assertEqual(cvp.exercise_fit({"rushing"}, legacy),
+                         (cvp.FIT_EXACT, 1))
+
+    def test_declared_main_target_makes_the_rest_secondary(self):
+        ex = self._exercise("land-the-ending",
+                            ["ending_compression", "rushing"],
+                            primary="ending_compression")
+        self.assertEqual(cvp.exercise_fit({"ending_compression"}, ex),
+                         (cvp.FIT_EXACT, 1))
+        self.assertEqual(cvp.exercise_fit({"rushing"}, ex),
+                         (cvp.FIT_TRIAL, 1))
+        self.assertIsNone(cvp.exercise_fit({"word_compression"}, ex))
+
+    def test_an_undone_main_target_promotes_nothing(self):
+        # The teaching that added the main target was undone: the author
+        # still said the rest were secondary, so they stay trials.
+        ex = self._exercise("orphan", ["rushing"], primary="ending_compression")
+        self.assertEqual(cvp.exercise_targets(ex),
+                         (frozenset(), frozenset({"rushing"})))
+        self.assertEqual(cvp.exercise_fit({"rushing"}, ex), (cvp.FIT_TRIAL, 1))
+
+    def test_a_trial_is_offered_when_no_exact_fit_exists(self):
+        trial = self._exercise("room-to-follow", ["word_compression", "rushing"],
+                               primary="word_compression")
+        fit, matched = self._rank([trial], "rushing")
+        self.assertEqual(fit, cvp.FIT_TRIAL)
+        self.assertEqual([m[1]["exercise_id"] for m in matched],
+                         ["room-to-follow"])
+
+    def test_a_trial_never_competes_with_an_exact_fit(self):
+        # D6: not even in the 80/20 exploration slot, so it is not in the
+        # pool at all.
+        exact = self._exercise("exact", ["rushing"], primary="rushing")
+        trial = self._exercise("trial", ["word_compression", "rushing"],
+                               primary="word_compression")
+        fit, matched = self._rank([trial, exact], "rushing")
+        self.assertEqual(fit, cvp.FIT_EXACT)
+        self.assertEqual([m[1]["exercise_id"] for m in matched], ["exact"])
+
+    def test_one_main_hit_beats_any_number_of_secondary_hits(self):
+        exact = self._exercise("exact", ["rushing"], primary="rushing")
+        broad = self._exercise(
+            "broad", ["word_compression", "rushing", "ending_compression"],
+            primary="word_compression")
+        fit, matched = self._rank([broad, exact],
+                                  "rushing", "ending_compression")
+        self.assertEqual(fit, cvp.FIT_EXACT)
+        self.assertEqual(matched[0][1]["exercise_id"], "exact")
+
+    def test_the_specialist_beats_the_generalist_on_the_same_problem(self):
+        # Counting overlap alone ranked these equal, and the id broke the
+        # tie; the one written for the problem that fired must win.
+        generalist = self._exercise(
+            "a-generalist", ["rushing", "word_compression", "ending_compression"])
+        specialist = self._exercise("b-specialist", ["ending_compression"])
+        _, matched = self._rank([generalist, specialist], "ending_compression")
+        self.assertEqual([m[1]["exercise_id"] for m in matched],
+                         ["b-specialist", "a-generalist"])
+
+    def test_covering_more_of_what_fired_still_beats_specialising(self):
+        generalist = self._exercise("a", ["rushing", "ending_compression"])
+        specialist = self._exercise("b", ["ending_compression"])
+        _, matched = self._rank([specialist, generalist],
+                                "rushing", "ending_compression")
+        self.assertEqual(matched[0][1]["exercise_id"], "a")
+
+    def test_the_fit_rides_on_the_assignment_policy_and_back(self):
+        for fit in (cvp.FIT_EXACT, cvp.FIT_TRIAL):
+            self.assertEqual(
+                cvp.fit_from_policy(cvp.matching_policy_for(fit)), fit)
+        self.assertIsNone(cvp.fit_from_policy("exercise-proximity-service-v1"))
+        self.assertEqual(cvp.matching_policy_for(None),
+                         cvp.MATCHING_POLICY_VERSION)
+
+
+class V3ExerciseFitTests(unittest.TestCase):
+    """The V3 lane under D1/D5/D6, end to end through the 80/20 call."""
+
+    class _Db(_Db):
+        def __init__(self, rows, signals):
+            super().__init__()
+            self._rows = rows
+            self.snippets["snippet-a"] = _snippet(id="snippet-a")
+            self._signals = signals
+            self.assigned = []
+
+        def list_diagnostic_exercises(self):
+            return [{"exercise_id": r["exercise_id"]} for r in self._rows]
+
+        def get_active_diagnostic_exercise(self, exercise_id):
+            return next((dict(r) for r in self._rows
+                         if r["exercise_id"] == exercise_id), None)
+
+        def list_speaking_errors(self):
+            return [{"error_id": e, "status": "detected"} for e in
+                    ("rushing", "word_compression", "ending_compression")]
+
+        def assign_confident_voice_exercise(self, **kwargs):
+            self.assigned.append(kwargs)
+            return {"selected_exercise_id": kwargs["candidates"][0]["exercise_id"]}
+
+        def completed_exercise_before(self, *_args):
+            return False
+
+    def _row(self, exercise_id, tags, primary=None):
+        criteria = {} if primary is None else {"primary_problem_tag": primary}
+        return {"exercise_id": exercise_id, "version": 1, "title": exercise_id,
+                "instruction": "", "introduction_copy": "",
+                "explanation_video_url": "https://cdn.example/x.mp4",
+                "acoustic_problem_tags": tags, "matching_criteria": criteria,
+                "supported_confidence_patterns": [
+                    "low_confidence_rushing_dominant", "near_confident",
+                    "confident"]}
+
+    def _offer(self, db, fired):
+        target = {"source": "confident_voice", "bookmark_tier": "exercise",
+                  "snippet_id": "snippet-a"}
+        verdict = {"eligible": True, "pattern": "near_confident",
+                   "priority": 3, "signals": fired, "snapshot": {}}
+        original = cvp.exercise_eligibility
+        cvp.exercise_eligibility = lambda *_a, **_k: verdict
+        try:
+            rows = cvp.attach_v3_exercise_offer(
+                [target], take_session_id="take-1", owner_user_id="owner-1",
+                database=db, ground=lambda _row: {"slide_index": 0})
+        finally:
+            cvp.exercise_eligibility = original
+        return rows[0].get("practice_exercise")
+
+    def test_nothing_spotted_serves_no_exercise(self):
+        db = self._Db([self._row("any", ["rushing"])], {})
+        self.assertIsNone(self._offer(db, {}))
+        self.assertEqual(db.assigned, [])
+
+    def test_a_trial_is_frozen_as_a_trial_and_the_speaker_never_sees_it(self):
+        db = self._Db([self._row("room", ["word_compression", "rushing"],
+                                 primary="word_compression")], {})
+        offer = self._offer(db, {"insufficient_pauses": True})
+        self.assertEqual(offer["exercise_id"], "room")
+        self.assertEqual(db.assigned[0]["matching_policy_version"],
+                         "exercise-fit-tier-v1:trial")
+        self.assertNotIn("trial", repr(offer))
+
+    def test_an_exact_fit_is_frozen_as_exact(self):
+        db = self._Db([self._row("exact", ["rushing"], primary="rushing"),
+                       self._row("trial", ["word_compression", "rushing"],
+                                 primary="word_compression")], {})
+        offer = self._offer(db, {"insufficient_pauses": True})
+        self.assertEqual(offer["exercise_id"], "exact")
+        self.assertEqual(db.assigned[0]["matching_policy_version"],
+                         "exercise-fit-tier-v1:exact")
+        self.assertEqual([c["exercise_id"] for c in db.assigned[0]["candidates"]],
+                         ["exact"])
