@@ -361,9 +361,17 @@ with this contract, this contract wins.
     commitment and draw, the policy version and the selected version, once per
     (Take, moment), and never rerandomizes on refresh or retry
     (`exercise-80-20-v1`, migration 0372). Using the outcomes as evaluation
-    evidence still needs the endpoint, horizon and missing-data contract; until
-    then they are raw evidence only, and no dataset, training or promotion path
-    reads them.
+    evidence follows label specification `exercise-adequacy-label-v1`
+    (founder 2026-09-28; docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5): an
+    exercise helped when the problems it targeted no longer fire on the last
+    valid same-passage attempt; first exposures only; an unattempted exercise
+    is excluded, never a failure, with the attempt rate always reported; a
+    learned ranking may replace the fixed one only after 300 attempts (30 per
+    exercise), a gain of at least 5 points on held-out speakers, an attempt
+    rate no more than 5 points lower, and founder approval. An exposure
+    exists only once the client confirms the exercise rendered; until that
+    event exists, outcomes are raw evidence only, and no dataset, training or
+    promotion path reads them.
 35d. The user is shown which exact exercise version was assigned and its prior
     use, so the product does not unknowingly repeat it. One practice session may
     contain at most three same-passage Recording Attempts. Practice attempts are
