@@ -51,6 +51,7 @@ from services.coach_moment_errors import (
 )
 # Module level, because the packet SHAPER uses them and it is module level too
 # — the blind rules belong beside the row they gate, not inside one route.
+from services.practice_more_confident import record_after_coach_decision
 from services.coach_blind_gate import (
     has_committed_blind_label,
     reveal_owner_answer_after_commit,
@@ -1675,6 +1676,8 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
                 "code": "V2_ERROR",
                 "error": "Could not save the selected recording judgment.",
             }), 500
+        record_after_coach_decision(
+            db, str(practice.get("id")), selected_attempt_id)
     updated = db.update_confident_voice_practice(
         str(practice.get("id")), None, patch)
     if not updated:

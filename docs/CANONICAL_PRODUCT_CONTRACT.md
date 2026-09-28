@@ -418,6 +418,18 @@ with this contract, this contract wins.
     safe match. Sharing is a separate act and only an exercise can be shared;
     a shared exercise then rides on that same item for the speaker. Once the
     library itself fits the moment, the matched exercise is what is served.
+35g-3. **Did the practice sound more confident?** (founder 2026-09-28,
+    option A; rule `exercise-more-confident-v1`, migration 0388.) For each
+    practice session, the attempt the coach judged is recorded as **helped**
+    when its voice-confidence composite is higher than the original clip's
+    (any increase) **and** the coach answered "Do you find it more confident?"
+    Yes; **not helped** when either says no; **pending** while either is
+    missing. The speaker's own answer is not part of it. It is internal: never
+    shown to a speaker or a coach, and never a label. The machine leg and the
+    coach leg keep their own provenance (clause 31). It is a separate reading
+    from `exercise-adequacy-label-v1` (the design's §3.5), which stays the
+    only label specification and is unchanged; nothing about either feeds
+    back into which exercise is shown or how often (35c).
 35g-3. **A pattern is tested silently first** (founder 2026-09-28, D2, D3).
     Between observed (a person named it) and detected (it routes exercises)
     sits shadow: a detector runs on real Takes and its verdicts are logged,
