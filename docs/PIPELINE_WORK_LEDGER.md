@@ -1853,3 +1853,33 @@ no new user-facing string. L1 intact — the phrase annotates a part, it does no
 rebuild Ideal Text.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-28 · WS-G6 · g6-confidence-frame-factory · #(pending)
+
+**Closed:** G-6's missing piece: the worker's `frame_factory` and the chain
+that runs it (`services/mlc2_confidence_frame_factory.py`). G-6 itself stays
+open until the founder flips `MLC2_CONFIDENCE_CUTOVER_MODE` to
+`founder_canary` after readiness, which is the authorization step and not
+this PR's to take.
+**Contract lines flipped:** none.
+**Contract lines added:** none in `test_f1_loop_contract.py`; the module's
+own suite is `tests/test_mlc2_confidence_frame_factory.py` (28 cases), and
+`test_mlc2_legacy_isolation.py` allowlists the module by name.
+**Broke and fixed:** none.
+**Open for the founder:** two, both before activation, neither blocking this
+merge. (1) The end-to-end rehearsal (promote under founder_canary on a
+disposable lane → worker → `finalize_mlc2_confidence_frame_v1` → a D5 blind
+packet with the transcript and prediction absent) is the next PR and the
+activation evidence; this PR proves the frame against the contract's own
+validator only. (2) `MIN_CLIP_MS = 1000` and the boundary-first ranking are
+this PR's reading of contract K9; say if the first blind batches should
+weight the random slice higher than 20% while the pool is small.
+
+What a coach can now be asked. Under `dark` nothing changes: no outbox event
+is written, the boot line says `confidence producer dark: not started`, a
+sweep tick returns without touching the broker. Under `founder_canary`, the
+Take's snippets become candidates on the Take's own R2 audio object with
+exact spans, the foundation detector's stamped score becomes a three-class
+prediction, one clip per Take is selected (boundary-first, 20% random, every
+draw recorded), and the D5 batch can build a blind packet from the stored
+span because the evidence coordinates are the lineage's own offsets.

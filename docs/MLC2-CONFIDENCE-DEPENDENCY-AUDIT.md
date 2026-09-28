@@ -139,6 +139,35 @@ The mode remains literal `dark`. No environment value can activate it. The SQL
 rehearsal invokes the dark RPCs directly inside a disposable transaction; that
 proves the cutover contract without activating a producer in any app process.
 
+### The frame factory and the worker's chain (G-6, 2026-09-28)
+
+The audit of 2026-09-22 found the one missing piece between a promoted Take
+and a recordable blind judgment: the worker's `frame_factory` was a
+placeholder and nothing ran the worker. `services.mlc2_confidence_frame_factory`
+now supplies both, with the mode unchanged:
+
+- `build_foundation_frame` turns one claimed outbox event plus the Take's
+  snippet rows into a `ConfidenceSamplingFrame`: one candidate per snippet,
+  each an exact span (`start_offset_ms` to `start_offset_ms + duration_ms`)
+  of the Take's own R2 audio object from the source manifest, which is the
+  identity `exercise_evidence_matches_audio_v1` compares against an exercise
+  audio lineage. The prediction is the production foundation detector
+  (`voice-confidence-universal-v3`, `assignment_origin = foundation`) read as
+  yes / in_between / no at its own ±0.5 band edges; the selection is contract
+  K9's boundary pick with the fixed 20% random slice, every draw recorded.
+  The frame is a pure function of the event and the snippets, so a replay
+  satisfies the finalizer's idempotency check.
+- `sweep_confidence_outbox` claims, builds and finalizes; it re-checks the
+  cutover mode on every tick and re-arms only while it owns its own lease
+  key. `worker.py` prints one boot line naming the resolved mode; in `dark`
+  it starts nothing and touches no broker key.
+- Legacy learning objects remain unreadable from this module (the isolation
+  guard covers every `mlc2_*.py`), and no route or product service imports it.
+
+Activation is still the reviewed change of `MLC2_CONFIDENCE_CUTOVER_MODE` to
+`founder_canary`, gated by the readiness report; this section adds the code
+path that change needs and nothing that runs before it.
+
 ## Tests required before Slice 3 acceptance
 
 - SQL contract tests for exact surface/stage/family semantics, provider-neutral
