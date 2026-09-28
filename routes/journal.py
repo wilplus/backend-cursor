@@ -845,6 +845,21 @@ def journal_image_delete():
 #     anywhere. That is the failure this whole library exists to prevent.
 
 
+@journal_bp.route("/v2/internal/journal/exercise-gaps", methods=["POST"])
+def journal_admin_exercise_gaps():
+    """The CMS gap view (founder 2026-09-28): each pattern, how often it was
+    spotted on exercise moments, and which exercises cover it — gaps first.
+    Body { password, days? } (1–90, default 30). Read-only.
+    200 { days, patterns, nothing_spotted_open_requests, unavailable } · 401 · 503
+
+    The work is services/exercise_gaps.py's."""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    from services.exercise_gaps import gap_view
+    return jsonify(gap_view(db, days=_body().get("days"))), 200
+
+
 @journal_bp.route("/v2/internal/journal/speaking-errors/list",
                   methods=["POST"])
 def journal_admin_list_speaking_errors():
