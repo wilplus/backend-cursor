@@ -14639,6 +14639,22 @@ class DatabaseService:
             "assign_confident_voice_exercise_v1", params).execute()
         return self._rpc_row(result.data)
 
+    def get_exercise_match_trace(self, assignment_id: str) -> Optional[dict]:
+        """The match trace frozen with one assignment (migration 0384), or
+        None — also for an assignment drawn before traces existed."""
+        if not assignment_id:
+            return None
+        try:
+            res = (self.client.table("confident_voice_exercise_match_traces")
+                   .select("trace,trace_sha256,created_at")
+                   .eq("assignment_id", str(assignment_id))
+                   .limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_exercise_match_trace failed asg=%s: %s",
+                           assignment_id, e)
+            return None
+
     def list_match_trace_tags(self, since: str) -> list[list[str]]:
         """The patterns that fired on each exercise moment traced since
         `since` (migration 0384): one list per assignment. Raises on

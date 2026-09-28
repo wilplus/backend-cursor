@@ -149,6 +149,43 @@ Response `200`:
 - This is an internal CMS screen, so numbers are fine here. It never goes
   anywhere near a speaker.
 
+## 5. Coach: what the machine picked and why (step 6)
+
+These fields appear only in coach payloads that are already behind the blind
+rating.
+
+**`GET /confidence-practice` → `practice.machine_pick`**, or `null` when the
+moment had no automatic pick (a coach-shared exercise, or an older Take):
+```
+{"exercise_id", "version",
+ "fit": "exact" | "trial" | null,
+ "how_chosen": "best_match" | "trying_another" | "only_match",
+ "traced": bool,
+ "spotted": [{"error_id", "label"}],
+ "candidates": [{"exercise_id",
+                 "outcome": "ranked" | "excluded",
+                 "reason": null | "nothing_spotted" | "targets_nothing_that_fired"
+                         | "confidence_level_unplaceable" | "lower_fit_than_pool",
+                 "rank", "fit", "main_targets", "secondary_targets"}],
+ "rules_version"}
+```
+
+**`GET /exercise-request` → `request.candidates`**: the same candidate
+rows, showing why nothing fitted.
+
+Notes:
+- `trying_another` means the 80/20 draw picked a lower-ranked exercise on
+  purpose, to learn whether it helps.
+- A trial here is shown to the coach openly: it's their view, not the
+  speaker's.
+- `traced: false` means the pick is older than the saved reasons. Say that
+  the reasons weren't recorded, rather than showing an empty list.
+- Never shown, not even to the coach: the machine's confidence read of the
+  clip and the raw measurements.
+- Suggested UI: "Machine picked X (exact fit, best match) because it
+  spotted Rushing", with a fold-out listing the other exercises and why
+  each wasn't picked. The coach's existing choice controls stay as they are.
+
 ## Fences
 
 - The speaker never sees scores, ranks, distances, the fit type, or "trial".
