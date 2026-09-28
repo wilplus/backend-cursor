@@ -321,3 +321,60 @@ class TheReadoutTakesRowsTheCallerAlreadyHasTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheCoachReviewOpensWithFewerReadsTests(unittest.TestCase):
+    """Founder 2026-09-26: the coach review "is just very long"."""
+
+    def test_the_stars_route_reads_snippets_once_for_every_take(self):
+        from unittest.mock import MagicMock, patch
+
+        fake = MagicMock()
+        fake.get_snippets_by_sessions.return_value = {
+            "t1": [{"id": "a", "audio_ref": "https://x/a", "transcript": "hi"},
+                   {"id": "z"}],
+            "t2": [{"id": "b", "storage_path": "https://x/b",
+                    "transcript_excerpt": "yo"}]}
+        with patch.object(v2_coach, "db", fake), \
+                patch("services.audio_ref_resolver.resolve_playable_ref",
+                      side_effect=lambda ref: ref):
+            out = v2_coach._star_playback_by_snippet(
+                [{"id": "t1", "take_index": 1}, {"id": "t2", "take_index": 2}],
+                {"a", "b"})
+        self.assertEqual(fake.get_snippets_by_sessions.call_count, 1)
+        fake.get_snippets_by_session.assert_not_called()
+        self.assertEqual(sorted(out), ["a", "b"])
+        self.assertEqual(out["a"]["audio_ref"], "https://x/a")
+        self.assertEqual(out["b"]["audio_ref"], "https://x/b")
+        self.assertEqual(out["b"]["transcript"], "yo")
+        self.assertEqual(out["b"]["take_index"], 2)
+
+    def test_the_coach_readout_skips_the_published_feedback_read(self):
+        from unittest.mock import patch
+
+        with patch("services.lab_recording.build_readout_from_session",
+                   return_value={"snippets": []}) as build:
+            v2_coach._coach_session_readout("s1", [], {"id": "s1"})
+        self.assertIs(build.call_args.kwargs["include_insights"], False)
+
+    def test_re_reads_are_fetched_in_one_batch_and_handed_in(self):
+        from unittest.mock import MagicMock, patch
+
+        fake = MagicMock()
+        fake.takes.get_read_sessions_for.return_value = [
+            {"id": "r1"}, {"id": "r2"}]
+        fake.get_snippets_by_sessions.return_value = {
+            "r1": [{"id": "a"}], "r2": [{"id": "b"}]}
+        with patch.object(v2_coach, "db", fake), \
+                patch("services.lab_recording.build_readout_from_session",
+                      return_value={"snippets": []}) as build, \
+                patch.object(v2_coach, "_coach_state_map", return_value={}):
+            app = Flask(__name__)
+            with app.test_request_context():
+                request.user_id = "coach-1"
+                v2_coach._fold_coach_review_reads("s1", [], {})
+        self.assertEqual(fake.get_snippets_by_sessions.call_count, 1)
+        handed = [c.kwargs["snippet_rows"] for c in build.call_args_list]
+        self.assertEqual(handed, [[{"id": "a"}], [{"id": "b"}]])
+        self.assertTrue(all(c.kwargs["include_insights"] is False
+                            for c in build.call_args_list))
