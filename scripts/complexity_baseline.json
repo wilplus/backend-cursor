@@ -72,7 +72,6 @@
   "services/session_cadence.py:_render_beat": 29,
   "services/session_concatenation.py:concatenate_session_audio": 36,
   "services/session_metrics.py:compute_session_global_metrics": 28,
-  "services/slide_alignment.py:compute_piece_slide_scores": 32,
   "services/slide_alignment.py:compute_slide_scores": 29,
   "services/slide_selection.py:_finalize_best_presentation": 27,
   "services/slide_selection.py:build_best_presentation": 43,
