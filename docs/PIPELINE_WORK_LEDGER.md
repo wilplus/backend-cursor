@@ -1853,3 +1853,25 @@ no new user-facing string. L1 intact — the phrase annotates a part, it does no
 rebuild Ideal Text.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+### 2026-09-28 · WS-G1 · frontend g1-exposure-ack-proxy · frontend #529
+
+**Closed:** G-1 (frontend wilplus/frontend-cursor#529; nothing changes in
+this repository but this entry).
+**Contract lines flipped:** none.
+**Contract lines added:** in the frontend, `src/app/api/v2/learning-exposures/ack/route.test.ts`
+pins that the proxy forwards the acknowledgement verbatim through
+`callBackend` with the strict relay.
+**Broke and fixed:** none.
+**Open for the founder:** the frontend client carried a 2026-09-15 note that
+wiring this leg "is the learning-layer activation decision, not a bug fix";
+the order of work settled 2026-09-22 (lane 1, live bugs) is the later
+decision and the one followed. Nothing the receipt feeds is switched on:
+dataset creation, training, promotion and exercise adequacy stay disabled.
+
+The browser has posted every visible-render acknowledgement to
+`/api/v2/learning-exposures/ack` since the backend route shipped; the
+Next.js proxy file between them never existed, so every acknowledgement
+404ed and no `learning_surface_exposure_receipts` row was ever written,
+which is why the seven-surface readiness could never leave `blocked`. After
+the frontend deploys, the first visible render writes the first receipt.
