@@ -59,6 +59,9 @@ def _healthy_modules(calls):
         "services.session_metrics": _module(
             "services.session_metrics",
             compute_session_global_metrics=lambda sid: calls.append("globals")),
+        "services.verbal_cues": _module(
+            "services.verbal_cues",
+            record_take=lambda db, sid: calls.append("verbal_cues") or 0),
         "services.session_cadence": _module(
             "services.session_cadence",
             fire_arc_start=lambda *a, **k: calls.append("cadence")),
@@ -77,7 +80,7 @@ def test_a_healthy_authed_run_leaves_the_log_empty():
     readout, sent = _run_worker(_healthy_modules(calls), degradation=log)
     assert readout == {"snippets": [1]}
     assert sent is True
-    assert calls == ["globals", "cadence", "cards"]
+    assert calls == ["globals", "verbal_cues", "cadence", "cards"]
     assert log.payload() == {}
 
 
@@ -86,6 +89,9 @@ def test_every_best_effort_stage_names_itself_in_order():
         "services.session_metrics": _module(
             "services.session_metrics",
             compute_session_global_metrics=_raise(RuntimeError("agg"))),
+        "services.verbal_cues": _module(
+            "services.verbal_cues",
+            record_take=_raise(LookupError("cue"))),
         "services.session_cadence": _module(
             "services.session_cadence",
             fire_arc_start=_raise(KeyError("goal"))),
@@ -104,6 +110,7 @@ def test_every_best_effort_stage_names_itself_in_order():
     assert sent is False
     assert [d.as_payload() for d in log.items] == [
         {"stage": "take_analysis.session_globals", "kind": "RuntimeError"},
+        {"stage": "take_analysis.verbal_cue_shadow", "kind": "LookupError"},
         {"stage": "take_analysis.cadence", "kind": "KeyError"},
         {"stage": "take_analysis.auto_send", "kind": "TimeoutError"},
         {"stage": "take_analysis.arc_cards", "kind": "ValueError"},

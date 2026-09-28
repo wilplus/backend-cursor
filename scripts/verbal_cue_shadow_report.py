@@ -2,10 +2,10 @@
 """Print how the shadow-stage spoken-word cues agree with coaches (D3a).
 
     python scripts/verbal_cue_shadow_report.py
-    python scripts/verbal_cue_shadow_report.py --min-named 30 --min-caught 0.8
 
-Read-only. With a bar, also says which cues clear it; promotion itself is a
-migration a person writes after reading this.
+Read-only. Says which cues clear the founder's bar (30 coach-named moments,
+80% caught); promotion itself is a migration a person writes after reading
+this. --min-named / --min-caught override the bar for a what-if.
 """
 from __future__ import annotations
 
@@ -24,17 +24,28 @@ def main() -> int:
     args = parser.parse_args()
 
     from services.db import db
-    from services.verbal_cue_validation import meets_bar, report
+    from services.verbal_cue_validation import (
+        PROMOTION_MIN_CAUGHT_RATE,
+        PROMOTION_MIN_NAMED,
+        meets_bar,
+        report,
+    )
     from services.verbal_cues import CUES, VERBAL_CUES_VERSION
 
+    min_named = (PROMOTION_MIN_NAMED if args.min_named is None
+                 else args.min_named)
+    min_caught = (PROMOTION_MIN_CAUGHT_RATE if args.min_caught is None
+                  else args.min_caught)
     out = report(db, detector_version=VERBAL_CUES_VERSION, cues=CUES)
-    if args.min_named is not None and args.min_caught is not None:
-        for summary in out.values():
-            ok, why = meets_bar(summary, min_named=args.min_named,
-                                min_caught_rate=args.min_caught)
-            summary["clears_bar"] = ok
-            summary["why_not"] = why
-    print(json.dumps({"detector_version": VERBAL_CUES_VERSION, "cues": out},
+    for summary in out.values():
+        ok, why = meets_bar(summary, min_named=min_named,
+                            min_caught_rate=min_caught)
+        summary["clears_bar"] = ok
+        summary["why_not"] = why
+    print(json.dumps({"detector_version": VERBAL_CUES_VERSION,
+                      "bar": {"min_named": min_named,
+                              "min_caught_rate": min_caught},
+                      "cues": out},
                      indent=2))
     return 0
 

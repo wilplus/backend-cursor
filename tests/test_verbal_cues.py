@@ -212,7 +212,24 @@ class ValidationTests(unittest.TestCase):
         self.assertIn("audit", summary["false_alarm_note"])
         self.assertIsNone(summary["caught_rate"])
 
-    def test_the_bar_is_the_founder_s_argument(self):
+    def test_the_bar_is_the_founder_s(self):
+        # Founder 2026-09-28, D3a: 30 coach-named moments, 80% caught.
+        self.assertEqual((validation.PROMOTION_MIN_NAMED,
+                          validation.PROMOTION_MIN_CAUGHT_RATE), (30, 0.8))
+        summary = validation.summarise(
+            [{"snippet_id": str(i), "fired": i < 24} for i in range(30)],
+            [{"snippet_id": str(i)} for i in range(30)])
+        self.assertEqual(validation.meets_bar(
+            summary, min_named=validation.PROMOTION_MIN_NAMED,
+            min_caught_rate=validation.PROMOTION_MIN_CAUGHT_RATE), (True, None))
+        summary = validation.summarise(
+            [{"snippet_id": str(i), "fired": i < 23} for i in range(30)],
+            [{"snippet_id": str(i)} for i in range(30)])
+        self.assertFalse(validation.meets_bar(
+            summary, min_named=validation.PROMOTION_MIN_NAMED,
+            min_caught_rate=validation.PROMOTION_MIN_CAUGHT_RATE)[0])
+
+    def test_the_bar_is_never_a_silent_default(self):
         summary = validation.summarise(self._OBS, [{"snippet_id": "a"}])
         self.assertEqual(validation.meets_bar(
             summary, min_named=1, min_caught_rate=0.8), (True, None))

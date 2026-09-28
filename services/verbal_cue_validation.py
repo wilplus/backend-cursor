@@ -23,6 +23,13 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+#: THE PROMOTION BAR (founder 2026-09-28, D3a): a shadow cue may be proposed
+#: for `detected` only once at least 30 coach-named moments have been measured
+#: and it fired on at least 80% of them. Proposed, not promoted: promotion is
+#: still a migration a person writes. Changing the bar is the founder's call.
+PROMOTION_MIN_NAMED = 30
+PROMOTION_MIN_CAUGHT_RATE = 0.8
+
 
 def summarise(observations: list[dict], coach_named: list[dict]) -> dict:
     """One cue's verdicts against the moments coaches named it on."""
@@ -51,8 +58,9 @@ def summarise(observations: list[dict], coach_named: list[dict]) -> dict:
 
 def meets_bar(summary: dict, *, min_named: int,
               min_caught_rate: float) -> tuple[bool, Optional[str]]:
-    """Whether a cue clears a bar the founder set. The bar is an argument,
-    never a default here: choosing it is the founder's decision (D3a)."""
+    """Whether a cue clears a bar. Callers pass PROMOTION_MIN_NAMED and
+    PROMOTION_MIN_CAUGHT_RATE; the arguments stay explicit so no call site
+    can fall back to a bar nobody chose."""
     if summary.get("coach_named_measured", 0) < min_named:
         return False, (f"only {summary.get('coach_named_measured', 0)} "
                        f"coach-named moments measured; the bar needs {min_named}")

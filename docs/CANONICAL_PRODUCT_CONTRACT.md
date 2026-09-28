@@ -419,7 +419,10 @@ with this contract, this contract wins.
     A clip that cannot be measured honestly gets no verdict, never a false
     "absent". Promotion to detected is a separate, deliberate change, made
     only after the verdicts have been compared with coaches' independent
-    judgments against a bar the founder sets (D3a).
+    judgments against the founder's bar (D3a): at least 30 moments a coach
+    named the pattern on, and the detector fired on at least 80% of them.
+    Coaches record only what is present, so this bar measures what the
+    detector catches, not how often it fires falsely.
 
 ## 6. Coach review and learning lineage
 
