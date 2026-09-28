@@ -27,6 +27,8 @@ import threading
 import time
 from typing import Any, Optional
 
+from services.request_context import job_meta
+
 logger = logging.getLogger(__name__)
 
 # Cached broker connections, per process, keyed by profile
@@ -281,6 +283,9 @@ def enqueue(func_path: str, *args: Any, delay_seconds: int = 0,
         }
         if rq_job_id:
             kwargs["job_id"] = rq_job_id
+        meta = job_meta()
+        if meta:
+            kwargs["meta"] = meta
         if delay_seconds > 0:
             from datetime import timedelta
             q.enqueue_in(timedelta(seconds=delay_seconds), func_path, *args,
@@ -334,6 +339,7 @@ def enqueue_with_monotonic_deadline(
             job_timeout=job_timeout_seconds(),
             result_ttl=0,
             failure_ttl=7 * 24 * 3600,
+            **({"meta": job_meta()} if job_meta() else {}),
         )
         return True
     except Exception as error:  # noqa: BLE001 - bounded wake-up is best effort
