@@ -540,10 +540,9 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
         # THE DOCUMENT SOURCE (founder decision 2026-07-20 #1): the full
         # transcript of the latest spoken take, or — flag OFF — the legacy
         # best-moments selection. Everything downstream (persist, version
-        # bump, snapshot, verify, ledger) is identical either way.
-        from services.master_document import (
-            assemble_master_document, master_document_enabled,
-        )
+        # bump, snapshot, verify, ledger) is identical either way. (The
+        # master-document lane that sat between these two is retired;
+        # master_document_enabled() is permanently False — audit C2.)
         if source_session_id:
             # Exact provenance beats environment-selected arc-level source on
             # a retry. build_transcript_document's historical form reads only
@@ -553,16 +552,6 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                 database=database,
                 session_id=str(source_session_id),
             )
-        elif _living_transcript_enabled() and master_document_enabled():
-            # THE MASTER MODEL (founder 2026-07-22): one persistent
-            # document per project; new takes only offer block upgrades.
-            # No skeleton yet (flip-ON window / pre-migration) → the
-            # living-transcript document keeps serving; assembly must
-            # never silently stop (review findings #19/#29).
-            auto = assemble_master_document(arc_id, database=database)
-            if not auto.get("ready"):
-                auto = assemble_transcript_document(arc_id,
-                                                    database=database)
         elif _living_transcript_enabled():
             auto = assemble_transcript_document(arc_id, database=database)
         else:

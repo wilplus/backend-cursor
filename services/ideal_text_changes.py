@@ -105,7 +105,6 @@ class _ChangesRun:
             and not isinstance(review_version, bool)
             and review_version >= 1
         )
-        self.master_on = False
         self.doc: dict = {}
         self.pieces: list = []
         self.canonical_pieces: list = []
@@ -122,7 +121,6 @@ class _ChangesRun:
         self.review_sid = ""
         self.review_doc: Any = None
         self.review_evidence_piece: Any = None
-        self.additions: list = []
         self.feedback_set: Any = None
         self.feedback_exposure: list = []
         self.frozen_family_snippets: dict = {}
@@ -136,7 +134,6 @@ class _ChangesRun:
         self.session: Any = None
         self.sel: dict = {}
         self.styles: list = []
-        self.add: dict = {}
         self.arm_sid = ""
         # Empty unless V3 owned this Take and could not produce it. Never set
         # for a Take V3 does not apply to — see contract 24h.
@@ -171,9 +168,6 @@ class _ChangesRun:
             log.run("changes.current_take_confident_voice",
                     self._current_take_confident_voice)
         log.run("changes.praise_playback", self._praise_playback)
-        if self.master_on:
-            log.run("changes.upgrade_changes", self._upgrade_changes)
-            log.run("changes.block_additions", self._block_additions)
         log.run("changes.prior_take", self._prior_take)
         self._feedback_set_and_fallbacks()
         log.run("changes.v3_shadow", self._v3_shadow)
@@ -262,28 +256,11 @@ class _ChangesRun:
 
     def _load_document(self) -> None:
         from services.transcript_document import build_transcript_document
-        from services.master_document import (
-            assemble_master_document, master_document_enabled,
-        )
-        self.master_on = master_document_enabled()
-        if self.master_on:
-            # MASTER MODEL (founder 2026-07-22): the document is the
-            # persistent master; its pieces carry per-piece spans + the
-            # origin take badge, so the star lane anchors unchanged. The
-            # prior-take lane is superseded by block upgrade offers.
-            _master = assemble_master_document(self.arc_id, database=self.db)
-            if _master.get("ready"):
-                doc = _master.get("document") or {}
-                doc["text"] = _master.get("text")
-            else:
-                # No skeleton yet (flip-ON before the next take / pre-
-                # migration): the star lane keeps anchoring on the
-                # living-transcript document rather than going dark.
-                self.master_on = False
-                doc = build_transcript_document(self.arc_id, database=self.db)
-        else:
-            doc = build_transcript_document(self.arc_id, database=self.db)
-        self.doc = doc
+        # The master-document lane (block upgrades, block additions) is
+        # retired: master_document_enabled() is permanently False (audit C2).
+        # None (nothing spoken yet) and {} both end the run in `execute`.
+        self.doc = build_transcript_document(
+            self.arc_id, database=self.db) or {}
 
     def _relocate(self) -> None:
         from services.transcript_document import relocate_pieces
@@ -364,10 +341,9 @@ class _ChangesRun:
             self.sugs, self.released_verdicts)
 
     def _applied_map(self) -> None:
-        # The master document spans takes: feed EVERY distinct origin
-        # session, not the doc-level take_session_id (which is None
-        # under the master flag and starved the applied map — review
-        # findings #12/#16).
+        # Feed EVERY distinct origin session, not only the doc-level
+        # take_session_id: a document whose pieces span takes would
+        # otherwise starve the applied map (review findings #12/#16).
         doc = self.doc
         _sess_ids = {p.get("take_session_id")
                      for p in (doc.get("pieces") or [])
@@ -478,23 +454,6 @@ class _ChangesRun:
                 if _row and _row.get("snippet_audio_ref"):
                     _c.update(_row)
 
-    def _upgrade_changes(self) -> None:
-        # Block-level upgrade offers — the master model's cross-take lane.
-        from services.master_document import upgrade_changes
-        self.changes.extend(
-            upgrade_changes(self.arc_id, self.served_text, self.db))
-
-    def _block_additions(self) -> None:
-        # MATERIAL RECOVERY, a separate lane on purpose. A candidate block
-        # is a decked slide the master has never seen, carrying the words
-        # the speaker actually said over it. It is NOT a span-anchored
-        # edit — there is nothing in the document to anchor to — and while
-        # it was forced into the `changes` shape as a zero-width `insert`
-        # it reached nobody at all.
-        from services.master_document import block_additions
-        self.additions = block_additions(
-            self.arc_id, self.served_text, self.db)
-
     def _prior_take(self) -> None:
         # ── CROSS-TAKE DISCERNMENT (founder decision 2026-07-20 #4):
         # where the PREVIOUS take said the same thing better, its wording
@@ -502,7 +461,7 @@ class _ChangesRun:
         # ranking blend does the judging (L2 untouched); a fragment the
         # student already decided on is never re-offered. ──
         from services.transcript_document import build_transcript_document
-        _prev = None if self.master_on else self.deps.previous_spoken_session(
+        _prev = self.deps.previous_spoken_session(
             self.arc_id, self.doc.get("take_session_id"))
         if _prev:
             from services.prior_take_changes import (
@@ -526,12 +485,11 @@ class _ChangesRun:
                     _prev_doc, database=self.db, decided_ids=_decided))
 
     def _feedback_set_and_fallbacks(self) -> None:
-        # ── THE GATE'S INPUT. THE SESSION KEY is not doc-level: under the
-        # master flag `doc["take_session_id"]` is None (review findings
-        # #12/#16), which would make `is_withheld` short-circuit to False
-        # and every arm row carry an empty session_id. The caller passes
-        # the arc's latest spoken take instead: the take this arbitration
-        # is about. ──
+        # ── THE GATE'S INPUT. THE SESSION KEY is not doc-level: a
+        # `doc["take_session_id"]` of None (review findings #12/#16) would
+        # make `is_withheld` short-circuit to False and every arm row carry
+        # an empty session_id. The caller passes the arc's latest spoken
+        # take instead: the take this arbitration is about. ──
         from services.intervention_candidates import feedback_family_of
         from services.take_feedback_set import (
             load_feedback_set, snippet_ids_by_family,
@@ -969,18 +927,12 @@ class _ChangesRun:
         if self.styles and not verify_changes(served_text, self.styles):
             self.log.note("changes.style_span_check", "span_check_failed")
             self.styles = []
-        # Additions ride OUTSIDE the budget and outside the span check —
-        # they have no span. Absent when there are none, so the FE draws
-        # nothing rather than an empty section. See
-        # master_document.block_additions for why they are not arbitrated.
-        self.add = {"additions": self.additions} if self.additions else {}
         if not verify_changes(served_text, self.changes):
             self.log.note("changes.span_check", "span_check_failed")
             from services.take_feedback_manager import strip_internal_evidence
             self.styles = strip_internal_evidence(self.styles)
             return {
                 "changes": [],
-                **self.add,
                 **({"style_changes": self.styles} if self.styles else {}),
             }
         return None
@@ -1404,7 +1356,7 @@ class _ChangesRun:
             {"feedback_status": {"state": "failed", "reason": self.v3_failure}}
             if self.v3_failure else {}
         )
-        return {"changes": changes, **self.add, **_style, **_v3}
+        return {"changes": changes, **_style, **_v3}
 
 
 def build_changes_block(arc_id, served_text, user_id="", take_session_id="",

@@ -257,8 +257,8 @@ def test_the_stage_order_is_the_documented_one():
 
 @pytest.mark.parametrize("stage", [
     "_canonical_provenance", "_applied_map", "_emphasis_key_phrases",
-    "_current_take_confident_voice", "_praise_playback", "_upgrade_changes",
-    "_block_additions", "_prior_take", "_v3_shadow", "_decision_backfill",
+    "_current_take_confident_voice", "_praise_playback",
+    "_prior_take", "_v3_shadow", "_decision_backfill",
     "_practice_offer", "_canonical_dual_write", "_first_client_feedback",
 ])
 def test_every_former_swallow_all_runs_through_the_log(stage):
