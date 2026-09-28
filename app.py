@@ -101,6 +101,12 @@ CORS(
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 
+# One id per request on every log line, Sentry event and queued job
+# (services/request_context.py). The BFF sends it as X-Request-Id.
+from services.request_context import install_request_id  # noqa: E402
+
+install_request_id(app)
+
 # Register blueprints (v2 / taskmaster MVP only)
 from routes.auth import auth_bp
 from routes.recordings import recordings_v2_bp

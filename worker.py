@@ -357,15 +357,34 @@ def _job_timeout() -> int:
     return job_queue.job_timeout_seconds()
 
 
+def _traced_worker_class():
+    """An rq Worker that binds the queued job's request id before running it.
+
+    The web request that queued the job put its id in ``job.meta``
+    (services/job_queue.py); binding it here puts the same id on every log
+    line the job writes, so one id follows a Take from upload to worker.
+    """
+    from rq import Worker
+
+    from services.request_context import bind_from_job_meta
+
+    class TracedWorker(Worker):
+        def perform_job(self, job, queue):  # noqa: D401 - rq hook
+            bind_from_job_meta(getattr(job, "meta", None))
+            return super().perform_job(job, queue)
+
+    return TracedWorker
+
+
 def _run_worker_loop(conn, *, with_scheduler: bool) -> None:
     """Block in one rq worker. Never returns until the worker stops."""
-    from rq import Queue, Worker
+    from rq import Queue
 
     q = Queue(served_queue(), connection=conn)
     # with_scheduler: serves enqueue_in (delayed retries + the sweep chain).
     # rq guards it with a lock, so it is safe on every slot — but only slot 0
     # asks for it, since one scheduler is all the queue needs.
-    Worker([q], connection=conn).work(with_scheduler=with_scheduler)
+    _traced_worker_class()([q], connection=conn).work(with_scheduler=with_scheduler)
 
 
 def _worker_child(slot: int) -> None:

@@ -30,7 +30,9 @@ from __future__ import annotations
 import logging
 import os
 
-FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+# `request_id` joins a line to the request (or queued job) that wrote it; "-"
+# outside both. services/request_context.py stamps it on every record.
+FORMAT = "%(asctime)s %(levelname)s %(name)s [%(request_id)s]: %(message)s"
 
 
 def configure_logging() -> None:
@@ -48,6 +50,9 @@ def configure_logging() -> None:
     that can refuse a deploy is worse than instrumentation that is missing
     (LIVE LOOP).
     """
+    from services.request_context import install_log_record_factory
+    install_log_record_factory()
+
     level = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
     if level not in ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"):
         level = "INFO"
