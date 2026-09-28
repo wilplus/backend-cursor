@@ -65,7 +65,6 @@
   "services/life_import.py:sanitize_confirmed_item": 26,
   "services/life_panel.py:validate_item_input": 30,
   "services/llm.py:chat_complete": 28,
-  "services/manager_engine.py:arbitrate": 57,
   "services/master_document.py:assemble_master_document": 28,
   "services/master_document.py:build_skeleton": 34,
   "services/mlc2_confidence.py:_validate_candidate": 26,

@@ -268,6 +268,51 @@ class TestExploration(unittest.TestCase):
         out = me.arbitrate(cands, user, roll=lambda: 0.99)
         self.assertFalse(out["exploration"])
 
+    # The exploration trade's own rules (audit W1: the stages arbitrate()
+    # was split into are pinned here, not only through the whole call).
+    def _five(self):
+        return [_c(f"d{i}", anchor=(i * 10.0, i * 10.0 + 1),
+                   deviation=10.0 - i) for i in range(5)]
+
+    def test_a_protected_note_never_gives_up_its_slot(self):
+        """The Take contract's Confident Voice slot is protected: with every
+        selected note protected, there is nothing to trade and exploration
+        sits this one out."""
+        user = _user(me.APPRENTICE, dims=("a",))
+        out = me.arbitrate(
+            self._five(), user, roll=lambda: 0.0,
+            protected_dimensions=[f"d{i}" for i in range(5)])
+        self.assertFalse(out["exploration"])
+        self.assertEqual([c.dimension for c in out["selected"]],
+                         [c.dimension for c in out["counterfactual"]])
+
+    def test_per_slide_exploration_trades_inside_the_swaps_own_slide(self):
+        """Grouped (per slide): the swap takes the slot of the lowest-ranked
+        note on ITS slide, so a slide can never go past its cap."""
+        user = _user(me.APPRENTICE, dims=("a",))
+        out = me.arbitrate(self._five(), user, roll=lambda: 0.0,
+                           group_of=lambda c: 0)
+        self.assertTrue(out["exploration"])
+        chosen = [c.dimension for c in out["counterfactual"]]
+        served = [c.dimension for c in out["selected"]]
+        self.assertEqual(len(served), len(chosen))
+        self.assertNotIn(chosen[-1], served)       # the lowest-ranked gave way
+        self.assertEqual(served[:-1], chosen[:-1])
+        self.assertTrue(out["selected"][-1].exploration)
+
+    def test_per_slide_exploration_sits_out_when_the_swaps_slide_holds_none(self):
+        """The best unselected note sits on a slide whose budget is already
+        spent and holds no selected note: there is no slot on that slide to
+        trade, and none is taken from another slide."""
+        user = _user(me.APPRENTICE, dims=("a",))    # a cap of one per slide
+        slide = {"d0": 0, "d1": 1, "d2": 1, "d3": 1, "d4": 1}
+        out = me.arbitrate(self._five(), user, roll=lambda: 0.0,
+                           group_of=lambda c: slide[c.dimension],
+                           spent_by_group={1: 1})
+        self.assertEqual([c.dimension for c in out["counterfactual"]], ["d0"])
+        self.assertFalse(out["exploration"])
+        self.assertEqual([c.dimension for c in out["selected"]], ["d0"])
+
 
 class TestArbitrateEndToEnd(unittest.TestCase):
     def test_nothing_in_nothing_out(self):
