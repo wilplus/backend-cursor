@@ -660,44 +660,9 @@ def _readiness_warnings(health: Mapping[str, Any]) -> list[str]:
     return warnings
 
 
-def assess_founder_canary_readiness(
-    health: Mapping[str, Any],
-    *,
-    founder_principal_id: Any,
-    coach_email: Any,
-    backend_serving_enabled: bool,
-    backend_inline_authoring_enabled: bool,
-    frontend_serving_enabled: bool,
-    frontend_inline_authoring_enabled: bool,
-    r2_credentials_configured: bool,
-    practice_bucket: Any,
-    coach_video_bucket: Any,
-    r2_smoke_evidence_sha256: Any,
-    r2_smoke_manifest_valid: bool,
-    deployment_attestation_valid: bool,
-    deployed_backend_gates_disabled: bool,
-    deployed_frontend_gates_disabled: bool,
-    deployed_learning_gates_disabled: bool,
-    dataset_creation_enabled: bool,
-    training_enabled: bool,
-    evaluation_enabled: bool,
-    promotion_enabled: bool,
-) -> FounderCanaryReadinessReport:
-    """Return readiness for review while every activation switch stays off."""
+def _health_blockers(health: Mapping[str, Any]) -> list[str]:
+    """What the aggregate database health says must be fixed first."""
     blockers: list[str] = []
-    warnings: list[str] = []
-    actions: list[str] = []
-
-    founder_valid = _valid_uuid(founder_principal_id)
-    normalized_coach_email = str(coach_email or "").strip().lower()
-    practice_bucket_name = str(practice_bucket or "").strip()
-    coach_bucket_name = str(coach_video_bucket or "").strip()
-
-    if not founder_valid:
-        blockers.append("founder_acquisition_principal_not_configured")
-    if not normalized_coach_email or "@" not in normalized_coach_email:
-        blockers.append("coach_email_not_configured")
-
     if health.get("readiness_contract_version") != READINESS_CONTRACT_VERSION:
         blockers.append("readiness_health_contract_mismatch")
     if health.get("service_contract_version") != SERVICE_CONTRACT_VERSION:
@@ -751,28 +716,20 @@ def assess_founder_canary_readiness(
         blockers.append("founder_has_no_project")
     if _count(health, "catalog_snapshot_count") < 1:
         blockers.append("reviewed_catalogue_snapshot_missing")
-    warnings.extend(_readiness_warnings(health))
+    return blockers
 
-    switch_states = {
-        "backend_serving": bool(backend_serving_enabled),
-        "backend_inline_authoring": bool(backend_inline_authoring_enabled),
-        "frontend_serving": bool(frontend_serving_enabled),
-        "frontend_inline_authoring": bool(frontend_inline_authoring_enabled),
-    }
-    for name, enabled in switch_states.items():
-        if enabled:
-            blockers.append(f"{name}_must_remain_disabled_before_review")
 
-    learning_states = {
-        "dataset_creation": bool(dataset_creation_enabled),
-        "training": bool(training_enabled),
-        "evaluation": bool(evaluation_enabled),
-        "promotion": bool(promotion_enabled),
-    }
-    for name, enabled in learning_states.items():
-        if enabled:
-            blockers.append(f"{name}_must_remain_disabled")
-
+def _media_and_attestation_blockers(
+    *, r2_credentials_configured: bool, practice_bucket_name: str,
+    coach_bucket_name: str, r2_smoke_evidence_sha256: Any,
+    r2_smoke_manifest_valid: bool, deployment_attestation_valid: bool,
+    deployed_backend_gates_disabled: bool,
+    deployed_frontend_gates_disabled: bool,
+    deployed_learning_gates_disabled: bool,
+) -> list[str]:
+    """Private media buckets, the live R2 rehearsal, and the deployment
+    attestation with every deployed gate still off."""
+    blockers: list[str] = []
     if not r2_credentials_configured:
         blockers.append("r2_credentials_not_configured")
     if not practice_bucket_name:
@@ -793,14 +750,21 @@ def assess_founder_canary_readiness(
         blockers.append("deployed_frontend_gates_not_disabled")
     if not deployed_learning_gates_disabled:
         blockers.append("deployed_learning_gates_not_disabled")
+    return blockers
 
-    actions.extend((
-        "activate_exact_database_service_contract",
-        "allowlist_exact_founder_acquisition_principal",
-        "enable_backend_founder_and_inline_gates",
-        "enable_frontend_founder_and_inline_presentation_gates",
-    ))
 
+def _readiness_evidence(
+    health: Mapping[str, Any], *, founder_valid: bool,
+    normalized_coach_email: str, switch_states: dict[str, bool],
+    learning_states: dict[str, bool], r2_credentials_configured: bool,
+    practice_bucket_name: str, coach_bucket_name: str,
+    r2_smoke_evidence_sha256: Any, r2_smoke_manifest_valid: bool,
+    deployment_attestation_valid: bool,
+    deployed_backend_gates_disabled: bool,
+    deployed_frontend_gates_disabled: bool,
+    deployed_learning_gates_disabled: bool,
+) -> dict[str, Any]:
+    """The aggregate-only evidence record the reviewer reads."""
     evidence = {
         "founder_principal_configured": founder_valid,
         "coach_email_configured": bool(normalized_coach_email),
@@ -832,6 +796,107 @@ def assess_founder_canary_readiness(
         "aggregate_health_only": True,
         "real_collection_performed": False,
     }
+    return evidence
+
+
+def assess_founder_canary_readiness(
+    health: Mapping[str, Any],
+    *,
+    founder_principal_id: Any,
+    coach_email: Any,
+    backend_serving_enabled: bool,
+    backend_inline_authoring_enabled: bool,
+    frontend_serving_enabled: bool,
+    frontend_inline_authoring_enabled: bool,
+    r2_credentials_configured: bool,
+    practice_bucket: Any,
+    coach_video_bucket: Any,
+    r2_smoke_evidence_sha256: Any,
+    r2_smoke_manifest_valid: bool,
+    deployment_attestation_valid: bool,
+    deployed_backend_gates_disabled: bool,
+    deployed_frontend_gates_disabled: bool,
+    deployed_learning_gates_disabled: bool,
+    dataset_creation_enabled: bool,
+    training_enabled: bool,
+    evaluation_enabled: bool,
+    promotion_enabled: bool,
+) -> FounderCanaryReadinessReport:
+    """Return readiness for review while every activation switch stays off."""
+    blockers: list[str] = []
+    warnings: list[str] = []
+    actions: list[str] = []
+
+    founder_valid = _valid_uuid(founder_principal_id)
+    normalized_coach_email = str(coach_email or "").strip().lower()
+    practice_bucket_name = str(practice_bucket or "").strip()
+    coach_bucket_name = str(coach_video_bucket or "").strip()
+
+    if not founder_valid:
+        blockers.append("founder_acquisition_principal_not_configured")
+    if not normalized_coach_email or "@" not in normalized_coach_email:
+        blockers.append("coach_email_not_configured")
+
+    blockers.extend(_health_blockers(health))
+    warnings.extend(_readiness_warnings(health))
+
+    switch_states = {
+        "backend_serving": bool(backend_serving_enabled),
+        "backend_inline_authoring": bool(backend_inline_authoring_enabled),
+        "frontend_serving": bool(frontend_serving_enabled),
+        "frontend_inline_authoring": bool(frontend_inline_authoring_enabled),
+    }
+    blockers.extend(
+        f"{name}_must_remain_disabled_before_review"
+        for name, enabled in switch_states.items() if enabled
+    )
+
+    learning_states = {
+        "dataset_creation": bool(dataset_creation_enabled),
+        "training": bool(training_enabled),
+        "evaluation": bool(evaluation_enabled),
+        "promotion": bool(promotion_enabled),
+    }
+    blockers.extend(
+        f"{name}_must_remain_disabled"
+        for name, enabled in learning_states.items() if enabled
+    )
+
+    blockers.extend(_media_and_attestation_blockers(
+        r2_credentials_configured=r2_credentials_configured,
+        practice_bucket_name=practice_bucket_name,
+        coach_bucket_name=coach_bucket_name,
+        r2_smoke_evidence_sha256=r2_smoke_evidence_sha256,
+        r2_smoke_manifest_valid=r2_smoke_manifest_valid,
+        deployment_attestation_valid=deployment_attestation_valid,
+        deployed_backend_gates_disabled=deployed_backend_gates_disabled,
+        deployed_frontend_gates_disabled=deployed_frontend_gates_disabled,
+        deployed_learning_gates_disabled=deployed_learning_gates_disabled,
+    ))
+
+    actions.extend((
+        "activate_exact_database_service_contract",
+        "allowlist_exact_founder_acquisition_principal",
+        "enable_backend_founder_and_inline_gates",
+        "enable_frontend_founder_and_inline_presentation_gates",
+    ))
+
+    evidence = _readiness_evidence(
+        health,
+        founder_valid=founder_valid,
+        normalized_coach_email=normalized_coach_email,
+        switch_states=switch_states,
+        learning_states=learning_states,
+        r2_credentials_configured=r2_credentials_configured,
+        practice_bucket_name=practice_bucket_name,
+        coach_bucket_name=coach_bucket_name,
+        r2_smoke_evidence_sha256=r2_smoke_evidence_sha256,
+        r2_smoke_manifest_valid=r2_smoke_manifest_valid,
+        deployment_attestation_valid=deployment_attestation_valid,
+        deployed_backend_gates_disabled=deployed_backend_gates_disabled,
+        deployed_frontend_gates_disabled=deployed_frontend_gates_disabled,
+        deployed_learning_gates_disabled=deployed_learning_gates_disabled,
+    )
     return FounderCanaryReadinessReport(
         ready_for_activation_review=not blockers,
         blocker_codes=tuple(dict.fromkeys(blockers)),
