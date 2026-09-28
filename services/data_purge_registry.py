@@ -229,6 +229,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("library_teachings", "diagnostic_exercise_teaching",
                     "practice_id", "practice", "delete", "derived_feedback",
                     58),
+    # The client's confirmation that the chosen exercise rendered, migration
+    # 0387. Goes with the Take, ahead of the assignment it confirms.
+    PurgeDependency("practice_exercise_exposure",
+                    "confident_voice_exercise_exposures", "take_session_id",
+                    "take", "delete", "derived_feedback", 59),
     # Why that choice was made, migration 0384. Goes with the Take, ahead of
     # the assignment it explains; its ON DELETE CASCADE is only the backstop.
     PurgeDependency("practice_exercise_match_trace",

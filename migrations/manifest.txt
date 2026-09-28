@@ -422,3 +422,4 @@
 0384	an_exercise_remembers_why.sql
 0385	a_coach_hears_when_nothing_fits.sql
 0386	a_pattern_is_tested_silently_first.sql
+0387	an_exercise_is_seen.sql

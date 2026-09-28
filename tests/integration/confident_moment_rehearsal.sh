@@ -424,6 +424,10 @@ hard migrations/add_speaking_error_library.sql
 # spoken-word cues in it, and their silent verdict log. Twice: apply/reapply.
 hard migrations/a_pattern_is_tested_silently_first.sql
 hard migrations/a_pattern_is_tested_silently_first.sql
+# 0387 records the speaker's client confirming an assigned exercise rendered,
+# once per assignment. Twice: apply/reapply.
+hard migrations/an_exercise_is_seen.sql
+hard migrations/an_exercise_is_seen.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

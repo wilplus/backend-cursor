@@ -83,7 +83,8 @@ def test_exercise_surface_is_registry_only_and_fail_closed():
     marker = '@operational_purpose_disabled("personalized_exercise_recommendation")'
     # Six since 2026-09-25: the per-attempt judgement and the practice
     # helper-words routes (contract 29a) carry the same gate.
-    assert user_routes.count(marker) == 6
+    # Seven since 2026-09-28: the exercise-rendered confirmation (0387).
+    assert user_routes.count(marker) == 7
     # Two since 2026-09-28: the coach's exercise request carries it too.
     assert coach_routes.count(marker) == 2
     # The purpose was born phase2 here and was moved to phase1 by 0335, once
