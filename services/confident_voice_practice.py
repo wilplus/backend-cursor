@@ -212,26 +212,14 @@ def _audio_reliable(snippet: dict, snap: dict) -> bool:
     return True
 
 
-def exercise_eligibility(snippet: dict, *, session_median_wpm: Any = None,
-                         semantic_or_structural_problem: bool = False) -> dict:
-    """Internal eligibility + evidence.  WPM is never sufficient by itself."""
-    transcript = (snippet.get("transcript") or "").strip()
-    snap = acoustic_snapshot(snippet)
-    if semantic_or_structural_problem:
-        return {"eligible": False, "reason": "semantic_or_structural"}
-    if len(_tokens(transcript)) < 4 or snap.get("aligned_words", 0) < 4:
-        return {"eligible": False, "reason": "alignment_or_passage"}
-    if not _audio_reliable(snippet, snap):
-        return {"eligible": False, "reason": "audio_quality"}
+def clip_signals(snap: dict) -> dict[str, bool]:
+    """The six acoustic problem signals on one clip's snapshot.
 
-    wpm = snap.get("wpm")
-    baseline = _number(session_median_wpm)
-    pace_high = bool(
-        isinstance(wpm, (int, float)) and
-        ((baseline is not None and wpm >= max(baseline + 18.0, baseline * 1.12))
-         or (baseline is None and wpm >= 175.0))
-    )
-    signals = {
+    One definition for the original clip (`exercise_eligibility`) and for a
+    practice attempt's saved snapshot (the adequacy label, §3.5 item 1:
+    "measured by the same detectors"). Part of SIGNAL_RULES_VERSION.
+    """
+    return {
         "reduced_word_separation": bool(
             (snap.get("median_gap") is not None and snap["median_gap"] < 0.07)
             and (snap.get("tight_gap_share") is not None
@@ -257,6 +245,28 @@ def exercise_eligibility(snippet: dict, *, session_median_wpm: Any = None,
             and snap["pause_regularity"] < 0.5
         ),
     }
+
+
+def exercise_eligibility(snippet: dict, *, session_median_wpm: Any = None,
+                         semantic_or_structural_problem: bool = False) -> dict:
+    """Internal eligibility + evidence.  WPM is never sufficient by itself."""
+    transcript = (snippet.get("transcript") or "").strip()
+    snap = acoustic_snapshot(snippet)
+    if semantic_or_structural_problem:
+        return {"eligible": False, "reason": "semantic_or_structural"}
+    if len(_tokens(transcript)) < 4 or snap.get("aligned_words", 0) < 4:
+        return {"eligible": False, "reason": "alignment_or_passage"}
+    if not _audio_reliable(snippet, snap):
+        return {"eligible": False, "reason": "audio_quality"}
+
+    wpm = snap.get("wpm")
+    baseline = _number(session_median_wpm)
+    pace_high = bool(
+        isinstance(wpm, (int, float)) and
+        ((baseline is not None and wpm >= max(baseline + 18.0, baseline * 1.12))
+         or (baseline is None and wpm >= 175.0))
+    )
+    signals = clip_signals(snap)
     supporting_count = sum(1 for value in signals.values() if value)
     confidence = snap.get("confidence")
     if not isinstance(confidence, (int, float)):

@@ -241,7 +241,11 @@ Raw horizons stay separate and are all still stored:
    `services/exercise_learning_readiness.py` counts toward this bar
    (`POST /v2/internal/journal/exercise-learning-readiness`, or
    `scripts/exercise_learning_readiness.py`). It counts only; it never
-   computes whether an exercise helped.
+   computes whether an exercise helped. `services/exercise_adequacy_labels.py`
+   (the scorekeeper) labels those same exposures under item 1, using the
+   original clip's own signal rules (`clip_signals`), and stays sealed —
+   returning only the counter's reason — until this bar is met. No route
+   serves it.
 9. **Promotion.** A learned ranker replaces the fixed ranking only when, on
    held-out speakers:
    - its estimated success rate is **at least 5 points higher**, with the 95%

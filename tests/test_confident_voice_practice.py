@@ -1137,12 +1137,13 @@ class MatchTraceTests(unittest.TestCase):
         """Changing a threshold or the signal map changes what every future
         trace means. Bump SIGNAL_RULES_VERSION, then update this fingerprint."""
         source = (inspect.getsource(cvp.exercise_eligibility)
+                  + inspect.getsource(cvp.clip_signals)
                   + json.dumps(cvp._SIGNAL_PROBLEM_TAGS, sort_keys=True))
         self.assertEqual(
             (cvp.SIGNAL_RULES_VERSION,
              hashlib.sha256(source.encode()).hexdigest()),
             ("cv-exercise-signals-v1",
-             "c64a29c434079b018b7bf70bba90d8a27535ac164a52682d1638236ee14bd79c"))
+             "cac03cd2657bcccbd7f628167dee086d522d5202f688786349e2b9d15d431cc9"))
 
 
 class AssignmentWrapperTests(unittest.TestCase):
