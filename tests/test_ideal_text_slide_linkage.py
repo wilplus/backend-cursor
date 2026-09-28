@@ -209,7 +209,10 @@ class LivingTranscriptProvenanceTests(unittest.TestCase):
                       return_value=False), \
                 patch.object(mod.db, "get_snippets_by_session",
                              return_value=[], create=True):
-            return mod._ideal_piece_provenance(ARC, **kw)
+            lane, rows = mod._ideal_piece_provenance(ARC, **kw)
+        # No stored document in these fixtures, so the rebuild answers.
+        self.assertEqual(lane, "compat")
+        return rows
 
     def test_provenance_is_counted_in_PARAGRAPHS_not_snippets(self):
         # THE BUG: the caller aligns this list against the served text's
@@ -264,7 +267,8 @@ class LivingTranscriptProvenanceTests(unittest.TestCase):
                 patch("services.master_document.master_document_enabled",
                       return_value=False):
             self.assertEqual(
-                mod._ideal_piece_provenance(ARC, deckless_ok=False), [])
+                mod._ideal_piece_provenance(ARC, deckless_ok=False),
+                ("deckless", []))
 
 
 if __name__ == "__main__":
@@ -299,7 +303,9 @@ class CanonicalProvenanceFirstTests(unittest.TestCase):
                       return_value=True), \
                 patch("services.master_document.master_document_enabled",
                       return_value=False):
-            rows = mod._ideal_piece_provenance(ARC, served_text="machine text")
+            lane, rows = mod._ideal_piece_provenance(
+                ARC, served_text="machine text")
+        self.assertEqual(lane, "canonical")
         return rows, rebuild
 
     def test_stored_paragraphs_are_served_without_a_rebuild(self):
@@ -313,6 +319,50 @@ class CanonicalProvenanceFirstTests(unittest.TestCase):
         rows, rebuild = self._prov(["not a paragraph row"])
         self.assertEqual(rows, [])
         rebuild.assert_not_called()
+
+
+class MisalignedPiecesAreReportedTests(unittest.TestCase):
+    """Audit A3: when provenance exists but its count does not match the
+    served paragraphs, every slide link on the read becomes null. That used
+    to happen with no log line and no marker; now the lane is logged and the
+    read's ``degraded`` list names it."""
+
+    TEXT = "one\n\ntwo\n\nthree"
+    ROW = {"slide_index": 0, "snippet_id": "a", "take_session_id": "t1",
+           "take_index": 1}
+
+    def _pieces(self, prov):
+        from routes.v2 import explore_ideal_text as mod
+        from services.degradation import DegradationLog
+
+        log = DegradationLog("ideal_text")
+        with patch.object(mod, "_ideal_piece_provenance",
+                          return_value=("compat", prov)), \
+                self.assertLogs(mod.logger.name, level="WARNING") as seen:
+            mod.logger.warning("sentinel")  # assertLogs needs one line
+            out = mod._ideal_text_pieces(ARC, self.TEXT, "deck.pdf",
+                                         degradation=log)
+        return out, log.payload(), [r.getMessage() for r in seen.records]
+
+    def test_a_misaligned_read_is_logged_with_its_lane_and_marked_degraded(self):
+        out, payload, lines = self._pieces([self.ROW, self.ROW])
+        self.assertEqual([p["slide_index"] for p in out], [None, None, None])
+        self.assertEqual(payload, {"degraded": [
+            {"stage": "ideal_text.pieces", "kind": "misaligned"}]})
+        self.assertTrue(any("misaligned" in line and "lane=compat" in line
+                            and "provenance=2" in line and "paragraphs=3" in line
+                            for line in lines))
+
+    def test_an_aligned_read_is_unchanged_and_not_marked(self):
+        out, payload, lines = self._pieces([self.ROW] * 3)
+        self.assertEqual([p["slide_index"] for p in out], [0, 0, 0])
+        self.assertEqual(payload, {})
+        self.assertFalse(any("misaligned" in line for line in lines))
+
+    def test_no_provenance_at_all_is_not_a_misalignment(self):
+        out, payload, _ = self._pieces([])
+        self.assertEqual([p["slide_index"] for p in out], [None, None, None])
+        self.assertEqual(payload, {})
 
 
 class ComposeFailureFallbackTests(unittest.TestCase):

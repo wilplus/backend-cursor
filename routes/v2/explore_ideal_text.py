@@ -444,7 +444,8 @@ def _ideal_piece_provenance_legacy_cache(arc_id):
 
 
 def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
-    """The machine assembly's per-piece slide identity, in served order —
+    """``(lane, rows)``: the machine assembly's per-piece slide identity, in
+    served order, and which lane produced it — mirrors
     mirrors maybe_assemble_ideal_text's source choice WITHOUT re-running
     any composition on the student GET:
 
@@ -461,14 +462,18 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
     at that branch.
 
     Each entry: {slide_index, snippet_id, take_session_id, take_index,
-    status, challenger}. Best-effort; [] when nothing is provable."""
+    status, challenger}. Best-effort; [] when nothing is provable.
+
+    ``lane`` is one of skeleton / canonical / compat / legacy_cache /
+    deckless, so a misaligned read can say which source it came from
+    (audit A3)."""
     from services.ideal_text_block import _living_transcript_enabled
     from services.master_document import master_document_enabled
 
     if _living_transcript_enabled() and master_document_enabled():
         skeleton = _ideal_piece_provenance_skeleton(arc_id)
         if skeleton:
-            return skeleton
+            return "skeleton", skeleton
         # No skeleton yet → the living-transcript document, exactly the
         # fallback the assembly itself makes.
     if _living_transcript_enabled():
@@ -477,12 +482,12 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
         # are still the canonical answer, never a cue to rebuild provenance
         # from the latest transcript.
         if canonical is not None:
-            return canonical
+            return "canonical", canonical
         # Compatibility only: rows created before document provenance was
         # added have no canonical map. The latest transcript remains the best
         # available structural source, but the FE now treats any mismatch as
         # optional metadata failure and still renders the text unlinked.
-        return _ideal_piece_provenance_compat(arc_id)
+        return "compat", _ideal_piece_provenance_compat(arc_id)
     # LEGACY compose cache — and the ONLY lane the deckless guard belongs
     # to. This one keys its picks by SECTION index, which is not a deck page,
     # so without an uploaded deck it must not attach. The two lanes above
@@ -491,11 +496,27 @@ def _ideal_piece_provenance(arc_id, deckless_ok=True, served_text=None):
     # uploaded — and applying the guard to all three is what made the
     # built-in mock deck attach nothing at all (founder 2026-08-11).
     if not deckless_ok:
-        return []
-    return _ideal_piece_provenance_legacy_cache(arc_id)
+        return "deckless", []
+    return "legacy_cache", _ideal_piece_provenance_legacy_cache(arc_id)
 
 
-def _ideal_text_pieces(arc_id, served_text, presentation_ref, user_id=None):
+def _report_misaligned_pieces(arc_id, lane, prov, paragraphs, degradation):
+    """Say so when provenance exists but does not line up with the served
+    paragraphs, because every slide link on the read then becomes null
+    (audit A3). The log line names the lane; the payload's ``degraded``
+    list names the stage, so the FE can tell a shorter read for what it
+    is. Nothing to say when there is no provenance at all."""
+    if not prov or len(prov) == len(paragraphs):
+        return
+    logger.warning(
+        "ideal-text pieces misaligned arc=%s lane=%s provenance=%d "
+        "paragraphs=%d", arc_id, lane, len(prov), len(paragraphs))
+    if degradation is not None:
+        degradation.note("pieces", "misaligned")
+
+
+def _ideal_text_pieces(arc_id, served_text, presentation_ref, user_id=None,
+                       degradation=None):
     """The slide-linkage `pieces[]` of the SD student GET (FE handoff
     2026-08-03, FE PR #222): one entry per "\\n\\n"-paragraph of the
     SERVED text, each carrying the deck page its words were bucketed to.
@@ -519,11 +540,12 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref, user_id=None):
             return []
         # The deckless guard is passed DOWN rather than applied here, so it
         # lands on the one lane whose slide identity is not a deck page.
-        prov = _ideal_piece_provenance(
+        lane, prov = _ideal_piece_provenance(
             arc_id,
             deckless_ok=bool(presentation_ref),
             served_text=served_text,
         )
+        _report_misaligned_pieces(arc_id, lane, prov, paragraphs, degradation)
         aligned = bool(prov) and len(prov) == len(paragraphs)
         _part_roots: dict[int, dict] = {}
         if user_id:
@@ -1267,7 +1289,7 @@ def v2_explore_get_ideal_text(arc_id):
             # mapping is provable — null degrades the FE to its
             # exact-count zip, never a guessed attachment.
             "pieces": _ideal_text_pieces(
-                arc_id, _text, _pres_ref, str(request.user_id)),
+                arc_id, _text, _pres_ref, str(request.user_id), degradation=_deg),
             # ── PARTS (SPEC-parts-locking-and-layers §3.1, Step 0): the
             # document as an ordered list with STABLE ids, so PR 3 has
             # something a lock can survive a reorder or a reword on.
