@@ -34,6 +34,35 @@ class FeedbackFamily(StrEnum):
         return None
 
 
+# THE ONE ANSWER VOCABULARY (audit D2, 2026-09-28): every answer an owner can
+# give to a Feedback item, per wire family. It used to be copied into three
+# modules that could drift apart; each narrower list is now derived from it.
+OWNER_RESPONSES: Mapping[str, frozenset[str]] = {
+    "confident_voice": frozenset({
+        "yes", "in_between", "no", "not_sure", "audio_unclear",
+    }),
+    "rewrite_clarity": frozenset({
+        "apply_suggestion", "edit_myself", "keep_wording",
+    }),
+    # `acknowledged` (0333): the praise screen offers one Continue, not a
+    # rating; the write marks the item decided. `useful` / `not_useful` stay
+    # for historical rows and any surface that still rates.
+    "great_formulation": frozenset({
+        "useful", "not_useful", "not_sure", "acknowledged",
+    }),
+}
+
+# Answers that record that the owner acted, not a judgement on a scale
+# (0333). They are valid owner responses but produce no canonical judgement.
+SELF_REPORT_ONLY: frozenset[str] = frozenset({"edit_myself", "acknowledged"})
+
+# The subset that also produces a canonical judgement.
+JUDGEMENT_RESPONSES: Mapping[str, frozenset[str]] = {
+    family: answers - SELF_REPORT_ONLY
+    for family, answers in OWNER_RESPONSES.items()
+}
+
+
 class FeedbackDecision(StrEnum):
     PENDING = "pending"
     ACCEPTED = "accepted"

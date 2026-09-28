@@ -17,6 +17,7 @@ from auth import require_auth
 from config import Config
 from routes.phase2_guard import mlc3_service_required
 from routes.v2.blueprint import v2_bp
+from services.canonical_product import OWNER_RESPONSES
 from services.coach_guidance_delivery import require_audio_upload
 from services.coach_video_storage import get_coach_object_r2_bytes
 from services.db import first_client_repository as db
@@ -30,12 +31,9 @@ from services.user_media_storage import get_user_media_r2_bytes
 from utils.ids import parse_uuid as _uuid
 
 practice_attempt_orchestrator = PracticeAttemptOrchestrator(db)
+# The Confident Voice answers, prefixed for this surface (audit D2).
 _SERVICE_RESPONSES = {
-    "confident_yes",
-    "confident_in_between",
-    "confident_no",
-    "confident_not_sure",
-    "confident_audio_unclear",
+    f"confident_{answer}" for answer in OWNER_RESPONSES["confident_voice"]
 }
 _OFFER_EVENTS = {
     "render_confirmed",
