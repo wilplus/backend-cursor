@@ -410,6 +410,16 @@ with this contract, this contract wins.
     safe match. Sharing is a separate act and only an exercise can be shared;
     a shared exercise then rides on that same item for the speaker. Once the
     library itself fits the moment, the matched exercise is what is served.
+35g-3. **A pattern is tested silently first** (founder 2026-09-28, D2, D3).
+    Between observed (a person named it) and detected (it routes exercises)
+    sits shadow: a detector runs on real Takes and its verdicts are logged,
+    but it routes nothing, reaches no user and feeds no dataset. The first
+    shadow patterns are spoken-word habits: filler clusters, hedging and
+    restarts, English only while only English transcripts keep hesitations.
+    A clip that cannot be measured honestly gets no verdict, never a false
+    "absent". Promotion to detected is a separate, deliberate change, made
+    only after the verdicts have been compared with coaches' independent
+    judgments against a bar the founder sets (D3a).
 
 ## 6. Coach review and learning lineage
 

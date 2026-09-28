@@ -415,6 +415,15 @@ hard migrations/an_exercise_remembers_why.sql
 # resolution of it. Twice: apply/reapply.
 hard migrations/a_coach_hears_when_nothing_fits.sql
 hard migrations/a_coach_hears_when_nothing_fits.sql
+# 0332 is the speaking error library itself, which 0386 alters. It was never
+# in this chain because nothing here touched it until now. Standalone and
+# idempotent. Twice: apply/reapply.
+hard migrations/add_speaking_error_library.sql
+hard migrations/add_speaking_error_library.sql
+# 0386 adds the shadow stage to the speaking error library, the three
+# spoken-word cues in it, and their silent verdict log. Twice: apply/reapply.
+hard migrations/a_pattern_is_tested_silently_first.sql
+hard migrations/a_pattern_is_tested_silently_first.sql
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

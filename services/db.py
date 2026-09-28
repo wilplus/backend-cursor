@@ -14639,6 +14639,48 @@ class DatabaseService:
             "assign_confident_voice_exercise_v1", params).execute()
         return self._rpc_row(result.data)
 
+    def record_verbal_cue_shadow(self, rows: list[dict]) -> int:
+        """One Take's shadow-stage verdicts (migration 0386), insert-once per
+        (clip, cue, detector version). Returns how many were new. Raises on
+        failure; the caller runs under DegradationLog."""
+        result = self.client.rpc(
+            "record_verbal_cue_shadow_v1", {"p_rows": rows}).execute()
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else 0
+        return int(data or 0)
+
+    def list_verbal_cue_shadow_observations(
+        self, error_id: str, detector_version: str,
+    ) -> list[dict]:
+        """Every logged verdict for one cue at one version (internal report)."""
+        res = (self.client.table("verbal_cue_shadow_observations")
+               .select("snippet_id,take_session_id,language,fired,created_at")
+               .eq("error_id", error_id)
+               .eq("detector_version", detector_version)
+               .execute())
+        return list(res.data or [])
+
+    def list_coach_named_moments(self, error_id: str) -> list[dict]:
+        """Every practice moment on which a coach's latest event for this error
+        is 'named' — independent of any shadow verdict, which is never shown
+        to them. Returns [{practice_id, snippet_id}]."""
+        events = (self.client.table("coach_moment_error_event")
+                  .select("practice_id,action,seq")
+                  .eq("error_id", error_id)
+                  .order("seq").execute()).data or []
+        latest: dict[str, str] = {}
+        for row in events:
+            latest[str(row.get("practice_id"))] = str(row.get("action"))
+        named = [pid for pid, action in latest.items() if action == "named"]
+        if not named:
+            return []
+        practices = (self.client.table("confident_voice_practice")
+                     .select("id,snippet_id")
+                     .in_("id", named).execute()).data or []
+        return [{"practice_id": str(p.get("id")),
+                 "snippet_id": str(p.get("snippet_id"))} for p in practices]
+
     def request_exercise_from_coach(
         self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
         reason: str, pattern: Optional[str], observed_tags: list[str],

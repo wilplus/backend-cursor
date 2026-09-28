@@ -234,6 +234,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("practice_exercise_match_trace",
                     "confident_voice_exercise_match_traces", "take_session_id",
                     "take", "delete", "derived_feedback", 59),
+    # Silent verdicts of the shadow-stage spoken-word cues on a Take's clips,
+    # migration 0386. About one speaker's Take: they go with it.
+    PurgeDependency("verbal_cue_shadow_observations",
+                    "verbal_cue_shadow_observations", "take_session_id",
+                    "take", "delete", "derived_feedback", 59),
     # The coach request for a moment no exercise fitted, and the coach's
     # resolution of it, migration 0385. About one speaker's Take: it goes
     # with it.

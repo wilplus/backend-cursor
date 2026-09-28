@@ -4,8 +4,9 @@ Founder 2026-09-15: a coach should be able to add a pattern's NAME the moment
 they notice it, without waiting for a deploy. `status` is the seam that makes
 that safe, and this module is where the two refusals that hold it live:
 
-  * nothing written here may claim `detected`. That status means code can find
-    the pattern in audio; no form submission can make that true, and a name
+  * nothing written here may claim `detected` (or `shadow`). That status
+    means code can find the pattern in audio; no form submission can make
+    that true, and a name
     claiming it would route exercises off a capability that does not exist.
 
   * an entry that IS already detected cannot be saved from here at all. The
@@ -77,6 +78,14 @@ def save_observed_error(database: Any, body: Any) -> Optional[dict]:
             "this error is already detected in code; saving it here would "
             "demote it to observed and silently stop it routing exercises",
             code="ALREADY_DETECTED", status=409)
+    # A SHADOW entry has a detector being tested silently (D3). Re-saving it
+    # from here would demote it to observed and silently stop the measuring —
+    # the same failure one stage earlier.
+    if isinstance(existing, dict) and existing.get("status") == "shadow":
+        raise LibraryRefusal(
+            "a detector for this error is being tested silently; saving it "
+            "here would demote it to observed and stop that test",
+            code="ALREADY_IN_SHADOW", status=409)
 
     observed_by = str(fields.get("observed_by") or "").strip()
     active = fields.get("active")

@@ -206,6 +206,17 @@ def _run_full_analysis_impl(
                         session_id, _globals is not None)
         _deg.run("session_globals", _session_globals)
 
+        # SHADOW-STAGE SPOKEN-WORD CUES (founder 2026-09-28, D3). Measured once
+        # per Take on the clips just persisted, logged, and nothing else: they
+        # route no exercise and reach no user. Best-effort like the step above
+        # — a failure here is recorded and the Take goes on.
+        def _verbal_cue_shadow() -> None:
+            from services.verbal_cues import record_take
+            added = record_take(db, session_id)
+            logger.info("lab: verbal cue shadow sid=%s added=%s",
+                        session_id, added)
+        _deg.run("verbal_cue_shadow", _verbal_cue_shadow)
+
         _emit(progress, "ideal_text", 55, "Building your Ideal Text…")
         tl.mark("ideal_text")
 
