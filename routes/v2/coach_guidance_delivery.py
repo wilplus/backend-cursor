@@ -15,7 +15,9 @@ from config import Config
 from routes.admin import require_admin_or_coach
 from routes.v2.blueprint import v2_bp
 from services.coach_guidance_delivery import (
+    AttachmentServiceDisabled,
     inline_authoring_is_enabled,
+    parse_attachment_request,
     require_video_upload,
     runtime_is_enabled,
 )
@@ -59,10 +61,6 @@ def _extension(filename: str, content_type: str) -> str:
     if suffix and len(suffix) <= 8:
         return suffix
     return mimetypes.guess_extension(content_type) or ".video"
-
-
-def _clean_attestation(form: Any) -> bool:
-    return str(form.get("independent_clean_media") or "").lower() == "true"
 
 
 def _store_inline_coach_media(
@@ -399,78 +397,31 @@ def v2_coach_guidance_attachment():
         reviewer = _reviewer_principal_id()
         idempotency = _idempotency_key()
         form = request.form
-        attachment_class = str(form.get("attachment_class") or "")
-        if attachment_class not in {
-            "general_product_guidance", "mlc3_exercise",
-        }:
-            raise ValueError("attachment_class invalid")
-        membership_value = str(form.get("feedback_membership_id") or "").strip()
-        candidate_value = str(form.get("feedback_candidate_id") or "").strip()
-        if bool(membership_value) != bool(candidate_value):
-            raise ValueError("feedback identity pair invalid")
-        if attachment_class == "mlc3_exercise" and not membership_value:
-            # Reject before authority issuance, upload reservation, or any R2
-            # write. Exercises always require the exact frozen V3 identity.
-            raise ValueError("exercise feedback identity required")
-        inline_general = (
-            attachment_class == "general_product_guidance"
-            and not membership_value
-            and inline_authoring_is_enabled()
-        )
-        if not runtime_is_enabled() and not inline_general:
-            return _disabled_response()
-        reveal_access_id = _uuid(
-            form.get("reveal_access_id"), "reveal_access_id"
-        )
-        membership_id = (
-            _uuid(membership_value, "feedback_membership_id")
-            if membership_value else None
-        )
-        candidate_id = (
-            _uuid(candidate_value, "feedback_candidate_id")
-            if candidate_value else None
-        )
-        review_batch_id = (
-            _uuid(form.get("review_batch_id"), "review_batch_id")
-            if inline_general else None
-        )
-        reveal_grant_id = (
-            _uuid(form.get("reveal_grant_id"), "reveal_grant_id")
-            if inline_general else None
-        )
-        review_assignment_id = (
-            _uuid(form.get("review_assignment_id"), "review_assignment_id")
-            if inline_general else None
-        )
-        authorization_snapshot_id = None
-        offer_id = (
-            _uuid(form.get("exercise_offer_id"), "exercise_offer_id")
-            if form.get("exercise_offer_id") else None
-        )
-        need_contract_id = (
-            _uuid(form.get("need_contract_id"), "need_contract_id")
-            if form.get("need_contract_id") else None
-        )
-        exercise_version_id = (
-            _uuid(form.get("exercise_version_id"), "exercise_version_id")
-            if form.get("exercise_version_id") else None
-        )
-        written_note = str(form.get("written_note") or "").strip() or None
-        if written_note and len(written_note) > 2000:
-            raise ValueError("written_note too long")
         video = request.files.get("video")
-        clean = _clean_attestation(form)
-        publish_requested = (
-            str(form.get("publish_to_catalog") or "").lower() == "true"
-        )
-        if publish_requested and (
-            attachment_class != "mlc3_exercise" or video is None or not clean
-        ):
-            raise ValueError(
-                "catalog publication requires a clean exercise video"
+        try:
+            parsed = parse_attachment_request(
+                form,
+                has_video=video is not None,
+                runtime_enabled=runtime_is_enabled(),
+                inline_authoring_enabled=inline_authoring_is_enabled(),
             )
-        if not written_note and video is None:
-            raise ValueError("written note or video required")
+        except AttachmentServiceDisabled:
+            return _disabled_response()
+        attachment_class = parsed.attachment_class
+        inline_general = parsed.inline_general
+        reveal_access_id = parsed.reveal_access_id
+        membership_id = parsed.feedback_membership_id
+        candidate_id = parsed.feedback_candidate_id
+        review_batch_id = parsed.review_batch_id
+        reveal_grant_id = parsed.reveal_grant_id
+        review_assignment_id = parsed.review_assignment_id
+        offer_id = parsed.exercise_offer_id
+        need_contract_id = parsed.need_contract_id
+        exercise_version_id = parsed.exercise_version_id
+        written_note = parsed.written_note
+        clean = parsed.independent_clean_media
+        publish_requested = parsed.publish_to_catalog
+        authorization_snapshot_id = None
         if inline_general:
             authority = db.issue_coach_inline_general_authority({
                 "p_review_batch_id": review_batch_id,
