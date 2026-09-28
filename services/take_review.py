@@ -59,20 +59,9 @@ def _settled(database: Any, plan: Any, receipt: dict, after: Any, *,
     return ""
 
 
-def finalize_later_take_review(
-    database: Any,
-    *,
-    arc_id: str,
-    owner_user_id: str,
-    take_session_id: str,
-    take_index: int,
-) -> dict:
-    """Advance one later spoken Take and return its confirmed version receipt.
-
-    The Take/session/owner/Project tuple is checked here and again inside the
-    transaction.  A stale browser marker or retry can therefore never advance
-    a different Project merely because it knows an arc id.
-    """
+def _later_take_index(take_index: Any, *, arc_id: str, owner_user_id: str,
+                      take_session_id: str) -> int:
+    """The later Take's index, or the refusal of the arguments."""
     index = _take_number(take_index)
     if index is None or index < 2:
         raise TakeReviewFinalizationError(
@@ -80,7 +69,13 @@ def finalize_later_take_review(
     if not arc_id or not owner_user_id or not take_session_id:
         raise TakeReviewFinalizationError(
             take_session_id, "Project, owner, and Take identities are required")
+    return index
 
+
+def _check_stored_session(database: Any, *, arc_id: str, owner_user_id: str,
+                          take_session_id: str, index: int) -> None:
+    """The stored session is this Project's, this owner's, this index, and a
+    spoken Take — or the refusal that names which is not."""
     session = database.v2_get_session_by_id(str(take_session_id)) or {}
     if str(session.get("id") or "") != str(take_session_id):
         raise TakeReviewFinalizationError(take_session_id, "Take is missing")
@@ -97,6 +92,72 @@ def finalize_later_take_review(
             or session.get("paired_session_id"):
         raise TakeReviewFinalizationError(
             take_session_id, "only a spoken Take has a review version")
+
+
+def _suggestions_snapshot(database: Any, arc_id: str) -> list:
+    """The snapshot's reasoning remains sanitized at write time, matching the
+    Take 1 assembler.  It is history/provenance, not the Manager's visible
+    feedback set (which has its own immutable table). A read failure
+    snapshots nothing."""
+    try:
+        from services.ideal_text_block import sanitize_suggestions_snapshot
+
+        suggestions = database.get_moment_suggestions_by_arc(arc_id) or {}
+        return sanitize_suggestions_snapshot(suggestions)
+    except Exception:
+        return []
+
+
+def _receipt_confirms(receipt: Any, *, arc_id: str, take_session_id: str,
+                      index: int) -> bool:
+    """The atomic RPC's receipt names this Project, this Take and this
+    version, and says the text was confirmed."""
+    return (isinstance(receipt, dict)
+            and _take_number(receipt.get("version")) == index
+            and str(receipt.get("arc_id") or "") == str(arc_id)
+            and str(receipt.get("take_session_id") or "")
+            == str(take_session_id)
+            and _take_number(receipt.get("take_index")) == index
+            and receipt.get("text_confirmed") is True)
+
+
+def _observed_review(database: Any, *, arc_id: str, take_session_id: str,
+                     index: int) -> tuple:
+    """``(current row, its version)`` from fresh reads: the current row is at
+    this version or later, and this version's snapshot has words."""
+    after = confirmed_ideal_text(
+        database.ideal_text.get_coach_arc_ideal_text(arc_id))
+    current_version = _take_number((after or {}).get("version"))
+    if after is None or current_version is None or current_version < index:
+        raise TakeReviewFinalizationError(
+            take_session_id, "current review version was not observable")
+    snapshot = database.get_ideal_text_version(arc_id, index) or {}
+    if not str(snapshot.get("text") or "").strip():
+        raise TakeReviewFinalizationError(
+            take_session_id, "historical review snapshot was not observable")
+    return after, current_version
+
+
+def finalize_later_take_review(
+    database: Any,
+    *,
+    arc_id: str,
+    owner_user_id: str,
+    take_session_id: str,
+    take_index: int,
+) -> dict:
+    """Advance one later spoken Take and return its confirmed version receipt.
+
+    The Take/session/owner/Project tuple is checked here and again inside the
+    transaction.  A stale browser marker or retry can therefore never advance
+    a different Project merely because it knows an arc id.
+    """
+    index = _later_take_index(take_index, arc_id=arc_id,
+                              owner_user_id=owner_user_id,
+                              take_session_id=take_session_id)
+    _check_stored_session(database, arc_id=arc_id,
+                          owner_user_id=owner_user_id,
+                          take_session_id=take_session_id, index=index)
 
     before = confirmed_ideal_text(
         database.ideal_text.get_coach_arc_ideal_text(str(arc_id)))
@@ -122,16 +183,7 @@ def finalize_later_take_review(
     owner_edit_before = database.get_user_ideal_edit(
         str(arc_id), str(owner_user_id))
 
-    # The snapshot's reasoning remains sanitized at write time, matching the
-    # Take 1 assembler.  It is history/provenance, not the Manager's visible
-    # feedback set (which has its own immutable table).
-    try:
-        from services.ideal_text_block import sanitize_suggestions_snapshot
-
-        suggestions = database.get_moment_suggestions_by_arc(str(arc_id)) or {}
-        moments = sanitize_suggestions_snapshot(suggestions)
-    except Exception:
-        moments = []
+    moments = _suggestions_snapshot(database, str(arc_id))
 
     # EVERY TAKE REWRITES THE SLIDES IT SPOKE (contract 8-9, founder
     # 2026-09-25). Planned before the atomic write and handed to it, so the
@@ -155,26 +207,14 @@ def finalize_later_take_review(
     except Exception as exc:
         raise TakeReviewFinalizationError(
             take_session_id, "atomic database finalizer failed") from exc
-    if not isinstance(receipt, dict) \
-            or _take_number(receipt.get("version")) != index \
-            or str(receipt.get("arc_id") or "") != str(arc_id) \
-            or str(receipt.get("take_session_id") or "") \
-            != str(take_session_id) \
-            or _take_number(receipt.get("take_index")) != index \
-            or receipt.get("text_confirmed") is not True:
+    if not _receipt_confirms(receipt, arc_id=arc_id,
+                             take_session_id=take_session_id, index=index):
         raise TakeReviewFinalizationError(
             take_session_id, "database finalizer returned no confirmation")
 
-    after = confirmed_ideal_text(
-        database.ideal_text.get_coach_arc_ideal_text(str(arc_id)))
-    current_version = _take_number((after or {}).get("version"))
-    if after is None or current_version is None or current_version < index:
-        raise TakeReviewFinalizationError(
-            take_session_id, "current review version was not observable")
-    snapshot = database.get_ideal_text_version(str(arc_id), index) or {}
-    if not str(snapshot.get("text") or "").strip():
-        raise TakeReviewFinalizationError(
-            take_session_id, "historical review snapshot was not observable")
+    after, current_version = _observed_review(
+        database, arc_id=str(arc_id), take_session_id=take_session_id,
+        index=index)
 
     # The words are this Take's now, or — without a rebuild — the owner's
     # words must have survived. `_settled` proves whichever applies.
