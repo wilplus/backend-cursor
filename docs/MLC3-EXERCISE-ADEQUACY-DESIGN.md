@@ -176,12 +176,16 @@ may never override the gate, learn the gate's eligibility decision as its
 label, or treat an exclusion as a negative adequacy outcome. A separate
 trainable ranking surface is not created initially.
 
-### 3.5 Outcome horizons and activation gate
+### 3.5 Label specification `exercise-adequacy-label-v1`
 
-The product stores raw observations without deriving a training class until a
-versioned label specification is approved.
+Founder-approved 2026-09-28. It replaces the open requirements this section
+used to list; every item they named is decided below. Nothing here authorizes
+a dataset release, training run, or promotion by itself: those still need the
+gates in §13. What it does is fix, in advance, what "the exercise helped"
+means, so no later analysis can choose its own definition after seeing the
+data.
 
-Raw horizons are separated:
+Raw horizons stay separate and are all still stored:
 
 - `same_session_same_passage`: a valid attempt captured in the same opened
   practice flow;
@@ -189,23 +193,62 @@ Raw horizons are separated:
 - `next_take_transfer`: a materially comparable future-Take clip linked by
   Project/Slide/Paragraph lineage.
 
-The first MLC-3 label specification must choose exactly one primary endpoint
-and time horizon. It must also freeze:
-
-- the baseline/original observation;
-- which of up to three attempts supplies the endpoint;
-- validity and alignment requirements;
-- missing, `no_attempt`, dropout, and censoring treatment;
-- the minimum follow-up window;
-- primary metric, estimand, evaluation cohort, and decision thresholds;
-- repeated-exposure and carryover handling;
-- offline evaluation and promotion criteria.
-
-It must not merge horizons or use "exercise shown" as success. Until this
-specification is approved, every outcome remains evaluation-only raw evidence,
-serving may use only the deterministic top eligible exercise, and user-facing
-80/20 exploration is structurally disabled. Dark schema, catalog, candidate
-inventory, and non-exposure calculations may be implemented earlier.
+1. **Endpoint.** An exercise *helped* when none of its **targeted problems**
+   is detected on the endpoint attempt.
+   - The targeted problems are the detected problems that fired on the
+     original clip and that the served exercise targets at its fit: its main
+     target for an exact fit, its secondary target for a trial. They are read
+     from the frozen match trace (0384), never recomputed.
+   - They are measured by the same detectors under the same
+     `signal_rules_version` as the original. A pair measured under different
+     rules versions is excluded, not compared.
+   - Success is binary per exposure. It is never "exercise shown", "opened",
+     or any answer or judgment (item 10).
+2. **Horizon.** `same_session_same_passage` is the only primary horizon. The
+   other two are stored as raw evidence and are never pooled with it.
+3. **Endpoint attempt.** The **last valid** attempt of at most three. *Valid*
+   means it passes the safety half of the clip gate (aligned to the same
+   passage, reliable audio, a confidence read present). The attempt is fixed
+   in advance; the best attempt is never chosen after the fact.
+4. **Baseline.** The original clip as frozen in its trace.
+5. **Exposure and missing data.**
+   - **An exposure exists only once the client confirms the exercise
+     rendered** (an authenticated "exercise rendered" event, recorded once per
+     assignment). An offer that was never rendered is not an exposure. This
+     event is **required before any evaluation under this specification**.
+     Until it exists, outcomes stay raw evidence.
+   - No attempt, no valid attempt, abandonment, or expiry is **excluded** from
+     the success rate and is never a negative label.
+   - The **attempt rate** (exposures with a valid endpoint attempt ÷
+     exposures) is always reported beside the success rate.
+6. **Cohort and repeats.**
+   - Only each speaker's **first exposure** per targeted problem enters the
+     primary cohort, drawn under the 80/20 policy with its stored
+     probabilities. Repeats are kept and marked, never pooled.
+   - Exposures below the policy's minimum probability are excluded from causal
+     estimates (§4.4).
+   - Speakers are split into disjoint groups by a stable hash of the canonical
+     speaker. Evaluation uses only speakers the ranker never trained on.
+7. **Estimand.** The policy's success rate, estimated off-policy by
+   inverse-propensity weighting on the stored 80/20 probabilities, with 95%
+   intervals from a bootstrap that resamples speakers. Per-exercise success
+   rates are descriptive only.
+8. **Minimum evidence.** No learned ranking may be evaluated for promotion
+   before at least **300** first-exposure attempts with a valid endpoint, and
+   at least **30** for every exercise it would rank.
+9. **Promotion.** A learned ranker replaces the fixed ranking only when, on
+   held-out speakers:
+   - its estimated success rate is **at least 5 points higher**, with the 95%
+     interval of the difference **above zero**;
+   - its estimated attempt rate is **no more than 5 points lower** (the
+     guardrail);
+   - and the founder approves the result.
+   Even then it ranks only the pool that passed the deterministic gate (§4.2),
+   and 80/20 exploration continues.
+10. **Never a label.** None of these may be used as a label: the speaker's own
+    answers; blind coach or peer confidence judgments; coach overrides;
+    shadow-stage verdicts; "shown" or "opened". Exercise outcomes never train
+    Confidence Classification.
 
 ## 4. Selection and exposure policy
 
