@@ -266,6 +266,39 @@ Raw horizons stay separate and are all still stored:
     shadow-stage verdicts; "shown" or "opened". Exercise outcomes never train
     Confidence Classification.
 
+### 3.5a Noise meter `noise-meter-v1` (silent)
+
+Founder 2026-09-28: build it, silent first.
+
+**Why.** The clip gate's "reliable audio" rule reads
+`metrics.audio_quality`, but nothing has ever written that field, so that
+part of the gate has never run, for the original clips or the practice
+attempts. Background noise also blurs words, which can fire
+`reduced_intelligibility` on a noisy endpoint attempt and make a
+clear-words exercise look as if it did not help.
+
+**Operational definition. It measures one thing: how far the voice stands
+above the background in one recording.**
+- Frame loudness is the existing 25 ms RMS dB series (`_frame_rms_db`).
+- `voice_db` is the 90th percentile of frame loudness, and `background_db`
+  is the 10th percentile.
+- `separation_db = voice_db − background_db`. A larger value means a
+  cleaner recording.
+- With fewer than 20 frames the value is `None` (too short to judge),
+  never a guess.
+- It is computed in `services/audio_metrics.py:_noise_meter` for every
+  analysed recording (`metrics.noise_meter`). It is saved into every clip
+  snapshot and every practice attempt as `noise_separation_db` and
+  `noise_meter_version`.
+
+**Silent.** No rule reads it: not the clip gate, the eligibility verdict,
+attempt validity, the counter, the scorekeeper or the fair test. It does
+not write `audio_quality`. Nothing reaches a speaker (AC-9). Switching it
+on is a separate founder decision, taken only after checking it against
+what a person hears on a sample of recordings. That decision sets a
+threshold, names the gate it joins, and versions the rule
+(`SIGNAL_RULES_VERSION` or the validity rule).
+
 ## 4. Selection and exposure policy
 
 ### 4.1 Complete candidate pool
