@@ -213,36 +213,5 @@ class ConfidenceReviewRouteTests(unittest.TestCase):
         self.assertNotIn("value", data)
 
 
-# ── 3) corpus summary ──────────────────────────────────────────────────────
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class ReviewCorpusSummaryTests(unittest.TestCase):
-
-    def test_balance_and_reviewer_count(self):
-        rows = [
-            {"ai_correct": True, "reviewer_user_id": "a", "model_version": "v1"},
-            {"ai_correct": True, "reviewer_user_id": "a", "model_version": "v1"},
-            {"ai_correct": False, "reviewer_user_id": "b", "model_version": None},
-        ]
-        s = confidence_reviews.review_corpus_summary(rows)
-        self.assertEqual(s["total"], 3)
-        self.assertEqual(s["ai_correct_true"], 2)
-        self.assertEqual(s["ai_correct_false"], 1)
-        self.assertEqual(s["agreement_rate"], round(2 / 3, 3))
-        self.assertEqual(s["reviewers"], 2)
-        self.assertEqual(s["by_model_version"],
-                         {"v1": 2, "(unattributed)": 1})
-
-    def test_empty_corpus_reports_no_rate(self):
-        s = confidence_reviews.review_corpus_summary([])
-        self.assertEqual(s["total"], 0)
-        self.assertIsNone(s["agreement_rate"])
-
-    def test_summary_declares_itself_non_blind(self):
-        s = confidence_reviews.review_corpus_summary([])
-        self.assertIs(s["blind"], False)
-        self.assertEqual(s["selection_source"], "peer_review")
-
-
 if __name__ == "__main__":
     unittest.main()

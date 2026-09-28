@@ -7,16 +7,6 @@ DEFAULT_AI_INSIGHT = (
 )
 
 
-def _first_name(name_or_email: str | None) -> str:
-    raw = (name_or_email or "").strip()
-    if not raw:
-        return "there"
-    if "@" in raw:
-        raw = raw.split("@", 1)[0]
-    first = raw.replace("_", " ").replace(".", " ").split(" ")[0].strip()
-    return first.capitalize() if first else "there"
-
-
 def _initials(name: str | None) -> str:
     raw = (name or "").strip()
     if not raw:
@@ -192,115 +182,6 @@ def build_student_new_homework_email_html(
 </td></tr>
 <tr><td style="padding:32px 0;text-align:center;">
   <p style="margin:0;font-size:12px;color:#cbd5e1;">Willab</p>
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>"""
-
-
-def build_student_homework_submitted_email_html(
-    *,
-    student_first_name: str,
-    score: float | int | None,
-    recording_url: str,
-    transcript_excerpt: str,
-    filler_total: int | None,
-    filler_breakdown: str,
-    ai_insight: str,
-    report_url: str,
-    coach_name: str,
-    coach_role: str,
-    logo_url: str | None = None,
-) -> str:
-    safe_first = escape(_first_name(student_first_name))
-    safe_coach = escape((coach_name or "Coach").strip() or "Coach")
-    safe_role = escape((coach_role or "Public Speaking Coach").strip() or "Public Speaking Coach")
-    pct = _score_percent(score)
-    transcript = _short(transcript_excerpt, 80) or "No transcript yet."
-    filler_total_text = str(filler_total) if filler_total is not None else "0"
-    filler_breakdown_text = escape((filler_breakdown or "none").strip() or "none")
-    insight = escape((ai_insight or DEFAULT_AI_INSIGHT).strip() or DEFAULT_AI_INSIGHT)
-    initials = escape(_initials(safe_coach))
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Homework Complete — Willab</title>
-</head>
-<body style="margin:0;padding:0;background-color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;padding:48px 16px;">
-<tr><td align="center">
-<table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
-<tr><td style="padding-bottom:40px;">
-  {_logo_html(logo_url)}
-</td></tr>
-<tr><td style="background-color:#ffffff;border-radius:8px;">
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="padding:36px 36px 0;">
-  <p style="margin:0 0 6px;font-size:18px;font-weight:600;color:#1e293b;line-height:1.4;">Great work, {safe_first}!</p>
-  <p style="margin:0;font-size:14px;color:#64748b;line-height:1.6;">I will contact you soon with the feedback.</p>
-</td></tr>
-<tr><td style="padding:28px 36px 0;">
-  <table cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;width:100%;">
-    <tr><td style="padding:20px 24px;text-align:center;">
-      <p style="margin:0 0 4px;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">Performance score</p>
-      <p style="margin:0;font-size:32px;font-weight:600;color:#f97316;">{pct}%</p>
-    </td></tr>
-  </table>
-</td></tr>
-<tr><td style="padding:28px 36px 0;"><div style="border-top:1px solid #f1f5f9;"></div></td></tr>
-<tr><td style="padding:24px 36px 0;">
-  <p style="margin:0 0 16px;font-size:14px;font-weight:600;color:#1e293b;">Your report</p>
-  <table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#64748b;">
-    <tr>
-      <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;">Playback</td>
-      <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;text-align:right;">
-        <a href="{escape(recording_url)}" style="color:#f97316;text-decoration:none;">Open recording →</a>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;">Transcript</td>
-      <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;text-align:right;font-style:italic;color:#94a3b8;">"{escape(transcript)}"</td>
-    </tr>
-    <tr>
-      <td style="padding:10px 0;">Filler words</td>
-      <td style="padding:10px 0;text-align:right;">{escape(filler_total_text)} <span style="color:#cbd5e1;">· {filler_breakdown_text}</span></td>
-    </tr>
-  </table>
-</td></tr>
-<tr><td style="padding:24px 36px 0;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;border-left:2px solid #f97316;">
-    <tr><td style="padding:16px 20px;">
-      <p style="margin:0 0 6px;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">AI Coach Insight</p>
-      <p style="margin:0;font-size:14px;color:#64748b;line-height:1.6;">"{insight}"</p>
-    </td></tr>
-  </table>
-</td></tr>
-<tr><td style="padding:28px 36px;">
-  <a href="{escape(report_url)}" style="display:inline-block;background-color:#1e293b;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:6px;">View full report</a>
-</td></tr>
-<tr><td style="padding:0 36px;"><div style="border-top:1px solid #f1f5f9;"></div></td></tr>
-<tr><td style="padding:24px 36px 32px;">
-  <table cellpadding="0" cellspacing="0">
-    <tr>
-      <td style="width:36px;vertical-align:top;">
-        <div style="width:32px;height:32px;border-radius:50%;background-color:#1e293b;color:#ffffff;font-size:12px;font-weight:600;text-align:center;line-height:32px;">{initials}</div>
-      </td>
-      <td style="padding-left:10px;">
-        <p style="margin:0;font-size:14px;font-weight:600;color:#1e293b;">{safe_coach}</p>
-        <p style="margin:0;font-size:12px;color:#94a3b8;">{safe_role}</p>
-      </td>
-    </tr>
-  </table>
-</td></tr>
-</table>
-</td></tr>
-<tr><td style="padding:32px 0;text-align:center;">
-  <p style="margin:0 0 4px;font-size:12px;color:#cbd5e1;">Willab</p>
-  <p style="margin:0;font-size:11px;color:#e2e8f0;">You received this because you're enrolled in coaching.</p>
 </td></tr>
 </table>
 </td></tr>

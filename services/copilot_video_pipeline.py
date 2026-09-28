@@ -11,45 +11,6 @@ from config import Config
 logger = logging.getLogger(__name__)
 config = Config()
 
-def resolve_script_mode(payload: Dict[str, Any]) -> str:
-    mode = str(payload.get("script_mode") or "").strip().lower()
-    if mode in ("ai_only", "ai_edited", "full_video_override"):
-        return mode
-    if (payload.get("full_override_video_url") or payload.get("full_override_video_storage_path")):
-        return "full_video_override"
-    ai_script = str(payload.get("ai_script_draft") or "").strip()
-    current_script = str(payload.get("script_draft") or payload.get("video_script") or "").strip()
-    if ai_script and current_script and ai_script != current_script:
-        return "ai_edited"
-    return "ai_only"
-
-
-def build_script_manifest(row: Dict[str, Any], payload: Dict[str, Any], script_mode: str) -> Dict[str, Any]:
-    ai_script = str(payload.get("ai_script_draft") or row.get("ai_draft_video_script") or "").strip()
-    final_script = str(payload.get("script_draft") or payload.get("video_script") or ai_script).strip()
-    universal_blocks = payload.get("universal_blocks")
-    personalized_blocks = payload.get("personalized_blocks")
-    coach_override_blocks = payload.get("coach_override_blocks")
-    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
-    return {
-        "version": "v1",
-        "script_mode": script_mode,
-        "resolved_script_text": final_script or None,
-        "sections": {
-            "ai_original": ai_script or None,
-            "final_script": final_script or None,
-            "override_video_url": payload.get("full_override_video_url"),
-            "override_video_storage_path": payload.get("full_override_video_storage_path"),
-        },
-        "blocks": {
-            "universal_blocks": universal_blocks if isinstance(universal_blocks, list) else [],
-            "personalized_blocks": personalized_blocks if isinstance(personalized_blocks, list) else [],
-            "coach_override_blocks": coach_override_blocks if isinstance(coach_override_blocks, list) else [],
-        },
-        "metadata": metadata,
-    }
-
-
 def extract_script_text_from_manifest(script_manifest: Dict[str, Any]) -> str:
     sections = script_manifest.get("sections") if isinstance(script_manifest, dict) else {}
     if not isinstance(sections, dict):
@@ -110,37 +71,6 @@ def _download_binary_from_url(url: str, *, timeout: int = 120) -> bytes:
         resp = client.get(url)
         resp.raise_for_status()
         return resp.content
-
-
-def fetch_override_video_bytes(script_manifest: Dict[str, Any]) -> bytes:
-    sections = script_manifest.get("sections") if isinstance(script_manifest, dict) else {}
-    if not isinstance(sections, dict):
-        raise ValueError("script_manifest.sections is required for full_video_override")
-    override_url = str(sections.get("override_video_url") or "").strip()
-    if not override_url:
-        override_storage_path = str(sections.get("override_video_storage_path") or "").strip()
-        if not override_storage_path:
-            raise ValueError("full_video_override requires sections.override_video_url or sections.override_video_storage_path")
-        if override_storage_path.startswith("r2://"):
-            from services.tutor_video_url import parse_r2_uri
-            from services.coach_video_storage import get_coach_object_bytes
-
-            pr = parse_r2_uri(override_storage_path)
-            if not pr:
-                raise ValueError("Invalid r2 URI for override video")
-            b, path = pr
-            return get_coach_object_bytes(b, path)
-        bucket = config.COACH_FEEDBACK_VIDEO_BUCKET
-        path = override_storage_path
-        if override_storage_path.startswith("storage://"):
-            raw = override_storage_path[len("storage://") :]
-            first = raw.split("/", 1)
-            if len(first) != 2:
-                raise ValueError("Invalid storage URI for override video")
-            bucket, path = first[0], first[1]
-        from services.db import db
-        return db.download_audio(bucket, path)
-    return _download_binary_from_url(override_url, timeout=180)
 
 
 def _extract_binary_or_remote(payload: Dict[str, Any], *, url_key: str, base64_key: str) -> bytes:

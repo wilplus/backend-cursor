@@ -221,6 +221,8 @@ def extend_manifest(manifest: Any, rows: Any) -> dict:
     return out
 
 
+# PARKED (founder decision 2026-09-26, audit C4): nothing in the running
+# app calls this yet. Kept for Phase 2 dataset splits, which stay off until separately authorized.
 def partition_rows(rows: Any, manifest: Any) -> dict[str, list[dict]]:
     """Apply a manifest strictly and assert clip/speaker disjointness."""
     current = _validated_manifest(manifest)
@@ -252,6 +254,8 @@ def partition_rows(rows: Any, manifest: Any) -> dict[str, list[dict]]:
     return out
 
 
+# PARKED (founder decision 2026-09-26, audit C4): nothing in the running
+# app calls this yet. Kept for Phase 2 dataset splits, which stay off until separately authorized.
 def split_audit(partitions: Any) -> dict:
     """Internal balance report; observation only, never an auto-reshuffler."""
     source = partitions if isinstance(partitions, dict) else {}

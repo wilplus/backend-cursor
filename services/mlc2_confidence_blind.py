@@ -42,6 +42,8 @@ def _walk_keys(value: Any) -> set[str]:
     return set()
 
 
+# PARKED (founder decision 2026-09-26, audit C4): nothing in the running
+# app calls this yet. Kept for the Slice-4 blind confidence work (BLIND COACH fence).
 def validate_blind_packet(value: Any) -> dict[str, Any]:
     """Return a detached exact-allowlist packet or fail closed."""
     if not isinstance(value, Mapping) or set(value) != _TOP_LEVEL:
