@@ -4,24 +4,11 @@ from __future__ import annotations
 import uuid
 from typing import Any, Optional
 
+from services.canonical_product import OWNER_RESPONSES
 
-RESPONSES = {
-    "confident_voice": {
-        "yes", "in_between", "no", "not_sure", "audio_unclear",
-    },
-    "rewrite_clarity": {
-        "apply_suggestion", "edit_myself", "keep_wording",
-    },
-    # `acknowledged` (0333): the praise screen reads "Good job" and offers one
-    # Continue rather than a rating. The write still has to happen — it is what
-    # marks the item decided, and without it praise is re-offered every time
-    # the paragraph is opened — so Continue records an acknowledgement instead
-    # of a verdict. `useful` / `not_useful` stay for the historical rows and
-    # for any surface that still rates.
-    "great_formulation": {
-        "useful", "not_useful", "not_sure", "acknowledged",
-    },
-}
+
+# One vocabulary for every module (audit D2): see OWNER_RESPONSES.
+RESPONSES = OWNER_RESPONSES
 
 
 def parse_feedback_response(

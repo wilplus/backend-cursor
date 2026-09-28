@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Any
+from typing import Any, Mapping
 
 from config import Config
+from services.canonical_product import JUDGEMENT_RESPONSES
 
 BUNDLE_PROJECTION_VERSION = "confident-moment-coaching-bundle-v2"
 BUNDLE_FEEDBACK_LANGUAGE_SHAPE_VERSION = "feedback-language-items-v2"
@@ -121,11 +122,9 @@ def validate_family_response(value: Any, *, bundle_id: str,
     ) != attachment_id:
         raise ConfidentMomentProjectionInvalid("family response identity invalid")
     family = result.get("feedback_family")
-    allowed = {
-        "confident_voice": {"yes", "in_between", "no", "not_sure", "audio_unclear"},
-        "rewrite_clarity": {"apply_suggestion", "keep_wording"},
-        "great_formulation": {"useful", "not_useful", "not_sure"},
-    }
+    # Only answers that carry a canonical judgement (audit D2): the
+    # self-report-only answers never reach a bundle projection.
+    allowed: Mapping[Any, frozenset[str]] = JUDGEMENT_RESPONSES
     if family not in allowed or result.get("response") not in allowed[family]:
         raise ConfidentMomentProjectionInvalid("family response value invalid")
     _uuid(result.get("decision_id"), "decision_id")
