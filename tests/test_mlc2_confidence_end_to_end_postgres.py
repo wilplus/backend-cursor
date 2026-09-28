@@ -162,31 +162,28 @@ def chain(conn):
         (attempt, owner, project, f"g6-upload-{tag}", recording, BUCKET, OBJECT_KEY),
     )
 
-    # One active consent policy: reuse the lane's if it has one (the health
-    # invariant counts exactly one), otherwise seed the slice-4 pair.
-    policy = _one(cur, "SELECT policy.version, approval.terms_version, approval.privacy_policy_version "
-                       "FROM public.ml_consent_policies policy "
-                       "JOIN public.ml_product_legal_approvals approval "
-                       "ON approval.id = policy.product_legal_approval_id "
-                       "WHERE policy.active_from <= now() ORDER BY policy.active_from DESC LIMIT 1")
-    if policy is None:
-        approval = str(uuid.uuid4())
-        cur.execute(
-            "INSERT INTO public.ml_product_legal_approvals (id, approval_reference, approved_copy_sha256, "
-            "onboarding_copy, consent_policy_version, terms_version, privacy_policy_version, "
-            "approving_authority, approved_at, jurisdictions, article_6_basis, article_9_treatment, "
-            "evidence_object_key, evidence_sha256) VALUES (%s, %s, %s, 'Rehearsal copy', %s, 'terms-v1', "
-            "'privacy-v1', 'isolated-test', %s, ARRAY['EU'], '6(1)(a)', '9(2)(a)_when_special_category', "
-            "'legal/g6.json', %s)",
-            (approval, f"G6-REHEARSAL-{tag}", SHA["1"], f"g6-consent-{tag}", now, SHA["2"]),
-        )
-        cur.execute(
-            "INSERT INTO public.ml_consent_policies (version, product_legal_approval_id, "
-            "required_for_service, bundled_ui, active_from) VALUES (%s, %s, true, true, %s)",
-            (f"g6-consent-{tag}", approval, now),
-        )
-        policy = {"version": f"g6-consent-{tag}", "terms_version": "terms-v1",
-                  "privacy_policy_version": "privacy-v1"}
+    # The slice-4 pair, seeded fresh: the grant RPC matches the policy's own
+    # approval (terms, privacy and copy hash) and needs active_from at or
+    # before the grant time, so a policy another suite left in the lane can
+    # never be the one this grant names.
+    approval = str(uuid.uuid4())
+    active_from = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
+    cur.execute(
+        "INSERT INTO public.ml_product_legal_approvals (id, approval_reference, approved_copy_sha256, "
+        "onboarding_copy, consent_policy_version, terms_version, privacy_policy_version, "
+        "approving_authority, approved_at, jurisdictions, article_6_basis, article_9_treatment, "
+        "evidence_object_key, evidence_sha256) VALUES (%s, %s, %s, 'Rehearsal copy', %s, 'terms-v1', "
+        "'privacy-v1', 'isolated-test', %s, ARRAY['EU'], '6(1)(a)', '9(2)(a)_when_special_category', "
+        "'legal/g6.json', %s)",
+        (approval, f"G6-REHEARSAL-{tag}", SHA["1"], f"g6-consent-{tag}", active_from, SHA["2"]),
+    )
+    cur.execute(
+        "INSERT INTO public.ml_consent_policies (version, product_legal_approval_id, "
+        "required_for_service, bundled_ui, active_from) VALUES (%s, %s, true, true, %s)",
+        (f"g6-consent-{tag}", approval, active_from),
+    )
+    policy = {"version": f"g6-consent-{tag}", "terms_version": "terms-v1",
+              "privacy_policy_version": "privacy-v1"}
 
     cur.execute(
         "SELECT public.register_ml_speaker_principal_v1(%s, %s, 'speaker-resolution-v1', 'initial', %s, "
