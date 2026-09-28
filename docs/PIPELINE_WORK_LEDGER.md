@@ -1854,7 +1854,7 @@ rebuild Ideal Text.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
-### 2026-09-28 · WS-G6 · g6-confidence-frame-factory · #(pending)
+### 2026-09-28 · WS-G6 · g6-confidence-frame-factory · #756
 
 **Closed:** G-6's missing piece: the worker's `frame_factory` and the chain
 that runs it (`services/mlc2_confidence_frame_factory.py`). G-6 itself stays
