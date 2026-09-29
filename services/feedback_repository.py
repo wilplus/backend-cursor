@@ -151,6 +151,37 @@ def _document_evidence(database: Any, session: dict, snippet: dict) -> EvidenceL
     )
 
 
+def _review_state(row: dict) -> CoachReviewState:
+    state_raw = row.get("review_state") or CoachReviewState.REVIEWED.value
+    try:
+        return CoachReviewState(str(state_raw))
+    except ValueError as error:
+        raise FeedbackContractError("invalid coach review state") from error
+
+
+def _require_family_evidence(
+    family: FeedbackFamily,
+    locator: EvidenceLocator,
+    replacement: str | None,
+) -> None:
+    """Confident Voice needs playable audio; a rewrite needs its proposal."""
+    if family is FeedbackFamily.CONFIDENT_VOICE \
+            and locator.audio_interval is None:
+        raise FeedbackContractError(
+            "confident voice feedback requires playable audio evidence")
+    if family is FeedbackFamily.REWRITE_FOR_CLARITY and not replacement:
+        raise FeedbackContractError(
+            "rewrite feedback requires proposed replacement text")
+
+
+def _examples(row: dict) -> tuple[str, ...]:
+    return tuple(
+        str(example).strip()
+        for example in (row.get("examples") or [])
+        if str(example).strip()
+    )
+
+
 class FeedbackRepository:
     def __init__(self, database: Any):
         self.database = database
@@ -191,54 +222,47 @@ class FeedbackRepository:
             return []
         items: list[FeedbackItem] = []
         for row in self.database.get_coach_snippet_drafts(str(take_id)) or []:
-            if not row.get("surfaced"):
-                continue
-            message = str(row.get("note") or "").strip()
-            replacement = str(row.get("transcript_corrected") or "").strip() or None
-            if not message:
-                # A surfaced switch without authored feedback is not a
-                # FeedbackItem.  Treating it as absent makes an empty
-                # professional verdict a valid "no changes needed" result.
-                continue
-            state_raw = row.get("review_state") or CoachReviewState.REVIEWED.value
-            try:
-                review_state = CoachReviewState(str(state_raw))
-            except ValueError as error:
-                raise FeedbackContractError("invalid coach review state") from error
-            try:
-                family = _family(row)
-            except FeedbackContractError as error:
-                # An unknown stated family is logged and skipped: never read
-                # as praise, and never allowed to fail the whole read, which
-                # feeds the speaker's recording screen (audit B2).
-                logger.error("feedback row skipped take=%s snippet=%s: %s",
-                             take_id, row.get("snippet_id"), error)
-                continue
-            locator = self._locator(session, row)
-            if family is FeedbackFamily.CONFIDENT_VOICE \
-                    and locator.audio_interval is None:
-                raise FeedbackContractError(
-                    "confident voice feedback requires playable audio evidence")
-            if family is FeedbackFamily.REWRITE_FOR_CLARITY and not replacement:
-                raise FeedbackContractError(
-                    "rewrite feedback requires proposed replacement text")
-            items.append(FeedbackItem(
-                id=f"coach:{take_id}:{row.get('snippet_id')}",
-                family=family,
-                message=message,
-                evidence=locator,
-                review_state=review_state,
-                replacement_text=replacement,
-                application_guidance=(
-                    str(row.get("when_context") or "").strip() or None
-                ),
-                examples=tuple(
-                    str(example).strip()
-                    for example in (row.get("examples") or [])
-                    if str(example).strip()
-                ),
-            ))
+            item = self._coach_item(take_id, session, row)
+            if item is not None:
+                items.append(item)
         return items
+
+    def _coach_item(self, take_id: str, session: dict, row: dict) -> FeedbackItem | None:
+        """One coach draft row as a FeedbackItem, or None when it is not
+        surfaced, carries no authored feedback, or states an unknown family."""
+        if not row.get("surfaced"):
+            return None
+        message = str(row.get("note") or "").strip()
+        replacement = str(row.get("transcript_corrected") or "").strip() or None
+        if not message:
+            # A surfaced switch without authored feedback is not a
+            # FeedbackItem.  Treating it as absent makes an empty
+            # professional verdict a valid "no changes needed" result.
+            return None
+        review_state = _review_state(row)
+        try:
+            family = _family(row)
+        except FeedbackContractError as error:
+            # An unknown stated family is logged and skipped: never read
+            # as praise, and never allowed to fail the whole read, which
+            # feeds the speaker's recording screen (audit B2).
+            logger.error("feedback row skipped take=%s snippet=%s: %s",
+                         take_id, row.get("snippet_id"), error)
+            return None
+        locator = self._locator(session, row)
+        _require_family_evidence(family, locator, replacement)
+        return FeedbackItem(
+            id=f"coach:{take_id}:{row.get('snippet_id')}",
+            family=family,
+            message=message,
+            evidence=locator,
+            review_state=review_state,
+            replacement_text=replacement,
+            application_guidance=(
+                str(row.get("when_context") or "").strip() or None
+            ),
+            examples=_examples(row),
+        )
 
     def publish(self, take_id: str, *, actor_user_id: str | None) -> list[FeedbackItem]:
         """Validate exact evidence and mark current surfaced items reviewed.
