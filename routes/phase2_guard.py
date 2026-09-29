@@ -35,7 +35,7 @@ def confidence_chain_alive(function):
     person may record before the chain writes anything: readiness requires
     the grant to exist while the chain is still dark (audit 2026-09-22, G-3,
     consent half), and the canonical promotion freezes a snapshot of it for
-    every Take (migration 0392). Recording a grant creates no corpus, exports
+    every Take (migration 0394). Recording a grant creates no corpus, exports
     no dataset and starts no training, so ``phase2_learning_disabled`` was the
     wrong door for it. A killed chain never takes a new grant.
     """
@@ -141,45 +141,69 @@ def consent_choice_required(choice: str):
     return decorate
 
 
-def mlc3_service_required(function):
-    """Expose the service loop only after rollout-aware DB enrollment.
+def ring_required(feature: str):
+    """Expose a route to the people its ring row reaches (rings, 0394).
 
-    Authentication must wrap this decorator. A disabled or ineligible caller
-    receives 404 so the surface is not discoverable. Legacy founder-pilot
-    variables do not authorize this path.
+    Generalised from ``mlc3_service_required`` (founder 2026-09-29). Order:
+
+    1. the building switch (``MLC3_SERVICE_ENABLED``) must be on, or the
+       code does not even reach the check; a Railway variable stays the
+       deeper kill for the day the database itself is distrusted;
+    2. the caller must have an owner principal;
+    3. ``feature_is_on_v1(feature, principal)`` must say yes: not killed,
+       ring >= the row's ring, attribute rule matched, consent current
+       when the row names a purpose (services/rings.py);
+    4. then, unchanged, the MLC-3 enrollment wristband is issued and its
+       coordinates are attached to the request, because the service loop's
+       RPCs read them.
+
+    Authentication must wrap this decorator. Every refusal is 404 so the
+    surface is not discoverable. The old cohort and allow-list tables are
+    kept and no longer read here; 0394 copied them into principal_rings.
     """
-    @wraps(function)
-    def gated(*args, **kwargs):
-        from flask import request
+    def decorate(function):
+        @wraps(function)
+        def gated(*args, **kwargs):
+            from flask import request
 
-        from services.coach_guidance_delivery import runtime_is_enabled
-        from services.db import db, first_client_repository
+            from services import rings
+            from services.coach_guidance_delivery import runtime_is_enabled
+            from services.db import db, first_client_repository
 
-        user_id = str(getattr(request, "user_id", "") or "")
-        principal = db.get_owner_principal_for_user(user_id) if user_id else None
-        principal_id = str((principal or {}).get("id") or "")
-        if not runtime_is_enabled() or not principal_id:
-            return jsonify({"code": "NOT_FOUND"}), 404
-        enrollment = first_client_repository.ensure_service_enrollment(
-            acquisition_principal_id=principal_id,
-            owner_user_id=user_id,
-            idempotency_key=(
-                f"http-enrollment:{principal_id}:"
-                f"{getattr(request, 'request_id', '') or 'request'}"
-            ),
-        )
-        if not enrollment:
-            return jsonify({"code": "NOT_FOUND"}), 404
-        request.mlc3_principal_id = principal_id
-        request.mlc3_rollout_revision_id = enrollment.get(
-            "rollout_revision_id"
-        )
-        request.mlc3_enrollment_revision_id = enrollment.get("id")
-        request.mlc3_operation_mode = enrollment.get("operation_mode")
-        return function(*args, **kwargs)
+            user_id = str(getattr(request, "user_id", "") or "")
+            principal = db.get_owner_principal_for_user(user_id) if user_id else None
+            principal_id = str((principal or {}).get("id") or "")
+            if not runtime_is_enabled() or not principal_id:
+                return jsonify({"code": "NOT_FOUND"}), 404
+            if not rings.feature_is_on(feature, principal_id):
+                return jsonify({"code": "NOT_FOUND"}), 404
+            enrollment = first_client_repository.ensure_service_enrollment(
+                acquisition_principal_id=principal_id,
+                owner_user_id=user_id,
+                idempotency_key=(
+                    f"http-enrollment:{principal_id}:"
+                    f"{getattr(request, 'request_id', '') or 'request'}"
+                ),
+            )
+            if not enrollment:
+                return jsonify({"code": "NOT_FOUND"}), 404
+            request.mlc3_principal_id = principal_id
+            request.mlc3_rollout_revision_id = enrollment.get(
+                "rollout_revision_id"
+            )
+            request.mlc3_enrollment_revision_id = enrollment.get("id")
+            request.mlc3_operation_mode = enrollment.get("operation_mode")
+            request.ring_feature = feature
+            return function(*args, **kwargs)
 
-    return gated
+        return gated
 
+    return decorate
+
+
+# The MLC-3 service loop's row. Kept as a name so a dormant import still
+# resolves; every runtime route now says which row it is behind.
+mlc3_service_required = ring_required("exercise_service")
 
 # Compatibility only for dormant imports. New runtime routes use the
 # rollout-aware name above; both names execute the exact same guard.

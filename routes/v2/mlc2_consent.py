@@ -22,6 +22,7 @@ from auth import require_auth
 from config import Config
 from routes.phase2_guard import confidence_chain_alive
 from routes.v2.blueprint import v2_bp
+from services import rings
 from services.db import db
 from services.project_repository import ProjectOwnershipError, ProjectRepository
 
@@ -34,33 +35,36 @@ _CLIENT_VERSION_FALLBACK = "willab-web-unknown"
 
 
 def _founder_request() -> bool:
+    """The founder, AND a person the ``confidence_learning_writes`` ring row
+    reaches (rings, 0394). The row's REACH half only (ring, rule, not
+    killed): this route is the door that would record the very consent the
+    full check asks for, so asking the full check here would be circular.
+    The baked-in founder email is no longer read; ADMIN_EMAIL still is."""
     payload = getattr(request, "token_payload", None) or {}
     email = str(payload.get("email") or "").strip().lower()
-    return bool(
-        email
-        and email == str(config.ADMIN_EMAIL or "").strip().lower()
-        and email == str(
-            config.MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL or ""
-        ).strip().lower()
-    )
+    if not email or email != str(config.ADMIN_EMAIL or "").strip().lower():
+        return False
+    principal = rings.principal_for_user(getattr(request, "user_id", None))
+    return bool(principal) and rings.feature_reaches(
+        rings.CONFIDENCE_LEARNING_WRITES, principal)
 
 
 def _canary_principal_matches(owner_principal_id: str) -> bool:
-    """True when no canary principal is configured yet, or it is this one."""
-    configured = str(
-        config.MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID or ""
-    ).strip().lower()
-    return not configured or configured == str(
-        owner_principal_id or ""
-    ).strip().lower()
+    """True when the ``confidence_learning_writes`` ring row REACHES the
+    principal about to be bound (rings, 0394). This replaced the
+    MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID comparison: the variable is
+    deprecated and read by no gate. Defence in depth beside
+    ``_founder_request``, on the principal the grant would bind."""
+    return rings.feature_reaches(
+        rings.CONFIDENCE_LEARNING_WRITES, owner_principal_id)
 
 
 def _bind_refusal(owner_principal_id: str, body: dict, status: dict):
     """The response that refuses a grant, or None when it may be recorded.
 
-    The grant binds a speaker to the chain. When the canary principal is
-    configured, only that principal may bind, whatever the email says
-    (defence in depth beside the founder-email scope). The checkbox must be
+    The grant binds a speaker to the chain. Only a principal the
+    ``confidence_learning_writes`` ring row reaches may bind, whatever the
+    email says (defence in depth beside the founder scope). The checkbox must be
     affirmative, and the text accepted must be the text approved.
     """
     if not _canary_principal_matches(owner_principal_id):

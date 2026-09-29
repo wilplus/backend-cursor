@@ -15,7 +15,7 @@ from flask import Response, jsonify, request
 
 from auth import require_auth
 from config import Config
-from routes.phase2_guard import mlc3_service_required
+from routes.phase2_guard import ring_required
 from routes.v2.blueprint import v2_bp
 from services.canonical_product import OWNER_RESPONSES
 from services.coach_guidance_delivery import require_audio_upload
@@ -196,7 +196,7 @@ def _exact_media_matches(before: dict, after: dict) -> bool:
 
 @v2_bp.post("/user/mlc3/feedback/render")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_feedback_render():
     try:
         body = _body()
@@ -230,7 +230,7 @@ def v2_mlc3_feedback_render():
 
 @v2_bp.post("/user/mlc3/feedback/respond")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_feedback_respond():
     try:
         body = _body()
@@ -270,7 +270,7 @@ def v2_mlc3_feedback_respond():
 
 @v2_bp.post("/user/mlc3/feedback/speaker")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_feedback_self_speaker():
     """Record only an explicit affirmative source-voice confirmation."""
     try:
@@ -299,7 +299,7 @@ def v2_mlc3_feedback_self_speaker():
 
 @v2_bp.post("/user/mlc3/exercise-offers")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_create_exercise_offer():
     try:
         body = _body()
@@ -326,7 +326,7 @@ def v2_mlc3_create_exercise_offer():
 
 @v2_bp.get("/user/mlc3/exercise-offers/<offer_id>")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_get_exercise_offer(offer_id: str):
     try:
         principal = _principal_id()
@@ -368,7 +368,7 @@ def v2_mlc3_get_exercise_offer(offer_id: str):
 
 @v2_bp.get("/user/mlc3/exercise-offers/<offer_id>/playback")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_exercise_offer_playback(offer_id: str):
     """Serve exact exercise bytes through the authenticated application."""
     try:
@@ -405,7 +405,7 @@ def v2_mlc3_exercise_offer_playback(offer_id: str):
 
 @v2_bp.post("/user/mlc3/exercise-offers/<offer_id>/events")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_exercise_offer_event(offer_id: str):
     try:
         row, event_kind = _record_service_event(
@@ -425,7 +425,7 @@ def v2_mlc3_exercise_offer_event(offer_id: str):
 
 @v2_bp.post("/user/mlc3/exercise-offers/<offer_id>/practice-sessions")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_create_practice_session(offer_id: str):
     try:
         body = _body()
@@ -447,7 +447,7 @@ def v2_mlc3_create_practice_session(offer_id: str):
 
 @v2_bp.get("/user/mlc3/practice-sessions/<session_id>")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_get_practice_session(session_id: str):
     try:
         principal = _principal_id()
@@ -490,7 +490,7 @@ def v2_mlc3_get_practice_session(session_id: str):
 
 @v2_bp.post("/user/mlc3/practice-sessions/<session_id>/events")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_practice_event(session_id: str):
     try:
         row, event_kind = _record_service_event(
@@ -511,7 +511,7 @@ def v2_mlc3_practice_event(session_id: str):
 
 @v2_bp.post("/user/mlc3/practice-sessions/<session_id>/attempts")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_practice_attempt(session_id: str):
     try:
         upload = request.files.get("audio")
@@ -566,7 +566,7 @@ def v2_mlc3_practice_attempt(session_id: str):
 
 @v2_bp.get("/user/mlc3/practice-attempts/<attempt_id>/playback")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_practice_attempt_playback(attempt_id: str):
     """Serve exact practice bytes with live checks on both sides of R2."""
     try:
@@ -600,7 +600,7 @@ def v2_mlc3_practice_attempt_playback(attempt_id: str):
 
 @v2_bp.post("/user/mlc3/practice-sessions/<session_id>/preference")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_practice_preference(session_id: str):
     try:
         body = _body()
@@ -639,7 +639,7 @@ def v2_mlc3_practice_preference(session_id: str):
 
 @v2_bp.post("/user/mlc3/practice-attempts/<attempt_id>/speaker")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_practice_self_speaker(attempt_id: str):
     """Confirm the practice voice and create a pair only for the same speaker."""
     try:
@@ -670,7 +670,7 @@ def v2_mlc3_practice_self_speaker(attempt_id: str):
 
 @v2_bp.get("/user/mlc3/guidance/<membership_id>")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_user_guidance(membership_id: str):
     """Deliver assigned guidance; delivery remains separate from exposure."""
     try:
@@ -735,7 +735,7 @@ def v2_mlc3_user_guidance(membership_id: str):
 
 @v2_bp.get("/user/mlc3/guidance/<attachment_version_id>/playback")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_user_guidance_playback(attachment_version_id: str):
     """Serve assigned private guidance with before/after authority checks."""
     try:
@@ -768,7 +768,7 @@ def v2_mlc3_user_guidance_playback(attachment_version_id: str):
 
 @v2_bp.post("/user/mlc3/guidance/<attachment_version_id>/events")
 @require_auth
-@mlc3_service_required
+@ring_required("exercise_service")
 def v2_mlc3_user_guidance_event(attachment_version_id: str):
     try:
         body = _body()

@@ -483,7 +483,6 @@ class ProcessingAuthorizationService:
             row = _one(result.data)
             if not row:
                 raise RuntimeError("empty authorization receipt")
-            return row
         except ProcessingAuthorizationError:
             raise
         except Exception as error:
@@ -492,6 +491,18 @@ class ProcessingAuthorizationService:
             raise ProcessingAuthorizationError(
                 code, "The processing agreement could not be recorded.", status
             ) from error
+        # The account country is known from here on: the person's `region`
+        # attribute for ring rules follows it (rings, 0394). Best effort and
+        # after the receipt is safe; it never decides anything about consent.
+        from services import rings
+
+        rings.record_account_country(
+            acquisition_principal_id,
+            country=str(args["p_country_of_residence"]),
+            locale=str(args["p_locale"]),
+            database=self.database,
+        )
+        return row
 
     def finalize_recording(
         self, *, attempt_id: str, acquisition_principal_id: str,

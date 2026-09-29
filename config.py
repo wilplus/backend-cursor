@@ -255,12 +255,13 @@ class Config:
     RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "artur@willonski.com")
 
-    # Controlled rollout for the canonical production-data foundation.
-    # During CANARY only the authenticated founder account (ADMIN_EMAIL)
-    # creates canonical RecordingAttempt/Take rows.  Every downstream
-    # learning write is FK-gated by that canonical Take, so ordinary users
-    # remain on the established compatibility path.  Set false for the
-    # documented kill switch; no migration rollback is required.
+    # DEPRECATED, NOT READ BY ANY GATE (rings, 0394, founder 2026-09-29).
+    # The data-foundation canary's three doors — this switch, the founder
+    # email and MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID — are the
+    # `canonical_take_rows` ring row now: its kill switch is the row's kill,
+    # its "who" is the ring (routes/v2/lab_recording.py). Kept readable for
+    # one release so a Railway panel that still carries it is not a
+    # surprise; the boot log names it as deprecated. Removed next release.
     DATA_FOUNDATION_CANARY_ENABLED = (
         (os.getenv("DATA_FOUNDATION_CANARY_ENABLED") or "true")
         .strip().lower() in ("1", "true", "yes", "on")
@@ -289,11 +290,17 @@ class Config:
     # incident rollback can never resurrect the old supervision path.
     # Deliberately not environment-controlled: activation requires review,
     # code change and deployment rather than an unreviewed dashboard toggle.
+    # The rings panel can only CLOSE this state: killing the one-way
+    # `confidence_learning_writes` row makes configured_confidence_cutover()
+    # read `killed` on every service (services/mlc2_confidence_cutover.py).
+    # Nothing outside a reviewed code change can make it read more open.
     MLC2_CONFIDENCE_CUTOVER_MODE = "dark"
+    # DEPRECATED, NOT READ BY ANY GATE (rings, 0394). The confidence chain's
+    # "who" is the `confidence_learning_writes` ring row; readiness reads
+    # the row and the ring-eligible principals instead of these two. Kept
+    # readable for one release; the boot log names them. Removed next
+    # release.
     MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL = "artur@willonski.com"
-    # Exact canonical acquisition principal for the founder.  Missing or
-    # malformed configuration fails readiness and prevents canonical Attempt
-    # registration; email alone is not sufficient provenance.
     MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID = (
         os.getenv("MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID") or ""
     ).strip()

@@ -261,6 +261,10 @@ def main() -> int:
     try:
         from services.gate_flags import gate_summary
         logger.info("gate flags %s", gate_summary())
+        # Rings (0394): the three canary variables are no longer read by any
+        # gate; say so at boot until the follow-up removes them.
+        from services.rings import deprecated_canary_variables_summary
+        logger.info("%s", deprecated_canary_variables_summary())
     except Exception as e:
         logger.warning("gate flags unreadable: %s", e)
     # The publish email is sent from THIS process (the outbox job). Say which

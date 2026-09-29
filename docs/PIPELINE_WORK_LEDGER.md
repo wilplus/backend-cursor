@@ -2099,3 +2099,44 @@ routes use the one predicate).
 **Broke and fixed:** none.
 **Open for the founder:** none. The contextual walk and the D3 reveal grant
 keep their own doors, as decided.
+
+### 2026-09-29 · WS-RINGS · rings-rollout-mechanism · #787
+
+**Closed:** the rollout mechanism the two-person canary and every later
+limited launch need (rings design note, founder 2026-09-29): 0394 adds
+`feature_rings`, `principal_rings`, `ring_settings`, `ring_announcements`,
+their append-only change tables, the check `feature_is_on_v1` and the write
+RPCs; `@ring_required(feature)` generalises `mlc3_service_required`; canary 2's
+three doors are the `canonical_take_rows` row; canary 1's "who" is the
+`confidence_learning_writes` row (one-way) and readiness reads the ring rows;
+the MLC-3 cohort and allow-list are copied into `principal_rings` at the
+exercise service's ring; the bootstrap payload and `/v2/user/rings` carry
+`features_on` and `pending_announcements`; `/v2/admin/rings/*` is the panel's
+API. Nothing turns a learning pipe on: `MLC2_CONFIDENCE_CUTOVER_MODE` stays
+`dark`, and the one-way row can only close it (`configured_confidence_cutover`
+reads the row's kill).
+**Contract lines flipped:** none.
+**Contract lines added:** `tests/test_rings_rule.py` (the rule, every clause,
+and the read side fail-closed), `tests/test_ring_required.py` (the decorator's
+order: building switch, principal, ring, enrollment), `tests/test_rings_migration.py`,
+`tests/test_rings_admin_routes.py`, and `tests/test_rings_postgres.py` on the
+released lane (every clause against the real function, Python mirror parity,
+the one-way kill refusing the unkill, append-only refusals, SELECT-only for
+the service key).
+**Broke and fixed:** `tests/test_mlc2_legacy_isolation.py` names every live
+module allowed to say "mlc2_confidence"; services/rings.py said it in a
+docstring and now names the cutover module by role instead. The coach queue
+route is grandfathered by the route fence at its frozen size, so its ring
+check lives in a helper beside it.
+**Open for the founder:** (1) Nobody is at ring 4 or 5 after the migration
+(default 2; exercise service at 3 with the seeded cohort; coach inline
+authoring, bundles and rooting at 4; canonical Take rows and confidence
+writes at 5): set your own ring from the panel's Defaults tab before
+expecting a canonical row. (2) The three canary variables are readable and
+unread for one release; the follow-up removes them and the `DATA_FOUNDATION_
+CANARY_ENABLED` line from the gate summary. (3) `exercise_service` now names
+the Phase-1 tick as its consent purpose, so a seeded cohort member without
+the tick gets 404 from the service routes until they tick it; that is the
+accepted rule, and it is stricter than the enrollment-only gate was. (4) The
+Phase-2 consent screen and its policy row are not built here; the sheet's
+"yes" stays disabled until `ml_consent_policies` has an active row.
