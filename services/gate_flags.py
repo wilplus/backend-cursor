@@ -26,9 +26,9 @@ in `config.py` and `services/secrets.py` and nowhere else (audit Q-A5,
 `tests/test_config_reads_fence.py`). A boot line about configuration
 discipline is the last place to make an exception to it.
 
-NOTHING HERE PRINTS A SECRET. Names and values only. The confidence-canary
-principal is a subject identifier, so it is reported as `set` or `unset` and
-never by id — a deploy log is not a place to put one.
+NOTHING HERE PRINTS A SECRET. Names and values only. A flag whose value
+identifies a person goes in IDENTIFYING_FLAGS and is reported as `set` or
+`unset`, never by id — a deploy log is not a place to put one.
 """
 from __future__ import annotations
 
@@ -38,7 +38,6 @@ from __future__ import annotations
 GATE_FLAGS: tuple[str, ...] = (
     "PLF1_PROCESSING_AUTHORIZATION_MODE",
     "TAKE_FEEDBACK_POLICY_V3_MODE",
-    "DATA_FOUNDATION_CANARY_ENABLED",
     "MLC3_SERVICE_ENABLED",
     "MLC3_COACH_INLINE_AUTHORING_ENABLED",
     "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED",
@@ -62,10 +61,10 @@ GATE_FLAGS: tuple[str, ...] = (
 )
 
 #: Reported as set/unset, never by value. Extend this rather than adding a
-#: flag to GATE_FLAGS whenever the value identifies a person.
-IDENTIFYING_FLAGS: tuple[str, ...] = (
-    "MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID",
-)
+#: flag to GATE_FLAGS whenever the value identifies a person. Empty since
+#: 2026-09-29: the canary principal variable it held was retired with the
+#: rings (0394); who a feature reaches is a row, not a variable.
+IDENTIFYING_FLAGS: tuple[str, ...] = ()
 
 _UNSET = "(unset)"
 

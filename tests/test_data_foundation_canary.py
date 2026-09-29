@@ -47,24 +47,20 @@ def test_no_user_or_no_principal_gets_no_canonical_row(monkeypatch):
                      owner_principal_id=None) is False
 
 
-def test_the_retired_variables_no_longer_decide(monkeypatch):
-    """The kill switch is the row's kill and the "who" is the ring; the
-    three canary variables are readable for one release and read by
-    nothing here."""
-    monkeypatch.setattr(rings, "feature_is_on", lambda *a, **k: True)
-    monkeypatch.setattr(
-        lab_recording.config, "DATA_FOUNDATION_CANARY_ENABLED", False,
-    )
-    monkeypatch.setattr(lab_recording.config, "ADMIN_EMAIL", "other@example.com")
-    monkeypatch.setattr(
-        lab_recording.config, "MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID", "",
-    )
-    assert _decision(user_id="founder-id", email="student@example.com") is True
+def test_only_the_ring_row_decides_no_variable_or_email(monkeypatch):
+    """The kill switch is the row's kill and the "who" is the ring. The
+    three canary variables are gone from Config (retired 2026-09-29); the
+    admin email plays no part either."""
+    from config import Config
 
+    for retired in ("DATA_FOUNDATION_CANARY_ENABLED",
+                    "MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL",
+                    "MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID"):
+        assert not hasattr(Config, retired), retired
+    monkeypatch.setattr(rings, "feature_is_on", lambda *a, **k: True)
+    monkeypatch.setattr(lab_recording.config, "ADMIN_EMAIL", "other@example.com")
+    assert _decision(user_id="founder-id", email="student@example.com") is True
     monkeypatch.setattr(rings, "feature_is_on", lambda *a, **k: False)
-    monkeypatch.setattr(
-        lab_recording.config, "DATA_FOUNDATION_CANARY_ENABLED", True,
-    )
     assert _decision(user_id="founder-id", email="artur@willonski.com") is False
 
 

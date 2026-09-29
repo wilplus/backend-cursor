@@ -123,7 +123,7 @@ Implemented on branch `codex/ml-data-foundation-20260827`:
   owner creates canonical RecordingAttempt/Take rows; all downstream learning
   writes require that canonical Take, the sole active coach remains protected
   by `coach_users`, and presentation provenance is stamped `canary`.
-- `DATA_FOUNDATION_CANARY_ENABLED=false` is the non-destructive kill switch;
+- ~~`DATA_FOUNDATION_CANARY_ENABLED=false`~~ (retired 2026-09-29; the kill switch is now the `canonical_take_rows` ring row's kill, 0394) was the non-destructive kill switch;
   ordinary accounts always retain the established compatibility path.
 - Schema, flow, threat model, legacy paths and blockers documented in
   `docs/PRODUCTION-DATA-FOUNDATION.md`.
@@ -221,5 +221,5 @@ Engineering acceptance:
   `MIGRATE_ON_BOOT=1` release path; no manual migration command is required.
   The first authenticated CEO readiness read is the canary's schema-level
   confirmation because public health checks deliberately expose no DB detail.
-- Kill switch: `DATA_FOUNDATION_CANARY_ENABLED=false` disables new canonical
+- Kill switch (since 2026-09-29): killing the `canonical_take_rows` ring row in `/admin/rings` (0394); before that `DATA_FOUNDATION_CANARY_ENABLED=false` disabled new canonical
   owner writes without deleting append-only audit records.

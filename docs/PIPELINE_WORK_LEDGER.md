@@ -2140,3 +2140,36 @@ the tick gets 404 from the service routes until they tick it; that is the
 accepted rule, and it is stricter than the enrollment-only gate was. (4) The
 Phase-2 consent screen and its policy row are not built here; the sheet's
 "yes" stays disabled until `ml_consent_policies` has an active row.
+
+### 2026-09-29 · WS-RINGS-2 · rings-retire-canary-variables · #(pending)
+**Task:** the follow-up #787 promised: retire `DATA_FOUNDATION_CANARY_ENABLED`,
+`MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL` and `MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID`.
+They were kept readable and unread for one release after 0394; now nothing
+defines or reads them.
+**Filter:** JUSTIFIED-SCAFFOLDING · SCAFFOLDING · closes the one-release
+window #787 opened; a variable that no gate reads but the boot log still names
+is a second "who" waiting to be believed. Fences clear; L3 kept (the rings
+still decide reach and never provenance); no migration; no user-facing copy.
+**Changed:** `config.py` (the three attributes and their comments are gone;
+`ADMIN_EMAIL` stays), `services/gate_flags.py` (`DATA_FOUNDATION_CANARY_ENABLED`
+out of GATE_FLAGS; `IDENTIFYING_FLAGS` is the empty tuple, the set/unset
+mechanism stays for the next identifying flag), `services/rings.py` (the
+deprecation summary and the tuple that fed it are gone), `app.py` and
+`worker.py` (the boot line that named them), `routes/v2/lab_recording.py` and
+`routes/v2/mlc2_consent.py` (docstrings in the past tense),
+`bin/railway-mlc2-confidence-readiness-cron.sh` (the two required-variable
+lines dropped from the header; the exec line is unchanged), the three
+work-item documents that listed them as required.
+**Contract lines flipped:** `tests/test_boot_gate_log.py` (the expected GATE
+list without the two names; the principal test now pins that no flag
+identifies a person and that a stray panel value is never printed),
+`tests/test_data_foundation_canary.py` (the retired-variables test now
+asserts `Config` lacks them), `tests/test_rings_rule.py` (the deprecation-line
+test is removed with the line).
+**Contract lines added:** `tests/test_canary_variables_retired.py` (no
+production module defines or reads the three names; prose recording the
+retirement is allowed, a read is not).
+**Broke and fixed:** none.
+**Open for the founder:** a Railway panel that still carries any of the three
+sets nothing and can be cleaned at leisure; nothing in the boot log will
+mention them any more. This is the last pipeline change the rings work owes.
