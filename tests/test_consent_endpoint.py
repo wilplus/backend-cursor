@@ -390,13 +390,34 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
             response, status = v2_mlc2_consent.v2_user_mlc2_consent.__wrapped__()
             return status, response.get_json()
 
-    def test_ordinary_account_is_not_modified_or_gated(self):
+    def test_an_account_the_ring_row_does_not_reach_is_not_modified_or_gated(self):
+        self._patch(route.rings, "feature_reaches", lambda feature, p: False)
         self._patch(
             route,
             "_owner_and_status",
-            lambda: self.fail("ordinary account must not resolve a principal"),
+            lambda: self.fail("an unreached account must not resolve a principal"),
         )
         status, payload = self._invoke("GET", email="student@example.com")
+        self.assertEqual(status, 200)
+        self.assertFalse(payload["applicable"])
+
+    def test_the_founder_email_alone_no_longer_opens_the_door(self):
+        # Q7 (founder 2026-09-29): the ring decides, not the email.
+        self._patch(route.rings, "feature_reaches", lambda feature, p: False)
+        status, payload = self._invoke("GET", email="artur@willonski.com")
+        self.assertEqual(status, 200)
+        self.assertFalse(payload["applicable"])
+
+    def test_a_person_the_ring_row_reaches_is_applicable_whatever_the_email(self):
+        status, payload = self._invoke("GET", email="tester@example.com")
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["applicable"])
+        self.assertTrue(payload["configured"])
+        self.assertNotIn("acquisition_principal_id", payload)
+
+    def test_an_account_without_a_principal_is_not_applicable(self):
+        self._patch(route.rings, "principal_for_user", lambda user_id: None)
+        status, payload = self._invoke("GET", email="tester@example.com")
         self.assertEqual(status, 200)
         self.assertFalse(payload["applicable"])
 

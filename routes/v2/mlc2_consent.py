@@ -1,8 +1,13 @@
-"""Founder-only MLC-2 bundled-consent surface for Slice 6A.
+"""The MLC-2 bundled-consent surface (Slice 6A; opened to the ring, Q7).
 
-The browser never writes canonical tables. A verified Supabase subject is
-resolved to one acquisition principal, then service-role RPCs append speaker
-and consent provenance. The Confidence producer remains dark.
+Founder-only until 2026-09-29. Since Q7 the door is the
+``confidence_learning_writes`` ring row: any person that row reaches (ring,
+attribute rule, not killed) may read, grant or withdraw; everyone else gets
+``applicable=false`` and is not modified. The founder is one such person,
+not a special case. The browser never writes canonical tables. A verified
+Supabase subject is resolved to one acquisition principal, then service-role
+RPCs append speaker and consent provenance. The Confidence producer remains
+dark.
 
 The route is open in ``dark`` and ``founder_canary`` and answers 410 only when
 the writer state is ``killed`` (``confidence_chain_alive``): the grant must
@@ -34,16 +39,13 @@ _SOURCE_ROUTE = "/v2/user/mlc2-consent"
 _CLIENT_VERSION_FALLBACK = "willab-web-unknown"
 
 
-def _founder_request() -> bool:
-    """The founder, AND a person the ``confidence_learning_writes`` ring row
-    reaches (rings, 0394). The row's REACH half only (ring, rule, not
-    killed): this route is the door that would record the very consent the
-    full check asks for, so asking the full check here would be circular.
-    The baked-in founder email is no longer read; ADMIN_EMAIL still is."""
-    payload = getattr(request, "token_payload", None) or {}
-    email = str(payload.get("email") or "").strip().lower()
-    if not email or email != str(config.ADMIN_EMAIL or "").strip().lower():
-        return False
+def _chain_reaches_request() -> bool:
+    """A person the ``confidence_learning_writes`` ring row reaches (rings,
+    0394). The row's REACH half only (ring, rule, not killed): this route is
+    the door that would record the very consent the full check asks for, so
+    asking the full check here would be circular. No email is read (Q7,
+    founder 2026-09-29): the ring decides who may consent, the founder
+    included; the announcement sheet is how a person gets here."""
     principal = rings.principal_for_user(getattr(request, "user_id", None))
     return bool(principal) and rings.feature_reaches(
         rings.CONFIDENCE_LEARNING_WRITES, principal)
@@ -53,7 +55,7 @@ def _canary_principal_matches(owner_principal_id: str) -> bool:
     """True when the ``confidence_learning_writes`` ring row REACHES the
     principal about to be bound (rings, 0394). This replaced a comparison
     against a canary principal variable, retired on 2026-09-29. Defence in
-    depth beside ``_founder_request``, on the principal the grant would
+    depth beside ``_chain_reaches_request``, on the principal the grant would
     bind."""
     return rings.feature_reaches(
         rings.CONFIDENCE_LEARNING_WRITES, owner_principal_id)
@@ -63,8 +65,8 @@ def _bind_refusal(owner_principal_id: str, body: dict, status: dict):
     """The response that refuses a grant, or None when it may be recorded.
 
     The grant binds a speaker to the chain. Only a principal the
-    ``confidence_learning_writes`` ring row reaches may bind, whatever the
-    email says (defence in depth beside the founder scope). The checkbox must be
+    ``confidence_learning_writes`` ring row reaches may bind (defence in
+    depth beside the door, on the principal the grant would bind). The checkbox must be
     affirmative, and the text accepted must be the text approved.
     """
     if not _canary_principal_matches(owner_principal_id):
@@ -145,13 +147,14 @@ def _owner_and_status() -> tuple[str, dict]:
 @confidence_chain_alive
 @require_auth
 def v2_user_mlc2_consent():
-    """Read, explicitly grant, or explicitly withdraw founder consent.
+    """Read, explicitly grant, or explicitly withdraw the bundled consent.
 
-    Ordinary accounts receive ``applicable=false`` and are not modified. The
-    founder's principal may be established from verified auth on GET; consent
-    is created only by POST with an affirmative checkbox action.
+    Accounts the ring row does not reach receive ``applicable=false`` and are
+    not modified. A reached person's principal may be established from
+    verified auth on GET; consent is created only by POST with an affirmative
+    checkbox action.
     """
-    if not _founder_request():
+    if not _chain_reaches_request():
         return jsonify({
             "applicable": False,
             "configured": False,
