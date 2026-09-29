@@ -52,7 +52,7 @@ from __future__ import annotations
 import logging
 import re
 from difflib import SequenceMatcher
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -237,68 +237,97 @@ def emit_ideal_text_annotations(
 
     Best-effort: returns 0 on any failure, never raises."""
     try:
-        if not owner_user_id:
-            logger.warning("ideal_text_annotations: no owner — skipping "
-                           "arc=%s", arc_id)
+        texts = _diffable_texts(
+            arc_id, owner_user_id, draft_text, final_text,
+            auto_updated_at, coach_updated_at, coach_owned)
+        if texts is None:
             return 0
-        draft = draft_text if isinstance(draft_text, str) else ""
-        final = final_text if isinstance(final_text, str) else ""
-        if not draft.strip():
-            logger.info("ideal_text_annotations: empty auto draft — nothing "
-                        "to diff arc=%s", arc_id)
-            return 0
-        if not final.strip():
-            return 0
-        if draft_is_stale(auto_updated_at, coach_updated_at, coach_owned):
-            # The machine refreshed the draft after the coach's last edit —
-            # the coach's text answers an OLDER draft, so a diff would file
-            # machine-vs-machine differences as coach corrections. Skip.
-            logger.info("ideal_text_annotations: draft newer than the coach "
-                        "text — skipping (stale diff) arc=%s", arc_id)
-            return 0
-
+        draft, final = texts
         arc_uuid = str(arc_id) if isinstance(arc_id, str) \
             and _UUID_RE.match(str(arc_id)) else None
         pairs = sentence_pairs(draft, final)
-        written = 0
-
         if not pairs:
-            database.create_admin_annotation_event(
-                user_id=str(owner_user_id),
-                session_id=None,
-                section_type="ideal_text",
-                field_name="ideal_text_block",
-                ai_original_text=strip_for_diff(draft)[:_MAX_EVENT_CHARS],
-                coach_final_text=strip_for_diff(final)[:_MAX_EVENT_CHARS],
-                reason_chip="approved_as_is",
-                custom_reason=None,
-                created_by=str(coach_user_id or ""),
-                draft_id=arc_uuid,
-            )
+            _emit_block_endorsement(database, owner_user_id, coach_user_id,
+                                    draft, final, arc_uuid)
             return 1
-
-        dropped = max(0, len(pairs) - _MAX_PAIRS)
-        for p in pairs[:_MAX_PAIRS]:
-            database.create_admin_annotation_event(
-                user_id=str(owner_user_id),
-                session_id=None,
-                section_type="ideal_text",
-                field_name="ideal_text_sentence",
-                ai_original_text=(p["draft"][:_MAX_EVENT_CHARS] or None),
-                coach_final_text=(p["final"][:_MAX_EVENT_CHARS] or None),
-                reason_chip=None,
-                custom_reason=None,
-                created_by=str(coach_user_id or ""),
-                draft_id=arc_uuid,
-            )
-            written += 1
-        if dropped:
-            logger.warning(
-                "ideal_text_annotations: capped at %d pairs (%d dropped) "
-                "arc=%s", _MAX_PAIRS, dropped, arc_id,
-            )
-        return written
+        return _emit_sentence_pairs(database, pairs, owner_user_id,
+                                    coach_user_id, arc_uuid, arc_id)
     except Exception as e:
         logger.warning("ideal_text_annotations: emit failed arc=%s: %s "
                        "(non-fatal)", arc_id, e)
         return 0
+
+
+def _diffable_texts(arc_id: Any, owner_user_id: Any, draft_text: Any,
+                    final_text: Any, auto_updated_at: Any,
+                    coach_updated_at: Any,
+                    coach_owned: bool) -> Optional[tuple[str, str]]:
+    """``(draft, final)`` when there is an honest diff to file, else None
+    (logged): no owner, no draft, no final text, or a stale draft."""
+    if not owner_user_id:
+        logger.warning("ideal_text_annotations: no owner — skipping "
+                       "arc=%s", arc_id)
+        return None
+    draft = draft_text if isinstance(draft_text, str) else ""
+    final = final_text if isinstance(final_text, str) else ""
+    if not draft.strip():
+        logger.info("ideal_text_annotations: empty auto draft — nothing "
+                    "to diff arc=%s", arc_id)
+        return None
+    if not final.strip():
+        return None
+    if draft_is_stale(auto_updated_at, coach_updated_at, coach_owned):
+        # The machine refreshed the draft after the coach's last edit —
+        # the coach's text answers an OLDER draft, so a diff would file
+        # machine-vs-machine differences as coach corrections. Skip.
+        logger.info("ideal_text_annotations: draft newer than the coach "
+                    "text — skipping (stale diff) arc=%s", arc_id)
+        return None
+    return draft, final
+
+
+def _emit_block_endorsement(database: Any, owner_user_id: Any,
+                            coach_user_id: Any, draft: str, final: str,
+                            arc_uuid: Optional[str]) -> None:
+    """The coach verified the machine's text untouched: one block row."""
+    database.create_admin_annotation_event(
+        user_id=str(owner_user_id),
+        session_id=None,
+        section_type="ideal_text",
+        field_name="ideal_text_block",
+        ai_original_text=strip_for_diff(draft)[:_MAX_EVENT_CHARS],
+        coach_final_text=strip_for_diff(final)[:_MAX_EVENT_CHARS],
+        reason_chip="approved_as_is",
+        custom_reason=None,
+        created_by=str(coach_user_id or ""),
+        draft_id=arc_uuid,
+    )
+
+
+def _emit_sentence_pairs(database: Any, pairs: list, owner_user_id: Any,
+                         coach_user_id: Any, arc_uuid: Optional[str],
+                         arc_id: Any) -> int:
+    """One row per changed sentence pair, capped at _MAX_PAIRS (the rest
+    logged as dropped). Returns rows written."""
+    written = 0
+    dropped = max(0, len(pairs) - _MAX_PAIRS)
+    for p in pairs[:_MAX_PAIRS]:
+        database.create_admin_annotation_event(
+            user_id=str(owner_user_id),
+            session_id=None,
+            section_type="ideal_text",
+            field_name="ideal_text_sentence",
+            ai_original_text=(p["draft"][:_MAX_EVENT_CHARS] or None),
+            coach_final_text=(p["final"][:_MAX_EVENT_CHARS] or None),
+            reason_chip=None,
+            custom_reason=None,
+            created_by=str(coach_user_id or ""),
+            draft_id=arc_uuid,
+        )
+        written += 1
+    if dropped:
+        logger.warning(
+            "ideal_text_annotations: capped at %d pairs (%d dropped) "
+            "arc=%s", _MAX_PAIRS, dropped, arc_id,
+        )
+    return written
