@@ -185,6 +185,41 @@ def test_readiness_monitor_is_aggregate_only_and_not_a_product_route():
     assert "get_mlc2_confidence_canary_readiness_v1" not in route_sources
 
 
+def test_cron_json_output_keeps_the_readable_lines(monkeypatch, capsys):
+    """Railway's log view collapses a JSON line to a blank one (founder
+    2026-09-29: the cron run read as empty), so the readable status lines
+    print first and the JSON line follows them."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "readiness_cli",
+        ROOT / "scripts" / "check_mlc2_confidence_canary_readiness.py",
+    )
+    cli = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(cli)
+
+    class _Conn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cli, "connect", lambda: _Conn())
+    monkeypatch.setattr(cli, "_health", lambda connection: {})
+    monkeypatch.setattr(cli, "_ring_health", lambda connection: {})
+    monkeypatch.setattr(
+        cli.Config, "MLC2_CONFIDENCE_MONITORING_ENABLED", False, raising=False
+    )
+    code = cli.main(["--json"])
+    out = capsys.readouterr().out.splitlines()
+    assert code == 1
+    assert out[0] == "MLC-2 Confidence founder canary: BLOCKED"
+    assert any(line.startswith("  BLOCKER ") for line in out)
+    payload = next(line for line in out if line.startswith("{"))
+    import json
+
+    assert json.loads(payload)["ready"] is False
+
+
 def test_railway_monitor_is_recurring_read_only_and_alerting():
     cron = (
         ROOT / "bin" / "railway-mlc2-confidence-readiness-cron.sh"

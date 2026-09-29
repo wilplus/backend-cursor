@@ -100,16 +100,23 @@ def main(argv: list[str] | None = None) -> int:
     ).as_dict()
     if args.alert:
         _notify_sentry(report)
+    # The readable lines always print (founder 2026-09-29: Railway's log view
+    # collapses a JSON line to a blank one, so the cron read as empty); the
+    # JSON line follows them for tooling when --json is asked.
+    print_plain(report)
     if args.json:
         print(json.dumps(report, sort_keys=True, default=str))
-    else:
-        status = "READY" if report["ready"] else "BLOCKED"
-        print(f"MLC-2 Confidence founder canary: {status}")
-        for blocker in report["blocker_codes"]:
-            print(f"  BLOCKER {blocker}")
-        for warning in report["warning_codes"]:
-            print(f"  WARNING {warning}")
     return 0 if report["ready"] else 1
+
+
+def print_plain(report: dict) -> None:
+    """One status line, then one line per blocker and warning."""
+    status = "READY" if report["ready"] else "BLOCKED"
+    print(f"MLC-2 Confidence founder canary: {status}")
+    for blocker in report["blocker_codes"]:
+        print(f"  BLOCKER {blocker}")
+    for warning in report["warning_codes"]:
+        print(f"  WARNING {warning}")
 
 
 if __name__ == "__main__":
