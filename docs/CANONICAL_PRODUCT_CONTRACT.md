@@ -318,7 +318,10 @@ with this contract, this contract wins.
     types and are never stored under one semantic label.
 32. An exact clip or selected practice attempt enters the Voice Album only
     when Machine Yes, User Yes, and Coach Yes independently refer to that same
-    recording. Signals cannot be transferred between recordings.
+    recording. Signals cannot be transferred between recordings. Each leg
+    counts only as a real Yes (founder 2026-09-29, Q6): In-between, Not sure,
+    Audio unclear, No or a missing answer is never a Yes for any of the three
+    legs.
 33. Saving a practice attempt never admits it directly. The coach judges the
     selected practice attempt itself.
 34. The coach must not see the user label, machine prediction, or other ratings
