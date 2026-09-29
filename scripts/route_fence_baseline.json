@@ -83,10 +83,6 @@
     "lines": 115,
     "db_calls": 3
   },
-  "routes/v2/arcs.py:_serialize_arc_voice_album": {
-    "lines": 65,
-    "db_calls": 3
-  },
   "routes/v2/arcs.py:v2_arc_redeem": {
     "lines": 48,
     "db_calls": 2
