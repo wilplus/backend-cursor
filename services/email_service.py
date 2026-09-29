@@ -28,6 +28,8 @@ class EmailService:
         student_email: str | None = None,
         score: float | None = None,
         student_name: str = "",
+        moments_awaiting: int | None = None,
+        lesson_label: str = "",
     ) -> dict:
         """
         Notify the coach (ADMIN_EMAIL) that a student completed a homework lesson.
@@ -58,10 +60,10 @@ class EmailService:
         preview = (report_preview or "").strip()
         if preview and len(preview) > 280:
             preview = preview[:280].rstrip() + "..."
-        score_str = ""
-        if score is not None:
-            pct = round(float(score) * 100)
-            score_str = f"Final performance score: {pct}%."
+        # `score` is still accepted so no caller breaks, but nothing renders
+        # it: the coach email no longer carries the pre-V3 performance number
+        # (founder deferred it 2026-09-28). See build_admin_homework_
+        # completed_email_html for what went and why.
         from services.coach_pseudonym import coach_pseudonym
 
         _pseudonym = coach_pseudonym(user_id)
@@ -73,12 +75,10 @@ class EmailService:
 
         html = build_admin_homework_completed_email_html(
             student_email=who,
-            score=score,
             profile_url=admin_student_url,
             transcript_excerpt=preview or report_preview or "",
-            pace_wpm=None,
-            filler_count=None,
-            strength="Loudness (pending)",
+            moments_awaiting=moments_awaiting,
+            lesson_label=lesson_label,
             logo_url=logo_url,
             student_name=student_name,
         )
@@ -96,9 +96,16 @@ class EmailService:
                    else f"Homework — {_pseudonym}")
         headers = student_thread_headers(user_id)
 
+        # The plain-text part mirrors the HTML exactly — same lines, same
+        # order, same omissions. A text body that still carried the score
+        # would put back, for every plain-text reader, the thing the HTML
+        # deliberately dropped.
         text = f"A student has completed a homework lesson.\n\nStudent: {who}\n"
-        if score_str:
-            text += f"{score_str}\n\n"
+        if (lesson_label or "").strip():
+            text += f"Lesson: {lesson_label.strip()}\n"
+        if isinstance(moments_awaiting, int) and moments_awaiting > 0:
+            text += f"Moments to review: {moments_awaiting}\n"
+        text += "\n"
         if preview:
             text += f"Report preview: {preview}\n\n"
         text += f"View profile and send next homework: {admin_student_url}\n"
