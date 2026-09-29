@@ -12,17 +12,17 @@ from typing import Any
 import uuid
 
 from services.feedback_data_contract import content_hash
+from services.learning_surfaces import (
+    EXERCISE_ADEQUACY_SURFACE,
+    NO_PACKET_REASON,
+    PACKET_SURFACES,
+)
 
 
-LEARNING_SURFACES = frozenset({
-    "confidence_classification",
-    "correction_generation",
-    "coach_comment_generation",
-    "praise_generation",
-    "praise_selection",
-    "correction_selection",
-    "ideal_text_generation",
-})
+# THE SEVEN THAT CARRY PACKETS (founder 2026-09-29, decision 2). The eighth
+# learning surface, exercise adequacy, is exposed through its own table and
+# never through a presentation here; services/learning_surfaces.py says why.
+LEARNING_SURFACES = PACKET_SURFACES
 
 _FEEDBACK_SURFACES = {
     "confident_voice": ("confidence_classification",),
@@ -63,6 +63,8 @@ def prepare_presentation(
     generation_run_id: str | None = None,
     delivery_mode: str = "production",
 ) -> dict:
+    if learning_surface == EXERCISE_ADEQUACY_SURFACE:
+        raise LearningExposureError(NO_PACKET_REASON)
     if learning_surface not in LEARNING_SURFACES:
         raise LearningExposureError("unknown learning surface")
     if actor_role not in ("owner", "coach", "peer"):

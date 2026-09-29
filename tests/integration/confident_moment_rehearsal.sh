@@ -465,6 +465,12 @@ if [ "$LANE" = "released" ]; then
   # service_role and keeps SELECT where it was held. Twice: apply/reapply.
   hard migrations/canonical_tables_are_written_only_through_their_rpcs.sql
   hard migrations/canonical_tables_are_written_only_through_their_rpcs.sql
+  # 0395 counts module 8: the release CHECKs name eight surfaces and the
+  # readiness report gains an eighth row read from the exercise tables. Released
+  # lane only, because it re-creates get_seven_surface_readiness_v1 over the
+  # 0299 tables (0301 itself was never in this chain). Twice: apply/reapply.
+  hard migrations/module_8_is_counted.sql
+  hard migrations/module_8_is_counted.sql
 fi
 
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no

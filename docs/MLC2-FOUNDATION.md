@@ -57,7 +57,7 @@ ml_review_assignments ── ml_review_assignment_events ── ml_judgments
 
 ## Canonical registry and semantic walls
 
-`ml_learning_surfaces` is the sole authority for exactly seven systems:
+`ml_learning_surfaces` is the sole authority for the eight learning surfaces (seven of which carry packets; module 8, `exercise_adequacy_classification`, is counted through its own exposure table since 0395; see `services/learning_surfaces.py`). The seven that carry packets:
 
 1. `confidence_classification`
 2. `correction_generation`

@@ -9,6 +9,7 @@ from services.mlc2_foundation import (
     DATA_EPOCH,
     LEARNING_CONTRACT_VERSION,
     LEARNING_SURFACES,
+    PAYLOAD_TYPES,
     Mlc2ContractError,
     Mlc2FoundationStore,
     canonical_surface_id,
@@ -42,9 +43,21 @@ def _envelope(**overrides):
     return CanonicalEnvelope(**values)
 
 
-def test_registry_has_exactly_seven_surfaces():
-    assert len(LEARNING_SURFACES) == 7
+def test_registry_has_exactly_eight_surfaces_and_seven_carry_packets():
+    """Founder 2026-09-29, decision 2 (audit G-5): the registry has held
+    eight since 0313; this module now says so, from the one shared list."""
+    from services.learning_surfaces import (
+        EXERCISE_ADEQUACY_SURFACE, PACKET_SURFACES,
+        LEARNING_SURFACES as SHARED,
+    )
+    assert LEARNING_SURFACES is SHARED
+    assert len(LEARNING_SURFACES) == 8
+    assert len(PACKET_SURFACES) == 7
+    assert LEARNING_SURFACES - PACKET_SURFACES == {EXERCISE_ADEQUACY_SURFACE}
     assert "moment_suggestion" not in LEARNING_SURFACES
+    assert canonical_surface_id(EXERCISE_ADEQUACY_SURFACE) == \
+        EXERCISE_ADEQUACY_SURFACE
+    assert PAYLOAD_TYPES[EXERCISE_ADEQUACY_SURFACE] == "exercise_adequacy_event"
 
 
 def test_alias_resolution_is_explicit_and_ambiguous_legacy_name_fails_closed():

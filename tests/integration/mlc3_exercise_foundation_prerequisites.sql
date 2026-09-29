@@ -272,7 +272,13 @@ CREATE TABLE public.confident_voice_practice (
     acoustic_evidence JSONB NULL,
     -- Released (add_confident_voice_practice.sql:58); 0391 finds the coach's
     -- blind rating of the original clip by it.
-    snippet_id UUID NULL
+    snippet_id UUID NULL,
+    -- Released (add_confident_voice_practice.sql); 0393's readiness row for
+    -- module 8 joins a practice to its exposed assignment through
+    -- machine_assessment ->> 'exercise_assignment_id' and counts projects.
+    -- Nullable here so the older fixtures that insert only ids still do.
+    machine_assessment JSONB NULL,
+    project_id UUID NULL
 );
 CREATE TABLE public.confident_voice_practice_attempt (
     id UUID PRIMARY KEY,

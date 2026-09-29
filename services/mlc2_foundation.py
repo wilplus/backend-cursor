@@ -2,7 +2,7 @@
 
 This module is deliberately not imported by any product route yet.  Surface
 cutovers happen in later, separately reviewed slices.  It centralises the
-seven-system registry, semantic namespaces, canonical envelope validation and
+eight-surface registry, semantic namespaces, canonical envelope validation and
 the service-role RPC seam so future writers cannot invent a parallel contract.
 """
 
@@ -19,15 +19,11 @@ from uuid import UUID, uuid4
 LEARNING_CONTRACT_VERSION = "MLC-2"
 DATA_EPOCH = 1
 
-LEARNING_SURFACES = frozenset({
-    "confidence_classification",
-    "correction_generation",
-    "coach_comment_generation",
-    "praise_generation",
-    "praise_selection",
-    "correction_selection",
-    "ideal_text_generation",
-})
+# EIGHT, FROM THE ONE LIST (founder 2026-09-29, decision 2). This module
+# said seven while the registry it describes has held eight since 0313; the
+# shared list in services/learning_surfaces.py is now the source, and it says
+# why the eighth carries no packet.
+from services.learning_surfaces import LEARNING_SURFACES
 
 LEARNING_SURFACE_ALIASES: dict[str, str] = {
     "say_it_stronger": "correction_generation",
@@ -60,6 +56,8 @@ PAYLOAD_TYPES: dict[str, str] = {
     "praise_selection": "praise_selection_event",
     "correction_selection": "correction_selection_event",
     "ideal_text_generation": "ideal_text_event",
+    # 0313's payload type for the eighth surface.
+    "exercise_adequacy_classification": "exercise_adequacy_event",
 }
 
 FEEDBACK_SURFACES = frozenset({
