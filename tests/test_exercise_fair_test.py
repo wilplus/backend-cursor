@@ -143,3 +143,18 @@ class SealTests(unittest.TestCase):
         root = pathlib.Path(__file__).resolve().parent.parent
         for path in (root / "routes").rglob("*.py"):
             self.assertNotIn("exercise_fair_test", path.read_text(), str(path))
+
+
+class CoachPickTests(unittest.TestCase):
+    """A coach's pick (0398) is not a draw: it is in the jar, not a unit."""
+
+    def test_a_coach_pick_is_not_an_evaluation_unit(self):
+        records = [
+            {"in_cohort": True, "excluded": None,
+             "exposure": {"owner_user_id": "s1", "exercise_id": "coach-pick"},
+             "assignment": {"selection_mode": "coach_chosen",
+                            "candidates": [{"exercise_id": "coach-pick",
+                                            "rank": 1}]},
+             "trace": {"candidates": []}, "endpoint": None},
+        ]
+        self.assertEqual(ft.units_from(records), [])

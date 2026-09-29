@@ -27,6 +27,9 @@ The funnel follows §3.5 item by item:
     exposure is first only when none of its targeted problems was targeted
     for that speaker before;
   * an exposure below the policy's minimum probability is left out (item 6);
+  * a coach-shared exercise (0398, founder decision 3) counts like a machine
+    pick, judged on every target it claims that fired, and is reported under
+    its own selection mode, `coach_chosen`; it is never in the ranked pool;
   * the endpoint attempt is the last valid attempt in the practice flow the
     speaker opened on that assignment (items 2 and 3). No attempt, or none
     valid, is missing data, never a negative (item 5); the attempt rate is
@@ -60,6 +63,12 @@ def targeted_problems(trace: Any, exercise_id: str) -> frozenset[str]:
         else "main_targets"
     for row in trace.get("candidates") or ():
         if isinstance(row, dict) and str(row.get("exercise_id")) == exercise_id:
+            if row.get("outcome") == "coach_chosen":
+                # A coach's pick (0398) is neither an exact fit nor a trial:
+                # it is judged on every target it claims that fired.
+                claimed = {str(t) for t in row.get("main_targets") or ()} | {
+                    str(t) for t in row.get("secondary_targets") or ()}
+                return frozenset(observed & claimed)
             return frozenset(observed & {str(t) for t in
                                          row.get(targets_key) or ()})
     return frozenset()

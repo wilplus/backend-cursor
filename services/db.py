@@ -14662,14 +14662,70 @@ class DatabaseService:
         exercise_id: str,
     ) -> Optional[dict]:
         """The exposure for one assignment (migration 0387), recorded once.
-        Raises the database's refusal (EXERCISE_RENDERED_*) to the caller."""
-        result = self.client.rpc("record_exercise_rendered_v1", {
+        Raises the database's refusal (EXERCISE_RENDERED_*) to the caller.
+
+        v2 (0398) finds the assignment whose selected exercise is the
+        rendered one under any policy, so a coach-shared card counts; v1 is
+        the fallback only while 0398 is not applied (PGRST202)."""
+        params = {
             "p_owner_user_id": str(owner_user_id),
             "p_take_session_id": str(take_session_id),
             "p_snippet_id": str(snippet_id),
             "p_exercise_id": str(exercise_id),
+        }
+        try:
+            result = self.client.rpc("record_exercise_rendered_v2", params).execute()
+            return self._rpc_row(result.data)
+        except Exception as e:  # noqa: BLE001 — only "not installed" falls back
+            if "PGRST202" not in str(e):
+                raise
+            logger.warning("record_exercise_rendered_v2 missing; using v1 "
+                           "sid=%s", take_session_id)
+        result = self.client.rpc("record_exercise_rendered_v1", params).execute()
+        return self._rpc_row(result.data)
+
+    def assign_coach_shared_exercise(
+        self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
+        lane: str, matching_policy_version: str, exercise_id: str,
+        exercise_version: int, trace: dict,
+    ) -> Optional[dict]:
+        """A coach-shared exercise frozen as the moment's coach assignment
+        with its trace (migration 0398), insert-once: the first call writes,
+        every later call returns that row. Raises on failure so the caller
+        can serve without it."""
+        result = self.client.rpc("assign_coach_shared_exercise_v1", {
+            "p_owner_user_id": str(owner_user_id),
+            "p_take_session_id": str(take_session_id),
+            "p_snippet_id": str(snippet_id),
+            "p_lane": str(lane),
+            "p_matching_policy_version": str(matching_policy_version),
+            "p_exercise_id": str(exercise_id),
+            "p_exercise_version": int(exercise_version),
+            "p_trace": trace,
         }).execute()
         return self._rpc_row(result.data)
+
+    def get_coach_shared_exercise_assignment(
+        self, take_session_id: str, snippet_id: str,
+    ) -> Optional[dict]:
+        """The moment's frozen coach assignment (0398), or None."""
+        if not take_session_id or not snippet_id:
+            return None
+        try:
+            res = (self.client.table("confident_voice_exercise_assignments")
+                   .select("id,selected_exercise_id,selected_exercise_version,"
+                           "selection_mode,exposure_policy_version,lane,"
+                           "matching_policy_version")
+                   .eq("take_session_id", str(take_session_id))
+                   .eq("snippet_id", str(snippet_id))
+                   .eq("exposure_policy_version", "exercise-coach-shared-v1")
+                   .limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning(
+                "get_coach_shared_exercise_assignment failed sid=%s: %s",
+                take_session_id, e, exc_info=True)
+            return None
 
     def record_practice_more_confident(
         self, *, practice_id: str, attempt_id: str,
@@ -14760,18 +14816,25 @@ class DatabaseService:
         return out
 
     def get_practices_for_assignments(self, ids: list[str]) -> dict[str, dict]:
-        """The first practice opened on each assignment, by assignment id."""
+        """The first practice opened on each assignment, by assignment id.
+
+        A practice names its assignment two ways: the one it was started on
+        (machine_assessment, the machine pick or the answered call) and the
+        one a coach attached to it in the review (coach_shared_exercise,
+        0398). Both are read; the earliest practice per assignment wins."""
         out: dict[str, dict] = {}
-        for chunk in self._chunks(ids):
-            res = (self.client.table("confident_voice_practice")
-                   .select("id,created_at,"
-                           "assignment_id:machine_assessment->>exercise_assignment_id")
-                   .in_("machine_assessment->>exercise_assignment_id", chunk)
-                   .order("created_at").execute())
-            for row in res.data or []:
-                key = str((row or {}).get("assignment_id") or "")
-                if key and key not in out:
-                    out[key] = row
+        for column in ("machine_assessment", "coach_shared_exercise"):
+            for chunk in self._chunks(ids):
+                res = (self.client.table("confident_voice_practice")
+                       .select("id,created_at,"
+                               f"assignment_id:{column}->>exercise_assignment_id")
+                       .in_(f"{column}->>exercise_assignment_id", chunk)
+                       .order("created_at").execute())
+                for row in res.data or []:
+                    key = str((row or {}).get("assignment_id") or "")
+                    if key and (key not in out or str(row.get("created_at") or "")
+                                < str(out[key].get("created_at") or "")):
+                        out[key] = row
         return out
 
     def list_attempts_for_practices(self, ids: list[str]) -> dict[str, list[dict]]:

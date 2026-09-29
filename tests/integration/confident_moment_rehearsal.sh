@@ -452,6 +452,11 @@ hard migrations/the_coach_card_consumes_the_confidence_chain.sql
 # check function and the write RPCs. Twice: apply/reapply.
 hard migrations/a_feature_reaches_a_person_by_ring.sql
 hard migrations/a_feature_reaches_a_person_by_ring.sql
+# 0398 lets a coach-shared exercise be frozen as an assignment with its trace
+# (the coach policy shape) and finds the render receipt's assignment under
+# any policy. Twice: apply/reapply.
+hard migrations/a_coach_pick_counts.sql
+hard migrations/a_coach_pick_counts.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so
