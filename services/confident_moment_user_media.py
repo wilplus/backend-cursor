@@ -93,11 +93,23 @@ _AUTHORITY_KEYS = {
 }
 
 
-def validate_source_playback_authority(
-    value: Any, *, principal_id: str, bundle_id: str, attachment_id: str,
-) -> dict[str, Any]:
-    if type(value) is not dict or set(value) != _AUTHORITY_KEYS:
-        raise RuntimeError("CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID")
+_AUTHORITY_INVALID = "CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID"
+_AUTHORITY_UUID_FIELDS = (
+    "acquisition_principal_id", "bundle_id", "bundle_attachment_id",
+    "project_id", "source_take_id", "feedback_membership_id",
+    "feedback_candidate_id", "evidence_span_id",
+    "canonical_feedback_presentation_id", "recording_attempt_id",
+    "audio_lineage_id", "media_object_id", "rollout_revision_id",
+    "enrollment_revision_id", "policy_id", "authorization_receipt_id",
+)
+
+
+def _require_authority_for_request(
+    value: dict[str, Any], *, principal_id: str, bundle_id: str,
+    attachment_id: str,
+) -> None:
+    """The exact contract, for exactly this principal, bundle and
+    attachment, and never dataset-eligible."""
     if (
         value.get("contract_version")
         != "confident-moment-source-playback-authority-v1"
@@ -106,31 +118,31 @@ def validate_source_playback_authority(
         or value.get("bundle_attachment_id") != attachment_id
         or value.get("dataset_eligible") is not False
     ):
-        raise RuntimeError("CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID")
+        raise RuntimeError(_AUTHORITY_INVALID)
+
+
+def _require_authority_identifiers(value: dict[str, Any]) -> None:
+    """Both hashes as lowercase hex, and every id as a canonical UUID."""
     for field in ("authority_sha256", "exact_bytes_sha256"):
         if not isinstance(value.get(field), str) or not re.fullmatch(
             r"[0-9a-f]{64}", value[field]
         ):
-            raise RuntimeError("CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID")
-    for field in (
-        "acquisition_principal_id", "bundle_id", "bundle_attachment_id",
-        "project_id", "source_take_id", "feedback_membership_id",
-        "feedback_candidate_id", "evidence_span_id",
-        "canonical_feedback_presentation_id", "recording_attempt_id",
-        "audio_lineage_id", "media_object_id", "rollout_revision_id",
-        "enrollment_revision_id", "policy_id", "authorization_receipt_id",
-    ):
+            raise RuntimeError(_AUTHORITY_INVALID)
+    for field in _AUTHORITY_UUID_FIELDS:
         raw = value.get(field)
         try:
             if not isinstance(raw, str) or str(uuid.UUID(raw)) != raw:
                 raise ValueError
         except (ValueError, AttributeError):
-            raise RuntimeError(
-                "CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID"
-            ) from None
+            raise RuntimeError(_AUTHORITY_INVALID) from None
+
+
+def _require_authority_object(value: dict[str, Any]) -> None:
+    """A size within the source-media policy, an audio content type, and a
+    non-blank bucket, key and version."""
     byte_size = value.get("byte_size")
     if isinstance(byte_size, bool) or not isinstance(byte_size, int):
-        raise RuntimeError("CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID")
+        raise RuntimeError(_AUTHORITY_INVALID)
     if byte_size <= 0 or byte_size > MAX_SOURCE_BYTES:
         raise ConfidentMomentSourceMediaPolicyInvalid(
             ConfidentMomentSourceMediaPolicyInvalid.code
@@ -138,17 +150,23 @@ def validate_source_playback_authority(
     if not isinstance(value.get("content_type"), str) or not value[
         "content_type"
     ].startswith("audio/"):
-        raise RuntimeError("CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID")
-    if not isinstance(value.get("bucket"), str) or not value["bucket"].strip():
-        raise RuntimeError("CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID")
-    if not isinstance(value.get("object_key"), str) or not value[
-        "object_key"
-    ].strip():
-        raise RuntimeError("CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID")
-    if not isinstance(value.get("object_version"), str) or not value[
-        "object_version"
-    ].strip():
-        raise RuntimeError("CONFIDENT_MOMENT_SOURCE_PLAYBACK_AUTHORITY_INVALID")
+        raise RuntimeError(_AUTHORITY_INVALID)
+    for field in ("bucket", "object_key", "object_version"):
+        if not isinstance(value.get(field), str) or not value[field].strip():
+            raise RuntimeError(_AUTHORITY_INVALID)
+
+
+def validate_source_playback_authority(
+    value: Any, *, principal_id: str, bundle_id: str, attachment_id: str,
+) -> dict[str, Any]:
+    if type(value) is not dict or set(value) != _AUTHORITY_KEYS:
+        raise RuntimeError(_AUTHORITY_INVALID)
+    _require_authority_for_request(
+        value, principal_id=principal_id, bundle_id=bundle_id,
+        attachment_id=attachment_id,
+    )
+    _require_authority_identifiers(value)
+    _require_authority_object(value)
     return value
 
 

@@ -162,6 +162,8 @@ def acoustic_snapshot(snippet: dict) -> dict:
     metrics: dict = raw_metrics if isinstance(raw_metrics, dict) else {}
     duration_ms = snippet.get("duration_ms")
     wf = _word_features(snippet.get("words"), duration_ms)
+    raw_noise = metrics.get("noise_meter")
+    noise: dict = raw_noise if isinstance(raw_noise, dict) else {}
     try:
         from services.voice_confidence import stamped_score
         confidence = stamped_score(metrics)
@@ -175,6 +177,10 @@ def acoustic_snapshot(snippet: dict) -> dict:
         "voiced_duration_sec": _number(metrics.get("voiced_duration_sec")),
         "dynamic_db": _number(metrics.get("dynamic_db")),
         "confidence": confidence,
+        # The noise meter, silent (founder 2026-09-28): saved with every clip
+        # snapshot and practice attempt, read by no rule until switched on.
+        "noise_separation_db": _number(noise.get("separation_db")),
+        "noise_meter_version": noise.get("version"),
         **wf,
     }
 
@@ -193,6 +199,27 @@ def machine_confidence_decision(snapshot: dict) -> Optional[str]:
     return "yes" if confidence >= 0.45 else "no"
 
 
+#: The noise rule's switch (founder 2026-09-28: build it, leave it off).
+#: None = OFF: no recording is skipped for noise. Switching on means setting a
+#: cut-off here in a reviewed PR, after the meter (noise-meter-v1, §3.5a) has
+#: been checked against what a person hears. Then a clip or practice attempt
+#: whose voice stands less than this many dB above the room is not reliable
+#: audio. A recording with no reading (older, or too short) is never skipped.
+NOISE_GATE_MIN_SEPARATION_DB: Optional[float] = None
+
+
+def noise_gate_version() -> str:
+    """Which noise rule is in force, for traces and the learning counter."""
+    cut = NOISE_GATE_MIN_SEPARATION_DB
+    return "noise-gate-v1:off" if cut is None else f"noise-gate-v1:{cut:g}db"
+
+
+def _too_noisy(snap: dict) -> bool:
+    cut = NOISE_GATE_MIN_SEPARATION_DB
+    separation = _number((snap or {}).get("noise_separation_db"))
+    return cut is not None and separation is not None and separation < cut
+
+
 def _audio_reliable(snippet: dict, snap: dict) -> bool:
     duration = _number(snippet.get("duration_ms"))
     if duration is None or duration < 2000:
@@ -208,6 +235,8 @@ def _audio_reliable(snippet: dict, snap: dict) -> bool:
         return False
     voiced = snap.get("voiced_ratio")
     if isinstance(voiced, (int, float)) and not 0.32 <= voiced <= 0.99:
+        return False
+    if _too_noisy(snap):
         return False
     return True
 
@@ -754,6 +783,7 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
             "eligible": bool(verdict.get("eligible")),
             "reason": verdict.get("reason"),
             "pace_high": verdict.get("pace_high"),
+            "noise_gate_version": noise_gate_version(),
         },
         "signals": dict(signals) if isinstance(signals, dict) else {},
         "features": dict(verdict.get("snapshot") or {}),

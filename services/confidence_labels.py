@@ -142,6 +142,83 @@ def band_of(score: Any) -> str:
     return "delivery_signal_neutral"
 
 
+def _selection_key(seed: str, s: dict, purpose: str = "pick") -> str:
+    return hashlib.sha1(
+        f"{seed}:{purpose}:{s.get('id')}".encode("utf-8")
+    ).hexdigest()
+
+
+def _unique_rows(snippets: Any) -> list[dict]:
+    """The dict snippets with an id, first occurrence of each id kept."""
+    rows_by_id: dict[str, dict] = {}
+    for snippet in (snippets or []):
+        if isinstance(snippet, dict) and snippet.get("id"):
+            rows_by_id.setdefault(str(snippet["id"]), snippet)
+    return list(rows_by_id.values())
+
+
+def _requested_size(target_size: Any) -> int:
+    try:
+        return int(target_size)
+    except (TypeError, ValueError):
+        return DEFAULT_QUEUE_SIZE
+
+
+def _pick_model_boundary(rows: list[dict], boundary_n: int, seed: str,
+                         chosen: list, chosen_ids: set) -> None:
+    """1. Model-boundary candidates. Unscored clips are not faked as zero;
+    they remain available to balanced/random selection."""
+    scored = [
+        (row, score)
+        for row in rows
+        if (score := _confidence_of(row)) is not None
+    ]
+    scored.sort(key=lambda item: (
+        abs(item[1]), _selection_key(seed, item[0], "boundary-tie")))
+    for row, _score in scored[:boundary_n]:
+        chosen.append((row, "model_boundary", 1.0))
+        chosen_ids.add(str(row["id"]))
+
+
+def _pick_band_balance(rows: list[dict], balance_n: int, seed: str,
+                       chosen: list, chosen_ids: set) -> None:
+    """2. Round-robin model-region coverage from what remains."""
+    buckets: dict[str, list] = {}
+    for row in rows:
+        if str(row["id"]) in chosen_ids:
+            continue
+        buckets.setdefault(band_of(_confidence_of(row)), []).append(row)
+    for bucket in buckets.values():
+        bucket.sort(key=lambda row: _selection_key(seed, row, "balance"))
+    band_order = ("delivery_signal_high", "delivery_signal_neutral",
+                  "delivery_signal_low", "unscored")
+    while balance_n > 0 and any(buckets.get(band) for band in band_order):
+        for band in band_order:
+            if balance_n <= 0:
+                break
+            bucket = buckets.get(band) or []
+            if not bucket:
+                continue
+            row = bucket.pop(0)
+            chosen.append((row, "band_balance", 1.0))
+            chosen_ids.add(str(row["id"]))
+            balance_n -= 1
+
+
+def _pick_random_exploration(rows: list[dict], target: int, seed: str,
+                             chosen: list, chosen_ids: set) -> None:
+    """3. Uniform exploration fills its own quota and any deterministic
+    quota that lacked enough candidates. Its inclusion probability is exact
+    for this remaining pool and is persisted for audit/evaluation
+    weighting."""
+    remaining = [row for row in rows if str(row["id"]) not in chosen_ids]
+    remaining.sort(key=lambda row: _selection_key(seed, row, "exploration"))
+    random_n = min(target - len(chosen), len(remaining))
+    random_probability = (random_n / len(remaining)) if remaining else 0.0
+    for row in remaining[:random_n]:
+        chosen.append((row, "random_exploration", random_probability))
+
+
 def mixed_label_queue(snippets: Any, *,
                       target_size: int = DEFAULT_QUEUE_SIZE,
                       seed: str = "") -> list:
@@ -162,26 +239,12 @@ def mixed_label_queue(snippets: Any, *,
     seed, hash ranking is a reproducible uniform draw. Selection metadata is
     server-side only; :func:`queue_payload` is an allowlist and drops it.
     """
-    rows_by_id: dict[str, dict] = {}
-    for snippet in (snippets or []):
-        if isinstance(snippet, dict) and snippet.get("id"):
-            rows_by_id.setdefault(str(snippet["id"]), snippet)
-    rows = list(rows_by_id.values())
+    rows = _unique_rows(snippets)
     if not rows:
         return []
-
-    try:
-        requested = int(target_size)
-    except (TypeError, ValueError):
-        requested = DEFAULT_QUEUE_SIZE
-    target = min(len(rows), max(0, requested))
+    target = min(len(rows), max(0, _requested_size(target_size)))
     if target == 0:
         return []
-
-    def _key(s: dict, purpose: str = "pick") -> str:
-        return hashlib.sha1(
-            f"{seed}:{purpose}:{s.get('id')}".encode("utf-8")
-        ).hexdigest()
 
     exploration_n = max(1, round(target * EXPLORATION_SHARE))
     boundary_n = min(target - exploration_n,
@@ -190,54 +253,12 @@ def mixed_label_queue(snippets: Any, *,
 
     chosen: list[tuple[dict, str, float]] = []
     chosen_ids: set[str] = set()
-
-    # 1. Model-boundary candidates. Unscored clips are not faked as zero;
-    # they remain available to balanced/random selection.
-    scored = [
-        (row, score)
-        for row in rows
-        if (score := _confidence_of(row)) is not None
-    ]
-    scored.sort(key=lambda item: (
-        abs(item[1]), _key(item[0], "boundary-tie")))
-    for row, _score in scored[:boundary_n]:
-        chosen.append((row, "model_boundary", 1.0))
-        chosen_ids.add(str(row["id"]))
-
-    # 2. Round-robin model-region coverage from what remains.
-    buckets: dict[str, list] = {}
-    for row in rows:
-        if str(row["id"]) in chosen_ids:
-            continue
-        buckets.setdefault(band_of(_confidence_of(row)), []).append(row)
-    for bucket in buckets.values():
-        bucket.sort(key=lambda row: _key(row, "balance"))
-    band_order = ("delivery_signal_high", "delivery_signal_neutral",
-                  "delivery_signal_low", "unscored")
-    while balance_n > 0 and any(buckets.get(band) for band in band_order):
-        for band in band_order:
-            if balance_n <= 0:
-                break
-            bucket = buckets.get(band) or []
-            if not bucket:
-                continue
-            row = bucket.pop(0)
-            chosen.append((row, "band_balance", 1.0))
-            chosen_ids.add(str(row["id"]))
-            balance_n -= 1
-
-    # 3. Uniform exploration fills its own quota and any deterministic quota
-    # that lacked enough candidates. Its inclusion probability is exact for
-    # this remaining pool and is persisted for audit/evaluation weighting.
-    remaining = [row for row in rows if str(row["id"]) not in chosen_ids]
-    remaining.sort(key=lambda row: _key(row, "exploration"))
-    random_n = min(target - len(chosen), len(remaining))
-    random_probability = (random_n / len(remaining)) if remaining else 0.0
-    for row in remaining[:random_n]:
-        chosen.append((row, "random_exploration", random_probability))
+    _pick_model_boundary(rows, boundary_n, seed, chosen, chosen_ids)
+    _pick_band_balance(rows, balance_n, seed, chosen, chosen_ids)
+    _pick_random_exploration(rows, target, seed, chosen, chosen_ids)
 
     # Final ordering must not reveal the selection stratum to the rater.
-    chosen.sort(key=lambda item: _key(item[0], "blind-order"))
+    chosen.sort(key=lambda item: _selection_key(seed, item[0], "blind-order"))
     return [
         {
             **row,

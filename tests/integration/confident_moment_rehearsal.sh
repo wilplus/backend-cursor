@@ -428,6 +428,24 @@ hard migrations/a_pattern_is_tested_silently_first.sql
 # once per assignment. Twice: apply/reapply.
 hard migrations/an_exercise_is_seen.sql
 hard migrations/an_exercise_is_seen.sql
+# 0388 records whether a coach-judged practice attempt sounded more confident
+# than the original (internal, never a label). Twice: apply/reapply.
+hard migrations/a_practice_sounds_more_confident.sql
+hard migrations/a_practice_sounds_more_confident.sql
+
+# R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
+# the same GRANT ALL TO service_role as 0296, and was never in this chain, so
+# the lane could not show the grant it carried. Released lane only: its
+# trigger reads projects.owner_principal_id, which the narrow shape lacks.
+# Twice: apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/add_learning_surface_exposure_receipts.sql
+  hard migrations/add_learning_surface_exposure_receipts.sql
+  # 0389 revokes the write half of both grant blocks (0296, 0299) from
+  # service_role and keeps SELECT where it was held. Twice: apply/reapply.
+  hard migrations/canonical_tables_are_written_only_through_their_rpcs.sql
+  hard migrations/canonical_tables_are_written_only_through_their_rpcs.sql
+fi
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"

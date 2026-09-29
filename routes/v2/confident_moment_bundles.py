@@ -445,6 +445,127 @@ def record_confident_moment_family_response(
         return _database_error(error)
 
 
+_ROOT_ACTION_KEYS = {
+    "bundle_attachment_id", "action", "expected_block_head_action_id",
+    "source_feedback_exposure_id", "source_owner_response_id",
+    "source_practice_attempt_id", "source_ideal_text_revision_id",
+    "source_text_update_binding_id", "source_target_speaker_binding_id",
+    "practice_target_speaker_binding_id", "restore_product_action_id",
+    "policy_version", "idempotency_key",
+}
+_ROOT_ACTIONS = {
+    "save_owner_selected_root", "lock_current_root",
+    "restore_previous_root", "unlock_current_root", "remove_current_root",
+}
+_ROOT_NULLABLE_SOURCES = (
+    "source_feedback_exposure_id", "source_owner_response_id",
+    "source_practice_attempt_id", "source_ideal_text_revision_id",
+    "source_text_update_binding_id", "source_target_speaker_binding_id",
+    "practice_target_speaker_binding_id",
+)
+
+
+def _validate_save_sources(present: dict[str, bool],
+                           restore_present: bool) -> None:
+    """A save carries exactly one of four frozen source lanes."""
+    if restore_present:
+        raise ValueError("save cannot carry restore identity")
+    if present["source_feedback_exposure_id"] is not present[
+        "source_owner_response_id"
+    ]:
+        raise ValueError("feedback response source pair invalid")
+    practice_fields = (
+        present["source_practice_attempt_id"],
+        present["source_target_speaker_binding_id"],
+        present["practice_target_speaker_binding_id"],
+    )
+    if any(practice_fields) and not all(practice_fields):
+        raise ValueError("practice source triple invalid")
+    if present["source_text_update_binding_id"] and not present[
+        "source_ideal_text_revision_id"
+    ]:
+        raise ValueError("text update binding requires revision")
+    # Exactly one of four frozen source lanes may be selected.  The
+    # database derives candidate/evidence/content identity, but the
+    # HTTP boundary rejects cross-lane mixtures before any RPC call.
+    if present["source_text_update_binding_id"] and (
+        present["source_feedback_exposure_id"]
+        or present["source_owner_response_id"]
+        or any(practice_fields)
+    ):
+        raise ValueError("accepted Rephrase source matrix invalid")
+    if present["source_practice_attempt_id"] and present[
+        "source_text_update_binding_id"
+    ]:
+        raise ValueError("practice/text-update source matrix invalid")
+    if not (
+        present["source_owner_response_id"]
+        or present["source_ideal_text_revision_id"]
+        or present["source_practice_attempt_id"]
+    ):
+        raise ValueError("save requires one exact source")
+
+
+def _validate_root_source_matrix(action: str, body: dict) -> None:
+    """Which source identities each root action may, and must, carry."""
+    present = {
+        field: body.get(field) is not None for field in _ROOT_NULLABLE_SOURCES
+    }
+    restore_present = body.get("restore_product_action_id") is not None
+    if action in {
+        "lock_current_root", "unlock_current_root", "remove_current_root",
+    } and (any(present.values()) or restore_present):
+        raise ValueError("root action source matrix invalid")
+    if action == "restore_previous_root" and (
+        not restore_present or any(present.values())
+    ):
+        raise ValueError("restore source matrix invalid")
+    if action == "save_owner_selected_root":
+        _validate_save_sources(present, restore_present)
+
+
+def _root_action_identities(body: dict) -> dict:
+    """The optional identities, the policy and the idempotency key, parsed
+    in the order the repository call receives them."""
+    return {
+        "expected_block_head_action_id": _nullable_uuid(
+            body.get("expected_block_head_action_id"),
+            "expected_block_head_action_id",
+        ),
+        "source_feedback_exposure_id": _nullable_uuid(
+            body.get("source_feedback_exposure_id"),
+            "source_feedback_exposure_id",
+        ),
+        "source_owner_response_id": _nullable_uuid(
+            body.get("source_owner_response_id"), "source_owner_response_id"
+        ),
+        "source_practice_attempt_id": _nullable_uuid(
+            body.get("source_practice_attempt_id"), "source_practice_attempt_id"
+        ),
+        "source_ideal_text_revision_id": _nullable_bigint(
+            body.get("source_ideal_text_revision_id"),
+            "source_ideal_text_revision_id",
+        ),
+        "source_text_update_binding_id": _nullable_uuid(
+            body.get("source_text_update_binding_id"),
+            "source_text_update_binding_id",
+        ),
+        "source_target_speaker_binding_id": _nullable_uuid(
+            body.get("source_target_speaker_binding_id"),
+            "source_target_speaker_binding_id",
+        ),
+        "practice_target_speaker_binding_id": _nullable_uuid(
+            body.get("practice_target_speaker_binding_id"),
+            "practice_target_speaker_binding_id",
+        ),
+        "restore_product_action_id": _nullable_uuid(
+            body.get("restore_product_action_id"), "restore_product_action_id"
+        ),
+        "policy_version": body["policy_version"],
+        "idempotency_key": _text(body.get("idempotency_key"), "idempotency_key"),
+    }
+
+
 @v2_bp.post("/user/confident-moment-bundles/<bundle_id>/root-actions")
 @_coverage_gate
 @require_auth
@@ -453,119 +574,24 @@ def record_confident_moment_root_action(bundle_id: str):
     """Public database-derived root transition; automatic activation is absent."""
     try:
         bundle_id = _uuid(bundle_id, "bundle_id")
-        keys = {
-            "bundle_attachment_id", "action", "expected_block_head_action_id",
-            "source_feedback_exposure_id", "source_owner_response_id",
-            "source_practice_attempt_id", "source_ideal_text_revision_id",
-            "source_text_update_binding_id", "source_target_speaker_binding_id",
-            "practice_target_speaker_binding_id", "restore_product_action_id",
-            "policy_version", "idempotency_key",
-        }
-        body = _request_object(keys)
+        body = _request_object(_ROOT_ACTION_KEYS)
         action = body.get("action")
-        if action not in {
-            "save_owner_selected_root", "lock_current_root",
-            "restore_previous_root", "unlock_current_root", "remove_current_root",
-        }:
+        if action not in _ROOT_ACTIONS:
             raise ValueError("root action invalid")
         if body.get("policy_version") != "rooting-coverage-30-80-100-v1":
             raise ValueError("root policy invalid")
         attachment_id = _uuid(
             body.get("bundle_attachment_id"), "bundle_attachment_id"
         )
-        nullable_source_fields = (
-            "source_feedback_exposure_id", "source_owner_response_id",
-            "source_practice_attempt_id", "source_ideal_text_revision_id",
-            "source_text_update_binding_id", "source_target_speaker_binding_id",
-            "practice_target_speaker_binding_id",
-        )
-        present = {field: body.get(field) is not None for field in nullable_source_fields}
-        restore_present = body.get("restore_product_action_id") is not None
-        if action in {
-            "lock_current_root", "unlock_current_root", "remove_current_root",
-        } and (any(present.values()) or restore_present):
-            raise ValueError("root action source matrix invalid")
-        if action == "restore_previous_root" and (
-            not restore_present or any(present.values())
-        ):
-            raise ValueError("restore source matrix invalid")
-        if action == "save_owner_selected_root":
-            if restore_present:
-                raise ValueError("save cannot carry restore identity")
-            if present["source_feedback_exposure_id"] is not present[
-                "source_owner_response_id"
-            ]:
-                raise ValueError("feedback response source pair invalid")
-            practice_fields = (
-                present["source_practice_attempt_id"],
-                present["source_target_speaker_binding_id"],
-                present["practice_target_speaker_binding_id"],
-            )
-            if any(practice_fields) and not all(practice_fields):
-                raise ValueError("practice source triple invalid")
-            if present["source_text_update_binding_id"] and not present[
-                "source_ideal_text_revision_id"
-            ]:
-                raise ValueError("text update binding requires revision")
-            # Exactly one of four frozen source lanes may be selected.  The
-            # database derives candidate/evidence/content identity, but the
-            # HTTP boundary rejects cross-lane mixtures before any RPC call.
-            if present["source_text_update_binding_id"] and (
-                present["source_feedback_exposure_id"]
-                or present["source_owner_response_id"]
-                or any(practice_fields)
-            ):
-                raise ValueError("accepted Rephrase source matrix invalid")
-            if present["source_practice_attempt_id"] and present[
-                "source_text_update_binding_id"
-            ]:
-                raise ValueError("practice/text-update source matrix invalid")
-            if not (
-                present["source_owner_response_id"]
-                or present["source_ideal_text_revision_id"]
-                or present["source_practice_attempt_id"]
-            ):
-                raise ValueError("save requires one exact source")
-        result = _repo().record_root_action(
-            acquisition_principal_id=_principal_id(),
+        _validate_root_source_matrix(action, body)
+        repo = _repo()
+        principal_id = _principal_id()
+        result = repo.record_root_action(
+            acquisition_principal_id=principal_id,
             bundle_id=bundle_id,
             bundle_attachment_id=attachment_id,
             action=action,
-            expected_block_head_action_id=_nullable_uuid(
-                body.get("expected_block_head_action_id"),
-                "expected_block_head_action_id",
-            ),
-            source_feedback_exposure_id=_nullable_uuid(
-                body.get("source_feedback_exposure_id"),
-                "source_feedback_exposure_id",
-            ),
-            source_owner_response_id=_nullable_uuid(
-                body.get("source_owner_response_id"), "source_owner_response_id"
-            ),
-            source_practice_attempt_id=_nullable_uuid(
-                body.get("source_practice_attempt_id"), "source_practice_attempt_id"
-            ),
-            source_ideal_text_revision_id=_nullable_bigint(
-                body.get("source_ideal_text_revision_id"),
-                "source_ideal_text_revision_id",
-            ),
-            source_text_update_binding_id=_nullable_uuid(
-                body.get("source_text_update_binding_id"),
-                "source_text_update_binding_id",
-            ),
-            source_target_speaker_binding_id=_nullable_uuid(
-                body.get("source_target_speaker_binding_id"),
-                "source_target_speaker_binding_id",
-            ),
-            practice_target_speaker_binding_id=_nullable_uuid(
-                body.get("practice_target_speaker_binding_id"),
-                "practice_target_speaker_binding_id",
-            ),
-            restore_product_action_id=_nullable_uuid(
-                body.get("restore_product_action_id"), "restore_product_action_id"
-            ),
-            policy_version=body["policy_version"],
-            idempotency_key=_text(body.get("idempotency_key"), "idempotency_key"),
+            **_root_action_identities(body),
         )
         return jsonify(validate_root_action_result(
             result, bundle_id=bundle_id, attachment_id=attachment_id

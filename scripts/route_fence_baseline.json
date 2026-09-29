@@ -239,10 +239,6 @@
     "lines": 138,
     "db_calls": 1
   },
-  "routes/v2/confident_moment_bundles.py:record_confident_moment_root_action": {
-    "lines": 130,
-    "db_calls": 0
-  },
   "routes/v2/explore_ideal_text.py:_confidence_review_status_map": {
     "lines": 58,
     "db_calls": 3

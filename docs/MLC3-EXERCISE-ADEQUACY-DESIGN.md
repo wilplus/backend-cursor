@@ -245,7 +245,13 @@ Raw horizons stay separate and are all still stored:
    (the scorekeeper) labels those same exposures under item 1, using the
    original clip's own signal rules (`clip_signals`), and stays sealed —
    returning only the counter's reason — until this bar is met. No route
-   serves it.
+   serves it. `services/exercise_fair_test.py` (the fair-test calculator)
+   grades a candidate ranker against the fixed ranking under items 6, 7 and
+   9: a stable speaker split (`exercise-speaker-split-v1`, 30% held out,
+   confirmed by the founder 2026-09-28), inverse-propensity weighting on the stored
+   80/20 odds, a speaker-resampled 95% interval, and the +5-point / interval
+   above zero / attempt-rate guardrail. It is sealed the same way, never
+   promotes, and always returns `requires_founder_approval`.
 9. **Promotion.** A learned ranker replaces the fixed ranking only when, on
    held-out speakers:
    - its estimated success rate is **at least 5 points higher**, with the 95%
@@ -259,6 +265,55 @@ Raw horizons stay separate and are all still stored:
     answers; blind coach or peer confidence judgments; coach overrides;
     shadow-stage verdicts; "shown" or "opened". Exercise outcomes never train
     Confidence Classification.
+    A separate internal reading, `exercise-more-confident-v1` (contract
+    35g-3, migration 0388, founder 2026-09-28), records whether the
+    coach-judged practice attempt sounded more confident than the original
+    (the composite higher AND the coach's Yes). It uses a coach judgment, so
+    under this item it is never a label and nothing in §8 or §13 reads it.
+
+### 3.5a Noise meter `noise-meter-v1` (silent)
+
+Founder 2026-09-28: build it, silent first.
+
+**Why.** The clip gate's "reliable audio" rule reads
+`metrics.audio_quality`, but nothing has ever written that field, so that
+part of the gate has never run, for the original clips or the practice
+attempts. Background noise also blurs words, which can fire
+`reduced_intelligibility` on a noisy endpoint attempt and make a
+clear-words exercise look as if it did not help.
+
+**Operational definition. It measures one thing: how far the voice stands
+above the background in one recording.**
+- Frame loudness is the existing 25 ms RMS dB series (`_frame_rms_db`).
+- `voice_db` is the 90th percentile of frame loudness, and `background_db`
+  is the 10th percentile.
+- `separation_db = voice_db − background_db`. A larger value means a
+  cleaner recording.
+- With fewer than 20 frames the value is `None` (too short to judge),
+  never a guess.
+- It is computed in `services/audio_metrics.py:_noise_meter` for every
+  analysed recording (`metrics.noise_meter`). It is saved into every clip
+  snapshot and every practice attempt as `noise_separation_db` and
+  `noise_meter_version`.
+
+**The switch: built, OFF** (founder 2026-09-28).
+`NOISE_GATE_MIN_SEPARATION_DB` in `services/confident_voice_practice.py` is
+`None`, so no recording is skipped for noise. When it is set to a cut-off
+(say 12), the clip gate's reliable-audio rule (`_audio_reliable`) treats a
+recording whose `separation_db` is below the cut-off as unreliable.
+- An original clip below it gets no exercise, and the trace records the
+  reason `audio_quality`.
+- A practice attempt below it is not a valid endpoint, so the counter
+  leaves it out as "no usable try".
+- A recording with no reading (older ones, or too short to judge) is never
+  skipped.
+- The rule in force (`noise-gate-v1:off` or, for example,
+  `noise-gate-v1:12db`) is recorded in every match trace
+  (`gate.noise_gate_version`) and in the learning counter.
+
+Nothing reaches a speaker (AC-9). Switching it on is a reviewed PR that sets
+the number, made only after the meter has been checked against what a
+person hears on a sample of recordings. It is the founder's call.
 
 ## 4. Selection and exposure policy
 

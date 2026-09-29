@@ -1937,7 +1937,7 @@ def v2_add_confident_voice_practice_attempt(practice_id):
             return jsonify({"code": "TRANSCRIPTION_FAILED",
                             "error": "We couldn't hear that clearly. Try again."}), 422
         from services.confident_voice_practice import (
-            acoustic_snapshot, passage_alignment,
+            acoustic_snapshot, machine_confidence_decision, passage_alignment,
         )
         alignment = passage_alignment(
             str(practice.get("exact_passage") or ""),
@@ -2022,7 +2022,7 @@ def v2_add_confident_voice_practice_attempt(practice_id):
             "acoustic_metrics": current_snapshot,
             "comparison": comparison,
             "assessment_key": "recorded_for_comparison",
-            "machine_confidence_decision": None,
+            "machine_confidence_decision": machine_confidence_decision(current_snapshot),
         }, practice=practice, bucket=bucket, audio_bytes=audio_bytes)
         if not inserted:
             return jsonify({"code": "V2_ERROR",

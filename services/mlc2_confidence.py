@@ -195,6 +195,71 @@ def _validate_prediction(value: Any, candidate_field: str) -> dict[str, Any]:
     return prediction
 
 
+def _validate_eligible_candidate(candidate: dict[str, Any], field: str, *,
+                                 selected: bool, mode: str) -> None:
+    """An eligible candidate: a prediction, a score, a positive rank, and a
+    mode that matches whether it was selected."""
+    if candidate.get("exclusion_reason_code") not in (None, ""):
+        raise Mlc2ContractError(f"{field} cannot be eligible and excluded")
+    candidate["exclusion_reason_code"] = None
+    candidate["prediction"] = _validate_prediction(
+        candidate.get("prediction"), field
+    )
+    candidate["score"] = _number(candidate.get("score"), f"{field}.score")
+    rank = candidate.get("rank")
+    if isinstance(rank, bool) or not isinstance(rank, int) or rank <= 0:
+        raise Mlc2ContractError(f"{field}.rank must be a positive integer")
+    if selected and mode not in {"deterministic", "exploration"}:
+        raise Mlc2ContractError(f"{field} selected candidate has invalid mode")
+    if not selected and mode != "not_selected":
+        raise Mlc2ContractError(f"{field} unselected candidate has invalid mode")
+
+
+def _validate_excluded_candidate(candidate: dict[str, Any], field: str, *,
+                                 selected: bool, mode: str) -> None:
+    """An excluded candidate: a reason, never selected, zero probability,
+    no rank."""
+    if candidate.get("prediction") is not None:
+        candidate["prediction"] = _validate_prediction(
+            candidate.get("prediction"), field
+        )
+    else:
+        candidate.pop("prediction", None)
+    candidate["exclusion_reason_code"] = _text(
+        candidate.get("exclusion_reason_code"),
+        f"{field}.exclusion_reason_code",
+    )
+    if selected or mode != "excluded":
+        raise Mlc2ContractError(f"{field} excluded candidate cannot be selected")
+    if candidate["sampling_probability"] != 0:
+        raise Mlc2ContractError(
+            f"{field} excluded candidate probability must be zero"
+        )
+    if candidate.get("score") is not None:
+        candidate["score"] = _number(
+            candidate.get("score"), f"{field}.score"
+        )
+    else:
+        candidate["score"] = None
+    candidate["rank"] = None
+
+
+def _validate_draw_index(candidate: dict[str, Any], field: str,
+                         mode: str) -> None:
+    """Exploration needs its RNG draw index; any other mode may carry one."""
+    draw_index = candidate.get("rng_draw_index")
+    if mode == "exploration":
+        if isinstance(draw_index, bool) or not isinstance(draw_index, int) \
+                or draw_index < 0:
+            raise Mlc2ContractError(
+                f"{field}.rng_draw_index is required for exploration"
+            )
+    elif draw_index is not None:
+        if isinstance(draw_index, bool) or not isinstance(draw_index, int) \
+                or draw_index < 0:
+            raise Mlc2ContractError(f"{field}.rng_draw_index is invalid")
+
+
 def _validate_candidate(value: Any, index: int) -> dict[str, Any]:
     field = f"candidate_set.candidates[{index}]"
     candidate = _mapping(value, field)
@@ -222,56 +287,12 @@ def _validate_candidate(value: Any, index: int) -> dict[str, Any]:
     )
 
     if eligible:
-        if candidate.get("exclusion_reason_code") not in (None, ""):
-            raise Mlc2ContractError(f"{field} cannot be eligible and excluded")
-        candidate["exclusion_reason_code"] = None
-        candidate["prediction"] = _validate_prediction(
-            candidate.get("prediction"), field
-        )
-        candidate["score"] = _number(candidate.get("score"), f"{field}.score")
-        rank = candidate.get("rank")
-        if isinstance(rank, bool) or not isinstance(rank, int) or rank <= 0:
-            raise Mlc2ContractError(f"{field}.rank must be a positive integer")
-        if selected and mode not in {"deterministic", "exploration"}:
-            raise Mlc2ContractError(f"{field} selected candidate has invalid mode")
-        if not selected and mode != "not_selected":
-            raise Mlc2ContractError(f"{field} unselected candidate has invalid mode")
+        _validate_eligible_candidate(candidate, field, selected=selected,
+                                     mode=mode)
     else:
-        if candidate.get("prediction") is not None:
-            candidate["prediction"] = _validate_prediction(
-                candidate.get("prediction"), field
-            )
-        else:
-            candidate.pop("prediction", None)
-        candidate["exclusion_reason_code"] = _text(
-            candidate.get("exclusion_reason_code"),
-            f"{field}.exclusion_reason_code",
-        )
-        if selected or mode != "excluded":
-            raise Mlc2ContractError(f"{field} excluded candidate cannot be selected")
-        if candidate["sampling_probability"] != 0:
-            raise Mlc2ContractError(
-                f"{field} excluded candidate probability must be zero"
-            )
-        if candidate.get("score") is not None:
-            candidate["score"] = _number(
-                candidate.get("score"), f"{field}.score"
-            )
-        else:
-            candidate["score"] = None
-        candidate["rank"] = None
-
-    draw_index = candidate.get("rng_draw_index")
-    if mode == "exploration":
-        if isinstance(draw_index, bool) or not isinstance(draw_index, int) \
-                or draw_index < 0:
-            raise Mlc2ContractError(
-                f"{field}.rng_draw_index is required for exploration"
-            )
-    elif draw_index is not None:
-        if isinstance(draw_index, bool) or not isinstance(draw_index, int) \
-                or draw_index < 0:
-            raise Mlc2ContractError(f"{field}.rng_draw_index is invalid")
+        _validate_excluded_candidate(candidate, field, selected=selected,
+                                     mode=mode)
+    _validate_draw_index(candidate, field, mode)
     return candidate
 
 

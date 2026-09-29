@@ -234,6 +234,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("practice_exercise_exposure",
                     "confident_voice_exercise_exposures", "take_session_id",
                     "take", "delete", "derived_feedback", 59),
+    # Whether the coach-judged practice attempt sounded more confident than
+    # the original, migration 0388. About one speaker's practice: it goes
+    # with it, ahead of the practice and attempt it reads.
+    PurgeDependency("practice_more_confident_outcome",
+                    "practice_more_confident_outcomes", "practice_id",
+                    "practice", "delete", "derived_feedback", 59),
     # Why that choice was made, migration 0384. Goes with the Take, ahead of
     # the assignment it explains; its ON DELETE CASCADE is only the backstop.
     PurgeDependency("practice_exercise_match_trace",

@@ -14656,6 +14656,18 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
+    def record_practice_more_confident(
+        self, *, practice_id: str, attempt_id: str,
+    ) -> Optional[dict]:
+        """Recompute one practice's "sounds more confident" result from what
+        is stored (migration 0388). Raises the database's refusal
+        (PRACTICE_MORE_CONFIDENT_*) to the caller."""
+        result = self.client.rpc("record_practice_more_confident_v1", {
+            "p_practice_id": str(practice_id),
+            "p_attempt_id": str(attempt_id),
+        }).execute()
+        return self._rpc_row(result.data)
+
     def get_exercise_match_trace(self, assignment_id: str) -> Optional[dict]:
         """The match trace frozen with one assignment (migration 0384), or
         None — also for an assignment drawn before traces existed."""
@@ -14708,11 +14720,13 @@ class DatabaseService:
                 return rows
 
     def get_exercise_assignments(self, ids: list[str]) -> dict[str, dict]:
-        """The 80/20 facts of these assignments (0372), by id."""
+        """The 80/20 facts of these assignments (0372), by id, with every
+        candidate's stored probability (the fair test weights by it)."""
         out: dict[str, dict] = {}
         for chunk in self._chunks(ids):
             res = (self.client.table("confident_voice_exercise_assignments")
-                   .select("id,selection_mode,below_minimum_probability")
+                   .select("id,selection_mode,below_minimum_probability,"
+                           "candidates")
                    .in_("id", chunk).execute())
             out.update({str(r["id"]): r for r in res.data or []
                         if isinstance(r, dict) and r.get("id")})

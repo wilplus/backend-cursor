@@ -117,6 +117,18 @@ class PassageAndAssessmentTests(unittest.TestCase):
             {"confidence": 0.44}), "no")
         self.assertIsNone(cvp.machine_confidence_decision({}))
 
+    def test_each_attempt_records_its_machine_leg(self):
+        # Founder 2026-09-28: the attempt route wrote None here, so no
+        # practice recording could ever reach the Voice Album (35g). It now
+        # stores the machine leg from the attempt's own snapshot.
+        route = (pathlib.Path(__file__).resolve().parents[1]
+                 / "routes" / "v2" / "user_sessions.py").read_text()
+        # Same composite and 0.45 cut-off that call the original clip
+        # confident (machine_confidence_decision, tested above).
+        self.assertIn('"machine_confidence_decision": machine_confidence_decision'
+                      '(current_snapshot),', route)
+        self.assertNotIn('"machine_confidence_decision": None,', route)
+
 
 class _Db:
     def __init__(self, existing=None, supported_patterns=None):

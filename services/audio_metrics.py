@@ -135,6 +135,34 @@ def _frame_rms_db(sig: np.ndarray) -> np.ndarray:
     return np.array(dbs, dtype=np.float32)
 
 
+#: The noise meter's operational definition (founder 2026-09-28: build it,
+#: silent first). docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5a.
+NOISE_METER_VERSION = "noise-meter-v1"
+NOISE_METER_MIN_FRAMES = 20
+
+
+def _noise_meter(dbs: np.ndarray) -> Optional[Dict]:
+    """How far the voice stands above the background, in dB.
+
+    voice_db is the 90th percentile of frame loudness (the speaking frames),
+    background_db the 10th (the quietest frames: the room between words).
+    separation_db is their difference: large on a clean recording, small
+    when the background is nearly as loud as the voice.
+
+    SILENT: a measurement only. Nothing reads it to decide anything until the
+    founder switches it on; it deliberately does not use the `audio_quality`
+    key the clip gate reads. None when the recording is too short to judge.
+    """
+    if dbs is None or len(dbs) < NOISE_METER_MIN_FRAMES:
+        return None
+    voice = float(np.percentile(dbs, 90))
+    background = float(np.percentile(dbs, 10))
+    return {"version": NOISE_METER_VERSION,
+            "voice_db": round(voice, 1),
+            "background_db": round(background, 1),
+            "separation_db": round(voice - background, 1)}
+
+
 def _pause_runs(dbs: np.ndarray) -> list:
     """Every silent run at or over MIN_PAUSE_SEC, in milliseconds."""
     is_silent = dbs < SILENCE_DB_THRESHOLD
@@ -631,6 +659,7 @@ def _analyze_pcm(
         "pause_regularity": _compute_pause_regularity(dbs),
         "intensity_envelope": _compute_intensity_envelope(dbs),
         "voiced_ratio": voiced_ratio,
+        "noise_meter": _noise_meter(dbs),
     }
 
     # ── Librosa feature block (additive) ──────────────────────────
