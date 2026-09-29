@@ -111,14 +111,37 @@ class TheCoachSeesWhatTheyActOnTests(unittest.TestCase):
 
 
 class TheLookMatchesTheStudentEmailTests(unittest.TestCase):
+    """Every value here is copied from the frontend's React Email template,
+    emails/PostSessionResultsEmail.tsx. That template renders the email the
+    speaker gets; this one is hand-written Python. The two CAN drift, so
+    these assertions are the only thing that notices when they do."""
+
     def test_the_wordmark_is_the_real_logo(self):
         """It used to fall back to {frontend}/icon, which is the favicon."""
         self.assertIn("https://www.willpowerlab.com/willab-logo", _html())
 
     def test_the_student_email_palette(self):
         h = _html()
-        for token in ("#FAF7F2", "#FCFAF6", "#EFE9DE", "#F97316", "9999px"):
+        for token in ("#FAF7F2", "#FCFAF6", "#EFE9DE", "#F97316",
+                      "#1F1A14", "#6B6256"):
             self.assertIn(token, h, f"{token} is the student email's")
+
+    def test_the_student_email_type_scale(self):
+        h = _html()
+        for token in ("font-size:28px", "line-height:34px", "padding:40px",
+                      "border-radius:16px", "border-radius:9999px",
+                      "letter-spacing:0.08em"):
+            self.assertIn(token, h, f"{token} is the template's")
+
+    def test_the_eyebrow_carries_the_lesson_not_a_new_phrase(self):
+        """The design wants a top line. Filling it with the lesson means the
+        layout gains its eyebrow without inventing copy to sign off."""
+        head = _html(lesson_label="Take 2 — 28 Sep").split("<h1")[0]
+        self.assertIn("Take 2", head)
+
+    def test_the_eyebrow_never_renders_empty(self):
+        head = _html(lesson_label="").split("<h1")[0]
+        self.assertIn("Homework", head)
 
     def test_the_name_and_address_are_escaped(self):
         h = _html(student_name='<script>x</script>',

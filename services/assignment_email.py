@@ -36,6 +36,11 @@ def _logo_html(_logo_url: str | None = None) -> str:
 
 
 LOGO_URL = "https://www.willpowerlab.com/willab-logo"
+# Mirrored from emails/PostSessionResultsEmail.tsx (FONT_STACK_SYSTEM).
+_FONT_STACK = (
+    "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "
+    "'Segoe UI', Roboto, sans-serif"
+)
 
 
 def _email_row(label: str, value_html: str) -> str:
@@ -48,10 +53,10 @@ def _email_row(label: str, value_html: str) -> str:
     """
     return (
         '<tr><td style="padding:12px 0;border-top:1px solid #EFE9DE;'
-        'font-size:13px;color:#8C8378;width:40%;vertical-align:top;">'
+        'font-size:13px;color:#6B6256;width:40%;vertical-align:top;">'
         f'{escape(label)}</td>'
         '<td style="padding:12px 0;border-top:1px solid #EFE9DE;'
-        f'font-size:15px;color:#1F1A14;font-weight:500;">{value_html}</td></tr>'
+        f'font-size:16px;color:#1F1A14;font-weight:600;">{value_html}</td></tr>'
     )
 
 
@@ -67,26 +72,40 @@ def build_admin_homework_completed_email_html(
 ) -> str:
     """The coach's "a lesson is in your queue" email.
 
-    RESTYLED 2026-09-28 to the student email's design system (same ground,
-    same card, same pill button, same wordmark) — founder asked for one look
-    across both.
+    RESTYLED 2026-09-29 to the student email, token for token. Every value
+    below is copied from emails/PostSessionResultsEmail.tsx in the frontend
+    repo: the same ground, card, border, wordmark, type scale and pill.
 
-    WHAT WAS REMOVED AND WHY:
+    TWO SOURCES OF TRUTH, DELIBERATELY FLAGGED. The student email is a React
+    Email template the FRONTEND renders: the backend POSTs props to
+    /api/internal/emails/post-session-results and gets HTML back, so that
+    "the React Email template stays the single source of truth: backend never
+    re-implements the layout in Jinja or hand-written HTML" (that route's own
+    words). THIS email is hand-written HTML in Python, so it can drift from
+    the template it copies the moment either side is edited. Matching by hand
+    is the stopgap; the fix is a second React Email template rendered the
+    same way.
+
+    WHAT IS NOT HERE, AND WHY:
 
     * Pace and Filler words. The caller passed `pace_wpm=None,
-      filler_count=None` as literals, so both rows could only ever render
+      filler_count=None` as LITERALS, so both rows could only ever render
       "n/a WPM (target 120-160)" and "n/a", for every student, forever.
       They were not missing data; they were rows with no source.
-    * Strength: "Loudness (pending)". Same: a constant default that never
-      became anything.
-    * The performance score. It was center_hold_ratio * 100 minus three
-      points per filler (services/metrics_v2.py) — loudness and filler
-      count, which is the pre-V3 "good public speaker" measure the product
-      stopped reasoning about. Founder deferred it 2026-09-28.
+    * "Strength: Loudness (pending)" - a constant default that never became
+      anything.
+    * The performance score. center_hold_ratio * 100 minus three points per
+      filler (services/metrics_v2.py) - loudness and filler count, the
+      pre-V3 "good public speaker" measure. Founder deferred it 2026-09-28.
+      A confidence-based score is NOT a drop-in replacement: this email
+      reaches the coach BEFORE they blind-rate the take, so a machine read
+      inside it would hand them the answer first (BLIND COACH).
 
-    The report preview keeps the product's own rule for an empty lane: when
-    there is nothing to show it draws NO card, rather than a card saying
-    there is nothing (contract 24f).
+    The eyebrow carries the lesson rather than a new phrase, so the design
+    gains its top line without inventing copy to fill it.
+
+    An empty report preview draws NO card, rather than a card announcing
+    there is nothing - contract 24f's rule for an honest empty lane.
     """
     safe_name = escape((student_name or "").strip())
     student_label = (
@@ -94,20 +113,20 @@ def build_admin_homework_completed_email_html(
         else escape(student_email)
     )
     logo = (logo_url or "").strip() or LOGO_URL
+    eyebrow = escape((lesson_label or "").strip()) or "Homework"
     rows = [_email_row("Student", student_label)]
-    if (lesson_label or "").strip():
-        rows.append(_email_row("Lesson", escape(lesson_label.strip())))
     if isinstance(moments_awaiting, int) and moments_awaiting > 0:
         rows.append(_email_row("Moments to review", str(moments_awaiting)))
     excerpt = _short(transcript_excerpt, 260)
     preview_block = ""
     if excerpt:
         preview_block = (
-            '<div style="margin:24px 0 0;padding:20px 22px;background:#F6F1E8;'
+            '<div style="margin:24px 0 0;padding:18px 20px;background:#FFEDD5;'
             'border-radius:12px;">'
-            '<p style="margin:0 0 10px;font-size:11px;color:#8C8378;'
-            "text-transform:uppercase;letter-spacing:1px;\">Report preview</p>"
-            '<p style="margin:0;font-size:14px;color:#5B5349;line-height:1.6;'
+            '<p style="margin:0 0 8px;font-size:11px;letter-spacing:0.06em;'
+            'text-transform:uppercase;color:#6B6256;font-weight:600;">'
+            'Report preview</p>'
+            '<p style="margin:0;font-size:15px;line-height:24px;color:#1F1A14;'
             f'font-style:italic;">&ldquo;{escape(excerpt)}&rdquo;</p></div>'
         )
     return f"""<!DOCTYPE html>
@@ -117,18 +136,19 @@ def build_admin_homework_completed_email_html(
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Student Homework Completed — Willab</title>
 </head>
-<body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1F1A14;">
-  <div style="max-width:560px;margin:0 auto;padding:32px 20px;">
+<body style="margin:0;padding:0;background:#FAF7F2;font-family:{_FONT_STACK};color:#1F1A14;">
+  <div style="max-width:600px;margin:0 auto;padding:32px 20px;">
     <div style="text-align:center;margin:0 0 24px;"><img src="{escape(logo)}" alt="WillpowerLab" width="182" height="42" style="display:inline-block;width:182px;height:auto;border:0;"></div>
-    <div style="background:#FCFAF6;border:1px solid #EFE9DE;border-radius:16px;padding:32px;">
-      <h1 style="margin:0 0 24px;font-size:22px;line-height:1.3;font-weight:600;color:#1F1A14;">A student has completed a homework lesson.</h1>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">{"".join(rows)}</table>
+    <div style="background:#FCFAF6;border:1px solid #EFE9DE;border-radius:16px;padding:40px;">
+      <p style="margin:0;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#F97316;font-weight:600;">{eyebrow}</p>
+      <h1 style="margin:8px 0 0 0;font-family:{_FONT_STACK};font-weight:600;font-size:28px;line-height:34px;color:#1F1A14;">A student has completed a homework lesson.</h1>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0 0;border-collapse:collapse;">{"".join(rows)}</table>
       <div style="text-align:center;margin:28px 0 0;">
-        <a href="{escape(profile_url)}" style="display:inline-block;background:#F97316;color:#fff;padding:14px 28px;border-radius:9999px;text-decoration:none;font-size:15px;font-weight:600;">View profile &amp; send homework</a>
+        <a href="{escape(profile_url)}" style="display:inline-block;background-color:#F97316;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;line-height:20px;padding:14px 28px;border-radius:9999px;">View profile &amp; send homework</a>
       </div>
       {preview_block}
     </div>
-    <p style="margin:24px 0 0;text-align:center;font-size:12px;color:#9C9488;">Willab</p>
+    <p style="margin:24px 0 0;text-align:center;font-size:12px;color:#6B6256;">Willab</p>
   </div>
 </body>
 </html>"""
