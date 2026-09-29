@@ -10,7 +10,8 @@ Pins:
     "didn't help";
   * the attempt-rate guardrail blocks a ranker people give up on;
   * only held-out speakers are graded; the result always needs the founder;
-  * evaluate() is sealed until the evidence bar is met; no route serves it.
+  * evaluate() is sealed until the evidence bar is met; the jar page reads
+    it only through services/exercise_evaluation once the bar is met.
 """
 from __future__ import annotations
 
