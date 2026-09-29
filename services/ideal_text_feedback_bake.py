@@ -355,6 +355,45 @@ def run_pending_bake(arc_id: str, actor_id: str) -> None:
                        arc_id, error)
 
 
+def _served_head(published: Any) -> tuple[str, str, Any] | None:
+    """``(served_text, take_session_id, version)`` from the published head,
+    or None when it has no served text or no latest Take."""
+    payload = published.get("payload") if isinstance(published, Mapping) else None
+    served_text = str((payload or {}).get("text") or "")
+    take_session_id = str((payload or {}).get("latest_take_session_id") or "")
+    version = (payload or {}).get("version")
+    if not served_text or not take_session_id:
+        return None
+    return served_text, take_session_id, version
+
+
+def _compute_block(
+    arc_id: str, actor_id: str, served_text: str, take_session_id: str,
+    version: Any,
+) -> tuple[Any, int] | None:
+    """The Manager's block and how long it took, or None when it raised
+    (named in the log, never raised on)."""
+    try:
+        # LATE IMPORT, and the direction is on purpose. `_tracked_changes_block`
+        # is where the Manager's dependencies are assembled — the moment maps,
+        # the previous-take lookup, the locked parts, the evidence coordinates,
+        # the experiment arms — and assembling a second copy here is how the
+        # two would drift. It touches no Flask request state, so it runs just
+        # as well inside the worker as inside a GET.
+        from routes.v2.explore_ideal_text import _tracked_changes_block
+        started = perf_counter()
+        block = _tracked_changes_block(
+            str(arc_id), served_text, str(actor_id), take_session_id,
+            review_version=version,
+        )
+        computed_over_ms = int((perf_counter() - started) * 1000)
+    except Exception as error:
+        logger.warning("ideal-text feedback bake compute failed arc=%s: %s",
+                       arc_id, error)
+        return None
+    return block, computed_over_ms
+
+
 def bake_for_snapshot(
     database: Any, arc_id: str, actor_id: str, published: Any,
 ) -> bool:
@@ -377,30 +416,13 @@ def bake_for_snapshot(
     snapshot_id = _snapshot_id_of(published)
     if not arc_id or not actor_id or not snapshot_id:
         return False
-    payload = published.get("payload") if isinstance(published, Mapping) else None
-    served_text = str((payload or {}).get("text") or "")
-    take_session_id = str((payload or {}).get("latest_take_session_id") or "")
-    version = (payload or {}).get("version")
-    if not served_text or not take_session_id:
+    served = _served_head(published)
+    if served is None:
         return False
-    try:
-        # LATE IMPORT, and the direction is on purpose. `_tracked_changes_block`
-        # is where the Manager's dependencies are assembled — the moment maps,
-        # the previous-take lookup, the locked parts, the evidence coordinates,
-        # the experiment arms — and assembling a second copy here is how the
-        # two would drift. It touches no Flask request state, so it runs just
-        # as well inside the worker as inside a GET.
-        from routes.v2.explore_ideal_text import _tracked_changes_block
-        started = perf_counter()
-        block = _tracked_changes_block(
-            str(arc_id), served_text, str(actor_id), take_session_id,
-            review_version=version,
-        )
-        computed_over_ms = int((perf_counter() - started) * 1000)
-    except Exception as error:
-        logger.warning("ideal-text feedback bake compute failed arc=%s: %s",
-                       arc_id, error)
+    computed = _compute_block(arc_id, actor_id, *served)
+    if computed is None:
         return False
+    block, computed_over_ms = computed
     if not is_a_bake(block):
         # AN EMPTY LANE IS NOT A BAKE (founder, 2026-09-20, on the first take
         # after this shipped: "I just recorded and none of the bookmarks
