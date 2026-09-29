@@ -440,6 +440,10 @@ hard migrations/a_coach_answers_practice_five_ways.sql
 # before and after answers. Twice: apply/reapply.
 hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
 hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
+# 0392 makes the canonical promotion take its own consent snapshot from the
+# current bundled grant (Q1). Twice: apply/reapply.
+hard migrations/the_promotion_freezes_the_consent_snapshot.sql
+hard migrations/the_promotion_freezes_the_consent_snapshot.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so
