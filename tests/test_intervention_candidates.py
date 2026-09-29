@@ -407,7 +407,7 @@ class TestWhatIsRefused(unittest.TestCase):
                          "c1")
 
     def test_a_zero_width_insert_does_not_eat_a_budget_slot(self):
-        """`upgrade_changes` anchors candidate block additions at
+        """`upgrade_changes` (since deleted) anchored candidate block additions at
         {start: len(doc), end: len(doc)} with kind "insert". The FE has always
         dropped those, so they used to cost nothing — behind a budget they
         would win a slot and render as nothing, and the student would see two

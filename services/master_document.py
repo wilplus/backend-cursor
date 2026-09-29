@@ -168,70 +168,6 @@ def assemble_master_document(arc_id: str, *, database=None) -> dict:
     }
 
 
-def upgrade_changes(arc_id: Any, served_text: str, database) -> list:
-    """The `source: "new_take"` entries for the serve layer — one per
-    pending upgrade, span-anchored on the incumbent block's words in the
-    served text (monotonic scan). Same renderer shape as tracked_changes.
-    Pure given db rows.
-
-    CANDIDATE BLOCKS LEFT THIS FUNCTION (2026-08-07). They used to ride here as
-    `kind: "insert"` with a zero-width span, and reached nobody — an addition
-    is not a span-anchored edit, and forcing it into that shape produced an
-    anchor pointing at no text. They are their own lane now: `block_additions`.
-    """
-    rows = database.ideal_text.list_ideal_text_blocks(str(arc_id))
-    if not rows:
-        return []
-    out, cursor = [], 0
-    doc = served_text if isinstance(served_text, str) else ""
-    for row in sorted(rows, key=lambda r: r.get("block_key") or 0):
-        if row.get("status") == "pending_upgrade" \
-                and row.get("challenger_pieces"):
-            inc_text = " ".join(
-                (p.get("text") or "").strip()
-                for p in (row.get("incumbent_pieces") or [])).strip()
-            ch_text = " ".join(
-                (p.get("text") or "").strip()
-                for p in (row.get("challenger_pieces") or [])).strip()
-            if not inc_text or not ch_text:
-                continue
-            # Case-tolerant, monotonic: the document is finalize-cased
-            # (sentence capitals), the stored block text is not (the
-            # #230 raw-vs-document class). The regex search yields REAL
-            # spans on the document itself (a lower() index could shift
-            # on length-changing case mappings — review finding #14),
-            # and the monotonic cursor advances PER BLOCK so an earlier
-            # block sharing wording can never steal a later block's
-            # anchor (review finding #10). The QUOTE is the document's
-            # own slice.
-            import re as _re
-            m = _re.compile(_re.escape(inc_text), _re.IGNORECASE).search(
-                doc, cursor)
-            if not m:
-                continue        # baked/edited away — never mis-point
-            i = m.start()
-            inc_text = doc[i:m.end()]
-            cursor = m.end()
-            why = row.get("challenger_why")
-            out.append({
-                "id": f"block:{row.get('block_key')}",
-                "block_key": row.get("block_key"),
-                "snippet_id": None,
-                "take_session_id": row.get("challenger_take_session_id"),
-                "kind": "replace",
-                "source": "new_take",
-                "span": {"start": i, "end": i + len(inc_text)},
-                "quote": inc_text,
-                "proposed_text": ch_text,
-                "take_index": row.get("challenger_take_index"),
-                "why": None,
-                "why_key": (why if why in ("energy", "steadiness",
-                                           "coverage", "overall")
-                            else "overall"),
-            })
-    return out
-
-
 def block_additions(arc_id: Any, served_text: str, database) -> list:
     """Material the speaker SAID that is not in the master document at all.
 
@@ -242,7 +178,8 @@ def block_additions(arc_id: Any, served_text: str, database) -> list:
 
     ── WHY THIS IS NOT A TRACKED CHANGE, which is the bug it fixes ────────────
 
-    It used to ride in `upgrade_changes` as `kind: "insert"` with a ZERO-WIDTH
+    It used to ride in `upgrade_changes` (since deleted, 2026-09-29: no
+    production caller) as `kind: "insert"` with a ZERO-WIDTH
     span at the document end, and it reached nobody. It was dropped three
     separate times: the FE's `kind` vocabulary is replace/bold/advice, its span
     check requires `end > start`, and the manager gate refuses zero-width spans
