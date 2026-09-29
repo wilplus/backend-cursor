@@ -325,6 +325,20 @@ def main() -> int:
     except Exception as e:
         logger.warning("sweep chain start failed: %s", e)
 
+    # The Confidence Classification producer (G-6, audit 2026-09-22). One
+    # line, every boot, saying what MLC2_CONFIDENCE_CUTOVER_MODE resolved to
+    # in THIS container and whether a producer chain was started. In `dark`,
+    # the deployed mode, this starts nothing and touches no broker key; the
+    # constant changes only by a reviewed code change after the readiness
+    # report is green (services/mlc2_confidence_readiness.py).
+    try:
+        from services.mlc2_confidence_frame_factory import (
+            start_confidence_producer_chain,
+        )
+        logger.info("confidence producer %s", start_confidence_producer_chain())
+    except Exception as e:
+        logger.warning("confidence producer chain start failed: %s", e)
+
     slots = worker_count()
     if slots == 1:
         logger.info("worker starting on queue '%s' (1 slot, job timeout %ss)",
