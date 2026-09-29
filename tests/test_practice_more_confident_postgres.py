@@ -35,21 +35,30 @@ def db():
         conn.close()
 
 
-def _practice(db, original, attempt, coach):
+def _practice(db, original, attempt, coach, before="no"):
+    """A practice whose coach rated the original `before` (blind) and the
+    attempt `coach`. before=None: no blind rating; "unrateable": abstained."""
     practice_id, attempt_id = str(uuid.uuid4()), str(uuid.uuid4())
+    snippet, rater = str(uuid.uuid4()), str(uuid.uuid4())
     snapshot = {} if original is None else {"confidence": original}
     metrics = {} if attempt is None else {"confidence": attempt}
     with db.cursor() as cur:
         cur.execute(
             "INSERT INTO public.confident_voice_practice "
-            "(id, owner_user_id, take_session_id, acoustic_evidence) "
-            "VALUES (%s, gen_random_uuid(), gen_random_uuid(), %s)",
-            (practice_id, psycopg2.extras.Json({"snapshot": snapshot})))
+            "(id, owner_user_id, take_session_id, acoustic_evidence, snippet_id) "
+            "VALUES (%s, gen_random_uuid(), gen_random_uuid(), %s, %s)",
+            (practice_id, psycopg2.extras.Json({"snapshot": snapshot}), snippet))
         cur.execute(
             "INSERT INTO public.confident_voice_practice_attempt "
-            "(id, practice_id, acoustic_metrics, coach_confidence_decision) "
-            "VALUES (%s, %s, %s, %s)",
-            (attempt_id, practice_id, psycopg2.extras.Json(metrics), coach))
+            "(id, practice_id, acoustic_metrics, coach_confidence_decision, "
+            "coach_confidence_decided_by) VALUES (%s, %s, %s, %s, %s)",
+            (attempt_id, practice_id, psycopg2.extras.Json(metrics), coach, rater))
+        if before is not None:
+            cur.execute(
+                "INSERT INTO public.confidence_labels "
+                "(snippet_id, rater_id, value, unrateable) VALUES (%s, %s, %s, %s)",
+                (snippet, rater, None if before == "unrateable" else before,
+                 before == "unrateable"))
     return practice_id, attempt_id
 
 
@@ -60,25 +69,47 @@ def _record(db, practice_id, attempt_id):
         return dict(cur.fetchone())
 
 
-@pytest.mark.parametrize("original, attempt, coach, machine, outcome", [
-    (-0.4, 0.35, "yes", "higher", "helped"),
-    (0.1, 0.11, "yes", "higher", "helped"),          # any increase counts
-    (-0.4, 0.35, "no", "higher", "not_helped"),
-    (0.3, 0.3, "yes", "not_higher", "not_helped"),   # equal is not higher
-    (0.3, -0.2, "yes", "not_higher", "not_helped"),
-    (0.3, -0.2, "no", "not_higher", "not_helped"),
-    (None, 0.5, "yes", "unmeasurable", "pending"),
-    (0.1, None, "yes", "unmeasurable", "pending"),
-    (-0.4, 0.35, None, "higher", "pending"),         # coach has not answered
+@pytest.mark.parametrize("original, attempt, before, after, machine, coach, outcome", [
+    # coach heard it get better (No -> Yes), machine up: helped
+    (-0.4, 0.35, "no", "yes", "higher", "yes", "helped"),
+    (0.1, 0.11, "no", "in_between", "higher", "yes", "helped"),   # any rise
+    (0.1, 0.5, "neutral", "yes", "higher", "yes", "helped"),
+    # coach did not hear it get better
+    (-0.4, 0.35, "no", "no", "higher", "no", "not_helped"),
+    (-0.4, 0.35, "yes", "in_between", "higher", "no", "not_helped"),
+    # machine not higher
+    (0.3, 0.3, "no", "yes", "not_higher", "yes", "not_helped"),
+    # already confident before and after: cannot tell
+    (-0.4, 0.35, "yes", "yes", "higher", None, "pending"),
+    # off the ladder or missing
+    (-0.4, 0.35, "no", "not_sure", "higher", None, "pending"),
+    (-0.4, 0.35, "no", "audio_unclear", "higher", None, "pending"),
+    (-0.4, 0.35, "unrateable", "yes", "higher", None, "pending"),
+    (-0.4, 0.35, None, "yes", "higher", None, "pending"),
+    (-0.4, 0.35, "no", None, "higher", None, "pending"),
+    (None, 0.5, "no", "yes", "unmeasurable", "yes", "pending"),
 ])
-def test_the_rule(db, original, attempt, coach, machine, outcome):
-    row = _record(db, *_practice(db, original, attempt, coach))
+def test_the_rule(db, original, attempt, before, after, machine, coach, outcome):
+    row = _record(db, *_practice(db, original, attempt, after, before=before))
     assert row["machine_leg"] == machine
     assert row["coach_leg"] == coach
+    assert row["coach_after"] == after
     assert row["outcome"] == outcome
-    assert row["rule_version"] == "exercise-more-confident-v1"
+    assert row["rule_version"] == "exercise-more-confident-v2"
     assert row["is_label"] is False
     assert row["serves_user"] is False
+
+
+def test_the_before_answer_is_the_same_coachs(db):
+    # Another rater's blind "no" must not stand in for this coach's.
+    practice_id, attempt_id = _practice(db, -0.4, 0.35, "yes", before=None)
+    with db.cursor() as cur:
+        cur.execute("SELECT snippet_id FROM public.confident_voice_practice "
+                    "WHERE id = %s", (practice_id,))
+        snippet = cur.fetchone()[0]
+        cur.execute("INSERT INTO public.confidence_labels (snippet_id, rater_id, "
+                    "value) VALUES (%s, gen_random_uuid(), 'no')", (snippet,))
+    assert _record(db, practice_id, attempt_id)["outcome"] == "pending"
 
 
 def test_a_non_number_is_no_score(db):
@@ -91,7 +122,7 @@ def test_a_non_number_is_no_score(db):
 
 
 def test_one_row_per_practice_recomputed_when_the_coach_revises(db):
-    practice_id, attempt_id = _practice(db, -0.4, 0.35, "yes")
+    practice_id, attempt_id = _practice(db, -0.4, 0.35, "yes", before="no")
     assert _record(db, practice_id, attempt_id)["outcome"] == "helped"
     with db.cursor() as cur:
         cur.execute("UPDATE public.confident_voice_practice_attempt "

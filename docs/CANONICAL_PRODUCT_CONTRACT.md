@@ -428,9 +428,15 @@ with this contract, this contract wins.
     option A; rule `exercise-more-confident-v1`, migration 0388.) For each
     practice session, the attempt the coach judged is recorded as **helped**
     when its voice-confidence composite is higher than the original clip's
-    (any increase) **and** the coach answered "Do you find it more confident?"
-    Yes; **not helped** when either says no; **pending** while either is
-    missing. The speaker's own answer is not part of it. It is internal: never
+    (any increase) **and** the coach heard it get better; **not helped** when
+    either says no; **pending** while either is missing. "The coach heard it
+    get better" is worked out, never asked (founder 2026-09-29, Q5; rule
+    `exercise-more-confident-v2`, migration 0391): the same coach's blind
+    rating of the original clip against their answer about the practice, on
+    the ladder No < In-between < Yes. Higher is better; the same or lower is
+    not; an answer off the ladder (Not sure, Audio unclear) or missing, or
+    Yes before and after (already confident), is pending, never "didn't
+    help". The speaker's own answer is not part of it. It is internal: never
     shown to a speaker or a coach, and never a label. The machine leg and the
     coach leg keep their own provenance (clause 31). It is a separate reading
     from `exercise-adequacy-label-v1` (the design's §3.5), which stays the
