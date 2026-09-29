@@ -160,32 +160,6 @@ def abstain_reason(transcript, duration_ms, slide, claims):
     return None
 
 
-def roll_up_coverage(slide_index, claims, per_snippet_verdicts):
-    """(i) per-slide coverage ledger. For each claim, the best verdict ANY of
-    the slide's snippets achieved (covered if any covered; else partial if any
-    partial; else not), with the snippet_ref that achieved it. Pure.
-
-    per_snippet_verdicts: list of (snippet_ref, [verdict per claim]).
-    """
-    ledger = []
-    covered = partial = 0
-    for ci, claim in enumerate(claims):
-        best_v, best_ref = "not", None
-        for ref, verdicts in per_snippet_verdicts:
-            v = verdicts[ci] if ci < len(verdicts) else "not"
-            if _STRENGTH.get(v, 0.0) > _STRENGTH.get(best_v, 0.0):
-                best_v, best_ref = v, ref
-        if best_v == "covered":
-            covered += 1
-        elif best_v == "partial":
-            partial += 1
-        ledger.append({"claim": claim, "verdict": best_v, "snippet_ref": best_ref})
-    return {
-        "slide_index": slide_index, "covered": covered, "partial": partial,
-        "total": len(claims), "ledger": ledger,
-    }
-
-
 def decompose_slides_to_claims(slides_by_index):
     """LLM: {slide_index: [claims]} for the given {slide_index: slide} subset.
     Hash-cached per slide text. Best-effort → returns whatever it could get
@@ -422,8 +396,8 @@ def _llm_piece_scores(out, pieces, slides, mapped, llm_budget_idx):
 def compute_piece_slide_scores(pieces, slides, llm_budget_idx=None):
     """Pieces-mode Stickiness #2 (founder fix-pack BE-5) — per-piece slide
     relatedness against the piece's OWN slide. The cutter already stamped the
-    exact ``slide_index`` on every piece, so the window→slide inference of
-    :func:`compute_slide_scores` is unneeded; what pieces mode lost was the
+    exact ``slide_index`` on every piece, so the old snippet path's
+    window→slide inference is unneeded; what pieces mode lost was the
     text↔slide SCORE itself (skipped for cost). This restores it in two tiers:
 
       * EVERY piece — deterministic lexical verdicts (:func:`_lexical_verdict`)
@@ -457,78 +431,3 @@ def compute_piece_slide_scores(pieces, slides, llm_budget_idx=None):
         logger.warning(
             "piece_slide_scores: llm tier failed: %s (lexical tier kept)", e)
     return out
-
-
-def compute_slide_scores(snippets, slides, slide_advances):
-    """Orchestrate the claim-ledger. Returns
-      {"per_snippet": [{composite|null, on_slide, degraded}],  # aligned to snippets
-       "slide_coverage": [{slide_index, covered, partial, total, ledger}]}.
-    Best-effort: never raises; degrades to lexical verdicts (+degraded flag) on
-    LLM failure, abstains to null where unscorable."""
-    n = len(snippets or [])
-    blank = [{"composite": None, "on_slide": False, "degraded": False} for _ in range(n)]
-    if not slides or not snippets:
-        return {"per_snippet": blank, "slide_coverage": []}
-
-    # 1. map each snippet → slide index
-    mapped = {}
-    for i, snip in enumerate(snippets):
-        idx = slide_index_for_offset(snip.get("start_offset_ms"), slide_advances)
-        if isinstance(idx, int) and 0 <= idx < len(slides) and _slide_text(slides[idx]):
-            mapped[i] = idx
-
-    # 2. decompose the slides that actually have snippets on them
-    used_slides = {idx: slides[idx] for idx in set(mapped.values())}
-    claims_by_idx = decompose_slides_to_claims(used_slides) if used_slides else {}
-
-    # 3. build entailment work (snippets that pass the word floor + have claims)
-    work = []
-    for i, idx in mapped.items():
-        claims = claims_by_idx.get(idx) or []
-        if not claims:
-            continue
-        if abstain_reason(snippets[i].get("transcript"), snippets[i].get("duration_ms"),
-                          slides[idx], claims) is not None:
-            continue
-        work.append({"ref": i, "transcript": snippets[i].get("transcript") or "",
-                     "claims": claims})
-
-    verdicts_by_ref = _entail_batch(work)
-    degraded = verdicts_by_ref is None
-    if degraded:  # LLM down → lexical fallback per (snippet, claim)
-        verdicts_by_ref = {
-            str(w["ref"]): [_lexical_verdict(w["transcript"], c) for c in w["claims"]]
-            for w in work
-        }
-
-    # 4. per-snippet (ii) + accumulate per-slide verdicts for the ledger
-    per_snippet = list(blank)
-    slide_verdicts: dict = {}  # slide_idx → list of (snippet_ref, [verdicts])
-    for i, idx in mapped.items():
-        claims = claims_by_idx.get(idx) or []
-        reason = abstain_reason(snippets[i].get("transcript"),
-                                snippets[i].get("duration_ms"), slides[idx], claims)
-        if reason == "zero":
-            per_snippet[i] = {"composite": 0.0, "on_slide": False, "degraded": False}
-            continue
-        if reason == "null":
-            continue  # leave as null
-        verdicts = (verdicts_by_ref or {}).get(str(i)) or []
-        score = on_slide_score(verdicts)
-        per_snippet[i] = {
-            "composite": round(score, 2),
-            "on_slide": score >= _ON_SLIDE_THRESHOLD,
-            "degraded": degraded,
-        }
-        slide_verdicts.setdefault(idx, []).append(
-            (snippets[i].get("id") or i, verdicts))
-
-    # 5. per-slide coverage ledger (i)
-    coverage = []
-    for idx in sorted(used_slides):
-        claims = claims_by_idx.get(idx) or []
-        if not claims:
-            continue
-        coverage.append(roll_up_coverage(idx, claims, slide_verdicts.get(idx, [])))
-
-    return {"per_snippet": per_snippet, "slide_coverage": coverage}

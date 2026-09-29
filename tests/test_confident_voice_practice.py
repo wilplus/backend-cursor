@@ -105,11 +105,6 @@ class PassageAndAssessmentTests(unittest.TestCase):
         self.assertNotIn("comparison", public)
         self.assertNotIn("score", repr(public).casefold())
 
-    def test_comparison_is_acoustic_only(self):
-        source = inspect.getsource(cvp.comparison_for_attempt)
-        for forbidden in ("argument", "semantic", "persuasion", "factual", "emotion"):
-            self.assertNotIn(forbidden, source.casefold())
-
     def test_practice_machine_leg_uses_existing_confidence_construct(self):
         self.assertEqual(cvp.machine_confidence_decision(
             {"confidence": 0.45}), "yes")

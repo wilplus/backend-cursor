@@ -7,10 +7,12 @@ shared snippet substrate, and it has FIVE producers:
     Path B  extract_recording_snippets — the funnel cold-start    source_type NULL
     Path C  the ML generator                     'student' / 'internet'  DELETED
     Path D  willab Lab auto-cut (create_charisma_snippet)         source_type NULL
-    Path E  snippet_truncation's session re-cut          source_type 'auto_extracted'
+    Path E  snippet_truncation's session re-cut          source_type 'auto_extracted'  DELETED
 
 Path C is the only one the name ever described, and it was deleted on
-2026-08-10 (PR #368). The other four are live and carry real user recordings.
+2026-08-10 (PR #368). Path E lost its caller on 2026-06-05 and its module was
+deleted on 2026-09-29; its rows stay. The other three are live and carry
+real user recordings.
 So the name is a fossil that makes every reader of `user_chat.py` or
 `coaching.py` believe in a feature that does not exist — while the table under
 it is load-bearing. Production on 2026-08-10: 1216 NULL, 39 'student', 21
