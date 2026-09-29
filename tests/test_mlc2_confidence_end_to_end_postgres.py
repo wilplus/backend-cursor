@@ -255,6 +255,80 @@ def _candidate_set_id(chain):
     return row["id"]
 
 
+class TestThePromotionFreezesTheConsentSnapshot:
+    """0392 (Q1): a second attempt of the same owner promotes with no
+    pre-made snapshot, and the promotion takes one; an owner with no grant
+    is still refused, and the refusal rolls the Take promotion back."""
+
+    def _attempt(self, chain, owner, project, label):
+        cur = chain["cur"]
+        recording, attempt = str(uuid.uuid4()), str(uuid.uuid4())
+        cur.execute("INSERT INTO public.recordings (id) VALUES (%s)", (recording,))
+        cur.execute(
+            "INSERT INTO public.v2_sessions (id, user_id, owner_principal_id, project_id, arc_id, "
+            "take_index, analysis_state, recording_kind, recording_1_id) "
+            "VALUES (%s, %s, %s, %s, %s, 2, 'ready', 'spoken', %s)",
+            (attempt, str(uuid.uuid4()), owner, project, f"g6-arc-{chain['tag']}-{label}", recording),
+        )
+        cur.execute(
+            "INSERT INTO public.recording_attempts (id, owner_principal_id, project_id, "
+            "upload_idempotency_key, recording_id, storage_bucket, storage_key, recording_kind, status) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, 'spoken', 'processing')",
+            (attempt, owner, project, f"g6-upload-{chain['tag']}-{label}", recording, BUCKET, OBJECT_KEY),
+        )
+        return attempt
+
+    def test_a_second_attempt_promotes_without_a_pre_made_snapshot(self, chain):
+        cur = chain["cur"]
+        attempt = self._attempt(chain, chain["owner"], chain["project"], "second")
+        assert _one(cur, "SELECT 1 AS present FROM public.ml_consent_snapshots WHERE recording_attempt_id = %s",
+                    (attempt,)) is None
+        cur.execute(
+            "SELECT public.promote_recording_attempt_with_mlc2_confidence_v1(%s, %s, NULL, 1, %s, %s, %s, %s) AS r",
+            (attempt, SHA["5"], SHA["6"], SHA["7"], f"g6-promotion-{chain['tag']}-second",
+             psycopg2.extras.Json(MANIFEST)))
+        promotion = cur.fetchone()["r"]
+        assert promotion["take_id"], promotion
+        snapshot = _one(cur, "SELECT id, purpose_state, retention_state FROM public.ml_consent_snapshots "
+                             "WHERE recording_attempt_id = %s AND acquisition_principal_id = %s",
+                        (attempt, chain["owner"]))
+        assert snapshot is not None
+        assert snapshot["retention_state"] == "eligible"
+        assert snapshot["purpose_state"]["pooled_model_improvement"]["authorized"] is True
+        receipt = _one(cur, "SELECT consent_snapshot_id FROM public.ml_confidence_producer_receipts "
+                            "WHERE take_id = %s", (attempt,))
+        assert str(receipt["consent_snapshot_id"]) == str(snapshot["id"])
+
+    def test_the_pre_made_snapshot_of_the_first_attempt_was_honoured_not_doubled(self, chain):
+        cur = chain["cur"]
+        cur.execute("SELECT count(*) AS n FROM public.ml_consent_snapshots WHERE recording_attempt_id = %s",
+                    (chain["attempt"],))
+        assert cur.fetchone()["n"] == 1
+
+    def test_an_owner_without_a_grant_is_refused_and_the_take_promotion_rolls_back(self, chain):
+        cur = chain["cur"]
+        stranger, project = str(uuid.uuid4()), str(uuid.uuid4())
+        cur.execute("INSERT INTO public.owner_principals (id, guest_secret_hash) VALUES (%s, %s)",
+                    (stranger, f"g6-stranger-{chain['tag']}"))
+        cur.execute("INSERT INTO public.projects (id, owner_principal_id, display_name) VALUES (%s, %s, %s)",
+                    (project, stranger, "G-6 stranger"))
+        cur.execute(
+            "SELECT public.register_ml_speaker_principal_v1(%s, %s, 'speaker-resolution-v1', 'initial', %s, "
+            "'rehearsal', 'speaker-sha256-80-10-10-v1')", (stranger, SHA["9"], SHA["a"]))
+        attempt = self._attempt(chain, stranger, project, "stranger")
+        cur.execute("SAVEPOINT stranger_promotion")
+        with pytest.raises(psycopg2.Error) as refusal:
+            cur.execute(
+                "SELECT public.promote_recording_attempt_with_mlc2_confidence_v1(%s, %s, NULL, 1, %s, %s, %s, %s)",
+                (attempt, SHA["5"], SHA["6"], SHA["7"], f"g6-promotion-{chain['tag']}-stranger",
+                 psycopg2.extras.Json(MANIFEST)))
+        assert "no active bundled MLC-2 consent grant" in str(refusal.value)
+        cur.execute("ROLLBACK TO SAVEPOINT stranger_promotion")
+        assert _one(cur, "SELECT 1 AS present FROM public.takes WHERE id = %s", (attempt,)) is None
+        assert _one(cur, "SELECT 1 AS present FROM public.ml_consent_snapshots WHERE recording_attempt_id = %s",
+                    (attempt,)) is None
+
+
 class TestThePromotionReachesTheOutbox:
     def test_the_take_and_its_receipt_and_event_exist_once(self, chain):
         cur = chain["cur"]
@@ -375,6 +449,106 @@ class TestTheBlindPacket:
         assert packet["taxonomy"]["choices"] == [
             "rating_yes", "rating_in_between", "rating_no", "rating_not_sure", "rating_audio_unclear",
         ]
+
+
+class TestTheCoachCardConsumesTheChain:
+    """0393 (Q2): the legacy coach card's three wrappers, in the order the
+    card uses them: packet, render receipt, judgment with its reveal."""
+
+    @pytest.fixture(scope="class")
+    def coach(self, chain):
+        cur = chain["cur"]
+        coach = str(uuid.uuid4())
+        cur.execute("INSERT INTO public.owner_principals (id, guest_secret_hash) VALUES (%s, %s)",
+                    (coach, f"g6-coach-{chain['tag']}"))
+        selected = _one(cur, "SELECT id FROM public.ml_candidates WHERE candidate_set_id = %s AND selected",
+                        (_candidate_set_id(chain),))
+        snippet = _one(cur, "SELECT clip_id FROM public.ml_candidates WHERE id = %s", (selected["id"],))
+        return {"principal": coach, "candidate_id": str(selected["id"]), "snippet_id": str(snippet["clip_id"])}
+
+    def _packet(self, chain, coach):
+        return _one(chain["cur"],
+                    "SELECT public.prepare_mlc2_confidence_coach_packet_v1(%s, %s, %s, 'canary') AS p",
+                    (chain["attempt"], coach["snippet_id"], coach["principal"]))["p"]
+
+    def test_the_selected_snippet_yields_a_packet_with_the_four_identifiers(self, chain, coach):
+        packet = self._packet(chain, coach)
+        assert packet is not None
+        for field in ("review_assignment_id", "presentation_id", "acknowledgement_token",
+                      "visible_packet_sha256"):
+            assert packet.get(field), field
+        assert str(packet["candidate_id"]) == coach["candidate_id"]
+        assert not any(k in packet["visible_packet"] for k in LEAK_KEYS)
+        again = self._packet(chain, coach)
+        assert again["review_assignment_id"] == packet["review_assignment_id"]
+        assert again["replayed"] is True
+
+    def test_a_snippet_without_a_selected_candidate_yields_nothing(self, chain, coach):
+        cur = chain["cur"]
+        other = _one(cur, "SELECT clip_id FROM public.ml_candidates WHERE candidate_set_id = %s AND NOT selected LIMIT 1",
+                     (_candidate_set_id(chain),))
+        row = _one(cur, "SELECT public.prepare_mlc2_confidence_coach_packet_v1(%s, %s, %s, 'canary') AS p",
+                   (chain["attempt"], other["clip_id"], coach["principal"]))
+        assert row["p"] is None
+
+    def test_the_owner_reviewing_their_own_take_gets_no_packet(self, chain, coach):
+        row = _one(chain["cur"],
+                   "SELECT public.prepare_mlc2_confidence_coach_packet_v1(%s, %s, %s, 'canary') AS p",
+                   (chain["attempt"], coach["snippet_id"], chain["owner"]))
+        assert row["p"] is None
+
+    def test_the_render_receipt_then_the_judgment_then_the_reveal(self, chain, coach):
+        cur = chain["cur"]
+        packet = self._packet(chain, coach)
+        render_instance = str(uuid.uuid4())
+        exposure = _one(cur,
+                        "SELECT * FROM public.ack_mlc2_confidence_coach_render_v1(%s, %s, %s, %s, %s, now(), "
+                        "'coach-card-blind-v1', %s, %s)",
+                        (packet["review_assignment_id"], packet["presentation_id"],
+                         packet["acknowledgement_token"], coach["principal"], render_instance,
+                         packet["visible_packet_sha256"], f"g6-card-render-{chain['tag']}"))
+        assert exposure["id"]
+        key = f"g6-card-judgment-{chain['tag']}"
+        result = _one(cur,
+                      "SELECT public.submit_mlc2_confidence_coach_judgment_v1(%s, %s, %s, 'rating_yes', now(), %s) AS r",
+                      (packet["review_assignment_id"], coach["principal"], exposure["id"], key))["r"]
+        assert result["replayed"] is False and result["revealed"] is True and result["reveal_event_id"]
+        judgment = _one(cur, "SELECT actor_provenance, decision, exposure_id, training_eligibility "
+                             "FROM public.ml_judgments WHERE id = %s", (result["judgment_id"],))
+        assert judgment["actor_provenance"] == "blind_coach"
+        assert judgment["decision"] == "rating_yes"
+        assert str(judgment["exposure_id"]) == str(exposure["id"])
+        assert judgment["training_eligibility"] == "potentially_eligible"
+        revealed = _one(cur, "SELECT count(*) AS n FROM public.ml_review_assignment_events "
+                             "WHERE review_assignment_id = %s AND event_kind = 'revealed'",
+                        (packet["review_assignment_id"],))
+        assert revealed["n"] == 1
+        # The exact retry replays; a different answer on the same act is refused.
+        replay = _one(cur,
+                      "SELECT public.submit_mlc2_confidence_coach_judgment_v1(%s, %s, %s, 'rating_yes', now(), %s) AS r",
+                      (packet["review_assignment_id"], coach["principal"], exposure["id"], key))["r"]
+        assert replay["replayed"] is True and str(replay["judgment_id"]) == str(result["judgment_id"])
+        cur.execute("SAVEPOINT second_answer")
+        with pytest.raises(psycopg2.Error):
+            cur.execute("SELECT public.submit_mlc2_confidence_coach_judgment_v1(%s, %s, %s, 'rating_no', now(), %s)",
+                        (packet["review_assignment_id"], coach["principal"], exposure["id"], key + "-b"))
+        cur.execute("ROLLBACK TO SAVEPOINT second_answer")
+
+    def test_a_judgment_without_a_render_receipt_is_refused(self, chain, coach):
+        cur = chain["cur"]
+        packet = self._packet(chain, coach)
+        cur.execute("SAVEPOINT no_receipt")
+        with pytest.raises(psycopg2.Error):
+            cur.execute("SELECT public.submit_mlc2_confidence_coach_judgment_v1(%s, %s, %s, 'rating_yes', now(), %s)",
+                        (packet["review_assignment_id"], coach["principal"], str(uuid.uuid4()),
+                         f"g6-card-no-receipt-{chain['tag']}"))
+        cur.execute("ROLLBACK TO SAVEPOINT no_receipt")
+
+    def test_readiness_counts_no_orphan_after_the_card_consumed_the_chain(self, chain, coach):
+        readiness = _one(chain["cur"], "SELECT public.get_mlc2_confidence_canary_readiness_v1(%s) AS r",
+                         (chain["owner"],))["r"]
+        assert readiness["blind_assignment_without_packet_count"] == 0
+        assert readiness["revealed_without_judgment_count"] == 0
 
 
 class TestHealthStaysSafe:

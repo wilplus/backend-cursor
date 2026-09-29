@@ -3722,10 +3722,77 @@ def _coach_legacy_blind_presentation_row(
         return None
 
 
+def _pop_confidence_chain_handle(body):
+    """Q2: the chain's handle the queue row carried, plus the exposure id the
+    render receipt returned. Taken off the body before validation; it is not
+    part of the rating."""
+    if not isinstance(body, dict):
+        return None
+    return body.pop("mlc2", None)
+
+
+def _confidence_chain_judgment(
+    mlc2_handle, *, snippet_id, rater_id, value, self_report,
+):
+    """Q2 (2026-09-29): the same answer as the confidence chain's immutable
+    blind_coach judgment, revealed in the same transaction, while the chain
+    writes. Never on a self-report (the owner is not a peer) and never a
+    reason to refuse the legacy save: a failed canonical write is logged and
+    the readiness counters show it. Returns identifiers only, or None."""
+    if mlc2_handle is None or self_report:
+        return None
+    try:
+        from services.confidence_chain_consumer import (
+            ConfidenceChainConsumerStore, record_coach_judgment,
+        )
+        assignment = (
+            mlc2_handle.get("review_assignment_id")
+            if isinstance(mlc2_handle, dict) else None
+        )
+        return record_coach_judgment(
+            store=ConfidenceChainConsumerStore(db.client),
+            handle=mlc2_handle,
+            reviewer_principal_id=(
+                _confidence_chain_reviewer_principal(rater_id) or ""),
+            value=value,
+            idempotency_key=(
+                f"coach-card-judgment:{assignment}" if assignment else
+                f"coach-card-judgment:{snippet_id}:{rater_id}"),
+        )
+    except Exception as chain_error:  # noqa: BLE001
+        logger.warning(
+            "confidence chain judgment not written snippet=%s: %s",
+            snippet_id, chain_error,
+        )
+        sentry_sdk.capture_exception(chain_error)
+        return None
+
+
+def _confidence_chain_reviewer_principal(coach_user_id):
+    """The coach's owner principal, looked up only while the chain writes."""
+    from services.confidence_chain_consumer import consumer_enabled
+    if not consumer_enabled() or not coach_user_id:
+        return None
+    principal = db.get_owner_principal_for_user(str(coach_user_id)) or {}
+    value = str(principal.get("id") or "").strip()
+    return value if _is_valid_uuid(value) else None
+
+
 def _coach_legacy_blind_presentation_queue(
     visible_rows, *, session_id, _project_id, _owner_id, _coach_id,
     _blind_candidates,
 ):
+    # Q2 (2026-09-29): while the confidence chain writes (founder_canary),
+    # each unlabelled row also carries the chain's blind-packet handle, so
+    # the same card's answer becomes the chain's immutable judgment. The
+    # handle is four identifiers; the packet itself never leaves the server.
+    from services.confidence_chain_consumer import (
+        ConfidenceChainConsumerStore, attach_coach_packet, consumer_enabled,
+    )
+    chain_store = (
+        ConfidenceChainConsumerStore(db.client) if consumer_enabled() else None
+    )
+    chain_reviewer = _confidence_chain_reviewer_principal(_coach_id)
     opaque_rows = []
     for row in visible_rows:
         opaque = _coach_legacy_blind_presentation_row(
@@ -3733,8 +3800,15 @@ def _coach_legacy_blind_presentation_queue(
             _owner_id=_owner_id, _coach_id=_coach_id,
             _blind_candidates=_blind_candidates,
         )
-        if opaque is not None:
-            opaque_rows.append(opaque)
+        if opaque is None:
+            continue
+        if chain_store is not None:
+            opaque = attach_coach_packet(
+                opaque, store=chain_store, take_id=str(session_id),
+                snippet_id=str(row.get("snippet_id") or ""),
+                reviewer_principal_id=chain_reviewer,
+            )
+        opaque_rows.append(opaque)
     return opaque_rows
 
 
@@ -4230,10 +4304,9 @@ def v2_coach_put_confidence_label(snippet_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
-    request_idempotency_key = (
-        body.get("idempotency_key") if isinstance(body, dict) else None
-    )
+    request_idempotency_key = body.get("idempotency_key") if isinstance(body, dict) else None
     is_rereview = body.get("re_review") is True
+    mlc2_handle = _pop_confidence_chain_handle(body)
 
     from services.state_ratings import resolve_lane, validate_rating
 
@@ -4376,15 +4449,15 @@ def v2_coach_put_confidence_label(snippet_id):
                     ) if canonical_assignment is not None else None
                 )
                 if canonical_label is None:
-                    logger.warning(
-                        "canonical coach label dual-write missing "
-                        "take=%s snippet=%s", session_id, snippet_id,
-                    )
+                    logger.warning("canonical coach label dual-write missing take=%s snippet=%s",
+                                   session_id, snippet_id)
         except Exception as canonical_error:
             logger.warning(
                 "canonical coach label dual-write failed take=%s "
                 "snippet=%s: %s", session_id, snippet_id, canonical_error,
             )
+        canonical_judgment = _confidence_chain_judgment(
+            mlc2_handle, snippet_id=snippet_id, rater_id=rater_id, value=value, self_report=self_report)
         if lane == "coach" and not self_report and sess and sess.get("user_id"):
             from services.confidence_review_policy import (
                 reconcile_confidence_review,
@@ -4426,6 +4499,7 @@ def v2_coach_put_confidence_label(snippet_id):
                 } if _owner_report else None
             ),
             "machine_value": machine_proposal(snip),
+            "mlc2": canonical_judgment,
         }), 200
     except Exception as e:
         logger.warning("confidence rating failed snip=%s: %s", snippet_id, e)

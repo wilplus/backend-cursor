@@ -3,6 +3,11 @@
 The browser never writes canonical tables. A verified Supabase subject is
 resolved to one acquisition principal, then service-role RPCs append speaker
 and consent provenance. The Confidence producer remains dark.
+
+The route is open in ``dark`` and ``founder_canary`` and answers 410 only when
+the writer state is ``killed`` (``confidence_chain_alive``): the grant must
+exist before activation, because readiness requires it and the canonical
+promotion freezes a snapshot of it for every Take (0392).
 """
 from __future__ import annotations
 
@@ -15,7 +20,7 @@ from flask import jsonify, request
 
 from auth import require_auth
 from config import Config
-from routes.phase2_guard import phase2_learning_disabled
+from routes.phase2_guard import confidence_chain_alive
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.project_repository import ProjectOwnershipError, ProjectRepository
@@ -38,6 +43,44 @@ def _founder_request() -> bool:
             config.MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL or ""
         ).strip().lower()
     )
+
+
+def _canary_principal_matches(owner_principal_id: str) -> bool:
+    """True when no canary principal is configured yet, or it is this one."""
+    configured = str(
+        config.MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID or ""
+    ).strip().lower()
+    return not configured or configured == str(
+        owner_principal_id or ""
+    ).strip().lower()
+
+
+def _bind_refusal(owner_principal_id: str, body: dict, status: dict):
+    """The response that refuses a grant, or None when it may be recorded.
+
+    The grant binds a speaker to the chain. When the canary principal is
+    configured, only that principal may bind, whatever the email says
+    (defence in depth beside the founder-email scope). The checkbox must be
+    affirmative, and the text accepted must be the text approved.
+    """
+    if not _canary_principal_matches(owner_principal_id):
+        return jsonify({
+            "code": "CANARY_PRINCIPAL_MISMATCH",
+            "error": "This account is not the configured canary principal.",
+        }), 403
+    if body.get("accepted") is not True:
+        return jsonify({
+            "code": "EXPLICIT_CONSENT_REQUIRED",
+            "error": "The consent checkbox must be selected.",
+        }), 400
+    if body.get("consent_policy_version") != status.get(
+        "consent_policy_version"
+    ) or body.get("copy_sha256") != status.get("approved_copy_sha256"):
+        return jsonify({
+            "code": "CONSENT_VERSION_MISMATCH",
+            "error": "The consent text changed. Please review it again.",
+        }), 409
+    return None
 
 
 def _sha256(value: str) -> str:
@@ -95,7 +138,7 @@ def _owner_and_status() -> tuple[str, dict]:
 
 
 @v2_bp.route("/user/mlc2-consent", methods=["GET", "POST", "DELETE"])
-@phase2_learning_disabled
+@confidence_chain_alive
 @require_auth
 def v2_user_mlc2_consent():
     """Read, explicitly grant, or explicitly withdraw founder consent.
@@ -157,18 +200,9 @@ def v2_user_mlc2_consent():
             refreshed = db.get_mlc2_principal_consent_status(owner_id) or {}
             return jsonify(_public_status(refreshed)), 200
 
-        if body.get("accepted") is not True:
-            return jsonify({
-                "code": "EXPLICIT_CONSENT_REQUIRED",
-                "error": "The consent checkbox must be selected.",
-            }), 400
-        if body.get("consent_policy_version") != status.get(
-            "consent_policy_version"
-        ) or body.get("copy_sha256") != status.get("approved_copy_sha256"):
-            return jsonify({
-                "code": "CONSENT_VERSION_MISMATCH",
-                "error": "The consent text changed. Please review it again.",
-            }), 409
+        refusal = _bind_refusal(owner_id, body, status)
+        if refusal is not None:
+            return refusal
 
         identity_hash, proof_hash = _identity_coordinates(
             str(getattr(request, "user_id", ""))
