@@ -451,6 +451,106 @@ class TestTheBlindPacket:
         ]
 
 
+class TestTheCoachCardConsumesTheChain:
+    """0393 (Q2): the legacy coach card's three wrappers, in the order the
+    card uses them: packet, render receipt, judgment with its reveal."""
+
+    @pytest.fixture(scope="class")
+    def coach(self, chain):
+        cur = chain["cur"]
+        coach = str(uuid.uuid4())
+        cur.execute("INSERT INTO public.owner_principals (id, guest_secret_hash) VALUES (%s, %s)",
+                    (coach, f"g6-coach-{chain['tag']}"))
+        selected = _one(cur, "SELECT id FROM public.ml_candidates WHERE candidate_set_id = %s AND selected",
+                        (_candidate_set_id(chain),))
+        snippet = _one(cur, "SELECT clip_id FROM public.ml_candidates WHERE id = %s", (selected["id"],))
+        return {"principal": coach, "candidate_id": str(selected["id"]), "snippet_id": str(snippet["clip_id"])}
+
+    def _packet(self, chain, coach):
+        return _one(chain["cur"],
+                    "SELECT public.prepare_mlc2_confidence_coach_packet_v1(%s, %s, %s, 'canary') AS p",
+                    (chain["attempt"], coach["snippet_id"], coach["principal"]))["p"]
+
+    def test_the_selected_snippet_yields_a_packet_with_the_four_identifiers(self, chain, coach):
+        packet = self._packet(chain, coach)
+        assert packet is not None
+        for field in ("review_assignment_id", "presentation_id", "acknowledgement_token",
+                      "visible_packet_sha256"):
+            assert packet.get(field), field
+        assert str(packet["candidate_id"]) == coach["candidate_id"]
+        assert not any(k in packet["visible_packet"] for k in LEAK_KEYS)
+        again = self._packet(chain, coach)
+        assert again["review_assignment_id"] == packet["review_assignment_id"]
+        assert again["replayed"] is True
+
+    def test_a_snippet_without_a_selected_candidate_yields_nothing(self, chain, coach):
+        cur = chain["cur"]
+        other = _one(cur, "SELECT clip_id FROM public.ml_candidates WHERE candidate_set_id = %s AND NOT selected LIMIT 1",
+                     (_candidate_set_id(chain),))
+        row = _one(cur, "SELECT public.prepare_mlc2_confidence_coach_packet_v1(%s, %s, %s, 'canary') AS p",
+                   (chain["attempt"], other["clip_id"], coach["principal"]))
+        assert row["p"] is None
+
+    def test_the_owner_reviewing_their_own_take_gets_no_packet(self, chain, coach):
+        row = _one(chain["cur"],
+                   "SELECT public.prepare_mlc2_confidence_coach_packet_v1(%s, %s, %s, 'canary') AS p",
+                   (chain["attempt"], coach["snippet_id"], chain["owner"]))
+        assert row["p"] is None
+
+    def test_the_render_receipt_then_the_judgment_then_the_reveal(self, chain, coach):
+        cur = chain["cur"]
+        packet = self._packet(chain, coach)
+        render_instance = str(uuid.uuid4())
+        exposure = _one(cur,
+                        "SELECT * FROM public.ack_mlc2_confidence_coach_render_v1(%s, %s, %s, %s, %s, now(), "
+                        "'coach-card-blind-v1', %s, %s)",
+                        (packet["review_assignment_id"], packet["presentation_id"],
+                         packet["acknowledgement_token"], coach["principal"], render_instance,
+                         packet["visible_packet_sha256"], f"g6-card-render-{chain['tag']}"))
+        assert exposure["id"]
+        key = f"g6-card-judgment-{chain['tag']}"
+        result = _one(cur,
+                      "SELECT public.submit_mlc2_confidence_coach_judgment_v1(%s, %s, %s, 'rating_yes', now(), %s) AS r",
+                      (packet["review_assignment_id"], coach["principal"], exposure["id"], key))["r"]
+        assert result["replayed"] is False and result["revealed"] is True and result["reveal_event_id"]
+        judgment = _one(cur, "SELECT actor_provenance, decision, exposure_id, training_eligibility "
+                             "FROM public.ml_judgments WHERE id = %s", (result["judgment_id"],))
+        assert judgment["actor_provenance"] == "blind_coach"
+        assert judgment["decision"] == "rating_yes"
+        assert str(judgment["exposure_id"]) == str(exposure["id"])
+        assert judgment["training_eligibility"] == "potentially_eligible"
+        revealed = _one(cur, "SELECT count(*) AS n FROM public.ml_review_assignment_events "
+                             "WHERE review_assignment_id = %s AND event_kind = 'revealed'",
+                        (packet["review_assignment_id"],))
+        assert revealed["n"] == 1
+        # The exact retry replays; a different answer on the same act is refused.
+        replay = _one(cur,
+                      "SELECT public.submit_mlc2_confidence_coach_judgment_v1(%s, %s, %s, 'rating_yes', now(), %s) AS r",
+                      (packet["review_assignment_id"], coach["principal"], exposure["id"], key))["r"]
+        assert replay["replayed"] is True and str(replay["judgment_id"]) == str(result["judgment_id"])
+        cur.execute("SAVEPOINT second_answer")
+        with pytest.raises(psycopg2.Error):
+            cur.execute("SELECT public.submit_mlc2_confidence_coach_judgment_v1(%s, %s, %s, 'rating_no', now(), %s)",
+                        (packet["review_assignment_id"], coach["principal"], exposure["id"], key + "-b"))
+        cur.execute("ROLLBACK TO SAVEPOINT second_answer")
+
+    def test_a_judgment_without_a_render_receipt_is_refused(self, chain, coach):
+        cur = chain["cur"]
+        packet = self._packet(chain, coach)
+        cur.execute("SAVEPOINT no_receipt")
+        with pytest.raises(psycopg2.Error):
+            cur.execute("SELECT public.submit_mlc2_confidence_coach_judgment_v1(%s, %s, %s, 'rating_yes', now(), %s)",
+                        (packet["review_assignment_id"], coach["principal"], str(uuid.uuid4()),
+                         f"g6-card-no-receipt-{chain['tag']}"))
+        cur.execute("ROLLBACK TO SAVEPOINT no_receipt")
+
+    def test_readiness_counts_no_orphan_after_the_card_consumed_the_chain(self, chain, coach):
+        readiness = _one(chain["cur"], "SELECT public.get_mlc2_confidence_canary_readiness_v1(%s) AS r",
+                         (chain["owner"],))["r"]
+        assert readiness["blind_assignment_without_packet_count"] == 0
+        assert readiness["revealed_without_judgment_count"] == 0
+
+
 class TestHealthStaysSafe:
     def test_the_slice4_health_reports_no_orphan_and_no_open_gate(self, chain):
         cur = chain["cur"]
