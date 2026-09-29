@@ -2141,7 +2141,7 @@ accepted rule, and it is stricter than the enrollment-only gate was. (4) The
 Phase-2 consent screen and its policy row are not built here; the sheet's
 "yes" stays disabled until `ml_consent_policies` has an active row.
 
-### 2026-09-29 · WS-RINGS-2 · rings-retire-canary-variables · #(pending)
+### 2026-09-29 · WS-RINGS-2 · rings-retire-canary-variables · #790
 **Task:** the follow-up #787 promised: retire `DATA_FOUNDATION_CANARY_ENABLED`,
 `MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL` and `MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID`.
 They were kept readable and unread for one release after 0394; now nothing
@@ -2176,3 +2176,26 @@ ENABLED` was never set there, so the switch always ran on its code default
 (on) and the ring row's kill was the only working kill switch from 0394 on.
 Nothing in the boot log mentions either name any more. This is the last
 pipeline change the rings work owes.
+
+### 2026-09-29 · WS-EXP 2 · claude/module-8-counted · #(pending)
+
+**Closed:** decision 2 of the exercise-pipe design (founder 2026-09-29;
+audit G-5, the 29 Sep report's Q7): module 8, `exercise_adequacy_classification`,
+is counted wherever the other seven are. The registry had held eight rows
+since 0313 while three Python sets, the release CHECKs (0300), the readiness
+report (0301) and three tests said seven.
+**Contract lines flipped:** none.
+**Contract lines added:** `services/learning_surfaces.py` is the one list
+(eight in registry order; `PACKET_SURFACES` the seven that carry a packet;
+`NO_PACKET_REASON` for module 8, whose exposure is one row per frozen 80/20
+assignment when the client confirms the render, 0387), and
+`tests/test_learning_surfaces.py` refuses a new literal set of the seven
+anywhere in `services/`. Migration 0395 `module_8_is_counted.sql` re-adds
+both release CHECKs with eight names and replaces
+`get_seven_surface_readiness_v1` with an eighth row read from the exercise
+tables. Released-lane pins in `tests/test_module_8_is_counted_postgres.py`.
+**Broke and fixed:** none.
+**Open for the founder:** naming module 8 in a release manifest authorizes
+nothing; the release constants stay False and the epoch CHECK stays. The
+readiness function keeps its `seven_surface` name so its callers and grants
+stand; renaming it is cosmetic and was not done.
