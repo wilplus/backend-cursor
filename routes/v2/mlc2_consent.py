@@ -55,6 +55,21 @@ def _canary_principal_matches(owner_principal_id: str) -> bool:
     ).strip().lower()
 
 
+def _canary_refusal(owner_principal_id: str):
+    """403 when a configured canary principal is not this one, else None.
+
+    The grant binds a speaker to the chain. When the canary principal is
+    configured, only that principal may bind, whatever the email says
+    (defence in depth beside the founder-email scope).
+    """
+    if _canary_principal_matches(owner_principal_id):
+        return None
+    return jsonify({
+        "code": "CANARY_PRINCIPAL_MISMATCH",
+        "error": "This account is not the configured canary principal.",
+    }), 403
+
+
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -172,14 +187,9 @@ def v2_user_mlc2_consent():
             refreshed = db.get_mlc2_principal_consent_status(owner_id) or {}
             return jsonify(_public_status(refreshed)), 200
 
-        if not _canary_principal_matches(owner_id):
-            # The grant binds a speaker to the chain. When the canary principal
-            # is configured, only that principal may bind, whatever the email
-            # says (defence in depth beside the founder-email scope above).
-            return jsonify({
-                "code": "CANARY_PRINCIPAL_MISMATCH",
-                "error": "This account is not the configured canary principal.",
-            }), 403
+        refusal = _canary_refusal(owner_id)
+        if refusal is not None:
+            return refusal
         if body.get("accepted") is not True:
             return jsonify({
                 "code": "EXPLICIT_CONSENT_REQUIRED",
