@@ -95,11 +95,9 @@ def context_with_clock_offset(session_context: Any) -> Any:
     the pipeline so every downstream reader inherits the correction without
     threading a parameter through half a dozen signatures.
 
-    Pause-snap still runs afterwards, deliberately: the offset removes the
-    SYSTEMATIC start bias, snap cleans up whatever per-boundary residue is
-    left. They are complementary, not alternatives. (Whether snap earns its
-    keep once offsets are flowing is a question for the boundary metrics, not
-    an assumption to bake in here.)
+    Pause-snap no longer runs after it: it was retired from the pipeline on
+    2026-08-11 (see the note at the top of this module) and survives only as
+    an analysis helper. The measured offset is the whole correction.
 
     Returns the input unchanged when there is nothing to correct.
     """
