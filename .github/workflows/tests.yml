@@ -102,6 +102,13 @@ jobs:
       - name: Complexity ratchet
         run: python scripts/complexity_ratchet.py
 
+      # Silent catch-all handlers (audit A4, 2026-09-28): per file, an
+      # `except Exception` that neither re-raises nor keeps the traceback may
+      # only get rarer, frozen in scripts/except_ratchet_baseline.json. The
+      # 2026-09-26 bug-trace drills went cold at exactly these. Static.
+      - name: Silent-except ratchet
+        run: python scripts/except_ratchet.py
+
       - name: Run unit-tier tests
         env:
           # Minimal env so import-time guards don't hard-crash. These

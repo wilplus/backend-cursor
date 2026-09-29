@@ -230,3 +230,53 @@ def test_the_canonical_praise_scale_is_left_alone():
                  "add_confident_moment_coaching_bundle_v1.sql"):
         sql = (root / "migrations" / name).read_text()
         assert "acknowledged" not in sql, name
+
+
+# F-4 (audit 2026-09-22): the answer routes as itself.
+
+def test_each_confident_voice_answer_routes_as_itself():
+    from services.take_feedback_responses import album_routing_for
+    from services.take_feedback_responses import RESPONSES
+
+    for state in RESPONSES["confident_voice"]:
+        assert album_routing_for(state) == state
+
+
+def test_the_legacy_routing_values_are_never_produced():
+    """neutral and unrateable are audit-only: a writer cannot mint them."""
+    import pytest
+    from services.take_feedback_responses import album_routing_for
+
+    for legacy in ("neutral", "unrateable", "", "maybe"):
+        with pytest.raises(ValueError):
+            album_routing_for(legacy)
+
+
+def test_the_take_review_route_hands_the_writer_the_answer_itself():
+    """The route's own routing step, called with a fake database: what the
+    writer receives is the answer, for every state the old fold collapsed."""
+    from unittest.mock import Mock
+    from routes.v2.user_sessions import _route_owner_voice_album
+
+    for answer in ("in_between", "not_sure", "audio_unclear", "yes", "no"):
+        database = Mock()
+        database.get_snippet_by_id.return_value = {
+            "metrics": {"piece": {"slide_index": 3}},
+        }
+        database.upsert_owner_voice_album_route.return_value = True
+        assert _route_owner_voice_album(
+            database,
+            row={"snippet_id": "s1", "response": answer},
+            arc_id="arc-1", owner_user_id="u1",
+        )
+        database.upsert_owner_voice_album_route.assert_called_once_with(
+            snippet_id="s1", owner_user_id="u1", arc_id="arc-1",
+            response=answer, slide_index=3,
+        )
+
+
+def test_the_route_module_takes_the_derivation_from_the_responses_module():
+    import routes.v2.user_sessions as user_sessions
+    from services.take_feedback_responses import album_routing_for
+
+    assert user_sessions.album_routing_for is album_routing_for

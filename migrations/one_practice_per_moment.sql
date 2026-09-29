@@ -1,4 +1,4 @@
--- 0390 · one practice per moment (founder 2026-09-29)
+-- 0396 · one practice per moment (founder 2026-09-29)
 --
 -- WHY. "They can carry as many exercises as bookmark indicates." Until today
 -- a Take carried one exercise, on the item V3 marked for it, and this table

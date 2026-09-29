@@ -1066,10 +1066,10 @@ def _offer_payload(exercise: dict, verdict: dict, snippet: dict,
         "passage": (snippet.get("transcript") or chosen.get("quote") or "").strip(),
         "practice_id": str(existing.get("id")) if existing else None,
         "resume": bool(existing and existing.get("status") == "open"),
-        # No `pattern_distance` here (AC-9, 2026-09-29): the routing number
-        # stays in the match trace and the practice's machine assessment,
-        # never in what the speaker's client receives.
-        "matching_policy_version": MATCHING_POLICY_VERSION,
+        # No pattern distance and no matching-policy label (founder
+        # 2026-09-29): the speaker's app never needs them, and a number on
+        # the speaker's device is an AC-9 gap even when nothing renders it.
+        # Both stay server-side, in the trace and the practice record.
     }
 
 
@@ -1298,7 +1298,6 @@ def _annotate_coach_answers(
             **_offer_payload(exercise, verdict, snippet, row,
                              _moment_practice(database, take_session_id,
                                               snippet_id)),
-            "matching_policy_version": COACH_REQUEST_POLICY_VERSION,
             "chosen_by_coach": True,
             "done_before": _done_before(
                 database, owner_user_id, str(exercise.get("exercise_id") or ""),
@@ -1515,81 +1514,6 @@ def reconcile_practice_voice_album(practice: dict, *, database: Any) -> bool:
     database.delete_voice_album_practice_entry(
         arc_id=kwargs["arc_id"], practice_attempt_id=attempt_id)
     return False
-
-
-def comparison_for_attempt(original: dict, current: dict,
-                           previous: Optional[dict] = None,
-                           best: Optional[dict] = None) -> dict:
-    """Internal relative comparison + closed user-facing assessment key."""
-    def value(row: Optional[dict], key: str) -> Optional[float]:
-        return _number((row or {}).get(key))
-
-    ow, cw = value(original, "wpm"), value(current, "wpm")
-    og, cg = value(original, "median_gap"), value(current, "median_gap")
-    oe, ce = value(original, "ending_duration_ratio"), value(current, "ending_duration_ratio")
-    oi = value(original, "word_recognition_confidence")
-    ci = value(current, "word_recognition_confidence")
-    oc, cc = value(original, "confidence"), value(current, "confidence")
-    pace_delta = (cw - ow) if cw is not None and ow is not None else None
-    gap_delta = (cg - og) if cg is not None and og is not None else None
-    ending_delta = (ce - oe) if ce is not None and oe is not None else None
-    confidence_delta = (cc - oc) if cc is not None and oc is not None else None
-    intelligibility_delta = (ci - oi) if ci is not None and oi is not None else None
-    clearer = bool((gap_delta is not None and gap_delta >= 0.018)
-                   or (ending_delta is not None and ending_delta >= 0.10)
-                   or (intelligibility_delta is not None
-                       and intelligibility_delta >= 0.04))
-    less_rushed = bool(pace_delta is not None and pace_delta <= -8.0)
-    faster = bool(pace_delta is not None and pace_delta >= 8.0)
-    ending_compressed = bool(ce is not None and ce < 0.8)
-    if faster:
-        key = "faster_than_original"
-    elif clearer and less_rushed and ending_compressed:
-        key = "opening_improved_ending_compressed"
-    elif clearer and less_rushed:
-        key = "clearer_less_rushed"
-    elif clearer:
-        key = "clearer_choose_natural"
-    else:
-        key = "similar_try_ending"
-    # Internal score exists solely to choose the strongest attempt. It is not
-    # a confidence score and is never serialized by the route.
-    internal_strength = (
-        (min(0.15, max(-0.15, gap_delta or 0.0)) * 4.0)
-        + (min(0.4, max(-0.4, ending_delta or 0.0)))
-        + (min(0.25, max(-0.25, intelligibility_delta or 0.0)) * 0.5)
-        + (0.25 if less_rushed else -0.15 if faster else 0.0)
-        + (min(0.2, max(-0.2, confidence_delta or 0.0)) * 0.5)
-    )
-    return {
-        "assessment_key": key,
-        "assessment": ASSESSMENT_COPY[key],
-        "internal_strength": round(internal_strength, 4),
-        "relative_to_original": {
-            "pace_delta": pace_delta,
-            "word_separation_delta": gap_delta,
-            "ending_compression_delta": ending_delta,
-            "intelligibility_delta": intelligibility_delta,
-            "confidence_signal_delta": confidence_delta,
-        },
-        "relative_to_previous": _relative(current, previous),
-        "relative_to_best": _relative(current, best),
-        "improved": bool(clearer or less_rushed),
-    }
-
-
-def _relative(current: dict, other: Optional[dict]) -> Optional[dict]:
-    if not other:
-        return None
-    out = {}
-    for key in (
-        "wpm", "median_gap", "ending_duration_ratio", "pause_ratio",
-        "confidence", "word_recognition_confidence",
-    ):
-        a, b = _number(current.get(key)), _number(other.get(key))
-        if a is not None and b is not None:
-            out[key] = round(a - b, 4)
-    return out or None
 
 
 def public_attempt(attempt: dict) -> dict:

@@ -5,13 +5,10 @@ Run: python3 -m unittest tests.test_master_document
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
 
 from services.master_document import (
-    _quarter_split,
     assemble_master_document,
     block_additions,
-    build_skeleton,
     decide_block,
     upgrade_changes,
 )
@@ -113,76 +110,17 @@ def _snip(sid, offset, text, *, slide=None, score=None, f0=10.0):
             "transcript": text, "metrics": m}
 
 
-class QuarterSplitTests(unittest.TestCase):
-    def test_framework_cover_and_labels(self):
-        out = _quarter_split(10)
-        self.assertEqual([b[2] for b in out],
-                         ["Hook", "Context", "Core Message", "Closer"])
-        # contiguous, covering all ten
-        self.assertEqual(out[0][0], 0)
-        self.assertEqual(out[-1][1], 9)
-        for a, b in zip(out, out[1:]):
-            self.assertEqual(b[0], a[1] + 1)
-
-    def test_tiny_take(self):
-        self.assertEqual(len(_quarter_split(2)), 2)
-        self.assertEqual(_quarter_split(0), [])
-
-
-class SkeletonTests(unittest.TestCase):
-    def test_decked_one_block_per_slide(self):
-        db = _Db(snips_by_session={T1: [
-            _snip("s1", 0, "slide one words", slide=0),
-            _snip("s2", 1000, "more slide one", slide=0),
-            _snip("s3", 2000, "slide two words", slide=1),
-        ]})
-        rows = build_skeleton(ARC, db)
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0]["label"], "Slide 1")
-        self.assertEqual(rows[1]["label"], "Slide 2")
-        self.assertEqual([r["block_key"] for r in rows], [0, 10])
-        self.assertEqual(rows[0]["incumbent_take_index"], 1)
-        self.assertEqual(
-            [p["snippet_id"] for p in rows[0]["incumbent_pieces"]],
-            ["s1", "s2"])
-
-    def test_deckless_falls_back_to_quarter_split(self):
-        snips = [_snip(f"s{i}", i * 1000, f"sentence number {i} here")
-                 for i in range(8)]
-        db = _Db(snips_by_session={T1: snips})
-        with patch("services.master_document._llm_boundaries",
-                   return_value=None):
-            rows = build_skeleton(ARC, db)
-        self.assertEqual([r["label"] for r in rows],
-                         ["Hook", "Context", "Core Message", "Closer"])
-
-    def test_llm_boundaries_used_when_valid(self):
-        snips = [_snip(f"s{i}", i * 1000, f"sentence number {i} here")
-                 for i in range(4)]
-        db = _Db(snips_by_session={T1: snips})
-        with patch("services.master_document._llm_boundaries",
-                   return_value=[(0, 1, "Opening"), (2, 3, "Close")]):
-            rows = build_skeleton(ARC, db)
-        self.assertEqual([r["label"] for r in rows], ["Opening", "Close"])
-        self.assertEqual(len(rows[0]["incumbent_pieces"]), 2)
-
-    def test_no_takes_builds_nothing(self):
-        self.assertEqual(build_skeleton(ARC, _Db(sessions=[])), [])
-
-
 class ReadOnlyAssemblyTests(unittest.TestCase):
-    """The serving path NEVER builds the skeleton — the take-1 LLM pass
-    belongs to the worker alone; a missing skeleton assembles empty (the
-    serve layer falls back to the living-transcript document)."""
+    """The serving path never writes: with no blocks it assembles empty (the
+    serve layer falls back to the living-transcript document). The skeleton
+    builder and its LLM chunking pass were deleted 2026-09-29."""
 
-    def test_assemble_never_writes_or_chunks(self):
+    def test_assemble_never_writes(self):
         db = _Db(snips_by_session={T1: [
             _snip("s1", 0, "some take one words")]})
-        with patch("services.master_document._llm_boundaries") as m_llm:
-            out = assemble_master_document(ARC, database=db)
+        out = assemble_master_document(ARC, database=db)
         self.assertFalse(out["ready"])
         self.assertEqual(db.writes, [])
-        m_llm.assert_not_called()
 
     def test_read_failure_assembles_empty_never_rebuilds(self):
         db = _Db(blocks_fail=True)

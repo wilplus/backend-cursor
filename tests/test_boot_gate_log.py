@@ -18,13 +18,15 @@ This is the same lesson `EveryServiceReportsItsOwnConfig` learned on
 2026-09-22 for the stored bookmark set, one flag family over. The habit is
 now a test both times.
 
-NOTHING HERE PRINTS A SECRET. Names and values only; the canary principal is
-reported as set or unset, never by id.
+NOTHING HERE PRINTS A SECRET. Names and values only; a flag whose value
+identifies a person is reported as set or unset, never by id.
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import unittest
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ENTRYPOINTS = ("app.py", "worker.py")
@@ -33,12 +35,10 @@ ENTRYPOINTS = ("app.py", "worker.py")
 GATES = (
     "PLF1_PROCESSING_AUTHORIZATION_MODE",
     "TAKE_FEEDBACK_POLICY_V3_MODE",
-    "DATA_FOUNDATION_CANARY_ENABLED",
     "MLC3_SERVICE_ENABLED",
     "MLC3_COACH_INLINE_AUTHORING_ENABLED",
     "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED",
     "MLC2_CONFIDENCE_MONITORING_ENABLED",
-    "MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID",
     "REASONABLE_CONFIDENCE_ENABLED",
     "LIVING_TRANSCRIPT_ENABLED",
     "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED",
@@ -87,21 +87,20 @@ class TheSummaryItselfIsHonest(unittest.TestCase):
         with patch.dict(os.environ, {"LIVING_TRANSCRIPT_ENABLED": "1"}):
             self.assertIn("LIVING_TRANSCRIPT_ENABLED=1", gate_summary())
 
-    def test_it_never_prints_the_canary_principal(self):
-        """AC-9 is not the fence here; a log is not a user surface. But a
-        principal id in a deploy log is a subject identifier in a place
-        nobody is treating as subject data."""
-        import os
-        from unittest.mock import patch
+    def test_no_gate_flag_identifies_a_person_any_more(self):
+        """The canary principal variable was the one identifying flag; it
+        was retired with the rings (0394). The set/unset mechanism stays for
+        the next one, and today it reports nobody."""
+        from services.gate_flags import IDENTIFYING_FLAGS, gate_summary
 
-        from services.gate_flags import gate_summary
-
+        self.assertEqual(IDENTIFYING_FLAGS, ())
         principal = "9f8e7d6c-5b4a-4938-8271-605f4e3d2c1b"
         with patch.dict(os.environ,
                         {"MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID": principal}):
             line = gate_summary()
         self.assertNotIn(principal, line)
-        self.assertIn("MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID=set", line)
+        self.assertNotIn("MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID", line)
+        self.assertNotIn("DATA_FOUNDATION_CANARY_ENABLED", line)
 
     def test_it_is_one_line(self):
         """One line, so one log filter finds it on either service."""

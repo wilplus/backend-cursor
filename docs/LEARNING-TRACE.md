@@ -1,5 +1,14 @@
 # LEARNING-TRACE — the developer window into the learning lanes
 
+> **⚠️ HISTORICAL (marked 2026-09-29). This page describes a surface that no
+> longer exists.** The frontend `/admin/learning` page was removed on
+> 2026-08-14, and `services/learning_trace.py`, `learning_train.py` and
+> `learning_serve.py` are gone. Lane 1's shadow classifier and its tables
+> (`training_labels`, `shadow_predictions`, `model_versions`) were dropped by
+> migration 0281 (`retire_threat_challenge_framework.sql`, founder
+> 2026-08-22). Kept only as a record; for the current learning lanes see
+> `docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md` and the contract's §6.
+
 **Backlog item 11** ("for the developer to understand the architecture") —
 developer observability for the F1/F2 learning loop. Admin-only; fences
 **AC-9 / CONSTRUCT / BLIND COACH** apply in full: nothing on this surface is

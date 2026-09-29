@@ -125,6 +125,10 @@ class _ChangesRun:
         self.feedback_exposure: list = []
         self.frozen_family_snippets: dict = {}
         self.learning_presentations: dict[str, list[dict]] = {}
+        # The bundle V3 served this Take from, handed back by
+        # `prepare_first_client_feedback`; the V3 learning packets are
+        # frozen from it once the served rows are settled.
+        self.v3_learning: dict = {}
         self.feedback_response_count = 0
         self.response_rows: list = []
         # Item ids the owner already answered on this Take (self-reports),
@@ -207,6 +211,18 @@ class _ChangesRun:
         # and reading it before the claim would have written the canonical
         # provenance of a set that did not exist yet.
         self._claim_or_filter()
+        # THE PACKET BEHIND EVERY V3 CARD (founder 2026-09-29; the 29 Sep
+        # report's "V3 packets" finding). V2 froze a learning presentation
+        # for each of its three cards inside `_canonical_dual_write`, keyed
+        # by V2 row ids. V3 has served every Take since 2026-09-18 and its
+        # rows share no identity with V2's, so no served V3 card has ever
+        # carried a packet, the browser had nothing to receipt, and the
+        # seven-surface readiness could not move. Frozen here, after the
+        # claim, from the bundle V3 itself served from, so a packet
+        # describes only a card that is on its way to the screen.
+        if self.v3_replaced_changes:
+            log.run("changes.v3_learning_presentations",
+                    self._v3_learning_presentations)
         from services.take_lifecycle import (
             confidence_prior_learning_writes_enabled,
         )
@@ -1191,7 +1207,15 @@ class _ChangesRun:
         # The feedback remains a valid product result, but it is not
         # silently counted as exposed learning data. Readiness reports the
         # missing ACK coverage.
-        self.log.run("changes.learning_presentations", _prepare_presentations)
+        #
+        # NOT ON A V3 TAKE. These packets describe V2's three cards, and on
+        # a Take V3 served those cards never reached a screen: a packet with
+        # no possible receipt is a prepared-but-never-shown row that holds
+        # the readiness at `blocked`. The V3 cards got theirs in
+        # `_v3_learning_presentations`, keyed by the ids that are served.
+        if not self.v3_replaced_changes:
+            self.log.run("changes.learning_presentations",
+                         _prepare_presentations)
         # Selection and exposure are separate durable stages: the first
         # proves which three won, the second proves the complete
         # selected/unselected ledger committed.
@@ -1303,6 +1327,7 @@ class _ChangesRun:
             suggestions=self.user_sugs,
             feedback_candidates=self.feedback_exposure,
             owner_user_id=str(self.user_id),
+            learning=self.v3_learning,
         )
         # THREE OUTCOMES, NOT TWO (contract 24h, founder 2026-09-18).
         #
@@ -1329,6 +1354,34 @@ class _ChangesRun:
             # The clips attached upstream belonged to the rows just discarded.
             # `execute` re-attaches them to these — see the note at that call.
             self.v3_replaced_changes = True
+
+    def _v3_learning_presentations(self) -> None:
+        # One packet per surface for every served V3 card, from the bundle
+        # V3 froze the Take from. Runs after `_claim_or_filter`, so
+        # `self.changes` is the set that actually serves: narrowed to the
+        # frozen set when the freeze addresses it, or emptied when the claim
+        # failed, in which case there is no card and no packet. The handles
+        # ride the rows out of `_finish` exactly as V2's did, and the
+        # browser's visible-render ack receipts them per item.
+        #
+        # Under the degradation log on purpose: a packet that cannot be
+        # frozen is reported and the Take still serves (LIVE LOOP); the
+        # readiness report then shows the missing coverage rather than the
+        # speaker seeing nothing.
+        from services.learning_exposures import (
+            prepare_v3_feedback_presentations,
+        )
+        bundle = self.v3_learning.get("bundle")
+        if not isinstance(bundle, dict) or not self.changes:
+            return
+        self.learning_presentations = prepare_v3_feedback_presentations(
+            database=self.db,
+            bundle=bundle,
+            visible_rows=self.changes,
+            actor_id=str(self.user_id),
+            block_partition_version=self.v3_learning.get(
+                "block_partition_version"),
+        )
 
     def _finish(self) -> dict:
         from services.take_feedback_manager import strip_internal_evidence

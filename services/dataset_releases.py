@@ -18,15 +18,11 @@ from services.feedback_data_contract import content_hash
 
 
 SPLIT_STRATEGY_VERSION = "speaker-sha256-80-10-10-v1"
-LEARNING_SURFACES = {
-    "confidence_classification",
-    "praise_generation",
-    "praise_selection",
-    "correction_generation",
-    "correction_selection",
-    "coach_comment_generation",
-    "ideal_text_generation",
-}
+# All eight, from the one list (founder 2026-09-29, decision 2); 0395 widens
+# the release CHECKs to match. Module 8 may be NAMED by a release manifest
+# like any surface; whether one is ever authorized is the founder's separate
+# decision, and the constants that would let it run stay False.
+from services.learning_surfaces import LEARNING_SURFACES  # noqa: E402
 PROVENANCE_KEYS = {
     "machine", "user_self_report", "blind_coach", "blind_peer",
     "derived_product_state",

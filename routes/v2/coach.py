@@ -52,6 +52,7 @@ from services.coach_moment_errors import (
 # Module level, because the packet SHAPER uses them and it is module level too
 # — the blind rules belong beside the row they gate, not inside one route.
 from services.practice_more_confident import record_after_coach_decision
+from services.practice_adoption import ANSWERS as _FIVE_ANSWERS
 from services.coach_blind_gate import (
     has_committed_blind_label,
     reveal_owner_answer_after_commit,
@@ -165,21 +166,6 @@ def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
     return out
 
 
-def _blind_rating_saved(coach_state) -> bool:
-    """The blind gate's key: this coach's own answer on the moment, saved.
-
-    FOUNDER 2026-09-29: any of the five answers opens the door. Until today
-    only Yes and No did ("a definite rating"), so a coach who answered
-    In-between, Not sure or Audio unclear never saw that moment's practice
-    or its exercise request, and it looked as if nothing existed there. The
-    fence (contract 34: judge before you see) is unchanged: the answer must
-    be SAVED first, and it is immutable once saved. `unrateable` is the
-    Audio unclear answer, stored beside `value` rather than as a value.
-    """
-    state = coach_state or {}
-    return bool(state.get("rating_value")) or bool(state.get("rating_unrateable"))
-
-
 def _confidence_queue_selection(session_id, session, snippets):
     """One source of truth for the blind queue and its post-label audit."""
     from services.confidence_labels import (
@@ -259,6 +245,18 @@ def _rater_language_error(outcome, language=None):
             "language": language,
         }), 409
     return None
+
+
+def _practice_door_open(coach_state):
+    """Q3 (founder 2026-09-29): any saved answer but Audio unclear opens the
+    coach's practice review and exercise request. Yes, In-between, No and
+    Not sure are answers about the moment; Audio unclear is an abstention,
+    so the moment stays unrated and the door stays shut."""
+    state = coach_state or {}
+    return (
+        state.get("rating_value") in ("yes", "in_between", "no", "not_sure")
+        and not state.get("rating_unrateable")
+    )
 
 
 def _coach_state_for(session_id, snippet_id):
@@ -1597,7 +1595,8 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
                         "error": "Snippet not in this session"}), 404
     # Hard blind gate: the current coach must first commit their own rating.
     state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
-    if not _blind_rating_saved(state.get(str(snippet_id))):
+    coach_state = state.get(str(snippet_id)) or {}
+    if not _practice_door_open(coach_state):
         return jsonify({"code": "BLIND_RATING_REQUIRED",
                         "error": "Rate the original moment before reviewing practice."}), 409
     if not _speaker_practice_permitted(owner_sid):  # E3, founder 2026-09-25
@@ -1619,7 +1618,7 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
                         "error": "professional_coach_decision is required"}), 400
     selected_attempt_id = str(practice.get("selected_attempt_id") or "")
     selected_attempt_decision = body.get("selected_attempt_coach_decision")
-    if selected_attempt_id and selected_attempt_decision not in ("yes", "no"):
+    if selected_attempt_id and selected_attempt_decision not in _FIVE_ANSWERS:
         return jsonify({
             "code": "INVALID_INPUT",
             "error": "Judge the selected practice recording itself.",
@@ -1746,7 +1745,7 @@ def v2_coach_exercise_request(session_id, snippet_id):
         return jsonify({"code": "SNIPPET_NOT_FOUND",
                         "error": "Snippet not in this session"}), 404
     state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
-    if not _blind_rating_saved(state.get(str(snippet_id))):
+    if not _practice_door_open(state.get(str(snippet_id))):
         return jsonify({"code": "BLIND_RATING_REQUIRED",
                         "error": "Rate the original moment first."}), 409
     if not _speaker_practice_permitted(owner_sid):
@@ -3723,10 +3722,77 @@ def _coach_legacy_blind_presentation_row(
         return None
 
 
+def _pop_confidence_chain_handle(body):
+    """Q2: the chain's handle the queue row carried, plus the exposure id the
+    render receipt returned. Taken off the body before validation; it is not
+    part of the rating."""
+    if not isinstance(body, dict):
+        return None
+    return body.pop("mlc2", None)
+
+
+def _confidence_chain_judgment(
+    mlc2_handle, *, snippet_id, rater_id, value, self_report,
+):
+    """Q2 (2026-09-29): the same answer as the confidence chain's immutable
+    blind_coach judgment, revealed in the same transaction, while the chain
+    writes. Never on a self-report (the owner is not a peer) and never a
+    reason to refuse the legacy save: a failed canonical write is logged and
+    the readiness counters show it. Returns identifiers only, or None."""
+    if mlc2_handle is None or self_report:
+        return None
+    try:
+        from services.confidence_chain_consumer import (
+            ConfidenceChainConsumerStore, record_coach_judgment,
+        )
+        assignment = (
+            mlc2_handle.get("review_assignment_id")
+            if isinstance(mlc2_handle, dict) else None
+        )
+        return record_coach_judgment(
+            store=ConfidenceChainConsumerStore(db.client),
+            handle=mlc2_handle,
+            reviewer_principal_id=(
+                _confidence_chain_reviewer_principal(rater_id) or ""),
+            value=value,
+            idempotency_key=(
+                f"coach-card-judgment:{assignment}" if assignment else
+                f"coach-card-judgment:{snippet_id}:{rater_id}"),
+        )
+    except Exception as chain_error:  # noqa: BLE001
+        logger.warning(
+            "confidence chain judgment not written snippet=%s: %s",
+            snippet_id, chain_error,
+        )
+        sentry_sdk.capture_exception(chain_error)
+        return None
+
+
+def _confidence_chain_reviewer_principal(coach_user_id):
+    """The coach's owner principal, looked up only while the chain writes."""
+    from services.confidence_chain_consumer import consumer_enabled
+    if not consumer_enabled() or not coach_user_id:
+        return None
+    principal = db.get_owner_principal_for_user(str(coach_user_id)) or {}
+    value = str(principal.get("id") or "").strip()
+    return value if _is_valid_uuid(value) else None
+
+
 def _coach_legacy_blind_presentation_queue(
     visible_rows, *, session_id, _project_id, _owner_id, _coach_id,
     _blind_candidates,
 ):
+    # Q2 (2026-09-29): while the confidence chain writes (founder_canary),
+    # each unlabelled row also carries the chain's blind-packet handle, so
+    # the same card's answer becomes the chain's immutable judgment. The
+    # handle is four identifiers; the packet itself never leaves the server.
+    from services.confidence_chain_consumer import (
+        ConfidenceChainConsumerStore, attach_coach_packet, consumer_enabled,
+    )
+    chain_store = (
+        ConfidenceChainConsumerStore(db.client) if consumer_enabled() else None
+    )
+    chain_reviewer = _confidence_chain_reviewer_principal(_coach_id)
     opaque_rows = []
     for row in visible_rows:
         opaque = _coach_legacy_blind_presentation_row(
@@ -3734,8 +3800,15 @@ def _coach_legacy_blind_presentation_queue(
             _owner_id=_owner_id, _coach_id=_coach_id,
             _blind_candidates=_blind_candidates,
         )
-        if opaque is not None:
-            opaque_rows.append(opaque)
+        if opaque is None:
+            continue
+        if chain_store is not None:
+            opaque = attach_coach_packet(
+                opaque, store=chain_store, take_id=str(session_id),
+                snippet_id=str(row.get("snippet_id") or ""),
+                reviewer_principal_id=chain_reviewer,
+            )
+        opaque_rows.append(opaque)
     return opaque_rows
 
 
@@ -3814,9 +3887,8 @@ def v2_coach_confidence_queue(session_id):
         _blind_candidates = [{
             "candidate_key": str(row.get("snippet_id") or ""),
         } for row in visible_rows]
-        from services.coach_guidance_delivery import inline_authoring_is_enabled
         if (_coach_id and _owner_id and _project_id and
-                inline_authoring_is_enabled()):
+                _inline_authoring_for(_coach_id)):
             visible_rows = _coach_inline_authoring_queue(
                 visible_rows, session_id=session_id, _project_id=_project_id,
                 _owner_id=_owner_id, _coach_id=_coach_id,
@@ -3836,6 +3908,18 @@ def v2_coach_confidence_queue(session_id):
         logger.warning("confidence queue failed sid=%s: %s", session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not load the queue"}), 500
+
+
+def _inline_authoring_for(coach_id: str) -> bool:
+    """D5 inline authoring replaces the legacy queue for THIS coach when the
+    building switch is on AND the coach_inline_authoring ring row reaches the
+    coach (rings, 0394). Every other coach keeps the legacy blind
+    presentation queue."""
+    from services import rings
+    from services.coach_guidance_delivery import inline_authoring_is_enabled
+
+    return bool(inline_authoring_is_enabled() and rings.feature_is_on_for_user(
+        rings.COACH_INLINE_AUTHORING, coach_id))
 
 
 @v2_bp.route("/coach/sessions/<session_id>/language", methods=["PUT"])
@@ -4231,10 +4315,9 @@ def v2_coach_put_confidence_label(snippet_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
-    request_idempotency_key = (
-        body.get("idempotency_key") if isinstance(body, dict) else None
-    )
+    request_idempotency_key = body.get("idempotency_key") if isinstance(body, dict) else None
     is_rereview = body.get("re_review") is True
+    mlc2_handle = _pop_confidence_chain_handle(body)
 
     from services.state_ratings import resolve_lane, validate_rating
 
@@ -4377,15 +4460,15 @@ def v2_coach_put_confidence_label(snippet_id):
                     ) if canonical_assignment is not None else None
                 )
                 if canonical_label is None:
-                    logger.warning(
-                        "canonical coach label dual-write missing "
-                        "take=%s snippet=%s", session_id, snippet_id,
-                    )
+                    logger.warning("canonical coach label dual-write missing take=%s snippet=%s",
+                                   session_id, snippet_id)
         except Exception as canonical_error:
             logger.warning(
                 "canonical coach label dual-write failed take=%s "
                 "snippet=%s: %s", session_id, snippet_id, canonical_error,
             )
+        canonical_judgment = _confidence_chain_judgment(
+            mlc2_handle, snippet_id=snippet_id, rater_id=rater_id, value=value, self_report=self_report)
         if lane == "coach" and not self_report and sess and sess.get("user_id"):
             from services.confidence_review_policy import (
                 reconcile_confidence_review,
@@ -4427,6 +4510,7 @@ def v2_coach_put_confidence_label(snippet_id):
                 } if _owner_report else None
             ),
             "machine_value": machine_proposal(snip),
+            "mlc2": canonical_judgment,
         }), 200
     except Exception as e:
         logger.warning("confidence rating failed snip=%s: %s", snippet_id, e)

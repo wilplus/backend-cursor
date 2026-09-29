@@ -4,6 +4,7 @@ import pytest
 
 from services.mlc2_confidence_readiness import (
     READINESS_CONTRACT_VERSION,
+    RING_READINESS_CONTRACT_VERSION,
     assess_confidence_canary_readiness,
 )
 
@@ -15,13 +16,8 @@ FOUNDER_PRINCIPAL = "11111111-1111-4111-8111-111111111111"
 def _health() -> dict:
     return {
         "readiness_contract_version": READINESS_CONTRACT_VERSION,
-        "founder_principal_configured": True,
         "active_consent_policy_count": 1,
         "valid_active_consent_policy_count": 1,
-        "founder_active_bundled_consent_grant_count": 1,
-        "founder_producer_receipt_count": 0,
-        "nonfounder_producer_receipt_count": 0,
-        "nonfounder_canonical_event_count": 0,
         "pending_confidence_outbox_count": 0,
         "failed_confidence_outbox_count": 0,
         "oldest_pending_confidence_outbox_at": None,
@@ -35,12 +31,28 @@ def _health() -> dict:
     }
 
 
-def _assess(health: dict | None = None, **overrides):
+def _ring_health() -> dict:
+    """get_ring_confidence_readiness_v1 with one ring-eligible principal
+    (the founder) and nobody the row does not reach having written."""
+    return {
+        "ring_readiness_contract_version": RING_READINESS_CONTRACT_VERSION,
+        "confidence_ring_row_present": True,
+        "confidence_ring_row_killed": False,
+        "confidence_ring_row_one_way": True,
+        "canonical_take_rows_row_present": True,
+        "canonical_take_rows_row_killed": False,
+        "eligible_principal_count": 1,
+        "eligible_bundled_consent_grant_count": 1,
+        "eligible_producer_receipt_count": 0,
+        "noneligible_producer_receipt_count": 0,
+        "noneligible_canonical_event_count": 0,
+    }
+
+
+def _assess(health: dict | None = None, ring_health: dict | None = None, **overrides):
     inputs = {
         "cutover_mode": "dark",
-        "configured_founder_email": "artur@willonski.com",
-        "founder_principal_id": FOUNDER_PRINCIPAL,
-        "data_foundation_canary_enabled": True,
+        "ring_health": ring_health if ring_health is not None else _ring_health(),
         "monitoring_enabled": True,
         "alert_sink_configured": True,
         "dataset_creation_enabled": False,
@@ -65,10 +77,6 @@ def test_all_pre_activation_evidence_can_be_ready_while_cutover_stays_dark():
         ({"cutover_mode": "founder_canary"},
          "canary_must_remain_dark_during_readiness"),
         ({"cutover_mode": "typo"}, "invalid_cutover_mode"),
-        ({"configured_founder_email": "other@example.com"},
-         "founder_email_scope_mismatch"),
-        ({"founder_principal_id": ""},
-         "founder_principal_not_configured"),
         ({"monitoring_enabled": False},
          "production_monitor_not_enabled"),
         ({"alert_sink_configured": False},
@@ -90,12 +98,6 @@ def test_configuration_gates_fail_closed(override, blocker):
     [
         ("valid_active_consent_policy_count",
          "product_legal_consent_configuration_invalid"),
-        ("founder_active_bundled_consent_grant_count",
-         "founder_bundled_consent_missing"),
-        ("nonfounder_producer_receipt_count",
-         "nonfounder_producer_receipt_count_nonzero"),
-        ("nonfounder_canonical_event_count",
-         "nonfounder_canonical_event_count_nonzero"),
         ("failed_confidence_outbox_count",
          "failed_confidence_outbox_count_nonzero"),
         ("receipt_without_outbox_count",
@@ -114,6 +116,57 @@ def test_database_evidence_gates_fail_closed(health_key, blocker):
     report = _assess(health)
     assert report.ready is False
     assert blocker in report.blocker_codes
+
+
+@pytest.mark.parametrize(
+    "override,blocker",
+    [
+        ({"ring_readiness_contract_version": "other"},
+         "ring_readiness_contract_mismatch"),
+        ({"confidence_ring_row_present": False}, "confidence_ring_row_missing"),
+        ({"confidence_ring_row_killed": True}, "confidence_ring_row_killed"),
+        ({"confidence_ring_row_one_way": False},
+         "confidence_ring_row_not_one_way"),
+        ({"canonical_take_rows_row_present": False},
+         "canonical_take_rows_row_missing"),
+        ({"canonical_take_rows_row_killed": True},
+         "canonical_take_rows_row_killed"),
+        ({"eligible_principal_count": 0}, "no_ring_eligible_principal"),
+        ({"eligible_bundled_consent_grant_count": 0},
+         "eligible_bundled_consent_missing"),
+        ({"noneligible_producer_receipt_count": 1},
+         "noneligible_producer_receipt_count_nonzero"),
+        ({"noneligible_canonical_event_count": 1},
+         "noneligible_canonical_event_count_nonzero"),
+        ({"eligible_producer_receipt_count": 1},
+         "unexpected_eligible_receipts_while_dark"),
+    ],
+)
+def test_ring_evidence_gates_fail_closed(override, blocker):
+    """The canary's "who" is the ring row (0394): the row must exist, be
+    one-way and not killed, reach at least one principal with a bundled
+    consent grant, and nobody the row does NOT reach may have written a
+    receipt or a canonical event."""
+    ring_health = {**_ring_health(), **override}
+    report = _assess(ring_health=ring_health)
+    assert report.ready is False
+    assert blocker in report.blocker_codes
+
+
+def test_readiness_no_longer_reads_the_retired_canary_variables():
+    """Neither the founder email nor the principal variable decides anything
+    here any more; the ring row and the ring health do."""
+    source = (ROOT / "services" / "mlc2_confidence_readiness.py").read_text()
+    script = (
+        ROOT / "scripts" / "check_mlc2_confidence_canary_readiness.py"
+    ).read_text()
+    for retired in ("MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL",
+                    "MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID",
+                    "DATA_FOUNDATION_CANARY_ENABLED", "APPROVED_FOUNDER_EMAIL"):
+        assert retired not in source
+        assert retired not in script
+    assert "get_ring_confidence_readiness_v1" in script
+    assert "ring_health=" in script
 
 
 def test_readiness_monitor_is_aggregate_only_and_not_a_product_route():

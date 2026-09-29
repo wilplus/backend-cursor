@@ -20,6 +20,21 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 
+def _lesson_label(session: dict | None) -> str:
+    """A short human name for the lesson, from rows already read.
+
+    Take index when the row carries one, else the date it was recorded, else
+    nothing — and "nothing" means the row is simply not drawn rather than a
+    line reading "Lesson: unknown". Adds no database read of its own.
+    """
+    sess = session or {}
+    take = sess.get("take_index")
+    day = str(sess.get("created_at") or "")[:10]
+    if isinstance(take, int) and take > 0:
+        return f"Take {take}" + (f" — {day}" if day else "")
+    return day
+
+
 def _send_admin_notification(
     *,
     session_id: str,
@@ -50,6 +65,9 @@ def _send_admin_notification(
             pass
 
         report_preview = ""
+        # Bound BEFORE the try: a raising read must leave an empty dict, not
+        # an unbound name for the lesson label to trip over.
+        sess: dict = {}
         try:
             sess = db.v2_get_session_by_id(session_id) or {}
             report_preview = (sess.get("ai_task_alignment_comment") or "").strip()
@@ -68,6 +86,8 @@ def _send_admin_notification(
             student_email=student_email,
             score=score,
             student_name=student_name,
+            moments_awaiting=snippet_count,
+            lesson_label=_lesson_label(sess),
         )
         status = (send_result or {}).get("status") or "unknown"
         logger.info(

@@ -12,17 +12,17 @@ from typing import Any
 import uuid
 
 from services.feedback_data_contract import content_hash
+from services.learning_surfaces import (
+    EXERCISE_ADEQUACY_SURFACE,
+    NO_PACKET_REASON,
+    PACKET_SURFACES,
+)
 
 
-LEARNING_SURFACES = frozenset({
-    "confidence_classification",
-    "correction_generation",
-    "coach_comment_generation",
-    "praise_generation",
-    "praise_selection",
-    "correction_selection",
-    "ideal_text_generation",
-})
+# THE SEVEN THAT CARRY PACKETS (founder 2026-09-29, decision 2). The eighth
+# learning surface, exercise adequacy, is exposed through its own table and
+# never through a presentation here; services/learning_surfaces.py says why.
+LEARNING_SURFACES = PACKET_SURFACES
 
 _FEEDBACK_SURFACES = {
     "confident_voice": ("confidence_classification",),
@@ -31,6 +31,22 @@ _FEEDBACK_SURFACES = {
     ),
     "great_formulation": ("praise_generation", "praise_selection"),
 }
+
+#: What a visible payload may never carry (AC-9, L3). The packet freezes
+#: exactly what the card showed; the machine's own score and rank evidence
+#: stay in the frozen candidate snapshots (the machine column), and no
+#: actor's answer is ever inside a packet -- answers live in their own
+#: tables, joined by evidence span and rater.
+FORBIDDEN_VISIBLE_KEYS = frozenset({
+    "candidate_score", "rank_evidence", "rank_key", "reason_tier",
+    "reason_degraded", "delivery_band", "pattern_distance",
+    "machine_prediction", "machine_value", "user_self_report",
+    "owner_response", "coach_judgment", "coach_revision", "peer_judgment",
+})
+
+#: The two things a V3 card knows that a V2 card did not (founder decision
+#: 1a, 2026-09-29): which 75-word block it came from, and its tier.
+_V3_VISIBLE_FIELDS = ("bookmark_tier", "block_id")
 
 
 class LearningExposureError(RuntimeError):
@@ -63,6 +79,8 @@ def prepare_presentation(
     generation_run_id: str | None = None,
     delivery_mode: str = "production",
 ) -> dict:
+    if learning_surface == EXERCISE_ADEQUACY_SURFACE:
+        raise LearningExposureError(NO_PACKET_REASON)
     if learning_surface not in LEARNING_SURFACES:
         raise LearningExposureError("unknown learning surface")
     if actor_role not in ("owner", "coach", "peer"):
@@ -75,6 +93,11 @@ def prepare_presentation(
         raise LearningExposureError("presentation selection is incomplete")
     if not isinstance(visible_payload, dict) or not isinstance(versions, dict):
         raise LearningExposureError("presentation payload is incomplete")
+    if FORBIDDEN_VISIBLE_KEYS.intersection(visible_payload):
+        raise LearningExposureError(
+            "visible payload carries a score, rank, prediction or another "
+            "actor's answer"
+        )
 
     material = {
         "owner_principal_id": owner_principal_id,
@@ -218,6 +241,90 @@ def prepare_feedback_presentations(
             )
             if not packet["evaluation_only"]:
                 prepared[candidate_key].append(packet)
+    return dict(prepared)
+
+
+def _bundle_index(bundle: dict) -> dict[tuple[str, str], dict]:
+    """Bundle candidates by (family, candidate key), the V3 row identity."""
+    return {
+        (str(row.get("feedback_family") or ""),
+         str(row.get("candidate_key") or "")): row
+        for row in (bundle.get("candidates") or [])
+        if isinstance(row, dict)
+    }
+
+
+def prepare_v3_feedback_presentations(
+    *, database: Any, bundle: dict, visible_rows: list[dict], actor_id: str,
+    block_partition_version: str | None = None,
+    delivery_mode: str = "production",
+) -> dict[str, list[dict]]:
+    """One packet per surface for every V3 card the speaker is served.
+
+    V3 serves one Confident Voice item per 75-word block plus at most two
+    praise and one rewrite per Take (contract 24f), so there is no
+    exact-three rule here: every visible row is a card, and a Take may carry
+    one card or a dozen. The bundle is the one V3 froze the Take from
+    (``prepare_first_client_feedback``), so each packet's inventory is
+    exactly the pool the pick was made in, and a visible row that has no
+    candidate in it is a fault, not a card.
+
+    Same snapshot, same visible payload and same surface mapping as the V2
+    writer. What V3 adds is the block the card sat in and its tier (founder
+    2026-09-29, decision 1a), on the visible payload, and the block
+    partition version beside the bundle's versions.
+
+    Owner packets only: the speaker is the one actor these five surfaces are
+    shown to. The speaker's answer never enters a packet; it lands in its own
+    table and is joined to the packet by evidence span and rater (L3).
+    """
+    candidates = [
+        row for row in (bundle.get("candidates") or [])
+        if isinstance(row, dict)
+    ]
+    complete_snapshot = [_candidate_snapshot(row) for row in candidates]
+    if not complete_snapshot:
+        raise LearningExposureError("feedback candidate inventory is incomplete")
+    served = [row for row in (visible_rows or []) if isinstance(row, dict)]
+    if not served:
+        raise LearningExposureError("no served V3 row to present")
+
+    index = _bundle_index(bundle)
+    generation_ids = _generation_ids(bundle)
+    scope = _presentation_scope(bundle)
+    versions = dict(bundle.get("versions") or {})
+    if block_partition_version:
+        versions["block_partition_version"] = str(block_partition_version)
+    prepared: dict[str, list[dict]] = defaultdict(list)
+    for row in served:
+        row_id = str(row.get("id") or "")
+        candidate = index.get((str(row.get("feedback_family") or ""), row_id))
+        if candidate is None:
+            raise LearningExposureError("served V3 row has no frozen candidate")
+        candidate_key, family, evidence_id, visible_payload = (
+            _feedback_card(candidate)
+        )
+        for field in _V3_VISIBLE_FIELDS:
+            if row.get(field):
+                visible_payload[field] = str(row[field])
+        selected_snapshot = _candidate_snapshot(candidate)
+        for surface in _FEEDBACK_SURFACES[family]:
+            packet = prepare_presentation(
+                database=database,
+                **scope,
+                evidence_span_id=evidence_id,
+                generation_run_id=generation_ids.get((evidence_id, surface)),
+                learning_surface=surface,
+                actor_role="owner",
+                actor_id=actor_id,
+                complete_candidate_set=complete_snapshot,
+                selected_candidate=selected_snapshot,
+                visible_payload=visible_payload,
+                versions=dict(versions),
+                delivery_mode=delivery_mode,
+            )
+            if not packet["evaluation_only"]:
+                prepared[row_id].append(packet)
     return dict(prepared)
 
 

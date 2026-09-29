@@ -12,11 +12,13 @@ from pathlib import Path
 import pytest
 
 from services.practice_more_confident import (
-    machine_leg, outcome, record_after_coach_decision,
+    coach_leg, machine_leg, outcome, record_after_coach_decision,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = (ROOT / "migrations" / "a_practice_sounds_more_confident.sql").read_text()
+REWRITE = (ROOT / "migrations"
+           / "sounds_more_confident_reads_the_coachs_two_answers.sql").read_text()
 
 
 @pytest.mark.parametrize("original, attempt, expected", [
@@ -45,10 +47,25 @@ def test_outcome(machine, coach, expected):
     assert outcome(machine, coach) == expected
 
 
+@pytest.mark.parametrize("before, after, expected", [
+    ("no", "yes", "yes"), ("no", "in_between", "yes"), ("neutral", "yes", "yes"),
+    ("no", "no", "no"), ("yes", "in_between", "no"), ("neutral", "in_between", "no"),
+    ("yes", "yes", None),           # already confident: cannot tell
+    ("no", "not_sure", None), ("no", "audio_unclear", None),
+    (None, "yes", None), ("no", None, None),
+])
+def test_coach_leg(before, after, expected):
+    assert coach_leg(before, after) == expected
+
+
 def test_the_migration_states_the_same_rule():
-    assert "WHEN v_attempt > v_original THEN 'higher'" in MIGRATION
-    assert "WHEN v_machine = 'unmeasurable' OR v_coach IS NULL THEN 'pending'" in MIGRATION
-    assert "WHEN v_machine = 'higher' AND v_coach = 'yes' THEN 'helped'" in MIGRATION
+    for sql in (MIGRATION, REWRITE):
+        assert "WHEN v_attempt > v_original THEN 'higher'" in sql
+        assert "WHEN v_machine = 'unmeasurable' OR v_coach IS NULL THEN 'pending'" in sql
+        assert "WHEN v_machine = 'higher' AND v_coach = 'yes' THEN 'helped'" in sql
+    assert "WHEN v_before_step = 2 AND v_after_step = 2 THEN NULL" in REWRITE
+    assert "WHEN v_after_step > v_before_step THEN 'yes'" in REWRITE
+    assert "label.rater_id = attempt.coach_confidence_decided_by" in REWRITE
     assert "CHECK (is_label = false)" in MIGRATION
     assert "CHECK (serves_user = false)" in MIGRATION
 

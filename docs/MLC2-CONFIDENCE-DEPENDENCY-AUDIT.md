@@ -98,6 +98,14 @@ model/version hints.
   `dark` / `founder_canary` / `killed` state machine so rollback cannot
   resurrect a retired learning writer.
 - No route, product service, worker or UI imports `services.mlc2_confidence`.
+- The founder consent route (`/v2/user/mlc2-consent`) is open in `dark`
+  and answers 410 only when the writer state is `killed` (0392 / Q1,
+  2026-09-29); recording the grant creates no corpus and starts nothing,
+  and the canonical promotion freezes a snapshot of it for every Take.
+- The legacy coach card consumes the chain through the three 0393 wrappers
+  (`services/confidence_chain_consumer.py`, Q2, 2026-09-29): blind packet,
+  render receipt, judgment and reveal. A no-op while the writer state is
+  `dark`; the packet never leaves the server, the handle is four ids.
 - No learning provenance is dual-written to an old and new learning store.
 - The old product-state writers remain unchanged.
 - No historical row is imported or relabeled.
@@ -138,6 +146,45 @@ executable without changing current production behavior:
 The mode remains literal `dark`. No environment value can activate it. The SQL
 rehearsal invokes the dark RPCs directly inside a disposable transaction; that
 proves the cutover contract without activating a producer in any app process.
+
+### The frame factory and the worker's chain (G-6, 2026-09-28)
+
+The audit of 2026-09-22 found the one missing piece between a promoted Take
+and a recordable blind judgment: the worker's `frame_factory` was a
+placeholder and nothing ran the worker. `services.mlc2_confidence_frame_factory`
+now supplies both, with the mode unchanged:
+
+- `build_foundation_frame` turns one claimed outbox event plus the Take's
+  snippet rows into a `ConfidenceSamplingFrame`: one candidate per snippet,
+  each an exact span (`start_offset_ms` to `start_offset_ms + duration_ms`)
+  of the Take's own R2 audio object from the source manifest, which is the
+  identity `exercise_evidence_matches_audio_v1` compares against an exercise
+  audio lineage. The prediction is the production foundation detector
+  (`voice-confidence-universal-v3`, `assignment_origin = foundation`) read as
+  yes / in_between / no at its own ±0.5 band edges (a different read from
+  the served sign-based lean in `services/moment_confidence.py`, which is
+  stored beside it in `raw_output.served_lean`); the selection implements
+  two of contract K9's three components — the boundary pick and the fixed
+  20% random slice, every draw recorded — and not the third, balanced
+  predicted regions, which is put to the founder. The frame is a pure
+  function of the event and the snippets, so a replay satisfies the
+  finalizer's idempotency check; the run's request hash binds the snippet
+  inputs, so a refused replay can be attributed to changed rows.
+- `sweep_confidence_outbox` claims, builds and finalizes; it re-checks the
+  cutover mode on every tick and re-arms only while it owns its own lease
+  key. `worker.py` prints one boot line naming the resolved mode; in `dark`
+  it starts nothing and touches no broker key.
+- Legacy learning objects remain unreadable from this module (the isolation
+  guard covers every `mlc2_*.py`), and no route or product service imports it.
+
+This is the producer half of G-6. The consumer half the audit also names —
+no application caller for `create_mlc2_confidence_blind_packet_v1`,
+`ack_mlc2_rendered_exposure_v1`, `submit_mlc2_confidence_blind_judgment_v1`
+and the reveal — is unchanged; the only judgment path today is the D5 inline
+route behind `MLC3_COACH_INLINE_AUTHORING_ENABLED`. Activation is still the
+reviewed change of `MLC2_CONFIDENCE_CUTOVER_MODE` to `founder_canary`, gated
+by the readiness report; this section adds the code path that change needs
+and nothing that runs before it.
 
 ## Tests required before Slice 3 acceptance
 

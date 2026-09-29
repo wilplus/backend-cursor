@@ -22,10 +22,11 @@ Contract clauses: 35g-1 and 35g-2 in `docs/CANONICAL_PRODUCT_CONTRACT.md`.
 
 ## 1. Speaker: the V3 exercise item (`bookmark_tier = "exercise"`)
 
-The payload shape is unchanged: `row.practice_exercise = {exercise_id,
-version, title, instruction, introduction, yes_introduction, no_introduction,
-explanation_video_ref, passage, practice_id, resume, matching_policy_version,
-pattern_distance, done_before}`.
+The payload shape: `row.practice_exercise = {exercise_id, version, title,
+instruction, introduction, yes_introduction, no_introduction,
+explanation_video_ref, passage, practice_id, resume, done_before}`, plus
+`chosen_by_coach` on a coach-shared exercise. (Since 2026-09-29 it no longer
+carries `matching_policy_version` or `pattern_distance`.)
 
 Behaviour to design for:
 
@@ -41,9 +42,8 @@ Behaviour to design for:
    `exercise_id`. The backend accepts it.
 3. **"Trial" is never in the payload.** Never infer it or show it. A trial
    looks exactly like any other exercise.
-4. **Don't render `pattern_distance`** (a number, AC-9) **or
-   `matching_policy_version`.** `pattern_distance` is pre-existing and will be
-   removed from the payload in a follow-up.
+4. **`pattern_distance` and `matching_policy_version` are gone** from the
+   payload (founder 2026-09-29, AC-9). Nothing to render or ignore.
 
 ## 2. Coach: the panel for a moment no exercise fitted
 

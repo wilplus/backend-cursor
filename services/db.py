@@ -823,6 +823,21 @@ class DatabaseService:
             return data[0] if data else None
         return data if isinstance(data, dict) else None
 
+    def get_coach_review_revision(self, revision_id: str) -> Optional[dict]:
+        """One published coach-review revision (what the speaker was actually
+        sent), or None. Best-effort."""
+        if not revision_id:
+            return None
+        try:
+            res = (self.client.table("coach_review_revisions")
+                   .select("id,session_id,overall_message,published_at")
+                   .eq("id", str(revision_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_coach_review_revision failed id=%s: %s",
+                           revision_id, e)
+            return None
+
     def publish_coach_review_revisions(self, reviews: list[dict]) -> list[dict]:
         """Atomically publish a complete set of immutable review snapshots."""
         result = self.client.rpc("publish_coach_review_batch_v1", {
@@ -12139,9 +12154,12 @@ class DatabaseService:
         """Persist routing only; never write a label or learning corpus.
 
         Accepts the instrument's five states (contract §29) plus the two
-        legacy values, which stay writable only so an older caller is not
-        broken mid-deploy; they are audit-only and no new surface sends them.
-        Widening the column's CHECK is
+        legacy values. Since F-4 (2026-09-28) the Take-review route sends the
+        answer itself; the legacy pair is still minted by one live route,
+        ``PUT /v2/user/snippets/<id>/confidence-agree`` (a ternary instrument
+        with no frontend caller), so narrowing this check is a founder
+        decision about that route, not a hygiene fix. Widening the column's
+        CHECK is
         ``migrations/widen_owner_voice_album_routing_to_five_states.sql``.
         """
         from services.voice_album_routing import FIVE_STATES
@@ -14836,12 +14854,12 @@ class DatabaseService:
         reason: str, pattern: Optional[str], observed_tags: list[str],
         request_trace: dict, kind: str = "error",
     ) -> Optional[dict]:
-        """The moment's coach request (migration 0385; its kind, 0391):
+        """The moment's coach request (migration 0385; its kind, 0397):
         recorded on the first call, returned unchanged — with any resolution
         since — on every later one. Raises on failure; the caller keeps the
         feedback regardless.
 
-        Without 0391 (PGRST202 on v2) the v1 function records it without a
+        Without 0397 (PGRST202 on v2) the v1 function records it without a
         kind, except a 'library_matched' request, which v1 cannot hold."""
         params = {
             "p_owner_user_id": str(owner_user_id),
@@ -14926,7 +14944,7 @@ class DatabaseService:
         owner_user_id: Optional[str] = None,
     ) -> Optional[dict]:
         """The practice on this exact moment (founder 2026-09-29: every
-        bookmark may carry its own; migration 0390 keys it per moment)."""
+        bookmark may carry its own; migration 0396 keys it per moment)."""
         if not take_session_id or not snippet_id:
             return None
         try:
@@ -15424,7 +15442,10 @@ class DatabaseService:
         self, practice_id: str, attempt_id: str, decision: str,
         coach_user_id: str,
     ) -> Optional[dict]:
-        if decision not in ("yes", "no"):
+        # The coach answers the speaker's five ways (0390, founder
+        # 2026-09-29 Q3a).
+        from services.practice_adoption import ANSWERS
+        if decision not in ANSWERS:
             return None
         try:
             res = (self.client.table("confident_voice_practice_attempt")

@@ -69,44 +69,6 @@ def decide(answer: Any, read: str, fired: bool,
     return "none", "ambiguity"
 
 
-def route_owner_answer(database: Any, row: dict, *, arc_id: str,
-                       take_session_id: str, owner_user_id: str) -> str:
-    """The owner's Confident Voice answer as a routing signal, then what
-    follows it. Returns the follow-up for the sheet.
-
-    The route row is the speaker's self-report on the Voice Album lane
-    (never a rating; contract 30, 31). The follow-up runs after the route is
-    written and never fails the save. Lived in the answer route until
-    2026-09-29; here so the route stays within its fence.
-    """
-    if row.get("feedback_family") != "confident_voice" or not row.get("snippet_id"):
-        return "none"
-    response = row.get("response")
-    routing = (
-        "yes" if response == "yes"
-        else "no" if response == "no"
-        else "unrateable" if response == "audio_unclear"
-        else "neutral"
-    )
-    snip = database.get_snippet_by_id(row["snippet_id"]) or {}
-    piece = ((snip.get("metrics") or {}).get("piece")
-             if isinstance(snip.get("metrics"), dict) else {})
-    database.upsert_owner_voice_album_route(
-        snippet_id=row["snippet_id"],
-        owner_user_id=owner_user_id,
-        arc_id=arc_id,
-        response=routing,
-        slide_index=(piece.get("slide_index")
-                     if isinstance(piece, dict) else None),
-    )
-    from services.voice_album import refresh_voice_album
-    refresh_voice_album(arc_id, database=database)
-    return follow_up_for_judgement(
-        database, take_session_id=take_session_id,
-        snippet_id=str(row["snippet_id"]),
-        owner_user_id=owner_user_id, answer=response)
-
-
 def follow_up_for_judgement(
     database: Any, *, take_session_id: str, snippet_id: str,
     owner_user_id: str, answer: Any,

@@ -3,11 +3,13 @@
 The two-clocks problem: Whisper word times are measured from the AUDIO, slide
 tap times from the phone's UI. The recorder warm-up makes the audio clock run
 slightly LATER than the UI clock, so the first words after a tap can be bucketed
-to the PREVIOUS slide. `services.slide_word_split._snap_boundaries_to_pauses`
-compensates by moving each boundary into the nearest real speech pause.
+to the PREVIOUS slide. The measured `slide_clock_offset_ms` now corrects
+that (services.slide_word_split.context_with_clock_offset). Pause-snap
+(`_snap_boundaries_to_pauses`), which used to move each boundary into the
+nearest real speech pause, was retired from the pipeline on 2026-08-11 and
+survives only as an analysis helper.
 
-That compensation shipped and is live — but nothing ever measured it. This
-module is the measurement.
+This module measures how good the resulting bucketing is.
 
 WHAT THIS CAN AND CANNOT TELL YOU — read this before trusting a number.
 

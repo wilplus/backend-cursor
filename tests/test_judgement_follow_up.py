@@ -209,14 +209,11 @@ class RouteTests(unittest.TestCase):
         source = (ROOT / "routes/v2/user_sessions.py").read_text()
         start = source.index("def v2_post_take_feedback_response")
         route = source[start:source.index("@v2_bp.route", start)]
-        self.assertIn("route_owner_answer(", route)
+        self.assertIn("follow_up_for_judgement(", route)
         self.assertIn('"follow_up": follow_up', route)
-        service = (ROOT / "services/judgement_follow_up.py").read_text()
-        start = service.index("def route_owner_answer")
-        helper = service[start:service.index("def follow_up_for_judgement")]
         # After the owner route is written, never before.
-        self.assertLess(helper.index("upsert_owner_voice_album_route"),
-                        helper.index("follow_up_for_judgement("))
+        self.assertLess(route.index("_route_owner_voice_album("),
+                        route.index("follow_up_for_judgement("))
 
 
 class EveryBookmarkTests(unittest.TestCase):
@@ -349,8 +346,8 @@ class ContractTests(unittest.TestCase):
 
     def test_the_migration_keys_practice_per_moment(self):
         manifest = (ROOT / "migrations/manifest.txt").read_text()
-        self.assertIn("one_practice_per_moment.sql", manifest)
-        self.assertIn("every_judgement_reaches_the_coach.sql", manifest)
+        self.assertIn("0396\tone_practice_per_moment.sql", manifest)
+        self.assertIn("0397\tevery_judgement_reaches_the_coach.sql", manifest)
         kinds = (ROOT / "migrations/every_judgement_reaches_the_coach.sql").read_text()
         self.assertIn("request_exercise_from_coach_v2", kinds)
         self.assertIn("'library_matched'", kinds)

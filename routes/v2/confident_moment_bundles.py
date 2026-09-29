@@ -1,8 +1,10 @@
 """Confident Moment Coaching Bundle routes (Chunk 3).
 
 All endpoints remain hard-disabled while CONFIDENT_MOMENT_BUNDLE_V1_ENABLED
-is false. They reserve the typed HTTP boundary so later activation cannot be
-smuggled into an unrelated route.
+is false (the building switch). Per person, the ``confident_moment_bundles``
+ring row decides reach, and ``rooting_coverage`` the root actions (rings,
+0394, ``@ring_required``). They reserve the typed HTTP boundary so later
+activation cannot be smuggled into an unrelated route.
 
 See Interface Manifest D6 §6.
 """
@@ -16,7 +18,7 @@ from flask import Response, jsonify, request
 
 from auth import require_auth
 from routes.admin import require_admin_or_coach
-from routes.phase2_guard import mlc3_service_required
+from routes.phase2_guard import ring_required
 from routes.v2.blueprint import v2_bp
 from services.confident_moment_bundle import (
     ConfidentMomentProjectionInvalid,
@@ -188,7 +190,7 @@ def load_confident_moment_projection(project_id: str, take_id: str) -> dict:
 @v2_bp.get("/explore/arcs/<project_id>/confident-moment-bundles")
 @_bundle_gate
 @require_auth
-@mlc3_service_required
+@ring_required("confident_moment_bundles")
 def list_confident_moment_bundles(project_id: str):
     """Return only the canonical database-owned v2 Bundle projection."""
     try:
@@ -210,7 +212,7 @@ def list_confident_moment_bundles(project_id: str):
 )
 @_bundle_gate
 @require_auth
-@mlc3_service_required
+@ring_required("confident_moment_bundles")
 def get_confident_moment_source_playback(
     bundle_id: str, bundle_attachment_id: str,
 ):
@@ -278,7 +280,7 @@ def get_confident_moment_source_playback(
 )
 @_bundle_gate
 @require_auth
-@mlc3_service_required
+@ring_required("confident_moment_bundles")
 def get_confident_moment_exercise_correlation(
     bundle_id: str, bundle_attachment_id: str,
 ):
@@ -309,7 +311,7 @@ def get_confident_moment_exercise_correlation(
 @v2_bp.post("/user/confident-moment-bundles/<bundle_id>/render")
 @_bundle_gate
 @require_auth
-@mlc3_service_required
+@ring_required("confident_moment_bundles")
 def ack_confident_moment_bundle_render(bundle_id: str):
     """Visible render acknowledgement (D6 §6.2). Creates/reuses one exposure."""
     try:
@@ -351,7 +353,7 @@ def ack_confident_moment_bundle_render(bundle_id: str):
 )
 @_bundle_gate
 @require_auth
-@mlc3_service_required
+@ring_required("confident_moment_bundles")
 def ack_coach_update_render(bundle_id: str, revision_id: str):
     """Coach-update render (D6 §6.4). Independent of accept/cancel."""
     try:
@@ -398,7 +400,7 @@ def ack_coach_update_render(bundle_id: str, revision_id: str):
 )
 @_bundle_gate
 @require_auth
-@mlc3_service_required
+@ring_required("confident_moment_bundles")
 def record_confident_moment_family_response(
     bundle_id: str, bundle_attachment_id: str,
 ):
@@ -569,7 +571,7 @@ def _root_action_identities(body: dict) -> dict:
 @v2_bp.post("/user/confident-moment-bundles/<bundle_id>/root-actions")
 @_coverage_gate
 @require_auth
-@mlc3_service_required
+@ring_required("rooting_coverage")
 def record_confident_moment_root_action(bundle_id: str):
     """Public database-derived root transition; automatic activation is absent."""
     try:
@@ -613,7 +615,7 @@ def record_confident_moment_root_action(bundle_id: str):
 )
 @_bundle_gate
 @require_auth
-@mlc3_service_required
+@ring_required("confident_moment_bundles")
 def update_confident_moment_bundle_text(
     bundle_id: str, bundle_attachment_id: str,
 ):

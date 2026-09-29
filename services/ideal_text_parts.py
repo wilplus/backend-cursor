@@ -613,58 +613,71 @@ def serve(rows: Any) -> Optional[list]:
     """
     if not rows:
         return None
-    ordered: list[tuple[int, str, str, bool, int, Any, Any, Any]] = []
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        pid, text = r.get("id"), r.get("text")
-        if not isinstance(pid, str) or not isinstance(text, str):
-            continue
-        ordv = r.get("ord")
-        # `isinstance(True, int)` is True in Python, and a bool `ord` would
-        # sort as 0/1 and silently reorder the document.
-        if not isinstance(ordv, int) or isinstance(ordv, bool):
-            continue
-        # The maturity counter rides as a plain int (slice 2). Missing
-        # column / pre-migration rows read 0 — a chunk that never locked.
-        try:
-            _it = int(r.get("iteration") or 0)
-        except Exception:
-            _it = 0
-        ordered.append((
-            ordv, pid, text, bool(r.get("locked_at")), _it,
-            r.get("root_phrase"), r.get("root_start"), r.get("root_end"),
-        ))
+    ordered: list[tuple[int, str, str, bool, int, Any, Any, Any]] = [
+        row for row in (_servable_row(r) for r in rows) if row is not None
+    ]
     if not ordered:
         return None
     ordered.sort(key=lambda t: t[0])
-    out = []
-    for ordv, pid, text, locked, iteration, root, start, end in ordered:
-        item = {
-            "id": pid, "ord": ordv, "text": text, "locked": locked,
-            "iteration": iteration,
-        }
-        # Optional metadata stays absent until selected. This preserves the
-        # old parts wire exactly for the overwhelming majority of paragraphs.
-        #
-        # THE HELPER WORDS ARE THEIR OWN TEXT (contract 14, founder
-        # 2026-09-25). They persist when the Paragraph's words change, so the
-        # phrase is served whenever one is stored. The span is only a render
-        # hint for painting those words inside the Paragraph: served when it
-        # still proves the same words, re-found when the words occur exactly
-        # once in the new text, and otherwise absent — never guessed.
-        if isinstance(root, str) and root:
-            item["root_phrase"] = root
-            span = root_span_in(text, root, start, end)
-            if span is not None:
-                item["root_start"], item["root_end"] = span
-        out.append(item)
+    out = [_served_part(*row) for row in ordered]
     # Re-index on the way out. A gap in `ord` (a partial write, a row deleted
     # by hand) would otherwise reach the client as a position it cannot use,
     # and the client's own list index is what it renders from.
     for i, p in enumerate(out):
         p["ord"] = i
     return out
+
+
+def _servable_row(r: Any) -> Optional[tuple]:
+    """One stored row as ``(ord, id, text, locked, iteration, root_phrase,
+    root_start, root_end)``, or None when the row cannot be served."""
+    if not isinstance(r, dict):
+        return None
+    pid, text = r.get("id"), r.get("text")
+    if not isinstance(pid, str) or not isinstance(text, str):
+        return None
+    ordv = r.get("ord")
+    # `isinstance(True, int)` is True in Python, and a bool `ord` would
+    # sort as 0/1 and silently reorder the document.
+    if not isinstance(ordv, int) or isinstance(ordv, bool):
+        return None
+    iteration = _stored_iteration(r)
+    return (
+        ordv, pid, text, bool(r.get("locked_at")), iteration,
+        r.get("root_phrase"), r.get("root_start"), r.get("root_end"),
+    )
+
+
+def _stored_iteration(r: dict) -> int:
+    # The maturity counter rides as a plain int (slice 2). Missing
+    # column / pre-migration rows read 0 — a chunk that never locked.
+    try:
+        return int(r.get("iteration") or 0)
+    except Exception:
+        return 0
+
+
+def _served_part(ordv: int, pid: str, text: str, locked: bool,
+                 iteration: int, root: Any, start: Any, end: Any) -> dict:
+    item = {
+        "id": pid, "ord": ordv, "text": text, "locked": locked,
+        "iteration": iteration,
+    }
+    # Optional metadata stays absent until selected. This preserves the
+    # old parts wire exactly for the overwhelming majority of paragraphs.
+    #
+    # THE HELPER WORDS ARE THEIR OWN TEXT (contract 14, founder
+    # 2026-09-25). They persist when the Paragraph's words change, so the
+    # phrase is served whenever one is stored. The span is only a render
+    # hint for painting those words inside the Paragraph: served when it
+    # still proves the same words, re-found when the words occur exactly
+    # once in the new text, and otherwise absent — never guessed.
+    if isinstance(root, str) and root:
+        item["root_phrase"] = root
+        span = root_span_in(text, root, start, end)
+        if span is not None:
+            item["root_start"], item["root_end"] = span
+    return item
 
 
 def root_span_in(text: Any, phrase: Any, start: Any = None,
@@ -823,48 +836,9 @@ def bind_pieces_to_parts(
             doc.get("take_session_id"),
         )
         return document
-    from services.transcript_document import relocate_pieces
-
-    located = {
-        str(row.get("snippet_id")): row
-        for row in relocate_pieces(
-            served_text, pieces,
-            paragraph_fallback=True, slide_regions=slide_regions,
-        ) or []
-        if isinstance(row, dict) and row.get("snippet_id")
-    }
+    located = _relocated_by_snippet(served_text, pieces, slide_regions)
     regions = slide_regions if isinstance(slide_regions, dict) else {}
-    bound = []
-    for piece in pieces:
-        if not isinstance(piece, dict):
-            bound.append(piece)
-            continue
-        row = located.get(str(piece.get("snippet_id")))
-        part_id = _part_id_for(piece, row, spans, regions)
-        # WHERE THESE WORDS LIVE IN THE DOCUMENT ON SCREEN (2026-09-19).
-        #
-        # A piece's `start`/`end` are offsets into the TRANSCRIPT. A bookmark
-        # is drawn on the IDEAL TEXT, and `span` means served-text offsets
-        # everywhere it is consumed -- `current_take_confident_voice_
-        # candidate` fills it from `served_text`, the evidence contract
-        # slices `served_text` with it, and the client highlights it there.
-        # V3 was filling the same key from the transcript, so its bookmark
-        # would have landed on whatever words happened to sit at those
-        # offsets in a different, shorter document.
-        #
-        # The relocation above already answers this exactly -- it is what
-        # `part_at` consumes to pick the Paragraph -- so the answer is
-        # carried rather than recomputed by a second rule that could drift.
-        extra: dict = {}
-        if part_id:
-            extra["part_id"] = part_id
-        if isinstance(row, dict):
-            s, e = row.get("start"), row.get("end")
-            if (isinstance(s, int) and not isinstance(s, bool)
-                    and isinstance(e, int) and not isinstance(e, bool)
-                    and 0 <= s < e):
-                extra.update({"served_start": s, "served_end": e})
-        bound.append({**piece, **extra} if extra else piece)
+    bound = [_bound_piece(piece, located, spans, regions) for piece in pieces]
     placed = sum(1 for piece in bound
                  if isinstance(piece, dict) and piece.get("part_id"))
     # COUNTS, and they are the diagnosis. "Some paragraphs could not be
@@ -878,16 +852,66 @@ def bind_pieces_to_parts(
     return {**doc, "pieces": bound}
 
 
+def _relocated_by_snippet(served_text: Any, pieces: list,
+                          slide_regions: Any) -> dict:
+    """``relocate_pieces``' rows on the served text, keyed by snippet id."""
+    from services.transcript_document import relocate_pieces
+
+    return {
+        str(row.get("snippet_id")): row
+        for row in relocate_pieces(
+            served_text, pieces,
+            paragraph_fallback=True, slide_regions=slide_regions,
+        ) or []
+        if isinstance(row, dict) and row.get("snippet_id")
+    }
+
+
+def _bound_piece(piece: Any, located: dict, spans: list,
+                 regions: dict) -> Any:
+    """``piece`` with its ``part_id`` and served-text span, when proven."""
+    if not isinstance(piece, dict):
+        return piece
+    row = located.get(str(piece.get("snippet_id")))
+    part_id = _part_id_for(piece, row, spans, regions)
+    # WHERE THESE WORDS LIVE IN THE DOCUMENT ON SCREEN (2026-09-19).
+    #
+    # A piece's `start`/`end` are offsets into the TRANSCRIPT. A bookmark
+    # is drawn on the IDEAL TEXT, and `span` means served-text offsets
+    # everywhere it is consumed -- `current_take_confident_voice_
+    # candidate` fills it from `served_text`, the evidence contract
+    # slices `served_text` with it, and the client highlights it there.
+    # V3 was filling the same key from the transcript, so its bookmark
+    # would have landed on whatever words happened to sit at those
+    # offsets in a different, shorter document.
+    #
+    # The relocation above already answers this exactly -- it is what
+    # `part_at` consumes to pick the Paragraph -- so the answer is
+    # carried rather than recomputed by a second rule that could drift.
+    extra: dict = {}
+    if part_id:
+        extra["part_id"] = part_id
+    extra.update(_served_span(row))
+    return {**piece, **extra} if extra else piece
+
+
+def _served_span(row: Any) -> dict:
+    """The relocated row's served-text offsets, when they are a real span."""
+    if not isinstance(row, dict):
+        return {}
+    s, e = row.get("start"), row.get("end")
+    if (isinstance(s, int) and not isinstance(s, bool)
+            and isinstance(e, int) and not isinstance(e, bool)
+            and 0 <= s < e):
+        return {"served_start": s, "served_end": e}
+    return {}
+
+
 def _part_id_for(
     piece: dict, located: Any, spans: list, regions: dict,
 ) -> Optional[str]:
     """One Paragraph's id, or None when nothing proves which."""
-    region = regions.get(piece.get("slide_index"))
-    on_slide = [
-        part for start, end, part in spans
-        if isinstance(region, (tuple, list)) and len(region) == 2
-        and start >= region[0] and end <= region[1]
-    ]
+    on_slide = _parts_on_slide(spans, regions.get(piece.get("slide_index")))
     # 1. ONE Paragraph on the slide: proven by identity, rewrite-proof.
     if len(on_slide) == 1:
         found = on_slide[0].get("id")
@@ -895,17 +919,30 @@ def _part_id_for(
     # 2. Several (or no slide region): the relocated span picks between them.
     if not isinstance(located, dict):
         return None
-    part = part_at(spans, located.get("start"), located.get("end"))
-    if part is None:
-        return None
-    found = part.get("id")
-    if not isinstance(found, str) or not found:
+    found = _nonblank_id(
+        part_at(spans, located.get("start"), located.get("end")))
+    if found is None:
         return None
     # A span that lands outside the slide's own Paragraphs disagrees with the
     # slide join, and two disagreeing proofs are not a proof.
     if on_slide and not any(p.get("id") == found for p in on_slide):
         return None
     return found
+
+
+def _parts_on_slide(spans: list, region: Any) -> list:
+    """The parts whose span lies inside the slide's region of the text."""
+    if not (isinstance(region, (tuple, list)) and len(region) == 2):
+        return []
+    return [part for start, end, part in spans
+            if start >= region[0] and end <= region[1]]
+
+
+def _nonblank_id(part: Optional[dict]) -> Optional[str]:
+    if part is None:
+        return None
+    found = part.get("id")
+    return found if isinstance(found, str) and found else None
 
 
 def generated_paragraphs(text: Any) -> set[str]:

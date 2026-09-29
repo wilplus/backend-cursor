@@ -75,15 +75,17 @@ Run it rather than trust this table — it is a convenience, and it goes stale:
 | the freshness rule names every route an answer takes | green | — |
 | the computation window reaches the writer | green | — |
 | the page offers exactly the five owner states | green | — |
-| each of the five states routes as itself | **xfail** | F-4 |
+| each of the five states routes as itself | green | — |
 | a promoted model cannot reach the document without a gate | green | — |
 | a later Take proposes and never applies | green | — |
 | the words a speaker waits on name work, not judgement | green | — |
 
-One open, twelve held — and the table still undercounts, because #613 and
-#614 added two green lines without an entry here. F-4 is the last of the
-three the audit found against what a speaker sees; every other finding has
-its own regression test in its own file and does not appear here.
+No contract line open, thirteen held (F-4's line flipped 2026-09-28) — and
+the table still undercounts, because #613 and #614 added two green lines
+without an entry here. F-4's contract line was the last of the three the
+audit found against what a speaker sees; the finding itself is closed on the
+Take-review path only (see the WS-F4 entry). Every other finding has its own
+regression test in its own file and does not appear here.
 
 ---
 
@@ -1886,3 +1888,314 @@ sets are present, so its writes run as the definer. The suite pins that single
 exception by name and fails if a second non-definer writer ever appears.
 
 Two settings the code depends on: none. No environment variable, no flag.
+### 2026-09-28 · WS-F4 · f4-five-states-route-as-themselves · #755
+
+**Closed:** F-4 on the Take-review path only (the fold at
+`routes/v2/user_sessions.py`, leg (a) of the finding). Three legs stay open:
+(b) `db.upsert_owner_voice_album_route` still accepts the legacy pair; (c)
+the table has no `taxonomy_version` column and no trigger, so 0341's
+"audit-only, no new writes" is still enforced by comment; (d) the live
+`PUT /v2/user/snippets/<id>/confidence-agree` route (a ternary instrument
+with a BFF proxy and no frontend caller) still mints `neutral`/`unrateable`.
+**Contract lines flipped:** `test_each_of_the_five_states_routes_as_itself`
+xfail → passing (the contract's last open line; baseline before 13 passed /
+1 xfailed, after 14 passed / 0 xfailed).
+**Contract lines added:** none.
+**Broke and fixed:** none. Found on the way: on `main` the practice start
+route refused (409) any clip answered through "Practice new", because that
+route already stored the five states and the matcher only knew the fold;
+`route_matches` fixes that.
+**Open for the founder:** legs (b)–(d) above are one decision: retire or
+410 `PUT …/confidence-agree` (and its frontend proxy), then narrow the
+writer to the five states and add the WS-7 trigger plus `taxonomy_version`
+with `tests/test_owner_voice_album_routing_postgres.py::test_new_neutral_write_is_rejected`.
+Not done here because it removes a live route.
+
+`album_routing_for` in `services/take_feedback_responses.py` is the one
+derivation and returns the answer itself; the Take-review route calls it.
+`services/practice_adoption.route_matches` reads both vocabularies, because
+rows written before today hold the folded pair and a legacy `neutral` cannot
+say whether it was an in-between or a not-sure. Every reader of the stored
+value tests it against `yes` or uses only the snippet id, so nothing served
+changes.
+### 2026-09-28 · WS-G6 · g6-confidence-frame-factory · #756
+
+**Closed:** the producer half of G-6's missing piece: the worker's
+`frame_factory` and the chain that runs it
+(`services/mlc2_confidence_frame_factory.py`). Not closed: the consumer
+half the audit names (no application caller for the MLC-2 blind packet,
+ack, judgment and reveal RPCs; the only judgment path is the D5 inline
+route behind its own flag), and G-6 itself, which stays open until the
+founder flips `MLC2_CONFIDENCE_CUTOVER_MODE` to `founder_canary` after
+readiness.
+**Contract lines flipped:** none.
+**Contract lines added:** none in `test_f1_loop_contract.py`; the module's
+own suite is `tests/test_mlc2_confidence_frame_factory.py` (28 cases), and
+`test_mlc2_legacy_isolation.py` allowlists the module by name.
+**Broke and fixed:** none.
+**Open for the founder:** two, both before activation, neither blocking this
+merge. (1) The end-to-end rehearsal (promote under founder_canary on a
+disposable lane → worker → `finalize_mlc2_confidence_frame_v1` → a D5 blind
+packet with the transcript and prediction absent) is the next PR and the
+activation evidence; this PR proves the frame against the contract's own
+validator only. (2) `MIN_CLIP_MS = 1000` and the boundary-first ranking are
+this PR's reading of contract K9, and K9's third component, balanced
+predicted regions, is not implemented in this version; say whether the
+first blind batches need it, and whether the random slice should weigh more
+than 20% while the pool is small. (3) The foundation class is read at the
+detector's ±0.5 band edges, not at the served sign-based lean; both are
+recorded per clip, and the comparison target for a later model is the
+three perceptual answers of the blind instrument.
+
+What a coach can now be asked. Under `dark` nothing changes: no outbox event
+is written, the boot line says `confidence producer dark: not started`, a
+sweep tick returns without touching the broker. Under `founder_canary`, the
+Take's snippets become candidates on the Take's own R2 audio object with
+exact spans, the foundation detector's stamped score becomes a three-class
+prediction, one clip per Take is selected (boundary-first, 20% random, every
+draw recorded), and the D5 batch can build a blind packet from the stored
+span because the evidence coordinates are the lineage's own offsets.
+
+### 2026-09-28 · WS-G6 part 2 · g6-confidence-end-to-end-rehearsal · #759
+
+**Closed:** the activation evidence for G-6: the blind-label chain runs end
+to end on the released lane with the foundation frame factory in the loop.
+G-6 itself still waits on the founder's mode change.
+**Contract lines flipped:** none.
+**Contract lines added:** `tests/test_mlc2_confidence_end_to_end_postgres.py`
+(10 cases, released lane, one rolled-back transaction): promote through the
+atomic producer RPC → outbox → claim → the factory builds the frame from
+the Take's snippet rows → `finalize_mlc2_confidence_frame_v1` accepts it
+(one candidate set, one span per snippet at the snippet's exact offsets on
+the Take's own R2 object, one prediction per eligible clip, exactly one
+selected) → a replay changes nothing → a blind packet from the selected
+candidate carries no transcript, prediction, score, rank or selection hint
+→ the slice-4 health function reports no orphan and every gate closed.
+**Broke and fixed:** none. The released lane's narrow `snippets` copy had no
+`metrics` column (production stamps the delivery-signal read there); the
+recipe now widens it, released lane only, as the widen files do.
+**Open for the founder:** two things this rehearsal does not cover. The D5
+coach batch joins a stored span to an exercise audio lineage
+(`exercise_evidence_matches_audio_v1`), whose row needs the Phase-1
+authorization chain, a learning profile and an authority check; the suite
+asserts the span and object identity against the source manifest, not
+against a Phase-1 registered object or a lineage, so that join is not
+rehearsed. And the MLC-2 blind packet, ack, judgment and reveal RPCs still
+have no application caller (audit G-6 body); the only judgment path is the
+D5 inline route behind `MLC3_COACH_INLINE_AUTHORING_ENABLED`. The producer
+half is rehearsed; a `founder_canary` activation additionally needs a
+caller for the coach side, readiness (canary principal id on every service,
+monitoring and Sentry on, the bundled consent grant present) and the
+reviewed constant change.
+### 2026-09-28 · WS-G1 · frontend g1-exposure-ack-proxy · frontend #529
+
+**Closed:** G-1 (frontend wilplus/frontend-cursor#529; nothing changes in
+this repository but this entry).
+**Contract lines flipped:** none.
+**Contract lines added:** in the frontend, `src/app/api/v2/learning-exposures/ack/route.test.ts`
+pins that the proxy forwards the acknowledgement verbatim through
+`callBackend` with the strict relay.
+**Broke and fixed:** none.
+**Open for the founder:** the frontend client carried a 2026-09-15 note that
+wiring this leg "is the learning-layer activation decision, not a bug fix";
+the order of work settled 2026-09-22 (lane 1, live bugs) is the later
+decision and the one followed. Nothing the receipt feeds is switched on:
+dataset creation, training, promotion and exercise adequacy stay disabled.
+
+The browser has posted every visible-render acknowledgement to
+`/api/v2/learning-exposures/ack` since the backend route shipped; the
+Next.js proxy file between them never existed, so every acknowledgement
+404ed and no `learning_surface_exposure_receipts` row was ever written,
+which is why the seven-surface readiness could never leave `blocked`. After
+the frontend deploys, the first visible render writes the first receipt.
+
+### 2026-09-29 · WS-Q1 · q1-consent-snapshot-path · #(pending)
+
+**Closed:** the consent half of G-6's first blocker (audit 2026-09-22, G-3
+consent half): a founder-canary Take could never be promoted canonically,
+because `promote_recording_attempt_with_mlc2_confidence_v1` required a
+per-attempt `ml_consent_snapshots` row that nothing in the application
+created, and the founder consent route that records the grant answered 410.
+**Contract lines flipped:** none.
+**Contract lines added:** migration 0392
+`the_promotion_freezes_the_consent_snapshot.sql` replaces the promotion RPC
+with one that takes the snapshot itself, from the current bundled grant, in
+the same transaction as the Take promotion and the outbox event (a pre-made
+snapshot is honoured, a missing grant still refuses and rolls the Take
+back). `routes/phase2_guard.confidence_chain_alive` replaces
+`phase2_learning_disabled` on `/v2/user/mlc2-consent`: the route is open
+in `dark` and `founder_canary` and 410 only when the writer state is
+`killed`, and a POST binds only the configured canary principal
+(`CANARY_PRINCIPAL_MISMATCH` otherwise; withdrawal is never blocked).
+Tests: `tests/test_promotion_freezes_consent_snapshot_migration.py`,
+`tests/test_consent_endpoint.py` (door and scope), and three released-lane
+cases in `tests/test_mlc2_confidence_end_to_end_postgres.py` (a second
+attempt promotes with no pre-made snapshot and the receipt points at the
+one taken; the first attempt's snapshot is not doubled; an owner without a
+grant is refused and the Take promotion rolls back).
+**Broke and fixed:** none.
+**Open for the founder:** the writer state stays `dark`; nothing here
+activates the chain. The frontend gate (`Mlc2FounderConsentGate`) already
+shows the approved copy to the founder account once the route answers, so
+the grant can be recorded before activation, which is what readiness
+requires. Q2 (the consumer route for the coach card) and Q3 (the door)
+follow on their own branches.
+
+### 2026-09-29 · WS-Q2 · q2-confidence-consumer · #(pending)
+
+**Closed:** the consumer half of G-6 (audit 2026-09-22): the confidence
+chain's blind packet, render receipt, judgment and reveal RPCs had no
+application caller. The legacy coach card, the queue coaches use today, is
+now that caller.
+**Contract lines flipped:** none.
+**Contract lines added:** migration 0393 (0392 on the branch until WS-Q1 landed first)
+`the_coach_card_consumes_the_confidence_chain.sql` adds three exact-identity
+SECURITY DEFINER wrappers: `prepare_mlc2_confidence_coach_packet_v1` (the
+selected, eligible candidate of the Take's own snippet → the blind packet,
+idempotent per candidate and reviewer, none for a self-review),
+`ack_mlc2_confidence_coach_render_v1` (the browser's visible-render receipt
+bound to that packet) and `submit_mlc2_confidence_coach_judgment_v1` (the
+coach's five-state answer as an immutable `blind_coach` judgment through
+the owner-only writer 0325 closed, and the reveal in the same transaction).
+`services/confidence_chain_consumer.py` is the only caller; it is a no-op
+unless the writer state is `founder_canary`. The coach queue attaches the
+chain's four-identifier handle (`mlc2_blind_review`) to each unlabelled
+row; `POST /v2/coach/mlc2/assignments/<id>/render` records the receipt;
+the legacy `PUT …/confidence-label` writes the judgment and reveal after
+the legacy save when the body carries `mlc2` (never on a self-report), and
+answers `mlc2: null` while dark. Tests:
+`tests/test_confidence_chain_consumer.py` (writer state, handle, queue
+attachment, decision mapping, render route, wiring pins),
+`tests/test_coach_card_consumes_the_chain_migration.py`, and six
+released-lane cases in `tests/test_mlc2_confidence_end_to_end_postgres.py`
+(packet with the four identifiers and its replay; no candidate → nothing;
+owner as reviewer → nothing; receipt → judgment → reveal with exact-retry
+replay and a second answer refused; a judgment without a receipt refused;
+readiness counts no orphan).
+**Broke and fixed:** none.
+**Open for the founder:** the frontend half (the handle mapped from the
+queue row, the render receipt on the painted card, the `mlc2` echo on the
+label PUT) is a separate frontend PR; without it the backend stays inert
+even in `founder_canary`. The Voice Album still reads its live legs; a
+canonical admission writer (R-5) is a follow-up. The writer state stays
+`dark`.
+
+### 2026-09-29 · WS-Q3 · q3-practice-door · #(pending)
+
+**Closed:** Q3 (founder 2026-09-29): the coach's practice review and exercise
+request open on any saved answer but Audio unclear. Both routes shared the
+words `not in ("yes", "no")` but not a predicate; `_practice_door_open` in
+`routes/v2/coach.py` is now the one door for both. Yes, In-between, No and
+Not sure are answers about the moment; Audio unclear is an abstention, so the
+moment stays unrated and the door stays shut. The matching frontend PR
+applies the same rule to the blind card (`answered`, `ratingSaved`) and to
+the overlay's practice review, which also no longer opens on a row with no
+label at all.
+**Contract lines flipped:** none (35g-2 says "after their own blind rating of
+the moment", which this keeps).
+**Contract lines added:** `tests/test_practice_door.py` (the four answers
+open it; Audio unclear, an abstention flag and no answer keep it shut; both
+routes use the one predicate).
+**Broke and fixed:** none.
+**Open for the founder:** none. The contextual walk and the D3 reveal grant
+keep their own doors, as decided.
+
+### 2026-09-29 · WS-RINGS · rings-rollout-mechanism · #787
+
+**Closed:** the rollout mechanism the two-person canary and every later
+limited launch need (rings design note, founder 2026-09-29): 0394 adds
+`feature_rings`, `principal_rings`, `ring_settings`, `ring_announcements`,
+their append-only change tables, the check `feature_is_on_v1` and the write
+RPCs; `@ring_required(feature)` generalises `mlc3_service_required`; canary 2's
+three doors are the `canonical_take_rows` row; canary 1's "who" is the
+`confidence_learning_writes` row (one-way) and readiness reads the ring rows;
+the MLC-3 cohort and allow-list are copied into `principal_rings` at the
+exercise service's ring; the bootstrap payload and `/v2/user/rings` carry
+`features_on` and `pending_announcements`; `/v2/admin/rings/*` is the panel's
+API. Nothing turns a learning pipe on: `MLC2_CONFIDENCE_CUTOVER_MODE` stays
+`dark`, and the one-way row can only close it (`configured_confidence_cutover`
+reads the row's kill).
+**Contract lines flipped:** none.
+**Contract lines added:** `tests/test_rings_rule.py` (the rule, every clause,
+and the read side fail-closed), `tests/test_ring_required.py` (the decorator's
+order: building switch, principal, ring, enrollment), `tests/test_rings_migration.py`,
+`tests/test_rings_admin_routes.py`, and `tests/test_rings_postgres.py` on the
+released lane (every clause against the real function, Python mirror parity,
+the one-way kill refusing the unkill, append-only refusals, SELECT-only for
+the service key).
+**Broke and fixed:** `tests/test_mlc2_legacy_isolation.py` names every live
+module allowed to say "mlc2_confidence"; services/rings.py said it in a
+docstring and now names the cutover module by role instead. The coach queue
+route is grandfathered by the route fence at its frozen size, so its ring
+check lives in a helper beside it.
+**Open for the founder:** (1) Nobody is at ring 4 or 5 after the migration
+(default 2; exercise service at 3 with the seeded cohort; coach inline
+authoring, bundles and rooting at 4; canonical Take rows and confidence
+writes at 5): set your own ring from the panel's Defaults tab before
+expecting a canonical row. (2) The three canary variables are readable and
+unread for one release; the follow-up removes them and the `DATA_FOUNDATION_
+CANARY_ENABLED` line from the gate summary. (3) `exercise_service` now names
+the Phase-1 tick as its consent purpose, so a seeded cohort member without
+the tick gets 404 from the service routes until they tick it; that is the
+accepted rule, and it is stricter than the enrollment-only gate was. (4) The
+Phase-2 consent screen and its policy row are not built here; the sheet's
+"yes" stays disabled until `ml_consent_policies` has an active row.
+
+### 2026-09-29 · WS-RINGS-2 · rings-retire-canary-variables · #790
+**Task:** the follow-up #787 promised: retire `DATA_FOUNDATION_CANARY_ENABLED`,
+`MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL` and `MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID`.
+They were kept readable and unread for one release after 0394; now nothing
+defines or reads them.
+**Filter:** JUSTIFIED-SCAFFOLDING · SCAFFOLDING · closes the one-release
+window #787 opened; a variable that no gate reads but the boot log still names
+is a second "who" waiting to be believed. Fences clear; L3 kept (the rings
+still decide reach and never provenance); no migration; no user-facing copy.
+**Changed:** `config.py` (the three attributes and their comments are gone;
+`ADMIN_EMAIL` stays), `services/gate_flags.py` (`DATA_FOUNDATION_CANARY_ENABLED`
+out of GATE_FLAGS; `IDENTIFYING_FLAGS` is the empty tuple, the set/unset
+mechanism stays for the next identifying flag), `services/rings.py` (the
+deprecation summary and the tuple that fed it are gone), `app.py` and
+`worker.py` (the boot line that named them), `routes/v2/lab_recording.py` and
+`routes/v2/mlc2_consent.py` (docstrings in the past tense),
+`bin/railway-mlc2-confidence-readiness-cron.sh` (the two required-variable
+lines dropped from the header; the exec line is unchanged), the three
+work-item documents that listed them as required.
+**Contract lines flipped:** `tests/test_boot_gate_log.py` (the expected GATE
+list without the two names; the principal test now pins that no flag
+identifies a person and that a stray panel value is never printed),
+`tests/test_data_foundation_canary.py` (the retired-variables test now
+asserts `Config` lacks them), `tests/test_rings_rule.py` (the deprecation-line
+test is removed with the line).
+**Contract lines added:** `tests/test_canary_variables_retired.py` (no
+production module defines or reads the three names; prose recording the
+retirement is allowed, a read is not).
+**Broke and fixed:** none.
+**Open for the founder:** none. The founder cleaned the Railway panel the same
+day: `MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID` removed; `DATA_FOUNDATION_CANARY_
+ENABLED` was never set there, so the switch always ran on its code default
+(on) and the ring row's kill was the only working kill switch from 0394 on.
+Nothing in the boot log mentions either name any more. This is the last
+pipeline change the rings work owes.
+
+### 2026-09-29 · WS-EXP 2 · claude/module-8-counted · #(pending)
+
+**Closed:** decision 2 of the exercise-pipe design (founder 2026-09-29;
+audit G-5, the 29 Sep report's Q7): module 8, `exercise_adequacy_classification`,
+is counted wherever the other seven are. The registry had held eight rows
+since 0313 while three Python sets, the release CHECKs (0300), the readiness
+report (0301) and three tests said seven.
+**Contract lines flipped:** none.
+**Contract lines added:** `services/learning_surfaces.py` is the one list
+(eight in registry order; `PACKET_SURFACES` the seven that carry a packet;
+`NO_PACKET_REASON` for module 8, whose exposure is one row per frozen 80/20
+assignment when the client confirms the render, 0387), and
+`tests/test_learning_surfaces.py` refuses a new literal set of the seven
+anywhere in `services/`. Migration 0395 `module_8_is_counted.sql` re-adds
+both release CHECKs with eight names and replaces
+`get_seven_surface_readiness_v1` with an eighth row read from the exercise
+tables. Released-lane pins in `tests/test_module_8_is_counted_postgres.py`.
+**Broke and fixed:** none.
+**Open for the founder:** naming module 8 in a release manifest authorizes
+nothing; the release constants stay False and the epoch CHECK stays. The
+readiness function keeps its `seven_surface` name so its callers and grants
+stand; renaming it is cosmetic and was not done.

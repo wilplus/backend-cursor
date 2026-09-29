@@ -357,11 +357,13 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
         self.app = Flask(__name__)
         self.originals = []
         self._patch(route.config, "ADMIN_EMAIL", "artur@willonski.com")
+        # Rings (0394): the founder is also a person the
+        # confidence_learning_writes row REACHES; the baked-in email is gone.
         self._patch(
-            route.config,
-            "MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL",
-            "artur@willonski.com",
+            route.rings, "principal_for_user",
+            lambda user_id: "11111111-1111-4111-8111-111111111111",
         )
+        self._patch(route.rings, "feature_reaches", lambda feature, p: True)
         self._patch(route, "_owner_and_status", lambda: ("principal-1", dict(STATUS)))
 
     def tearDown(self):
@@ -462,6 +464,75 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
         )
         self.assertTrue(calls["accept"]["article_9_applies"])
 
+    def test_post_refuses_a_principal_the_ring_row_does_not_reach(self):
+        # The founder check passes (a stub above); the principal about to be
+        # bound is not reached by the confidence_learning_writes row.
+        self._patch(
+            route, "_canary_principal_matches", lambda owner_principal_id: False,
+        )
+        self._patch(
+            route.db,
+            "accept_mlc2_founder_consent",
+            lambda **kwargs: self.fail("a mismatched principal must not bind"),
+        )
+        status, payload = self._invoke("POST", {
+            "accepted": True,
+            "idempotency_key": "consent-4",
+            "consent_policy_version": STATUS["consent_policy_version"],
+            "copy_sha256": STATUS["approved_copy_sha256"],
+        })
+        self.assertEqual(status, 403)
+        self.assertEqual(payload["code"], "CANARY_PRINCIPAL_MISMATCH")
+
+    def test_post_binds_when_the_ring_row_reaches_this_principal(self):
+        asked = []
+        self._patch(
+            route.rings, "feature_reaches",
+            lambda feature, p: asked.append((feature, p)) or True,
+        )
+        calls = {}
+
+        def accept(**kwargs):
+            calls["accept"] = kwargs
+            return {"consent_event_id": "grant-1", "binding_id": "binding-1"}
+
+        self._patch(route.db, "accept_mlc2_founder_consent", accept)
+        self._patch(
+            route.db,
+            "get_mlc2_principal_consent_status",
+            lambda principal_id: {**STATUS, "granted": True},
+        )
+        status, payload = self._invoke("POST", {
+            "accepted": True,
+            "idempotency_key": "consent-5",
+            "consent_policy_version": STATUS["consent_policy_version"],
+            "copy_sha256": STATUS["approved_copy_sha256"],
+        })
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["granted"])
+        self.assertEqual(calls["accept"]["acquisition_principal_id"], "principal-1")
+        self.assertIn(("confidence_learning_writes", "principal-1"), asked)
+
+    def test_withdrawal_is_never_blocked_by_the_canary_scope(self):
+        self._patch(
+            route, "_canary_principal_matches", lambda owner_principal_id: False,
+        )
+        status_with_grant = {**STATUS, "granted": True, "grant_event_id": "grant-1"}
+        self._patch(route, "_owner_and_status", lambda: ("principal-1", status_with_grant))
+        self._patch(
+            route.db,
+            "record_mlc2_consent_withdrawal",
+            lambda **kwargs: {"id": "withdraw-1", "supersedes_event_id": "grant-1"},
+        )
+        self._patch(
+            route.db,
+            "get_mlc2_principal_consent_status",
+            lambda principal_id: STATUS,
+        )
+        status, payload = self._invoke("DELETE", {"idempotency_key": "withdraw-2"})
+        self.assertEqual(status, 200)
+        self.assertFalse(payload["granted"])
+
     def test_delete_appends_withdrawal_and_never_erases_grant(self):
         status_with_grant = {**STATUS, "granted": True, "grant_event_id": "grant-1"}
         self._patch(route, "_owner_and_status", lambda: ("principal-1", status_with_grant))
@@ -482,6 +553,59 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
         self.assertFalse(payload["granted"])
         self.assertEqual(calls["grant_event_id"], "grant-1")
         self.assertTrue(calls["affirmative_action"]["service_access_ends"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"full app deps required: {_IMPORT_ERROR}")
+class ConfidenceChainAliveDoorTests(unittest.TestCase):
+    """The consent route's door is the writer state, not the Phase-2 fence."""
+
+    def _guarded(self):
+        from routes.phase2_guard import confidence_chain_alive
+
+        @confidence_chain_alive
+        def handler():
+            return {"entered": True}, 200
+
+        return handler
+
+    def _with_mode(self, mode):
+        from config import Config
+        original = Config.MLC2_CONFIDENCE_CUTOVER_MODE
+        Config.MLC2_CONFIDENCE_CUTOVER_MODE = mode
+        self.addCleanup(setattr, Config, "MLC2_CONFIDENCE_CUTOVER_MODE", original)
+
+    def test_the_route_is_wrapped_by_the_writer_state_door(self):
+        from routes.phase2_guard import confidence_chain_alive
+        import inspect
+        source = inspect.getsource(v2_mlc2_consent)
+        self.assertIn("@confidence_chain_alive", source)
+        self.assertNotIn("phase2_learning_disabled", source)
+        self.assertTrue(callable(confidence_chain_alive))
+
+    def test_dark_enters(self):
+        self._with_mode("dark")
+        with Flask(__name__).test_request_context("/v2/user/mlc2-consent"):
+            body, status = self._guarded()()
+        self.assertEqual((body, status), ({"entered": True}, 200))
+
+    def test_founder_canary_enters(self):
+        self._with_mode("founder_canary")
+        with Flask(__name__).test_request_context("/v2/user/mlc2-consent"):
+            body, status = self._guarded()()
+        self.assertEqual(status, 200)
+
+    def test_killed_answers_410_and_never_enters(self):
+        self._with_mode("killed")
+        with Flask(__name__).test_request_context("/v2/user/mlc2-consent"):
+            response, status = self._guarded()()
+        self.assertEqual(status, 410)
+        self.assertEqual(response.get_json()["code"], "PHASE2_DISABLED")
+
+    def test_a_malformed_mode_fails_shut_like_killed(self):
+        self._with_mode("open-sesame")
+        with Flask(__name__).test_request_context("/v2/user/mlc2-consent"):
+            _response, status = self._guarded()()
+        self.assertEqual(status, 410)
 
 
 if __name__ == "__main__":

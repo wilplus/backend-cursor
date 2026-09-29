@@ -8,7 +8,7 @@ import unittest
 
 from services.slide_alignment import (
     slide_index_for_offset, slide_for_snippet,
-    on_slide_score, abstain_reason, roll_up_coverage, _lexical_verdict,
+    on_slide_score, abstain_reason, _lexical_verdict,
 )
 
 UID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -93,17 +93,6 @@ class ClaimLedgerScoringTests(unittest.TestCase):
         self.assertEqual(abstain_reason("", 500, slide, claims), "null")          # too short
         self.assertIsNone(abstain_reason("revenue grew strongly this year", 8000, slide, claims))
 
-    def test_roll_up_coverage(self):
-        claims = ["revenue grew", "driven by enterprise", "margins improved"]
-        per = [("s1", ["covered", "not", "partial"]),
-               ("s2", ["not", "partial", "not"])]
-        cov = roll_up_coverage(2, claims, per)
-        self.assertEqual(cov["slide_index"], 2)
-        self.assertEqual(cov["covered"], 1)   # claim0 covered by s1
-        self.assertEqual(cov["partial"], 2)   # claim1 (s2), claim2 (s1)
-        self.assertEqual(cov["total"], 3)
-        self.assertEqual(cov["ledger"][0]["verdict"], "covered")
-        self.assertEqual(cov["ledger"][0]["snippet_ref"], "s1")
 
 
 # ── route shape (skip without flask; run in CI) ──

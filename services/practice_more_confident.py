@@ -1,7 +1,7 @@
 """Did a practice attempt sound more confident than the original? (0388)
 
-Rule exercise-more-confident-v1 (founder 2026-09-28, option A; contract
-35g-3). Internal only: nothing here reaches a speaker or a coach (AC-9), and
+Rule exercise-more-confident-v2 (founder 2026-09-28, option A; rewritten
+2026-09-29, Q5; contract 35g-3; migration 0391). Internal only: nothing here reaches a speaker or a coach (AC-9), and
 it is never a label — exercise-adequacy-label-v1 (design §3.5) stays the one
 label specification, unchanged.
 
@@ -9,8 +9,11 @@ Two legs, kept apart (L3), and both must say yes:
 
 * machine — the attempt's voice-confidence composite is higher than the
   original clip's; any increase counts;
-* coach — the coach answered "Do you find it more confident?" Yes about that
-  attempt, after their own blind rating. The speaker's answer is not a leg.
+* coach — worked out from two answers by the same coach: their blind rating
+  of the original clip (before) and their answer about the practice attempt
+  (after), on the ladder No < In-between < Yes. Higher after = yes; the same
+  or lower = no; a missing or off-ladder answer, or Yes before and after
+  (already confident), = pending. The speaker's answer is not a leg.
 
 The database computes the result (``record_practice_more_confident_v1``) from
 the stored snapshots and the coach's stored answer, so no caller can hand it a
@@ -24,7 +27,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-RULE_VERSION = "exercise-more-confident-v1"
+RULE_VERSION = "exercise-more-confident-v2"
+
+_LADDER = {"no": 0, "neutral": 1, "in_between": 1, "yes": 2}
 
 
 def machine_leg(original: Optional[float], attempt: Optional[float]) -> str:
@@ -32,6 +37,16 @@ def machine_leg(original: Optional[float], attempt: Optional[float]) -> str:
     if not _is_number(original) or not _is_number(attempt):
         return "unmeasurable"
     return "higher" if float(attempt) > float(original) else "not_higher"  # type: ignore[arg-type]
+
+
+def coach_leg(before: Optional[str], after: Optional[str]) -> Optional[str]:
+    """'yes' when the coach's after answer is higher on the ladder than their
+    before answer, 'no' when it is the same or lower, None when either is
+    missing or off the ladder, or both are Yes (already confident)."""
+    b, a = _LADDER.get(before or ""), _LADDER.get(after or "")
+    if b is None or a is None or (b == 2 and a == 2):
+        return None
+    return "yes" if a > b else "no"
 
 
 def outcome(machine: str, coach: Optional[str]) -> str:

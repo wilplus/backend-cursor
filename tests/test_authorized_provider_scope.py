@@ -37,12 +37,13 @@ from services.parallel import start_scoped_thread
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-# The four dispatches the audit named, each reached from a live Take path.
+# The dispatches the audit named, each reached from a live Take path. The
+# fourth, services/snippet_truncation.py, had no caller since 2026-06-05 and
+# was deleted 2026-09-29.
 FANOUT_SITES = (
     "services/say_it_stronger.py",
     "services/coach_comment_drafter.py",
     "services/conversation_summary.py",
-    "services/snippet_truncation.py",
 )
 
 

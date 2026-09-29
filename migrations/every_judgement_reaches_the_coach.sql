@@ -1,4 +1,4 @@
--- 0391 · every judgement reaches the coach, with its kind (founder 2026-09-29)
+-- 0397 · every judgement reaches the coach, with its kind (founder 2026-09-29)
 --
 -- WHY. The follow-up matrix: every moment the speaker judges (all answers but
 -- Audio unclear) goes to the coach as a request, tagged with why it came:

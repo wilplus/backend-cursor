@@ -61,8 +61,22 @@ def test_confidence_dark_contract_is_not_imported_by_live_product_code():
         # Slice 4's only application bridge. Slice 6's atomic mode selects
         # the pre-cutover, founder-canary or fully-killed writer state.
         ROOT / "services" / "take_lifecycle.py",
+        # G-6 (audit 2026-09-22): the reviewed frame_factory for the dark
+        # worker and the sweep that runs it. Reads snippet rows only, writes
+        # only through finalize_mlc2_confidence_frame_v1, and starts nothing
+        # unless the mode is founder_canary (tests/test_mlc2_confidence_frame_factory.py).
+        ROOT / "services" / "mlc2_confidence_frame_factory.py",
+        # Q2 (2026-09-29): the coach card's consumer of the chain. Reads the
+        # writer state, writes only through the three 0393 wrappers, and is a
+        # no-op unless the mode is founder_canary
+        # (tests/test_confidence_chain_consumer.py).
+        ROOT / "services" / "confidence_chain_consumer.py",
         # RPC adapter only; it schedules nothing and makes no decision.
         ROOT / "services" / "db.py",
+        # Q1 (2026-09-29): the fail-closed HTTP doors. confidence_chain_alive
+        # reads the writer state only to answer 410 while it is killed; it
+        # holds no learning store and starts nothing.
+        ROOT / "routes" / "phase2_guard.py",
     }
     violations = []
     for root in live_roots:

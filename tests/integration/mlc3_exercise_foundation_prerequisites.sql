@@ -269,7 +269,16 @@ CREATE TABLE public.confident_voice_practice (
     -- Released (add_confident_voice_practice.sql:72, NOT NULL there); 0388
     -- reads the original clip's confidence from it. Nullable here so the
     -- older fixtures that insert only ids still do.
-    acoustic_evidence JSONB NULL
+    acoustic_evidence JSONB NULL,
+    -- Released (add_confident_voice_practice.sql:58); 0391 finds the coach's
+    -- blind rating of the original clip by it.
+    snippet_id UUID NULL,
+    -- Released (add_confident_voice_practice.sql); 0393's readiness row for
+    -- module 8 joins a practice to its exposed assignment through
+    -- machine_assessment ->> 'exercise_assignment_id' and counts projects.
+    -- Nullable here so the older fixtures that insert only ids still do.
+    machine_assessment JSONB NULL,
+    project_id UUID NULL
 );
 CREATE TABLE public.confident_voice_practice_attempt (
     id UUID PRIMARY KEY,
@@ -281,7 +290,22 @@ CREATE TABLE public.confident_voice_practice_attempt (
     -- attempt's confidence and the coach's answer from them. Nullable here
     -- for the same reason as above.
     acoustic_metrics JSONB NULL,
-    coach_confidence_decision TEXT NULL
+    coach_confidence_decision TEXT NULL,
+    -- Released (add_confident_voice_practice.sql:117); 0391 reads the same
+    -- coach's blind rating of the original.
+    coach_confidence_decided_by UUID NULL
+);
+-- The coach's blind ratings, as released (add_confidence_labels.sql plus
+-- add_state_generic_ratings.sql), narrowed to the columns 0391 reads.
+CREATE TABLE IF NOT EXISTS public.confidence_labels (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    snippet_id UUID NOT NULL,
+    rater_id UUID NULL,
+    session_id UUID NULL,
+    state_id TEXT NOT NULL DEFAULT 'confidence',
+    value TEXT NULL CHECK (value IS NULL OR value IN ('yes', 'no', 'neutral')),
+    unrateable BOOLEAN NOT NULL DEFAULT false,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE public.voice_album_practice (
     arc_id UUID NOT NULL,

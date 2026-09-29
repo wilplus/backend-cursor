@@ -95,11 +95,9 @@ def context_with_clock_offset(session_context: Any) -> Any:
     the pipeline so every downstream reader inherits the correction without
     threading a parameter through half a dozen signatures.
 
-    Pause-snap still runs afterwards, deliberately: the offset removes the
-    SYSTEMATIC start bias, snap cleans up whatever per-boundary residue is
-    left. They are complementary, not alternatives. (Whether snap earns its
-    keep once offsets are flowing is a question for the boundary metrics, not
-    an assumption to bake in here.)
+    Pause-snap no longer runs after it: it was retired from the pipeline on
+    2026-08-11 (see the note at the top of this module) and survives only as
+    an analysis helper. The measured offset is the whole correction.
 
     Returns the input unchanged when there is nothing to correct.
     """
@@ -222,6 +220,39 @@ def slice_words_for_window(words: Any, start_ms: int, end_ms: int) -> list:
     return out
 
 
+def _timed_speech_words(words: Any) -> list:
+    """The word dicts with a numeric ``start`` and a non-blank ``word``,
+    sorted by start (a stable sort, so ties keep their input order) — the one
+    reading the splitters and cutters below share."""
+    return sorted(
+        (w for w in (words or []) if isinstance(w, dict)
+         and isinstance(w.get("start"), (int, float))
+         and (w.get("word") or "").strip()),
+        key=lambda w: w.get("start") or 0.0,
+    )
+
+
+def _word_span_ms(w: dict) -> tuple:
+    """A timed word's ``(start_ms, end_ms)``; a missing or non-numeric end
+    is the start."""
+    st = float(w.get("start") or 0.0)
+    en = w.get("end")
+    en = float(en) if isinstance(en, (int, float)) else st
+    return int(st * 1000), int(en * 1000)
+
+
+def _slide_on_screen(slide_advances: Any, n: int):
+    """``start_ms -> slide index`` for one click timeline: the slide on
+    screen at that moment, clamped into 0..n-1. A word before the first
+    advance, or a timeline with no usable tap, is slide 0."""
+    from services.slide_alignment import slide_index_for_offset
+
+    def slide_at(start_ms: int) -> int:
+        si = slide_index_for_offset(start_ms, slide_advances)
+        return 0 if not isinstance(si, int) else max(0, min(si, n - 1))
+    return slide_at
+
+
 def split_words_by_slides(words: Any, slide_advances: Any, slides: Any) -> list:
     """Group a snippet's words into per-slide fragments by the click timeline.
 
@@ -240,39 +271,30 @@ def split_words_by_slides(words: Any, slide_advances: Any, slides: Any) -> list:
     if not words or n == 0 or not slide_advances:
         return []
 
-    from services.slide_alignment import slide_index_for_offset
-
+    slide_at = _slide_on_screen(slide_advances, n)
+    # Blank words are skipped after the sort, not filtered out before it:
+    # with a NaN start the sort has no total order, and filtering first
+    # could reorder the remaining words.
     ordered = sorted(
         (w for w in words if isinstance(w, dict)
          and isinstance(w.get("start"), (int, float))),
         key=lambda w: w.get("start") or 0.0,
     )
-
     groups: list = []
-    cur: dict | None = None
     for w in ordered:
         token = (w.get("word") or "").strip()
         if not token:
             continue
-        st = float(w.get("start") or 0.0)
-        en = w.get("end")
-        en = float(en) if isinstance(en, (int, float)) else st
-        start_ms = int(st * 1000)
-        end_ms = int(en * 1000)
-        si = slide_index_for_offset(start_ms, slide_advances)
-        si = 0 if not isinstance(si, int) else max(0, min(si, n - 1))
-        if cur is None or cur["slide_index"] != si:
-            if cur is not None:
-                groups.append(cur)
-            cur = {
+        start_ms, end_ms = _word_span_ms(w)
+        si = slide_at(start_ms)
+        if groups and groups[-1]["slide_index"] == si:
+            groups[-1]["tokens"].append(token)
+            groups[-1]["end_ms"] = max(groups[-1]["end_ms"], end_ms)
+        else:
+            groups.append({
                 "slide_index": si, "tokens": [token],
                 "start_offset_ms": start_ms, "end_ms": end_ms,
-            }
-        else:
-            cur["tokens"].append(token)
-            cur["end_ms"] = max(cur["end_ms"], end_ms)
-    if cur is not None:
-        groups.append(cur)
+            })
 
     return [
         {
@@ -307,7 +329,7 @@ def _bucket_words_by_slide(words_all: Any, slide_advances: Any,
 
     buckets: dict = {i: [] for i in range(n)}
     if words_all and slide_advances:
-        from services.slide_alignment import slide_index_for_offset
+        slide_at = _slide_on_screen(slide_advances, n)
         for w in words_all:
             if not isinstance(w, dict):
                 continue
@@ -317,10 +339,7 @@ def _bucket_words_by_slide(words_all: Any, slide_advances: Any,
             token = (w.get("word") or "").strip()
             if not token:
                 continue
-            start_ms = int(float(st) * 1000)
-            si = slide_index_for_offset(start_ms, slide_advances)
-            si = 0 if not isinstance(si, int) else max(0, min(si, n - 1))
-            buckets[si].append(w)
+            buckets[slide_at(int(float(st) * 1000))].append(w)
     for i in range(n):
         buckets[i].sort(key=lambda w: w.get("start") or 0.0)
     return buckets
@@ -518,28 +537,37 @@ def restore_punctuation(words: Any, segments: Any) -> list:
 
     out: list = []
     wi = 0
-    n_words = len(src)
+    last = len(segs) - 1
     for si, seg in enumerate(segs):
-        seg_end = seg.get("end")
-        seg_end = float(seg_end) if isinstance(seg_end, (int, float)) else None
-        # This segment's words: consume while the word STARTS before the
-        # segment ends (the last segment takes everything left).
-        seg_words: list = []
-        while wi < n_words:
-            w = src[wi]
-            if si < len(segs) - 1 and seg_end is not None \
-                    and isinstance(w, dict) \
-                    and isinstance(w.get("start"), (int, float)) \
-                    and float(w["start"]) >= seg_end:
-                break
-            seg_words.append(w)
-            wi += 1
-        if not seg_words:
-            continue
-        _align_segment(seg_words, (seg.get("text") or "").split(), out)
+        seg_words, wi = _segment_words(src, wi, _segment_end(seg), si == last)
+        if seg_words:
+            _align_segment(seg_words, (seg.get("text") or "").split(), out)
     # words past the last segment (shouldn't happen, but never drop text)
     out.extend(dict(w) if isinstance(w, dict) else w for w in src[wi:])
     return out
+
+
+def _segment_end(seg: dict) -> Optional[float]:
+    end = seg.get("end")
+    return float(end) if isinstance(end, (int, float)) else None
+
+
+def _segment_words(src: list, wi: int, seg_end: Optional[float],
+                   last: bool) -> tuple:
+    """One segment's words, taken from ``src[wi]`` on: consume while the
+    word STARTS before the segment ends; the last segment takes everything
+    left. Returns ``(words, next wi)``."""
+    taken: list = []
+    while wi < len(src):
+        w = src[wi]
+        if not last and seg_end is not None \
+                and isinstance(w, dict) \
+                and isinstance(w.get("start"), (int, float)) \
+                and float(w["start"]) >= seg_end:
+            break
+        taken.append(w)
+        wi += 1
+    return taken, wi
 
 
 # ── Run-on sentence boundaries (founder BE-1c, 2026-07-16) ─────────────────
@@ -625,17 +653,12 @@ def split_runon_sentences(words: Any, *, min_gap_ms: int | None = None,
     untouched. Returns NEW word dicts (malformed entries pass through).
     Pure given env.
     """
-    gap_need = min_gap_ms if isinstance(min_gap_ms, int) \
-        else int(config.SENTENCE_SPLIT_MIN_GAP_MS)
-    chars_need = min_chars if isinstance(min_chars, int) \
-        else int(config.SENTENCE_SPLIT_MIN_CHARS)
+    gap_need, chars_need = _split_thresholds(min_gap_ms, min_chars)
     src = list(words or [])
     if not src:
         return src
     out = [dict(w) if isinstance(w, dict) else w for w in src]
-    idxs = [i for i, w in enumerate(out)
-            if isinstance(w, dict) and (w.get("word") or "").strip()
-            and isinstance(w.get("start"), (int, float))]
+    idxs = _speech_word_indexes(out)
 
     run_chars = 0  # chars since the last sentence end
     for pos, i in enumerate(idxs):
@@ -647,17 +670,43 @@ def split_runon_sentences(words: Any, *, min_gap_ms: int | None = None,
         if pos + 1 >= len(idxs):
             break
         nxt = out[idxs[pos + 1]]
-        pe = out[i].get("end")
-        pe = float(pe) if isinstance(pe, (int, float)) \
-            else float(out[i]["start"])
-        if (float(nxt["start"]) - pe) * 1000.0 < gap_need:
-            continue
-        if run_chars < chars_need or _norm_token(tok) in _NON_FINAL_WORDS:
+        if not _is_sentence_pause(out[i], nxt, tok, run_chars,
+                                  gap_need, chars_need):
             continue
         out[i]["word"] = _promote_token(out[i]["word"])
         nxt["word"] = _capitalize_token(nxt["word"])
         run_chars = 0
     return out
+
+
+def _split_thresholds(min_gap_ms: Any, min_chars: Any) -> tuple:
+    """``(gap_need, chars_need)``: the explicit ints, else the Config
+    values (SENTENCE_SPLIT_MIN_GAP_MS / SENTENCE_SPLIT_MIN_CHARS)."""
+    gap_need = min_gap_ms if isinstance(min_gap_ms, int) \
+        else int(config.SENTENCE_SPLIT_MIN_GAP_MS)
+    chars_need = min_chars if isinstance(min_chars, int) \
+        else int(config.SENTENCE_SPLIT_MIN_CHARS)
+    return gap_need, chars_need
+
+
+def _speech_word_indexes(words: list) -> list:
+    """Indexes of the speech words: a dict with a non-blank ``word`` and a
+    numeric ``start``."""
+    return [i for i, w in enumerate(words)
+            if isinstance(w, dict) and (w.get("word") or "").strip()
+            and isinstance(w.get("start"), (int, float))]
+
+
+def _is_sentence_pause(prev: dict, nxt: dict, tok: str, run_chars: int,
+                       gap_need: int, chars_need: int) -> bool:
+    """The boundary after ``prev`` becomes a full stop: the pause before
+    ``nxt`` is long enough, the running sentence is long enough, and ``prev``
+    isn't a dangling connective."""
+    pe = prev.get("end")
+    pe = float(pe) if isinstance(pe, (int, float)) else float(prev["start"])
+    if (float(nxt["start"]) - pe) * 1000.0 < gap_need:
+        return False
+    return not (run_chars < chars_need or _norm_token(tok) in _NON_FINAL_WORDS)
 
 
 def chunk_words_by_chars(words: Any, max_chars: int = _DECKLESS_CHUNK_CHARS) -> list:
@@ -687,65 +736,79 @@ def chunk_words_by_chars(words: Any, max_chars: int = _DECKLESS_CHUNK_CHARS) -> 
     # founder-locked default holds exactly (200 → 300) while small custom
     # caps keep sane windows instead of being swallowed by a flat +100.
     hard_cap = cap + min(_SENTENCE_EXTENSION_CHARS, cap // 2)
-    ordered = sorted(
-        (w for w in (words or []) if isinstance(w, dict)
-         and isinstance(w.get("start"), (int, float))
-         and (w.get("word") or "").strip()),
-        key=lambda w: w.get("start") or 0.0,
-    )
-    out: list = []
-    buf: list = []          # [(token, start_ms, end_ms)]
-    cur_len = 0
-    last_sent = None        # index in buf of the last sentence-ending token
+    cutter = _PieceCutter(cap, hard_cap)
+    for w in _timed_speech_words(words):
+        start_ms, end_ms = _word_span_ms(w)
+        cutter.add(((w.get("word") or "").strip(), start_ms, end_ms))
+    return cutter.finish()
 
-    def _emit(entries):
+
+class _PieceCutter:
+    """The sentence-aware buffer behind chunk_words_by_chars. Entries are
+    ``(token, start_ms, end_ms)`` in time order; ``finish`` returns the
+    pieces."""
+
+    def __init__(self, cap: int, hard_cap: int) -> None:
+        self.cap = cap
+        self.hard_cap = hard_cap
+        self.out: list = []
+        self.buf: list = []          # [(token, start_ms, end_ms)]
+        self.cur_len = 0
+        # index in buf of the last sentence-ending token
+        self.last_sent: Optional[int] = None
+
+    def add(self, entry: tuple) -> None:
+        token = entry[0]
+        cost = len(token) + (1 if self.buf else 0)
+        if self.buf and self.cur_len + cost > self.cap:
+            cost = self._make_room(token, cost)
+        self.buf.append(entry)
+        self.cur_len += cost
+        if _ends_sentence(token):
+            if self.cur_len >= self.cap:
+                self._close_upto(len(self.buf) - 1)  # first sentence end ≤ hard cap
+            else:
+                self.last_sent = len(self.buf) - 1
+
+    def finish(self) -> list:
+        if self.buf:
+            self._close_upto(len(self.buf) - 1)
+        return self.out
+
+    def _make_room(self, token: str, cost: int) -> int:
+        """The buffer is past the target: close it; returns ``token``'s
+        cost in what remains."""
+        if self.last_sent is not None:
+            # never end mid-sentence when a sentence end exists
+            self._close_upto(self.last_sent)
+            cost = len(token) + (1 if self.buf else 0)
+        if self.buf and self.cur_len + cost > self.hard_cap:
+            # run-on escape hatch — word boundary before the hard cap
+            self._close_upto(len(self.buf) - 1)
+            cost = len(token)
+        return cost
+
+    def _close_upto(self, idx: int) -> None:
+        # Emit buf[:idx+1]; the remainder stays as the next piece's start.
+        self._emit(self.buf[:idx + 1])
+        self.buf = self.buf[idx + 1:]
+        self.cur_len = sum(len(e[0]) for e in self.buf) \
+            + max(0, len(self.buf) - 1)
+        self.last_sent = None
+        for i, e in enumerate(self.buf):
+            if _ends_sentence(e[0]):
+                self.last_sent = i
+
+    def _emit(self, entries: list) -> None:
         if entries:
             start_ms = entries[0][1]
             end_ms = max(e[2] for e in entries)
-            out.append({
-                "index": len(out),
+            self.out.append({
+                "index": len(self.out),
                 "transcript": " ".join(e[0] for e in entries),
                 "start_offset_ms": start_ms,
                 "duration_ms": max(0, end_ms - start_ms),
             })
-
-    def _close_upto(idx):
-        # Emit buf[:idx+1]; the remainder stays as the next piece's start.
-        nonlocal buf, cur_len, last_sent
-        _emit(buf[:idx + 1])
-        buf = buf[idx + 1:]
-        cur_len = sum(len(e[0]) for e in buf) + max(0, len(buf) - 1)
-        last_sent = None
-        for i, e in enumerate(buf):
-            if _ends_sentence(e[0]):
-                last_sent = i
-
-    for w in ordered:
-        token = (w.get("word") or "").strip()
-        st = float(w.get("start") or 0.0)
-        en = w.get("end")
-        en = float(en) if isinstance(en, (int, float)) else st
-        entry = (token, int(st * 1000), int(en * 1000))
-        cost = len(token) + (1 if buf else 0)
-        if buf and cur_len + cost > cap:
-            if last_sent is not None:
-                # never end mid-sentence when a sentence end exists
-                _close_upto(last_sent)
-                cost = len(token) + (1 if buf else 0)
-            if buf and cur_len + cost > hard_cap:
-                # run-on escape hatch — word boundary before the hard cap
-                _close_upto(len(buf) - 1)
-                cost = len(token)
-        buf.append(entry)
-        cur_len += cost
-        if _ends_sentence(token):
-            if cur_len >= cap:
-                _close_upto(len(buf) - 1)   # first sentence end ≤ hard cap
-            else:
-                last_sent = len(buf) - 1
-    if buf:
-        _close_upto(len(buf) - 1)
-    return out
 
 
 def _contiguous_slide_runs(words_all: Any, slide_advances: Any,
@@ -761,31 +824,16 @@ def _contiguous_slide_runs(words_all: Any, slide_advances: Any,
     n = len(slides) if isinstance(slides, list) else 0
     if n == 0 or not words_all or not slide_advances:
         return []
-    adv = slide_advances
-    from services.slide_alignment import slide_index_for_offset
-    ordered = sorted(
-        (w for w in words_all if isinstance(w, dict)
-         and isinstance(w.get("start"), (int, float))
-         and (w.get("word") or "").strip()),
-        key=lambda w: w.get("start") or 0.0,
-    )
+    slide_at = _slide_on_screen(slide_advances, n)
     runs: list = []
-    cur_si = None
-    cur: list = []
-    for w in ordered:
-        # Same reading as the sort key above: a word with no start sorts
-        # and buckets at 0 instead of raising on float(None).
-        start_ms = int(float(w.get("start") or 0.0) * 1000)
-        si = slide_index_for_offset(start_ms, adv)
-        si = 0 if not isinstance(si, int) else max(0, min(si, n - 1))
-        if si != cur_si:
-            if cur:
-                runs.append((cur_si, cur))
-            cur_si, cur = si, [w]
+    for w in _timed_speech_words(words_all):
+        # Same reading as the sort key: a word with no start sorts and
+        # buckets at 0 instead of raising on float(None).
+        si = slide_at(int(float(w.get("start") or 0.0) * 1000))
+        if runs and runs[-1][0] == si:
+            runs[-1][1].append(w)
         else:
-            cur.append(w)
-    if cur:
-        runs.append((cur_si, cur))
+            runs.append((si, [w]))
     return runs
 
 

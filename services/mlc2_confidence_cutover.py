@@ -38,6 +38,20 @@ def resolve_confidence_cutover(value: Any) -> ConfidenceCutoverState:
 
 
 def configured_confidence_cutover() -> ConfidenceCutoverState:
-    from config import Config
+    """The writer state as this process must apply it.
 
-    return resolve_confidence_cutover(Config.MLC2_CONFIDENCE_CUTOVER_MODE)
+    ``MLC2_CONFIDENCE_CUTOVER_MODE`` stays the writer state and stays a code
+    constant (``dark`` today; ``founder_canary`` is a reviewed code change).
+    The rings panel (0394) can only CLOSE it: killing the one-way
+    ``confidence_learning_writes`` row is the pipe's own kill, so the state
+    reads ``killed`` on every service within seconds, with no deploy, and
+    nothing here can ever read more open than the constant says. A ring
+    read that fails leaves the constant's state standing.
+    """
+    from config import Config
+    from services import rings
+
+    state = resolve_confidence_cutover(Config.MLC2_CONFIDENCE_CUTOVER_MODE)
+    if state.mode != KILLED and rings.confidence_writer_killed():
+        return resolve_confidence_cutover(KILLED)
+    return state

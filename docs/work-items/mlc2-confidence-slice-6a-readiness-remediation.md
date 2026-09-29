@@ -70,8 +70,10 @@ Required service variables:
 
 - `DATABASE_URL`
 - `SENTRY_DSN`
-- `DATA_FOUNDATION_CANARY_ENABLED=true`
-- `MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID=<verified founder principal UUID>`
+- ~~`DATA_FOUNDATION_CANARY_ENABLED=true`~~ retired 2026-09-29: the
+  `canonical_take_rows` ring row (0394) decides, and its kill is the row's
+- ~~`MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID=<verified founder principal UUID>`~~
+  retired 2026-09-29: the `confidence_learning_writes` ring row decides who
 - `MLC2_CONFIDENCE_MONITORING_ENABLED=true`
 
 The job is read-only and sends only aggregate readiness/blocker evidence to

@@ -32,6 +32,19 @@ def _signup_terms_version() -> str:
     return version or CURRENT_TERMS_VERSION
 
 
+def _after_signup(user_id: str, email: str, consent_row: object) -> bool:
+    """The sign-up hook for rings (0394): the new account's starting row at
+    the default ring, with the attributes the request can tell us (region
+    from the edge's country header when present, language from
+    Accept-Language, plan free, role speaker or coach, and the stable
+    bucket). Best effort, inside the sign-up's own try. Returns what the
+    caller recorded about the terms so the fenced route keeps its shape."""
+    from services import rings
+
+    rings.record_signup_from_request(user_id, email, request)
+    return consent_row is not None
+
+
 @auth_bp.route("/signup", methods=["POST"])
 def signup():
     """Register a new user.
@@ -155,7 +168,7 @@ def signup():
             ip_address=ip_address or None,
             user_agent=user_agent or None,
         )
-        terms_recorded = consent_row is not None
+        terms_recorded = _after_signup(user_id, email, consent_row)
 
         # ── 5. Sign in to get session tokens for the new user ────────────
         # The frontend will call supabase.auth.setSession() with these tokens

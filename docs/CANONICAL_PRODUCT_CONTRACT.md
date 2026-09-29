@@ -329,7 +329,10 @@ with this contract, this contract wins.
     types and are never stored under one semantic label.
 32. An exact clip or selected practice attempt enters the Voice Album only
     when Machine Yes, User Yes, and Coach Yes independently refer to that same
-    recording. Signals cannot be transferred between recordings.
+    recording. Signals cannot be transferred between recordings. Each leg
+    counts only as a real Yes (founder 2026-09-29, Q6): In-between, Not sure,
+    Audio unclear, No or a missing answer is never a Yes for any of the three
+    legs.
 33. Saving a practice attempt never admits it directly. The coach judges the
     selected practice attempt itself.
 34. The coach must not see the user label, machine prediction, or other ratings
@@ -353,10 +356,16 @@ with this contract, this contract wins.
 
 ## 5a. Confidence-linked exercise policy
 
-35a. After the owner submits the five-state response for an exact Confident
-    Voice clip, the product may assign an exercise to that exact clip. Audio
-    unclear blocks matching for that clip. The other responses remain separate
-    self-reports and never override deterministic exercise eligibility.
+35a. The product may assign an exercise to an exact Confident Voice clip. The
+    match is made when the Take's Feedback is built, before any answer exists,
+    and **every one of the five answers keeps it offered, Audio unclear
+    included** (founder 2026-09-29, Q2; this matches 24e and the code, and
+    replaces "Audio unclear blocks matching for that clip"). Audio unclear is
+    a routing signal, not a gate: the practice loop (29a) answers it with
+    another attempt. Audio the machine cannot rely on is refused by the clip
+    safety gate (35b: length, noise and voiced-share checks) whatever the
+    speaker answered. The responses remain separate self-reports and never
+    override deterministic exercise eligibility.
 35b. A deterministic safety and need-compatibility gate runs before ranking.
     A model may rank only eligible exercise versions and may never bypass the
     gate. The complete in-scope catalogue is frozen with every version marked
@@ -447,9 +456,15 @@ with this contract, this contract wins.
     option A; rule `exercise-more-confident-v1`, migration 0388.) For each
     practice session, the attempt the coach judged is recorded as **helped**
     when its voice-confidence composite is higher than the original clip's
-    (any increase) **and** the coach answered "Do you find it more confident?"
-    Yes; **not helped** when either says no; **pending** while either is
-    missing. The speaker's own answer is not part of it. It is internal: never
+    (any increase) **and** the coach heard it get better; **not helped** when
+    either says no; **pending** while either is missing. "The coach heard it
+    get better" is worked out, never asked (founder 2026-09-29, Q5; rule
+    `exercise-more-confident-v2`, migration 0391): the same coach's blind
+    rating of the original clip against their answer about the practice, on
+    the ladder No < In-between < Yes. Higher is better; the same or lower is
+    not; an answer off the ladder (Not sure, Audio unclear) or missing, or
+    Yes before and after (already confident), is pending, never "didn't
+    help". The speaker's own answer is not part of it. It is internal: never
     shown to a speaker or a coach, and never a label. The machine leg and the
     coach leg keep their own provenance (clause 31). It is a separate reading
     from `exercise-adequacy-label-v1` (the design's §3.5), which stays the

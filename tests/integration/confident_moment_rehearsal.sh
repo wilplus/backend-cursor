@@ -432,6 +432,26 @@ hard migrations/an_exercise_is_seen.sql
 # than the original (internal, never a label). Twice: apply/reapply.
 hard migrations/a_practice_sounds_more_confident.sql
 hard migrations/a_practice_sounds_more_confident.sql
+# 0390 lets the coach answer a practice recording the five ways the speaker
+# does. Twice: apply/reapply.
+hard migrations/a_coach_answers_practice_five_ways.sql
+hard migrations/a_coach_answers_practice_five_ways.sql
+# 0391 works the coach leg of "sounds more confident" out from the coach's
+# before and after answers. Twice: apply/reapply.
+hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
+hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
+# 0392 makes the canonical promotion take its own consent snapshot from the
+# current bundled grant (Q1). Twice: apply/reapply.
+hard migrations/the_promotion_freezes_the_consent_snapshot.sql
+hard migrations/the_promotion_freezes_the_consent_snapshot.sql
+# 0393 gives the legacy coach card its three confidence-chain wrappers
+# (packet, render receipt, judgment + reveal) (Q2). Twice: apply/reapply.
+hard migrations/the_coach_card_consumes_the_confidence_chain.sql
+hard migrations/the_coach_card_consumes_the_confidence_chain.sql
+# 0394 is the rings rollout mechanism: feature_rings, principal_rings, the
+# check function and the write RPCs. Twice: apply/reapply.
+hard migrations/a_feature_reaches_a_person_by_ring.sql
+hard migrations/a_feature_reaches_a_person_by_ring.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so
@@ -445,6 +465,21 @@ if [ "$LANE" = "released" ]; then
   # service_role and keeps SELECT where it was held. Twice: apply/reapply.
   hard migrations/canonical_tables_are_written_only_through_their_rpcs.sql
   hard migrations/canonical_tables_are_written_only_through_their_rpcs.sql
+  # 0395 counts module 8: the release CHECKs name eight surfaces and the
+  # readiness report gains an eighth row read from the exercise tables. Released
+  # lane only, because it re-creates get_seven_surface_readiness_v1 over the
+  # 0299 tables (0301 itself was never in this chain). Twice: apply/reapply.
+  hard migrations/module_8_is_counted.sql
+  hard migrations/module_8_is_counted.sql
+fi
+
+# G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
+# `metrics`, the column production stamps the delivery-signal read into and
+# the confidence frame factory reads. Released lane only, a NULLABLE trailing
+# column as the widen files add them; no released file creates it because
+# `snippets` predates the migrations directory.
+if [ "$LANE" = "released" ]; then
+  psql -q -d "$DB" -c "ALTER TABLE public.snippets ADD COLUMN IF NOT EXISTS metrics JSONB" >>"$log" 2>&1
 fi
 
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"

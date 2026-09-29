@@ -292,27 +292,21 @@ def _is_data_foundation_canary_owner(
     user_id: str | None,
     owner_principal_id: str | None = None,
 ) -> bool:
-    """Return true only for the authenticated founder during canary."""
-    if not user_id or not config.DATA_FOUNDATION_CANARY_ENABLED:
+    """Whose Takes get a canonical Recording Attempt row: the people the
+    ``canonical_take_rows`` ring row reaches (rings, 0394).
+
+    This replaced the data-foundation canary's three doors — a Railway
+    switch, the founder email and a principal variable, all retired on
+    2026-09-29 — with one row: its kill switch is the row's kill, its "who"
+    is the ring. An anonymous upload or a Take with no owner principal gets
+    no canonical row, as before; every downstream learning write stays
+    FK-gated by that row.
+    """
+    if not user_id or not owner_principal_id:
         return False
-    payload = getattr(request, "token_payload", None)
-    email = str((payload or {}).get("email") or "").strip().lower()
-    founder_email = str(config.ADMIN_EMAIL or "").strip().lower()
-    approved_email = str(
-        config.MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL or ""
-    ).strip().lower()
-    expected_principal = str(
-        config.MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID or ""
-    ).strip().lower()
-    supplied_principal = str(owner_principal_id or "").strip().lower()
-    return bool(
-        email
-        and founder_email
-        and approved_email
-        and email == founder_email == approved_email
-        and expected_principal
-        and supplied_principal == expected_principal
-    )
+    from services import rings
+
+    return rings.feature_is_on(rings.CANONICAL_TAKE_ROWS, owner_principal_id)
 
 
 def _intake_error(error: Exception) -> RecordingIntakeError:

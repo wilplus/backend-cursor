@@ -779,11 +779,8 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
         return {"learning_exposure": handle}
 
     def journey_section():
-        from services.journey_messages import journey_seen
-        return {
-            "journey_next_steps_seen": journey_seen(
-                db, actor_id, arc_id, take_count),
-        }
+        from services.coach_message_read import journey_payload
+        return journey_payload(db, actor_id, arc_id, take_count, sessions)
 
     take_count = int(core.get("take_count") or 0)
     readers = {
