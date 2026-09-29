@@ -2008,3 +2008,35 @@ Next.js proxy file between them never existed, so every acknowledgement
 404ed and no `learning_surface_exposure_receipts` row was ever written,
 which is why the seven-surface readiness could never leave `blocked`. After
 the frontend deploys, the first visible render writes the first receipt.
+
+### 2026-09-29 · WS-Q1 · q1-consent-snapshot-path · #(pending)
+
+**Closed:** the consent half of G-6's first blocker (audit 2026-09-22, G-3
+consent half): a founder-canary Take could never be promoted canonically,
+because `promote_recording_attempt_with_mlc2_confidence_v1` required a
+per-attempt `ml_consent_snapshots` row that nothing in the application
+created, and the founder consent route that records the grant answered 410.
+**Contract lines flipped:** none.
+**Contract lines added:** migration 0392
+`the_promotion_freezes_the_consent_snapshot.sql` replaces the promotion RPC
+with one that takes the snapshot itself, from the current bundled grant, in
+the same transaction as the Take promotion and the outbox event (a pre-made
+snapshot is honoured, a missing grant still refuses and rolls the Take
+back). `routes/phase2_guard.confidence_chain_alive` replaces
+`phase2_learning_disabled` on `/v2/user/mlc2-consent`: the route is open
+in `dark` and `founder_canary` and 410 only when the writer state is
+`killed`, and a POST binds only the configured canary principal
+(`CANARY_PRINCIPAL_MISMATCH` otherwise; withdrawal is never blocked).
+Tests: `tests/test_promotion_freezes_consent_snapshot_migration.py`,
+`tests/test_consent_endpoint.py` (door and scope), and three released-lane
+cases in `tests/test_mlc2_confidence_end_to_end_postgres.py` (a second
+attempt promotes with no pre-made snapshot and the receipt points at the
+one taken; the first attempt's snapshot is not doubled; an owner without a
+grant is refused and the Take promotion rolls back).
+**Broke and fixed:** none.
+**Open for the founder:** the writer state stays `dark`; nothing here
+activates the chain. The frontend gate (`Mlc2FounderConsentGate`) already
+shows the approved copy to the founder account once the route answers, so
+the grant can be recorded before activation, which is what readiness
+requires. Q2 (the consumer route for the coach card) and Q3 (the door)
+follow on their own branches.

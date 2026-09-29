@@ -427,3 +427,4 @@
 0389	canonical_tables_are_written_only_through_their_rpcs.sql
 0390	a_coach_answers_practice_five_ways.sql
 0391	sounds_more_confident_reads_the_coachs_two_answers.sql
+0392	the_promotion_freezes_the_consent_snapshot.sql

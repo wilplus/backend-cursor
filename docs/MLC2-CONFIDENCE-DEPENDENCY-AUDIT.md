@@ -98,6 +98,10 @@ model/version hints.
   `dark` / `founder_canary` / `killed` state machine so rollback cannot
   resurrect a retired learning writer.
 - No route, product service, worker or UI imports `services.mlc2_confidence`.
+- The founder consent route (`/v2/user/mlc2-consent`) is open in `dark`
+  and answers 410 only when the writer state is `killed` (0392 / Q1,
+  2026-09-29); recording the grant creates no corpus and starts nothing,
+  and the canonical promotion freezes a snapshot of it for every Take.
 - No learning provenance is dual-written to an old and new learning store.
 - The old product-state writers remain unchanged.
 - No historical row is imported or relabeled.

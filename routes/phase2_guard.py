@@ -28,6 +28,37 @@ def phase2_learning_disabled(function):
     return disabled
 
 
+def confidence_chain_alive(function):
+    """410 while the Confidence writer state is ``killed``; otherwise enter.
+
+    The founder's bundled MLC-2 consent grant is the one Phase-2 purpose a
+    person may record before the chain writes anything: readiness requires
+    the grant to exist while the chain is still dark (audit 2026-09-22, G-3,
+    consent half), and the canonical promotion freezes a snapshot of it for
+    every Take (migration 0392). Recording a grant creates no corpus, exports
+    no dataset and starts no training, so ``phase2_learning_disabled`` was the
+    wrong door for it. A killed chain never takes a new grant.
+    """
+    @wraps(function)
+    def gated(*args, **kwargs):
+        from services.mlc2_confidence_cutover import (
+            KILLED, configured_confidence_cutover,
+        )
+
+        if configured_confidence_cutover().mode == KILLED:
+            return jsonify({
+                "code": "PHASE2_DISABLED",
+                "error": "Pooled datasets, training, and promotion are not active.",
+            }), 410
+        return function(*args, **kwargs)
+
+    raw = function
+    while getattr(raw, "__wrapped__", None) is not None:
+        raw = raw.__wrapped__
+    gated.__wrapped__ = raw
+    return gated
+
+
 def operational_purpose_disabled(purpose_id: str):
     """Fail closed while a registry-only product purpose is not operational.
 
