@@ -113,8 +113,7 @@ class SharedExerciseTests(unittest.TestCase):
         offer = _offer(db, {"insufficient_pauses": True})
         self.assertEqual(offer["exercise_id"], "coach-pick")
         self.assertTrue(offer["chosen_by_coach"])
-        self.assertEqual(offer["matching_policy_version"],
-                         cvp.COACH_REQUEST_POLICY_VERSION)
+        self.assertNotIn("matching_policy_version", offer)
         self.assertNotIn("pattern_distance", offer)
 
     def test_a_resolution_not_yet_shared_is_not_served(self):

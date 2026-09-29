@@ -211,15 +211,25 @@ class ManagerTests(unittest.TestCase):
         ))
         offer = next(row["practice_exercise"] for row in rows
                      if "practice_exercise" in row)
-        # AC-9 (founder 2026-09-29): the distance is a number, so it never
-        # rides in the speaker's offer; the match trace keeps it.
+        self.assertEqual(offer["exercise_id"], cvp.EXERCISE_ID)
+        # No distance, no policy label: neither reaches the speaker's app.
         self.assertNotIn("pattern_distance", offer)
-        # The bare version: whether this was a trial never reaches the
-        # speaker's payload.
-        self.assertEqual(
-            offer["matching_policy_version"],
-            "exercise-fit-tier-v1",
-        )
+        self.assertNotIn("matching_policy_version", offer)
+
+    def test_the_speaker_offer_carries_only_what_the_card_needs(self):
+        """AC-9: an allowlist, so no number or internal label can slip onto
+        the speaker's device. Adding a field means adding it here."""
+        rows = cvp.attach_exercise_offer([
+            {"source": "confident_voice", "snippet_id": "snippet-a"},
+        ], take_session_id="take-1", database=_Db(
+            supported_patterns=["confident"],
+        ))
+        offer = next(row["practice_exercise"] for row in rows
+                     if "practice_exercise" in row)
+        self.assertEqual(set(offer), {
+            "exercise_id", "version", "title", "instruction", "introduction",
+            "yes_introduction", "no_introduction", "explanation_video_ref",
+            "passage", "practice_id", "resume", "done_before"})
 
     def test_offer_carries_answer_specific_framing(self):
         rows = cvp.attach_exercise_offer([
