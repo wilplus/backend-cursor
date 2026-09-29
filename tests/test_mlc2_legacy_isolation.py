@@ -66,6 +66,11 @@ def test_confidence_dark_contract_is_not_imported_by_live_product_code():
         # only through finalize_mlc2_confidence_frame_v1, and starts nothing
         # unless the mode is founder_canary (tests/test_mlc2_confidence_frame_factory.py).
         ROOT / "services" / "mlc2_confidence_frame_factory.py",
+        # Q2 (2026-09-29): the coach card's consumer of the chain. Reads the
+        # writer state, writes only through the three 0392 wrappers, and is a
+        # no-op unless the mode is founder_canary
+        # (tests/test_confidence_chain_consumer.py).
+        ROOT / "services" / "confidence_chain_consumer.py",
         # RPC adapter only; it schedules nothing and makes no decision.
         ROOT / "services" / "db.py",
     }

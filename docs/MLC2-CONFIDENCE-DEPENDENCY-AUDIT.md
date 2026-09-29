@@ -98,6 +98,10 @@ model/version hints.
   `dark` / `founder_canary` / `killed` state machine so rollback cannot
   resurrect a retired learning writer.
 - No route, product service, worker or UI imports `services.mlc2_confidence`.
+- The legacy coach card consumes the chain through the three 0392 wrappers
+  (`services/confidence_chain_consumer.py`, Q2, 2026-09-29): blind packet,
+  render receipt, judgment and reveal. A no-op while the writer state is
+  `dark`; the packet never leaves the server, the handle is four ids.
 - No learning provenance is dual-written to an old and new learning store.
 - The old product-state writers remain unchanged.
 - No historical row is imported or relabeled.

@@ -440,6 +440,10 @@ hard migrations/a_coach_answers_practice_five_ways.sql
 # before and after answers. Twice: apply/reapply.
 hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
 hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
+# 0392 gives the legacy coach card its three confidence-chain wrappers
+# (packet, render receipt, judgment + reveal) (Q2). Twice: apply/reapply.
+hard migrations/the_coach_card_consumes_the_confidence_chain.sql
+hard migrations/the_coach_card_consumes_the_confidence_chain.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

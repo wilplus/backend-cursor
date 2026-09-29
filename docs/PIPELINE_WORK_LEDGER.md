@@ -2008,3 +2008,42 @@ Next.js proxy file between them never existed, so every acknowledgement
 404ed and no `learning_surface_exposure_receipts` row was ever written,
 which is why the seven-surface readiness could never leave `blocked`. After
 the frontend deploys, the first visible render writes the first receipt.
+
+### 2026-09-29 · WS-Q2 · q2-confidence-consumer · #(pending)
+
+**Closed:** the consumer half of G-6 (audit 2026-09-22): the confidence
+chain's blind packet, render receipt, judgment and reveal RPCs had no
+application caller. The legacy coach card, the queue coaches use today, is
+now that caller.
+**Contract lines flipped:** none.
+**Contract lines added:** migration 0392
+`the_coach_card_consumes_the_confidence_chain.sql` adds three exact-identity
+SECURITY DEFINER wrappers: `prepare_mlc2_confidence_coach_packet_v1` (the
+selected, eligible candidate of the Take's own snippet → the blind packet,
+idempotent per candidate and reviewer, none for a self-review),
+`ack_mlc2_confidence_coach_render_v1` (the browser's visible-render receipt
+bound to that packet) and `submit_mlc2_confidence_coach_judgment_v1` (the
+coach's five-state answer as an immutable `blind_coach` judgment through
+the owner-only writer 0325 closed, and the reveal in the same transaction).
+`services/confidence_chain_consumer.py` is the only caller; it is a no-op
+unless the writer state is `founder_canary`. The coach queue attaches the
+chain's four-identifier handle (`mlc2_blind_review`) to each unlabelled
+row; `POST /v2/coach/mlc2/assignments/<id>/render` records the receipt;
+the legacy `PUT …/confidence-label` writes the judgment and reveal after
+the legacy save when the body carries `mlc2` (never on a self-report), and
+answers `mlc2: null` while dark. Tests:
+`tests/test_confidence_chain_consumer.py` (writer state, handle, queue
+attachment, decision mapping, render route, wiring pins),
+`tests/test_coach_card_consumes_the_chain_migration.py`, and six
+released-lane cases in `tests/test_mlc2_confidence_end_to_end_postgres.py`
+(packet with the four identifiers and its replay; no candidate → nothing;
+owner as reviewer → nothing; receipt → judgment → reveal with exact-retry
+replay and a second answer refused; a judgment without a receipt refused;
+readiness counts no orphan).
+**Broke and fixed:** none.
+**Open for the founder:** the frontend half (the handle mapped from the
+queue row, the render receipt on the painted card, the `mlc2` echo on the
+label PUT) is a separate frontend PR; without it the backend stays inert
+even in `founder_canary`. The Voice Album still reads its live legs; a
+canonical admission writer (R-5) is a follow-up. The writer state stays
+`dark`.
