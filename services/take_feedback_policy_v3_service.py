@@ -428,10 +428,10 @@ def _v3_verbal_lane(
 ) -> bool:
     if not isinstance(lane, dict):
         return False
-    # A SET, NOT A STRING (contract 24f). Praise anchors to the Take's two
-    # most Confident Voice blocks, so this lane can carry two winners; a
+    # A SET, NOT A STRING (contract 24f). Each lane anchors one note per
+    # block by the block's read, so it carries as many winners as blocks; a
     # string comparison would have silently marked only the first as selected
-    # and dropped the second on the floor with no error anywhere.
+    # and dropped the rest on the floor with no error anywhere.
     lane_selected = frozenset(
         str(value) for value in (lane.get("selected_candidate_ids") or [])
         if str(value or "")
@@ -562,9 +562,9 @@ def _add_verbal_lanes(
             verbal.get(family), family=family, raw_by_identity=raw_by_identity,
             pieces=pieces, snippet_block=snippet_block, inventory=inventory,
         ):
-            # 24f: at most one rewrite and two praise, and an honest empty
-            # lane shows no card. A lane that cannot be proven is an empty
-            # lane, not a reason to withhold Confident Voice.
+            # 24f: one note per block where one is defensible, and an honest
+            # empty lane shows no card. A lane that cannot be proven is an
+            # empty lane, not a reason to withhold Confident Voice.
             closed(f"verbal_lane_excluded:{family}")
 
 

@@ -65,9 +65,9 @@ def _frame(take_index=2):
         {
             "id": "best-rewrite",
             "feedback_family": "rewrite_clarity",
-            "snippet_id": "snippet-1",
+            "snippet_id": "snippet-4",
             "take_session_id": "take-2",
-            "span": {"start": 50, "end": 90},
+            "span": {"start": 4050, "end": 4090},
             "quote": "a",
             "proposed_text": "b",
             "model_version": "rewrite-model-v1",
@@ -86,7 +86,7 @@ def _frame(take_index=2):
     return build_shadow_frame(
         take_document={
             "take_session_id": "take-2",
-            "text": "x" * 500,
+            "text": "x" * 5000,
             "pieces": pieces,
         },
         snippets=snippets,
@@ -131,27 +131,52 @@ def test_both_verbal_lanes_run_on_take_one():
     ]
 
 
-def test_the_rewrite_lane_is_capped_at_one():
-    """Capped because, unlike a relative-best read, a rewrite asserts a finding
-    and can be wrong — the expensive error under H.0."""
+def test_the_rewrite_anchors_to_every_block_read_weak():
+    """THE CAPS ARE LIFTED (founder 2026-09-29, evening; contract 24f). Until
+    then the rewrite lane kept one rewrite for the whole Take, because a
+    rewrite asserts a finding and can be wrong. Now each block the machine
+    reads weak carries its best defensible rewrite, and a block read
+    confident carries none: its follow-up is praise."""
     frame = _frame(take_index=2)
     lane = frame["verbal_lanes"]["rewrite_clarity"]
-    assert lane["budget"] == 1
-    assert len(lane["selected_candidate_ids"]) <= 1
+    assert lane["budget"] == "one_per_block"
+    assert lane["selection_scope"] == "anchored_to_blocks_read_weak"
+    weak, confident = frame["blocks"][1], frame["blocks"][0]
+    assert weak["delivery_band"] == "delivery_signal_mid_low"
+    assert confident["delivery_band"] == "delivery_signal_high"
+    assert lane["anchors"] == [
+        {"block_id": weak["block_id"], "candidate_id": "best-rewrite"},
+    ]
+    assert lane["selected_candidate_ids"] == ["best-rewrite"]
+    # The fallback rewrite sits inside the confident block and is never
+    # selected there, however it ranks.
+    assert "weak-rewrite" not in lane["selected_candidate_ids"]
 
 
-def test_praise_anchors_to_the_top_confidence_blocks_and_is_capped_at_two():
+def test_praise_anchors_to_every_block_read_confident():
     frame = _frame(take_index=2)
     lane = frame["verbal_lanes"]["great_formulation"]
-    assert lane["budget"] == 2
-    assert lane["selection_scope"] == "anchored_to_top_confidence_blocks"
-    assert len(lane["selected_candidate_ids"]) <= 2
+    assert lane["budget"] == "one_per_block"
+    assert lane["selection_scope"] == "anchored_to_blocks_read_confident"
+    assert lane["anchors"] == [
+        {"block_id": frame["blocks"][0]["block_id"],
+         "candidate_id": "best-praise"},
+    ]
     # Every anchor names the block it belongs to — praise never floats free of
     # a Slide (contract 24f).
     block_ids = {block["block_id"] for block in frame["blocks"]}
     for anchor in lane["anchors"]:
         assert anchor["block_id"] in block_ids
         assert anchor["candidate_id"] in lane["selected_candidate_ids"]
+
+
+def test_the_green_mark_stays_on_the_top_two_and_no_longer_places_praise():
+    """24g keeps the two most Confident items green; 24f no longer ties
+    praise to them."""
+    frame = _frame(take_index=2)
+    assert [b["most_confident"] for b in frame["blocks"]] == [True, True]
+    praise = frame["verbal_lanes"]["great_formulation"]["anchors"]
+    assert {a["block_id"] for a in praise} == {frame["blocks"][0]["block_id"]}
 
 
 def test_shadow_is_not_delivery_exposure_or_dataset_input_and_hash_is_stable():
@@ -462,7 +487,7 @@ def test_a_document_with_no_blocks_is_not_a_coverage_failure():
     assert coverage["meets_floor"] is True
 
 
-# ── praise anchoring, option (a) (founder 2026-09-18, contract 24f) ──
+# ── one note per block, by the read (founder 2026-09-29, contract 24f) ──
 
 def _block(block_id, start, end, selected="c1", score=0.9):
     return {
@@ -474,87 +499,130 @@ def _block(block_id, start, end, selected="c1", score=0.9):
     }
 
 
-def test_praise_goes_to_the_two_highest_ranked_blocks():
-    from services.take_feedback_policy_v3 import (
-        PRAISE_ANCHOR_LIMIT, _anchored_praise, _top_confidence_blocks,
-    )
+def _read_blocks(blocks):
+    """`_practice_routing` writes the band each block was read at."""
+    from services.take_feedback_policy_v3 import _practice_routing
+    _practice_routing(blocks)
+    return blocks
 
-    blocks = [
-        _block("b-low", 0, 100, "c-low", 0.2),
-        _block("b-top", 100, 200, "c-top", 0.9),
-        _block("b-mid", 200, 300, "c-mid", 0.6),
+
+def test_the_read_splits_the_blocks_at_neutral():
+    """Above neutral is read confident, neutral and below is read weak: the
+    same cut `confident_voice_practice.machine_read` makes on the clip when
+    the judgement lands, so the note anchored here and the follow-up the
+    matrix chooses agree."""
+    from services.take_feedback_policy_v3 import _blocks_read
+
+    blocks = _read_blocks([
+        _block("b-low", 0, 100, "c-low", -0.6),
+        _block("b-mid-low", 100, 200, "c-ml", -0.2),
+        _block("b-neutral", 200, 300, "c-n", 0.0),
+        _block("b-mid-high", 300, 400, "c-mh", 0.2),
+        _block("b-high", 400, 500, "c-h", 0.9),
+    ])
+    confident = [b["block_id"] for b in _blocks_read(blocks, confident=True)]
+    weak = [b["block_id"] for b in _blocks_read(blocks, confident=False)]
+    assert confident == ["b-mid-high", "b-high"]
+    assert weak == ["b-low", "b-mid-low", "b-neutral"]
+
+
+def test_praise_goes_to_every_confident_block_and_the_rewrite_to_every_weak_one():
+    """THE CAPS ARE LIFTED (founder 2026-09-29, evening). Three blocks read
+    confident carry three praise; two read weak carry two rewrites. No
+    ranking among the blocks decides who gets one."""
+    from services.take_feedback_policy_v3 import _anchored_notes, _blocks_read
+
+    blocks = _read_blocks([
+        _block("b-1", 0, 100, "c-1", 0.2),
+        _block("b-2", 100, 200, "c-2", -0.4),
+        _block("b-3", 200, 300, "c-3", 0.9),
+        _block("b-4", 300, 400, "c-4", -0.1),
+        _block("b-5", 400, 500, "c-5", 0.6),
+    ])
+    praise = [
+        {"candidate_id": f"p-{n}", "document_span": {"start": s, "end": s + 40}}
+        for n, s in ((1, 10), (2, 110), (3, 210), (4, 310), (5, 410))
     ]
-    top = _top_confidence_blocks(blocks, PRAISE_ANCHOR_LIMIT)
-    assert [b["block_id"] for b in top] == ["b-top", "b-mid"]
-
-    ranked = [
-        {"candidate_id": "p-top", "document_span": {"start": 110, "end": 150}},
-        {"candidate_id": "p-mid", "document_span": {"start": 210, "end": 250}},
-        {"candidate_id": "p-low", "document_span": {"start": 10, "end": 50}},
+    rewrites = [
+        {"candidate_id": f"r-{n}", "document_span": {"start": s, "end": s + 40}}
+        for n, s in ((1, 10), (2, 110), (3, 210), (4, 310), (5, 410))
     ]
-    anchors = _anchored_praise(ranked, top)
-    assert [row["candidate_id"] for row in anchors] == ["p-top", "p-mid"]
-    # The weakest block's praise is NOT surfaced, however good the candidate.
-    assert "p-low" not in {row["candidate_id"] for row in anchors}
+    praised = _anchored_notes(praise, _blocks_read(blocks, confident=True))
+    rewritten = _anchored_notes(rewrites, _blocks_read(blocks, confident=False))
+    assert [row["candidate_id"] for row in praised] == ["p-1", "p-3", "p-5"]
+    assert [row["candidate_id"] for row in rewritten] == ["r-2", "r-4"]
+    # A praise inside a weak block and a rewrite inside a confident block are
+    # never selected, however they rank.
+    assert {"p-2", "p-4"}.isdisjoint(row["candidate_id"] for row in praised)
+    assert {"r-1", "r-3", "r-5"}.isdisjoint(
+        row["candidate_id"] for row in rewritten)
 
 
-def test_a_top_block_with_no_praise_inside_it_simply_gets_none():
-    """OPTION (a), and the cost the founder accepted: a green bookmark can
-    carry no praise. Praising the block anyway with the nearest available text
-    would be manufacturing, which L2 and contract 24d forbid."""
-    from services.take_feedback_policy_v3 import _anchored_praise
+def test_a_block_with_no_note_inside_it_simply_gets_none():
+    """The cost the founder accepted: a block read confident can carry no
+    praise, and one read weak no rewrite. A note made from the nearest
+    available text would be manufacturing, which L2 and contract 24d forbid."""
+    from services.take_feedback_policy_v3 import _anchored_notes
 
-    top = [_block("b-top", 100, 200), _block("b-two", 200, 300)]
+    blocks = [_block("b-top", 100, 200), _block("b-two", 200, 300)]
     # Both candidates sit OUTSIDE either block.
     ranked = [
         {"candidate_id": "p-far", "document_span": {"start": 0, "end": 40}},
         {"candidate_id": "p-far2", "document_span": {"start": 400, "end": 440}},
     ]
-    assert _anchored_praise(ranked, top) == []
+    assert _anchored_notes(ranked, blocks) == []
 
 
-def test_best_praise_inside_a_block_wins_because_the_ranking_is_ordered():
-    from services.take_feedback_policy_v3 import _anchored_praise
+def test_the_best_note_inside_a_block_wins_because_the_ranking_is_ordered():
+    from services.take_feedback_policy_v3 import _anchored_notes
 
-    top = [_block("b-top", 0, 500)]
+    blocks = [_block("b-top", 0, 500)]
     ranked = [
         {"candidate_id": "p-best", "document_span": {"start": 10, "end": 40}},
         {"candidate_id": "p-worse", "document_span": {"start": 60, "end": 90}},
     ]
-    anchors = _anchored_praise(ranked, top)
+    anchors = _anchored_notes(ranked, blocks)
     assert [row["candidate_id"] for row in anchors] == ["p-best"]
 
 
-def test_one_praise_per_block_so_a_single_block_cannot_take_both_slots():
-    from services.take_feedback_policy_v3 import _anchored_praise
+def test_one_note_per_block_so_a_single_block_cannot_take_two():
+    from services.take_feedback_policy_v3 import _anchored_notes
 
-    top = [_block("b-top", 0, 500)]
+    blocks = [_block("b-top", 0, 500)]
     ranked = [
         {"candidate_id": "p-one", "document_span": {"start": 10, "end": 40}},
         {"candidate_id": "p-two", "document_span": {"start": 60, "end": 90}},
     ]
-    assert len(_anchored_praise(ranked, top)) == 1
+    assert len(_anchored_notes(ranked, blocks)) == 1
 
 
 def test_a_span_straddling_a_block_boundary_is_not_inside_it():
     """Containment, not overlap: a candidate half in the block is evidence
     about words the block does not own."""
-    from services.take_feedback_policy_v3 import _anchored_praise
+    from services.take_feedback_policy_v3 import _anchored_notes
 
-    top = [_block("b-top", 100, 200)]
+    blocks = [_block("b-top", 100, 200)]
     ranked = [{"candidate_id": "p", "document_span": {"start": 150, "end": 260}}]
-    assert _anchored_praise(ranked, top) == []
+    assert _anchored_notes(ranked, blocks) == []
 
 
-def test_an_unselected_block_never_anchors_praise():
-    """A block whose confidence item was not selected has no moment to praise."""
-    from services.take_feedback_policy_v3 import _top_confidence_blocks
+def test_an_unselected_or_unread_block_never_anchors_a_note():
+    """A block whose confidence item was not selected has no moment to note,
+    and a block the detector could not measure is neither confident nor
+    weak: a human ear settles it (35g-2)."""
+    from services.take_feedback_policy_v3 import (
+        _blocks_read, _top_confidence_blocks,
+    )
 
     blocks = [{
         "block_id": "b", "slide_index": 0, "start": 0, "end": 100,
         "selected_candidate_id": None, "confidence_candidates": [],
     }]
     assert _top_confidence_blocks(blocks, 2) == []
+    unread = _read_blocks([_block("u", 0, 100, "c-u", None)])
+    assert unread[0]["delivery_band"] is None
+    assert _blocks_read(unread, confident=True) == []
+    assert _blocks_read(unread, confident=False) == []
 
 
 # ── the practice threshold (founder 2026-09-18, contract 24e/24f) ──

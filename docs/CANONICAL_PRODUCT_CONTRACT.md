@@ -127,7 +127,7 @@ with this contract, this contract wins.
 24b. **(REPLACED 2026-09-18 — founder. Prior text retained at 24b-prior.)** V3
     surfaces exactly one relative-best Confident Voice item per valid block, on
     **every** Take including Take 1 — see 24e for what every item carries and
-    24f for the three anchored notes laid on top. There is no whole-Take item
+    24f for the anchored notes laid on top. There is no whole-Take item
     cap, and no Improvement or Praise exists independently of the item it is
     attached to.
 
@@ -171,13 +171,20 @@ with this contract, this contract wins.
     are always there. (Founder 2026-09-25; supersedes the 2026-09-24 "keep the
     emphasis open for every answer" ruling.)
 
-24f. **On top of that, each Take carries a bounded set of anchored notes**,
-    each attached to the item it concerns and never floating free of a Slide:
-    - **at most two Evidence-backed Praise** — on the **most and second-most
-      Confident Voice items of the Take**, ranked on the delivery bands, not on
-      fidelity to the Ideal Text. *At most* two, not always two: clause 25 still
-      governs, so a Take with only one defensible praise candidate surfaces one,
-      and inventing a second to fill the slot is forbidden;
+24f. **On top of that, each Take carries anchored notes**, each attached to
+    the item it concerns and never floating free of a Slide. **The caps are
+    lifted** (founder 2026-09-29, evening: "now build it"; until then at most
+    two Praise on the two most Confident items and one rewrite per Take): the
+    machine's read of each block decides which note it may carry, and clause
+    25 decides whether it carries one at all.
+    - **Evidence-backed Praise on every item the machine reads confident** —
+      one per block, the best defensible praise candidate whose words lie
+      inside that block. Read confident means above the neutral delivery
+      band; the read chooses and is never surfaced (AC-9). Not every such
+      block carries one: a block with no defensible praise in its words
+      surfaces none, and inventing one to fill the slot is forbidden. The
+      green bookmark stays on the two most Confident items (24g) and no
+      longer decides where praise goes;
     - **an exercise on any bookmark** (founder 2026-09-29, superseding the
       2026-09-26 "one exercise, on the weakest item below the neutral band"):
       "they can carry as many exercises as bookmark indicates". Each Confident
@@ -192,16 +199,25 @@ with this contract, this contract wins.
       nothing now on Yes. Audio unclear: nothing. Praise and rewrites show
       only where the Manager found an evidence-backed one; nothing is ever
       filled in. The read chooses and is never surfaced. The weakest
-      below-neutral item keeps its bookmark colour;
-    - **one Actionable Improvement (rewrite)** — the highest-ranked of the Take.
-      Capped because unlike a relative-best read it asserts a finding and can be
-      wrong, which is the expensive error under H.0.
-    A Take therefore surfaces one item per valid block, of which at most four
-    carry an anchored note. **The three-stage shape in 24e is the architecture,
-    not a guarantee that every judgement carries a Feedback stage** — on a
-    ten-item Take, four carry an anchored note and six carry the delivery read
-    and the rooting step alone. Neither the ranking that selects the two Praise
-    items nor any position among them is ever surfaced (24i).
+      below-neutral item keeps its bookmark colour. A rewrite on the same
+      Paragraph no longer withholds the video (it did until 2026-09-29): the
+      video answers the delivery and the rewrite the words, two findings on
+      one moment, and neither silences the other;
+    - **an Actionable Improvement (rewrite) on every item the machine reads
+      weak** — one per block, the best defensible rewrite whose words lie
+      inside that block; a block read confident carries none, because its
+      follow-up is praise. Read weak means the neutral delivery band and
+      below. A rewrite asserts a finding and can be wrong, the expensive
+      error under H.0, which is why the lane was capped at one per Take
+      until the founder lifted it; what remains of that caution is clause
+      25: only an evidence-backed rewrite, in tentative language where the
+      evidence is weak, and none where there is none.
+    A Take therefore surfaces one item per valid block, each of which may
+    carry an anchored note. **The three-stage shape in 24e is the
+    architecture, not a guarantee that every judgement carries a Feedback
+    stage** — an item whose block holds nothing defensible carries the
+    delivery read and the rooting step alone. Neither the read that places
+    the notes nor any ranking among the blocks is ever surfaced (24i).
 
 24f-1. **An accepted rewrite re-anchors.** Accepting an Actionable Improvement
     changes the wording of the block it sat in, so its bookmark follows the
@@ -291,7 +307,9 @@ with this contract, this contract wins.
     **Amended 2026-09-18:** under 24f, Improvement and Praise are anchored to a
     Confident Voice item rather than being Take-level cards, so "Take-level
     comparison" now governs *which item wins* the single Praise and the single
-    Improvement, not whether a standalone card appears.
+    Improvement, not whether a standalone card appears. **Amended
+    2026-09-29:** the caps are lifted, so the comparison is within the block:
+    which candidate inside a block is that block's note.
     `no_defensible_candidate` still applies: when the Take has no honest
     Improvement or Praise candidate, that note is simply absent. An item without
     an anchored note is **not** an empty bookmark — per 24e it still carries the

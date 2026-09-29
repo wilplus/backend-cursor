@@ -16,10 +16,11 @@ one relative-best Confident Voice item per valid block on **every** Take,
 Take 1 included (contract 24b). Every item carries the delivery read; after Yes, In-between or
 Not sure the tap-to-root helper-words step follows — Emphasis IS that step, not a
 Feedback family and not a budget. No and Audio unclear get it only through the
-practice loop (24e, 29a). On top, each Take carries at most two Praise (on its most
-and second-most Confident items), an exercise on any bookmark whose clip the
-machine reads weak and a library exercise matches (founder 2026-09-29), and one
-rewrite (24f). What follows a judgement is the follow-up matrix (24f, 35g-2):
+practice loop (24e, 29a). On top, each Take carries anchored notes, one per block
+by the machine's read (founder 2026-09-29, caps lifted): praise on any item read
+confident, a rewrite on any item read weak, and an exercise on any bookmark whose
+clip the machine reads weak and a library exercise matches, each only where an
+evidence-backed one exists (24f). What follows a judgement is the follow-up matrix (24f, 35g-2):
 the answer crossed with the machine's read chooses praise, the rewrite, the
 library video or nothing now, and every judgement but Audio unclear reaches the
 coach tagged error, praise, rewrite or ambiguity; the coach's video rides the
@@ -50,8 +51,9 @@ the Paragraph's history. Best Presentation is retired.
 **L2** Detectors create Candidates and only Manager-approved Candidates surface
 under the active versioned budget. V3 (served since 2026-09-18) uses one
 relative-best Confident Voice item per valid 75-word block on every Take,
-plus per Take at most two anchored Praise, an exercise on any matched bookmark
-(founder 2026-09-29) and one rewrite (24f).
+plus one anchored note per block by its read: praise where read confident, a
+rewrite where read weak, an exercise on any matched bookmark (founder
+2026-09-29, caps lifted; 24f).
 V2 kept exactly one item from each of three families and is retained only as
 superseded history — never a silent substitute (24h). Neither invents evidence
 or fills an honest `no_defensible_candidate` lane.
