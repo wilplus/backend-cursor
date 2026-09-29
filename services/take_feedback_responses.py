@@ -39,21 +39,48 @@ def parse_feedback_response(
     """
     if not isinstance(body, dict):
         return None, "body must be an object"
+    required = _required_answer(body)
+    if required is None:
+        return None, "feedback_id, feedback_family and response are required"
+    feedback_id, family, response = required
+    if family not in RESPONSES or response not in RESPONSES[family]:
+        return None, "response is not valid for this feedback family"
+    supplied_snippet = _supplied_snippet(body)
+    exact_identity, error = _exact_feedback_identity(body)
+    if error is not None:
+        return None, error
+    return {
+        "feedback_id": feedback_id,
+        "feedback_family": family,
+        "response": response,
+        "snippet_id": supplied_snippet,
+        **exact_identity,
+    }, None
+
+
+def _required_answer(body: dict) -> Optional[tuple[str, str, str]]:
+    """``(feedback_id, family, response)``, stripped, or None when any is
+    missing, blank or not a string."""
     feedback_id = body.get("feedback_id")
     family = body.get("feedback_family")
     response = body.get("response")
     if (not isinstance(feedback_id, str) or not feedback_id.strip()
             or not isinstance(family, str) or not family.strip()
             or not isinstance(response, str) or not response.strip()):
-        return None, "feedback_id, feedback_family and response are required"
-    feedback_id, family, response = (
-        feedback_id.strip(), family.strip(), response.strip()
-    )
-    if family not in RESPONSES or response not in RESPONSES[family]:
-        return None, "response is not valid for this feedback family"
+        return None
+    return feedback_id.strip(), family.strip(), response.strip()
+
+
+def _supplied_snippet(body: dict) -> Optional[str]:
     supplied_snippet = body.get("snippet_id")
     if supplied_snippet is not None:
         supplied_snippet = str(supplied_snippet).strip() or None
+    return supplied_snippet
+
+
+def _exact_feedback_identity(body: dict) -> tuple[dict, Optional[str]]:
+    """The canonical candidate / membership / exposure ids: all three or
+    none, each a UUID. Returns ``(ids, None)`` or ``({}, error)``."""
     exact_identity = {
         "candidate_id": body.get("candidate_id"),
         "feedback_membership_id": body.get("feedback_membership_id"),
@@ -63,23 +90,15 @@ def parse_feedback_response(
         value is not None for value in exact_identity.values()
     )
     if supplied_identity_count not in (0, len(exact_identity)):
-        return None, "complete canonical feedback identity is required"
-    if supplied_identity_count:
-        try:
-            exact_identity = {
-                key: str(uuid.UUID(str(value)))
-                for key, value in exact_identity.items()
-            }
-        except (TypeError, ValueError):
-            return None, "canonical feedback identity must contain UUIDs"
-    else:
-        exact_identity = {}
-    return {
-        "feedback_id": feedback_id,
-        "feedback_family": family,
-        "response": response,
-        "snippet_id": supplied_snippet,
-        **exact_identity,
-    }, None
+        return {}, "complete canonical feedback identity is required"
+    if not supplied_identity_count:
+        return {}, None
+    try:
+        return {
+            key: str(uuid.UUID(str(value)))
+            for key, value in exact_identity.items()
+        }, None
+    except (TypeError, ValueError):
+        return {}, "canonical feedback identity must contain UUIDs"
 
 
