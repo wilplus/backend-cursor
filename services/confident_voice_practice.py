@@ -1264,6 +1264,7 @@ def _annotate_coach_answers(
         return rows
     snippets: dict[str, dict] = {}
     median = None
+    vocabulary: frozenset[str] = frozenset()
     for row in pending:
         snippet_id = str(row["snippet_id"])
         try:
@@ -1287,12 +1288,31 @@ def _annotate_coach_answers(
                     [str(r["snippet_id"]) for r in pending]) or [])}
             median = _median_wpm(
                 database.get_snippets_by_session(take_session_id) or [])
+            vocabulary = detected_problem_vocabulary(database)
         snippet = snippets.get(snippet_id)
         evidence = ground(row)
         if not isinstance(snippet, dict) or not isinstance(evidence, dict):
             row["coach_request"] = {"status": "answered"}
             continue
         verdict = exercise_eligibility(snippet, session_median_wpm=median)
+        # THE COACH'S PICK COUNTS (founder 2026-09-29, decision 3; 0398). The
+        # same rows a machine pick gets -- assignment and trace here, the
+        # render receipt when the card is on screen -- under the coach policy
+        # name, so the jar joins the practice and every reader can tell whose
+        # pick it was. Insert-once in the database: this runs on every poll
+        # and every call after the first returns the frozen row.
+        record_coach_shared_assignment(
+            database, lane="coach_request", owner_user_id=str(owner_user_id),
+            take_session_id=str(take_session_id), snippet_id=snippet_id,
+            exercise=exercise,
+            trace=build_coach_share_trace(
+                lane="coach_request", exercise=exercise,
+                observed_tags=observed_problem_tags(verdict, vocabulary=vocabulary),
+                pattern=verdict.get("pattern"),
+                take_session_id=str(take_session_id), snippet_id=snippet_id,
+                source_id=str(request.get("id") or ""),
+                matching_policy_version=COACH_REQUEST_POLICY_VERSION),
+            matching_policy_version=COACH_REQUEST_POLICY_VERSION)
         row["evidence"] = evidence
         row["practice_exercise"] = {
             **_offer_payload(exercise, verdict, snippet, row,
@@ -1392,6 +1412,115 @@ def _attach_exercises(
 
 #: The policy a coach-shared exercise is served under: no match, no draw.
 COACH_REQUEST_POLICY_VERSION = "exercise-coach-request-v1"
+#: The policy a coach's practice-review share is served under (0398).
+COACH_REVIEW_POLICY_VERSION = "exercise-coach-review-v1"
+#: The exposure policy every coach-shared assignment is frozen under (0398):
+#: no draw, one candidate, told apart from the 80/20 rows by this name.
+COACH_SHARED_EXPOSURE_POLICY = "exercise-coach-shared-v1"
+
+
+def build_coach_share_trace(*, lane: str, exercise: dict, observed_tags: Any,
+                            pattern: Any, take_session_id: str,
+                            snippet_id: str, source_id: str,
+                            matching_policy_version: str) -> dict:
+    """Why this moment got a coach's exercise (0398): one candidate, marked
+    coach-chosen, with the exercise's targets and what fired on the clip.
+
+    `fit` is null on purpose: a coach pick is neither an exact fit nor a
+    trial, and the readiness count judges it on every target it claims that
+    fired. `outcome` is 'coach_chosen', never 'ranked', so the pool a ranker
+    would be judged on never contains it (L3).
+    """
+    routing = _routing_fields(exercise)
+    return _json_safe({
+        "trace_schema": MATCH_TRACE_SCHEMA,
+        "lane": lane,
+        "fit": None,
+        "matching_policy_version": matching_policy_version,
+        "signal_rules_version": SIGNAL_RULES_VERSION,
+        "clip": {"snippet_id": str(snippet_id),
+                 "take_session_id": str(take_session_id)},
+        "pattern": str(pattern or ""),
+        "observed_tags": sorted(str(t) for t in observed_tags or ()),
+        "source_id": str(source_id or ""),
+        "catalogue_scope": "coach_shared",
+        "candidates": [{**routing, "outcome": "coach_chosen", "reason": None,
+                        "rank": 1, "fit": None}],
+    })
+
+
+def record_coach_shared_assignment(
+    database: Any, *, lane: str, owner_user_id: str, take_session_id: str,
+    snippet_id: str, exercise: dict, trace: dict,
+    matching_policy_version: str,
+) -> Optional[dict]:
+    """The coach-shared exercise's assignment and trace, frozen once (0398).
+
+    Best effort and never in the feedback's way: a share that cannot be
+    frozen still serves, and the jar simply does not count it. Returns the
+    frozen row, or None.
+    """
+    assign = getattr(database, "assign_coach_shared_exercise", None)
+    if assign is None or not owner_user_id:
+        return None
+    try:
+        row = assign(
+            owner_user_id=str(owner_user_id),
+            take_session_id=str(take_session_id),
+            snippet_id=str(snippet_id),
+            lane=lane,
+            matching_policy_version=matching_policy_version,
+            exercise_id=str(exercise.get("exercise_id") or ""),
+            exercise_version=int(exercise.get("version") or 1),
+            trace=trace,
+        )
+    except Exception as e:  # noqa: BLE001 — never lose the feedback
+        _log.warning("coach-shared assignment failed take=%s snip=%s: %s",
+                     take_session_id, snippet_id, e)
+        return None
+    return row if isinstance(row, dict) else None
+
+
+def record_coach_review_share(database: Any, practice: Any,
+                              exercise: dict) -> Optional[dict]:
+    """The practice review's share, frozen as a coach assignment (0398): the
+    problems that fired on the practised clip, from the practice's own
+    acoustic evidence, and the exercise the coach attached."""
+    row = practice if isinstance(practice, dict) else {}
+    evidence = row.get("acoustic_evidence")
+    verdict = {"signals": (evidence or {}).get("signals")
+               if isinstance(evidence, dict) else {}}
+    assessment = row.get("machine_assessment")
+    pattern = (assessment or {}).get("pattern") \
+        if isinstance(assessment, dict) else None
+    observed = observed_problem_tags(
+        verdict, vocabulary=detected_problem_vocabulary(database))
+    take_session_id = str(row.get("take_session_id") or "")
+    snippet_id = str(row.get("snippet_id") or "")
+    return record_coach_shared_assignment(
+        database, lane="coach_review",
+        owner_user_id=str(row.get("owner_user_id") or ""),
+        take_session_id=take_session_id, snippet_id=snippet_id,
+        exercise=exercise,
+        trace=build_coach_share_trace(
+            lane="coach_review", exercise=exercise, observed_tags=observed,
+            pattern=pattern, take_session_id=take_session_id,
+            snippet_id=snippet_id, source_id=str(row.get("id") or ""),
+            matching_policy_version=COACH_REVIEW_POLICY_VERSION),
+        matching_policy_version=COACH_REVIEW_POLICY_VERSION)
+
+
+def _coach_shared_assignment_for(database: Any, take_session_id: str,
+                                 snippet_id: str,
+                                 exercise_id: str) -> Optional[dict]:
+    """The moment's frozen coach assignment (0398) when it names this
+    exercise, or None (also when 0398 is not applied yet)."""
+    getter = getattr(database, "get_coach_shared_exercise_assignment", None)
+    row = getter(take_session_id, snippet_id) if getter is not None else None
+    if not isinstance(row, dict) or str(
+            row.get("selected_exercise_id")) != str(exercise_id):
+        return None
+    return row
 
 
 def _shared_request_for(database: Any, take_session_id: str,
@@ -1461,11 +1590,18 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
             shared.get("resolved_exercise_id")) == str(exercise_id):
         if not clip_can_carry_exercise(verdict):
             return "NOT_ELIGIBLE", verdict, None
-        return None, verdict, {
+        matching = {
             "matching_policy_version": COACH_REQUEST_POLICY_VERSION,
             "exercise_fit": None,
             "exercise_coach_request_id": str(shared.get("id") or ""),
         }
+        # The coach assignment (0398), so the practice joins the jar the
+        # way a machine pick's does (readiness reads this same key).
+        coach_row = _coach_shared_assignment_for(
+            database, take_session_id, snippet_id, exercise_id)
+        if coach_row is not None:
+            matching["exercise_assignment_id"] = str(coach_row.get("id") or "")
+        return None, verdict, matching
     if not verdict.get("eligible"):
         return "NOT_ELIGIBLE", verdict, None
     # The same history the offer ranked with, so the two agree on the best.

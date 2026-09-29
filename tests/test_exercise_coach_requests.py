@@ -295,3 +295,130 @@ class RouteTests(unittest.TestCase):
         self.assertIn(
             '@operational_purpose_disabled("personalized_exercise_recommendation")',
             head)
+
+
+# ── THE COACH'S PICK COUNTS (founder 2026-09-29, decision 3; 0398) ────────
+#
+# A coach-shared exercise gets the same rows a machine pick gets, under the
+# coach policy name: an assignment and a trace when it is first served, the
+# render receipt when the card is on screen, and the practice links to that
+# assignment. Nothing about the coach's choice is folded into the draw.
+
+
+class _CountingDb(_Db):
+    def __init__(self, rows, *, request=None, fail_assign=False):
+        super().__init__(rows, request=request)
+        self.coach_assigned = []
+        self.fail_assign = fail_assign
+
+    def assign_coach_shared_exercise(self, **kwargs):
+        if self.fail_assign:
+            raise RuntimeError("PGRST202 function not found")
+        self.coach_assigned.append(kwargs)
+        return {"id": f"coach-asg-{len(self.coach_assigned)}", **kwargs,
+                "selected_exercise_id": kwargs["exercise_id"]}
+
+    def get_coach_shared_exercise_assignment(self, _take, _snippet):
+        if not self.coach_assigned:
+            return None
+        last = self.coach_assigned[-1]
+        return {"id": f"coach-asg-{len(self.coach_assigned)}",
+                "selected_exercise_id": last["exercise_id"],
+                "exposure_policy_version": "exercise-coach-shared-v1"}
+
+
+class CoachPickCountsTests(unittest.TestCase):
+    def test_a_served_share_freezes_one_coach_assignment_with_its_trace(self):
+        db = _CountingDb([_row("coach-pick", ["ending_compression"])],
+                         request=_shared())
+        offer = _offer(db, {"insufficient_pauses": True})
+        _offer(db, {"insufficient_pauses": True})   # a second poll
+
+        self.assertTrue(offer["chosen_by_coach"])
+        self.assertEqual(len(db.coach_assigned), 2)   # insert-once in the db
+        frozen = db.coach_assigned[0]
+        self.assertEqual(frozen["lane"], "coach_request")
+        self.assertEqual(frozen["matching_policy_version"],
+                         cvp.COACH_REQUEST_POLICY_VERSION)
+        self.assertEqual(frozen["exercise_id"], "coach-pick")
+        self.assertEqual(frozen["exercise_version"], 1)
+        trace = frozen["trace"]
+        self.assertEqual(trace["trace_schema"], cvp.MATCH_TRACE_SCHEMA)
+        self.assertIsNone(trace["fit"])
+        self.assertEqual(trace["source_id"], "req-1")
+        self.assertEqual(len(trace["candidates"]), 1)
+        candidate = trace["candidates"][0]
+        self.assertEqual(candidate["outcome"], "coach_chosen")
+        self.assertEqual(candidate["exercise_id"], "coach-pick")
+        self.assertEqual(candidate["main_targets"], ["ending_compression"])
+        self.assertEqual(trace["observed_tags"], ["rushing"])
+
+    def test_the_speaker_s_payload_is_unchanged_by_the_freeze(self):
+        db = _CountingDb([_row("coach-pick", ["ending_compression"])],
+                         request=_shared())
+        offer = _offer(db, {"insufficient_pauses": True})
+        for key in ("exercise_assignment_id", "matching_policy_version",
+                    "exposure_policy_version", "pattern_distance",
+                    "selection_mode", "lane"):
+            self.assertNotIn(key, offer)
+
+    def test_a_freeze_that_fails_still_serves_the_coach_s_exercise(self):
+        db = _CountingDb([_row("coach-pick", ["ending_compression"])],
+                         request=_shared(), fail_assign=True)
+        offer = _offer(db, {"insufficient_pauses": True})
+        self.assertEqual(offer["exercise_id"], "coach-pick")
+        self.assertTrue(offer["chosen_by_coach"])
+
+    def test_the_practice_links_to_the_coach_assignment(self):
+        db = _CountingDb([_row("coach-pick", ["ending_compression"])],
+                         request=_shared())
+        _offer(db, {"insufficient_pauses": True})
+        refusal, _, matching = cvp.start_exercise_check(
+            snippet=_snippet(id="snippet-a"), take_session_id="take-1",
+            snippet_id="snippet-a", exercise_id="coach-pick",
+            session_median_wpm=150, database=db)
+        self.assertIsNone(refusal)
+        self.assertEqual(matching["exercise_assignment_id"], "coach-asg-1")
+        self.assertEqual(matching["exercise_coach_request_id"], "req-1")
+
+    def test_without_0398_the_practice_starts_as_before(self):
+        db = _Db([_row("coach-pick", ["ending_compression"])],
+                 request=_shared())
+        refusal, _, matching = cvp.start_exercise_check(
+            snippet=_snippet(id="snippet-a"), take_session_id="take-1",
+            snippet_id="snippet-a", exercise_id="coach-pick",
+            session_median_wpm=150, database=db)
+        self.assertIsNone(refusal)
+        self.assertNotIn("exercise_assignment_id", matching)
+
+    def test_the_review_share_is_frozen_from_the_practice_s_own_evidence(self):
+        db = _CountingDb([_row("coach-pick", ["ending_compression"])])
+        practice = {"id": "practice-9", "owner_user_id": "owner-1",
+                    "take_session_id": "take-1", "snippet_id": "snippet-a",
+                    "acoustic_evidence": {"signals": {"insufficient_pauses": True}},
+                    "machine_assessment": {"pattern": "near_confident"}}
+        row = cvp.record_coach_review_share(
+            db, practice, _row("coach-pick", ["ending_compression"]))
+        self.assertEqual(row["id"], "coach-asg-1")
+        frozen = db.coach_assigned[0]
+        self.assertEqual(frozen["lane"], "coach_review")
+        self.assertEqual(frozen["matching_policy_version"],
+                         cvp.COACH_REVIEW_POLICY_VERSION)
+        self.assertEqual(frozen["trace"]["source_id"], "practice-9")
+        self.assertEqual(frozen["trace"]["observed_tags"], ["rushing"])
+        self.assertEqual(frozen["trace"]["pattern"], "near_confident")
+
+    def test_the_review_route_freezes_the_share_and_carries_the_id(self):
+        route = (ROOT / "routes" / "v2" / "coach.py").read_text()
+        # The freeze lives in the snapshot helper (the route is fenced and
+        # may only shrink); the route hands it the practice only on a share.
+        helper = route[route.index("def _shared_exercise_snapshot"):]
+        helper = helper[:helper.index("def v2_coach_confident_voice_practice")]
+        self.assertIn("record_coach_review_share(db, practice, exercise)", helper)
+        self.assertIn('snapshot["exercise_assignment_id"]', helper)
+        block = route[route.index("def v2_coach_confident_voice_practice"):]
+        block = block[:block.index("def v2_coach_exercise_request")]
+        self.assertIn("practice if share else None", block)
+        # Frozen only on a share, and before the snapshot is saved.
+        self.assertLess(block.index("practice if share else None"),
+                        block.index("patch = {"))
