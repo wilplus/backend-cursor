@@ -14321,6 +14321,61 @@ class DatabaseService:
                            row.get("error_id"), e)
             return None
 
+    def get_diagnostic_exercise(self, exercise_id: str) -> Optional[dict]:
+        """The live row whatever its state (the authoring read; the serving
+        read is get_active_diagnostic_exercise)."""
+        if not exercise_id:
+            return None
+        try:
+            res = (self.client.table("diagnostic_exercise").select("*")
+                   .eq("exercise_id", str(exercise_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_diagnostic_exercise failed id=%s: %s",
+                           exercise_id, e, exc_info=True)
+            return None
+
+    def record_exercise_version(self, row: dict) -> Optional[dict]:
+        """One immutable version row (migration 0399), insert-once. Raises
+        on failure so the caller can log it; the live row stands."""
+        result = self.client.rpc("record_exercise_version_v1",
+                                 {"p_row": row}).execute()
+        return self._rpc_row(result.data)
+
+    def set_exercise_version_transcript(
+        self, *, exercise_id: str, version: int, status: str,
+        transcript: Optional[dict], language: Optional[str],
+    ) -> Optional[dict]:
+        """The transcript's one arrival on a pending version row (0399).
+        Raises the database's refusal to the caller."""
+        result = self.client.rpc("set_exercise_version_transcript_v1", {
+            "p_exercise_id": str(exercise_id),
+            "p_version": int(version),
+            "p_status": str(status),
+            "p_transcript": transcript,
+            "p_language": language,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def list_exercise_versions(self, exercise_id: str) -> list[dict]:
+        """Every version row of one exercise, newest first, without the
+        transcript body (0399)."""
+        if not exercise_id:
+            return []
+        try:
+            res = (self.client.table("diagnostic_exercise_version")
+                   .select("id,exercise_id,version,title,source,created_by,"
+                           "created_at,transcript_status,transcript_language,"
+                           "video_sha256,video_bytes,explanation_video_url,"
+                           "ai_draft_model_version")
+                   .eq("exercise_id", str(exercise_id))
+                   .order("version", desc=True).execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_exercise_versions failed id=%s: %s",
+                           exercise_id, e, exc_info=True)
+            return []
+
     def upsert_diagnostic_exercise(self, row: dict) -> Optional[dict]:
         if not isinstance(row, dict) or not row.get("exercise_id"):
             return None
