@@ -2170,6 +2170,9 @@ test is removed with the line).
 production module defines or reads the three names; prose recording the
 retirement is allowed, a read is not).
 **Broke and fixed:** none.
-**Open for the founder:** a Railway panel that still carries any of the three
-sets nothing and can be cleaned at leisure; nothing in the boot log will
-mention them any more. This is the last pipeline change the rings work owes.
+**Open for the founder:** none. The founder cleaned the Railway panel the same
+day: `MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID` removed; `DATA_FOUNDATION_CANARY_
+ENABLED` was never set there, so the switch always ran on its code default
+(on) and the ring row's kill was the only working kill switch from 0394 on.
+Nothing in the boot log mentions either name any more. This is the last
+pipeline change the rings work owes.
