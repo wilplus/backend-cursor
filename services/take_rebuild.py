@@ -86,14 +86,21 @@ def _order(old_slides: list, new_slides: list
     if None in new_slides or None in old_slides:
         return None
     spoken = {s for s in new_slides if s is not None}
-    order: list[tuple[str, int, Optional[int]]] = []
     known = spoken | {s for s in old_slides if s is not None}
+    return _slide_by_slide(known, spoken, old_slides, new_slides), spoken
+
+
+def _slide_by_slide(known: set, spoken: set, old_slides: list,
+                    new_slides: list) -> list[tuple[str, int, Optional[int]]]:
+    """Every known Slide in ascending order: a Slide the new Take spoke takes
+    its new Paragraphs, any other keeps its old ones, source order within."""
+    order: list[tuple[str, int, Optional[int]]] = []
     for slide in sorted(known):
         src = "new" if slide in spoken else "old"
         slides = new_slides if src == "new" else old_slides
         order.extend((src, i, slide) for i, s in enumerate(slides)
                      if s == slide)
-    return order, spoken
+    return order
 
 
 def merge_by_slide(old_text: str, old_doc: Mapping, new_text: str,
@@ -185,33 +192,16 @@ def reidentify_parts(old_rows: list, old_text: str,
     that Slide's old ids in order (1st with 1st), so history stays continuous;
     extra Paragraphs get fresh ids and dropped ones go. When the old rows do
     not tile the old text, every Paragraph gets a fresh id."""
-    from services.ideal_text_parts import agrees_with_text, serve
-
     rows_by_id = {str(r.get("id")): r for r in old_rows or []
                   if isinstance(r, Mapping)}
-    served = serve(old_rows) if old_rows else None
-    old_ids: list[str] = []
-    if served and agrees_with_text(served, old_text) \
-            and len(served) == len(rebuild.old_slides):
-        old_ids = [str(p["id"]) for p in served]
-
-    kept = {old_ids[i] for src, i in rebuild.sources
-            if src == "old" and i < len(old_ids)}
-    spare: dict = {}
-    for pid, slide in zip(old_ids, rebuild.old_slides):
-        if pid not in kept:
-            spare.setdefault(slide, []).append(pid)
+    old_ids = _tiling_old_ids(old_rows, old_text, rebuild)
+    spare = _spare_ids_by_slide(old_ids, rebuild)
 
     blocks = rebuild.text.split(_PARA)
     out: list[dict] = []
     for n, ((src, i), slide) in enumerate(zip(rebuild.sources,
                                               rebuild.slides)):
-        if src == "old" and i < len(old_ids):
-            pid = old_ids[i]
-        elif spare.get(slide):
-            pid = spare[slide].pop(0)
-        else:
-            pid = str(uuid.uuid4())
+        pid = _paragraph_id(src, i, slide, old_ids, spare)
         out.append({
             "id": pid,
             "ord": n,
@@ -219,6 +209,42 @@ def reidentify_parts(old_rows: list, old_text: str,
             "locked_at": (rows_by_id.get(pid) or {}).get("locked_at"),
         })
     return out
+
+
+def _tiling_old_ids(old_rows: list, old_text: str,
+                    rebuild: Rebuild) -> list[str]:
+    """The old Paragraph ids in order, or [] when the stored rows do not
+    tile the old text Paragraph for Paragraph."""
+    from services.ideal_text_parts import agrees_with_text, serve
+
+    served = serve(old_rows) if old_rows else None
+    if served and agrees_with_text(served, old_text) \
+            and len(served) == len(rebuild.old_slides):
+        return [str(p["id"]) for p in served]
+    return []
+
+
+def _spare_ids_by_slide(old_ids: list[str], rebuild: Rebuild) -> dict:
+    """Old ids the rebuild did not keep, per Slide, in order: a rebuilt
+    Slide reuses them 1st with 1st."""
+    kept = {old_ids[i] for src, i in rebuild.sources
+            if src == "old" and i < len(old_ids)}
+    spare: dict = {}
+    for pid, slide in zip(old_ids, rebuild.old_slides):
+        if pid not in kept:
+            spare.setdefault(slide, []).append(pid)
+    return spare
+
+
+def _paragraph_id(src: str, i: int, slide: Optional[int],
+                  old_ids: list[str], spare: dict) -> str:
+    """An untouched Paragraph's own id, else its Slide's next spare old id,
+    else a fresh one."""
+    if src == "old" and i < len(old_ids):
+        return old_ids[i]
+    if spare.get(slide):
+        return spare[slide].pop(0)
+    return str(uuid.uuid4())
 
 
 def legacy_helper_words(old_rows: list, rebuild: Rebuild,
