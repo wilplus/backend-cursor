@@ -1,4 +1,4 @@
-"""0392: the legacy coach card's three confidence-chain wrappers (Q2).
+"""0393: the legacy coach card's three confidence-chain wrappers (Q2).
 
 Text pins on the migration file; the released rehearsal lane proves them
 against PostgreSQL in tests/test_mlc2_confidence_end_to_end_postgres.py.
@@ -24,10 +24,10 @@ def _body(name: str) -> str:
     return match.group(1)
 
 
-def test_manifest_appends_0392_after_0391():
+def test_manifest_appends_0393_after_q1s_0392():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    this = "0392\tthe_coach_card_consumes_the_confidence_chain.sql"
-    before = "0391\tsounds_more_confident_reads_the_coachs_two_answers.sql"
+    this = "0393\tthe_coach_card_consumes_the_confidence_chain.sql"
+    before = "0392\tthe_promotion_freezes_the_consent_snapshot.sql"
     assert this in manifest
     assert manifest.index(before) < manifest.index(this)
 
@@ -82,6 +82,6 @@ def test_the_migration_is_additive_and_activates_nothing():
     assert "founder_canary" not in _body("prepare_mlc2_confidence_coach_packet_v1")
 
 
-def test_the_released_lane_applies_0392_twice():
+def test_the_released_lane_applies_0393_twice():
     recipe = (ROOT / "tests" / "integration" / "confident_moment_rehearsal.sh").read_text()
     assert recipe.count("hard migrations/the_coach_card_consumes_the_confidence_chain.sql") == 2
