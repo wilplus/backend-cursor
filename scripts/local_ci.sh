@@ -158,6 +158,7 @@ step "Migration runner unit tests" "$PY" -m unittest tests.test_migrations -v
 step "Ruff (lint)" "$VENV/bin/ruff" check .
 step "Mypy (type-check)" "$VENV/bin/mypy" .
 step "Complexity ratchet" "$PY" scripts/complexity_ratchet.py
+step "Silent-except ratchet" "$PY" scripts/except_ratchet.py
 
 # Minimal placeholder env, same as the workflow: enough that import-time
 # guards don't hard-crash, and useless for reaching anything real.
