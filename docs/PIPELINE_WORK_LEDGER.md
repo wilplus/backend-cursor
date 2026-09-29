@@ -2009,7 +2009,7 @@ Next.js proxy file between them never existed, so every acknowledgement
 which is why the seven-surface readiness could never leave `blocked`. After
 the frontend deploys, the first visible render writes the first receipt.
 
-### 2026-09-29 · WS-RINGS · rings-rollout-mechanism · #pending (branch built and gated; the PR number goes here when it opens)
+### 2026-09-29 · WS-RINGS · rings-rollout-mechanism · #787
 
 **Closed:** the rollout mechanism the two-person canary and every later
 limited launch need (rings design note, founder 2026-09-29): 0392 adds
