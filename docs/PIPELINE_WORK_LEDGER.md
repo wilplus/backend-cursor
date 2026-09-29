@@ -2016,7 +2016,8 @@ chain's blind packet, render receipt, judgment and reveal RPCs had no
 application caller. The legacy coach card, the queue coaches use today, is
 now that caller.
 **Contract lines flipped:** none.
-**Contract lines added:** migration 0392
+**Contract lines added:** migration 0392 (its number on the branch; it takes
+the next free number when it lands after WS-Q1, which also adds 0392)
 `the_coach_card_consumes_the_confidence_chain.sql` adds three exact-identity
 SECURITY DEFINER wrappers: `prepare_mlc2_confidence_coach_packet_v1` (the
 selected, eligible candidate of the Take's own snippet → the blind packet,
