@@ -267,6 +267,93 @@ def _lineage_owner(database: Any, latest: Mapping[str, Any],
     return (owner, candidate) if owner else ("", project_id)
 
 
+def _settle_parts(
+    database: Any, arc_id: str, actor_id: str, text: str,
+) -> tuple[str, dict | None, list]:
+    """``(text, composed, stored_rows)``: the locked parts recomposed onto
+    the served text (and stored when they changed), or, for a document with
+    no parts at all, machine parts minted and stored."""
+    from services.ideal_text_parts import compose_locked
+    stored_rows = database.get_ideal_text_parts(
+        arc_id, actor_id, with_lock=True) or []
+    composed = compose_locked(text, stored_rows)
+    if composed is not None:
+        text = composed["text"]
+        if composed.get("changed"):
+            stored_rows = _store_recomposed(
+                database, arc_id, actor_id, composed, stored_rows)
+    elif not stored_rows:
+        # WHERE A PARAGRAPH IS BORN (production, 2026-09-19: the binder logged
+        # `parts=0 pieces=3` -- nothing to place against, on every take).
+        #
+        # Until now identity arrived only by USER action: the edit PUT and
+        # seed-on-lock store the client's list, and `compose_locked` (the
+        # branch above) refreshes a list that already has locks. A student who
+        # has neither edited nor locked has no Paragraph ids at all, which is
+        # the normal state of a fresh project -- and it costs them the V3
+        # bookmarks (`piece_has_no_part_id` on every row) and the slide join on
+        # the deck (`part_id: None` on every served piece, so the FE's
+        # `partsFromCorePieces` declines the set).
+        #
+        # HERE, and only here, because this runs at a WRITE BOUNDARY:
+        # `build_snapshot`'s own contract says it "may persist a newly composed
+        # part list because it runs only while publishing; the GET path never
+        # calls it". A student GET must still never mint identity.
+        #
+        # ONLY WHEN THE TABLE IS EMPTY. `elif` on the compose branch and
+        # `not stored_rows` together mean this cannot touch a document that has
+        # any identity of its own -- nothing is overwritten, ever, and a
+        # document whose parts merely disagree with the served text keeps them
+        # and keeps today's behaviour. L1 holds by construction too: the words
+        # are not read for this, only split, and `mint_machine_parts` refuses
+        # unless its list joins back to this exact text.
+        stored_rows = _mint_parts(database, arc_id, actor_id, text, stored_rows)
+    return text, composed, stored_rows
+
+
+def _store_recomposed(
+    database: Any, arc_id: str, actor_id: str, composed: dict,
+    stored_rows: list,
+) -> list:
+    """Store the recomposed parts, each keeping its lock, and re-read."""
+    locks = {str(row0.get("id")): row0.get("locked_at")
+             for row0 in stored_rows if isinstance(row0, dict)}
+    database.replace_ideal_text_parts(
+        arc_id, actor_id,
+        [{**part, "locked_at": locks.get(str(part["id"]))}
+         for part in composed["parts"]])
+    return database.get_ideal_text_parts(
+        arc_id, actor_id, with_lock=True) or []
+
+
+def _mint_parts(
+    database: Any, arc_id: str, actor_id: str, text: str, stored_rows: list,
+) -> list:
+    """Mint machine parts for this exact text and store them; the stored
+    rows, re-read, or ``stored_rows`` unchanged when nothing was stored."""
+    from services.ideal_text_parts import mint_machine_parts
+    minted = mint_machine_parts(text)
+    if minted and database.replace_ideal_text_parts(
+            arc_id, actor_id, minted):
+        stored_rows = database.get_ideal_text_parts(
+            arc_id, actor_id, with_lock=True) or []
+        logger.info(
+            "ideal-text parts minted for a never-edited document "
+            "parts=%d arc=%s", len(minted), arc_id)
+    return stored_rows
+
+
+def _served_parts(stored_rows: list, text: str) -> Any:
+    """The parts to serve, or None when they do not join back to ``text``."""
+    from services.ideal_text_parts import serve
+    served_parts = serve(stored_rows)
+    if served_parts is not None:
+        from services.ideal_text_parts import agrees_with_text
+        if not agrees_with_text(served_parts, text):
+            served_parts = None
+    return served_parts
+
+
 def build_snapshot(
     database: Any,
     arc_id: str,
@@ -298,61 +385,9 @@ def build_snapshot(
     moment_seeds = extract_key_moments(text_with_moments)
     text = strip_moment_markers(text_with_moments)
 
-    from services.ideal_text_parts import (
-        compose_locked, mint_machine_parts, serve,
-    )
-    stored_rows = database.get_ideal_text_parts(
-        arc_id, actor_id, with_lock=True) or []
-    composed = compose_locked(text, stored_rows)
-    if composed is not None:
-        text = composed["text"]
-        if composed.get("changed"):
-            locks = {str(row0.get("id")): row0.get("locked_at")
-                     for row0 in stored_rows if isinstance(row0, dict)}
-            database.replace_ideal_text_parts(
-                arc_id, actor_id,
-                [{**part, "locked_at": locks.get(str(part["id"]))}
-                 for part in composed["parts"]])
-            stored_rows = database.get_ideal_text_parts(
-                arc_id, actor_id, with_lock=True) or []
-    elif not stored_rows:
-        # WHERE A PARAGRAPH IS BORN (production, 2026-09-19: the binder logged
-        # `parts=0 pieces=3` -- nothing to place against, on every take).
-        #
-        # Until now identity arrived only by USER action: the edit PUT and
-        # seed-on-lock store the client's list, and `compose_locked` (the
-        # branch above) refreshes a list that already has locks. A student who
-        # has neither edited nor locked has no Paragraph ids at all, which is
-        # the normal state of a fresh project -- and it costs them the V3
-        # bookmarks (`piece_has_no_part_id` on every row) and the slide join on
-        # the deck (`part_id: None` on every piece below, so the FE's
-        # `partsFromCorePieces` declines the set).
-        #
-        # HERE, and only here, because this runs at a WRITE BOUNDARY: the
-        # function's own contract already says it "may persist a newly composed
-        # part list because it runs only while publishing; the GET path never
-        # calls it". A student GET must still never mint identity.
-        #
-        # ONLY WHEN THE TABLE IS EMPTY. `elif` on the compose branch and
-        # `not stored_rows` together mean this cannot touch a document that has
-        # any identity of its own -- nothing is overwritten, ever, and a
-        # document whose parts merely disagree with the served text keeps them
-        # and keeps today's behaviour. L1 holds by construction too: the words
-        # are not read for this, only split, and `mint_machine_parts` refuses
-        # unless its list joins back to this exact text.
-        minted = mint_machine_parts(text)
-        if minted and database.replace_ideal_text_parts(
-                arc_id, actor_id, minted):
-            stored_rows = database.get_ideal_text_parts(
-                arc_id, actor_id, with_lock=True) or []
-            logger.info(
-                "ideal-text parts minted for a never-edited document "
-                "parts=%d arc=%s", len(minted), arc_id)
-    served_parts = serve(stored_rows)
-    if served_parts is not None:
-        from services.ideal_text_parts import agrees_with_text
-        if not agrees_with_text(served_parts, text):
-            served_parts = None
+    text, composed, stored_rows = _settle_parts(
+        database, arc_id, actor_id, text)
+    served_parts = _served_parts(stored_rows, text)
 
     project = resolve_project_read(
         sessions, completed_spoken=_completed_spoken)
@@ -449,31 +484,11 @@ def publish_for_arc(database: Any, arc_id: str,
         spoken = _completed_spoken(sessions)
         if not spoken:
             return None
-        latest = sorted(spoken, key=lambda row: row.get("take_index") or 0)[-1]
-        actor = str(actor_id or latest.get("user_id")
-                    or latest.get("owner_principal_id") or "")
+        actor = _publishing_actor(spoken, actor_id)
         if not actor:
             return None
         for _attempt in range(2):
-            generation = database.get_ideal_text_document_generation(
-                str(arc_id))
-            if not isinstance(generation, int):
-                raise ValueError("IDEAL_TEXT_DOCUMENT_GENERATION_REQUIRED")
-            previous = database.get_ideal_text_document_snapshot(
-                str(arc_id), actor)
-            previous_payload = (
-                previous.get("payload")
-                if isinstance(previous, Mapping)
-                and isinstance(previous.get("payload"), Mapping)
-                else None
-            )
-            payload, seed, lineage = build_snapshot(
-                database, str(arc_id), actor, sessions,
-                previous_payload=previous_payload)
-            result = database.publish_ideal_text_document_snapshot(
-                arc_id=str(arc_id), actor_id=actor, payload=payload,
-                enrichment_seed=seed, source_generation=generation,
-                **lineage)
+            result = _publish_attempt(database, arc_id, actor, sessions)
             if result is not None:
                 # NO BAKE HERE, and the absence is the fix (#587, task #43).
                 #
@@ -503,14 +518,53 @@ def publish_for_arc(database: Any, arc_id: str,
         logger.warning("ideal-text snapshot publish failed arc=%s: %s",
                        arc_id, error)
         if enqueue_on_failure:
-            try:
-                enqueue_pending_publication(str(arc_id))
-            except Exception as enqueue_error:
-                logger.warning(
-                    "ideal-text snapshot retry enqueue failed arc=%s: %s",
-                    arc_id, enqueue_error,
-                )
+            _enqueue_retry(arc_id)
         return None
+
+
+def _publishing_actor(
+    spoken: list[Mapping[str, Any]], actor_id: str | None,
+) -> str:
+    """The given actor, else the latest spoken Take's user or owner, else ""."""
+    latest = sorted(spoken, key=lambda row: row.get("take_index") or 0)[-1]
+    return str(actor_id or latest.get("user_id")
+               or latest.get("owner_principal_id") or "")
+
+
+def _publish_attempt(
+    database: Any, arc_id: str, actor: str, sessions: list,
+) -> dict | None:
+    """One build-and-publish against the current generation; None when the
+    source moved underneath it."""
+    generation = database.get_ideal_text_document_generation(
+        str(arc_id))
+    if not isinstance(generation, int):
+        raise ValueError("IDEAL_TEXT_DOCUMENT_GENERATION_REQUIRED")
+    previous = database.get_ideal_text_document_snapshot(
+        str(arc_id), actor)
+    previous_payload = (
+        previous.get("payload")
+        if isinstance(previous, Mapping)
+        and isinstance(previous.get("payload"), Mapping)
+        else None
+    )
+    payload, seed, lineage = build_snapshot(
+        database, str(arc_id), actor, sessions,
+        previous_payload=previous_payload)
+    return database.publish_ideal_text_document_snapshot(
+        arc_id=str(arc_id), actor_id=actor, payload=payload,
+        enrichment_seed=seed, source_generation=generation,
+        **lineage)
+
+
+def _enqueue_retry(arc_id: str) -> None:
+    try:
+        enqueue_pending_publication(str(arc_id))
+    except Exception as enqueue_error:
+        logger.warning(
+            "ideal-text snapshot retry enqueue failed arc=%s: %s",
+            arc_id, enqueue_error,
+        )
 
 
 # Per-process memory of when each arc last tried an on-open publication. The
