@@ -99,7 +99,8 @@ def _reconcile_practice_attempt(
     if not practice or str(practice.get("project_id") or "") != arc:
         return False
     coach = attempt.get("coach_confidence_decision")
-    if coach == "no":
+    # Any coach answer but Yes keeps it out (five answers since 0390).
+    if coach is not None and coach != "yes":
         return bool(database.delete_voice_album_practice_entry(
             arc_id=arc, practice_attempt_id=target,
         ))

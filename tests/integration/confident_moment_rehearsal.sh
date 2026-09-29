@@ -432,6 +432,10 @@ hard migrations/an_exercise_is_seen.sql
 # than the original (internal, never a label). Twice: apply/reapply.
 hard migrations/a_practice_sounds_more_confident.sql
 hard migrations/a_practice_sounds_more_confident.sql
+# 0390 lets the coach answer a practice recording the five ways the speaker
+# does. Twice: apply/reapply.
+hard migrations/a_coach_answers_practice_five_ways.sql
+hard migrations/a_coach_answers_practice_five_ways.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

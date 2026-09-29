@@ -52,6 +52,7 @@ from services.coach_moment_errors import (
 # Module level, because the packet SHAPER uses them and it is module level too
 # — the blind rules belong beside the row they gate, not inside one route.
 from services.practice_more_confident import record_after_coach_decision
+from services.practice_adoption import ANSWERS as _FIVE_ANSWERS
 from services.coach_blind_gate import (
     has_committed_blind_label,
     reveal_owner_answer_after_commit,
@@ -1605,7 +1606,7 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
                         "error": "professional_coach_decision is required"}), 400
     selected_attempt_id = str(practice.get("selected_attempt_id") or "")
     selected_attempt_decision = body.get("selected_attempt_coach_decision")
-    if selected_attempt_id and selected_attempt_decision not in ("yes", "no"):
+    if selected_attempt_id and selected_attempt_decision not in _FIVE_ANSWERS:
         return jsonify({
             "code": "INVALID_INPUT",
             "error": "Judge the selected practice recording itself.",

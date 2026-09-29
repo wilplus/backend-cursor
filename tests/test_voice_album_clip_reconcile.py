@@ -184,6 +184,17 @@ class PracticeAttempt(unittest.TestCase):
             "arc_id": ARC, "practice_attempt_id": CLIP,
         })])
 
+    def test_any_coach_answer_but_yes_removes_the_attempt(self):
+        # Five answers since 0390 (founder 2026-09-29, Q3a / Q6): only the
+        # coach's real Yes lets a recording in; In-between is not a Yes.
+        for answer in ("in_between", "not_sure", "audio_unclear"):
+            with self.subTest(answer=answer):
+                database = self._db(attempt={"coach_confidence_decision": answer})
+                self.assertTrue(_run(database))
+                self.assertEqual(database.writes, [("delete_practice", {
+                    "arc_id": ARC, "practice_attempt_id": CLIP,
+                })])
+
     def test_an_attempt_that_is_not_the_selected_one_stays_out(self):
         database = self._db(practice={"selected_attempt_id": "other"})
         self.assertFalse(_run(database))
