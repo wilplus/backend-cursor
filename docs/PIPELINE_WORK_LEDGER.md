@@ -75,15 +75,17 @@ Run it rather than trust this table — it is a convenience, and it goes stale:
 | the freshness rule names every route an answer takes | green | — |
 | the computation window reaches the writer | green | — |
 | the page offers exactly the five owner states | green | — |
-| each of the five states routes as itself | **xfail** | F-4 |
+| each of the five states routes as itself | green | — |
 | a promoted model cannot reach the document without a gate | green | — |
 | a later Take proposes and never applies | green | — |
 | the words a speaker waits on name work, not judgement | green | — |
 
-One open, twelve held — and the table still undercounts, because #613 and
-#614 added two green lines without an entry here. F-4 is the last of the
-three the audit found against what a speaker sees; every other finding has
-its own regression test in its own file and does not appear here.
+No contract line open, thirteen held (F-4's line flipped 2026-09-28) — and
+the table still undercounts, because #613 and #614 added two green lines
+without an entry here. F-4's contract line was the last of the three the
+audit found against what a speaker sees; the finding itself is closed on the
+Take-review path only (see the WS-F4 entry). Every other finding has its own
+regression test in its own file and does not appear here.
 
 ---
 
@@ -1854,6 +1856,137 @@ rebuild Ideal Text.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
+### 2026-09-28 · WS-R1 · r1-canonical-tables-rpc-only · #754
+
+**Closed:** R-1 (0389 `canonical_tables_are_written_only_through_their_rpcs.sql`).
+**Contract lines flipped:** none — the contract has no line for this; the
+finding's own suite is `tests/test_canonical_tables_are_rpc_only_postgres.py`
+(146 cases on the released lane: 105 failed before 0389, 146 pass after).
+**Contract lines added:** none in `test_f1_loop_contract.py`; the released
+lane gained the suite above and now also applies 0299, which it never had.
+**Broke and fixed:** none.
+**Open for the founder:** none.
+
+What the audit counted and what the grant blocks say differ. R-1 named
+eighteen tables because the lane it was read on lacked ten of the tables 0296
+granted; the two `GRANT ALL ... TO service_role` blocks (0296 lines 2339–2364,
+0299 lines 119–120) name twenty-eight. 0389 covers the blocks: REVOKE ALL from
+PUBLIC, anon, authenticated and service_role on each, then SELECT back to
+service_role only where it could already read. correction_decisions (0321,
+SELECT only) and feedback_revisions (coaching bundle, no privileges at all)
+keep the narrower shape they already had — the file never widens.
+
+Why it is safe, enumerated rather than assumed: no Python writes any of the
+twenty-eight directly (one SELECT in `services/ideal_text_repository.py`; the
+purge's `.table(relation).delete()` only ever runs for dependencies whose
+disposition is `delete`, and every one of these is `tombstone` or
+`external_review`); every function whose final definition writes one of them
+is SECURITY DEFINER, sixteen in the released lane, except the trigger function
+`transfer_learning_surfaces_on_owner_claim()` on `projects`, which writes only
+when the `willab.owner_claim_*` settings that `claim_guest_owner` (a definer)
+sets are present, so its writes run as the definer. The suite pins that single
+exception by name and fails if a second non-definer writer ever appears.
+
+Two settings the code depends on: none. No environment variable, no flag.
+### 2026-09-28 · WS-F4 · f4-five-states-route-as-themselves · #755
+
+**Closed:** F-4 on the Take-review path only (the fold at
+`routes/v2/user_sessions.py`, leg (a) of the finding). Three legs stay open:
+(b) `db.upsert_owner_voice_album_route` still accepts the legacy pair; (c)
+the table has no `taxonomy_version` column and no trigger, so 0341's
+"audit-only, no new writes" is still enforced by comment; (d) the live
+`PUT /v2/user/snippets/<id>/confidence-agree` route (a ternary instrument
+with a BFF proxy and no frontend caller) still mints `neutral`/`unrateable`.
+**Contract lines flipped:** `test_each_of_the_five_states_routes_as_itself`
+xfail → passing (the contract's last open line; baseline before 13 passed /
+1 xfailed, after 14 passed / 0 xfailed).
+**Contract lines added:** none.
+**Broke and fixed:** none. Found on the way: on `main` the practice start
+route refused (409) any clip answered through "Practice new", because that
+route already stored the five states and the matcher only knew the fold;
+`route_matches` fixes that.
+**Open for the founder:** legs (b)–(d) above are one decision: retire or
+410 `PUT …/confidence-agree` (and its frontend proxy), then narrow the
+writer to the five states and add the WS-7 trigger plus `taxonomy_version`
+with `tests/test_owner_voice_album_routing_postgres.py::test_new_neutral_write_is_rejected`.
+Not done here because it removes a live route.
+
+`album_routing_for` in `services/take_feedback_responses.py` is the one
+derivation and returns the answer itself; the Take-review route calls it.
+`services/practice_adoption.route_matches` reads both vocabularies, because
+rows written before today hold the folded pair and a legacy `neutral` cannot
+say whether it was an in-between or a not-sure. Every reader of the stored
+value tests it against `yes` or uses only the snippet id, so nothing served
+changes.
+### 2026-09-28 · WS-G6 · g6-confidence-frame-factory · #756
+
+**Closed:** the producer half of G-6's missing piece: the worker's
+`frame_factory` and the chain that runs it
+(`services/mlc2_confidence_frame_factory.py`). Not closed: the consumer
+half the audit names (no application caller for the MLC-2 blind packet,
+ack, judgment and reveal RPCs; the only judgment path is the D5 inline
+route behind its own flag), and G-6 itself, which stays open until the
+founder flips `MLC2_CONFIDENCE_CUTOVER_MODE` to `founder_canary` after
+readiness.
+**Contract lines flipped:** none.
+**Contract lines added:** none in `test_f1_loop_contract.py`; the module's
+own suite is `tests/test_mlc2_confidence_frame_factory.py` (28 cases), and
+`test_mlc2_legacy_isolation.py` allowlists the module by name.
+**Broke and fixed:** none.
+**Open for the founder:** two, both before activation, neither blocking this
+merge. (1) The end-to-end rehearsal (promote under founder_canary on a
+disposable lane → worker → `finalize_mlc2_confidence_frame_v1` → a D5 blind
+packet with the transcript and prediction absent) is the next PR and the
+activation evidence; this PR proves the frame against the contract's own
+validator only. (2) `MIN_CLIP_MS = 1000` and the boundary-first ranking are
+this PR's reading of contract K9, and K9's third component, balanced
+predicted regions, is not implemented in this version; say whether the
+first blind batches need it, and whether the random slice should weigh more
+than 20% while the pool is small. (3) The foundation class is read at the
+detector's ±0.5 band edges, not at the served sign-based lean; both are
+recorded per clip, and the comparison target for a later model is the
+three perceptual answers of the blind instrument.
+
+What a coach can now be asked. Under `dark` nothing changes: no outbox event
+is written, the boot line says `confidence producer dark: not started`, a
+sweep tick returns without touching the broker. Under `founder_canary`, the
+Take's snippets become candidates on the Take's own R2 audio object with
+exact spans, the foundation detector's stamped score becomes a three-class
+prediction, one clip per Take is selected (boundary-first, 20% random, every
+draw recorded), and the D5 batch can build a blind packet from the stored
+span because the evidence coordinates are the lineage's own offsets.
+
+### 2026-09-28 · WS-G6 part 2 · g6-confidence-end-to-end-rehearsal · #759
+
+**Closed:** the activation evidence for G-6: the blind-label chain runs end
+to end on the released lane with the foundation frame factory in the loop.
+G-6 itself still waits on the founder's mode change.
+**Contract lines flipped:** none.
+**Contract lines added:** `tests/test_mlc2_confidence_end_to_end_postgres.py`
+(10 cases, released lane, one rolled-back transaction): promote through the
+atomic producer RPC → outbox → claim → the factory builds the frame from
+the Take's snippet rows → `finalize_mlc2_confidence_frame_v1` accepts it
+(one candidate set, one span per snippet at the snippet's exact offsets on
+the Take's own R2 object, one prediction per eligible clip, exactly one
+selected) → a replay changes nothing → a blind packet from the selected
+candidate carries no transcript, prediction, score, rank or selection hint
+→ the slice-4 health function reports no orphan and every gate closed.
+**Broke and fixed:** none. The released lane's narrow `snippets` copy had no
+`metrics` column (production stamps the delivery-signal read there); the
+recipe now widens it, released lane only, as the widen files do.
+**Open for the founder:** two things this rehearsal does not cover. The D5
+coach batch joins a stored span to an exercise audio lineage
+(`exercise_evidence_matches_audio_v1`), whose row needs the Phase-1
+authorization chain, a learning profile and an authority check; the suite
+asserts the span and object identity against the source manifest, not
+against a Phase-1 registered object or a lineage, so that join is not
+rehearsed. And the MLC-2 blind packet, ack, judgment and reveal RPCs still
+have no application caller (audit G-6 body); the only judgment path is the
+D5 inline route behind `MLC3_COACH_INLINE_AUTHORING_ENABLED`. The producer
+half is rehearsed; a `founder_canary` activation additionally needs a
+caller for the coach side, readiness (canary principal id on every service,
+monitoring and Sentry on, the bundled consent grant present) and the
+reviewed constant change.
 ### 2026-09-28 · WS-G1 · frontend g1-exposure-ack-proxy · frontend #529
 
 **Closed:** G-1 (frontend wilplus/frontend-cursor#529; nothing changes in

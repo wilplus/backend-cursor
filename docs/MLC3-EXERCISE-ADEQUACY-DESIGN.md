@@ -265,6 +265,11 @@ Raw horizons stay separate and are all still stored:
     answers; blind coach or peer confidence judgments; coach overrides;
     shadow-stage verdicts; "shown" or "opened". Exercise outcomes never train
     Confidence Classification.
+    A separate internal reading, `exercise-more-confident-v1` (contract
+    35g-3, migration 0388, founder 2026-09-28), records whether the
+    coach-judged practice attempt sounded more confident than the original
+    (the composite higher AND the coach's Yes). It uses a coach judgment, so
+    under this item it is never a label and nothing in §8 or §13 reads it.
 
 ### 3.5a Noise meter `noise-meter-v1` (silent)
 
