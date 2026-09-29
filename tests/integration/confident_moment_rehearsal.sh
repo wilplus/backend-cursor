@@ -436,6 +436,10 @@ hard migrations/a_practice_sounds_more_confident.sql
 # does. Twice: apply/reapply.
 hard migrations/a_coach_answers_practice_five_ways.sql
 hard migrations/a_coach_answers_practice_five_ways.sql
+# 0391 works the coach leg of "sounds more confident" out from the coach's
+# before and after answers. Twice: apply/reapply.
+hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
+hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so
