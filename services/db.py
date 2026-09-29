@@ -14957,7 +14957,8 @@ class DatabaseService:
             return (res.data or [None])[0]
         except Exception as e:
             logger.warning("get_confident_voice_practice_by_moment failed "
-                           "sid=%s snip=%s: %s", take_session_id, snippet_id, e)
+                           "sid=%s snip=%s: %s", take_session_id, snippet_id, e,
+                           exc_info=True)
             return None
 
     def get_confident_voice_practice_by_take(
