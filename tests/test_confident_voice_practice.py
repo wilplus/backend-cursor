@@ -216,7 +216,8 @@ class ManagerTests(unittest.TestCase):
         ))
         offer = next(row["practice_exercise"] for row in rows
                      if "practice_exercise" in row)
-        self.assertEqual(offer["pattern_distance"], 1)
+        # The routing number never reaches the speaker (AC-9, 2026-09-29).
+        self.assertNotIn("pattern_distance", offer)
         # The bare version: whether this was a trial never reaches the
         # speaker's payload.
         self.assertEqual(
