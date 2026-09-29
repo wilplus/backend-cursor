@@ -15404,7 +15404,10 @@ class DatabaseService:
         self, practice_id: str, attempt_id: str, decision: str,
         coach_user_id: str,
     ) -> Optional[dict]:
-        if decision not in ("yes", "no"):
+        # The coach answers the speaker's five ways (0390, founder
+        # 2026-09-29 Q3a).
+        from services.practice_adoption import ANSWERS
+        if decision not in ANSWERS:
             return None
         try:
             res = (self.client.table("confident_voice_practice_attempt")

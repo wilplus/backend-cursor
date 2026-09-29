@@ -425,3 +425,4 @@
 0387	an_exercise_is_seen.sql
 0388	a_practice_sounds_more_confident.sql
 0389	canonical_tables_are_written_only_through_their_rpcs.sql
+0390	a_coach_answers_practice_five_ways.sql
