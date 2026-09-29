@@ -1593,31 +1593,18 @@ def v2_post_take_feedback_response(take_session_id):
             ),
         )
 
-        if row["feedback_family"] == "confident_voice" and row.get("snippet_id"):
-            routing = (
-                "yes" if row["response"] == "yes"
-                else "no" if row["response"] == "no"
-                else "unrateable" if row["response"] == "audio_unclear"
-                else "neutral"
-            )
-            snip = db.get_snippet_by_id(row["snippet_id"]) or {}
-            piece = ((snip.get("metrics") or {}).get("piece")
-                     if isinstance(snip.get("metrics"), dict) else {})
-            db.upsert_owner_voice_album_route(
-                snippet_id=row["snippet_id"],
-                owner_user_id=str(request.user_id),
-                arc_id=arc_id,
-                response=routing,
-                slide_index=(piece.get("slide_index")
-                             if isinstance(piece, dict) else None),
-            )
-            from services.voice_album import refresh_voice_album
-            refresh_voice_album(arc_id, database=db)
+        # The owner's answer as a routing signal, then what follows it (a
+        # judgement is always answered, founder 2026-09-29).
+        from services.judgement_follow_up import route_owner_answer
+        follow_up = route_owner_answer(
+            db, row, arc_id=arc_id, take_session_id=str(take_session_id),
+            owner_user_id=str(request.user_id))
         return jsonify({
             "saved": True,
             "feedback_id": row["feedback_id"],
             "feedback_family": row["feedback_family"],
             "response": row["response"],
+            "follow_up": follow_up,
         }), 200
     except Exception as e:
         logger.error("take feedback response failed take=%s: %s",

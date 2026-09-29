@@ -408,10 +408,16 @@ with this contract, this contract wins.
     practice" alone. Fit is a category, never a number, and never reaches the
     speaker. Among equal fits, the exercise covering more of what fired wins,
     then the one claiming fewer targets.
-35g-2. **The coach hears when nothing fits** (founder 2026-09-28). When the
-    Take's exercise item gets no exercise under 35g-1, one coach request is
-    recorded for that exact moment with why (nothing spotted, or nothing in
-    the library targets what was). The speaker never waits on it. The coach
+35g-2. **The coach hears when nothing fits** (founder 2026-09-28; extended
+    2026-09-29). When the Take's exercise item gets no exercise under 35g-1,
+    one coach request is recorded for that exact moment with why (nothing
+    spotted, or nothing in the library targets what was). **A judgement is
+    always answered** (founder 2026-09-29): a No on any bookmark that carries
+    no exercise sends that bookmark to the coach the moment the answer is
+    saved, whether or not a problem was recognised, because the speaker has
+    named one; the item then reads "Your coach is working on your exercise."
+    (founder-signed copy, 2026-09-29) until the coach shares one. Audio
+    unclear raises nothing. The speaker never waits on it. The coach
     sees it only after their own blind rating of the moment and answers once:
     a library exercise, a new one filed into the library (which must name a
     problem code can detect, and so becomes reusable for any speaker), or no
