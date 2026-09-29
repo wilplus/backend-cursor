@@ -92,6 +92,12 @@ SPEC_STICKINESS_TOPICS = LLMSpec(
 SPEC_COACH_COMMENT_DRAFT = LLMSpec(
     model=CHEAP_MODEL, temperature=0.6, max_tokens=320,
 )
+SPEC_EXERCISE_SCRIPT_DRAFT = LLMSpec(
+    model=CHEAP_MODEL, temperature=0.6, max_tokens=500,
+)
+"""A first script for a coach's exercise video, shown to the coach only
+(founder 2026-09-29, decision 4). Never reaches a speaker as drafted."""
+
 SPEC_SNIPPET_DRAFT = LLMSpec(
     model=CHEAP_MODEL, temperature=0.5, max_tokens=220,
 )

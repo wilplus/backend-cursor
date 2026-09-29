@@ -273,20 +273,56 @@ def _avatar(fields: dict) -> dict:
     return {"avatar_training_eligible": True, "avatar_setup_label": label}
 
 
-def save_exercise(database: Any, body: Any) -> Optional[dict]:
-    """Validate and write one catalogue entry, new or existing.
+def validate_exercise(database: Any, body: Any) -> dict:
+    """The row a save would write, or CatalogueRefusal -- without writing.
 
-    Raises CatalogueRefusal for anything an author can fix; returns None only
-    when the write itself failed.
+    Split out so a door that stores something BEFORE the save (the coach
+    panel's video, uploaded and then saved as the new version) can refuse a
+    bad definition first and leave nothing behind in storage.
     """
     fields: dict = body if isinstance(body, dict) else {}
-    row = {
+    return {
         **_identity(fields),
         **_targeting(fields, database),
         **_placement(fields, database),
         **_avatar(fields),
     }
-    return database.upsert_diagnostic_exercise(row)
+
+
+def save_exercise(
+    database: Any, body: Any, *, source: str = "cms", created_by: str = "",
+    ai_draft_text: Optional[str] = None,
+    ai_draft_model_version: Optional[str] = None,
+    video_sha256: Optional[str] = None, video_bytes: Optional[int] = None,
+    transcript_status: str = "not_requested",
+) -> Optional[dict]:
+    """Validate and write one catalogue entry, new or existing.
+
+    Raises CatalogueRefusal for anything an author can fix; returns None only
+    when the write itself failed.
+
+    EVERY SAVE KEEPS ITS VERSION (founder 2026-09-29, decision 4; 0399). The
+    live row is upserted in place as before; its version is bumped when the
+    definition or the video changed, and one immutable version row is written
+    beside it with the definition as saved, the AI draft if there was one, the
+    video's lineage and the transcript's state. ``source`` names which door
+    the save came through (cms, coach_panel, coach_request, coach_review).
+    """
+    from services.exercise_versions import next_version, record_version
+    row = validate_exercise(database, body)
+    reader = getattr(database, "get_diagnostic_exercise", None)
+    before = reader(row["exercise_id"]) if reader is not None else None
+    row["version"] = next_version(before, row)
+    saved = database.upsert_diagnostic_exercise(row)
+    if saved:
+        record_version(
+            database, {**row, **saved}, source=source, created_by=created_by,
+            ai_draft_text=ai_draft_text,
+            ai_draft_model_version=ai_draft_model_version,
+            video_sha256_hex=video_sha256, video_bytes=video_bytes,
+            transcript_status=transcript_status,
+        )
+    return saved
 
 
 def file_coach_exercise(
@@ -322,4 +358,5 @@ def file_coach_exercise(
     # Every other field is the author's, and is validated by save_exercise --
     # including the video, which the library has always required and this path
     # used to treat as optional.
-    return save_exercise(database, body)
+    return save_exercise(database, body, source="coach_review",
+                         created_by=str(body.get("created_by") or ""))
